@@ -280,35 +280,72 @@ elif what == "agent":
         gone = r.wait(lambda: (lambda out: out if "olo-test-key" not in out else None)(listed()), 20, every=0.5)
         print("taken back, ssh-add there says:", repr((gone or listed())[:80]))
         print("PASS" if got and gone is not None and "for far at" in said and "asked by olo-rex" in said else "FAIL")
-elif what == "granted":
-    # The bridge's permissions given to a host that is connected, and taken back: what the Host window says of
-    # the bridge follows at once, with no new connection. (It said "nothing granted to it" until the next one.)
-    shim = f"{D}/home/.local/share/olo-rex-bridge/bin/_olo_bridge_call"
-    os.makedirs(os.path.dirname(shim), exist_ok=True)
-    open(shim, "w").write("#!/bin/sh\nexit 0\n"); os.chmod(shim, 0o755)
-    try:
-        with Rig("shell", delay=0, far=True, bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
-            def bridge():
-                """The Host window's line for the bridge: the words after its heading, up to the next heading."""
-                said = [str(n.get("name") or n.get("value") or "") for n in r.nodes("Host") if n.get("role") in ("Text", "Label", "StaticText", "Heading")]
-                said = [w for w in said if w]
-                if "Bridge" not in said: return None
-                at = said.index("Bridge"); rest = said[at + 1:]
-                end = next((i for i, w in enumerate(rest) if w in ("Skill for agents", "Typing helper")), len(rest))
-                return " · ".join(rest[:end])[:120]
-            print("the Host window opened:", r.invoke("host.manage"))
-            first = r.wait(lambda: (lambda b: b if b and "Installed" in b else None)(bridge()), 20)
-            print("as connected, nothing granted:", repr(first))
-            r.grant("far", open_links=True, passwords=True, agent_screens=True)
-            given = r.wait(lambda: (lambda b: b if b and "Installed" in b and "nothing granted" not in b else None)(bridge()), 10)
-            print("permissions given:", repr(given or bridge()))
-            r.grant("far", open_links=False, passwords=False, agent_screens=False)
-            taken = r.wait(lambda: (lambda b: b if b and "nothing granted" in b else None)(bridge()), 10)
-            print("taken back:", repr(taken or bridge()))
-            print("PASS" if first and "nothing granted" in first and given and taken else "FAIL")
-    finally:
-        import shutil
-        shutil.rmtree(f"{D}/home/.local/share/olo-rex-bridge", ignore_errors=True)
+elif what == "bridge":
+    # The Olo desktop through Rex, from a program on the far host: `rex do olo.screen …` there, answered by the
+    # app here as the host's permissions allow, with what the command wrote; a picture fetched; a long command
+    # waited for. (A stand-in for olo-screen: the rig starts no real Agent Screen.) And the Host window's Bridge
+    # line following the permissions while connected.
+    import base64, shlex
+    fake = f"{D}/bridge-bin"; os.makedirs(fake, exist_ok=True)
+    picture = bytes((i * 7) % 251 for i in range(700_000))
+    open(f"{fake}/look.png", "wb").write(picture)
+    open(f"{fake}/olo-screen", "w").write(f"#!/bin/sh\ncase \"$1\" in\n  look) printf '{{\"picture\":\"{fake}/look.png\"}}\\n' ;;\n  slow) sleep 12; echo slow done ;;\n  *) echo \"screen: $*\" ;;\nesac\n")
+    os.chmod(f"{fake}/olo-screen", 0o755)
+    with Rig("shell", delay=0, far=True, env=[f"OLO_REX_BRIDGE_BIN={fake}"], bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
+        # (The rig's far host is this computer, and its Rex server the rig's one: the app is connected to it
+        # twice, as this computer and as "far". A program there names the client it means, as it would where
+        # two Olo desktops show one host; the far one is the one that refuses what "far" isn't granted.)
+        rex = f"rex -S unix://{D}/rex/rex.sock --autostart=false"
+        first = lambda out: json.JSONDecoder().raw_decode(out.lstrip())[0]   # (ssh's own words come after)
+        clients = [c["client_id"] for c in first(r.far.ran(f"{rex} client ls --json 2>/dev/null")).get("clients", []) if c.get("info", {}).get("kind") == "app"]
+        client = [None]
+        def do(action, a=None, pairs=""):
+            out = r.far.ran(f"{rex} -C {client[0]} do {action} --json {pairs} " + (f"--args {shlex.quote(json.dumps(a))}" if a is not None else "") + " 2>/dev/null")
+            try: return first(out)
+            except ValueError: return {"said": out.strip()[:200]}
+        def bridge():
+            said = [str(n.get("name") or n.get("value") or "") for n in r.nodes("Host") if n.get("role") in ("Text", "Label", "StaticText", "Heading")]
+            said = [w for w in said if w]
+            if "Bridge" not in said: return None
+            rest = said[said.index("Bridge") + 1:]
+            return " · ".join(rest[:next((i for i, w in enumerate(rest) if w in ("Skill for agents", "Typing helper")), len(rest))])[:60]
+        ok = True
+        def check(what, passed, shown):
+            global ok
+            ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:230], flush=True)
+        r.invoke("host.manage")
+        line = r.wait(lambda: bridge(), 20)
+        check("the Host window, nothing granted", line and line.startswith("Off") and "nothing granted" in line, line)
+        for c in clients:
+            client[0] = c
+            if do("olo.screen", {"args": ["tree", "agent"]}).get("ok") is False: break
+        refused = do("olo.screen", {"args": ["tree", "agent"]})
+        check("not granted, refused by name", refused.get("ok") is False and "Agent Screens" in str(refused.get("stderr")), refused)
+        r.grant("far", agent_screens=True)
+        line = r.wait(lambda: (lambda b: b if b and b.startswith("On") else None)(bridge()), 10)
+        check("the Host window, once granted (no new connection)", line, line or bridge())
+        tree = r.wait(lambda: (lambda t: t if t.get("ok") else None)(do("olo.screen", {"args": ["tree", "agent", "two words", "it's \"quoted\" $HOME"]})), 10)
+        check("a command's answer, its arguments as given", tree and tree.get("stdout") == "screen: tree agent two words it's \"quoted\" $HOME\n", tree)
+        pairs = do("olo.screen", None, pairs="""'args=["tree","agent"]'""")
+        check("the same with KEY=VALUE", pairs.get("stdout") == "screen: tree agent\n", pairs)
+        look = do("olo.screen", {"args": ["look", "agent"]})
+        files = look.get("files") or [{}]
+        got, offset, pieces = b"", 0, 0
+        while files[0].get("id") and pieces < 9:
+            piece = do("olo.file", None, pairs=f"id={files[0]['id']} offset={offset}")
+            got += base64.b64decode(piece.get("base64") or ""); offset += piece.get("count") or 0; pieces += 1
+            if piece.get("done") or not piece.get("count"): break
+        check("a picture named and fetched whole", got == picture, {"files": files, "pieces": pieces, "bytes": len(got)})
+        t0 = time.monotonic(); slow = do("olo.screen", {"args": ["slow"]}); took = time.monotonic() - t0
+        waited = slow
+        while waited.get("pending"): waited = do("olo.wait", None, pairs=f"id={waited['pending']}")
+        check("a command of 12 s: pending, then its answer", slow.get("pending") and waited.get("stdout") == "slow done\n", {"first answer after": round(took, 1), "then": waited})
+        listed = r.far.ran(f"{rex} -C {client[0]} actions --json 2>&1 | grep -o '\"olo\\.[a-z_.]*\"' | sort -u | tr '\\n' ' '")
+        check("what `rex actions` lists of Olo's", all(w in listed for w in ("olo.open", "olo.op", "olo.screen", "olo.file", "olo.wait")), listed)
+        r.grant("far", agent_screens=False)
+        line = r.wait(lambda: (lambda b: b if b and b.startswith("Off") else None)(bridge()), 10)
+        check("taken back", line and do("olo.screen", {"args": ["tree", "agent"]}).get("ok") is False, line)
+        print("PASS" if ok else "FAIL")
 elif what == "behind":
     import re, subprocess
     numbers = [a for a in args if a.isdigit()]

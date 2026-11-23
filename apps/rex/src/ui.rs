@@ -1483,7 +1483,6 @@ impl RexWindow {
                 let thing = rest.rsplit_once(':').and_then(|(key, thing)| {
                     let thing = match thing {
                         "helper" => crate::hub::HostThing::Helper,
-                        "bridge" => crate::hub::HostThing::Bridge,
                         "skill" => crate::hub::HostThing::Skill,
                         _ => return None,
                     };
@@ -1879,15 +1878,12 @@ impl RexWindow {
             // Host window, where it shows and what the host says of it
             // does. On any other, the script is typed into the pane,
             // the one way there.)
-            "olo.install_remote_shim" | "olo.install_remote_skill" => {
+            "olo.install_remote_skill" => {
                 if let Some(bk) = self.focused_block_key() {
-                    let shim = action == "olo.install_remote_shim";
                     let over_ssh = far_host(&hub, &bk.host_key) && hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(&bk.host_key).is_some_and(|h| h.ssh);
                     if over_ssh {
                         open_host(&hub, &bk.host_key);
-                        crate::host::change(&hub, if shim { crate::hub::HostThing::Bridge } else { crate::hub::HostThing::Skill }, true);
-                    } else if shim {
-                        hub.install_remote_shim_in_pane(&bk);
+                        crate::host::change(&hub, crate::hub::HostThing::Skill, true);
                     } else {
                         hub.install_remote_skill_in_pane(&bk);
                     }
@@ -2334,8 +2330,6 @@ impl RexWindow {
                 .checked(keep_going)
                 .enabled(pane)
                 .separator()
-                .item("Install Olo’s Bridge", "olo.install_remote_shim")
-                .enabled(pane && !here)
                 .item("Install Olo’s Skill for Agents", "olo.install_remote_skill")
                 .enabled(pane),
             Menu::new("Settings")

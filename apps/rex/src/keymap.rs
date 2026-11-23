@@ -347,7 +347,6 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "client.mode.exit_all", title: "Exit All Key Modes", category: "Keymap", keywords: &["mode", "reset"], args_schema: None },
         // ---- Olo Desktop Bridge Actions ----
         ActionSpec { id: "olo.passwords.fill", title: "Fill Password from Olo Passwords", category: "Olo Bridge", keywords: &["keychain", "op", "secret"], args_schema: None },
-        ActionSpec { id: "olo.install_remote_shim", title: "Install Olo’s Bridge", category: "Olo Bridge", keywords: &["shim", "xdg-open", "op", "olo-screen", "remote"], args_schema: None },
         ActionSpec { id: "olo.install_remote_skill", title: "Install Olo’s Skill for Agents", category: "Olo Bridge", keywords: &["skill", "claude", "codex", "agent"], args_schema: None },
     ]
 }
@@ -361,13 +360,37 @@ pub fn action_catalog() -> Vec<ActionSpec> {
 /// client hasn't said it offers; not commands of the person's, and in
 /// no palette.
 pub fn bridge_catalog() -> Vec<ActionSpec> {
+    // (`args`: the command's own arguments, in order.)
+    let command = || Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}}},"required":["args"]}));
     vec![
         ActionSpec {
             id: "olo.open",
-            title: "Open URL or File in Olo",
+            title: "Open a Link or a File on the Olo Desktop",
             category: "Olo Bridge",
             keywords: &["browser", "chrome", "xdg-open"],
-            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"autoforward":{"type":"boolean"}},"required":["target"]})),
+            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"}},"required":["target"]})),
+        },
+        ActionSpec { id: "olo.op", title: "Ask Olo Passwords (1Password’s Command Line)", category: "Olo Bridge", keywords: &["op", "secret", "password"], args_schema: command() },
+        ActionSpec {
+            id: "olo.screen",
+            title: "Use an Olo Agent Screen (olo-screen’s Command Line)",
+            category: "Olo Bridge",
+            keywords: &["agent screen", "headless", "olo-screen"],
+            args_schema: command(),
+        },
+        ActionSpec {
+            id: "olo.file",
+            title: "Fetch a Picture an Answer Named",
+            category: "Olo Bridge",
+            keywords: &["picture", "file"],
+            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"},"offset":{"type":"integer"}},"required":["id"]})),
+        },
+        ActionSpec {
+            id: "olo.wait",
+            title: "Wait for a Command Still Running on the Olo Desktop",
+            category: "Olo Bridge",
+            keywords: &["pending"],
+            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
         },
         ActionSpec {
             id: "olo.notify",
@@ -382,27 +405,6 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["copy", "clipboard"],
             args_schema: Some(json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"]})),
-        },
-        ActionSpec {
-            id: "olo.screen.ensure",
-            title: "Ensure Olo Agent Screen",
-            category: "Olo Bridge",
-            keywords: &["agent screen", "headless"],
-            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
-        },
-        ActionSpec {
-            id: "olo.screen.watch",
-            title: "Watch Olo Agent Screen",
-            category: "Olo Bridge",
-            keywords: &["agent screen", "watch"],
-            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
-        },
-        ActionSpec {
-            id: "olo.screen.open_url",
-            title: "Open URL on Olo Agent Screen",
-            category: "Olo Bridge",
-            keywords: &["agent screen", "chrome", "preview"],
-            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string"}},"required":["name","url"]})),
         },
     ]
 }

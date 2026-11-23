@@ -95,6 +95,21 @@ impl HostBridgePolicy {
     /// here runs for, and what the Host window and the status bar's
     /// mark say of it. (Not the SSH keys: they go over SSH itself, with
     /// no bridge.)
+    /// What of the bridge's is granted, each in a word or two, in the
+    /// order Preferences lists them: for the Host window's line.
+    pub fn granted(&self) -> Vec<&'static str> {
+        [
+            (self.allow_open_url, "links"),
+            (self.allow_localhost_autoforward, "local servers"),
+            (self.allow_agent_screens, "Agent Screens"),
+            (self.allow_passwords_op, "Passwords"),
+            (self.allow_remote_control, "clipboard"),
+        ]
+        .into_iter()
+        .filter_map(|(on, name)| on.then_some(name))
+        .collect()
+    }
+
     pub fn any_enabled(&self) -> bool {
         self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control
     }

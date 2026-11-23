@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 use crate::{
     agent::{AgentActivity, KeepGoingState, detect_agent_from_screen},
     attention::Target,
-    bridge::{self, BridgeServerHandle},
+    bridge,
     copy_mode::CopyMode,
     git::{GitCache, GitInfo},
     keymap,
@@ -1089,8 +1089,9 @@ pub struct HostStands {
     /// Whether the bridge's shims are there; none: not asked, or not
     /// answered.
     pub bridge: Option<bool>,
-    /// Whether something is granted to the host here (Preferences ▸ Rex).
-    pub granted: bool,
+    /// What of the bridge's is granted to the host here (Preferences ▸
+    /// Rex), each in a word or two; none: nothing.
+    pub granted: Vec<&'static str>,
     pub skill: Option<bool>,
     /// Its Rex server's version, as it said when it connected.
     pub version: Option<String>,
@@ -1149,8 +1150,6 @@ pub struct HostRuntime {
     pub keymap_diagnostics: Vec<KeymapDiagnostic>,
     pub control: Option<ControlClient>,
     input_tx: Option<tokio::sync::mpsc::UnboundedSender<HostInputOp>>,
-    pub bridge_server: Option<BridgeServerHandle>,
-    pub bridge_remote_port: Option<u16>,
 }
 
 // Only the ordered lifecycle events and bootstrap own list membership.
@@ -1232,12 +1231,11 @@ impl HubState {
         };
         // (What is granted is what the settings say now, not whether the
         // bridge's server for the host has been started yet.)
-        let bridge = host.bridge_there.map(|there| match (there, self.settings.policy_for_host(host_key, false).any_enabled()) {
-            (true, true) => Has { on: true, said: olo_kit::tr!("Olo’s bridge is on “{}”.", name).to_string() },
-            (true, false) => {
-                Has { on: false, said: olo_kit::tr!("Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences\u{a0}▸\u{a0}Rex.", name).to_string() }
-            }
-            (false, _) => Has { on: false, said: olo_kit::tr!("Olo’s bridge isn’t on “{}”. To install it, choose Agents\u{a0}▸\u{a0}Install\u{a0}Olo’s\u{a0}Bridge.", name).to_string() },
+        // (Nothing of the bridge is on the host: on is the permissions'.)
+        let bridge = Some(if self.settings.policy_for_host(host_key, false).any_enabled() {
+            Has { on: true, said: olo_kit::tr!("Programs on “{}” may use this computer through Rex, as its permissions say (Preferences\u{a0}▸\u{a0}Rex).", name).to_string() }
+        } else {
+            Has { on: false, said: olo_kit::tr!("Nothing on this computer is granted to “{}”. To grant it something, see Preferences\u{a0}▸\u{a0}Rex.", name).to_string() }
         });
         let skill = host.skill_there.map(|there| match there {
             true => Has { on: true, said: olo_kit::tr!("Olo’s skill for agents is on “{}”.", name).to_string() },
@@ -1279,7 +1277,7 @@ impl HubState {
                 helper_kept_off: false,
                 helper_setting: true,
                 bridge: there.then_some(true),
-                granted: false,
+                granted: if there { vec!["links", "Agent Screens", "Passwords"] } else { Vec::new() },
                 skill: there.then_some(false),
                 version: there.then(|| "0.19.2".to_owned()),
             });
@@ -1293,7 +1291,7 @@ impl HubState {
             helper_kept_off: self.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off"),
             helper_setting: self.settings.host_helper,
             bridge: host.bridge_there,
-            granted: self.settings.policy_for_host(host_key, false).any_enabled(),
+            granted: self.settings.policy_for_host(host_key, false).granted(),
             skill: host.skill_there,
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
         })
@@ -1338,6 +1336,8 @@ struct RexHubInner {
     /// host's key: the path its terminals take as `SSH_AUTH_SOCK`
     /// ([`Self::give_the_agent`]).
     agent_socks: Mutex<HashMap<String, String>>,
+    /// What hosts' bridges asked that isn't over (`bridge::Calls`).
+    bridge_calls: bridge::Calls,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -1413,8 +1413,6 @@ impl RexHub {
                 keymap_diagnostics: Vec::new(),
                 control: None,
                 input_tx: None,
-                bridge_server: None,
-                bridge_remote_port: None,
             },
         );
         host_order.push("local".to_owned());
@@ -1450,8 +1448,6 @@ impl RexHub {
                         keymap_diagnostics: Vec::new(),
                         control: None,
                         input_tx: None,
-                        bridge_server: None,
-                        bridge_remote_port: None,
                     },
                 );
                 host_order.push(sh.id.clone());
@@ -1470,7 +1466,15 @@ impl RexHub {
             quick_look_cache: HashMap::new(),
         }));
 
-        let inner = Arc::new(RexHubInner { state: state.clone(), ssh_pool, askpass, notify: notify.clone(), spares: Mutex::new(HashMap::new()), agent_socks: Mutex::new(HashMap::new()) });
+        let inner = Arc::new(RexHubInner {
+            state: state.clone(),
+            ssh_pool,
+            askpass,
+            notify: notify.clone(),
+            spares: Mutex::new(HashMap::new()),
+            bridge_calls: Default::default(),
+            agent_socks: Mutex::new(HashMap::new()),
+        });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
 
@@ -1734,8 +1738,6 @@ impl RexHub {
             keymap_diagnostics: Vec::new(),
             control: None,
             input_tx: None,
-            bridge_server: None,
-            bridge_remote_port: None,
         };
         st.hosts.insert("dev-box".to_owned(), demo_host("dev-box", "dev-box", "ssh://you@dev-box.example", HostConnState::Connected, vec![remote]));
         st.host_order.push("dev-box".to_owned());
@@ -1821,16 +1823,6 @@ impl RexHub {
         if !changes.any {
             return;
         }
-        // The bridge's server for each connected far host, started or
-        // stopped as its permissions now say (`keep_bridge`).
-        let connected: Vec<String> = {
-            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.hosts.values().filter(|h| !h.is_local && h.control.is_some()).map(|h| h.key.clone()).collect()
-        };
-        for id in connected {
-            let inner = self.inner.clone();
-            self.rt.spawn(async move { inner.keep_bridge(&id).await });
-        }
         for id in changes.removed.iter().chain(changes.moved.iter().map(|h| &h.id)) {
             self.remove_host_as(id, false, false);
         }
@@ -1883,8 +1875,6 @@ impl RexHub {
                     keymap_diagnostics: Vec::new(),
                     control: None,
                     input_tx: None,
-                    bridge_server: None,
-                    bridge_remote_port: None,
                 },
             );
             if !st.settings.saved_hosts.iter().any(|h| h.id == id) {
@@ -2679,14 +2669,7 @@ impl RexHub {
         });
     }
 
-    pub fn install_remote_shim_in_pane(&self, key: &BlockKey) {
-        let script = bridge::generate_remote_shim_install_script();
-        let cmd = format!("sh -c {}\n", shell_quote(&script));
-        self.send_input(key, cmd.into_bytes());
-        self.look_again_at_what_the_host_has(&key.host_key);
-    }
-
-    /// The host was just told to put the bridge or the skill there
+    /// The host was just told to put the skill there
     /// (a script typed into a pane): it is asked what it has once that
     /// has had time to run, and once more for a slow one.
     fn look_again_at_what_the_host_has(&self, host_key: &str) {
@@ -2755,8 +2738,8 @@ impl RexHub {
                     }
                     ran
                 }
-                (HostThing::Bridge, true) => run(script(&bridge::generate_remote_shim_install_script())).await,
-                (HostThing::Bridge, false) => run(script(bridge::REMOVE_SHIMS)).await,
+                // (Nothing of the bridge is on a host: `bridge`.)
+                (HostThing::Bridge, _) => Ok(()),
                 (HostThing::Skill, true) => run(script(&bridge::generate_remote_skill_install_script())).await,
                 (HostThing::Skill, false) => run(script(bridge::REMOVE_SKILL)).await,
             };
@@ -3018,81 +3001,6 @@ impl RexHubInner {
         }
     }
 
-    /// The bridge's server on this computer for the far host
-    /// `host_key`: running while something of the bridge's is granted
-    /// to that host, and not otherwise. Called as the host is connected
-    /// to and whenever its permissions change (`follow_shared`): it was
-    /// started at connection only, so permissions given to a connected
-    /// host did nothing, and the Host window went on saying "nothing
-    /// granted to it", until the next connection (Ben, 2026-11-23: "i
-    /// clicked the bridge icon and then granted it all the access perms
-    /// but it still says nothing is granted").
-    async fn keep_bridge(self: &Arc<Self>, host_key: &str) {
-        let (wanted, running, label) = {
-            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let Some(host) = st.hosts.get(host_key) else { return };
-            (st.settings.policy_for_host(host_key, false).any_enabled(), host.bridge_server.is_some(), host.label.clone())
-        };
-        if !wanted {
-            // (Its end closes it: `BridgeServerHandle`'s drop.)
-            let stopped = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key).and_then(|h| {
-                h.bridge_remote_port = None;
-                h.bridge_server.take()
-            });
-            if stopped.is_some() {
-                (self.notify)(HubNotice::StateChanged);
-            }
-            return;
-        }
-        if running {
-            return;
-        }
-        let st_ref = self.state.clone();
-        let hk_pol = host_key.to_owned();
-        let pol_fn: Arc<dyn Fn() -> crate::settings::HostBridgePolicy + Send + Sync> =
-            Arc::new(move || st_ref.lock().unwrap_or_else(|e| e.into_inner()).settings.host_policies.get(&hk_pol).cloned().unwrap_or_else(crate::settings::HostBridgePolicy::remote_default));
-        let inn_fwd = self.clone();
-        let hk_fwd = host_key.to_owned();
-        let fwd_fn: bridge::LocalhostForwardFn = Arc::new(move |rh, rp| {
-            let inn = inn_fwd.clone();
-            let hk = hk_fwd.clone();
-            Box::pin(async move {
-                let sid = inn
-                    .state
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .hosts
-                    .get(&hk)
-                    .and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone()))
-                    .ok_or_else(|| "no active remote session for forward".to_owned())?;
-                inn.ensure_ephemeral_forward(&hk, &sid, &rh, rp).await
-            })
-        });
-        let inner = Arc::downgrade(self);
-        let source_host = host_key.to_owned();
-        let notify = move |req: &bridge::BridgeRequest| {
-            if let Some(inner) = inner.upgrade() {
-                inner.bridge_notice(&source_host, req.session_id.as_deref(), req.block_id.as_deref(), &req.payload);
-            }
-        };
-        let Ok(handle) = bridge::start_bridge_server(label, pol_fn, fwd_fn, notify).await else { return };
-        let port = handle.local_addr.port();
-        {
-            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            // (Started twice at once, or taken back meanwhile: the one
-            // not kept ends as it is dropped.)
-            let still = st.settings.policy_for_host(host_key, false).any_enabled();
-            match st.hosts.get_mut(host_key) {
-                Some(h) if still && h.bridge_server.is_none() => {
-                    h.bridge_remote_port = Some(port);
-                    h.bridge_server = Some(handle);
-                }
-                _ => return,
-            }
-        }
-        (self.notify)(HubNotice::StateChanged);
-    }
-
     /// The SSH agent on a host (HACKING, Rex, "The SSH agent on a
     /// host"): where the person has given a host reached over SSH the
     /// use of their SSH keys (Preferences ▸ Rex), Passwords' agent is
@@ -3158,11 +3066,17 @@ impl RexHubInner {
     /// [`Self::look_at_what_the_host_has`], waited for: the host is
     /// asked, and what it answered kept.
     async fn ask_what_the_host_has(&self, host_key: &str, pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) {
-        let Ok(ran) = pool.exec(target, askpass, bridge::PRESENT, &mut |_| {}).await else { return };
+        let Ok(ran) = pool.exec(target, askpass.clone(), bridge::PRESENT, &mut |_| {}).await else { return };
         if !ran.ok() {
             return;
         }
-        let (bridge_there, skill_there) = bridge::present(&ran.output);
+        let (old_shims, skill_there) = bridge::present(&ran.output);
+        // (The shims of before did nothing, and an agent that finds
+        // them takes them for the way: off they come.)
+        if old_shims {
+            let _ = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(bridge::OLD_SHIMS)), &mut |_| {}).await;
+        }
+        let bridge_there = true;
         let changed = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(host) = st.hosts.get_mut(host_key) else { return };
@@ -3340,7 +3254,7 @@ impl RexHubInner {
         let mut attempt = 0u32;
         let mut last_seq = 0;
         loop {
-            let (endpoint_raw, reconnect_token, is_local, user_overrides) = {
+            let (endpoint_raw, reconnect_token, user_overrides) = {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 let overrides = st.settings.keymap_overrides.clone();
                 let Some(h) = st.hosts.get_mut(&host_key) else { return };
@@ -3350,7 +3264,7 @@ impl RexHubInner {
                 if attempt == 0 {
                     h.conn_state = HostConnState::Connecting;
                 }
-                (h.endpoint_raw.clone(), h.reconnect_token.clone(), h.is_local, overrides)
+                (h.endpoint_raw.clone(), h.reconnect_token.clone(), overrides)
             };
             (self.notify)(HubNotice::StateChanged);
 
@@ -3633,12 +3547,6 @@ impl RexHubInner {
                     self.write_palette_index();
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
-
-                    // The bridge's server here for the host, where something
-                    // is granted to it.
-                    if !is_local {
-                        self.keep_bridge(&host_key).await;
-                    }
 
                     (self.notify)(HubNotice::StateChanged);
 
@@ -4497,12 +4405,20 @@ impl RexHubInner {
                 (self.notify)(HubNotice::PromptEnded { host_key: host_key.to_owned(), call_id: end.call_id });
             }
             ControlEvent::ClientPerformRequested(req) => {
-                let ok = self.handle_client_perform(host_key, req.action.clone(), req.args.clone(), req.session_id.clone(), req.block_id.clone()).await;
-                if ok {
-                    let _ = ctrl.client_reply_ok(&req.call_id, json!({ "ok": true })).await;
-                } else {
-                    let _ = ctrl.client_reply_err(&req.call_id, "permission_denied", "No matching Rex workspace or permission for this action").await;
-                }
+                // (Not on the events' own thread of work: a bridge's
+                // command may take as long as the person takes to answer
+                // Passwords, and the host's events go on meanwhile.)
+                let (inner, ctrl, host_key) = (self.clone(), ctrl.clone(), host_key.to_owned());
+                tokio::spawn(async move {
+                    match inner.handle_client_perform(&host_key, req.action.clone(), req.args.clone(), req.session_id.clone(), req.block_id.clone()).await {
+                        Some(answer) => {
+                            let _ = ctrl.client_reply_ok(&req.call_id, answer).await;
+                        }
+                        None => {
+                            let _ = ctrl.client_reply_err(&req.call_id, "permission_denied", "No matching Rex workspace or permission for this action").await;
+                        }
+                    }
+                });
             }
             ControlEvent::ClientCallRequested(req) => {
                 let _ = ctrl.client_reply_err(&req.call_id, "unsupported", &format!("Unknown RPC {}.{}", req.server, req.method)).await;
@@ -4512,7 +4428,7 @@ impl RexHubInner {
         }
     }
 
-    async fn handle_client_perform(self: &Arc<Self>, host_key: &str, action: String, args: Option<Value>, session_id: Option<String>, block_id: Option<String>) -> bool {
+    async fn handle_client_perform(self: &Arc<Self>, host_key: &str, action: String, args: Option<Value>, session_id: Option<String>, block_id: Option<String>) -> Option<Value> {
         if action.starts_with("olo.") {
             let (is_local, policy) = {
                 let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -4520,72 +4436,61 @@ impl RexHubInner {
                 let policy = st.settings.policy_for_host(host_key, is_local);
                 (is_local, policy)
             };
+            let done = Some(json!({ "ok": true }));
             match action.as_str() {
-                "olo.open" => {
-                    if !policy.allow_open_url {
-                        return false;
-                    }
-                    if let Some(target) = args.as_ref().and_then(|a| a.get("target")).and_then(Value::as_str) {
-                        let fwd: Option<bridge::LocalhostForwardFn> = if !is_local && let Some(sid) = session_id {
-                            let hk = host_key.to_owned();
-                            let inn = self.clone();
-                            Some(Arc::new(move |rh, rp| {
-                                let hk = hk.clone();
-                                let sid = sid.clone();
-                                let inn = inn.clone();
-                                Box::pin(async move { inn.ensure_ephemeral_forward(&hk, &sid, &rh, rp).await })
-                            }))
-                        } else {
-                            None
-                        };
-                        let _ = bridge::open_url_with_autoforward(target, !is_local && policy.allow_localhost_autoforward, fwd.as_ref()).await;
-                    }
-                    return true;
+                // What a session asks of this computer (`bridge`): a
+                // link opened, Passwords' `op`, an Agent Screen's
+                // `olo-screen`, each done as the host's permissions
+                // allow and answered with what the command wrote; a
+                // command asked before waited for again; a piece of a
+                // picture an answer named.
+                "olo.wait" | "olo.file" | "olo.open" | "olo.op" | "olo.screen" => {
+                    let arg = |name: &str| args.as_ref().and_then(|a| a.get(name));
+                    let text = |name: &str| arg(name).and_then(Value::as_str).unwrap_or_default().to_owned();
+                    let (cmd, given) = match action.as_str() {
+                        "olo.wait" => return Some(self.bridge_calls.wait(&text("id")).await),
+                        "olo.file" => return Some(self.bridge_calls.piece(&text("id"), arg("offset").and_then(Value::as_u64).unwrap_or(0) as usize)),
+                        "olo.open" => ("open", vec![text("target")]),
+                        other => (
+                            if other == "olo.op" { "op" } else { "screen" },
+                            arg("args").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect()).unwrap_or_default(),
+                        ),
+                    };
+                    let req = bridge::BridgeRequest { cmd: cmd.to_owned(), session_id: session_id.clone(), block_id: block_id.clone(), args: given, payload: Value::Null };
+                    let label = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_else(|| host_key.to_owned());
+                    let (inner, hk, sid) = (self.clone(), host_key.to_owned(), session_id.clone());
+                    let forward: bridge::LocalhostForwardFn = Arc::new(move |host, port| {
+                        let (inner, hk, sid) = (inner.clone(), hk.clone(), sid.clone());
+                        Box::pin(async move {
+                            // (Through the asking session, or the host's first.)
+                            let sid = sid
+                                .or_else(|| inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&hk).and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone())))
+                                .ok_or_else(|| "no session of the host to forward through".to_owned())?;
+                            inner.ensure_ephemeral_forward(&hk, &sid, &host, port).await
+                        })
+                    });
+                    // (This computer's own sessions reach it directly: no forward.)
+                    let policy = if is_local { crate::settings::HostBridgePolicy { allow_localhost_autoforward: false, ..policy } } else { policy };
+                    return Some(self.bridge_calls.answer(async move { bridge::handle_bridge_request(&label, &policy, req, &forward, &|_| {}).await }).await);
                 }
                 "olo.notify" => {
                     self.bridge_notice(host_key, session_id.as_deref(), block_id.as_deref(), args.as_ref().unwrap_or(&Value::Null));
-                    return true;
+                    return done;
                 }
                 "olo.clipboard.set" => {
                     if !policy.allow_remote_control {
-                        return false;
+                        return None;
                     }
                     if let Some(text) = args.as_ref().and_then(|a| a.get("text")).and_then(Value::as_str) {
                         (self.notify)(HubNotice::SetClipboard(text.to_owned()));
                     }
-                    return true;
-                }
-                "olo.screen.ensure" | "olo.screen.watch" | "olo.screen.open_url" => {
-                    if !policy.allow_agent_screens {
-                        return false;
-                    }
-                    if let Some(bin) = olo_xdg::find_program("olo-screen")
-                        && let Some(name) = args.as_ref().and_then(|a| a.get("name")).and_then(Value::as_str)
-                    {
-                        let mut cmd = tokio::process::Command::new(bin);
-                        match action.as_str() {
-                            "olo.screen.ensure" => {
-                                cmd.args(["ensure", name]);
-                            }
-                            "olo.screen.watch" => {
-                                cmd.args(["watch", name]);
-                            }
-                            "olo.screen.open_url" => {
-                                if let Some(u) = args.as_ref().and_then(|a| a.get("url")).and_then(Value::as_str) {
-                                    cmd.args(["run", name, "olo-open", u]);
-                                }
-                            }
-                            _ => {}
-                        }
-                        let _ = cmd.stdin(std::process::Stdio::null()).spawn();
-                    }
-                    return true;
+                    return done;
                 }
                 _ => {}
             }
         }
 
-        crate::ui::request_action(host_key, session_id, block_id, action, args)
+        crate::ui::request_action(host_key, session_id, block_id, action, args).then_some(json!({ "ok": true }))
     }
 
     /// What Olo's command palette finds of Rex (apps/palette, its Rex

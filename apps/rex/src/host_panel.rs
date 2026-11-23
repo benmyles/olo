@@ -111,6 +111,19 @@ fn stands(light: Light, said: &'static str) -> Stands {
 pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stands {
     let reached = host.conn == HostConnState::Connected && host.ssh;
     let more = |s: Stands, more: &'static str| Stands { more: Some(olo_kit::words::tr(more).into()), ..s };
+    // (Nothing of the bridge is on the host: the app offers its actions
+    // through the host's Rex server, to whatever the host is granted.
+    // On or off is the permissions', known whether it is reached or not.)
+    if thing == HostThing::Bridge {
+        if host.granted.is_empty() {
+            return more(stands(Light::Off, "Off"), "nothing granted");
+        }
+        // (What is granted, by name: the one thing asked of this line.
+        // Its light is on while the host is connected: granted to a
+        // host that isn't reached, nothing is being used.)
+        let granted = host.granted.iter().map(|name| olo_kit::words::tr(name)).collect::<Vec<_>>().join(", ");
+        return Stands { more: Some(granted), ..stands(if host.conn == HostConnState::Connected { Light::On } else { Light::Off }, "On") };
+    }
     if let Some(add) = shown.doing(thing) {
         return Stands { busy: true, ..stands(Light::Waiting, if add { "Being installed…" } else { "Being removed…" }) };
     }
@@ -135,18 +148,9 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
             HostHelper::None if !crate::link::carried() => stands(Light::Off, "Not installed"),
             HostHelper::None => absent(stands(Light::Off, "Not installed")),
         },
-        HostThing::Bridge => match host.bridge {
-            Some(true) if host.granted => installed(stands(Light::On, "Installed")),
-            Some(true) => installed(more(stands(Light::Waiting, "Installed"), "nothing granted to it")),
-            Some(false) => absent(stands(Light::Off, "Not installed")),
-            None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
-        },
+        HostThing::Bridge => unreachable!("answered above"),
         HostThing::Skill => match host.skill {
             Some(true) => installed(stands(Light::On, "Installed")),
-            // (It tells agents of the bridge: where that isn't there,
-            // said, and not to be installed before it. A button its
-            // own line says won't do isn't one: the second review.)
-            Some(false) if host.bridge != Some(true) => more(stands(Light::Off, "Not installed"), "needs the bridge"),
             Some(false) => absent(stands(Light::Off, "Not installed")),
             None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
         },
@@ -272,8 +276,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // "couldn't be reached" stood over a well that said the host had
     // refused the keys.)
     let why: Option<String> = match &host.conn {
-        HostConnState::Error(_) => Some(olo_kit::tr!("Nothing on {} is known until it connects.", host.name).into()),
-        HostConnState::Disconnected => Some(olo_kit::tr!("Nothing on {} is known until it’s connected.", host.name).into()),
+        HostConnState::Error(_) => Some(olo_kit::tr!("What’s installed on {} isn’t known until it connects.", host.name).into()),
+        HostConnState::Disconnected => Some(olo_kit::tr!("What’s installed on {} isn’t known until it’s connected.", host.name).into()),
         HostConnState::Connected if !host.ssh => Some(olo_kit::tr!("Nothing can be installed on {} from here: it isn’t reached over SSH.", host.name).into()),
         _ => None,
     };
@@ -310,9 +314,9 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
 
     let mut there = Vec::new();
     for (thing, title, id, note, path) in [
-        (HostThing::Bridge, "Bridge", "bridge", "Lets programs there open links, Passwords and Agent Screens here.", "~/.local/share/olo-rex-bridge"),
-        (HostThing::Skill, "Skill for agents", "skill", "Tells Claude Code and other agents there how to use the bridge and Rex.", "~/.claude/skills/olo-rex-bridge"),
-        (HostThing::Helper, "Typing helper", "helper", "Keeps typing quick over a slow link.", "~/.local/share/olo/rex-link"),
+        (HostThing::Bridge, "Bridge", "bridge", "Lets programs there open links, ask Passwords and use Agent Screens here.", None),
+        (HostThing::Skill, "Skill for agents", "skill", "Tells Claude Code and other agents there how to use the bridge and Rex.", Some("~/.claude/skills/olo-rex-bridge")),
+        (HostThing::Helper, "Typing helper", "helper", "Keeps typing quick over a slow link.", Some("~/.local/share/olo/rex-link")),
     ] {
         let s = thing_stands(host, shown, thing);
         if s.there {
@@ -320,22 +324,23 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         }
         let mut actions = Vec::new();
         // (What the bridge may do is set in Preferences: a step from
-        // here, while it is on the host.)
-        if thing == HostThing::Bridge && s.there {
+        // here, and its one button, since nothing of it is installed.)
+        if thing == HostThing::Bridge {
             actions.push(button("Permissions…", "host-bridge-permissions", HostDo::Permissions, true));
+        } else {
+            actions.push(match s.can {
+                Some((add, true)) => button("Try Again", &format!("host-{id}-again"), HostDo::Change(thing, add), true),
+                Some((true, false)) => button("Install", &format!("host-{id}-install"), HostDo::Change(thing, true), true),
+                Some((false, false)) => button("Remove", &format!("host-{id}-remove"), HostDo::Change(thing, false), true),
+                None => button(if s.there { "Remove" } else { "Install" }, &format!("host-{id}-wait"), HostDo::Check, false),
+            });
         }
-        actions.push(match s.can {
-            Some((add, true)) => button("Try Again", &format!("host-{id}-again"), HostDo::Change(thing, add), true),
-            Some((true, false)) => button("Install", &format!("host-{id}-install"), HostDo::Change(thing, true), true),
-            Some((false, false)) => button("Remove", &format!("host-{id}-remove"), HostDo::Change(thing, false), true),
-            None => button(if s.there { "Remove" } else { "Install" }, &format!("host-{id}-wait"), HostDo::Check, false),
-        });
         let note: String = if thing == HostThing::Helper && !host.helper_setting {
             olo_kit::words::tr("To use it, choose Settings\u{a0}▸\u{a0}Use\u{a0}Olo’s\u{a0}Typing\u{a0}Helper\u{a0}on\u{a0}Hosts.").into()
         } else {
             olo_kit::words::tr(note).into()
         };
-        page.push(block(title, &s, actions, note, Some(path)));
+        page.push(block(title, &s, actions, note, path));
     }
 
     // Everything of Olo's off the host at once: the one thing here
@@ -380,7 +385,7 @@ mod tests {
             helper_kept_off: false,
             helper_setting: true,
             bridge: Some(false),
-            granted: false,
+            granted: Vec::new(),
             skill: Some(false),
             version: Some("0.19.2".into()),
         }
@@ -399,25 +404,24 @@ mod tests {
         let (mut h, mut shown) = (host(), Shown { key: "k".into(), name: "far".into(), ..Shown::default() });
         let of = |h: &HostStands, shown: &Shown, thing| thing_stands(h, shown, thing);
 
-        // The bridge: not there, there with nothing granted, there.
+        // The bridge: off with nothing granted, on with something;
+        // nothing of it is installed, so nothing to install or remove.
         let s = of(&h, &shown, HostThing::Bridge);
-        assert_eq!((said(&s), s.there, s.can), ((Light::Off, "Not installed", None), false, Some((true, false))));
-        h.bridge = Some(true);
+        assert_eq!((said(&s), s.there, s.can), ((Light::Off, "Off", Some("nothing granted")), false, None));
+        h.granted = vec!["links", "Passwords"];
         let s = of(&h, &shown, HostThing::Bridge);
-        assert_eq!((said(&s), s.there, s.can), ((Light::Waiting, "Installed", Some("nothing granted to it")), true, Some((false, false))));
-        h.granted = true;
-        assert_eq!(said(&of(&h, &shown, HostThing::Bridge)), (Light::On, "Installed", None));
-        // (Not yet answered: asked, and nothing to press.)
-        h.bridge = None;
-        let s = of(&h, &shown, HostThing::Bridge);
-        assert_eq!((said(&s), s.can), ((Light::Waiting, "Asking…", None), None));
+        assert_eq!((said(&s), s.there, s.can), ((Light::On, "On", Some("links, Passwords")), false, None));
+        // (Granted to a host that isn't connected: said, with no light.)
+        let away = HostStands { conn: HostConnState::Disconnected, ..h.clone() };
+        assert_eq!(said(&of(&away, &shown, HostThing::Bridge)), (Light::Off, "On", Some("links, Passwords")));
 
-        // The skill says it needs the bridge where that isn't there.
-        h.bridge = Some(false);
+        // The skill: asked, not there, there.
+        h.skill = None;
         let s = of(&h, &shown, HostThing::Skill);
-        assert_eq!((said(&s), s.can), ((Light::Off, "Not installed", Some("needs the bridge")), None));
-        h.bridge = Some(true);
-        assert_eq!(said(&of(&h, &shown, HostThing::Skill)), (Light::Off, "Not installed", None));
+        assert_eq!((said(&s), s.can), ((Light::Waiting, "Asking…", None), None));
+        h.skill = Some(false);
+        let s = of(&h, &shown, HostThing::Skill);
+        assert_eq!((said(&s), s.can), ((Light::Off, "Not installed", None), Some((true, false))));
 
         // The helper: in use, for the next connection, taken off while
         // in use, couldn't be put there (the host's words kept), off.
@@ -440,16 +444,16 @@ mod tests {
 
         // What couldn't be done: the red light, the host's words, and
         // the same again to try; while it is tried, that it is.
-        shown.failed.push((HostThing::Bridge, false, "rm: busy".into()));
-        let s = of(&h, &shown, HostThing::Bridge);
+        shown.failed.push((HostThing::Skill, false, "rm: busy".into()));
+        let s = of(&h, &shown, HostThing::Skill);
         assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t remove", None), Some("rm: busy"), Some((false, true))));
-        shown.doing.push((HostThing::Bridge, false));
-        let s = of(&h, &shown, HostThing::Bridge);
+        shown.doing.push((HostThing::Skill, false));
+        let s = of(&h, &shown, HostThing::Skill);
         assert_eq!((said(&s), s.can, s.busy), ((Light::Waiting, "Being removed…", None), None, true));
 
         // A host that isn't connected: nothing is known, nothing to press.
         h.conn = HostConnState::Disconnected;
-        for thing in [HostThing::Bridge, HostThing::Skill, HostThing::Helper] {
+        for thing in [HostThing::Skill, HostThing::Helper] {
             let s = of(&h, &Shown::default(), thing);
             assert_eq!((said(&s), s.can), ((Light::Off, "Not known", None), None));
         }

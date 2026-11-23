@@ -27041,15 +27041,15 @@ in the sidebar, which says "Connected" again). At the status bar's far
 end, for the far host of the pane typed into (one reached over SSH,
 while it is connected; none for this computer), three of the kit's
 `Indicator`s: a keyboard (Olo's typing helper: on while this
-connection goes through it), a bridge (Olo's bridge: on where its
-shims are on the host and something is granted to the host here), an
+connection goes through it), a bridge (Olo's bridge: on where
+something is granted to the host here), an
 open book (Olo's skill for agents: on where it is on the host), in
 the kit's row of them (`widgets::indicators`, its tips clear of the
 bar's rule). Each says how it stands in its tip, and what to do where
 it is off ("Olo’s bridge isn’t on “far”. To install it, choose Agents
 ▸ Install Olo’s Bridge."), and to agents (a `Status`
 node: "Typing helper", "on"). `HubState::host_has` is what
-they show (`HostHas`); whether the bridge and the skill are there is
+they show (`HostHas`); whether the skill is there is
 asked of the host with one command over SSH after it connects, and
 again a few seconds after either is installed from the Agents menu
 (`bridge::PRESENT`, `hub::look_at_what_the_host_has`: the files the
@@ -27100,8 +27100,9 @@ its drawing, `HubState::host_stands` what it shows).
   running there would take it; the host is asked what it has again
   before `done`. Agents: `host.put:KEY:bridge|skill|helper` and
   `host.take:…`, which open the window and do it there, where it
-  shows. Agents ▸ Install Olo’s Bridge and Install Olo’s Skill for
-  Agents do the same on a host reached over SSH (typed into the pane
+  shows (the bridge is nothing installed, since 2026-11-23: "The
+  bridge", below). Agents ▸ Install Olo’s Skill for
+  Agents does the same on a host reached over SSH (typed into the pane
   on any other: the one way there). The typing helper taken off here
   isn't put back by itself (`Settings::helper_hosts`: "off"); a
   connection that goes through it goes on through it, and the window
@@ -27664,23 +27665,68 @@ with the overflow turned off it fails with the refusal above. Left
 (TODO): streams that take no session at all (the host's server
 reached by its socket, or one stream carrying many: the QUIC link).
 
-**The bridge's permissions, followed while a host is connected**
-(2026-11-23). The bridge's server on this computer for a far host
-(`hub::keep_bridge`) runs while something of the bridge's is granted
-to that host, and what the Host window and the status bar's mark say
-is granted is read from the permissions themselves
-(`HostBridgePolicy::any_enabled`: the bridge's five, not the SSH keys,
-which need no bridge). It was started at connection only, and "granted"
-was whether it ran: permissions given to a connected host did nothing,
-and the window said "nothing granted to it", until the next connection
-(Ben: "i clicked the bridge icon and then granted it all the access
-perms but it still says nothing is granted"). `follow_shared` calls it
-for every connected far host when the permissions change, both ways.
-Tried on the rig (`tools/dev/rex-slow/try.py granted`: the bridge's
-file put in the far host's home, the Host window opened, three
-permissions given and taken back in the desktop's settings; the
-window's Bridge line follows each within the wait; the build before
-says "nothing granted to it" throughout).
+**The bridge: the Olo desktop, through Rex** (2026-11-23,
+`apps/rex/src/bridge.rs`; Ben: "we should leverage rex as much as we
+can to do things 'the rex way' instead of reinventing the wheel …
+like making the olo functionality available via rex. and we don't
+need that PLUS another way just the one best way and update the skills
+etc"). What a program in a Rex session may ask of the desktop the
+session is shown on is a set of actions the Olo app offers the host's
+Rex server, as every Rex client offers its own
+(`keymap::bridge_catalog`), asked for with Rex's own command there:
+- `rex do olo.open --json target=URL` (a link in the person's
+  browser; a `localhost` of the host through a forward);
+  `rex do olo.op --json --args '{"args":[…]}'` (1Password's command
+  line, answered by Passwords here); `rex do olo.screen --json --args
+  '{"args":[…]}'` (`olo-screen`'s command line: Agent Screens);
+  `olo.notify`, `olo.clipboard.set`. `rex actions` lists them with
+  their arguments.
+- *Answered with what the command wrote* (`hub::handle_client_perform`,
+  `bridge::handle_bridge_request`): `ok`, `stdout`, `stderr`, the
+  command's exit code under `data`. Each as the host's permissions
+  say now (Preferences ▸ Rex, read at each request: given or taken
+  back while connected, they hold from the next request); what isn't
+  granted is refused by name.
+- *Longer than Rex waits* (`bridge::Calls`): the server waits thirty
+  seconds for a client's answer and its command line ten, so an
+  action answers within eight (`ANSWER_WITHIN`) or says `pending`
+  with a name, and `rex do olo.wait id=…` waits for it again (a
+  question Passwords asks the person, a screen starting).
+- *A picture* a command names (Agent Screens' `picture`: a `.png`'s
+  path in its output) is a file of this computer: it is read as the
+  answer is made and listed under `files` with a name, and `rex do
+  olo.file id=… offset=…` gives it in base64, in pieces of 600 kB
+  (`PIECE`: a request and its answer through a Rex server are a
+  megabyte at most; most pictures are one piece).
+- *Nothing of it is on the host.* Until now the app put shims in the
+  account's home there (`xdg-open`, `op`, `olo-screen`) that looked
+  for a port and a token nothing set, in a folder no session had on
+  its PATH, beside a server here nothing could reach: they did
+  nothing (an agent on a host, told to use an Agent Screen: "The
+  olo-screen and xdg-open commands the skill describes aren't
+  installed on this machine", then found the app's actions by
+  itself). The shims, their installer, the server and its token are
+  gone, and where a host still has the shims they are taken off as it
+  is next asked what it has (`bridge::OLD_SHIMS`). The Host window's
+  Bridge row says On with what is granted by name, or Off (Ben, "i
+  clicked the bridge icon and then granted it all the access perms
+  but it still says nothing is granted", when it had been whether a
+  server started at connection ran) with Permissions… as its one
+  button; the status bar's mark is the same.
+- *The skill for agents* (`apps/rex/src/bridge_skill.md`, put on a
+  host from its window or Agents ▸ Install Olo’s Skill for Agents)
+  says exactly this, and a test holds it to the actions the app
+  offers, both ways.
+- *Tried on the rig* (`tools/dev/rex-slow/try.py bridge`: `rex do`
+  run on the far host, a stand-in for `olo-screen` here,
+  `OLO_REX_BRIDGE_BIN`): refused by name while nothing is granted; a
+  command's arguments as given (spaces, quotes, a dollar), by
+  `--args` and by `args='[…]'`; a picture of 700 kB fetched whole in
+  two pieces; a command of twelve seconds `pending` after eight, then
+  its answer; `rex actions` lists them; permissions given and taken
+  back followed with no new connection, in the Host window too.
+- *Left* (TODO): where two Olo apps show one host, `rex do` asks
+  which (`-C`); what a command reads from its input isn't carried.
 
 **The SSH agent on a host** (2026-11-23; Ben: "so that e.g. github
 and other ssh using stuff just magically works on the remote session

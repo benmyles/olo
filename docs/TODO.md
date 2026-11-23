@@ -1367,20 +1367,19 @@ something nobody here has is in "Blocked", with what it waits for.
     kernel's own ceilings (`fs.file-max`, `fs.nr_open`, inotify's
     watches and instances, `kernel.pid_max`, `vm.max_map_count`), the
     writeback thresholds as given, and what else serves long builds.
-  - *The bridge on a far host does nothing yet* (Ben, 2026-11-23, an
-    agent on a host told to use an Agent Screen: "The olo-screen and
-    xdg-open commands the skill describes aren't installed on this
-    machine", with the bridge shown as installed). Its shims are put
-    in `~/.local/share/olo-rex-bridge/bin`, which is on no session's
-    PATH, and they look for `OLO_REX_BRIDGE_PORT` and
-    `OLO_REX_BRIDGE_TOKEN`, which nothing sets (the bridge's server
-    here is reached from this computer alone). The agent got as far
-    as it did through the actions Rex's app offers a session
-    (`olo.screen.ensure`, `olo.screen.open_url`), which can't answer
-    with what a screen shows. To do: the shims reach the app over
-    Rex's own connection (a call of the app's, answered with what the
-    command wrote), found on the PATH of every session Rex has on the
-    host, and the skill says only what is so.
+  - *The bridge, through Rex*: done (2026-11-23; HACKING, "The
+    bridge: the Olo desktop, through Rex"; Ben's words there). Left:
+    where two Olo apps show one host, `rex do` asks which client
+    (`-C`): the app could say which of its sessions it shows, so the
+    asking pane's is chosen; what a command reads from its input
+    isn't carried; `olo.screen` tried with a real Agent Screen from a
+    real far host (the rig uses a stand-in).
+  - *The rig's far host keeps a Rex server of its own after the
+    real-host tests* (found 2026-11-23: one in
+    `/var/tmp/olo-rex-slow/runtime/rex`, started by a `rex` there
+    that found none, with two test sessions in it, hours after the
+    run). `far_time.py`'s tests make sessions on the far host's
+    default server; `FarHost`'s end should stop that server too.
   - *The Host window, further* (the window is built, 2026-11-23: Ben's
     "manage host button … manage all the services and things installed
     on a host in one place"; HACKING, "The Host window"). What the two

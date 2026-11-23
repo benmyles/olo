@@ -1,29 +1,39 @@
-//! Zero-trust Olo Desktop Bridge for local and remote Rex hosts:
+//! Olo's bridge for Rex's hosts: what programs in a Rex session may
+//! ask of the Olo desktop the session is shown on.
 //!
-//! - Local shell `path_prepend` directory exposing Olo's native `xdg-open` (`olo-open`),
-//!   `sudo` (`olo-sudo`), and `op` (`olo-op`).
-//! - Tier 1: `client.perform` / `client.call` handlers (`olo.open`, `olo.notify`,
-//!   `olo.clipboard.set`, `olo.screen.*`, `olo.passwords.*`) gated strictly by
-//!   per-host [`HostBridgePolicy`].
-//! - Tier 2: Opt-in reverse-tunneled bridge server (`com.superlogical.tunnel.listen`
-//!   forwarding to an ephemeral local TCP listener authenticated with a per-session
-//!   random bearer token), enabling drop-in remote `xdg-open`, `op`, and `olo-screen`
-//!   shims on any remote Linux host!
+//! - On this computer: a folder put first on the PATH of Rex's own
+//!   shells with Olo's `xdg-open` (`olo-open`), `sudo` (`olo-sudo`)
+//!   and `op` (`olo-op`).
+//! - On a far host: nothing of the bridge's is installed. The Olo app
+//!   offers its actions to the host's Rex server, as every Rex client
+//!   offers its own, and a program in a session there asks with Rex's
+//!   own command: `rex do olo.open target=URL`, `rex do olo.op
+//!   --args '{"args":[…]}'`, `rex do olo.screen --args '{"args":[…]}'`
+//!   (`rex actions` lists them). Each is answered with what the
+//!   command wrote here. The one way, and Rex's (Ben, 2026-11-23: "we
+//!   should leverage rex as much as we can to do things 'the rex way'
+//!   … making the olo functionality available via rex. and we don't
+//!   need that PLUS another way just the one best way"). Until then
+//!   shims were put in the account's home there (`xdg-open`, `op`,
+//!   `olo-screen`) that looked for a port and a token nothing set, in
+//!   a folder no session had on its PATH: they did nothing (an agent
+//!   there: "The olo-screen and xdg-open commands the skill describes
+//!   aren't installed on this machine"), and where a host still has
+//!   them they are taken off as it is connected to ([`OLD_SHIMS`]).
+//! - What a host may ask is its permissions' to say
+//!   ([`HostBridgePolicy`], Preferences ▸ Rex), read at each request.
 
 use std::{
-    net::SocketAddr,
+    collections::HashMap,
     os::unix::fs::symlink,
     path::{Path, PathBuf},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use olo_xdg::open::Target;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::TcpListener,
-};
 
 use crate::{links::parse_localhost_url, settings::HostBridgePolicy};
 
@@ -47,11 +57,10 @@ pub fn ensure_local_bin_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-/// Request sent over the authenticated Tier 2 reverse bridge tunnel from a remote
-/// host's `olo-rex-shim` (`xdg-open`, `op`, `olo-screen`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// What a session asks of the desktop: the command (`open`, `op`,
+/// `screen`, `notify`) and its arguments as they were given there.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BridgeRequest {
-    pub token: String,
     pub cmd: String,
     #[serde(default)]
     pub session_id: Option<String>,
@@ -80,84 +89,173 @@ impl BridgeResponse {
     }
 }
 
+/// How long the app takes to answer one action: the Rex server waits
+/// thirty seconds at most for a client's answer (and its command line
+/// ten, unless told `--timeout`). What takes longer (a question
+/// Passwords asks the person, a screen being started) is answered
+/// `pending` with a name to wait by (`rex do olo.wait id=…`).
+pub const ANSWER_WITHIN: Duration = Duration::from_secs(8);
+/// A picture goes to the host in pieces of so many bytes (a request
+/// and its answer through a Rex server are a megabyte at most; this is
+/// under that once written as text, and most pictures of a screen are
+/// one piece).
+pub const PIECE: usize = 600 * 1024;
+/// The largest file sent to a host for one answer, and how long what
+/// was not fetched or asked after is kept.
+const FILE_MOST: u64 = 32 << 20;
+const KEPT_FOR: Duration = Duration::from_secs(300);
+
+/// What sessions have asked that isn't over: commands still
+/// running here, and the pictures their answers named, until the host
+/// has fetched them.
+pub struct Calls {
+    /// [`ANSWER_WITHIN`] (shorter in a test).
+    within: Duration,
+    running: std::sync::Mutex<HashMap<String, (Instant, tokio::task::JoinHandle<BridgeResponse>)>>,
+    files: std::sync::Mutex<HashMap<String, (Instant, Arc<Vec<u8>>)>>,
+}
+
+impl Default for Calls {
+    fn default() -> Self {
+        Calls::answering_within(ANSWER_WITHIN)
+    }
+}
+
+impl Calls {
+    pub fn answering_within(within: Duration) -> Self {
+        Calls { within, running: Default::default(), files: Default::default() }
+    }
+
+    /// `work`'s answer as the asker is given it, if it comes within
+    /// [`ANSWER_WITHIN`]; else a name to wait for it by ([`Self::wait`]).
+    pub async fn answer(&self, work: impl std::future::Future<Output = BridgeResponse> + Send + 'static) -> Value {
+        self.settle(uuid::Uuid::new_v4().simple().to_string(), tokio::spawn(work)).await
+    }
+
+    /// The same for a command asked before and not answered in time.
+    pub async fn wait(&self, id: &str) -> Value {
+        let running = self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
+        match running {
+            Some((_, work)) => self.settle(id.to_owned(), work).await,
+            None => json!(BridgeResponse::err("Olo Bridge: that command is no longer waited for")),
+        }
+    }
+
+    async fn settle(&self, id: String, mut work: tokio::task::JoinHandle<BridgeResponse>) -> Value {
+        match tokio::time::timeout(self.within, &mut work).await {
+            Ok(Ok(response)) => self.with_files(response),
+            Ok(Err(e)) => json!(BridgeResponse::err(format!("Olo Bridge: the command failed here: {e}"))),
+            Err(_) => {
+                let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+                // (One nobody asked after again is stopped.)
+                running.retain(|_, (since, work)| {
+                    let keep = since.elapsed() < KEPT_FOR;
+                    if !keep {
+                        work.abort();
+                    }
+                    keep
+                });
+                running.insert(id.clone(), (Instant::now(), work));
+                json!({ "pending": id })
+            }
+        }
+    }
+
+    /// The answer with the pictures it names made fetchable: a file of
+    /// this computer is no use to a program on the host, so each
+    /// picture file the command's output names (as Agent Screens name
+    /// theirs: a path ending `.png`) is read now and listed under
+    /// `files` with a name to fetch it by ([`Self::piece`]: `rex do
+    /// olo.file id=…`, whose answer holds it in base64).
+    fn with_files(&self, response: BridgeResponse) -> Value {
+        let mut files = Vec::new();
+        if let Some(out) = response.stdout.as_deref() {
+            let mut kept = self.files.lock().unwrap_or_else(|e| e.into_inner());
+            kept.retain(|_, (since, _)| since.elapsed() < KEPT_FOR);
+            for path in pictures_named(out) {
+                let Ok(meta) = std::fs::metadata(&path) else { continue };
+                if !meta.is_file() || meta.len() > FILE_MOST {
+                    continue;
+                }
+                let Ok(bytes) = std::fs::read(&path) else { continue };
+                let id = uuid::Uuid::new_v4().simple().to_string();
+                files.push(json!({ "path": path, "id": id, "size": bytes.len() }));
+                kept.insert(id, (Instant::now(), Arc::new(bytes)));
+            }
+        }
+        let mut answer = json!(response);
+        if !files.is_empty() {
+            answer["files"] = Value::Array(files);
+        }
+        answer
+    }
+
+    /// A piece of a file an answer named, from `offset`: its bytes in
+    /// base64, how many they are, and whether they are the last.
+    pub fn piece(&self, id: &str, offset: usize) -> Value {
+        use base64::Engine as _;
+        let mut kept = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        let Some((_, bytes)) = kept.get(id).cloned() else {
+            return json!(BridgeResponse::err("Olo Bridge: that file is no longer kept"));
+        };
+        let from = offset.min(bytes.len());
+        let to = (from + PIECE).min(bytes.len());
+        let done = to == bytes.len();
+        if done {
+            kept.remove(id);
+        }
+        json!({ "ok": true, "base64": base64::engine::general_purpose::STANDARD.encode(&bytes[from..to]), "count": to - from, "done": done })
+    }
+}
+
+/// The picture files a command's output names: every `"…/x.png"` in
+/// it that is a whole path (Agent Screens answer in JSON, a picture's
+/// path under `picture`; a path alone on a line is one too).
+fn pictures_named(out: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    let mut note = |path: &str| {
+        if path.starts_with('/') && path.ends_with(".png") && !found.iter().any(|f| f == path) {
+            found.push(path.to_owned());
+        }
+    };
+    fn walk(v: &Value, note: &mut dyn FnMut(&str)) {
+        match v {
+            Value::String(s) => note(s),
+            Value::Array(a) => a.iter().for_each(|v| walk(v, note)),
+            Value::Object(o) => o.values().for_each(|v| walk(v, note)),
+            _ => {}
+        }
+    }
+    match serde_json::from_str::<Value>(out) {
+        Ok(v) => walk(&v, &mut note),
+        Err(_) => out.lines().for_each(|line| note(line.trim())),
+    }
+    found
+}
+
+/// A program of Olo's the bridge runs for a host (`olo-op`,
+/// `olo-screen`). (`OLO_REX_BRIDGE_BIN`: looked for in that folder
+/// first, for the rig's stand-ins.)
+fn program(name: &str) -> Option<PathBuf> {
+    std::env::var_os("OLO_REX_BRIDGE_BIN").map(|dir| PathBuf::from(dir).join(name)).filter(|p| p.is_file()).or_else(|| olo_xdg::find_program(name))
+}
+
 /// Callback used by the bridge to request an ephemeral `-L` port forward on a remote
 /// Rex host before opening a remote `localhost:<port>` URL locally.
 pub type LocalhostForwardFn = Arc<dyn Fn(String, u16) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u16, String>> + Send>> + Send + Sync>;
 
-/// Running local TCP server serving one remote host's Tier 2 Olo Bridge reverse tunnel.
-pub struct BridgeServerHandle {
-    pub local_addr: SocketAddr,
-    #[allow(dead_code)]
-    pub token: String,
-    shutdown: Option<tokio::sync::oneshot::Sender<()>>,
-}
-
-impl Drop for BridgeServerHandle {
-    fn drop(&mut self) {
-        if let Some(tx) = self.shutdown.take() {
-            let _ = tx.send(());
-        }
-    }
-}
-
-/// Start an ephemeral local `127.0.0.1:0` bridge server authenticated by a fresh
-/// random UUID token and governed by `policy_fn`.
-pub async fn start_bridge_server(
-    host_label: String,
-    policy_fn: Arc<dyn Fn() -> HostBridgePolicy + Send + Sync>,
-    forward_localhost: LocalhostForwardFn,
-    notify: impl Fn(&BridgeRequest) + Send + Sync + 'static,
-) -> std::io::Result<BridgeServerHandle> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let local_addr = listener.local_addr()?;
-    let token = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
-    let expected_token = token.clone();
-    let notify = Arc::new(notify);
-    let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
-
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = &mut rx => break,
-                res = listener.accept() => {
-                    let Ok((stream, _)) = res else { break };
-                    let expected = expected_token.clone();
-                    let label = host_label.clone();
-                    let get_policy = policy_fn.clone();
-                    let fwd = forward_localhost.clone();
-                    let notify = notify.clone();
-                    tokio::spawn(async move {
-                        let (r, mut w) = stream.into_split();
-                        let mut reader = BufReader::new(r);
-                        let mut line = String::new();
-                        if reader.read_line(&mut line).await.is_ok() && !line.trim().is_empty() {
-                            let resp = match serde_json::from_str::<BridgeRequest>(line.trim()) {
-                                Ok(req) if req.token == expected => {
-                                    let policy = get_policy();
-                                    handle_bridge_request(&label, &policy, req, &fwd, notify.as_ref()).await
-                                }
-                                Ok(_) => BridgeResponse::err("unauthorized bridge token"),
-                                Err(e) => BridgeResponse::err(format!("invalid bridge request: {e}")),
-                            };
-                            if let Ok(mut bytes) = serde_json::to_vec(&resp) {
-                                bytes.push(b'\n');
-                                let _ = w.write_all(&bytes).await;
-                            }
-                        }
-                    });
-                }
-            }
-        }
-    });
-
-    Ok(BridgeServerHandle { local_addr, token, shutdown: Some(tx) })
-}
-
-async fn handle_bridge_request(host_label: &str, policy: &HostBridgePolicy, req: BridgeRequest, forward_localhost: &LocalhostForwardFn, notify: &(dyn Fn(&BridgeRequest) + Sync)) -> BridgeResponse {
+/// What a session asked, done here as its host's permissions allow.
+pub async fn handle_bridge_request(
+    host_label: &str,
+    policy: &HostBridgePolicy,
+    req: BridgeRequest,
+    forward_localhost: &LocalhostForwardFn,
+    notify: &(dyn Fn(&BridgeRequest) + Sync),
+) -> BridgeResponse {
     match req.cmd.as_str() {
         "open" => {
             if !policy.allow_open_url {
-                return BridgeResponse::err(format!("Olo Bridge: URL opening is disabled for host '{host_label}' (enable in Rex Settings → Olo Integration)"));
+                return BridgeResponse::err(format!("Olo Bridge: URL opening is disabled for host '{host_label}' (see Preferences ▸ Rex)"));
             }
             let Some(target) = req.args.first().cloned() else {
                 return BridgeResponse::err("missing URL/path argument");
@@ -174,7 +272,7 @@ async fn handle_bridge_request(host_label: &str, policy: &HostBridgePolicy, req:
             // Forward `op` arguments to Olo's native `olo-op` binary on the local desktop,
             // which talks directly to Olo Passwords' keychain socket and shows Olo's native
             // approval / biometric sheet!
-            let Some(op_bin) = olo_xdg::find_program("olo-op") else {
+            let Some(op_bin) = program("olo-op") else {
                 return BridgeResponse::err("olo-op is not installed on this Olo desktop");
             };
             let out = tokio::process::Command::new(op_bin).args(&req.args).env("OLO_REX_REMOTE_HOST", host_label).stdin(std::process::Stdio::null()).output().await;
@@ -192,7 +290,7 @@ async fn handle_bridge_request(host_label: &str, policy: &HostBridgePolicy, req:
             if !policy.allow_agent_screens {
                 return BridgeResponse::err(format!("Olo Bridge: Agent Screens (`olo-screen`) is disabled for host '{host_label}'"));
             }
-            let Some(screen_bin) = olo_xdg::find_program("olo-screen") else {
+            let Some(screen_bin) = program("olo-screen") else {
                 return BridgeResponse::err("olo-screen is not installed on this Olo desktop");
             };
             // Auto-rewrite any remote localhost URL argument through a `-L` tunnel!
@@ -259,111 +357,45 @@ pub fn fetch_op_reference(reference: &str, purpose: &str) -> Result<String, Stri
     }
 }
 
-/// Generate a self-contained POSIX installer shell script that installs `xdg-open`,
-/// `op`, and `olo-screen` remote shims under `~/.local/share/olo-rex-bridge/bin`
-/// on a remote Linux host (talking back over `OLO_REX_BRIDGE_PORT` + `OLO_REX_BRIDGE_TOKEN`).
-/// Asks a host whether Olo's bridge and the skill for agents are on
-/// it (what the two install scripts below put there): a word for each
-/// that is.
-pub const PRESENT: &str =
-    r#"sh -c 'if [ -x "$HOME/.local/share/olo-rex-bridge/bin/_olo_bridge_call" ]; then echo bridge; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; fi'"#;
+/// Asks a host whether the skill for agents is on it (what
+/// [`generate_remote_skill_install_script`] puts there), and whether
+/// the shims of before are ([`OLD_SHIMS`]): a word for each that is.
+pub const PRESENT: &str = r#"sh -c 'if [ -d "$HOME/.local/share/olo-rex-bridge" ]; then echo shims; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; fi'"#;
 
-/// Takes the bridge's shims off a host (what
-/// [`generate_remote_shim_install_script`] put there).
-pub const REMOVE_SHIMS: &str = r#"rm -rf "$HOME/.local/share/olo-rex-bridge""#;
+/// Takes off a host the shims Olo put there until 2026-11-23, which
+/// did nothing (the module's head).
+pub const OLD_SHIMS: &str = r#"rm -rf "$HOME/.local/share/olo-rex-bridge""#;
 
 /// Takes the skill for agents off a host (what
 /// [`generate_remote_skill_install_script`] put there; the skill that
 /// Rex's own `rex skill setup` installs is Rex's, and stays).
 pub const REMOVE_SKILL: &str = r#"rm -rf "$HOME/.claude/skills/olo-rex-bridge""#;
 
-/// What a host answered [`PRESENT`]: whether the bridge is there, and
-/// the skill.
+/// What a host answered [`PRESENT`]: whether the old shims are there,
+/// and the skill.
 pub fn present(output: &str) -> (bool, bool) {
-    (output.lines().any(|l| l.trim() == "bridge"), output.lines().any(|l| l.trim() == "skill"))
+    (output.lines().any(|l| l.trim() == "shims"), output.lines().any(|l| l.trim() == "skill"))
 }
 
-pub fn generate_remote_shim_install_script() -> String {
-    r#"set -eu
-DIR="$HOME/.local/share/olo-rex-bridge/bin"
-mkdir -p "$DIR"
-cat <<'EOF' > "$DIR/_olo_bridge_call"
-#!/usr/bin/env python3
-import json, os, socket, sys
+/// The skill for agents on a far host: what the Olo app offers through
+/// Rex and how to ask for it.
+pub const SKILL: &str = include_str!("bridge_skill.md");
 
-port = int(os.environ.get("OLO_REX_BRIDGE_PORT", "0"))
-token = os.environ.get("OLO_REX_BRIDGE_TOKEN", "")
-if not port or not token:
-    sys.stderr.write("olo-rex-bridge: not connected (enable Olo Bridge for this host in Olo Rex Settings)\n")
-    sys.exit(1)
-
-cmd = sys.argv[1]
-args = sys.argv[2:]
-request = {"token": token, "cmd": cmd, "args": args}
-if cmd == "notify":
-    request.update(session_id=os.environ.get("REX_SESSION"), block_id=os.environ.get("REX_BLOCK"))
-    request["payload"] = {"title": args[0] if args else "Rex", "body": args[1] if len(args) > 1 else ""}
-req = json.dumps(request) + "\n"
-with socket.create_connection(("127.0.0.1", port), timeout=120) as sock:
-    sock.sendall(req.encode("utf-8"))
-    sock.shutdown(socket.SHUT_WR)
-    chunks = []
-    while True:
-        buf = sock.recv(65536)
-        if not buf:
-            break
-        chunks.append(buf)
-resp = json.loads(b"".join(chunks).decode("utf-8"))
-if resp.get("stdout"):
-    sys.stdout.write(resp["stdout"])
-if resp.get("stderr"):
-    sys.stderr.write(resp["stderr"])
-sys.exit(0 if resp.get("ok") else 1)
-EOF
-chmod +x "$DIR/_olo_bridge_call"
-for name in xdg-open op olo-screen; do
-  case "$name" in
-    xdg-open) sub="open" ;;
-    op) sub="op" ;;
-    olo-screen) sub="screen" ;;
-  esac
-  cat <<EOF > "$DIR/$name"
-#!/bin/sh
-exec "\$HOME/.local/share/olo-rex-bridge/bin/_olo_bridge_call" "$sub" "\$@"
-EOF
-  chmod +x "$DIR/$name"
-done
-echo "Installed Olo Rex Bridge shims in $DIR"
-"#
-    .to_owned()
-}
-
-/// Generate the remote agent skill documenting Rex (`rex skill setup`) + Olo
-/// Desktop Bridge (`xdg-open`, `op`, `olo-screen`, `/var/tmp`).
+/// A shell script that puts [`SKILL`] on a far host, for Claude Code
+/// and the agents that read its skills.
 pub fn generate_remote_skill_install_script() -> String {
-    r#"set -eu
+    format!(
+        r#"set -eu
 SKILL_DIR="$HOME/.claude/skills/olo-rex-bridge"
 mkdir -p "$SKILL_DIR"
-cat <<'EOF' > "$SKILL_DIR/SKILL.md"
----
-name: olo-rex-bridge
-description: Use Olo Rex Desktop Bridge shims (xdg-open, op, olo-screen) and Rex CLI commands from inside a Rex session connected to an Olo desktop.
----
-
-# Olo Rex Desktop Bridge
-
-When running inside a Rex session attached to **Olo Rex**:
-- `xdg-open <url>`: Opens URLs in the person's Olo Chrome (automatically tunneling `http://localhost:<port>` over Rex `-L` when enabled!).
-- `op <args>`: Queries the person's local Olo Passwords vault with native biometric/YubiKey approval (no credentials are ever stored on this remote host).
-- `olo-screen <args>`: Drives headless Olo Agent Screens on the person's desktop (e.g. `olo-screen ensure NAME`, `olo-screen run NAME ...`, `olo-screen look NAME`) with remote `localhost` URLs automatically forwarded!
-- `rex` CLI: Use `rex session`, `rex window`, `rex pane`, `rex layer`, `rex prompt` to manage workspaces natively.
-EOF
+cat <<'OLO_EOF' > "$SKILL_DIR/SKILL.md"
+{SKILL}OLO_EOF
 if command -v rex >/dev/null 2>&1; then
   rex skill setup 2>/dev/null || true
 fi
-echo "Installed Olo Rex Bridge skill in $SKILL_DIR"
+echo "Installed Olo's skill for agents in $SKILL_DIR"
 "#
-    .to_owned()
+    )
 }
 
 /// Check if a local directory path is safe to open in Olo Tracker.
@@ -381,33 +413,80 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn authenticated_notifications_keep_the_callers_pane_context() {
-        use tokio::net::TcpStream;
+    async fn a_notice_keeps_the_callers_pane() {
         let (sent, mut delivered) = tokio::sync::mpsc::unbounded_channel();
         let notify = move |req: &BridgeRequest| {
             sent.send((req.session_id.clone(), req.block_id.clone(), req.payload.clone())).unwrap();
         };
         let forward: LocalhostForwardFn = Arc::new(|_, _| Box::pin(async { unreachable!() }));
-        let server = start_bridge_server("Fixture".into(), Arc::new(HostBridgePolicy::remote_default), forward, notify).await.unwrap();
-        let address = server.local_addr;
-        let call = |request: Value| async move {
-            tokio::time::timeout(std::time::Duration::from_secs(4), async move {
-                let mut stream = TcpStream::connect(address).await.unwrap();
-                stream.write_all(format!("{request}\n").as_bytes()).await.unwrap();
-                let mut line = String::new();
-                BufReader::new(stream).read_line(&mut line).await.unwrap();
-                serde_json::from_str::<BridgeResponse>(&line).unwrap().ok
-            })
-            .await
-            .expect("bridge reply")
-        };
         let payload = json!({"title":"Ready","body":"Output is available."});
-        assert!(!call(json!({"token":"wrong","cmd":"notify","payload":payload})).await);
-        assert!(delivered.try_recv().is_err());
-        assert!(call(json!({"token":server.token,"cmd":"notify","session_id":"work","block_id":"two","payload":payload})).await);
-        assert_eq!(delivered.try_recv().unwrap(), (Some("work".into()), Some("two".into()), payload.clone()));
-        assert!(call(json!({"token":server.token,"cmd":"notify","payload":payload})).await);
-        assert_eq!(delivered.try_recv().unwrap(), (None, None, payload));
+        let req = BridgeRequest { cmd: "notify".into(), session_id: Some("work".into()), block_id: Some("two".into()), payload: payload.clone(), ..Default::default() };
+        assert!(handle_bridge_request("Fixture", &HostBridgePolicy::remote_default(), req, &forward, &notify).await.ok);
+        assert_eq!(delivered.try_recv().unwrap(), (Some("work".into()), Some("two".into()), payload));
+    }
+
+    /// What isn't granted is refused, by name, and nothing is run.
+    #[tokio::test]
+    async fn what_a_host_isnt_granted_is_refused() {
+        let forward: LocalhostForwardFn = Arc::new(|_, _| Box::pin(async { unreachable!() }));
+        for (cmd, word) in [("open", "URL opening"), ("op", "Passwords"), ("screen", "Agent Screens")] {
+            let req = BridgeRequest { cmd: cmd.into(), args: vec!["x".into()], ..Default::default() };
+            let answer = handle_bridge_request("build", &HostBridgePolicy::remote_default(), req, &forward, &|_| {}).await;
+            assert!(!answer.ok && answer.stderr.as_deref().is_some_and(|e| e.contains(word) && e.contains("build")), "{cmd}: {answer:?}");
+        }
+    }
+
+    /// A command that answers in time is answered at once; one that
+    /// doesn't is answered with a name, and by that name when it has.
+    #[tokio::test]
+    async fn a_long_command_is_waited_for_by_name() {
+        let within = Duration::from_millis(80);
+        let calls = Calls::answering_within(within);
+        let quick = calls.answer(async { BridgeResponse { ok: true, stdout: Some("done\n".into()), stderr: None, data: None } }).await;
+        assert_eq!((quick["ok"].as_bool(), quick["stdout"].as_str()), (Some(true), Some("done\n")));
+        let slow = calls
+            .answer(async move {
+                tokio::time::sleep(within * 2 + within / 2).await;
+                BridgeResponse { ok: true, stdout: Some("at last\n".into()), stderr: None, data: None }
+            })
+            .await;
+        let id = slow["pending"].as_str().expect("a name to wait by").to_owned();
+        let again = calls.wait(&id).await;
+        assert_eq!(again["pending"].as_str(), Some(id.as_str()), "still at it after a second wait");
+        let over = calls.wait(&id).await;
+        assert_eq!(over["stdout"].as_str(), Some("at last\n"));
+        assert_eq!(calls.wait(&id).await["ok"].as_bool(), Some(false), "asked after once it was answered");
+    }
+
+    /// A picture an answer names goes to the host in pieces, whole.
+    #[tokio::test]
+    async fn a_picture_named_is_fetched_in_pieces() {
+        use base64::Engine as _;
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-bridge-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let picture = dir.join("look.png");
+        let bytes: Vec<u8> = (0..PIECE * 2 + 1234).map(|i| (i * 7 % 251) as u8).collect();
+        std::fs::write(&picture, &bytes).unwrap();
+        let calls = Calls::default();
+        let out = json!({"after": {"picture": picture, "windows": []}, "note": "/not/there.png"}).to_string();
+        let answer = calls.answer(async move { BridgeResponse { ok: true, stdout: Some(out), stderr: None, data: None } }).await;
+        let files = answer["files"].as_array().expect("the picture listed");
+        assert_eq!(files.len(), 1, "only a file that is there");
+        assert_eq!((files[0]["path"].as_str(), files[0]["size"].as_u64()), (picture.to_str(), Some(bytes.len() as u64)));
+        let id = files[0]["id"].as_str().unwrap();
+        let (mut got, mut pieces) = (Vec::new(), 0);
+        loop {
+            let piece = calls.piece(id, got.len());
+            got.extend(base64::engine::general_purpose::STANDARD.decode(piece["base64"].as_str().unwrap()).unwrap());
+            pieces += 1;
+            if piece["done"].as_bool() == Some(true) {
+                break;
+            }
+        }
+        assert_eq!((got == bytes, pieces), (true, 3));
+        assert_eq!(calls.piece(id, 0)["ok"].as_bool(), Some(false), "fetched once");
+        assert_eq!(pictures_named("/var/tmp/a.png\nnot a path.png\n/var/tmp/b.txt\n"), vec!["/var/tmp/a.png".to_owned()]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -416,35 +495,46 @@ mod present_tests {
     use super::*;
 
     /// What is asked of a host is what its shell runs as meant, and
-    /// what the two install scripts put there is what it finds: run
-    /// here, in a scratch home.
+    /// what the skill's script puts there is what it finds: run here,
+    /// in a scratch home. The shims of before are seen and taken off.
     #[test]
-    fn a_host_is_asked_what_it_has_and_the_installs_are_what_it_finds() {
+    fn a_host_is_asked_what_it_has_and_the_skill_is_what_it_finds() {
         let home = std::path::PathBuf::from(format!("/var/tmp/olo-rex-present-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
-        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(home.join(".local/share/olo-rex-bridge/bin")).unwrap();
         let run = |command: &str| {
             let out = std::process::Command::new("sh").arg("-c").arg(command).env("HOME", &home).output().unwrap();
             String::from_utf8_lossy(&out.stdout).into_owned()
         };
-        assert_eq!(present(&run(PRESENT)), (false, false));
-        run(&generate_remote_shim_install_script());
         assert_eq!(present(&run(PRESENT)), (true, false));
+        run(&format!("sh -c {}", crate::hub::shell_quote(OLD_SHIMS)));
+        assert_eq!(present(&run(PRESENT)), (false, false));
         // (The skill's script goes on to `rex skill setup` where there
-        // is a `rex`: not in this home's way, with no PATH of its own.)
-        let out = std::process::Command::new("sh").arg("-c").arg(generate_remote_skill_install_script()).env("HOME", &home).env("PATH", "/usr/bin:/bin").output().unwrap();
+        // is a `rex`: not in this home's way, with no PATH of its own.
+        // Put there the way it is put over SSH: the script as one
+        // quoted word of a command, its own quotes within.)
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("sh -c {}", crate::hub::shell_quote(&generate_remote_skill_install_script())))
+            .env("HOME", &home)
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        assert_eq!(present(&run(PRESENT)), (true, true));
-        // (And taken off again, each by itself, as the Host window
-        // does it: given to a shell as one quoted word.)
-        run(&format!("sh -c {}", crate::hub::shell_quote(REMOVE_SHIMS)));
         assert_eq!(present(&run(PRESENT)), (false, true));
+        assert_eq!(std::fs::read_to_string(home.join(".claude/skills/olo-rex-bridge/SKILL.md")).unwrap(), SKILL, "the skill as written, to the letter");
+        // (Every action the skill names is one the app offers, and it
+        // names every one the app offers.)
+        let offered: Vec<&str> = crate::keymap::bridge_catalog().iter().map(|a| a.id).collect();
+        for action in &offered {
+            assert!(SKILL.contains(&format!("rex do {action} ")), "the skill says how to ask for {action}");
+        }
+        let named: std::collections::BTreeSet<&str> = SKILL.split("rex do ").skip(1).filter_map(|rest| rest.split_whitespace().next()).filter(|word| word.starts_with("olo.")).collect();
+        for action in named {
+            assert!(offered.contains(&action), "the app offers {action}, which the skill names");
+        }
         run(&format!("sh -c {}", crate::hub::shell_quote(REMOVE_SKILL)));
         assert_eq!(present(&run(PRESENT)), (false, false));
-        // (Put there the way it is put over SSH, too: the script as
-        // one quoted word of a command, its own quotes within.)
-        run(&format!("sh -c {}", crate::hub::shell_quote(&generate_remote_shim_install_script())));
-        assert_eq!(present(&run(PRESENT)), (true, false));
         let _ = std::fs::remove_dir_all(&home);
         assert_eq!(present("Linux\n"), (false, false));
     }

@@ -2435,6 +2435,7 @@ Nothing is changed until you choose something to do.
 Nothing more today
 Nothing new
 Nothing new to learn
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
 Nothing on {} is changed yet.
 Nothing on {} is known until it connects.
 Nothing on {} is known until it’s connected.
@@ -2831,6 +2832,7 @@ Program names, comma separated
 Programs Using the Network
 Programs Using the {}
 Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
 Programs’ Secrets
 Programs’ secrets are locked: {}.
 Project
@@ -4187,6 +4189,8 @@ What's waiting (red)
 Whatever the model says: it adds palms, never takes these away.
 What’s coming up next week?
 What’s in the Trash
+What’s installed on {} isn’t known until it connects.
+What’s installed on {} isn’t known until it’s connected.
 What’s next?
 What’s on this weekend?
 What’s on today?
