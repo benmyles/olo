@@ -73,6 +73,21 @@ impl Drop for PendingGuard<'_> {
     }
 }
 
+/// [`PendingGuard`] for an answer waited for apart from its request
+/// ([`ControlClient::send_raw`]): it owns its way to the loop.
+struct SentGuard {
+    sender: mpsc::UnboundedSender<OutboundCmd>,
+    id: Option<String>,
+}
+
+impl Drop for SentGuard {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            let _ = self.sender.send(OutboundCmd::Forget(id));
+        }
+    }
+}
+
 /// Live connection to a Rex server's `/api/control` WebSocket (`rex.control.v1`).
 #[derive(Clone)]
 pub struct ControlClient {
@@ -239,6 +254,46 @@ impl ControlClient {
         let result = time::timeout(timeout, rx).await.map_err(|_| RexError::Timeout)?;
         guard.id = None;
         result.map_err(|_| RexError::Closed("control loop stopped".to_owned()))?
+    }
+
+    /// Sends a request **now**, in the order this is called, and gives
+    /// back its answer, to be waited for apart. The answer must be
+    /// waited for, or at least kept until it comes: a request whose
+    /// answer nobody holds isn't sent.
+    ///
+    /// **Not how Rex types.** Requests reach the server in the order
+    /// they are sent here (one writer, one connection), but the server
+    /// takes two that arrive together at once, and may do the second
+    /// first: forty letters sent so over a real link came back
+    /// "acbdefgjhilknm…" (2026-11-23, with Nagle's algorithm putting two
+    /// requests in one packet; set apart by a tenth of a second each
+    /// they kept their order, and each letter's echo took one round trip
+    /// of the link, 183 to 237 ms, where one write at a time takes about
+    /// one and a half, 255 to 355 ms). What is typed therefore goes one
+    /// write at a time, what is typed meanwhile gathered into the next
+    /// (the app's `typed_together`); this is for what has no order to
+    /// keep, and for measuring (`tests/host.rs`).
+    pub fn send_raw(&self, method: &str, payload: Option<Value>) -> Result<impl Future<Output = Result<RpcResult<Value>, RexError>> + Send + 'static + use<>, RexError> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
+        let req = match payload {
+            Some(p) => json!({ "type": "request", "id": id, "method": method, "payload": p }),
+            None => json!({ "type": "request", "id": id, "method": method }),
+        };
+        let body = serde_json::to_string(&req)?;
+        if body.len() > self.max_message_bytes {
+            return Err(RexError::MessageTooLarge { size: body.len(), limit: self.max_message_bytes });
+        }
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx.send(OutboundCmd::Request { id: id.clone(), method: method.to_owned(), body, reply: tx }).map_err(|_| RexError::Closed("control loop stopped".to_owned()))?;
+        let guard = SentGuard { sender: self.cmd_tx.clone(), id: Some(id) };
+        Ok(async move {
+            // (Whole, into the answer's keeping: let go unanswered, it
+            // has the loop forget the request.)
+            let mut guard = guard;
+            let result = time::timeout(DEFAULT_REQUEST_TIMEOUT, rx).await.map_err(|_| RexError::Timeout)?;
+            guard.id = None;
+            result.map_err(|_| RexError::Closed("control loop stopped".to_owned()))?
+        })
     }
 
     /// Typed RPC call deserializing `payload` into `T`.
@@ -726,6 +781,13 @@ impl ControlClient {
 
     pub async fn terminal_write(&self, session_id: &str, block_id: &str, data: &str) -> Result<RpcResult<Value>, RexError> {
         self.call_block("com.superlogical.terminal.write", session_id, block_id, Some(json!({ "data": data }))).await
+    }
+
+    /// [`Self::terminal_write`], sent now and its answer given back to
+    /// be waited for apart ([`Self::send_raw`], and why typing doesn't
+    /// go this way).
+    pub fn send_terminal_write(&self, session_id: &str, block_id: &str, data: &str) -> Result<impl Future<Output = Result<RpcResult<Value>, RexError>> + Send + 'static + use<>, RexError> {
+        self.send_raw("com.superlogical.terminal.write", Some(json!({ "session_id": session_id, "block_id": block_id, "args": { "data": data } })))
     }
 
     pub async fn terminal_resize(&self, session_id: &str, block_id: &str, columns: u16, rows: u16, cell_width_px: Option<u16>, cell_height_px: Option<u16>) -> Result<RpcResult<Value>, RexError> {

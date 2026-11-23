@@ -2411,6 +2411,18 @@ an argument it doesn't know starts the lint (read its first lines).
   (`-o short-iso`) are `2026-11-23T01:06:20+00:00 HOST rex[PID]:
   2026/11/23 01:06:20 INFO  words key=value`: Rex writes its own time
   after the journal's.
+- **The Rex server takes two requests at once.** Two requests that
+  arrive together on one connection may be done in either order:
+  forty one-letter writes sent without waiting for each answer came
+  back "acbdefgjhilknm…" (2026-11-23, a real link, Nagle's algorithm
+  putting two in a packet). Anything whose order matters (what is
+  typed, a focus then a write) is sent one at a time, each answered
+  first. To time typing over a real link:
+  `HOME=SCRATCH OLO_REX_TEST_HOST=ssh://USER@HOST cargo test -p
+  olo-rex-client --test host typing -- --ignored --nocapture`
+  (`OLO_REX_TEST_TRIPS=120` samples the round trip longer,
+  `OLO_REX_TEST_BUSY=1` has another terminal there print meanwhile);
+  it ends the sessions it makes.
 - **Try it against the real thing in every mode it has.** The Server
   window passed every test on a made-up host; a real one found a comma
   left in the accounts file and, run as a shared server, a count of

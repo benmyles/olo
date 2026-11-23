@@ -26942,6 +26942,34 @@ to a host 224 ms away, 65 characters typed in 2.8 s took 18.7 s to
 arrive; 73 typed in 3.3 s are run there within a second of the last
 (measured against a real host over SSH, by the host's own clock).
 
+**A slow link, measured** (2026-11-23; Ben: "the ssh://… can take a
+second or two to see a letter appear … can we build something like
+[mosh] into rex terminal but make it work better?"). Against the test
+server over its real link, a round trip of 167 to 229 ms at the middle
+(225 to 363 over two minutes), forty letters typed a tenth of a second
+apart into `cat` there, each letter's echo timed
+(`crates/rex/tests/host.rs`, `typing_over_the_link_is_timed`, run only
+with a host given):
+- *as Rex types* (one write at a time, the rest gathered): 241 to 355
+  ms at the middle, 309 to 456 ms at nine in ten, 508 ms at worst:
+  about one and a half round trips, since a letter typed while a write
+  is on its way waits for that one's answer first;
+- *each sent as typed* (`ControlClient::send_raw`): one round trip, 183
+  to 237 ms, **but the server takes two requests that arrive together
+  at once and may do the second first**: with Nagle's algorithm on the
+  SSH socket (russh's default) two went in one packet and forty
+  letters came back "acbdefgjhilknm…". So typing stays one write at a
+  time, and that half a round trip is the price of its order;
+- *Nagle off* (`config.nodelay`, as OpenSSH has it for a terminal, and
+  now Rex): no change to typing as Rex types, another terminal
+  printing all the while or not (it is never held: its answer has
+  come); requests on each other's heels are answered in one round
+  trip, in order.
+What is left is the link's own delay, which no way of sending removes:
+the letters typed are to be shown at once, as mosh shows them, and
+made good by the host's echo (docs/TODO.md, "A terminal that answers
+at once over a slow or laggy link": the next step).
+
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,
 Diagnostics…; Close Window, Quit), Edit, View (its last

@@ -176,3 +176,187 @@ fn the_server_is_read_as_root_and_nothing_is_changed() {
     let after = block(provision::probe(&mut host, true)).unwrap();
     assert_eq!((before.login, before.shared, before.own), (after.login, after.shared, after.own));
 }
+
+/// Typing over the link, timed: a measurement that prints, with nothing
+/// of the host's in it. A session there runs `cat` (the terminal itself
+/// echoes each letter as it comes), and letters are typed a tenth of a
+/// second apart, as a quick typist's: for each, how long from its being
+/// handed to the client until its echo is back. Twice over: one write
+/// on its way at a time, what is typed meanwhile gathered into the next
+/// (as Rex typed until 2026-11-23: a letter waits for the answer to the
+/// write before it, then makes its own trip), and each sent as it is
+/// typed ([`ControlClient::send_terminal_write`]).
+///
+///   HOME=SCRATCH OLO_REX_TEST_HOST=ssh://USER@HOST cargo test -p olo-rex-client --test host typing -- --ignored --nocapture
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST"]
+fn typing_over_the_link_is_timed() {
+    use olo_rex_client::{ClientIdentity, ControlClient, DATA_TERMINAL_SUBPROTOCOL, DataTicketRequest, RexEndpoint, TerminalDataStream, TerminalStreamFrame};
+    use std::time::{Duration, Instant};
+    let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
+    let letters: usize = std::env::var("OLO_REX_TEST_LETTERS").ok().and_then(|n| n.parse().ok()).unwrap_or(40);
+    let apart = Duration::from_millis(std::env::var("OLO_REX_TEST_APART_MS").ok().and_then(|n| n.parse().ok()).unwrap_or(100));
+    block(async move {
+        let endpoint = RexEndpoint::parse(&address, Arc::new(SshSessionPool::default()), Some(Arc::new(Nobody))).expect("an address");
+        let (stream, host) = endpoint.connect_stream().await.expect("the host's Rex server is reached");
+        let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("the control connection");
+        let created = ctrl.session_create(Some("olo-typing-test"), Some(serde_json::json!({"shell": "none", "command": ["cat"], "exit": {"on_completion": false}}))).await.expect("a session");
+        let sid = created.payload["session_id"].as_str().unwrap().to_owned();
+        let bid = created.payload["initial_windows"][0]["block_ids"][0].as_str().unwrap().to_owned();
+        let boot = ctrl
+            .session_bootstrap(
+                "all",
+                Some(&sid),
+                None,
+                &[DataTicketRequest { creator_name: "com.superlogical.terminal".into(), data_ref_id: "terminal".into(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.into()) }],
+            )
+            .await
+            .expect("the session's terminal");
+        let ticket = boot.payload.data_tickets.as_ref().and_then(|t| t.first()).map(|t| t.ticket.clone()).expect("a ticket for its bytes");
+        let (dstream, dhost) = endpoint.connect_stream().await.expect("a second stream");
+        let mut term = TerminalDataStream::connect_hello(dstream, &dhost, &ticket).await.expect("its bytes");
+        // What it shows to begin with (its snapshot) is let go by; then quiet.
+        while let Ok(Ok(_)) = tokio::time::timeout(Duration::from_millis(1500), term.next_frame()).await {}
+
+        // With `OLO_REX_TEST_BUSY`: another terminal there prints all the
+        // while, and its bytes are read here (a build scrolling in the
+        // next pane): the connection carries more than what is typed.
+        let busy = if std::env::var_os("OLO_REX_TEST_BUSY").is_some() {
+            let made = ctrl
+                .session_create(Some("olo-typing-test-busy"), Some(serde_json::json!({"shell": "none", "command": ["sh", "-c", "while :; do echo the quick brown fox jumps over the lazy dog; sleep 0.02; done"], "exit": {"on_completion": false}})))
+                .await
+                .expect("a second session");
+            let busy_sid = made.payload["session_id"].as_str().unwrap().to_owned();
+            let boot = ctrl
+                .session_bootstrap(
+                    "all",
+                    Some(&busy_sid),
+                    None,
+                    &[DataTicketRequest { creator_name: "com.superlogical.terminal".into(), data_ref_id: "terminal".into(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.into()) }],
+                )
+                .await
+                .expect("its terminal");
+            let ticket = boot.payload.data_tickets.as_ref().and_then(|t| t.first()).map(|t| t.ticket.clone()).expect("a ticket");
+            let (stream, host) = endpoint.connect_stream().await.expect("a third stream");
+            let mut printing = TerminalDataStream::connect_hello(stream, &host, &ticket).await.expect("its bytes");
+            let reader = tokio::spawn(async move { while printing.next_frame().await.is_ok() {} });
+            println!("another terminal there prints all the while");
+            Some((busy_sid, reader))
+        } else {
+            None
+        };
+
+        // The link's own round trip: a write of nothing much, answered.
+        let count: usize = std::env::var("OLO_REX_TEST_TRIPS").ok().and_then(|n| n.parse().ok()).unwrap_or(5);
+        let mut trips = Vec::new();
+        for _ in 0..count {
+            let at = Instant::now();
+            ctrl.terminal_write(&sid, &bid, "\u{15}").await.expect("a write");
+            trips.push(at.elapsed());
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        while let Ok(Ok(_)) = tokio::time::timeout(Duration::from_millis(800), term.next_frame()).await {}
+        trips.sort();
+        println!(
+            "a request and its answer: {} ms at the middle of {count}, {} ms at the least, {} ms at nineteen in twenty, {} ms at the most",
+            trips[count / 2].as_millis(),
+            trips[0].as_millis(),
+            trips[count * 19 / 20].as_millis(),
+            trips[count - 1].as_millis()
+        );
+
+        for piped in [false, true] {
+            let (typed_tx, mut typed_rx) = tokio::sync::mpsc::unbounded_channel::<(String, Instant)>();
+            let (sent_at_tx, mut sent_at_rx) = tokio::sync::mpsc::unbounded_channel::<Instant>();
+            // The typist: a letter every `apart`, whatever became of the last.
+            let typist = tokio::spawn(async move {
+                for i in 0..letters {
+                    let letter = char::from(b'a' + (i % 26) as u8).to_string();
+                    let now = Instant::now();
+                    let _ = sent_at_tx.send(now);
+                    let _ = typed_tx.send((letter, now));
+                    tokio::time::sleep(apart).await;
+                }
+            });
+            // The sender, as Rex's own: one write waited for at a time, the
+            // letters typed meanwhile gathered into the next; or each sent
+            // as it comes.
+            let (writer_ctrl, s, b) = (ctrl.clone(), sid.clone(), bid.clone());
+            let writer = tokio::spawn(async move {
+                let mut answers = Vec::new();
+                while let Some((letter, _)) = typed_rx.recv().await {
+                    // (As the app does at each key it takes: is the link there?)
+                    writer_ctrl.probe();
+                    if piped {
+                        if let Ok(answer) = writer_ctrl.send_terminal_write(&s, &b, &letter) {
+                            answers.push(tokio::spawn(answer));
+                        }
+                    } else {
+                        let mut text = letter;
+                        while let Ok((more, _)) = typed_rx.try_recv() {
+                            text.push_str(&more);
+                        }
+                        let _ = writer_ctrl.terminal_write(&s, &b, &text).await;
+                    }
+                }
+                for answer in answers {
+                    let _ = answer.await;
+                }
+            });
+            // The echoes, each letter's time back.
+            let mut waits: Vec<Duration> = Vec::new();
+            let mut echoed = String::new();
+            let deadline = Instant::now() + apart * letters as u32 + Duration::from_secs(60);
+            while waits.len() < letters && Instant::now() < deadline {
+                match tokio::time::timeout(Duration::from_secs(20), term.next_frame()).await {
+                    Ok(Ok(TerminalStreamFrame::Bytes(bytes))) => {
+                        for byte in bytes.iter().filter(|b| b.is_ascii_lowercase()) {
+                            echoed.push(char::from(*byte));
+                            if let Ok(at) = sent_at_rx.try_recv() {
+                                waits.push(at.elapsed());
+                            }
+                        }
+                    }
+                    Ok(Ok(_)) => {}
+                    _ => break,
+                }
+            }
+            let _ = typist.await;
+            let _ = writer.await;
+            let expected: String = (0..letters).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+            if piped {
+                // (The server takes two requests at once and may write the
+                // second first: why Rex doesn't type this way.)
+                let mut letters_back: Vec<char> = echoed.chars().collect();
+                letters_back.sort_unstable();
+                let mut all: Vec<char> = expected.chars().collect();
+                all.sort_unstable();
+                assert_eq!(letters_back, all, "every letter came back");
+                println!("each sent as typed: in the order typed: {}", echoed == expected);
+            } else {
+                assert_eq!(echoed, expected, "every letter came back, in the order typed");
+            }
+            let mut sorted = waits.clone();
+            sorted.sort();
+            println!(
+                "{}: {letters} letters, {} ms apart: a letter's echo after {} ms at the middle, {} ms at nine in ten, {} ms at worst; the first after {} ms, the last after {} ms",
+                if piped { "each sent as typed" } else { "one write at a time, gathered" },
+                apart.as_millis(),
+                sorted[sorted.len() / 2].as_millis(),
+                sorted[sorted.len() * 9 / 10].as_millis(),
+                sorted[sorted.len() - 1].as_millis(),
+                waits[0].as_millis(),
+                waits[waits.len() - 1].as_millis(),
+            );
+            // (A new line, and quiet, before the next.)
+            let _ = ctrl.terminal_write(&sid, &bid, "\u{15}").await;
+            while let Ok(Ok(_)) = tokio::time::timeout(Duration::from_millis(1200), term.next_frame()).await {}
+        }
+        // The sessions made for it are ended: the host is left as it was.
+        let _ = ctrl.session_destroy(&sid).await;
+        if let Some((busy_sid, reader)) = busy {
+            reader.abort();
+            let _ = ctrl.session_destroy(&busy_sid).await;
+        }
+    });
+}

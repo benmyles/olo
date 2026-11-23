@@ -2319,6 +2319,12 @@ impl RexHubInner {
                             // together in the next (`typed_together`): a request a key
                             // was a round trip a key, and 65 characters typed in 2.8 s
                             // took 18.7 s to reach a host 224 ms away.
+                            // (Sent as typed, without waiting, each letter's echo is
+                            // back in one round trip, not one and a half; but the
+                            // server does take two at once, and forty letters came
+                            // back "acbdefgjhilknm…": measured 2026-11-23,
+                            // `ControlClient::send_raw`. What a slow link leaves is
+                            // shown at once another way: HACKING, Rex, "A slow link".)
                             let mut waiting = std::collections::VecDeque::new();
                             loop {
                                 if waiting.is_empty() {

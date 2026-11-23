@@ -1141,6 +1141,29 @@ something nobody here has is in "Blocked", with what it waits for.
     cursor, anything not echoed). Tried against the test server with
     the link made slow on purpose (delay, loss, jitter), numbers in
     the commit.
+    **Measured, 2026-11-23** (HACKING, Rex, "A slow link, measured"):
+    the link is 167 to 229 ms a round trip (363 at worst in two
+    minutes); a letter's echo comes back after about one and a half of
+    them as Rex types (241 to 355 ms at the middle, 456 at nine in
+    ten); sent without waiting it is one round trip, but the server
+    then takes two requests at once and wrote forty letters out of
+    order, so typing keeps its one write at a time; Nagle's algorithm
+    is off on the SSH socket now (no change to typing; a hazard gone).
+    Nothing of Rex's own holds a letter a second: **what is left is
+    the link**, and the cure is the letters shown at once. **Next**:
+    the prediction itself, in the pane: printable letters, Backspace
+    and the two arrows shown where the cursor is, in an epoch that is
+    hidden until one of its letters is confirmed by the host's echo (a
+    password, or a program that doesn't echo, never shows one), a new
+    epoch at Enter, an escape or a control key, all of it dropped on
+    the first letter that comes back otherwise, shown only when the
+    measured echo is slow enough to see (and underlined while it
+    waits); and a quiet word in the pane when the host hasn't answered
+    for a while. Then the link made worse on purpose (delay, loss) to
+    try it, and what a lost packet costs a connection over TCP looked
+    at (thin-stream timeouts, a quick acknowledgement), since a second
+    or two for a letter is a lost packet's price more than a slow
+    link's.
   - *Files from a host, and folders kept in step* (Ben, 2026-11-22:
     "thinking about what we'll need to use rex to build olo (as an
     example), once it's built we'd want an easy way to e.g.

@@ -606,6 +606,20 @@ impl tokio::io::AsyncWrite for ChildStdioStream {
 async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Handle<SshClientHandler>, RexError> {
     let resolved = resolve_ssh_config(target)?;
     let mut config = client::Config::default();
+    // A small write goes when it is written. russh leaves Nagle's
+    // algorithm on, which holds one back until what went before it is
+    // acknowledged (a round trip of the link) and sends the two
+    // together: two requests in one packet, which the server then takes
+    // at once and may answer out of order. OpenSSH turns it off for a
+    // terminal, and every other way Rex reaches a server has it off
+    // (`transport`). Measured over a real link of 167 to 229 ms
+    // (2026-11-23, `tests/host.rs`, typing): no change to what is typed
+    // one write at a time, which is how Rex types (a letter's echo at
+    // 241 to 355 ms with it on, 255 to 355 ms with it off, another
+    // terminal printing or not); requests sent on each other's heels
+    // are answered in one round trip, not one and a half (183 and 228
+    // ms for 256 and 347), and in the order sent.
+    config.nodelay = true;
     config.keepalive_interval = (resolved.keepalive_secs > 0).then(|| Duration::from_secs(resolved.keepalive_secs));
     config.keepalive_max = resolved.keepalive_max;
     let config = Arc::new(config);
