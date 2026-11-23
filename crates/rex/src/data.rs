@@ -201,6 +201,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin> TerminalDataStream<S> {
         Ok(TerminalStreamFrame::Closed { code: 1006, reason: "eof".to_owned() })
     }
 
+    /// The stream is told to end (status 1000), and stays to be dropped:
+    /// for one that is to be replaced by another of the same terminal,
+    /// which the server takes only once this one is over.
+    pub async fn close(&mut self) {
+        let _ = self.ws.close(Some(tungstenite::protocol::CloseFrame { code: tungstenite::protocol::frame::coding::CloseCode::Normal, reason: "".into() })).await;
+    }
+
     /// Close cleanly with status 1000 (tells the server to end the stream immediately).
     pub async fn close_clean(mut self) {
         let _ = self.ws.close(Some(tungstenite::protocol::CloseFrame { code: tungstenite::protocol::frame::coding::CloseCode::Normal, reason: "".into() })).await;

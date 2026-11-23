@@ -2782,3 +2782,12 @@ an argument it doesn't know starts the lint (read its first lines).
   takes and gives, with examples and notes: read them before guessing
   what a request can do (a terminal's present screen by itself: it
   can't).
+- **A key the rig types can repeat** on a busy computer (its release
+  comes late, and the session repeats the key): `seq 500000` became a
+  number with many more noughts and a flood without end. Probably
+  also the one run of twelve that passed twice the bytes while sixty
+  keys were typed. What a measurement runs is written into the
+  session's own program where it can be (`try.py behind`), not typed.
+- **The Rex server takes one stream of a terminal from a client at a
+  time**: a second one's hello is refused ("AlreadyConnected") until
+  the first has ended, and its end takes a moment to reach the server.

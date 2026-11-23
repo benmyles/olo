@@ -27834,10 +27834,33 @@ over.
   gives a terminal's present screen by itself: a new stream begins
   with screen and scrollback (1.3 kB fresh; 871 kB after 300,000
   lines, 215 kB packed), `terminal.format` gives all of it too. What
-  the window now makes possible is noticing and catching up: the
-  word that the shell is at its prompt again arrives while the stale
-  lines still come, and the terminal can then be given a new stream
-  in place of its old one (TODO).
+  the window now makes possible is noticing and catching up (next).
+- *A pane catches up* (`hub`'s stream loop in
+  `spawn_block_data_stream`; `POURED`, `POUR_PAUSE`, `CATCH_UP_LOOK`).
+  While a terminal's stream pours (64 kB and more of what the
+  terminal writes, for a second and a half, with no pause of two
+  seconds: a narrow link brings a whole 64 kB frame at a time), its
+  host is asked every two seconds whether the shell itself reads
+  there (`shell_reads`, as for the first letter at a prompt). Where
+  it does and 16 kB more has come two seconds later, what comes is
+  the past: a new stream is opened as far as its upgrade and its
+  ticket had, the old one is ended (`TerminalDataStream::close`: the
+  server takes one stream of a terminal from a client at a time,
+  "AlreadyConnected" otherwise, tried anew a few times), and the new
+  one's first screen replaces the terminal. Not while the person
+  reads what scrolled by (the viewport isn't at the bottom, or text
+  is being selected by keys). A stream's first screen isn't counted
+  as pouring (on a narrow link it takes seconds to come, and counted
+  it had the terminal caught up again and again); and where a
+  terminal goes on pouring with its shell at its prompt (a job in
+  the background), it is looked at half as often each time, down to
+  once a minute. On the rig (`tools/dev/rex-slow/try.py behind`: a
+  link of 30,000 bytes a second, the far host taken for far): after
+  three million lines the far link was quiet again 312 s after the
+  flood began before (6.3 MB), 21 s now (449 kB); after 500,000
+  lines 51 s (1.0 MB) and 17 s (362 kB); the pane then shows the
+  flood's last lines and the prompt. On a link that keeps up nothing
+  more comes after the shell reads, and nothing is done.
 - *The rig's link can be narrow* (`REX_SLOW_RATE`, `REX_SLOW_QUEUE`
   in `slowlink.py`; `FarHost(rate=…)`, `Rig(far_rate=…)`): a rate
   each way and a queue of 64 kB, past which nothing more is read from

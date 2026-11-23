@@ -51,6 +51,14 @@
     try.py flood [LINES] [--release]          what the packing costs where the link is fast: seq LINES from a
                                               far host with no delay, without and with: the bytes, the time
                                               until the link is quiet, the app's own threads' instructions
+    try.py behind RATE [LINES] [--bin=APP]    a flood on a narrow link, and when the pane is at the present again:
+                                              the session's own program writes LINES lines (seq: over in a second
+                                              on the host; 3,000,000 unless said) and is then a shell at its
+                                              prompt; the far host is behind a link of RATE bytes a second, taken
+                                              for far by the app. The time from the flood's beginning until the
+                                              far link is quiet, the bytes that came, what the app said of
+                                              catching up, and a picture. (Not typed: a key held a moment too
+                                              long on a busy computer repeats.)
 
 PROGRAM: shell, box, box-nosync, line (tui.py's stand-ins), or a command line."""
 import glob, os, signal, sys, time
@@ -251,6 +259,25 @@ elif what in ("bytes", "flood"):
                     b1, at = settled(r, quiet=1.0); p.send_signal(signal.SIGINT); err = p.communicate()[1]
                     own = sum(int(f[1]) for f in (l.split(",") for l in err.splitlines()) if len(f) > 3 and f[1].isdigit() and not f[0].startswith("llvmpipe"))
                     print(f"compression {packed}: seq {lines}: {b1['down'] - b0['down']:,} bytes down, the last of them {at - t:.1f} s after the command; the app's own threads {own / 1e6:,.0f} million instructions", flush=True)
+elif what == "behind":
+    import re, subprocess
+    numbers = [a for a in args if a.isdigit()]
+    rate, lines = int(numbers[0]), (numbers[1] if len(numbers) > 1 else "3000000")
+    if os.path.exists(f"{D}/tmp/t0"): os.remove(f"{D}/tmp/t0")
+    flood = f"sleep 16; date +%s.%N > {D}/tmp/t0; seq {lines}; PS1='you@far:~/project$ ' exec bash --norc -i"
+    with Rig(flood, delay=0, far=True, far_delay=50, far_rate=rate, bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None),
+             env=["OLO_REX_SSH_OPENED_IN_MS=100", "RUST_LOG=info,olo_rex=debug"]) as r:
+        began = time.monotonic()
+        while not os.path.exists(f"{D}/tmp/t0") and time.monotonic() - began < 40: time.sleep(0.05)
+        b0 = r.far.bytes(); t0 = time.monotonic(); last, since = b0, t0
+        while time.monotonic() - t0 < 600:
+            time.sleep(0.2); now = r.far.bytes()
+            if now["down"] != last["down"]: last, since = now, time.monotonic()
+            elif time.monotonic() - since >= 4.0: break
+        shot = r.shot("behind")
+        print(f"{rate:,} bytes a second, {lines} lines: the far link was quiet again {since - t0:.1f} s after the flood began ({last['down'] - b0['down']:,} bytes came down); pictured in {shot}", flush=True)
+    said = subprocess.run(["grep", "-a", "-E", "caught up|catching", f"/var/tmp/olo-dev/{r.name}/olo-rex.log"], capture_output=True, text=True).stdout
+    print(re.sub(r"(block|session):[0-9a-f-]+", r"\1:…", re.sub(r"\x1b\[[0-9;]*m", "", said))[-600:] or "(the app said nothing of catching up)")
 elif what == "connect":
     import re
     for delay in [int(a) for a in args if a.isdigit()] or [0, 150, 300, 600]:

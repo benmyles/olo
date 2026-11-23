@@ -1184,6 +1184,12 @@ something nobody here has is in "Blocked", with what it waits for.
     Since 2026-11-23 it also says, unasked, when a shell is at its
     prompt again (46 in a hundred then, and the first letter after a
     command at once), and a far host's connection is packed.
+    **Parked** (Ben, 2026-11-23, after a day of it: "this is taking way
+    too long. wrap up the in flight perf improvements and then let's
+    move on don't worry about the QUIC stuff right now or any further
+    micro-optimizations around perf/latency for the remote ssh/rex"):
+    what is left below stays written down and isn't worked on until
+    asked for again.
     **What is left of the host's half** (Gemini's review of the design,
     2026-11-22, is what most of this list is from):
     - *A standing connection moved onto the helper*: a new host gets
@@ -1254,16 +1260,9 @@ something nobody here has is in "Blocked", with what it waits for.
       (2026-11-23; HACKING, "A flood that doesn't hold the link": the
       SSH window follows the link's rate, and a request beside a flood
       waits 0.1 to 0.5 s where it waited 6 s, or 40 and more). Left:
-      - *The pane itself catches up.* The server sends a slow reader
-        everything written, so a pane goes on scrolling a flood that
-        is long over (minutes, on a narrow link). When the host says
-        the shell is at its prompt again (the helper's word, or
-        asked) and the stream still floods a moment later, the
-        terminal is given a new stream in place of the old (its first
-        screen is the present: 215 kB packed after a long flood,
-        against megabytes), not while the person has scrolled back,
-        and backing off where output goes on with the shell at its
-        prompt (a job in the background).
+      - *The pane itself catches up*: done (2026-11-23; HACKING, "A
+        pane catches up": 21 s where it was 312 after three million
+        lines at 30,000 bytes a second).
       - *A flood that goes on* (a build's log on a link too narrow for
         it) falls further and further behind; a new stream now and
         then would show the present, each at the cost of a first

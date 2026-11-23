@@ -93,6 +93,29 @@ pub enum HostConnState {
 /// doing there is made again ([`BlockRuntime::guess_later`]).
 const GUESS_AFTER: Duration = Duration::from_millis(150);
 
+/// A terminal's stream is pouring: it has brought this much, with no
+/// pause as long as [`POUR_PAUSE`], for [`POURED_FOR`] (a flood, or a
+/// link too narrow for what the terminal writes). The pause is long:
+/// what a narrow link brings comes a whole frame at a time (64 kB,
+/// two seconds of a link of 30,000 bytes a second), and a quarter of
+/// a second between frames made every frame the first of a new pour.
+/// And it is still pouring if [`POURS_ON`] more has come
+/// [`POUR_PAUSE`] after the host said its shell was at its prompt (a
+/// flood that ended just now, on a link that kept up, brings nothing
+/// more).
+const POURED: u64 = 64 * 1024;
+const POURED_FOR: Duration = Duration::from_millis(1500);
+const POUR_PAUSE: Duration = Duration::from_secs(2);
+const POURS_ON: u64 = 16 * 1024;
+
+/// How long after a pouring terminal's host was asked whether the
+/// flood is over it is asked again, to begin with; twice as long after
+/// each time the terminal was caught up and went on pouring (a job
+/// that writes in the background, with the shell at its prompt), up to
+/// [`CATCH_UP_LOOK_MOST`].
+const CATCH_UP_LOOK: Duration = Duration::from_secs(2);
+const CATCH_UP_LOOK_MOST: Duration = Duration::from_secs(60);
+
 /// Live terminal + metadata runtime for one Rex block.
 pub struct BlockRuntime {
     pub creator_name: String,
@@ -3745,10 +3768,120 @@ impl RexHubInner {
 
             let mut attachment = Some(crate::attach::Attachment::default());
             let mut apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
+            // Catching up (HACKING, Rex, "A pane catches up"): the
+            // server sends a stream everything its terminal wrote,
+            // however far behind the reader is, so after a flood on a
+            // narrow link a pane goes on scrolling what is long over.
+            // While a stream pours, the host is asked now and then
+            // whether the shell itself is at its prompt again; where it
+            // is and the stream still pours, what comes is the past,
+            // and the terminal is given a new stream, whose first
+            // screen is the present.
+            let (mut pouring_since, mut poured, mut last_chunk) = (None::<Instant>, 0u64, Instant::now());
+            let (mut look_at, mut looks_apart, mut caught_up_at) = (None::<tokio::time::Instant>, CATCH_UP_LOOK, None::<Instant>);
+            let (looked_tx, mut looked_rx) = tokio::sync::mpsc::unbounded_channel::<bool>();
+            // (The host said the shell reads: when to see whether the
+            // stream went on pouring all the same, and how much had
+            // come by then.)
+            let mut said_over = None::<(tokio::time::Instant, u64)>;
             loop {
                 let frame = tokio::select! {
                     _ = &mut rx => { stream.close_clean().await; break; }
-                    res=stream.next_frame()=>res
+                    res=stream.next_frame()=>res,
+                    _ = async { tokio::time::sleep_until(look_at.unwrap_or_else(tokio::time::Instant::now)).await }, if look_at.is_some() => {
+                        look_at = None;
+                        let pours = last_chunk.elapsed() < POUR_PAUSE && poured >= POURED && pouring_since.is_some_and(|since| since.elapsed() >= POURED_FOR);
+                        if pours {
+                            // (Not from under someone reading what scrolled by.)
+                            let reading = {
+                                let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                g.copy_mode.is_some() || !g.terminal.is_viewport_at_bottom()
+                            };
+                            if !reading {
+                                let (ctrl, bk, looked) = (ctrl.clone(), bk.clone(), looked_tx.clone());
+                                tokio::spawn(async move {
+                                    match tokio::try_join!(ctrl.terminal_input_mode(&bk.session_id, &bk.block_id), ctrl.terminal_process(&bk.session_id, &bk.block_id)) {
+                                        Ok((mode, process)) => {
+                                            let _ = looked.send(shell_reads(&mode.payload, &process.payload));
+                                        }
+                                        Err(e) => tracing::debug!("{} pours, and its host couldn't be asked whether its shell reads: {e}", bk.block_id),
+                                    }
+                                });
+                            }
+                        }
+                        // (Looked at again while it brings anything: a
+                        // narrow link's stream takes its time to have
+                        // poured, and was looked at once, too soon, and
+                        // never again.)
+                        if last_chunk.elapsed() < POUR_PAUSE {
+                            look_at = Some(tokio::time::Instant::now() + if pours { looks_apart } else { POURED_FOR });
+                        }
+                        continue;
+                    }
+                    Some(reads) = looked_rx.recv() => {
+                        if reads && said_over.is_none() {
+                            said_over = Some((tokio::time::Instant::now() + POUR_PAUSE, poured));
+                        }
+                        continue;
+                    }
+                    _ = async { tokio::time::sleep_until(said_over.map_or_else(tokio::time::Instant::now, |(at, _)| at)).await }, if said_over.is_some() => {
+                        let had = said_over.take().map_or(0, |(_, had)| had);
+                        // The shell was at its prompt, and its terminal
+                        // has gone on pouring since: what comes is the
+                        // past. A new stream in the old one's place.
+                        // (The old one isn't read meanwhile, so the host
+                        // sends no more of it than its window.)
+                        tracing::debug!("{} poured {} kB more in the {POUR_PAUSE:?} after its shell was said to read", bk.block_id, poured.saturating_sub(had) / 1024);
+                        if poured >= had + POURS_ON && pouring_since.is_some() {
+                            // The new stream is opened as far as its upgrade and
+                            // its ticket had while the old one still stands; then
+                            // the old one is ended, and the new one says whose it
+                            // is: the server takes one stream of a terminal from a
+                            // client at a time ("AlreadyConnected" otherwise, and
+                            // again if its end hasn't reached it yet: tried anew
+                            // a few times, each with a ticket of its own).
+                            let anew = async {
+                                let (ticket, opened) = tokio::join!(ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL), open_terminal_stream(&ep));
+                                let (ticket, opened) = (ticket?.payload.ticket, opened.ok_or_else(|| olo_rex_client::RexError::Closed("no stream".to_owned()))?);
+                                stream.close().await;
+                                let mut tried = opened.hello(&ticket).await;
+                                for wait in [200u64, 500, 1200] {
+                                    if tried.is_ok() {
+                                        break;
+                                    }
+                                    tokio::time::sleep(Duration::from_millis(wait)).await;
+                                    let ticket = ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket;
+                                    let (raw, header) = ep.connect_stream().await?;
+                                    tried = TerminalDataStream::connect_hello(raw, &header, &ticket).await;
+                                }
+                                tried
+                            };
+                            match tokio::time::timeout(Duration::from_secs(30), anew).await {
+                                Ok(Ok(fresh)) => {
+                                    tracing::info!("Rex: {} went on pouring with its shell at its prompt ({} kB in {:.1} s): caught up with a new stream", bk.block_id, poured / 1024, pouring_since.map_or(0.0, |since| since.elapsed().as_secs_f64()));
+                                    stream = fresh;
+                                    attachment = Some(crate::attach::Attachment::default());
+                                    apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
+                                    // (Caught up twice within a short while: something goes on
+                                    // writing there; looked at less often.)
+                                    looks_apart = if caught_up_at.is_some_and(|at| at.elapsed() < looks_apart * 5) { (looks_apart * 2).min(CATCH_UP_LOOK_MOST) } else { CATCH_UP_LOOK };
+                                    caught_up_at = Some(Instant::now());
+                                    (pouring_since, poured, look_at) = (None, 0, None);
+                                }
+                                // (The old stream may be ended by now: the terminal is
+                                // left to be attached again, as after any stream's end.)
+                                Ok(Err(e)) => {
+                                    tracing::warn!("Rex: catching {} up failed: {e}", bk.block_id);
+                                    break;
+                                }
+                                Err(_) => {
+                                    tracing::warn!("Rex: catching {} up took too long", bk.block_id);
+                                    break;
+                                }
+                            }
+                        }
+                        continue;
+                    }
                 };
                 let Ok(TerminalStreamFrame::Bytes(chunk)) = frame else { break };
                 if chunk.is_empty() {
@@ -3770,6 +3903,20 @@ impl RexHubInner {
                 } else {
                     (None, 0, std::borrow::Cow::Borrowed(chunk.as_slice()))
                 };
+                // (Pouring: what the terminal writes, with no long
+                // pause in it. Not a stream's first screen, which on a
+                // narrow link takes seconds to come and isn't the
+                // terminal writing: counted, it had a terminal caught
+                // up again and again, each time for the last time's
+                // first screen.)
+                if !live.is_empty() {
+                    if last_chunk.elapsed() > POUR_PAUSE || pouring_since.is_none() {
+                        (pouring_since, poured) = (Some(Instant::now()), 0);
+                        look_at = Some(tokio::time::Instant::now() + POURED_FOR);
+                    }
+                    poured += live.len() as u64;
+                    last_chunk = Instant::now();
+                }
                 let terminal = terminal.map(|mut t| {
                     let theme = inner.state.lock().unwrap_or_else(|e| e.into_inner()).active_theme.clone();
                     let _ = t.apply_theme(&theme);
