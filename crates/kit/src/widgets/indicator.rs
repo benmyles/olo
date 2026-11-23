@@ -28,6 +28,8 @@ pub struct Indicator {
     over: crate::tip::Reach,
     /// One of a row, which draws it.
     in_row: bool,
+    /// What a click on it does.
+    on_click: Option<std::rc::Rc<dyn Fn(&mut olo_interface::WindowCx)>>,
 }
 
 /// A mark's box, which is the indicator's own width; and the gap a row
@@ -121,11 +123,19 @@ impl Indicator {
     /// and for its tip where [`Self::says`] gives no other.
     pub fn new(name: impl Into<SharedString>, mark: Mark) -> Indicator {
         let name = crate::words::of(name);
-        Indicator { key: format!("indicator-{name}").into(), name, mark, on: false, says: None, over: Default::default(), in_row: false }
+        Indicator { key: format!("indicator-{name}").into(), name, mark, on: false, says: None, over: Default::default(), in_row: false, on_click: None }
     }
 
     pub fn on(mut self, on: bool) -> Self {
         self.on = on;
+        self
+    }
+
+    /// What a click on it does: where what it shows is looked after
+    /// (Rex's marks open the host's window). Agents see it as
+    /// something to click.
+    pub fn on_click(mut self, f: impl Fn(&mut olo_interface::WindowCx) + 'static) -> Self {
+        self.on_click = Some(std::rc::Rc::new(f));
         self
     }
 
@@ -139,7 +149,8 @@ impl Indicator {
 
 impl IntoElement for Indicator {
     fn into_element(self) -> Element {
-        let Indicator { name, mark, on, says, key, over, in_row } = self;
+        let Indicator { name, mark, on, says, key, over, in_row, on_click } = self;
+        let clickable = on_click.is_some();
         let tip: SharedString = says.unwrap_or_else(|| if on { crate::tr!("{}: on", name).into() } else { crate::tr!("{}: off", name).into() });
         let said = name.clone();
         let mark_el = canvas(move |g, b| {
@@ -148,12 +159,17 @@ impl IntoElement for Indicator {
                 let end = (f32::from(b.right()) * g.scale_factor()).round();
                 paint(g, mark, on, end, b.center().y);
             }
-            g.agent(agent::Node { role: "Status", name: Some(said.clone()), value: Some(if on { "on" } else { "off" }.into()), bounds: b, enabled: true, ..Default::default() });
+            g.agent(agent::Node { role: "Status", name: Some(said.clone()), value: Some(if on { "on" } else { "off" }.into()), bounds: b, enabled: true, clickable, ..Default::default() });
         })
-        .paint_key(style::key((&name, mark, on, in_row)))
+        .paint_key(style::key((&name, mark, on, in_row, clickable)))
         .w(px(box_of(mark).0))
         .h(px(m::LABEL_ROW))
         .flex_shrink_0();
-        crate::tip::on_above_of(mark_el.into_any_element(), key, tip, over)
+        let mut mark_el = mark_el.into_any_element();
+        if let Some(on_click) = on_click {
+            use olo_interface::InteractiveElement as _;
+            mark_el = mark_el.on_click(move |_, cx| on_click(cx));
+        }
+        crate::tip::on_above_of(mark_el, key, tip, over)
     }
 }

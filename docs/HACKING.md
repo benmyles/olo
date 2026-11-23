@@ -4454,6 +4454,9 @@ it.
     ("Olo’s bridge isn’t on “far”. To install it, choose Agents ▸
     Install Olo’s Bridge.").
   - Agents read a `Status` node for each, its name and "on" or "off".
+  - `on_click(f)`: what a click on one does (Rex's open the host's
+    window, where each is put on the host or taken off); agents see
+    it as something to click.
 - `widgets::SegmentedControl::new(id, segments, chosen).on_choose(f)`:
   a few choices side by side in one sunken trough, one chosen (Ben,
   2026-11-22, of Rex's Sessions and Activity, with a drawing: "this
@@ -27053,6 +27056,69 @@ again a few seconds after either is installed from the Agents menu
 two install scripts put in the account's home there; a test runs the
 scripts and the question in a scratch home).
 
+**The Host window: everything of Olo's on a far host, in one place**
+(2026-11-23; Ben: "we also need like a manage host button or something
+where we can manage all the services and things installed on a host in
+one place instead of only through random menus and stuff"). Opened by
+Hosts and Ports ▸ Manage Host…, Rex ▸ Manage Host…, a click on a mark
+in the status bar, and for agents `host.manage:KEY` (`WinRole::Host`,
+"Host “NAME”"; one host at a time; `host` is its state, `host_panel`
+its drawing, `HubState::host_stands` what it shows).
+- *What it shows.* At its head the host: its icon, its name, how its
+  connection stands and where it is (as Hosts and Ports writes it),
+  and one button named for what it does to the host as it stands:
+  Check Again (the host is asked again what it has: `RexHub::
+  check_host`), Connect for one that isn't connected, Try Again for
+  one that failed. Where nothing is known, or nothing can be
+  installed, a note under the name says so ("Nothing on nas is known
+  until it’s connected."; never a guess at the cause, nor what the
+  button does: a button that needs that has the wrong name), and
+  what a connection that failed said stands in a well under that. Then a section for
+  each thing, in the order one rests on another: the Rex server
+  (Running and its version; Manage… opens the Server window), Olo's
+  bridge, the skill for agents (not to be installed before the
+  bridge), Olo's typing helper; and at the foot Remove All…, the one
+  thing here that asks first (its question takes the foot's place). A
+  section is the Server window's: heading and rule, a line with a
+  light, a state and its button, a note set in under the state's words
+  and ending short of the buttons' column, and under it where the
+  thing is on the host.
+- *One set of words.* Installed, Not installed, Being installed…,
+  Being removed…, Couldn’t install, Couldn’t remove, Not known (a host
+  that isn't connected: never a state last heard), with what more
+  there is to say dimmer after a dot ("Installed · in use", "Not
+  installed · needs the bridge"); Install and Remove; no host's name
+  in them (it is in the title). A thing being done has a ring where
+  its light would be (`panels::busy_of`): the solid waiting light is a
+  thing at rest that wants something. A thing that couldn't be done
+  has the red light, Try Again, and what the host said in a well under
+  its line, as the host said it (never a sentence in the warning's
+  colour under the note: the first build's).
+- *How a thing is changed.* `RexHub::change_host(key, thing, add,
+  done)`: over SSH, off the connection's own path (`sh -c` and the
+  script as one quoted word), never typed into a pane, where a program
+  running there would take it; the host is asked what it has again
+  before `done`. Agents: `host.put:KEY:bridge|skill|helper` and
+  `host.take:…`, which open the window and do it there, where it
+  shows. Agents ▸ Install Olo’s Bridge and Install Olo’s Skill for
+  Agents do the same on a host reached over SSH (typed into the pane
+  on any other: the one way there). The typing helper taken off here
+  isn't put back by itself (`Settings::helper_hosts`: "off"); a
+  connection that goes through it goes on through it, and the window
+  says so.
+- *A window's title never asks for `app()`*: the Host window is opened
+  from handlers that hold it (`&app().hub.clone()` in a call's
+  arguments holds it for the whole call), and a title made by asking
+  for it again stopped the app for good at a click on a mark. What a
+  title needs is kept where the window's state is (`host::Shown::
+  name`).
+- *The demo* (`OLO_REX_DEMO=1`): a host with an SSH address stands as
+  one reached so, and dev-box has a little of everything; the live
+  lint opens the window on it (`OLO_REX_DEMO_OPEN=app.hosts,
+  host.manage:dev-box`), and pictures for a review come from there or
+  have the address at the window's head painted over (it holds the
+  account's name).
+
 **Links in a terminal, and what a program copies** (2026-11-23; Ben:
 "make sure osc 52 for copy/paste etc works for the remote rex terminals
 and links should be clickable with super+click too").
@@ -27674,9 +27740,10 @@ Modes, Shared Server, Login Server and Remote Access).
 **A host's server looked after from Rex** (2026-11-23; Ben, 2026-11-22:
 "also build in rex server management to our rex client so that i can
 manage the users, services etc. of the running rex server (if i have a
-root@ key)"). Hosts and Ports ▸ Manage Rex Server… (for the host chosen: one
-reached over SSH as an account), Rex ▸ Manage Rex Server… (the window's own
-host), and, for agents, the command `host.server:KEY`, open the Server
+root@ key)"). The Host window's Rex server ▸ Manage… (Hosts and Ports ▸ Manage
+Host…, for a host reached over SSH as an account), Rex ▸ Manage Rex
+Server… (the window's own host), and, for agents, the command
+`host.server:KEY`, open the Server
 window (`WinRole::Server`, "Rex Server on NAME"; one host at a time:
 "Manage Rex Server", not "Manage Server", since 2026-11-23: it is the
 Rex server's alone, and a host has more of Olo's than that).

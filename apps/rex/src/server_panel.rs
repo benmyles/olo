@@ -199,7 +199,7 @@ fn failed_ago(age: Duration) -> String {
 /// host's sentence began at the margin, and one message read as two:
 /// the fifth design review. A command's lines are set so too:
 /// `panels::command_lines`.)
-fn hung(line: &str, per_line: usize) -> Vec<String> {
+pub(crate) fn hung(line: &str, per_line: usize) -> Vec<String> {
     const IN: &str = "  ";
     let mut lines: Vec<String> = Vec::new();
     let mut now = String::new();

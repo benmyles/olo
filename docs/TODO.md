@@ -1303,33 +1303,29 @@ something nobody here has is in "Blocked", with what it waits for.
     Terminal does it (`view.rs`, its `Mouse`); the terminal engine
     encodes (rex-vt `input.rs`). With Shift, the pane's own selection,
     as everywhere.
-  - *Manage Host: everything of Olo's on a host in one place* (Ben,
-    2026-11-23: "i think we also need like a manage host button or
-    something where we can manage all the services and things
-    installed on a host in one place instead of only through random
-    menus and stuff. and for clarity we should rename the manage
-    server button to manage rex server since that is specifically the
-    rex server manager"; the rename is done). Next. A window for a
-    host (Hosts and Ports ▸ Manage Host…, the host's menu, a click on
-    a status-bar mark): what is there and how it stands, each with
-    what can be done to it there, over SSH and shown as it runs (the
-    Server window's way), never by a script typed into a pane: Olo's
-    typing helper (in use, added, removed), Olo's bridge and what the
-    host is granted here, the skill for agents, the Rex server (how it
-    stands, and Manage Rex Server… for the rest), and, when it is
-    built, the Token Pool service. The Agents menu's two installs and
-    Settings ▸ Use Olo’s Typing Helper on Hosts then lead there or go.
-    A new window: to both reviewers early.
+  - *The Host window, further* (the window is built, 2026-11-23: Ben's
+    "manage host button … manage all the services and things installed
+    on a host in one place"; HACKING, "The Host window"). What the two
+    design reviews asked for that isn't in it yet: a version for each
+    thing and "Installed · out of date" with Update where the host's
+    copy is older than this Olo's (the bridge's shims and the skill
+    carry no version yet: a stamp file beside each; the helper's build
+    is known); a log of what was done there, to open after a failure;
+    the Token Pool service as a fifth section, when it is built;
+    Rex's lights, everywhere at once (sidebar, Hosts and Ports, the
+    Server window, here): a rim and a highlight (flat discs beside
+    bevelled buttons, Opus's second review), and the ring this window
+    has for a thing being done wherever a light now says "Connecting…"
+    or "Reconnecting…" (Gemini's fourth); the window, as Rex's other
+    panels, brought back after a reload.
   - *Hosts and Ports: Connect has no way back* (Opus's design review
     of the window, 2026-11-23): for a host that is connected the
     button is only disabled; it could be Disconnect there, in the
     same place.
-  - *The status bar's marks, further*: a mark that is off put on by
-    a click on it (the bridge and the skill are installed by a script
-    typed into the pane now, which a program running there would
-    take: to be done over SSH, as the helper is); and the bridge's and
-    the skill's marks for a host not reached over SSH (it can't be
-    asked what it has: none are shown).
+  - *The status bar's marks, further*: the bridge's and the skill's
+    marks for a host not reached over SSH (it can't be asked what it
+    has: none are shown). (A click on a mark opens the Host window,
+    and the installs go over SSH there: done, 2026-11-23.)
   - *An account set up on a new host, and a Token Pool of its own
     there* (Ben, 2026-11-22: "let's make sure that the olo bridge
     supports token pool and have a way in the rex app where i can have

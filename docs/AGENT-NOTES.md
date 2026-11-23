@@ -2644,3 +2644,35 @@ an argument it doesn't know starts the lint (read its first lines).
   a reviewer (the rig's script finds the label's node by its text and
   fills it with the ground beside it), or use the demo
   (`OLO_REX_DEMO=1 OLO_REX_DEMO_HOSTS=states`, made-up hosts).
+- **`&app().hub.clone()` in a call's arguments holds Rex's app lock
+  for the whole call**: what the call reaches must not ask for
+  `app()` again (it isn't re-entrant: the window stops for good, and
+  nothing says why; a click that "did nothing" and every command after
+  it going nowhere is this). Take the hub in a `let` of its own, or
+  keep what is needed where the window's state is (the Host window's
+  title: `host::Shown::name`).
+- **The rig keeps Rex's window where a run left it**
+  (`state/olo/windows`): a run on a smaller screen left it too small
+  for its sidebar, and every run after "never showed the far host".
+  The rig forgets window places now; if a rig's start fails on what a
+  window shows, look at the window's size first.
+- **Rex's demo is where pictures with a host's address come from**
+  (`OLO_REX_DEMO=1 OLO_REX_DEMO_HOSTS=states OLO_REX_DEMO_OPEN=
+  app.hosts,host.manage:dev-box`, in a test session with a scratch
+  HOME and `REX_SERVER_SOCKET`): made-up hosts in every state, no
+  account's name. What needs a real host to change (an install, a
+  failure) is pictured on the rig's far host with the address painted
+  over; check a sheet of every picture's head before any goes out (a
+  label split in two had stopped the painting, and the first sheet
+  showed it).
+- **A thing "being done" is pictured by making the host wait**: a
+  named pipe where the install's first file goes (`mkfifo`) holds the
+  host's script at its `cat >` until the test reads the pipe.
+- **A dev build says a lock asked for twice**: Olo's mutexes
+  (`olo_sync`) panic in dev builds with "Found cycle in mutex
+  dependency graph", and the app's crash report (in the test's
+  `XDG_STATE_HOME/olo/crashes`) names the thread. A test whose window
+  "does nothing" after a click: count the crash reports there before
+  reading the code (the rig's cost scripts print the count; two were
+  from the Host window's title, minutes of reading saved had they
+  been looked at first).

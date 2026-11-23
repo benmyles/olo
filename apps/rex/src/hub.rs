@@ -976,6 +976,45 @@ pub enum HostHelper {
     Without(String),
 }
 
+/// One of the things of Olo's that is put on a far host from here (the
+/// Host window; `RexHub::change_host`).
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum HostThing {
+    /// Olo's typing helper: one file in the account's home.
+    Helper,
+    /// Olo's bridge: its shims.
+    Bridge,
+    /// The skill that tells agents there of the bridge and of Rex.
+    Skill,
+}
+
+/// How a host stands, for the Host window: what it has of Olo's, as
+/// last heard.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostStands {
+    pub name: String,
+    /// Where it is, as a person writes it: `you@host` for one reached
+    /// over SSH.
+    pub address: String,
+    pub conn: HostConnState,
+    /// Reached over SSH: what is put there and taken off goes that way.
+    pub ssh: bool,
+    pub helper: HostHelper,
+    /// The helper was taken off this host here, and isn't put back by
+    /// itself (`Settings::helper_hosts`: "off").
+    pub helper_kept_off: bool,
+    /// Settings ▸ Use Olo’s Typing Helper on Hosts.
+    pub helper_setting: bool,
+    /// Whether the bridge's shims are there; none: not asked, or not
+    /// answered.
+    pub bridge: Option<bool>,
+    /// Whether something is granted to the host here (Preferences ▸ Rex).
+    pub granted: bool,
+    pub skill: Option<bool>,
+    /// Its Rex server's version, as it said when it connected.
+    pub version: Option<String>,
+}
+
 /// One of the things of Olo's a far host may have, as the status bar
 /// shows it: on or off, and its tip's sentence.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1125,6 +1164,56 @@ impl HubState {
             },
         });
         Some(HostHas { helper, bridge, skill })
+    }
+
+    /// How the host `host_key` stands, for the Host window.
+    pub fn host_stands(&self, host_key: &str) -> Option<HostStands> {
+        let host = self.hosts.get(host_key)?;
+        let address = match crate::setup::address(&host.endpoint_raw) {
+            // (As Hosts and Ports writes it: its port too, where it
+            // isn't SSH's own.)
+            crate::setup::Address::Ssh(target) => {
+                let port = target.port.filter(|port| *port != 22).map(|port| format!(":{port}")).unwrap_or_default();
+                match &target.user {
+                    Some(user) => format!("{user}@{}{port}", target.host),
+                    None => format!("{}{port}", target.host),
+                }
+            }
+            _ => host.endpoint_raw.clone(),
+        };
+        // (Rex's demo, where nothing is connected to: a host with an
+        // SSH address stands as one reached so, and the one that is
+        // "connected" has a little of everything, for the window's
+        // pictures and its lint.)
+        if crate::server::demo_mode() && host.endpoint_raw.starts_with("ssh://") {
+            let there = host.conn_state == HostConnState::Connected;
+            return Some(HostStands {
+                name: host.label.clone(),
+                address,
+                conn: host.conn_state.clone(),
+                ssh: true,
+                helper: if there { HostHelper::Used } else { HostHelper::None },
+                helper_kept_off: false,
+                helper_setting: true,
+                bridge: there.then_some(true),
+                granted: false,
+                skill: there.then_some(false),
+                version: there.then(|| "0.19.2".to_owned()),
+            });
+        }
+        Some(HostStands {
+            name: host.label.clone(),
+            address,
+            conn: host.conn_state.clone(),
+            ssh: matches!(host.endpoint, Some(RexEndpoint::Ssh { .. })),
+            helper: host.helper.clone(),
+            helper_kept_off: self.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off"),
+            helper_setting: self.settings.host_helper,
+            bridge: host.bridge_there,
+            granted: host.bridge_server.is_some(),
+            skill: host.skill_there,
+            version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
+        })
     }
 
     pub fn host_silent(&self, host_key: &str) -> Option<Duration> {
@@ -1548,7 +1637,7 @@ impl RexHub {
             for (key, label, endpoint, state) in [
                 ("build", "build", "ssh://you@build.example", HostConnState::Connecting),
                 ("nas", "nas", "nas.ts.net", HostConnState::Disconnected),
-                ("staging", "staging", "ssh://deploy@staging.example:2222", HostConnState::Error("Permission denied: the host rejected all the keys your agent offered.".to_owned())),
+                ("staging", "staging", "ssh://deploy@staging.example:2222", HostConnState::Error("Permission denied: the host rejected all the keys your SSH agent offered.".to_owned())),
             ] {
                 st.hosts.insert(key.to_owned(), demo_host(key, label, endpoint, state, Vec::new()));
                 st.host_order.push(key.to_owned());
@@ -2462,6 +2551,104 @@ impl RexHub {
         });
     }
 
+    /// One of Olo's things is put on a far host, or taken off it, over
+    /// SSH and off the connection's own path (never typed into a
+    /// pane, where a program running there would take it): `done`,
+    /// on the hub's threads, once the host has answered, with what it
+    /// said if it couldn't. The host is asked what it has again
+    /// before that.
+    pub fn change_host(&self, host_key: &str, thing: HostThing, add: bool, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            // (A shell's command there; what it wrote last, if it failed.)
+            let run = |command: String| {
+                let (pool, target, askpass) = (pool.clone(), target.clone(), askpass.clone());
+                async move {
+                    match pool.exec(&target, askpass, &command, &mut |_| {}).await {
+                        Ok(ran) if ran.ok() => Ok(()),
+                        Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().to_owned()),
+                        Err(e) => Err(e.to_string()),
+                    }
+                }
+            };
+            let script = |script: &str| format!("sh -c {}", shell_quote(script));
+            let result = match (thing, add) {
+                (HostThing::Helper, true) => {
+                    inner.helper_kept_off(&host_key, false);
+                    if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.helper != HostHelper::Used) {
+                        host.helper = HostHelper::Installing;
+                    }
+                    (inner.notify)(HubNotice::StateChanged);
+                    let stands = olo_rex_client::helper::ensure(&pool, &target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await;
+                    let said = match &stands {
+                        Ok(olo_rex_client::helper::Stands::NoBuild(kind)) => Err(olo_kit::tr!("Olo has no typing helper for {}.", kind).to_string()),
+                        Err(failed) => Err(failed.to_string()),
+                        Ok(_) => Ok(()),
+                    };
+                    inner.helper_stands(&host_key, stands, false);
+                    said
+                }
+                (HostThing::Helper, false) => {
+                    let ran = run(script(olo_rex_client::helper::REMOVE)).await;
+                    if ran.is_ok() {
+                        inner.helper_kept_off(&host_key, true);
+                        // (A connection that goes through it goes on
+                        // through it: said so while it does.)
+                        if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.helper != HostHelper::Used) {
+                            host.helper = HostHelper::None;
+                        }
+                    }
+                    ran
+                }
+                (HostThing::Bridge, true) => run(script(&bridge::generate_remote_shim_install_script())).await,
+                (HostThing::Bridge, false) => run(script(bridge::REMOVE_SHIMS)).await,
+                (HostThing::Skill, true) => run(script(&bridge::generate_remote_skill_install_script())).await,
+                (HostThing::Skill, false) => run(script(bridge::REMOVE_SKILL)).await,
+            };
+            if thing != HostThing::Helper {
+                inner.ask_what_the_host_has(&host_key, &pool, &target, askpass).await;
+            }
+            (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+    }
+
+    /// A far host is asked again what it has of Olo's (the Host
+    /// window's Check Again: something may have been changed there by
+    /// hand): the bridge and the skill, and whether this app's build
+    /// of the typing helper is there. `done` once it has answered.
+    pub fn check_host(&self, host_key: &str, done: impl FnOnce() + Send + 'static) {
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done();
+            return;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            use olo_rex_client::helper::{Asked, ask};
+            inner.ask_what_the_host_has(&host_key, &pool, &target, askpass.clone()).await;
+            if crate::link::carried()
+                && let Ok(Ok(asked)) = ask(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await
+            {
+                let here = matches!(asked, Asked::Here);
+                if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
+                    match (here, &host.helper) {
+                        (true, HostHelper::None | HostHelper::Without(_)) => host.helper = HostHelper::Ready,
+                        (false, HostHelper::Ready) => host.helper = HostHelper::None,
+                        _ => {}
+                    }
+                }
+            }
+            (inner.notify)(HubNotice::StateChanged);
+            done();
+        });
+    }
+
     pub fn install_remote_skill_in_pane(&self, key: &BlockKey) {
         let script = bridge::generate_remote_skill_install_script();
         let cmd = format!("sh -c {}\n", shell_quote(&script));
@@ -2567,6 +2754,22 @@ impl RexHubInner {
         }
     }
 
+    /// The helper was taken off a host here (the Host window), and
+    /// isn't to be put back by itself (`off`); or it is asked for
+    /// there again.
+    fn helper_kept_off(&self, host_key: &str, off: bool) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let is = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off");
+        if off != is {
+            if off {
+                st.settings.helper_hosts.insert(host_key.to_owned(), "off".to_owned());
+            } else {
+                st.settings.helper_hosts.remove(host_key);
+            }
+            st.settings.save();
+        }
+    }
+
     /// How the helper came to stand on a host, taken note of: the
     /// host's tip, what is kept of it, and where it was put there now,
     /// the status bar's word (something of Olo's now lies on the
@@ -2625,7 +2828,8 @@ impl RexHubInner {
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return false };
         {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let known = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "yes" || word.strip_prefix("no:") == Some(crate::link::ID));
+            // (Or it was taken off this host here: not put back by itself.)
+            let known = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "yes" || word == "off" || word.strip_prefix("no:") == Some(crate::link::ID));
             if !crate::link::carried() || !st.settings.host_helper || known {
                 return false;
             }
@@ -2671,23 +2875,27 @@ impl RexHubInner {
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
-        tokio::spawn(async move {
-            let Ok(ran) = pool.exec(&target, askpass, bridge::PRESENT, &mut |_| {}).await else { return };
-            if !ran.ok() {
-                return;
-            }
-            let (bridge_there, skill_there) = bridge::present(&ran.output);
-            let changed = {
-                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                let Some(host) = st.hosts.get_mut(&host_key) else { return };
-                let changed = (host.bridge_there, host.skill_there) != (Some(bridge_there), Some(skill_there));
-                (host.bridge_there, host.skill_there) = (Some(bridge_there), Some(skill_there));
-                changed
-            };
-            if changed {
-                (hub.notify)(HubNotice::StateChanged);
-            }
-        });
+        tokio::spawn(async move { hub.ask_what_the_host_has(&host_key, &pool, &target, askpass).await });
+    }
+
+    /// [`Self::look_at_what_the_host_has`], waited for: the host is
+    /// asked, and what it answered kept.
+    async fn ask_what_the_host_has(&self, host_key: &str, pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) {
+        let Ok(ran) = pool.exec(target, askpass, bridge::PRESENT, &mut |_| {}).await else { return };
+        if !ran.ok() {
+            return;
+        }
+        let (bridge_there, skill_there) = bridge::present(&ran.output);
+        let changed = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get_mut(host_key) else { return };
+            let changed = (host.bridge_there, host.skill_there) != (Some(bridge_there), Some(skill_there));
+            (host.bridge_there, host.skill_there) = (Some(bridge_there), Some(skill_there));
+            changed
+        };
+        if changed {
+            (self.notify)(HubNotice::StateChanged);
+        }
     }
 
     /// A host reached over SSH is seen to have the helper the app
@@ -2703,7 +2911,7 @@ impl RexHubInner {
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
         {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let cant = st.settings.helper_hosts.get(host_key).is_some_and(|word| word.strip_prefix("no:") == Some(crate::link::ID));
+            let cant = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off" || word.strip_prefix("no:") == Some(crate::link::ID));
             if !crate::link::carried() || !st.settings.host_helper || cant {
                 return;
             }

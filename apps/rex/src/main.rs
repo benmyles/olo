@@ -11,6 +11,8 @@ mod bridge;
 mod copy_mode;
 mod frame;
 mod git;
+mod host;
+mod host_panel;
 mod hub;
 mod keymap;
 mod link;

@@ -144,8 +144,9 @@ pub struct Settings {
     /// What is known of the helper on each host, by the host's key:
     /// "yes" where a connection went through one, "no:BUILD" where
     /// this build of the app found it had none to give (`hub`,
-    /// `helper_before_connecting`). A host with no word here is asked
-    /// before its connection is made.
+    /// `helper_before_connecting`), "off" where it was taken off the
+    /// host in the Host window (not put back by itself). A host with no
+    /// word here is asked before its connection is made.
     pub helper_hosts: std::collections::BTreeMap<String, String>,
     /// What Keep It Going types to an agent that has stopped.
     pub keep_going_message: String,

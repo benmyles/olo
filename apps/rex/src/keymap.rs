@@ -263,6 +263,7 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "app.settings", title: "Rex Settings…", category: "General", keywords: &["preferences", "hosts", "permissions", "notifications"], args_schema: None },
         ActionSpec { id: "app.diagnostics", title: "Rex Diagnostics…", category: "Diagnostics", keywords: &["debug", "server", "status", "version"], args_schema: None },
         ActionSpec { id: "app.hosts", title: "Hosts and Ports…", category: "Network", keywords: &["ssh", "remote", "tailscale", "tunnels", "ports"], args_schema: None },
+        ActionSpec { id: "host.manage", title: "Manage Host…", category: "Network", keywords: &["host", "helper", "bridge", "skill", "install", "remove", "server"], args_schema: None },
         ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], args_schema: None },
         ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], args_schema: None },
         ActionSpec { id: "app.close_window", title: "Close Window", category: "Window", keywords: &["window", "close"], args_schema: None },
@@ -346,20 +347,8 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "client.mode.exit_all", title: "Exit All Key Modes", category: "Keymap", keywords: &["mode", "reset"], args_schema: None },
         // ---- Olo Desktop Bridge Actions ----
         ActionSpec { id: "olo.passwords.fill", title: "Fill Password from Olo Passwords", category: "Olo Bridge", keywords: &["keychain", "op", "secret"], args_schema: None },
-        ActionSpec {
-            id: "olo.install_remote_shim",
-            title: "Install Olo Bridge Shim on Current Host…",
-            category: "Olo Bridge",
-            keywords: &["shim", "xdg-open", "op", "olo-screen", "remote"],
-            args_schema: None,
-        },
-        ActionSpec {
-            id: "olo.install_remote_skill",
-            title: "Install Rex & Olo Agent Skill on Current Host…",
-            category: "Olo Bridge",
-            keywords: &["skill", "claude", "codex", "agent"],
-            args_schema: None,
-        },
+        ActionSpec { id: "olo.install_remote_shim", title: "Install Olo’s Bridge", category: "Olo Bridge", keywords: &["shim", "xdg-open", "op", "olo-screen", "remote"], args_schema: None },
+        ActionSpec { id: "olo.install_remote_skill", title: "Install Olo’s Skill for Agents", category: "Olo Bridge", keywords: &["skill", "claude", "codex", "agent"], args_schema: None },
     ]
 }
 

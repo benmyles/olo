@@ -64,6 +64,8 @@ pub enum WinRole {
     Forward,
     /// A host's own Rex server, looked after as root (`server`).
     Server,
+    /// Everything of Olo's on a far host, in one place (`host`).
+    Host,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -299,6 +301,38 @@ fn managed_host(hub: &RexHub, key: &str) -> Option<(String, olo_rex_client::SshT
     }
 }
 
+/// Whether `key` is a host of the hub's other than this computer.
+fn far_host(hub: &RexHub, key: &str) -> bool {
+    hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).is_some_and(|h| !h.is_local)
+}
+
+/// The Host window shows otherwise (another host, a thing being done
+/// to it, what the host said of one).
+pub fn host_changed() {
+    broadcast_to_role(WinRole::Host, || WinMsg::HostChanged);
+}
+
+/// Opens the Host window on the host `key`: what it has of Olo's, and
+/// its Rex server. (Not for this computer: what is Olo's here is the
+/// desktop's own.)
+fn open_host(hub: &Arc<RexHub>, key: &str) {
+    let Some(name) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| h.label.clone()) else { return };
+    crate::host::open(key, &name);
+    open_or_raise_panel(WinRole::Host);
+    host_changed();
+}
+
+/// The Host window's title: whose things it shows. (By what `host`
+/// keeps, never through `app()`: the window is opened from handlers
+/// that hold it, and asking for it again there stopped the app for
+/// good at a click on a status mark.)
+fn host_title() -> String {
+    match crate::host::current() {
+        Some(shown) => olo_kit::tr!("Host “{}”", shown.name).into(),
+        None => olo_kit::words::tr("Host").into(),
+    }
+}
+
 /// Opens the Server window on the host `key` (nothing, where its
 /// server isn't one to look after from here).
 fn open_server(hub: &Arc<RexHub>, key: &str) {
@@ -455,6 +489,9 @@ pub fn open_or_raise_panel(role: WinRole) {
         // (Not brought back after a reload: it would sign in as root
         // again with nobody having asked it to.)
         WinRole::Server => WindowOptions { fixed: true, ..WindowOptions::new(server_title(), crate::server_panel::SERVER_WIDTH, 120.0).dialog() },
+        // (Nor this one, as none of Rex's panels is: it is of a host
+        // chosen in another window.)
+        WinRole::Host => WindowOptions { fixed: true, ..WindowOptions::new(host_title(), crate::host_panel::HOST_WIDTH, 120.0).dialog() },
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
             WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
@@ -552,7 +589,11 @@ pub enum WinMsg {
     /// looked after stands otherwise (`server::current`); a button of
     /// it; the key chosen for root, the page, the person to let in, how
     /// much of the log, the row chosen in its list.
-    ServerOpen(String),
+    /// The Host window: opened on a host (its key); it shows otherwise;
+    /// one of its buttons.
+    HostOpen(String),
+    HostChanged,
+    HostDo(crate::host_panel::HostDo),
     ServerChanged,
     ServerDo(crate::server_panel::ServerDo),
     ServerKey(usize),
@@ -1430,6 +1471,31 @@ impl RexWindow {
             "app.settings" => olo_kit::app_menu::open_settings("rex"),
             "app.hosts" => open_or_raise_panel(WinRole::Hosts),
             "app.add_host" => open_or_raise_panel(WinRole::AddHost),
+            "host.manage" => open_host(&hub, &self.active_host),
+            // (A host named by its key: for agents, and the window's pictures.)
+            c if c.starts_with("host.manage:") => open_host(&hub, c.trim_start_matches("host.manage:")),
+            // (One of Olo's things put on a host or taken off, for
+            // agents: `host.put:KEY:helper|bridge|skill`, `host.take:…`.
+            // In the Host window, where it shows.)
+            c if c.starts_with("host.put:") || c.starts_with("host.take:") => {
+                let add = c.starts_with("host.put:");
+                let rest = c.split_once(':').map_or("", |(_, rest)| rest);
+                let thing = rest.rsplit_once(':').and_then(|(key, thing)| {
+                    let thing = match thing {
+                        "helper" => crate::hub::HostThing::Helper,
+                        "bridge" => crate::hub::HostThing::Bridge,
+                        "skill" => crate::hub::HostThing::Skill,
+                        _ => return None,
+                    };
+                    Some((key.to_owned(), thing))
+                });
+                if let Some((key, thing)) = thing {
+                    open_host(&hub, &key);
+                    if crate::host::current().is_some_and(|shown| shown.key == key) {
+                        crate::host::change(&hub, thing, add);
+                    }
+                }
+            }
             "host.server" => open_server(&hub, &self.active_host),
             // (A host named by its key: for agents, and the window's pictures.)
             c if c.starts_with("host.server:") => open_server(&hub, c.trim_start_matches("host.server:")),
@@ -1809,14 +1875,22 @@ impl RexWindow {
                 app().keymap.exit_all_modes();
                 cx.invalidate();
             }
-            "olo.install_remote_shim" => {
+            // (On a host reached over SSH: put there over SSH, in the
+            // Host window, where it shows and what the host says of it
+            // does. On any other, the script is typed into the pane,
+            // the one way there.)
+            "olo.install_remote_shim" | "olo.install_remote_skill" => {
                 if let Some(bk) = self.focused_block_key() {
-                    hub.install_remote_shim_in_pane(&bk);
-                }
-            }
-            "olo.install_remote_skill" => {
-                if let Some(bk) = self.focused_block_key() {
-                    hub.install_remote_skill_in_pane(&bk);
+                    let shim = action == "olo.install_remote_shim";
+                    let over_ssh = far_host(&hub, &bk.host_key) && hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(&bk.host_key).is_some_and(|h| h.ssh);
+                    if over_ssh {
+                        open_host(&hub, &bk.host_key);
+                        crate::host::change(&hub, if shim { crate::hub::HostThing::Bridge } else { crate::hub::HostThing::Skill }, true);
+                    } else if shim {
+                        hub.install_remote_shim_in_pane(&bk);
+                    } else {
+                        hub.install_remote_skill_in_pane(&bk);
+                    }
                 }
             }
             "olo.passwords.fill" => {
@@ -2156,6 +2230,8 @@ impl RexWindow {
                 .separator()
                 .item("Hosts and Ports…", "app.hosts")
                 .item("Add Host…", "app.add_host")
+                .item("Manage Host…", "host.manage")
+                .enabled(far_host(&hub, &self.active_host))
                 .item("Manage Rex Server…", "host.server")
                 .enabled(managed_host(&hub, &self.active_host).is_some())
                 .item("Remote Access…", "app.pair_device")
@@ -2651,6 +2727,8 @@ impl RexWindow {
         };
         let silent = self.silent_host();
         let has = self.host_has();
+        let marks_host = self.focused_block_key().map_or_else(|| self.active_host.clone(), |focused| focused.host_key);
+        let open_host_window: Rc<dyn Fn(&String, &mut WindowCx)> = Rc::new(cx.msg_with(|host: &String| WinMsg::HostOpen(host.clone())));
         root = root.child(
             div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
                 div()
@@ -2699,7 +2777,12 @@ impl RexWindow {
                             // bridge, the skill for agents), with what each
                             // means for its tip.
                             .children(has.map(|has| {
-                                let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has| widgets::Indicator::new(name, mark).on(has.on).says(has.said);
+                                // (A click on one: the host's window, where
+                                // each is put on the host or taken off.)
+                                let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has| {
+                                    let (open, host) = (open_host_window.clone(), marks_host.clone());
+                                    widgets::Indicator::new(name, mark).on(has.on).says(has.said).on_click(move |cx| open(&host, cx))
+                                };
                                 let marks = [
                                     Some(mark("Typing helper", widgets::Mark::Keyboard, has.helper)),
                                     has.bridge.map(|bridge| mark("Olo’s bridge", widgets::Mark::Bridge, bridge)),
@@ -3106,7 +3189,7 @@ impl RexWindow {
                         hub_d.remove_host(hk);
                         WinMsg::Redraw
                     }),
-                    cx.msg_with(|hk: &String| WinMsg::ServerOpen(hk.clone())),
+                    cx.msg_with(|hk: &String| WinMsg::HostOpen(hk.clone())),
                     cx.msg_with(|_: &()| WinMsg::PortsChosen),
                     cx.msg_with(|_: &()| WinMsg::Command("app.forward_port".into())),
                     cx.msg_with(move |fid: &String| {
@@ -3218,6 +3301,16 @@ impl RexWindow {
                         cx.msg_with(|i: &usize| WinMsg::ServerRange(*i)),
                         cx.msg_with(|_: &()| WinMsg::ServerChosen),
                     ))
+            }
+            WinRole::Host => {
+                let Some(shown) = crate::host::current() else {
+                    return div();
+                };
+                let Some(stands) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(&shown.key) else {
+                    return div();
+                };
+                let managed = managed_host(&hub, &shown.key).is_some();
+                div().w_full().child(crate::host_panel::render_host_panel(&stands, &shown, managed, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone()))))
             }
             WinRole::AddHost => {
                 let (Some(name), Some(address)) = (&self.host_label_field, &self.host_addr_field) else {
@@ -3671,7 +3764,35 @@ impl View for RexWindow {
                 }
             }
             WinMsg::SetupKey(i) => crate::setup::choose_key(i),
-            WinMsg::ServerOpen(key) => open_server(&app().hub.clone(), &key),
+            WinMsg::HostOpen(key) => open_host(&app().hub.clone(), &key),
+            WinMsg::HostChanged => {
+                // (Another host's things in the window: its name in the title.)
+                if self.role == WinRole::Host {
+                    cx.set_window_title(host_title());
+                }
+                cx.invalidate();
+            }
+            WinMsg::HostDo(what) => {
+                use crate::host_panel::HostDo;
+                let hub = app().hub.clone();
+                match what {
+                    HostDo::Change(thing, add) => crate::host::change(&hub, thing, add),
+                    HostDo::Check => crate::host::check(&hub),
+                    HostDo::Connect => {
+                        if let Some(shown) = crate::host::current() {
+                            hub.connect_host(&shown.key);
+                        }
+                    }
+                    HostDo::Server => {
+                        if let Some(shown) = crate::host::current() {
+                            open_server(&hub, &shown.key);
+                        }
+                    }
+                    HostDo::Permissions => olo_kit::app_menu::open_settings("rex"),
+                    HostDo::AskAll(asking) => crate::host::ask_all(asking),
+                    HostDo::RemoveAll(things) => crate::host::remove_all(&hub, &things),
+                }
+            }
             WinMsg::ServerChanged => {
                 let stage = crate::server::current().map(|m| m.stage);
                 // (The busy bar's timer, as Add Host's: begun with a
@@ -3910,6 +4031,9 @@ impl Drop for RexWindow {
         }
         if self.role == WinRole::Server {
             crate::server::close(&app().hub.clone());
+        }
+        if self.role == WinRole::Host {
+            crate::host::close();
         }
         self.cancel_preview();
         app().attention.hide(self.id);

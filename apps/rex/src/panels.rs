@@ -73,6 +73,26 @@ pub fn light(light: Light) -> Element {
     light_of(light, LIGHT)
 }
 
+/// A thing being done now, where a light would stand: a ring in the
+/// waiting light's colour, `across` points across. (Not that light
+/// itself, which is also a thing at rest that wants something: the
+/// Host window's "Being installed…" beside its "nothing granted to
+/// it", to the second design review.)
+pub fn busy_of(across: f32) -> Element {
+    canvas(move |g, b| {
+        let s = g.scale_factor();
+        let r = style::snap_centred(g, b.center(), across, across);
+        // (A point and a half of line, in whole device pixels.)
+        let line = (1.5 * s).round().max(1.0) / s;
+        g.paint_quad(olo_kit::quad(r, r.size.width / 2.0, olo_kit::transparent_black(), px(line), Light::Waiting.color(&theme::palette()), olo_kit::BorderStyle::Solid));
+    })
+    .paint_key(style::key(("busy", across.to_bits())))
+    .w(px(across))
+    .h(px(across))
+    .flex_shrink_0()
+    .into_any_element()
+}
+
 /// The same light, `across` points across: before words set smaller
 /// than a label's (the status bar's), in their proportion.
 pub fn light_of(light: Light, across: f32) -> Element {
@@ -305,7 +325,7 @@ pub fn render_hosts_panel(
     on_add_host: impl Fn(&(), &mut WindowCx) + 'static,
     on_connect_host: impl Fn(&String, &mut WindowCx) + 'static,
     on_remove_host: impl Fn(&String, &mut WindowCx) + 'static,
-    on_server: impl Fn(&String, &mut WindowCx) + 'static,
+    on_manage: impl Fn(&String, &mut WindowCx) + 'static,
     on_port: impl Fn(&(), &mut WindowCx) + 'static,
     on_forward: impl Fn(&(), &mut WindowCx) + 'static,
     on_stop: impl Fn(&String, &mut WindowCx) + 'static,
@@ -340,12 +360,12 @@ pub fn render_hosts_panel(
     .on_select(on_host);
     let host_list = div().w_full().h(tall(list_rows(hosts.len(), 5))).child(host_list);
     // Every button under the two lists as wide as the widest of them:
-    // one column of left edges, one of right. But the long one, which
-    // is as wide as its own words: as wide as it, the four under the
-    // hosts were wider than the window, and Connect was cut at its
-    // edge ("Manage Server…" renamed, 2026-11-23, and this window not
-    // pictured before the commit).
-    let wide = ["Add…", "Remove", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
+    // one column of left edges, one of right. (Four of them under the
+    // hosts: what they come to is to be less than the window. As wide
+    // as "Manage Rex Server…", which was here until that became the
+    // Host window's, they were more, and Connect was cut at the
+    // window's edge, 2026-11-23.)
+    let wide = ["Add…", "Remove", "Manage Host…", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
 
     // Under it: what is done to the one chosen. This computer's own
     // server isn't removed; Connect is for one that isn't connected.
@@ -364,11 +384,11 @@ pub fn render_hosts_panel(
             }
         }))
         .child(div().flex_1())
-        // (The chosen host's own Rex server, looked after as root: the
-        // Server window. For a host reached over SSH as an account.)
-        .child(Button::new("Manage Rex Server…").enabled(picked.is_some_and(|h| h.managed)).on_click(move |_, cx| {
+        // (Everything of Olo's on the chosen host, and its Rex server:
+        // the Host window. For any host but this computer.)
+        .child(Button::new("Manage Host…").min_width(wide).enabled(picked.is_some_and(|h| !h.local)).on_click(move |_, cx| {
             if let Some(key) = &pick_server {
-                on_server(key, cx);
+                on_manage(key, cx);
             }
         }))
         .child(Button::new("Connect").min_width(wide).enabled(picked.is_some_and(|h| h.connects)).on_click(move |_, cx| {
@@ -504,7 +524,7 @@ pub const ADD_HOST_WIDTH: f32 = 480.0;
 /// The size of what a host is asked to run, and of what it says.
 pub const COMMAND_SIZE: f32 = style::SMALL_SIZE;
 /// A well's room round what it holds.
-const WELL_INSET: f32 = 8.0;
+pub const WELL_INSET: f32 = 8.0;
 
 /// The Add Host window: a host's address and the name it goes by; for a
 /// host reached over SSH, how Rex runs there and whether to set it up;

@@ -111,11 +111,11 @@ def apps(home):
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
         ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),
         ("Telegram", ["olo-telegram"], {"OLO_TELEGRAM_DEMO": "4", "OLO_TELEGRAM_CACHE": tg + "/cache", "OLO_TELEGRAM_SECRETS": tg + "/secrets"}, False),
-        # (With Hosts and Ports open beside its window, hosts in every
-        # state in it: a window the app doesn't show at its start is
-        # one the lint doesn't see. `OLO_REX_DEMO_OPEN`: the commands
-        # that open them.)
-        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock"), "OLO_REX_DEMO_OPEN": "app.hosts", "OLO_REX_DEMO_HOSTS": "states"}, False),
+        # (With Hosts and Ports and a host's own window open beside its
+        # window, hosts in every state: a window the app doesn't show
+        # at its start is one the lint doesn't see. `OLO_REX_DEMO_OPEN`:
+        # the commands that open them.)
+        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock"), "OLO_REX_DEMO_OPEN": "app.hosts,host.manage:dev-box", "OLO_REX_DEMO_HOSTS": "states"}, False),
         ("Terminal", ["olo-terminal"], {}, False),
         ("Tracker", ["olo-tracker", home], {}, False),
         ("Viewer", ["olo-viewer", os.path.join(home, "Pictures/holiday.png")], {}, False),

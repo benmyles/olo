@@ -268,6 +268,15 @@ pub fn fetch_op_reference(reference: &str, purpose: &str) -> Result<String, Stri
 pub const PRESENT: &str =
     r#"sh -c 'if [ -x "$HOME/.local/share/olo-rex-bridge/bin/_olo_bridge_call" ]; then echo bridge; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; fi'"#;
 
+/// Takes the bridge's shims off a host (what
+/// [`generate_remote_shim_install_script`] put there).
+pub const REMOVE_SHIMS: &str = r#"rm -rf "$HOME/.local/share/olo-rex-bridge""#;
+
+/// Takes the skill for agents off a host (what
+/// [`generate_remote_skill_install_script`] put there; the skill that
+/// Rex's own `rex skill setup` installs is Rex's, and stays).
+pub const REMOVE_SKILL: &str = r#"rm -rf "$HOME/.claude/skills/olo-rex-bridge""#;
+
 /// What a host answered [`PRESENT`]: whether the bridge is there, and
 /// the skill.
 pub fn present(output: &str) -> (bool, bool) {
@@ -426,6 +435,16 @@ mod present_tests {
         let out = std::process::Command::new("sh").arg("-c").arg(generate_remote_skill_install_script()).env("HOME", &home).env("PATH", "/usr/bin:/bin").output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         assert_eq!(present(&run(PRESENT)), (true, true));
+        // (And taken off again, each by itself, as the Host window
+        // does it: given to a shell as one quoted word.)
+        run(&format!("sh -c {}", crate::hub::shell_quote(REMOVE_SHIMS)));
+        assert_eq!(present(&run(PRESENT)), (false, true));
+        run(&format!("sh -c {}", crate::hub::shell_quote(REMOVE_SKILL)));
+        assert_eq!(present(&run(PRESENT)), (false, false));
+        // (Put there the way it is put over SSH, too: the script as
+        // one quoted word of a command, its own quotes within.)
+        run(&format!("sh -c {}", crate::hub::shell_quote(&generate_remote_shim_install_script())));
+        assert_eq!(present(&run(PRESENT)), (true, false));
         let _ = std::fs::remove_dir_all(&home);
         assert_eq!(present("Linux\n"), (false, false));
     }

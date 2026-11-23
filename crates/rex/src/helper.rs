@@ -21,6 +21,12 @@ use crate::ssh::{SshAskpass, SshSessionPool, SshTarget};
 /// The helper's folder, under the account's home on the host.
 pub const DIR: &str = ".local/share/olo/rex-link";
 
+/// Takes every build of the helper off a host (a shell's command
+/// there), and its folder if nothing else is in it. A connection that
+/// goes through one goes on through it (it is a program running); the
+/// next goes straight to the server.
+pub const REMOVE: &str = r#"rm -f "$HOME"/.local/share/olo/rex-link/olo-rex-link-*; rmdir "$HOME/.local/share/olo/rex-link" 2>/dev/null; true"#;
+
 /// The helper's file there for the build `id`, as a shell on the host
 /// names it (its machine is the host's to say).
 pub fn file(id: &str) -> String {
