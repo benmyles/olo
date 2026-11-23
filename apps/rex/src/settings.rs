@@ -134,6 +134,9 @@ pub struct Settings {
     pub light_theme_id: Option<String>,
     pub dark_theme_id: Option<String>,
     pub font_size: f32,
+    /// What is typed is drawn at once where the host's echo is slow to
+    /// come back (`predict`).
+    pub type_ahead: bool,
     /// What Keep It Going types to an agent that has stopped.
     pub keep_going_message: String,
 
@@ -178,6 +181,7 @@ impl Default for Settings {
             light_theme_id: None,
             dark_theme_id: None,
             font_size: TEXT_SIZE,
+            type_ahead: true,
             keep_going_message: "Please keep going until everything is complete and verified.".to_owned(),
             home_server_address: "local".to_owned(),
             saved_hosts: Vec::new(),

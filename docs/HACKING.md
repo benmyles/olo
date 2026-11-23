@@ -26966,9 +26966,128 @@ with a host given):
   come); requests on each other's heels are answered in one round
   trip, in order.
 What is left is the link's own delay, which no way of sending removes:
-the letters typed are to be shown at once, as mosh shows them, and
-made good by the host's echo (docs/TODO.md, "A terminal that answers
-at once over a slow or laggy link": the next step).
+the letters typed are shown at once, as mosh shows them, and made good
+by the host's echo (below).
+
+**Typing shown at once** (`apps/rex/src/predict.rs`, 2026-11-22; Ben:
+"can we build something like that [mosh] into rex terminal but make it
+work better?", "it is critical that it work very well with complex TUIs
+like claude code / codex / agy not just plain terminal commands", "also
+of course color and everything must work too"). What is typed into a
+terminal is drawn at the caret as it is typed, where the host's echo is
+slow to come back; the echo, when it comes, is checked against it and
+takes its place. It is drawing only: nothing is sent that wasn't, and
+the host's own output isn't touched (its colours, its scrollback, its
+pictures are what they were). This is the client's half, and works
+with any host; the host's half is in TODO ("A terminal that answers at
+once over a slow or laggy link").
+- *The caret* (`predict::screen_of`) is the terminal's cursor where it
+  is shown (a shell, an editor, agy, Codex, Claude Code as it runs
+  now), and otherwise the one cell a program draws in reverse video as
+  its own (programs built on Ink hide the cursor and draw theirs, as
+  Claude Code did); two such cells, and which is the
+  caret isn't known: nothing is drawn ahead. A row is known by what it
+  holds, never by where it is: an input box moves as what is above it
+  grows.
+- *What is predicted* (`Line::step`): a letter typed, one cell wide or
+  two, which goes in at the caret; Backspace and the left arrow over
+  what was typed in the same run (never into a prompt); the right arrow
+  and Delete over what the caret was moved back across. What is right
+  of the caret is pushed along where it is the line's own text, written
+  over where it is drawn dimmer (a suggestion, a placeholder: faint,
+  the palette's grey, or a colour much nearer the ground than text is;
+  never by hue, which a shell that colours what is typed changes word by
+  word), and never touched past a gap of two cells, a box's edge, a
+  change of ground or the last column. Everything else (Enter, Tab,
+  history, a control key, a paste, Home and End, a word's deletion) is
+  not predicted: programs disagree on them.
+- *When it is shown*: mosh's rule, strictly. What is typed is unseen
+  until a letter typed in the same *epoch* has come back as predicted;
+  a new epoch begins at every key that isn't predicted, at every
+  prediction that proved wrong, and whenever the caret's place, the
+  text before it or the cursor's shape changes by the host's doing
+  alone. So nothing typed at a password's prompt, or into a program
+  that doesn't echo, is ever drawn. A letter the host draws as
+  something else taints its line (a secret's mask); a mask's own
+  letters and a space prove nothing; a letter typed and taken back
+  proves nothing; the host's word that the terminal reads a secret
+  (`input_mode`) forbids it too. And only where the echo is slow enough
+  to see (45 ms): on this computer the host's echo is the picture.
+  Settings ▸ Show Typing Immediately (`type_ahead`, on) turns it off.
+- *How it is checked*: what was sent waits in a queue of keys and
+  *gaps* (what isn't predicted). The keys at its head are placed: each
+  frame is one of the screens they make on the way, or it isn't, and
+  then it is given 24 ms to become one (a program's redraw comes in
+  pieces) before what was drawn is given up. Keys behind a gap aren't
+  placed: they are looked for in each frame as a change from the one
+  before it (`found`), by rules each of which a played session forced
+  (below). Keys the host took and didn't show are let go (400 ms after
+  its answer, or twice the echo's time; 200 ms behind a gap).
+- *Painted as the row itself*: the caret's row with the cells drawn
+  ahead goes through the pane's own row builder (`predicted_row`,
+  `build_cached_row`), a typed letter in the colours and weight of the
+  letter before it, text moved along as it was, a program's caret as
+  the program drew it; so nothing moves or changes colour when the echo
+  comes.
+- *Where it runs*: a key typed is told as it is sent (`input_typed`),
+  the write's leaving and its answer by the input worker, and a frame
+  at the pane's paint, after its capture (`BlockRuntime::predicted`);
+  what waits on time waits once (`predict_wake`: one task, no clock).
+  A terminal nothing is typed into isn't looked at
+  (`Predictor::wants_frames`).
+- *A host that is silent* about something typed for two seconds (or
+  three of its quickest answers) is said at the status bar's far end,
+  with a waiting host's light before it: "“far” hasn’t answered for 4
+  seconds", by the second for a minute and by the minute from then
+  (`hub::silent_said`); and the host's own light in the sidebar is
+  that light for as long, with the same words for its tip
+  (`HubState::host_silent` is the one condition for both: the bar's
+  word beside a green light was the second design review's first
+  finding). The bar's light and gap are the sidebar's in the proportion
+  of the bar's smaller words (seven points and five, of eight and six:
+  `panels::light_of`). What the bar says otherwise stays where it is,
+  and the bar has two points under its words now, as it has over them.
+  What was typed stays drawn, as the host's own (a mark under it while
+  the host is silent was tried, and is in TODO: it isn't right yet).
+- *A program's update is held to its end* (`BlockRuntime::held`): while
+  a program is in a synchronized update (DEC mode 2026, which Claude
+  Code and Codex draw every frame in), the pane goes on showing the
+  last whole frame, for a second at most. It showed the half-drawn
+  screen whenever an update came in two pieces, which over a slow link
+  is often.
+- *Tested*: each rule by a test of its own (`predict/tests.rs`,
+  `predict/pane.rs` on a real terminal engine), and **sessions played
+  by the thousand** (`predict/played.rs`; Ben: "make sure there are
+  fuzz tests for this all this slow link stuff too"): a shell or a
+  program that draws its own caret, a typist of uneven pace, a link
+  that delays, stalls, drops frames and lets an echo pass its answer,
+  someone else typing into the same line. Held at every step: nothing
+  typed into a line that reads a secret or draws a mask is ever drawn;
+  what is drawn is what the host then shows; nothing is left at the
+  end; and enough is drawn at once to be of use. `PLAY_ONLY=N
+  PLAY_SAY=1 cargo test -p olo-rex sessions_played -- --nocapture`
+  plays one and says what happens in it. They found eight faults as
+  the model was written, three of which would have drawn what was typed
+  at a prompt that echoes nothing (`played.rs` names them). And the
+  rig, for the app itself over a slow link: `tools/dev/rex-slow`
+  (AGENT-NOTES).
+- *Measured* (release builds, a scratch server, the app headless at 120
+  Hz): over a link of 150 ms each way a typed letter was drawn after
+  303 ms at the middle (308 at nine in ten) before, and after 0.7 ms
+  (2.3; 30 at worst) now. On a link with no delay nothing is drawn
+  ahead and nothing changed: 1.5 to 1.7 ms before, 1.6 after; 200
+  letters typed cost 1,381 and 1,383 million instructions before,
+  1,386 and 1,388 after (25,000 a letter, to follow it); a flood of
+  500,000 lines, 2,038 to 2,189 million before and 2,052 to 2,218 after
+  over five runs each (the spread is the frames a run happens to
+  paint); at rest, nothing, before and after.
+- *What it leaves*: after each Enter what is typed is unseen until a
+  letter is back, which on a very slow link is most of a short line
+  (the played typist, who presses Enter every seventeen keys, has 81 in
+  a hundred letters drawn at once at 35 ms each way, 65 at 90, 45 at
+  200, 20 at 450). That, a key's one and a half round trips, a lost
+  packet's second or two and the seven round trips of connecting are
+  the host's half.
 
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,

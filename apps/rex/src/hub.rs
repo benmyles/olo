@@ -129,6 +129,19 @@ pub struct BlockRuntime {
     pub last_bell: Option<Instant>,
     pub data_connected: bool,
     input_ready: bool,
+    /// What is typed here shown at once, over a link that takes its
+    /// time (`predict`).
+    pub predict: crate::predict::Predictor,
+    /// When the predictions are next looked at for what time brings
+    /// (one wait, begun when there is something to wait for).
+    predict_wake: Option<Instant>,
+    /// For how many seconds the host is said (in the window's status
+    /// bar) to have been silent about something typed.
+    stall_said: Option<u64>,
+    /// Since when the program has been in the middle of an update of
+    /// its screen (its synchronized output, DEC mode 2026): the pane
+    /// goes on showing the frame from before it.
+    updating_since: Option<Instant>,
     pub received_bytes: u64,
     pub upload_progress: Option<(String, f32)>,
     pub password_prompt: bool,
@@ -233,6 +246,10 @@ impl BlockRuntime {
             last_bell: None,
             data_connected: false,
             input_ready: false,
+            predict: crate::predict::Predictor::new(false),
+            predict_wake: None,
+            stall_said: None,
+            updating_since: None,
             received_bytes: 0,
             upload_progress: None,
             password_prompt: false,
@@ -298,6 +315,73 @@ impl BlockRuntime {
         }
         None
     }
+    /// The caret's row of the frame as last captured, for predictions:
+    /// none while text is being selected by keys or the pane looks
+    /// back at what scrolled away (nothing typed is seen go in there).
+    fn caret_screen(&self) -> Option<crate::predict::Screen> {
+        if self.copy_mode.is_some() || !self.terminal.is_viewport_at_bottom() {
+            return None;
+        }
+        crate::predict::screen_of(&self.frame, self.terminal.active_screen() == olo_rex_vt::ScreenKind::Alternate)
+    }
+
+    /// At a paint, the frame just captured: the predictions are shown
+    /// it, and what they draw over it is returned, with the time they
+    /// are to be looked at again if they wait on one. Nothing where
+    /// nothing is typed here (its frames aren't looked at).
+    pub fn predicted(&mut self, now: Instant) -> (Option<crate::predict::Overlay>, Option<Instant>) {
+        if !self.predict.wants_frames() {
+            return (None, None);
+        }
+        // (In the middle of a program's update, DEC mode 2026, the frame
+        // isn't one: nothing is judged by a piece.)
+        if !self.terminal.dec_mode(2026) {
+            let screen = self.caret_screen();
+            self.predict.frame(screen.as_ref(), now);
+        }
+        let (next, _, _) = self.predict_tick(now);
+        (self.predict.overlay(), next)
+    }
+
+    /// How long the host has been silent about something typed here,
+    /// where that is long enough to say.
+    pub fn stalled(&self) -> Option<Duration> {
+        self.predict.stalled(Instant::now())
+    }
+
+    /// What time brings to the predictions, looked at now: when to look
+    /// next, whether what they draw changed, and whether what the
+    /// status bar says of a silent host did.
+    fn predict_tick(&mut self, now: Instant) -> (Option<Instant>, bool, bool) {
+        let (next, changed) = self.predict.tick(now);
+        // (Said by the second for a minute, by the minute from then.)
+        let said = self.predict.stalled(now).map(|silent| silent.as_secs()).map(|secs| if secs < 60 { secs } else { secs / 60 * 60 });
+        let chrome = std::mem::replace(&mut self.stall_said, said) != said;
+        (next.into_iter().chain(self.predict.stall_changes(now)).min(), changed, chrome)
+    }
+
+    /// Whether the pane is to go on showing the frame it has: the
+    /// program is in the middle of an update of its screen
+    /// (synchronized output, DEC mode 2026), and what is on its screen
+    /// now is a piece of a frame. Not for longer than a second (a
+    /// program that never ends its update isn't waited on): `again`,
+    /// when to paint whatever there is.
+    pub fn held(&mut self, now: Instant) -> Option<Duration> {
+        if !self.terminal.dec_mode(2026) {
+            self.updating_since = None;
+            return None;
+        }
+        let since = *self.updating_since.get_or_insert(now);
+        Duration::from_secs(1).checked_sub(now.saturating_duration_since(since)).filter(|left| !left.is_zero())
+    }
+
+    /// Whether the terminal reads a secret, as the host says: kept, and
+    /// the predictions told (nothing of a secret is drawn).
+    fn set_password_prompt(&mut self, asks: bool) -> bool {
+        self.predict.set_secret(asks);
+        std::mem::replace(&mut self.password_prompt, asks) != asks
+    }
+
     fn find_step(&mut self, generation: u64) -> Result<bool, olo_rex_vt::VtError> {
         if !self.finding || self.find_generation != generation {
             return Ok(true);
@@ -454,9 +538,25 @@ impl FocusTarget {
 
 /// Ordered terminal input operation serialized strictly FIFO per host so fast typing never reorders.
 enum HostInputOp {
-    Focus { session_id: String, switch: bool, target: Arc<FocusTarget> },
-    Write { session_id: String, block_id: String, text: String },
-    Key { session_id: String, block_id: String, event: RexKeyEvent },
+    Focus {
+        session_id: String,
+        switch: bool,
+        target: Arc<FocusTarget>,
+    },
+    /// (`seq`: its number among what was typed in that terminal, given
+    /// back to the terminal's predictions when the host has answered.)
+    Write {
+        session_id: String,
+        block_id: String,
+        text: String,
+        seq: u64,
+    },
+    Key {
+        session_id: String,
+        block_id: String,
+        event: RexKeyEvent,
+        seq: u64,
+    },
 }
 
 /// The name a host goes by when it is given none: the host in its
@@ -531,6 +631,60 @@ pub fn folder_said(folder: &str, home: Option<&str>) -> String {
         },
         None => folder.to_owned(),
     }
+}
+
+/// What the status bar says of a host that has been silent about
+/// something typed for `silent`: its name (quoted where the person gave
+/// it), and for how long, by the second for a minute and by the minute
+/// from then.
+pub fn silent_said(host: &str, local: bool, silent: Duration) -> String {
+    let who = if local { host.to_owned() } else { olo_kit::tr!("“{}”", host).to_string() };
+    match silent.as_secs() {
+        secs @ 0..=59 => olo_kit::tr!("{} hasn’t answered for {} seconds", who, secs),
+        60..=119 => olo_kit::tr!("{} hasn’t answered for over a minute", who),
+        secs => olo_kit::tr!("{} hasn’t answered for over {} minutes", who, secs / 60),
+    }
+    .to_string()
+}
+
+/// A terminal's predictions are looked at once, at `at`, for what time
+/// brings (a frame that was none of those expected is believed, a key
+/// the host took and didn't show is given up), and the pane drawn again
+/// if what they draw changed: one wait, begun when there is something
+/// to wait for, never a clock that ticks. `held`: the block, locked by
+/// the caller.
+fn predict_wake(rt: &tokio::runtime::Handle, block: &Arc<Mutex<BlockRuntime>>, held: &mut BlockRuntime, key: &BlockKey, notify: &Arc<dyn Fn(HubNotice) + Send + Sync>, at: Instant) {
+    if held.predict_wake.is_some_and(|waited| waited <= at) {
+        return;
+    }
+    held.predict_wake = Some(at);
+    let (block, key, notify) = (block.clone(), key.clone(), notify.clone());
+    rt.spawn(async move {
+        let mut at = at;
+        loop {
+            tokio::time::sleep_until(at.into()).await;
+            let (next, changed, chrome) = {
+                let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+                // (A sooner wait was begun since: this one is its.)
+                if b.predict_wake != Some(at) {
+                    return;
+                }
+                let (next, changed, chrome) = b.predict_tick(Instant::now());
+                b.predict_wake = next;
+                (next, changed, chrome)
+            };
+            if changed {
+                notify(HubNotice::BlockOutput(key.clone()));
+            }
+            if chrome {
+                notify(HubNotice::StateChanged);
+            }
+            match next {
+                Some(next) => at = next,
+                None => return,
+            }
+        }
+    });
 }
 
 /// Whether a program at a terminal in this input mode is asking for
@@ -652,13 +806,14 @@ pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::S
 /// typed.
 fn typed_together(waiting: &mut std::collections::VecDeque<HostInputOp>) -> Option<HostInputOp> {
     let mut first = waiting.pop_front()?;
-    if let HostInputOp::Write { session_id, block_id, text } = &mut first {
+    if let HostInputOp::Write { session_id, block_id, text, seq } = &mut first {
         while let Some(HostInputOp::Write { session_id: s, block_id: b, .. }) = waiting.front() {
             if s != session_id || b != block_id {
                 break;
             }
-            if let Some(HostInputOp::Write { text: more, .. }) = waiting.pop_front() {
+            if let Some(HostInputOp::Write { text: more, seq: later, .. }) = waiting.pop_front() {
                 text.push_str(&more);
+                *seq = later.max(*seq);
             }
         }
     }
@@ -822,6 +977,16 @@ pub struct HubState {
 }
 
 impl HubState {
+    /// How long a host has been silent about something typed into one
+    /// of its terminals, where that is long enough to say: the longest
+    /// of them. What the status bar says and the sidebar's light for
+    /// the host shows are both this, so they can't disagree. (Typing
+    /// goes to a host one write at a time: a terminal of it unanswered
+    /// is the host unanswering.)
+    pub fn host_silent(&self, host_key: &str) -> Option<Duration> {
+        self.blocks.iter().filter(|(key, _)| key.host_key == host_key).filter_map(|(_, block)| block.lock().unwrap_or_else(|e| e.into_inner()).stalled()).max()
+    }
+
     fn retain_blocks(&mut self, keep: impl Fn(&BlockKey) -> bool) {
         self.blocks.retain(|k, b| {
             if keep(k) {
@@ -1404,6 +1569,21 @@ impl RexHub {
         (self.notify)(HubNotice::StateChanged);
     }
 
+    /// Whether what is typed is drawn ahead of a slow host's echo, in
+    /// every terminal (the Settings menu's choice).
+    pub fn set_type_ahead(&self, on: bool) {
+        let blocks: Vec<_> = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.settings.type_ahead = on;
+            st.settings.save();
+            st.blocks.iter().map(|(key, block)| (key.clone(), block.clone())).collect()
+        };
+        for (key, block) in blocks {
+            block.lock().unwrap_or_else(|e| e.into_inner()).predict.set_on(on);
+            (self.notify)(HubNotice::BlockOutput(key));
+        }
+    }
+
     pub fn update_settings(&self, settings: Settings, new_theme: TerminalTheme) {
         let mut terms_to_theme = Vec::new();
         let mut live_blocks = Vec::new();
@@ -1789,14 +1969,41 @@ impl RexHub {
 
     pub fn write_input(&self, key: &BlockKey, data: Vec<u8>, connection: Option<&ControlClient>) {
         if let Some(tx) = self.writer_for_key(key, connection) {
+            let seq = self.input_typed(key, &data);
             let text = String::from_utf8_lossy(&data).into_owned();
-            let _ = tx.send(HostInputOp::Write { session_id: key.session_id.clone(), block_id: key.block_id.clone(), text });
+            let _ = tx.send(HostInputOp::Write { session_id: key.session_id.clone(), block_id: key.block_id.clone(), text, seq });
         }
+    }
+
+    /// What was typed into a terminal, told to its predictions
+    /// (`predict`): its number among what is typed there. Where it
+    /// changes what is drawn (a letter shown at once), the pane is
+    /// drawn again.
+    fn input_typed(&self, key: &BlockKey, data: &[u8]) -> u64 {
+        let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned() else { return 0 };
+        let (seq, changed) = {
+            let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+            // (Typed on what was last drawn of it.)
+            let screen = b.caret_screen();
+            b.predict.typed(data, screen.as_ref(), Instant::now())
+        };
+        if changed {
+            (self.notify)(HubNotice::BlockOutput(key.clone()));
+        }
+        seq
+    }
+
+    /// From a paint: the predictions of the terminal it draws wait on
+    /// time (`at`) for something.
+    pub fn wake_predictions(&self, block: &Arc<Mutex<BlockRuntime>>, held: &mut BlockRuntime, key: &BlockKey, at: Instant) {
+        predict_wake(self.rt.handle(), block, held, key, &self.notify, at);
     }
 
     pub fn send_rex_key(&self, key: &BlockKey, event: RexKeyEvent) {
         if let Some(tx) = self.writer_for_key(key, None) {
-            let _ = tx.send(HostInputOp::Key { session_id: key.session_id.clone(), block_id: key.block_id.clone(), event });
+            // (A key the host's own bindings are asked about: not one to predict.)
+            let seq = self.input_typed(key, &[0x1b]);
+            let _ = tx.send(HostInputOp::Key { session_id: key.session_id.clone(), block_id: key.block_id.clone(), event, seq });
         }
     }
 
@@ -2158,6 +2365,60 @@ impl RexHub {
 }
 
 impl RexHubInner {
+    /// What was typed up to `seq` in a terminal leaves for the host
+    /// now: its predictions are told (an echo can't be back sooner
+    /// than a round trip from this).
+    fn input_went(&self, host_key: &str, session_id: &str, block_id: &str, seq: u64) {
+        let key = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: block_id.to_owned() };
+        if let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned() {
+            let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            b.predict.went(seq, now);
+            // (Its silence, if it comes to that, is said when it has
+            // lasted: one wait, begun here.)
+            if let Some(at) = b.predict.stall_changes(now) {
+                predict_wake(&tokio::runtime::Handle::current(), &block, &mut b, &key, &self.notify, at);
+            }
+        }
+    }
+
+    /// The host answered what was typed up to `seq` in a terminal: its
+    /// predictions are told, and what the host then doesn't echo in
+    /// time is given up (looked at once, at that time).
+    fn input_answered(&self, host_key: &str, session_id: &str, block_id: &str, seq: u64) {
+        let key = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: block_id.to_owned() };
+        let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned() else { return };
+        let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        let seen = b.predict.answered(seq, now);
+        let (next, changed, chrome) = b.predict_tick(now);
+        let changed = changed || seen;
+        if let Some(at) = next {
+            predict_wake(&tokio::runtime::Handle::current(), &block, &mut b, &key, &self.notify, at);
+        }
+        drop(b);
+        if changed {
+            (self.notify)(HubNotice::BlockOutput(key));
+        }
+        if chrome {
+            (self.notify)(HubNotice::StateChanged);
+        }
+    }
+
+    /// Something the app itself writes into a terminal (a nudge to an
+    /// agent to keep going): not typed, and not predicted, but the
+    /// terminal's predictions are told that the screen will change by
+    /// it.
+    fn input_by_itself(&self, key: &BlockKey) {
+        if let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned() {
+            let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            let (seq, _) = b.predict.typed(&[0x1b], None, now);
+            b.predict.went(seq, now);
+            b.predict.answered(seq, now);
+        }
+    }
+
     fn search_on_worker(&self, block: Arc<Mutex<BlockRuntime>>, generation: u64) {
         let notify = self.notify.clone();
         tokio::task::spawn_blocking(move || {
@@ -2359,11 +2620,15 @@ impl RexHubInner {
                                             inner_in.ingest_session(&host_in, &ctrl_in, &ep_in, view.payload, &[]).await;
                                         }
                                     }
-                                    HostInputOp::Write { session_id, block_id, text } => {
+                                    HostInputOp::Write { session_id, block_id, text, seq } => {
+                                        inner_in.input_went(&host_in, &session_id, &block_id, seq);
                                         let _ = ctrl_in.terminal_write(&session_id, &block_id, &text).await;
+                                        inner_in.input_answered(&host_in, &session_id, &block_id, seq);
                                     }
-                                    HostInputOp::Key { session_id, block_id, event } => {
+                                    HostInputOp::Key { session_id, block_id, event, seq } => {
+                                        inner_in.input_went(&host_in, &session_id, &block_id, seq);
                                         let _ = ctrl_in.client_key(&session_id, Some(&block_id), &event, None).await;
+                                        inner_in.input_answered(&host_in, &session_id, &block_id, seq);
                                     }
                                 }
                             }
@@ -2582,6 +2847,7 @@ impl RexHubInner {
                     }
                 } else {
                     let mut br = BlockRuntime::new(120, 32, &theme);
+                    br.predict.set_on(st.settings.type_ahead);
                     br.creator_name = b.creator_name.clone();
                     br.title = b.label.clone();
                     br.label = b.label.clone();
@@ -2737,8 +3003,7 @@ impl RexHubInner {
                         }
                         if let Ok(mode) = ctrl.terminal_input_mode(&bk.session_id, &bk.block_id).await {
                             let asks = asks_for_secret(mode.payload.echo, mode.payload.canonical);
-                            let was = std::mem::replace(&mut br.lock().unwrap_or_else(|e| e.into_inner()).password_prompt, asks);
-                            if was != asks {
+                            if br.lock().unwrap_or_else(|e| e.into_inner()).set_password_prompt(asks) {
                                 notify(HubNotice::StateChanged);
                             }
                         }
@@ -2864,7 +3129,7 @@ impl RexHubInner {
                 b.status_snapshot(Some(status));
                 b.set_ports(ports.seq, ports.payload);
                 b.process_snapshot(process);
-                b.password_prompt = asks_for_secret(mode.payload.echo, mode.payload.canonical);
+                b.set_password_prompt(asks_for_secret(mode.payload.echo, mode.payload.canonical));
             }
         }
         self.write_palette_index();
@@ -2952,7 +3217,7 @@ impl RexHubInner {
                     if matches!(what, None | Some("input_mode_changed"))
                         && let Ok(r) = ctrl.terminal_input_mode(&sid, &bid).await
                     {
-                        block.lock().unwrap_or_else(|e| e.into_inner()).password_prompt = asks_for_secret(r.payload.echo, r.payload.canonical);
+                        block.lock().unwrap_or_else(|e| e.into_inner()).set_password_prompt(asks_for_secret(r.payload.echo, r.payload.canonical));
                     }
                     (self.notify)(HubNotice::StateChanged);
                 }
@@ -2989,7 +3254,7 @@ impl RexHubInner {
                             "input_mode_changed" => {
                                 if let Some(echo) = payload.get("echo").and_then(Value::as_bool) {
                                     // (No word of `canonical`: taken as on, as it is at a terminal's start.)
-                                    g.password_prompt = asks_for_secret(echo, payload.get("canonical").and_then(Value::as_bool).unwrap_or(true));
+                                    g.set_password_prompt(asks_for_secret(echo, payload.get("canonical").and_then(Value::as_bool).unwrap_or(true)));
                                 }
                             }
                             "program_status_changed" | "program_status_removed" => {
@@ -3052,6 +3317,7 @@ impl RexHubInner {
                         self.pane_attention(&bk, title, body, kind);
                     }
                     if let Some(nudge) = keep_going_nudge {
+                        self.input_by_itself(&bk);
                         let _ = ctrl.terminal_write(&session_id, &block_id, &nudge).await;
                     }
                     (self.notify)(HubNotice::StateChanged);
@@ -3330,12 +3596,24 @@ mod tests {
     /// order; a key event, another pane's text and a change of focus
     /// keep their places between.
     #[test]
+    fn a_silent_host_is_said_by_the_second_then_by_the_minute() {
+        let said = |local, secs| silent_said(if local { "This computer" } else { "far" }, local, Duration::from_secs(secs));
+        assert_eq!(said(false, 2), "“far” hasn’t answered for 2 seconds");
+        assert_eq!(said(false, 59), "“far” hasn’t answered for 59 seconds");
+        assert_eq!(said(false, 60), "“far” hasn’t answered for over a minute");
+        assert_eq!(said(false, 119), "“far” hasn’t answered for over a minute");
+        assert_eq!(said(false, 185), "“far” hasn’t answered for over 3 minutes");
+        assert_eq!(said(true, 4), "This computer hasn’t answered for 4 seconds");
+    }
+
+    #[test]
     fn what_waits_is_written_together_in_order() {
         use std::collections::VecDeque;
-        let text = |block: &str, text: &str| HostInputOp::Write { session_id: "s".into(), block_id: block.into(), text: text.into() };
+        let text = |block: &str, text: &str| HostInputOp::Write { session_id: "s".into(), block_id: block.into(), text: text.into(), seq: 0 };
         let key = || HostInputOp::Key {
             session_id: "s".into(),
             block_id: "a".into(),
+            seq: 0,
             event: RexKeyEvent { key: "key_c".into(), mods: "ctrl".into(), consumed_mods: String::new(), text: String::new(), unshifted_codepoint: 99, composing: false, action: "press".into() },
         };
         let mut waiting: VecDeque<HostInputOp> = [text("a", "e"), text("a", "c"), text("a", "ho"), key(), text("a", " x"), text("b", "ls"), text("a", "\r")].into();

@@ -1150,20 +1150,143 @@ something nobody here has is in "Blocked", with what it waits for.
     order, so typing keeps its one write at a time; Nagle's algorithm
     is off on the SSH socket now (no change to typing; a hazard gone).
     Nothing of Rex's own holds a letter a second: **what is left is
-    the link**, and the cure is the letters shown at once. **Next**:
-    the prediction itself, in the pane: printable letters, Backspace
-    and the two arrows shown where the cursor is, in an epoch that is
-    hidden until one of its letters is confirmed by the host's echo (a
-    password, or a program that doesn't echo, never shows one), a new
-    epoch at Enter, an escape or a control key, all of it dropped on
-    the first letter that comes back otherwise, shown only when the
-    measured echo is slow enough to see (and underlined while it
-    waits); and a quiet word in the pane when the host hasn't answered
-    for a while. Then the link made worse on purpose (delay, loss) to
-    try it, and what a lost packet costs a connection over TCP looked
-    at (thin-stream timeouts, a quick acknowledgement), since a second
-    or two for a letter is a lost packet's price more than a slow
-    link's.
+    the link**, and the cure is the letters shown at once.
+    **The client's half is in, 2026-11-22** (HACKING, Rex, "Typing
+    shown at once"; `apps/rex/src/predict.rs`): what is typed is drawn
+    at the caret at once, in a shell and in a program that draws its
+    own caret alike, painted as the row itself is (its colours and
+    weight), by mosh's rule held strictly (unseen until a letter of the
+    same epoch has come back; a secret never drawn); the status bar
+    says when the host hasn't answered; a program's synchronized update
+    is held to its end. Over a link of 150 ms each way a typed letter
+    was drawn after 303 ms at the middle before, and after 0.7 ms now.
+    Ben, as it was being built: "this needs to work incredibly well --
+    if it's helpful to have e.g. a daemon server side to help for this
+    too you can also add that and have the rex app setup install that
+    too when it manages the rex server … i just want this to be the
+    best ever implementation for this kind of thing, way better than
+    mosh"; "it is critical that it work very well with complex TUIs
+    like claude code / codex / agy not just plain terminal commands";
+    "make sure there are fuzz tests for this all this slow link stuff
+    too so that we catch and fix all the edge cases / race conditions";
+    "also of course color and everything must work too".
+    **Next, the host's half** (a helper of Olo's own on the host: a
+    static Rust program put there by the app, as the account, started
+    over SSH; Gemini's review of the design, 2026-11-22, is what most
+    of this list is from):
+    - *Every key in one round trip, not one and a half.* The helper
+      takes what is typed in order on the host (the Rex server takes
+      two requests at once and may write them out of order, which is
+      why the app waits for each write's answer before the next), so
+      the app sends each key as it is typed. Measured before: a
+      letter's echo after 183 to 237 ms sent so, 241 to 355 as now.
+    - *The first letter at a shell's prompt at once.* After every
+      Enter what is typed is unseen until a letter is back (mosh's
+      rule: on a link of 450 ms each way only a fifth of a fast
+      typist's letters are drawn at once, of 81 in a hundred at 35 ms:
+      the played sessions' count). The helper knows what the client
+      can't: that the shell itself is in the foreground and reading
+      key by key (the Rex server's own `terminal.process` and
+      `input_mode`, asked on the host for nothing), said in the stream
+      of the terminal's output after it has gone quiet. Never by the
+      pty's own queues (on Linux a pty's far side says nothing of
+      them, and holding it open keeps a pane from closing), and never
+      alone: with the shell's bracketed-paste mode seen to go off and
+      on again after the Enter, nothing typed since still on its way,
+      one client in the session. Programs that aren't shells stay on
+      mosh's rule.
+    - *A link of its own over UDP* (QUIC: `quinn`, with a cipher in
+      Rust alone so the helper is built for x86_64 and aarch64 hosts
+      with no C toolchain; the key handed over SSH; the same frames
+      over the SSH channel at once, and taken over to UDP if it gets
+      through). A terminal's output no longer holds up typing or
+      another terminal; small urgent frames (a key going up, a short
+      burst of echo coming down) go twice a few ms apart where the
+      link loses packets, so a lost packet costs a few ms and not a
+      second or two (over TCP it is 300 to 500 ms each, more for two:
+      this is where "a second or two" comes from); the session goes
+      on through a change of network or a sleep. No keepalive at rest.
+    - *Connecting in fewer round trips.* Seven of them pass between
+      the window opening and its terminal showing (measured: 2.1, 4.3
+      and 8.3 s at 150, 300 and 600 ms each way), one after another;
+      what can be asked together should be, and the helper can answer
+      it all in one.
+    - *A flood that doesn't hold the link*: hidden panes paused at the
+      host, a flooding one caught up from the screen's state once it
+      stops (not its every line), big chunks packed.
+    - *Fewer bytes on a slow link*: the SSH connection's own
+      compression (russh is built with it; whether it is asked for,
+      and what it does to a program that redraws its whole screen at
+      each key, to be measured against the test host), before the
+      helper's own packing.
+    - *The link's state for the person and for agents* (which way it
+      goes, round trip, loss, how much is drawn ahead and how often
+      wrongly), in Diagnostics.
+    - *Installed and kept current by the app* (Add Host and the Server
+      window), for the account, with no root.
+    - *The real programs typed into* (Claude Code, Codex, agy): they
+      were looked at for how they draw their caret (agy and Claude
+      Code, as they run here, show the terminal's cursor; programs
+      built on Ink, as Claude Code was, hide it and draw their own in
+      reverse video), and stand-ins that draw in both ways are what
+      was typed into (`tools/dev/rex-slow/tui.py`, the rig's). Each to
+      be typed into for real, without sending anything.
+    - *The test server with the link made worse* (delay, loss, jitter:
+      `tc netem` there), for numbers over a real link.
+    *A mark under what a silent host hasn't answered for* (Opus, at
+    the third review: while the status bar says the host is silent,
+    text drawn ahead looks like text it acknowledged). Tried over three
+    more rounds and taken out again, not yet right; what the reviews
+    settled: not the terminal's own underline (under a space it reads
+    as an underscore typed, and it is half a point thick at 2×); a
+    dotted line at the cells' foot, flush with the cursor block's, in
+    an ink midway between the pane's text and its ground (never
+    amber: nothing is wrong with what was typed), square dots as far
+    apart as wide in whole device pixels, counted from the pane's
+    edge. What is left: at 1× a letter's tail comes down onto the
+    dots, and leaving dots out by the letter's bounds breaks the line
+    under "gy" into pieces; only the dots a tail's ink really stands
+    over are to go (the glyph's own ink, which `olo_interface`'s text
+    system has and doesn't give out yet), no piece shorter than three
+    dots; and one device pixel at 1.5× reads fainter than the others.
+    *From its design reviews, not done*: the kit's check mark in a
+    menu (both reviewers find it large or crowded beside its label;
+    measured ten points square, its top at the capitals' height and a
+    point under the baseline, six points either side: every menu's, so
+    a look of its own); the note's light moves a digit's width when
+    the count goes from 9 to 10 seconds (Opus: acceptable; a least
+    width would still it).
+    *Shell over WireGuard, set up by Rex on both ends* (Ben,
+    2026-11-22: "maybe it's also worth having shell over WireGuard as
+    an option and rex automating it client and server side would that
+    help with latency too?"): looked at, and not for this. A tunnel
+    carries the same packets the same way and SSH's TCP still runs
+    inside it, so a lost packet still holds up all behind it and the
+    round trip is the same; what it gives (a session through a change
+    of network, one UDP port through NAT) the helper's own link gives
+    too, with the latency, and without root or a network interface on
+    either end. Olo's VPNs (Preferences ▸ Network) and Rex's Tailscale
+    stay what they are for: reaching a host and what is on it.
+  - *An account set up on a new host, and the bridge through the Token
+    Pool* (Ben, 2026-11-22: "let's make sure that the olo bridge
+    supports token pool and have a way in the rex app where i can have
+    rex auto-setup my user on a remote server like install claude
+    code, agy, codex, copy my local settings, configure the remote
+    ones to go through token pool, and so on. do it in a way where we
+    can extend this over time too, e.g. choosing what repos to clone
+    and how to set them up and so on to get everything up and running
+    for a user as quickly and easily as possible on a new remote
+    server"). Two things: Olo's bridge on a host (the `olo-rex-bridge`
+    shims) carrying the agents' requests to this computer's Token
+    Pool, so Claude Code, Codex and agy on the host draw on the pool
+    as they do here, with the same say over it; and, in Rex, a host's
+    account made ready in one go from a list of steps that can grow:
+    the agents installed, the person's settings for them copied (what
+    is theirs to copy, nothing secret left on the host that the pool
+    makes unneeded), each pointed at the pool, then repositories
+    cloned and set up as the person chose. Each step shown as it runs
+    (the Server window's way), safe to run again, and written so a
+    step is a small thing to add. After the slow link's host half.
   - *Files from a host, and folders kept in step* (Ben, 2026-11-22:
     "thinking about what we'll need to use rex to build olo (as an
     example), once it's built we'd want an easy way to e.g.

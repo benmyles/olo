@@ -70,7 +70,18 @@ pub const LIGHT: f32 = 8.0;
 /// (in a box of 10 it stood a point to the right of the label above
 /// it); to be centred on the line beside it.
 pub fn light(light: Light) -> Element {
-    canvas(move |g, b| style::dot(g, b.center(), LIGHT, light.color(&theme::palette()))).paint_key(style::key(light)).w(px(LIGHT)).h(px(LIGHT)).flex_shrink_0().into_any_element()
+    light_of(light, LIGHT)
+}
+
+/// The same light, `across` points across: before words set smaller
+/// than a label's (the status bar's), in their proportion.
+pub fn light_of(light: Light, across: f32) -> Element {
+    canvas(move |g, b| style::dot(g, b.center(), across, light.color(&theme::palette())))
+        .paint_key(style::key((light, across.to_bits())))
+        .w(px(across))
+        .h(px(across))
+        .flex_shrink_0()
+        .into_any_element()
 }
 
 /// A host in the Hosts window's list: its name and address, how it

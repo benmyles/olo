@@ -949,6 +949,18 @@ impl RexWindow {
     /// pane the keyboard is in, which nothing else in the window says
     /// (it said the host and the session: the sidebar's selected row,
     /// again); the host and session where no pane is.
+    /// What the status bar says, at its far end, of a host that has
+    /// been silent about something typed into the pane the keyboard is
+    /// in: the link has stopped, or the host has. What was typed is
+    /// still drawn; this is how it is known not to have arrived.
+    fn silent_host(&mut self) -> Option<String> {
+        let hub = app().hub.clone();
+        let focused = self.focused_block_key()?;
+        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        let host = st.hosts.get(&focused.host_key)?;
+        Some(crate::hub::silent_said(&host.label, host.is_local, st.host_silent(&focused.host_key)?))
+    }
+
     fn where_it_is(&mut self) -> String {
         let hub = app().hub.clone();
         let focused = self.focused_block_key();
@@ -1352,6 +1364,11 @@ impl RexWindow {
             }
             // Where the tabs are, said outright (it was one command that
             // went round the four).
+            "terminal.type_ahead" => {
+                let on = !hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.type_ahead;
+                hub.set_type_ahead(on);
+                cx.invalidate();
+            }
             "tabs.top" | "tabs.side" => {
                 let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.settings.toolbar_layout = if action == "tabs.side" { ToolbarLayout::Side } else { ToolbarLayout::Above };
@@ -2014,9 +2031,9 @@ impl RexWindow {
         let hub = app().hub.clone();
         let broadcast_on = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
         let sidebar_shown = self.side_pane.showing();
-        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark) = {
+        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark, type_ahead) = {
             let s = &hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings;
-            (s.sidebar_mode, s.toolbar_layout, s.pane_header_behavior, s.font_size, s.activity_include_idle, s.scheme_choice, s.light_theme_id.clone(), s.dark_theme_id.clone())
+            (s.sidebar_mode, s.toolbar_layout, s.pane_header_behavior, s.font_size, s.activity_include_idle, s.scheme_choice, s.light_theme_id.clone(), s.dark_theme_id.clone(), s.type_ahead)
         };
         // For each mode: the look's own colours (whatever Preferences ▸
         // Themes has, followed as it changes), or one chosen here, which
@@ -2209,7 +2226,12 @@ impl RexWindow {
                         .enabled(text_size != crate::settings::TEXT_SIZE),
                 )
                 .submenu(colors)
-                .submenu(Menu::new("Tabs").item("Along the Top", "tabs.top").checked(layout == ToolbarLayout::Above).item("Down the Side", "tabs.side").checked(layout == ToolbarLayout::Side)),
+                .submenu(Menu::new("Tabs").item("Along the Top", "tabs.top").checked(layout == ToolbarLayout::Above).item("Down the Side", "tabs.side").checked(layout == ToolbarLayout::Side))
+                .separator()
+                // (Over a slow link: what is typed, drawn before the
+                // host's echo of it is back. `predict`.)
+                .item("Show Typing Immediately", "terminal.type_ahead")
+                .checked(type_ahead),
         ]
     }
 
@@ -2439,6 +2461,13 @@ impl RexWindow {
             }
             div().flex_1().min_w_0().min_h_0().size_full().child(child)
         } else {
+            // (The app's own state before the hub's, never inside it:
+            // everywhere else the hub is reached through the app, the
+            // other way round, and two threads taking the two in
+            // opposite orders stop for good. This one only happened
+            // while a host was connecting, which a slow link makes long:
+            // found there, 2026-11-22, by the dev build's lock checker.)
+            let askpass = app().askpass.clone();
             let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let host = state.hosts.get(&self.active_host);
             let name = host.map_or("This computer", |h| h.label.as_str());
@@ -2453,7 +2482,7 @@ impl RexWindow {
                 // (Its key agent asked to sign, and silent: said, with the
                 // likeliest reason. It read "Connecting…" for as long as
                 // Passwords stayed locked.)
-                Some(HostConnState::Connecting) if host.is_some_and(|h| app().askpass.waits_for_agent(&h.endpoint_raw)) => {
+                Some(HostConnState::Connecting) if host.is_some_and(|h| askpass.waits_for_agent(&h.endpoint_raw)) => {
                     (olo_kit::tr!("Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.", name), None, false)
                 }
                 Some(HostConnState::Connecting) => (olo_kit::tr!("Connecting to “{}”…", name), None, false),
@@ -2569,6 +2598,7 @@ impl RexWindow {
             Some(line) => line,
             None => div().child(StringView::new(self.where_it_is()).size(style::SMALL_SIZE).height(m::LABEL_ROW).dim(true).cut(true)).into_any_element(),
         };
+        let silent = self.silent_host();
         root = root.child(
             div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
                 div()
@@ -2576,8 +2606,34 @@ impl RexWindow {
                     .w_full()
                     .min_h(px(m::LABEL_ROW))
                     .px(px(m::SPACING))
+                    // (Two points under its words, as the bar's line
+                    // above stands two points clear of them: they sat
+                    // low in it. Gemini's review, 2026-11-22: eleven
+                    // pixels over the capitals and nine under the
+                    // baseline at 2×.)
+                    .pb(px(2.0))
                     .child(canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(1).absolute().inset_0())
-                    .child(line),
+                    // What the bar says stays where it is; a host that
+                    // is silent is said at the bar's far end, with the
+                    // light a waiting host has in the sidebar, in the
+                    // words' own colour (the folder and the size are
+                    // facts, and dimmer: this is a state). The two
+                    // design reviews, 2026-11-22: as a fourth fact at
+                    // the front it was too quiet, and pushed the others
+                    // along with each second.
+                    .child(div().relative().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(line)).children(silent.map(|said| {
+                        div()
+                            .flex_shrink_0()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            // (The sidebar's light and its gap, in the
+                            // proportion of the bar's smaller words:
+                            // seven points and five, of eight and six.)
+                            .gap(px((m::TIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
+                            .child(crate::panels::light_of(crate::panels::Light::Waiting, (crate::panels::LIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
+                            .child(StringView::new(said).size(style::SMALL_SIZE).height(m::LABEL_ROW))
+                    }))),
             ),
         );
 
@@ -2658,7 +2714,10 @@ impl RexWindow {
                     let label = if !s.label.is_empty() { s.label.clone() } else { s.session_id.clone() };
                     sessions.push((s.session_id.clone(), label, sess_act, unread_count));
                 }
-                hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions));
+                // (And whether it is silent about something typed: its
+                // light and its words then say so, as the status bar does.)
+                let silent = st.host_silent(&h.key).map(|silent| crate::hub::silent_said(&h.label, h.is_local, silent));
+                hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
             }
             activity_rows.sort_by_key(|(_, _, _, _, a)| activity_sort_rank(*a));
             (mode, hosts_snap, activity_rows)
@@ -2730,16 +2789,21 @@ impl RexWindow {
 
         let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
         if mode == SidebarMode::Sessions {
-            for (hk, hlabel, conn, sessions) in hosts_snap {
+            for (hk, hlabel, conn, sessions, silent) in hosts_snap {
                 let connected = conn == HostConnState::Connected;
                 let tip = match &conn {
+                    HostConnState::Connected if silent.is_some() => silent.clone().unwrap_or_default().into(),
                     HostConnState::Connected => olo_kit::words::tr("Connected").into(),
                     HostConnState::Connecting => olo_kit::words::tr("Connecting…").into(),
                     HostConnState::Disconnected => olo_kit::words::tr("Disconnected").into(),
                     HostConnState::Error(why) | HostConnState::Reconnecting { last_error: why, .. } => olo_kit::tr!("Disconnected: {}", why),
                 };
                 let selected = self.active_host == hk && !sessions.iter().any(|(s, ..)| self.active_session.as_ref() == Some(s));
-                let lit = crate::panels::Light::of(&conn);
+                // (A host that is connected and silent about something
+                // typed waits: the light the status bar's word has. The
+                // second design review: the bar said it hadn't answered
+                // beside a green light here.)
+                let lit = if connected && silent.is_some() { crate::panels::Light::Waiting } else { crate::panels::Light::of(&conn) };
                 let key = style::key((&hlabel, &tip, lit, selected));
                 let state_words = tip.clone();
                 let tip_key = format!("rex-host-{hk}");
@@ -4435,9 +4499,28 @@ fn render_single_pane(
         let copy_mode = guard.copy_mode.clone();
 
         let br_ref = &mut *guard;
-        let missing = br_ref.frame.capture(&mut br_ref.render_state, &br_ref.terminal).unwrap_or_default();
-        if !missing.is_empty() {
-            hub_paint.prepare_images(br_paint.clone(), bk_paint.clone(), br_ref.frame.owner, missing);
+        // In the middle of a program's update of its screen (its
+        // synchronized output), what the terminal holds is a piece of a
+        // frame: the pane goes on showing the last whole one. (A
+        // program that draws its whole screen anew at each key, as
+        // Claude Code and Codex do, was seen half drawn whenever its
+        // update came in two pieces, which over a slow link is often.)
+        let now = std::time::Instant::now();
+        match br_ref.held(now) {
+            Some(left) => g.paint_again_within(left.as_secs_f64()),
+            None => {
+                let missing = br_ref.frame.capture(&mut br_ref.render_state, &br_ref.terminal).unwrap_or_default();
+                if !missing.is_empty() {
+                    hub_paint.prepare_images(br_paint.clone(), bk_paint.clone(), br_ref.frame.owner, missing);
+                }
+            }
+        }
+        // What was typed here and is drawn ahead of the host's echo
+        // (over a slow link): shown this frame, it says what to draw
+        // over it, and when it next waits on time for something.
+        let (predicted, wake) = br_ref.predicted(now);
+        if let Some(at) = wake {
+            hub_paint.wake_predictions(&br_paint, br_ref, &bk_paint, at);
         }
         let _ime_rect = terminal_pane::paint_pane(
             g,
@@ -4453,6 +4536,7 @@ fn render_single_pane(
                 search_matches: &search_matches,
                 hover_link: None,
                 preedit: None,
+                predicted: predicted.as_ref(),
             },
             &vis_paint,
         );

@@ -787,6 +787,15 @@ impl GhosttyTerminal {
     }
 }
 
+/// How many cells a letter takes, by the terminal's own table (0: it
+/// takes none of its own, as a combining mark or a control; 2: a wide
+/// one). For laying out text the terminal hasn't been given: what is
+/// typed and drawn ahead of the host's echo.
+pub fn codepoint_width(c: char) -> u8 {
+    // SAFETY: A pure function of its argument; no terminal is needed.
+    unsafe { ffi::ghostty_unicode_codepoint_width(c as u32) }
+}
+
 impl VtEngine for GhosttyTerminal {
     fn vt_write(&mut self, bytes: &[u8]) {
         GhosttyTerminal::vt_write(self, bytes);

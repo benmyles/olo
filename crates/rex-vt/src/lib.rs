@@ -32,7 +32,7 @@ pub use render::{
 };
 pub use search::{SearchStatus, TerminalSearch, ViewportMatch};
 pub use snapshot::{MAX_SNAPSHOT_BYTES, SnapshotDecoder, SnapshotFramer, SnapshotProgress, StreamingSnapshotResult, try_decode_snapshot_prefix};
-pub use terminal::{DecodedKittyImage, FormatKind, GhosttyTerminal, ScreenKind, ScrollbarState, TerminalMemoryUsage, VtEngine};
+pub use terminal::{DecodedKittyImage, FormatKind, GhosttyTerminal, ScreenKind, ScrollbarState, TerminalMemoryUsage, VtEngine, codepoint_width};
 
 #[cfg(test)]
 mod tests {

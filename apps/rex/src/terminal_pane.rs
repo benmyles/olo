@@ -233,11 +233,14 @@ pub struct PanePaintArgs<'a> {
     pub search_matches: &'a [ViewportMatch],
     pub hover_link: Option<&'a DetectedLink>,
     pub preedit: Option<&'a str>,
+    /// What was typed and is drawn ahead of the host's echo of it
+    /// (`predict`): painted over the caret's row as the row itself is.
+    pub predicted: Option<&'a crate::predict::Overlay>,
 }
 
 /// Paint one terminal pane into `rect` and return cursor bounds (in window pixels) for IME positioning.
 pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>, visual: &PaneVisualState) -> Option<Bounds<Pixels>> {
-    let PanePaintArgs { term, frame, theme, metrics: m, focused, window_active, copy_mode, search_matches, hover_link, preedit } = args;
+    let PanePaintArgs { term, frame, theme, metrics: m, focused, window_active, copy_mode, search_matches, hover_link, preedit, predicted } = args;
 
     visual.bounds.set(rect);
     olo_kit::review::own_grid(g, rect);
@@ -314,6 +317,25 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
             cache.revision = frame.revision;
         }
     }
+    // The caret's row with what is drawn ahead on it: the row's own
+    // cells with those over them, built as any row is (the same
+    // letters, colours and weights as the host's echo will have, so
+    // nothing moves when it comes). Kept apart from the rows that are
+    // the host's: built for each paint it is in, which is while
+    // someone types on a slow link.
+    let ahead = predicted.and_then(|overlay| {
+        let at = frame.order.iter().position(|id| frame.rows.get(id).is_some_and(|r| r.row.viewport_y == i32::from(overlay.row)))?;
+        let row = crate::predict::predicted_row(&frame.rows[&frame.order[at]].row, overlay);
+        let built = build_cached_row(g, &mut visual.rows.borrow_mut().ascii, &row, m, default_fg, default_bg, selection_bg, selection_fg, &ansi16, settings::MINIMUM_CONTRAST, false);
+        Some((at, built))
+    });
+
+    // The terminal's cursor, where what was typed ahead leaves it (a
+    // caret the program draws is among the cells drawn ahead).
+    let caret = match predicted.filter(|overlay| !overlay.drawn && ahead.is_some()) {
+        Some(overlay) => CursorInfo { viewport_pos: Some((overlay.caret, overlay.row)), wide_tail: false, ..*cursor },
+        None => *cursor,
+    };
 
     // Paint inside clip mask of the pane rect.
     g.with_content_mask(Some(ContentMask { bounds: rect }), |g| {
@@ -326,7 +348,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
             g.paint_layer(rect, |g| {
                 for (r_idx, maybe_id) in cache.order.iter().enumerate() {
                     let Some(id) = maybe_id else { continue };
-                    let Some(row) = cache.by_id.get(id) else { continue };
+                    let Some(row) = ahead.as_ref().filter(|(at, _)| *at == r_idx).map(|(_, row)| row).or_else(|| cache.by_id.get(id)) else { continue };
                     let y = origin.1 + r_idx as f32 * ch;
                     for &(x, w, color) in &row.bgs {
                         g.paint_quad(olo_kit::fill(Bounds::new(point(px(origin.0 + x), px(y)), size(px(w), px(ch))), color));
@@ -337,7 +359,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
 
                 for (r_idx, maybe_id) in cache.order.iter().enumerate() {
                     let Some(id) = maybe_id else { continue };
-                    let Some(row) = cache.by_id.get(id) else { continue };
+                    let Some(row) = ahead.as_ref().filter(|(at, _)| *at == r_idx).map(|(_, row)| row).or_else(|| cache.by_id.get(id)) else { continue };
                     let y = origin.1 + r_idx as f32 * ch;
                     paint_shapes(g, &row.shapes, (origin.0, y));
                     let base = point(px(origin.0), px(y + m.baseline));
@@ -416,12 +438,12 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
             let cm_color = style::c([255, 196, 46, 220]);
             g.paint_quad(olo_kit::fill(Bounds::new(point(px(x), px(y)), size(px(cw), px(ch))), cm_color));
         } else {
-            paint_cursor(g, &cursor, origin, (cw, ch), preedit_advance, cursor_color, line_px, focused && window_active);
+            paint_cursor(g, &caret, origin, (cw, ch), preedit_advance, cursor_color, line_px, focused && window_active);
         }
     });
 
     // Compute IME cursor rect.
-    cursor.viewport_pos.map(|(cx, cy)| Bounds::new(point(px(origin.0 + cx as f32 * cw), px(origin.1 + cy as f32 * ch)), size(px(cw), px(ch))))
+    caret.viewport_pos.map(|(cx, cy)| Bounds::new(point(px(origin.0 + cx as f32 * cw), px(origin.1 + cy as f32 * ch)), size(px(cw), px(ch))))
 }
 
 #[allow(clippy::too_many_arguments)]

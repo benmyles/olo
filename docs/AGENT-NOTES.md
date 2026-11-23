@@ -2482,3 +2482,66 @@ an argument it doesn't know starts the lint (read its first lines).
 - **`vendor/ghostty-vt` static library:** rebuilt via
   `tools/build-ghostty-vt.sh` (Zig 0.15+, `ghostty` commit
   `6d244209978e599277904ff3ced7b8a2ebcc528d`, MIT), tracked in Git LFS.
+
+## Rex over a slow link, tried here (2026-11-22)
+
+- **The rig** is `tools/dev/rex-slow`: `rig.py` starts a scratch Rex
+  server, `slowlink.py` in front of its socket (a delay each way,
+  jitter, stalls), and the Rex app headless in a `tsession` on the far
+  side; `try.py typed|stall|connect` are the tries made of it, and
+  `tui.py` stands in for the programs people type into (`box`: as
+  Claude Code draws, the cursor hidden and a caret in reverse video,
+  the whole of it redrawn in a synchronized update; `line`: as agy and
+  Codex draw, the terminal's own cursor in a composer). Its files are
+  under `REX_SLOW_DIR` (`/var/tmp/olo-rex-slow`). To freeze the link,
+  stop the proxy it started (`os.killpg(r.procs[1].pid, SIGSTOP)`,
+  then `SIGCONT`): its pid, never a name.
+- **A test session's apps read their settings from the session's own
+  folder**, `/var/tmp/olo-dev/NAME/config/olo/…`, not from the `--home`
+  given: a `rex.json` written under the home was never read, and two
+  runs meant to differ by a setting were the same run.
+- **A script's children must not hold its output.** A server started
+  with `Popen(..., start_new_session=True)` and the script's own
+  stdout keeps a pipe the script is read through open after the script
+  has died: the command "hangs" on nothing. Give them `DEVNULL`, and
+  write their pids where a cleanup can find them.
+- **The dev build checks the order locks are taken in** (tracing-mutex:
+  "Found cycle in mutex dependency graph", a panic with the newest
+  lock's backtrace). It only sees the paths a run takes: Rex took the
+  app's lock inside the hub's state lock in one arm that runs only
+  while a host is connecting, which a slow link makes long; found the
+  first time the rig ran.
+- **A typed letter is "drawn" where app_server says so**: its `timings`
+  list `felt` (`to_draw_us` of the last key), which the rig's
+  `Rig.felt()` reads. With nothing drawn ahead that is the echo's
+  frame; with it, the key's own.
+- **A flood's instruction count has a spread of a twentieth** between
+  runs of the same build (the frames a run happens to paint): one run
+  each "showed" a regression of 4% that five runs each did not.
+- **How the agents' programs draw their caret** (what typing ahead has
+  to find): agy shows the terminal's cursor in its composer, with a dim
+  hint right of it where nothing is typed, between two rules (read off
+  a running helper with tmux's own `cursor_flag`, its text not looked
+  at); Claude Code, as it runs here (a design review's own session,
+  read the same way), shows the terminal's cursor too, in a composer
+  between two rules, on the alternate screen, with no cell in reverse
+  video; older ones, and programs built on Ink, hide the cursor and
+  draw a cell in reverse video (its issue reports say so), which is
+  why both are found; Codex is believed to show the cursor (its TUI
+  sets it). `tools/dev/rex-slow/caret.py SOCKET PANE` does the
+  reading: tmux's own word of the cursor (`cursor_flag`, its place,
+  `alternate_on`) and the pane's cells by class (blank, text, reverse
+  video, on a background), never its words.
+- **The host's `rex` command needs a folder it can read to stand in**:
+  as another account from root's home it says "getting current working
+  directory: stat .: permission denied"; `cd` to the account's home
+  first.
+- **A Rex server puts no word of what was typed into a terminal's
+  output**, and says the terminal's input mode (`echo`, `canonical`)
+  only when asked: there is no event when a program stops echoing. A
+  session's shell on a fresh Ubuntu host is a login bash with bracketed
+  paste on and no prompt marks (OSC 133).
+- **Connecting costs seven round trips** between the window opening
+  and its terminal showing (`try.py connect`: 2.1, 4.3 and 8.3 s at
+  150, 300 and 600 ms each way).
+
