@@ -669,17 +669,25 @@ pub fn silent_tip(silent: Duration) -> String {
 /// if what they draw changed: one wait, begun when there is something
 /// to wait for, never a clock that ticks. `held`: the block, locked by
 /// the caller.
-fn predict_wake(rt: &tokio::runtime::Handle, block: &Arc<Mutex<BlockRuntime>>, held: &mut BlockRuntime, key: &BlockKey, notify: &Arc<dyn Fn(HubNotice) + Send + Sync>, at: Instant) {
+fn predict_wake(
+    rt: &tokio::runtime::Handle,
+    state: &Arc<Mutex<HubState>>,
+    block: &Arc<Mutex<BlockRuntime>>,
+    held: &mut BlockRuntime,
+    key: &BlockKey,
+    notify: &Arc<dyn Fn(HubNotice) + Send + Sync>,
+    at: Instant,
+) {
     if held.predict_wake.is_some_and(|waited| waited <= at) {
         return;
     }
     held.predict_wake = Some(at);
-    let (block, key, notify) = (block.clone(), key.clone(), notify.clone());
+    let (state, block, key, notify) = (state.clone(), block.clone(), key.clone(), notify.clone());
     rt.spawn(async move {
         let mut at = at;
         loop {
             tokio::time::sleep_until(at.into()).await;
-            let (next, changed, chrome) = {
+            let (next, changed, chrome, ask) = {
                 let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
                 // (A sooner wait was begun since: this one is its.)
                 if b.predict_wake != Some(at) {
@@ -687,8 +695,19 @@ fn predict_wake(rt: &tokio::runtime::Handle, block: &Arc<Mutex<BlockRuntime>>, h
                 }
                 let (next, changed, chrome) = b.predict_tick(Instant::now());
                 b.predict_wake = next;
-                (next, changed, chrome)
+                // (The clock gave up the last key that waited, at a
+                // prompt known to echo: the pause in the output came
+                // and went while it waited, and the host wasn't asked
+                // about its prompt then. Asked now.)
+                let ask = next.is_none() && b.predict.wants_prompt(b.caret_screen().as_ref()).is_some();
+                (next, changed, chrome, ask)
             };
+            if ask {
+                let ctrl = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key.host_key).and_then(|h| h.control.clone());
+                if let Some(ctrl) = ctrl {
+                    ask_the_host(&block, &ctrl, &key, &notify).await;
+                }
+            }
             if changed {
                 notify(HubNotice::BlockOutput(key.clone()));
             }
@@ -2254,7 +2273,7 @@ impl RexHub {
     /// From a paint: the predictions of the terminal it draws wait on
     /// time (`at`) for something.
     pub fn wake_predictions(&self, block: &Arc<Mutex<BlockRuntime>>, held: &mut BlockRuntime, key: &BlockKey, at: Instant) {
-        predict_wake(self.rt.handle(), block, held, key, &self.notify, at);
+        predict_wake(self.rt.handle(), &self.state, block, held, key, &self.notify, at);
     }
 
     pub fn send_rex_key(&self, key: &BlockKey, event: RexKeyEvent) {
@@ -2939,7 +2958,7 @@ impl RexHubInner {
             // (Its silence, if it comes to that, is said when it has
             // lasted: one wait, begun here.)
             if let Some(at) = b.predict.stall_changes(now) {
-                predict_wake(&tokio::runtime::Handle::current(), &block, &mut b, &key, &self.notify, at);
+                predict_wake(&tokio::runtime::Handle::current(), &self.state, &block, &mut b, &key, &self.notify, at);
             }
         }
     }
@@ -2956,7 +2975,7 @@ impl RexHubInner {
         let (next, changed, chrome) = b.predict_tick(now);
         let changed = changed || seen;
         if let Some(at) = next {
-            predict_wake(&tokio::runtime::Handle::current(), &block, &mut b, &key, &self.notify, at);
+            predict_wake(&tokio::runtime::Handle::current(), &self.state, &block, &mut b, &key, &self.notify, at);
         }
         drop(b);
         if changed {
@@ -3615,12 +3634,7 @@ impl RexHubInner {
                                 break;
                             }
                         }
-                        if let Ok(mode) = ctrl.terminal_input_mode(&bk.session_id, &bk.block_id).await {
-                            let asks = asks_for_secret(mode.payload.echo, mode.payload.canonical);
-                            if br.lock().unwrap_or_else(|e| e.into_inner()).set_password_prompt(asks) {
-                                notify(HubNotice::StateChanged);
-                            }
-                        }
+                        ask_the_host(&br, &ctrl, &bk, &notify).await;
                     });
                 }
                 if let Err(e) = applied {
@@ -4196,6 +4210,53 @@ struct PaletteEntry {
     session: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     tab: String,
+}
+
+/// A terminal's host is asked how the terminal reads, at a pause in
+/// its output: whether the program there now asks for something secret
+/// (the server has no event for a terminal's input mode). And, where
+/// the caret stands at a prompt known to echo with nothing typed on
+/// its way, whether the shell itself is reading there: then what is
+/// typed next is drawn at once, not only after a letter of it has come
+/// back (`predict`, "The first letter at a shell's prompt"). That is
+/// asked with the mode, in the same round trip; not of a terminal
+/// whose echo is quick, or that isn't at such a prompt.
+async fn ask_the_host(br: &Arc<Mutex<BlockRuntime>>, ctrl: &ControlClient, bk: &BlockKey, notify: &Arc<dyn Fn(HubNotice) + Send + Sync>) {
+    let asked = {
+        let b = br.lock().unwrap_or_else(|e| e.into_inner());
+        b.predict.wants_prompt(b.caret_screen().as_ref())
+    };
+    let (mode, process) = match asked {
+        Some(_) => match tokio::try_join!(ctrl.terminal_input_mode(&bk.session_id, &bk.block_id), ctrl.terminal_process(&bk.session_id, &bk.block_id)) {
+            Ok((mode, process)) => (Some(mode.payload), Some(process.payload)),
+            Err(_) => (None, None),
+        },
+        None => (ctrl.terminal_input_mode(&bk.session_id, &bk.block_id).await.ok().map(|mode| mode.payload), None),
+    };
+    let Some(mode) = mode else { return };
+    let asks = asks_for_secret(mode.echo, mode.canonical);
+    let changed = {
+        let mut b = br.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = b.set_password_prompt(asks);
+        if let (Some(asked), Some(process)) = (asked, process) {
+            let screen = b.caret_screen();
+            b.predict.prompt_said(asked, shell_reads(&mode, &process), screen.as_ref());
+        }
+        changed
+    };
+    if changed {
+        notify(HubNotice::StateChanged);
+    }
+}
+
+/// Whether the program reading a terminal is its shell itself, at its
+/// line editor: the terminal's foreground process is the one the
+/// terminal was started with, and it reads key by key with the echo
+/// its own (the line discipline's echo and line editing both off). Not
+/// a program the shell started (whatever its mode), and not a line the
+/// shell reads through the terminal's own editing (`read`, `read -s`).
+fn shell_reads(mode: &olo_rex_client::InputMode, process: &olo_rex_client::TerminalProcessSnapshot) -> bool {
+    !mode.echo && !mode.canonical && matches!((&process.child, &process.foreground), (Some(child), Some(foreground)) if child.pid == foreground.pid && child.pid != 0)
 }
 
 pub fn shell_quote(s: &str) -> String {

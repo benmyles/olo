@@ -42,7 +42,9 @@ fn warm() -> (Predictor, Instant) {
     p.frame(Some(&screen("$ ")), t);
     let (seq, changed) = p.typed(b"x", Some(&screen("$ ")), t);
     assert!(!changed && p.overlay().is_none(), "the first of an epoch is unseen");
-    p.answered(seq, t + ms(150));
+    // (Its answer a moment before its echo, as they come: an echo is
+    // held to have taken no longer than its answer and a moment.)
+    p.answered(seq, t + ms(290));
     assert!(!p.frame(Some(&screen("$ x")), t + ms(300)), "nothing was drawn, nothing changes");
     assert_eq!(p.echo(), Some(ms(300)));
     (p, t + ms(1000))
@@ -670,4 +672,134 @@ fn a_caret_gone_right_over_a_letter_isnt_that_letter_typed() {
     assert!(p.waits(), "the b typed is still to come");
     p.frame(Some(&drawn("> abb", 5)), t + ms(320));
     assert!(!p.waits(), "and now it has");
+}
+
+/// The first letter at a prompt known to echo is drawn at once, where
+/// the host says its shell is reading there: asked once nothing typed
+/// is on its way and the caret stands after the same prompt; trusted
+/// only for the screen it was asked of, and only if nothing was typed
+/// meanwhile.
+#[test]
+fn the_first_letter_at_a_known_prompt_is_shown_once_the_host_says_its_shell_reads() {
+    let (mut p, t) = warm();
+    // Typed on: "$ x" is there, and "l" follows it; Enter.
+    let (seq, _) = p.typed(b"l", Some(&screen("$ x")), t);
+    p.answered(seq, t + ms(150));
+    p.frame(Some(&screen("$ xl")), t + ms(300));
+    // (Nothing to ask in the middle of a line, nor with an Enter on its way.)
+    assert_eq!(p.wants_prompt(Some(&screen("$ xl"))), None);
+    let (enter, _) = p.typed(b"\r", Some(&screen("$ xl")), t + ms(400));
+    assert_eq!(p.wants_prompt(Some(&screen("$ "))), None, "the Enter isn't answered yet");
+    p.answered(enter, t + ms(550));
+    // The prompt is back: asked, and the host says its shell reads.
+    let asked = p.wants_prompt(Some(&screen("$ "))).expect("at the prompt that echoed, nothing on its way");
+    assert!(p.prompt_said(asked, true, Some(&screen("$ "))));
+    assert_eq!(p.wants_prompt(Some(&screen("$ "))), None, "trusted: not asked again");
+    assert!(p.wants_frames(), "a trust the next frame may take away");
+    let (_, changed) = p.typed(b"g", Some(&screen("$ ")), t + ms(900));
+    assert!(changed);
+    assert_eq!(shown(&p), Some(("g@2".into(), 3)));
+}
+
+/// What takes that trust back, or keeps it from being given: the host
+/// saying another program reads; something typed between the question
+/// and its answer; the screen no longer at the prompt when the answer
+/// comes, or changed by the host after it; a prompt never seen to echo
+/// (a secret's, though the shell reads it with its line editor); a
+/// secret the host says is being read; a quick echo.
+#[test]
+fn a_prompt_is_trusted_only_as_asked_and_only_while_it_stands() {
+    // At the prompt again after "x" and Enter, the question asked.
+    let at_prompt = || {
+        let (mut p, t) = warm();
+        let (enter, _) = p.typed(b"\r", Some(&screen("$ x")), t);
+        p.answered(enter, t + ms(150));
+        let asked = p.wants_prompt(Some(&screen("$ "))).expect("asked");
+        (p, t + ms(400), asked)
+    };
+    let unseen = |p: &mut Predictor, t: Instant, on: &Screen| {
+        let (_, changed) = p.typed(b"g", Some(on), t);
+        assert!(!changed && p.overlay().is_none(), "{:?}", shown(p));
+    };
+
+    // Another program reads (a password asked for by one, a pager).
+    let (mut p, t, asked) = at_prompt();
+    assert!(!p.prompt_said(asked, false, Some(&screen("$ "))));
+    unseen(&mut p, t, &screen("$ "));
+
+    // Something was typed before the answer came: it is of a state the
+    // typing may have ended.
+    let (mut p, t, asked) = at_prompt();
+    let (enter, _) = p.typed(b"\r", Some(&screen("$ ")), t);
+    p.answered(enter, t + ms(150));
+    assert!(!p.prompt_said(asked, true, Some(&screen("$ "))));
+    unseen(&mut p, t + ms(300), &screen("$ "));
+
+    // The screen isn't at the prompt when the answer comes.
+    let (mut p, t, asked) = at_prompt();
+    assert!(!p.prompt_said(asked, true, Some(&screen("Password: "))));
+    assert!(!p.prompt_said(asked, true, None));
+    unseen(&mut p, t, &screen("Password: "));
+
+    // Trusted, and then the host changes the line by itself: taken back.
+    let (mut p, t, asked) = at_prompt();
+    assert!(p.prompt_said(asked, true, Some(&screen("$ "))));
+    p.frame(Some(&screen("Password: ")), t);
+    unseen(&mut p, t + ms(10), &screen("Password: "));
+
+    // Trusted, and typed on another screen than the one vouched for.
+    let (mut p, t, asked) = at_prompt();
+    assert!(p.prompt_said(asked, true, Some(&screen("$ "))));
+    unseen(&mut p, t, &screen("(main) $ "));
+
+    // A prompt never seen to echo isn't asked about: a secret's, read
+    // by the shell's own line editor, of which the host would say yes.
+    let (mut p, t, _) = at_prompt();
+    assert_eq!(p.wants_prompt(Some(&screen("Password: "))), None);
+    assert!(!p.prompt_said(p.writes, true, Some(&screen("Password: "))));
+    unseen(&mut p, t, &screen("Password: "));
+
+    // Nor a line that is no prompt to know again: nothing before the
+    // caret, or spaces.
+    let mut p = Predictor::new(true);
+    let t = Instant::now();
+    p.frame(Some(&screen("")), t);
+    let (seq, _) = p.typed(b"x", Some(&screen("")), t);
+    p.answered(seq, t + ms(150));
+    p.frame(Some(&screen("x")), t + ms(300));
+    let (enter, _) = p.typed(b"\r", Some(&screen("x")), t + ms(400));
+    p.answered(enter, t + ms(550));
+    assert_eq!(p.wants_prompt(Some(&screen(""))), None);
+
+    // A secret the host says is being read; and a quick echo, which is
+    // the host's to draw: no question.
+    let (mut p, _, _) = at_prompt();
+    p.set_secret(true);
+    assert_eq!(p.wants_prompt(Some(&screen("$ "))), None);
+    let mut p = Predictor::new(true);
+    let t = Instant::now();
+    p.frame(Some(&screen("$ ")), t);
+    let (seq, _) = p.typed(b"x", Some(&screen("$ ")), t);
+    p.answered(seq, t + ms(5));
+    p.frame(Some(&screen("$ x")), t + ms(10));
+    let (enter, _) = p.typed(b"\r", Some(&screen("$ x")), t + ms(400));
+    p.answered(enter, t + ms(405));
+    assert_eq!(p.wants_prompt(Some(&screen("$ "))), None);
+}
+
+/// A prompt is known again after a run that began in the middle of a
+/// line (a completion, and typing after it): the last few are kept.
+#[test]
+fn a_run_begun_in_the_middle_of_a_line_doesnt_lose_the_prompt() {
+    let (mut p, t) = warm();
+    // Tab completes "x" to "xylophone "; "a" typed after it comes true.
+    let (tab, _) = p.typed(b"\t", Some(&screen("$ x")), t);
+    p.answered(tab, t + ms(150));
+    p.frame(Some(&screen("$ xylophone ")), t + ms(300));
+    let (seq, _) = p.typed(b"a", Some(&screen("$ xylophone ")), t + ms(400));
+    p.answered(seq, t + ms(550));
+    p.frame(Some(&screen("$ xylophone a")), t + ms(700));
+    let (enter, _) = p.typed(b"\r", Some(&screen("$ xylophone a")), t + ms(800));
+    p.answered(enter, t + ms(950));
+    assert!(p.wants_prompt(Some(&screen("$ "))).is_some());
 }

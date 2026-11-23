@@ -38,6 +38,26 @@
 //!   answer and taken for another's;
 //! - a hint under a caret the program draws taken for the line's text.
 //!
+//! And when the host learnt to be asked about its prompt (it answers
+//! here as a real one would, a shell reading a secret with its line
+//! editor too, and someone reading what an Enter brought pauses), the
+//! sessions were all new ones, and found seven more:
+//! - a later stretch known to be on the screen only if all it typed
+//!   stood before the caret, which someone else's letter in the line
+//!   undid (a password's letter then passed for an echo);
+//! - a letter typed and the caret taken back over it passing for
+//!   "nothing yet", and for another key's frame (the cell under the
+//!   caret wasn't looked at);
+//! - a round trip timed for writes that had waited their turn behind
+//!   others, so that "the quickest of late" was seconds;
+//! - what a stretch typed "standing before the caret" in the very
+//!   screen it was typed on, whose line happened to end with it;
+//! - an echo's delay counted to the frame that told its key from
+//!   another, long after;
+//! - two runs that end with the same key held to be two;
+//! - an old frame looked at again at a late answer, and taken for a key
+//!   that had only just left when it was shown.
+//!
 //! `PLAY_ONLY=N` plays session N alone; with `PLAY_SAY=1` it says what
 //! happens as it goes.
 
@@ -86,6 +106,10 @@ struct Host {
     /// A question in the caret's place: no caret, keys do nothing
     /// until Enter.
     asking: bool,
+    /// A line that reads a secret is the shell's own, read with its
+    /// line editor (bash's `read -es`): asked, the host says the shell
+    /// is reading key by key, as at its prompt.
+    by_the_shell: bool,
     row: u16,
 }
 
@@ -95,7 +119,7 @@ impl Host {
             Kind::Shell => "$ ",
             Kind::Boxed => "│ > ",
         };
-        Host { kind, prompt: prompt.chars().collect(), text: Vec::new(), col: 0, mode: Mode::Echo, suggestion: Vec::new(), asking: false, row: 3 }
+        Host { kind, prompt: prompt.chars().collect(), text: Vec::new(), col: 0, mode: Mode::Echo, suggestion: Vec::new(), asking: false, by_the_shell: false, row: 3 }
     }
 
     /// A key, as the program takes it. `rng`: what the program does of
@@ -109,6 +133,9 @@ impl Host {
         self.suggestion.clear();
         match bytes {
             b"\r" => {
+                // (A command was given: only then does something else
+                // than the prompt come to read the terminal.)
+                let command = self.text.iter().any(|c| *c != ' ');
                 self.text.clear();
                 self.col = 0;
                 self.row = (self.row + 1) % 20;
@@ -119,6 +146,7 @@ impl Host {
                             2 => Mode::Mask,
                             _ => Mode::Echo,
                         };
+                        self.by_the_shell = self.mode == Mode::Silent && command && rng.chance(50);
                         self.prompt = match self.mode {
                             Mode::Echo => "$ ",
                             Mode::Silent => "Password: ",
@@ -187,6 +215,13 @@ impl Host {
         }
         Some(Screen { row: self.row, col: col as u16, cells, drawn, shape: if drawn { u8::MAX } else { 0 }, alt: false })
     }
+
+    /// What the host says when asked whether the shell itself is
+    /// reading the terminal at its line editor: at its prompt; and at a
+    /// secret it reads with that editor, where it is just as true.
+    fn shell_reads(&self) -> bool {
+        self.kind == Kind::Shell && !self.asking && (self.mode == Mode::Echo || (self.mode == Mode::Silent && self.by_the_shell))
+    }
 }
 
 /// What a session is made of.
@@ -216,6 +251,11 @@ struct Tally {
     /// were drawn the moment they were typed.
     echoed: usize,
     at_once: usize,
+    /// Of those, the first letter typed at a line, and how many of
+    /// those were drawn at once (the host had said its shell reads at
+    /// a prompt known to echo).
+    firsts: usize,
+    firsts_at_once: usize,
 }
 
 fn play(plan: Plan, keys: usize) -> Tally {
@@ -229,6 +269,10 @@ fn play(plan: Plan, keys: usize) -> Tally {
         /// Someone else's key, or the prompt changing.
         Other,
         Tick,
+        /// The app's question (is the terminal at its shell's prompt?)
+        /// reaches the host; and the host's answer the app.
+        Asked(u64),
+        Said(u64, bool),
     }
     let Plan { seed, delay, .. } = plan;
     let say = std::env::var("PLAY_SAY").is_ok();
@@ -258,6 +302,7 @@ fn play(plan: Plan, keys: usize) -> Tally {
     let mut drawn_ever: HashMap<u64, Option<Vec<char>>> = HashMap::new();
     let mut unechoed: HashSet<u64> = HashSet::new();
     let mut at_once: HashSet<u64> = HashSet::new();
+    let mut firsts: HashSet<u64> = HashSet::new();
     let mut tally = Tally::default();
     let mut waking: Option<u64> = None;
     let mut on_their_way = 0usize;
@@ -265,8 +310,11 @@ fn play(plan: Plan, keys: usize) -> Tally {
     // (Where others type too, what is drawn can be overtaken: only the
     // secrets are held to.)
     let mut overtaken = false;
+    // (One question on its way at a time.)
+    let mut asking = false;
     loop {
         events.sort_by_key(|e| (e.0, e.1));
+        let mut heard = false;
         let next_event = events.first().map(|e| e.0);
         let type_now = typed < keys && next_event.is_none_or(|at| next_key <= at);
         if !type_now && next_event.is_none() {
@@ -288,7 +336,11 @@ fn play(plan: Plan, keys: usize) -> Tally {
                 28 => b"\t".to_vec(),
                 _ => vec![b'a' + rng.next(26) as u8],
             };
+            if since_enter == 0 && bytes.len() == 1 && bytes[0] > b' ' && bytes[0] != 0x7f {
+                firsts.insert(p.writes + 1);
+            }
             since_enter = if bytes == b"\r" { 0 } else { since_enter + 1 };
+            let enter = bytes == b"\r";
             let (seq, _) = p.typed(&bytes, seen.as_ref(), t0 + ms(now));
             if say {
                 eprintln!("{now:6} typed {seq} {:?} on {} -> {}", String::from_utf8_lossy(&bytes), text(&seen), said(&p));
@@ -296,7 +348,16 @@ fn play(plan: Plan, keys: usize) -> Tally {
             drawn_ever.insert(seq, None);
             outbox.push_back((seq, bytes));
             typed += 1;
-            let pause = if rng.chance(10) { 900 } else { 180 };
+            // (After an Enter, as often as not, the pause of someone
+            // reading what it brought: the host is asked about its
+            // prompt in pauses.)
+            let pause = if enter && rng.chance(50) {
+                1200 + rng.next(2500)
+            } else if rng.chance(10) {
+                900
+            } else {
+                180
+            };
             next_key = now + 20 + rng.next(pause);
             if p.overlay().is_some() && p.keys(0, p.placed()).take_while(|w| w.epoch <= p.proven).any(|w| w.seq == seq) {
                 at_once.insert(seq);
@@ -332,6 +393,10 @@ fn play(plan: Plan, keys: usize) -> Tally {
                         if echoes {
                             tally.echoed += 1;
                             tally.at_once += usize::from(at_once.contains(&seq));
+                            if firsts.contains(&seq) {
+                                tally.firsts += 1;
+                                tally.firsts_at_once += usize::from(at_once.contains(&seq));
+                            }
                         }
                         // What the pane showed with this key drawn is what
                         // the host now has, where it echoes.
@@ -369,6 +434,7 @@ fn play(plan: Plan, keys: usize) -> Tally {
                     back_after = at.max(back + 3);
                 }
                 Event::Answer(seq) => {
+                    heard = true;
                     p.answered(seq, t0 + ms(now));
                     in_flight = false;
                     on_their_way = on_their_way.saturating_sub(1);
@@ -381,6 +447,7 @@ fn play(plan: Plan, keys: usize) -> Tally {
                         continue;
                     }
                     seen = screen;
+                    heard = true;
                     p.frame(seen.as_ref(), t0 + ms(now));
                     if say {
                         eprintln!("{now:6} frame {} -> {}", text(&seen), said(&p));
@@ -395,8 +462,40 @@ fn play(plan: Plan, keys: usize) -> Tally {
                     }
                     push(&mut events, now + delay + rng.next(9), Event::Frame(host.screen()));
                 }
-                Event::Tick => waking = None,
+                Event::Tick => {
+                    waking = None;
+                    // (The app asks then too, where the clock gave up
+                    // the last key that waited.)
+                    heard = true;
+                }
+                Event::Asked(token) => {
+                    let reads = host.shell_reads();
+                    // (Its answer on a connection of its own: it may
+                    // pass the frames, or come after them.)
+                    push(&mut events, now + delay + rng.next(40), Event::Said(token, reads));
+                }
+                Event::Said(token, reads) => {
+                    asking = false;
+                    let trusted = p.prompt_said(token, reads, seen.as_ref());
+                    if say {
+                        eprintln!("{now:6} host says the shell {} -> {} ({})", if reads { "reads" } else { "doesn't read" }, said(&p), if trusted { "trusted" } else { "not trusted" });
+                    }
+                }
             }
+        }
+        // At a pause in what the host shows, where the caret stands at
+        // a prompt known to echo and nothing typed is on its way, the
+        // host is asked whether its shell is reading.
+        // (Once for each time something came from the host: the app
+        // asks at a pause in a terminal's output, not on a clock. Asked
+        // again at every turn of this loop, a session whose host said
+        // no never ended.)
+        if heard
+            && !asking
+            && let Some(token) = p.wants_prompt(seen.as_ref())
+        {
+            asking = true;
+            push(&mut events, now + 150 + delay, Event::Asked(token));
         }
         // One write at a time, all that waits gathered into it; or,
         // with the helper on the host, each as it is typed (no more
@@ -493,6 +592,8 @@ fn sessions_played_by_the_thousand() {
         let sum = tallies.entry((plan.piped, plan.kind == Kind::Boxed, plan.delay, plan.stalls || plan.others)).or_default();
         sum.echoed += tally.echoed;
         sum.at_once += tally.at_once;
+        sum.firsts += tally.firsts;
+        sum.firsts_at_once += tally.firsts_at_once;
     }
     // Most of what is typed where it echoes is drawn at once, on every
     // link slow enough for it to be drawn at all; and nothing is on a
@@ -502,13 +603,16 @@ fn sessions_played_by_the_thousand() {
     for ((piped, boxed, delay, rough), tally) in all {
         let share = tally.at_once as f64 / tally.echoed.max(1) as f64;
         eprintln!(
-            "{}{} at {delay} ms each way{}: {} of {} letters drawn at once ({:.0}%)",
+            "{}{} at {delay} ms each way{}: {} of {} letters drawn at once ({:.0}%); of a line's first letters {} of {} ({:.0}%)",
             if piped { "each key sent as typed: " } else { "" },
             if boxed { "a drawn caret" } else { "a shell" },
             if rough { ", stalling or shared" } else { "" },
             tally.at_once,
             tally.echoed,
-            share * 100.0
+            share * 100.0,
+            tally.firsts_at_once,
+            tally.firsts,
+            tally.firsts_at_once as f64 / tally.firsts.max(1) as f64 * 100.0
         );
         if delay >= 35 && !rough {
             // (Less on a slower link: after each key that isn't
@@ -516,16 +620,34 @@ fn sessions_played_by_the_thousand() {
             // back, and on a slow link much of a short line is typed by
             // then. The host's half is to change that: TODO.)
             let least = match (boxed, delay) {
-                (false, 35) => 0.70,
-                (false, 90) => 0.55,
-                (false, 200) => 0.35,
-                (false, _) => 0.12,
-                (true, 35) => 0.60,
-                (true, 90) => 0.40,
-                (true, 200) => 0.25,
-                (true, _) => 0.10,
+                (false, 35) => 0.78,
+                (false, 90) => 0.64,
+                (false, 200) => 0.44,
+                (false, _) => 0.20,
+                (true, 35) => 0.65,
+                (true, 90) => 0.45,
+                (true, 200) => 0.30,
+                (true, _) => 0.13,
             };
             assert!(share > least, "too careful to be of use at {delay} ms: {share:.2}");
+            // And a shell's prompt is known again: of the first letters
+            // typed at a line (after an Enter, as often as not after
+            // the pause of someone reading; three lines in ten read a
+            // secret), a share is drawn at once, the host having said
+            // its shell reads there. (Less on a slower link: the
+            // question takes a round trip, which the host's half is to
+            // save: TODO.)
+            let firsts = tally.firsts_at_once as f64 / tally.firsts.max(1) as f64;
+            let least = match (boxed, delay) {
+                (false, 35) => 0.22,
+                (false, 90) => 0.14,
+                (false, 200) => 0.07,
+                _ => 0.0,
+            };
+            assert!(firsts >= least, "a line's first letter is drawn at once too seldom at {delay} ms: {firsts:.2}");
+            if boxed {
+                assert_eq!(tally.firsts_at_once, 0, "a program that draws its own caret isn't a shell at its prompt");
+            }
         } else if !rough {
             assert_eq!(tally.at_once, 0, "an echo this quick is the host's to draw");
         }

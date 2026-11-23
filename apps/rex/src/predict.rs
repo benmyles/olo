@@ -68,11 +68,29 @@
 //! taken (their write answered) and not echoed within [`NO_ECHO`] are
 //! given up too.
 //!
+//! **The first letter at a shell's prompt** needn't wait to be proven,
+//! where the host says the terminal is back at a prompt this terminal
+//! knows. A *known prompt* is the text before the caret where a run of
+//! typing began that then came true (its letters echoed as typed). When
+//! nothing typed is on its way, the caret stands right after that same
+//! text again, and the host, asked ([`Predictor::wants_prompt`]), says
+//! that the program reading the terminal is the shell itself, reading
+//! key by key and echoing by its own hand (its line editor: not a
+//! program it started, and not a line read with the terminal's echo
+//! turned off), the epoch is held proven as it stands
+//! ([`Predictor::prompt_said`]): the next letter typed there is drawn
+//! at once. Anything the host does to the line before then takes that
+//! back, as it takes back any trust. What keeps a secret from being
+//! drawn so: a program asking for one isn't the shell; a shell's own
+//! `read -s` has the terminal's line discipline on; and its `read -es`
+//! (the line editor, silent) stands after other words than the prompt
+//! that echoed, which must hold a letter that says something (an empty
+//! one, or a space, is no prompt to know again).
+//!
 //! This is the client's half, and works with any host. The host's half
 //! (a helper that says, in the stream of a terminal's output, what it
-//! has taken and what state the terminal is in) is to make the first
-//! letter at a shell's prompt immediate too: see TODO, "A terminal that
-//! answers at once".
+//! has taken and what state the terminal is in) is to close the round
+//! trip that asking takes: see TODO, "A terminal that answers at once".
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -121,6 +139,9 @@ const MOST_AT_ONCE: usize = 8;
 /// The most kept waiting: past it (a link that has stopped) what is
 /// typed is no longer followed.
 const MOST_WAITING: usize = 192;
+
+/// How many prompts known to echo are kept.
+const KNOWN_PROMPTS: usize = 4;
 
 /// The second cell of a letter two cells wide.
 pub const WIDE_TAIL: char = '\u{FFFE}';
@@ -172,6 +193,16 @@ impl Screen {
     /// The text before the caret.
     fn before(&self) -> impl Iterator<Item = char> + '_ {
         self.cells[..(self.col as usize).min(self.cells.len())].iter().map(|c| c.ch)
+    }
+
+    /// The caret's place and the text before it, as one number (never
+    /// 0): whether two screens show the same line up to the caret.
+    fn mark(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.col.hash(&mut h);
+        self.before().for_each(|c| c.hash(&mut h));
+        h.finish() | 1
     }
 
     /// Whether the caret is at the same place of the same line, in the
@@ -427,14 +458,25 @@ impl Line {
     /// under the caret tells them apart. The played sessions, each key
     /// sent as typed: a right arrow's frame passed for the echo of the
     /// "h" typed after it.)
+    ///
+    /// And the cell under the caret is looked at whether the keys
+    /// touched it or not: a letter typed and the caret taken back over
+    /// it leaves all before the caret as it was, with that letter under
+    /// it. (Not looked at, the frame after a "t" and a left arrow was
+    /// "nothing yet", and of two "m" typed next the second passed for
+    /// the first; and after an "o" and a left arrow, of three "d" the
+    /// second's frame was the first's. The sessions, played anew when
+    /// the host learnt to be asked about its prompt.)
     fn is(&self, screen: &Screen) -> bool {
         if screen.col != self.col || screen.cells.len() != self.cells.len() || screen.drawn != self.drawn {
             return false;
         }
         let from = (self.low as usize).saturating_sub(2);
         let col = self.col as usize;
+        // (The cell under the caret always, touched or not: see above.)
+        let to = (self.high as usize).max(col + 1).min(self.cells.len());
         (from..col).all(|i| screen.cells[i].ch == self.cells[i].0.ch)
-            && (col..(self.high as usize).min(self.cells.len())).all(|i| screen.cells[i].dim || screen.cells[i].ch == self.cells[i].0.ch || (self.drawn && i == col && self.cells[i].0.ch == ' '))
+            && (col..to).all(|i| screen.cells[i].dim || screen.cells[i].ch == self.cells[i].0.ch || (self.drawn && i == col && self.cells[i].0.ch == ' '))
     }
 }
 
@@ -466,6 +508,9 @@ struct Waiting {
     /// When the host answered for it (took it), once it has.
     taken: Option<Instant>,
     epoch: u64,
+    /// For a key behind a gap: the caret's place and the text before
+    /// it on the screen it was typed on ([`Screen::mark`]; none: 0).
+    on: u64,
 }
 
 /// How a cell of what is drawn ahead is to look.
@@ -523,9 +568,15 @@ pub struct Predictor {
     /// The newest epoch one of whose letters was seen echoed.
     proven: u64,
     /// The writes that have left and aren't answered: up to which key,
-    /// and when. And the quickest answers of late: an echo can't be
-    /// back sooner than a write's answer is.
-    went: VecDeque<(u64, Instant)>,
+    /// when, and whether nothing was on its way before it. And the
+    /// quickest answers of late: an echo can't be back sooner than a
+    /// write's answer is. (Of writes that left with nothing ahead of
+    /// them: one sent behind others waits its turn on the host, and
+    /// the wait is not the link's. Counted, eight keys sent as typed
+    /// behind a packet that was lost made the "quickest" trip of late
+    /// two and a half seconds, and a letter echoed long after it left
+    /// "couldn't be back": the played sessions.)
+    went: VecDeque<(u64, Instant, bool)>,
     trips: VecDeque<Duration>,
     /// The text before the caret of a line the host draws something
     /// else on for what is typed (a secret's mask): nothing of it is
@@ -541,6 +592,12 @@ pub struct Predictor {
     answered_at: Option<Instant>,
     /// How long an echo takes, of late (none seen yet: unknown).
     echo: Option<Duration>,
+    /// The text before the caret where a run of typing began that then
+    /// came true, the last few of them: prompts that echo what is typed
+    /// at them, to be known again ([`Self::wants_prompt`]). (A few: a
+    /// run also begins in the middle of a line, after a completion,
+    /// and the prompt itself is to be kept through that.)
+    prompts: VecDeque<Vec<char>>,
 }
 
 impl Default for Predictor {
@@ -572,6 +629,7 @@ impl Predictor {
             answered: 0,
             answered_at: None,
             echo: None,
+            prompts: VecDeque::new(),
         }
     }
 
@@ -708,7 +766,7 @@ impl Predictor {
             }
         }
         let epoch = self.epoch;
-        self.sent.extend(keys.iter().map(|k| Sent::Key(Waiting { key: *k, seq, at: now, taken: None, epoch })));
+        self.sent.extend(keys.iter().map(|k| Sent::Key(Waiting { key: *k, seq, at: now, taken: None, epoch, on: 0 })));
         true
     }
 
@@ -722,17 +780,18 @@ impl Predictor {
             self.prior = None;
             self.unexplained = false;
         }
-        let epoch = self.epoch;
-        self.sent.extend(keys.iter().map(|k| Sent::Key(Waiting { key: *k, seq, at: now, taken: None, epoch })));
+        let (epoch, on) = (self.epoch, screen.map_or(0, Screen::mark));
+        self.sent.extend(keys.iter().map(|k| Sent::Key(Waiting { key: *k, seq, at: now, taken: None, epoch, on })));
     }
 
     /// What was typed up to write `seq` has left for the host, now.
     pub fn went(&mut self, seq: u64, now: Instant) {
-        if self.went.back().is_none_or(|(last, _)| seq > *last) {
+        if self.went.back().is_none_or(|(last, ..)| seq > *last) {
             if self.went.len() >= 32 {
                 self.went.pop_front();
             }
-            self.went.push_back((seq, now));
+            let alone = self.went.is_empty();
+            self.went.push_back((seq, now, alone));
         }
     }
 
@@ -756,7 +815,7 @@ impl Predictor {
             return true;
         }
         let Some(quickest) = self.trips.iter().min() else { return false };
-        self.went.front().filter(|(upto, _)| seq <= *upto).is_some_and(|(_, at)| now.saturating_duration_since(*at) >= *quickest * 7 / 10)
+        self.went.front().filter(|(upto, ..)| seq <= *upto).is_some_and(|(_, at, _)| now.saturating_duration_since(*at) >= *quickest * 7 / 10)
     }
 
     /// The host answered write `seq` (it has taken what was typed up to
@@ -778,12 +837,12 @@ impl Predictor {
                 w.taken = Some(now);
             }
         }
-        while let Some((upto, at)) = self.went.front().copied() {
+        while let Some((upto, at, alone)) = self.went.front().copied() {
             if upto > seq {
                 break;
             }
             self.went.pop_front();
-            if upto == seq {
+            if upto == seq && alone {
                 // (The quickest of the last few: a link's delay changes.)
                 if self.trips.len() >= 8 {
                     self.trips.pop_front();
@@ -792,8 +851,12 @@ impl Predictor {
             }
         }
         // (Only a change nothing was made of when it came: one a key was
-        // seen in is that key's, however like another's it looks.)
-        if !self.on || !self.unexplained {
+        // seen in is that key's, however like another's it looks. And
+        // only one shown a moment ago: an echo passes its answer by a
+        // moment, not by the third of a second after which a frame,
+        // looked at again at a late answer, was taken for the echo of a
+        // key that had only just left when it was shown.)
+        if !self.on || !self.unexplained || self.last_at.is_none_or(|shown| now.saturating_duration_since(shown) > BURST) {
             return false;
         }
         let before = self.overlay();
@@ -915,6 +978,19 @@ impl Predictor {
     /// Keys were seen typed between the last frame and `screen`: they,
     /// and all of the queue before them, are over.
     fn seen(&mut self, found: Found, screen: &Screen, now: Instant) {
+        // (Keys behind a gap, the first of them among those seen: the
+        // frame before this one is where they were typed, and what
+        // stands before its caret a prompt that echoes. On a slow link
+        // most of a line is typed before the prompt it is typed at is
+        // back, and found so.)
+        let begins = found.from > 0 && matches!(self.sent.get(found.from - 1), Some(Sent::Gap(_)));
+        if begins
+            && self.taint.is_none()
+            && let Some(last) = &self.last
+        {
+            let before = last.before().collect();
+            self.know(before);
+        }
         self.confirm(found.from, found.to, Some(found.proof), now);
         self.sent.drain(..found.to);
         self.floor = self.last.as_ref().map_or(screen.col, |last| last.col.min(screen.col));
@@ -949,6 +1025,11 @@ impl Predictor {
     ///   nothing says what came before it: the first "l" of "ll",
     ///   echoed with the prompt, isn't the one seen in the second's
     ///   frame; and of "s", Tab, "s", the first is the one seen first.
+    ///   But what a stretch typed doesn't "stand before the caret" in
+    ///   the very screen its first key was typed on, whatever that
+    ///   line ends with: nothing of it has been echoed there. (Typed
+    ///   after a line that ended in "t", of "t", "t" the second was
+    ///   held to be the one seen in the first's frame.)
     /// - Not a run the host would have gone on from: the key after it
     ///   was taken long before `last` was shown, and isn't in this
     ///   frame with it. A program that echoes reads what is there in
@@ -957,7 +1038,15 @@ impl Predictor {
     ///   nothing was held to be the one seen, and the rest of that line,
     ///   a password, was drawn after it.)
     /// - Not from before a later stretch whose letters stand on the
-    ///   screen: what was sent before those was taken before them.
+    ///   screen: what was sent before those was taken before them. Its
+    ///   last three letters standing before the caret say so, whatever
+    ///   else is in the line. (All of what it typed had to stand there,
+    ///   and with someone else's letter in the line between them it
+    ///   didn't: a password's letter, its write answered a moment
+    ///   before, was then the "f" seen at the next prompt, where an "f"
+    ///   had just been typed, and the rest of the password's line was
+    ///   drawn. The sessions, played anew when the host learnt to be
+    ///   asked about its prompt.)
     fn found(&self, last: &Screen, screen: &Screen, now: Instant) -> Option<Found> {
         if last.cells.len() != screen.cells.len() {
             return None;
@@ -971,13 +1060,20 @@ impl Predictor {
         // stretch whose letters are on the screen.
         let mut typed: Vec<char> = Vec::new();
         let (mut stretch, mut alive) = (0, 0);
+        // (`last` is the very screen a stretch's first key was typed
+        // on: nothing of that stretch is in it, whatever its line ends
+        // with.)
+        let (shown, mut unechoed) = (last.mark(), false);
         for from in 0..self.sent.len() {
             let Sent::Key(first) = self.sent[from] else {
                 typed.clear();
                 stretch = from + 1;
                 continue;
             };
-            if before.ends_with(&typed) {
+            if from == stretch {
+                unechoed = first.on == shown;
+            }
+            if before.ends_with(&typed) && (typed.is_empty() || !unechoed) {
                 let mut line = Line::of(last, last.col, 0);
                 for to in from..self.sent.len() {
                     let Sent::Key(w) = self.sent[to] else { break };
@@ -1013,11 +1109,17 @@ impl Predictor {
                 Key::Left | Key::Right => typed.clear(),
                 Key::Delete => {}
             }
-            if typed.last().is_some_and(|c| telling(*c)) && before.ends_with(&typed) && self.can_be_back(first.seq, now) {
+            if !unechoed && typed.last().is_some_and(|c| telling(*c)) && before.ends_with(&typed[typed.len().saturating_sub(3)..]) && self.can_be_back(first.seq, now) {
                 alive = stretch;
             }
         }
-        let fits = if standing.is_empty() { beginning } else { standing };
+        let mut fits = if standing.is_empty() { beginning } else { standing };
+        // (Runs that end with the same key say the same thing, whichever
+        // of its stretch each began with: "c", Backspace, "p" and the
+        // "p" alone. Held to be two, the "p" went unseen, was given up,
+        // and its frame was the next "p"'s when that one's answer came:
+        // the played sessions.)
+        fits.dedup_by_key(|found| found.to);
         match fits.as_slice() {
             [found] if found.from >= alive => Some(*found),
             _ => None,
@@ -1031,15 +1133,87 @@ impl Predictor {
         let mut echo = self.echo;
         for w in self.keys(from, to) {
             if matches!(w.key, Key::Type(_) | Key::Wide(_)) {
+                // (No longer than its answer took, and a moment: an echo
+                // comes with its key's answer, and a key known to be
+                // seen only later, when a frame told it from another of
+                // the same letter, wasn't echoed late. Counted as late,
+                // one such made a link of 4 ms each way "slow enough to
+                // draw ahead on" for a letter: the played sessions.)
                 let took = now.saturating_duration_since(w.at);
+                let took = w.taken.map_or(took, |taken| took.min(taken.saturating_duration_since(w.at) + SETTLE));
                 // (Of late: a quarter of each new one.)
                 echo = Some(echo.map_or(took, |echo| (echo * 3 + took) / 4));
             }
         }
         self.echo = echo;
         if self.taint.is_none() {
+            // (Keys placed, of the epoch that began where the floor is,
+            // came true: what stands before the floor is a prompt that
+            // echoes what is typed at it.)
+            if from == 0
+                && proof == Some(self.epoch)
+                && let Some(base) = &self.base
+            {
+                let before: Vec<char> = base.cells[..(self.floor as usize).min(base.cells.len())].iter().map(|c| c.ch).collect();
+                self.know(before);
+            }
             self.proven = self.proven.max(proof.unwrap_or(0));
         }
+    }
+
+    /// `before` is the text before the caret where typing began that
+    /// came true: a prompt to know again, if it says something.
+    fn know(&mut self, before: Vec<char>) {
+        if before.iter().any(|c| telling(*c)) && self.prompts.front() != Some(&before) {
+            self.prompts.retain(|known| *known != before);
+            self.prompts.truncate(KNOWN_PROMPTS - 1);
+            self.prompts.push_front(before);
+        }
+    }
+
+    /// Whether the host is to be asked if the terminal is back at a
+    /// prompt (a number to give back with its answer, [`Self::
+    /// prompt_said`]): nothing typed is on its way (the host has taken
+    /// all of it, and no key waits to be seen echoed), what would be
+    /// typed now isn't trusted yet, an echo is slow enough for that to
+    /// matter, and on `screen`, the terminal as drawn now, the caret
+    /// stands right after a prompt known to echo. One request then, not
+    /// one for every pause in a terminal's output.
+    pub fn wants_prompt(&self, screen: Option<&Screen>) -> Option<u64> {
+        if !self.on || self.secret || self.taint.is_some() || self.doubt.is_some() || self.proven == self.epoch || self.echo.is_none_or(|echo| echo < SHOW_AT) {
+            return None;
+        }
+        // (Nothing typed is on its way: no key waits to be seen, and
+        // the host has answered every write. What is left in the queue
+        // then is gaps, things not predicted that it has taken. One
+        // answered gap alone was asked for at first, and on a slow link
+        // two Enters, or a Tab and an Enter, left two: never asked.)
+        if self.waits() || self.answered < self.writes {
+            return None;
+        }
+        let screen = screen?;
+        (!screen.alt && self.prompts.iter().any(|prompt| screen.before().eq(prompt.iter().copied()))).then_some(self.writes)
+    }
+
+    /// The host answered what [`Self::wants_prompt`] had asked (`asked`:
+    /// the number it gave): `reads`, whether the program reading the
+    /// terminal is the shell itself at its line editor. Where it is,
+    /// nothing was typed since it was asked, and `screen` (the terminal
+    /// as drawn now) still stands at the known prompt, the epoch is held
+    /// proven: what is typed next is drawn at once. Whether frames are
+    /// to be shown to it from now ([`Self::wants_frames`]).
+    pub fn prompt_said(&mut self, asked: u64, reads: bool, screen: Option<&Screen>) -> bool {
+        if !reads || self.wants_prompt(screen) != Some(asked) {
+            return false;
+        }
+        let Some(screen) = screen else { return false };
+        // (What wasn't predicted is over: the host took it, and is at
+        // its prompt again.)
+        self.sent.clear();
+        (self.floor, self.right) = (screen.col, 0);
+        self.base = Some(screen.clone());
+        self.proven = self.epoch;
+        true
     }
 
     /// What time brings: a frame that was none of those expected is
@@ -1191,7 +1365,7 @@ impl Predictor {
     /// quickest answers of late): it answers each write as it takes
     /// it, so the link has stopped, or the host has.
     pub fn stalled(&self, now: Instant) -> Option<Duration> {
-        let (_, left) = self.went.front()?;
+        let (_, left, _) = self.went.front()?;
         let silent = now.saturating_duration_since(*left);
         (silent >= self.stall_after()).then_some(silent)
     }
@@ -1204,7 +1378,7 @@ impl Predictor {
     /// whole seconds for a minute, in whole minutes from then), if
     /// something typed is unanswered.
     pub fn stall_changes(&self, now: Instant) -> Option<Instant> {
-        let (_, left) = self.went.front()?;
+        let (_, left, _) = self.went.front()?;
         let silent = now.saturating_duration_since(*left);
         let after = self.stall_after();
         let secs = silent.as_secs();

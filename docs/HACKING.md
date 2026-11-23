@@ -27340,13 +27340,56 @@ once over a slow or laggy link").
   500,000 lines, 2,038 to 2,189 million before and 2,052 to 2,218 after
   over five runs each (the spread is the frames a run happens to
   paint); at rest, nothing, before and after.
-- *What it leaves*: after each Enter what is typed is unseen until a
-  letter is back, which on a very slow link is most of a short line
-  (the played typist, who presses Enter every seventeen keys, has 81 in
-  a hundred letters drawn at once at 35 ms each way, 65 at 90, 45 at
-  200, 20 at 450). That, a lost packet's second or two and the seven
-  round trips of connecting are the host's half; a key's one and a
-  half round trips were, and are one now (next).
+- *The first letter at a shell's prompt* (2026-11-23) needn't wait to
+  be proven where the host says the terminal is back at a prompt this
+  terminal knows. A *known prompt* is the text before the caret where
+  typing began that then came true (the last four: a run also begins
+  in the middle of a line). At a pause in a terminal's output, or
+  when the predictor's clock gives up the last key that waited, with
+  nothing typed on its way and the caret right after such a prompt,
+  the host is asked, with the input mode it is asked at every pause
+  and in the same round trip (`hub::ask_the_host`, `Predictor::
+  wants_prompt`), what reads the terminal (`terminal.process`); where
+  that is the shell itself, key by key with the echo its own
+  (`shell_reads`: the foreground process is the terminal's first, the
+  line discipline's echo and editing both off), the epoch is held
+  proven (`prompt_said`), and the next letter typed there is drawn at
+  once. Only if nothing was typed between the question and its
+  answer, and the screen still stands at that prompt; whatever the
+  host then does to the line takes it back, as it takes back any
+  trust. A secret isn't drawn so: a program that asks for one isn't
+  the shell; the shell's `read -s` has the terminal's editing on; its
+  `read -es` (the line editor, silent) stands after other words than
+  a prompt that echoed (all three tried on the rig after the prompt
+  was trusted: no ink). Not asked of a terminal whose echo is quick,
+  nor anywhere but at a known prompt: no request is added to a pause
+  elsewhere. On the rig at 600 ms each way, a letter typed after a
+  command and a pause is drawn in the picture taken 0.4 s after it
+  (before: nothing until its echo, 1.2 s and more).
+- *What the played sessions found on the way* (they were all new
+  sessions once the host answered questions and the typist paused):
+  seven holes in what was there before, each a rule now, in `predict`
+  and listed at the head of `predict/played.rs`: a later stretch on
+  the screen is known by its last three letters; the cell under the
+  caret is always looked at; a round trip is timed only for a write
+  that left with nothing ahead of it; what a stretch typed doesn't
+  stand "before the caret" in the screen it was typed on; an echo's
+  delay is no longer than its answer's and a moment; runs that end
+  with the same key are one; an old frame isn't looked at again at a
+  late answer. A fuzz that draws one more number plays other
+  sessions: expect it to find what the old ones didn't, and fix each
+  where it is. (A session's number in a failure is `n % 2400`: play
+  `n` and `n + 2400`, `PLAY_ONLY=N PLAY_SAY=1`.)
+- *What it leaves*: the question takes a round trip, so the first
+  letter after an Enter is drawn at once only when the person pauses
+  that long (the played typist, who pauses to read after half their
+  Enters, three lines in ten of whose are a secret's: 30 in a hundred
+  first letters at 35 ms each way, 21 at 90, 12 at 200, 2 at 450; of
+  all letters 84, 71, 51 and 25, and with each key sent as typed 85,
+  77, 65 and 40). The host's helper saying it unasked, with the
+  prompt, is the host's half, with a lost packet's second or two and
+  the seven round trips of connecting; a key's one and a half round
+  trips were, and are one now (next).
 
 **A helper on the host** (`crates/rex-link`, `olo-rex-link`,
 2026-11-22; Ben: "if it's helpful to have e.g. a daemon server side to
@@ -27356,7 +27399,7 @@ be the best ever implementation for this kind of thing"). A small
 program of Olo's own that the app puts on a host reached over SSH and
 runs there in front of the Rex server, for what can only be done at
 the host's end of a slow link. It is the foundation of the host's half
-(TODO: the first letter at a prompt, a link of its own over UDP,
+(TODO: a shell's prompt said unasked, a link of its own over UDP,
 connecting in fewer round trips); what it does today:
 - *Every key in one round trip.* It stands between the app's control
   connection and the server (`rex __internal dial-stdio`, which it

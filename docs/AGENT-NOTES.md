@@ -2676,3 +2676,17 @@ an argument it doesn't know starts the lint (read its first lines).
   reading the code (the rig's cost scripts print the count; two were
   from the Host window's title, minutes of reading saved had they
   been looked at first).
+- **A change to the played sessions' model makes them all new
+  sessions** (one more number drawn, and every session after it
+  differs): when Rex's predictor learnt to ask the host about its
+  prompt, the 4,800 sessions found seven holes in rules that had
+  passed the old 4,800. Take each as a real bug in what was there
+  (most were), fix it where it is, and expect several rounds; a
+  failure names `seed`, which is `n % 2400`, so play both `n` and
+  `n + 2400` (`PLAY_ONLY=N PLAY_SAY=1`), and a temporary `eprintln!`
+  of the candidates in `found()` under `PLAY_SAY` says in one run what
+  an hour of reading the trace doesn't.
+- **A test that never ends**: `cargo test` with no `timeout` sat ten
+  minutes and was moved to the background when a fuzz's loop had no
+  end (an event rescheduled itself for ever). Run a test that plays a
+  loop under `timeout 400`, always.

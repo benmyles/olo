@@ -1197,21 +1197,20 @@ something nobody here has is in "Blocked", with what it waits for.
       trip later, with the helper and without. Which window holds
       them (ours after idle, the host's) isn't found out; typing never
       sends so. For the link of its own.
-    - *The first letter at a shell's prompt at once.* After every
-      Enter what is typed is unseen until a letter is back (mosh's
-      rule: on a link of 450 ms each way only a fifth of a fast
-      typist's letters are drawn at once, of 81 in a hundred at 35 ms:
-      the played sessions' count). The helper knows what the client
-      can't: that the shell itself is in the foreground and reading
-      key by key (the Rex server's own `terminal.process` and
-      `input_mode`, asked on the host for nothing), said in the stream
-      of the terminal's output after it has gone quiet. Never by the
-      pty's own queues (on Linux a pty's far side says nothing of
-      them, and holding it open keeps a pane from closing), and never
-      alone: with the shell's bracketed-paste mode seen to go off and
-      on again after the Enter, nothing typed since still on its way,
-      one client in the session. Programs that aren't shells stay on
-      mosh's rule.
+    - *A shell's prompt said unasked.* The app's half is done
+      (2026-11-23; HACKING, "The first letter at a shell's prompt"):
+      at a prompt known to echo it asks the host what reads the
+      terminal, and draws the next letter at once where that is the
+      shell at its line editor. The asking takes a round trip, so
+      only a person who pauses that long gains (the played typist: 30
+      first letters in a hundred at 35 ms each way, 2 at 450). The
+      helper knows what the app asks for (the Rex server's own
+      `terminal.process` and `input_mode`, asked on the host for
+      nothing) and can say it in the stream of the terminal's output
+      as the prompt is drawn: then the first letter is at once after
+      every Enter. Never by the pty's own queues (on Linux a pty's far
+      side says nothing of them, and holding it open keeps a pane from
+      closing). Programs that aren't shells stay on mosh's rule.
     - *A link of its own over UDP* (QUIC: `quinn`, with a cipher in
       Rust alone so the helper is built for x86_64 and aarch64 hosts
       with no C toolchain; the key handed over SSH; the same frames
