@@ -81,9 +81,17 @@ static START: Once = Once::new();
 /// each would go (nothing is ever sent to them).
 const INTERNET: [IpAddr; 2] = [IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111))];
 
-/// How long after a change its burst is taken to go on (an address comes
-/// with its routes, a link going down takes its addresses with it).
-const SETTLE_MS: i32 = 150;
+/// How long a change's burst is let come before what came is taken, and
+/// again while more came meanwhile (an address comes with its routes, a
+/// link going down takes its addresses with it): what is there is read
+/// between one and two of these after the burst's last news. Slept,
+/// not watched: watching the socket meanwhile woke this thread for each
+/// message (`run`).
+const SETTLE_MS: u64 = 75;
+
+/// The longest a burst is let go on before what is there is read all the
+/// same (news that never stops, a link coming and going).
+const SETTLE_MOST: Duration = Duration::from_secs(1);
 
 /// The network as the kernel has it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -150,31 +158,48 @@ pub fn watch() {
 
 fn run(events: Netlink, ask: Netlink, mut was: Snapshot) {
     loop {
-        // The news, then the rest of its burst.
+        // The news (waited for), then the rest of its burst, taken whole:
+        // let it come for `SETTLE_MS`, then all of it at once, again while
+        // more came meanwhile, for `SETTLE_MOST` at most. (Waiting on the
+        // socket for 150 ms after each message, the thread woke for nearly
+        // every message of a burst: a container Docker starts and stops is
+        // some thirty, and a desktop at rest beside a build in containers
+        // woke for each. The rest check, 2026-11-24.)
         let mut gone: BTreeSet<IpAddr> = BTreeSet::new();
+        let mut take = |news: Vec<(u16, u32, Vec<u8>)>| {
+            for (kind, _, m) in news {
+                if kind == netlink::RTM_DELADDR
+                    && let Some((_, a)) = netlink::address(&m)
+                {
+                    gone.insert(a);
+                }
+            }
+        };
         let mut wait = true;
+        let mut began: Option<Instant> = None;
         loop {
-            match events.recv(wait) {
-                Ok(news) => {
-                    for (kind, _, m) in news {
-                        if kind == netlink::RTM_DELADDR
-                            && let Some((_, a)) = netlink::address(&m)
-                        {
-                            gone.insert(a);
-                        }
+            let mut came = false;
+            loop {
+                match events.recv(wait) {
+                    // (Nothing more without waiting: the burst so far is taken.)
+                    Ok(news) if news.is_empty() && !wait => break,
+                    Ok(news) => {
+                        came = true;
+                        take(news);
+                    }
+                    // Some news lost: what's there now tells.
+                    Err(e) if e.raw_os_error() == Some(libc::ENOBUFS) => came = true,
+                    Err(e) => {
+                        tracing::warn!("network: the kernel's news can't be read ({e}): changes aren't followed from now");
+                        return;
                     }
                 }
-                // Some news lost: what's there now tells.
-                Err(e) if e.raw_os_error() == Some(libc::ENOBUFS) => {}
-                Err(e) => {
-                    tracing::warn!("network: the kernel's news can't be read ({e}): changes aren't followed from now");
-                    return;
-                }
+                wait = false;
             }
-            wait = false;
-            if !events.readable(SETTLE_MS) {
+            if !came || began.get_or_insert_with(Instant::now).elapsed() >= SETTLE_MOST {
                 break;
             }
+            std::thread::sleep(Duration::from_millis(SETTLE_MS));
         }
         let started = Instant::now();
         let now = Snapshot::read(&ask);

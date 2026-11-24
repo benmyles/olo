@@ -314,6 +314,9 @@ def start(name, args):
     env["DBUS_SESSION_BUS_ADDRESS"] = private_bus(d)
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("OLO_SOCKET", None)
+    # (What ended desktops left, forgotten first: the name this one takes
+    # may be one of theirs.)
+    tidy(quiet=True)
     log = open(os.path.join(d, "app_server.log"), "w")
     session = "--session" in args
     # sudo resets HOME, so a sandbox home goes in through env(1).
@@ -485,6 +488,13 @@ def end(left, within=3.0):
             except OSError:
                 pass
 
+# Olo's own folders in the runtime dir holding something of each display
+# (a desktop's widgets, `olo-glance/wayland-3/`; what its notifications and
+# upgrades kept, `olo-state/attention-wayland-3.json`): forgotten with it.
+# Left, a desktop started on that name next found the widgets from before,
+# and the rest check's wait for its widgets waited for nothing (2026-11-24).
+NESTED = ("olo-glance", "olo-state")
+
 def forget_display(display, person=None):
     """What the sessions on `display` left in the runtime dir (app_server's
     socket and lock, the apps' sockets, olo-termd's, layouts kept for a
@@ -520,6 +530,11 @@ def forget_display(display, person=None):
             pass
         pat = re.compile(r"(?:^|[-.])" + re.escape(display) + r"(?:$|[-.])")
         names = [n for n in os.listdir(RUNTIME) if pat.search(n) and n not in (display, f"{display}.lock")]
+        for folder in NESTED:
+            try:
+                names += [os.path.join(folder, n) for n in os.listdir(os.path.join(RUNTIME, folder)) if pat.search(n)]
+            except OSError:
+                pass
         for n in names + [display, f"{display}.lock"]:
             path = os.path.join(RUNTIME, n)
             if os.path.isdir(path) and not os.path.islink(path):
@@ -533,12 +548,19 @@ def forget_display(display, person=None):
     finally:
         os.close(fd)
 
-def tidy():
+def tidy(quiet=False):
     """forget_display for every display no session holds."""
     person = os.environ.get("WAYLAND_DISPLAY")
-    shown = sorted({m.group(0) for n in os.listdir(RUNTIME) for m in [re.search(r"wayland-\d+", n)] if m}, key=lambda d: int(d.split("-")[1]))
+    names = os.listdir(RUNTIME)
+    for folder in NESTED:
+        try:
+            names += os.listdir(os.path.join(RUNTIME, folder))
+        except OSError:
+            pass
+    shown = sorted({m.group(0) for n in names for m in [re.search(r"wayland-\d+", n)] if m}, key=lambda d: int(d.split("-")[1]))
     gone = [d for d in shown if forget_display(d, person)]
-    print(f"tidied {len(gone)} ended displays: {' '.join(gone)}" if gone else "nothing to tidy")
+    if not quiet:
+        print(f"tidied {len(gone)} ended displays: {' '.join(gone)}" if gone else "nothing to tidy")
 
 def stop(name):
     d = sdir(name)

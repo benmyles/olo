@@ -3044,3 +3044,28 @@ this one is, and what differs:
   it from an interactive shell (`olo-terminal -e bash -i -c "STAND-IN
   RECORD; exec bash"`), not as `-e STAND-IN`.
 
+- **Docker's containers are network changes to whatever watches the
+  network**: each one started or stopped is some thirty rtnetlink
+  messages (a veth pair, the bridge, IPv6 addresses), all of them news
+  to `olo_net`'s watcher on this computer. A release built in
+  containers (`publish-release.sh`) while the pre-push hook's rest
+  check ran was when Calendar's demo widget provider was seen waking
+  2.2 times a second (it ran the watcher then; it doesn't now). To
+  measure anything that watches the network, start containers beside
+  it: `sudo -n docker run --rm registry.fedoraproject.org/fedora:44
+  true`, five in a row (`crates/net/examples/watch.rs` is the watcher
+  alone). The watcher's own test of real changes,
+  `crates/net/tests/netns.rs`, says "not tested" here (Ubuntu's AppArmor
+  refuses an unprivileged user namespace): `jato test -p olo-net --test
+  netns --no-run` names its binary; copy it out of the home folder
+  (`/var/tmp`) and `sudo -n env -i PATH=/usr/bin:/bin COPY --exact
+  network_changes --nocapture` runs it, its cut and wait times printed.
+  Run where it was built, it says "Permission denied" as root too: in
+  its user namespace root has no rights to the home folder (`drwxr-x---`),
+  so it can't start itself again from there.
+- **The runtime folder gathers what test desktops leave** (`olo-glance/
+  wayland-N/`, `olo-state/attention-wayland-N.json`): `tsession` forgets
+  them as a desktop stops and before one starts (`tidy`), and
+  `tsession tidy` does it by hand. A widget provider whose lock a
+  provider of an ended desktop held never ran, and a check that waited
+  for its widget's file found the old one.

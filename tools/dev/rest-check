@@ -257,6 +257,10 @@ def main():
                 if os.path.exists(path):
                     os.remove(path)
         say("what waits in an app changing", m)
+        # (Not running, it was measured as at rest: its lock held by a
+        # provider of an ended desktop's, its widget's file from before.)
+        if "olo-calendar --glance" not in m["programs"]:
+            wrong.append("Calendar's provider wasn't running, so nothing of it was measured")
         share, woke = m["programs"].get("olo-calendar --glance", (0.0, 0.0))
         if woke > 2:
             wrong.append(f"Calendar's provider woke {woke:.1f} times a second for the Inbox's changes")

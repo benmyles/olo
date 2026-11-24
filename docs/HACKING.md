@@ -568,7 +568,8 @@ How Olo keeps it (do the same):
   times a second, and the desktop must stay at rest but for who shows
   it (frames, wake-ups, files written; it fails on the build from
   before with 49.5 frames a second and Calendar's provider woken 61
-  times a second). To find the next one on a running desktop:
+  times a second, and where Calendar's provider wasn't running, as it
+  measured nothing of it). To find the next one on a running desktop:
   `tools/dev/cost` on what is busy, and which files change (an
   inotify count of the runtime folder's `olo-state`, of
   `olo-glance/DISPLAY` and of the settings' folder says who writes).
@@ -1137,7 +1138,13 @@ on (its address is that network's): when that address goes, nothing tells
 whoever is reading or writing it, who waits for TCP to give up, a quarter
 of an hour. `olo-net` follows the kernel's own news of links, addresses
 and routes (rtnetlink, a thread asleep until there is some: nothing
-polls), and on each change, in this order: `generation()` moves on and
+polls), a change's burst taken whole (`SETTLE_MS`, 75 ms: the news
+let come asleep, then all of it read, again while more came meanwhile;
+watching the socket for 150 ms after each message, every message woke
+the thread, and a container Docker starts or stops is some thirty:
+five containers' 145 messages woke it 88 to 119 times, now 20, and a
+change is taken 113 to 145 ms after its burst's last message, where it
+was 150), and on each change, in this order: `generation()` moves on and
 `online()` says whether there's a way out to the internet (the kernel
 asked which way a packet would go); this process's TCP connections whose
 address went are cut (`shutdown`, never `close`: whoever waits on one is
@@ -1176,9 +1183,15 @@ uses it (DiskBackup's `tests/network.rs`, the Token Pool's
 `a_request_goes_on_across_a_network_change`); `tests/netns.rs` makes real
 changes in a network of the test's own (a user and network namespace, no
 privileges: addresses and routes on its loopback taken away and given
-back), and a connection on an address that went is cut 150 ms after (the
-burst a change comes in, waited out), a wait for the network ending as
-long after a way out comes back.
+back), and a connection on an address that went is cut 75 ms after (the
+burst a change comes in, waited out; 150 ms while each message was
+watched for), a wait for the network ending as long after a way out
+comes back. It needs a user namespace of its own, which AppArmor's
+`apparmor_restrict_unprivileged_userns` refuses on Ubuntu (it says "not
+tested" and passes): run a copy of its binary from outside the home
+folder as root there (AGENT-NOTES). `examples/watch.rs` is the watcher
+alone, to measure (its wake-ups as containers come and go, how long
+after a burst it says a change).
 
 ## Layout
 
@@ -6061,9 +6074,14 @@ session and goes on finds nothing of it still running; then it removes
 the state its apps left for their next selves (`olo-restore-PID.json`:
 an app that saw app_server go writes it and re-executes, and killed
 first, it stays) and the display's files in the runtime directory
-(its socket and lock, the apps' sockets, layouts kept for a reload),
+(its socket and lock, the apps' sockets, layouts kept for a reload,
+and in Olo's own folders there its widgets, `olo-glance/DISPLAY`, and
+what its notifications and upgrades kept, `olo-state/*-DISPLAY*`),
 holding the display's lock as app_server takes it, so a live session's
-are never touched. A tool that starts sessions passes `--owner` with
+are never touched. `start` first forgets what ended sessions left
+(`tidy`): a desktop that took the name of one before it found its
+widgets, and a provider of them that couldn't take its lock, and the
+rest check's wait for its widgets waited for nothing (2026-11-24). A tool that starts sessions passes `--owner` with
 its own pid (the fuzzers, ui-lint, bench, order-check, rescue-check, damage-check):
 a watcher (`tsession _watch`, blocked on both processes' pidfds, no
 polling) stops the session and removes its folder if the tool ends
@@ -24623,7 +24641,14 @@ things stand with the servers.
   taken off the list.
 - **The demo** (`OLO_CALENDAR_DEMO=1`): the engine's stand-in server
   started in the process with four calendars made for the weeks round
-  today, which the app runs against as it does against any server;
+  today, which the app runs against as it does against any server
+  (its widgets' provider, which only shows them, reads the same
+  calendars from a stand-in with no server, `Standin::offline` and
+  `kept`, as the real ones are read where they're kept: with a server
+  and a client it ran the client's watch of the network, and woke for
+  every change to the computer's, 145 times for five containers
+  Docker started, which made the rest check fail beside a release
+  being built);
   `OLO_CALENDAR_NOW=2026-11-18T10:30` fixes "now" so pictures are the
   same every day. `olo-calendar --print [--from DAY] [--days N]`: what's
   on, as JSON, with no window.

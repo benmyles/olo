@@ -114,13 +114,6 @@ impl Netlink {
         Ok(split(&buf[..n as usize]))
     }
 
-    /// Whether there's something to read within `ms`.
-    pub fn readable(&self, ms: i32) -> bool {
-        let mut p = libc::pollfd { fd: self.raw(), events: libc::POLLIN, revents: 0 };
-        // SAFETY: one pollfd of ours.
-        unsafe { libc::poll(&mut p, 1, ms) > 0 }
-    }
-
     /// Ask (`kind` with `body`, a dump if `dump`) and gather the answer:
     /// every message up to the dump's end, or the one answer.
     fn ask(&self, kind: u16, dump: bool, body: &[u8]) -> io::Result<Vec<Message>> {

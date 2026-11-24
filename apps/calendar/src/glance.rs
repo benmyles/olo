@@ -60,7 +60,7 @@ pub fn serve() -> std::process::ExitCode {
         paths.extend(sync::kept_folders());
         paths
     };
-    // (The demo's calendars are nowhere but on its server: read once.)
+    // (The demo's calendars, made in memory: once.)
     let mut held: Option<Book> = None;
     olo_kit::glance::serve_following("calendar", follow, move |asked| (make(asked, demo, &mut held), Some(AGAIN)))
 }
@@ -69,20 +69,22 @@ fn make(asked: &[Request], demo: bool, held: &mut Option<Book>) -> Vec<(u32, Tim
     let zone = TimeZone::system();
     let now = crate::now(&zone);
     let (accounts, book) = if demo {
-        let (sources, _) = sync::load(now.date());
-        let order: Vec<String> = sources.iter().map(|s| s.account.id()).collect();
+        // (The demo's calendars read where they are, as the real ones are
+        // read from where they're kept: no server started for them, nor a
+        // client, whose watch of the network woke this provider for nearly
+        // each message of every change to the computer's network, some
+        // thirty for a container Docker starts and stops: the rest check,
+        // 2026-11-24.)
+        let account = olo_calendar::account::Account { provider: olo_calendar::account::Provider::Other, address: "demo".into(), server: String::new() };
+        let order = vec![account.id()];
         let book = held
             .get_or_insert_with(|| {
-                let mut book = Book::default();
-                for source in &sources {
-                    if let (Some(cals), _) = sync::sync(source, Vec::new()) {
-                        book = book.with(&source.account.id(), cals, &order);
-                    }
-                }
-                book
+                let demo = olo_calendar::standin::Standin::offline("demo");
+                demo.fill_demo(now.date());
+                Book::new(demo.kept(&order[0]).into_iter().map(|k| Arc::new(crate::model::Cal::read(k))).collect(), &order)
             })
             .clone();
-        (sources.into_iter().map(|s| s.account).collect::<Vec<_>>(), book)
+        (vec![account], book)
     } else {
         let (accounts, kept) = sync::kept();
         let order: Vec<String> = accounts.iter().map(|a| a.id()).collect();

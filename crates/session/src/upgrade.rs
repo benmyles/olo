@@ -1209,6 +1209,9 @@ mod tests {
         assert_eq!(done, ["olo-a"]);
         assert!(!state.exists(), "nothing on offer any more");
         let _ = std::fs::remove_dir_all(&dir);
+        // (What it heard, kept in the runtime folder the person's session
+        // shares: one a run was left there, 2026-11-24.)
+        let _ = std::fs::remove_file(heard_path(&display));
     }
 
     /// Which upgrade: as said in its file, read once.

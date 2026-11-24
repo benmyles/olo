@@ -76,6 +76,35 @@ impl Standin {
         Standin { port, user: user.to_owned(), password: password.to_owned(), state, stop }
     }
 
+    /// The same calendars with no server to answer for them: for who only
+    /// shows them (Calendar's widgets in the demo, which started a server
+    /// and a client to read what was in its own memory, and the client's
+    /// watch of the network woke it for every change to the computer's).
+    pub fn offline(user: &str) -> Standin {
+        let state: Arc<Mutex<State>> = Default::default();
+        state.lock().unwrap().email = user.to_owned();
+        Standin { port: 0, user: user.to_owned(), password: String::new(), state, stop: Default::default() }
+    }
+
+    /// Its calendars as kept ones of `account`'s, as a sync would keep
+    /// them (their addresses under its folders).
+    pub fn kept(&self, account: &str) -> Vec<crate::store::Kept> {
+        let state = self.state.lock().unwrap();
+        state
+            .calendars
+            .iter()
+            .map(|(folder, c)| crate::store::Kept {
+                account: account.to_owned(),
+                href: format!("/cal/{folder}/"),
+                name: c.name.clone(),
+                color: c.color.clone(),
+                writable: !c.read_only,
+                token: None,
+                items: c.items.iter().map(|(file, (etag, ics))| (format!("/cal/{folder}/{file}"), crate::store::Item { etag: etag.clone(), ics: ics.clone() })).collect(),
+            })
+            .collect()
+    }
+
     /// Where it is.
     pub fn url(&self) -> String {
         format!("http://127.0.0.1:{}/", self.port)
@@ -240,8 +269,10 @@ impl Standin {
 impl Drop for Standin {
     fn drop(&mut self) {
         self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        // (Wake the listener so it sees.)
-        let _ = TcpStream::connect(("127.0.0.1", self.port));
+        // (Wake the listener so it sees; an offline one has none.)
+        if self.port != 0 {
+            let _ = TcpStream::connect(("127.0.0.1", self.port));
+        }
     }
 }
 
