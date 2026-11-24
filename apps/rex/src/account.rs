@@ -32,6 +32,11 @@ pub enum Item {
     /// The person's settings for their agents, as on this computer
     /// (`olo_rex_client::carry`).
     Carry,
+    /// The agents' sessions used lately, copied to resume them there
+    /// (`olo_rex_client::sessions`): by its own Copy only, never a part
+    /// of the run of all that is left, nor counted in how ready the
+    /// account is (a week of them can be gigabytes, and none is needed).
+    Sessions,
     /// Olo's skill for agents (`bridge::SKILL`), in the account's
     /// `~/.claude`.
     Skill,
@@ -48,7 +53,7 @@ pub enum Item {
 /// its own, never a list inside this one.
 pub const GROUPS: [(&str, &[Item]); 3] = [
     ("Programs", &[Item::Step(Step::Path), Item::Step(Step::Claude), Item::Step(Step::Codex), Item::Step(Step::Antigravity)]),
-    ("Settings", &[Item::Step(Step::Git), Item::Carry, Item::Skill]),
+    ("Settings", &[Item::Step(Step::Git), Item::Carry, Item::Sessions, Item::Skill]),
     ("Repositories", &[Item::Repos]),
 ];
 
@@ -61,6 +66,7 @@ impl Item {
         match self {
             Item::Step(step) => step.id(),
             Item::Carry => "settings",
+            Item::Sessions => "sessions",
             Item::Skill => "skill",
             Item::Repos => "repos",
         }
@@ -75,6 +81,7 @@ impl Item {
         match self {
             Item::Step(step) => step.title(),
             Item::Carry => "Agent settings",
+            Item::Sessions => "Agent sessions",
             Item::Skill => "Skill for agents",
             Item::Repos => "Your repositories",
         }
@@ -85,6 +92,7 @@ impl Item {
         match self {
             Item::Step(step) => step.why(),
             Item::Carry => "Settings, instructions, skills and commands. Never a sign-in or a key.",
+            Item::Sessions => "Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.",
             Item::Skill => "Tells Claude Code and other agents there how to use the bridge and Rex.",
             Item::Repos => "The ones you choose, cloned in your home folder there and set up once.",
         }
@@ -100,6 +108,7 @@ impl Item {
         match self {
             Item::Step(step) => host.account.as_ref().map(|account| account.done(step, who)),
             Item::Carry => host.carried.map(|(to_copy, ..)| to_copy == 0),
+            Item::Sessions => host.sessions.map(|s| s.sessions == 0),
             Item::Skill => host.skill,
             Item::Repos => host.repos_there.as_ref().map(|there| there.iter().all(olo_rex_client::repos::There::done)),
         }
@@ -112,13 +121,19 @@ impl Item {
     pub fn applies(self, host: &HostStands) -> bool {
         self != Item::Repos || !host.repos.is_empty()
     }
+
+    /// Whether it counts in how ready the account is (not the
+    /// sessions: [`Item::Sessions`]).
+    pub fn counted(self) -> bool {
+        self != Item::Sessions
+    }
 }
 
 /// How much of the account is ready on `host`: how many of the items
 /// are there, of how many, and the names of those that aren't. None
 /// where that isn't known.
 pub fn tally(host: &HostStands) -> Option<(usize, usize, Vec<&'static str>)> {
-    let stands: Vec<(Item, bool)> = Item::all().filter(|item| item.applies(host)).map(|item| item.done(host, None).map(|done| (item, done))).collect::<Option<_>>()?;
+    let stands: Vec<(Item, bool)> = Item::all().filter(|item| item.applies(host) && item.counted()).map(|item| item.done(host, None).map(|done| (item, done))).collect::<Option<_>>()?;
     let left: Vec<&'static str> = stands.iter().filter(|(_, done)| !done).map(|(item, _)| olo_kit::words::tr(item.title())).collect();
     Some((stands.len() - left.len(), stands.len(), left))
 }
@@ -249,6 +264,9 @@ fn demo() -> Shown {
             who,
             ..Shown::default()
         },
+        // (The agents' sessions being copied, how far it is.)
+        Some("copying") => Shown { doing: Some(Doing { item: Item::Sessions, line: "38%  ·  0.5 of 1.2 GB".into(), removing: false, of: None }), who, ..Shown::default() },
+        Some("copyfailed") => Shown { failed: vec![(Item::Sessions, "tar: .claude/projects: Cannot mkdir: No space left on device".into())], who, ..Shown::default() },
         Some("clonefailed") => Shown { failed: vec![(Item::Repos, "git@git.example.org: Permission denied (publickey).".into())], failed_repo: Some("website".into()), who, ..Shown::default() },
         _ => Shown { who, ..Shown::default() },
     }
@@ -365,7 +383,7 @@ fn next(hub: &Arc<RexHub>) {
     let (of_line, of_done, again) = (key.clone(), key.clone(), hub.clone());
     let step = match item {
         Item::Step(step) => Some(step),
-        Item::Repos => None,
+        Item::Repos | Item::Sessions => None,
         Item::Carry => {
             hub.carry_settings(&key, move |result| ended(&again, &of_done, item, result));
             return;
@@ -390,9 +408,10 @@ fn next(hub: &Arc<RexHub>) {
             crate::ui::account_changed();
         }
     };
-    let stop = match step {
-        Some(step) => hub.ready_step(&key, step, who, said, move |result| ended(&again, &of_done, item, result)),
-        None => hub.clone_repos(&key, said, move |result| ended(&again, &of_done, item, result)),
+    let stop = match (step, item) {
+        (Some(step), _) => hub.ready_step(&key, step, who, said, move |result| ended(&again, &of_done, item, result)),
+        (None, Item::Sessions) => hub.copy_sessions(&key, said, move |result| ended(&again, &of_done, item, result)),
+        (None, _) => hub.clone_repos(&key, said, move |result| ended(&again, &of_done, item, result)),
     };
     // (None: it couldn't be begun, `ended` has heard so already, and
     // the next may be under way by now with a stop of its own.)
@@ -411,7 +430,7 @@ pub fn stop(hub: &Arc<RexHub>) {
     if let Some(shown) = live().as_mut() {
         // (The skill's file is a moment's work with no stop of its
         // own: it ends by itself.)
-        if shown.doing.as_ref().is_some_and(|doing| matches!(doing.item, Item::Step(_) | Item::Repos)) {
+        if shown.doing.as_ref().is_some_and(|doing| matches!(doing.item, Item::Step(_) | Item::Repos | Item::Sessions)) {
             shown.doing = None;
         }
         shown.queue.clear();
@@ -450,7 +469,7 @@ mod tests {
     #[test]
     fn every_item_has_a_name_of_its_own_and_is_in_a_group() {
         let all: Vec<Item> = Item::all().collect();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 9);
         for item in &all {
             assert_eq!(Item::of(item.id()), Some(*item));
         }

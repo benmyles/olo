@@ -58,8 +58,14 @@ something nobody here has is in "Blocked", with what it waits for.
   barely stood off its empty track: now a lighter, raised block, 3:1 at
   least on the panel. **Left**: more apps in each theme, closer up.
 
-- **Agent Sessions in a host's Account window: the agents' sessions
-  copied there** (Ben, 2026-11-23: "in the host account setup under
+- ~~**Agent Sessions in a host's Account window: the agents' sessions
+  copied there**~~ Done (2026-11-23; HACKING, "The agents' sessions"):
+  Claude Code's, Codex's and Antigravity's, by the time chosen, copied
+  by their own Copy. Left: Codex's and Antigravity's tried with real
+  programs on a real host (the rig has neither; Codex's registration
+  was tried here in a scratch home); a session's working folder said as
+  the host's own where the person's repositories are elsewhere there
+  (now only this computer's home is said as the host's). (Ben, 2026-11-23: "in the host account setup under
   agent settings let's add an Agent Sessions item that copies over the
   transcripts/session logs for all the agents. also have a dropdown to
   choose the time window and by default have it be last 7 days so that
@@ -1729,6 +1735,31 @@ something nobody here has is in "Blocked", with what it waits for.
   like them"; and the heading of a host with a name half as long again
   as "build-farm-eu-west-production-01" would run into Check Again
   (it should end in "…" a column's gap before it): to picture.
+
+- **The kit's pop-up and status bar, from the looks at Rex's Agent
+  sessions row** (2026-11-23), the kit's everywhere: the open menu
+  "shifts the words right by about a checkmark's width" (Astra; Opus:
+  "move the menu left by 14.5 pt so 'Last 7 days' in the menu lands
+  exactly on 'Last 7 days' in the field"), runs past the window's right
+  edge, is "far wider than its content", has no shadow ("in dark its
+  background is almost the same colour as the window"), stops 8 pt
+  short of covering the button under it and sits 3 pt under the one
+  above; and the level bar's trough "has no bottom or right edge" in
+  light: its light lower and right lines are drawn against its white
+  inside (measured: 250 against 255) — "frame the trough as the kit's
+  sunken well on all four sides". And for the sessions row itself,
+  later: say how much room the host has where a copy failed for want
+  of it ("dev-box has 0.4 GB free; these need 1.2 GB"); the size of
+  each choice in the pop-up ("Last 7 days 1.2 GB").
+
+- **The helpers' tool, from the minders' reports** (2026-11-23):
+  `agents watch` can't be kept to named agents (a minder of two looks
+  was woken by another minder's investigator asking leave, and polled);
+  its lines didn't name an Astra look while it ran (the look's own
+  front door said its end); an approval prompt that hides lines of a
+  long command ("⋯ (7 lines hidden)") can't be judged, and `peek` and
+  `log` don't show them; `agy-help` ends with 3 at a helper's first
+  question, which reads as a failure.
 
 - **Desktop commands on a host, as on this desktop: shims Rex puts
   there** (Ben, 2026-11-23: "have the rex client support installing

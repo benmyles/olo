@@ -338,6 +338,8 @@ mod tests {
             version: None,
             account: None,
             carried: None,
+            sessions: None,
+            sessions_window: Default::default(),
             repos: Vec::new(),
             repos_there: there,
         }

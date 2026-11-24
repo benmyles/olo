@@ -13,8 +13,8 @@
 use std::rc::Rc;
 
 use olo_kit::{
-    Element, IntoElement as _, ParentElement as _, Styled as _, WindowCx, canvas, div, icons, metrics as m, px, style,
-    widgets::{Button, StringView, button_width, separator},
+    Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, icons, metrics as m, px, style,
+    widgets::{Button, MenuField, StringView, button_width, separator},
 };
 use olo_rex_client::ready::Step;
 
@@ -50,6 +50,8 @@ pub enum AccountDo {
     Repos,
     /// A host that isn't connected, connected to.
     Connect,
+    /// How far back the agents' sessions copied go, chosen.
+    Window(olo_rex_client::sessions::Window),
 }
 
 /// What stands where a row's light does.
@@ -86,6 +88,26 @@ pub struct Row {
     /// Its button: its word, what it does, and whether it has
     /// something to do now. None: no button.
     pub button: Option<(&'static str, Press, bool)>,
+    /// How far what is being done is, as a bar under it (the sessions'
+    /// copy), the note after it.
+    pub bar: Option<f32>,
+}
+
+/// The sessions' copy's line (the hub's: "38%  ·  0.5 of 1.2 GB") as a
+/// bar's fraction and what follows the percentage.
+fn progress(line: &str) -> (Option<f32>, Option<String>) {
+    let Some((percent, rest)) = line.split_once('%') else { return (None, Some(line.to_owned()).filter(|l| !l.is_empty())) };
+    let fraction = percent.trim().parse::<f32>().ok().map(|p| (p / 100.0).clamp(0.0, 1.0));
+    (fraction, Some(rest.trim_start_matches(|c: char| c == ' ' || c == '·').to_owned()).filter(|r| !r.is_empty()))
+}
+
+/// What a host said when the sessions couldn't be copied, as the window
+/// says it: room where that is what it lacked, else its own words.
+fn sessions_failed(said: &str, host: &str) -> String {
+    if said.contains("No space left on device") {
+        return olo_kit::tr!("There isn’t room for them on {}. Choose a shorter time, or make room there.", host).to_string();
+    }
+    said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or(said).trim().to_owned()
 }
 
 /// The word on an item's button, for one that isn't there.
@@ -93,7 +115,7 @@ fn verb(item: Item) -> &'static str {
     match item {
         Item::Step(Step::Path) => "Add",
         Item::Step(Step::Git) => "Set",
-        Item::Carry => "Copy",
+        Item::Carry | Item::Sessions => "Copy",
         _ => "Install",
     }
 }
@@ -104,8 +126,12 @@ fn verb(item: Item) -> &'static str {
 fn repos_row(host: &HostStands, shown: &Shown) -> Row {
     use olo_kit::words::{count, tr};
     let reached = host.conn == HostConnState::Connected && host.ssh;
-    let choose = Some(("Choose…", Press::Repos, true));
-    let plain = |lamp, said: String, button| Row { lamp, said, host_said: None, note: None, button };
+    // (Greyed while something else is being done, as every row's
+    // button is; live while the repositories are, their window showing
+    // how far it is. Live through a copy of the sessions it looked like
+    // a state missed: Opus's look.)
+    let choose = Some(("Choose…", Press::Repos, !shown.busy() || shown.doing(Item::Repos).is_some()));
+    let plain = |lamp, said: String, button| Row { lamp, said, host_said: None, note: None, button, bar: None };
     let cloned = |there: &[olo_rex_client::repos::There]| olo_kit::tr!("{} of {} cloned", there.iter().filter(|t| t.done()).count(), there.len()).to_string();
     // (Which one, and git's count of what has come said plainly, in
     // the window's own letters: its raw line in a terminal's face was
@@ -180,9 +206,15 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
     }
     let reached = host.conn == HostConnState::Connected && host.ssh;
     let can = reached && !shown.busy();
-    let plain = |lamp, said: &'static str, button| Row { lamp, said: if said.is_empty() { String::new() } else { tr(said).into() }, host_said: None, note: None, button };
+    let plain = |lamp, said: &'static str, button| Row { lamp, said: if said.is_empty() { String::new() } else { tr(said).into() }, host_said: None, note: None, button, bar: None };
     let set = matches!(item, Item::Step(Step::Path | Step::Git));
     if let Some(doing) = shown.doing(item) {
+        // (The sessions: how far the copy is, as a bar and how much of
+        // how much; its Copy greyed meanwhile, as Agent settings' is.)
+        if item == Item::Sessions {
+            let (fraction, rest) = progress(&doing.line);
+            return Row { note: rest, bar: fraction, ..plain(Lamp::Doing, "Copying…", Some((verb(item), Press::Run, false))) };
+        }
         let said = if doing.removing {
             "Removing…"
         } else if item == Item::Carry {
@@ -197,9 +229,14 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
     if shown.queue.contains(&item) {
         return plain(Lamp::Queued, "Waiting", None);
     }
+    // (A copy of the sessions that failed: said in the window's words,
+    // not tar's; with what to do where that is known.)
+    if let (Item::Sessions, Some(said)) = (item, shown.failed(item)) {
+        return Row { note: Some(sessions_failed(said, &host.name)), ..plain(Lamp::Light(Light::Down), "Couldn’t be copied", Some(("Try Again", Press::Run, can))) };
+    }
     if let Some(said) = shown.failed(item) {
         let what = match item {
-            Item::Carry => "Couldn’t be copied",
+            Item::Carry | Item::Sessions => "Couldn’t be copied",
             _ if set => "Couldn’t be set",
             _ => "Couldn’t be installed",
         };
@@ -215,6 +252,26 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         (_, None) => plain(Lamp::Light(Light::Off), "—", None),
         (Item::Skill, Some(true)) => plain(Lamp::Light(Light::On), "Installed", Some(("Remove", Press::RemoveSkill, can))),
         (Item::Carry, Some(true)) => plain(Lamp::Light(Light::On), "As on this computer", None),
+        // (Optional, and not counted: to copy, and none in the time
+        // chosen, a hollow ring, as the repositories' None chosen; only
+        // as here is green. Opus's look.)
+        (Item::Sessions, Some(done)) => {
+            let s = host.sessions.unwrap_or_default();
+            let mut said = match (done, s.same + s.newer_there) {
+                (true, 0) => tr("None in that time").to_string(),
+                (true, _) => tr("As on this computer").to_string(),
+                (false, _) => format!("{}  ·  {}", olo_kit::words::count(s.sessions as u64, "1 session", "{n} sessions"), olo_kit::tr!("{} to copy", olo_kit::files::format_size(s.bytes))),
+            };
+            // (One continued there is left as it is: said.)
+            if s.newer_there > 0 {
+                said = format!("{said}  ·  {}", olo_kit::tr!("{} continued there", s.newer_there));
+            }
+            match (done, s.same + s.newer_there) {
+                (true, 0) => Row { said, ..plain(Lamp::Queued, "", None) },
+                (true, _) => Row { said, ..plain(Lamp::Light(Light::On), "", None) },
+                (false, _) => Row { said, lamp: Lamp::Queued, ..off("", true) },
+            }
+        }
         (Item::Carry, Some(false)) => {
             let to_copy = host.carried.map_or(0, |(to_copy, ..)| to_copy);
             Row { said: olo_kit::words::count(to_copy as u64, "1 file to copy", "{n} files to copy"), ..off("", true) }
@@ -255,6 +312,8 @@ pub fn left(host: &HostStands, shown: &Shown) -> Vec<Item> {
             // (The repositories' button opens their window: they are
             // left where some are chosen and not all are cloned.)
             Item::Repos => reached && !shown.busy() && host.repos_there.as_ref().is_some_and(|there| there.iter().any(|t| t.to_do())),
+            // (Copied by its own button only: `Item::Sessions`.)
+            Item::Sessions => false,
             _ => matches!(row(host, shown, *item), Row { lamp: Lamp::Light(Light::Off | Light::Down), button: Some((_, Press::Run, true)), .. }),
         })
         .collect()
@@ -276,6 +335,11 @@ pub fn head_state(host: &HostStands, shown: &Shown) -> (Lamp, String) {
     if !reached {
         return (Lamp::Light(panels::light_for(&host.conn)), panels::host_state(&host.conn, false));
     }
+    // (The sessions are never a part of Set Up: their copy is said as
+    // what it is.)
+    if shown.doing(Item::Sessions).is_some() {
+        return (Lamp::Doing, tr("Copying sessions…").into());
+    }
     if shown.busy() {
         // (Which of the run is being done: the one sign of how far it
         // is, where an installer says nothing for a while.)
@@ -289,7 +353,9 @@ pub fn head_state(host: &HostStands, shown: &Shown) -> (Lamp, String) {
     }
     // (What couldn't be done is said here too: with it only on its
     // row, the head read as if nothing had gone wrong.)
-    let failed = match shown.failed.len() {
+    // (Not the sessions, which aren't among those counted: their row
+    // says it.)
+    let failed = match shown.failed.iter().filter(|(item, _)| item.counted()).count() {
         0 => String::new(),
         n => format!("  ·  {}", olo_kit::words::count(n as u64, "1 couldn’t be done", "{n} couldn’t be done")),
     };
@@ -383,7 +449,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
             // (A row as tall with a button as without: what is under
             // it never moves when its button goes.)
             let line = div().w_full().h(px(m::CONTROL_HEIGHT + 2.0)).flex().flex_row().items_center().gap(px(m::SPACING)).child(words);
-            let line = match r.button {
+            let mut line = match r.button {
                 Some((label, press, can)) => {
                     let what = match press {
                         Press::Run => AccountDo::Run(vec![item]),
@@ -394,16 +460,64 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
                 }
                 None => line,
             };
+            // (The sessions' time, chosen on the same line after Copy, in
+            // the buttons' column: "Copy · Last 7 days". Stacked under
+            // Copy it was the window's only control of two storeys, its
+            // label two button-widths from it: both looks.)
+            if item == Item::Sessions {
+                let windows = olo_rex_client::sessions::Window::ALL;
+                let chosen = windows.iter().position(|w| *w == host.sessions_window).unwrap_or(1);
+                let on_do = on_do.clone();
+                let field = MenuField::new("account-sessions-window", windows.iter().map(|w| SharedString::from(olo_kit::words::tr(w.label()).to_string())).collect(), chosen)
+                    .name("Sessions used in")
+                    .width(wide)
+                    .enabled(!shown.busy())
+                    .on_change(move |i: &usize, cx| on_do(&AccountDo::Window(windows[*i]), cx));
+                line = line.child(field);
+            }
             // (Under it, begun where its name begins and ended clear of
             // the buttons' column: what it is; or what the host wrote,
             // in the letters a host's words are always in here, one
             // line, its whole in its tip.)
-            let note = match (&r.host_said, &r.note) {
-                (Some(said), _) => StringView::new(said.clone()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(style::SMALL_SIZE)),
-                (None, Some(note)) => StringView::new(note.clone()).size(style::SMALL_SIZE).dim(true).cut(true).height(style::line_row(style::SMALL_SIZE)),
-                (None, None) => StringView::new(olo_kit::words::tr(item.why()).to_string()).size(style::SMALL_SIZE).dim(true).cut_words(true).height(style::line_row(style::SMALL_SIZE)),
+            let row_h = style::line_row(style::SMALL_SIZE);
+            let words_under = |text: String, mono: bool| {
+                if mono { StringView::new(text).mono(true).size(MONO_SIZE).dim(true).cut(true).height(row_h) } else { StringView::new(text).size(style::SMALL_SIZE).dim(true).cut(true).height(row_h) }
             };
-            let note = div().w_full().pl(px(under)).pr(px(wide + m::SPACING)).child(note);
+            let note = match (&r.host_said, &r.note) {
+                (Some(said), _) => words_under(said.clone(), true).into_element(),
+                // (How far a copy is: a bar, and how much of how much.)
+                (None, note) if r.bar.is_some() => {
+                    let fraction = r.bar.unwrap_or(0.0);
+                    let bar = canvas(move |g, b| {
+                        let h = px(8.0);
+                        let bar = olo_kit::Bounds::new(olo_kit::point(b.left(), b.center().y - h / 2.0), olo_kit::size(b.size.width, h));
+                        olo_kit::widgets::level_bar(g, bar, fraction, None, &olo_kit::theme::palette());
+                    })
+                    .paint_key(style::key(("sessions-bar", fraction.to_bits())))
+                    .flex_1()
+                    .h(px(row_h));
+                    div()
+                        .w_full()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(m::TIGHT + 2.0))
+                        .child(bar)
+                        // (As wide as its words: cut, it took the whole
+                        // line and left the bar none.)
+                        .children(note.clone().map(|n| StringView::new(n).size(style::SMALL_SIZE).dim(true).height(row_h)))
+                        .into_element()
+                }
+                (None, Some(note)) => words_under(note.clone(), false).into_element(),
+                (None, None) => StringView::new(olo_kit::words::tr(item.why()).to_string()).size(style::SMALL_SIZE).dim(true).cut_words(true).height(row_h).into_element(),
+            };
+            // (A bar and its label run to the controls' right edge, the
+            // label there: ended short of the buttons' column, the bar
+            // stopped in the middle of Copy, lined up with nothing.)
+            let note = match r.bar.is_some() && r.host_said.is_none() {
+                true => div().w_full().pl(px(under)).child(note),
+                false => div().w_full().pl(px(under)).pr(px(wide + m::SPACING)).child(note),
+            };
             rows.push(div().w_full().flex().flex_col().child(line).child(note).into_element());
         }
         page.push(
@@ -477,6 +591,8 @@ mod tests {
             account,
             // (The settings carried: as here, but where a test says.)
             carried: Some((0, 3, false)),
+            sessions: None,
+            sessions_window: Default::default(),
             // (No repositories chosen, but where a test says.)
             repos: Vec::new(),
             repos_there: Some(Vec::new()),
@@ -489,30 +605,76 @@ mod tests {
     const PATH: Item = Item::Step(Step::Path);
     const GIT: Item = Item::Step(Step::Git);
 
+    /// The agents' sessions: how many and how large to copy, or as here,
+    /// or none used in the window; those continued there said; copied
+    /// by their own button only, and not counted in how ready it is.
+    #[test]
+    fn the_sessions_row_says_what_would_be_copied() {
+        use olo_rex_client::sessions::{Summary, Window};
+        let who = Some(("You".to_owned(), "you@example.org".to_owned()));
+        let some = Account { path: true, claude: Some("2.1.331".into()), git: who.clone(), has_curl: true, has_git: true, ..Account::default() };
+        let base = host(Some(some), Some(true), HostConnState::Connected);
+        let shown = Shown { key: "dev".into(), name: "dev-box".into(), who, ..Shown::default() };
+        let with = |s: Summary, window: Window| HostStands { sessions: Some(s), sessions_window: window, ..base.clone() };
+        let to_copy = with(Summary { sessions: 38, bytes: 1_288_490_189, same: 3, newer_there: 0 }, Window::Week);
+        assert_eq!(
+            row(&to_copy, &shown, Item::Sessions),
+            Row { lamp: Lamp::Queued, said: "38 sessions  ·  1.2 GB to copy".into(), host_said: None, note: None, button: Some(("Copy", Press::Run, true)), bar: None }
+        );
+        assert_eq!(row(&with(Summary { same: 24, ..Default::default() }, Window::Week), &shown, Item::Sessions).said, "As on this computer");
+        let none = row(&with(Summary::default(), Window::Week), &shown, Item::Sessions);
+        assert_eq!((none.lamp, none.said.as_str(), none.button), (Lamp::Queued, "None in that time", None), "nothing to do: a ring, not green");
+        let newer = row(&with(Summary { same: 21, newer_there: 2, ..Default::default() }, Window::Month), &shown, Item::Sessions);
+        assert_eq!((newer.lamp, newer.said.as_str(), newer.button), (Lamp::Light(Light::On), "As on this computer  ·  2 continued there", None));
+        // (Not part of the run of all that is left, nor of the tally.)
+        assert!(!left(&to_copy, &shown).contains(&Item::Sessions));
+        let (ready, of, _) = crate::account::tally(&to_copy).unwrap();
+        assert_eq!(of, crate::account::tally(&base).unwrap().1, "the same items counted, with sessions to copy or without");
+        assert!(ready <= of);
+        // Copying: a bar and how much of how much, Copy greyed; the head
+        // says it is a copy, not Set Up.
+        let copying = Shown { doing: Some(Doing { item: Item::Sessions, line: "38%  ·  0.5 of 1.2 GB".into(), removing: false, of: None }), ..shown.clone() };
+        assert_eq!(
+            row(&to_copy, &copying, Item::Sessions),
+            Row { lamp: Lamp::Doing, said: "Copying…".into(), host_said: None, note: Some("0.5 of 1.2 GB".into()), button: Some(("Copy", Press::Run, false)), bar: Some(0.38) }
+        );
+        assert_eq!(head_state(&to_copy, &copying).1, "Copying sessions…");
+        // Failed for want of room: said in the window's words, with what to do.
+        let full = Shown { failed: vec![(Item::Sessions, "tar: x: Cannot write: No space left on device".into())], ..shown.clone() };
+        let failed = row(&to_copy, &full, Item::Sessions);
+        assert_eq!(
+            (failed.lamp, failed.note.as_deref(), failed.host_said, failed.button),
+            (Lamp::Light(Light::Down), Some("There isn’t room for them on dev-box. Choose a shorter time, or make room there."), None, Some(("Try Again", Press::Run, true)))
+        );
+    }
+
     #[test]
     fn each_item_says_how_it_stands_and_what_can_be_done() {
         let who = Some(("You".to_owned(), "you@example.org".to_owned()));
         let some = Account { path: true, claude: Some("2.1.331".into()), git: who.clone(), has_curl: true, has_git: true, ..Account::default() };
         let h = host(Some(some.clone()), Some(false), HostConnState::Connected);
         let shown = Shown { key: "dev".into(), name: "dev-box".into(), who: who.clone(), ..Shown::default() };
-        assert_eq!(row(&h, &shown, CLAUDE), Row { lamp: Lamp::Light(Light::On), said: "2.1.331".into(), host_said: None, note: None, button: None });
+        assert_eq!(row(&h, &shown, CLAUDE), Row { lamp: Lamp::Light(Light::On), said: "2.1.331".into(), host_said: None, note: None, button: None, bar: None });
         assert_eq!(row(&h, &shown, PATH).said, "On the path");
         assert_eq!(row(&h, &shown, GIT).said, "You <you@example.org>");
-        assert_eq!(row(&h, &shown, CODEX), Row { lamp: Lamp::Light(Light::Off), said: "Not installed".into(), host_said: None, note: None, button: Some(("Install", Press::Run, true)) });
+        assert_eq!(row(&h, &shown, CODEX), Row { lamp: Lamp::Light(Light::Off), said: "Not installed".into(), host_said: None, note: None, button: Some(("Install", Press::Run, true)), bar: None });
         assert_eq!(row(&h, &shown, Item::Skill).button, Some(("Install", Press::Run, true)));
         assert_eq!(left(&h, &shown), [CODEX, AGY, Item::Skill]);
         assert_eq!(head_state(&h, &shown), (Lamp::Light(Light::Waiting), "4 of 7 ready".into()));
         // (The person's settings: how many would be copied; as here, nothing to press.)
         let lacking = HostStands { carried: Some((12, 2, false)), ..h.clone() };
-        assert_eq!(row(&lacking, &shown, Item::Carry), Row { lamp: Lamp::Light(Light::Off), said: "12 files to copy".into(), host_said: None, note: None, button: Some(("Copy", Press::Run, true)) });
-        assert_eq!(row(&h, &shown, Item::Carry), Row { lamp: Lamp::Light(Light::On), said: "As on this computer".into(), host_said: None, note: None, button: None });
+        assert_eq!(
+            row(&lacking, &shown, Item::Carry),
+            Row { lamp: Lamp::Light(Light::Off), said: "12 files to copy".into(), host_said: None, note: None, button: Some(("Copy", Press::Run, true)), bar: None }
+        );
+        assert_eq!(row(&h, &shown, Item::Carry), Row { lamp: Lamp::Light(Light::On), said: "As on this computer".into(), host_said: None, note: None, button: None, bar: None });
         assert_eq!(left(&lacking, &shown), [CODEX, AGY, Item::Carry, Item::Skill]);
         assert_eq!(account_name(&h), "you");
 
         // One being done, others waiting: no buttons, nothing else begun meanwhile.
         let busy = Shown { doing: Some(Doing { item: CODEX, line: "Downloading…  40%".into(), removing: false, of: None }), queue: vec![AGY], ran: 1, ..shown.clone() };
-        assert_eq!(row(&h, &busy, CODEX), Row { lamp: Lamp::Doing, said: "Installing…".into(), host_said: Some("Downloading…  40%".into()), note: None, button: None });
-        assert_eq!(row(&h, &busy, AGY), Row { lamp: Lamp::Queued, said: "Waiting".into(), host_said: None, note: None, button: None });
+        assert_eq!(row(&h, &busy, CODEX), Row { lamp: Lamp::Doing, said: "Installing…".into(), host_said: Some("Downloading…  40%".into()), note: None, button: None, bar: None });
+        assert_eq!(row(&h, &busy, AGY), Row { lamp: Lamp::Queued, said: "Waiting".into(), host_said: None, note: None, button: None, bar: None });
         assert_eq!(row(&h, &busy, Item::Skill).button, Some(("Install", Press::Run, false)));
         assert!(left(&h, &busy).is_empty());
         assert_eq!(head_state(&h, &busy).1, "Setting up 2 of 3…");
@@ -526,7 +688,8 @@ mod tests {
                 said: "Couldn’t be installed".into(),
                 host_said: Some("curl: (6) Could not resolve host".into()),
                 note: None,
-                button: Some(("Try Again", Press::Run, true))
+                button: Some(("Try Again", Press::Run, true)),
+                bar: None
             }
         );
         assert_eq!(head_state(&h, &failed).1, "4 of 7 ready  ·  1 couldn’t be done");
@@ -538,7 +701,10 @@ mod tests {
         assert_eq!(row(&bare, &shown, GIT).said, "Needs git there");
         assert_eq!(left(&bare, &shown), [PATH]);
         // (The skill that is there can be taken off: the one thing here that is.)
-        assert_eq!(row(&bare, &shown, Item::Skill), Row { lamp: Lamp::Light(Light::On), said: "Installed".into(), host_said: None, note: None, button: Some(("Remove", Press::RemoveSkill, true)) });
+        assert_eq!(
+            row(&bare, &shown, Item::Skill),
+            Row { lamp: Lamp::Light(Light::On), said: "Installed".into(), host_said: None, note: None, button: Some(("Remove", Press::RemoveSkill, true)), bar: None }
+        );
         let fresh = HostStands { carried: Some((5, 0, false)), ..host(Some(Account { has_curl: true, has_git: true, ..Account::default() }), Some(false), HostConnState::Connected) };
         assert_eq!(row(&fresh, &Shown { who: None, ..shown.clone() }, GIT).button, Some(("Set", Press::Run, false)));
         assert_eq!(head_state(&fresh, &shown), (Lamp::Light(Light::Off), "Not set up".into()));
@@ -552,14 +718,15 @@ mod tests {
                 said: "Differs from this computer".into(),
                 host_said: None,
                 note: Some("There: Somebody Else <else@example.org>  ·  Here: You <you@example.org>".into()),
-                button: Some(("Use Mine", Press::Run, true))
+                button: Some(("Use Mine", Press::Run, true)),
+                bar: None
             }
         );
         assert_eq!(left(&other, &shown), [CODEX, AGY]);
 
         // The repositories: none chosen (not one of what the account is to have), some cloned, all.
         use olo_rex_client::repos::{Repo, There};
-        assert_eq!(row(&h, &shown, Item::Repos), Row { lamp: Lamp::Queued, said: "None chosen".into(), host_said: None, note: None, button: Some(("Choose…", Press::Repos, true)) });
+        assert_eq!(row(&h, &shown, Item::Repos), Row { lamp: Lamp::Queued, said: "None chosen".into(), host_said: None, note: None, button: Some(("Choose…", Press::Repos, true)), bar: None });
         let two = vec![Repo { url: "git@github.com:example/olo.git".into(), ..Repo::default() }, Repo { url: "git@github.com:example/site.git".into(), ..Repo::default() }];
         let some_cloned = HostStands { repos: two.clone(), repos_there: Some(vec![There::Cloned { set_up: true }, There::Absent]), ..h.clone() };
         assert_eq!((row(&some_cloned, &shown, Item::Repos).lamp, row(&some_cloned, &shown, Item::Repos).said), (Lamp::Light(Light::Off), "1 of 2 cloned".into()));
@@ -574,7 +741,8 @@ mod tests {
                 said: "1 of 2 cloned  ·  1 folder taken".into(),
                 host_said: None,
                 note: Some("~/src/site already holds something else. Choose… to see it.".into()),
-                button: Some(("Choose…", Press::Repos, true))
+                button: Some(("Choose…", Press::Repos, true)),
+                bar: None
             }
         );
         // (One that couldn't be cloned and one whose folder is taken: both said.)
@@ -595,7 +763,7 @@ mod tests {
         let cloning = Shown { doing: Some(Doing { item: Item::Repos, line: "Receiving objects:  40%".into(), removing: false, of: Some("site".into()) }), ..shown.clone() };
         assert_eq!(
             row(&some_cloned, &cloning, Item::Repos),
-            Row { lamp: Lamp::Doing, said: "Cloning site…".into(), host_said: None, note: Some("40%".into()), button: Some(("Choose…", Press::Repos, true)) }
+            Row { lamp: Lamp::Doing, said: "Cloning site…".into(), host_said: None, note: Some("40%".into()), button: Some(("Choose…", Press::Repos, true)), bar: None }
         );
         assert_eq!(head_state(&some_cloned, &cloning).1, "Setting up…");
         let received =
@@ -610,7 +778,8 @@ mod tests {
                 said: "1 of 2 cloned  ·  1 couldn’t be cloned".into(),
                 host_said: None,
                 note: Some("site couldn’t be cloned: Permission denied (publickey).".into()),
-                button: Some(("Choose…", Press::Repos, true))
+                button: Some(("Choose…", Press::Repos, true)),
+                bar: None
             }
         );
 
@@ -621,10 +790,14 @@ mod tests {
 
         // Not answered yet: asking. Not connected: nothing is known, nothing to press.
         let asking = HostStands { carried: None, ..host(None, None, HostConnState::Connected) };
-        assert!(Item::all().filter(|i| *i != Item::Repos).all(|i| row(&asking, &shown, i) == Row { lamp: Lamp::Queued, said: "Checking…".into(), host_said: None, note: None, button: None }));
+        assert!(
+            Item::all().filter(|i| *i != Item::Repos).all(|i| row(&asking, &shown, i) == Row { lamp: Lamp::Queued, said: "Checking…".into(), host_said: None, note: None, button: None, bar: None })
+        );
         assert_eq!(head_state(&asking, &shown), (Lamp::Queued, "Checking…".into()));
         let away = host(Some(some), Some(true), HostConnState::Disconnected);
-        assert!(Item::all().filter(|i| *i != Item::Repos).all(|i| row(&away, &shown, i) == Row { lamp: Lamp::Light(Light::Off), said: "—".into(), host_said: None, note: None, button: None }));
+        assert!(
+            Item::all().filter(|i| *i != Item::Repos).all(|i| row(&away, &shown, i) == Row { lamp: Lamp::Light(Light::Off), said: "—".into(), host_said: None, note: None, button: None, bar: None })
+        );
         assert_eq!(head_state(&away, &shown), (Lamp::Light(Light::Off), "Disconnected".into()));
         assert!(left(&away, &shown).is_empty());
     }

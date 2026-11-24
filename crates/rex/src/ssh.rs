@@ -947,6 +947,76 @@ impl SshSessionPool {
         tokio::time::timeout(within, sent).await.map_err(|_| RexError::Timeout)?
     }
 
+    /// A command on the host to talk with: what is written goes to its
+    /// input, what it writes comes back (a program's own protocol over
+    /// its input and output: Codex's server, told of copied sessions).
+    /// Let go of, its input ends and its channel goes.
+    pub async fn exec_io(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+        let channel = self.session(target, askpass).await?;
+        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+        let writer = channel.make_writer();
+        let reader = ExecOutput::Starting(Some(channel));
+        Ok(Box::pin(tokio::io::join(reader, writer)))
+    }
+
+    /// [`Self::put`] for input too large to hold at once (a week of an
+    /// agent's sessions can be gigabytes): `chunks` given to the command
+    /// on its input as they come, its input ending when they end; what
+    /// it writes back whole, with its exit status. Let go of before it
+    /// ends (Stop), its channel is closed and the command ends on the
+    /// host. A link that takes nothing for a minute is given up on.
+    pub async fn put_stream(
+        &self,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        command: &str,
+        mut chunks: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    ) -> Result<crate::provision::Ran, RexError> {
+        use russh::ChannelMsg;
+        let channel = self.session(target, askpass).await?;
+        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+        let (mut channel, told) = channel.split();
+        let mut let_go = CloseWhenLetGo(Some(told));
+        let mut refused = None;
+        while let Some(chunk) = chunks.recv().await {
+            let Some(writer) = let_go.0.as_ref() else { break };
+            match tokio::time::timeout(Duration::from_secs(60), writer.data(&chunk[..])).await {
+                Ok(Ok(())) => {}
+                // (The command ended, or the link went: what it said is
+                // read below.)
+                Ok(Err(e)) => {
+                    refused = Some(format!("sending to {} failed: {e}", target.display()));
+                    break;
+                }
+                Err(_) => return Err(RexError::Timeout),
+            }
+        }
+        if refused.is_none()
+            && let Some(writer) = let_go.0.as_ref()
+        {
+            writer.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
+        }
+        let mut ran = crate::provision::Ran::default();
+        let mut written = Vec::new();
+        loop {
+            match tokio::time::timeout(Duration::from_secs(120), channel.wait()).await {
+                Ok(Some(ChannelMsg::Data { data })) | Ok(Some(ChannelMsg::ExtendedData { data, .. })) => written.extend_from_slice(&data),
+                Ok(Some(ChannelMsg::ExitStatus { exit_status })) => ran.status = Some(exit_status),
+                Ok(Some(ChannelMsg::Close)) | Ok(None) => break,
+                Ok(Some(_)) => {}
+                Err(_) => return Err(RexError::Timeout),
+            }
+        }
+        // (Ended by itself: nothing to close.)
+        let_go.0 = None;
+        ran.output = String::from_utf8_lossy(&written).into_owned();
+        if let Some(refused) = refused.filter(|_| ran.output.trim().is_empty()) {
+            ran.output = refused;
+            ran.status.get_or_insert(1);
+        }
+        Ok(ran)
+    }
+
     async fn channel(
         &self,
         handle: &Handle<SshClientHandler>,

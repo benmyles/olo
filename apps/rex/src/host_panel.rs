@@ -503,6 +503,8 @@ mod tests {
             version: Some("0.19.2".into()),
             account: None,
             carried: None,
+            sessions: None,
+            sessions_window: Default::default(),
             repos: Vec::new(),
             repos_there: Some(Vec::new()),
         }

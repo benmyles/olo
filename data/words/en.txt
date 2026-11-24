@@ -31,6 +31,7 @@
 1 request running
 1 request today
 1 second
+1 session
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.
 10 Minutes
@@ -262,6 +263,7 @@ Agent Screen
 Agent Screen Logs
 Agent Screen “{}” is waiting for a code
 Agent Screens
+Agent sessions
 Agent settings
 Agents
 Agents and settings in your account there.
@@ -292,6 +294,7 @@ All day
 All lines around the selected one. {}
 All of Olo’s {} words are in {}.
 All these settings are for the whole computer, so changing one asks for an administrator's password.
+All time
 All waiting
 All {} connected.
 Allow
@@ -726,6 +729,7 @@ Claude Code
 Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.
 Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
 Claude Code and Codex there go back to their own sign-ins.
 Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
 Clean Up
@@ -901,6 +905,7 @@ Copy the Code That Just Came
 Copy to clipboard
 Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copying sessions…
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Copying…
 Core
@@ -1922,10 +1927,13 @@ Large pieces
 Larger
 Larger Pointer
 Last
+Last 30 days
+Last 7 days
 Last Page
 Last backed up whole {}
 Last backed up {}
 Last clean-up
+Last day
 Last used
 Last: {}, {} new or changed, {} new, took {}.
 Lately
@@ -2436,6 +2444,7 @@ None asked for yet: type in brush
 None chosen
 None connected to Olo yet.
 None found
+None in that time
 None in the last minute
 None in the last second
 None just now
@@ -3350,6 +3359,7 @@ Sessions
 Sessions on this computer may:
 Sessions on {} may:
 Sessions there keep running.
+Sessions used in
 Set
 Set Background
 Set Rex up there if it needs it
@@ -3703,6 +3713,7 @@ Tell me when an agent whose pane isn’t in front:
 Tell me when it runs out, and when it's back
 Tell palms apart with a palm model
 Tell palms apart with a palm model too
+Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 Temperature
 Temperature ({})
@@ -3913,6 +3924,7 @@ There are no network interfaces.
 There is no journal for this user to read (in /var/log/journal or /run/log/journal).
 There is no limit “{}”.
 There is nothing to share.
+There isn’t room for them on {}. Choose a shorter time, or make room there.
 There's no Bluetooth adapter.
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 There's no Wi-Fi adapter.
@@ -4836,6 +4848,7 @@ your own picture
 {n} screens shown on AirPlay receivers. Click to pause or stop them.
 {n} seconds
 {n} secrets
+{n} sessions
 {n} sessions open
 {n} sessions there.
 {n} shares, control among them. Click to stop them.
@@ -4892,6 +4905,7 @@ your own picture
 {} bytes
 {} cd/m² at most, {} over the whole screen
 {} cleared · kept for {} days, the last {}
+{} continued there
 {} copied: 1Password doesn’t let other apps read its archive.
 {} couldn't be found: {}
 {} couldn’t be cloned: {}
@@ -5038,6 +5052,7 @@ your own picture
 {} suggestions since it started
 {} this hour
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
+{} to copy
 {} to deal with, {}
 {} to nice {}
 {} to read
@@ -5069,6 +5084,7 @@ your own picture
 {} · {} · music quality
 {} — Customized
 {} — {} ({}% of this folder){}{}
+{}%  ·  {}
 {}% chance this hour
 {}% cover
 {}% left (warns under {}%)

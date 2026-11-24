@@ -8591,6 +8591,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "flate2",
  "futures-util",
  "http",
  "jiff",
@@ -8601,6 +8602,7 @@ dependencies = [
  "olo-theme",
  "olo-xdg",
  "quinn",
+ "rusqlite",
  "russh",
  "rustls",
  "rustls-platform-verifier 0.6.2",

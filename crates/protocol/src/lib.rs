@@ -2050,6 +2050,9 @@ pub struct RexSettings {
     /// The person's repositories, cloned in their account on the hosts
     /// they set up (Rex's Account window), in the order shown.
     pub repos: Vec<RexRepo>,
+    /// How many days back the agents' sessions copied to a host go, by
+    /// when each was last used (Rex's Account window; 0: all of them).
+    pub sessions_days: u32,
 }
 
 /// A repository of the person's: where it is cloned from, where it
@@ -2065,7 +2068,7 @@ pub struct RexRepo {
 
 impl Default for RexSettings {
     fn default() -> Self {
-        RexSettings { notify_blocked: true, notify_done: true, notify_failed: true, local: RexGrants::all(), hosts: Vec::new(), repos: Vec::new() }
+        RexSettings { notify_blocked: true, notify_done: true, notify_failed: true, local: RexGrants::all(), hosts: Vec::new(), sessions_days: 7, repos: Vec::new() }
     }
 }
 

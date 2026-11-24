@@ -1590,6 +1590,13 @@ impl RexWindow {
             "host.account" => open_account(&hub, &self.active_host),
             c if c.starts_with("host.account:") => open_account(&hub, c.trim_start_matches("host.account:")),
             "host.ready.stop" => crate::account::stop(&hub),
+            // (How far back the agents' sessions copied go: days, 0 for
+            // all of them, as the Account window's pop-up chooses.)
+            c if c.starts_with("host.sessions.days:") => {
+                if let Ok(days) = c.trim_start_matches("host.sessions.days:").parse::<u32>() {
+                    hub.set_sessions_window(olo_rex_client::sessions::Window::of_days(days));
+                }
+            }
             // (The person's repositories: their window, and the form
             // for a new one or for the one at a place in the list.)
             "host.repos" => open_or_raise_panel(WinRole::Repos),
@@ -1614,7 +1621,9 @@ impl RexWindow {
                         ("all", _) => {
                             let stands = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(key);
                             let who = crate::account::current().and_then(|shown| shown.who);
-                            crate::account::Item::all().filter(|item| stands.as_ref().and_then(|s| item.done(s, who.as_ref())) != Some(true)).collect()
+                            // (Not the sessions, which are copied by their
+                            // own command alone: `Item::Sessions`.)
+                            crate::account::Item::all().filter(|item| item.counted() && stands.as_ref().and_then(|s| item.done(s, who.as_ref())) != Some(true)).collect()
                         }
                         _ => Vec::new(),
                     };
@@ -4005,6 +4014,7 @@ impl View for RexWindow {
                     AccountDo::Stop => crate::account::stop(&hub),
                     AccountDo::Check => crate::account::check(&hub),
                     AccountDo::Repos => open_or_raise_panel(WinRole::Repos),
+                    AccountDo::Window(window) => hub.set_sessions_window(window),
                     AccountDo::Connect => {
                         if let Some(shown) = crate::account::current() {
                             hub.connect_host(&shown.key);

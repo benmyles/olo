@@ -55,7 +55,7 @@ alone), its settings, and its report when it is done.
      is as it should be. (Your own `watch` may say of a look "is DONE"
      or "idle … DONE" in the moment between its review being written
      and its front door ending it: the same end, nothing to answer.
-     The two looks of a folder are named `agy-FOLDER` and
+     The two looks of a folder are named `astra-FOLDER` and
      `opus-FOLDER`.)
    - *It finished a turn with a question, or without its result*
      (`list` shows it `idle`): if the answer is plainly in what it was

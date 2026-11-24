@@ -1110,6 +1110,10 @@ pub struct HostStands {
     /// The person's agent settings there: files to copy, files the
     /// same, and whether this computer's weren't all gathered.
     pub carried: Option<(usize, usize, bool)>,
+    /// The agents' sessions there, of those used in the window chosen
+    /// (`olo_rex_client::sessions`); none: not asked yet.
+    pub sessions: Option<olo_rex_client::sessions::Summary>,
+    pub sessions_window: olo_rex_client::sessions::Window,
     /// The person's repositories, and how each stands there (none:
     /// not asked yet, or the list changed since).
     pub repos: Vec<olo_rex_client::repos::Repo>,
@@ -1173,6 +1177,9 @@ pub struct HostRuntime {
     /// files would be copied now, how many are there as here, and
     /// whether this computer's weren't all gathered.
     pub carried: Option<(usize, usize, bool)>,
+    /// The agents' sessions there, asked with the account
+    /// (`olo_rex_client::sessions`).
+    pub agent_sessions: Option<olo_rex_client::sessions::Summary>,
     /// How each of the person's repositories stands there
     /// (`olo_rex_client::repos`), in the list's order as it was when
     /// the host was asked.
@@ -1241,6 +1248,9 @@ pub struct HubState {
     /// The person's repositories (the desktop's settings: Preferences'
     /// Rex, kept by the Repositories window), in their order.
     pub repos: Vec<olo_rex_client::repos::Repo>,
+    /// How far back the agents' sessions copied to a host go (the
+    /// desktop's settings).
+    pub sessions_window: olo_rex_client::sessions::Window,
     pub git_cache: Arc<GitCache>,
     pub local_bin_dir: Option<PathBuf>,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
@@ -1345,6 +1355,18 @@ impl HubState {
                     Some("ready") => there.then_some((0, 14, false)),
                     _ => there.then_some((14, 0, false)),
                 },
+                // (`OLO_REX_DEMO_SESSIONS=none`: none used in the window;
+                // `newer`: some continued there.)
+                sessions: match (std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref(), std::env::var("OLO_REX_DEMO_SESSIONS").ok().as_deref()) {
+                    (Some("asking"), _) => None,
+                    (_, Some("none")) => there.then_some(olo_rex_client::sessions::Summary::default()),
+                    (_, Some("newer")) => there.then_some(olo_rex_client::sessions::Summary { same: 21, newer_there: 2, ..Default::default() }),
+                    // (The longest line: many, large, and some continued there.)
+                    (_, Some("long")) => there.then_some(olo_rex_client::sessions::Summary { sessions: 138, bytes: 13_314_398_618, same: 4, newer_there: 2 }),
+                    (Some("ready"), _) => there.then_some(olo_rex_client::sessions::Summary { same: 24, ..Default::default() }),
+                    _ => there.then_some(olo_rex_client::sessions::Summary { sessions: 38, bytes: 1_288_490_189, same: 3, newer_there: 0 }),
+                },
+                sessions_window: self.sessions_window,
                 repos: self.repos.clone(),
                 repos_there: demo_repos_there(&self.repos).filter(|_| there),
             });
@@ -1365,6 +1387,8 @@ impl HubState {
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
             account: host.account.clone(),
             carried: host.carried,
+            sessions: host.agent_sessions,
+            sessions_window: self.sessions_window,
             repos: self.repos.clone(),
             // (As asked of the list as it is now, or not known.)
             repos_there: host.repos_there.clone().filter(|there| there.len() == self.repos.len()),
@@ -1484,6 +1508,70 @@ async fn carried_stands(pool: &olo_rex_client::SshSessionPool, target: &olo_rex_
     carry::Stands::read(&ran.output, &files, short)
 }
 
+/// Codex's server on the host asked for each of `ids` (sessions just
+/// copied there), which adds those its database doesn't have: Codex
+/// reads its sessions' folder only once, as it makes its database.
+/// Its answers waited for a minute at most; nothing where Codex isn't
+/// there.
+async fn tell_codex(pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>, ids: &[String]) {
+    use olo_rex_client::sessions;
+    use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
+    let Ok(io) = pool.exec_io(target, askpass, &format!("sh -c {}", shell_quote(sessions::REGISTER))).await else { return };
+    let (from, mut to) = tokio::io::split(io);
+    let mut lines = tokio::io::BufReader::new(from).lines();
+    let asked = sessions::register(ids);
+    let mut asked = asked.lines();
+    let told = async {
+        // (Its first, then the rest once it has answered: a server is
+        // told nothing before it says it is ready.)
+        let first = asked.next()?;
+        to.write_all(format!("{first}\n").as_bytes()).await.ok()?;
+        while let Some(line) = lines.next_line().await.ok()? {
+            if serde_json::from_str::<serde_json::Value>(&line).is_ok_and(|v| v["id"] == 1) {
+                break;
+            }
+        }
+        let rest: String = asked.map(|l| format!("{l}\n")).collect();
+        to.write_all(rest.as_bytes()).await.ok()?;
+        let mut waiting: std::collections::HashSet<u64> = (10..10 + ids.len() as u64).collect();
+        while !waiting.is_empty() {
+            let line = lines.next_line().await.ok()??;
+            if let Some(id) = serde_json::from_str::<serde_json::Value>(&line).ok().and_then(|v| v["id"].as_u64()) {
+                waiting.remove(&id);
+            }
+        }
+        Some(())
+    };
+    if tokio::time::timeout(Duration::from_secs(60), told).await.ok().flatten().is_none() {
+        tracing::info!("Rex: Codex on the host didn't answer for each session copied");
+    }
+    let _ = to.shutdown().await;
+}
+
+/// How a host stands against the agents' sessions of this computer used
+/// in `window` (`olo_rex_client::sessions`): this computer's gathered
+/// off the async threads, the host asked its home, then each file's size
+/// and time. None: it couldn't be asked.
+async fn sessions_stands(
+    pool: &olo_rex_client::SshSessionPool,
+    target: &olo_rex_client::SshTarget,
+    askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>,
+    window: olo_rex_client::sessions::Window,
+) -> Option<(olo_rex_client::sessions::Stands, olo_rex_client::sessions::Gathered)> {
+    use olo_rex_client::sessions;
+    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+    let gathered = tokio::task::spawn_blocking(move || sessions::gather(&home, window, std::time::SystemTime::now())).await.ok()?;
+    let ran = pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(sessions::HOME)), &mut |_| {}).await.ok()?;
+    let there = ran.output.lines().find_map(|l| l.strip_prefix("home ")).map(str::trim).filter(|h| h.starts_with('/'))?.to_owned();
+    if gathered.parts.is_empty() {
+        return Some((sessions::Stands { home: there, ..Default::default() }, gathered));
+    }
+    let paths: Vec<String> = gathered.parts.iter().map(|p| sessions::there_path(&p.path, &gathered.home, &there)).collect();
+    let ran = pool.put(target, askpass, &format!("sh -c {}", shell_quote(sessions::LOOK)), sessions::look(&paths).as_bytes()).await.ok()?;
+    let stands = sessions::Stands::read(&there, &ran.output, &gathered)?;
+    Some((stands, gathered))
+}
+
 /// The demo's account on its connected host, for the Account window's
 /// pictures and its lint (`OLO_REX_DEMO_ACCOUNT`: `new`, nothing there
 /// yet; `ready`, all of it; `asking`, not answered yet; `other`,
@@ -1562,6 +1650,7 @@ impl RexHub {
                 agent_keys: None,
                 account: None,
                 carried: None,
+                agent_sessions: None,
                 repos_there: None,
                 tailscale: None,
                 tailscale_seq: 0,
@@ -1601,6 +1690,7 @@ impl RexHub {
                         agent_keys: None,
                         account: None,
                         carried: None,
+                        agent_sessions: None,
                         repos_there: None,
                         tailscale: None,
                         tailscale_seq: 0,
@@ -1628,6 +1718,7 @@ impl RexHub {
             active_theme,
             pools: None,
             repos: Vec::new(),
+            sessions_window: olo_rex_client::sessions::Window::default(),
             git_cache: GitCache::new(),
             local_bin_dir,
             quick_look_cache: HashMap::new(),
@@ -1901,6 +1992,7 @@ impl RexHub {
             agent_keys: None,
             account: None,
             carried: None,
+            agent_sessions: None,
             repos_there: None,
             tailscale: None,
             tailscale_seq: 0,
@@ -1985,6 +2077,13 @@ impl RexHub {
                 _ => rex.repos.iter().map(|r| olo_rex_client::repos::Repo { url: r.url.clone(), folder: r.folder.clone(), setup: r.setup.clone() }).collect(),
             };
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let window = olo_rex_client::sessions::Window::of_days(rex.sessions_days);
+            if st.sessions_window != window {
+                st.sessions_window = window;
+                for host in st.hosts.values_mut() {
+                    host.agent_sessions = None;
+                }
+            }
             if st.repos != repos {
                 st.repos = repos;
                 for host in st.hosts.values_mut() {
@@ -2075,6 +2174,7 @@ impl RexHub {
                     agent_keys: None,
                     account: None,
                     carried: None,
+                    agent_sessions: None,
                     repos_there: None,
                     tailscale: None,
                     tailscale_seq: 0,
@@ -3223,6 +3323,111 @@ impl RexHub {
         (self.notify)(HubNotice::StateChanged);
     }
 
+    /// How far back the agents' sessions copied to a host go, chosen:
+    /// kept in the desktop's settings, and each host asked again.
+    pub fn set_sessions_window(&self, window: olo_rex_client::sessions::Window) {
+        let hosts: Vec<String> = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.sessions_window = window;
+            for host in st.hosts.values_mut() {
+                host.agent_sessions = None;
+            }
+            st.hosts.iter().filter(|(_, h)| h.conn_state == HostConnState::Connected).map(|(k, _)| k.clone()).collect()
+        };
+        let days = window.to_days();
+        olo_kit::settings::update(move |s| s.rex.sessions_days = days);
+        (self.notify)(HubNotice::StateChanged);
+        for key in hosts {
+            self.ask_sessions(&key);
+        }
+    }
+
+    /// Asks a host how the agents' sessions stand there.
+    pub fn ask_sessions(&self, host_key: &str) {
+        let (endpoint, window) = {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            (st.hosts.get(host_key).and_then(|h| h.endpoint.clone()), st.sessions_window)
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else { return };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            let summary = sessions_stands(&pool, &target, askpass, window).await.map(|(stands, _)| stands.summary());
+            if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
+                host.agent_sessions = summary;
+            }
+            (inner.notify)(HubNotice::StateChanged);
+        });
+    }
+
+    /// Copies to a host the agents' sessions used in the window chosen
+    /// that are missing or older there (`olo_rex_client::sessions`): one
+    /// archive, made as it is sent; `said` told how far it is now and
+    /// then. Stopped by what comes back (the channel closed, the
+    /// archive's making ended with it); then the host asked again.
+    pub fn copy_sessions(&self, host_key: &str, said: impl Fn(&str) + Send + Sync + 'static, done: impl FnOnce(Result<(), String>) + Send + 'static) -> Option<tokio::task::AbortHandle> {
+        use olo_rex_client::sessions;
+        let (endpoint, window) = {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            (st.hosts.get(host_key).and_then(|h| h.endpoint.clone()), st.sessions_window)
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return None;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        let said = Arc::new(said);
+        let task = self.rt.spawn(async move {
+            let result = async {
+                let (stands, gathered) = sessions_stands(&pool, &target, askpass.clone(), window).await.ok_or_else(|| olo_kit::words::tr("The host didn’t say what it has.").to_string())?;
+                if stands.to_copy.is_empty() {
+                    return Ok(());
+                }
+                let parts: Vec<sessions::Part> = stands.to_copy.iter().map(|i| gathered.parts[*i].clone()).collect();
+                let (total, here, there) = (stands.bytes, gathered.home.clone(), stands.home.clone());
+                let (chunks, from) = sessions::Chunks::new();
+                let tell = said.clone();
+                let tell_after = said.clone();
+                let making = tokio::task::spawn_blocking(move || {
+                    let (mut sent, mut told) = (0u64, std::time::Instant::now());
+                    let stop = std::sync::atomic::AtomicBool::new(false);
+                    sessions::stream(
+                        &parts,
+                        &here,
+                        &there,
+                        chunks,
+                        &mut |n| {
+                            sent += n;
+                            if told.elapsed() >= Duration::from_millis(200) {
+                                told = std::time::Instant::now();
+                                tell(&olo_kit::tr!("{}%  ·  {}", (sent * 100 / total.max(1)).min(100), olo_kit::files::format_progress(sent, total)));
+                            }
+                        },
+                        &stop,
+                    )
+                });
+                let codex = sessions::codex_ids(&stands.to_copy.iter().map(|i| gathered.parts[*i].clone()).collect::<Vec<_>>());
+                let ran = pool.put_stream(&target, askpass.clone(), &format!("sh -c {}", shell_quote(sessions::PUT)), from).await.map_err(|e| e.to_string())?;
+                let made = making.await.map_err(|e| e.to_string())?;
+                if !ran.ok() {
+                    return Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().to_owned());
+                }
+                made.map_err(|e| e.to_string())?;
+                // (Codex's database there told of each, so its resume
+                // lists them.)
+                if !codex.is_empty() {
+                    tell_after(&olo_kit::words::tr("Telling Codex there of them"));
+                    tell_codex(&pool, &target, askpass.clone(), &codex).await;
+                }
+                Ok(())
+            }
+            .await;
+            inner.ask_the_account(&host_key, &pool, &target, askpass).await;
+            (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+        Some(task.abort_handle())
+    }
+
     /// Puts on a host what it lacks of the person's settings for their
     /// agents (`olo_rex_client::carry`): asked what it has, given the
     /// files that are missing or differ in one archive, what was there
@@ -3610,8 +3815,11 @@ impl RexHubInner {
             return;
         }
         let account = ready::Account::read(&ran.output);
-        // (And what of the person's settings for their agents it has.)
+        // (And what of the person's settings for their agents it has,
+        // and of their sessions.)
         let carried = carried_stands(pool, target, askpass.clone()).await.map(|stands| (stands.to_copy.len(), stands.same, stands.short));
+        let window = self.state.lock().unwrap_or_else(|e| e.into_inner()).sessions_window;
+        let sessions = sessions_stands(pool, target, askpass.clone(), window).await.map(|(stands, _)| stands.summary());
         // (And how each of the person's repositories stands there.)
         let repos = self.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
         let repos_there = match repos.is_empty() {
@@ -3621,6 +3829,7 @@ impl RexHubInner {
         if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
             host.account = Some(account);
             host.carried = carried;
+            host.agent_sessions = sessions;
             host.repos_there = repos_there;
         }
     }

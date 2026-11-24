@@ -483,6 +483,17 @@ echo "Installed {name} {version}"
     open(f"{app_home}/.claude/settings.json", "w").write('{"model":"opus","env":{"HTTPS_PROXY":"http://127.0.0.1:17892","NO_PROXY":"localhost","EDITOR":"vi","GITHUB_TOKEN":"made-up"}}')
     open(f"{app_home}/.claude/.credentials.json", "w").write('{"made":"up"}')
     open(f"{home}/.claude/CLAUDE.md", "w").write("The host's own.\n")
+    # (And Claude Code's sessions, the app's: two used this week, one with its folder and one of 30 MB, and one used
+    # forty days ago; the far host's home is another folder, so each is said as the host's there.)
+    name = lambda path: "".join(c if c.isalnum() else "-" for c in path)
+    project_here, project_there = f"{app_home}/.claude/projects/{name(app_home)}-src-app", f"{home}/.claude/projects/{name(home)}-src-app"
+    shutil.rmtree(f"{app_home}/.claude/projects", ignore_errors=True); shutil.rmtree(f"{home}/.claude/projects", ignore_errors=True)
+    os.makedirs(f"{project_here}/s1/tool-results")
+    open(f"{project_here}/s1.jsonl", "w").write(json.dumps({"cwd": f"{app_home}/src/app", "sessionId": "s1"}) + "\n")
+    open(f"{project_here}/s1/tool-results/t.txt", "w").write("out")
+    open(f"{project_here}/s2.jsonl", "w").write("".join(json.dumps({"n": i, "text": "x" * 200}) + "\n" for i in range(140_000)))
+    open(f"{project_here}/s3.jsonl", "w").write("{}\n")
+    os.utime(f"{project_here}/s3.jsonl", (time.time() - 40 * 86400, time.time() - 40 * 86400))
     # (And a repository made here, for an address: one file in it.)
     origin = f"{D}/origin"; shutil.rmtree(origin, ignore_errors=True); shutil.rmtree(f"{home}/src/origin", ignore_errors=True); os.makedirs(origin)
     subprocess.run("git init -q . && echo hello > README && git add README && git -c user.name=T -c user.email=t@example.org commit -q -m first", shell=True, cwd=origin, check=True, env={"PATH": os.environ["PATH"], "HOME": D, "GIT_CONFIG_NOSYSTEM": "1"})
@@ -493,7 +504,7 @@ echo "Installed {name} {version}"
         ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
     try:
         with Rig("shell", delay=0, far=True, env=["OLO_REX_READY_FROM=http://127.0.0.1:27881"]) as r:
-            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Agent settings", "Skill for agents", "Your repositories")
+            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Agent settings", "Agent sessions", "Skill for agents", "Your repositories")
             def rows(under=False):
                 """Each item's row as the window says it: {title: what is said after it}; `under`: the line under it."""
                 said = [str(n.get("name") or "") for n in r.nodes("Account") if n.get("role") in ("Label", "Text", "StaticText")]
@@ -520,7 +531,8 @@ echo "Installed {name} {version}"
             check("stopped half way: nothing of it there, then or later", back and not there("codex"), {"row": rows().get("Codex"), "there": there("codex")})
             r.invoke("host.ready:far:all")
             want = {"Program folder": "On the path", "Claude Code": "9.9.1", "Codex": "8.8.2", "Antigravity": "7.7.3", "Git identity": "Rig Person <rig@example.org>", "Agent settings": "As on this computer", "Skill for agents": "Installed", "Your repositories": "None chosen"}
-            done = r.wait(lambda: (lambda w: w if w == want else None)(rows()), 60, every=0.5)
+            # (The sessions are copied by their own Copy alone: not a part of all that is left.)
+            done = r.wait(lambda: (lambda w: w if {k: v for k, v in w.items() if k != "Agent sessions"} == want else None)(rows()), 60, every=0.5)
             check("all that was left, one after another", done, done or rows())
             git = subprocess.run(["git", "config", "--file", f"{home}/.gitconfig", "user.email"], capture_output=True, text=True).stdout.strip()
             check("on the host: the three programs, git's identity, the skill", there("claude") and there("codex") and there("agy") and git == "rig@example.org" and skill(), {"git": git, "skill": skill(), "bin": sorted(os.listdir(f"{home}/.local/bin")) if os.path.isdir(f"{home}/.local/bin") else None})
@@ -530,6 +542,25 @@ echo "Installed {name} {version}"
             check("the settings carried: instructions, a command, the settings without the key or this computer's pool", read(".claude/CLAUDE.md") == "Be brief.\n" and read(".claude/commands/ship.md") == "Ship it.\n" and settings.get("model") == "opus" and settings.get("env") == {"EDITOR": "vi"} and not os.path.exists(f"{home}/.claude/.credentials.json"),
                   {"CLAUDE.md": read(".claude/CLAUDE.md"), "settings": settings, "credentials there": os.path.exists(f"{home}/.claude/.credentials.json")})
             check("what the host had is kept beside ours", read(".claude/CLAUDE.md.before-olo") == "The host's own.\n", read(".claude/CLAUDE.md.before-olo"))
+            # The agents' sessions: two used this week to copy, said by number and size, and left alone by all that
+            # was left; copied by their own command (the archive made as it is sent); each where Claude Code looks for
+            # the project's there, the paths in it said as the host's, its time with it; the one used forty days ago
+            # not, until the window is all of them; one continued there is left as it is.
+            row = rows().get("Agent sessions") or ""
+            check("the sessions: two of this week to copy, by number and size, not copied by all that was left", row.startswith("2 sessions") and row.endswith("MB to copy") and not os.path.exists(project_there), row)
+            r.invoke("host.ready:far:sessions")
+            copied = r.wait(lambda: (lambda w: w if w.get("Agent sessions") == "As on this computer" else None)(rows()), 60, every=0.5)
+            s1 = read(f".claude/projects/{name(home)}-src-app/s1.jsonl")
+            same_time = os.path.exists(f"{project_there}/s2.jsonl") and int(os.stat(f"{project_there}/s2.jsonl").st_mtime) == int(os.stat(f"{project_here}/s2.jsonl").st_mtime)
+            check("copied: in the host's project folder, said as the host's, each with its time", copied and s1 and json.loads(s1)["cwd"] == f"{home}/src/app" and read(f".claude/projects/{name(home)}-src-app/s1/tool-results/t.txt") == "out" and same_time and not os.path.exists(f"{project_there}/s3.jsonl"),
+                  {"row": rows().get("Agent sessions"), "s1": (s1 or "")[:120], "same time": same_time, "old one there": os.path.exists(f"{project_there}/s3.jsonl")})
+            r.invoke("host.sessions.days:0")
+            older = r.wait(lambda: (lambda w: w if str(w.get("Agent sessions")).startswith("1 session") else None)(rows()), 30, every=0.5)
+            check("all of them: the one used forty days ago to copy", older, rows().get("Agent sessions"))
+            os.utime(f"{project_there}/s1.jsonl", (time.time() + 600, time.time() + 600))
+            r.invoke("host.sessions.days:7")
+            newer = r.wait(lambda: (lambda w: w if w.get("Agent sessions") == "As on this computer  ·  1 continued there" else None)(rows()), 30, every=0.5)
+            check("one continued there: said, and left as it is", newer, rows().get("Agent sessions"))
             # A repository of the person's: typed into the form (its address; Return), then cloned on the host and set up.
             r.invoke("host.repos.add")
             form = r.wait(lambda: next((w for w in r.windows() if w.get("title") == "Add Repository"), None), 10)
@@ -546,7 +577,7 @@ echo "Installed {name} {version}"
         server.terminate(); clean()
         shutil.rmtree(served, ignore_errors=True)
         with contextlib.suppress(FileNotFoundError): os.remove(f"{app_home}/.gitconfig")
-        shutil.rmtree(f"{app_home}/.claude", ignore_errors=True)
+        shutil.rmtree(f"{app_home}/.claude", ignore_errors=True); shutil.rmtree(f"{home}/.claude/projects", ignore_errors=True)
         shutil.rmtree(origin, ignore_errors=True); shutil.rmtree(f"{home}/src/origin", ignore_errors=True)
     print("PASS" if ok else "FAIL")
 elif what == "disconnect":

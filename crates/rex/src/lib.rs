@@ -27,6 +27,7 @@ pub mod provision;
 pub mod quic;
 pub mod ready;
 pub mod repos;
+pub mod sessions;
 pub mod ssh;
 pub mod transport;
 pub mod tune;

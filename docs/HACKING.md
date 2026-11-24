@@ -28091,6 +28091,57 @@ to set them up").
   is ours and what the host's has besides. Asked with the account
   (`RexHub::ask_account`), and again when a run ends. Agents:
   `host.ready:KEY:settings`.
+- *The agents' sessions* (`crates/rex/src/sessions.rs`; Ben,
+  2026-11-23: "an Agent Sessions item that copies over the
+  transcripts/session logs for all the agents … a dropdown to choose
+  the time window and by default have it be last 7 days"): the row
+  "Agent sessions", with a pop-up under its Copy button, in the
+  buttons' column (Last day, Last 7 days, Last 30 days, All time; the
+  desktop's settings, `RexSettings::sessions_days`). Those last written
+  to within the window are taken (a session in use is written at each
+  turn: when it was last used, not made): Claude Code's
+  `~/.claude/projects/PROJECT/UUID.jsonl` and the folder beside it
+  (`sessions::gather`). Each goes where Claude Code looks for the
+  project's on the host: PROJECT is the project's path with each
+  character but a letter or a digit as `-`, so a project's folder is
+  named for the host's home (`there_path`), and what a transcript says
+  of this computer's home is said as the host's where the home is the
+  whole of a path's start (`rewritten`); `claude --resume` in the same
+  project there lists it. The host is asked its home, then each file's
+  size and time (`LOOK`, run as `sh -c` with the paths on its input:
+  hashing gigabytes at each look would cost too much); what is missing
+  or older there is copied (`Stands::read`), never what is newer there
+  (a session continued on the host is left as it is, and said: "2 newer
+  there"). The copy is one gzip'd tar made as it is sent
+  (`sessions::stream` into `Chunks`, `SshSessionPool::put_stream`: a
+  week of one person's was 10 GB), each file with its time (the next
+  look finds it the same), a transcript up to its last whole line (one
+  in use is taken as far as it was written), how far it is said under
+  the row ("38% · 0.5 of 1.2 GB"); Stop closes the channel and the
+  archive's making ends with it. By its own Copy only: not in Set Up's
+  run, not counted in "N of 7 ready" (`Item::counted`). Agents:
+  `host.ready:KEY:sessions`, `host.sessions.days:N` (0: all). Demo:
+  `OLO_REX_DEMO_SESSIONS=none|newer`, `OLO_REX_DEMO_ACCOUNT=copying|
+  copyfailed`. Tried on the rig (`try.py account`: two of this week
+  copied into the host's project folder, their paths said as the
+  host's, each with its time; the one of forty days ago only with All
+  time; one continued there left alone). Codex's: its rollouts
+  (`~/.codex/sessions/YYYY/MM/DD/rollout-…-UUID.jsonl`, said as the
+  host's) and their lines of `session_index.jsonl` (their names), put
+  beside the host's own and none twice (`PUT`); then the host's Codex
+  is asked for each by its id (`REGISTER`, its own server over its
+  input, `initialize` answered first, then `thread/read`), which adds
+  it to its database: Codex reads its sessions' folder only once, as
+  it makes its database, and a session copied later is listed once
+  something asks for it (found by the second investigator reading the
+  program, tried with the program in a scratch home: one session
+  known, then two). Antigravity's: each conversation's SQLite file as
+  a snapshot, its write-ahead log in it (`snapshot`, SQLite's own
+  `VACUUM INTO` from a read-only connection, made in the account's
+  cache and read back: one in use keeps much of itself in its log),
+  never rewritten, with its title (`annotations/UUID.pbtxt`) and what
+  it made (`brain/UUID/`, less its own logs); Antigravity finds them
+  by itself as it starts.
 - *The person's repositories* (`crates/rex/src/repos.rs`; Ben:
   "choosing what repos to clone and how to set them up"): a `Repo` is
   an address, a folder under the home (empty: `src/NAME`) and a

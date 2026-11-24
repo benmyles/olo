@@ -2951,3 +2951,13 @@ an argument it doesn't know starts the lint (read its first lines).
   (`SSH_AUTH_SOCK=/run/user/UID/openssh_agent`, the openssh user
   service): "has the shell an agent?" isn't "has it keys?"; ask
   `ssh-add -l`.
+
+- **Codex started on a scratch home leaves its server running.** Its
+  first start (the TUI, or `codex app-server`) starts a daemon from
+  `$CODEX_HOME/packages/app-server-daemon/`, which goes on after the
+  program you ran ends, and writes into the folder: removed under it,
+  the folder came back (2026-11-23). Before removing a scratch
+  `CODEX_HOME`, end what runs on it: the processes of yours whose
+  environment has `CODEX_HOME=` that folder (found by that, never by
+  name), or `CODEX_HOME=… codex app-server daemon stop`.
+
