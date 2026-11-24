@@ -13,6 +13,8 @@
 
 #[cfg(feature = "quic")]
 mod quic;
+#[cfg(feature = "sync")]
+mod sync;
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -80,6 +82,18 @@ fn main() {
         #[cfg(not(feature = "quic"))]
         {
             eprintln!("olo-rex-link: built without its link over UDP");
+            std::process::exit(126);
+        }
+    }
+    // (`sync`: a side of a session keeping files in step, where it was
+    // built with it: its engine's compression is C, compiled by zig as
+    // the link's ciphers are.)
+    if args.first().is_some_and(|a| a == "sync") {
+        #[cfg(feature = "sync")]
+        sync::run(args.split_off(1));
+        #[cfg(not(feature = "sync"))]
+        {
+            eprintln!("olo-rex-link: built without keeping files in step");
             std::process::exit(126);
         }
     }

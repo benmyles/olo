@@ -16,6 +16,10 @@ path = "src/main.rs"
 # (`apps/rex/build.rs`).
 [features]
 quic = ["dep:tokio", "dep:quinn", "dep:rustls", "dep:rcgen", "dep:sha2"]
+# `olo-rex-link sync`: a side of a session keeping files in step
+# (olo-rex-sync, whose zstd is C: built for hosts where zig compiles it,
+# as `quic`'s ciphers are).
+sync = ["dep:olo-rex-sync"]
 
 [dependencies]
 serde.workspace = true
@@ -28,6 +32,7 @@ quinn = { version = "0.11", optional = true, default-features = false, features 
 rustls = { version = "0.23", optional = true, default-features = false, features = ["aws_lc_rs", "std"] }
 rcgen = { version = "0.14", optional = true, default-features = false, features = ["aws_lc_rs"] }
 sha2 = { version = "0.11", optional = true }
+olo-rex-sync = { workspace = true, optional = true }
 
 # For `tests/server.rs` alone: the helper in front of a real Rex server
 # of the test's own, spoken to as the app speaks to it. (The app's Rex
@@ -50,3 +55,9 @@ harness = false
 name = "quic"
 required-features = ["quic"]
 
+
+# The helper's side of a session keeping files in step, driven as the
+# app drives it.
+[[test]]
+name = "sync"
+required-features = ["sync"]

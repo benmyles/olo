@@ -29,6 +29,7 @@ pub mod ready;
 pub mod repos;
 pub mod sessions;
 pub mod ssh;
+pub mod sync;
 pub mod transport;
 pub mod tune;
 pub mod tunnel;

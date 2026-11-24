@@ -28646,11 +28646,26 @@ the world": quinn, rustls with aws-lc, rcgen).
   10 s meanwhile (`KEEP_ALIVE`: a dead path is known, a NAT keeps its
   way; the one thing here that isn't still at rest, while a link is
   up).
+- *Keeping files in step* (`olo-rex-link sync receive|send ROOT`,
+  `crates/rex-link/src/sync.rs`, its `sync` feature, built for hosts
+  where zig compiles the engine's zstd as it does the link's ciphers):
+  the host's side of a session of the engine ("Files kept in step: the
+  engine", below) over the helper's input and output, the app's side
+  over SSH (`olo_rex_client::sync`: `send_to`, `receive_from`, a
+  `HostFolder` and its options as the helper's flags; the engine run
+  on a blocking thread driving the channel, `Stop` to count each way
+  and to stop it). Its index kept between sessions in
+  `~/.cache/olo/rex-sync/` (named by the folder's whole path) unless
+  `--no-cache`; nothing else on its output; status 2 for a mistake in
+  what it is asked. Tested driven as the app drives it
+  (`tests/sync.rs`: a folder to it and from it, the second session in
+  a few dozen bytes, `--delete` and `--exclude` passed on).
 - *Built for hosts* with TLS in it: its ciphers are C (aws-lc),
   compiled by zig as the pool's host program's are (`apps/rex/
   build.rs`; without zig the helper is built without the link, as it
   was). The helper is 4.6 MB for x86_64 and 3.3 MB for aarch64 with it
-  (0.7 MB without): 2.4 s to put on the real test host.
+  (0.7 MB without): 2.4 s to put on the real test host. With keeping
+  files in step too (zstd, BLAKE3: 2026-11-24) 5.6 MB and 4.1 MB.
 - *Measured* on the real test host, over the internet (release of the
   helper, the client's tests `typing_over_the_link_is_timed` and
   `a_request_beside_a_flood_is_timed` with `OLO_REX_TEST_HELPER_FILE`
@@ -29145,8 +29160,10 @@ possible for the syncs)"; and of Agent Sessions' copy: "copy new lines
 only when a file has only had appends like a log. or even better …
 a delta copy at the byte level"). One library both ends link (the app,
 and the helper on each host: no async runtime, plain `Read` and
-`Write`, `blake3` and `zstd` its only crates), its first users still
-to come (TODO, "Files from a host, and folders kept in step"). Built
+`Write`, `blake3` and `zstd` its only crates), its host's side the
+helper's `olo-rex-link sync` ("A helper on the host"), its users in the
+app still to come (TODO, "Files from a host, and folders kept in
+step"). Built
 by a subagent from a brief (Gemini 4 Neon's design weighed first),
 reviewed and fixed here:
 - *What a side has* (`index::Index`): each file's size, times, inode,

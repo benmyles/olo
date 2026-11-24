@@ -63,7 +63,16 @@ async fn what_the_helper_says_of_a_real_terminal_is_what_the_server_says_asked()
     }
     let (sid, _, bid) = server.session(&ctrl, "says").await?;
     ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
-    tokio::time::sleep(Duration::from_millis(1200)).await;
+    // What it says of the terminal as the shell starts, before anything
+    // is typed (no `after`), taken until it has been quiet a while: a
+    // fixed wait of 1.2 s let a word that came later, with the machine
+    // busy, be read as the answer to the first line typed (`after`
+    // null), one run in two of the whole suite, 2026-11-24.
+    let settled = Instant::now();
+    while let Some((said, _)) = word(&mut events, &bid, Duration::from_millis(800)).await {
+        assert!(said["after"].is_null(), "nothing typed yet: {said}");
+        assert!(settled.elapsed() < Duration::from_secs(10), "the shell's start went on saying things");
+    }
     // What the server says when asked, to hold the helper's word to.
     let asked = |ctrl: ControlClient, sid: String, bid: String| async move {
         let (mode, process) = tokio::try_join!(ctrl.terminal_input_mode(&sid, &bid), ctrl.terminal_process(&sid, &bid))?;
