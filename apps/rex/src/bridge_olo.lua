@@ -1,5 +1,5 @@
 -- Olo's skill for agents on a Rex host: one command of the Olo desktop
--- (`olo open|op|screen|forward|send|notify|clipboard …`, beside this file), asked
+-- (`olo open|op|screen|forward|send|sync|notify|clipboard …`, beside this file), asked
 -- through Rex and answered here as if it had run here. It is `rex do`
 -- underneath, and saves an agent the three things that took a loop or
 -- a guess by hand: which client is the Olo desktop (the one connected,
@@ -29,12 +29,21 @@ local asked = ({
     for i, x in ipairs(args) do whole[i] = x:sub(1, 1) == "-" and x or ((x:sub(1, 1) == "/") and x or ((os.getenv("PWD") or ".") .. "/" .. x)) end
     return "olo.send", { args = whole }
   end,
+  -- (Its folder made whole as `send`'s paths are; its words left as they are.)
+  sync = function()
+    local whole, words = {}, { ls = true, list = true, wait = true, stop = true, rm = true }
+    for i, x in ipairs(args) do
+      if x:sub(1, 1) == "-" or (i == 1 and words[x]) or x:sub(1, 1) == "/" then whole[i] = x
+      else whole[i] = (os.getenv("PWD") or ".") .. "/" .. x end
+    end
+    return "olo.sync", { args = whole }
+  end,
   notify = function() return "olo.notify", { title = args[1] or "", body = args[2] or "" } end,
   clipboard = function() return "olo.clipboard.set", { text = args[1] or "" } end,
   paste = function() return "olo.clipboard.get", {} end,
 })[cmd]
 if not asked then
-  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
+  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 

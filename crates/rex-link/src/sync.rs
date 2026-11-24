@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use olo_rex_sync::index::Filter;
 use olo_rex_sync::wire::{FolderSource, Options, receive, send};
 
-const USAGE: &str = "usage: olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--shallow] [--scoped] [--no-cache]";
+const USAGE: &str = "usage: olo-rex-link sync watch ROOT [--exclude PATTERN]… [--settle MS]\n       olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--shallow] [--scoped] [--no-cache]";
 
 /// The helper's input and output, as the session's one stream.
 struct Stdio {
@@ -64,6 +64,10 @@ pub fn run(args: Vec<String>) -> ! {
         eprintln!("olo-rex-link sync: {why}\n{USAGE}");
         std::process::exit(2)
     };
+    // (`watch`: a folder's changes said as they settle, `crate::watch`.)
+    if args.first().is_some_and(|a| a == "watch") {
+        crate::watch::run(args[1..].to_vec());
+    }
     let mut it = args.into_iter();
     let (Some(side), Some(root)) = (it.next(), it.next()) else { fail("say which side and its folder") };
     let root = PathBuf::from(root);

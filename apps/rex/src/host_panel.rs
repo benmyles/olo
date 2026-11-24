@@ -539,6 +539,7 @@ mod tests {
 
     fn host() -> HostStands {
         HostStands {
+            kept: Vec::new(),
             name: "far".into(),
             address: "you@far.example".into(),
             conn: HostConnState::Connected,

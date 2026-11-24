@@ -28659,7 +28659,17 @@ the world": quinn, rustls with aws-lc, rcgen).
   `--no-cache`; nothing else on its output; status 2 for a mistake in
   what it is asked. Tested driven as the app drives it
   (`tests/sync.rs`: a folder to it and from it, the second session in
-  a few dozen bytes, `--delete` and `--exclude` passed on).
+  a few dozen bytes, `--delete` and `--exclude` passed on). And
+  `olo-rex-link sync watch ROOT` (`src/watch.rs`): "watching", then
+  "changed" once a change under ROOT settles (500 ms quiet, or at most
+  five seconds after the first while changes go on: a log written to
+  all the time never goes quiet), inotify on every folder of the tree
+  (those its `--exclude` leaves out not), folders made later watched as
+  they come, a queue that overflowed said as a change, "gone" when ROOT
+  goes, `error: …` where the system won't watch so many folders; it
+  ends when its input closes. At rest it costs nothing: asleep in
+  `poll`, no time-out unless a change is settling (measured, ten
+  seconds: no CPU, no wakeups).
 - *Built for hosts* with TLS in it: its ciphers are C (aws-lc),
   compiled by zig as the pool's host program's are (`apps/rex/
   build.rs`; without zig the helper is built without the link, as it
@@ -29171,6 +29181,30 @@ Rex server, as every Rex client offers its own
   Agent Sessions' copy does); said where it isn't. Tried on the rig
   (`try.py bridge`): refused ungranted; a file and a folder saved; the
   rebuilt file sent again, its change alone; a path not there said.
+- *Folders kept in step* (`olo sync PATH [--mirror]`, `olo sync ls`,
+  `olo sync wait PATH`, `olo sync stop PATH`; `rex do olo.sync`,
+  `hub::bridge_sync`): a host's folder kept in step here, in Downloads ▸
+  Rex ▸ HOST ▸ its name, from then on. Kept in the desktop's settings
+  (`RexSettings::kept`: the host, its path there, mirror or not; where
+  it goes here is this side's, `hub::kept_here`), followed by the hub
+  (`follow_kept`), each kept by a runner of its own while its host is
+  connected (`RexHubInner::keep`): the host's watch started first
+  (`olo-rex-link sync watch PATH`, "A helper on the host": nothing that
+  changes during the first sync goes unseen), a sync (`sync_kept`, the
+  engine through the helper, its index kept beside the app's cache),
+  then another each time the watch says "changed"; one sync at a time
+  into a folder (its lock, which `olo sync wait` takes too). Its host
+  gone, it waits, and is started again as the host connects; the folder
+  gone there, it says so and stops. `wait` syncs now and answers when it
+  is in step (after a build: `make && olo sync wait dist`); `ls` lists
+  the host's kept folders with how each stands and when it was last
+  brought in step; `stop` lets one go, what it brought staying. The
+  same leave as `olo send` (it writes nowhere else). Tried on the rig
+  (`try.py bridge`): kept and brought at once, a line appended to a log
+  and a folder made there brought by themselves moments later, listed
+  in step, waited for (60 bytes when nothing changed), let go of and no
+  longer brought. The Host window's list of them, and its Stop, come
+  with its tabs (TODO, "The Host window in tabs").
 - *Olo's own tests name themselves "Olo Rex test"*, kind `test`
   (`ClientIdentity::a_test`): as the app, each left a client the
   server listed as lost on the host it ran against.

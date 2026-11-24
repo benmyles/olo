@@ -2053,6 +2053,8 @@ pub struct RexSettings {
     /// The person's repositories, cloned in their account on the hosts
     /// they set up (Rex's Account window), in the order shown.
     pub repos: Vec<RexRepo>,
+    /// Hosts' folders kept in step here, in the order they were kept.
+    pub kept: Vec<RexKept>,
     /// How many days back the agents' sessions copied to a host go, by
     /// when each was last used (Rex's Account window; 0: all of them).
     pub sessions_days: u32,
@@ -2080,6 +2082,21 @@ pub struct RexRepo {
     pub setup: String,
 }
 
+/// A host's folder kept in step here (Rex, "Folders kept in step"): what
+/// changes there is brought here as it changes, into Downloads ▸ Rex ▸ the
+/// host's name ▸ the folder's name (where it goes is this computer's to
+/// say, never the host's).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexKept {
+    /// The host's id (`RexHost::id`).
+    pub host: String,
+    /// The folder there, by its whole path.
+    pub there: String,
+    /// What the host no longer has taken away here too (a mirror).
+    pub mirror: bool,
+}
+
 impl Default for RexSettings {
     fn default() -> Self {
         RexSettings {
@@ -2090,6 +2107,7 @@ impl Default for RexSettings {
             hosts: Vec::new(),
             sessions_days: 7,
             repos: Vec::new(),
+            kept: Vec::new(),
             show_typing_at_once: true,
             typing_helper: true,
             keep_going_says: REX_KEEP_GOING_SAYS.to_owned(),

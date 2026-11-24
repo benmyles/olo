@@ -15,6 +15,8 @@
 mod quic;
 #[cfg(feature = "sync")]
 mod sync;
+#[cfg(feature = "sync")]
+mod watch;
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};

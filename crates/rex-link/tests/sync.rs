@@ -150,6 +150,66 @@ fn a_single_file_is_sent_by_its_path() {
     }
 }
 
+/// The watch: "watching", then "changed" once a change settles (a file
+/// made, a folder made and a file in it), at most five seconds after the
+/// first while changes go on, "gone" when its folder goes; it ends when
+/// its input closes.
+#[test]
+fn a_folder_watched_says_when_it_changed() {
+    use std::io::BufRead;
+    use std::time::{Duration, Instant};
+    let (root, cache) = (scratch("watch-root"), scratch("watch-cache"));
+    let mut child = Command::new(env!("CARGO_BIN_EXE_olo-rex-link"))
+        .args(["sync", "watch", root.to_str().unwrap(), "--settle", "150"])
+        .env("XDG_CACHE_HOME", &cache)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let out = child.stdout.take().unwrap();
+    std::thread::spawn(move || {
+        for line in io::BufReader::new(out).lines().map_while(Result::ok) {
+            let _ = tx.send((line, Instant::now()));
+        }
+    });
+    let next = |within: u64| rx.recv_timeout(Duration::from_millis(within)).map(|(l, _)| l).ok();
+    assert_eq!(next(3000).as_deref(), Some("watching"));
+    fs::write(root.join("a.txt"), b"one").unwrap();
+    assert_eq!(next(3000).as_deref(), Some("changed"));
+    assert_eq!(next(400), None, "said once");
+    fs::create_dir_all(root.join("new/deeper")).unwrap();
+    std::thread::sleep(Duration::from_millis(50));
+    fs::write(root.join("new/deeper/b.txt"), b"two").unwrap();
+    assert_eq!(next(3000).as_deref(), Some("changed"));
+    // Written to all the time: said within its longest wait all the same.
+    let began = Instant::now();
+    let mut said = None;
+    while began.elapsed() < Duration::from_secs(8) && said.is_none() {
+        fs::OpenOptions::new().append(true).open(root.join("a.txt")).unwrap().write_all(b".").unwrap();
+        said = rx.recv_timeout(Duration::from_millis(50)).ok();
+    }
+    let took = began.elapsed();
+    assert!(said.is_some_and(|(l, _)| l == "changed") && took < Duration::from_millis(6500), "said while it went on, after {took:?}");
+    std::thread::sleep(Duration::from_millis(400));
+    while rx.try_recv().is_ok() {}
+    fs::remove_dir_all(&root).unwrap();
+    assert_eq!(next(3000).as_deref(), Some("gone"));
+    assert!(!child.wait().unwrap().success());
+    // Its input closed: it ends.
+    let watched = scratch("watch-again");
+    let mut again = Command::new(env!("CARGO_BIN_EXE_olo-rex-link")).args(["sync", "watch", watched.to_str().unwrap()]).stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
+    drop(again.stdin.take());
+    let ended = Instant::now();
+    while again.try_wait().unwrap().is_none() {
+        assert!(ended.elapsed() < Duration::from_secs(3), "went on after its input closed");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    for d in [cache, watched] {
+        fs::remove_dir_all(d).unwrap();
+    }
+}
+
 /// A mistake in what it is asked is said, never a session begun.
 #[test]
 fn what_it_isnt_asked_right_it_says() {

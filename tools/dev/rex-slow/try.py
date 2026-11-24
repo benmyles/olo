@@ -537,6 +537,29 @@ exit 0
         check("send: rebuilt and sent again, what changed alone", again.get("ok") and same and "MB sent" in first_sent and "KB sent" in said, {"first": first_sent, "again": said})
         missing = sending(f"{sent_dir}/not-there")
         check("send: a path not there, said", missing.get("ok") is False and "no such file or folder" in str(missing.get("stderr")), missing)
+        # `olo sync`: a folder kept in step, brought again by itself when it changes there (the host's watch).
+        kept = f"{D}/kept-src"; shutil.rmtree(kept, ignore_errors=True); os.makedirs(f"{kept}/logs")
+        open(f"{kept}/logs/build.log", "w").write("line 1\n")
+        synced = lambda *a: do("olo.sync", {"args": list(a)})
+        def answered(o):
+            while o and o.get("pending"): o = do("olo.wait", None, pairs=f"id={o['pending']}")
+            return o
+        started = answered(synced(kept))
+        here = f"{downloads}/kept-src/logs/build.log"
+        check("sync: kept in step, brought at once", started and started.get("ok") and os.path.exists(here) and open(here).read() == "line 1\n", started)
+        with open(f"{kept}/logs/build.log", "a") as f: f.write("line 2\n")
+        os.makedirs(f"{kept}/new"); open(f"{kept}/new/made.txt", "w").write("later")
+        brought = r.wait(lambda: os.path.exists(f"{downloads}/kept-src/new/made.txt") and open(here).read() == "line 1\nline 2\n", 20, every=0.2)
+        check("sync: what changed there brought by itself", brought, {"log": open(here).read() if os.path.exists(here) else None})
+        listed = answered(synced("ls"))
+        check("sync: listed, in step", "kept-src" in str(listed.get("stdout")) and "in step" in str(listed.get("stdout")), listed)
+        waited = answered(synced("wait", kept))
+        check("sync: waited for, in step", waited.get("ok") and "in step" in str(waited.get("stdout")), waited)
+        stopped = answered(synced("stop", kept))
+        with open(f"{kept}/logs/build.log", "a") as f: f.write("line 3\n")
+        time.sleep(3)
+        check("sync: let go of, no longer brought", stopped.get("ok") and "line 3" not in open(here).read(), {"stopped": stopped, "log": open(here).read()})
+        shutil.rmtree(kept, ignore_errors=True)
         shutil.rmtree(sent_dir, ignore_errors=True); shutil.rmtree(f"{D}/home-app/Downloads", ignore_errors=True)
         print("PASS" if ok else "FAIL")
 elif what == "pool":

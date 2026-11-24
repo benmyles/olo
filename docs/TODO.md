@@ -1703,8 +1703,12 @@ something nobody here has is in "Blocked", with what it waits for.
     folders here in Downloads ▸ Rex ▸ HOST, under a permission of its
     own (HACKING, the bridge, "Files a host sends"); a rebuilt archive
     sent again sends its change. The person's way in is Tracker's (the
-    item "A host's folders in Tracker"). Next: step (3), folders kept in
-    step one way.
+    item "A host's folders in Tracker"). And step (3) from a host:
+    `olo sync PATH` keeps a host's folder in step here, brought again
+    moments after it changes there (the helper's watch, no polling), with
+    `ls`, `wait`, `stop` (HACKING, the bridge, "Folders kept in step").
+    Next: the Host window's list of them (in its tabs), one kept the
+    other way (here to a host), the person's own way in, then both ways.
   - *Agent Sessions' copy sends only what changed in a file* (Ben,
     2026-11-24: "improve the agent sessions copy in rex so that it is
     smart enough to e.g. copy new lines only when a file has only had
@@ -2854,6 +2858,16 @@ something nobody here has is in "Blocked", with what it waits for.
   - Tried on the rig: opened from a pane, listed, a file read and
     written, a folder made, renamed, moved and taken away, a path typed
     in Go to Folder, Rex quit while it was open.
+
+- **Rex's Activity: two lines of what an agent says under its name**
+  (Ben, 2026-11-24: "in the rex activity sidebar, let's allow for 2 lines
+  in the description text under the title instead of the 1 it is now").
+  A row's second line (what the program says of itself, else its folder,
+  then the host: HACKING, "Activity is a list to choose from") wraps to
+  two lines before it is cut with "…", the row as tall as its lines (one
+  line still a row of one), the state's word kept at the first line's end;
+  at 1×, 1.5× and 2×, light and dark, with a long description, a short
+  one and none; the sidebar's narrowest width too.
 
 - **Rex's Activity: the agents an agent starts, under it; any agent's
   transcript as well as its terminal** (Ben, 2026-11-24: "in activity i

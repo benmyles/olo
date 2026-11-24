@@ -578,6 +578,7 @@ mod tests {
 
     fn host(account: Option<Account>, skill: Option<bool>, conn: HostConnState) -> HostStands {
         HostStands {
+            kept: Vec::new(),
             name: "dev-box".into(),
             address: "you@dev-box.example".into(),
             conn,

@@ -1084,6 +1084,51 @@ pub struct ActiveForward {
     handle: LocalForwardHandle,
 }
 
+/// A host's folder kept in step here (`RexKept`), as it stands now.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Kept {
+    pub host_key: String,
+    /// The folder there, whole.
+    pub there: String,
+    pub mirror: bool,
+    pub state: KeptState,
+    /// Its last sync: when, how many files it had, how much went.
+    pub last: Option<(std::time::SystemTime, u64, u64)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeptState {
+    /// Its host isn't connected (or its helper not there yet).
+    Waiting,
+    Syncing,
+    InStep,
+    /// Gone there: the folder was taken away or moved.
+    Gone,
+    Failed(String),
+}
+
+impl KeptState {
+    /// As `olo sync ls` says it.
+    pub fn said(&self) -> String {
+        match self {
+            KeptState::Waiting => "waiting for its host".into(),
+            KeptState::Syncing => "syncing".into(),
+            KeptState::InStep => "in step".into(),
+            KeptState::Gone => "gone there".into(),
+            KeptState::Failed(why) => format!("failed: {why}"),
+        }
+    }
+}
+
+/// Where a host's folder is kept here: Downloads ▸ Rex ▸ the host's name ▸
+/// the folder's own name (this computer's to say, never the host's).
+pub fn kept_here(label: &str, there: &str) -> Option<std::path::PathBuf> {
+    let name: String = label.chars().map(|c| if c == '/' || c == '\0' { '-' } else { c }).collect();
+    let leaf = there.trim_end_matches('/').rsplit('/').next().filter(|l| !l.is_empty() && *l != "." && *l != "..")?;
+    let downloads = olo_xdg::user_dir("DOWNLOAD").or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Downloads")))?;
+    Some(downloads.join("Rex").join(if name.is_empty() { "host".into() } else { name }).join(leaf))
+}
+
 /// A forward as Rex keeps it over an upgrade in place: its block is left
 /// open on its host's server as the old Rex ends, and taken up again
 /// (`resume_local_forward`) at the same port here when the host connects
@@ -1235,6 +1280,8 @@ pub enum HostThing {
 /// last heard.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HostStands {
+    /// Its folders kept in step here (`olo sync`).
+    pub kept: Vec<Kept>,
     pub name: String,
     /// Where it is, as a person writes it: `you@host` for one reached
     /// over SSH.
@@ -1419,6 +1466,9 @@ pub struct HubState {
     pub host_order: Vec<String>,
     pub blocks: HashMap<BlockKey, Arc<Mutex<BlockRuntime>>>,
     pub forwards: Vec<ActiveForward>,
+    /// Hosts' folders kept in step here (the desktop's `RexSettings::
+    /// kept`), each as it stands (`RexHubInner::keep`).
+    pub kept: Vec<Kept>,
     pub settings: Settings,
     pub active_theme: TerminalTheme,
     /// How each far host's Token Pool stands, by the host's key, as
@@ -1552,6 +1602,7 @@ impl HubState {
                 sessions_window: self.sessions_window,
                 repos: self.repos.clone(),
                 repos_there: demo_repos_there(&self.repos).filter(|_| there),
+                kept: demo_kept(host_key),
             });
         }
         Some(HostStands {
@@ -1576,6 +1627,7 @@ impl HubState {
             repos: self.repos.clone(),
             // (As asked of the list as it is now, or not known.)
             repos_there: host.repos_there.clone().filter(|there| there.len() == self.repos.len()),
+            kept: self.kept.iter().filter(|k| k.host_key == host_key).cloned().collect(),
         })
     }
 
@@ -1620,6 +1672,10 @@ struct RexHubInner {
     agent_socks: Mutex<HashMap<String, String>>,
     /// What hosts' bridges asked that isn't over (`bridge::Calls`).
     bridge_calls: bridge::Calls,
+    /// Each kept folder's runner and the lock its syncs take (one at a
+    /// time into a folder: the runner's, and an agent's `olo sync wait`),
+    /// by its host and its path there.
+    keeping: Mutex<HashMap<(String, String), (Option<tokio::task::AbortHandle>, Arc<tokio::sync::Mutex<()>>)>>,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -1835,6 +1891,29 @@ async fn sessions_stands(
     let ran = pool.put(target, askpass, &format!("sh -c {}", shell_quote(sessions::LOOK)), sessions::look(&paths).as_bytes()).await.ok()?;
     let stands = sessions::Stands::read(&there, &ran.output, &gathered)?;
     Some((stands, gathered))
+}
+
+/// The demo's kept folders on its connected host, for the Host window's
+/// pictures and its lint (`OLO_REX_DEMO_KEPT`: `none`; `states`, one in
+/// each state; else two in step).
+fn demo_kept(host_key: &str) -> Vec<Kept> {
+    let at = |there: &str, state: KeptState, ago: u64, files: u64| Kept {
+        host_key: host_key.to_owned(),
+        there: there.to_owned(),
+        mirror: false,
+        state,
+        last: Some((std::time::SystemTime::now() - Duration::from_secs(ago), files, 48_000)),
+    };
+    match std::env::var("OLO_REX_DEMO_KEPT").ok().as_deref() {
+        Some("none") => Vec::new(),
+        Some("states") => vec![
+            at("/home/dev/src/app/dist", KeptState::InStep, 90, 12),
+            at("/home/dev/src/app/logs", KeptState::Syncing, 5, 3),
+            at("/home/dev/src/site/public", KeptState::Failed("No space left on device".into()), 600, 40),
+            at("/home/dev/old/build", KeptState::Gone, 3600, 0),
+        ],
+        _ => vec![at("/home/dev/src/app/dist", KeptState::InStep, 90, 12), at("/home/dev/src/app/logs", KeptState::InStep, 300, 3)],
+    }
 }
 
 /// The demo's account on its connected host, for the Account window's
@@ -2084,6 +2163,7 @@ impl RexHub {
             active_theme,
             pools: None,
             repos: Vec::new(),
+            kept: Vec::new(),
             sessions_window: olo_rex_client::sessions::Window::default(),
             git_cache: GitCache::new(),
             local_bin_dir,
@@ -2098,6 +2178,7 @@ impl RexHub {
             spares: Mutex::new(HashMap::new()),
             bridge_calls: Default::default(),
             agent_socks: Mutex::new(HashMap::new()),
+            keeping: Mutex::new(HashMap::new()),
         });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
@@ -2435,6 +2516,40 @@ impl RexHub {
     /// of, a name follows, an address that changed is a host connected
     /// afresh; permissions and notices are simply read where they are
     /// used.
+    /// The kept folders as the desktop's settings have them: each as it
+    /// stood where it was kept before, a new one waiting; runners started
+    /// for those of connected hosts, those let go of stopped.
+    fn follow_kept(&self, kept: &[olo_protocol::RexKept]) {
+        let (gone, connected) = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let before = std::mem::take(&mut st.kept);
+            st.kept = kept
+                .iter()
+                .map(|k| {
+                    before.iter().find(|b| b.host_key == k.host && b.there == k.there).cloned().map(|b| Kept { mirror: k.mirror, ..b }).unwrap_or(Kept {
+                        host_key: k.host.clone(),
+                        there: k.there.clone(),
+                        mirror: k.mirror,
+                        state: KeptState::Waiting,
+                        last: None,
+                    })
+                })
+                .collect();
+            let gone: Vec<(String, String)> =
+                before.iter().filter(|b| !st.kept.iter().any(|k| k.host_key == b.host_key && k.there == b.there)).map(|b| (b.host_key.clone(), b.there.clone())).collect();
+            let connected: Vec<String> = st.kept.iter().map(|k| k.host_key.clone()).filter(|h| st.hosts.get(h).is_some_and(|h| h.conn_state == HostConnState::Connected)).collect();
+            (gone, connected)
+        };
+        for (host, there) in gone {
+            self.inner.stop_keeping(&host, &there);
+        }
+        let _in_runtime = self.rt.enter();
+        for host in connected {
+            self.inner.keep_folders_of(&host);
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
     pub fn follow_shared(&self, rex: &olo_protocol::RexSettings) {
         // (The person's repositories, as the settings have them; the
         // demo's own, where it has some.)
@@ -2458,6 +2573,7 @@ impl RexHub {
                 }
             }
         }
+        self.follow_kept(&rex.kept);
         if !crate::shared::settled(rex) {
             return;
         }
@@ -4794,6 +4910,122 @@ impl RexHubInner {
         }
     }
 
+    /// What a host's `olo sync` asks, done: `olo sync PATH [--mirror]` keeps
+    /// that folder in step here (Downloads ▸ Rex ▸ HOST ▸ its name: synced
+    /// now, then whenever it changes there, `keep`), `ls` lists this host's
+    /// kept folders, `wait PATH` syncs one now and answers when it is in
+    /// step (after a build: `make && olo sync wait dist`), `stop PATH`
+    /// lets one go (what it brought stays).
+    async fn bridge_sync(self: &Arc<Self>, host_key: &str, args: Vec<String>) -> bridge::BridgeResponse {
+        const USAGE: &str = "usage: olo sync PATH [--mirror] | olo sync ls | olo sync wait PATH | olo sync stop PATH";
+        let fail = |why: String| bridge::BridgeResponse::err(format!("olo sync: {why}\n{USAGE}"));
+        let label = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default();
+        let shown =
+            |there: &str| kept_here(&label, there).map(|p| format!("Downloads/Rex/{}/{}", label, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())).unwrap_or_default();
+        let words: Vec<&str> = args.iter().map(String::as_str).collect();
+        match words.as_slice() {
+            ["ls"] | ["list"] => {
+                let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                let lines: String = st
+                    .kept
+                    .iter()
+                    .filter(|k| k.host_key == host_key)
+                    .map(|k| {
+                        let last = k.last.map(|(at, files, sent)| {
+                            let ago = at.elapsed().map(|d| d.as_secs()).unwrap_or(0);
+                            format!(" ({files} file{}; last {ago} s ago, {} sent)", if files == 1 { "" } else { "s" }, olo_kit::files::format_size(sent))
+                        });
+                        format!("{} → {}{}: {}{}\n", k.there, shown(&k.there), if k.mirror { " (mirrored)" } else { "" }, k.state.said(), last.unwrap_or_default())
+                    })
+                    .collect();
+                bridge::BridgeResponse { ok: true, stdout: Some(if lines.is_empty() { "No folder of this host's is kept in step on the Olo desktop.\n".into() } else { lines }), ..Default::default() }
+            }
+            ["stop", path] | ["rm", path] => {
+                let there = (*path).to_owned();
+                let had = {
+                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let before = st.kept.len();
+                    st.kept.retain(|k| !(k.host_key == host_key && k.there == there));
+                    before != st.kept.len()
+                };
+                if !had {
+                    return fail(format!("{there} isn't kept in step"));
+                }
+                self.stop_keeping(host_key, &there);
+                let (hk, gone) = (host_key.to_owned(), there.clone());
+                olo_kit::settings::update(move |s| s.rex.kept.retain(|k| !(k.host == hk && k.there == gone)));
+                (self.notify)(HubNotice::StateChanged);
+                bridge::BridgeResponse { ok: true, stdout: Some(format!("{there} is no longer kept in step (what it brought stays in {}).\n", shown(&there))), ..Default::default() }
+            }
+            ["wait", path] => {
+                let there = (*path).to_owned();
+                let Some(mirror) = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().find(|k| k.host_key == host_key && k.there == there).map(|k| k.mirror) else {
+                    return fail(format!("{there} isn't kept in step: `olo sync {there}` keeps it"));
+                };
+                self.sync_now(host_key, &there, mirror, &shown(&there)).await
+            }
+            [path] | [path, "--mirror"] | ["--mirror", path] if !path.starts_with('-') => {
+                let (there, mirror) = ((*path).to_owned(), words.contains(&"--mirror"));
+                if !there.starts_with('/') {
+                    return fail(format!("{there}: a whole path"));
+                }
+                if kept_here(&label, &there).is_none() {
+                    return fail(format!("{there}: a folder"));
+                }
+                let new = {
+                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    match st.kept.iter_mut().find(|k| k.host_key == host_key && k.there == there) {
+                        Some(k) => {
+                            k.mirror = mirror;
+                            false
+                        }
+                        None => {
+                            st.kept.push(Kept { host_key: host_key.to_owned(), there: there.clone(), mirror, state: KeptState::Waiting, last: None });
+                            true
+                        }
+                    }
+                };
+                let (hk, kept) = (host_key.to_owned(), there.clone());
+                olo_kit::settings::update(move |s| {
+                    if let Some(k) = s.rex.kept.iter_mut().find(|k| k.host == hk && k.there == kept) {
+                        k.mirror = mirror;
+                    } else {
+                        s.rex.kept.push(olo_protocol::RexKept { host: hk.clone(), there: kept.clone(), mirror });
+                    }
+                });
+                self.keep_folders_of(host_key);
+                let mut answer = self.sync_now(host_key, &there, mirror, &shown(&there)).await;
+                if answer.ok && new {
+                    answer.stdout = answer.stdout.map(|s| format!("{s}Kept in step from now on: what changes there is brought here as it changes (`olo sync stop {there}` lets it go).\n"));
+                }
+                answer
+            }
+            _ => fail("say which folder".into()),
+        }
+    }
+
+    /// A kept folder synced now, under its lock, and said.
+    async fn sync_now(self: &Arc<Self>, host_key: &str, there: &str, mirror: bool, shown: &str) -> bridge::BridgeResponse {
+        let lock = {
+            let mut keeping = self.keeping.lock().unwrap_or_else(|e| e.into_inner());
+            keeping.entry((host_key.to_owned(), there.to_owned())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(())))).1.clone()
+        };
+        match self.sync_kept(host_key, there, mirror, &lock).await {
+            Ok((files, sent)) => {
+                self.set_kept(host_key, there, KeptState::InStep, Some((std::time::SystemTime::now(), files, sent)));
+                bridge::BridgeResponse {
+                    ok: true,
+                    stdout: Some(format!("{there} → {shown} on the Olo desktop: in step, {files} file{}, {} sent\n", if files == 1 { "" } else { "s" }, olo_kit::files::format_size(sent))),
+                    ..Default::default()
+                }
+            }
+            Err(why) => {
+                self.set_kept(host_key, there, KeptState::Failed(why.clone()), None);
+                bridge::BridgeResponse::err(format!("olo sync: {there}: {why}"))
+            }
+        }
+    }
+
     /// What a host's `olo send PATH… [--mirror]` asks, done: each file or
     /// folder there saved here, in Downloads ▸ Rex ▸ HOST (a file by its
     /// name, a folder as a folder of that name), by the engine through
@@ -4918,6 +5150,125 @@ impl RexHubInner {
         }
         (self.notify)(HubNotice::StateChanged);
         Ok(local_addr)
+    }
+
+    /// The kept folders of `host_key` kept in step, each by a runner of
+    /// its own (`keep`), started where one isn't running (as the host
+    /// connects, and as the settings name a new one).
+    fn keep_folders_of(self: &Arc<Self>, host_key: &str) {
+        let mine: Vec<(String, bool)> = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().filter(|k| k.host_key == host_key).map(|k| (k.there.clone(), k.mirror)).collect();
+        let mut keeping = self.keeping.lock().unwrap_or_else(|e| e.into_inner());
+        for (there, mirror) in mine {
+            let entry = keeping.entry((host_key.to_owned(), there.clone())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(()))));
+            if entry.0.as_ref().is_some_and(|t| !t.is_finished()) {
+                continue;
+            }
+            let (inner, hk, lock) = (self.clone(), host_key.to_owned(), entry.1.clone());
+            entry.0 = Some(tokio::spawn(async move { inner.keep(hk, there, mirror, lock).await }).abort_handle());
+        }
+    }
+
+    /// A kept folder let go of: its runner stopped (what it brought here
+    /// stays).
+    fn stop_keeping(&self, host_key: &str, there: &str) {
+        if let Some((Some(task), _)) = self.keeping.lock().unwrap_or_else(|e| e.into_inner()).remove(&(host_key.to_owned(), there.to_owned())) {
+            task.abort();
+        }
+    }
+
+    fn set_kept(&self, host_key: &str, there: &str, state: KeptState, last: Option<(std::time::SystemTime, u64, u64)>) {
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(k) = st.kept.iter_mut().find(|k| k.host_key == host_key && k.there == there) else { return };
+            if k.state == state && last.is_none() {
+                return;
+            }
+            k.state = state;
+            if last.is_some() {
+                k.last = last;
+            }
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// One sync of a kept folder, under its lock: the host's folder
+    /// received here by the engine (its index kept beside the app's
+    /// cache), the state said as it goes.
+    async fn sync_kept(self: &Arc<Self>, host_key: &str, there: &str, mirror: bool, lock: &tokio::sync::Mutex<()>) -> Result<(u64, u64), String> {
+        use olo_rex_client::sync::{HostFolder, Stop, receive_from};
+        let _held = lock.lock().await;
+        let (endpoint, label) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let h = st.hosts.get(host_key).ok_or("the host isn't Rex's")?;
+            (h.endpoint.clone(), h.label.clone())
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else { return Err("the host isn't reached over SSH".into()) };
+        let here = kept_here(&label, there).ok_or("no folder here to keep it in")?;
+        std::fs::create_dir_all(&here).map_err(|e| e.to_string())?;
+        let cache = olo_rex_client::sessions::Copied::cache_for(&here.to_string_lossy(), there).with_extension("kept.idx");
+        self.set_kept(host_key, there, KeptState::Syncing, None);
+        let folder = HostFolder { path: there.to_owned(), delete: mirror, ..Default::default() };
+        let report = receive_from(&pool, &target, askpass, crate::link::ID, &folder, here, Some(cache), Stop::default()).await.map_err(|e| e.to_string())?;
+        if let Some(e) = report.errors.first() {
+            return Err(format!("{}: {}", e.path, e.reason));
+        }
+        let files = report.new + report.appended + report.patched + report.copied + report.same;
+        Ok((files, report.bytes_sent + report.bytes_received))
+    }
+
+    /// A kept folder kept in step while its host is connected: its watch
+    /// started there first (`olo-rex-link sync watch`: nothing that
+    /// changes during the first sync goes unseen), a sync, then another
+    /// each time the watch says it changed. Its host gone, it waits (and
+    /// is started again as the host connects); the folder gone there, or
+    /// a watch that can't be had, it says so and stops.
+    async fn keep(self: Arc<Self>, host_key: String, there: String, mirror: bool, lock: Arc<tokio::sync::Mutex<()>>) {
+        use tokio::io::AsyncBufReadExt as _;
+        let (endpoint, helper) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let h = st.hosts.get(&host_key);
+            (h.and_then(|h| h.endpoint.clone()), h.is_some_and(|h| matches!(h.helper, HostHelper::Used | HostHelper::Ready)))
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            self.set_kept(&host_key, &there, KeptState::Waiting, None);
+            return;
+        };
+        if !(helper && crate::link::syncs()) {
+            self.set_kept(&host_key, &there, KeptState::Waiting, None);
+            return;
+        }
+        let watch = format!("{} sync watch {}", olo_rex_client::helper::file(crate::link::ID), olo_rex_client::provision::shell_word(&there));
+        let Ok(stream) = pool.exec_io(&target, askpass.clone(), &watch).await else {
+            self.set_kept(&host_key, &there, KeptState::Waiting, None);
+            return;
+        };
+        let mut lines = tokio::io::BufReader::new(stream).lines();
+        let mut first = true;
+        loop {
+            match lines.next_line().await {
+                Ok(Some(said)) if said == "watching" && first => first = false,
+                Ok(Some(said)) if said == "changed" && !first => {}
+                Ok(Some(said)) if said == "gone" => {
+                    self.set_kept(&host_key, &there, KeptState::Gone, None);
+                    return;
+                }
+                Ok(Some(said)) if said.starts_with("error: ") => {
+                    self.set_kept(&host_key, &there, KeptState::Failed(said.trim_start_matches("error: ").to_owned()), None);
+                    return;
+                }
+                Ok(Some(_)) => continue,
+                // (The host went away, or its helper ended: kept for when
+                // it is back.)
+                _ => {
+                    self.set_kept(&host_key, &there, KeptState::Waiting, None);
+                    return;
+                }
+            }
+            match self.sync_kept(&host_key, &there, mirror, &lock).await {
+                Ok((files, sent)) => self.set_kept(&host_key, &there, KeptState::InStep, Some((std::time::SystemTime::now(), files, sent))),
+                Err(why) => self.set_kept(&host_key, &there, KeptState::Failed(why), None),
+            }
+        }
     }
 
     /// The host's forwards of before an upgrade in place, taken up again
@@ -5314,6 +5665,7 @@ impl RexHubInner {
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
                     self.resume_saved_forwards(&host_key, &ctrl, &endpoint);
+                    self.keep_folders_of(&host_key);
 
                     (self.notify)(HubNotice::StateChanged);
 
@@ -6274,6 +6626,24 @@ impl RexHubInner {
                     }
                     let (inner, hk) = (self.clone(), host_key.to_owned());
                     return Some(self.bridge_calls.answer(async move { inner.bridge_send(&hk, given).await }).await);
+                }
+                // A host's `olo sync …`: its folders kept in step here
+                // (`bridge_sync`), under the same leave as `olo send`.
+                "olo.sync" => {
+                    let given: Vec<String> = args
+                        .as_ref()
+                        .and_then(|a| a.get("args"))
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
+                        .unwrap_or_default();
+                    if !policy.allow_send_files {
+                        return Some(json!({ "ok": false, "stderr": "olo: this host may not send files to the Olo desktop (Preferences ▸ Rex: Send files to Downloads on this computer)\n" }));
+                    }
+                    if is_local {
+                        return Some(json!({ "ok": true, "stdout": "These are the Olo desktop's own folders: nothing to keep in step.\n" }));
+                    }
+                    let (inner, hk) = (self.clone(), host_key.to_owned());
+                    return Some(self.bridge_calls.answer(async move { inner.bridge_sync(&hk, given).await }).await);
                 }
                 // A host's `olo forward`: a server it reaches, reached
                 // from here at the port it names (`forwards`).

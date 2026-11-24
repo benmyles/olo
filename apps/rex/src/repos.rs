@@ -325,6 +325,7 @@ mod tests {
 
     fn host(there: Option<Vec<There>>, conn: HostConnState) -> HostStands {
         HostStands {
+            kept: Vec::new(),
             name: "dev-box".into(),
             address: "you@dev-box.example".into(),
             conn,

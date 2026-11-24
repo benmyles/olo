@@ -43,6 +43,14 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   parts); `--mirror` also takes away, within that folder there, what
   is no longer here. Where the person hasn't let this host send files
   (Preferences ▸ Rex), it says so: ask them.
+- **A folder kept in step on the desktop**: `olo sync dist` keeps this
+  host's folder in step in Downloads ▸ Rex ▸ HOST ▸ dist from then on
+  (what changes here is brought there moments later, by itself: a
+  build's output, logs); `olo sync wait dist` brings it in step now and
+  answers when it is (after a build: `make && olo sync wait dist`);
+  `olo sync ls` lists this host's kept folders and how each stands;
+  `olo sync stop dist` lets it go (what was brought stays). `--mirror`
+  takes away there what is no longer here. The same leave as `olo send`.
 - **A secret from Olo Passwords** (1Password's command line, answered
   on the desktop after the person approves there; no secret is kept on
   this host): `olo op read op://Vault/Item/field`. Changes too, as
@@ -84,6 +92,7 @@ Underneath it is Rex's own `rex do`, which you can use directly
 `rex do olo.open target=URL`, `rex do olo.op --args '{"args":[…]}'`,
 `rex do olo.screen --args '{"args":[…]}'`, `rex do olo.forward --args
 '{"args":["5173"]}'`, `rex do olo.send --args '{"args":["/whole/path"]}'`,
+`rex do olo.sync --args '{"args":["/whole/path"]}'`,
 `rex do olo.notify title=…`,
 `rex do olo.clipboard.set text=…`, `rex do olo.clipboard.get --args
 '{}'`; an answer that says `pending` is
