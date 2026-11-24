@@ -1501,7 +1501,20 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   `apps::NEW_WINDOW`: Tracker then offers **New Window** on its program
   (or a link to it) while it runs, and Deskbar in its menu, forwarding `--new-window` to the
   running copy (`apps::app_id_of` maps `olo-x` to `olo.x`). Agents
-  do the same with `olo-x --new-window`. Each workspace (of each
+  do the same with `olo-x --new-window`.
+  An app that shows one place after another (an item, a folder, a
+  conversation, a day) keeps where the person has been in an
+  `olo_kit::history::History` of places it defines: `visit` as the
+  person goes somewhere, `update` as the place shown changes in itself (a
+  search typed), and `back`, `forward` (`go`) to restore one, not a
+  visit itself; Go ▸ Back and Forward from `history::go_items` (the
+  commands `back` and `forward`, dimmed where there's nowhere to go,
+  their keys every app's in `app_keys`: `app.back`, `app.forward`, ⌘[ and
+  ⌘] on a Mac, Alt+← and Alt+→ on Windows); and the mouse's back and
+  forward buttons on the window's root
+  (`MouseButton::Navigate(NavigationDirection::Back)`), each going where
+  its command goes. Passwords has it; Tracker keeps its own (its folders),
+  with the same keys. Each workspace (of each
   display) has its own
   windows of an app (and so its own group of them): a launch, or opening
   a folder or document the app has a window for, brings forward only a
@@ -25281,6 +25294,17 @@ back, and the reply records the step. An item with files attached can't
 be made again (its files went), so its Delete still says it's for good;
 the Archive isn't undone (nothing takes an item out of it yet). Steps
 hold secrets: they go when Passwords locks (and when the store changes).
+
+**Back and Forward** (Go ▸ Back and Forward, the mouse's back and
+forward buttons; `olo_kit::history`; Ben, 2026-11-20: "navigate forward
+and back should work in passwords app (and every app for that
+matter)"): a place is what the list shows (its source and search) and
+the item chosen in it (`Place`). Choosing an item or a source is a
+visit; a search typed, or the first item chosen for the person, changes
+the place it's in (`History::update`), so Back returns to the search as
+it was left; Back and Forward restore a place (the search field told,
+the item's details fetched) without being visits, and ask first, as any
+going elsewhere does, while the editor has changes (`Then::Go`).
 
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the
 list (Tag, Has) share one query (`olo_kit::search`). Words find an item

@@ -184,6 +184,11 @@ pub const APP_KEYS: &[AppKey] = &[
     // Token Pool's is its own, "Read Quota Now"; StyledEdit's Print).
     k("app.refresh", None, "refresh", "Refresh", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("app.print", None, "print", "Print", &["Cmd+P"], &["Ctrl+P"], &["Alt+P"]),
+    // Go ▸ Back and Forward, wherever an app shows one place after another
+    // (`olo_kit::history`): the platform's (a browser's and Finder's ⌘[ and
+    // ⌘], Explorer's Alt+← and Alt+→), as Tracker's and Logs' have been.
+    k("app.back", None, "back", "Back", &["Cmd+BracketLeft"], &["Alt+Left"], &["Alt+BracketLeft"]),
+    k("app.forward", None, "forward", "Forward", &["Cmd+BracketRight"], &["Alt+Right"], &["Alt+BracketRight"]),
     // Tracker: Finder's on a Mac, Explorer's on Windows, Tracker's on BeOS.
     // (A new window: ⌘N as Finder's, Ctrl+N as Explorer's; BeOS's Tracker
     // had none, Alt+N its New Folder.)

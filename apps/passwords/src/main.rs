@@ -129,6 +129,15 @@ fn settings_path() -> std::path::PathBuf {
     olo_kit::config_dir().join("passwords.json")
 }
 
+/// Where the person is, for Back and Forward: what the list shows (its
+/// source and search) and the item chosen in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Place {
+    source: Source,
+    search: String,
+    selected: Option<String>,
+}
+
 /// Where the list's items come from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Source {
@@ -151,6 +160,8 @@ pub enum Conn {
 enum Then {
     Select(Option<String>),
     Source(Source),
+    /// Back (-1) or Forward (1).
+    Go(isize),
     New(ItemCategory),
     Close,
     Lock,
@@ -444,6 +455,9 @@ pub struct Passwords {
     /// Edit ▸ Undo and Redo (`undo.rs`): items as they were. Secrets: gone
     /// when it locks.
     history: olo_kit::undo::History<undo::Change>,
+    /// Where the person has been, for Back and Forward (Ben, 2026-11-20:
+    /// "navigate forward and back should work in passwords app").
+    places: olo_kit::history::History<Place>,
     pub settings: Settings,
     /// Preferences ▸ Security's choices for Passwords (followed live).
     security: PasswordsSecurity,
@@ -872,6 +886,7 @@ impl Passwords {
             self.selected = id;
             self.ui.detail_top = true;
             self.fetch_selected();
+            self.places.visit(self.place());
         }
         self.changed();
     }
@@ -893,7 +908,41 @@ impl Passwords {
         self.close_editor();
         self.source = source;
         self.keep_selection_listed();
+        self.places.visit(self.place());
         self.changed();
+    }
+
+    /// Where the person is now ([`Place`]).
+    fn place(&self) -> Place {
+        Place { source: self.source.clone(), search: self.search.clone(), selected: self.selected.clone() }
+    }
+
+    /// Back (`by` -1) or Forward (1): where the person was, as it was
+    /// (its list, its search, its item), not a visit itself.
+    pub fn go(&mut self, by: isize) {
+        if self.editor.as_ref().is_some_and(|e| e.changed()) {
+            self.ask_discard(Then::Go(by));
+            return;
+        }
+        let Some(p) = self.places.go(by) else { return };
+        self.close_editor();
+        self.source = p.source;
+        if self.search != p.search {
+            self.search = p.search;
+            self.ui.push_search = true;
+        }
+        if self.selected != p.selected {
+            self.selected = p.selected;
+            self.revealed.clear();
+            self.reveal_selection = true;
+            self.ui.detail_top = true;
+            self.fetch_selected();
+        }
+        self.changed();
+    }
+
+    pub fn can_go(&self, by: isize) -> bool {
+        if by < 0 { self.places.can_back() } else { self.places.can_forward() }
     }
 
     /// The search (or a filter) changed; `from_bar`: not typed, so the
@@ -907,6 +956,9 @@ impl Passwords {
         }
         self.search = text;
         self.keep_selection_listed();
+        // (The place as it is now, not a new one: Back returns to the
+        // search as it was left.)
+        self.places.update(self.place());
         self.changed();
     }
 
@@ -919,6 +971,9 @@ impl Passwords {
             self.revealed.clear();
             self.reveal_selection = true;
             self.fetch_selected();
+            // (Chosen for the person, not by them: where they are, not
+            // somewhere they went.)
+            self.places.update(self.place());
         }
     }
 
@@ -2308,6 +2363,7 @@ impl Passwords {
         match then {
             Then::Select(id) => self.select(id),
             Then::Source(s) => self.set_source(s),
+            Then::Go(by) => self.go(by),
             Then::New(c) => self.new_item(c),
             Then::Close => self.quit(),
             Then::Lock => self.do_lock(),
@@ -2731,7 +2787,10 @@ impl Passwords {
         if !shared {
             view = view.separator().submenu(lock_after);
         }
-        vec![file, edit, item, view]
+        // Back and Forward through where the person has been, as every
+        // app's are (`olo_kit::history`).
+        let go = olo_kit::history::go_items(Menu::new("Go"), ready && self.can_go(-1), ready && self.can_go(1));
+        vec![file, edit, item, view, go]
     }
 
     /// The item menu, for a right-click on `id` in the list.
@@ -2781,6 +2840,8 @@ impl Passwords {
             "reset" => self.confirm_reset(),
             "generator" => self.open_generator(None),
             "find" => self.ui.focus_search = true,
+            "back" => self.go(-1),
+            "forward" => self.go(1),
             "edit" => self.edit_selected(),
             "open-website" => self.open_website(),
             "archive" if on_screen() => self.flash(SHARED_ONLY),
@@ -3266,6 +3327,7 @@ fn main() {
             missing: HashMap::new(),
             source: Source::All,
             selected: None,
+            places: olo_kit::history::History::new(Place { source: Source::All, search: String::new(), selected: None }),
             reveal_selection: true,
             search: String::new(),
             revealed: HashSet::new(),

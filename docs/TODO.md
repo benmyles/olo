@@ -1799,7 +1799,11 @@ something nobody here has is in "Blocked", with what it waits for.
   long secret's dots run to the text field's edge, the last cut ("stop
   the dots at the field's right inner padding (4pt), or show a fixed run
   of dots … The fixed run reads better for a key, which has no useful
-  length"); a dimmed push button in a dark look barely dims ("In dark,
+  length"); a menu bar's open title in "a saturated web blue that
+  nothing else in the window uses" ("use the *selection* role … or a
+  sunken grey title with a 1 pt bevel, which is closer to the BeOS look.
+  Use the same treatment for the highlighted row inside the menu"; the
+  look at Passwords' Go menu); a dimmed push button in a dark look barely dims ("In dark,
   only the label goes grey: the frame, fill and bevel stay the same as
   an enabled button … Drop the bevel's light and dark edges and draw the
   frame at about half contrast against the panel").
@@ -2024,6 +2028,14 @@ something nobody here has is in "Blocked", with what it waits for.
   place is to an app, kept across a reload, read and driven by agents),
   Passwords first, then each app; the keys in `olo_protocol::app_keys`
   as every app's.
+  **Done** 2026-11-24 for Passwords, and the kit's part (HACKING:
+  `olo_kit::history`, Go ▸ Back and Forward, every app's keys, the
+  mouse's buttons). Left: each other app (Calendar's days and events,
+  Phone's conversations, To-Do's lists, Weather's places; Tracker's own
+  history onto the kit's; Preferences opens a window a panel, BeOS's
+  way, so has none to go along); and a touchpad's swipe, which needs the
+  pointer-gestures protocol in app_server and the toolkit (neither has
+  it yet).
 
 - **Snap pads while tiling, a swap pad that reads as one, Zoom to 75%
   and 50%** (Ben, 2026-11-20: "what is the J hotspot supposed to be?

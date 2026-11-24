@@ -1048,6 +1048,9 @@ impl View for MainView {
                 }
             }))
             .capture_key_down(cx.listener(|v: &mut MainView, e: &KeyDownEvent, cx| v.key(e, cx)))
+            // The mouse's back and forward buttons: Go ▸ Back and Forward.
+            .on_mouse_down(MouseButton::Navigate(olo_kit::NavigationDirection::Back), |_: &MouseDownEvent, _| app().go(-1))
+            .on_mouse_down(MouseButton::Navigate(olo_kit::NavigationDirection::Forward), |_: &MouseDownEvent, _| app().go(1))
             .child(bar)
             .child(div().flex_1().min_h_0().child(body))
             .into_any_element()
