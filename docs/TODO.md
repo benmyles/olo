@@ -13,6 +13,39 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **Rex: Auto Approve and Keep It Going for every coding agent** (Ben,
+  2026-11-24: "did we already add the support for auto approve + keep
+  it going for all the coding harnesses in our olo rex? if not
+  prioritize that as the first item"). Rex has Keep It Going (a pane's
+  toggle in Agents and the pane's menu; a stopped agent found by
+  reading its screen: Claude Code, Codex, Antigravity), but Antigravity's
+  part was tried with recorded screens only; Auto Approve isn't in Rex
+  at all (a note in `apps/rex/src/agent.rs`, nothing behind it).
+  Terminal has both (`apps/terminal/src/agent.rs`: `classify`,
+  `approvable`, its countdown). To do: Auto Approve in Rex for Claude
+  Code, Codex and Antigravity, Terminal's reading of the question shared
+  (in a crate both use, not copied), its countdown and what the person
+  may stop, for panes on any host; Keep It Going and Auto Approve each
+  tried against the real three in a helper's own session on a specimen
+  task, on this host and a far one.
+- **Rex: the mouse as in a local terminal** (Ben, 2026-11-24: "in olo
+  rex we need to get mouse scrolling / mouse interactions working
+  properly like a local terminal"): scrolling the history, and the
+  mouse given to a program that asks for it (vim, tmux, an agent's
+  TUI: the terminal's mouse modes, wheel as arrows in the alternate
+  screen), selection and clicks as Terminal does them. Find first what
+  Terminal does that Rex doesn't, and share it rather than copy it.
+- **About Olo: Check for Updates, and an older release** (Ben,
+  2026-11-24: "add something in about olo desktop like a button to
+  check for new releases and also the ability to install an older
+  release too when available"). The session asks GitHub two minutes
+  after it starts and every six hours (`crates/session/src/upgrade.rs`,
+  `olo-release latest`); now releases come from the dev server after
+  each feature, six hours is long. A Check Now in About Olo (and the
+  tray's offer at once), and the releases listed there with Install for
+  an older one (`olo-release install TAG`, what it would download said
+  first, and what going back means for settings made since).
+
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

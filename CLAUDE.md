@@ -129,22 +129,39 @@ are universal and non-negotiable:
   round. After the third round what is left goes to the TODO, and
   the change is committed.
 - **Leave the person's session alone.** Never reload, upgrade or install
-  into it unless asked. To get work ready, run
-  `cargo build --release --workspace`. The running session watches
-  `target/release` and offers the new build in Deskbar's tray, whose
-  Upgrade installs it and reloads in place. `tools/install-session.sh` is
+  into it unless asked. Work reaches it as a release (below): their
+  session asks GitHub for Olo's releases and offers a newer one in
+  Deskbar's tray, whose Upgrade installs it and reloads in place. (Where
+  Olo is built on the person's own computer, its session also watches
+  `target/release` and offers the build.) `tools/install-session.sh` is
   only for a first install, or when the login-screen entry or udev rules
   change.
+- **Build with Jato.** Every build and test goes through `jato`
+  (`jato build -p`, `jato test -p`, `jato build --release`): it keeps
+  the builds it has made (Ben, 2026-11-24: "for builds moving forward
+  please use jato"). Jato is experimental and ours: where it gets in
+  the way, fix it in `~/src/jato` and build it again ("nobody else is
+  working on it so it's yours to own too"), never work around it.
+- **A release after each feature, published in the background.** When
+  a major piece of work is in, make a GitHub release of it (Ben,
+  2026-11-24: "after each major piece of functionality/feature
+  implemented please make a new release on github"), with
+  `tools/publish-release.sh NOTES.md`, always run in the background
+  ("make sure you always run it in the background so you can move on
+  with work instead of waiting for a slow upload"): it builds in a
+  Fedora 44 container, checks and publishes (HACKING, "The
+  Installer"). Its log says how it went; go on with the next piece
+  meanwhile, and read its last line when it ends.
 - **Build what you change, in dev, while you work.** While editing,
   build and test only the packages you change, in the dev profile
-  (optimized too): `cargo build -p`, `cargo test -p`, pictures from dev
+  (optimized too): `jato build -p`, `jato test -p`, pictures from dev
   builds (`tsession`'s default), the live lint with `--dev` (with
-  `cargo build -p app_server -p olo-preview -p olo-fakesound` beside
+  `jato build -p app_server -p olo-preview -p olo-fakesound` beside
   what it lints). The
   release build of the workspace is for work that's ready: build it
   once, when you finish, so the person's session offers the upgrade
   (the pre-push hook builds it too). Measure on release builds of the
-  packages measured (`cargo build --release -p`). Release builds were
+  packages measured (`jato build --release -p`). Release builds were
   49.1 of the 52 compiler-hours kache spent on misses (measured,
   2026-11-19): a change to olo-kit-base rebuilds every app. (A word in
   a catalog no longer does: the catalogs are data, `data/words`,

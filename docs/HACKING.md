@@ -16648,12 +16648,34 @@ named there as a part (`bundle::parts`), fetches it from beside the
 archive (`Origin::beside`: the same release, or folder), checks it and
 unpacks it over the first (`bundle::fetch`, `bundle::unpack`); the
 script stops if either is 2 GiB or more. A Setup from before the parts
-installs such a release without its wallpapers. `cargo test --release
--p olo-installer a_real_release -- --ignored` with
+installs such a release without its wallpapers. `jato test --release
+-p olo-release a_real_release -- --ignored` with
 `OLO_RELEASE=OUT/olo-VERSION-ARCH.tar.zst` finds, checks and unpacks
 what the script made as Setup does (into a folder beside it, removed)
-and says what's missing. Publishing them (a GitHub release with the
-five files) is a separate step.
+and says what's missing.
+
+**Publishing** (`tools/publish-release.sh NOTES.md [--dry-run]`, run in
+the background: Ben, 2026-11-24, "add a script/tool or something to
+publish the release more reliably … make sure you always run it in the
+background"): from a clean HEAD that is on origin, it builds the
+workspace in release in a **Fedora 44 container**
+(`tools/release-image/Dockerfile`: the oldest Fedora a release is for,
+with Olo's build libraries, the pinned toolchain and its musl targets,
+zig), through Jato, in a target folder and a Jato cache of the
+release's own (`/var/tmp/olo-release`, or `OLO_RELEASE_WORK`); makes
+the five files with `tools/release.sh` in the same container; unpacks
+them as Setup does (the test above); unpacks Olo in plain Fedora 44
+and 45 containers and has `ldd` say no program lacks a library;
+names it `vYYYY.MM.DD`, "Olo YYYY.MM.DD" (a second on a day
+`.2`, "(update 2)"); publishes it at HEAD's full hash as the latest,
+VERSION in the notes put in as the release's own; sends again what
+didn't go up whole (three tries) and checks GitHub's size of each.
+Its log is `publish.log` there, its last line "published URL",
+"dry run: …" or "failed: WHY". Why a container: Olo's programs link
+the system's libraries and glibc, and a release built on another
+system (the Ubuntu dev server, 2026-11-24) could need versions Fedora
+hasn't: built on Fedora 44, all 76 programs found every library on 44
+(glibc 2.43) and 45 (2.44). The first so made: Olo 2026.11.24.
 
 `tools/dev/installer-check` tries it all in a virtual machine (KVM, a
 virtio GPU, no window, driven through QEMU's monitor; `boot --gl

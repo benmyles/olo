@@ -63,7 +63,10 @@ if ! git diff --quiet HEAD --; then
 fi
 echo "pre-push: UI code changed; release build, then the live layout lint…" >&2
 began=$SECONDS
-env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo build --release --workspace >&2
+# (Through Jato where it's there: it keeps the builds it has made.)
+build=cargo
+command -v jato > /dev/null 2>&1 && build=jato
+env -u WAYLAND_DISPLAY -u OLO_SOCKET "$build" build --release --workspace >&2
 echo "pre-push: the release build took $((SECONDS - began)) s" >&2
 began=$SECONDS
 trap 'echo "pre-push: the live layout lint took $((SECONDS - began)) s" >&2' EXIT

@@ -32,7 +32,16 @@ if [ "${OLO_SKIP_UI_LINT:-}" != 1 ] && git diff --cached --name-only | tools/hoo
     echo "pre-commit: UI code changed; the layout lint (cargo ui-lint)…" >&2
     began=$SECONDS
     trap 'echo "pre-commit: the layout lint took $((SECONDS - began)) s" >&2' EXIT
-    if ! out=$(env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo ui-lint 2>&1); then
+    # (Through Jato where it's there, which keeps builds it has made:
+    # the alias's own words, `cargo ui-lint`, as .cargo/config.toml has
+    # them. Ben, 2026-11-24: "for builds moving forward please use
+    # jato".)
+    if command -v jato > /dev/null 2>&1; then
+        lint=(jato test -p olo-kit -p olo-preferences -p olo-diskbackup-app --features olo-kit/lint --tests ui_lint)
+    else
+        lint=(cargo ui-lint)
+    fi
+    if ! out=$(env -u WAYLAND_DISPLAY -u OLO_SOCKET "${lint[@]}" 2>&1); then
         echo "$out" | grep -E "^  (light|dark) at|panicked|^error" >&2 || echo "$out" | tail -30 >&2
         echo "pre-commit: the layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
         exit 1

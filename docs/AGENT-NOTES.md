@@ -2961,3 +2961,30 @@ an argument it doesn't know starts the lint (read its first lines).
   environment has `CODEX_HOME=` that folder (found by that, never by
   name), or `CODEX_HOME=… codex app-server daemon stop`.
 
+### The dev server (2026-11-24)
+
+Work moved from the person's Olo computer to a dev server they reach
+through Rex (Ben: "you are now running on my remote dev server with
+rex"). What it is, and what differs:
+
+- **Ubuntu 26.04 in a VM** (32 processors, 125 GB): `setup.sh` is
+  Fedora's (dnf), so what Olo needs came from apt: Mesa's software
+  Vulkan (`mesa-vulkan-drivers`, lavapipe), Python's imaging
+  (`python3-pil`), Olo's fonts (`fonts-urw-base35`, `fonts-noto-core`,
+  `-mono`, `-cjk`, `-extra`, `fonts-liberation`,
+  `fonts-jetbrains-mono`). `sudo` needs no password; `gh` and `zig`
+  are installed.
+- **No GPU.** The one display device is QEMU's (`bochs-drm`); NVIDIA's
+  driver packages are installed with no card for them. Test desktops
+  draw in software anyway (HACKING, "Test desktops draw in software"),
+  and work here: `tsession` and its pictures, the lints.
+- **`/tmp` is memory here too**: scratch in `/var/tmp`.
+- **Docker needs `sudo`** (the account isn't in its group):
+  `tools/publish-release.sh` says `sudo docker` by itself where it must.
+  Releases are built in its Fedora 44 container, never on this system.
+- **The person's Olo desktop** is reached from here through Rex (the
+  `olo-rex-bridge` skill): a link opened there, an Agent Screen of
+  one's own there, a secret from their Passwords once they allow it.
+- **Builds go through Jato** (CLAUDE.md); the hooks use it where it is
+  installed (`tools/hooks/install` switched them on in this clone).
+
