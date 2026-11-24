@@ -2899,6 +2899,9 @@ Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 Не удалось удалить сейф из 1Password. {}
 
+Couldn’t fetch the file “{}”. {}
+Не удалось получить файл «{}». {}
+
 Couldn’t get a sign-in link: {}.
 Не удалось получить ссылку для входа: {}.
 
@@ -10099,6 +10102,9 @@ Save As
 Save As…
 Сохранить как…
 
+Save File
+Сохранить файл
+
 Save Group
 Сохранить группу
 
@@ -10135,11 +10141,17 @@ Saved the vault “{}”.
 Saved to /etc/hosts.
 Сохранено в /etc/hosts.
 
+Saved “{}”.
+«{}» сохранён.
+
 Saved, but it can't be reopened: {}
 Сохранено, но не удаётся открыть снова: {}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Сохраняет в одном файле настройки Olo и данные, которые приложения хранят между запусками. Их можно восстановить здесь или на другом компьютере. Включено:
+
+Save…
+Сохранить…
 
 Saving Power
 Энергосбережение
@@ -16030,6 +16042,9 @@ other: {n} недели
 {} · and {} more
 {} · и ещё {}
 
+{} · comes with the next sync
+{} · придёт при следующей синхронизации
+
 {} · easing background work
 {} · фоновая нагрузка снижена
 
@@ -16479,6 +16494,9 @@ StyledEdit не может прочитать изображение «{}».
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 Не удалось распознать адрес «{}». Введите адреса через запятую в формате name@example.org.
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+«{}» ещё не здесь: он придёт из 1Password при следующей синхронизации.
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 «{}» недоступно. Устройство рядом и разблокировано? Bluetooth включён?

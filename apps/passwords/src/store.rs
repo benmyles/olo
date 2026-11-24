@@ -8,7 +8,7 @@
 //! one are dropped.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::mpsc,
     thread,
 };
@@ -37,6 +37,14 @@ pub struct Tag {
 pub enum Job {
     /// Open the store (made the first time) and list it.
     Open,
+    /// File `file` attached to an item, as kept here, written to `to`
+    /// (`name`: the file's, to say so), readable by its owner alone: a
+    /// key's file is a secret.
+    SaveFile {
+        file: String,
+        name: String,
+        to: std::path::PathBuf,
+    },
     /// Let go of the store's secrets (locking); after a running sync.
     Close,
     Get {
@@ -233,6 +241,10 @@ pub enum Reply {
     },
     /// An operation failed (the store is still good).
     Error(String),
+    /// A file was saved where the person chose (`Job::SaveFile`).
+    FileSaved {
+        name: String,
+    },
     /// A fetch failed: the item may be gone.
     Missing {
         item: String,
@@ -336,6 +348,8 @@ pub struct Searchable {
     /// It has an SSH key that can't be read (under a passphrase in an
     /// older form, or not a key): its list line says so.
     pub key_unread: bool,
+    /// Its attached files kept here (the rest come with the next sync).
+    pub kept_files: HashSet<String>,
 }
 
 /// One of an item's fields as search sees it: its section's title (none
@@ -367,6 +381,8 @@ fn weak(pw: &str) -> bool {
 /// Every item's [`Searchable`].
 fn index(v: &Vault) -> HashMap<String, Searchable> {
     let active = || v.data.entries.iter().filter(|e| e.state == onepassword::ItemState::Active);
+    // (Which attached files are here: a folder's names, read once.)
+    let kept = v.kept_files();
     let mut uses: HashMap<&str, usize> = HashMap::new();
     for e in active() {
         if let Some(pw) = e.item.password() {
@@ -416,6 +432,7 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
                 passkey: passkey::stored(item).map(|p| PasskeyInfo { rp_id: p.rp_id.clone(), user_name: p.user_name.clone(), credential_id: p.credential_id.clone() }),
                 fingerprint: key.and_then(|f| crate::agent::derived(&f.value)).map(|d| d.fingerprint),
                 key_unread: false,
+                kept_files: item.files.iter().map(|f| &f.attributes.id).chain(item.document.as_ref().map(|d| &d.id)).filter(|id| kept.contains(*id)).cloned().collect(),
             };
             let s = Searchable { key_unread: key.is_some() && s.fingerprint.is_none(), ..s };
             (item.id.clone(), s)
@@ -645,6 +662,21 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 }
             }
 
+            Job::SaveFile { file, name, to } => match v.file(&file) {
+                Some(content) => {
+                    let written = (|| {
+                        use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
+                        let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&to)?;
+                        f.write_all(&content)?;
+                        f.sync_all()
+                    })();
+                    match written {
+                        Ok(()) => reply(Reply::FileSaved { name }),
+                        Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t save “{}”: {}", name, e).into())),
+                    }
+                }
+                None => reply(Reply::Error(olo_kit::tr!("“{}” isn’t here yet: it comes from 1Password with the next sync.", name).into())),
+            },
             Job::Get { vault, item } => match v.get(&vault, &item) {
                 Ok(i) => reply(Reply::Item(Box::new(i))),
                 Err(e) => reply(Reply::Missing { item, error: describe(&e) }),

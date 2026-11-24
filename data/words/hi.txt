@@ -2873,6 +2873,9 @@ Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 1Password से यह तिजोरी नहीं मिटा सके। {}
 
+Couldn’t fetch the file “{}”. {}
+फ़ाइल “{}” नहीं लाई जा सकी। {}
+
 Couldn’t get a sign-in link: {}.
 लॉगिन लिंक नहीं मिल सका: {}।
 
@@ -10041,6 +10044,9 @@ Save As
 Save As…
 इस नाम से सहेजें…
 
+Save File
+फ़ाइल सहेजें
+
 Save Group
 समूह सहेजें
 
@@ -10077,11 +10083,17 @@ Saved the vault “{}”.
 Saved to /etc/hosts.
 /etc/hosts में सहेजा गया।
 
+Saved “{}”.
+“{}” सहेजा गया।
+
 Saved, but it can't be reopened: {}
 सहेज लिया, लेकिन फिर नहीं खोल सके: {}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Olo की सेटिंग और ऐप के बीच के सत्रों की सहेजी जानकारी एक फ़ाइल में रखता है। इसे यहाँ या दूसरे कंप्यूटर पर बहाल कर सकते हैं। शामिल सामग्री:
+
+Save…
+सहेजें…
 
 Saving Power
 ऊर्जा बचत
@@ -15808,6 +15820,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} · and {} more
 {} · और {} अन्य
 
+{} · comes with the next sync
+{} · अगले सिंक के साथ आएगा
+
 {} · easing background work
 {} · पृष्ठभूमि के काम का भार घट रहा है
 
@@ -16253,6 +16268,9 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 “{}” निमंत्रण भेजने लायक पता नहीं है। पते name@example.org जैसे लिखें और कॉमा से अलग करें।
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+“{}” अभी यहाँ नहीं है: यह अगले सिंक के साथ 1Password से आएगा।
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 “{}” पहुँच में नहीं है। क्या वह पास में है, अनलॉक है और Bluetooth चालू है?

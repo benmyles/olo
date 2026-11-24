@@ -2873,6 +2873,9 @@ Não foi possível excluir o item no 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 Não foi possível excluir este cofre do 1Password. {}
 
+Couldn’t fetch the file “{}”. {}
+Não foi possível buscar o arquivo “{}”. {}
+
 Couldn’t get a sign-in link: {}.
 Não foi possível obter o link de entrada: {}.
 
@@ -10041,6 +10044,9 @@ Salvar como
 Save As…
 Salvar como…
 
+Save File
+Salvar arquivo
+
 Save Group
 Salvar grupo
 
@@ -10077,11 +10083,17 @@ O cofre “{}” foi salvo.
 Saved to /etc/hosts.
 Salvo em /etc/hosts.
 
+Saved “{}”.
+“{}” foi salvo.
+
 Saved, but it can't be reopened: {}
 Salvo, mas não foi possível reabrir: {}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Salva em um único arquivo os ajustes do Olo e os dados que os apps guardam entre sessões, para restaurá-los aqui ou em outro computador. Inclui:
+
+Save…
+Salvar…
 
 Saving Power
 Economia de energia
@@ -15808,6 +15820,9 @@ normalmente {} µs por leitura, máximo de {} µs
 {} · and {} more
 {} · e mais {}
 
+{} · comes with the next sync
+{} · chega na próxima sincronização
+
 {} · easing background work
 {} · reduzindo a prioridade de tarefas em segundo plano
 
@@ -16253,6 +16268,9 @@ Horário “{}” não reconhecido. Tente 14:30 ou 2:30 PM.
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 Endereço de convidado “{}” inválido. Use nome@example.org e separe vários endereços com vírgulas.
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+“{}” ainda não está aqui: chega do 1Password na próxima sincronização.
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 “{}” está fora de alcance. O dispositivo está por perto, desbloqueado e com o Bluetooth ligado?

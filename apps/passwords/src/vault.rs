@@ -200,6 +200,16 @@ impl Shares {
     }
 }
 
+/// A file's content, as a sync fetched it: said by its size alone when
+/// printed (a change is, in a test's failure).
+pub struct Kept(pub Zeroizing<Vec<u8>>);
+
+impl std::fmt::Debug for Kept {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Kept({} bytes)", self.0.len())
+    }
+}
+
 /// What a sync learned, applied with [`Vault::apply`].
 #[derive(Debug)]
 pub enum Change {
@@ -215,6 +225,9 @@ pub enum Change {
     Archived { id: String, updated_at: DateTime<Utc> },
     /// An item gone from 1Password.
     Gone { id: String },
+    /// A file attached to an item (or a Document item's file), fetched
+    /// from 1Password: kept here, sealed, by 1Password's id for it.
+    FileKept { id: String, content: Kept },
     /// Ours reached 1Password: `item` is 1Password's copy (its id may be
     /// new), sent at local revision `rev`.
     Pushed { local_id: String, rev: u64, item: Box<Item>, state: ItemState },
@@ -246,6 +259,8 @@ pub struct Snapshot {
     pub vaults: Vec<VaultOverview>,
     /// The vaults made, changed and deleted here for this account.
     pub vault_changes: Vec<VaultChange>,
+    /// The files kept here, by id: those not are fetched.
+    pub kept_files: HashSet<String>,
 }
 
 pub struct Vault {
@@ -318,6 +333,12 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
     let key: [u8; 32] = bytes.as_slice().try_into().map_err(|_| fail("The key to your passwords is damaged."))?;
     bytes.zeroize();
     Ok(Zeroizing::new(key))
+}
+
+/// Whether `id` can name a kept file: 1Password's ids are letters and
+/// digits (nothing that could reach out of the folder).
+fn file_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// Write `bytes` to `path` readable only by us, replacing it whole.
@@ -712,6 +733,46 @@ impl Vault {
             vaults: self.data.vaults.clone(),
             // (Vaults made here go to the first account.)
             vault_changes: self.data.vault_changes.iter().filter(|c| ours(c.id())).cloned().collect(),
+            kept_files: self.kept_files(),
+        }
+    }
+
+    /// Where the files attached to items are kept: beside the store, one
+    /// sealed file each (as the store is, with its key), named by
+    /// 1Password's id for it. Not in the store itself, which is written
+    /// whole at each change: a document can be large.
+    fn files_dir(&self) -> PathBuf {
+        self.file.with_file_name("passwords-files")
+    }
+
+    /// The ids of the files kept here.
+    pub fn kept_files(&self) -> HashSet<String> {
+        std::fs::read_dir(self.files_dir()).map(|d| d.flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|n| file_id_ok(n)).collect()).unwrap_or_default()
+    }
+
+    /// File `id`'s content, if it's kept here.
+    pub fn file(&self, id: &str) -> Option<Zeroizing<Vec<u8>>> {
+        if !file_id_ok(id) {
+            return None;
+        }
+        let bytes = std::fs::read(self.files_dir().join(id)).ok()?;
+        open(&self.key, &bytes).ok()
+    }
+
+    fn keep_file(&self, id: &str, content: &[u8]) -> std::io::Result<()> {
+        if !file_id_ok(id) {
+            return Err(std::io::Error::other("not a file's id"));
+        }
+        write_private(&self.files_dir().join(id), &seal(&self.key, content))
+    }
+
+    /// The files kept here that no item has any more, removed.
+    fn prune_files(&self) {
+        let wanted: HashSet<&str> = self.data.entries.iter().flat_map(|e| e.item.files.iter().map(|f| f.attributes.id.as_str()).chain(e.item.document.as_ref().map(|d| d.id.as_str()))).collect();
+        for id in self.kept_files() {
+            if !wanted.contains(id.as_str()) {
+                let _ = std::fs::remove_file(self.files_dir().join(&id));
+            }
         }
     }
 
@@ -743,6 +804,7 @@ impl Vault {
     /// was synced) for a fresh start. Nothing is sent to 1Password.
     pub fn reset(&mut self) -> Result<()> {
         self.data = Data { vaults: vec![local_vault()], ..Default::default() };
+        self.prune_files();
         self.save()
     }
 
@@ -757,6 +819,11 @@ impl Vault {
                     self.data.synced.insert(vault, content_version);
                 }
                 Change::Fetched { item, state } => self.apply_fetched(*item, state),
+                Change::FileKept { id, content } => {
+                    if let Err(e) = self.keep_file(&id, &content.0) {
+                        tracing::warn!("couldn't keep file {id}: {e}");
+                    }
+                }
                 Change::Archived { id, updated_at } => {
                     let rev = self.rev();
                     if let Some(e) = self.data.entries.iter_mut().find(|e| e.item.id == id && !e.dirty)
@@ -816,6 +883,8 @@ impl Vault {
         }
         self.data.last_sync = Some(Utc::now());
         self.save()?;
+        // (Files no item has any more go: an item gone, or its file taken off.)
+        self.prune_files();
         Ok(renamed)
     }
 
@@ -1170,7 +1239,23 @@ mod tests {
             // (And an RSA key, whose public key is longer than two lines.)
             let mut p = ItemCreateParams::new(ItemCategory::SshKey, v.data.vaults[0].id.clone(), "Server key");
             p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, crate::agent::RSA_KEY)];
-            v.create(&p).unwrap();
+            let server = v.create(&p).unwrap();
+            // Files attached, as 1Password has them: the Ed25519 key's two,
+            // kept here; one of the RSA key's, not fetched yet.
+            let file = |id: &str, name: &str, size: u32| onepassword::ItemFile {
+                attributes: onepassword::FileAttributes { name: name.into(), id: id.into(), size },
+                section_id: "files".into(),
+                field_id: id.into(),
+            };
+            let text = private.to_openssh(ssh_key::LineEnding::LF).unwrap().to_string();
+            let public = private.public_key().to_openssh().unwrap();
+            let test = v.data.entries.iter_mut().find(|e| e.item.title == "Test SSH key").unwrap();
+            test.item.files = vec![file("fixturekeyfile0000000000a", "id_ed25519", text.len() as u32), file("fixturekeyfile0000000000b", "id_ed25519.pub", public.len() as u32 + 1)];
+            v.keep_file("fixturekeyfile0000000000a", text.as_bytes()).unwrap();
+            v.keep_file("fixturekeyfile0000000000b", format!("{public}\n").as_bytes()).unwrap();
+            let rsa = v.data.entries.iter_mut().find(|e| e.item.id == server.id).unwrap();
+            rsa.item.files = vec![file("fixturekeyfile0000000000c", "server-notes.txt", 2048)];
+            v.save().unwrap();
         }
     }
 

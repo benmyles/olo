@@ -1822,10 +1822,23 @@ something nobody here has is in "Blocked", with what it waits for.
   keeps the item chosen before New Item highlighted while the new one is
   made ("clear the list's selection while New Item's form is open, or
   show no highlight in the list until the item is added").
+  And from the look at its Files section (2026-11-24): after a Save
+  panel closes, the list "is drawn in the paler, unfocused selection
+  colour, but the list still has its blue focus ring … When the Save
+  panel closes, give focus back to whatever had it, and draw the
+  selection to match"; and its rows (a field's, a file's) take no
+  keyboard focus, though a click on one acts.
 
 - **The helpers' tool, from the minders' reports** (2026-11-23), what's
   left: its lines didn't name an Astra look while it ran (the look's own
   front door said its end: to see again once Codex is signed in here).
+  And (2026-11-24) an agy that ends its turn to wait for commands it ran
+  in the background ("am waiting for the test and expanded reproduction
+  runs to finish"), which it goes on from by itself when they end, is
+  said by `watch` as "finished a turn (a question, or waiting)", and a
+  minder takes it for a question: find what agy's screen shows while its
+  background commands run (a specimen in the tool's own tmux, given a
+  `sleep` to run in the background) and count that as working.
   (Done 2026-11-24: `watch --only` keeps a minder to its own agents;
   agents are told to put a script of more than a line in a file, as a
   folded command can't be judged; `list` says "starting" for an agent's
@@ -1899,12 +1912,14 @@ something nobody here has is in "Blocked", with what it waits for.
   hash as the list's second line. And (HACKING, the same place) a key
   made (Ed25519, RSA 2048 to 4096) or imported here (a key file, under a
   passphrase too) through New Item ▸ SSH Key, kept as 1Password keeps it
-  (PKCS#8), so 1Password shows the same. Left: attached files (1Password's
-  `items.files`: listed with their sizes, saved, added, synced both
-  ways; the crate has the calls, the store keeps no file's contents
-  yet). Not checked against a real 1Password item's JSON (no test
-  vault here): the ids, labels and key type's words are from 1Password's
-  documentation.
+  (PKCS#8), so 1Password shows the same. And files attached to items in
+  1Password kept here at the sync, listed with their sizes and saved
+  (HACKING, the same place). Left: files added and removed here, sent
+  to 1Password (`items.files.attach`/`delete`; the fake has neither yet,
+  and how the real SDK takes an item's files on a put isn't known here:
+  read it before building on it). Not checked against a real 1Password
+  item's JSON (no test vault here): the ids, labels and key type's
+  words are from 1Password's documentation.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

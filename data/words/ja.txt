@@ -2860,6 +2860,9 @@ Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 1Passwordから保管庫を削除できませんでした。{}
 
+Couldn’t fetch the file “{}”. {}
+ファイル「{}」を取得できませんでした。{}
+
 Couldn’t get a sign-in link: {}.
 サインイン用リンクを取得できませんでした：{}。
 
@@ -10012,6 +10015,9 @@ Save As
 Save As…
 名前を付けて保存…
 
+Save File
+ファイルを保存
+
 Save Group
 グループを保存
 
@@ -10048,11 +10054,17 @@ Saved the vault “{}”.
 Saved to /etc/hosts.
 /etc/hostsに保存しました。
 
+Saved “{}”.
+「{}」を保存しました。
+
 Saved, but it can't be reopened: {}
 保存しましたが、開き直せません：{}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Oloの設定と、アプリが次回の起動用に残すデータを1つのファイルに保存します。このコンピューターでも別のコンピューターでも復元できます。保存する内容：
+
+Save…
+保存…
 
 Saving Power
 省電力
@@ -15697,6 +15709,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} · and {} more
 {} · ほか{}件
 
+{} · comes with the next sync
+{} · 次の同期で届きます
+
 {} · easing background work
 {} · バックグラウンドの優先度を下げています
 
@@ -16140,6 +16155,9 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 「{}」は有効な招待先ではありません。name@example.orgの形式で、複数の場合はカンマで区切ってください。
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+「{}」はまだありません: 次の同期で1Passwordから届きます。
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 「{}」と通信できません。端末を近くに置き、ロックを解除してBluetoothをオンにしてください。

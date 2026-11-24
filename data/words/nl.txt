@@ -2873,6 +2873,9 @@ Verwijderen uit 1Password is mislukt. {}
 Couldn’t delete this vault from 1Password. {}
 Deze kluis verwijderen uit 1Password is mislukt. {}
 
+Couldn’t fetch the file “{}”. {}
+Kan het bestand ‘{}’ niet ophalen. {}
+
 Couldn’t get a sign-in link: {}.
 Aanmeldlink ophalen mislukt: {}.
 
@@ -10041,6 +10044,9 @@ Opslaan als
 Save As…
 Opslaan als…
 
+Save File
+Bestand opslaan
+
 Save Group
 Groep opslaan
 
@@ -10077,11 +10083,17 @@ Kluis ‘{}’ opgeslagen.
 Saved to /etc/hosts.
 Opgeslagen in /etc/hosts.
 
+Saved “{}”.
+‘{}’ opgeslagen.
+
 Saved, but it can't be reopened: {}
 Opgeslagen, maar opnieuw openen mislukt: {}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Slaat de instellingen van Olo en de gegevens die apps tussen sessies bewaren op in één bestand. U kunt ze hier of op een andere computer herstellen. Inhoud:
+
+Save…
+Opslaan…
 
 Saving Power
 Energie besparen
@@ -15808,6 +15820,9 @@ doorgaans {} µs per meting, langste {} µs
 {} · and {} more
 {} · en nog {}
 
+{} · comes with the next sync
+{} · komt bij de volgende synchronisatie
+
 {} · easing background work
 {} · achtergrondwerk krijgt minder voorrang
 
@@ -16253,6 +16268,9 @@ Ongeldige begintijd ‘{}’. Probeer 14:30 of 2:30 PM.
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 ‘{}’ is geen geldig adres voor een uitnodiging. Gebruik naam@example.org en zet komma’s tussen adressen.
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+‘{}’ is er nog niet: het komt bij de volgende synchronisatie uit 1Password.
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 ‘{}’ is buiten bereik. Is het apparaat in de buurt, ontgrendeld en staat Bluetooth aan?

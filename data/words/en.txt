@@ -951,6 +951,7 @@ Couldn’t clone
 Couldn’t copy the file from the host.
 Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
+Couldn’t fetch the file “{}”. {}
 Couldn’t get a sign-in link: {}.
 Couldn’t install
 Couldn’t keep the approval: {}
@@ -3335,6 +3336,7 @@ Saturday
 Save
 Save As
 Save As…
+Save File
 Save Group
 Save a login for {} with the one-time code this page shows?
 Save a passkey for “{}” on {} in Passwords?
@@ -3347,8 +3349,10 @@ Save as:
 Save in:
 Saved the vault “{}”.
 Saved to /etc/hosts.
+Saved “{}”.
 Saved, but it can't be reopened: {}
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
+Save…
 Saving Power
 Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.
 Saving it with your settings…
@@ -5230,6 +5234,7 @@ your own picture
 {} {}, {} there
 {} µs a report typically, the longest {} µs
 {} · and {} more
+{} · comes with the next sync
 {} · easing background work
 {} · limiting sustained power
 {} · set up {}{}
@@ -5378,6 +5383,7 @@ your own picture
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 “{}” isn’t a time I can read: try 14:30 or 2:30 PM.
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
+“{}” isn’t here yet: it comes from 1Password with the next sync.
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 “{}” repeats. Delete only this one, or every one of them?
 “{}” wants to pair with this computer.

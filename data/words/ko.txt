@@ -2860,6 +2860,9 @@ Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 1Password에서 이 금고를 삭제할 수 없습니다. {}
 
+Couldn’t fetch the file “{}”. {}
+파일 ‘{}’을(를) 가져올 수 없습니다. {}
+
 Couldn’t get a sign-in link: {}.
 로그인 링크를 가져올 수 없습니다: {}.
 
@@ -10012,6 +10015,9 @@ Save As
 Save As…
 다른 이름으로 저장…
 
+Save File
+파일 저장
+
 Save Group
 그룹 저장
 
@@ -10048,11 +10054,17 @@ Saved the vault “{}”.
 Saved to /etc/hosts.
 /etc/hosts에 저장했습니다.
 
+Saved “{}”.
+‘{}’을(를) 저장했습니다.
+
 Saved, but it can't be reopened: {}
 저장했지만 다시 열 수 없습니다: {}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Olo 설정과 앱이 다음 실행을 위해 보관하는 내용을 파일 하나에 저장합니다. 이 컴퓨터나 다른 컴퓨터에 복원할 수 있습니다. 포함 항목:
+
+Save…
+저장…
 
 Saving Power
 절전
@@ -15697,6 +15709,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} · and {} more
 {} · 외 {}개
 
+{} · comes with the next sync
+{} · 다음 동기화 때 받아옵니다
+
 {} · easing background work
 {} · 백그라운드 부하 완화
 
@@ -16140,6 +16155,9 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 ‘{}’ 주소로 초대할 수 없습니다. name@example.org 형식으로 입력하고 쉼표로 구분하세요.
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+‘{}’은(는) 아직 여기에 없습니다: 다음 동기화 때 1Password에서 받아옵니다.
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 ‘{}’ 기기에 연결할 수 없습니다. 근처에 있고 잠금이 풀려 있으며 Bluetooth가 켜져 있는지 확인하세요.

@@ -155,6 +155,10 @@ const TITLE_MIDDLE: f32 = 16.0;
 const FIELD_BUTTON: f32 = 48.0;
 /// A wrapped value's second line, under its first.
 const FIELD_LINE: f32 = 16.0;
+/// A file attached to an item: one line, its Save… inside the pointer's
+/// band; its mini icon.
+const FILE_ROW: f32 = 32.0;
+const FILE_ICON: f32 = 16.0;
 /// A field's note (why an SSH key can't be offered), on a line of its own
 /// under its value: down from the value's last line.
 const FIELD_NOTE: f32 = 14.0;
@@ -1407,6 +1411,82 @@ impl Detail {
         olo_kit::dnd::start(cx, drag, |_| DetailMsg::Dragged);
     }
 
+    /// A file attached to the item: its name and size, and, while the
+    /// pointer is over it, Save… (a click on it saves it too): written
+    /// where the person chooses, from what's kept here. Its name's room
+    /// keeps Save…'s, so nothing moves as the pointer comes.
+    /// (`kept`: it's here; one not yet says it comes with the next sync,
+    /// and isn't offered to be saved.)
+    fn file_row(&self, cx: &mut Cx<Self>, file: &onepassword::ItemFile, kept: bool) -> Element {
+        let key = format!("file:{}", file.attributes.id);
+        let hovered = kept && self.hover.as_deref() == Some(key.as_str());
+        let name: SharedString = file.attributes.name.clone().into();
+        let size = olo_kit_base::files::format_size(u64::from(file.attributes.size));
+        let size: SharedString = if kept { size.into() } else { olo_kit::tr!("{} · comes with the next sync", size).into() };
+        let face_key = style::key((&name, &size, hovered, kept));
+        let (face_name, face_size) = (name.clone(), size.clone());
+        let face = canvas(move |g, b| {
+            let p = theme::palette();
+            if hovered {
+                let side = m::WINDOW_INSET - BAND_PAD;
+                let lit = style::snap(g, Bounds::from_corners(b.origin + point(px(side), px(1.0)), b.bottom_right() - point(px(side), px(1.0))));
+                let ground = if p.mode == olo_theme::ThemeMode::Dark { c(olo_theme::mix(p.document_background, p.document_text, 0.07)) } else { style::shade(&p, p.document_background, 1.04) };
+                g.paint_quad(fill(lit, ground));
+            }
+            // (A document's mini icon, as Tracker lists a file: it reads as
+            // a file, one to act on, not a line of text. Opus's look.)
+            let left_edge = b.left() + px(m::WINDOW_INSET);
+            icons::paint(g, style::snap_centred(g, point(left_edge + px(FILE_ICON / 2.0), b.center().y), FILE_ICON, FILE_ICON), "document");
+            let x = left_edge + px(FILE_ICON + m::TIGHT);
+            let room = (b.right() - x - px(m::WINDOW_INSET + FIELD_BUTTON + m::SPACING)).max(px(0.0));
+            // (Its name and size on one baseline; one not here yet all in
+            // the dim ink, so it reads as not to be saved.)
+            let base = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+            let ink = if kept { c(p.document_text) } else { dim(&p) };
+            let n = style::label_on_baseline_fit(g, x, base, style::Align::Left, face_name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
+            let left = (room - (n.right() - x) - px(m::TIGHT)).max(px(0.0));
+            let s = style::label_on_baseline_fit(g, n.right() + px(m::TIGHT), base, style::Align::Left, face_size.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p), left);
+            agent::record(g, agent::Node { role: "Label", name: Some(face_name.clone()), value: Some(face_size.clone()), bounds: n.union(&s), enabled: true, clickable: true, ..Default::default() });
+        })
+        .paint_key(face_key)
+        .absolute()
+        .inset_0();
+        let (hover_key, id, file_name) = (key.clone(), file.attributes.id.clone(), file.attributes.name.clone());
+        let (click_id, click_name) = (id.clone(), file_name.clone());
+        let mut row = div()
+            .id(SharedString::from(format!("row-{key}")))
+            .relative()
+            .w_full()
+            .h(px(FILE_ROW))
+            .flex_shrink_0()
+            .child(face)
+            .on_hover(cx.listener(move |d: &mut Detail, over: &bool, cx| {
+                let here = d.hover.as_deref() == Some(hover_key.as_str());
+                if *over && !here {
+                    d.hover = Some(hover_key.clone());
+                    cx.invalidate();
+                } else if !*over && here {
+                    d.hover = None;
+                    cx.invalidate();
+                }
+            }))
+            .on_click(move |_: &ClickEvent, _| {
+                if kept {
+                    app().save_file(click_id.clone(), click_name.clone());
+                }
+            });
+        if hovered {
+            row = row.child(
+                div()
+                    .absolute()
+                    .right(px(m::WINDOW_INSET))
+                    .top(px((FILE_ROW - olo_kit::widgets::SMALL_BUTTON_HEIGHT) / 2.0))
+                    .child(Button::new("Save…").id(format!("save-{key}")).small().min_width(FIELD_BUTTON).on_click(move |_: &ClickEvent, _| app().save_file(id.clone(), file_name.clone()))),
+            );
+        }
+        row.into_any_element()
+    }
+
     /// One field: its label, its value (a link's to open, a secret's
     /// hidden until shown), and, while the pointer is over it, Copy (and
     /// Show). A click copies it (a link's value opens it); dragged, it
@@ -1684,6 +1764,9 @@ impl View for Detail {
         let query = Rc::new(Query::parse(&searched, &search::keys(&a.facets_rc())));
         let revealed: HashSet<String> = item.fields.iter().filter(|f| a.revealed(&f.id)).map(|f| f.id.clone()).collect();
         let locked = a.lock.locked;
+        // (Which of its files are here, to save; the rest come with the
+        // next sync.)
+        let kept_files: HashSet<String> = a.index.get(&id).map(|s| s.kept_files.clone()).unwrap_or_default();
         // (The rest is made from what was read: the app isn't held.)
         drop(a);
 
@@ -1754,6 +1837,19 @@ impl View for Detail {
             for w in &item.websites {
                 let f = ItemField::new("", &w.label, ItemFieldType::Url, &w.url);
                 col = col.child(self.field_row(cx, &id, &f, format!("url:{}", w.url), true, mark.clone(), &searched));
+            }
+        }
+        // (Files attached to it, 1Password's: an SSH key's two, a scan;
+        // each with its size, saved where the person chooses from what's
+        // kept here. Ben, 2026-11-22: "olo passwords should show/have/sync
+        // all the same stuff as 1p".)
+        if !item.files.is_empty() && !ask.narrows() {
+            col = col.child(section_heading(olo_kit::words::tr("Files").into(), None, &searched));
+            // (A little room under the heading: a band over the first row
+            // nearly met its letters.)
+            col = col.child(div().h(px(4.0)).flex_shrink_0());
+            for f in &item.files {
+                col = col.child(self.file_row(cx, f, kept_files.contains(&f.attributes.id)));
             }
         }
         if !item.notes.is_empty() && !ask.narrows() {

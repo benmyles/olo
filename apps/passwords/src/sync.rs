@@ -641,8 +641,41 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
             Err(_) => p.down.push(Change::Buried(t.clone())),
         }
     }
+    // Files attached to items (and Document items' files), kept here,
+    // sealed, to be listed and saved without 1Password: each fetched once,
+    // as its item comes or, for one from before files were kept, at the
+    // next sync (Ben, 2026-11-22, of an SSH key's two files: "olo
+    // passwords should show/have/sync all the same stuff as 1p"). Read
+    // only, as a plan is; kept when it's applied.
+    let mut wanted: Vec<(String, String, onepassword::FileAttributes)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let fetched = p.down.iter().filter_map(|c| match c {
+        Change::Fetched { item, .. } => Some(item.as_ref()),
+        _ => None,
+    });
+    for item in fetched.chain(snap.entries.iter().filter(|e| e.remote.is_some()).map(|e| &e.item)) {
+        for attrs in item.files.iter().map(|f| &f.attributes).chain(item.document.as_ref()) {
+            if !snap.kept_files.contains(&attrs.id) && seen.insert(attrs.id.clone()) {
+                wanted.push((item.vault_id.clone(), item.id.clone(), attrs.clone()));
+            }
+        }
+    }
+    for (vault, item, attrs) in wanted {
+        if attrs.size as usize > MAX_FILE {
+            tracing::info!("not keeping file {} ({} bytes): larger than {MAX_FILE}", attrs.id, attrs.size);
+            continue;
+        }
+        match c.items().files().read(&vault, &item, &attrs) {
+            Ok(content) => p.down.push(Change::FileKept { id: attrs.id.clone(), content: crate::vault::Kept(zeroize::Zeroizing::new(content)) }),
+            Err(e) => p.problems.push(Problem::error(&title_of(&vault), None, olo_kit::tr!("Couldn’t fetch the file “{}”. {}", attrs.name, reason(&e)))),
+        }
+    }
     Ok(p)
 }
+
+/// The largest file kept here (a document can be larger: it stays in
+/// 1Password alone).
+const MAX_FILE: usize = 64 << 20;
 
 /// Whether 1Password refused a change because the item changed there
 /// since the version it was put against.
@@ -856,6 +889,34 @@ mod tests {
             out.sort_by(|a, b| a.0.cmp(&b.0));
             out
         }
+    }
+
+    /// A file attached to an item in 1Password is kept here at the next
+    /// sync, sealed (not its bytes on disk), and read back whole; fetched
+    /// once; and gone from here when its item no longer has it.
+    #[test]
+    fn an_items_files_are_kept_here() {
+        let mut w = world("files");
+        let personal = w.client.vaults().list(None).unwrap().into_iter().find(|v| v.title == "Personal").unwrap().id;
+        let key = b"-----BEGIN OPENSSH PRIVATE KEY-----\nnot really\n-----END OPENSSH PRIVATE KEY-----\n".to_vec();
+        let mut p = onepassword::ItemCreateParams::new(ItemCategory::SshKey, personal.clone(), "Deploy");
+        p.files = vec![onepassword::FileCreateParams { name: "id_ed25519".into(), content: key.clone(), section_id: "add more".into(), field_id: "f1".into() }];
+        let made = w.client.items().create(&p).unwrap();
+        let id = made.files[0].attributes.id.clone();
+        w.sync();
+        assert_eq!(w.vault.file(&id).as_deref().map(|c| c.as_slice()), Some(key.as_slice()));
+        let on_disk = std::fs::read(w._dir.join("passwords-files").join(&id)).unwrap();
+        assert!(!on_disk.windows(10).any(|x| x == b"not really"), "sealed");
+        // Kept: not fetched again.
+        let plan = w.plan();
+        assert!(!plan.parts.iter().flat_map(|p| &p.down).any(|c| matches!(c, crate::vault::Change::FileKept { .. })));
+        // Taken off in 1Password: gone from here at the next sync.
+        let mut there = w.client.items().get(&personal, &made.id).unwrap();
+        there.files.clear();
+        w.client.items().put(&there).unwrap();
+        w.sync();
+        assert!(w.vault.file(&id).is_none());
+        assert!(w.vault.kept_files().is_empty());
     }
 
     /// A vault made here is made in 1Password at the next sync, reviewed

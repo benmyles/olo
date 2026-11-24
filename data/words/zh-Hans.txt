@@ -2860,6 +2860,9 @@ Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 无法从 1Password 删除此保险库。{}
 
+Couldn’t fetch the file “{}”. {}
+无法取得文件“{}”。{}
+
 Couldn’t get a sign-in link: {}.
 无法获取登录链接：{}。
 
@@ -10012,6 +10015,9 @@ Save As
 Save As…
 另存为…
 
+Save File
+保存文件
+
 Save Group
 保存组
 
@@ -10048,11 +10054,17 @@ Saved the vault “{}”.
 Saved to /etc/hosts.
 已保存到 /etc/hosts。
 
+Saved “{}”.
+已保存“{}”。
+
 Saved, but it can't be reopened: {}
 已保存，但无法重新打开：{}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 将 Olo 设置和应用在退出后保留的内容保存到一个文件，以便在本机或其他电脑恢复。包含以下内容：
+
+Save…
+保存…
 
 Saving Power
 节能
@@ -15697,6 +15709,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} · and {} more
 {} · 另有 {} 项
 
+{} · comes with the next sync
+{} · 下次同步时取来
+
 {} · easing background work
 {} · 正在降低后台负载
 
@@ -16140,6 +16155,9 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 无法向“{}”发送邀请。请按 name@example.org 格式输入地址，多个地址用逗号分隔。
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+“{}”还不在这里：它会在下次同步时从 1Password 取来。
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 无法连接“{}”。请确认设备在附近、已解锁并已开启蓝牙。

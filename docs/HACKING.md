@@ -25670,6 +25670,27 @@ PKCS#8 when it's saved (`sshkey::normalized`, only when its value
 changed, so an item not edited isn't changed); one under a passphrase
 or on a curve is kept as it is.
 
+Files attached to items in 1Password (an SSH key's two, a scan; a
+Document item's file) are kept here too, so they're listed and saved
+without 1Password: each fetched once by the sync as its item comes, or,
+for an item from before files were kept, at the next sync (a plan reads
+them, `items.files.read`; `Change::FileKept`, whose content prints as
+its size alone, keeps one when the plan is applied), up to 64 MB each
+(`MAX_FILE`: a larger one stays in 1Password alone). Not in the store
+itself, which is written whole at each change, but beside it in
+`passwords-files/`, one file each named by 1Password's id for it (only
+letters, digits, `-` and `_`: nothing can reach out of the folder),
+sealed as the store is, with its key; one no item has any more is
+removed after each sync's changes are applied, and all of them at a
+reset. The item shows them under its fields in Files, a row each with
+its name and size; the pointer over one, the field rows' band and a
+small Save… (a click on the row too): the Save panel, then the store
+writes it (off the UI thread) readable by its owner alone, a key's file
+being a secret. One not fetched yet says "comes with the next sync" and
+isn't offered (`Searchable::kept_files`, from one read of the folder as
+the index is made). Adding and removing files here, sent to 1Password
+(`items.files.attach`/`delete`), is left (TODO).
+
 Passwords is the session's SSH agent (`agent.rs`; Preferences ▸ Security
 ▸ "Be the SSH agent", on by default): the agent protocol
 (draft-miller-ssh-agent: identities and signatures; adding, removing

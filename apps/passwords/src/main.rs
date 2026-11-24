@@ -222,6 +222,13 @@ enum KeyWork {
     },
 }
 
+/// Where the person chose to save a file attached to an item.
+struct SaveTo {
+    file: String,
+    name: String,
+    to: std::path::PathBuf,
+}
+
 /// Whether app_server approves requests without asking (Deskbar's key),
 /// for `ask_approval`, and what else could allow a session's `op`.
 struct Approval {
@@ -2004,6 +2011,18 @@ impl Passwords {
         });
     }
 
+    /// File `file` attached to item `item` (`name`: the file's) saved where
+    /// the person chooses, from what's kept here (the store writes it).
+    pub fn save_file(&mut self, file: String, name: String) {
+        let home = std::env::var_os("HOME").map_or_else(|| std::path::PathBuf::from("/"), std::path::PathBuf::from);
+        let proxy = self.proxy.clone();
+        olo_kit::file_panel::show(olo_kit::words::tr("Save File"), olo_kit::file_panel::FilePanel::save(home, name.clone()), move |answer| {
+            if let olo_kit::file_panel::PanelResult::Chosen(to) = answer.result {
+                proxy.send(SaveTo { file, name, to });
+            }
+        });
+    }
+
     /// The passphrase typed for a key file being imported: tried on a
     /// worker thread (opening one takes most of a second, by design).
     pub fn open_key_with(&mut self, passphrase: String) {
@@ -2559,6 +2578,7 @@ impl Passwords {
                 }
                 self.show_error(message);
             }
+            Reply::FileSaved { name } => self.flash(olo_kit::tr!("Saved “{}”.", name)),
         }
         if listed {
             self.invalidate();
@@ -2824,6 +2844,14 @@ impl Passwords {
                     self.now_unlocked();
                 }
                 self.changed();
+                return;
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<SaveTo>() {
+            Ok(s) => {
+                let SaveTo { file, name, to } = *s;
+                self.store.send(Job::SaveFile { file, name, to });
                 return;
             }
             Err(m) => m,

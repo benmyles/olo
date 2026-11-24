@@ -2873,6 +2873,9 @@ Konnte in 1Password nicht gelöscht werden. {}
 Couldn’t delete this vault from 1Password. {}
 Dieser Tresor konnte nicht aus 1Password gelöscht werden. {}
 
+Couldn’t fetch the file “{}”. {}
+Die Datei „{}“ konnte nicht geholt werden. {}
+
 Couldn’t get a sign-in link: {}.
 Anmeldelink konnte nicht abgerufen werden: {}.
 
@@ -10041,6 +10044,9 @@ Sichern unter
 Save As…
 Sichern unter …
 
+Save File
+Datei sichern
+
 Save Group
 Gruppe sichern
 
@@ -10077,11 +10083,17 @@ Tresor „{}“ gesichert.
 Saved to /etc/hosts.
 In /etc/hosts gesichert.
 
+Saved “{}”.
+„{}“ gesichert.
+
 Saved, but it can't be reopened: {}
 Gesichert, kann aber nicht erneut geöffnet werden: {}
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Sichert die Einstellungen von Olo und was Apps zwischen ihren Starts behalten in einer Datei, um es hier oder auf einem anderen Computer zurückzuholen. Was hineinkommt:
+
+Save…
+Sichern …
 
 Saving Power
 Energiesparen
@@ -15808,6 +15820,9 @@ vor {} s
 {} · and {} more
 {} · und {} weitere
 
+{} · comes with the next sync
+{} · kommt mit der nächsten Synchronisierung
+
 {} · easing background work
 {} · Hintergrundlast wird verringert
 
@@ -16253,6 +16268,9 @@ other: „{}“ und {n} weitere Programme laufen noch in diesem Fenster. Trotzde
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 „{}“ ist keine Adresse, die ich einladen kann: Schreiben Sie jede als name@example.org, mit Kommas dazwischen.
+
+“{}” isn’t here yet: it comes from 1Password with the next sync.
+„{}“ ist noch nicht hier: Es kommt mit der nächsten Synchronisierung aus 1Password.
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 „{}“ ist außer Reichweite. Ist es entsperrt und Bluetooth eingeschaltet?
