@@ -28117,7 +28117,12 @@ to set them up").
   week of one person's was 10 GB), each file with its time (the next
   look finds it the same), a transcript up to its last whole line (one
   in use is taken as far as it was written), how far it is said under
-  the row ("38% · 0.5 of 1.2 GB"); Stop closes the channel and the
+  the row as a bar and "0.5 of 1.2 GB · about 2 minutes left" (counted
+  as the archive reads each file, which waits on the link: counted once
+  a whole file was in, a transcript of a few hundred megabytes stood
+  the bar still and a copy going at 10 to 18 MB a second looked
+  stalled, Ben, 2026-11-23; the time left at the pace so far, said
+  after its first five seconds, `time_left`); Stop closes the channel and the
   archive's making ends with it. By its own Copy only: not in Set Up's
   run, not counted in "N of 7 ready" (`Item::counted`). Agents:
   `host.ready:KEY:sessions`, `host.sessions.days:N` (0: all). Demo:

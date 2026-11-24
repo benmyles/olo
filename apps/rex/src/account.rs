@@ -265,7 +265,7 @@ fn demo() -> Shown {
             ..Shown::default()
         },
         // (The agents' sessions being copied, how far it is.)
-        Some("copying") => Shown { doing: Some(Doing { item: Item::Sessions, line: "38%  ·  0.5 of 1.2 GB".into(), removing: false, of: None }), who, ..Shown::default() },
+        Some("copying") => Shown { doing: Some(Doing { item: Item::Sessions, line: "38%  ·  0.5 of 1.2 GB  ·  about 2 minutes left".into(), removing: false, of: None }), who, ..Shown::default() },
         Some("copyfailed") => Shown { failed: vec![(Item::Sessions, "tar: .claude/projects: Cannot mkdir: No space left on device".into())], who, ..Shown::default() },
         Some("clonefailed") => Shown { failed: vec![(Item::Repos, "git@git.example.org: Permission denied (publickey).".into())], failed_repo: Some("website".into()), who, ..Shown::default() },
         _ => Shown { who, ..Shown::default() },

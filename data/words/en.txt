@@ -4535,6 +4535,10 @@ a minute ago
 a secure connection failed ({})
 a window ({})
 a {} W power limit
+about a minute left
+about an hour left
+about {n} hours left
+about {n} minutes left
 about {}
 about {} min left
 about {} s left
@@ -4640,6 +4644,7 @@ kbit/s
 last seen recently
 left to the firmware for now
 less than a minute
+less than a minute left
 level {} of 7
 libinput's default
 libinput's own: Olo's touch filter is off
@@ -5085,6 +5090,7 @@ your own picture
 {} — Customized
 {} — {} ({}% of this folder){}{}
 {}%  ·  {}
+{}%  ·  {}  ·  {}
 {}% chance this hour
 {}% cover
 {}% left (warns under {}%)

@@ -1508,6 +1508,21 @@ async fn carried_stands(pool: &olo_rex_client::SshSessionPool, target: &olo_rex_
     carry::Stands::read(&ran.output, &files, short)
 }
 
+/// How long a copy of `total` bytes has left, `sent` of them gone in
+/// `elapsed`, at the pace so far, as a person reads it: none in its
+/// first seconds (a pace from a moment says nothing), nor once done.
+fn time_left(sent: u64, total: u64, elapsed: Duration) -> Option<String> {
+    if elapsed < Duration::from_secs(5) || sent == 0 || sent >= total {
+        return None;
+    }
+    let left = (total - sent) as f64 * elapsed.as_secs_f64() / sent as f64;
+    Some(match left as u64 {
+        0..60 => olo_kit::words::tr("less than a minute left").to_string(),
+        60..5_400 => olo_kit::words::count(((left / 60.0).round() as u64).max(1), "about a minute left", "about {n} minutes left"),
+        s => olo_kit::words::count((s as f64 / 3600.0).round() as u64, "about an hour left", "about {n} hours left"),
+    })
+}
+
 /// Codex's server on the host asked for each of `ids` (sessions just
 /// copied there), which adds those its database doesn't have: Codex
 /// reads its sessions' folder only once, as it makes its database.
@@ -3388,7 +3403,7 @@ impl RexHub {
                 let tell = said.clone();
                 let tell_after = said.clone();
                 let making = tokio::task::spawn_blocking(move || {
-                    let (mut sent, mut told) = (0u64, std::time::Instant::now());
+                    let (mut sent, mut told, began) = (0u64, std::time::Instant::now(), std::time::Instant::now());
                     let stop = std::sync::atomic::AtomicBool::new(false);
                     sessions::stream(
                         &parts,
@@ -3399,7 +3414,12 @@ impl RexHub {
                             sent += n;
                             if told.elapsed() >= Duration::from_millis(200) {
                                 told = std::time::Instant::now();
-                                tell(&olo_kit::tr!("{}%  ·  {}", (sent * 100 / total.max(1)).min(100), olo_kit::files::format_progress(sent, total)));
+                                // (And how long is left, at the pace so far.)
+                                let left = time_left(sent, total, began.elapsed());
+                                tell(&match left {
+                                    Some(left) => olo_kit::tr!("{}%  ·  {}  ·  {}", (sent * 100 / total.max(1)).min(100), olo_kit::files::format_progress(sent, total), left).to_string(),
+                                    None => olo_kit::tr!("{}%  ·  {}", (sent * 100 / total.max(1)).min(100), olo_kit::files::format_progress(sent, total)).to_string(),
+                                });
                             }
                         },
                         &stop,
@@ -5426,6 +5446,18 @@ pub fn shell_quote(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// How long a copy has left, at its pace so far: nothing in its
+    /// first seconds, minutes as a person says them, then hours.
+    #[test]
+    fn a_copys_time_left() {
+        let s = Duration::from_secs;
+        assert_eq!(super::time_left(100, 1000, s(2)), None, "too soon to say");
+        assert_eq!(super::time_left(500, 1000, s(20)).as_deref(), Some("less than a minute left"));
+        assert_eq!(super::time_left(100, 1000, s(60)).as_deref(), Some("about 9 minutes left"));
+        assert_eq!(super::time_left(1, 1000, s(10)).as_deref(), Some("about 3 hours left"));
+        assert_eq!(super::time_left(1000, 1000, s(60)), None, "done");
+    }
+
     /// What Passwords answers a host's asking for the keys is said as
     /// how many, or why none.
     #[test]

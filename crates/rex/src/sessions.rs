@@ -469,8 +469,18 @@ pub fn stream(parts: &[Part], here: &str, there: &str, out: impl Write, sent: &m
         header.set_mtime(modified.max(0) as u64);
         header.set_mode(0o600);
         header.set_entry_type(tar::EntryType::Regular);
-        tar.append_data(&mut header, there_path(&part.path, here, there), bytes.as_slice())?;
-        sent(read);
+        // (Counted as it goes into the archive, as the archive reads it:
+        // counted once a whole file was in, a transcript of a few hundred
+        // megabytes stood the bar still for half a minute, and the copy
+        // looked stalled; Ben, 2026-11-23, "it seems stalled?", at 0.4
+        // of 10 GB, going at 10 to 18 MB a second all along.)
+        let mut counting = Counted { bytes: bytes.as_slice(), told: 0, sent: &mut *sent };
+        tar.append_data(&mut header, there_path(&part.path, here, there), &mut counting)?;
+        let told = counting.told;
+        // (What the file was here, where its words were said otherwise.)
+        if read > told {
+            sent(read - told);
+        }
     }
     // (Codex's: the names of those copied, from this computer's index,
     // for [`PUT`] to put beside the host's.)
@@ -488,6 +498,26 @@ pub fn stream(parts: &[Part], here: &str, there: &str, out: impl Write, sent: &m
         }
     }
     tar.into_inner()?.finish()?.flush()
+}
+
+/// A file's bytes as the archive reads them, `sent` told of each read
+/// as it goes (the archive waits on the link, so it is how far the copy
+/// is; what `sent` does with it is its own to keep cheap).
+struct Counted<'a> {
+    bytes: &'a [u8],
+    told: u64,
+    sent: &'a mut dyn FnMut(u64),
+}
+
+impl Read for Counted<'_> {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.bytes.read(out)?;
+        if n > 0 {
+            (self.sent)(n as u64);
+            self.told += n as u64;
+        }
+        Ok(n)
+    }
 }
 
 /// Where the names of Codex's sessions copied wait to be put beside
@@ -749,6 +779,33 @@ mod tests {
         assert_eq!(asked.len(), 4);
         let _ = std::fs::remove_dir_all(&here);
         let _ = std::fs::remove_dir_all(&there);
+    }
+
+    /// A large file is counted as it goes, not once it is in: what was
+    /// said of it is told in many steps, and they add up to it.
+    #[test]
+    fn a_large_file_is_counted_as_it_goes() {
+        let home = scratch("counted");
+        let h = home.to_string_lossy().into_owned();
+        let big: String = (0..40_000).map(|i| format!("{{\"n\":{i}}}\n")).collect();
+        write(&home, ".claude/projects/-x/big.jsonl", &big, 0);
+        let g = gather(&home, Window::Week, SystemTime::now());
+        let (mut steps, mut total) = (0, 0u64);
+        stream(
+            &g.parts,
+            &h,
+            &h,
+            &mut std::io::sink(),
+            &mut |n| {
+                steps += 1;
+                total += n;
+            },
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert!(steps > 10, "{steps} steps");
+        assert_eq!(total, big.len() as u64);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// The look as the host runs it (`sh -c`, the paths on its input):
