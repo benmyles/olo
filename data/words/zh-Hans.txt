@@ -367,7 +367,7 @@ A classic token with the repo scope, or a fine-grained one that can read pull re
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 如果能确定验证码属于哪个智能体标签页，Olo 会自动填入并通知您；不确定时会先询问。
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 向 U 盘或存储卡拷贝时按磁盘自身的速度进行，因此进度真实，推出也很快。
 
 A day
@@ -397,7 +397,7 @@ A letter goes on everything you can pick: controls, menu items, windows, Deskbar
 A little room
 少量留白
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 在 Terminal 使用 sudo、批准管理员请求、打开 Passwords 或解锁屏幕时，可以看向红外摄像头来代替输入密码。只识别红外图像，屏幕上的照片无法通过验证。
 
 A lot of room
@@ -487,7 +487,7 @@ A thick line
 A thin line
 细线
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 登录后，触摸安全密钥（YubiKey）即可在 Terminal 的 sudo、Passwords 和管理员请求中代替输入密码。登录和解锁电脑时不能使用，以免他人捡到插着密钥的电脑就能进入。
 
 A touch starts at pressure
@@ -892,8 +892,8 @@ All lines around the selected one. {}
 All of Olo’s {} words are in {}.
 Olo 的 {0} 条文案均已译为{1}。
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-这些设置全都作用于整台电脑，因此更改时需要管理员密码。
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+这些设置都作用于整台电脑：更改需要管理员密码，并会立即生效。
 
 All time
 全部时间
@@ -988,7 +988,7 @@ Always on Top
 An account can answer again.
 已有账户恢复可用。
 
-An administrator's password is needed.
+An administrator’s password is needed.
 需要管理员密码。
 
 An agent is at rest here
@@ -2188,7 +2188,7 @@ Choose…
 Chosen by someone
 由用户选择
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 此设置对整台电脑生效，重启后仍会保留。更改时需要管理员密码。
 
 Chosen outside dnf
@@ -3748,9 +3748,6 @@ Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
 每个新窗口占用您刚才使用的窗口的一半。
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-设置后，各种验证方式可同时代替密码，用于 Passwords、Terminal 中的 sudo 和管理员请求。人脸和指纹还可用于锁屏和登录。先使用哪一种，就用哪一种验证。
-
 Each person gets their own Rex server, and signs in through this one.
 每位用户拥有各自的 Rex 服务器，并通过此服务器登录。
 
@@ -3886,7 +3883,7 @@ English (US)
 Enhancements
 增强功能
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 未完成录入。
 
 Enrolling your {}
@@ -4009,7 +4006,7 @@ Every frame on time this last minute
 Every interface
 所有接口
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 每次按键和每一帧画面都经过窗口服务器的主循环和输入线程。启用后，它们将独占速度最快的处理器之一（{}）。构建、浏览器及其他程序在其余处理器上运行，因此不会耽误输入和绘制。
 
 Every list's to-dos show here.
@@ -4144,22 +4141,22 @@ Fable 5.1
 Face Unlock
 人脸解锁
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 只能在用户自己的会话中安装人脸解锁，polkit 会在那里请求授权。
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 尚未安装人脸解锁。
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 未能安装人脸解锁：{}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 未能移除人脸解锁：{}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 此构建不含人脸解锁服务（请构建整个工作区）。
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 此构建不含人脸解锁服务。
 
 Fade
@@ -5482,7 +5479,7 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 无法读取：{}
 
-It didn't work.
+It didn’t work.
 未成功。
 
 It didn’t open: {}.
@@ -5530,10 +5527,10 @@ It was run by {} in {}.
 It was run by {}.
 由 {} 运行。
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 未能忘记此设备（{}）。
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 未能完成设置（{}）。
 
 It won’t start again when {} restarts.
@@ -5719,7 +5716,7 @@ Keep Only on This Computer
 Keep Them Off
 保持关闭
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 缩短繁忙程序的每轮运行时间
 
 Keep a core for the window server
@@ -5788,7 +5785,7 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 保存其他应用的密码，在登录时自动解锁。
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 大量同步写入或丢弃操作涌入 NVMe 硬盘时，可控制读取延迟上限；而 Linux 默认的“none”仅限制后台回写（queue/scheduler）。
 
 Keeps typing quick over a slow link.
@@ -6139,13 +6136,13 @@ Link’s rate
 Link…
 链接…
 
-Linux's own
+Linux’s own
 Linux 默认
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 自带的调度器（EEVDF）公平对待各类程序。无论选择哪种调度器，其他任务正在等待的 Olo 线程都以实时优先级运行，高于普通程序。构建等重负载下，使用此调度器时桌面响应最快。
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux 的常规方式（cubic）会一直发送直到沿途队列填满，从而增加延迟；此方式会测量路径并保持在其承载能力以下（Olo 的模块 tcp_bbr3）。
 
 List
@@ -7435,8 +7432,8 @@ No to-dos
 No touches in the last minute
 过去一分钟没有触摸
 
-No touchpad found.
-未找到触控板。
+No touchpad found. These settings are used when one is connected.
+未找到触控板。连接触控板后将使用这些设置。
 
 No update matches the search.
 没有匹配的更新。
@@ -7966,7 +7963,7 @@ Olo 启动画面
 Olo's login screen
 Olo 登录界面
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo 的模块在载入时会检查内核，这次它没有进入此内核。Olo Doctor 会说明原因。
 
 Olo's own
@@ -8121,6 +8118,9 @@ On: brush starts olo-complete as you next type in it.
 
 On: packages come from it
 已开启：从此软件源获取软件包
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+设置后，每种方式都可以在需要输入密码的地方代替密码：Passwords、Terminal 中的 sudo 和管理员请求；人脸或指纹还可用于锁屏和登录屏幕。先使用哪一种，就以哪一种为准。
 
 One a day for:
 每天保留一份，保留期：
@@ -10387,7 +10387,7 @@ Set up {} as a shared Rex server
 Setting
 设置
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 正在设置：需要输入管理员密码…
 
 Setting up backups to {}…
@@ -11497,9 +11497,6 @@ That isn't the backup's password.
 That isn’t a Copr project’s name.
 这不是有效的 Copr 项目名称。
 
-That password isn't right.
-密码不正确。
-
 That password isn’t right.
 密码不正确。
 
@@ -11662,13 +11659,13 @@ The export failed: {}
 The fans' profile isn't in force yet: {}
 风扇配置尚未生效：{}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 无法移除指纹。
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 无法使用指纹传感器。
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 指纹传感器未响应。
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11698,7 +11695,7 @@ The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 {} 在各处使用的图标。
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 无法打开红外摄像头。请检查遮挡开关，或确认是否有其他程序正在使用。
 
 The journal couldn't be read: {}
@@ -11965,10 +11962,10 @@ The store is over its {} limit
 The system power profiles service is unavailable.
 系统电源配置服务不可用。
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 更新、索引等系统服务仍可在此核心上运行。
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 系统服务也不会在此核心上运行。
 
 The test didn't finish: {}.
@@ -12070,14 +12067,14 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 没有 Wi-Fi 适配器。
 
-There's no fingerprint sensor, or fprintd isn't running.
-没有指纹传感器，或 fprintd 未运行。
-
-There's no infrared camera.
-没有红外摄像头。
-
 There: {} <{}>  ·  Here: {} <{}>
 远程：{} <{}>  ·  本机：{} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+没有指纹传感器，或 fprintd 未运行。
+
+There’s no infrared camera.
+没有红外摄像头。
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 这些应用每次请求时都可以访问列出的项目。撤销授权后，下次请求时会重新询问。
@@ -12163,7 +12160,7 @@ This computer is “{}”.
 This computer runs Fedora {}.
 这台电脑运行 Fedora {}。
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 此内核不能加载其他调度器，因此使用内核自带的调度器。Linux 6.12 及以上版本支持 sched_ext。
 
 This computer's sensor sees when someone is in front of it.
@@ -12199,16 +12196,16 @@ This isn't the session at the computer, so the computer isn't restarted.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 这不是有效的仓库地址（如 git@host:owner/name.git 或 https://…）。
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 此内核不支持按磁盘分别设定限制（Linux 6.2 及以上版本支持）。
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 此内核不为此电脑的 NVMe 硬盘提供 kyber I/O 调度器。
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 此内核在构建时只启用了一种抢占方式，无法切换。
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 此内核版本尚未检查：Olo 更新检查它之前，Olo 的模块不会载入。
 
 This keyboard has no backlight.
@@ -13384,7 +13381,7 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 已完成的步骤会保留，再次设置将从断点继续。
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 窗口绘制所用的缓冲区不会被换出到交换空间，桌面因此不会为此等待（Olo 对 Intel 驱动的热补丁）。
 
 What you change applies when you leave Rescue.
@@ -13471,7 +13468,7 @@ When does the sun rise tomorrow?
 When held for:
 长按时长：
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 没有空闲的大块时，Intel 驱动改用较小的块，窗口照常绘制（Olo 的模块 olo_gpu_pages）。
 
 When pressed:
@@ -13657,10 +13654,10 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 开启后，繁忙的程序会在 0.7 毫秒（而非 {}）后让位给等待中的程序，负载高时窗口和输入也不会卡顿（base slice）。
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 开启后，处理器繁忙时刚唤醒的程序会立即运行，不必等待内核的下一次时钟节拍（full preemption）。{} 正在调度，并会自行决定这一点：此设置用于内核自己的调度器。
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 开启后，处理器繁忙时刚唤醒的程序会立即运行，不必为内核的下一次时钟节拍等待最多 1 毫秒（full preemption）。
 
 Withdrawn by {}
@@ -13801,7 +13798,7 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 备份离开本机前会先加密。密钥保存在 Passwords 的“DiskBackup Key”项中，可用它在任意电脑上恢复备份。
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 未能看清您的脸。请坐在离摄像头约一臂远的地方，面向镜头重试。
 
 Your face wasn’t recognised. Type your password.
@@ -13990,6 +13987,9 @@ about {} min left
 about {} s left
 约剩 {} 秒
 
+after a tick
+下一个时钟节拍后
+
 all day
 全天
 
@@ -14031,6 +14031,9 @@ as the machine has it
 
 at most {}
 最多 {}
+
+at once
+立即
 
 at {}
 在 {}
@@ -14395,7 +14398,7 @@ not understood: {}
 not yet ({})
 尚未（{}）
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 当前内核版本 {} 尚未检查
 
 nothing backed up for {n} days
@@ -14461,7 +14464,7 @@ on battery
 on battery: it waits for power
 电池供电中：等待接通电源
 
-on this kernel's build, {}
+on this kernel’s build, {}
 适用于当前内核版本 {}
 
 on {}
@@ -14784,6 +14787,12 @@ visibility down to {}
 
 what holds it back
 限制因素
+
+when it yields
+主动让出时
+
+when its turn ends
+轮次结束时
 
 where the scheduler puts it
 由调度器分配位置

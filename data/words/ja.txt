@@ -367,7 +367,7 @@ repoスコープの従来型トークンか、プルリクエストとチェッ�
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 どのエージェントのタブ宛てか確認できたコードは、そのタブに入力してお知らせします。不明な場合は入力前に確認します。
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 USBメモリやカードへのコピーは書き込み速度に合わせて進むため、進捗が正確で、取り出すときも待たずに済みます。
 
 A day
@@ -397,7 +397,7 @@ A letter goes on everything you can pick: controls, menu items, windows, Deskbar
 A little room
 狭め
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 赤外線カメラを見るだけで、Terminalのsudo、管理者の承認、Passwords、画面ロックの解除にパスワードの代わりとして使えます。赤外線だけで判定するので、画面に映した写真では解除できません。
 
 A lot of room
@@ -487,7 +487,7 @@ A thick line
 A thin line
 細線
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 サインイン後は、セキュリティキー（YubiKey）に触れるだけで、Terminalのsudo、Passwords、管理者の承認に使えます。キーを挿したままでも第三者に使われないよう、画面のロック解除とサインインには使えません。
 
 A touch starts at pressure
@@ -892,8 +892,8 @@ All lines around the selected one. {}
 All of Olo’s {} words are in {}.
 Oloの全{0}項目を{1}で利用できます。
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-これらの設定はすべてコンピューター全体のものなので、変更には管理者のパスワードが必要です。
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+これらの設定はすべてコンピュータ全体に適用されます。変更には管理者のパスワードが必要で、すぐに反映されます。
 
 All time
 すべての期間
@@ -988,7 +988,7 @@ Always on Top
 An account can answer again.
 アカウントが再び応答できるようになりました。
 
-An administrator's password is needed.
+An administrator’s password is needed.
 管理者のパスワードが必要です。
 
 An agent is at rest here
@@ -2188,7 +2188,7 @@ Choose…
 Chosen by someone
 手動で選択
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 設定はコンピューター全体に適用され、再起動後も有効です。変更には管理者のパスワードが必要です。
 
 Chosen outside dnf
@@ -3748,9 +3748,6 @@ Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
 新しいウィンドウは、使っていたウィンドウの半分を占めます。
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-設定した方法はいずれも、Passwords、Terminalのsudo、管理者の承認でパスワードの代わりに使えます。顔と指紋はサインインと画面ロックの解除にも使えます。使いたい方法をそのままお使いください。
-
 Each person gets their own Rex server, and signs in through this one.
 各ユーザーが専用のRexサーバーを持ち、このサーバー経由でサインインします。
 
@@ -3886,7 +3883,7 @@ English (US)
 Enhancements
 機能改善
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 登録が完了しませんでした。
 
 Enrolling your {}
@@ -4009,7 +4006,7 @@ Every frame on time this last minute
 Every interface
 すべてのインターフェース
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 キー入力と描画はウィンドウサーバーのメインループと入力スレッドが処理します。オンにすると、高速なプロセッサー{}を専用に確保します。ビルドやブラウザーなどはほかのプロセッサー上で動くので、入力や描画を待たせません。
 
 Every list's to-dos show here.
@@ -4144,22 +4141,22 @@ Fable 5.1
 Face Unlock
 顔認証
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 顔認証は自分のセッションでインストールしてください。polkitはそのセッションで承認を求めます。
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 顔認証はインストールされていません。
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 顔認証をインストールできませんでした：{}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 顔認証を削除できませんでした：{}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 このビルドには顔認証サービスがありません。ワークスペース全体をビルドしてください。
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 このビルドには顔認証サービスがありません。
 
 Fade
@@ -5482,7 +5479,7 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 読み込めませんでした：{}
 
-It didn't work.
+It didn’t work.
 うまくいきませんでした。
 
 It didn’t open: {}.
@@ -5530,10 +5527,10 @@ It was run by {} in {}.
 It was run by {}.
 {}が実行しました。
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 登録を解除できませんでした（{}）。
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 設定できませんでした（{}）。
 
 It won’t start again when {} restarts.
@@ -5719,7 +5716,7 @@ Keep Only on This Computer
 Keep Them Off
 オフのままにする
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 ビジーなプログラムの持ち時間を短く保つ
 
 Keep a core for the window server
@@ -5788,7 +5785,7 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 他のアプリのパスワードを保存し、ログイン時にロックを解除します。
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 大量の同期書き込みやdiscardがNVMeドライブに集中しても読み込み遅延を抑えます。Linux標準の「none」はバックグラウンドの書き出ししか制限しません（queue/scheduler）。
 
 Keeps typing quick over a slow link.
@@ -6139,13 +6136,13 @@ Link’s rate
 Link…
 リンク…
 
-Linux's own
+Linux’s own
 Linux標準
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux標準のスケジューラー（EEVDF）は、すべてのプログラムにCPU時間を公平に割り当てます。どちらのスケジューラーでも、ほかの処理が待っているOloのスレッドはリアルタイム優先度で動きます。ビルドなどで高負荷のときは、こちらの方がデスクトップの応答が速くなります。
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linuxの通常の方式（cubic）は途中のキューが埋まるまで送信するため遅延が増えます。この方式は経路を測ってその範囲内で送信します（Oloのtcp_bbr3モジュール）。
 
 List
@@ -7435,8 +7432,8 @@ No to-dos
 No touches in the last minute
 直近1分はタッチなし
 
-No touchpad found.
-タッチパッドが見つかりません。
+No touchpad found. These settings are used when one is connected.
+タッチパッドが見つかりません。これらの設定はタッチパッドを接続したときに使われます。
 
 No update matches the search.
 検索に一致する更新はありません。
@@ -7966,7 +7963,7 @@ Oloの起動画面
 Olo's login screen
 Oloのログイン画面
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Oloのモジュールは読み込み時にカーネルを確認し、このカーネルには入りませんでした。理由はOlo Doctorでわかります。
 
 Olo's own
@@ -8121,6 +8118,9 @@ On: brush starts olo-complete as you next type in it.
 
 On: packages come from it
 有効：このリポジトリからパッケージを取得します
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+設定すると、いずれもパスワードを求められる場所でパスワードの代わりに使えます。Passwords、Terminalのsudo、管理者の承認に使え、顔や指ではロック画面とログイン画面でも使えます。最初に使った方法が有効になります。
 
 One a day for:
 1日1件の保存期間:
@@ -10387,7 +10387,7 @@ Set up {} as a shared Rex server
 Setting
 設定
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 管理者のパスワードを確認して設定中…
 
 Setting up backups to {}…
@@ -11497,9 +11497,6 @@ That isn't the backup's password.
 That isn’t a Copr project’s name.
 Coprのプロジェクト名として無効です。
 
-That password isn't right.
-パスワードが違います。
-
 That password isn’t right.
 パスワードが違います。
 
@@ -11662,13 +11659,13 @@ The export failed: {}
 The fans' profile isn't in force yet: {}
 ファンプロファイルはまだ適用されていません：{}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 指紋を削除できませんでした。
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 指紋センサーを使用できませんでした。
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 指紋センサーが応答しません。
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11698,7 +11695,7 @@ The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 {}の表示に使うアイコンを全体に適用します。
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 赤外線カメラを開けませんでした。シャッターが閉じていないか、ほかのプログラムが使っていないか確認してください。
 
 The journal couldn't be read: {}
@@ -11965,10 +11962,10 @@ The store is over its {} limit
 The system power profiles service is unavailable.
 システムの電源プロファイルサービスを利用できません。
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 システムのサービス（更新や索引作成など）はこのコアを使用できます。
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 システムのサービスもこのコアを使用しません。
 
 The test didn't finish: {}.
@@ -12070,14 +12067,14 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 Wi-Fiアダプターがありません。
 
-There's no fingerprint sensor, or fprintd isn't running.
-指紋センサーがないか、fprintdが動作していません。
-
-There's no infrared camera.
-赤外線カメラがありません。
-
 There: {} <{}>  ·  Here: {} <{}>
 ホスト側：{} <{}>  ·  こちら：{} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+指紋センサーがないか、fprintdが動作していません。
+
+There’s no infrared camera.
+赤外線カメラがありません。
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 これらのアプリは一覧の項目にいつでもアクセスできます。許可を取り消すと、次回の要求時に再び確認します。
@@ -12163,7 +12160,7 @@ This computer is “{}”.
 This computer runs Fedora {}.
 このコンピューターはFedora {}を使用しています。
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 このカーネルは別のスケジューラーを読み込めないため、標準のものを使用します。切り替えに必要なsched_extはLinux 6.12以降で利用できます。
 
 This computer's sensor sees when someone is in front of it.
@@ -12199,16 +12196,16 @@ This isn't the session at the computer, so the computer isn't restarted.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 リポジトリのアドレスではありません（git@host:owner/name.git または https://…）。
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 このカーネルはディスク別の制限に対応していません。Linux 6.2以降が必要です。
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 このカーネルは、このコンピューターの NVMe ドライブで kyber I/O スケジューラを提供していません。
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 このカーネルはプリエンプション方式が固定されており、変更できません。
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 このカーネルのビルドは未確認です。Oloのアップデートで確認されるまで、Oloのモジュールは読み込まれません。
 
 This keyboard has no backlight.
@@ -13384,7 +13381,7 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 完了した手順はそのまま残ります。もう一度設定すると、その続きから再開します。
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 ウィンドウの描画用メモリをスワップさせないため、デスクトップが読み戻しを待つことはありません（Intelドライバー用のOloのライブパッチ）。
 
 What you change applies when you leave Rescue.
@@ -13471,7 +13468,7 @@ When does the sun rise tomorrow?
 When held for:
 長押し時間:
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 大きな空き領域がないときは、Intelドライバーが小さな領域を使うので、ウィンドウの描画は止まりません（Oloのolo_gpu_pagesモジュール）。
 
 When pressed:
@@ -13657,10 +13654,10 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、負荷が高くてもウィンドウや入力が遅れません（base slice）。
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 オンにすると、すべてのCPUが使用中でも、起床したプログラムがカーネルの次のティックを待たずにすぐに実行されます（full preemption）。現在は{}がスケジューリングしており、これを自ら決めます。この設定はカーネル自身のスケジューラ用です。
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 オンにすると、すべてのCPUが使用中でも、起床したプログラムがカーネルの次のティックまで最大1ミリ秒待たずにすぐに実行されます（full preemption）。
 
 Withdrawn by {}
@@ -13801,7 +13798,7 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 バックアップは送信前に暗号化します。鍵はPasswordsに「DiskBackup Key」として保存されており、どのコンピューターでも復元できます。
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 顔を十分に読み取れませんでした。腕一本分ほど離れてカメラの正面に座り、もう一度お試しください。
 
 Your face wasn’t recognised. Type your password.
@@ -13990,6 +13987,9 @@ about {} min left
 about {} s left
 残り約{}秒
 
+after a tick
+次のティックで
+
 all day
 終日
 
@@ -14031,6 +14031,9 @@ as the machine has it
 
 at most {}
 最大{}
+
+at once
+すぐに
 
 at {}
 {}時点
@@ -14395,7 +14398,7 @@ not understood: {}
 not yet ({})
 未検証（{}）
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 このビルド（{}）は未確認
 
 nothing backed up for {n} days
@@ -14461,7 +14464,7 @@ on battery
 on battery: it waits for power
 バッテリー駆動中：電源接続待ち
 
-on this kernel's build, {}
+on this kernel’s build, {}
 このカーネルのビルド（{}）
 
 on {}
@@ -14784,6 +14787,12 @@ visibility down to {}
 
 what holds it back
 速度を制限している要因
+
+when it yields
+自ら譲ったとき
+
+when its turn ends
+持ち時間の終わりに
 
 where the scheduler puts it
 スケジューラーに任せる

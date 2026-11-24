@@ -180,7 +180,7 @@ fn touchpad(ui: &mut Ui, t: &TouchpadSettings, asked: bool, pad: Option<&InputDe
                         ui.label(format!("{}{size}", pad.kind.describe()));
                         ui.note(pad.name.clone());
                     }
-                    None if asked => ui.note("No touchpad found."),
+                    None if asked => ui.note("No touchpad found. These settings are used when one is connected."),
                     None => ui.note("Looking…"),
                 }
                 let names: Vec<SharedString> = PROFILES.iter().map(|(_, name, _)| SharedString::from(*name)).collect();

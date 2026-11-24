@@ -369,7 +369,7 @@ repo दायरे वाला क्लासिक टोकन या ऐ�
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 अगर यह तय है कि कोड किस एजेंट टैब का है, तो Olo वहाँ कोड भरकर आपको बताएगा। संदेह होने पर पहले पूछेगा।
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 स्टिक या कार्ड पर कॉपी डिस्क की अपनी गति से चलती है, इसलिए उसकी प्रगति सही दिखती है और निकालना जल्दी होता है।
 
 A day
@@ -399,7 +399,7 @@ A letter goes on everything you can pick: controls, menu items, windows, Deskbar
 A little room
 थोड़ी जगह
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 Terminal में sudo, प्रशासकीय अनुरोधों, Passwords और लॉक स्क्रीन पर पासवर्ड की जगह इन्फ़्रारेड कैमरे में देख सकते हैं। केवल इन्फ़्रारेड छवि स्वीकार होती है, इसलिए स्क्रीन पर दिखाई गई तस्वीर से ताला नहीं खुलेगा।
 
 A lot of room
@@ -489,7 +489,7 @@ A thick line
 A thin line
 पतली रेखा
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 लॉगिन के बाद Terminal के sudo, Passwords और प्रशासकीय अनुरोधों में पासवर्ड की जगह सुरक्षा कुंजी (YubiKey) छू सकते हैं। कंप्यूटर में लॉगिन करने या उसका ताला खोलने के लिए इसका इस्तेमाल नहीं होता, ताकि कुंजी लगी हुई मिले तो कोई और कंप्यूटर न खोल सके।
 
 A touch starts at pressure
@@ -896,8 +896,8 @@ All lines around the selected one. {}
 All of Olo’s {} words are in {}.
 Olo के सभी {0} संदेश {1} में उपलब्ध हैं।
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-ये सभी सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+ये सभी सेटिंग पूरे कंप्यूटर के लिए हैं: बदलाव के लिए व्यवस्थापक का पासवर्ड चाहिए, और वह तुरंत लागू होता है।
 
 All time
 पूरा समय
@@ -992,7 +992,7 @@ Always on Top
 An account can answer again.
 एक खाता फिर से जवाब दे सकता है।
 
-An administrator's password is needed.
+An administrator’s password is needed.
 प्रशासक का पासवर्ड चाहिए।
 
 An agent is at rest here
@@ -2197,7 +2197,7 @@ Choose…
 Chosen by someone
 उपयोगकर्ता ने चुना
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 यह सेटिंग पूरे कंप्यूटर की है और रीस्टार्ट के बाद भी रहती है। बदलने के लिए प्रशासक का पासवर्ड चाहिए।
 
 Chosen outside dnf
@@ -3762,9 +3762,6 @@ Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
 हर नई विंडो उस विंडो का आधा हिस्सा लेती है जिसे आप इस्तेमाल कर रहे थे।
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-यहाँ सेट किए सभी तरीके Passwords, Terminal में sudo और प्रशासकीय अनुरोधों में पासवर्ड की जगह काम करते हैं। चेहरा या फ़िंगरप्रिंट लॉक और लॉगिन स्क्रीन पर भी इस्तेमाल कर सकते हैं। जो तरीका पहले इस्तेमाल करेंगे, उससे पुष्टि होगी।
-
 Each person gets their own Rex server, and signs in through this one.
 हर व्यक्ति को अपना Rex सर्वर मिलता है और वह इसके ज़रिए लॉगिन करता है।
 
@@ -3900,7 +3897,7 @@ English (US)
 Enhancements
 सुधार
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 पंजीकरण पूरा नहीं हुआ।
 
 Enrolling your {}
@@ -4023,7 +4020,7 @@ Every frame on time this last minute
 Every interface
 हर इंटरफ़ेस
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 हर कुंजी और फ़्रेम विंडो सर्वर के लूप और इनपुट थ्रेड से होकर जाता है। इसे चालू करने पर तेज़ प्रोसेसरों में से एक, {}, सिर्फ़ इनके लिए रहेगा। बिल्ड, ब्राउज़र और बाकी प्रोग्राम दूसरे प्रोसेसरों पर चलेंगे, ताकि इनपुट या फ़्रेम को इंतज़ार न करना पड़े।
 
 Every list's to-dos show here.
@@ -4162,22 +4159,22 @@ Fable 5.1
 Face Unlock
 चेहरे से अनलॉक
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 चेहरे से अनलॉक की सुविधा केवल उपयोगकर्ता के अपने सत्र में इंस्टॉल होती है। polkit वहीं अनुमति माँगता है।
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 चेहरे से अनलॉक की सुविधा इंस्टॉल नहीं है।
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 चेहरे से अनलॉक की सुविधा इंस्टॉल नहीं हुई: {}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 चेहरे से अनलॉक की सुविधा नहीं हट सकी: {}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 इस बिल्ड में चेहरे से अनलॉक करने की सेवा नहीं है (पूरा वर्कस्पेस बिल्ड करें)।
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 इस बिल्ड में चेहरे से अनलॉक करने की सेवा नहीं है।
 
 Fade
@@ -5506,7 +5503,7 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 पढ़ नहीं सके: {}
 
-It didn't work.
+It didn’t work.
 काम नहीं हुआ।
 
 It didn’t open: {}.
@@ -5554,10 +5551,10 @@ It was run by {} in {}.
 It was run by {}.
 {} ने इसे चलाया।
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 पेयरिंग नहीं हट सकी ({})।
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 सेटअप नहीं हुआ ({})।
 
 It won’t start again when {} restarts.
@@ -5745,7 +5742,7 @@ Keep Only on This Computer
 Keep Them Off
 बंद रखें
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 व्यस्त प्रोग्राम की बारी छोटी रखें
 
 Keep a core for the window server
@@ -5814,7 +5811,7 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 दूसरे ऐप के पासवर्ड रखता है, जो लॉगिन करते ही खुल जाते हैं।
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 भारी सिंक्रोनस राइट या डिस्कार्ड से NVMe ड्राइव भर जाने पर रीड विलंब को सीमित रखता है, जबकि Linux का डिफ़ॉल्ट "none" सिर्फ़ बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
 
 Keeps typing quick over a slow link.
@@ -6165,13 +6162,13 @@ Link’s rate
 Link…
 लिंक…
 
-Linux's own
+Linux’s own
 Linux की अपनी
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux का अपना शेड्यूलर (EEVDF) हर प्रोग्राम को निष्पक्ष समय देता है। दोनों शेड्यूलर में Olo के वे थ्रेड रीयल-टाइम प्राथमिकता पर चलते हैं जिनका कोई इंतज़ार कर रहा है। बिल्ड जैसे भारी काम के बीच डेस्कटॉप इस शेड्यूलर पर सबसे तेज़ रहता है।
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux का सामान्य तरीका (cubic) तब तक भेजता है जब तक रास्ते की कतारें भर न जाएँ, जिससे देरी बढ़ती है; यह तरीका रास्ते को मापकर उसके नीचे रहता है (Olo का मॉड्यूल, tcp_bbr3)।
 
 List
@@ -7461,8 +7458,8 @@ No to-dos
 No touches in the last minute
 पिछले मिनट में कोई स्पर्श नहीं
 
-No touchpad found.
-टचपैड नहीं मिला।
+No touchpad found. These settings are used when one is connected.
+टचपैड नहीं मिला। ये सेटिंग तब इस्तेमाल होंगी जब कोई टचपैड जोड़ा जाएगा।
 
 No update matches the search.
 खोज से कोई अपडेट मेल नहीं खाता।
@@ -7992,7 +7989,7 @@ Olo की बूट स्क्रीन
 Olo's login screen
 Olo की लॉगिन स्क्रीन
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo का मॉड्यूल लोड होते समय कर्नेल को जाँचता है, और वह इस कर्नेल से बाहर रहा। कारण Olo Doctor बताता है।
 
 Olo's own
@@ -8147,6 +8144,9 @@ On: brush starts olo-complete as you next type in it.
 
 On: packages come from it
 चालू: यहाँ से पैकेज लिए जाएँगे
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+एक बार सेट होने पर, इनमें से हर एक आपके पासवर्ड की जगह ले सकता है जहाँ भी वह माँगा जाए: Passwords में, Terminal के sudo में और व्यवस्थापक अनुरोधों में, और चेहरे या उँगली से लॉक और लॉगिन स्क्रीन पर भी। जो आप पहले इस्तेमाल करें, वही मान्य होता है।
 
 One a day for:
 रोज़ एक रखें:
@@ -10417,7 +10417,7 @@ Set up {} as a shared Rex server
 Setting
 सेटिंग
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 सेट हो रहा है: प्रशासक का पासवर्ड चाहिए…
 
 Setting up backups to {}…
@@ -11529,9 +11529,6 @@ That isn't the backup's password.
 That isn’t a Copr project’s name.
 यह Copr प्रोजेक्ट का नाम नहीं है।
 
-That password isn't right.
-पासवर्ड सही नहीं है।
-
 That password isn’t right.
 पासवर्ड सही नहीं है।
 
@@ -11694,13 +11691,13 @@ The export failed: {}
 The fans' profile isn't in force yet: {}
 पंखों की प्रोफ़ाइल अभी लागू नहीं है: {}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 फ़िंगरप्रिंट नहीं हटा सके।
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 फ़िंगरप्रिंट सेंसर इस्तेमाल नहीं कर सके।
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 फ़िंगरप्रिंट सेंसर जवाब नहीं दे रहा।
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11730,7 +11727,7 @@ The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 हर जगह {} दिखाने के लिए इस्तेमाल होने वाले आइकन।
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 इन्फ़्रारेड कैमरा नहीं खुला। शटर जाँचें या देखें कि कोई दूसरा प्रोग्राम इसे इस्तेमाल तो नहीं कर रहा।
 
 The journal couldn't be read: {}
@@ -11997,10 +11994,10 @@ The store is over its {} limit
 The system power profiles service is unavailable.
 सिस्टम की पावर प्रोफ़ाइल सेवा उपलब्ध नहीं है।
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 सिस्टम सेवाएँ (अपडेट, इंडेक्स बनाना) यहाँ फिर भी चल सकती हैं।
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 सिस्टम सेवाएँ भी इस कोर से अलग रखी जाती हैं।
 
 The test didn't finish: {}.
@@ -12102,14 +12099,14 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 Wi-Fi अडैप्टर नहीं है।
 
-There's no fingerprint sensor, or fprintd isn't running.
-फ़िंगरप्रिंट सेंसर नहीं है या fprintd नहीं चल रहा।
-
-There's no infrared camera.
-इन्फ़्रारेड कैमरा नहीं है।
-
 There: {} <{}>  ·  Here: {} <{}>
 वहाँ: {} <{}>  ·  यहाँ: {} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+फ़िंगरप्रिंट सेंसर नहीं है या fprintd नहीं चल रहा।
+
+There’s no infrared camera.
+इन्फ़्रारेड कैमरा नहीं है।
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 ये ऐप जब चाहें इन आइटम की पहुँच पा सकते हैं। अनुमति वापस लेने पर अगली बार फिर पूछा जाएगा।
@@ -12195,7 +12192,7 @@ This computer is “{}”.
 This computer runs Fedora {}.
 इस कंप्यूटर पर Fedora {} चल रहा है।
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 यह कर्नेल दूसरा शेड्यूलर लोड नहीं कर सकता, इसलिए अपना शेड्यूलर इस्तेमाल करता है। sched_ext Linux 6.12 और उसके बाद के संस्करणों में है।
 
 This computer's sensor sees when someone is in front of it.
@@ -12231,16 +12228,16 @@ This isn't the session at the computer, so the computer isn't restarted.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 यह रिपॉज़िटरी का पता नहीं है (git@host:owner/name.git, या https://…)।
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 यह कर्नेल अलग-अलग डिस्क की अलग सीमा तय नहीं कर सकता (Linux 6.2 और बाद के संस्करणों में संभव है)।
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 यह कर्नेल इस कंप्यूटर के NVMe ड्राइव के लिए kyber I/O शेड्यूलर उपलब्ध नहीं कराता।
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 यह कर्नेल सिर्फ़ एक प्रीएम्प्शन विधि के साथ बना है। इसे बदला नहीं जा सकता।
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 इस कर्नेल बिल्ड की जाँच अभी नहीं हुई है: जब तक Olo का कोई अपडेट इसे जाँच न ले, Olo का मॉड्यूल बाहर रहता है।
 
 This keyboard has no backlight.
@@ -13416,7 +13413,7 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 जो हो चुका है वह बना रहता है। फिर सेट अप करने पर वहीं से आगे बढ़ेगा।
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 विंडो जहाँ ड्रॉ करती हैं वह स्वैप से बाहर रहता है, ताकि डेस्कटॉप को कभी उसका इंतज़ार न करना पड़े (Intel के ड्राइवर के लिए Olo का लाइव पैच)।
 
 What you change applies when you leave Rescue.
@@ -13503,7 +13500,7 @@ When does the sun rise tomorrow?
 When held for:
 इतनी देर दबाने पर:
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 जब कोई बड़ा टुकड़ा खाली नहीं होता, तो Intel का ड्राइवर छोटे टुकड़े ले लेता है और विंडो बनती रहती हैं (Olo का मॉड्यूल, olo_gpu_pages)।
 
 When pressed:
@@ -13689,10 +13686,10 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि भारी लोड में भी विंडो और टाइपिंग साथ चलें (base slice)।
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 इसे चालू करने पर, प्रोसेसर व्यस्त होने पर जागा हुआ प्रोग्राम कर्नेल के अगले टिक का इंतज़ार किए बिना तुरंत चलता है (full preemption)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है: यह कर्नेल के अपने शेड्यूलर के लिए है।
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 इसे चालू करने पर, प्रोसेसर व्यस्त होने पर जागा हुआ प्रोग्राम कर्नेल के अगले टिक के लिए एक मिलीसेकंड तक इंतज़ार किए बिना तुरंत चलता है (full preemption)।
 
 Withdrawn by {}
@@ -13833,7 +13830,7 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 बैकअप इस कंप्यूटर से बाहर जाने से पहले एन्क्रिप्ट होते हैं। कुंजी Passwords में “DiskBackup Key” के नाम से रखी है। इसके साथ किसी भी कंप्यूटर पर बहाली कर सकते हैं।
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 चेहरा साफ़ नहीं दिखा। कैमरे की तरफ़ मुँह करके एक हाथ की दूरी पर बैठें और फिर कोशिश करें।
 
 Your face wasn’t recognised. Type your password.
@@ -14024,6 +14021,9 @@ about {} min left
 about {} s left
 लगभग {} सेकंड शेष
 
+after a tick
+एक टिक के बाद
+
 all day
 पूरा दिन
 
@@ -14066,6 +14066,9 @@ as the machine has it
 
 at most {}
 अधिकतम {}
+
+at once
+तुरंत
 
 at {}
 {} पर
@@ -14435,7 +14438,7 @@ not understood: {}
 not yet ({})
 अभी नहीं ({})
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 इस कर्नेल बिल्ड ({}) पर अभी नहीं
 
 nothing backed up for {n} days
@@ -14502,7 +14505,7 @@ on battery
 on battery: it waits for power
 बैटरी पर: बिजली जुड़ने की प्रतीक्षा
 
-on this kernel's build, {}
+on this kernel’s build, {}
 इस कर्नेल बिल्ड ({}) पर
 
 on {}
@@ -14836,6 +14839,12 @@ visibility down to {}
 
 what holds it back
 क्या रोक रहा है
+
+when it yields
+जब वह स्वयं छोड़े
+
+when its turn ends
+जब उसकी बारी खत्म हो
 
 where the scheduler puts it
 शेड्यूलर जहाँ रखता है

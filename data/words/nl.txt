@@ -369,7 +369,7 @@ Gebruik een klassiek token met het bereik repo, of een fijnmazig token dat pull 
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Als duidelijk is voor welk tabblad van een agent de code bedoeld is, vult Olo hem daar in en krijgt u bericht. Bij twijfel vraagt Olo het u eerst.
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 Een kopie naar een stick of kaart gaat in het tempo van de schijf zelf, zodat de voortgang klopt en uitwerpen snel gaat.
 
 A day
@@ -399,7 +399,7 @@ Elk bedieningselement, menuonderdeel en venster krijgt een letter, net als de De
 A little room
 Weinig ruimte
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 U kunt met de infraroodcamera in plaats van uw wachtwoord sudo in Terminal, beheerdersverzoeken en Passwords goedkeuren en het scherm ontgrendelen. Alleen infrarood telt, dus een foto op een scherm werkt niet.
 
 A lot of room
@@ -489,7 +489,7 @@ Dikke lijn
 A thin line
 Dunne lijn
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 Na het aanmelden kunt u voor sudo in Terminal, Passwords en beheerdersverzoeken een beveiligingssleutel (YubiKey) aanraken in plaats van uw wachtwoord te typen. Voor aanmelden en ontgrendelen blijft een wachtwoord vereist. Zo kan iemand die de computer met aangesloten sleutel vindt er niet zomaar in.
 
 A touch starts at pressure
@@ -896,8 +896,8 @@ Alle regels rond de geselecteerde regel. {}
 All of Olo’s {} words are in {}.
 Alle {} teksten van Olo zijn vertaald naar {}.
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-Al deze instellingen gelden voor de hele computer, dus het wijzigen ervan vraagt om het wachtwoord van een beheerder.
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+Al deze instellingen gelden voor de hele computer: een wijziging vraagt om het wachtwoord van een beheerder en gaat meteen in.
 
 All time
 Altijd
@@ -992,7 +992,7 @@ Altijd bovenop
 An account can answer again.
 Een account kan weer antwoorden.
 
-An administrator's password is needed.
+An administrator’s password is needed.
 Hiervoor is een beheerderswachtwoord nodig.
 
 An agent is at rest here
@@ -2197,7 +2197,7 @@ Kiezen…
 Chosen by someone
 Handmatig gekozen
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 De keuze geldt voor de hele computer en blijft na herstarten bewaard. Om die te wijzigen is een beheerderswachtwoord nodig.
 
 Chosen outside dnf
@@ -3762,9 +3762,6 @@ Elk nieuw venster krijgt een tegel, en de andere maken plaats.
 Each new window takes half of the one you were using.
 Elk nieuw venster neemt de helft van het venster dat u gebruikte.
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-Elke ingestelde methode vervangt uw wachtwoord voor Passwords, sudo in Terminal en beheerdersverzoeken. Met gezichtsherkenning of een vingerafdruk kunt u ook aanmelden en het scherm ontgrendelen. Gebruik de methode die u het beste uitkomt.
-
 Each person gets their own Rex server, and signs in through this one.
 Iedereen krijgt een eigen Rex-server en meldt zich aan via deze server.
 
@@ -3900,7 +3897,7 @@ Engels (VS)
 Enhancements
 Verbeteringen
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 Registratie niet voltooid.
 
 Enrolling your {}
@@ -4023,7 +4020,7 @@ Alle frames op tijd in de afgelopen minuut
 Every interface
 Elke interface
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 De vensterserver verwerkt elke toetsaanslag en elk frame. Met deze optie zijn de hoofdlus en de invoerthread de enige gebruikers van processor {}, een van de snelste. Builds, browsers en andere programma’s draaien op de overige processors. Zo hoeven scherm en invoer niet te wachten.
 
 Every list's to-dos show here.
@@ -4162,22 +4159,22 @@ Fable 5.1
 Face Unlock
 Gezichtsontgrendeling
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 Installeer gezichtsontgrendeling in uw eigen sessie. Daar vraagt polkit om toestemming.
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 Gezichtsontgrendeling is niet geïnstalleerd.
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 Gezichtsontgrendeling installeren mislukt: {}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 Gezichtsontgrendeling verwijderen mislukt: {}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 Deze build bevat de dienst voor gezichtsontgrendeling niet. Bouw de hele workspace.
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 Deze build bevat de dienst voor gezichtsontgrendeling niet.
 
 Fade
@@ -5506,7 +5503,7 @@ Niet bereikbaar: {}. Olo blijft het proberen.
 It couldn’t be read: {}
 Lezen mislukt: {}
 
-It didn't work.
+It didn’t work.
 Dat is niet gelukt.
 
 It didn’t open: {}.
@@ -5554,10 +5551,10 @@ Gestart door {} in {}.
 It was run by {}.
 Gestart door {}.
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 Vergeten is mislukt ({}).
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 Instellen is mislukt ({}).
 
 It won’t start again when {} restarts.
@@ -5745,7 +5742,7 @@ Alleen op deze computer bewaren
 Keep Them Off
 Uit laten
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 De beurt van een druk programma kort houden
 
 Keep a core for the window server
@@ -5814,7 +5811,7 @@ Voorkomt dat achtergrondwerk vertraagt wat u gebruikt.
 Keeps other apps’ passwords, unlocked as you log in.
 Bewaart wachtwoorden van andere apps en wordt bij het aanmelden ontgrendeld.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 Houdt de leeslatentie begrensd als zware synchrone schrijfacties of discards een NVMe-schijf overspoelen, terwijl de Linux-standaard ‘none’ alleen terugschrijven op de achtergrond afremt (queue/scheduler).
 
 Keeps typing quick over a slow link.
@@ -6165,13 +6162,13 @@ Verbindingssnelheid
 Link…
 Link…
 
-Linux's own
+Linux’s own
 Van Linux zelf
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 De standaardscheduler van Linux (EEVDF) verdeelt tijd eerlijk over alle programma’s. Olo-threads waarop iets wacht, draaien bij beide schedulers met realtimeprioriteit. Bij builds en ander zwaar werk reageert het bureaublad met deze scheduler het snelst.
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 De gewone manier van Linux (cubic) verzendt tot de wachtrijen onderweg vol zijn, wat vertraging geeft; deze meet het pad en blijft eronder (Olo’s module, tcp_bbr3).
 
 List
@@ -7461,8 +7458,8 @@ Geen taken
 No touches in the last minute
 Geen aanrakingen in de afgelopen minuut
 
-No touchpad found.
-Geen touchpad gevonden.
+No touchpad found. These settings are used when one is connected.
+Geen touchpad gevonden. Deze instellingen gelden zodra er een is aangesloten.
 
 No update matches the search.
 Geen updates gevonden voor deze zoekopdracht.
@@ -7992,7 +7989,7 @@ Opstartscherm van Olo
 Olo's login screen
 Aanmeldscherm van Olo
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo’s module controleert de kernel bij het laden en is buiten deze gebleven. Olo Doctor zegt waarom.
 
 Olo's own
@@ -8147,6 +8144,9 @@ Aan: brush start olo-complete zodra u weer iets typt.
 
 On: packages come from it
 Aan: levert pakketten
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+Eenmaal ingesteld kan elk hiervan je wachtwoord vervangen waar het ook gevraagd wordt: in Passwords, sudo in Terminal en beheerdersverzoeken, en met een gezicht of een vinger ook op het vergrendel- en inlogscherm. Wat je het eerst gebruikt, telt.
 
 One a day for:
 Eén per dag gedurende:
@@ -10417,7 +10417,7 @@ Set up {} as a shared Rex server
 Setting
 Instelling
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 Instellen: een beheerderswachtwoord is nodig…
 
 Setting up backups to {}…
@@ -11529,9 +11529,6 @@ Dit is niet het wachtwoord van de back-up.
 That isn’t a Copr project’s name.
 Dit is geen geldige Copr-projectnaam.
 
-That password isn't right.
-Het wachtwoord is onjuist.
-
 That password isn’t right.
 Het wachtwoord is onjuist.
 
@@ -11694,13 +11691,13 @@ Exporteren mislukt: {}
 The fans' profile isn't in force yet: {}
 Het ventilatorprofiel is nog niet actief: {}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 De vingerafdruk verwijderen is mislukt.
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 De vingerafdruksensor kan niet worden gebruikt.
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 De vingerafdruksensor reageert niet.
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11730,7 +11727,7 @@ De pictogrammen op het bureaublad (Tracker).
 The icons {} is drawn with, everywhere.
 De pictogrammen waarmee {} overal wordt weergegeven.
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 Kan de infraroodcamera niet openen. Controleer de sluiter en of een ander programma de camera gebruikt.
 
 The journal couldn't be read: {}
@@ -11997,10 +11994,10 @@ De opslag overschrijdt de limiet van {}
 The system power profiles service is unavailable.
 De systeemdienst voor energieprofielen is niet beschikbaar.
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 Systeemdiensten zoals updates en indexering mogen er nog op draaien.
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 Ook systeemdiensten blijven van die kern af.
 
 The test didn't finish: {}.
@@ -12102,14 +12099,14 @@ Geen ethernetadapter. Een USB- of Thunderbolt-adapter verschijnt hier zodra u di
 There's no Wi-Fi adapter.
 Geen wifiadapter.
 
-There's no fingerprint sensor, or fprintd isn't running.
-Geen vingerafdruksensor gevonden, of fprintd is niet actief.
-
-There's no infrared camera.
-Geen infraroodcamera gevonden.
-
 There: {} <{}>  ·  Here: {} <{}>
 Daar: {} <{}>  ·  Hier: {} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+Geen vingerafdruksensor gevonden, of fprintd is niet actief.
+
+There’s no infrared camera.
+Geen infraroodcamera gevonden.
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 Deze apps krijgen de vermelde onderdelen wanneer ze erom vragen. Trek een toestemming in om bij het volgende verzoek weer een vraag te krijgen.
@@ -12195,7 +12192,7 @@ Deze computer heet ‘{}’.
 This computer runs Fedora {}.
 Deze computer draait Fedora {}.
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 De kernel gebruikt zijn eigen scheduler omdat hij geen andere kan laden. Hiervoor is sched_ext nodig, beschikbaar vanaf Linux 6.12.
 
 This computer's sensor sees when someone is in front of it.
@@ -12231,16 +12228,16 @@ De computer wordt alleen vanuit de lokale sessie herstart.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 Dit is geen adres van een repository (git@host:eigenaar/naam.git of https://…).
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 Deze kernel kan geen limiet per schijf instellen. Dat kan vanaf Linux 6.2.
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 Deze kernel biedt de kyber I/O-scheduler niet aan voor de NVMe-schijven van deze computer.
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 Deze kernel is gebouwd met één vaste preëmptiemodus.
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 Deze kernelbuild is nog niet gecontroleerd: Olo’s module blijft erbuiten tot een update van Olo hem controleert.
 
 This keyboard has no backlight.
@@ -13416,7 +13413,7 @@ Wat kan ik morgen het beste aantrekken?
 What was done stays done. Setting it up again carries on from there.
 Wat al klaar is, blijft staan. Opnieuw instellen gaat vanaf daar verder.
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 De buffers waarin vensters tekenen blijven buiten het wisselgeheugen, zodat het bureaublad er nooit op wacht (Olo’s livepatch voor Intels stuurprogramma).
 
 What you change applies when you leave Rescue.
@@ -13503,7 +13500,7 @@ Hoe laat komt de zon morgen op?
 When held for:
 Bij ingedrukt houden gedurende:
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 Zonder vrij groot stuk neemt Intels stuurprogramma kleinere en blijven vensters tekenen (Olo’s module, olo_gpu_pages).
 
 When pressed:
@@ -13689,10 +13686,10 @@ Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats v
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen ook onder belasting bijblijven (base slice).
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 Staat dit aan, dan draait een gewekt programma meteen als de processors bezet zijn, in plaats van te wachten op de volgende tick van de kernel (full preemption). {} plant nu en beslist dat zelf: dit is voor de eigen planner van de kernel.
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 Staat dit aan, dan draait een gewekt programma meteen als de processors bezet zijn, in plaats van tot een milliseconde te wachten op de volgende tick van de kernel (full preemption).
 
 Withdrawn by {}
@@ -13833,7 +13830,7 @@ Uw back-ups worden vóór verzending versleuteld met een sleutel die alleen op d
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Uw back-ups worden versleuteld voordat ze deze computer verlaten. De sleutel staat in Passwords als ‘DiskBackup Key’. Daarmee kunt u uw back-ups op elke computer herstellen.
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 Uw gezicht was niet goed zichtbaar. Ga recht voor de camera zitten, op een armlengte afstand, en probeer het opnieuw.
 
 Your face wasn’t recognised. Type your password.
@@ -14024,6 +14021,9 @@ nog ongeveer {} min
 about {} s left
 nog ongeveer {} s
 
+after a tick
+na een tick
+
 all day
 hele dag
 
@@ -14066,6 +14066,9 @@ zoals ingesteld op de machine
 
 at most {}
 hoogstens {}
+
+at once
+meteen
 
 at {}
 om {}
@@ -14435,7 +14438,7 @@ niet herkend: {}
 not yet ({})
 nog niet ({})
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 nog niet op deze kernelbuild, {}
 
 nothing backed up for {n} days
@@ -14502,7 +14505,7 @@ op accu
 on battery: it waits for power
 op accuvoeding: wacht op netvoeding
 
-on this kernel's build, {}
+on this kernel’s build, {}
 op deze kernelbuild, {}
 
 on {}
@@ -14836,6 +14839,12 @@ zicht beperkt tot {}
 
 what holds it back
 wat dit vertraagt
+
+when it yields
+als het voorrang geeft
+
+when its turn ends
+aan het eind van zijn beurt
 
 where the scheduler puts it
 waar de scheduler het plaatst

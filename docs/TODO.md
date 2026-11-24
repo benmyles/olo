@@ -1751,31 +1751,27 @@ something nobody here has is in "Blocked", with what it waits for.
   Antigravity alone reads them; the list, in HACKING.)
 
 - **Preferences, from Opus's look at the Kernel tab** (2026-11-24),
-  there before the change, in its words:
-  - Performance: "this window has no Defaults/Revert row, but Rex,
-    Security and Touchpad & Mouse all do. If changes apply at once
-    (after the password), say so in the closing note"; "'lazy' (Now /
-    Next start) is a raw kernel word on a tab that's otherwise plain.
-    Use 'after a tick' / 'at once', with '(lazy)' / '(full)' in the
-    description only"; the Kernel tab "is bottom-heavy with empty
-    space" (the note ends about 95 pt above the page's foot, the
-    Network box about 160 pt above Processor Turns'): shorten the
-    window if no tab needs the height, or fill the right column. Mine:
-    the Disks tab's sentences run a whole box wide, over a hundred
-    letters a line. Window Buffers (Intel graphics only) wasn't
-    pictured: no such GPU on the dev server.
-  - Security: the intro "is broken: 'Each of these set up stands
-    for…' and 'a face or fingerprint the lock and login screens
-    too'" (theirs: "Once set up, each of these stands for your
-    password wherever it's asked (Passwords, sudo in Terminal,
-    administrator requests, and for a face or fingerprint the lock
-    and login screens too), whichever you use first."); it "runs about
-    1190px wide at 1.5x"; apostrophes mixed, straight and curly; "Touch
-    ID" is Apple's name ("Fingerprint").
-  - Touchpad & Mouse: "with 'No touchpad found.', the Profile pop-up
-    and its description still look live" (dim them), and "about 130pt
-    of empty page below both boxes".
-  - The Token Pool isn't in the live lint (`tools/dev/ui-lint`): its
+  there before the change. Done 2026-11-24: Performance's closing note
+  says a change is made at once ("…: a change asks for an administrator’s
+  password, and is made at once"), as it has no Defaults or Revert;
+  preemption's rows in words ("after a tick", "at once"), the kernel's
+  in the sentence; the Disks tab's sentences about eighty letters wide
+  (520 points); Security's introduction in two sentences ("Once set up,
+  each of these can stand for your password wherever it’s asked: …
+  Whichever you use first counts."), as wide, and its words' and
+  Performance's apostrophes curly (35 words, their translations kept);
+  Touchpad & Mouse with no touchpad says its settings are used once one
+  is connected (they are live: dimmed, they would have read as lost).
+  Kept: "Touch ID", Ben's own word for the sensor, which on their
+  keyboard is Apple's. Left:
+  - the Kernel tab "is bottom-heavy with empty space" (the note about
+    95 pt above the page's foot, Network's box 160 pt above Processor
+    Turns'), and Touchpad's "about 130pt of empty page below both
+    boxes": a tab view is as tall as its tallest tab; to fill the right
+    column, or let a short tab's boxes take the row;
+  - Window Buffers (Intel graphics only) not pictured: no such GPU on
+    the dev server;
+  - the Token Pool isn't in the live lint (`tools/dev/ui-lint`): its
     windows (Clients, Hosts) are linted by no one, and would need a
     stand-in pool, never the person's.
 

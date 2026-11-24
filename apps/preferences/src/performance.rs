@@ -388,10 +388,13 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             // (A scheduler loaded over the kernel's asks for its switches
             // itself: the setting changes nothing while it schedules.)
             about: match scheduled_by {
-                Some(name) => olo_kit::tr!("With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.", name),
-                None => olo_kit::words::tr("With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).").into(),
+                Some(name) => olo_kit::tr!("With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.", name),
+                None => olo_kit::words::tr("With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).").into(),
             },
-            facts: vec![("Now", p.now().to_owned()), ("Next start", p.next().to_owned())],
+            // (In words, not the kernel's: its own, "lazy", read as jargon on
+            // a tab otherwise plain. Its word is in the sentence's brackets:
+            // Opus's look.)
+            facts: vec![("Now", preemption_words(p.now())), ("Next start", preemption_words(p.next()))],
         },
         None => KernelBox {
             title: "Preemption",
@@ -401,7 +404,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
 
             locked: false,
             doctor: false,
-            about: olo_kit::words::tr("This kernel has one way of preempting only: it wasn't built to be told another.").into(),
+            about: olo_kit::words::tr("This kernel has one way of preempting only: it wasn’t built to be told another.").into(),
             facts: Vec::new(),
         },
     });
@@ -410,7 +413,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
         boxes.push(KernelBox {
             title: "Processor Turns",
             setting: Setting::ShortTurns,
-            label: "Keep a busy program's turn short",
+            label: "Keep a busy program’s turn short",
             on: Some(t.on()),
 
             locked: false,
@@ -424,7 +427,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                 None => olo_kit::tr!("With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).", ms(t.built_ns)),
             },
             // (The same rows on and off: off, both say Linux's own.)
-            facts: vec![("Turn now", ms(t.now_ns())), ("Linux's own", ms(t.built_ns)), ("Kept after restart", olo_kit::words::tr(if t.kept { "yes" } else { "no" }).to_owned())],
+            facts: vec![("Turn now", ms(t.now_ns())), ("Linux’s own", ms(t.built_ns)), ("Kept after restart", olo_kit::words::tr(if t.kept { "yes" } else { "no" }).to_owned())],
         });
     }
     let d = &s.slow_disks;
@@ -465,7 +468,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
 
             locked: false,
             doctor: false,
-            about: olo_kit::words::tr("A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.").into(),
+            about: olo_kit::words::tr("A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.").into(),
             facts: slow_facts,
         }
     } else {
@@ -477,7 +480,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
 
             locked: false,
             doctor: false,
-            about: olo_kit::words::tr("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).").into(),
+            about: olo_kit::words::tr("This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).").into(),
             facts: Vec::new(),
         }
     });
@@ -533,7 +536,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                 locked: false,
                 doctor: false,
                 about: olo_kit::words::tr(
-                    "Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default \"none\" only throttles background writeback (queue/scheduler).",
+                    "Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default \"none\" only throttles background writeback (queue/scheduler).",
                 )
                 .into(),
                 facts: nvme_facts,
@@ -546,7 +549,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                 on: None,
                 locked: false,
                 doctor: false,
-                about: olo_kit::words::tr("This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.").into(),
+                about: olo_kit::words::tr("This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.").into(),
                 facts: Vec::new(),
             }
         });
@@ -564,7 +567,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             locked: false,
             doctor: false,
             about: olo_kit::words::tr(
-                "Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).",
+                "Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).",
             )
             .into(),
             facts: {
@@ -611,7 +614,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             locked: false,
             doctor: false,
             // ("Windows' buffers" read as Microsoft's: both reviews.)
-            about: olo_kit::words::tr("What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).").into(),
+            about: olo_kit::words::tr("What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).").into(),
             facts: vec![
                 ("The patch", olo_kit::words::tr(if g.patched { "in the running kernel" } else { "not in the running kernel" }).to_owned()),
                 ("Kept after restart", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()),
@@ -628,11 +631,11 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
         // Doctor has the module's own words. Both looks, twice.)
         let (unchecked, kept_out) = (!g.in_force && !g.checked, !g.in_force && g.checked && g.kept_out().is_some());
         let about: String = if unchecked {
-            olo_kit::words::tr("This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.").into()
+            olo_kit::words::tr("This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.").into()
         } else if kept_out {
-            olo_kit::words::tr("Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.").into()
+            olo_kit::words::tr("Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.").into()
         } else {
-            olo_kit::words::tr("When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).").into()
+            olo_kit::words::tr("When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).").into()
         };
         // (In the kernel and switched off is neither in force nor out of
         // it: a trial between its phases, a load switched off by hand.
@@ -659,8 +662,8 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             // (Checked on this build, and out of it all the same: the
             // row would belie the paragraph over it. Opus's look.)
             None if kept_out => {}
-            None if g.checked => facts.push(("Checked", olo_kit::tr!("on this kernel's build, {}", kernel))),
-            None => facts.push(("Checked", olo_kit::tr!("not yet on this kernel's build, {}", kernel))),
+            None if g.checked => facts.push(("Checked", olo_kit::tr!("on this kernel’s build, {}", kernel))),
+            None => facts.push(("Checked", olo_kit::tr!("not yet on this kernel’s build, {}", kernel))),
         }
         facts.push(("Kept after restart", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()));
         boxes.push(KernelBox {
@@ -684,6 +687,18 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
 /// Render either the Kernel tab (processors on the left, Olo's kernel pieces
 /// on the right) or the Disks tab (writeback, NVMe scheduler and removable
 /// disks stacked cleanly in one column so everything fits 1280 × 800).
+/// When a program woken while the processors are busy runs, by the kernel's
+/// preemption mode, in words; one it doesn't know, as it says it.
+fn preemption_words(mode: &str) -> String {
+    match mode {
+        "full" => olo_kit::words::tr("at once").to_owned(),
+        "lazy" => olo_kit::words::tr("after a tick").to_owned(),
+        "voluntary" => olo_kit::words::tr("when it yields").to_owned(),
+        "none" => olo_kit::words::tr("when its turn ends").to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&str>, disks_only: bool) {
     let k = shared.lock().unwrap().clone();
     let Some(state) = k.state else { return ui.note("Reading…") };
@@ -712,9 +727,10 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
             let about = StringView::new(b.about).dim(true).wrap(true);
             let about_el: olo_kit::Element = if disks_only {
                 // (In the full-width Disks tab, cap the paragraph measure at
-                // 600 pt so descriptions wrap into balanced lines instead of
-                // running 120 characters wide. Opus's look.)
-                olo_kit::IntoElement::into_any_element(div().max_w(px(600.0)).child(about))
+                // 520 pt, about eighty letters, so descriptions wrap into
+                // balanced lines instead of running 120 characters wide; at
+                // 600 they were still a hundred. Opus's looks.)
+                olo_kit::IntoElement::into_any_element(div().max_w(px(520.0)).child(about))
             } else {
                 olo_kit::IntoElement::into_any_element(about)
             };
@@ -749,10 +765,10 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
     let is_disk = |s: Setting| matches!(s, Setting::DirtyWriteback | Setting::NvmeScheduler | Setting::SlowDisks);
     let said = |text: SharedString| olo_kit::IntoElement::into_any_element(StringView::new(text).dim(true).wrap(true));
     let line = match (&k.applying, &k.said) {
-        (Some(_), _) => said(olo_kit::words::tr("Setting it: an administrator's password is asked…").into()),
+        (Some(_), _) => said(olo_kit::words::tr("Setting it: an administrator’s password is asked…").into()),
         (None, Some(Err(why))) => olo_kit::IntoElement::into_any_element(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(p.failure))),
         (None, Some(Ok(text))) => said(text.clone().into()),
-        _ => said(olo_kit::words::tr("All these settings are for the whole computer, so changing one asks for an administrator's password.").into()),
+        _ => said(olo_kit::words::tr("All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.").into()),
     };
     let all = kernel_boxes(&state, scheduled_by);
     if disks_only {
@@ -834,7 +850,7 @@ fn scheduler_tab(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
     ui.bbox("Scheduler", |ui| {
         let state = match sch.state {
             None => return ui.note("Reading…"),
-            Some(None) => return ui.note("This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules."),
+            Some(None) => return ui.note("This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules."),
             Some(Some(state)) => state,
         };
         let shown = sch.applying.unwrap_or(state.chosen);
@@ -850,11 +866,11 @@ fn scheduler_tab(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(choice.about()).dim(true).wrap(true)));
         }
         match (&sch.applying, &sch.said) {
-            (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
+            (Some(_), _) => ui.note("Setting it: an administrator’s password is asked…"),
             (None, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(theme::palette().failure))),
             _ => ui.note(state.now()),
         }
-        ui.note("Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.");
+        ui.note("Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.");
     });
 }
 
@@ -894,11 +910,11 @@ fn kept_core_box(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
     ui.bbox("Kept Core", |ui| {
         let on = ui.s.keep_core;
         ui.check("Keep a core for the window server", on, |s, v| s.keep_core = v);
-        ui.note(&olo_kit::tr!("Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.", list));
+        ui.note(&olo_kit::tr!("Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.", list));
         let system_off = sch.system_kept.as_ref() == Some(&kept);
         let (text, button) = match (on, sch.system_kept.is_some()) {
-            (true, _) if system_off => ("The system's services are kept off it too.", None),
-            (true, _) => ("The system's services (updates, indexing) can still run there.", Some(("Keep Them Off", true))),
+            (true, _) if system_off => ("The system’s services are kept off it too.", None),
+            (true, _) => ("The system’s services (updates, indexing) can still run there.", Some(("Keep Them Off", true))),
             (false, true) => ("The system's services are still kept off it.", Some(("Let Them Back", false))),
             (false, false) => ("", None),
         };
@@ -911,7 +927,7 @@ fn kept_core_box(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
             ui.add(row);
         }
         match (&sch.keeping, &sch.keep_said) {
-            (true, _) => ui.note("Setting it: an administrator's password is asked…"),
+            (true, _) => ui.note("Setting it: an administrator’s password is asked…"),
             (false, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(theme::palette().failure))),
             _ => {}
         }

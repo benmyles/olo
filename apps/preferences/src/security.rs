@@ -15,7 +15,14 @@ use olo_kit::SharedString;
 use olo_sync::Mutex;
 use serde::Deserialize;
 
-use olo_kit::{Cx, ParentElement as _, Styled as _, div, metrics as m, px, widgets::TabView};
+use olo_kit::{
+    Cx, ParentElement as _, Styled as _, div, metrics as m, px,
+    widgets::{StringView, TabView},
+};
+
+/// How wide Sign In's opening note is at most: about eighty letters a
+/// line.
+const INTRO_WIDTH: f32 = 520.0;
 
 use crate::{
     PanelView,
@@ -72,7 +79,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 
 /// Every way in besides the password, side by side.
 fn sign_in(ui: &mut Ui, st: &mut State) {
-    ui.note("Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.");
+    // (About eighty letters a line, not the pane's whole width: Opus's look,
+    // which had it 1190 pixels long at 1.5×; and in two sentences, its
+    // first had lost a verb.)
+    ui.add(div().max_w(px(INTRO_WIDTH)).child(StringView::new("Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.").dim(true).wrap(true)));
     let left = ui.collect(|ui| {
         touchid::ui(ui, &mut st.touchid);
         crate::face_unlock::ui(ui, &mut st.keys.face);

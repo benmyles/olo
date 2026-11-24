@@ -367,7 +367,7 @@ repo 범위의 클래식 토큰이나 풀 리퀘스트와 검사를 읽을 수 �
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 어느 에이전트 탭에 쓸 코드인지 확실하면 그 탭에 입력하고 알려 줍니다. 확실하지 않으면 먼저 물어봅니다.
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 USB 메모리나 카드로의 복사는 디스크 자체의 속도로 진행되므로 진행률이 정확하고 꺼내기가 빠릅니다.
 
 A day
@@ -397,7 +397,7 @@ A letter goes on everything you can pick: controls, menu items, windows, Deskbar
 A little room
 여백 좁게
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 Terminal의 sudo, 관리자 요청, Passwords, 잠금 화면에서 암호 대신 적외선 카메라를 바라보세요. 적외선만 인식하므로 화면에 띄운 사진으로는 인증할 수 없습니다.
 
 A lot of room
@@ -487,7 +487,7 @@ A thick line
 A thin line
 가는 선
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 로그인한 뒤에는 Terminal의 sudo, Passwords, 관리자 요청에서 암호 대신 보안 키(YubiKey)를 터치할 수 있습니다. 키가 꽂힌 컴퓨터를 주운 사람이 접근하지 못하도록 로그인과 잠금 해제에는 사용할 수 없습니다.
 
 A touch starts at pressure
@@ -892,8 +892,8 @@ All lines around the selected one. {}
 All of Olo’s {} words are in {}.
 Olo 문구 {0}개 모두 {1}(으)로 제공됩니다.
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-이 설정은 모두 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+이 설정은 모두 컴퓨터 전체에 적용됩니다. 변경하려면 관리자 암호가 필요하며, 변경은 즉시 적용됩니다.
 
 All time
 전체 기간
@@ -988,7 +988,7 @@ Always on Top
 An account can answer again.
 다시 응답할 수 있는 계정이 있습니다.
 
-An administrator's password is needed.
+An administrator’s password is needed.
 관리자 암호가 필요합니다.
 
 An agent is at rest here
@@ -2188,7 +2188,7 @@ Choose…
 Chosen by someone
 사용자가 선택함
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 컴퓨터 전체에 적용되며 재시작 후에도 유지됩니다. 이 계정만의 설정이 아니므로 변경하려면 관리자 암호가 필요합니다.
 
 Chosen outside dnf
@@ -3748,9 +3748,6 @@ Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
 새 창은 사용 중이던 창의 절반을 차지합니다.
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-설정한 인증 수단은 Passwords, Terminal의 sudo, 관리자 요청에서 모두 암호를 대신합니다. 얼굴과 지문은 잠금 해제와 로그인에도 쓸 수 있습니다. 먼저 사용한 수단으로 인증합니다.
-
 Each person gets their own Rex server, and signs in through this one.
 각 사용자가 자신만의 Rex 서버를 사용하며 이 서버를 통해 로그인합니다.
 
@@ -3886,7 +3883,7 @@ English (US)
 Enhancements
 개선 사항
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 등록을 마치지 못했습니다.
 
 Enrolling your {}
@@ -4009,7 +4006,7 @@ Every frame on time this last minute
 Every interface
 모든 인터페이스
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 모든 키 입력과 프레임은 창 서버의 루프와 입력 스레드를 거칩니다. 이 옵션을 켜면 가장 빠른 프로세서 중 하나인 {}번을 전용으로 사용합니다. 빌드, 브라우저 등 다른 프로그램은 나머지 프로세서에서 실행되어 입력과 화면 갱신을 지연시키지 않습니다.
 
 Every list's to-dos show here.
@@ -4144,22 +4141,22 @@ Fable 5.1
 Face Unlock
 얼굴로 잠금 해제
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 얼굴 잠금 해제는 사용자 본인의 세션에서만 설치할 수 있습니다. 거기서 polkit이 인증을 요청합니다.
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 얼굴 잠금 해제가 설치되지 않았습니다.
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 얼굴 잠금 해제를 설치하지 못했습니다: {}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 얼굴 잠금 해제를 제거하지 못했습니다: {}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 이 빌드에는 얼굴 잠금 해제 서비스가 없습니다. 전체 작업 공간을 빌드하세요.
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 이 빌드에는 얼굴 잠금 해제 서비스가 없습니다.
 
 Fade
@@ -5482,7 +5479,7 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 읽을 수 없습니다: {}
 
-It didn't work.
+It didn’t work.
 작동하지 않았습니다.
 
 It didn’t open: {}.
@@ -5530,10 +5527,10 @@ It was run by {} in {}.
 It was run by {}.
 실행 주체: {}.
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 등록을 해제하지 못했습니다({}).
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 설정하지 못했습니다({}).
 
 It won’t start again when {} restarts.
@@ -5719,7 +5716,7 @@ Keep Only on This Computer
 Keep Them Off
 계속 끄기
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 바쁜 프로그램의 차례를 짧게 유지
 
 Keep a core for the window server
@@ -5788,7 +5785,7 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 다른 앱의 암호를 보관하며 로그인할 때 잠금이 해제됩니다.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연 시간을 일정 수준 이내로 유지합니다. Linux 기본값인 "none"은 백그라운드 라이트백만 조절합니다(queue/scheduler).
 
 Keeps typing quick over a slow link.
@@ -6139,13 +6136,13 @@ Link’s rate
 Link…
 링크…
 
-Linux's own
+Linux’s own
 Linux 기본값
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 기본 스케줄러(EEVDF)는 작업 종류와 관계없이 모든 프로그램에 공평하게 시간을 배분합니다. 어느 스케줄러를 쓰든 다른 작업이 기다리는 Olo 스레드는 실시간 우선순위로 실행됩니다. 빌드 등 부하가 클 때는 이 설정에서 데스크톱이 가장 빠르게 반응합니다.
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux의 일반 방식(cubic)은 경로상의 대기열이 찰 때까지 전송해 지연이 늘어납니다. 이 방식은 경로를 측정해 그 아래로 유지합니다(Olo 모듈, tcp_bbr3).
 
 List
@@ -7435,8 +7432,8 @@ No to-dos
 No touches in the last minute
 지난 1분간 터치 없음
 
-No touchpad found.
-터치패드를 찾지 못했습니다.
+No touchpad found. These settings are used when one is connected.
+터치패드를 찾지 못했습니다. 이 설정은 터치패드를 연결하면 사용됩니다.
 
 No update matches the search.
 검색과 일치하는 업데이트가 없습니다.
@@ -7966,7 +7963,7 @@ Olo 부팅 화면
 Olo's login screen
 Olo 로그인 화면
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo 모듈은 로드될 때 커널을 확인하며, 이 커널에는 들어가지 않았습니다. 이유는 Olo Doctor가 알려 줍니다.
 
 Olo's own
@@ -8121,6 +8118,9 @@ On: brush starts olo-complete as you next type in it.
 
 On: packages come from it
 켜짐: 이곳에서 패키지를 받습니다
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+설정하면 각 방법이 암호를 묻는 곳 어디에서나 암호를 대신할 수 있습니다. Passwords, Terminal의 sudo, 관리자 요청에 쓸 수 있고, 얼굴이나 손가락으로는 잠금 화면과 로그인 화면에서도 쓸 수 있습니다. 먼저 사용한 방법이 적용됩니다.
 
 One a day for:
 하루에 하나씩 보관할 기간:
@@ -10387,7 +10387,7 @@ Set up {} as a shared Rex server
 Setting
 설정
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 설정 중: 관리자 암호를 묻습니다…
 
 Setting up backups to {}…
@@ -11497,9 +11497,6 @@ That isn't the backup's password.
 That isn’t a Copr project’s name.
 Copr 프로젝트 이름 형식이 아닙니다.
 
-That password isn't right.
-암호가 일치하지 않습니다.
-
 That password isn’t right.
 암호가 일치하지 않습니다.
 
@@ -11662,13 +11659,13 @@ The export failed: {}
 The fans' profile isn't in force yet: {}
 팬 프로필이 아직 적용되지 않았습니다: {}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 지문을 제거할 수 없습니다.
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 지문 센서를 사용할 수 없습니다.
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 지문 센서가 응답하지 않습니다.
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11698,7 +11695,7 @@ The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 모든 곳에서 {} 표시 시 사용할 아이콘입니다.
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 적외선 카메라를 열 수 없습니다. 셔터가 닫혔거나 다른 프로그램이 사용 중일 수 있습니다.
 
 The journal couldn't be read: {}
@@ -11965,10 +11962,10 @@ The store is over its {} limit
 The system power profiles service is unavailable.
 시스템 전원 프로필 서비스를 사용할 수 없습니다.
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 업데이트, 색인 등 시스템 서비스는 이 코어에서 계속 실행될 수 있습니다.
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 시스템 서비스도 이 코어에서 실행되지 않습니다.
 
 The test didn't finish: {}.
@@ -12070,14 +12067,14 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 Wi-Fi 어댑터가 없습니다.
 
-There's no fingerprint sensor, or fprintd isn't running.
-지문 센서가 없거나 fprintd가 실행 중이지 않습니다.
-
-There's no infrared camera.
-적외선 카메라가 없습니다.
-
 There: {} <{}>  ·  Here: {} <{}>
 호스트: {} <{}>  ·  여기: {} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+지문 센서가 없거나 fprintd가 실행 중이지 않습니다.
+
+There’s no infrared camera.
+적외선 카메라가 없습니다.
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 이 앱들은 요청할 때마다 나열된 항목에 접근할 수 있습니다. 허가를 취소하면 다음 요청 때 다시 묻습니다.
@@ -12163,7 +12160,7 @@ This computer is “{}”.
 This computer runs Fedora {}.
 이 컴퓨터는 Fedora {} 버전을 사용합니다.
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 이 커널은 다른 스케줄러를 불러올 수 없어 커널 기본 스케줄러를 사용합니다. sched_ext는 Linux 6.12 이상에서 지원합니다.
 
 This computer's sensor sees when someone is in front of it.
@@ -12199,16 +12196,16 @@ This isn't the session at the computer, so the computer isn't restarted.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 올바른 저장소 주소가 아닙니다(git@host:owner/name.git 또는 https://…).
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 이 커널은 디스크별 제한을 지원하지 않습니다(Linux 6.2 이상에서 지원).
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 이 커널은 이 컴퓨터의 NVMe 드라이브에서 kyber I/O 스케줄러를 제공하지 않습니다.
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 이 커널은 한 가지 선점 방식만 지원하도록 빌드되었습니다.
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 이 커널 빌드는 아직 확인되지 않았습니다. Olo 업데이트가 확인할 때까지 Olo 모듈은 들어가지 않습니다.
 
 This keyboard has no backlight.
@@ -13384,7 +13381,7 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 이미 완료된 단계는 유지됩니다. 다시 설정하면 그다음부터 이어서 진행합니다.
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 창이 그려지는 메모리가 스왑으로 내려가지 않아 데스크톱이 이를 기다리지 않습니다(Intel 드라이버용 Olo 라이브 패치).
 
 What you change applies when you leave Rescue.
@@ -13471,7 +13468,7 @@ When does the sun rise tomorrow?
 When held for:
 길게 누르는 시간:
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 큰 빈 조각이 없으면 Intel 드라이버가 더 작은 조각을 쓰므로 창이 계속 그려집니다(Olo 모듈, olo_gpu_pages).
 
 When pressed:
@@ -13657,10 +13654,10 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 부하가 걸려도 윈도우와 입력이 밀리지 않습니다(base slice).
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 켜면 프로세서가 바쁠 때 깨어난 프로그램이 커널의 다음 틱을 기다리지 않고 즉시 실행됩니다(full preemption). 지금은 {}이(가) 스케줄링하며 이를 스스로 결정합니다. 이 설정은 커널 자체의 스케줄러용입니다.
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 켜면 프로세서가 바쁠 때 깨어난 프로그램이 커널의 다음 틱까지 최대 1ms를 기다리지 않고 즉시 실행됩니다(full preemption).
 
 Withdrawn by {}
@@ -13801,7 +13798,7 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 백업은 전송 전에 이 컴퓨터에서 암호화합니다. 키는 Passwords의 ‘DiskBackup Key’에 보관하며, 이 키로 어느 컴퓨터에서나 복원할 수 있습니다.
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 얼굴이 잘 보이지 않았습니다. 카메라에서 팔 길이만큼 떨어져 정면을 보고 다시 시도하세요.
 
 Your face wasn’t recognised. Type your password.
@@ -13990,6 +13987,9 @@ about {} min left
 about {} s left
 약 {}초 남음
 
+after a tick
+다음 틱에
+
 all day
 종일
 
@@ -14031,6 +14031,9 @@ as the machine has it
 
 at most {}
 최대 {}
+
+at once
+즉시
 
 at {}
 {}에
@@ -14395,7 +14398,7 @@ not understood: {}
 not yet ({})
 아직 아님({})
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 이 커널 빌드({})는 아직 아님
 
 nothing backed up for {n} days
@@ -14461,7 +14464,7 @@ on battery
 on battery: it waits for power
 배터리 사용 중: 전원 연결 대기
 
-on this kernel's build, {}
+on this kernel’s build, {}
 이 커널 빌드({})
 
 on {}
@@ -14784,6 +14787,12 @@ visibility down to {}
 
 what holds it back
 제약 요인
+
+when it yields
+스스로 양보할 때
+
+when its turn ends
+차례가 끝날 때
 
 where the scheduler puts it
 스케줄러가 배정한 위치

@@ -78,11 +78,11 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                                 olo_kit::words::tr("Fingerprints can only be changed from a session logged in at this computer.").to_owned()
                             } else {
                                 tracing::warn!("fprintd: {e}");
-                                olo_kit::words::tr("The fingerprint sensor isn't answering.").to_owned()
+                                olo_kit::words::tr("The fingerprint sensor isn’t answering.").to_owned()
                             }
                         })
                     } else {
-                        Err(olo_kit::words::tr("There's no fingerprint sensor, or fprintd isn't running.").into())
+                        Err(olo_kit::words::tr("There’s no fingerprint sensor, or fprintd isn’t running.").into())
                     });
                     let changed = {
                         let mut s = sh.lock().unwrap();
@@ -106,7 +106,7 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                             s.busy = false;
                             s.error = r.err().map(|e| {
                                 tracing::warn!("fprintd: {e}");
-                                olo_kit::words::tr("The fingerprint couldn't be removed.").to_owned()
+                                olo_kit::words::tr("The fingerprint couldn’t be removed.").to_owned()
                             });
                             s.note = s.error.is_none().then(|| olo_kit::tr!("{} was removed.", fp::finger_name(&finger)));
                         }
@@ -155,11 +155,11 @@ fn enroll(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, me: &str, finger: Str
         Ok(true) => s.note = Some(olo_kit::tr!("{} was added.", fp::finger_name(&finger))),
         Ok(false) if cancelled => {}
         Ok(false) => {
-            s.error.get_or_insert_with(|| olo_kit::words::tr("Enrolling didn't finish.").to_owned());
+            s.error.get_or_insert_with(|| olo_kit::words::tr("Enrolling didn’t finish.").to_owned());
         }
         Err(e) => {
             tracing::warn!("fprintd: {e}");
-            s.error = Some(olo_kit::words::tr("The fingerprint sensor couldn't be used.").into());
+            s.error = Some(olo_kit::words::tr("The fingerprint sensor couldn’t be used.").into());
         }
     }
 }

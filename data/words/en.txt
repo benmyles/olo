@@ -120,7 +120,7 @@ A build of Olo is running: Olo upgrades as soon as it has finished.
 A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.
 A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 A day
 A disk of its own, or a folder on one: your backups kept apart from this computer.
 A dotted line
@@ -130,7 +130,7 @@ A frame dropped in the last minute
 A key with no name
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 A little room
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 A lot of room
 A mirror failed ({}): {}
 A month
@@ -160,7 +160,7 @@ A small program of Olo’s, put on each host by Rex, sends what you type there i
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 A thick line
 A thin line
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 A touch starts at pressure
 A touch types nothing unless something is waiting for the key; three in a row type its one-time code where you are, for a web form Olo doesn’t know.
 A town, an address, or 47.61, -122.33
@@ -295,7 +295,7 @@ All agents and shells are quiet.
 All day
 All lines around the selected one. {}
 All of Olo’s {} words are in {}.
-All these settings are for the whole computer, so changing one asks for an administrator's password.
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
 All time
 All waiting
 All {} connected.
@@ -327,7 +327,7 @@ Always a palm when as large as
 Always float the application, or not
 Always on Top
 An account can answer again.
-An administrator's password is needed.
+An administrator’s password is needed.
 An agent is at rest here
 An agent is working here
 An app
@@ -727,7 +727,7 @@ Choose what to scan:
 Choose:
 Choose…
 Chosen by someone
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 Chosen outside dnf
 Chrome and Slack
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
@@ -1247,7 +1247,6 @@ Each kind opens in this app wherever you open it, in Olo and in other programs. 
 Each network's own
 Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Each person gets their own Rex server, and signs in through this one.
 Each person on {} gets a Rex server of their own; they sign in through this one.
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
@@ -1293,7 +1292,7 @@ English (Australia)
 English (UK)
 English (US)
 Enhancements
-Enrolling didn't finish.
+Enrolling didn’t finish.
 Enrolling your {}
 Enter Full Screen
 Enter secret…
@@ -1334,7 +1333,7 @@ Every day at set times
 Every disk
 Every frame on time this last minute
 Every interface
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Every list's to-dos show here.
 Every month
 Every regular account
@@ -1379,12 +1378,12 @@ Extreme
 FD
 Fable 5.1
 Face Unlock
-Face unlock is installed only in the person's own session (polkit asks there).
-Face unlock isn't installed.
-Face unlock wasn't installed: {}
-Face unlock wasn't removed: {}
-Face unlock's service isn't in this build (build the whole workspace).
-Face unlock's service isn't in this build.
+Face unlock is installed only in the person’s own session (polkit asks there).
+Face unlock isn’t installed.
+Face unlock wasn’t installed: {}
+Face unlock wasn’t removed: {}
+Face unlock’s service isn’t in this build (build the whole workspace).
+Face unlock’s service isn’t in this build.
 Fade
 Fade Colors
 Fahrenheit (°F)
@@ -1825,9 +1824,9 @@ It couldn’t be fetched: {}
 It couldn’t be reached ({}). Olo keeps trying.
 It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
-It didn't work.
 It didn’t open: {}.
 It didn’t say why.
+It didn’t work.
 It downloads {}
 It goes on once there’s one. {}. {}.
 It has no [repository] in it.
@@ -1841,8 +1840,8 @@ It starts when {} starts.
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 It was run by {} in {}.
 It was run by {}.
-It wasn't forgotten ({}).
-It wasn't set up ({}).
+It wasn’t forgotten ({}).
+It wasn’t set up ({}).
 It won’t start again when {} restarts.
 It's in use now, in place of Olo's own.
 Italian
@@ -1904,7 +1903,7 @@ Keep It Going, in a tab’s menu, types this to the coding agent in the tab when
 Keep Key in Passwords
 Keep Only on This Computer
 Keep Them Off
-Keep a busy program's turn short
+Keep a busy program’s turn short
 Keep a core for the window server
 Keep briefly
 Keep foreground work ready between tasks. Fans start sooner.
@@ -1927,7 +1926,7 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 Keeps typing quick over a slow link.
 Kept
 Kept Core
@@ -2044,9 +2043,9 @@ Link-Local Only
 Link:
 Link’s rate
 Link…
-Linux's own
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s own
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 List
 List View
 List:
@@ -2476,7 +2475,7 @@ No screen recordings yet. Record one with ⌘⇧6.
 No space around an auto-tiled window alone
 No to-dos
 No touches in the last minute
-No touchpad found.
+No touchpad found. These settings are used when one is connected.
 No update matches the search.
 No widgets: add one below.
 No {} for this account.
@@ -2653,7 +2652,6 @@ Olo saying its name
 Olo's Choice
 Olo's boot splash
 Olo's login screen
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo's own
 Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
@@ -2663,6 +2661,7 @@ Olo’s bridge is on “{}”.
 Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
 Olo’s keyring isn’t running here; it starts with your session.
 Olo’s language:
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Olo’s phone service isn’t running.
 Olo’s session isn’t answering.
@@ -2705,6 +2704,7 @@ On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn t
 On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
 On: brush starts olo-complete as you next type in it.
 On: packages come from it
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
 One a day for:
 One a month for:
 One a week for:
@@ -3460,7 +3460,7 @@ Set up your own Rex server on {}
 Set up {} as a Rex login server
 Set up {} as a shared Rex server
 Setting
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 Setting up backups to {}…
 Setting up needs root. Nothing on {} is changed yet.
 Setting up the backups in {}’s Google Drive…
@@ -3830,7 +3830,6 @@ That isn't a value.
 That isn't one of the repository's worktrees.
 That isn't the backup's password.
 That isn’t a Copr project’s name.
-That password isn't right.
 That password isn’t right.
 That password isn’t right. Try again:
 That secret is empty in Passwords.
@@ -3885,9 +3884,9 @@ The device didn't connect.
 The displays' settings are Olo's own again, from when you leave Rescue.
 The export failed: {}
 The fans' profile isn't in force yet: {}
-The fingerprint couldn't be removed.
-The fingerprint sensor couldn't be used.
-The fingerprint sensor isn't answering.
+The fingerprint couldn’t be removed.
+The fingerprint sensor couldn’t be used.
+The fingerprint sensor isn’t answering.
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
 The first backup starts in a moment.
 The first fine-tune failed: {}
@@ -3897,7 +3896,7 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 The journal couldn't be read: {}
 The kernel's own (recommended)
 The key couldn’t be kept ({}).
@@ -3986,8 +3985,8 @@ The sky and temperature now, and what's coming.
 The store
 The store is over its {} limit
 The system power profiles service is unavailable.
-The system's services (updates, indexing) can still run there.
-The system's services are kept off it too.
+The system’s services (updates, indexing) can still run there.
+The system’s services are kept off it too.
 The test didn't finish: {}.
 The time zone lookup answered {}.
 The time zone lookup’s answer can’t be read: {}
@@ -4021,9 +4020,9 @@ There isn’t room for them on {}. Choose a shorter time, or make room there.
 There's no Bluetooth adapter.
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 There's no Wi-Fi adapter.
-There's no fingerprint sensor, or fprintd isn't running.
-There's no infrared camera.
 There: {} <{}>  ·  Here: {} <{}>
+There’s no fingerprint sensor, or fprintd isn’t running.
+There’s no infrared camera.
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 These take effect at once:
@@ -4052,9 +4051,9 @@ This computer has no battery.
 This computer is “{}” to AirPlay receivers.
 This computer is “{}”.
 This computer runs Fedora {}.
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
 This computer's sensor sees when someone is in front of it.
 This computer’s git doesn’t say who you are.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 This display reports no modes.
 This event
 This folder was moved or deleted.
@@ -4064,10 +4063,10 @@ This is the recommended profile for this touchpad.
 This isn't an Olo backup.
 This isn't the session at the computer, so the computer isn't restarted.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
-This kernel has one way of preempting only: it wasn't built to be told another.
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
+This kernel has one way of preempting only: it wasn’t built to be told another.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 This screen’s own bus, for the programs on it.
@@ -4459,7 +4458,7 @@ What it’s for (optional)
 What should I wear today?
 What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 What you change applies when you leave Rescue.
 What's checked off shows here, the newest first.
 What's due after today, the soonest first, each by its day.
@@ -4488,7 +4487,7 @@ When am I free today?
 When am I free tomorrow?
 When does the sun rise tomorrow?
 When held for:
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 When pressed:
 When to Back Up
 When will the rain stop?
@@ -4550,8 +4549,8 @@ With AirPods:
 With Another Window
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 Withdrawn by {}
 Word Document…
 Working
@@ -4598,8 +4597,8 @@ Your Own Kinds
 Your SSH keys from Passwords, for ssh and git.
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
 Your face wasn’t recognised. Type your password.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 Your home folder
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
@@ -4661,6 +4660,7 @@ about {n} minutes left
 about {}
 about {} min left
 about {} s left
+after a tick
 all day
 an hour ago
 and frees {}.
@@ -4675,6 +4675,7 @@ as it goes
 as of {}
 as the machine has it
 at most {}
+at once
 at {}
 auto approving
 auto approving (Yes after {} s; {} answered)
@@ -4796,7 +4797,7 @@ not parts of it: {}; its parts are {}
 not set up yet
 not understood: {}
 not yet ({})
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 nothing backed up for {n} days
 nothing freed
 nothing moved
@@ -4818,7 +4819,7 @@ on
 on a fast core at a high clock
 on battery
 on battery: it waits for power
-on this kernel's build, {}
+on this kernel’s build, {}
 on {}
 on {} at {}
 one a day for ever
@@ -4926,6 +4927,8 @@ use . for decimals
 validating
 visibility down to {}
 what holds it back
+when it yields
+when its turn ends
 where the scheduler puts it
 with the {n} files changed in it and not committed
 without {}

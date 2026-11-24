@@ -272,7 +272,7 @@ fn cannot(setting: Setting, on: bool, places: &Places) -> Option<&'static str> {
         Setting::ShortTurns if tuning::turns(places).is_none() => {
             Some("This computer's turns on its processor are the short ones already (the kernel lengthens them where there are more processors).")
         }
-        Setting::SlowDisks if !tuning::slow_disks(places).can => Some("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can)."),
+        Setting::SlowDisks if !tuning::slow_disks(places).can => Some("This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can)."),
         Setting::DirtyWriteback if tuning::dirty_writeback(places).is_none() => Some("This computer has 12 GB of memory or less, so Linux's percentage writeback limits are already small."),
         Setting::NvmeScheduler if on && tuning::nvme_scheduler(places).is_none_or(|n| !n.can()) => Some("This computer has no NVMe drive with the kyber I/O scheduler available."),
         Setting::Bbr3 if tuning::bbr3(places).is_none() => Some("This computer has no TCP to set."),

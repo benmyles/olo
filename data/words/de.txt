@@ -369,7 +369,7 @@ Ein klassisches Token mit dem Scope „repo“ oder ein feingranulares, das Pull
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Ein Code, der sicher zum Tab eines Agenten gehört, wird dort eingesetzt, und Sie werden benachrichtigt; bei einem unsicheren wird nachgefragt.
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 Eine Kopie auf einen Stick oder eine Karte geht im Tempo des Laufwerks, damit ihr Fortschritt stimmt und das Auswerfen schnell geht.
 
 A day
@@ -399,7 +399,7 @@ Alles Wählbare bekommt einen Buchstaben: Bedienelemente, Menüpunkte, Fenster, 
 A little room
 Wenig Platz
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 Ein Blick in die Infrarotkamera kann Ihr Passwort ersetzen: sudo im Terminal, Administratoranfragen, Passwords und der Sperrbildschirm. Nur Infrarot zählt, ein Foto auf einem Bildschirm kommt also nicht durch.
 
 A lot of room
@@ -489,7 +489,7 @@ Eine dicke Linie
 A thin line
 Eine dünne Linie
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 Eine Berührung eines Sicherheitsschlüssels (eines YubiKey) kann Ihr Passwort ersetzen, sobald Sie angemeldet sind: sudo im Terminal, Passwords und Administratoranfragen. Nicht zum Entsperren oder Anmelden: Wer den Computer mit eingestecktem Schlüssel findet, könnte es.
 
 A touch starts at pressure
@@ -896,8 +896,8 @@ Alle Zeilen um die ausgewählte. {}
 All of Olo’s {} words are in {}.
 Alle {} Wörter von Olo gibt es auf {}.
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-Alle diese Einstellungen gelten für den ganzen Computer; daher fragt das Ändern nach einem Administratorpasswort.
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+Alle diese Einstellungen gelten für den ganzen Computer: Eine Änderung verlangt das Passwort eines Administrators und wird sofort wirksam.
 
 All time
 Gesamter Zeitraum
@@ -992,7 +992,7 @@ Immer im Vordergrund
 An account can answer again.
 Ein Konto kann wieder antworten.
 
-An administrator's password is needed.
+An administrator’s password is needed.
 Das Passwort eines Administrators wird benötigt.
 
 An agent is at rest here
@@ -2197,7 +2197,7 @@ Wählen …
 Chosen by someone
 Von jemandem gewählt
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 Für den ganzen Computer gewählt und über Neustarts hinweg beibehalten. Es gehört zum Computer, nicht zu diesem Konto; daher fragt die Wahl nach einem Administratorpasswort.
 
 Chosen outside dnf
@@ -3762,9 +3762,6 @@ Jedes neue Fenster bekommt eine Kachel, und die anderen machen Platz.
 Each new window takes half of the one you were using.
 Jedes neue Fenster nimmt die Hälfte des Fensters ein, das Sie gerade benutzt haben.
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-Jedes davon, einmal eingerichtet, ersetzt Ihr Passwort, wo immer es verlangt wird (Passwords, sudo im Terminal, Administratoranfragen; Gesicht oder Fingerabdruck auch Sperr- und Anmeldebildschirm), alle zugleich: was Sie zuerst benutzen.
-
 Each person gets their own Rex server, and signs in through this one.
 Jede Person bekommt ihren eigenen Rex-Server und meldet sich über diesen an.
 
@@ -3900,7 +3897,7 @@ Englisch (USA)
 Enhancements
 Verbesserungen
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 Das Erfassen wurde nicht abgeschlossen.
 
 Enrolling your {}
@@ -4023,7 +4020,7 @@ In der letzten Minute jeder Frame pünktlich
 Every interface
 Jede Schnittstelle
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Jeder Tastendruck und jedes Bild durchlaufen die Schleife des Fenster-Servers und seinen Eingabe-Thread. Ist dies an, haben sie Prozessor {}, einen der schnellsten, für sich: Builds, Browser und all Ihre anderen Programme laufen auf den übrigen, sodass nichts sie warten lässt.
 
 Every list's to-dos show here.
@@ -4162,22 +4159,22 @@ Fable 5.1
 Face Unlock
 Gesichtsentsperrung
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 Die Gesichtsentsperrung wird nur in der eigenen Sitzung der Person installiert (polkit fragt dort).
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 Die Gesichtsentsperrung ist nicht installiert.
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 Die Gesichtsentsperrung wurde nicht installiert: {}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 Die Gesichtsentsperrung wurde nicht entfernt: {}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 Der Dienst der Gesichtsentsperrung ist nicht in diesem Build (bauen Sie den ganzen Workspace).
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 Der Dienst der Gesichtsentsperrung ist nicht in diesem Build.
 
 Fade
@@ -5506,7 +5503,7 @@ Es war nicht erreichbar: {}. Olo versucht es weiter.
 It couldn’t be read: {}
 Es konnte nicht gelesen werden: {}
 
-It didn't work.
+It didn’t work.
 Es hat nicht geklappt.
 
 It didn’t open: {}.
@@ -5554,10 +5551,10 @@ Es wurde von {} in {} ausgeführt.
 It was run by {}.
 Es wurde von {} ausgeführt.
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 Es wurde nicht vergessen ({}).
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 Es wurde nicht eingerichtet ({}).
 
 It won’t start again when {} restarts.
@@ -5745,7 +5742,7 @@ Nur auf diesem Computer behalten
 Keep Them Off
 Ausgeschaltet lassen
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 Die Zeitscheibe beschäftigter Programme kurz halten
 
 Keep a core for the window server
@@ -5814,7 +5811,7 @@ Verhindert, dass Hintergrundarbeit bremst, was Sie gerade nutzen.
 Keeps other apps’ passwords, unlocked as you log in.
 Bewahrt Passwörter anderer Apps auf, entsperrt bei der Anmeldung.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 Hält die Leselatenz begrenzt, wenn starke synchrone Schreibvorgänge oder Discards ein NVMe-Laufwerk fluten, während Linux’ Standard „none“ nur das Hintergrund-Zurückschreiben drosselt (queue/scheduler).
 
 Keeps typing quick over a slow link.
@@ -6165,13 +6162,13 @@ Rate der Verbindung
 Link…
 Link…
 
-Linux's own
+Linux’s own
 Linux’ eigene
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Der Scheduler von Linux, wie er kommt (EEVDF): fair zu jedem Programm, was immer es tut. Olos eigene Threads, auf die jemand wartet, laufen in Echtzeit, über jedem Programm unter beiden Schedulern, und bei Builds und anderer schwerer Arbeit bleibt der Desktop mit diesem am schnellsten.
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux’ übliche Art (cubic) sendet, bis die Warteschlangen unterwegs voll sind, was Verzögerung bringt; diese misst den Weg und bleibt darunter (Olos Modul, tcp_bbr3).
 
 List
@@ -7461,8 +7458,8 @@ Keine Aufgaben
 No touches in the last minute
 Keine Berührungen in der letzten Minute
 
-No touchpad found.
-Kein Touchpad gefunden.
+No touchpad found. These settings are used when one is connected.
+Kein Touchpad gefunden. Diese Einstellungen gelten, sobald eines angeschlossen ist.
 
 No update matches the search.
 Kein Update passt zur Suche.
@@ -7992,7 +7989,7 @@ Olos Startbild
 Olo's login screen
 Olos Anmeldebildschirm
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olos Modul prüft den Kernel beim Laden und ist aus diesem draußen geblieben. Olo Doctor sagt, warum.
 
 Olo's own
@@ -8147,6 +8144,9 @@ An: brush startet olo-complete, sobald Sie dort das nächste Mal tippen.
 
 On: packages come from it
 An: Pakete kommen von dort
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+Einmal eingerichtet, kann jedes davon Ihr Passwort ersetzen, wo immer es verlangt wird: in Passwords, bei sudo im Terminal und bei Administratoranfragen, und mit Gesicht oder Finger auch am Sperr- und Anmeldebildschirm. Was Sie zuerst benutzen, zählt.
 
 One a day for:
 Eines pro Tag für:
@@ -10417,7 +10417,7 @@ Set up {} as a shared Rex server
 Setting
 Einstellung
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 Wird eingestellt: Das Passwort eines Administrators wird abgefragt …
 
 Setting up backups to {}…
@@ -11529,9 +11529,6 @@ Das ist nicht das Passwort des Backups.
 That isn’t a Copr project’s name.
 Das ist kein Name eines Copr-Projekts.
 
-That password isn't right.
-Dieses Passwort stimmt nicht.
-
 That password isn’t right.
 Dieses Passwort stimmt nicht.
 
@@ -11694,13 +11691,13 @@ Der Export ist fehlgeschlagen: {}
 The fans' profile isn't in force yet: {}
 Das Profil der Lüfter ist noch nicht wirksam: {}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 Der Fingerabdruck konnte nicht entfernt werden.
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 Der Fingerabdrucksensor konnte nicht benutzt werden.
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 Der Fingerabdrucksensor antwortet nicht.
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11730,7 +11727,7 @@ Die Symbole auf dem Schreibtisch (Tracker).
 The icons {} is drawn with, everywhere.
 Die Symbole, mit denen {} gezeichnet wird, überall.
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 Die Infrarotkamera ließ sich nicht öffnen (ihr Verschluss oder ein anderes Programm).
 
 The journal couldn't be read: {}
@@ -11997,10 +11994,10 @@ Der Speicher liegt über seinem Limit von {}
 The system power profiles service is unavailable.
 Der Systemdienst für Energieprofile ist nicht verfügbar.
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 Die Dienste des Systems (Updates, Indexierung) können dort weiterhin laufen.
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 Auch die Dienste des Systems bleiben davon fern.
 
 The test didn't finish: {}.
@@ -12102,14 +12099,14 @@ Es gibt keinen Ethernet-Adapter. Ein USB- oder Thunderbolt-Adapter erscheint hie
 There's no Wi-Fi adapter.
 Es gibt keinen WLAN-Adapter.
 
-There's no fingerprint sensor, or fprintd isn't running.
-Es gibt keinen Fingerabdrucksensor, oder fprintd läuft nicht.
-
-There's no infrared camera.
-Es gibt keine Infrarotkamera.
-
 There: {} <{}>  ·  Here: {} <{}>
 Dort: {} <{}>  ·  Hier: {} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+Es gibt keinen Fingerabdrucksensor, oder fprintd läuft nicht.
+
+There’s no infrared camera.
+Es gibt keine Infrarotkamera.
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 Diese Apps dürfen diese Einträge haben, wann immer sie fragen. Nehmen Sie eine zurück, wird die App beim nächsten Mal wieder gefragt.
@@ -12195,7 +12192,7 @@ Dieser Computer ist „{}“.
 This computer runs Fedora {}.
 Dieser Computer läuft mit Fedora {}.
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 Der Kernel dieses Computers kann keinen anderen Scheduler laden (sched_ext: ab Linux 6.12), also plant der des Kernels selbst.
 
 This computer's sensor sees when someone is in front of it.
@@ -12231,16 +12228,16 @@ Dies ist nicht die Sitzung am Computer, daher wird der Computer nicht neu gestar
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 Das ist keine Repository-Adresse (git@host:owner/name.git oder https://…).
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 Dieser Kernel kann ein Laufwerk nicht an ein eigenes Limit binden (Linux 6.2 und neuer können es).
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 Dieser Kernel bietet den E/A-Scheduler kyber für die NVMe-Laufwerke dieses Computers nicht an.
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 Dieser Kernel kennt nur eine Art der Präemption: Er wurde nicht gebaut, um eine andere zu nehmen.
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 Dieser Kernel-Build wurde noch nicht geprüft: Olos Modul bleibt draußen, bis ein Olo-Update ihn prüft.
 
 This keyboard has no backlight.
@@ -13416,7 +13413,7 @@ Was soll ich morgen anziehen?
 What was done stays done. Setting it up again carries on from there.
 Erledigtes bleibt bestehen. Ein erneutes Einrichten macht ab dort weiter.
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 Worin Fenster zeichnen, wird nicht ausgelagert, sodass der Schreibtisch nie darauf wartet (Olos Live-Patch für den Intel-Treiber).
 
 What you change applies when you leave Rescue.
@@ -13503,7 +13500,7 @@ Wann geht morgen die Sonne auf?
 When held for:
 Wenn gehalten für:
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 Ist kein großes Stück frei, nimmt der Intel-Treiber kleinere, und die Fenster zeichnen weiter (Olos Modul, olo_gpu_pages).
 
 When pressed:
@@ -13689,10 +13686,10 @@ Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt nach {} Platz, sodass Fenster und Eingaben auch unter Last mithalten (base slice).
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 Ist dies an, läuft ein Programm, das geweckt wird, während die Prozessoren beschäftigt sind, sofort, statt auf den nächsten Takt des Kernels zu warten (full preemption). {} plant gerade und entscheidet das selbst: Dies gilt für den eigenen Scheduler des Kernels.
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 Ist dies an, läuft ein Programm, das geweckt wird, während die Prozessoren beschäftigt sind, sofort, statt bis zu einer Millisekunde auf den nächsten Takt des Kernels zu warten (full preemption).
 
 Withdrawn by {}
@@ -13833,7 +13830,7 @@ Ihre Backups werden verschlüsselt, bevor sie diesen Computer verlassen, mit ein
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Ihre Backups werden verschlüsselt, bevor sie diesen Computer verlassen. Ihr Schlüssel liegt in Passwords („DiskBackup Key“): Damit lassen sie sich auf jedem Computer wiederherstellen.
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 Ihr Gesicht war nicht gut genug zu sehen: Setzen Sie sich mit Armlänge Abstand vor die Kamera und versuchen Sie es erneut.
 
 Your face wasn’t recognised. Type your password.
@@ -14024,6 +14021,9 @@ noch etwa {} min
 about {} s left
 noch etwa {} s
 
+after a tick
+nach einem Takt
+
 all day
 ganztägig
 
@@ -14066,6 +14066,9 @@ wie vom Rechner vorgegeben
 
 at most {}
 höchstens {}
+
+at once
+sofort
 
 at {}
 um {}
@@ -14435,7 +14438,7 @@ nicht verstanden: {}
 not yet ({})
 noch nicht ({})
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 noch nicht auf diesem Build, {}
 
 nothing backed up for {n} days
@@ -14502,7 +14505,7 @@ im Akkubetrieb
 on battery: it waits for power
 im Akkubetrieb: es wartet auf Strom
 
-on this kernel's build, {}
+on this kernel’s build, {}
 auf diesem Kernel-Build, {}
 
 on {}
@@ -14836,6 +14839,12 @@ Sicht bis hinunter auf {}
 
 what holds it back
 was es bremst
+
+when it yields
+wenn es abgibt
+
+when its turn ends
+am Ende seines Zuges
 
 where the scheduler puts it
 wo der Scheduler ihn einsetzt

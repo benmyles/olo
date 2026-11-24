@@ -373,7 +373,7 @@ A classic token with the repo scope, or a fine-grained one that can read pull re
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Если ясно, какая вкладка агента ждёт код, Olo введёт его и сообщит вам. В остальных случаях сначала спросит.
 
-A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk’s own pace, so its progress is true and ejecting is quick.
 Копирование на флешку или карту идёт со скоростью самого диска, поэтому прогресс отображается верно, а извлечение происходит быстро.
 
 A day
@@ -403,7 +403,7 @@ A letter goes on everything you can pick: controls, menu items, windows, Deskbar
 A little room
 Небольшой отступ
 
-A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can’t pass it.
 Вместо ввода пароля для sudo в Terminal, запросов администратора, Passwords и разблокировки экрана можно посмотреть в инфракрасную камеру. Она распознаёт только инфракрасное изображение: фотография на экране не подойдёт.
 
 A lot of room
@@ -493,7 +493,7 @@ A thick line
 A thin line
 Тонкая линия
 
-A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch of a security key (a YubiKey) can stand for your password once you’re signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
 После входа касание ключа безопасности (YubiKey) заменяет пароль для sudo в Terminal, Passwords и запросов администратора. Для входа и разблокировки компьютера ключ не используется: иначе нашедший компьютер со вставленным ключом мог бы его открыть.
 
 A touch starts at pressure
@@ -904,8 +904,8 @@ All lines around the selected one. {}
 All of Olo’s {} words are in {}.
 Все строки Olo ({0}) доступны на языке «{1}».
 
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-Все эти настройки относятся ко всему компьютеру, поэтому для их изменения запрашивается пароль администратора.
+All these settings are for the whole computer: a change asks for an administrator’s password, and is made at once.
+Все эти настройки действуют для всего компьютера: изменение требует пароля администратора и применяется сразу.
 
 All time
 За всё время
@@ -1000,7 +1000,7 @@ Always on Top
 An account can answer again.
 Учётная запись снова может отвечать.
 
-An administrator's password is needed.
+An administrator’s password is needed.
 Нужен пароль администратора.
 
 An agent is at rest here
@@ -2215,7 +2215,7 @@ Choose…
 Chosen by someone
 Выбрано пользователем
 
-Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+Chosen for the whole computer and kept across restarts. It’s the computer’s, not this account’s, so choosing asks for an administrator’s password.
 Выбор действует на весь компьютер и сохраняется при перезапуске. Для изменения нужен пароль администратора.
 
 Chosen outside dnf
@@ -3790,9 +3790,6 @@ Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
 Каждое новое окно занимает половину того, с которым вы работали.
 
-Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-Все настроенные способы позволяют обойтись без ввода пароля в Passwords, при sudo в Terminal и при запросах администратора. Лицо и отпечаток также подходят для входа и разблокировки. Сработает тот способ, которым вы воспользуетесь первым.
-
 Each person gets their own Rex server, and signs in through this one.
 Каждый пользователь получает свой сервер Rex и входит через этот.
 
@@ -3928,7 +3925,7 @@ English (US)
 Enhancements
 Улучшения
 
-Enrolling didn't finish.
+Enrolling didn’t finish.
 Регистрация не завершена.
 
 Enrolling your {}
@@ -4051,7 +4048,7 @@ Every frame on time this last minute
 Every interface
 Все интерфейсы
 
-Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every key press and every frame go through the window server’s loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Каждое нажатие клавиши и каждый кадр проходят через цикл оконного сервера и его поток ввода. Если включить эту настройку, им будет выделен один из самых быстрых процессоров — {}. Сборки, браузеры и прочие программы будут работать на остальных и не задержат ввод и вывод.
 
 Every list's to-dos show here.
@@ -4198,22 +4195,22 @@ Fable 5.1
 Face Unlock
 Разблокировка по лицу
 
-Face unlock is installed only in the person's own session (polkit asks there).
+Face unlock is installed only in the person’s own session (polkit asks there).
 Разблокировку по лицу можно установить только в собственном сеансе пользователя: polkit запросит разрешение именно там.
 
-Face unlock isn't installed.
+Face unlock isn’t installed.
 Разблокировка по лицу не установлена.
 
-Face unlock wasn't installed: {}
+Face unlock wasn’t installed: {}
 Не удалось установить разблокировку по лицу: {}
 
-Face unlock wasn't removed: {}
+Face unlock wasn’t removed: {}
 Не удалось удалить разблокировку по лицу: {}
 
-Face unlock's service isn't in this build (build the whole workspace).
+Face unlock’s service isn’t in this build (build the whole workspace).
 В этой сборке нет службы разблокировки по лицу (соберите весь проект).
 
-Face unlock's service isn't in this build.
+Face unlock’s service isn’t in this build.
 В этой сборке нет службы разблокировки по лицу.
 
 Fade
@@ -5554,7 +5551,7 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 Не удалось прочитать: {}
 
-It didn't work.
+It didn’t work.
 Не удалось выполнить.
 
 It didn’t open: {}.
@@ -5602,10 +5599,10 @@ It was run by {} in {}.
 It was run by {}.
 Запустил {}.
 
-It wasn't forgotten ({}).
+It wasn’t forgotten ({}).
 Не удалось удалить сопряжение ({}).
 
-It wasn't set up ({}).
+It wasn’t set up ({}).
 Не удалось настроить ({}).
 
 It won’t start again when {} restarts.
@@ -5797,7 +5794,7 @@ Keep Only on This Computer
 Keep Them Off
 Оставить выключенными
 
-Keep a busy program's turn short
+Keep a busy program’s turn short
 Короткие кванты для занятых программ
 
 Keep a core for the window server
@@ -5866,7 +5863,7 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 Хранит пароли других приложений и разблокируется при входе.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux’s default "none" only throttles background writeback (queue/scheduler).
 Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux «none» ограничивает лишь фоновый сброс (queue/scheduler).
 
 Keeps typing quick over a slow link.
@@ -6217,13 +6214,13 @@ Link’s rate
 Link…
 Ссылка…
 
-Linux's own
+Linux’s own
 Как в Linux
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Штатный планировщик Linux (EEVDF) справедливо распределяет время между всеми программами. В обоих планировщиках потоки Olo, от которых зависит отклик, работают с приоритетом реального времени. Под нагрузкой, например во время сборки, рабочий стол быстрее всего реагирует со штатным планировщиком.
 
-Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Обычный способ Linux (cubic) отправляет, пока не заполнятся очереди по пути, что добавляет задержку; этот измеряет путь и держится ниже его пропускной способности (модуль Olo, tcp_bbr3).
 
 List
@@ -7513,8 +7510,8 @@ No to-dos
 No touches in the last minute
 За последнюю минуту касаний не было
 
-No touchpad found.
-Сенсорная панель не найдена.
+No touchpad found. These settings are used when one is connected.
+Сенсорная панель не найдена. Эти настройки будут действовать, когда её подключат.
 
 No update matches the search.
 Нет обновлений, соответствующих запросу.
@@ -8044,7 +8041,7 @@ Olo's boot splash
 Olo's login screen
 Экран входа в Olo
 
-Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Модуль Olo проверяет ядро при загрузке и в это ядро не вошёл. Olo Doctor объясняет почему.
 
 Olo's own
@@ -8199,6 +8196,9 @@ On: brush starts olo-complete as you next type in it.
 
 On: packages come from it
 Включён: из него поступают пакеты
+
+Once set up, each of these can stand for your password wherever it’s asked: in Passwords, sudo in Terminal and administrator requests, and with a face or a finger, at the lock and login screens too. Whichever you use first counts.
+После настройки каждый способ может заменять пароль везде, где его спрашивают: в Passwords, при sudo в Terminal и при запросах администратора, а лицо или палец — ещё и на экранах блокировки и входа. Сработает тот, которым вы воспользуетесь первым.
 
 One a day for:
 Ежедневные хранить:
@@ -10477,7 +10477,7 @@ Set up {} as a shared Rex server
 Setting
 Параметр
 
-Setting it: an administrator's password is asked…
+Setting it: an administrator’s password is asked…
 Настройка: введите пароль администратора…
 
 Setting up backups to {}…
@@ -11593,9 +11593,6 @@ That isn't the backup's password.
 That isn’t a Copr project’s name.
 Недопустимое имя проекта Copr.
 
-That password isn't right.
-Неверный пароль.
-
 That password isn’t right.
 Неверный пароль.
 
@@ -11758,13 +11755,13 @@ The export failed: {}
 The fans' profile isn't in force yet: {}
 Профиль вентиляторов ещё не действует: {}
 
-The fingerprint couldn't be removed.
+The fingerprint couldn’t be removed.
 Не удалось удалить отпечаток.
 
-The fingerprint sensor couldn't be used.
+The fingerprint sensor couldn’t be used.
 Не удалось использовать сканер отпечатков.
 
-The fingerprint sensor isn't answering.
+The fingerprint sensor isn’t answering.
 Сканер отпечатков не отвечает.
 
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
@@ -11794,7 +11791,7 @@ The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 Значки, которые используются для {} во всей системе.
 
-The infrared camera couldn't be opened (its shutter, or another program).
+The infrared camera couldn’t be opened (its shutter, or another program).
 Не удалось открыть инфракрасную камеру. Проверьте шторку и не занята ли камера другой программой.
 
 The journal couldn't be read: {}
@@ -12061,10 +12058,10 @@ The store is over its {} limit
 The system power profiles service is unavailable.
 Системная служба профилей питания недоступна.
 
-The system's services (updates, indexing) can still run there.
+The system’s services (updates, indexing) can still run there.
 Системные службы (обновления, индексирование) по-прежнему могут выполняться на этом ядре.
 
-The system's services are kept off it too.
+The system’s services are kept off it too.
 Системные службы также не используют это ядро.
 
 The test didn't finish: {}.
@@ -12166,14 +12163,14 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 Нет адаптера Wi-Fi.
 
-There's no fingerprint sensor, or fprintd isn't running.
-Нет сканера отпечатков или не запущена служба fprintd.
-
-There's no infrared camera.
-Нет инфракрасной камеры.
-
 There: {} <{}>  ·  Here: {} <{}>
 Там: {} <{}>  ·  Здесь: {} <{}>
+
+There’s no fingerprint sensor, or fprintd isn’t running.
+Нет сканера отпечатков или не запущена служба fprintd.
+
+There’s no infrared camera.
+Нет инфракрасной камеры.
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 Эти приложения могут получать указанные записи при каждом запросе. Если отозвать разрешение, при следующем запросе снова потребуется подтверждение.
@@ -12259,7 +12256,7 @@ This computer is “{}”.
 This computer runs Fedora {}.
 На этом компьютере установлена Fedora {}.
 
-This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
 Ядро не поддерживает загрузку других планировщиков, поэтому работает штатный. Для sched_ext нужен Linux 6.12 или новее.
 
 This computer's sensor sees when someone is in front of it.
@@ -12295,16 +12292,16 @@ This isn't the session at the computer, so the computer isn't restarted.
 This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 Это не адрес репозитория (git@host:owner/name.git или https://…).
 
-This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel can’t hold a disk to a limit of its own (Linux 6.2 and later can).
 В этом ядре нельзя ограничивать диски по отдельности (нужен Linux 6.2 или новее).
 
-This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+This kernel doesn’t offer the kyber I/O scheduler on this computer’s NVMe drives.
 Это ядро не поддерживает планировщик ввода-вывода kyber для NVMe-накопителей этого компьютера.
 
-This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel has one way of preempting only: it wasn’t built to be told another.
 Это ядро собрано с одним режимом вытеснения, переключить его нельзя.
 
-This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+This kernel’s build hasn’t been checked yet: Olo’s module stays out until an Olo update checks it.
 Эта сборка ядра ещё не проверена: модуль Olo не загружается, пока обновление Olo её не проверит.
 
 This keyboard has no backlight.
@@ -13480,7 +13477,7 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 Выполненные шаги сохранятся. Повторная настройка продолжится с места остановки.
 
-What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+What windows draw into stays out of swap, so the desktop never waits for it (Olo’s live patch of Intel’s driver).
 Буферы, в которые рисуют окна, не уходят в подкачку, поэтому рабочий стол никогда их не ждёт (живой патч Olo для драйвера Intel).
 
 What you change applies when you leave Rescue.
@@ -13567,7 +13564,7 @@ When does the sun rise tomorrow?
 When held for:
 При удержании:
 
-When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+When no large piece is free, Intel’s driver takes smaller ones and windows keep drawing (Olo’s module, olo_gpu_pages).
 Если свободного большого блока нет, драйвер Intel берёт блоки поменьше, и окна продолжают рисоваться (модуль Olo, olo_gpu_pages).
 
 When pressed:
@@ -13753,10 +13750,10 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {}, так что окна и ввод не отстают и под нагрузкой (base slice).
 
-With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel’s next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel’s own scheduler.
 Если включено, пробуждённая программа выполняется сразу, даже когда процессоры заняты, не дожидаясь следующего такта ядра (full preemption). Сейчас планирует {} и решает это сам: настройка относится к собственному планировщику ядра.
 
-With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel’s next tick (full preemption).
 Если включено, пробуждённая программа выполняется сразу, даже когда процессоры заняты, не дожидаясь до миллисекунды следующего такта ядра (full preemption).
 
 Withdrawn by {}
@@ -13897,7 +13894,7 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Данные шифруются до отправки с компьютера. Ключ хранится в Passwords под именем «DiskBackup Key». С ним копии можно восстановить на любом компьютере.
 
-Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 Не удалось хорошо рассмотреть лицо. Сядьте на расстоянии вытянутой руки лицом к камере и попробуйте снова.
 
 Your face wasn’t recognised. Type your password.
@@ -14092,6 +14089,9 @@ about {} min left
 about {} s left
 осталось около {} с
 
+after a tick
+после такта
+
 all day
 весь день
 
@@ -14136,6 +14136,9 @@ as the machine has it
 
 at most {}
 не более {}
+
+at once
+сразу
 
 at {}
 в {}
@@ -14515,7 +14518,7 @@ not understood: {}
 not yet ({})
 ещё нет ({})
 
-not yet on this kernel's build, {}
+not yet on this kernel’s build, {}
 ещё нет на этой сборке ({})
 
 nothing backed up for {n} days
@@ -14584,7 +14587,7 @@ on battery
 on battery: it waits for power
 питание от батареи: ожидание сети питания
 
-on this kernel's build, {}
+on this kernel’s build, {}
 на этой сборке ядра ({})
 
 on {}
@@ -14940,6 +14943,12 @@ visibility down to {}
 
 what holds it back
 что его замедляет
+
+when it yields
+когда уступает
+
+when its turn ends
+в конце своей очереди
 
 where the scheduler puts it
 куда его назначает планировщик
