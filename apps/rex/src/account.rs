@@ -35,6 +35,10 @@ pub enum Item {
     /// Olo's skill for agents (`bridge::SKILL`), in the account's
     /// `~/.claude`.
     Skill,
+    /// The person's repositories, all of them as one row: cloned and
+    /// set up (`olo_rex_client::repos`; the Repositories window has
+    /// each by itself).
+    Repos,
 }
 
 /// The window's groups, each with its items in their order (and the
@@ -42,8 +46,11 @@ pub enum Item {
 /// what is to come (the person's settings for their agents copied,
 /// their repositories cloned) is a row here that opens a window of
 /// its own, never a list inside this one.
-pub const GROUPS: [(&str, &[Item]); 2] =
-    [("Programs", &[Item::Step(Step::Path), Item::Step(Step::Claude), Item::Step(Step::Codex), Item::Step(Step::Antigravity)]), ("Settings", &[Item::Step(Step::Git), Item::Carry, Item::Skill])];
+pub const GROUPS: [(&str, &[Item]); 3] = [
+    ("Programs", &[Item::Step(Step::Path), Item::Step(Step::Claude), Item::Step(Step::Codex), Item::Step(Step::Antigravity)]),
+    ("Settings", &[Item::Step(Step::Git), Item::Carry, Item::Skill]),
+    ("Repositories", &[Item::Repos]),
+];
 
 impl Item {
     pub fn all() -> impl Iterator<Item = Item> {
@@ -55,6 +62,7 @@ impl Item {
             Item::Step(step) => step.id(),
             Item::Carry => "settings",
             Item::Skill => "skill",
+            Item::Repos => "repos",
         }
     }
 
@@ -68,6 +76,7 @@ impl Item {
             Item::Step(step) => step.title(),
             Item::Carry => "Agent settings",
             Item::Skill => "Skill for agents",
+            Item::Repos => "Your repositories",
         }
     }
 
@@ -77,6 +86,7 @@ impl Item {
             Item::Step(step) => step.why(),
             Item::Carry => "Settings, instructions, skills and commands. Never a sign-in or a key.",
             Item::Skill => "Tells Claude Code and other agents there how to use the bridge and Rex.",
+            Item::Repos => "The ones you choose, cloned in your home folder there and set up once.",
         }
     }
 
@@ -91,7 +101,16 @@ impl Item {
             Item::Step(step) => host.account.as_ref().map(|account| account.done(step, who)),
             Item::Carry => host.carried.map(|(to_copy, ..)| to_copy == 0),
             Item::Skill => host.skill,
+            Item::Repos => host.repos_there.as_ref().map(|there| there.iter().all(olo_rex_client::repos::There::done)),
         }
+    }
+}
+
+impl Item {
+    /// Whether it is one of what `host`'s account is to have: the
+    /// repositories only where the person has chosen some.
+    pub fn applies(self, host: &HostStands) -> bool {
+        self != Item::Repos || !host.repos.is_empty()
     }
 }
 
@@ -99,7 +118,7 @@ impl Item {
 /// are there, of how many, and the names of those that aren't. None
 /// where that isn't known.
 pub fn tally(host: &HostStands) -> Option<(usize, usize, Vec<&'static str>)> {
-    let stands: Vec<(Item, bool)> = Item::all().map(|item| item.done(host, None).map(|done| (item, done))).collect::<Option<_>>()?;
+    let stands: Vec<(Item, bool)> = Item::all().filter(|item| item.applies(host)).map(|item| item.done(host, None).map(|done| (item, done))).collect::<Option<_>>()?;
     let left: Vec<&'static str> = stands.iter().filter(|(_, done)| !done).map(|(item, _)| olo_kit::words::tr(item.title())).collect();
     Some((stands.len() - left.len(), stands.len(), left))
 }
@@ -112,6 +131,8 @@ pub struct Doing {
     pub line: String,
     /// Taken off, not put there (the skill).
     pub removing: bool,
+    /// Of the repositories, the one being cloned now, by its name.
+    pub of: Option<String>,
 }
 
 /// What the window is of, and at.
@@ -130,6 +151,8 @@ pub struct Shown {
     pub ran: usize,
     /// What couldn't be done, the last time, and what the host said.
     pub failed: Vec<(Item, String)>,
+    /// Of the repositories, the one a run couldn't clone, by its name.
+    pub failed_repo: Option<String>,
     /// The host is being asked again how the account stands.
     pub checking: bool,
     /// The person's name and address for git, as this computer's git
@@ -214,13 +237,19 @@ fn demo() -> Shown {
     let who = this_computers_git();
     match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
         Some("doing") => Shown {
-            doing: Some(Doing { item: Item::Step(Step::Codex), line: "Downloading Codex 0.172.0 for x86_64-unknown-linux-musl…  62%".into(), removing: false }),
+            doing: Some(Doing { item: Item::Step(Step::Codex), line: "Downloading Codex 0.172.0 for x86_64-unknown-linux-musl…  62%".into(), removing: false, of: None }),
             queue: vec![Item::Step(Step::Antigravity), Item::Carry, Item::Skill],
             who,
             ..Shown::default()
         },
         Some("failed") => Shown { failed: vec![(Item::Step(Step::Codex), "curl: (6) Could not resolve host: chatgpt.com".into())], who, ..Shown::default() },
         Some("asking") => Shown { checking: true, who, ..Shown::default() },
+        Some("cloning") => Shown {
+            doing: Some(Doing { item: Item::Repos, line: "Receiving objects:  62% (1240/2000), 3.10 MiB | 2.40 MiB/s".into(), removing: false, of: Some("website".into()) }),
+            who,
+            ..Shown::default()
+        },
+        Some("clonefailed") => Shown { failed: vec![(Item::Repos, "git@git.example.org: Permission denied (publickey).".into())], failed_repo: Some("website".into()), who, ..Shown::default() },
         _ => Shown { who, ..Shown::default() },
     }
 }
@@ -284,7 +313,7 @@ pub fn remove_skill(hub: &Arc<RexHub>) {
     let key = {
         let mut live = live();
         let Some(shown) = live.as_mut().filter(|shown| !shown.busy()) else { return };
-        shown.doing = Some(Doing { item: Item::Skill, line: String::new(), removing: true });
+        shown.doing = Some(Doing { item: Item::Skill, line: String::new(), removing: true, of: None });
         shown.failed.retain(|(i, _)| *i != Item::Skill);
         shown.key.clone()
     };
@@ -296,9 +325,13 @@ pub fn remove_skill(hub: &Arc<RexHub>) {
 /// `item` ended on the host `key`: how, and on to the next.
 fn ended(hub: &Arc<RexHub>, key: &str, item: Item, result: Result<(), String>) {
     if let Some(shown) = live().as_mut().filter(|shown| shown.key == key) {
+        let of = shown.doing(item).and_then(|doing| doing.of.clone());
         if shown.doing(item).is_some() {
             shown.doing = None;
             shown.ran += 1;
+        }
+        if item == Item::Repos {
+            shown.failed_repo = of.filter(|_| result.is_err());
         }
         if let Err(said) = result {
             shown.failed.retain(|(i, _)| *i != item);
@@ -325,13 +358,14 @@ fn next(hub: &Arc<RexHub>) {
             return;
         };
         let item = shown.queue.remove(0);
-        shown.doing = Some(Doing { item, line: String::new(), removing: false });
+        shown.doing = Some(Doing { item, line: String::new(), removing: false, of: None });
         (shown.key.clone(), item, shown.who.clone())
     };
     crate::ui::account_changed();
     let (of_line, of_done, again) = (key.clone(), key.clone(), hub.clone());
     let step = match item {
-        Item::Step(step) => step,
+        Item::Step(step) => Some(step),
+        Item::Repos => None,
         Item::Carry => {
             hub.carry_settings(&key, move |result| ended(&again, &of_done, item, result));
             return;
@@ -341,23 +375,25 @@ fn next(hub: &Arc<RexHub>) {
             return;
         }
     };
-    let stop = hub.ready_step(
-        &key,
-        step,
-        who,
-        move |line| {
-            if let Some(doing) = live().as_mut().filter(|shown| shown.key == of_line).and_then(|shown| shown.doing.as_mut()).filter(|doing| doing.item == item) {
-                doing.line = line.to_owned();
+    let said = move |line: &str| {
+        if let Some(doing) = live().as_mut().filter(|shown| shown.key == of_line).and_then(|shown| shown.doing.as_mut()).filter(|doing| doing.item == item) {
+            // (The clones' run names each as it begins on it.)
+            if let Some(name) = line.strip_prefix("Cloning ").and_then(|rest| rest.strip_suffix('…')) {
+                doing.of = Some(name.to_owned());
             }
-            let mut running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
-            if running.1.is_none_or(|told| told.elapsed() >= std::time::Duration::from_millis(100)) {
-                running.1 = Some(Instant::now());
-                drop(running);
-                crate::ui::account_changed();
-            }
-        },
-        move |result| ended(&again, &of_done, item, result),
-    );
+            doing.line = line.to_owned();
+        }
+        let mut running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+        if running.1.is_none_or(|told| told.elapsed() >= std::time::Duration::from_millis(100)) {
+            running.1 = Some(Instant::now());
+            drop(running);
+            crate::ui::account_changed();
+        }
+    };
+    let stop = match step {
+        Some(step) => hub.ready_step(&key, step, who, said, move |result| ended(&again, &of_done, item, result)),
+        None => hub.clone_repos(&key, said, move |result| ended(&again, &of_done, item, result)),
+    };
     // (None: it couldn't be begun, `ended` has heard so already, and
     // the next may be under way by now with a stop of its own.)
     if stop.is_some() {
@@ -375,7 +411,7 @@ pub fn stop(hub: &Arc<RexHub>) {
     if let Some(shown) = live().as_mut() {
         // (The skill's file is a moment's work with no stop of its
         // own: it ends by itself.)
-        if shown.doing.as_ref().is_some_and(|doing| matches!(doing.item, Item::Step(_))) {
+        if shown.doing.as_ref().is_some_and(|doing| matches!(doing.item, Item::Step(_) | Item::Repos)) {
             shown.doing = None;
         }
         shown.queue.clear();
@@ -397,8 +433,13 @@ mod tests {
         close();
         assert_eq!(current(), None, "nothing being done: of no host");
         let claude = Item::Step(Step::Claude);
-        *live() =
-            Some(Shown { key: "a".into(), name: "far".into(), doing: Some(Doing { item: claude, line: "Downloading…".into(), removing: false }), queue: vec![Item::Skill], ..Shown::default() });
+        *live() = Some(Shown {
+            key: "a".into(),
+            name: "far".into(),
+            doing: Some(Doing { item: claude, line: "Downloading…".into(), removing: false, of: None }),
+            queue: vec![Item::Skill],
+            ..Shown::default()
+        });
         close();
         let kept = current().unwrap();
         assert!(kept.busy() && kept.doing(claude).is_some());
@@ -409,7 +450,7 @@ mod tests {
     #[test]
     fn every_item_has_a_name_of_its_own_and_is_in_a_group() {
         let all: Vec<Item> = Item::all().collect();
-        assert_eq!(all.len(), 7);
+        assert_eq!(all.len(), 8);
         for item in &all {
             assert_eq!(Item::of(item.id()), Some(*item));
         }

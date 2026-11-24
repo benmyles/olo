@@ -127,6 +127,12 @@ impl There {
         matches!(self, There::Cloned { set_up: true })
     }
 
+    /// Something can be done for it: cloned, or set up. (Not where its
+    /// folder is in use: that is the person's to clear.)
+    pub fn to_do(&self) -> bool {
+        matches!(self, There::Absent | There::Cloned { set_up: false })
+    }
+
     /// What a host answered [`look`] of `repos`: how each stands, in
     /// their order. None: it didn't answer of all of them.
     pub fn read(output: &str, repos: &[Repo]) -> Option<Vec<There>> {
@@ -148,6 +154,36 @@ impl There {
             })
             .collect()
     }
+}
+
+/// A line a clone wrote, as it is said in a window: git's own count of
+/// what it has received ("Receiving objects:  62% (1240/2000), 3.10
+/// MiB | 2.40 MiB/s") as how far it is and how much has come; any
+/// other line as it is.
+pub fn progress(line: &str) -> String {
+    let line = line.trim();
+    let percent = |rest: &str| rest.split('%').next().map(str::trim).filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).map(str::to_owned);
+    if let Some(rest) = line.strip_prefix("Receiving objects:") {
+        let size = rest.split(", ").nth(1).and_then(|part| part.split('|').next()).map(str::trim).and_then(|size| {
+            let (number, unit) = size.split_once(' ')?;
+            let unit = match unit {
+                "KiB" => "kB",
+                "MiB" => "MB",
+                "GiB" => "GB",
+                _ => return None,
+            };
+            Some(format!("{:.1} {unit}", number.parse::<f64>().ok()?))
+        });
+        return match (percent(rest), size) {
+            (Some(percent), Some(size)) => format!("{percent}%  ·  {size} received"),
+            (Some(percent), None) => format!("{percent}%"),
+            _ => line.to_owned(),
+        };
+    }
+    if let Some(percent) = line.strip_prefix("Resolving deltas:").and_then(percent) {
+        return format!("{percent}%  ·  putting it together");
+    }
+    line.to_owned()
 }
 
 /// Whether two addresses are one repository's: the same host and path,
@@ -206,6 +242,17 @@ mod tests {
         assert!(same_repository("git@github.com:Example/olo.git", "https://github.com/example/olo"));
         assert!(same_repository("ssh://git@github.com/example/olo", "git@github.com:example/olo.git"));
         assert!(!same_repository("git@github.com:example/olo.git", "git@github.com:example/other.git"));
+    }
+
+    #[test]
+    fn gits_progress_is_said_plainly() {
+        assert_eq!(progress("Receiving objects:  62% (1240/2000), 3.10 MiB | 2.40 MiB/s"), "62%  ·  3.1 MB received");
+        assert_eq!(progress("Receiving objects: 100% (2000/2000), 512.00 KiB | 1.00 MiB/s, done."), "100%  ·  512.0 kB received");
+        assert_eq!(progress("Receiving objects:   4% (80/2000)"), "4%");
+        assert_eq!(progress("Resolving deltas:  40% (400/1000)"), "40%  ·  putting it together");
+        // (Anything else as it is: a set-up command's own words.)
+        assert_eq!(progress("  Compiling serde v1.0  "), "Compiling serde v1.0");
+        assert_eq!(progress("Cloning into 'src/olo'..."), "Cloning into 'src/olo'...");
     }
 
     #[test]

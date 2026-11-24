@@ -115,7 +115,7 @@ def apps(home):
         # window, hosts in every state: a window the app doesn't show
         # at its start is one the lint doesn't see. `OLO_REX_DEMO_OPEN`:
         # the commands that open them.)
-        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock"), "OLO_REX_DEMO_OPEN": "app.hosts,host.manage:dev-box,host.account:dev-box", "OLO_REX_DEMO_HOSTS": "states"}, False),
+        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock"), "OLO_REX_DEMO_OPEN": "app.hosts,host.manage:dev-box,host.account:dev-box,host.repos,host.repos.add", "OLO_REX_DEMO_HOSTS": "states", "OLO_REX_DEMO_REPOS": "1"}, False),
         ("Terminal", ["olo-terminal"], {}, False),
         ("Tracker", ["olo-tracker", home], {}, False),
         ("Viewer", ["olo-viewer", os.path.join(home, "Pictures/holiday.png")], {}, False),

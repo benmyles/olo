@@ -1477,9 +1477,29 @@ something nobody here has is in "Blocked", with what it waits for.
       this computer: …", since "skills" over the row "Skill for
       agents" makes a careful reader wonder whether Olo's is copied
       too.
-    - *Repositories cloned and set up* (Ben: "choosing what repos to
-      clone and how to set them up"): a list the person keeps, a row
-      here ("4 of 6 cloned", Choose…) and a window of its own.
+    - *Repositories cloned and set up*: built (2026-11-23; HACKING,
+      "The person's repositories"): one list for every host, a row in
+      the Account window, a window and a form of their own. Left: a
+      list for each host where they should differ (now every host
+      gets all of them); a repository kept up to date (fetched) from
+      here; the set-up's whole output, to open after it fails; tried
+      over SSH with the forwarded keys against a real host (the rig
+      clones from a folder). From the reviewers' looks, for the
+      desktop and the kit, not this window: an app's second panel
+      opens as a tab stacked on its first, a row higher and not on
+      one row with it ("reads as a cascade of two misregistered
+      windows, not one stack": Opus); the kit's default button's ring
+      stands outside its column, a text field's text sits a point or
+      two under its label's baseline, and a column list's empty text
+      is centred over its scroll bar too (Gemini: measure each
+      first). And of these windows, from Opus's last review, for
+      later: the form's buttons move a point and a half as the error
+      takes the note's place (a slot of one height); the field at
+      fault marked itself, with the note kept; "olo’s folder" doesn't
+      say which olo where a fork has the same name ("the folder of
+      example/olo"); no Stop in the Repositories window while it
+      clones; a remedy with a failed clone's reason, where one can be
+      known (a key the host hasn't).
     - What Opus's early review asked for and isn't built: an agent
       the person doesn't want left out of the count and of Set Up
       ("Don't Install", on the row's menu); an agent's update said and

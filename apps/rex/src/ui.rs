@@ -68,6 +68,10 @@ pub enum WinRole {
     Host,
     /// A far host's account made ready for work (`account`).
     Account,
+    /// The person's repositories (`repos`), and the form that adds
+    /// one or changes one.
+    Repos,
+    RepoEdit,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -528,6 +532,8 @@ pub fn open_or_raise_panel(role: WinRole) {
         // chosen in another window.)
         WinRole::Host => WindowOptions { fixed: true, ..WindowOptions::new(host_title(), crate::host_panel::HOST_WIDTH, 120.0).dialog() },
         WinRole::Account => WindowOptions { fixed: true, ..WindowOptions::new(account_title(), crate::account_panel::ACCOUNT_WIDTH, 120.0).dialog() },
+        WinRole::Repos => WindowOptions { fixed: true, ..WindowOptions::new("Repositories", crate::repos::WIDTH, 120.0).dialog() },
+        WinRole::RepoEdit => WindowOptions::alert(if crate::repos::editing().is_some() { "Edit Repository" } else { "Add Repository" }, crate::repos::FORM_WIDTH, 120.0),
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
             WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
@@ -634,6 +640,10 @@ pub enum WinMsg {
     HostDo(crate::host_panel::HostDo),
     AccountChanged,
     AccountDo(crate::account_panel::AccountDo),
+    ReposChosen,
+    ReposDo(crate::repos::ReposDo),
+    /// The repository form: done (true), or cancelled.
+    RepoEditDone(bool),
     ServerChanged,
     ServerDo(crate::server_panel::ServerDo),
     ServerKey(usize),
@@ -712,6 +722,11 @@ pub struct RexWindow {
     /// its rows as last said, and the one chosen (its name); and its
     /// Log page's text, with what it was last filled from.
     pub server_list: widgets::ListModel,
+    /// The Repositories window's list and its rows, and the form's
+    /// three fields (address, folder, set-up).
+    pub repos_list: widgets::ListModel,
+    pub repos_rows: Rc<Vec<crate::repos::RepoRow>>,
+    repo_fields: Option<[Child<TextField>; 3]>,
     pub server_rows: Rc<Vec<crate::server_panel::PersonRow>>,
     server_chosen: Option<String>,
     server_log: Option<Child<widgets::TextView>>,
@@ -879,6 +894,9 @@ impl RexWindow {
             ports_rows: Rc::default(),
             ports_chosen: None,
             server_list: widgets::ListModel::new(false),
+            repos_list: widgets::ListModel::new(false),
+            repos_rows: Rc::default(),
+            repo_fields: None,
             server_rows: Rc::default(),
             server_chosen: None,
             server_log: None,
@@ -993,6 +1011,45 @@ impl RexWindow {
         if role == WinRole::Hosts {
             hosts_list.focus(cx);
         }
+        let repos_list = widgets::ListModel::new(false);
+        if role == WinRole::Repos {
+            repos_list.focus(cx);
+        }
+        let repo_fields = (role == WinRole::RepoEdit).then(|| {
+            let was = crate::repos::editing().and_then(|i| app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.get(i).cloned()).unwrap_or_default();
+            let address = widgets::text_field(cx, |f| f.name("Address").hint("git@github.com:you/project.git").with_text(was.url.clone()));
+            // (The folder as the list writes it, "~/…"; each hint what
+            // an empty field comes to: where it goes by its name, and
+            // no command.)
+            let place = |repo: &olo_rex_client::repos::Repo| format!("~/{}", repo.place());
+            let folder = widgets::text_field(cx, |f| {
+                f.name("Folder")
+                    .hint(if was.url.is_empty() { "~/src/project".to_owned() } else { place(&olo_rex_client::repos::Repo { folder: String::new(), ..was.clone() }) })
+                    .with_text(if was.folder.is_empty() { String::new() } else { place(&was) })
+            });
+            let setup = widgets::text_field(cx, |f| f.name("Set up with").hint("Nothing").with_text(was.setup.clone()));
+            address.focus(cx);
+            for field in [&address, &folder, &setup] {
+                cx.subscribe(field, |w: &mut Self, e: &TextFieldEvent, cx| match e {
+                    TextFieldEvent::Entered => cx.send(WinMsg::RepoEditDone(true)),
+                    TextFieldEvent::Changed => {
+                        // (The folder an empty field comes to, as its hint.)
+                        if let Some(fields) = &w.repo_fields {
+                            let typed = crate::repos::typed(cx, fields);
+                            let place = if typed.url.is_empty() || typed.wrong().is_some() {
+                                "~/src/project".to_owned()
+                            } else {
+                                format!("~/{}", olo_rex_client::repos::Repo { folder: String::new(), ..typed }.place())
+                            };
+                            fields[1].update(cx, |f, cx| f.set_hint(place, cx));
+                        }
+                        cx.invalidate();
+                    }
+                    _ => {}
+                });
+            }
+            [address, folder, setup]
+        });
 
         Self {
             id,
@@ -1033,6 +1090,9 @@ impl RexWindow {
             ports_rows: Rc::default(),
             ports_chosen: None,
             server_list: widgets::ListModel::new(false),
+            repos_list,
+            repos_rows: Rc::default(),
+            repo_fields,
             server_rows: Rc::default(),
             server_chosen: None,
             server_log,
@@ -1350,6 +1410,14 @@ impl RexWindow {
     /// ("Forward and Open" is for one a program in a pane is seen to
     /// listen on). How it went is said in the workspace it was asked
     /// from, and its row in Hosts says where it is here.
+    /// The person's repositories but the one the form is changing: what
+    /// a folder typed there mustn't be another's.
+    fn repo_others(&self) -> Vec<olo_rex_client::repos::Repo> {
+        let repos = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
+        let editing = crate::repos::editing();
+        repos.into_iter().enumerate().filter(|(i, _)| Some(*i) != editing).map(|(_, repo)| repo).collect()
+    }
+
     fn submit_forward(&mut self, cx: &mut olo_kit::Cx<Self>) {
         let port = self.fwd_port_field.as_ref().and_then(|f| f.read(cx).text().trim().parse::<u16>().ok()).filter(|p| *p > 0);
         let from = self.forward_hosts();
@@ -1522,6 +1590,19 @@ impl RexWindow {
             "host.account" => open_account(&hub, &self.active_host),
             c if c.starts_with("host.account:") => open_account(&hub, c.trim_start_matches("host.account:")),
             "host.ready.stop" => crate::account::stop(&hub),
+            // (The person's repositories: their window, and the form
+            // for a new one or for the one at a place in the list.)
+            "host.repos" => open_or_raise_panel(WinRole::Repos),
+            "host.repos.add" => {
+                crate::repos::edit(None);
+                open_or_raise_panel(WinRole::RepoEdit);
+            }
+            c if c.starts_with("host.repos.edit:") => {
+                if let Ok(i) = c.trim_start_matches("host.repos.edit:").parse::<usize>() {
+                    crate::repos::edit(Some(i));
+                    open_or_raise_panel(WinRole::RepoEdit);
+                }
+            }
             c if c.starts_with("host.ready:") => {
                 let mut parts = c.trim_start_matches("host.ready:").rsplitn(2, ':');
                 if let (Some(what), Some(key)) = (parts.next(), parts.next()) {
@@ -3377,6 +3458,58 @@ impl RexWindow {
                         cx.msg_with(|_: &()| WinMsg::ServerChosen),
                     ))
             }
+            WinRole::Repos => {
+                // (How each stands is said of the Account window's host.)
+                let (repos, stands) = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    (st.repos.clone(), crate::account::current().and_then(|shown| st.host_stands(&shown.key)))
+                };
+                let shown = crate::account::current().unwrap_or_default();
+                let reached = stands.as_ref().filter(|h| h.conn == HostConnState::Connected && h.ssh);
+                let cloning = shown.doing(crate::account::Item::Repos).map(|doing| crate::repos::Cloning(doing.of.clone()));
+                // (What a run couldn't clone: which, and what the host said.)
+                let why = shown.failed(crate::account::Item::Repos);
+                let failed = shown.failed_repo.as_deref().zip(why);
+                self.repos_rows = Rc::new(crate::repos::rows(&repos, stands.as_ref(), cloning.as_ref(), failed));
+                let failed_line = why.map(|why| match &shown.failed_repo {
+                    Some(name) => olo_kit::tr!("{} couldn’t be cloned: {}", name, why).to_string(),
+                    None => why.to_owned(),
+                });
+                let chosen = self.repos_list.state().single().filter(|i| *i < self.repos_rows.len());
+                let left: Vec<olo_rex_client::repos::There> = reached
+                    .filter(|h| crate::account_panel::left(h, &shown).contains(&crate::account::Item::Repos))
+                    .and_then(|h| h.repos_there.clone())
+                    .map_or(Vec::new(), |there| there.into_iter().filter(|t| t.to_do()).collect());
+                let (to_clone, set_up_only) = (left.len(), !left.is_empty() && left.iter().all(|t| matches!(t, olo_rex_client::repos::There::Cloned { .. })));
+                let (rows, list) = (self.repos_rows.clone(), self.repos_list.clone());
+                div().w_full().child(crate::repos::render_panel(
+                    cx,
+                    &list,
+                    &rows,
+                    chosen,
+                    reached.map(|h| h.name.as_str()),
+                    to_clone,
+                    set_up_only,
+                    failed_line,
+                    cx.msg_with(|_: &()| WinMsg::ReposChosen),
+                    cx.msg_with(|what: &crate::repos::ReposDo| WinMsg::ReposDo(what.clone())),
+                ))
+            }
+            WinRole::RepoEdit => {
+                let Some(fields) = &self.repo_fields else {
+                    return div();
+                };
+                let others = self.repo_others();
+                div()
+                    .w_full()
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        if e.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            cx.send(WinMsg::RepoEditDone(false));
+                        }
+                    }))
+                    .child(crate::repos::render_form(cx, fields, &others, crate::repos::editing().is_none(), cx.msg_with(|done: &bool| WinMsg::RepoEditDone(*done))))
+            }
             WinRole::Account => {
                 let Some(shown) = crate::account::current() else {
                     return div();
@@ -3871,12 +4004,55 @@ impl View for RexWindow {
                     AccountDo::RemoveSkill => crate::account::remove_skill(&hub),
                     AccountDo::Stop => crate::account::stop(&hub),
                     AccountDo::Check => crate::account::check(&hub),
+                    AccountDo::Repos => open_or_raise_panel(WinRole::Repos),
                     AccountDo::Connect => {
                         if let Some(shown) = crate::account::current() {
                             hub.connect_host(&shown.key);
                         }
                     }
                 }
+            }
+            WinMsg::ReposChosen => cx.invalidate(),
+            WinMsg::ReposDo(what) => {
+                use crate::repos::ReposDo;
+                let hub = app().hub.clone();
+                match what {
+                    ReposDo::Add => {
+                        crate::repos::edit(None);
+                        open_or_raise_panel(WinRole::RepoEdit);
+                    }
+                    ReposDo::Edit(i) => {
+                        crate::repos::edit(Some(i));
+                        open_or_raise_panel(WinRole::RepoEdit);
+                    }
+                    ReposDo::Remove(i) => {
+                        let mut repos = hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
+                        if i < repos.len() {
+                            repos.remove(i);
+                            hub.set_repos(repos);
+                            crate::account::check(&hub);
+                        }
+                    }
+                    ReposDo::Clone => crate::account::run(&hub, &[crate::account::Item::Repos]),
+                }
+                cx.invalidate();
+            }
+            WinMsg::RepoEditDone(false) => cx.request_close(),
+            WinMsg::RepoEditDone(true) => {
+                // (Kept, in its place or at the list's end, where
+                // nothing is wrong with it; the host asked again how
+                // they stand.)
+                let others = self.repo_others();
+                let Some(repo) = self.repo_fields.as_ref().map(|fields| crate::repos::typed(cx, fields)).filter(|repo| crate::repos::wrong(repo, &others).is_none()) else { return };
+                let hub = app().hub.clone();
+                let mut repos = hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
+                match crate::repos::editing().filter(|i| *i < repos.len()) {
+                    Some(i) => repos[i] = repo,
+                    None => repos.push(repo),
+                }
+                hub.set_repos(repos);
+                crate::account::check(&hub);
+                cx.request_close();
             }
             WinMsg::HostDo(what) => {
                 use crate::host_panel::HostDo;

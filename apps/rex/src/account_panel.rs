@@ -46,6 +46,8 @@ pub enum AccountDo {
     Stop,
     /// The host asked again how the account stands.
     Check,
+    /// The Repositories window.
+    Repos,
     /// A host that isn't connected, connected to.
     Connect,
 }
@@ -65,6 +67,8 @@ pub enum Lamp {
 pub enum Press {
     Run,
     RemoveSkill,
+    /// Opens the Repositories window.
+    Repos,
 }
 
 /// How an item stands, on its row.
@@ -94,9 +98,86 @@ fn verb(item: Item) -> &'static str {
     }
 }
 
+/// The repositories' one row: how many of them are cloned, with the
+/// window that has each (Choose…). What is missing is cloned by the
+/// run of all that is left, or from that window.
+fn repos_row(host: &HostStands, shown: &Shown) -> Row {
+    use olo_kit::words::{count, tr};
+    let reached = host.conn == HostConnState::Connected && host.ssh;
+    let choose = Some(("Choose…", Press::Repos, true));
+    let plain = |lamp, said: String, button| Row { lamp, said, host_said: None, note: None, button };
+    let cloned = |there: &[olo_rex_client::repos::There]| olo_kit::tr!("{} of {} cloned", there.iter().filter(|t| t.done()).count(), there.len()).to_string();
+    // (Which one, and git's count of what has come said plainly, in
+    // the window's own letters: its raw line in a terminal's face was
+    // "a log leaking through", Opus's second review.)
+    if let Some(doing) = shown.doing(Item::Repos) {
+        let said = match &doing.of {
+            Some(name) => olo_kit::tr!("Cloning {}…", name).into(),
+            None => tr("Cloning…").into(),
+        };
+        return Row { note: Some(olo_rex_client::repos::progress(&doing.line)).filter(|line| !line.is_empty() && !line.starts_with("Cloning ")), ..plain(Lamp::Doing, said, choose) };
+    }
+    if shown.queue.contains(&Item::Repos) {
+        return plain(Lamp::Queued, tr("Waiting").into(), choose);
+    }
+    // (Which one couldn't be, and what the host said of it.)
+    if let Some(why) = shown.failed(Item::Repos) {
+        // (Every fault its own count, in one order: one that couldn't
+        // be cloned, then those whose folder is taken. With the second
+        // unsaid here, this window hid a fault the list still showed.)
+        let said = match host.repos_there.as_deref().filter(|_| reached) {
+            Some(there) => {
+                let taken = there.iter().filter(|t| !t.done() && !t.to_do()).count();
+                let taken = if taken == 0 { String::new() } else { format!("  ·  {}", count(taken as u64, "1 folder taken", "{n} folders taken")) };
+                format!("{}  ·  {}{taken}", cloned(there), tr("1 couldn’t be cloned"))
+            }
+            None => tr("Couldn’t be cloned").into(),
+        };
+        let note = match &shown.failed_repo {
+            Some(name) => olo_kit::tr!("{} couldn’t be cloned: {}", name, why).to_string(),
+            None => why.to_owned(),
+        };
+        return Row { note: Some(note), ..plain(Lamp::Light(Light::Down), said, choose) };
+    }
+    // (None chosen: not one of what the account is to have, so not the
+    // grey light of a thing to do: a ring.)
+    if host.repos.is_empty() {
+        return plain(Lamp::Queued, tr("None chosen").into(), choose);
+    }
+    match &host.repos_there {
+        _ if !reached => plain(Lamp::Light(Light::Off), "—".into(), choose),
+        None => plain(Lamp::Queued, tr("Checking…").into(), choose),
+        Some(there) => {
+            let done = there.iter().filter(|t| t.done()).count();
+            // (Those whose folder holds something else are the
+            // person's to clear, and no run clones them: said here,
+            // and in red once they are all that is left. Unsaid, the
+            // head could never reach Ready and nothing said why.)
+            let taken: Vec<usize> = there.iter().enumerate().filter(|(_, t)| !t.done() && !t.to_do()).map(|(i, _)| i).collect();
+            let cloned = cloned(there);
+            match (done == there.len(), taken.as_slice()) {
+                (true, _) => plain(Lamp::Light(Light::On), count(done as u64, "1 cloned", "{n} cloned"), choose),
+                (false, []) => plain(Lamp::Light(Light::Off), cloned, choose),
+                (false, taken) => {
+                    let said = format!("{cloned}  ·  {}", count(taken.len() as u64, "1 folder taken", "{n} folders taken"));
+                    let only = there.iter().all(|t| !t.to_do());
+                    let place = host.repos.get(taken[0]).map(|repo| repo.place()).unwrap_or_default();
+                    Row {
+                        note: only.then(|| olo_kit::tr!("~/{} already holds something else. Choose… to see it.", place).into()),
+                        ..plain(Lamp::Light(if only { Light::Down } else { Light::Off }), said, choose)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// How `item` stands on the window's host.
 pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
     use olo_kit::words::tr;
+    if item == Item::Repos {
+        return repos_row(host, shown);
+    }
     let reached = host.conn == HostConnState::Connected && host.ssh;
     let can = reached && !shown.busy();
     let plain = |lamp, said: &'static str, button| Row { lamp, said: if said.is_empty() { String::new() } else { tr(said).into() }, host_said: None, note: None, button };
@@ -159,6 +240,8 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         (Item::Step(Step::Git), Some(false)) if host.account.as_ref().is_some_and(|a| !a.has_git) => off("Needs git there", false),
         (Item::Step(Step::Git), Some(false)) => off("Not set", shown.who.is_some()),
         (Item::Step(_), Some(false)) if host.account.as_ref().is_some_and(|a| !a.has_curl) => off("Needs curl there", false),
+        // (The repositories have a row of their own making, above.)
+        (Item::Repos, _) => repos_row(host, shown),
         (_, Some(false)) => off("Not installed", true),
     }
 }
@@ -166,7 +249,15 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
 /// What the button for all of it would do now: those that aren't there
 /// and can be put there, in their order.
 pub fn left(host: &HostStands, shown: &Shown) -> Vec<Item> {
-    Item::all().filter(|item| matches!(row(host, shown, *item), Row { lamp: Lamp::Light(Light::Off | Light::Down), button: Some((_, Press::Run, true)), .. })).collect()
+    let reached = host.conn == HostConnState::Connected && host.ssh;
+    Item::all()
+        .filter(|item| match item {
+            // (The repositories' button opens their window: they are
+            // left where some are chosen and not all are cloned.)
+            Item::Repos => reached && !shown.busy() && host.repos_there.as_ref().is_some_and(|there| there.iter().any(|t| t.to_do())),
+            _ => matches!(row(host, shown, *item), Row { lamp: Lamp::Light(Light::Off | Light::Down), button: Some((_, Press::Run, true)), .. }),
+        })
+        .collect()
 }
 
 /// The account's name at the window's head: who signs in there (the
@@ -190,7 +281,11 @@ pub fn head_state(host: &HostStands, shown: &Shown) -> (Lamp, String) {
         // is, where an installer says nothing for a while.)
         let at = shown.ran + usize::from(shown.doing.is_some());
         let of = shown.ran + usize::from(shown.doing.is_some()) + shown.queue.len();
-        return (Lamp::Doing, olo_kit::tr!("Setting up {} of {}…", at.max(1), of.max(1)).into());
+        // (One alone isn't "1 of 1": that read as a line cut short.)
+        if of <= 1 {
+            return (Lamp::Doing, tr("Setting up…").into());
+        }
+        return (Lamp::Doing, olo_kit::tr!("Setting up {} of {}…", at.max(1), of).into());
     }
     // (What couldn't be done is said here too: with it only on its
     // row, the head read as if nothing had gone wrong.)
@@ -218,7 +313,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
     let on_do: Rc<dyn Fn(&AccountDo, &mut WindowCx)> = Rc::new(on_do);
     // (One width for the window's buttons: one column down its right,
     // and the foot's two at its two edges.)
-    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Use Mine", "Set Up 9"]
+    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Use Mine", "Set Up 9"]
         .iter()
         .map(|l| button_width(l, false))
         .fold(m::BUTTON_MIN_WIDTH, f32::max);
@@ -293,6 +388,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
                     let what = match press {
                         Press::Run => AccountDo::Run(vec![item]),
                         Press::RemoveSkill => AccountDo::RemoveSkill,
+                        Press::Repos => AccountDo::Repos,
                     };
                     line.child(button(label.to_owned(), format!("account-{}", item.id()), what, can))
                 }
@@ -380,6 +476,9 @@ mod tests {
             account,
             // (The settings carried: as here, but where a test says.)
             carried: Some((0, 3, false)),
+            // (No repositories chosen, but where a test says.)
+            repos: Vec::new(),
+            repos_there: Some(Vec::new()),
         }
     }
 
@@ -410,7 +509,7 @@ mod tests {
         assert_eq!(account_name(&h), "you");
 
         // One being done, others waiting: no buttons, nothing else begun meanwhile.
-        let busy = Shown { doing: Some(Doing { item: CODEX, line: "Downloading…  40%".into(), removing: false }), queue: vec![AGY], ran: 1, ..shown.clone() };
+        let busy = Shown { doing: Some(Doing { item: CODEX, line: "Downloading…  40%".into(), removing: false, of: None }), queue: vec![AGY], ran: 1, ..shown.clone() };
         assert_eq!(row(&h, &busy, CODEX), Row { lamp: Lamp::Doing, said: "Installing…".into(), host_said: Some("Downloading…  40%".into()), note: None, button: None });
         assert_eq!(row(&h, &busy, AGY), Row { lamp: Lamp::Queued, said: "Waiting".into(), host_said: None, note: None, button: None });
         assert_eq!(row(&h, &busy, Item::Skill).button, Some(("Install", Press::Run, false)));
@@ -457,6 +556,63 @@ mod tests {
         );
         assert_eq!(left(&other, &shown), [CODEX, AGY]);
 
+        // The repositories: none chosen (not one of what the account is to have), some cloned, all.
+        use olo_rex_client::repos::{Repo, There};
+        assert_eq!(row(&h, &shown, Item::Repos), Row { lamp: Lamp::Queued, said: "None chosen".into(), host_said: None, note: None, button: Some(("Choose…", Press::Repos, true)) });
+        let two = vec![Repo { url: "git@github.com:example/olo.git".into(), ..Repo::default() }, Repo { url: "git@github.com:example/site.git".into(), ..Repo::default() }];
+        let some_cloned = HostStands { repos: two.clone(), repos_there: Some(vec![There::Cloned { set_up: true }, There::Absent]), ..h.clone() };
+        assert_eq!((row(&some_cloned, &shown, Item::Repos).lamp, row(&some_cloned, &shown, Item::Repos).said), (Lamp::Light(Light::Off), "1 of 2 cloned".into()));
+        assert_eq!(left(&some_cloned, &shown), [CODEX, AGY, Item::Skill, Item::Repos]);
+        // (One whose folder is in use is the person's to clear: not cloned by a run, and still not ready.)
+        let in_the_way = HostStands { repos_there: Some(vec![There::Cloned { set_up: true }, There::Taken]), ..some_cloned.clone() };
+        assert_eq!(left(&in_the_way, &shown), [CODEX, AGY, Item::Skill]);
+        assert_eq!(
+            row(&in_the_way, &shown, Item::Repos),
+            Row {
+                lamp: Lamp::Light(Light::Down),
+                said: "1 of 2 cloned  ·  1 folder taken".into(),
+                host_said: None,
+                note: Some("~/src/site already holds something else. Choose… to see it.".into()),
+                button: Some(("Choose…", Press::Repos, true))
+            }
+        );
+        // (One that couldn't be cloned and one whose folder is taken: both said.)
+        let both = HostStands { repos_there: Some(vec![There::Absent, There::Taken]), ..some_cloned.clone() };
+        let refused_too = Shown { failed: vec![(Item::Repos, "no".into())], failed_repo: Some("olo".into()), ..shown.clone() };
+        assert_eq!(row(&both, &refused_too, Item::Repos).said, "0 of 2 cloned  ·  1 couldn’t be cloned  ·  1 folder taken");
+        // (With one still to clone beside it: grey, and said all the same.)
+        let three = vec![two[0].clone(), two[1].clone(), Repo { url: "git@github.com:example/x.git".into(), ..Repo::default() }];
+        let mixed = HostStands { repos: three, repos_there: Some(vec![There::Cloned { set_up: true }, There::Taken, There::Absent]), ..some_cloned.clone() };
+        assert_eq!(
+            (row(&mixed, &shown, Item::Repos).lamp, row(&mixed, &shown, Item::Repos).said, row(&mixed, &shown, Item::Repos).note),
+            (Lamp::Light(Light::Off), "1 of 3 cloned  ·  1 folder taken".into(), None)
+        );
+        assert_eq!(head_state(&some_cloned, &shown).1, "4 of 8 ready");
+        let all_cloned = HostStands { repos_there: Some(vec![There::Cloned { set_up: true }; 2]), ..some_cloned.clone() };
+        assert_eq!((row(&all_cloned, &shown, Item::Repos).lamp, row(&all_cloned, &shown, Item::Repos).said), (Lamp::Light(Light::On), "2 cloned".into()));
+        assert_eq!(head_state(&all_cloned, &shown).1, "5 of 8 ready");
+        let cloning = Shown { doing: Some(Doing { item: Item::Repos, line: "Receiving objects:  40%".into(), removing: false, of: Some("site".into()) }), ..shown.clone() };
+        assert_eq!(
+            row(&some_cloned, &cloning, Item::Repos),
+            Row { lamp: Lamp::Doing, said: "Cloning site…".into(), host_said: None, note: Some("40%".into()), button: Some(("Choose…", Press::Repos, true)) }
+        );
+        assert_eq!(head_state(&some_cloned, &cloning).1, "Setting up…");
+        let received =
+            Shown { doing: Some(Doing { item: Item::Repos, line: "Receiving objects:  62% (1240/2000), 3.10 MiB | 2.40 MiB/s".into(), removing: false, of: Some("site".into()) }), ..shown.clone() };
+        assert_eq!(row(&some_cloned, &received, Item::Repos).note.as_deref(), Some("62%  ·  3.1 MB received"));
+        // One that couldn't be cloned: which, and why, in the window's own words.
+        let refused = Shown { failed: vec![(Item::Repos, "Permission denied (publickey).".into())], failed_repo: Some("site".into()), ..shown.clone() };
+        assert_eq!(
+            row(&some_cloned, &refused, Item::Repos),
+            Row {
+                lamp: Lamp::Light(Light::Down),
+                said: "1 of 2 cloned  ·  1 couldn’t be cloned".into(),
+                host_said: None,
+                note: Some("site couldn’t be cloned: Permission denied (publickey).".into()),
+                button: Some(("Choose…", Press::Repos, true))
+            }
+        );
+
         // All of it there.
         let ready = host(Some(Account { codex: Some("0.172.0".into()), antigravity: Some("1.5.15".into()), ..some.clone() }), Some(true), HostConnState::Connected);
         assert!(left(&ready, &shown).is_empty());
@@ -464,10 +620,10 @@ mod tests {
 
         // Not answered yet: asking. Not connected: nothing is known, nothing to press.
         let asking = HostStands { carried: None, ..host(None, None, HostConnState::Connected) };
-        assert!(Item::all().all(|i| row(&asking, &shown, i) == Row { lamp: Lamp::Queued, said: "Checking…".into(), host_said: None, note: None, button: None }));
+        assert!(Item::all().filter(|i| *i != Item::Repos).all(|i| row(&asking, &shown, i) == Row { lamp: Lamp::Queued, said: "Checking…".into(), host_said: None, note: None, button: None }));
         assert_eq!(head_state(&asking, &shown), (Lamp::Queued, "Checking…".into()));
         let away = host(Some(some), Some(true), HostConnState::Disconnected);
-        assert!(Item::all().all(|i| row(&away, &shown, i) == Row { lamp: Lamp::Light(Light::Off), said: "—".into(), host_said: None, note: None, button: None }));
+        assert!(Item::all().filter(|i| *i != Item::Repos).all(|i| row(&away, &shown, i) == Row { lamp: Lamp::Light(Light::Off), said: "—".into(), host_said: None, note: None, button: None }));
         assert_eq!(head_state(&away, &shown), (Lamp::Light(Light::Off), "Disconnected".into()));
         assert!(left(&away, &shown).is_empty());
     }

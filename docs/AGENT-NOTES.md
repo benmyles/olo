@@ -2859,6 +2859,11 @@ an argument it doesn't know starts the lint (read its first lines).
   changes**: both of Rex's lists had live scroll bars only there (a
   height added up by hand, a fraction of a device pixel short), and
   1×, 1.5× and 2× showed nothing.
+- **A new field in the desktop's settings needs the desktop server
+  rebuilt for a test** (`cargo build -p app_server`): the session's
+  app_server reads and writes the settings whole, and one built before
+  the field drops it without a word (a repository added in Rex's form
+  was gone a moment later: the settings came back without it).
 - **Give `tsession run` no `XDG_CONFIG_HOME` of your own when the
   program is Terminal** (or anything that leaves a daemon): a
   session's processes were recognised by its display and its config

@@ -1107,6 +1107,10 @@ pub struct HostStands {
     /// The person's agent settings there: files to copy, files the
     /// same, and whether this computer's weren't all gathered.
     pub carried: Option<(usize, usize, bool)>,
+    /// The person's repositories, and how each stands there (none:
+    /// not asked yet, or the list changed since).
+    pub repos: Vec<olo_rex_client::repos::Repo>,
+    pub repos_there: Option<Vec<olo_rex_client::repos::There>>,
 }
 
 /// One of the things of Olo's a far host may have, as the status bar
@@ -1160,6 +1164,10 @@ pub struct HostRuntime {
     /// files would be copied now, how many are there as here, and
     /// whether this computer's weren't all gathered.
     pub carried: Option<(usize, usize, bool)>,
+    /// How each of the person's repositories stands there
+    /// (`olo_rex_client::repos`), in the list's order as it was when
+    /// the host was asked.
+    pub repos_there: Option<Vec<olo_rex_client::repos::There>>,
     pub tailscale: Option<TailscaleStatus>,
     tailscale_seq: u64,
     pub synced_hosts: Vec<HostRecord>,
@@ -1221,6 +1229,9 @@ pub struct HubState {
     /// this computer's Token Pool last said (`pool::hosts`); none: it
     /// didn't answer, or wasn't asked yet.
     pub pools: Option<HashMap<String, crate::pool::PoolStands>>,
+    /// The person's repositories (the desktop's settings: Preferences'
+    /// Rex, kept by the Repositories window), in their order.
+    pub repos: Vec<olo_rex_client::repos::Repo>,
     pub git_cache: Arc<GitCache>,
     pub local_bin_dir: Option<PathBuf>,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
@@ -1318,6 +1329,8 @@ impl HubState {
                     Some("ready") => there.then_some((0, 14, false)),
                     _ => there.then_some((14, 0, false)),
                 },
+                repos: self.repos.clone(),
+                repos_there: demo_repos_there(&self.repos).filter(|_| there),
             });
         }
         Some(HostStands {
@@ -1335,6 +1348,9 @@ impl HubState {
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
             account: host.account.clone(),
             carried: host.carried,
+            repos: self.repos.clone(),
+            // (As asked of the list as it is now, or not known.)
+            repos_there: host.repos_there.clone().filter(|there| there.len() == self.repos.len()),
         })
     }
 
@@ -1404,6 +1420,38 @@ async fn open_terminal_stream(ep: &RexEndpoint) -> Option<olo_rex_client::Termin
 /// under it to `~` (the demo's own, in the demo).
 pub fn local_home() -> Option<String> {
     if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") { Some("/home/you".into()) } else { std::env::var("HOME").ok() }
+}
+
+/// The demo's repositories on its connected host
+/// (`OLO_REX_DEMO_ACCOUNT`: `asking`, not answered; `ready`, all of
+/// them; else the first cloned, the second not, a third's folder
+/// taken).
+fn demo_repos_there(repos: &[olo_rex_client::repos::Repo]) -> Option<Vec<olo_rex_client::repos::There>> {
+    use olo_rex_client::repos::There;
+    match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
+        Some("asking") => None,
+        Some("ready") => Some(repos.iter().map(|_| There::Cloned { set_up: true }).collect()),
+        // (All cloned but the last, whose folder holds something else.)
+        Some("blocked") => Some(repos.iter().enumerate().map(|(i, _)| if i + 1 == repos.len() { There::Taken } else { There::Cloned { set_up: true } }).collect()),
+        // (One cloned whose set-up hasn't run, at rest.)
+        Some("notsetup") => Some(repos.iter().enumerate().map(|(i, _)| [There::Cloned { set_up: false }, There::Cloned { set_up: true }, There::Cloned { set_up: true }][i % 3].clone()).collect()),
+        // (One cloned and not set up yet.)
+        Some("cloning") => Some(repos.iter().enumerate().map(|(i, _)| [There::Cloned { set_up: true }, There::Absent, There::Cloned { set_up: false }][i % 3].clone()).collect()),
+        _ => Some(repos.iter().enumerate().map(|(i, _)| [There::Cloned { set_up: true }, There::Absent, There::Taken][i % 3].clone()).collect()),
+    }
+}
+
+/// The demo's list of repositories (`OLO_REX_DEMO_REPOS=1`).
+pub fn demo_repos() -> Vec<olo_rex_client::repos::Repo> {
+    use olo_rex_client::repos::Repo;
+    if !crate::server::demo_mode() || std::env::var_os("OLO_REX_DEMO_REPOS").is_none() {
+        return Vec::new();
+    }
+    vec![
+        Repo { url: "git@github.com:example/olo.git".into(), folder: String::new(), setup: "cargo fetch".into() },
+        Repo { url: "https://github.com/example/website".into(), folder: "sites/website".into(), setup: "npm ci".into() },
+        Repo { url: "git@git.example.org:team/notes.git".into(), folder: String::new(), setup: String::new() },
+    ]
 }
 
 /// What a host has of the person's settings for their agents, against
@@ -1496,6 +1544,7 @@ impl RexHub {
                 skill_there: None,
                 account: None,
                 carried: None,
+                repos_there: None,
                 tailscale: None,
                 tailscale_seq: 0,
                 synced_hosts: Vec::new(),
@@ -1533,6 +1582,7 @@ impl RexHub {
                         skill_there: None,
                         account: None,
                         carried: None,
+                        repos_there: None,
                         tailscale: None,
                         tailscale_seq: 0,
                         synced_hosts: Vec::new(),
@@ -1558,6 +1608,7 @@ impl RexHub {
             settings,
             active_theme,
             pools: None,
+            repos: Vec::new(),
             git_cache: GitCache::new(),
             local_bin_dir,
             quick_look_cache: HashMap::new(),
@@ -1830,6 +1881,7 @@ impl RexHub {
             skill_there: None,
             account: None,
             carried: None,
+            repos_there: None,
             tailscale: None,
             tailscale_seq: 0,
             synced_hosts: Vec::new(),
@@ -1899,6 +1951,21 @@ impl RexHub {
     /// afresh; permissions and notices are simply read where they are
     /// used.
     pub fn follow_shared(&self, rex: &olo_protocol::RexSettings) {
+        // (The person's repositories, as the settings have them; the
+        // demo's own, where it has some.)
+        {
+            let repos: Vec<olo_rex_client::repos::Repo> = match demo_repos() {
+                demo if !demo.is_empty() => demo,
+                _ => rex.repos.iter().map(|r| olo_rex_client::repos::Repo { url: r.url.clone(), folder: r.folder.clone(), setup: r.setup.clone() }).collect(),
+            };
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if st.repos != repos {
+                st.repos = repos;
+                for host in st.hosts.values_mut() {
+                    host.repos_there = None;
+                }
+            }
+        }
         if !crate::shared::settled(rex) {
             return;
         }
@@ -1981,6 +2048,7 @@ impl RexHub {
                     skill_there: None,
                     account: None,
                     carried: None,
+                    repos_there: None,
                     tailscale: None,
                     tailscale_seq: 0,
                     synced_hosts: Vec::new(),
@@ -3045,16 +3113,50 @@ impl RexHub {
         said: impl Fn(&str) + Send + Sync + 'static,
         done: impl FnOnce(Result<(), String>) + Send + 'static,
     ) -> Option<tokio::task::AbortHandle> {
-        use olo_rex_client::ready;
-        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
-        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
-            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
-            return None;
-        };
         // (`OLO_REX_READY_FROM`: a folder of stand-in installers, for
         // Olo's own tests.)
         let Some(script) = step.run(who.as_ref(), std::env::var("OLO_REX_READY_FROM").ok().as_deref()) else {
             done(Err(olo_kit::words::tr("This computer’s git doesn’t say who you are.").into()));
+            return None;
+        };
+        self.account_script(host_key, script, said, done)
+    }
+
+    /// Clones and sets up, on a host, those of the person's
+    /// repositories that aren't there yet (`olo_rex_client::repos`),
+    /// one after another, as [`Self::ready_step`] does a step: its
+    /// lines heard, stopped by what comes back.
+    pub fn clone_repos(&self, host_key: &str, said: impl Fn(&str) + Send + Sync + 'static, done: impl FnOnce(Result<(), String>) + Send + 'static) -> Option<tokio::task::AbortHandle> {
+        let script: String = {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let there = st.hosts.get(host_key).and_then(|h| h.repos_there.clone()).filter(|there| there.len() == st.repos.len());
+            st.repos
+                .iter()
+                .enumerate()
+                // (What can be done: not one that is there, nor one whose
+                // folder holds something else. Not known: tried, which
+                // is safe.)
+                .filter(|(i, repo)| repo.wrong().is_none() && there.as_ref().is_none_or(|there| there[*i].to_do()))
+                .map(|(_, repo)| format!("echo {}\nsh -c {} || exit $?\n", shell_quote(&format!("Cloning {}…", repo.name())), shell_quote(&repo.clone_script())))
+                .collect()
+        };
+        if script.is_empty() {
+            done(Ok(()));
+            return None;
+        }
+        self.account_script(host_key, script, said, done)
+    }
+
+    /// A script run on a host as the account, for its Account window:
+    /// off the connection's own path, each line it writes heard, ended
+    /// when what comes back is aborted (`ready::cancellable`); the host
+    /// asked again how the account stands before `done` hears how it
+    /// went.
+    fn account_script(&self, host_key: &str, script: String, said: impl Fn(&str) + Send + Sync + 'static, done: impl FnOnce(Result<(), String>) + Send + 'static) -> Option<tokio::task::AbortHandle> {
+        use olo_rex_client::ready;
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
             return None;
         };
         let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
@@ -3076,6 +3178,22 @@ impl RexHub {
             done(result);
         });
         Some(task.abort_handle())
+    }
+
+    /// The person's repositories are these from now: kept (the
+    /// desktop's settings), and every host's standing forgotten until
+    /// it is asked again.
+    pub fn set_repos(&self, repos: Vec<olo_rex_client::repos::Repo>) {
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.repos.clone_from(&repos);
+            for host in st.hosts.values_mut() {
+                host.repos_there = None;
+            }
+        }
+        let kept: Vec<olo_protocol::RexRepo> = repos.into_iter().map(|r| olo_protocol::RexRepo { url: r.url, folder: r.folder, setup: r.setup }).collect();
+        olo_kit::settings::update(move |s| s.rex.repos = kept);
+        (self.notify)(HubNotice::StateChanged);
     }
 
     /// Puts on a host what it lacks of the person's settings for their
@@ -3430,10 +3548,17 @@ impl RexHubInner {
         }
         let account = ready::Account::read(&ran.output);
         // (And what of the person's settings for their agents it has.)
-        let carried = carried_stands(pool, target, askpass).await.map(|stands| (stands.to_copy.len(), stands.same, stands.short));
+        let carried = carried_stands(pool, target, askpass.clone()).await.map(|stands| (stands.to_copy.len(), stands.same, stands.short));
+        // (And how each of the person's repositories stands there.)
+        let repos = self.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
+        let repos_there = match repos.is_empty() {
+            true => Some(Vec::new()),
+            false => pool.put(target, askpass, "sh", olo_rex_client::repos::look(&repos).as_bytes()).await.ok().and_then(|ran| olo_rex_client::repos::There::read(&ran.output, &repos)),
+        };
         if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
             host.account = Some(account);
             host.carried = carried;
+            host.repos_there = repos_there;
         }
     }
 

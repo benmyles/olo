@@ -23,6 +23,7 @@ mod overlays;
 mod panels;
 mod pool;
 mod predict;
+mod repos;
 mod server;
 mod server_panel;
 mod settings;

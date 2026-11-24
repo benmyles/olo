@@ -28044,7 +28044,42 @@ to set them up").
   `BatchMode` and a new host's key trusted as first met, a changed
   one refused; the keys are those Rex forwards). `Repo::wrong` says
   what is wrong with one as typed (an option for an address, a folder
-  outside the home). The window for them is to come (TODO).
+  outside the home). *The list* is the person's and the same for
+  every host: the desktop's settings (`RexSettings::repos`), kept by
+  `RexHub::set_repos`, each host asked of it with its account
+  (`HostStands::repos_there`). *In the Account window* they are one
+  row in a group of their own (`account::Item::Repos`: "1 of 3
+  cloned", Choose…; not counted where none are chosen), and one of
+  what Set Up does (`RexHub::clone_repos`: those that can be, one
+  after another, their lines under the row; one whose folder is in
+  use is the person's to clear, `There::to_do`). *The Repositories
+  window* (`apps/rex/src/repos.rs`, `WinRole::Repos`) is the list
+  with how each stands on the Account window's host ("On dev-box":
+  Cloned, Not cloned, Not set up, Folder taken, Couldn’t clone;
+  Cloning… with a ring, and Waiting, while a run is at them), Add…,
+  Edit… and Remove, Clone N (those that can be; "Set Up N" where all
+  that is left is a set-up to run; with no Account window to say a
+  host, no standing and no Clone), and a line for the chosen one (its address and set-up
+  command; or what is in its way, on which host, and what to do about
+  it), which with none chosen says what the list is, or what the host
+  said when a run couldn't clone. Its form (`WinRole::RepoEdit`) has
+  the address, the folder and the command; a field's hint is what an
+  empty field comes to (the folder's follows the address typed:
+  `~/src/NAME`; the command's is "Nothing"); under them what is wrong
+  with what is typed, after a red light (`repos::wrong`: not an
+  address, a folder outside the home, a folder another of them has),
+  and Add is grey while something is. The Account row says what a run
+  can't do ("2 of 3 cloned · 1 folder taken"), in red once that is
+  all that is left, with where; while it clones, which one and how
+  far ("Cloning website…", "62% · 3.1 MB received": `repos::progress`
+  says git's own count plainly); and of one a run couldn't clone,
+  which and why, each fault with its own count ("1 of 3 cloned · 1
+  couldn’t be cloned · 1 folder taken"); with none chosen it has a ring, not a
+  light, and isn't counted. Agents: `host.repos`, `host.repos.add`,
+  `host.repos.edit:N`, `host.ready:KEY:repos`. Tried on the rig
+  (`try.py account`): one typed into the form, cloned on the far host
+  from a repository made beside it, its set-up run. Pictures:
+  `OLO_REX_DEMO_REPOS=1`.
 - *A step is a small thing to add*: a variant of `Step`, its title and
   its line, a line of `ready::LOOK` (the script that asks the host how
   the account stands; `Account::read` reads its answer) and the script

@@ -2047,11 +2047,25 @@ pub struct RexSettings {
     pub local: RexGrants,
     /// The hosts Rex knows besides this computer, in the order shown.
     pub hosts: Vec<RexHost>,
+    /// The person's repositories, cloned in their account on the hosts
+    /// they set up (Rex's Account window), in the order shown.
+    pub repos: Vec<RexRepo>,
+}
+
+/// A repository of the person's: where it is cloned from, where it
+/// goes under the home on a host (empty: `src/NAME`), and a command
+/// that sets it up once it is cloned (empty: none).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexRepo {
+    pub url: String,
+    pub folder: String,
+    pub setup: String,
 }
 
 impl Default for RexSettings {
     fn default() -> Self {
-        RexSettings { notify_blocked: true, notify_done: true, notify_failed: true, local: RexGrants::all(), hosts: Vec::new() }
+        RexSettings { notify_blocked: true, notify_done: true, notify_failed: true, local: RexGrants::all(), hosts: Vec::new(), repos: Vec::new() }
     }
 }
 

@@ -477,6 +477,9 @@ echo "Installed {name} {version}"
     open(f"{app_home}/.claude/settings.json", "w").write('{"model":"opus","env":{"HTTPS_PROXY":"http://127.0.0.1:17892","NO_PROXY":"localhost","EDITOR":"vi","GITHUB_TOKEN":"made-up"}}')
     open(f"{app_home}/.claude/.credentials.json", "w").write('{"made":"up"}')
     open(f"{home}/.claude/CLAUDE.md", "w").write("The host's own.\n")
+    # (And a repository made here, for an address: one file in it.)
+    origin = f"{D}/origin"; shutil.rmtree(origin, ignore_errors=True); shutil.rmtree(f"{home}/src/origin", ignore_errors=True); os.makedirs(origin)
+    subprocess.run("git init -q . && echo hello > README && git add README && git -c user.name=T -c user.email=t@example.org commit -q -m first", shell=True, cwd=origin, check=True, env={"PATH": os.environ["PATH"], "HOME": D, "GIT_CONFIG_NOSYSTEM": "1"})
     server = subprocess.Popen(["/usr/bin/python3", "-m", "http.server", "27881", "--bind", "127.0.0.1", "--directory", served], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     ok = True
     def check(what, passed, shown):
@@ -484,7 +487,7 @@ echo "Installed {name} {version}"
         ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
     try:
         with Rig("shell", delay=0, far=True, env=["OLO_REX_READY_FROM=http://127.0.0.1:27881"]) as r:
-            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Agent settings", "Skill for agents")
+            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Agent settings", "Skill for agents", "Your repositories")
             def rows(under=False):
                 """Each item's row as the window says it: {title: what is said after it}; `under`: the line under it."""
                 said = [str(n.get("name") or "") for n in r.nodes("Account") if n.get("role") in ("Label", "Text", "StaticText")]
@@ -510,7 +513,7 @@ echo "Installed {name} {version}"
             time.sleep(7)
             check("stopped half way: nothing of it there, then or later", back and not there("codex"), {"row": rows().get("Codex"), "there": there("codex")})
             r.invoke("host.ready:far:all")
-            want = {"Program folder": "On the path", "Claude Code": "9.9.1", "Codex": "8.8.2", "Antigravity": "7.7.3", "Git identity": "Rig Person <rig@example.org>", "Agent settings": "As on this computer", "Skill for agents": "Installed"}
+            want = {"Program folder": "On the path", "Claude Code": "9.9.1", "Codex": "8.8.2", "Antigravity": "7.7.3", "Git identity": "Rig Person <rig@example.org>", "Agent settings": "As on this computer", "Skill for agents": "Installed", "Your repositories": "None chosen"}
             done = r.wait(lambda: (lambda w: w if w == want else None)(rows()), 60, every=0.5)
             check("all that was left, one after another", done, done or rows())
             git = subprocess.run(["git", "config", "--file", f"{home}/.gitconfig", "user.email"], capture_output=True, text=True).stdout.strip()
@@ -521,11 +524,24 @@ echo "Installed {name} {version}"
             check("the settings carried: instructions, a command, the settings without the key or this computer's pool", read(".claude/CLAUDE.md") == "Be brief.\n" and read(".claude/commands/ship.md") == "Ship it.\n" and settings.get("model") == "opus" and settings.get("env") == {"EDITOR": "vi"} and not os.path.exists(f"{home}/.claude/.credentials.json"),
                   {"CLAUDE.md": read(".claude/CLAUDE.md"), "settings": settings, "credentials there": os.path.exists(f"{home}/.claude/.credentials.json")})
             check("what the host had is kept beside ours", read(".claude/CLAUDE.md.before-olo") == "The host's own.\n", read(".claude/CLAUDE.md.before-olo"))
+            # A repository of the person's: typed into the form (its address; Return), then cloned on the host and set up.
+            r.invoke("host.repos.add")
+            form = r.wait(lambda: next((w for w in r.windows() if w.get("title") == "Add Repository"), None), 10)
+            time.sleep(0.6)
+            # (Its address, then past the folder to its set-up command, then Return: Tab is key 15, Return 28.)
+            r.ts("type", r.name, f"file://{origin}"); r.ts("key", r.name, "15"); r.ts("key", r.name, "15")
+            r.ts("type", r.name, "echo ran > set-up.txt"); r.ts("key", r.name, "28")
+            listed = r.wait(lambda: (lambda w: w if w.get("Your repositories") == "0 of 1 cloned" else None)(rows()), 20)
+            check("a repository added through its form, and the host asked of it", form and listed, rows().get("Your repositories"))
+            r.invoke("host.ready:far:repos")
+            cloned = r.wait(lambda: (lambda w: w if w.get("Your repositories") == "1 cloned" else None)(rows()), 40, every=0.5)
+            check("cloned on the host and set up", cloned and read("src/origin/README") == "hello\n" and read("src/origin/set-up.txt") == "ran\n", {"row": rows().get("Your repositories"), "README": read("src/origin/README"), "set up": read("src/origin/set-up.txt")})
     finally:
         server.terminate(); clean()
         shutil.rmtree(served, ignore_errors=True)
         with contextlib.suppress(FileNotFoundError): os.remove(f"{app_home}/.gitconfig")
         shutil.rmtree(f"{app_home}/.claude", ignore_errors=True)
+        shutil.rmtree(origin, ignore_errors=True); shutil.rmtree(f"{home}/src/origin", ignore_errors=True)
     print("PASS" if ok else "FAIL")
 elif what == "disconnect":
     # A host let go of and connected again (Hosts and Ports' Disconnect, by its command): its SSH connection is

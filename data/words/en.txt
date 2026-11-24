@@ -21,6 +21,7 @@
 1 Minute
 1 Second
 1 account
+1 couldn’t be cloned
 1 day before
 1 extent
 1 hour
@@ -210,6 +211,7 @@ Add Kind
 Add Mark
 Add Place…
 Add RPM Fusion
+Add Repository
 Add Repository…
 Add Row Above
 Add Row Below
@@ -758,6 +760,11 @@ Client ID:
 Client secret:
 Clients
 Clock
+Clone
+Clone {}
+Cloned
+Cloning {}…
+Cloning…
 Close
 Close All
 Close All from {}
@@ -911,10 +918,12 @@ Couldn’t archive it. {}
 Couldn’t ask for emoji
 Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
+Couldn’t be cloned
 Couldn’t be copied
 Couldn’t be installed
 Couldn’t be set
 Couldn’t change this vault in 1Password. {}
+Couldn’t clone
 Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 Couldn’t get a sign-in link: {}.
@@ -1198,6 +1207,7 @@ Each display has workspaces of its own.
 Each display is at its own best resolution and scale now: no rotation, mirroring, HDR or VRR, and night light off. Yours come back as you leave.
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
+Each is cloned into its folder in your home on {}, then set up once with its command.
 Each is judged from several signals together; a finding says how sure it is and why.
 Each kind of input in the last minute: how many, never which keys
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
@@ -1217,6 +1227,7 @@ Edit
 Edit Event…
 Edit Message
 Edit Name
+Edit Repository
 Edit Video…
 Edit the event
 Editors’ swap and backup files
@@ -1447,6 +1458,8 @@ Focus the window to the right
 Fog
 Fog likely · spread {}
 Folder
+Folder taken
+Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Folders by Name, Files by Date
 Follows Other Mice below. Recommended for it: {}.
@@ -2397,6 +2410,7 @@ No precipitation this hour
 No process uses much of it now
 No processes match.
 No programs in the panes are listening on ports, and none is forwarded here.
+No repositories yet.
 No screen recordings yet. Record one with ⌘⇧6.
 No space around an auto-tiled window alone
 No to-dos
@@ -2417,6 +2431,7 @@ Noise model: {}
 None
 None (flat)
 None asked for yet: type in brush
+None chosen
 None connected to Olo yet.
 None found
 None in the last minute
@@ -2451,6 +2466,7 @@ Not changed: changes as an administrator are made in the person's own session.
 Not changed: the network's helper stopped.
 Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
+Not cloned
 Not connected
 Not connected: only public repositories’ pull requests show.
 Not connected: {}.
@@ -2610,6 +2626,7 @@ On the phone, open Settings ▸ Bluetooth and keep it open there. It appears her
 On the tailnet as {}.
 On this computer
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
+On {}
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
 On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
@@ -2659,6 +2676,7 @@ Open Weather to set up its data provider
 Open Website
 Open With
 Open With Offers
+Open a host’s Account window to see how each stands there, and to clone.
 Open files
 Open files and tasks
 Open in Google Drive
@@ -3337,6 +3355,8 @@ Set Up…
 Set date and time automatically
 Set for the whole computer by {}{}.
 Set up ({} looks).
+Set up with
+Set up with:
 Set up your own Rex server on {}
 Set up {} as a Rex login server
 Set up {} as a shared Rex server
@@ -3349,6 +3369,7 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 Setting up {} of {}…
 Setting up {}…
+Setting up…
 Settings
 Settings, instructions, skills and commands. Never a sign-in or a key.
 Settings:
@@ -3728,6 +3749,7 @@ The account answering now
 The account couldn’t be saved ({}).
 The accounts file couldn’t be read.
 The accounts’ latest sign-ins are copied back here first.
+The address has no repository’s name in it.
 The address search answered {}.
 The address search’s answer can’t be read: {}
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
@@ -3746,6 +3768,7 @@ The change couldn’t be made: {}.
 The clock service (systemd-timedated) isn't answering.
 The code from {}, at {}.
 The coming days, each its sky, low and high.
+The command runs once, in the new clone. Leave it empty for none.
 The computer couldn't be restarted: {}
 The day before, at 9 AM
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
@@ -3761,6 +3784,7 @@ The fingerprint sensor isn't answering.
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
 The first backup starts in a moment.
 The first fine-tune failed: {}
+The folder is a place under your home there (src/name).
 The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 The icons {} is drawn with, everywhere.
@@ -3806,6 +3830,7 @@ The next 6 hours
 The next backup sends again what it can.
 The next hours, each its sky and temperature, with the chance of rain or the cloud.
 The one it started on
+The ones you choose, cloned in your home folder there and set up once.
 The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
 The package service reads what’s installed and what each repository has.
 The packages can’t be read
@@ -3922,6 +3947,7 @@ This host isn’t reached over SSH: its account can’t be asked how it stands, 
 This is the recommended profile for this touchpad.
 This isn't an Olo backup.
 This isn't the session at the computer, so the computer isn't restarted.
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
 This kernel has one way of preempting only: it wasn't built to be told another.
@@ -4081,6 +4107,7 @@ Type the keys. Esc cancels; ⌫ removes them.
 Type the keys…
 Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
+Type the repository’s address.
 Type this
 Type to filter…
 Type with your palms down
@@ -4449,6 +4476,7 @@ Your palm model, trained {} on {} touches
 Your palm over the left edge
 Your palm over the right edge
 Your password couldn’t be checked ({}).
+Your repositories
 Your settings as they were are in “{}”.
 Your shirt against the touchpad
 Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.
@@ -4760,6 +4788,7 @@ your own picture
 {n} archived items aren’t
 {n} backups
 {n} backups chosen.
+{n} cloned
 {n} coming up
 {n} conversations
 {n} couldn’t be done
@@ -4772,6 +4801,7 @@ your own picture
 {n} files to copy
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 {n} folders couldn't be read
+{n} folders taken
 {n} forwarded ports are waiting.
 {n} hours
 {n} hours ago
@@ -4807,6 +4837,8 @@ your own picture
 {n} unread
 {n} waiting in their apps
 {n} weeks
+{}  ·  Set up with nothing
+{}  ·  Set up with {}
 {} (AV1 and VP9)
 {} (every video)
 {} (in use)
@@ -4851,6 +4883,7 @@ your own picture
 {} cleared · kept for {} days, the last {}
 {} copied: 1Password doesn’t let other apps read its archive.
 {} couldn't be found: {}
+{} couldn’t be cloned: {}
 {} couldn’t be unpacked.
 {} d
 {} days ago
@@ -4950,6 +4983,7 @@ your own picture
 {} of your newest commands, kept back to test it ({} hand-written)
 {} of {}
 {} of {} Events Found
+{} of {} cloned
 {} of {} connected.
 {} of {} connections
 {} of {} free
@@ -5097,6 +5131,10 @@ your own picture
 ~/Videos/raw, **/*.iso
 ~/go/pkg/mod, ~/.cache/go-build
 ~/worktrees
+~/{} already holds another repository on {}: {}
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+~/{} already holds something else. Choose… to see it.
+~/{} is already {}’s folder. Type another one.
 ·
 ¼ Second
 ¼ second

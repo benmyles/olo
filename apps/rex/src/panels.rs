@@ -341,8 +341,8 @@ pub fn list_rows(rows: usize, least: usize) -> usize {
 /// Where the Status column begins in both of the Hosts window's lists
 /// (one over the other: the lights in one line), and how wide it is: a
 /// state is a word or two.
-const STATUS_AT: f32 = 384.0;
-const STATUS: f32 = 146.0;
+pub const STATUS_AT: f32 = 384.0;
+pub const STATUS: f32 = 146.0;
 /// The Ports list's two columns of numbers: a port (five figures at
 /// most), and the port it is here.
 const PORT: f32 = 48.0;
@@ -350,9 +350,20 @@ const HERE: f32 = 56.0;
 
 /// A light and the words beside it, in a list's cell: the light where
 /// the cell's text begins, the words after it.
-fn lit_cell(g: &mut olo_kit::Painter, cell: &mut olo_kit::widgets::Cell, light: Light, words: &str) {
+pub fn lit_cell(g: &mut olo_kit::Painter, cell: &mut olo_kit::widgets::Cell, light: Light, words: &str) {
     let b = cell.bounds;
     style::dot(g, point(b.left() + px(m::CELL_INSET + LIGHT / 2.0), b.center().y), LIGHT, light.color(&theme::palette()));
+    let x = b.left() + px(m::CELL_INSET + LIGHT + m::TIGHT);
+    style::label_fit(g, x, b.center().y, style::Align::Left, words.to_owned(), style::PLAIN_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL), cell.text_color, b.right() - px(m::CELL_INSET) - x);
+    cell.say(words.to_owned());
+}
+
+/// [`lit_cell`] for a thing being done now: a ring in the waiting
+/// light's colour where the light would be (the kit's `busy_of`, in a
+/// list's cell), the words after it.
+pub fn ring_cell(g: &mut olo_kit::Painter, cell: &mut olo_kit::widgets::Cell, words: &str) {
+    let b = cell.bounds;
+    style::ring(g, point(b.left() + px(m::CELL_INSET + LIGHT / 2.0), b.center().y), LIGHT, Light::Waiting.color(&theme::palette()));
     let x = b.left() + px(m::CELL_INSET + LIGHT + m::TIGHT);
     style::label_fit(g, x, b.center().y, style::Align::Left, words.to_owned(), style::PLAIN_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL), cell.text_color, b.right() - px(m::CELL_INSET) - x);
     cell.say(words.to_owned());

@@ -1425,6 +1425,16 @@ pub fn dot(g: &mut Painter, center: Point<Pixels>, across: f32, color: Hsla) {
     g.paint_quad(olo_interface::fill(r, color).corner_radii(r.size.width / 2.0));
 }
 
+/// A ring as large as [`dot`]'s dot, centred on `center`: a point and a
+/// half of line in whole device pixels (a thing being done, where a
+/// light would be: `widgets::ring_of`, and a list's cell).
+pub fn ring(g: &mut Painter, center: Point<Pixels>, across: f32, color: Hsla) {
+    let s = g.scale_factor();
+    let r = snap_centred(g, center, across, across);
+    let line = (1.5 * s).round().max(1.0) / s;
+    g.paint_quad(olo_interface::quad(r, r.size.width / 2.0, olo_interface::transparent_black(), px(line), color, olo_interface::BorderStyle::Solid));
+}
+
 /// A plus `across` points across centred on `center`, its arms `thick`
 /// points thick in whole device pixels and as long either side of the
 /// other at any scale: a tab strip's + (ten across, a point and a half
