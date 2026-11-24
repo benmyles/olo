@@ -229,6 +229,8 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
             element: None,
         })
         .collect();
+    // (Room what is hidden keeps, for the empty space at the foot.)
+    parts.kept = cx.kept_room().into_iter().map(kb).collect();
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let scale = cx.scale_factor();
     let mut findings = checks::review(&parts, w, h, scale);

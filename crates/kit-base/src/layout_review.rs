@@ -247,6 +247,10 @@ pub struct Parts {
     /// What a control is seen by where its agent rect is only part of it:
     /// a text field's frame (its well), round the text area its rect is.
     pub frames: Vec<Rect>,
+    /// Room kept by what is hidden (laid out for another state, never
+    /// drawn): what the window shows, to [`bottom_slack`], and to nothing
+    /// else.
+    pub kept: Vec<Rect>,
 }
 
 /// A control agents read and use (the window's agent tree as painted):
@@ -446,8 +450,12 @@ pub fn overflow_depth(p: &Parts, ppp: f32) -> f32 {
 pub fn bottom_slack(p: &Parts, width: f32, height: f32) -> f32 {
     let mut items: Vec<Rect> = p.texts.iter().map(caps).collect();
     items.extend(p.controls.iter().filter(|c| c.role != "Window" && c.rect.width() >= 1.0 && !scrolled(p, c.clip)).map(|c| c.rect));
-    // (A list filling the space is content too.)
+    // (A list filling the space is content too, and room kept for what
+    // shows in another state: Preferences ▸ Rex's caution, kept by its
+    // page hidden, which the review saw only while what was hidden was
+    // drawn for it.)
     items.extend(p.scrolls.iter().copied());
+    items.extend(p.kept.iter().copied());
     let _ = width;
     let pane = p.panes.iter().copied().max_by(|a, b| a.area().total_cmp(&b.area()));
     let (bottom, inside): (f32, Vec<&Rect>) = match pane {
@@ -633,6 +641,10 @@ fn items(p: &Parts) -> Vec<(Rect, String, bool, f32)> {
 
 /// Two things (text, controls) side by side or one over the other with
 /// next to no room between them (a point or two).
+/// The tallest a link set on a line of text is (`LinkButton`: a label's
+/// row): what a word apart from the line's words isn't crowded.
+const LINE_LINK: f32 = crate::metrics::LABEL_ROW;
+
 fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
     let all = items(p);
     let touching = SAME.max(1.0 / ppp);
@@ -663,6 +675,16 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             // line two pieces on. Preferences ▸ Keyboard ▸ Shortcuts,
             // "⌃⌥⇧↑,   ⌃⌥⇧↓", 2026-11-20.)
             if *ta && *tb && (ba - bb).abs() <= touching + 0.01 {
+                continue;
+            }
+            // (A link among words, a word apart, is a piece of their line
+            // too: a control no taller than a line whose own words sit on
+            // the line's baseline. Rex's Host window, "Your agents and
+            // repositories: Set Up This Host’s Account…", where the gap a
+            // push button needs read as a hole, Opus's look, 2026-11-24.)
+            let on_line =
+                |base: f32, control: &Rect| control.height() <= LINE_LINK + SAME && p.texts.iter().any(|t| control.expand(SAME).contains_rect(caps(t)) && (t.baseline - base).abs() <= touching + 0.01);
+            if (*ta && !*tb && on_line(*ba, rb)) || (*tb && !*ta && on_line(*bb, ra)) {
                 continue;
             }
             if scrolls_past(ra, rb) || scrolls_past(rb, ra) {

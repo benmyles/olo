@@ -36,6 +36,8 @@ pub struct Shown {
     pub checking: bool,
     /// Remove All… was pressed, and waits to be told yes or no.
     pub asking_all: bool,
+    /// The tab shown: Rex, Olo Integration, Files.
+    pub tab: usize,
 }
 
 impl Shown {
@@ -122,6 +124,14 @@ pub fn check(hub: &Arc<RexHub>) {
 }
 
 /// Remove All… was pressed (`true`), or its question answered no.
+/// The window's tab `tab` shown.
+pub fn show_tab(tab: usize) {
+    if let Some(shown) = live().as_mut() {
+        shown.tab = tab;
+    }
+    crate::ui::host_changed();
+}
+
 pub fn ask_all(asking: bool) {
     if let Some(shown) = live().as_mut() {
         shown.asking_all = asking;

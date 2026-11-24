@@ -1717,6 +1717,9 @@ Behind since {}
 Being installed…
 설치 중…
 
+Being removed…
+제거 중…
+
 Being updated…
 업데이트 중…
 
@@ -1830,6 +1833,9 @@ Bottom two thirds
 
 Branch {} is checked out in {} already.
 {0} 브랜치는 이미 {1}에서 체크아웃되어 있습니다.
+
+Bridge
+브리지
 
 Bright
 밝게
@@ -3019,6 +3025,9 @@ Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
 키를 읽을 수 없습니다: {}
 
+Couldn’t remove
+제거할 수 없음
+
 Couldn’t remove the account: {}
 계정을 제거할 수 없습니다: {}
 
@@ -3697,6 +3706,12 @@ Downloading…
 Downloads
 다운로드
 
+Downloads ▸ Rex ▸ {}
+다운로드 ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+다운로드 ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 창을 탭으로 끄는 동안 자리에 놓거나 그 자리의 글자를 누르면 창이 그곳으로 갑니다. 다른 창의 자리에 놓으면 두 창이 서로 바뀝니다. Escape를 누르면 모두 원래대로 돌아갑니다.
 
@@ -4249,6 +4264,9 @@ Extreme
 FD
 FD
 
+FOLDER
+폴더
+
 Fable 5.1
 Fable 5.1
 
@@ -4603,8 +4621,14 @@ Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 폴더와 파일은 쉼표로 구분합니다. ~/는 홈 폴더, **/는 모든 위치, *는 모든 이름을 뜻합니다.
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+폴더는 SSH로 연결되는 호스트에서만 동기화되며, {}은(는) 그렇지 않습니다.
+
 Folders by Name, Files by Date
 폴더는 이름순, 파일은 날짜순
+
+Folders kept in step
+동기화하는 폴더
 
 Follows Other Mice below. Recommended for it: {}.
 아래 ‘다른 마우스’ 설정을 따릅니다. 이 기기 권장값: {}.
@@ -4911,6 +4935,9 @@ Go to:
 
 Going:
 진행:
+
+Gone from the host
+호스트에서 사라짐
 
 Good. Lift, and touch again, a little differently.
 좋습니다. 손가락을 뗐다가 각도를 조금 바꿔 다시 대세요.
@@ -5536,6 +5563,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 각 제작사의 공식 설치 프로그램으로 호스트의 홈 폴더에 사용자 권한으로 설치합니다. root 권한은 사용하지 않습니다.
 
+Installed in your home folder there, as you; nothing runs as root.
+호스트의 홈 폴더에 사용자 권한으로 설치합니다. root 권한은 사용하지 않습니다.
+
 Installing
 설치 중
 
@@ -5926,6 +5956,9 @@ Kept Core
 Kept after restart
 재시작 후에도 유지
 
+Kept folders land in: {}
+동기화한 폴더 위치: {}
+
 Kept for this computer and set again at every start.
 이 컴퓨터에 저장하고 시작할 때마다 다시 적용합니다.
 
@@ -6166,7 +6199,7 @@ Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
 코딩 에이전트가 Terminal 탭 제목을 설정할 수 있게 합니다.
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 그 호스트의 프로그램이 여기서 링크, Passwords, SSH 키, 에이전트 화면을 쓸 수 있게 합니다.
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7486,6 +7519,9 @@ No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 지난 1년부터 앞으로 2년 사이의 일정 중 제목, 장소 또는 메모에 ‘{}’ 문구가 들어간 일정이 없습니다.
 
+No folders on {} are kept in step here. An agent there keeps one with:
+{}의 폴더 중 여기로 동기화되는 것이 없습니다. 그 호스트의 에이전트는 다음으로 동기화합니다:
+
 No key yet.
 아직 키가 없습니다.
 
@@ -8058,6 +8094,9 @@ Olo Doctor: {}. 클릭해 확인하세요.
 
 Olo Installer
 Olo 설치 프로그램
+
+Olo Integration
+Olo 연동
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 이 컴퓨터에는 {}용 Olo 앱이 없습니다. Google Cloud ▸ 해당 Olo 프로젝트 ▸ 클라이언트에서 클라이언트 ID와 비밀 키를 입력하거나, 취소한 뒤 ‘Google 계정 추가…’를 선택하면 에이전트가 설정합니다.
@@ -9601,6 +9640,9 @@ Remove
 Remove Account
 계정 제거
 
+Remove All
+모두 제거
+
 Remove All…
 모두 제거…
 
@@ -9946,6 +9988,12 @@ Rex Server on {}
 Rex adds these entries to {} as {}:
 Rex가 {1} 권한으로 {0}에 다음 항목을 추가합니다:
 
+Rex and Olo on this host.
+이 호스트의 Rex와 Olo.
+
+Rex and Olo there:
+그 호스트의 Rex와 Olo:
+
 Rex changes {} as {}:
 Rex가 {1} 권한으로 {0}을(를) 변경합니다:
 
@@ -9966,6 +10014,9 @@ Rex가 {} 권한으로 다음 항목을 제거합니다:
 
 Rex runs this as {}:
 Rex가 {} 권한으로 다음 명령을 실행합니다:
+
+Rex server
+Rex 서버
 
 Rex sets these as {}:
 Rex가 {} 권한으로 다음 항목을 설정합니다:
@@ -11425,6 +11476,9 @@ Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 {0} 계정과 동기화하면 {1} 변경 사항이 생깁니다. 적용하기 전에는 양쪽 모두 바뀌지 않습니다.
 
+Syncing…
+동기화 중…
+
 System
 시스템
 
@@ -12226,6 +12280,9 @@ Then the space only it took is freed, in {}.
 Then the space only they took is freed, in {}.
 그러면 {}에서 이 백업들만 쓰던 공간을 비웁니다.
 
+There
+호스트
+
 There are no links to shape.
 트래픽을 조절할 연결이 없습니다.
 
@@ -12907,6 +12964,9 @@ Typically
 Typing
 입력
 
+Typing helper
+입력 도우미
+
 Typing on Hosts
 호스트에서 입력
 
@@ -13422,6 +13482,9 @@ Waiting for it…
 
 Waiting for power
 전원 연결 대기 중
+
+Waiting for the host
+호스트 기다리는 중
 
 Waiting for the network
 네트워크 대기 중
@@ -13980,6 +14043,9 @@ Your Own Kinds
 
 Your SSH keys from Passwords, for ssh and git.
 ssh와 git에서 사용할 Passwords의 SSH 키를 제공합니다.
+
+Your agents and repositories:
+내 에이전트와 저장소:
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 백업은 이 컴퓨터를 떠나기 전에 여기에서만 가진 키로 암호화합니다. 다른 곳에서도 읽으려면 키를 Passwords에도 보관하세요.
@@ -14614,6 +14680,9 @@ other: {n}일 동안 백업 없음
 nothing freed
 확보한 공간 없음
 
+nothing granted
+허용한 항목 없음
+
 nothing moved
 옮긴 항목 없음
 
@@ -14950,6 +15019,9 @@ there isn’t one for {}
 these {n} backups need
 other: 이 백업 {n}개에 필요한
 
+this connection still uses it
+이 연결이 아직 사용 중
+
 this event
 이 일정
 
@@ -15001,6 +15073,9 @@ tomorrow.io’s limit for your key is reached for now{}
 turned off
 꺼짐
 
+turned off for every host
+모든 호스트에서 꺼짐
+
 under a minute
 1분 미만
 
@@ -15027,6 +15102,9 @@ other: 패키지 {n}개 업데이트
 
 use . for decimals
 소수점은 . 사용
+
+used the next time you connect
+다음 연결 때 사용
 
 validating
 검증 중

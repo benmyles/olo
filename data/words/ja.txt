@@ -1717,6 +1717,9 @@ Behind since {}
 Being installed…
 インストール中…
 
+Being removed…
+削除中…
+
 Being updated…
 アップデート中…
 
@@ -1830,6 +1833,9 @@ Bottom two thirds
 
 Branch {} is checked out in {} already.
 ブランチ「{}」はすでに{}でチェックアウトされています。
+
+Bridge
+ブリッジ
 
 Bright
 明るめ
@@ -3019,6 +3025,9 @@ Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
 鍵を読み込めません：{}
 
+Couldn’t remove
+削除失敗
+
 Couldn’t remove the account: {}
 アカウントを削除できません：{}
 
@@ -3697,6 +3706,12 @@ Downloading…
 Downloads
 ダウンロード
 
+Downloads ▸ Rex ▸ {}
+ダウンロード ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+ダウンロード ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 ウィンドウをタブでドラッグ中に、場所の上で放すか、その文字キーを押すと、ウィンドウがそこに移動します。ほかのウィンドウの場所で放すと、2つが入れ替わります。Escapeですべて元に戻ります。
 
@@ -4249,6 +4264,9 @@ Extreme
 FD
 FD
 
+FOLDER
+フォルダー
+
 Fable 5.1
 Fable 5.1
 
@@ -4603,8 +4621,14 @@ Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 フォルダーやファイルをカンマで区切ります。~/はホームフォルダー、**/は任意の場所、*は任意の名前です。
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+フォルダーを同期できるのはSSHで接続するホストだけです。{} はSSHで接続していません。
+
 Folders by Name, Files by Date
 フォルダーは名前順、ファイルは日付順
+
+Folders kept in step
+同期するフォルダー
 
 Follows Other Mice below. Recommended for it: {}.
 下の「その他のマウス」の設定に従います。推奨値：{}。
@@ -4911,6 +4935,9 @@ Go to:
 
 Going:
 出欠:
+
+Gone from the host
+ホストから消えました
 
 Good. Lift, and touch again, a little differently.
 読み取れました。指を離し、少し角度を変えてもう一度触れてください。
@@ -5536,6 +5563,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 各提供元の公式インストーラーを使い、一般ユーザーとしてリモートのホームフォルダーにインストールします。root権限は使いません。
 
+Installed in your home folder there, as you; nothing runs as root.
+ホームフォルダーに一般ユーザーとしてインストールします。root権限は使いません。
+
 Installing
 インストール中
 
@@ -5926,6 +5956,9 @@ Kept Core
 Kept after restart
 再起動後も維持
 
+Kept folders land in: {}
+同期したフォルダーの保存先: {}
+
 Kept for this computer and set again at every start.
 このコンピューターに保存し、起動するたびに適用します。
 
@@ -6166,7 +6199,7 @@ Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
 コーディングエージェントがTerminalのタブ名を設定できるようにします。
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 そのホストのプログラムが、ここでリンク、Passwords、SSH鍵、エージェント画面を使えるようにします。
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7486,6 +7519,9 @@ No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 1年前から2年先までの予定に、タイトル・場所・メモに「{}」を含むものはありません。
 
+No folders on {} are kept in step here. An agent there keeps one with:
+{} のフォルダーはここに同期されていません。ホストのエージェントは次のコマンドで同期します:
+
 No key yet.
 鍵はまだありません。
 
@@ -8058,6 +8094,9 @@ Olo Doctor：{}。クリックすると詳細を表示します。
 
 Olo Installer
 Oloインストーラー
+
+Olo Integration
+Olo連携
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 このコンピューターには{}用のアプリがありません。Google Cloud ▸ Oloのプロジェクト ▸ クライアントでIDとシークレットを確認して入力してください。エージェントに任せるには「キャンセル」の後に「Googleアカウントを追加…」を選びます。
@@ -9601,6 +9640,9 @@ Remove
 Remove Account
 アカウントを削除
 
+Remove All
+すべて削除
+
 Remove All…
 すべて削除…
 
@@ -9946,6 +9988,12 @@ Rex Server on {}
 Rex adds these entries to {} as {}:
 Rexは{1}として{0}に次の項目を追加します：
 
+Rex and Olo on this host.
+このホストのRexとOlo。
+
+Rex and Olo there:
+ホストのRexとOlo:
+
 Rex changes {} as {}:
 Rexは{1}として{0}を変更します：
 
@@ -9966,6 +10014,9 @@ Rexは{}として次を削除します：
 
 Rex runs this as {}:
 Rexは{}として次を実行します：
+
+Rex server
+Rexサーバー
 
 Rex sets these as {}:
 Rexは{}として次を設定します：
@@ -11425,6 +11476,9 @@ Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 {}との同期で{}が発生します。適用するまではどちらの内容も変わりません。
 
+Syncing…
+同期中…
+
 System
 システム
 
@@ -12226,6 +12280,9 @@ Then the space only it took is freed, in {}.
 Then the space only they took is freed, in {}.
 その後、これらのバックアップだけが使用していた容量を{}で解放します。
 
+There
+ホスト
+
 There are no links to shape.
 通信を制御できる接続がありません。
 
@@ -12907,6 +12964,9 @@ Typically
 Typing
 文字入力
 
+Typing helper
+入力ヘルパー
+
 Typing on Hosts
 ホストでの入力
 
@@ -13422,6 +13482,9 @@ Waiting for it…
 
 Waiting for power
 電源接続待ち
+
+Waiting for the host
+ホストを待機中
 
 Waiting for the network
 ネットワーク接続待ち
@@ -13980,6 +14043,9 @@ Your Own Kinds
 
 Your SSH keys from Passwords, for ssh and git.
 PasswordsのSSH鍵（ssh、git用）。
+
+Your agents and repositories:
+あなたのエージェントとリポジトリ:
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 バックアップは送信前に、このコンピューターだけが持つ鍵で暗号化します。ほかのコンピューターでも読めるよう、鍵をPasswordsにも保存してください。
@@ -14614,6 +14680,9 @@ other: {n}日間バックアップされていません
 nothing freed
 解放した容量なし
 
+nothing granted
+何も許可されていません
+
 nothing moved
 移動なし
 
@@ -14950,6 +15019,9 @@ there isn’t one for {}
 these {n} backups need
 other: 選択した{n}件のバックアップ
 
+this connection still uses it
+この接続でまだ使用中
+
 this event
 この予定
 
@@ -15001,6 +15073,9 @@ tomorrow.ioのキーの利用上限に達しました{}
 turned off
 オフ
 
+turned off for every host
+すべてのホストでオフ
+
 under a minute
 1分未満
 
@@ -15027,6 +15102,9 @@ other: {n}個のパッケージを更新
 
 use . for decimals
 小数点には . を使います
+
+used the next time you connect
+次回の接続時に使用
 
 validating
 検証中

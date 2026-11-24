@@ -1717,6 +1717,9 @@ Behind since {}
 Being installed…
 正在安裝…
 
+Being removed…
+正在移除…
+
 Being updated…
 正在更新…
 
@@ -1830,6 +1833,9 @@ Bottom two thirds
 
 Branch {} is checked out in {} already.
 分支 {} 已在 {} 簽出。
+
+Bridge
+橋接工具
 
 Bright
 明亮
@@ -3019,6 +3025,9 @@ Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
 無法讀取金鑰：{}
 
+Couldn’t remove
+無法移除
+
 Couldn’t remove the account: {}
 無法移除帳號：{}
 
@@ -3697,6 +3706,12 @@ Downloading…
 Downloads
 下載內容
 
+Downloads ▸ Rex ▸ {}
+下載 ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+下載 ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 按住標籤拖移視窗時，在某個位置放開，或按下該位置的字母，視窗就會移到那裡。在另一個視窗的位置放開，兩個視窗互換位置。按 Escape 可全部恢復原狀。
 
@@ -4249,6 +4264,9 @@ Extreme
 FD
 FD
 
+FOLDER
+資料夾
+
 Fable 5.1
 Fable 5.1
 
@@ -4603,8 +4621,14 @@ Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 檔案和資料夾用逗號分隔。~/ 表示個人資料夾，**/ 表示任意位置，* 符合任意名稱。
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+只有透過 SSH 連線的主機才能同步資料夾，而 {} 不是。
+
 Folders by Name, Files by Date
 資料夾按名稱，檔案按日期
+
+Folders kept in step
+同步的資料夾
 
 Follows Other Mice below. Recommended for it: {}.
 跟隨下方「其他滑鼠」設定。此裝置的建議值為{}。
@@ -4911,6 +4935,9 @@ Go to:
 
 Going:
 將執行：
+
+Gone from the host
+已從主機上消失
 
 Good. Lift, and touch again, a little differently.
 很好。請抬起手指，稍微換個角度再觸碰。
@@ -5536,6 +5563,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 由各開發商自己的安裝程式以您的身分安裝在該主機的家目錄中，不會以 root 執行。
 
+Installed in your home folder there, as you; nothing runs as root.
+以您的身分安裝在該主機的家目錄中；不會以 root 執行任何內容。
+
 Installing
 正在安裝
 
@@ -5926,6 +5956,9 @@ Kept Core
 Kept after restart
 重新啟動後保留
 
+Kept folders land in: {}
+同步的資料夾位於：{}
+
 Kept for this computer and set again at every start.
 已為本機儲存，每次啟動時都會重新應用程式。
 
@@ -6166,7 +6199,7 @@ Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
 允許程式設計代理設定其 Terminal 分頁標題。
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 允許那裡的程式在這裡使用連結、Passwords、SSH 金鑰和代理螢幕。
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7486,6 +7519,9 @@ No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 從一年前到未來兩年的行程中，標題、地點和備注均找不到「{}」。
 
+No folders on {} are kept in step here. An agent there keeps one with:
+{} 上沒有資料夾同步到這裡。那裡的代理可以用以下指令同步：
+
 No key yet.
 尚無金鑰。
 
@@ -8058,6 +8094,9 @@ Olo Doctor：{}。點按查看。
 
 Olo Installer
 Olo 安裝程式
+
+Olo Integration
+Olo 整合
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 這台電腦上沒有 {} 的專屬應用程式。請填入用戶端 ID 和金鑰（Google Cloud ▸ 對應的 Olo 專案 ▸ 用戶端），或取消並選擇「新增 Google 帳號…」，讓代理程式代為設定。
@@ -9601,6 +9640,9 @@ Remove
 Remove Account
 移除帳號
 
+Remove All
+全部移除
+
 Remove All…
 全部移除…
 
@@ -9946,6 +9988,12 @@ Rex Server on {}
 Rex adds these entries to {} as {}:
 Rex 會以 {1} 身分將下列項目加入 {0}：
 
+Rex and Olo on this host.
+此主機上的 Rex 與 Olo。
+
+Rex and Olo there:
+那裡的 Rex 與 Olo：
+
 Rex changes {} as {}:
 Rex 會以 {1} 身分變更 {0}：
 
@@ -9966,6 +10014,9 @@ Rex 會以 {} 身分移除下列項目：
 
 Rex runs this as {}:
 Rex 會以 {} 身分執行此指令：
+
+Rex server
+Rex 伺服器
 
 Rex sets these as {}:
 Rex 會以 {} 身分設定下列項目：
@@ -11425,6 +11476,9 @@ Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 與 {0} 同步將產生以下更改：{1}。只有套用變更後，兩端的資料才會更新。
 
+Syncing…
+正在同步…
+
 System
 系統
 
@@ -12226,6 +12280,9 @@ Then the space only it took is freed, in {}.
 Then the space only they took is freed, in {}.
 隨後會釋放這些備份在 {} 中獨占的空間。
 
+There
+主機
+
 There are no links to shape.
 沒有可進行流量控制的連線。
 
@@ -12907,6 +12964,9 @@ Typically
 Typing
 打字
 
+Typing helper
+輸入輔助程式
+
 Typing on Hosts
 在主機上輸入
 
@@ -13422,6 +13482,9 @@ Waiting for it…
 
 Waiting for power
 正在等待接通電源
+
+Waiting for the host
+正在等待主機
 
 Waiting for the network
 正在等待網路連線
@@ -13980,6 +14043,9 @@ Your Own Kinds
 
 Your SSH keys from Passwords, for ssh and git.
 從 Passwords 提供您的 SSH 金鑰，供 ssh 與 git 使用。
+
+Your agents and repositories:
+您的代理與儲存庫：
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 備份離開本機前已用本機獨有的金鑰加密。請也將金鑰存入 Passwords，否則在其他電腦上無法讀取備份。
@@ -14614,6 +14680,9 @@ other: 已有 {n} 天未備份
 nothing freed
 未釋放空間
 
+nothing granted
+未授予任何權限
+
 nothing moved
 未移動任何資料
 
@@ -14950,6 +15019,9 @@ there isn’t one for {}
 these {n} backups need
 other: 這 {n} 份備份所需的
 
+this connection still uses it
+此連線仍在使用
+
 this event
 此行程
 
@@ -15001,6 +15073,9 @@ tomorrow.io’s limit for your key is reached for now{}
 turned off
 已關閉
 
+turned off for every host
+已對所有主機關閉
+
 under a minute
 不到一分鐘
 
@@ -15027,6 +15102,9 @@ other: 更新 {n} 個套件
 
 use . for decimals
 小數點請使用 .
+
+used the next time you connect
+下次連線時使用
 
 validating
 正在驗證

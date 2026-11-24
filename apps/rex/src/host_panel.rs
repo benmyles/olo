@@ -28,8 +28,8 @@
 use std::rc::Rc;
 
 use olo_kit::{
-    Element, IntoElement as _, ParentElement as _, Styled as _, WindowCx, canvas, div, icons, metrics as m, px, style,
-    widgets::{Button, StringView, button_width, separator},
+    Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, icons, metrics as m, px, style,
+    widgets::{Button, StringView, TabView, button_width, separator},
 };
 
 use crate::host::Shown;
@@ -37,7 +37,7 @@ use crate::hub::{HostConnState, HostHelper, HostStands, HostThing};
 use crate::panels::{self, Light};
 
 /// The window's width: Hosts and Ports', which it is opened from.
-pub const HOST_WIDTH: f32 = 580.0;
+pub const HOST_WIDTH: f32 = 600.0;
 
 /// The host's icon at the window's head.
 const ICON: f32 = 32.0;
@@ -54,6 +54,15 @@ const STATE_ROW: f32 = 14.0;
 /// What a host said in a well, and where a thing is on it: one size of
 /// the fixed-width face in the window, a point under a note's.
 const MONO_SIZE: f32 = style::SMALL_SIZE - 1.0;
+/// The widest the kept folders' names' column is: a longer name is cut
+/// short (its whole is in its path, under it), and the places beside the
+/// labels keep their room.
+const NAME_MOST: f32 = 120.0;
+
+thread_local! {
+    /// The Files tab's list's scroller (one Host window at a time).
+    static FILES_SCROLL: olo_kit::ScrollHandle = olo_kit::ScrollHandle::new();
+}
 
 /// How far under the head its note begins: so that the state's words
 /// are as far over the note's as a section's line is over its note
@@ -85,6 +94,17 @@ pub enum HostDo {
     AskAll(bool),
     /// Its question answered yes: these taken off.
     RemoveAll(Vec<HostThing>),
+    /// A tab chosen: Rex, Olo Integration, Files.
+    Tab(usize),
+    /// A kept folder (by its path there) let go of: what it brought stays.
+    StopKept(String),
+    /// A kept folder that failed, kept in step again from the start.
+    RetryKept(String),
+    /// A kept folder's copy here shown in Tracker (by its path there); with
+    /// none, the host's own folder there (Downloads ▸ Rex ▸ NAME).
+    ShowKept(Option<String>),
+    /// These words put on the clipboard (the command that keeps a folder).
+    Copy(String),
 }
 
 /// How a thing stands, on its line: its light, a word or two, and what
@@ -110,6 +130,27 @@ pub struct Stands {
     /// What its button does, if it can be pressed now: put it there
     /// (`true`) or take it off, and whether that is a second try.
     pub can: Option<(bool, bool)>,
+}
+
+/// How a kept folder stands, on its line: in step (and how long ago it
+/// was last brought in step), syncing, waiting for its host, gone there,
+/// or failed and why.
+pub fn kept_stands(k: &crate::hub::Kept) -> Stands {
+    use crate::hub::KeptState;
+    // (Said again as it changes: `olo_kit::ago`.)
+    let ago = k.last.map(|(at, _, _)| olo_kit::ago::ago(at, olo_kit::ago::long));
+    match &k.state {
+        KeptState::InStep => Stands { more: ago, ..stands(Light::On, "In step") },
+        KeptState::Syncing => Stands { busy: true, ..stands(Light::Waiting, "Syncing…") },
+        KeptState::Waiting => stands(Light::Off, "Waiting for the host"),
+        // (Which side it's gone from, in the state's words, and no sentence
+        // under it saying it again: Astra's look.)
+        KeptState::Gone => stands(Light::Waiting, "Gone from the host"),
+        // (Its reason after the state, dim, on the line, as every folder's
+        // line is one line: under it, in the window's face, it was the
+        // loudest words in the list. Its whole in the line's tip.)
+        KeptState::Failed(why) => Stands { more: Some(why.clone()), ..stands(Light::Down, "Failed") },
+    }
 }
 
 fn stands(light: Light, said: &'static str) -> Stands {
@@ -235,38 +276,16 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
     }
 }
 
-/// The account's line: how much of what it is given for work with
-/// agents is there (`account::tally`), and what isn't, by name. Its
-/// window (Account…) has each by itself.
-pub fn account_stands(host: &HostStands) -> Stands {
-    let reached = host.conn == HostConnState::Connected && host.ssh;
-    match crate::account::tally(host) {
-        None if reached => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
-        None => stands(Light::Off, "Not known"),
-        Some((0, _, _)) => stands(Light::Off, "Not set up"),
-        Some((done, all, _)) if done == all => stands(Light::On, "Ready"),
-        // (Part of it: amber, not the grey of nothing there. An
-        // account with Claude Code in it isn't a broken one.)
-        Some((done, all, left)) => {
-            // (Two of what is missing by name, and how many more: all
-            // five would run under the line's button.)
-            let named = match left.as_slice() {
-                [a, b, rest @ ..] if !rest.is_empty() => olo_kit::tr!("without {}, {} and {} more", a, b, rest.len()).to_string(),
-                few => olo_kit::tr!("without {}", few.join(", ")).to_string(),
-            };
-            Stands { said: olo_kit::tr!("{} of {} ready", done, all).into(), more: Some(named), ..stands(Light::Waiting, "") }
-        }
-    }
-}
-
 /// The Rex server's line: running, and its version.
 fn server_stands(host: &HostStands) -> Stands {
     if host.conn == HostConnState::Connected { Stands { more: host.version.clone(), ..stands(Light::On, "Running") } } else { stands(Light::Off, "Not known") }
 }
 
 /// A section's heading, over its rule (the Server window's).
-fn section(title: &str) -> Element {
-    div().w_full().flex().flex_col().child(StringView::new(title.to_owned()).bold(true).height(m::LABEL_ROW)).child(div().h(px(2.0)).flex_shrink_0()).child(separator()).into_element()
+fn section(title: &'static str) -> Element {
+    // (A literal, looked up in the person's language: a `String` is shown
+    // as it is.)
+    div().w_full().flex().flex_col().child(StringView::new(title).bold(true).height(m::LABEL_ROW)).child(div().h(px(2.0)).flex_shrink_0()).child(separator()).into_element()
 }
 
 /// The window's content for `host`: `managed` whether its Rex server
@@ -275,13 +294,16 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
-    let wide = ["Check Again", "Connect", "Manage…", "Account…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel"]
+    let wide = ["Check Again", "Connect", "Manage…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel", "Stop", "Forget", "Copy"]
         .iter()
         .map(|l| button_width(l, false))
         .fold(0.0, f32::max);
-    let button = |label: &str, id: &str, what: HostDo, enabled: bool| {
+    // (Its words a literal, which the kit looks up in the person's
+    // language: a `String` is shown as it is, and every button here was in
+    // English in every language.)
+    let button = |label: &'static str, id: &str, what: HostDo, enabled: bool| {
         let on_do = on_do.clone();
-        Button::new(label.to_owned()).id(id.to_owned()).min_width(wide).enabled(enabled).on_click(move |_, cx| on_do(&what, cx))
+        Button::new(label).id(id.to_owned()).min_width(wide).enabled(enabled).on_click(move |_, cx| on_do(&what, cx))
     };
     let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
     // (What is under a line's words begins where they do, past the
@@ -289,12 +311,14 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // the margin, the buttons with a column to themselves.)
     let under = panels::LIGHT + m::TIGHT;
     let short = wide + m::SECTION;
+    // (A tab's panel: its border and its inset, each side.)
+    let panel = 2.0 * (m::SPACING + 1.0);
     // (How many letters a line of a well under a line's words holds.)
     let letter = f32::from(style::text_width("0000000000", MONO_SIZE, style::mono_font(olo_kit::FontWeight::NORMAL))) / 10.0;
-    let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - under - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
+    let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - panel - under - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
     // A thing's line and what is under it; `named`: the line says what it
     // is (one with no heading of its own, under another's).
-    let body = |s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>, named: Option<&str>| {
+    let body = |s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>, named: Option<&str>, link: Option<Element>| {
         let lamp = if s.busy { panels::busy_of(panels::LIGHT) } else { panels::light(s.light) };
         let mut said = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(lamp);
         // (Its state first and then what it is, as every line here reads:
@@ -332,14 +356,19 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         if let Some(which) = &s.which {
             notes = notes.child(small(which.clone())).child(div().h(px(4.0)).flex_shrink_0());
         }
-        notes = notes.child(small(note));
+        if !note.is_empty() {
+            notes = notes.child(small(note));
+        }
+        if let Some(link) = link {
+            notes = notes.child(link);
+        }
         if let Some(path) = path {
             notes = notes.child(StringView::new(path.to_owned()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE)));
         }
         block.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes)
     };
-    let block = |title: &str, s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>| {
-        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, note, path, None)).into_element()
+    let block = |title: &'static str, s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>| {
+        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, note, path, None, None)).into_element()
     };
     let reached = host.conn == HostConnState::Connected && host.ssh;
 
@@ -392,9 +421,10 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         .child(again);
 
     // Why nothing is known of it, or nothing can be done to it: a note
-    // of the host's own, under its name (from the name's own edge, as
-    // every note here hangs from its line's words), as far under the
-    // state as a section's note is under its line. What its
+    // of the host's own, under the head at the window's margin (with the
+    // line under it there too: hung from the name, they made three left
+    // edges, Opus's look), as far under the state as a section's note is
+    // under its line. What its
     // connection said, where it failed, in a well, as the host's
     // words always are here. (The host's name not first: most
     // are in small letters, and a sentence that began with one read
@@ -408,7 +438,6 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         HostConnState::Connected if !host.ssh => Some(olo_kit::tr!("Nothing can be installed on {} from here: it isn’t reached over SSH.", host.name).into()),
         _ => None,
     };
-    let from_name = ICON + m::SPACING;
     // (The head a step further from the first section than the
     // sections are from each other: it has no rule under it.)
     let mut head = div().w_full().pb(px(m::TIGHT)).flex().flex_col().child(head);
@@ -417,44 +446,82 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // this window, its line, the well, then the note. The well as
     // far under the state's words as a section's is under its line's.)
     if let HostConnState::Error(said) = &host.conn {
-        let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - from_name - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
+        let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
         let lines: Vec<String> = said.lines().filter(|l| !l.trim().is_empty()).flat_map(|line| crate::server_panel::hung(line, room)).collect();
         let lines = div().flex().flex_col().w_full().children(lines.into_iter().map(|line| StringView::new(line).mono(true).size(MONO_SIZE).wrap(true)));
-        head = head.child(div().h(px(WELL_OVER + 3.0)).flex_shrink_0()).child(div().w_full().pl(px(from_name)).child(panels::well(lines.into_element())));
+        // (Everything under the head's row at the window's margin, as the
+        // line under it is: one left edge, not three, Opus's second look.)
+        head = head.child(div().h(px(WELL_OVER + 3.0)).flex_shrink_0()).child(panels::well(lines.into_element()));
         if let Some(why) = why {
-            head = head.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(div().w_full().pl(px(from_name)).child(small(why)));
+            head = head.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(small(why));
         }
     } else if let Some(why) = why {
-        head = head.child(div().h(px(HEAD_NOTE_UNDER)).flex_shrink_0()).child(div().w_full().pl(px(from_name)).child(small(why)));
+        head = head.child(div().h(px(HEAD_NOTE_UNDER)).flex_shrink_0()).child(small(why));
     }
 
+    // What the window is for, and where the account's own window is, under
+    // the head at the window's margin, as the Account window says it the
+    // other way round (Ben, 2026-11-24: "make the account one like a button
+    // or link somewhere explaining that manage host is for host-wide
+    // management, and a link or button to open the manage your user account
+    // one"). (Not "for the whole host and every account on it": most of
+    // what is here is in the account's home there, Opus's look said. The
+    // link where its words fit, else on a line of its own.)
+    {
+        let on_account = on_do.clone();
+        // (A space between its parts, as between words: a wider gap read
+        // as a hole, Opus's second look.)
+        let space = f32::from(style::text_width(" ", style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
+        let link = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(space))
+            // (In the link's row, not a control's: a line, not a button's.)
+            .child(StringView::new(olo_kit::words::tr("Your agents and repositories:").to_string()).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW))
+            // (In the size of the words it ends, as every link here is: the
+            // detail size read a size larger.)
+            .child(
+                olo_kit::widgets::LinkButton::new(olo_kit::words::tr("Set Up This Host’s Account…").to_string())
+                    .size(style::SMALL_SIZE)
+                    .id("host-account")
+                    .on_click(move |_, cx| on_account(&HostDo::Account, cx)),
+            );
+        head = head.child(div().h(px(m::SPACING)).flex_shrink_0()).child(
+            div()
+                .w_full()
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(px(space))
+                // (As wide as its words, narrower and wrapped only where the
+                // line is too short: a wrapping view alone is as wide as
+                // the line, and put the link on a line of its own.)
+                .child(div().child(StringView::new(olo_kit::words::tr("Rex and Olo on this host.").to_string()).size(style::SMALL_SIZE).dim(true).wrap(true)))
+                .child(link),
+        );
+    }
     let mut page = vec![head.into_element()];
 
-    page.push(block(
+    // The host's Rex: its server, and the helper that keeps typing quick.
+    let mut rex: Vec<Element> = vec![block(
         "Rex server",
         &server_stands(host),
         // (Where its line says "Not known", there is nothing to manage.)
         vec![button("Manage…", "host-server", HostDo::Server, managed && connected)],
         olo_kit::words::tr("Its services, accounts and log, managed as root in their own window.").into(),
         None,
-    ));
-
-    // The person's own account there, made ready for work in its own
-    // window (the agents, and what they need).
-    page.push(block(
-        "Account",
-        &account_stands(host),
-        vec![button("Account…", "host-account", HostDo::Account, reached)],
-        olo_kit::words::tr("Agents and settings in your account there.").into(),
-        None,
-    ));
+    )];
+    // Olo's integration there: the bridge and its commands, the pool.
+    let mut olo = Vec::new();
 
     let mut there = Vec::new();
     for (thing, title, id, note, path) in [
-        (HostThing::Bridge, "Bridge", "bridge", "Lets programs there use links, Passwords, SSH keys and Agent Screens here.", None),
+        (HostThing::Bridge, "Bridge", "bridge", "Lets programs there use links, Passwords, SSH keys and Agent\u{a0}Screens here.", None),
         // (The bridge's way on the host: the commands its programs
         // already call, in a Rex session. Under the bridge's line, with
-        // no heading of its own: the window fits the smallest screen.)
+        // no heading of its own.)
         (HostThing::Commands, "desktop commands", "commands", "Lets xdg-open, notify-send and copy and paste commands there act here.", Some("~/.local/share/olo/rex-commands")),
         // (What runs for the host first, the files put there after.)
         (HostThing::Pool, "Token Pool", "pool", "Lets agents there use your accounts, even with this computer off.", None),
@@ -494,16 +561,200 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             olo_kit::words::tr(note).into()
         };
         if thing == HostThing::Commands
-            && let Some(bridge) = page.pop()
+            && let Some(bridge) = olo.pop()
         {
             let words = olo_kit::words::tr(title);
             // (Nearer the bridge's line than a section is to the next: a
             // part of it.)
-            page.push(div().w_full().flex().flex_col().child(bridge).child(div().h(px(4.0)).flex_shrink_0()).child(body(&s, actions, note, path, Some(words))).into_element());
+            olo.push(div().w_full().flex().flex_col().child(bridge).child(div().h(px(4.0)).flex_shrink_0()).child(body(&s, actions, note, path, Some(words), None)).into_element());
             continue;
         }
-        page.push(block(title, &s, actions, note, path));
+        let made = block(title, &s, actions, note, path);
+        if thing == HostThing::Helper { rex.push(made) } else { olo.push(made) }
     }
+
+    // The host's folders kept in step here (an agent's `olo sync` there),
+    // a list that scrolls in the room the other tabs make (the window
+    // keeps its height from tab to tab: both looks). Each a line with its
+    // name first and how it stands after, as the Account window's rows
+    // read (both looks: the state first buried the name); under it where
+    // it is here, a link that opens it in Tracker, and where it is there,
+    // each said ("Here", "There": two notations with nothing saying which
+    // was which, Opus's look). Stop lets it go (what it brought stays).
+    let here_there = [olo_kit::words::tr("Here").to_string(), olo_kit::words::tr("There").to_string()];
+    let label_w = here_there.iter().map(|l| f32::from(style::text_width(l.clone(), style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)))).fold(0.0, f32::max).ceil();
+    // (A label in the names' column, its value from the states' edge.)
+    let labelled = |label: &str, column: f32, dot_w: f32, height: f32, value: Element| {
+        div()
+            .w_full()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::TIGHT))
+            .child(div().w(px(column)).flex_shrink_0().child(StringView::new(label.to_owned()).size(style::SMALL_SIZE).dim(true).height(height)))
+            .child(div().w(px(dot_w)).flex_shrink_0())
+            .child(div().flex_1().min_w_0().child(value))
+            .into_element()
+    };
+    // (A sentence with a link in it, where its language puts it: the
+    // words before and after the template's "{}".)
+    let space = f32::from(style::text_width(" ", style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
+    let with_link = |template: &str, link: olo_kit::widgets::LinkButton| {
+        let (before, after) = template.split_once("{}").unwrap_or((template, ""));
+        let words = |w: &str| StringView::new(w.trim().to_owned()).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW);
+        let mut row = div().w_full().flex().flex_row().items_center().gap(px(space));
+        if !before.trim().is_empty() {
+            row = row.child(words(before));
+        }
+        row = row.child(link);
+        // (What follows the link, its full stop too, set right against it.)
+        if !after.trim().is_empty() {
+            row = row.child(div().ml(px(if after.starts_with(' ') { 0.0 } else { -space })).child(words(after)));
+        }
+        row.into_element()
+    };
+    let mut files = div().w_full().flex().flex_col();
+    if host.kept.is_empty() && !host.ssh {
+        // (`olo sync` takes a host reached over SSH: what it takes said
+        // first, then that this one isn't, Astra's second look.)
+        files = files.child(small(olo_kit::tr!("Folders are kept in step only from a host reached over SSH, which {} isn’t.", host.name).into()));
+    } else if host.kept.is_empty() {
+        // (What there would be; the command that makes one, in a well of
+        // the host's words' face, to copy, as the one thing to take away;
+        // where they land, a link in its sentence: Opus's second look.)
+        let command = format!("olo sync {}", olo_kit::words::tr("FOLDER"));
+        let copy = button("Copy", "host-kept-copy", HostDo::Copy(command.clone()), true);
+        let on_show = on_do.clone();
+        let here = olo_kit::widgets::LinkButton::new(olo_kit::tr!("Downloads\u{a0}▸ Rex\u{a0}▸ {}", host.name).to_string())
+            .size(style::SMALL_SIZE)
+            .id("host-kept-show")
+            .on_click(move |_, cx| on_show(&HostDo::ShowKept(None), cx));
+        files = files
+            .child(small(olo_kit::tr!("No folders on {} are kept in step here. An agent there keeps one with:", host.name).into()))
+            .child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0())
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .child(div().flex_1().min_w_0().child(panels::well(StringView::new(command).mono(true).size(MONO_SIZE).into_element())))
+                    .child(copy),
+            )
+            .child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0())
+            // (The link last, after a colon, as the line under the head has
+            // it: a full stop after a link stood off it by the link's
+            // rounding to the two-point grid.)
+            .child(with_link(olo_kit::words::tr("Kept folders land in: {}"), here));
+    }
+    // (Two columns: the names and the labels under them in the first, as
+    // wide as the widest of them; how each stands and its places in the
+    // second, all from one edge, the dot between in a column of its own.
+    // A state set after its name started wherever the name's length put
+    // it, a point or two off the places under it: the review's near-edge.
+    // A name longer than the column is cut short, its whole in its path.)
+    let leaf_of = |there: &str| there.trim_end_matches('/').rsplit('/').next().unwrap_or(there).to_owned();
+    let plain = style::ui_font(olo_kit::FontWeight::NORMAL);
+    let column = host.kept.iter().map(|k| f32::from(style::text_width(leaf_of(&k.there), style::PLAIN_SIZE, plain.clone())).ceil() + 1.0).fold(label_w, f32::max).min(NAME_MOST);
+    let dot_w = f32::from(style::text_width("·", style::PLAIN_SIZE, plain.clone())).ceil();
+    for (i, k) in host.kept.iter().enumerate() {
+        let leaf = leaf_of(&k.there);
+        let s = kept_stands(k);
+        let lamp = if s.busy { panels::busy_of(panels::LIGHT) } else { panels::light(s.light) };
+        let state = match &s.more {
+            Some(more) => format!("{}  ·  {more}", s.said),
+            None => s.said.clone(),
+        };
+        let said = div()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::TIGHT))
+            .child(lamp)
+            .child(div().w(px(column)).flex_shrink_0().child(StringView::new(leaf.clone()).cut(true)))
+            .child(div().w(px(dot_w)).flex_shrink_0().child(StringView::new("·").dim(true)))
+            .child(div().flex_1().min_w_0().child(StringView::new(state).dim(true).cut_words(true)));
+        // (A failure tried again; one gone there forgotten, as nothing of
+        // it runs to be stopped: Opus's look.)
+        let mut actions = Vec::new();
+        if matches!(k.state, crate::hub::KeptState::Failed(_)) {
+            actions.push(button("Try Again", &format!("host-kept-again-{i}"), HostDo::RetryKept(k.there.clone()), reached));
+        }
+        let gone = k.state == crate::hub::KeptState::Gone;
+        actions.push(button(if gone { "Forget" } else { "Stop" }, &format!("host-kept-stop-{i}"), HostDo::StopKept(k.there.clone()), true));
+        let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(said).children(actions);
+        let on_show = on_do.clone();
+        let there = k.there.clone();
+        let here = olo_kit::widgets::LinkButton::new(olo_kit::tr!("Downloads\u{a0}▸ Rex\u{a0}▸ {}\u{a0}▸ {}", host.name, leaf).to_string())
+            .size(style::SMALL_SIZE)
+            .id(format!("host-kept-show-{i}"))
+            .on_click(move |_, cx| on_show(&HostDo::ShowKept(Some(there.clone())), cx));
+        // (Two points between the two places: the link's row is its
+        // whole height to the review, which the path under it crowded by
+        // a point and a half at 1.25× and 1.75×.)
+        let notes = div()
+            .w_full()
+            .pl(px(under))
+            .pr(px(short))
+            .flex()
+            .flex_col()
+            .child(labelled(&here_there[0], column, dot_w, m::LABEL_ROW, here.into_element()))
+            .child(div().h(px(2.0)).flex_shrink_0())
+            .child(labelled(
+                &here_there[1],
+                column,
+                dot_w,
+                style::line_row(MONO_SIZE),
+                // (On its label's baseline: centred in the same row, the paths'
+                // face sat a pixel off the label's line, the review said.)
+                StringView::new(k.there.clone()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE).into_element(),
+            ));
+        // (Each folder a section's step from the one before: a folder's
+        // lines read as one, the next apart, Opus's look.)
+        if i > 0 {
+            files = files.child(div().h(px(m::SECTION - m::TIGHT)).flex_shrink_0());
+        }
+        files = files.child(div().w_full().flex().flex_col().child(line).child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes));
+    }
+    // (The whole page scrolls, its heading too, in the panel to its frame:
+    // the frame cuts what runs past it, and the bar, when the list runs
+    // long, sits against the frame in the gutter beside the column, whose
+    // buttons end where the other tabs' do: Opus's second look. The column
+    // set in by the reach and the pages' own inset, less the bar's breadth
+    // while it shows.)
+    let scroll = FILES_SCROLL.with(|h| h.clone());
+    let inset = olo_kit::widgets::tabs::fill_reach() + m::SPACING;
+    let bar = if scroll.max_offset().height > px(0.5) { olo_kit::widgets::SCROLL_BAR } else { 0.0 };
+    let files = olo_kit::widgets::ScrollView::new(&scroll)
+        .border(false)
+        .auto_hide(true)
+        .child(
+            div()
+                .w_full()
+                .pl(px(inset))
+                .pr(px(inset - bar))
+                .pt(px(inset))
+                .pb(px(inset))
+                .flex()
+                .flex_col()
+                .child(section("Folders kept in step"))
+                .child(div().h(px(m::TIGHT)).flex_shrink_0())
+                .child(files),
+        )
+        .into_element();
+
+    // (Every tab's page laid out, the panel as tall as the taller of Rex's
+    // and Olo's, so the window keeps its height and its foot its place
+    // from tab to tab: both looks. The folders' list fills that room and
+    // scrolls in it.)
+    let tab = shown.tab.min(2);
+    let on_tab = on_do.clone();
+    let names: Vec<SharedString> = ["Rex", "Olo Integration", "Files"].into_iter().map(SharedString::from).collect();
+    let page_of = |things: Vec<Element>| div().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(things).into_element();
+    page.push(TabView::new("host-tabs", names, tab).grows().on_select(move |i: &usize, cx| on_tab(&HostDo::Tab(*i), cx)).pages([page_of(rex), page_of(olo), files]).fill_page(2).into_element());
 
     // Everything of Olo's off the host at once: the one thing here
     // that asks first, in its own place at the window's foot.
@@ -525,9 +776,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     } else {
         div().w_full().flex().flex_row().items_center().child(button("Remove All…", "host-all", HostDo::AskAll(true), reached && !busy && !there.is_empty())).child(div().flex_1())
     };
-    // (Its rule as far over the button as the window's foot is under
-    // it: the separator's line is three points into it.)
-    page.push(div().w_full().flex().flex_col().child(separator()).child(div().h(px(m::WINDOW_INSET - 3.0)).flex_shrink_0()).child(foot).into_element());
+    // (Under the tabs' panel, whose edge is its rule.)
+    page.push(foot.into_element());
 
     // (A section's step between them, as the Server window's have.)
     div().w_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(page).into_element()
@@ -561,30 +811,6 @@ mod tests {
             repos: Vec::new(),
             repos_there: Some(Vec::new()),
         }
-    }
-
-    /// The account's line: asked, nothing there, part of it (amber,
-    /// with what is missing by name), all of it; not known where the
-    /// host isn't connected.
-    #[test]
-    fn the_accounts_line_says_how_much_of_it_is_ready() {
-        use olo_rex_client::ready::Account;
-        let mut h = host();
-        let s = account_stands(&h);
-        assert_eq!((said(&s), s.busy), ((Light::Waiting, "Asking…", None), true));
-        h.carried = Some((9, 0, false));
-        h.account = Some(Account { has_curl: true, has_git: true, ..Account::default() });
-        assert_eq!(said(&account_stands(&h)), (Light::Off, "Not set up", None));
-        h.account = Some(Account { path: true, claude: Some("2.1.331".into()), git: Some(("You".into(), "you@example.org".into())), has_curl: true, has_git: true, ..Account::default() });
-        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "3 of 7 ready", Some("without Codex, Antigravity and 2 more")));
-        h.skill = Some(true);
-        h.carried = Some((0, 9, false));
-        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "5 of 7 ready", Some("without Codex, Antigravity")));
-        h.account = Some(Account { codex: Some("0.172.0".into()), antigravity: Some("1.5.15".into()), ..h.account.clone().unwrap() });
-        h.skill = Some(true);
-        assert_eq!(said(&account_stands(&h)), (Light::On, "Ready", None));
-        h.conn = HostConnState::Disconnected;
-        assert_eq!(said(&account_stands(&h)), (Light::Off, "Not known", None));
     }
 
     fn said(s: &Stands) -> (Light, &str, Option<&str>) {

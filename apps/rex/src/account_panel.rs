@@ -52,6 +52,8 @@ pub enum AccountDo {
     Connect,
     /// How far back the agents' sessions copied go, chosen.
     Window(olo_rex_client::sessions::Window),
+    /// The Host window: what is the whole host's.
+    Host,
 }
 
 /// What stands where a row's light does.
@@ -425,12 +427,41 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
         );
     // (What is promised of all of it, once, under the head. For a
     // host that isn't reached over SSH, why nothing here can be done.)
+    // (And where Rex's and Olo's own are, the Host window, at its end, as
+    // the Host window says it the other way round: in one place in both,
+    // under the head at the window's margin, Opus's look. The link where
+    // its words fit, else on a line of its own. The promise in fewer
+    // words, so the link fits after it.)
     let promise = if host.conn == HostConnState::Connected && !host.ssh {
         "This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here."
     } else {
-        "Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root."
+        "Installed in your home folder there, as you; nothing runs as root."
     };
-    let promise = StringView::new(olo_kit::words::tr(promise).to_string()).size(style::SMALL_SIZE).dim(true).wrap(true);
+    let on_host = on_do.clone();
+    // (A space between its parts, as between words: a wider gap read as a
+    // hole, Opus's second look.)
+    let space = f32::from(style::text_width(" ", style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
+    let link = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(space))
+        // (In the link's row, not a control's: a line, not a button's.)
+        .child(StringView::new(olo_kit::words::tr("Rex and Olo there:").to_string()).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW))
+        // (In the size of the words it ends: the detail size read a size
+        // larger.)
+        .child(olo_kit::widgets::LinkButton::new(olo_kit::words::tr("Manage Host…").to_string()).size(style::SMALL_SIZE).id("account-host").on_click(move |_, cx| on_host(&AccountDo::Host, cx)));
+    let promise = div()
+        .w_full()
+        .flex()
+        .flex_row()
+        .flex_wrap()
+        .items_center()
+        .gap(px(space))
+        // (As wide as its words, narrower and wrapped only where the line
+        // is too short: a wrapping view alone is as wide as the line.)
+        .child(div().child(StringView::new(olo_kit::words::tr(promise).to_string()).size(style::SMALL_SIZE).dim(true).wrap(true)))
+        .child(link);
 
     let under = panels::LIGHT + m::TIGHT;
     let mut page = vec![div().w_full().flex().flex_col().gap(px(m::SPACING)).child(head).child(promise).into_element()];
@@ -459,7 +490,9 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
                         Press::RemoveSkill => AccountDo::RemoveSkill,
                         Press::Repos => AccountDo::Repos,
                     };
-                    line.child(button(label.to_owned(), format!("account-{}", item.id()), what, can))
+                    // (Its words in the person's language: a `String` made
+                    // of the literal was shown as it is, in English.)
+                    line.child(button(olo_kit::words::tr(label).into(), format!("account-{}", item.id()), what, can))
                 }
                 None => line,
             };

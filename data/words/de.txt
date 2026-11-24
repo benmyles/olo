@@ -1724,6 +1724,9 @@ Nicht aktuell seit {}
 Being installed…
 Wird installiert …
 
+Being removed…
+Wird entfernt …
+
 Being updated…
 Wird aktualisiert …
 
@@ -1837,6 +1840,9 @@ Untere zwei Drittel
 
 Branch {} is checked out in {} already.
 Der Branch {} ist bereits in {} ausgecheckt.
+
+Bridge
+Brücke
 
 Bright
 Hell
@@ -3032,6 +3038,9 @@ Die Kopie in 1Password konnte zum Vergleich nicht gelesen werden, daher wurde Ih
 Couldn’t read the key: {}
 Der Schlüssel konnte nicht gelesen werden: {}
 
+Couldn’t remove
+Entfernen fehlgeschlagen
+
 Couldn’t remove the account: {}
 Das Konto konnte nicht entfernt werden: {}
 
@@ -3711,6 +3720,12 @@ Download …
 Downloads
 Downloads
 
+Downloads ▸ Rex ▸ {}
+Downloads ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+Downloads ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Ziehen Sie ein Fenster an seinem Tab und lassen Sie es in einem Platz los, oder drücken Sie dessen Buchstaben: Das Fenster nimmt ihn ein. Im Platz eines anderen Fensters losgelassen, tauschen die beiden. Esc setzt alles zurück.
 
@@ -4267,6 +4282,9 @@ Extrem
 FD
 FD
 
+FOLDER
+ORDNER
+
 Fable 5.1
 Fable 5.1
 
@@ -4624,8 +4642,14 @@ Ordner:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Ordner und Dateien, durch Kommas getrennt: ~/ ist Ihr Benutzerordner, **/ überall, * jeder Name.
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+Ordner werden nur von einem Host abgeglichen, der über SSH erreicht wird – {} wird es nicht.
+
 Folders by Name, Files by Date
 Ordner nach Name, Dateien nach Datum
+
+Folders kept in step
+Abgeglichene Ordner
 
 Follows Other Mice below. Recommended for it: {}.
 Folgt „Andere Mäuse“ unten. Empfohlen dafür: {}.
@@ -4932,6 +4956,9 @@ Gehe zu:
 
 Going:
 Teilnahme:
+
+Gone from the host
+Auf dem Host nicht mehr vorhanden
 
 Good. Lift, and touch again, a little differently.
 Gut. Heben Sie den Finger und berühren Sie erneut, etwas anders.
@@ -5560,6 +5587,9 @@ Installiert
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Wird dort in Ihrem Benutzerordner als Sie über das jeweilige Installationsprogramm installiert. Nichts läuft als root.
 
+Installed in your home folder there, as you; nothing runs as root.
+Wird dort in Ihrem Benutzerordner als Sie installiert; nichts läuft als root.
+
 Installing
 Installieren
 
@@ -5952,6 +5982,9 @@ Reservierter Kern
 Kept after restart
 Nach Neustart behalten
 
+Kept folders land in: {}
+Abgeglichene Ordner landen in: {}
+
 Kept for this computer and set again at every start.
 Für diesen Computer gespeichert und bei jedem Start erneut gesetzt.
 
@@ -6192,7 +6225,7 @@ Lässt Agenten dort Ihre Konten nutzen, auch wenn dieser Computer aus ist.
 Lets coding agents title their Terminal tab.
 Lässt Coding-Agenten ihren Terminal-Tab benennen.
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Erlaubt Programmen dort, hier Links, Passwords, SSH-Schlüssel und Agenten-Bildschirme zu nutzen.
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7512,6 +7545,9 @@ Keine Umgebung.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 Kein Termin von vor einem Jahr bis in zwei Jahren hat „{}“ im Titel, im Ort oder in den Notizen.
 
+No folders on {} are kept in step here. An agent there keeps one with:
+Hier werden keine Ordner von {} abgeglichen. Ein Agent dort gleicht einen ab mit:
+
 No key yet.
 Noch kein Schlüssel.
 
@@ -8084,6 +8120,9 @@ Olo Doctor: {}. Klicken, um es zu sehen.
 
 Olo Installer
 Olo-Installer
+
+Olo Integration
+Olo-Integration
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 Olo hat {} App auf diesem Computer nicht: Geben Sie ID und Geheimnis ihres Clients an (Google Cloud ▸ ihr Olo-Projekt ▸ Clients), oder „Abbrechen“ und „Google-Konto hinzufügen …“, damit der Agent es erledigt.
@@ -9629,6 +9668,9 @@ Entfernen
 Remove Account
 Konto entfernen
 
+Remove All
+Alle entfernen
+
 Remove All…
 Alle entfernen …
 
@@ -9974,6 +10016,12 @@ Rex-Server auf {}
 Rex adds these entries to {} as {}:
 Rex fügt diese Einträge als {1} zu {0} hinzu:
 
+Rex and Olo on this host.
+Rex und Olo auf diesem Host.
+
+Rex and Olo there:
+Rex und Olo dort:
+
 Rex changes {} as {}:
 Rex ändert {} als {}:
 
@@ -9994,6 +10042,9 @@ Rex entfernt diese als {}:
 
 Rex runs this as {}:
 Rex führt dies als {} aus:
+
+Rex server
+Rex-Server
 
 Rex sets these as {}:
 Rex legt diese als {} fest:
@@ -11457,6 +11508,9 @@ Synchronisierung mit 1Password …
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 Die Synchronisierung mit {} ergibt {}. Auf keiner Seite ändert sich etwas, bis Sie sie anwenden.
 
+Syncing…
+Wird abgeglichen …
+
 System
 System
 
@@ -12258,6 +12312,9 @@ Dann wird der Platz freigegeben, den nur sie belegte, in {}.
 Then the space only they took is freed, in {}.
 Dann wird der Platz freigegeben, den nur sie belegten, in {}.
 
+There
+Dort
+
 There are no links to shape.
 Es gibt keine Verbindungen zum Formen.
 
@@ -12939,6 +12996,9 @@ Typically
 Typing
 Tippen
 
+Typing helper
+Tipphilfe
+
 Typing on Hosts
 Tippen auf Hosts
 
@@ -13454,6 +13514,9 @@ Wartet darauf …
 
 Waiting for power
 Wartet auf Strom
+
+Waiting for the host
+Wartet auf den Host
 
 Waiting for the network
 Wartet auf das Netzwerk
@@ -14012,6 +14075,9 @@ Ihre eigenen Arten
 
 Your SSH keys from Passwords, for ssh and git.
 Ihre SSH-Schlüssel aus Passwords für ssh und git.
+
+Your agents and repositories:
+Ihre Agenten und Repositorys:
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Ihre Backups werden verschlüsselt, bevor sie diesen Computer verlassen, mit einem Schlüssel, den nur dieser Computer hat. Bewahren Sie ihn auch in Passwords auf, sonst können sie nirgendwo anders gelesen werden.
@@ -14655,6 +14721,9 @@ other: seit {n} Tagen nichts gesichert
 nothing freed
 nichts freigegeben
 
+nothing granted
+nichts freigegeben
+
 nothing moved
 nichts bewegt
 
@@ -15001,6 +15070,9 @@ these {n} backups need
 one: diese Sicherung braucht
 other: diese {n} Sicherungen brauchen
 
+this connection still uses it
+diese Verbindung nutzt sie noch
+
 this event
 dieser Termin
 
@@ -15052,6 +15124,9 @@ Das Limit von tomorrow.io für Ihren Schlüssel ist vorerst erreicht{}
 turned off
 ausgeschaltet
 
+turned off for every host
+für alle Hosts ausgeschaltet
+
 under a minute
 unter einer Minute
 
@@ -15079,6 +15154,9 @@ other: {n} Pakete aktualisieren
 
 use . for decimals
 verwenden Sie . für Dezimalstellen
+
+used the next time you connect
+wird bei der nächsten Verbindung genutzt
 
 validating
 prüft

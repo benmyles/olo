@@ -4694,6 +4694,28 @@ it.
   Next and Previous Tab (`app::tab_step`: ⌃Tab, ⌃⇧Tab, ⌃Page Down and
   ⌃Page Up) step the window's first tab view from wherever the keyboard
   is, unless what has it stops them (a screen being controlled).
+  `TabView::pages(pages)` in place of the child: every tab's page, all
+  laid out in one grid cell, the chosen one shown and the others hidden
+  (`invisible`: never drawn, nor reached by the pointer, the keyboard,
+  agents or the layout review), so the panel is as tall as the tallest
+  and a window that fits what it shows keeps its height, and its foot
+  its place, from tab to tab, as BTabView's one frame for all its tabs
+  did (Rex's Host window's foot moved 290 points from tab to tab
+  before; both looks, 2026-11-24). Switching is cheaper too: what is
+  shown is only shown, not built and laid out again (the Host window's
+  UI thread, 60 switches, release: 1.23 M instructions a switch against
+  6.08 M with the chosen page alone, 0.47–0.55 ms against 1.29–1.60 ms,
+  the slowest 1.7–2.8 ms against 5.3–7.7 ms; a redraw that changes
+  nothing, 1.06 M against 0.80 M). `TabView::fill_page(i)`: that page
+  fills the panel to its frame instead of setting its height, for a
+  list that may run long: a borderless `ScrollView` there has its bar
+  against the frame and its content cut by it, as a BScrollView in a tab
+  (cut in mid-air, a row's last line read as a fault); what it holds is
+  set in by `tabs::fill_reach()` (to the frame's inside) and the other
+  pages' own inset, less the bar's breadth while it shows
+  (`ScrollHandle::max_offset`), so its column and buttons line up with
+  the other pages'; while it's chosen the review's pane is the frame's
+  inside.
 - `widgets::dashboard`: `Card::new(id, title)
   .figure(..).caption(..).selected(..).figure_ink(..).on_click(..)`
   holds its content as children under its head (`Card::height(content,
@@ -6860,7 +6882,12 @@ The checks are `olo_kit_base::layout_review`'s, on what the kit drew
 (`WindowCx::flush_now`, even one out of sight) while its `style`
 primitives, labels, text fields and icons record what they drew, and
 the `Frame`'s last element hands that to the checks. Nothing is
-recorded otherwise.
+recorded otherwise. What is hidden (`invisible`, and all it holds: a
+tab view's pages not chosen) shows nothing to it (`Tree::seen_at` is
+empty there: its words were read over the page shown, 2026-11-24), but
+the room it keeps is the window's content to the empty-space check
+(`WindowCx::kept_room`, `Parts::kept`: room kept for another state,
+Preferences ▸ Rex's caution, isn't empty space at the foot).
 
 - **Errors** (tests fail on them):
   - `blurry-icon`: an icon off device pixels, not a whole number of them,
@@ -6911,7 +6938,12 @@ recorded otherwise.
     etched edge under a scroll bar's arrow; a control's own edge, inside
     it, isn't one; two paragraphs' boxes are snapped outward to device
     pixels and the next one placed to the nearest, so a pixel of TIGHT
-    between them may read as lost, and is allowed),
+    between them may read as lost, and is allowed; a line set in pieces
+    a word apart is one line, and so is a link among its words, a control
+    no taller than a label's row whose own words sit on the line's
+    baseline: Rex's Host window, "Your agents and repositories: Set Up
+    This Host’s Account…", where the gap a push button needs read as a
+    hole, Opus's look, 2026-11-24),
     `window-edge` (content nearer the window's edge than its inset, less
     4, unless in a bar or a view along that edge), `crowded-lines` (two
     long lines a point or three apart: a box's edge almost on its
@@ -28035,11 +28067,47 @@ its drawing, `HubState::host_stands` what it shows).
   installed, a note under the name says so ("Nothing on nas is known
   until it’s connected."; never a guess at the cause, nor what the
   button does: a button that needs that has the wrong name), and
-  what a connection that failed said stands in a well under that. Then a section for
-  each thing, in the order one rests on another: the Rex server
-  (Running and its version; Manage… opens the Server window), Olo's
-  bridge, the skill for agents (not to be installed before the
-  bridge), Olo's typing helper; and at the foot Remove All…, the one
+  what a connection that failed said stands in a well under that.
+  Everything under the head's row is at the window's margin, one left
+  edge (hung from the name, the note and the well made three, Opus's
+  look). Under it, what the window is for and where the account's own
+  is: "Rex and Olo on this host. Your agents and repositories: Set Up
+  This Host’s Account…", the link named for the menu command that opens
+  the Account window, which ends its own promise line the same way
+  ("Installed in your home folder there, as you; nothing runs as root.
+  Rex and Olo there: Manage Host…"; not "for the whole host and every
+  account on it": most of what is here is in the account's home there).
+  The pieces a word's space apart, the link last; where they don't fit
+  on one line, the link and its words go to the next. Then three tabs
+  (2026-11-24; Ben: "make the rex manage host dialog a window with
+  multiple tabs and group things under logical tabs e.g. Rex / Olo
+  Integration. and just make the account one like a button or link
+  somewhere explaining that manage host is for host-wide management";
+  `Shown::tab`, `HostDo::Tab`; every tab's page laid out,
+  `TabView::pages`, so the window keeps one height, the taller of Rex's
+  and Olo's, and Remove All… its place; 20 points wider than before for
+  the panel's inset): *Rex*, the host's Rex server (Running and its
+  version; Manage… opens the Server window) and Olo's typing helper;
+  *Olo Integration*, the bridge with its desktop commands and the Token
+  Pool; *Files*, the host's folders kept in step here (`olo sync`, the
+  bridge's "Folders kept in step"), a list that fills the panel to its
+  frame and scrolls there (`TabView::fill_page`), its bar against the
+  frame. A folder is a line and two under it, in two columns: its name
+  and the labels Here and There in the first, as wide as the widest of
+  them (at most 120 points, a longer name cut short); how it stands
+  (In step and how long ago, Syncing…, Waiting for the host, Gone from
+  the host, Failed and why, all on the line, cut short with its whole
+  in a tip) and the places in the second, from one edge, a dot between
+  in a column of its own (a state set after its name started where the
+  name's length put it, a point or two off the places under it: the
+  review's near-edge); Here a link that opens the copy here in Tracker,
+  There the folder's path on the host. Its buttons: Stop; Try Again
+  beside it for one that failed (`RexHub::retry_kept`: its runner ended
+  and started again, watching and syncing at once); Forget for one gone
+  from the host, which runs nothing to stop. None kept: what an agent
+  runs to keep one, in a well with Copy, and where they land, a link
+  (for a host not reached over SSH, that only such a host keeps one).
+  At the foot Remove All…, the one
   thing here that asks first (its question takes the foot's place). A
   section is the Server window's: heading and rule, a line with a
   light, a state and its button, a note set in under the state's words

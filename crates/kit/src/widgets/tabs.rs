@@ -11,6 +11,10 @@
 //! ```ignore
 //! TabView::new("tabs", vec!["Live".into(), "History".into()], chosen).on_select(cx.msg_with(|i: &usize| Msg::Tab(*i))).child(content)
 //! ```
+//!
+//! What the chosen tab shows is its child; or every tab's page is given
+//! ([`TabView::pages`]), and the panel keeps one size whichever is chosen,
+//! as BTabView's one frame for all its tabs did.
 
 use std::rc::Rc;
 
@@ -37,11 +41,47 @@ pub struct TabView {
     on_select: Option<SelectFn>,
     children: SmallVec<[Element; 2]>,
     grows: bool,
+    /// Its children are every tab's page (`pages`).
+    paged: bool,
+    /// The page that fills the panel to its frame (`fill_page`).
+    fill: Option<usize>,
 }
 
 impl TabView {
     pub fn new(id: impl Into<SharedString>, tabs: impl Into<Rc<[SharedString]>>, selected: usize) -> TabView {
-        TabView { id: id.into(), tabs: crate::words::of_all(tabs.into()), selected, on_select: None, children: SmallVec::new(), grows: false }
+        TabView { id: id.into(), tabs: crate::words::of_all(tabs.into()), selected, on_select: None, children: SmallVec::new(), grows: false, paged: false, fill: None }
+    }
+
+    /// Every tab's page, the `i`th tab's `pages[i]`, in place of what the
+    /// chosen one shows alone: all laid out in one place, one over
+    /// another, the chosen one shown and the others hidden (never drawn,
+    /// nor reached by the pointer, the keyboard or agents). So the panel
+    /// is as tall as the tallest page, and a window that follows what it
+    /// shows ([`TabView::grows`]) keeps its height, and its foot its
+    /// place, as tabs are chosen (Rex's Host window's foot moved by 290
+    /// points from tab to tab: both looks, 2026-11-24). A page with a
+    /// list that may run long fills the room the others make
+    /// ([`TabView::fill_page`]), and its list scrolls there.
+    pub fn pages(mut self, pages: impl IntoIterator<Item = Element>) -> Self {
+        self.children.extend(pages);
+        self.paged = true;
+        self
+    }
+
+    /// The `i`th of [`TabView::pages`] fills the panel to its frame rather
+    /// than setting its height: a list that may run long (Rex's Host
+    /// window's folders kept in step) scrolls there, in a borderless
+    /// [`ScrollView`](super::ScrollView) whose bar sits against the frame
+    /// and whose content the frame cuts, as a BScrollView in a tab does
+    /// (cut short in mid-air, a row's last line read as a fault: both
+    /// looks, 2026-11-24); the panel keeps the height the other pages give
+    /// it. What the page holds is set in by [`fill_reach`] more than the
+    /// other pages' content is, to line up with theirs. While it's chosen,
+    /// what's in the panel must fit inside its frame, not its inset (the
+    /// layout review's pane).
+    pub fn fill_page(mut self, i: usize) -> Self {
+        self.fill = Some(i);
+        self
     }
 
     /// As tall as what the chosen tab shows needs, at least (else it is as
@@ -58,6 +98,26 @@ impl TabView {
         self.on_select = Some(Rc::new(f));
         self
     }
+}
+
+/// How far a [`TabView::fill_page`] reaches past the panel's inset, each
+/// side: to the inside of its frame. What such a page holds is set in by
+/// this and the other pages' own inset, so it lines up with theirs.
+pub fn fill_reach() -> f32 {
+    m::WINDOW_INSET - frame_points(olo_interface::scale_factor())
+}
+
+/// The panel's frame (its outline and bevel, on device pixels, as
+/// [`paint_face`] draws them, `strip::lines`), in points at `scale`.
+fn frame_points(scale: f32) -> f32 {
+    (scale.floor().max(1.0) + scale.round().max(1.0)) / scale
+}
+
+/// A [`TabView::fill_page`]: the panel to its frame, taking no part in
+/// its height.
+fn fill(page: Element) -> Element {
+    let out = px(-fill_reach());
+    div().absolute().left(out).right(out).top(out).bottom(out).flex().flex_col().child(page).into_element()
 }
 
 impl ParentElement for TabView {
@@ -123,12 +183,25 @@ fn places(scale: f32, outer: Bounds<Pixels>, tabs: &[SharedString]) -> Vec<Bound
 
 impl IntoElement for TabView {
     fn into_element(self) -> Element {
-        let TabView { id, tabs, selected, on_select, children, grows } = self;
+        let TabView { id, tabs, selected, on_select, children, grows, paged, fill: fills } = self;
+        let filled = paged && fills == Some(selected);
+        // (Every page in one grid cell, as tall as the tallest: the one
+        // chosen shown.)
+        let children: SmallVec<[Element; 2]> = if paged {
+            let pages = children.into_iter().enumerate().map(|(i, page)| {
+                let page = if fills == Some(i) { fill(page) } else { page };
+                let at = div().row_start(1).col_start(1).min_w_0().flex().flex_col().child(page);
+                if i == selected { at } else { at.invisible() }
+            });
+            smallvec::smallvec![div().relative().w_full().flex_1().grid().grid_cols(1).children(pages).into_element()]
+        } else {
+            children
+        };
         let n = tabs.len();
         let (painted, pressed) = (tabs.clone(), tabs.clone());
         let (clicked, keys) = (on_select.clone(), on_select);
-        let face = canvas(move |g, outer| paint_face(g, outer, &painted, selected))
-            .paint_key(style::key((&*tabs, selected)))
+        let face = canvas(move |g, outer| paint_face(g, outer, &painted, selected, filled))
+            .paint_key(style::key((&*tabs, selected, filled)))
             .absolute()
             .inset_0()
             .on_mouse_down(MouseButton::Left, move |e, cx| {
@@ -179,7 +252,7 @@ impl IntoElement for TabView {
 /// shade off the panel and behind its edge, the chosen one in the
 /// panel's colour and open into it; the panel outlined, lit along its
 /// top and left and shaded along its bottom and right.
-fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], selected: usize) {
+fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], selected: usize, filled: bool) {
     let p = theme::palette();
     let sh = Shape::now();
     let least = sh.name_pads().1;
@@ -225,10 +298,9 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
         rect(g, (tr - hair, y0 + hair, rr - hair - bev, y0 + hair + bev), lit);
     }
     // (What's in it must fit inside its inset.)
-    crate::review::pane(
-        g,
-        Bounds::from_corners(point(outer.left() + px(m::WINDOW_INSET), outer.top() + px(TAB_HEIGHT)), point(outer.right() - px(m::WINDOW_INSET), outer.bottom() - px(m::WINDOW_INSET))),
-    );
+    // (A page that fills the panel, its frame: `TabView::fill_page`.)
+    let inset = if filled { frame_points(s) } else { m::WINDOW_INSET };
+    crate::review::pane(g, Bounds::from_corners(point(outer.left() + px(inset), outer.top() + px(TAB_HEIGHT)), point(outer.right() - px(inset), outer.bottom() - px(inset))));
     // (The tabs go where their names' lengths put them: lined up with
     // what's under them only by chance.)
     crate::review::own_grid(g, Bounds::from_corners(outer.origin, point(outer.right(), outer.top() + px(TAB_HEIGHT))));

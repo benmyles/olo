@@ -763,6 +763,24 @@ impl WindowCore {
         false
     }
 
+    /// In the window and shown: attached, and nothing holding it hidden
+    /// (`invisible`), as a tab view's pages not chosen are. What is hidden
+    /// is no tab stop, takes no click and hears no key of the window's.
+    pub(crate) fn is_shown(&self, id: NodeId) -> bool {
+        let mut at = Some(id);
+        while let Some(id) = at {
+            let Some(node) = self.nodes.get(id) else { return false };
+            if node.style.visibility == crate::Visibility::Hidden {
+                return false;
+            }
+            if Some(id) == self.root {
+                return true;
+            }
+            at = node.parent;
+        }
+        false
+    }
+
     /// The tree as layout left it, to stderr (`OLO_DUMP_LAYOUT=1`): each
     /// node's kind, where it is in what holds it and in the window (in
     /// points), and the size and position its style asks for. For when
@@ -2416,6 +2434,42 @@ impl<'a> WindowCx<'a> {
         if let Some(root) = self.core.root {
             let window = Bounds { origin: Point::default(), size: self.core.size };
             self.core.agent_nodes(root, window, Point::default(), &mut out);
+        }
+        out
+    }
+
+    /// Where what is hidden keeps its room (`invisible`: laid out, never
+    /// shown or drawn), each outermost hidden node's bounds as it would
+    /// show: room kept for another state (Preferences ▸ Rex's caution, a
+    /// tab view's pages not chosen), which a layout review counts as what
+    /// the window shows, not as empty space at its foot.
+    pub fn kept_room(&self) -> Vec<Bounds<Pixels>> {
+        let core = &*self.core;
+        let hidden = |id: NodeId| core.nodes.get(id).is_some_and(|n| n.style.visibility == crate::Visibility::Hidden);
+        let mut out = Vec::new();
+        for (id, node) in core.nodes.iter() {
+            if !hidden(id) {
+                continue;
+            }
+            // (The outermost hidden one, in the window: nothing over it
+            // hidden, and its line of holders up to the root.)
+            let mut at = node.parent;
+            let mut outermost = Some(id) == core.root;
+            while let Some(up) = at {
+                if hidden(up) {
+                    outermost = false;
+                    break;
+                }
+                if Some(up) == core.root {
+                    outermost = true;
+                    break;
+                }
+                at = core.nodes.get(up).and_then(|n| n.parent);
+            }
+            if outermost {
+                let shift = core.shift_at(id);
+                out.push(Bounds { origin: point(node.bounds.origin.x + shift.x, node.bounds.origin.y + shift.y), size: node.bounds.size });
+            }
         }
         out
     }

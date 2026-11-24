@@ -4225,6 +4225,11 @@ impl View for RexWindow {
                     AccountDo::Check => crate::account::check(&hub),
                     AccountDo::Repos => open_or_raise_panel(WinRole::Repos),
                     AccountDo::Window(window) => hub.set_sessions_window(window),
+                    AccountDo::Host => {
+                        if let Some(shown) = crate::account::current() {
+                            open_host(&hub, &shown.key);
+                        }
+                    }
                     AccountDo::Connect => {
                         if let Some(shown) = crate::account::current() {
                             hub.connect_host(&shown.key);
@@ -4305,6 +4310,33 @@ impl View for RexWindow {
                     }
                     HostDo::AskAll(asking) => crate::host::ask_all(asking),
                     HostDo::RemoveAll(things) => crate::host::remove_all(&hub, &things),
+                    HostDo::Tab(tab) => crate::host::show_tab(tab),
+                    // (Its copy here, in Tracker; or the host's own folder
+                    // here, made if nothing came from it yet.)
+                    HostDo::ShowKept(there) => {
+                        if let Some(shown) = crate::host::current() {
+                            let label = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&shown.key).map(|h| h.label.clone()).unwrap_or(shown.name.clone());
+                            let here = match &there {
+                                Some(there) => crate::hub::kept_here(&label, there),
+                                None => crate::hub::host_here(&label),
+                            };
+                            if let Some(here) = here {
+                                let _ = std::fs::create_dir_all(&here);
+                                crate::bridge::open_folder_in_tracker(&here);
+                            }
+                        }
+                    }
+                    HostDo::Copy(text) => olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(text)),
+                    HostDo::RetryKept(there) => {
+                        if let Some(shown) = crate::host::current() {
+                            hub.retry_kept(&shown.key, &there);
+                        }
+                    }
+                    HostDo::StopKept(there) => {
+                        if let Some(shown) = crate::host::current() {
+                            hub.stop_kept(&shown.key, &there);
+                        }
+                    }
                 }
             }
             WinMsg::ServerChanged => {

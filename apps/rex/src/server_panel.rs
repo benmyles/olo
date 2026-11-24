@@ -328,9 +328,11 @@ pub fn render_server_panel(
 ) -> Element {
     let p = theme::palette();
     let on_do: Rc<dyn Fn(&ServerDo, &mut WindowCx)> = Rc::new(on_do);
-    let button = |label: &str, what: ServerDo| {
+    let button = |label: &'static str, what: ServerDo| {
         let on_do = on_do.clone();
-        Button::new(label.to_owned()).min_width(m::BUTTON_MIN_WIDTH).on_click(move |_, cx| on_do(&what, cx))
+        // (Its words looked up in the person's language: a `String` made of
+        // the literal was shown as it is, in English.)
+        Button::new(olo_kit::words::tr(label).to_owned()).min_width(m::BUTTON_MIN_WIDTH).on_click(move |_, cx| on_do(&what, cx))
     };
     let body = |text: String| StringView::new(text).wrap(true).into_element();
     let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
@@ -519,14 +521,16 @@ fn failed(managed: &Managed, what: &str, why: &str, said: &str) -> Vec<Element> 
 
 /// A section's heading over its rule, as Add Host's groups of steps
 /// have theirs.
-fn section(title: &str) -> Element {
+fn section(title: &'static str) -> Element {
     let gap = |h: f32| div().h(px(h)).flex_shrink_0();
-    div().w_full().flex().flex_col().child(StringView::new(title.to_owned()).bold(true).height(m::LABEL_ROW)).child(gap(2.0)).child(separator()).into_element()
+    // (Looked up in the person's language: a `String` made of the literal
+    // was shown as it is.)
+    div().w_full().flex().flex_col().child(StringView::new(olo_kit::words::tr(title).to_owned()).bold(true).height(m::LABEL_ROW)).child(gap(2.0)).child(separator()).into_element()
 }
 
 /// The Server page: each service in use (both, where neither is), then
 /// Rex's version.
-fn server_page(managed: &Managed, server: &Server, button: &dyn Fn(&str, ServerDo) -> Button, small: &dyn Fn(String) -> StringView) -> Vec<Element> {
+fn server_page(managed: &Managed, server: &Server, button: &dyn Fn(&'static str, ServerDo) -> Button, small: &dyn Fn(String) -> StringView) -> Vec<Element> {
     let p = theme::palette();
     let row = |lamp: Option<Light>, words: String, actions: Vec<Button>| {
         let mut said = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT));
@@ -538,7 +542,7 @@ fn server_page(managed: &Managed, server: &Server, button: &dyn Fn(&str, ServerD
     // (Its heading and rule; its line and buttons a step under; its
     // notes under those, clear of the buttons: what it costs last, in
     // the warning's colour.)
-    let block = |title: &str, line: Element, note: String, cost: Option<String>| {
+    let block = |title: &'static str, line: Element, note: String, cost: Option<String>| {
         let mut notes = div().w_full().flex().flex_col().gap(px(2.0)).child(small(note));
         if let Some(cost) = cost {
             notes = notes.child(StringView::new(cost).size(style::SMALL_SIZE).color(style::c(p.warning)).wrap(true));
@@ -636,7 +640,7 @@ fn server_page(managed: &Managed, server: &Server, button: &dyn Fn(&str, ServerD
 /// kind a line that says how the host stands (what it has, what Olo
 /// would set), with Apply… where it is short and Put Back… where
 /// Olo's file is there; and all that are short at once, at the foot.
-fn limits_page(managed: &Managed, server: &Server, button: &dyn Fn(&str, ServerDo) -> Button, small: &dyn Fn(String) -> StringView) -> Vec<Element> {
+fn limits_page(managed: &Managed, server: &Server, button: &dyn Fn(&'static str, ServerDo) -> Button, small: &dyn Fn(String) -> StringView) -> Vec<Element> {
     use olo_rex_client::tune::{Tune, said};
     let Some(tuning) = &server.tuning else {
         return vec![StringView::new(olo_kit::tr!("{} didn’t say how its limits stand.", managed.name)).wrap(true).into_element()];
@@ -710,7 +714,7 @@ fn people_page(
     list: &ListModel,
     rows: &Rc<Vec<PersonRow>>,
     chosen: Option<usize>,
-    button: &dyn Fn(&str, ServerDo) -> Button,
+    button: &dyn Fn(&'static str, ServerDo) -> Button,
     small: &dyn Fn(String) -> StringView,
     on_chosen: impl Fn(&(), &mut WindowCx) + 'static,
 ) -> Vec<Element> {
@@ -823,7 +827,7 @@ fn read_ago(age: Duration) -> String {
 
 /// The Log page: which of the log, when it was read, Copy and Refresh,
 /// over what the service wrote (the newest last, and shown first).
-fn log_page(scale: f32, managed: &Managed, log: Option<Element>, button: &dyn Fn(&str, ServerDo) -> Button, on_range: impl Fn(&usize, &mut WindowCx) + 'static) -> Vec<Element> {
+fn log_page(scale: f32, managed: &Managed, log: Option<Element>, button: &dyn Fn(&'static str, ServerDo) -> Button, on_range: impl Fn(&usize, &mut WindowCx) + 'static) -> Vec<Element> {
     let ranges: Vec<SharedString> = LogRange::ALL.iter().map(|r| SharedString::from(r.name())).collect();
     let at = LogRange::ALL.iter().position(|r| *r == managed.log_range).unwrap_or(0);
     let has = managed.log.as_ref().is_some_and(|lines| !lines.is_empty());

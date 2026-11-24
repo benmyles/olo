@@ -1828,6 +1828,14 @@ something nobody here has is in "Blocked", with what it waits for.
     now (`host.manage:KEY`, `host.account:KEY`), each tab by name too.
     Pictured in light and dark at 1×, 1.5×, 2×, each tab, before the
     looks.
+    **Done** 2026-11-24 (HACKING, Rex, "The Host window"): tabs Rex, Olo
+    Integration and Files (the host's folders kept in step: Stop, Try
+    Again, Forget, each copy opened in Tracker), the window one height
+    from tab to tab (`TabView::pages`, the kit's), "Rex and Olo on this
+    host. Your agents and repositories: Set Up This Host’s Account…" and
+    the Account window's "Rex and Olo there: Manage Host…" (not "every
+    account": most of it is in the account's home there). Two rounds of
+    both looks; what they found from before is its own item below.
   - *Hosts and Ports, what is left* (the window is redone: HACKING,
     Rex, "Hosts and Ports"): a host can't be disconnected (the hub has
     no call for it: Connect is all the window offers); a host's row
@@ -2858,6 +2866,187 @@ something nobody here has is in "Blocked", with what it waits for.
   - Tried on the rig: opened from a pane, listed, a file read and
     written, a folder made, renamed, moved and taken away, a path typed
     in Go to Folder, Rex quit while it was open.
+
+- **Bug: Rex's Activity names agents by a version or a program, not
+  their tab's title** (Ben, 2026-11-24: "in the rex activity list it
+  isn't showing the terminal tab title it's showing some weird "2.1.331"
+  title for two of my agents and just "agy" for another. the tab titles
+  themselves are set properly. and the longer text description updates
+  fine in the sidebar"). 2.1.331 is Claude Code's version: the name is
+  taken from what the agent's program says of itself, not the tab's
+  title. Find where Activity's row gets its title, make it the tab's (as
+  the tab strip shows it), and test it with stand-ins for Claude Code
+  and agy on the rig.
+
+- **Rex: root's work done by any account that can sudo without a
+  password, not only root@** (Ben, 2026-11-24, first of the work: "when
+  adding a host and having olo rex set it up it shouldn't only work with
+  a root@ login it should also support using any provided user account
+  e.g. fedora@ that has the ability to run commands as sudo without a
+  password. have it do a quick check and if that works then have it say
+  it will use sudo and if it doesn't then have it say it needs either a
+  root@ login or a login for a user that can use sudo. and this should
+  apply anywhere rex needs to be able to use root"). Add Host's setup,
+  the Server window's managing, and anything else run as root: a quick
+  check (`sudo -n true`) on a login that isn't root; where it passes,
+  said ("Uses sudo as fedora") and the root work run through `sudo -n`;
+  where it doesn't, said that it needs a root login or one that can
+  sudo without a password. Tried on the rig with a scratch host's
+  account in each state.
+
+- **Rex's Host and Account windows: what the looks found that was there
+  before the tabs** (Opus 5.5's and Astra 6.2's looks at the Host window
+  in tabs, 2026-11-24, two rounds; their words where quoted):
+  - *Check Again in one place in both*: "Check Again goes top right in
+    the head of both windows. Remove it from the Account foot, which
+    leaves Set Up 4 alone at the right, as a default button should be."
+  - *The bridge's two lines say no name*: "With no names, they look like
+    two states of the same thing… 'Access · On · links, Passwords, Agent
+    Screens' and 'Desktop commands · Installed'"; and its state repeats
+    its note: "The status could just say 'On · 3 granted'".
+  - *Notes end short of the buttons' column*: "The notes sit under the
+    button's line, not beside the button, so they don't need to stop
+    short of it… let every row's note wrap at the column's right edge"
+    (both looks, both rounds: the bridge's note wraps where the one under
+    it doesn't). The Server window's rule too; one way for both.
+  - *A light in a tab for trouble on its page*: "when a tab contains
+    something orange or red, show that colour's status dot (6 pt) in the
+    tab… Reserve the space for it so the tab width doesn't change" (a
+    folder that failed, on Files, unseen from Rex's tab). The kit's
+    `TabView`.
+  - *Syncing's ring*: "Syncing is a hollow orange ring and Gone there is
+    a solid orange dot, so in-progress and needs-attention share a
+    colour. In the Account window, a hollow ring means 'optional / none
+    chosen'." One sign for what is being done, apart from the quiet one.
+  - *Buttons named two ways*: "Rex has Manage…, Token Pool has Token
+    Pool…, which repeats its heading. Use Manage… for both, or name what
+    opens".
+  - *The Account window*: "~/.local/bin is in the body font… Set it in
+    monospace"; "the default-button frame sticks out about 3 pt past the
+    right edge of the buttons above"; and the Agent sessions row's Copy
+    "steps left out of the action column to make room for 'Last 7 days.'
+    Put the range selector before Copy" (Astra).
+  - *Remove All… names what it removes* (Astra: "Give this host-wide
+    action a label that names what it removes"): kept as it was, under
+    the panel, which no longer moves it; a name for the bridge, skill
+    and helper together, if one reads better.
+  - *The head's note says "until it's connected" for one host and "until
+    it connects" for another* (Opus): one way.
+- **Bug: Rex's splitters overlap in a vertical half and a quarter**:
+  `tools/dev/ui-lint --tiles Rex` on this computer's screen, "Splitter
+  'Pane Height' and Splitter 'Rex Sidebar' overlap by 2.0×7.5 (a vertical
+  half, a quarter)", in the main window and a session's; HEAD's own
+  release build too (2026-11-24). And the review's two there: "node —
+  ~/olo/rex" and ":3000" a pixel off level at 1.75×, "~/olo/rex · 66 ×
+  40" a pixel high in its band at 2×.
+- **Rex's Server window: its words never reach the catalogs**: its
+  buttons and headings went through helpers that handed the kit a
+  `String` (shown as it is, in English in every language; fixed
+  2026-11-24, they take literals now), so `words gather` never found
+  them: Open Passwords, Members, Limits, Log, Start…, Stop…, Update…,
+  Put Back…, Apply All…, Allow…, Not in use, "Olo Passwords has no SSH
+  keys to offer", Person:, and the rest a look at it in German shows.
+  Catalogue and translate them; look for the same helper in Rex's other
+  windows.
+
+- **From an agent's day on a Rex host** (2026-11-24: a lead agent's
+  session on a host, passed on at Ben's asking, what it tripped on
+  driving Agent Screens and the bridge from there all day; its words
+  where quoted). A forward at a fixed port, its first, is done (`olo
+  forward`, HACKING, the bridge, "Forwards a host makes"). Left:
+  - *The bridge rewrites text typed on a screen*: any argument starting
+    `http(s)://localhost:PORT` is made the forward's
+    (`links::parse_localhost_url`, in `bridge::handle_bridge_request`'s
+    `screen`), text for `type` and `set` too, so a page's own address
+    typed into a field became another; "I had to type addresses without
+    the scheme". Rewrite only what is opened (`run`'s URL, `open`), never
+    what is typed, and say so in the skill.
+  - *No `olo-screen` on a Rex host*: the olo-screens skill says
+    `olo-screen …` throughout; the agent made a shim of its own. Put
+    `olo-screen` among the desktop commands (as `op` and `xdg-open`
+    are), or say in the skill how to reach it from a host.
+  - *`rex forward new` on a host listens on the host* (Rex's own
+    command): the skill to say so where it tells of `olo forward`, the
+    desktop's side.
+  - *A section in the skill on a dev server on a host*: reached from
+    the desktop's browser and an Agent Screen (`olo forward` at its own
+    port, what is rewritten, `olo-screen` from the host): "would have
+    saved an hour".
+  - *Agent Screens' `set` says it set what the page didn't keep*
+    (framework-controlled fields: a code field of a sign-in page, of a
+    CRM's log-in): fire the input events such fields need, read the
+    value back, and fail, or type instead, when it didn't stick.
+  - *`click --name` chose a heading over the field of the same name*:
+    prefer what can be acted on (a field, a button, a link) on a tie, or
+    refuse and list the matches.
+  - *A click under a page's sticky header said it pressed what it
+    didn't*: hit-test the point first, scroll the element clear of what
+    covers it, and say when something else would take the click.
+  - *`select` on a native select types into whatever has the keyboard*:
+    when the select hadn't it, the keys went to the page's "/" shortcut,
+    another select, a search box. Make sure the select has the keyboard
+    before typing, and read the chosen value back.
+  - *Olo's Chrome on a fresh screen's profile*: a "What's New" tab in
+    front of the page asked for, and after a Google sign-in Chrome's
+    "Sign in to Chrome?" sheet, which took the keys meant for the page;
+    the skill says it starts with no first-run or welcome window. Turn
+    both off for screens' profiles (Chrome's policies or flags).
+  - *`olo-screen look NAME /abs/path.png` from a host*: a path of the
+    host's was taken as the desktop's, and failed ("app_server: No such
+    file or directory"); a bare name landed in the bridge's shared
+    `/var/tmp/olo-rex-bridge/`, mixed with every other agent's (35
+    pictures of one reviewer's in a day). Honour a path on the host (the
+    bridge writes the fetched picture there, as it writes its own
+    folder), or say plainly in the error, in `look --help` and in the
+    skill that the path is the desktop's and how to bring it to the host.
+  - *One shape for `olo-screen`'s answers*: `look` prints a bare path
+    where the rest print JSON; JSON with a `path` field, or the skill
+    says which prints what.
+  - *Chrome's tabs on a screen*: the tree shows its tabs only as windows,
+    and switching needs a shortcut (⌘1 worked, Ctrl+1 not): its tabs in
+    the tree, or a `tab` command.
+  - *A port taken by a forward of Rex's own, said by name*: `olo
+    forward 5176` said "port 5176 of the Olo desktop is taken by another
+    program there" where it was a forward made earlier with `rex forward
+    new`, Rex's own, outliving the screen that made it. Where the
+    desktop's Rex holds the port, name the forward and how to close it
+    ("taken by Rex forward 46666e; `rex fwd close 46666e`").
+  - *The bridge's forwards from before `olo forward` left listening*:
+    after the upgrade to the release with `olo forward`, `rex fwd list`
+    showed one of the old bridge's forwards at a free port (127.0.0.1
+    and a high port) with no client, still listening, with only a
+    warning. Find why it outlived the app that made it (an upgrade's
+    exec keeps the listener, `tunnel::resume_local_forward` reclaims
+    only the saved ones: an unsaved one's socket is left behind?), close
+    those an upgrade doesn't carry, and test it on the rig.
+  - (And, not Olo's: agy in its stream mode denies a command outside its
+    list and ends its turn with an empty answer. Olo's helpers run agy
+    on its own screen in tmux, where a denial is asked; nothing to do.)
+
+- **Rex: the agents' settings carried to a host, its conflicts chosen in
+  one batch, and remembered** (Ben, 2026-11-24: "in rex when copying
+  settings from local coding agents please make it smart so that if
+  there are any conflicts with what's already on the server then it
+  should show a preview of the changes with the ability to choose what
+  to do for each conflict (it should show them all in one batch view
+  where you can select all or some and choose an apply strategy and a
+  different one for another subset of them and so on to make it quick
+  and easy). and also there should be an option to remember the choice,
+  e.g. remember whether to keep the server value or apply the client
+  value for each conflicting item"). Today the Account window's Agent
+  settings copies what is missing or differs, keeping the host's file
+  beside ours (`olo_rex_client::carry`; HACKING, "Agent settings").
+  Wanted: before anything is written, each difference by item (a file,
+  or a setting within one: a key of settings.json, an MCP server, an
+  instruction file's section), side by side (this computer's, the
+  host's), in one list where several are chosen at once (⇧, ⌘, ⌘A) and
+  given a way (keep the host's, take this computer's, merge where the
+  format allows: settings' keys, lists), others another; Apply does
+  each its way. "Remember" per item: kept in the desktop's settings by
+  host and item, applied without asking next time, listed and forgotten
+  in the same window. Agents do it as well (Rex's commands: the
+  differences as JSON, a choice per item). Tried on the rig with a host
+  whose settings differ in each way.
 
 - **Rex's Activity: two lines of what an agent says under its name**
   (Ben, 2026-11-24: "in the rex activity sidebar, let's allow for 2 lines
@@ -4636,8 +4825,8 @@ something nobody here has is in "Blocked", with what it waits for.
 
 - **Viewer: a PDF's images at full quality, keys for everything, full
   screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
-  in the viewer app that has high res images in it (e.g. see
-  /home/ben/Documents/ShiftUp-JackHenry-AI-v3.pdf ) it is showing as
+  in the viewer app that has high res images in it (e.g. see [a PDF
+  of theirs]) it is showing as
   lower quality with visible artifacts but if i use a different pdf
   viewer the quality looks great. our viewer should show full quality.
   also viewer should have kb shortcuts for everything, esp.

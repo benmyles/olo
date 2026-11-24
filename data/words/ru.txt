@@ -1738,6 +1738,9 @@ Behind since {}
 Being installed…
 Устанавливается…
 
+Being removed…
+Удаляется…
+
 Being updated…
 Обновляется…
 
@@ -1851,6 +1854,9 @@ Bottom two thirds
 
 Branch {} is checked out in {} already.
 Ветка {} уже открыта в {}.
+
+Bridge
+Мост
 
 Bright
 Ярко
@@ -3058,6 +3064,9 @@ Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
 Не удалось прочитать ключ: {}
 
+Couldn’t remove
+Не удалось удалить
+
 Couldn’t remove the account: {}
 Не удалось удалить учётную запись: {}
 
@@ -3739,6 +3748,12 @@ Downloading…
 Downloads
 Загрузки
 
+Downloads ▸ Rex ▸ {}
+Загрузки ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+Загрузки ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Перетаскивая окно за заголовок, отпустите его в нужном месте или нажмите букву этого места, и окно встанет туда. Отпустите его на месте другого окна, чтобы поменять их местами. Escape возвращает всё как было.
 
@@ -4303,6 +4318,9 @@ Extreme
 FD
 FD
 
+FOLDER
+ПАПКА
+
 Fable 5.1
 Fable 5.1
 
@@ -4666,8 +4684,14 @@ Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Папки и файлы через запятую. ~/ — домашняя папка, **/ — любое расположение, * — любое имя.
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+Папки синхронизируются только с узла, доступного по SSH, а {} — нет.
+
 Folders by Name, Files by Date
 Папки по имени, файлы по дате
+
+Folders kept in step
+Синхронизируемые папки
 
 Follows Other Mice below. Recommended for it: {}.
 Использует настройки «Другие мыши» ниже. Рекомендуется: {}.
@@ -4974,6 +4998,9 @@ Go to:
 
 Going:
 Выполняется:
+
+Gone from the host
+Больше нет на узле
 
 Good. Lift, and touch again, a little differently.
 Хорошо. Поднимите палец и приложите его снова немного иначе.
@@ -5608,6 +5635,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Устанавливаются в вашу домашнюю папку на узле от вашего имени фирменными установщиками. От root ничего не запускается.
 
+Installed in your home folder there, as you; nothing runs as root.
+Устанавливаются в вашу домашнюю папку на узле от вашего имени; от root ничего не запускается.
+
 Installing
 Установка
 
@@ -6004,6 +6034,9 @@ Kept Core
 Kept after restart
 Сохраняется после перезапуска
 
+Kept folders land in: {}
+Синхронизируемые папки попадают в: {}
+
 Kept for this computer and set again at every start.
 Сохранено для этого компьютера и применяется при каждом запуске.
 
@@ -6244,7 +6277,7 @@ Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
 Позволяет агентам для разработки задавать заголовок своей вкладки Terminal.
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Разрешает программам там пользоваться здесь ссылками, Passwords, ключами SSH и экранами агентов.
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7564,6 +7597,9 @@ No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 От прошлого года до двух лет вперёд не найдено событий со словами «{}» в названии, месте или заметках.
 
+No folders on {} are kept in step here. An agent there keeps one with:
+Ни одна папка {} здесь не синхронизируется. Агент на узле синхронизирует папку командой:
+
 No key yet.
 Ключа пока нет.
 
@@ -8136,6 +8172,9 @@ Olo Doctor: {}. Нажмите для просмотра.
 
 Olo Installer
 Установщик Olo
+
+Olo Integration
+Интеграция с Olo
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 На этом компьютере нет приложения для {}. Введите ID и секрет клиента (Google Cloud ▸ проект Olo ▸ Clients) или нажмите «Отменить», затем «Добавить учётную запись Google…», чтобы поручить настройку агенту.
@@ -9685,6 +9724,9 @@ Remove
 Remove Account
 Удалить учётную запись
 
+Remove All
+Удалить всё
+
 Remove All…
 Удалить всё…
 
@@ -10030,6 +10072,12 @@ Rex Server on {}
 Rex adds these entries to {} as {}:
 Rex добавит эти записи в {} от имени {}:
 
+Rex and Olo on this host.
+Rex и Olo на этом узле.
+
+Rex and Olo there:
+Rex и Olo на узле:
+
 Rex changes {} as {}:
 Rex изменит {} от имени {}:
 
@@ -10050,6 +10098,9 @@ Rex удалит следующее от имени {}:
 
 Rex runs this as {}:
 Rex выполнит это от имени {}:
+
+Rex server
+Сервер Rex
 
 Rex sets these as {}:
 Rex задаст следующее от имени {}:
@@ -11521,6 +11572,9 @@ Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 При синхронизации с {0} будут внесены изменения: {1}. Пока вы их не примените, данные с обеих сторон останутся прежними.
 
+Syncing…
+Синхронизация…
+
 System
 Система
 
@@ -12322,6 +12376,9 @@ Then the space only it took is freed, in {}.
 Then the space only they took is freed, in {}.
 Затем в {} освободится место, которое занимали только эти копии.
 
+There
+Там
+
 There are no links to shape.
 Нет соединений для ограничения трафика.
 
@@ -13003,6 +13060,9 @@ Typically
 Typing
 Ввод текста
 
+Typing helper
+Помощник ввода
+
 Typing on Hosts
 Ввод на узлах
 
@@ -13518,6 +13578,9 @@ Waiting for it…
 
 Waiting for power
 Ожидание питания
+
+Waiting for the host
+Ожидание узла
 
 Waiting for the network
 Ожидание сети
@@ -14076,6 +14139,9 @@ Your Own Kinds
 
 Your SSH keys from Passwords, for ssh and git.
 Ваши ключи SSH из Passwords для ssh и git.
+
+Your agents and repositories:
+Ваши агенты и репозитории:
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Данные шифруются до отправки с компьютера. Ключ есть только на нём. Сохраните ключ и в Passwords, иначе на другом компьютере прочитать копии не удастся.
@@ -14737,6 +14803,9 @@ other: резервных копий не было {n} дня
 nothing freed
 ничего не освобождено
 
+nothing granted
+ничего не разрешено
+
 nothing moved
 ничего не перемещено
 
@@ -15103,6 +15172,9 @@ few: для {n} выбранных копий нужно
 many: для {n} выбранных копий нужно
 other: для {n} выбранных копий нужно
 
+this connection still uses it
+это подключение ещё использует его
+
 this event
 это событие
 
@@ -15154,6 +15226,9 @@ tomorrow.io’s limit for your key is reached for now{}
 turned off
 выключено
 
+turned off for every host
+выключено для всех узлов
+
 under a minute
 меньше минуты
 
@@ -15183,6 +15258,9 @@ other: обновить {n} пакета
 
 use . for decimals
 десятичный разделитель — точка
+
+used the next time you connect
+будет использован при следующем подключении
 
 validating
 проверка

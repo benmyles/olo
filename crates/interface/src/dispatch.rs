@@ -597,12 +597,13 @@ impl WindowCx<'_> {
             return;
         }
         // Nothing with the keyboard took it: what answers for the whole
-        // window may (a tab view's keys).
+        // window may (a tab view's keys), if it shows (not in a tab view's
+        // page that isn't chosen).
         let hearing: Vec<(NodeId, Listener<KeyDownEvent>)> = self
             .core
             .window_listeners
             .iter()
-            .filter(|id| self.core.is_attached(**id))
+            .filter(|id| self.core.is_shown(**id))
             .filter_map(|id| Some((*id, self.core.nodes.get(*id)?.inter.as_ref()?)))
             .flat_map(|(id, i)| i.window_key_down.iter().cloned().map(move |l| (id, l)))
             .collect();

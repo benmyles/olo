@@ -1717,6 +1717,9 @@ Behind since {}
 Being installed…
 正在安装…
 
+Being removed…
+正在移除…
+
 Being updated…
 正在更新…
 
@@ -1830,6 +1833,9 @@ Bottom two thirds
 
 Branch {} is checked out in {} already.
 分支 {} 已在 {} 签出。
+
+Bridge
+桥接
 
 Bright
 明亮
@@ -3019,6 +3025,9 @@ Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
 无法读取密钥：{}
 
+Couldn’t remove
+未能移除
+
 Couldn’t remove the account: {}
 无法移除账户：{}
 
@@ -3697,6 +3706,12 @@ Downloading…
 Downloads
 下载内容
 
+Downloads ▸ Rex ▸ {}
+下载 ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+下载 ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 按住标签拖移窗口时，在某个位置松开，或按下该位置的字母，窗口就会移到那里。在另一个窗口的位置松开，两个窗口互换位置。按 Escape 可全部恢复原状。
 
@@ -4249,6 +4264,9 @@ Extreme
 FD
 FD
 
+FOLDER
+文件夹
+
 Fable 5.1
 Fable 5.1
 
@@ -4603,8 +4621,14 @@ Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 文件和文件夹用逗号分隔。~/ 表示主文件夹，**/ 表示任意位置，* 匹配任意名称。
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+只有通过 SSH 连接的主机才能同步文件夹，而 {} 不是。
+
 Folders by Name, Files by Date
 文件夹按名称，文件按日期
+
+Folders kept in step
+同步的文件夹
 
 Follows Other Mice below. Recommended for it: {}.
 跟随下方“其他鼠标”设置。此设备的建议值为{}。
@@ -4911,6 +4935,9 @@ Go to:
 
 Going:
 将执行：
+
+Gone from the host
+已从主机上消失
 
 Good. Lift, and touch again, a little differently.
 很好。请抬起手指，稍微换个角度再触摸。
@@ -5536,6 +5563,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 使用各自官方安装程序以您的身份安装到远程主文件夹中，无需 root 权限。
 
+Installed in your home folder there, as you; nothing runs as root.
+以您的身份安装到远程主文件夹中；不以 root 运行任何内容。
+
 Installing
 正在安装
 
@@ -5926,6 +5956,9 @@ Kept Core
 Kept after restart
 重启后保留
 
+Kept folders land in: {}
+同步的文件夹位于：{}
+
 Kept for this computer and set again at every start.
 已为本机保存，每次启动时都会重新应用。
 
@@ -6166,7 +6199,7 @@ Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
 允许编程智能体设置其 Terminal 标签页的标题。
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 允许那里的程序在这里使用链接、Passwords、SSH 密钥和智能体屏幕。
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7486,6 +7519,9 @@ No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 从一年前到未来两年的日程中，标题、地点和备注均未找到“{}”。
 
+No folders on {} are kept in step here. An agent there keeps one with:
+{} 上没有文件夹同步到这里。那里的智能体可以用以下命令同步：
+
 No key yet.
 尚无密钥。
 
@@ -8058,6 +8094,9 @@ Olo Doctor：{}。点击查看。
 
 Olo Installer
 Olo 安装程序
+
+Olo Integration
+Olo 集成
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 这台电脑上没有 {} 的专属应用。请填入客户端 ID 和密钥（Google Cloud ▸ 对应的 Olo 项目 ▸ 客户端），或取消并选择“添加 Google 账户…”，让智能体代为设置。
@@ -9601,6 +9640,9 @@ Remove
 Remove Account
 移除账户
 
+Remove All
+全部移除
+
 Remove All…
 全部移除…
 
@@ -9946,6 +9988,12 @@ Rex Server on {}
 Rex adds these entries to {} as {}:
 Rex 将以 {1} 身份向 {0} 添加以下条目：
 
+Rex and Olo on this host.
+此主机上的 Rex 和 Olo。
+
+Rex and Olo there:
+那里的 Rex 和 Olo：
+
 Rex changes {} as {}:
 Rex 将以 {1} 身份更改 {0}：
 
@@ -9966,6 +10014,9 @@ Rex 将以 {} 身份移除以下内容：
 
 Rex runs this as {}:
 Rex 将以 {} 身份运行此命令：
+
+Rex server
+Rex 服务器
 
 Rex sets these as {}:
 Rex 将以 {} 身份设置以下内容：
@@ -11425,6 +11476,9 @@ Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 与 {0} 同步将产生以下更改：{1}。只有应用更改后，两端的数据才会更新。
 
+Syncing…
+正在同步…
+
 System
 系统
 
@@ -12226,6 +12280,9 @@ Then the space only it took is freed, in {}.
 Then the space only they took is freed, in {}.
 随后会释放这些备份在 {} 中独占的空间。
 
+There
+主机
+
 There are no links to shape.
 没有可进行流量整形的连接。
 
@@ -12907,6 +12964,9 @@ Typically
 Typing
 打字
 
+Typing helper
+输入助手
+
 Typing on Hosts
 在主机上键入
 
@@ -13422,6 +13482,9 @@ Waiting for it…
 
 Waiting for power
 正在等待接通电源
+
+Waiting for the host
+正在等待主机
 
 Waiting for the network
 正在等待网络连接
@@ -13980,6 +14043,9 @@ Your Own Kinds
 
 Your SSH keys from Passwords, for ssh and git.
 来自 Passwords 的 SSH 密钥，供 ssh 和 git 使用。
+
+Your agents and repositories:
+您的智能体和仓库：
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 备份离开本机前已用本机独有的密钥加密。请也将密钥存入 Passwords，否则在其他电脑上无法读取备份。
@@ -14614,6 +14680,9 @@ other: 已有 {n} 天未备份
 nothing freed
 未释放空间
 
+nothing granted
+未授予任何权限
+
 nothing moved
 未移动任何数据
 
@@ -14950,6 +15019,9 @@ there isn’t one for {}
 these {n} backups need
 other: 这 {n} 个备份所需的
 
+this connection still uses it
+此连接仍在使用
+
 this event
 此日程
 
@@ -15001,6 +15073,9 @@ tomorrow.io’s limit for your key is reached for now{}
 turned off
 已关闭
 
+turned off for every host
+已对所有主机关闭
+
 under a minute
 不到一分钟
 
@@ -15027,6 +15102,9 @@ other: 更新 {n} 个软件包
 
 use . for decimals
 小数点请使用 .
+
+used the next time you connect
+下次连接时使用
 
 validating
 正在验证

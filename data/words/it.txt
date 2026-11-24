@@ -1724,6 +1724,9 @@ Non sincronizzato da {}
 Being installed…
 Installazione in corso…
 
+Being removed…
+Rimozione in corso…
+
 Being updated…
 Aggiornamento in corso…
 
@@ -1837,6 +1840,9 @@ Due terzi inferiori
 
 Branch {} is checked out in {} already.
 Il ramo {} è già in uso in {}.
+
+Bridge
+Bridge
 
 Bright
 Luminoso
@@ -3032,6 +3038,9 @@ Impossibile leggere la copia di 1Password per il confronto. La tua copia non è 
 Couldn’t read the key: {}
 Impossibile leggere la chiave: {}
 
+Couldn’t remove
+Impossibile rimuovere
+
 Couldn’t remove the account: {}
 Impossibile rimuovere l’account: {}
 
@@ -3711,6 +3720,12 @@ Download in corso…
 Downloads
 Download
 
+Downloads ▸ Rex ▸ {}
+Download ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+Download ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Mentre trascini una finestra dalla sua linguetta, rilasciala in un posto, o premine la lettera, per metterla lì. Rilasciala nel posto di un'altra finestra per scambiarle. Esc rimette tutto com'era.
 
@@ -4267,6 +4282,9 @@ Estremo
 FD
 FD
 
+FOLDER
+CARTELLA
+
 Fable 5.1
 Fable 5.1
 
@@ -4624,8 +4642,14 @@ Cartella:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Separa cartelle e file con virgole. ~/ indica la cartella Inizio, **/ qualsiasi percorso e * qualsiasi nome.
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+Le cartelle restano sincronizzate solo da un host raggiunto via SSH, e {} non lo è.
+
 Folders by Name, Files by Date
 Cartelle per nome, file per data
+
+Folders kept in step
+Cartelle sincronizzate
 
 Follows Other Mice below. Recommended for it: {}.
 Segue l’impostazione Altri mouse qui sotto. Valore consigliato: {}.
@@ -4932,6 +4956,9 @@ Vai a:
 
 Going:
 Partecipazione:
+
+Gone from the host
+Non più sull’host
 
 Good. Lift, and touch again, a little differently.
 Bene. Solleva il dito e tocca di nuovo da un’angolazione leggermente diversa.
@@ -5560,6 +5587,9 @@ Installato
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Installati nella tua cartella home lì, con il tuo utente, dal programma di installazione ufficiale. Nulla viene eseguito come root.
 
+Installed in your home folder there, as you; nothing runs as root.
+Installati nella tua cartella home lì, con il tuo utente; nulla viene eseguito come root.
+
 Installing
 Installazione
 
@@ -5952,6 +5982,9 @@ Core riservato
 Kept after restart
 Mantenuto dopo il riavvio
 
+Kept folders land in: {}
+Le cartelle sincronizzate arrivano in: {}
+
 Kept for this computer and set again at every start.
 Salvato su questo computer e applicato a ogni avvio.
 
@@ -6192,7 +6225,7 @@ Consente agli agenti lì di usare i tuoi account, anche a computer spento.
 Lets coding agents title their Terminal tab.
 Consente agli agenti di programmazione di dare un titolo alla loro scheda di Terminal.
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Consente ai programmi lì di usare qui link, Passwords, chiavi SSH e Schermi agente.
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7512,6 +7545,9 @@ Nessun ambiente.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 Nessun evento tra un anno fa e i prossimi due anni contiene “{}” nel titolo, nel luogo o nelle note.
 
+No folders on {} are kept in step here. An agent there keeps one with:
+Nessuna cartella di {} è sincronizzata qui. Un agente lì ne sincronizza una con:
+
 No key yet.
 Ancora nessuna chiave.
 
@@ -8084,6 +8120,9 @@ Olo Doctor: {}. Fai clic per i dettagli.
 
 Olo Installer
 Programma di installazione di Olo
+
+Olo Integration
+Integrazione Olo
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 L’app di {} non è su questo computer. Inserisci ID e segreto del client (Google Cloud ▸ progetto di Olo ▸ Client) oppure scegli Annulla e poi Aggiungi account Google… per affidare il compito all’agente.
@@ -9629,6 +9668,9 @@ Rimuovi
 Remove Account
 Rimuovi account
 
+Remove All
+Rimuovi tutto
+
 Remove All…
 Rimuovi tutto…
 
@@ -9974,6 +10016,12 @@ Server Rex su {}
 Rex adds these entries to {} as {}:
 Rex aggiunge queste voci a {} come {}:
 
+Rex and Olo on this host.
+Rex e Olo su questo host.
+
+Rex and Olo there:
+Rex e Olo lì:
+
 Rex changes {} as {}:
 Rex modifica {} come {}:
 
@@ -9994,6 +10042,9 @@ Rex rimuove questi come {}:
 
 Rex runs this as {}:
 Rex esegue questo come {}:
+
+Rex server
+Server Rex
 
 Rex sets these as {}:
 Rex imposta questi come {}:
@@ -11457,6 +11508,9 @@ Sincronizzazione con 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 La sincronizzazione con {} comporta {}. Le modifiche avranno effetto su entrambi i lati quando le applichi.
 
+Syncing…
+Sincronizzazione…
+
 System
 Sistema
 
@@ -12258,6 +12312,9 @@ Verrà poi liberato in {} lo spazio occupato solo da questo backup.
 Then the space only they took is freed, in {}.
 Verrà poi liberato in {} lo spazio occupato solo da questi backup.
 
+There
+Lì
+
 There are no links to shape.
 Non ci sono connessioni da regolare.
 
@@ -12939,6 +12996,9 @@ Di solito
 Typing
 Digitazione
 
+Typing helper
+Assistente di digitazione
+
 Typing on Hosts
 Digitazione sugli host
 
@@ -13454,6 +13514,9 @@ In attesa…
 
 Waiting for power
 In attesa della corrente
+
+Waiting for the host
+In attesa dell’host
 
 Waiting for the network
 In attesa della rete
@@ -14012,6 +14075,9 @@ Tipi personali
 
 Your SSH keys from Passwords, for ssh and git.
 Le tue chiavi SSH da Passwords, per ssh e git.
+
+Your agents and repositories:
+I tuoi agenti e repository:
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 I backup vengono cifrati prima di lasciare questo computer con una chiave presente solo qui. Salvala anche in Passwords per poter leggere i backup altrove.
@@ -14655,6 +14721,9 @@ other: nessun backup da {n} giorni
 nothing freed
 nessuno spazio liberato
 
+nothing granted
+nulla concesso
+
 nothing moved
 nessun dato spostato
 
@@ -15001,6 +15070,9 @@ these {n} backups need
 one: {n} backup selezionato
 other: i {n} backup selezionati
 
+this connection still uses it
+questa connessione lo usa ancora
+
 this event
 questo evento
 
@@ -15052,6 +15124,9 @@ hai raggiunto il limite temporaneo della tua chiave su tomorrow.io{}
 turned off
 disattivato
 
+turned off for every host
+disattivato per tutti gli host
+
 under a minute
 meno di un minuto
 
@@ -15079,6 +15154,9 @@ other: aggiornare {n} pacchetti
 
 use . for decimals
 usa il punto per i decimali
+
+used the next time you connect
+usato alla prossima connessione
 
 validating
 verifica

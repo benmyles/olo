@@ -1120,13 +1120,19 @@ impl KeptState {
     }
 }
 
-/// Where a host's folder is kept here: Downloads ▸ Rex ▸ the host's name ▸
-/// the folder's own name (this computer's to say, never the host's).
-pub fn kept_here(label: &str, there: &str) -> Option<std::path::PathBuf> {
+/// Where what a host sends or keeps in step lands here: Downloads ▸ Rex ▸
+/// the host's name (this computer's to say, never the host's).
+pub fn host_here(label: &str) -> Option<std::path::PathBuf> {
     let name: String = label.chars().map(|c| if c == '/' || c == '\0' { '-' } else { c }).collect();
-    let leaf = there.trim_end_matches('/').rsplit('/').next().filter(|l| !l.is_empty() && *l != "." && *l != "..")?;
     let downloads = olo_xdg::user_dir("DOWNLOAD").or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Downloads")))?;
-    Some(downloads.join("Rex").join(if name.is_empty() { "host".into() } else { name }).join(leaf))
+    Some(downloads.join("Rex").join(if name.is_empty() { "host".into() } else { name }))
+}
+
+/// Where a host's folder is kept here: [`host_here`] ▸ the folder's own
+/// name.
+pub fn kept_here(label: &str, there: &str) -> Option<std::path::PathBuf> {
+    let leaf = there.trim_end_matches('/').rsplit('/').next().filter(|l| !l.is_empty() && *l != "." && *l != "..")?;
+    Some(host_here(label)?.join(leaf))
 }
 
 /// A forward as Rex keeps it over an upgrade in place: its block is left
@@ -1895,7 +1901,8 @@ async fn sessions_stands(
 
 /// The demo's kept folders on its connected host, for the Host window's
 /// pictures and its lint (`OLO_REX_DEMO_KEPT`: `none`; `states`, one in
-/// each state; else two in step).
+/// each state, more than the Files tab shows at once; `trouble`, one
+/// failed and one gone, for their buttons; else two in step).
 fn demo_kept(host_key: &str) -> Vec<Kept> {
     let at = |there: &str, state: KeptState, ago: u64, files: u64| Kept {
         host_key: host_key.to_owned(),
@@ -1906,6 +1913,8 @@ fn demo_kept(host_key: &str) -> Vec<Kept> {
     };
     match std::env::var("OLO_REX_DEMO_KEPT").ok().as_deref() {
         Some("none") => Vec::new(),
+        // (What needs the person: one that failed, one gone there.)
+        Some("trouble") => vec![at("/home/dev/src/site/public", KeptState::Failed("No space left on device".into()), 600, 40), at("/home/dev/old/build", KeptState::Gone, 3600, 0)],
         Some("states") => vec![
             at("/home/dev/src/app/dist", KeptState::InStep, 90, 12),
             at("/home/dev/src/app/logs", KeptState::Syncing, 5, 3),
@@ -3683,6 +3692,18 @@ impl RexHub {
         kept
     }
 
+    /// A kept folder let go of (the Host window's Stop), what it brought
+    /// staying: `RexHubInner::stop_kept`.
+    pub fn stop_kept(&self, host_key: &str, there: &str) {
+        self.inner.stop_kept(host_key, there);
+    }
+
+    /// A kept folder that failed kept in step again (the Host window's Try
+    /// Again): `RexHubInner::retry_kept`.
+    pub fn retry_kept(&self, host_key: &str, there: &str) {
+        self.inner.retry_kept(host_key, there);
+    }
+
     pub fn remove_forward(&self, forward_id: &str) {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
         st.forwards.retain(|f| f.id != forward_id);
@@ -5055,8 +5076,7 @@ impl RexHubInner {
             return bridge::BridgeResponse::err("olo send: Olo's helper isn't on this host, built to send files (Rex's Typing helper on the desktop puts it here)");
         }
         let name: String = label.chars().map(|c| if c == '/' || c == '\0' { '-' } else { c }).collect();
-        let downloads = olo_xdg::user_dir("DOWNLOAD").or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Downloads")));
-        let Some(base) = downloads.map(|d| d.join("Rex").join(if name.is_empty() { "host".into() } else { name.clone() })) else {
+        let Some(base) = host_here(&label) else {
             return bridge::BridgeResponse::err("olo send: the Olo desktop has no home to save files in");
         };
         // (What each path is there: a file, a folder, or nothing.)
@@ -5269,6 +5289,24 @@ impl RexHubInner {
                 Err(why) => self.set_kept(&host_key, &there, KeptState::Failed(why), None),
             }
         }
+    }
+
+    /// A kept folder that failed kept in step again from the start (the
+    /// Host window's Try Again): its runner ended, and a new one started,
+    /// which watches the folder there and syncs it at once.
+    pub fn retry_kept(self: &Arc<Self>, host_key: &str, there: &str) {
+        self.stop_keeping(host_key, there);
+        self.keep_folders_of(host_key);
+    }
+
+    /// A kept folder let go of from here (the Host window's Stop): as `olo
+    /// sync stop` does, what it brought staying.
+    pub fn stop_kept(self: &Arc<Self>, host_key: &str, there: &str) {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.retain(|k| !(k.host_key == host_key && k.there == there));
+        self.stop_keeping(host_key, there);
+        let (hk, gone) = (host_key.to_owned(), there.to_owned());
+        olo_kit::settings::update(move |s| s.rex.kept.retain(|k| !(k.host == hk && k.there == gone)));
+        (self.notify)(HubNotice::StateChanged);
     }
 
     /// The host's forwards of before an upgrade in place, taken up again

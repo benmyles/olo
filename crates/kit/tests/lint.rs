@@ -824,3 +824,76 @@ fn ui_lint_a_month_and_its_arrows_are_clean() {
     let found = lint.window(&WindowOptions::new("Month", 420.0, height), |_| Month);
     assert_clean("a month under its arrows", &found);
 }
+
+/// A tab view given every tab's page (`TabView::pages`): a short one, a
+/// tall one, and one that fills the panel to its frame with a list longer
+/// than the panel (`fill_page`), scrolled there.
+struct Paged {
+    chosen: usize,
+    scroll: olo_kit::ScrollHandle,
+}
+
+impl View for Paged {
+    type Message = usize;
+
+    fn message(&mut self, tab: usize, cx: &mut Cx<Self>) {
+        self.chosen = tab;
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        use olo_kit::IntoElement as _;
+        use olo_kit::widgets::{ScrollView, StringView, TabView, tabs};
+        let names: Vec<olo_kit::SharedString> = ["Short", "Tall", "List"].into_iter().map(Into::into).collect();
+        let chosen = cx.messenger();
+        let short = div().w_full().p(px(m::SPACING)).child(StringView::new("One line")).into_element();
+        let tall =
+            div().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING)).children(["First", "Second", "Third", "Fourth", "Fifth", "Sixth"].into_iter().map(StringView::new)).into_element();
+        let inset = tabs::fill_reach() + m::SPACING;
+        let rows = (0..30).map(|i| StringView::new(format!("Row {i}")));
+        let list = ScrollView::new(&self.scroll).border(false).auto_hide(true).child(div().w_full().p(px(inset)).flex().flex_col().gap(px(m::SPACING)).children(rows)).into_element();
+        let paged = TabView::new("paged", names, self.chosen)
+            .grows()
+            .on_select(move |i, _| {
+                chosen.send(*i);
+            })
+            .pages([short, tall, list])
+            .fill_page(2);
+        div().w_full().p(px(m::WINDOW_INSET)).child(paged)
+    }
+}
+
+/// Every tab's page laid out: the window as tall with each tab chosen
+/// (the tallest page's height: Rex's Host window's foot moved by 290
+/// points from tab to tab before, 2026-11-24); nothing of a page not
+/// chosen reaches the lint (its words were read over the chosen page's);
+/// the page that fills the panel scrolls its list inside the frame, its
+/// bar against it, nothing past the pane.
+#[test]
+fn ui_lint_a_tab_views_pages_keep_one_height_and_show_one() {
+    let mut lint = Lint::new();
+    let options = WindowOptions::new("Paged", 360.0, 120.0).fits_content();
+    assert_clean("the pages", &lint.window(&options, |_| Paged { chosen: 0, scroll: olo_kit::ScrollHandle::new() }));
+    let window = olo_kit::open_window(options, |_| Paged { chosen: 0, scroll: olo_kit::ScrollHandle::new() });
+    let mut heights = Vec::new();
+    for tab in [0, 1, 2, 0] {
+        ask(&window, move |v, cx| {
+            v.chosen = tab;
+            cx.invalidate();
+        });
+        // (As the window follows what it shows: until it stays put.)
+        let mut seen = -1.0;
+        for _ in 0..100 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let now = ask(&window, |_, cx| f32::from(cx.viewport_size().height));
+            if now == seen {
+                break;
+            }
+            seen = now;
+        }
+        heights.push(seen);
+    }
+    window.close();
+    assert!(heights.iter().all(|h| (h - heights[0]).abs() < 0.5), "the window's height with each tab chosen: {heights:?}");
+    assert!(heights[0] > 120.0, "as tall as the tall page: {heights:?}");
+}

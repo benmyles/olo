@@ -570,6 +570,7 @@ Begin
 Behind
 Behind since {}
 Being installed…
+Being removed…
 Being updated…
 Benchmark…
 Beside the widget before it
@@ -608,6 +609,7 @@ Bottom left quarter
 Bottom right quarter
 Bottom two thirds
 Branch {} is checked out in {} already.
+Bridge
 Bright
 Brightness
 Bring Here
@@ -1004,6 +1006,7 @@ Couldn’t reach the login keyring: {}
 Couldn’t reach {}
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
+Couldn’t remove
 Couldn’t remove the account: {}
 Couldn’t remove the worktree in {}: {}
 Couldn’t reset: {}
@@ -1230,6 +1233,8 @@ Downloading {}…
 Downloading: {}
 Downloading…
 Downloads
+Downloads ▸ Rex ▸ {}
+Downloads ▸ Rex ▸ {} ▸ {}
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Drag with:
 Dragging a Window
@@ -1414,6 +1419,7 @@ Extract Selected…
 Extract To…
 Extreme
 FD
+FOLDER
 Fable 5.1
 Face Unlock
 Face unlock is installed only in the person’s own session (polkit asks there).
@@ -1532,7 +1538,9 @@ Folder
 Folder taken
 Folder:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
 Folders by Name, Files by Date
+Folders kept in step
 Follows Other Mice below. Recommended for it: {}.
 Font
 For
@@ -1635,6 +1643,7 @@ Go to File or Folder…
 Go to Folder…
 Go to:
 Going:
+Gone from the host
 Good. Lift, and touch again, a little differently.
 Good. Now lift it.
 Good. Now lift your hand.
@@ -1843,6 +1852,7 @@ Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in plac
 Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
 Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+Installed in your home folder there, as you; nothing runs as root.
 Installing
 Installing {}: {} ({}%)…
 Installing {}…
@@ -1973,6 +1983,7 @@ Keeps typing quick over a slow link.
 Kept
 Kept Core
 Kept after restart
+Kept folders land in: {}
 Kept for this computer and set again at every start.
 Kept in step with network time servers.
 Kept on this computer.
@@ -2053,7 +2064,7 @@ Let your other devices reach this computer’s sessions over Tailscale
 Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Lets xdg-open, notify-send and copy and paste commands there act here.
 Letting go of backups past keeping
 Level
@@ -2493,6 +2504,7 @@ No due date
 No entries.
 No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
+No folders on {} are kept in step here. An agent there keeps one with:
 No key yet.
 No keyboards are plugged in.
 No limit
@@ -2684,6 +2696,7 @@ Olo Doctor couldn't set it.
 Olo Doctor found {} things to fix: {}, and more. Click to see them.
 Olo Doctor: {}. Click to see it.
 Olo Installer
+Olo Integration
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 Olo has no releases yet.
 Olo has no typing helper for {}.
@@ -3198,6 +3211,7 @@ Remote Access…
 Removable Disks
 Remove
 Remove Account
+Remove All
 Remove All…
 Remove Graph
 Remove Host
@@ -3313,6 +3327,8 @@ Rex
 Rex Server
 Rex Server on {}
 Rex adds these entries to {} as {}:
+Rex and Olo on this host.
+Rex and Olo there:
 Rex changes {} as {}:
 Rex isn’t installed
 Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
@@ -3320,6 +3336,7 @@ Rex needs an address to connect.
 Rex picks a free port on this computer; the Ports list shows it.
 Rex removes these as {}:
 Rex runs this as {}:
+Rex server
 Rex sets these as {}:
 Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
 Rex signs in as {}@{}, as it will to connect.
@@ -3806,6 +3823,7 @@ Sync Contacts
 Sync Now
 Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
+Syncing…
 System
 System Font
 TCP opened in
@@ -4073,6 +4091,7 @@ Themes
 Then its client’s ID and secret here, and sign in: Google asks in your browser whether Olo may read your mail, use your calendars and keep DiskBackup’s files in your Drive.
 Then the space only it took is freed, in {}.
 Then the space only they took is freed, in {}.
+There
 There are no links to shape.
 There are no network interfaces.
 There is no journal for this user to read (in /var/log/journal or /run/log/journal).
@@ -4300,6 +4319,7 @@ TypeScript
 Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
 Typically
 Typing
+Typing helper
 Typing on Hosts
 Typing test:
 USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
@@ -4472,6 +4492,7 @@ Waiting for approval
 Waiting for host
 Waiting for it…
 Waiting for power
+Waiting for the host
 Waiting for the network
 Waiting for the phone to allow it
 Waiting for the phone… this page follows it by itself.
@@ -4658,6 +4679,7 @@ Your Kinds
 Your Own
 Your Own Kinds
 Your SSH keys from Passwords, for ssh and git.
+Your agents and repositories:
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Your face wasn’t recognised. Type your password.
@@ -4869,6 +4891,7 @@ not yet ({})
 not yet on this kernel’s build, {}
 nothing backed up for {n} days
 nothing freed
+nothing granted
 nothing moved
 nothing now (its ports: {})
 nothing yet
@@ -4981,6 +5004,7 @@ the window server
 the {} didn't get going: {}
 there isn’t one for {}
 these {n} backups need
+this connection still uses it
 this event
 this site
 tidying
@@ -4998,6 +5022,7 @@ tomorrow.io’s answer was cut short: {}
 tomorrow.io’s answer wasn’t a forecast.
 tomorrow.io’s limit for your key is reached for now{}
 turned off
+turned off for every host
 under a minute
 under a second
 unpacking
@@ -5007,6 +5032,7 @@ up to {} dpi
 up to {} today
 update {n} packages
 use . for decimals
+used the next time you connect
 validating
 visibility down to {}
 website

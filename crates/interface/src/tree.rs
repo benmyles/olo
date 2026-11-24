@@ -848,9 +848,19 @@ impl WindowCore {
     /// (what a layout review goes by: what's scrolled out of sight isn't
     /// there to it).
     pub(crate) fn seen_at(&self, id: NodeId, banded: bool) -> Bounds<Pixels> {
+        // (Hidden, or held by what is (a tab view's page not chosen):
+        // nothing of it shows, to what draws by what shows and to a
+        // review, which saw a hidden page's words over the page shown.)
+        let hidden = |id: NodeId| self.nodes.get(id).is_some_and(|n| n.style.visibility == crate::Visibility::Hidden);
+        if hidden(id) {
+            return Bounds::default();
+        }
         let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
         let mut at = self.nodes.get(id).and_then(|n| n.parent);
         while let Some(id) = at {
+            if hidden(id) {
+                return Bounds::default();
+            }
             path.push(id);
             at = self.nodes.get(id).and_then(|n| n.parent);
         }

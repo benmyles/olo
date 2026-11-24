@@ -1724,6 +1724,9 @@ Loopt achter sinds {}
 Being installed…
 Wordt geïnstalleerd…
 
+Being removed…
+Wordt verwijderd…
+
 Being updated…
 Wordt bijgewerkt…
 
@@ -1837,6 +1840,9 @@ Onderste twee derde
 
 Branch {} is checked out in {} already.
 Branch {} is al uitgecheckt in {}.
+
+Bridge
+Bridge
 
 Bright
 Helder
@@ -3032,6 +3038,9 @@ De kopie in 1Password kon niet worden vergeleken. Uw versie is niet verzonden. {
 Couldn’t read the key: {}
 Sleutel lezen mislukt: {}
 
+Couldn’t remove
+Verwijderen mislukt
+
 Couldn’t remove the account: {}
 Account verwijderen mislukt: {}
 
@@ -3711,6 +3720,12 @@ Downloaden…
 Downloads
 Downloads
 
+Downloads ▸ Rex ▸ {}
+Downloads ▸ Rex ▸ {}
+
+Downloads ▸ Rex ▸ {} ▸ {}
+Downloads ▸ Rex ▸ {} ▸ {}
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Terwijl u een venster aan zijn tab sleept, laat u het los op een plek, of drukt u op de letter ervan, om het daar te zetten. Laat het los op de plek van een ander venster om de twee te verwisselen. Escape zet alles terug.
 
@@ -4267,6 +4282,9 @@ Extreem
 FD
 FD
 
+FOLDER
+MAP
+
 Fable 5.1
 Fable 5.1
 
@@ -4624,8 +4642,14 @@ Map:
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Scheid mappen en bestanden met komma’s. ~/ staat voor uw persoonlijke map, **/ voor elke locatie en * voor elke naam.
 
+Folders are kept in step only from a host reached over SSH, which {} isn’t.
+Mappen worden alleen gelijk gehouden vanaf een host die via SSH bereikt wordt, en {} wordt dat niet.
+
 Folders by Name, Files by Date
 Mappen op naam, bestanden op datum
+
+Folders kept in step
+Mappen die gelijk blijven
 
 Follows Other Mice below. Recommended for it: {}.
 Volgt Andere muizen hieronder. Aanbevolen: {}.
@@ -4932,6 +4956,9 @@ Ga naar:
 
 Going:
 Deelname:
+
+Gone from the host
+Niet meer op de host
 
 Good. Lift, and touch again, a little differently.
 Goed. Til uw vinger op en raak de sensor onder een iets andere hoek aan.
@@ -5560,6 +5587,9 @@ Geïnstalleerd
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Geïnstalleerd in uw persoonlijke map daar, onder uw account, via het eigen installatieprogramma van elke maker. Niets draait als root.
 
+Installed in your home folder there, as you; nothing runs as root.
+Geïnstalleerd in uw persoonlijke map daar, onder uw account; niets draait als root.
+
 Installing
 Installeren
 
@@ -5952,6 +5982,9 @@ Gereserveerde kern
 Kept after restart
 Behouden na herstart
 
+Kept folders land in: {}
+Gelijk gehouden mappen komen in: {}
+
 Kept for this computer and set again at every start.
 Opgeslagen op deze computer en bij elke start opnieuw ingesteld.
 
@@ -6192,7 +6225,7 @@ Laat agents daar uw accounts gebruiken, ook als deze computer uit staat.
 Lets coding agents title their Terminal tab.
 Laat programmeeragents hun Terminal-tabblad een titel geven.
 
-Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Laat programma’s daar hier links, Passwords, SSH-sleutels en Agentschermen gebruiken.
 
 Lets xdg-open, notify-send and copy and paste commands there act here.
@@ -7512,6 +7545,9 @@ Geen omgeving.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 Van een jaar geleden tot twee jaar vooruit is er geen afspraak met ‘{}’ in de titel, locatie of notities.
 
+No folders on {} are kept in step here. An agent there keeps one with:
+Er worden hier geen mappen van {} gelijk gehouden. Een agent daar houdt er een gelijk met:
+
 No key yet.
 Nog geen sleutel.
 
@@ -8084,6 +8120,9 @@ Olo Doctor: {}. Klik voor meer informatie.
 
 Olo Installer
 Olo-installatieprogramma
+
+Olo Integration
+Olo-integratie
 
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 Olo heeft de app voor {} niet op deze computer. Vul de client-ID en het geheim in (Google Cloud ▸ Olo-project ▸ Clients), of kies Annuleren en daarna Google-account toevoegen… om het aan de agent over te laten.
@@ -9629,6 +9668,9 @@ Verwijderen
 Remove Account
 Account verwijderen
 
+Remove All
+Alles verwijderen
+
 Remove All…
 Alles verwijderen…
 
@@ -9974,6 +10016,12 @@ Rex-server op {}
 Rex adds these entries to {} as {}:
 Rex voegt deze vermeldingen toe aan {} als {}:
 
+Rex and Olo on this host.
+Rex en Olo op deze host.
+
+Rex and Olo there:
+Rex en Olo daar:
+
 Rex changes {} as {}:
 Rex wijzigt {} als {}:
 
@@ -9994,6 +10042,9 @@ Rex verwijdert deze als {}:
 
 Rex runs this as {}:
 Rex voert dit uit als {}:
+
+Rex server
+Rex-server
 
 Rex sets these as {}:
 Rex stelt deze in als {}:
@@ -11457,6 +11508,9 @@ Synchroniseren met 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
 Synchronisatie met {} levert {} op. Pas als u de wijzigingen toepast, veranderen de gegevens aan beide kanten.
 
+Syncing…
+Wordt gelijkgezet…
+
 System
 Systeem
 
@@ -12258,6 +12312,9 @@ Daarna komt in {} de ruimte vrij die alleen deze back-up gebruikte.
 Then the space only they took is freed, in {}.
 Daarna komt in {} de ruimte vrij die alleen deze back-ups gebruikten.
 
+There
+Daar
+
 There are no links to shape.
 Er zijn geen verbindingen om te begrenzen.
 
@@ -12939,6 +12996,9 @@ Doorgaans
 Typing
 Typen
 
+Typing helper
+Typhulp
+
 Typing on Hosts
 Typen op hosts
 
@@ -13454,6 +13514,9 @@ Wachten…
 
 Waiting for power
 Wachten op netvoeding
+
+Waiting for the host
+Wacht op de host
 
 Waiting for the network
 Wachten op het netwerk
@@ -14012,6 +14075,9 @@ Uw eigen typen
 
 Your SSH keys from Passwords, for ssh and git.
 Uw SSH-sleutels uit Passwords, voor ssh en git.
+
+Your agents and repositories:
+Uw agents en repository’s:
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Uw back-ups worden vóór verzending versleuteld met een sleutel die alleen op deze computer staat. Bewaar de sleutel ook in Passwords om de back-ups elders te kunnen lezen.
@@ -14655,6 +14721,9 @@ other: al {n} dagen geen back-up
 nothing freed
 geen ruimte vrijgemaakt
 
+nothing granted
+niets toegestaan
+
 nothing moved
 niets verplaatst
 
@@ -15001,6 +15070,9 @@ these {n} backups need
 one: {n} geselecteerde back-up
 other: de {n} geselecteerde back-ups
 
+this connection still uses it
+deze verbinding gebruikt hem nog
+
 this event
 deze afspraak
 
@@ -15052,6 +15124,9 @@ de tijdelijke limiet van uw sleutel op tomorrow.io is bereikt{}
 turned off
 uitgeschakeld
 
+turned off for every host
+uit voor elke host
+
 under a minute
 minder dan een minuut
 
@@ -15079,6 +15154,9 @@ other: {n} pakketten bijwerken
 
 use . for decimals
 gebruik een punt als decimaalteken
+
+used the next time you connect
+gebruikt bij de volgende verbinding
 
 validating
 controleren
