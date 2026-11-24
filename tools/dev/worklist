@@ -1,0 +1,102 @@
+#!/usr/bin/python3
+"""The work list, beside the agent: a pane to the right of the one the agent
+runs in, showing a list it keeps current (the olo-worklist skill; CLAUDE.md,
+"A work list beside you"). Ben, 2026-11-24: "open a split pane to the right
+of this and keep in there for me an up to date todo list of the work (just
+a brief 1 line entry for each one and check them off as you go".
+
+  worklist open [FILE]   a pane to the right of this Rex pane ($REX_BLOCK)
+                         showing FILE, drawn again whenever it changes
+  worklist show FILE     what that pane runs: FILE drawn, and drawn again
+                         the moment it changes (inotify on its folder:
+                         nothing done while it doesn't)
+  worklist path          the list's file (FILE's default)
+
+FILE, by default /var/tmp/olo-worklist/list.txt, holds one line an item:
+"[x] done", "[>] doing now", "[ ] to do", "# a heading", other lines shown
+dim (what is blocked, say). Write it whole and rename it into place (a
+pane never draws half of it): `worklist` itself never writes it.
+"""
+import ctypes
+import os
+import struct
+import subprocess
+import sys
+
+DEFAULT = "/var/tmp/olo-worklist/list.txt"
+GREEN, DIM, BOLD, YELLOW, CYAN, RESET = "\x1b[32m", "\x1b[2m", "\x1b[1m", "\x1b[33m", "\x1b[36m", "\x1b[0m"
+
+
+def draw(path):
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        lines = ["(no list yet)"]
+    items = [l for l in lines if l[:3] in ("[x]", "[ ]", "[>]")]
+    out = ["\x1b[H\x1b[2J\x1b[3J", f"{BOLD}The work{RESET}  {DIM}{sum(1 for l in items if l.startswith('[x]'))} of {len(items)} done{RESET}\n"]
+    for l in lines:
+        if l.startswith("[x]"):
+            out.append(f"{GREEN}✓{RESET} {DIM}{l[3:].strip()}{RESET}\n")
+        elif l.startswith("[>]"):
+            out.append(f"{YELLOW}▸ {BOLD}{l[3:].strip()}{RESET}\n")
+        elif l.startswith("[ ]"):
+            out.append(f"○ {l[3:].strip()}\n")
+        elif l.startswith("#"):
+            out.append(f"\n{CYAN}{BOLD}{l.lstrip('#').strip()}{RESET}\n")
+        elif l.strip():
+            out.append(f"{DIM}{l}{RESET}\n")
+    sys.stdout.write("".join(out))
+    sys.stdout.flush()
+
+
+def show(path):
+    path = os.path.abspath(path)
+    folder, name = os.path.split(path)
+    os.makedirs(folder, exist_ok=True)
+    libc = ctypes.CDLL(None, use_errno=True)
+    fd = libc.inotify_init1(0)
+    if fd < 0 or libc.inotify_add_watch(fd, folder.encode(), 0x008 | 0x080 | 0x100) < 0:
+        sys.exit(f"worklist: can't watch {folder}")
+    sys.stdout.write("\x1b[?25l")
+    draw(path)
+    while True:
+        buf = os.read(fd, 4096)
+        i, changed = 0, False
+        while i < len(buf):
+            _, _, _, length = struct.unpack_from("iIII", buf, i)
+            changed |= buf[i + 16:i + 16 + length].rstrip(b"\0").decode(errors="replace") == name
+            i += 16 + length
+        if changed:
+            draw(path)
+
+
+def open_pane(path):
+    session, block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
+    if not (session and block):
+        sys.exit("worklist: not in a Rex pane (no REX_SESSION, REX_BLOCK): keep the list in its file and tell the person where it is")
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    if not os.path.exists(path):
+        open(path, "w").write("# Now\n")
+    me = os.path.abspath(__file__)
+    ran = subprocess.run(["rex", "split", "-s", session, "-b", block, "--split=right", "--", "/usr/bin/python3", "-I", me, "show", os.path.abspath(path)], capture_output=True, text=True, timeout=30)
+    if ran.returncode:
+        sys.exit(f"worklist: rex split failed: {ran.stderr.strip() or ran.stdout.strip()}")
+    print(f"worklist: {path} shown in {ran.stdout.strip()}, to the right of this pane")
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help", "help"):
+        print(__doc__)
+    elif a[0] == "show" and len(a) == 2:
+        show(a[1])
+    elif a[0] == "open" and len(a) <= 2:
+        open_pane(a[1] if len(a) == 2 else DEFAULT)
+    elif a[0] == "path":
+        print(DEFAULT)
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

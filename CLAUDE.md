@@ -210,6 +210,15 @@ are universal and non-negotiable:
   work, and what's there is kept current (corrected or removed when it
   stops being true). Never store memories in an agent's own memory
   outside the repository.
+- **A work list beside you.** At the start of every session, open a
+  pane to the right of yours with the list of the work (the
+  `olo-worklist` skill: `tools/dev/worklist open`), one short line an
+  item, and keep it current as you go: an item started, checked off
+  when done, added the moment the person asks for more, dropped or
+  blocked (Ben, 2026-11-24: "keep in there for me an up to date todo
+  list of the work (just a brief 1 line entry for each one and check
+  them off as you go"; "a rule asking you to do it by default on new
+  sessions").
 - **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
   Gemini 4 Neon in the Antigravity CLI (`agy`) but the looks at
