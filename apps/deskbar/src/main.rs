@@ -1281,11 +1281,16 @@ impl Deskbar {
         };
         // Said as it is (Ben, 2026-11-08: "no checks/ticks just the option
         // changes based on the state"): grouped, Ungroup All; else Group All.
-        let grouped = self.all_grouped(&team.windows, !self.tiling.ungrouped_apps.contains(&app));
-        let (label, cmd) = if grouped { ("Ungroup All Windows", "ungroup-all") } else { ("Group All Windows", "group-all") };
         // (With where they go, not a slab of its own: five groups for
-        // seven items read as a stack; Opus's look, 2026-11-20.)
-        m.item(label, cmd).enabled(!app.is_empty()).separator().item(if several { "Close All" } else { "Close" }, "close-all")
+        // seven items read as a stack; Opus's look, 2026-11-20. Not for
+        // one window, which has nothing to be grouped with: the reviews'
+        // leftovers.)
+        if several {
+            let grouped = self.all_grouped(&team.windows, !self.tiling.ungrouped_apps.contains(&app));
+            let (label, cmd) = if grouped { ("Ungroup All Windows", "ungroup-all") } else { ("Group All Windows", "group-all") };
+            m = m.item(label, cmd).enabled(!app.is_empty());
+        }
+        m.separator().item(if several { "Close All" } else { "Close" }, "close-all")
     }
 
     /// Whether all of a team's windows are grouped, as they show now:
@@ -4031,7 +4036,7 @@ impl Deskbar {
                     let at = expand(mode_r, 2.0);
                     g.paint_quad(olo_kit::quad(style::snap(g, at), px(2.0), style::tint(ground, 0.7), px(0.0), olo_kit::transparent_black(), olo_kit::BorderStyle::Solid));
                 }
-                status::draw_mode(g, mode_r, &p, mode);
+                status::draw_mode(g, mode_r, &p, mode, (open || mode_open).then_some(ink));
                 agent::record(g, agent::Node { role: "Button", name: Some(name.clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(here), ..Default::default() });
                 agent::record(g, agent::Node { role: "Button", name: Some(tip_text.clone().into()), bounds: expand(mode_r, 2.0), enabled: true, clickable: true, ..Default::default() });
             });

@@ -2535,6 +2535,17 @@ something nobody here has is in "Blocked", with what it waits for.
   Third; a menu's check mark sits in the margin with two points to
   spare (BeOS's place for it; Opus would give it a column); Deskbar's
   "Group All Windows" for an application with one window.
+  (Done 2026-11-24: Keyboard's first tab is Typing; Group All Windows
+  only for an application with more than one; the chosen workspace
+  heading's mode mark in the selection's ink. Kept: Tile ▸ without Top
+  or Bottom Third, a strip a third tall being of little use on a wide
+  screen.) From the look at those (older): Keyboard's Key Repeat
+  sliders too close ("'Slow/Fast' therefore reads about as much as part
+  of the Delay slider as of its own … raise the gap between the two
+  groups to about 32 pt … give [the end labels] the secondary text
+  colour"); Preferences' icon "a muddy dark square at 1x" on a selected
+  row ("draw a proper 16 pt (1x) version … with the light face and the
+  coloured switches").
 
 - **What Olo moves that still jumps** (2026-11-20, from the snapping
   work). A window glides where a drag's place, a tiling shortcut, Zoom,

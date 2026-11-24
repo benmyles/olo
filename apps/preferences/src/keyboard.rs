@@ -229,7 +229,10 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         }
         cx.notify();
     });
-    let tabs: Vec<SharedString> = ["Keyboard", "Shortcuts", "Keyboards", "Power Button"].into_iter().map(SharedString::from).collect();
+    // (Typing, not a second "Keyboard" beside Keyboards: the layout and
+    // the keys' repeat here, each keyboard's own there; the reviews'
+    // leftovers, 2026-11-20.)
+    let tabs: Vec<SharedString> = ["Typing", "Shortcuts", "Keyboards", "Power Button"].into_iter().map(SharedString::from).collect();
     ui.add(
         div()
             .flex_1()

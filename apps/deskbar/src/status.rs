@@ -1144,10 +1144,13 @@ fn outline(g: &mut Painter, b: Bounds<Pixels>, color: Hsla) {
 /// outline; Auto-Tiling, a screen in tiles (a half beside two quarters);
 /// Focus, one window in a viewfinder's corners. The tiles are filled in the
 /// status-bar blue (the mode isn't Standard).
-pub fn draw_mode(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, mode: olo_protocol::WindowingMode) {
+/// `over`: the ink of the row it's on, when that row is chosen (its
+/// selection's text): the mark drawn in it, as the row's words are, not
+/// dark on the selection (the reviews' leftovers, 2026-11-20).
+pub fn draw_mode(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, mode: olo_protocol::WindowingMode, over: Option<olo_kit::Hsla>) {
     use olo_protocol::WindowingMode as M;
     let on = mode != M::Standard;
-    let line = if on { ink(p) } else { dim(p) };
+    let line = over.unwrap_or(if on { ink(p) } else { dim(p) });
     let (l, t) = left_top(r);
     let (l, t) = (l + 1.0, t + 2.0);
     let at = |x0: f32, y0: f32, x1: f32, y1: f32| corners((l + x0, t + y0), (l + x1, t + y1));
@@ -1178,7 +1181,7 @@ pub fn draw_mode(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, mode: olo_prot
     };
     for tile in tiles {
         let tile = style::snap(g, tile);
-        if on {
+        if on && over.is_none() {
             style::fill_rect(g, tile, c(p.status_bar));
         }
         outline(g, tile, line);
