@@ -25661,8 +25661,8 @@ what it is: its type and its fingerprint's hash cut in the middle
 the monospaced face, and "Already saved as “NAME”." in the warning's
 ink when another item has the same key (about to be saved twice); drawn
 2 points up in its own box, close under the field (a negative margin
-there had the form lay out what follows beside the buttons: being
-looked into); nothing while a file waits for its passphrase (it
+there had the form lay out what follows beside the buttons: the layout
+engine's fault, fixed, vendor/README.md); nothing while a file waits for its passphrase (it
 would read as the file's). Show is dimmed while a secret's field is
 empty. A key pasted in (a one-line field turns its
 line breaks to spaces, which `agent::unfolded` puts back) is kept as

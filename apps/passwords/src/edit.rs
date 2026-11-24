@@ -564,9 +564,10 @@ fn key_line(e: &Editor, f: &EditField, label_w: f32, same: Option<&String>) -> O
         let x = b.left() + px(label_w + m::TIGHT);
         let room = (b.right() - x).max(px(0.0));
         // (Its letters 2 points under the field's foot: the field's row has
-        // 2 under it, and a line's box 2.5 over its letters. Drawn up in its
-        // own box, not set up by a margin under nothing, which the layout
-        // took to put what follows the field beside its buttons.)
+        // 2 under it, and a line's box 2.5 over its letters; drawn up in its
+        // own box. Set up by a negative margin instead, it had the layout
+        // put what follows the field beside its buttons: taffy's fault,
+        // fixed, vendor/README.md.)
         let y = b.top() + px(line_h / 2.0 - 2.0);
         let k = style::label_fit(g, x, y, style::Align::Left, kind.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
         let mut all = k;

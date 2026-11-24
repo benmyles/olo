@@ -117,6 +117,19 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   without them. Its examples are left out. Later releases (0.15) key
   the cache much as the first does (their code read, not tried); drop
   the patch when olo-interface moves to one and both tests still pass.
+  A third (`src/compute/flexbox.rs`, `determine_container_main_size`,
+  marked "Olo:"), found 2026-11-24 by a second investigator: working out
+  a flex container's size from its items, an item whose contribution is
+  under its flex basis (a negative margin on one that doesn't shrink)
+  had its fraction divided by `max(1, flex_shrink × basis)` and
+  multiplied back by `max(1, flex_shrink) × basis`, so its 2 points of
+  negative margin came out as 30 off its container (a 15-point line):
+  Passwords' editor laid the form's next row over a field's buttons. The
+  spec multiplies by the factor it divided by; the patch does. Only an
+  item that shrinks less than fully, or whose basis times its shrink is
+  under 1, is laid out differently (otherwise the two agree).
+  olo-interface's `a_negative_margin_takes_off_what_it_says` fails
+  without it (the column 45 points tall, not 73).
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last

@@ -442,6 +442,45 @@ mod tests {
         }
     }
 
+    /// A child that doesn't shrink, with a negative top margin, makes its
+    /// column that much shorter, no more: what follows the column comes
+    /// right under it, at 1x and 2x (taffy 0.9.0 multiplied the margin
+    /// by the child's height working out the column's: a 15-point line
+    /// set up 2 points took 30 off, and the form's next row was laid over
+    /// the column's last; Passwords' editor, 2026-11-24). And across a
+    /// row, a negative left margin.
+    #[test]
+    fn a_negative_margin_takes_off_what_it_says() {
+        for scale in [1.0, 2.0] {
+            let mut layout: Layout<u32> = Layout::new();
+            let rem = px(16.0);
+            let mut add = |element: crate::Element, children: &[LayoutId]| {
+                let id = layout.add(&style(element), rem, scale, None);
+                layout.set_children(id, children);
+                id
+            };
+            let field = add(div().h(px(28.0)).flex_shrink_0(), &[]);
+            let line = add(div().w_full().h(px(15.0)).mt(px(-2.0)).flex_shrink_0(), &[]);
+            let buttons = add(div().h(px(28.0)).mt(px(4.0)).flex_shrink_0(), &[]);
+            let group = add(div().flex().flex_col(), &[field, line, buttons]);
+            let next = add(div().h(px(24.0)).flex_shrink_0(), &[]);
+            let form = add(div().size_full().flex().flex_col().gap(px(12.0)), &[group, next]);
+            let wide = add(div().w(px(15.0)).h(px(10.0)).ml(px(-2.0)).flex_shrink_0(), &[]);
+            let first = add(div().w(px(28.0)).h(px(10.0)).flex_shrink_0(), &[]);
+            let pair = add(div().flex(), &[first, wide]);
+            let after = add(div().w(px(10.0)).h(px(10.0)).flex_shrink_0(), &[]);
+            let row = add(div().flex(), &[pair, after]);
+            let root = add(div().size_full().flex().flex_col(), &[form, row]);
+            let available = size(AvailableSpace::Definite(px(400.0)), AvailableSpace::Definite(px(400.0)));
+            layout.compute(root, available, scale, |_, _, _| Size::default());
+            let placed = |id| layout.placed(id, scale).0;
+            assert_eq!(placed(group).size.height, px(28.0 + 13.0 + 32.0), "at {scale}x");
+            assert_eq!(placed(next).origin.y, px(28.0 + 13.0 + 32.0 + 12.0), "at {scale}x");
+            assert_eq!(placed(pair).size.width, px(28.0 + 13.0), "at {scale}x");
+            assert_eq!(placed(after).origin.x, px(28.0 + 13.0), "at {scale}x");
+        }
+    }
+
     /// What fills a pane by percentage keeps the pane's size when
     /// something beside it is laid out again. Rescue's terminal, a view
     /// filling the pane over its list of processes: the list's rows

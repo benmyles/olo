@@ -1124,7 +1124,15 @@ fn determine_container_main_size(
                             let flex_contribution = if item.content_flex_fraction > 0.0 {
                                 f32_max(1.0, item.flex_grow) * flex_fraction
                             } else if item.content_flex_fraction < 0.0 {
-                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
+                                // Olo: the scaled flex shrink factor the fraction was divided
+                                // by above (`flex_shrink * inner_flex_basis`, at least 1), as
+                                // the spec multiplies by the same. It was `max(1, flex_shrink)
+                                // * inner_flex_basis`: an item that doesn't shrink with a
+                                // negative margin (its outer size under its basis) had the
+                                // margin multiplied by its basis (-2 by 15: -30), and its
+                                // container came out that much too short, what followed it
+                                // laid over it (Passwords' editor, 2026-11-24).
+                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
                                 scaled_shrink_factor * flex_fraction
                             } else {
                                 0.0
