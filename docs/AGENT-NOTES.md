@@ -2654,6 +2654,19 @@ the command takes it: an agent's shell may leave a pipe open, and
   installs isn't what a command over SSH finds; and the app's window
   is to be waited for by its title, since the host-key question is a
   window too.
+- **Root through sudo is tried on the far host; root's login isn't**
+  (2026-11-24): its sshd runs as this account, which may use sudo
+  without a password on the dev server, so `provision::RootBy::Sudo`
+  runs there for real (read-only commands only: `sudo -n true`, `id
+  -u`, the probe, `pwd`), and it can never log root in. The host test
+  (`crates/rex/tests/host.rs`, all ignored) is built with your own HOME
+  (`jato test -p olo-rex-client --test host --no-run`, which prints the
+  binary) and run under a scratch HOME whose `.ssh/known_hosts` has the
+  far host's key (`[127.0.0.1]:PORT` and `REX_SLOW_DIR/far/host_key.pub`),
+  `SSH_AUTH_SOCK` its agent, `OLO_REX_TEST_HOST=ssh://USER@127.0.0.1:PORT`
+  and `OLO_REX_TEST_SUDO=1`: cargo under a scratch HOME looks for its
+  registry and toolchain there. The test of root's login fails at its
+  root step there, as it must.
 - **The rig can put the helper behind its slow link** (`Rig(helper=
   True)`, `try.py order|timed --helper`): the link runs it for the
   control connection, as sshd would, with the scratch server's own

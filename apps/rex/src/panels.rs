@@ -806,6 +806,14 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
             StringView::new(olo_kit::tr!("Nothing on {} is changed yet.", setup.host())),
             buttons().child(button("Cancel", SetupDo::Back)),
         ),
+        // (Root reached before anything is changed: with sudo, as the
+        // account, where it may use it; else signed in as root.)
+        Stage::Root { .. } if setup.root_by == olo_rex_client::provision::RootBy::Sudo => waiting(
+            olo_kit::tr!("Checking sudo on {}…", setup.host()).into(),
+            StatusBar::busy(phase).label(olo_kit::tr!("Running sudo as {}", setup.account()).to_string()),
+            StringView::new(olo_kit::tr!("Setting up needs root. Nothing on {} is changed yet.", setup.host())),
+            buttons().child(button("Cancel", SetupDo::Back)),
+        ),
         Stage::Root { .. } => waiting(
             olo_kit::tr!("Signing in as {}…", setup.root()).into(),
             StatusBar::busy(phase).label("Waiting for a key from Olo Passwords"),
@@ -834,10 +842,22 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
             let mut list = div().flex().flex_col().w_full();
             for (n, step) in steps.iter().enumerate() {
                 if n == 0 || steps[n - 1].root != step.root {
-                    let (who, how) = if step.root {
+                    // (How root's steps reach root, said: with sudo where
+                    // the account may use it without a password, else a
+                    // root login, and why: Ben, 2026-11-24.)
+                    // (The two ways in sentences that mirror each other:
+                    // which account can or can't, who Rex signs in as, and
+                    // what must work before anything is changed: both
+                    // looks, 2026-11-24.)
+                    let (who, how) = if step.root && setup.root_by == olo_rex_client::provision::RootBy::Sudo {
                         (
-                            olo_kit::words::tr("As root, over SSH").to_string(),
-                            olo_kit::tr!("Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.", setup.root()).to_string(),
+                            olo_kit::words::tr("As root, with sudo").to_string(),
+                            olo_kit::tr!("{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.", account, account, setup.host()).to_string(),
+                        )
+                    } else if step.root {
+                        (
+                            olo_kit::words::tr("As root, with an SSH key").to_string(),
+                            olo_kit::tr!("{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.", account, setup.root()).to_string(),
                         )
                     } else {
                         (olo_kit::tr!("As {}, over SSH", account).to_string(), olo_kit::tr!("Rex signs in as {}@{}, as it will to connect.", account, setup.host()).to_string())
@@ -857,8 +877,11 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
                 } else {
                     list = list.child(gap(m::SPACING + 2.0));
                 }
+                // (What is run, as it is run: root's command through sudo
+                // shown with it, Opus's look.)
                 let shown = match step.adds_to() {
                     Some(_) => step.shown().lines().map(str::to_owned).collect(),
+                    None if step.root && setup.root_by == olo_rex_client::provision::RootBy::Sudo => command_lines(&olo_rex_client::provision::by_sudo(&step.shown()), room),
                     None => command_lines(&step.shown(), room),
                 };
                 let mut said = div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT - 2.0)).child(body(olo_kit::words::of(step.title.clone()).to_string()));
@@ -880,7 +903,7 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
         Stage::RootKey { keys, .. } if keys.is_empty() => AlertFrame::new("key")
             .child(alert_title("Olo Passwords has no SSH keys to offer"))
             .child(gap(m::TIGHT))
-            .child(body(olo_kit::tr!("Unlock Olo Passwords, or add a key to it that root on {} accepts.", setup.host()).into()))
+            .child(body(olo_kit::tr!("{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.", setup.account(), setup.host()).into()))
             .child(gap(m::SPACING))
             // (Open Passwords is a side trip, not a third answer: at
             // the left, under the words; the alert's two at the right.)
@@ -899,7 +922,9 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
         Stage::RootKey { keys, chosen, .. } => AlertFrame::new("key")
             .child(alert_title(olo_kit::tr!("{} didn’t accept your keys for root", setup.host())))
             .child(gap(m::TIGHT))
-            .child(body(olo_kit::words::tr("Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.").into()))
+            // (The fact first, then what follows from it, and the way
+            // to act on it: both looks.)
+            .child(body(olo_kit::tr!("{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.", setup.account(), setup.host()).into()))
             .child(gap(m::SPACING))
             // (As wide as the words over it: the alert's column.)
             .child(

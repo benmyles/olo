@@ -1303,6 +1303,12 @@ Zoals op deze computer
 As root, over SSH
 Als root, via SSH
 
+As root, with an SSH key
+Als root, met een SSH-sleutel
+
+As root, with sudo
+Als root, met sudo
+
 As set now
 Zoals nu ingesteld
 
@@ -1392,6 +1398,9 @@ Controleren hoe Rex daar is ingesteld
 
 Asking it…
 Opvragen…
+
+Asking whether {} can use sudo
+Nagaan of {} sudo kan gebruiken
 
 Asking…
 Vraag stellen…
@@ -2224,6 +2233,9 @@ Updates zoeken…
 
 Checking out {} of {} files
 {} van {} bestanden uitchecken
+
+Checking sudo on {}…
+sudo op {} controleren…
 
 Checking the backup
 Back-up controleren
@@ -3082,6 +3094,9 @@ Tailscale uitschakelen mislukt: {}.
 
 Couldn’t turn on Tailscale: {}.
 Tailscale inschakelen mislukt: {}.
+
+Couldn’t use sudo as {}
+Kon sudo niet gebruiken als {}
 
 Couldn’t write the shared copy: {}
 Gedeelde kopie schrijven mislukt: {}
@@ -10151,6 +10166,9 @@ Installatieprogramma van Rex uitvoeren als {}
 Running for {}
 Draait al {}
 
+Running sudo as {}
+sudo uitvoeren als {}
+
 Running systemctl as {}
 systemctl uitvoeren als {}
 
@@ -14910,6 +14928,9 @@ other: {n} pakketten verwijderen
 restoring
 herstellen
 
+root, with sudo as {}
+root, met sudo als {}
+
 sav, sv2
 sav, sv2
 
@@ -15585,6 +15606,24 @@ Instellingen voor {}…
 
 {} bytes
 {} bytes
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} kan daar sudo gebruiken zonder wachtwoord, dus meldt Rex zich aan als {}@{} en voert dit uit met sudo. Er verandert niets totdat sudo werkt.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} kan sudo op {} niet zonder wachtwoord gebruiken, dus het beheer van de server vraagt de eigen aanmelding van root, of een account dat het wel kan. Kies een sleutel die root daar accepteert. Werkt er geen, voeg dan uw publieke sleutel toe aan /root/.ssh/authorized_keys op die machine en probeer het opnieuw.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} kan sudo op {} niet zonder wachtwoord gebruiken, dus het beheer van de server vraagt de eigen aanmelding van root, of een account dat het wel kan. Ontgrendel Olo Passwords of voeg een sleutel toe die root daar accepteert.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} kan sudo op {} niet zonder wachtwoord gebruiken, dus het instellen vraagt de eigen aanmelding van root, of een account dat het wel kan. Kies een sleutel die root daar accepteert. Werkt er geen, voeg dan uw publieke sleutel toe aan /root/.ssh/authorized_keys op die machine en probeer het opnieuw.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} kan sudo op {} niet zonder wachtwoord gebruiken, dus het instellen vraagt de eigen aanmelding van root, of een account dat het wel kan. Ontgrendel Olo Passwords of voeg een sleutel toe die root daar accepteert.
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{} kan daar sudo niet zonder wachtwoord gebruiken, dus meldt Rex zich aan als {} met een SSH-sleutel uit Olo Passwords. Er verandert niets totdat die aanmelding lukt.
 
 {} cd/m² at most, {} over the whole screen
 maximaal {} cd/m², {} over het hele scherm

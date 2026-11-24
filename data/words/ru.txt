@@ -1315,6 +1315,12 @@ As on this computer
 As root, over SSH
 От имени root по SSH
 
+As root, with an SSH key
+От имени root, по ключу SSH
+
+As root, with sudo
+От имени root, через sudo
+
 As set now
 Как настроено сейчас
 
@@ -1404,6 +1410,9 @@ Asking how Rex is set up there
 
 Asking it…
 Отправка запроса…
+
+Asking whether {} can use sudo
+Проверка, может ли {} использовать sudo
 
 Asking…
 Запрос…
@@ -2238,6 +2247,9 @@ Checking for updates…
 
 Checking out {} of {} files
 Извлечение файлов: {} из {}
+
+Checking sudo on {}…
+Проверка sudo на {}…
 
 Checking the backup
 Проверка копии
@@ -3108,6 +3120,9 @@ Couldn’t turn off Tailscale: {}.
 
 Couldn’t turn on Tailscale: {}.
 Не удалось включить Tailscale: {}.
+
+Couldn’t use sudo as {}
+Не удалось использовать sudo как {}
 
 Couldn’t write the shared copy: {}
 Не удалось записать общую копию: {}
@@ -10207,6 +10222,9 @@ Running Rex’s installer as {}
 Running for {}
 Работает {}
 
+Running sudo as {}
+Запуск sudo от имени {}
+
 Running systemctl as {}
 Запуск systemctl от имени {}
 
@@ -15004,6 +15022,9 @@ other: удалить {n} пакета
 restoring
 восстановление
 
+root, with sudo as {}
+root, через sudo от имени {}
+
 sav, sv2
 sav, sv2
 
@@ -15807,6 +15828,24 @@ other: {n} недели
 
 {} bytes
 {} байт
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} может использовать sudo там без пароля, поэтому Rex входит как {}@{} и выполняет это через sudo. Ничего не меняется, пока sudo не сработает.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} не может использовать sudo на {} без пароля, поэтому для управления сервером нужен вход самого root или учётная запись, которая это может. Выберите ключ, который принимает root на этом узле. Если ни один не подходит, добавьте открытый ключ в /root/.ssh/authorized_keys на той машине и попробуйте снова.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} не может использовать sudo на {} без пароля, поэтому для управления сервером нужен вход самого root или учётная запись, которая это может. Разблокируйте Olo Passwords или добавьте туда ключ, который принимает root на этом узле.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} не может использовать sudo на {} без пароля, поэтому для настройки нужен вход самого root или учётная запись, которая это может. Выберите ключ, который принимает root на этом узле. Если ни один не подходит, добавьте открытый ключ в /root/.ssh/authorized_keys на той машине и попробуйте снова.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} не может использовать sudo на {} без пароля, поэтому для настройки нужен вход самого root или учётная запись, которая это может. Разблокируйте Olo Passwords или добавьте туда ключ, который принимает root на этом узле.
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{} не может использовать sudo там без пароля, поэтому Rex входит как {} с ключом SSH из Olo Passwords. Ничего не меняется, пока этот вход не удастся.
 
 {} cd/m² at most, {} over the whole screen
 До {} кд/м², по всему экрану — {}

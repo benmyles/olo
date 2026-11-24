@@ -1297,6 +1297,12 @@ As on this computer
 As root, over SSH
 SSH経由でrootとして
 
+As root, with an SSH key
+rootとして（SSH鍵で）
+
+As root, with sudo
+rootとして（sudoで）
+
 As set now
 現在の設定
 
@@ -1386,6 +1392,9 @@ Asking how Rex is set up there
 
 Asking it…
 問い合わせ中…
+
+Asking whether {} can use sudo
+{} がsudoを使えるか確認中
 
 Asking…
 問い合わせ中…
@@ -2217,6 +2226,9 @@ Checking for updates…
 
 Checking out {} of {} files
 ファイルをチェックアウト中：{} / {}
+
+Checking sudo on {}…
+{} のsudoを確認中…
 
 Checking the backup
 バックアップを検証中
@@ -3069,6 +3081,9 @@ Tailscaleをオフにできませんでした：{}。
 
 Couldn’t turn on Tailscale: {}.
 Tailscaleをオンにできませんでした：{}。
+
+Couldn’t use sudo as {}
+{} としてsudoを使えませんでした
 
 Couldn’t write the shared copy: {}
 共有コピーを書き込めません：{}
@@ -10123,6 +10138,9 @@ Running Rex’s installer as {}
 Running for {}
 稼働時間：{}
 
+Running sudo as {}
+{} としてsudoを実行中
+
 Running systemctl as {}
 {}としてsystemctlを実行中
 
@@ -14863,6 +14881,9 @@ other: {n}個のパッケージを削除
 restoring
 復元中
 
+root, with sudo as {}
+root（{} のsudo経由）
+
 sav, sv2
 sav, sv2
 
@@ -15474,6 +15495,24 @@ other: {n}週間
 
 {} bytes
 {}バイト
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} はパスワードなしでsudoを使えるため、Rexは{}@{}としてサインインし、これらをsudoで実行します。sudoが使えるまで何も変更しません。
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} は{}でパスワードなしにsudoを使えないため、サーバーの管理にはroot自身のログイン、またはsudoを使えるアカウントが必要です。リモートのrootが受け入れる鍵を選んでください。使える鍵がない場合は、公開鍵をそのマシンの/root/.ssh/authorized_keysに追加してから再試行してください。
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} は{}でパスワードなしにsudoを使えないため、サーバーの管理にはroot自身のログイン、またはsudoを使えるアカウントが必要です。Olo Passwordsのロックを解除するか、そのホストのrootが受け入れる鍵を追加してください。
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} は{}でパスワードなしにsudoを使えないため、セットアップにはroot自身のログイン、またはsudoを使えるアカウントが必要です。リモートのrootが受け入れる鍵を選んでください。使える鍵がない場合は、公開鍵をそのマシンの/root/.ssh/authorized_keysに追加してから再試行してください。
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} は{}でパスワードなしにsudoを使えないため、セットアップにはroot自身のログイン、またはsudoを使えるアカウントが必要です。Olo Passwordsのロックを解除するか、そのホストのrootが受け入れる鍵を追加してください。
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{} はパスワードなしでsudoを使えないため、RexはOlo PasswordsのSSH鍵で{}としてサインインします。サインインできるまで何も変更しません。
 
 {} cd/m² at most, {} over the whole screen
 最大{} cd/m²、全画面で{} cd/m²

@@ -1303,6 +1303,12 @@ As on this computer
 As root, over SSH
 SSH पर, root के रूप में
 
+As root, with an SSH key
+root के रूप में, SSH कुंजी से
+
+As root, with sudo
+root के रूप में, sudo से
+
 As set now
 मौजूदा सेटिंग के अनुसार
 
@@ -1392,6 +1398,9 @@ Asking how Rex is set up there
 
 Asking it…
 पूछ रहे हैं…
+
+Asking whether {} can use sudo
+जाँच रहे हैं कि {} sudo इस्तेमाल कर सकता है या नहीं
 
 Asking…
 पूछ रहे हैं…
@@ -2224,6 +2233,9 @@ Checking for updates…
 
 Checking out {} of {} files
 फ़ाइलें चेकआउट हो रही हैं: {} / {}
+
+Checking sudo on {}…
+{} पर sudo जाँच रहे हैं…
 
 Checking the backup
 बैकअप की जाँच जारी है
@@ -3082,6 +3094,9 @@ Tailscale बंद नहीं कर सके: {}।
 
 Couldn’t turn on Tailscale: {}.
 Tailscale चालू नहीं कर सके: {}।
+
+Couldn’t use sudo as {}
+{} के रूप में sudo इस्तेमाल नहीं कर सके
 
 Couldn’t write the shared copy: {}
 साझा प्रति नहीं लिख सके: {}
@@ -10151,6 +10166,9 @@ Running Rex’s installer as {}
 Running for {}
 {} से चल रहा है
 
+Running sudo as {}
+{} के रूप में sudo चल रहा है
+
 Running systemctl as {}
 {} के रूप में systemctl चल रहा है
 
@@ -14910,6 +14928,9 @@ other: {n} पैकेज हटाएँ
 restoring
 बहाली जारी
 
+root, with sudo as {}
+root, {} के रूप में sudo से
+
 sav, sv2
 sav, sv2
 
@@ -15585,6 +15606,24 @@ other: {n} हफ़्ते
 
 {} bytes
 {} बाइट
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} वहाँ बिना पासवर्ड के sudo इस्तेमाल कर सकता है, इसलिए Rex {}@{} के रूप में लॉगिन करता है और इन्हें sudo से चलाता है। sudo के काम करने तक कुछ नहीं बदलता।
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} {} पर बिना पासवर्ड के sudo इस्तेमाल नहीं कर सकता, इसलिए इसके सर्वर की देखभाल के लिए root का अपना लॉगिन चाहिए, या ऐसा खाता जो कर सके। ऐसी कुंजी चुनें जिसे वहाँ root स्वीकार करे। कोई भी न चले, तो उस मशीन पर अपनी सार्वजनिक कुंजी /root/.ssh/authorized_keys में जोड़ें और फिर कोशिश करें।
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} {} पर बिना पासवर्ड के sudo इस्तेमाल नहीं कर सकता, इसलिए इसके सर्वर की देखभाल के लिए root का अपना लॉगिन चाहिए, या ऐसा खाता जो कर सके। Olo Passwords खोलें, या उसमें ऐसी कुंजी जोड़ें जिसे वहाँ root स्वीकार करे।
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} {} पर बिना पासवर्ड के sudo इस्तेमाल नहीं कर सकता, इसलिए सेट अप के लिए root का अपना लॉगिन चाहिए, या ऐसा खाता जो कर सके। ऐसी कुंजी चुनें जिसे वहाँ root स्वीकार करे। कोई भी न चले, तो उस मशीन पर अपनी सार्वजनिक कुंजी /root/.ssh/authorized_keys में जोड़ें और फिर कोशिश करें।
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} {} पर बिना पासवर्ड के sudo इस्तेमाल नहीं कर सकता, इसलिए सेट अप के लिए root का अपना लॉगिन चाहिए, या ऐसा खाता जो कर सके। Olo Passwords खोलें, या उसमें ऐसी कुंजी जोड़ें जिसे वहाँ root स्वीकार करे।
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{} वहाँ बिना पासवर्ड के sudo इस्तेमाल नहीं कर सकता, इसलिए Rex Olo Passwords की SSH कुंजी से {} के रूप में लॉगिन करता है। उस लॉगिन के सफल होने तक कुछ नहीं बदलता।
 
 {} cd/m² at most, {} over the whole screen
 अधिकतम {} cd/m², पूरी स्क्रीन पर {} cd/m²

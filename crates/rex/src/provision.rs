@@ -524,27 +524,69 @@ pub trait Runner {
     }
 }
 
+/// How root's commands reach root on a host (Ben, 2026-11-24: "it
+/// shouldn't only work with a root@ login it should also support using
+/// any provided user account e.g. fedora@ that has the ability to run
+/// commands as sudo without a password").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RootBy {
+    /// Signed in as `root@HOST`, with keys alone (the agent's, or the one
+    /// the person chose).
+    #[default]
+    Login,
+    /// Over the account's own connection, with `sudo -n`: an account that
+    /// may run commands as root without a password ([`can_sudo`]).
+    Sudo,
+}
+
+/// `command` as root runs it through sudo, over the account's
+/// connection: never asking for a password (`-n`: one asked for fails
+/// at once), with root's home as its home and where it starts (`-H`,
+/// and `cd`), as a `root@` login's command would. Shown to the person
+/// as it is run: the confirm list's wells have it whole.
+pub fn by_sudo(command: &str) -> String {
+    format!("sudo -n -H sh -c {}", shell_word(&format!("cd && {command}")))
+}
+
+/// Whether the account that connects may run commands as root with sudo,
+/// without a password (`sudo -n true`; an account that is root itself
+/// needn't). Asked only where root's work is to be done: a sudo refused
+/// may be logged there, or mailed to the host's administrators.
+pub async fn can_sudo(runner: &mut impl Runner) -> bool {
+    runner.run(false, "sudo -n true", &mut |_| {}).await.is_ok_and(|ran| ran.ok())
+}
+
 /// Commands run over SSH: as the account of `target`, and as root on the
-/// same host, signed in with keys alone (the agent's; `root_key`, the
-/// one the person chose, by its fingerprint).
+/// same host, as `root_by` says: signed in as root with keys alone (the
+/// agent's; `root_key`, the one the person chose, by its fingerprint), or
+/// with sudo over the account's own connection.
 pub struct OverSsh {
     pub pool: std::sync::Arc<crate::ssh::SshSessionPool>,
     pub target: SshTarget,
     pub root_key: Option<String>,
+    pub root_by: RootBy,
     pub askpass: Option<std::sync::Arc<dyn crate::ssh::SshAskpass>>,
 }
 
 impl Runner for OverSsh {
     async fn run(&mut self, root: bool, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
-        let target = if root { self.target.as_root(self.root_key.clone()) } else { self.target.clone() };
-        self.pool.exec(&target, self.askpass.clone(), command, said).await.map_err(|e| match e {
+        let (target, command) = match (root, self.root_by) {
+            (true, RootBy::Login) => (self.target.as_root(self.root_key.clone()), command.to_owned()),
+            (true, RootBy::Sudo) => (self.target.clone(), by_sudo(command)),
+            (false, _) => (self.target.clone(), command.to_owned()),
+        };
+        self.pool.exec(&target, self.askpass.clone(), &command, said).await.map_err(|e| match e {
             crate::error::RexError::SshRefused(who) => Failed { refused: true, why: format!("{who} let nobody in with the keys offered") },
             other => Failed { refused: false, why: other.to_string() },
         })
     }
 
     async fn afresh(&mut self) {
-        self.pool.close(&self.target.as_root(self.root_key.clone())).await;
+        // (Through sudo, each command is a new session of root's, given
+        // what a new sign-in is: there is no connection of root's.)
+        if self.root_by == RootBy::Login {
+            self.pool.close(&self.target.as_root(self.root_key.clone())).await;
+        }
     }
 }
 
@@ -901,12 +943,18 @@ mod tests {
         /// A service won't start (what systemctl says), and its log.
         wont_start: Option<&'static str>,
         journal: Option<&'static str>,
+        /// The account may use sudo without a password.
+        sudo: bool,
     }
 
     impl Runner for Host {
         async fn run(&mut self, root: bool, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
             if root && self.no_root {
                 return Err(Failed { refused: true, why: "root@host let nobody in with the keys offered".into() });
+            }
+            if !root && command == "sudo -n true" {
+                self.ran.push((root, command.to_owned()));
+                return Ok(if self.sudo { Ran { status: Some(0), output: String::new() } } else { Ran { status: Some(1), output: "sudo: a password is required\n".into() } });
             }
             if command.starts_with("sh -c '") && !self.says.is_empty() {
                 let says = if self.says.len() > 1 { self.says.remove(0) } else { self.says[0].clone() };
@@ -938,6 +986,20 @@ mod tests {
 
     fn block<F: std::future::Future>(f: F) -> F::Output {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    }
+
+    /// Root's work through sudo: asked once, as the account, never with a
+    /// password; a command for root sent as sudo's, from root's home, its
+    /// words whole however they're quoted.
+    #[test]
+    fn root_is_reached_through_sudo_where_the_account_may_use_it() {
+        let mut host = Host { sudo: true, ..Host::default() };
+        assert!(block(can_sudo(&mut host)));
+        assert_eq!(host.ran, [(false, "sudo -n true".to_owned())]);
+        let mut host = Host::default();
+        assert!(!block(can_sudo(&mut host)));
+        assert_eq!(by_sudo("systemctl enable --now 'rex.socket'"), "sudo -n -H sh -c 'cd && systemctl enable --now '\\''rex.socket'\\'''");
+        assert_eq!(RootBy::default(), RootBy::Login);
     }
 
     #[test]

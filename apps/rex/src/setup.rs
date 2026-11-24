@@ -11,13 +11,18 @@
 //! (there is one Add Host window).
 //!
 //! **Root is asked for only to set the server up**: the connection that
-//! is kept is the account's. Root is signed in with keys alone, the
-//! agent's (Olo Passwords', unless another agent is set); if root there
-//! takes none of them, the person chooses which key to offer
-//! ([`Stage::RootKey`]: a server lets a client try only a few keys, so
-//! with many in the agent the right one may never be reached), and no
-//! password is ever asked for. Root's connection is dropped when the
-//! work ends, however it ends.
+//! is kept is the account's. Where the account may use sudo without a
+//! password (asked once, `provision::can_sudo`, as the host is looked
+//! at), root's steps run with sudo over the account's own connection
+//! ([`RootBy::Sudo`]: a cloud machine's `fedora@` or `ubuntu@`, where
+//! root can't sign in; Ben, 2026-11-24). Else root is signed in with
+//! keys alone, the agent's (Olo Passwords', unless another agent is
+//! set); if root there takes none of them, the person chooses which key
+//! to offer ([`Stage::RootKey`]: a server lets a client try only a few
+//! keys, so with many in the agent the right one may never be reached),
+//! told that a root login or an account that can use sudo is needed,
+//! and no password is ever asked for. Root's connection is dropped when
+//! the work ends, however it ends.
 
 use std::sync::{
     Arc,
@@ -26,7 +31,7 @@ use std::sync::{
 
 use olo_rex_client::{
     AgentKey, ServerMode, SshTarget,
-    provision::{self, Failed, Outcome, Step},
+    provision::{self, Failed, Outcome, RootBy, Step},
 };
 use olo_sync::Mutex;
 
@@ -64,6 +69,10 @@ pub struct Setup {
     pub stage: Stage,
     /// The key root is offered (its fingerprint); none: the agent's, in turn.
     pub root_key: Option<String>,
+    /// How root's steps reach root: with sudo where the account may use
+    /// it without a password (asked as the host is looked at), else a
+    /// root login.
+    pub root_by: RootBy,
 }
 
 impl Setup {
@@ -75,6 +84,11 @@ impl Setup {
     /// `root@HOST`, as it is said to the person.
     pub fn root(&self) -> String {
         format!("root@{}", self.target.host)
+    }
+
+    /// The account that connects, as it is said to the person.
+    pub fn account(&self) -> &str {
+        self.target.user.as_deref().unwrap_or_default()
     }
 }
 
@@ -139,18 +153,26 @@ where
 pub fn begin(hub: &Arc<RexHub>, name: String, target: SshTarget, mode: ServerMode) {
     // (Signed in to with the agent Rex is set to use, here and for root.)
     let target = hub.with_agent(target);
-    *live() = Some(Live { setup: Setup { name, target, mode, stage: Stage::Looking, root_key: None }, turn: 0, stop: Arc::new(AtomicBool::new(false)), task: None });
+    *live() = Some(Live { setup: Setup { name, target, mode, stage: Stage::Looking, root_key: None, root_by: RootBy::Login }, turn: 0, stop: Arc::new(AtomicBool::new(false)), task: None });
     look(hub);
 }
 
 /// Asks the host how it stands: as it should be, it is added; else what
-/// it needs is put to the person.
+/// it needs is put to the person, with how root's steps will reach root
+/// (with sudo, where the account may use it without a password: asked
+/// only where a step is root's).
 fn look(hub: &Arc<RexHub>) {
     work(hub, Stage::Looking, |hub, setup, turn, _| async move {
-        let mut runner = hub.over_ssh(setup.target.clone(), None);
+        let mut runner = hub.over_ssh(setup.target.clone(), None, RootBy::Login);
         match provision::needs(&mut runner, setup.mode).await {
             Ok((_, steps)) if steps.is_empty() => finish(&hub, &setup, turn),
-            Ok((_, steps)) => set(turn, Stage::Confirm { ends_sessions: provision::ends_sessions(&steps), steps }),
+            Ok((_, steps)) => {
+                let by = if steps.iter().any(|s| s.root) && provision::can_sudo(&mut runner).await { RootBy::Sudo } else { RootBy::Login };
+                if let Some(live) = live().as_mut().filter(|l| l.turn == turn) {
+                    live.setup.root_by = by;
+                }
+                set(turn, Stage::Confirm { ends_sessions: provision::ends_sessions(&steps), steps });
+            }
             Err(failed) => set(turn, could_not_look(&setup, &failed)),
         }
     });
@@ -210,16 +232,28 @@ pub fn go(hub: &Arc<RexHub>) {
         _ => return,
     };
     work(hub, Stage::Root { steps: steps.clone() }, |hub, setup, turn, stop| async move {
-        let mut runner = hub.over_ssh(setup.target.clone(), setup.root_key.clone());
-        if steps.iter().any(|s| s.root)
-            && let Err(failed) = provision::Runner::run(&mut runner, true, "true", &mut |_| {}).await
-        {
+        let mut runner = hub.over_ssh(setup.target.clone(), setup.root_key.clone(), setup.root_by);
+        // (Root reached before anything is changed: signed in, or sudo
+        // run; a sudo that asks for a password fails at once, and says
+        // so.)
+        let reached = if steps.iter().any(|s| s.root) {
+            match provision::Runner::run(&mut runner, true, "true", &mut |_| {}).await {
+                Ok(ran) if !ran.ok() => Err(Failed { refused: false, why: ran.output.trim().to_owned() }),
+                Ok(_) => Ok(()),
+                Err(failed) => Err(failed),
+            }
+        } else {
+            Ok(())
+        };
+        if let Err(failed) = reached {
             hub.forget_ssh(&setup.target.as_root(setup.root_key.clone())).await;
             if failed.refused {
                 let keys = hub.agent_keys().await;
                 // (The one tried, if one was chosen; else the first.)
                 let chosen = setup.root_key.as_ref().and_then(|tried| keys.iter().position(|k| k.fingerprint == *tried)).unwrap_or(0);
                 set(turn, Stage::RootKey { steps, keys, chosen });
+            } else if setup.root_by == RootBy::Sudo {
+                set(turn, Stage::Failed { what: olo_kit::tr!("Couldn’t use sudo as {}", setup.account()).into(), why: done_so_far(&setup, 0), said: failed.why, icon: "stop" });
             } else {
                 set(turn, Stage::Failed { what: olo_kit::tr!("Couldn’t reach {}", setup.root()).into(), why: done_so_far(&setup, 0), said: failed.why, icon: "stop" });
             }
@@ -368,6 +402,12 @@ pub fn address(typed: &str) -> Address {
 /// A host made up in the stage `named`, for pictures of the window and
 /// its lint (`OLO_REX_DEMO_SETUP`): nothing is connected to.
 pub fn demo(named: &str) -> Option<Setup> {
+    // (A stage's name ending "-sudo": the account may use sudo, and root's
+    // steps are to be run with it.)
+    let (named, root_by) = match named.strip_suffix("-sudo") {
+        Some(named) => (named, RootBy::Sudo),
+        None => (named, RootBy::Login),
+    };
     let target = SshTarget::parse("ssh://alice@build.example.com").ok()?;
     let bare = provision::Facts {
         os: "Linux".into(),
@@ -421,10 +461,10 @@ pub fn demo(named: &str) -> Option<Setup> {
             what: "Couldn’t start the login server".into(),
             why: "Steps 1 to 3 are done. Try Again carries on from step 4.".into(),
             said: "Job for rex-login-server.service failed because the control process exited with error code.\nSee \"systemctl status rex-login-server.service\" and \"journalctl -xeu rex-login-server.service\" for details.".into(), icon: "stop" },
-        "refused" => could_not_look(&Setup { name: String::new(), target: target.clone(), mode: ServerMode::Login, stage: Stage::Looking, root_key: None }, &Failed { refused: true, why: String::new() }),
+        "refused" => could_not_look(&Setup { name: String::new(), target: target.clone(), mode: ServerMode::Login, stage: Stage::Looking, root_key: None, root_by }, &Failed { refused: true, why: String::new() }),
         _ => return None,
     };
-    Some(Setup { name: "build".into(), target, mode: ServerMode::Login, stage, root_key: None })
+    Some(Setup { name: "build".into(), target, mode: ServerMode::Login, stage, root_key: None, root_by })
 }
 
 /// Puts a made-up host in a stage (the pictures' and the lint's).
@@ -456,7 +496,10 @@ mod tests {
     fn every_stage_can_be_pictured() {
         for named in ["looking", "confirm", "confirm-ends", "root", "key", "nokeys", "working", "stopping", "failed", "failed-later", "refused"] {
             let setup = demo(named).unwrap_or_else(|| panic!("no demo of {named}"));
-            assert_eq!((setup.host(), setup.root().as_str()), ("build.example.com", "root@build.example.com"));
+            assert_eq!((setup.host(), setup.root().as_str(), setup.root_by), ("build.example.com", "root@build.example.com", RootBy::Login));
+            // (Each with root's work done through sudo, as the account.)
+            let sudo = demo(&format!("{named}-sudo")).unwrap_or_else(|| panic!("no demo of {named}-sudo"));
+            assert_eq!((sudo.account(), sudo.root_by, &sudo.stage), ("alice", RootBy::Sudo, &setup.stage));
         }
         assert!(matches!(demo("confirm").unwrap().stage, Stage::Confirm { steps, ends_sessions: false } if steps.len() == 5 && steps.iter().filter(|s| s.root).count() == 4));
         assert!(matches!(demo("confirm-ends").unwrap().stage, Stage::Confirm { ends_sessions: true, .. }));

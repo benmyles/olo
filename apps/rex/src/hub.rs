@@ -2910,8 +2910,11 @@ impl RexHub {
     /// What runs commands on `target`'s host over SSH, as its account
     /// and as root (`root_key`: offered that key of the agent's alone):
     /// for setting a host up and looking after it.
-    pub fn over_ssh(&self, target: olo_rex_client::SshTarget, root_key: Option<String>) -> olo_rex_client::provision::OverSsh {
-        olo_rex_client::provision::OverSsh { pool: self.inner.ssh_pool.clone(), target, root_key, askpass: self.inner.askpass.clone() }
+    /// Commands run on `target`'s host: as its account, and as root as
+    /// `root_by` says (a `root@` login with keys, `root_key` the one the
+    /// person chose; or sudo over the account's connection).
+    pub fn over_ssh(&self, target: olo_rex_client::SshTarget, root_key: Option<String>, root_by: olo_rex_client::provision::RootBy) -> olo_rex_client::provision::OverSsh {
+        olo_rex_client::provision::OverSsh { pool: self.inner.ssh_pool.clone(), target, root_key, root_by, askpass: self.inner.askpass.clone() }
     }
 
     /// Lets the SSH connection to `target` go (root's, when its work is

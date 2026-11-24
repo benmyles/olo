@@ -17,7 +17,7 @@ use std::sync::Arc;
 use olo_rex_client::{
     AgentKey, ServerMode, SshTarget,
     manage::{self, Action, LogRange, Person, Server, Service},
-    provision::Failed,
+    provision::{Failed, RootBy},
 };
 use olo_sync::Mutex;
 
@@ -71,6 +71,10 @@ pub struct Managed {
     pub target: SshTarget,
     /// The key root is offered (its fingerprint); none: the agent's, in turn.
     pub root_key: Option<String>,
+    /// How root's work reaches root: with sudo where the account may use
+    /// it without a password, else a root login; none until the host's
+    /// first look asks (`provision::can_sudo`).
+    pub root_by: Option<RootBy>,
     pub stage: Stage,
     /// The server as the host last said it stands, and when it said so
     /// (how long a service has run is counted on from then).
@@ -87,9 +91,15 @@ pub struct Managed {
 }
 
 impl Managed {
-    /// `root@HOST`, as it is said to the person: once, over what is run.
+    /// Who runs root's work, as it is said to the person, once, over what
+    /// is run ("Rex runs this as {}:"): `root@HOST`, or root through the
+    /// account's sudo ("root, with sudo as alice": "as alice with sudo"
+    /// read as broken, both looks).
     pub fn root(&self) -> String {
-        format!("root@{}", self.target.host)
+        match self.root_by {
+            Some(RootBy::Sudo) => olo_kit::tr!("root, with sudo as {}", self.target.user.as_deref().unwrap_or_default()).into(),
+            _ => format!("root@{}", self.target.host),
+        }
     }
 
     /// Whether the host's server is the shared one: its people are the
@@ -206,6 +216,7 @@ pub fn open(hub: &Arc<RexHub>, name: String, target: SshTarget) {
         name,
         target,
         root_key: None,
+        root_by: None,
         stage: Stage::Looking,
         server: None,
         read: None,
@@ -221,10 +232,21 @@ pub fn open(hub: &Arc<RexHub>, name: String, target: SshTarget) {
 }
 
 /// Asks the host, as root, how its server stands (and its package
-/// manager, whether Rex's repository has a newer version).
+/// manager, whether Rex's repository has a newer version). The first
+/// look asks first how root is reached: with sudo, where the account
+/// may use it without a password, else a root login (Ben, 2026-11-24).
 fn look(hub: &Arc<RexHub>) {
     work(hub, Stage::Looking, |hub, managed, turn| async move {
-        let mut runner = hub.over_ssh(managed.target.clone(), managed.root_key.clone());
+        let by = match managed.root_by {
+            Some(by) => by,
+            None => {
+                let mut account = hub.over_ssh(managed.target.clone(), None, RootBy::Login);
+                let by = if olo_rex_client::provision::can_sudo(&mut account).await { RootBy::Sudo } else { RootBy::Login };
+                set(turn, |m| m.root_by = Some(by));
+                by
+            }
+        };
+        let mut runner = hub.over_ssh(managed.target.clone(), managed.root_key.clone(), by);
         match manage::look(&mut runner, true).await {
             Ok(server) => set(turn, |m| shown(m, server)),
             Err(failed) => {
@@ -376,7 +398,7 @@ pub fn go(hub: &Arc<RexHub>) {
         return back();
     }
     work(hub, Stage::Working { action: action.clone(), said: String::new() }, |hub, managed, turn| async move {
-        let mut runner = hub.over_ssh(managed.target.clone(), managed.root_key.clone());
+        let mut runner = hub.over_ssh(managed.target.clone(), managed.root_key.clone(), managed.root_by.unwrap_or_default());
         let mut told = std::time::Instant::now();
         let done = manage::act(&mut runner, &server, &action, &mut |line| {
             {
@@ -460,7 +482,7 @@ pub fn read_log(hub: &Arc<RexHub>, service: Option<Service>, range: Option<LogRa
     }
     let reader = hub.clone();
     hub.spawn(async move {
-        let mut runner = reader.over_ssh(managed.target.clone(), managed.root_key.clone());
+        let mut runner = reader.over_ssh(managed.target.clone(), managed.root_key.clone(), managed.root_by.unwrap_or_default());
         let lines = match manage::journal(&mut runner, of, over).await {
             Ok(lines) => lines,
             Err(failed) => vec![failed.why],
@@ -508,8 +530,13 @@ pub fn close(hub: &Arc<RexHub>) {
 /// `stopped`, `failed-service`, `unused`, `current`, `people`,
 /// `people-empty`, `members`, `log`, `log-reading`, `log-empty`,
 /// `confirm`, `confirm-stop`, `confirm-update`, `working`, `failed`,
-/// `key`, `nokeys`.
+/// `key`, `nokeys`; each with `-sudo` after it, the account using sudo
+/// for root's work.
 pub fn demo(named: &str) -> Option<Managed> {
+    let (named, root_by) = match named.strip_suffix("-sudo") {
+        Some(named) => (named, RootBy::Sudo),
+        None => (named, RootBy::Login),
+    };
     use olo_rex_client::accounts::Accounts;
     use olo_rex_client::provision::{Facts, Unit};
     let on = Unit { active: true, enabled: true };
@@ -582,9 +609,11 @@ pub fn demo(named: &str) -> Option<Managed> {
     ];
     let base = Managed {
         name: "build".into(),
-        // (As the demo's Hosts window has it.)
-        target: SshTarget::parse("ssh://you@build.example").ok()?,
+        // (An account with a name, for the pictures: "you" read as a
+        // pronoun in "with sudo as you", Opus's look.)
+        target: SshTarget::parse("ssh://alice@build.example").ok()?,
         root_key: None,
+        root_by: Some(root_by),
         stage: Stage::Shown,
         server: Some(login.clone()),
         read: Some(std::time::Instant::now()),
@@ -709,6 +738,17 @@ mod tests {
 
     /// (The window's state is one for the program: these go one at a time.)
     static ONE: Mutex<()> = Mutex::new(());
+
+    /// Who runs root's work, said over what is run: root signed in, or
+    /// the account with sudo where it may use it.
+    #[test]
+    fn roots_work_is_said_as_whoever_runs_it() {
+        let login = demo("confirm").unwrap();
+        assert_eq!((login.root_by, login.root().as_str()), (Some(RootBy::Login), "root@build.example"));
+        let sudo = demo("confirm-sudo").unwrap();
+        assert_eq!((sudo.root_by, sudo.root().as_str()), (Some(RootBy::Sudo), "root, with sudo as alice"));
+        assert_eq!(sudo.stage, login.stage);
+    }
 
     #[test]
     fn what_is_asked_is_put_to_the_person_and_can_be_left() {

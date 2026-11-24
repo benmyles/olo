@@ -1297,6 +1297,12 @@ As on this computer
 As root, over SSH
 SSH를 통해 root로 연결
 
+As root, with an SSH key
+root로, SSH 키 사용
+
+As root, with sudo
+root로, sudo 사용
+
 As set now
 현재 설정대로
 
@@ -1386,6 +1392,9 @@ Asking how Rex is set up there
 
 Asking it…
 요청 중…
+
+Asking whether {} can use sudo
+{}이(가) sudo를 쓸 수 있는지 확인 중
 
 Asking…
 요청 중…
@@ -2217,6 +2226,9 @@ Checking for updates…
 
 Checking out {} of {} files
 파일 {1}개 중 {0}개 체크아웃 중
+
+Checking sudo on {}…
+{}에서 sudo 확인 중…
 
 Checking the backup
 백업 검사 중
@@ -3069,6 +3081,9 @@ Tailscale을 끌 수 없습니다: {}.
 
 Couldn’t turn on Tailscale: {}.
 Tailscale을 켤 수 없습니다: {}.
+
+Couldn’t use sudo as {}
+{} 계정으로 sudo를 쓸 수 없음
 
 Couldn’t write the shared copy: {}
 공유 사본을 쓸 수 없습니다: {}
@@ -10123,6 +10138,9 @@ Running Rex’s installer as {}
 Running for {}
 {} 동안 실행 중
 
+Running sudo as {}
+{} 계정으로 sudo 실행 중
+
 Running systemctl as {}
 {} 권한으로 systemctl 실행 중
 
@@ -14863,6 +14881,9 @@ other: 패키지 {n}개 제거
 restoring
 복원 중
 
+root, with sudo as {}
+root({} 계정의 sudo로)
+
 sav, sv2
 sav, sv2
 
@@ -15474,6 +15495,24 @@ other: {n}주
 
 {} bytes
 {}바이트
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{}은(는) 그 호스트에서 암호 없이 sudo를 쓸 수 있으므로, Rex가 {}@{}로 로그인해 이 단계를 sudo로 실행합니다. sudo가 될 때까지 아무것도 변경하지 않습니다.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{}은(는) {}에서 암호 없이 sudo를 쓸 수 없으므로, 서버를 관리하려면 root 자체 로그인이나 sudo를 쓸 수 있는 계정이 필요합니다. 호스트의 root가 허용하는 키를 선택하세요. 맞는 키가 없으면 그 컴퓨터의 /root/.ssh/authorized_keys에 공개 키를 추가한 뒤 다시 시도하세요.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{}은(는) {}에서 암호 없이 sudo를 쓸 수 없으므로, 서버를 관리하려면 root 자체 로그인이나 sudo를 쓸 수 있는 계정이 필요합니다. Olo Passwords의 잠금을 해제하거나 그 호스트의 root가 허용하는 키를 추가하세요.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{}은(는) {}에서 암호 없이 sudo를 쓸 수 없으므로, 설정하려면 root 자체 로그인이나 sudo를 쓸 수 있는 계정이 필요합니다. 호스트의 root가 허용하는 키를 선택하세요. 맞는 키가 없으면 그 컴퓨터의 /root/.ssh/authorized_keys에 공개 키를 추가한 뒤 다시 시도하세요.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{}은(는) {}에서 암호 없이 sudo를 쓸 수 없으므로, 설정하려면 root 자체 로그인이나 sudo를 쓸 수 있는 계정이 필요합니다. Olo Passwords의 잠금을 해제하거나 그 호스트의 root가 허용하는 키를 추가하세요.
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{}은(는) 그 호스트에서 암호 없이 sudo를 쓸 수 없으므로, Rex가 Olo Passwords의 SSH 키로 {} 계정에 로그인합니다. 로그인에 성공하기 전에는 아무것도 변경하지 않습니다.
 
 {} cd/m² at most, {} over the whole screen
 최대 {} cd/m², 전체 화면 {} cd/m²

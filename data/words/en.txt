@@ -430,6 +430,8 @@ As in Themes ({})
 As it goes
 As on this computer
 As root, over SSH
+As root, with an SSH key
+As root, with sudo
 As set now
 As the Mode
 As the other mice
@@ -460,6 +462,7 @@ Asking Passwords…
 Asking Telegram…
 Asking how Rex is set up there
 Asking it…
+Asking whether {} can use sudo
 Asking…
 Asks for your password when a program needs more rights.
 Asks who is logging in.
@@ -737,6 +740,7 @@ Checked
 Checked {}
 Checking for updates…
 Checking out {} of {} files
+Checking sudo on {}…
 Checking the backup
 Checking the connection…
 Checking the packages…
@@ -1021,6 +1025,7 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 Couldn’t turn off Tailscale: {}.
 Couldn’t turn on Tailscale: {}.
+Couldn’t use sudo as {}
 Couldn’t write the shared copy: {}
 Couldn’t {}
 Couldn’t {} on {}
@@ -3372,6 +3377,7 @@ Run on it with “olo-screen run”
 Running
 Running Rex’s installer as {}
 Running for {}
+Running sudo as {}
 Running systemctl as {}
 Running, started again once
 Running, started again {n} times
@@ -4952,6 +4958,7 @@ recommended for this touchpad
 reinstall {n} packages
 remove {n} packages
 restoring
+root, with sudo as {}
 sav, sv2
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
 signed in
@@ -5156,6 +5163,12 @@ your own picture
 {} backups and the unfinished one
 {} begun in the last minute (swipes, pinches, holds)
 {} bytes
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
 {} cd/m² at most, {} over the whole screen
 {} cleared · kept for {} days, the last {}
 {} continued there

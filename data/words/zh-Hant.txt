@@ -1297,6 +1297,12 @@ As on this computer
 As root, over SSH
 以 root 身分透過 SSH
 
+As root, with an SSH key
+以 root 身分，使用 SSH 金鑰
+
+As root, with sudo
+以 root 身分，使用 sudo
+
 As set now
 按目前設定
 
@@ -1386,6 +1392,9 @@ Asking how Rex is set up there
 
 Asking it…
 正在要求…
+
+Asking whether {} can use sudo
+正在確認 {} 能否使用 sudo
 
 Asking…
 正在詢問…
@@ -2217,6 +2226,9 @@ Checking for updates…
 
 Checking out {} of {} files
 正在簽出檔案：{} / {}
+
+Checking sudo on {}…
+正在檢查 {} 上的 sudo…
 
 Checking the backup
 正在檢查備份
@@ -3069,6 +3081,9 @@ Couldn’t turn off Tailscale: {}.
 
 Couldn’t turn on Tailscale: {}.
 無法開啟 Tailscale：{}。
+
+Couldn’t use sudo as {}
+無法以 {} 身分使用 sudo
 
 Couldn’t write the shared copy: {}
 無法寫入共享副本：{}
@@ -10123,6 +10138,9 @@ Running Rex’s installer as {}
 Running for {}
 已執行 {}
 
+Running sudo as {}
+正在以 {} 身分執行 sudo
+
 Running systemctl as {}
 正在以 {} 身分執行 systemctl
 
@@ -14863,6 +14881,9 @@ other: 移除 {n} 個套件
 restoring
 正在還原
 
+root, with sudo as {}
+root（透過 {} 的 sudo）
+
 sav, sv2
 sav, sv2
 
@@ -15474,6 +15495,24 @@ other: {n} 週
 
 {} bytes
 {} 位元組
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} 在該主機可以免密碼使用 sudo，因此 Rex 會以 {}@{} 身分登入，並以 sudo 執行這些步驟。sudo 可用之前不會變更任何內容。
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} 在 {} 上無法免密碼使用 sudo，因此管理其伺服器需要 root 本身登入，或可以這樣做的帳號。請選擇該主機的 root 接受的金鑰。若都無法使用，請將您的公開金鑰加入該機器的 /root/.ssh/authorized_keys，然後再試一次。
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} 在 {} 上無法免密碼使用 sudo，因此管理其伺服器需要 root 本身登入，或可以這樣做的帳號。請解鎖 Olo Passwords，或在其中加入該主機的 root 所接受的金鑰。
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} 在 {} 上無法免密碼使用 sudo，因此設定需要 root 本身登入，或可以這樣做的帳號。請選擇該主機的 root 接受的金鑰。若都無法使用，請將您的公開金鑰加入該機器的 /root/.ssh/authorized_keys，然後再試一次。
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} 在 {} 上無法免密碼使用 sudo，因此設定需要 root 本身登入，或可以這樣做的帳號。請解鎖 Olo Passwords，或在其中加入該主機的 root 所接受的金鑰。
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{} 在該主機無法免密碼使用 sudo，因此 Rex 會使用 Olo Passwords 中的 SSH 金鑰以 {} 身分登入。該登入成功前不會變更任何內容。
 
 {} cd/m² at most, {} over the whole screen
 峰值 {} cd/m²，全螢幕 {} cd/m²

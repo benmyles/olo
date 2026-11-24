@@ -2893,6 +2893,22 @@ something nobody here has is in "Blocked", with what it waits for.
   where it doesn't, said that it needs a root login or one that can
   sudo without a password. Tried on the rig with a scratch host's
   account in each state.
+  **Done** 2026-11-24 (HACKING, Rex, Add Host, "The address is an
+  account's"; the Server window's state): `provision::RootBy`, the
+  account's quick check (`can_sudo`) where root's work is to be done,
+  root's commands as `sudo -n -H sh -c 'cd && …'` over the account's
+  connection and shown so, both windows saying which way and, where
+  neither works, that a root login or an account that can is needed.
+  Tested over real SSH and sudo on the rig's far host. Left, from the
+  looks at it (Opus 5.5, Astra 6.2), there before: the two key alerts'
+  titles differ ("build.example.com didn’t accept your keys for root",
+  "Root on build didn’t accept your keys"); the Server window's stages
+  float in a window sized for its pages ("about 200 pt of empty
+  panel"); its Key pop-up is narrower than Add Host's; Add Host's light
+  alert's left strip barely shows at 1×; "as it will to connect" ("the
+  same way it connects to it later"); "Their sessions will run as
+  carmen" ("Sessions that sign in here run as carmen…"); the accounts
+  file's first line without its comma in the Server window's well.
 
 - **Rex's Host and Account windows: what the looks found that was there
   before the tabs** (Opus 5.5's and Astra 6.2's looks at the Host window

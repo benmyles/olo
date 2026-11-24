@@ -34,7 +34,7 @@ fn host() -> OverSsh {
     let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
     let target = SshTarget::parse(&address).expect("an ssh:// address");
     assert!(target.user.as_deref().is_some_and(|u| u != "root"), "the address names an account that isn't root");
-    OverSsh { pool: Arc::new(SshSessionPool::default()), target, root_key: None, askpass: Some(Arc::new(Nobody)) }
+    OverSsh { pool: Arc::new(SshSessionPool::default()), target, root_key: None, root_by: provision::RootBy::Login, askpass: Some(Arc::new(Nobody)) }
 }
 
 fn block<F: std::future::Future>(f: F) -> F::Output {
@@ -778,4 +778,30 @@ async fn more_sessions_than_a_connection_allows() {
         assert_eq!(ran.output.trim(), format!("held {n}"));
     }
     println!("a request: eight commands at once over an SSH server allowing two sessions a connection, all answered");
+}
+
+/// Root's commands run with sudo over the account's own connection
+/// (`RootBy::Sudo`), where the account may use sudo without a password
+/// (`OLO_REX_TEST_SUDO=1` says it may; else that it isn't found to): as
+/// root, what it is, how the host stands, and where a command starts (in
+/// root's home, as a root login's does). It changes nothing.
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST, and OLO_REX_TEST_SUDO for an account there that may use sudo"]
+fn roots_commands_run_with_sudo_where_the_account_may() {
+    let may = std::env::var_os("OLO_REX_TEST_SUDO").is_some();
+    let mut host = OverSsh { root_by: provision::RootBy::Sudo, ..host() };
+    assert_eq!(block(provision::can_sudo(&mut host)), may, "whether the account may use sudo without a password");
+    if !may {
+        return;
+    }
+    let ran = block(host.run(true, "id -u", &mut |_| {})).unwrap();
+    assert!(ran.ok() && ran.output.trim() == "0", "as root through sudo: {ran:?}");
+    let facts = block(provision::probe(&mut host, true)).unwrap();
+    assert_eq!((facts.uid, facts.user.as_str()), (0, "root"));
+    let ran = block(host.run(true, "pwd", &mut |_| {})).unwrap();
+    assert_eq!(ran.output.trim(), "/root", "where root's command starts");
+    // (And as the account, still the account.)
+    let ran = block(host.run(false, "id -u", &mut |_| {})).unwrap();
+    assert_ne!(ran.output.trim(), "0");
+    println!("sudo: root's commands ran as root, from root's home");
 }

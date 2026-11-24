@@ -1303,6 +1303,12 @@ Wie auf diesem Computer
 As root, over SSH
 Als root, über SSH
 
+As root, with an SSH key
+Als root, mit SSH-Schlüssel
+
+As root, with sudo
+Als root, mit sudo
+
 As set now
 Wie jetzt eingestellt
 
@@ -1392,6 +1398,9 @@ Es wird geprüft, wie Rex dort eingerichtet ist
 
 Asking it…
 Wird gefragt …
+
+Asking whether {} can use sudo
+Prüfung, ob {} sudo nutzen kann
 
 Asking…
 Wird gefragt …
@@ -2224,6 +2233,9 @@ Suche nach Aktualisierungen …
 
 Checking out {} of {} files
 {} von {} Dateien ausgecheckt
+
+Checking sudo on {}…
+sudo auf {} wird geprüft …
 
 Checking the backup
 Sicherung wird geprüft
@@ -3082,6 +3094,9 @@ Tailscale konnte nicht ausgeschaltet werden: {}.
 
 Couldn’t turn on Tailscale: {}.
 Tailscale konnte nicht eingeschaltet werden: {}.
+
+Couldn’t use sudo as {}
+sudo als {} fehlgeschlagen
 
 Couldn’t write the shared copy: {}
 Die gemeinsame Kopie konnte nicht geschrieben werden: {}
@@ -10151,6 +10166,9 @@ Rex-Installationsprogramm läuft als {}
 Running for {}
 Läuft seit {}
 
+Running sudo as {}
+sudo wird als {} ausgeführt
+
 Running systemctl as {}
 systemctl läuft als {}
 
@@ -14910,6 +14928,9 @@ other: {n} Pakete entfernen
 restoring
 stellt wieder her
 
+root, with sudo as {}
+root, über sudo als {}
+
 sav, sv2
 sav, sv2
 
@@ -15585,6 +15606,24 @@ vor {} · Klicken Sie auf einen Graphen für einen anderen Moment
 
 {} bytes
 {} Bytes
+
+{} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} kann dort sudo ohne Passwort nutzen, daher meldet sich Rex als {}@{} an und führt diese Schritte mit sudo aus. Nichts wird geändert, bevor sudo funktioniert.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} kann sudo auf {} nicht ohne Passwort nutzen, daher braucht die Verwaltung des Servers eine Anmeldung als root oder ein Konto, das es kann. Wählen Sie einen Schlüssel, den root dort akzeptiert. Falls keiner funktioniert, fügen Sie Ihren öffentlichen Schlüssel dort zu /root/.ssh/authorized_keys hinzu und versuchen Sie es erneut.
+
+{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} kann sudo auf {} nicht ohne Passwort nutzen, daher braucht die Verwaltung des Servers eine Anmeldung als root oder ein Konto, das es kann. Entsperren Sie Olo Passwords oder fügen Sie dort einen Schlüssel hinzu, den root akzeptiert.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+{} kann sudo auf {} nicht ohne Passwort nutzen, daher braucht die Einrichtung eine Anmeldung als root oder ein Konto, das es kann. Wählen Sie einen Schlüssel, den root dort akzeptiert. Falls keiner funktioniert, fügen Sie Ihren öffentlichen Schlüssel dort zu /root/.ssh/authorized_keys hinzu und versuchen Sie es erneut.
+
+{} can’t use sudo on {} without a password, so setting up needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
+{} kann sudo auf {} nicht ohne Passwort nutzen, daher braucht die Einrichtung eine Anmeldung als root oder ein Konto, das es kann. Entsperren Sie Olo Passwords oder fügen Sie dort einen Schlüssel hinzu, den root akzeptiert.
+
+{} can’t use sudo there without a password, so Rex signs in as {} with an SSH key from Olo Passwords. Nothing is changed until that sign-in works.
+{} kann dort sudo nicht ohne Passwort nutzen, daher meldet sich Rex als {} mit einem SSH-Schlüssel aus Olo Passwords an. Nichts wird geändert, bevor diese Anmeldung klappt.
 
 {} cd/m² at most, {} over the whole screen
 höchstens {} cd/m², {} über den ganzen Bildschirm

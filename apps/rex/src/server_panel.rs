@@ -357,7 +357,7 @@ pub fn render_server_panel(
                 vec![
                     alert_title("Olo Passwords has no SSH keys to offer").into_element(),
                     gap(m::TIGHT),
-                    body(olo_kit::tr!("Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.", managed.name).into()),
+                    body(olo_kit::tr!("{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.", managed.target.user.as_deref().unwrap_or_default(), managed.name).into()),
                 ],
                 // (A side trip, not a third answer: at the left, under the words.)
                 div()
@@ -375,9 +375,12 @@ pub fn render_server_panel(
                 vec![
                     alert_title(olo_kit::tr!("Root on {} didn’t accept your keys", managed.name)).into_element(),
                     gap(m::TIGHT),
+                    // (What would do instead, said: Ben, 2026-11-24.)
                     body(
-                        olo_kit::words::tr(
-                            "Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.",
+                        olo_kit::tr!(
+                            "{} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.",
+                            managed.target.user.as_deref().unwrap_or_default(),
+                            managed.name
                         )
                         .into(),
                     ),
@@ -389,9 +392,17 @@ pub fn render_server_panel(
             Stage::Failed { what, why, said, icon, .. } => {
                 sheet(icon, failed(managed, what, why, said), button_row().child(button("Close", ServerDo::Close)).child(button("Try Again", ServerDo::Again).default(true)))
             }
+            // (The stage in the heading, what is done in the bar: asking
+            // whether the account can use sudo first, as Add Host does.)
             _ => waiting(
-                olo_kit::tr!("Connecting to {}…", managed.name).into(),
-                StatusBar::busy(phase).label(olo_kit::tr!("Signing in as {} with a key from Olo Passwords", managed.root())),
+                if managed.root_by.is_none() { olo_kit::tr!("Checking sudo on {}…", managed.name).into() } else { olo_kit::tr!("Connecting to {}…", managed.name).into() },
+                // (Asking whether the account may use sudo, then root's
+                // look, with sudo or signed in as root.)
+                StatusBar::busy(phase).label(match managed.root_by {
+                    Some(olo_rex_client::provision::RootBy::Sudo) => olo_kit::tr!("Running sudo as {}", managed.target.user.as_deref().unwrap_or_default()),
+                    Some(_) => olo_kit::tr!("Signing in as {} with a key from Olo Passwords", managed.root()),
+                    None => olo_kit::tr!("Asking whether {} can use sudo", managed.target.user.as_deref().unwrap_or_default()),
+                }),
                 StringView::new(olo_kit::words::tr("Nothing is changed until you choose something to do.").to_string()),
                 None,
                 button_row().child(button("Cancel", ServerDo::Close)),
@@ -441,6 +452,8 @@ pub fn render_server_panel(
             // script that does it, which is a page long.)
             let limits = matches!(action, Action::Tune(_) | Action::Untune(_));
             let command = action.command(server).is_some() && !limits;
+            // (What is run, as it is run: through sudo, shown with it.)
+            let shown = if command && managed.root_by == Some(olo_rex_client::provision::RootBy::Sudo) { olo_rex_client::provision::by_sudo(&shown) } else { shown };
             let lines = if command { panels::command_lines(&shown, panels::command_room(column)) } else { shown.lines().map(str::to_owned).collect() };
             let over: String = match (command, action) {
                 (true, _) => olo_kit::tr!("Rex runs this as {}:", managed.root()).into(),

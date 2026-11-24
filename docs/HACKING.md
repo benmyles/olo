@@ -30031,14 +30031,34 @@ Modes, Shared Server, Login Server and Remote Access).
   comments that keeps where things are).
 - **The address is an account's, never root's**
   (`setup::address`): `ssh://you@host`, said under the field if it
-  isn't. Root is asked for only to set a server up
-  (`SshTarget::as_root`: keys alone, no password ever asked for), is
-  signed in *before* anything is changed, and its connection is
-  dropped when the work ends however it ends. Root is offered the
-  agent's keys in turn; if the host takes none, the person chooses
-  which to offer (`AgentKey`, by its fingerprint: a server lets a
-  client try only a few keys, so with many in the agent the right one
-  may never be reached) or is told what to do if the agent has none.
+  isn't. Root is asked for only to set a server up, and reached one of
+  two ways (`provision::RootBy`, on the runner, `OverSsh::root_by`;
+  Ben, 2026-11-24: "it shouldn't only work with a root@ login it should
+  also support using any provided user account e.g. fedora@ that has
+  the ability to run commands as sudo without a password … and this
+  should apply anywhere rex needs to be able to use root"). Where the
+  account may use sudo without a password (asked once, as the host is
+  looked at and only where a step is root's: `provision::can_sudo`,
+  `sudo -n true`; a sudo refused may be logged there, or mailed to its
+  administrators), root's steps run with sudo over the account's own
+  connection (`provision::by_sudo`: `sudo -n -H sh -c`, from root's
+  home as a root login's command starts; never a password asked for),
+  and the window says so ("As root, with sudo"; "Checking sudo on
+  HOST…"): a cloud machine's `fedora@` or `ubuntu@`, where root can't
+  sign in. Else root is signed in (`SshTarget::as_root`: keys alone, no
+  password ever asked for), and the window says why ("alice can't use
+  sudo there without a password, so Rex signs in as root@HOST…"). Either
+  way root is reached *before* anything is changed (a sudo that wants a
+  password fails at once: "Couldn't use sudo as alice"), and root's
+  connection is dropped when the work ends however it ends. Root is
+  offered the agent's keys in turn; if the host takes none, the person
+  chooses which to offer (`AgentKey`, by its fingerprint: a server lets
+  a client try only a few keys, so with many in the agent the right one
+  may never be reached) or is told what to do if the agent has none,
+  and both alerts say what is needed: a root login, or an account that
+  can use sudo without a password. Tested over SSH on the rig's far
+  host, whose account may use sudo on the dev server
+  (`crates/rex/tests/host.rs`, `OLO_REX_TEST_SUDO`).
 - **The window stays one window** (`apps/rex/src/setup.rs`, `Stage`;
   `panels::render_setup_panel`): the form (Address, Name, Server, "Set
   Rex up there if it needs it"; the button is "Add…" where the host is
@@ -30133,8 +30153,12 @@ Rex server's alone, and a host has more of Olo's than that).
   three times over, as the journal has them).
 - **The window's state** (`apps/rex/src/server.rs`: `Stage` Looking,
   RootKey, Shown, Confirm, Working, Failed; `Page`; one `LIVE`, as Add
-  Host's). Root is signed in with keys alone, the agent's, or one
-  chosen where root took none (as Add Host); its connection is kept
+  Host's). Root is reached as Add Host reaches it (`Managed::root_by`,
+  asked on the window's first look): with sudo where the account may
+  use it without a password ("Running sudo as alice"; what is run said
+  as run "as alice with sudo", `Managed::root`), else signed in with
+  keys alone, the agent's, or one chosen where root took none; its
+  connection is kept
   while the window is open, so each thing asked is answered at once
   (the window opened in 3 to 5 s on the test host, a restart came back
   in 0.8 s), and dropped when it closes. Work is the hub's threads',
