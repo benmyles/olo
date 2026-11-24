@@ -620,15 +620,30 @@ def launch(name, d, cwd, others, target=None, commands=True):
     session(name, cwd, env, agy)
 
 
-def room(name, program="agy"):
-    """Refuse a name in use, or a sixth agent; those running."""
+# Looks and second investigators at once, apart from the workers.
+HELPERS_MOST = 3
+
+
+def room(name, program="agy", kind="worker"):
+    """Refuse a name in use, or a sixth worker (CLAUDE.md's five
+    subagents at once); those running. A look or a second investigator
+    (`kind` "helper") is counted apart, three of them at most: a review
+    waited on five translators, 2026-11-24."""
     if not shutil.which(program):
         sys.exit(f"agents: no {program} on PATH ({ {'agy': 'the Antigravity CLI', 'codex': 'the Codex CLI'}.get(program, 'the Claude CLI')}, signed in)")
     running = [n for n in names() if live(n)]
     if name in running:
         sys.exit(f"agents: {name} is running")
-    if len(running) >= MOST:
-        sys.exit(f"agents: {MOST} are running ({', '.join(running)}): stop one first")
+    # (One that has finished, its result written and its turn over, holds
+    # no place: a minder told to start a queue of nine, five at a time and
+    # stopping none, was refused the sixth by two that were done.)
+    working = [n for n in running if not (os.path.exists(done_file(n)) and state(n) == "idle")]
+    # (A worker's meta names its crate; a look or an investigator's don't.)
+    same = [n for n in working if bool((meta(n) or {}).get("crate")) == (kind == "worker")]
+    most = MOST if kind == "worker" else HELPERS_MOST
+    if len(same) >= most:
+        what = "workers" if kind == "worker" else "looks and investigators"
+        sys.exit(f"agents: {most} {what} are working ({', '.join(same)}): stop one first")
     return running
 
 
@@ -686,7 +701,7 @@ def investigate(brief, where):
     name = ("help-" + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
     m = meta(name)
     if not (m and m.get("work") == work and live(name)):
-        room(name)
+        room(name, kind="helper")
         d = folder(name)
         if os.path.exists(d):
             shutil.rmtree(d)
@@ -804,7 +819,7 @@ def look(args):
     d = folder(name)
     review = os.path.join(d, "review.md")
     if not (m and live(name)):
-        room(name, {"astra": "codex", "gemini": "agy", "opus": "claude"}[by])
+        room(name, {"astra": "codex", "gemini": "agy", "opus": "claude"}[by], kind="helper")
         if os.path.exists(d):
             shutil.rmtree(d)
         os.makedirs(d)
