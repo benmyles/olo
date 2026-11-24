@@ -5651,6 +5651,16 @@ fn render_single_pane(
         for out in [false, true] {
             let (br_up, vis_up, metrics_up, bk_up) = (br.clone(), visual.clone(), metrics.clone(), bk.clone());
             let release = move |e: &MouseUpEvent, _: &mut WindowCx| {
+                // (A selection's drag ends with the left button's release,
+                // wherever it is: its anchor, kept, made the next press
+                // anywhere in the window a drag of it, a tab or a sidebar's
+                // row clicked with the pointer a pixel off selecting text in
+                // the pane from the anchor, which the tab then opened with.
+                // Ben, 2026-11-24: "a tab will open with some text selected
+                // for no obvious reason"; the second investigator found it.)
+                if button == MouseButton::Left {
+                    vis_up.drag_anchor.set(None);
+                }
                 let cell = metrics_up.cell_at(vis_up.bounds.get(), pad, e.position, vis_up.shift.get());
                 let sent = {
                     let mut g = br_up.lock().unwrap_or_else(|e| e.into_inner());

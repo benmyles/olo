@@ -7415,7 +7415,13 @@ that takes the pointer itself (the display arrangement, the calendar,
 a corner's monitor, the shortcuts) only draws, and leaves where it put
 things in a cell its element's listeners read (`on_mouse_down`, and
 `on_drag_move`/`on_window_mouse_up` for a drag), or they go by
-`cx.listener_bounds()`. The layout lint's windows are made on loopers
+`cx.listener_bounds()`. `on_drag_move` hears every move in the window
+while a button is held, wherever the press was: what a press on the
+element starts (a selection's anchor) ends with the release, wherever
+it is (`on_mouse_up` and `on_mouse_up_out`, or `on_window_mouse_up`).
+Rex's panes kept their anchor past the release, and a click on a tab or
+a sidebar's row a pixel off dragged a selection in a pane from it,
+which the tab then opened with (2026-11-24). The layout lint's windows are made on loopers
 too, so what its tests share is the same `Prefs` (`set_for_tests`, one
 lint at a time).
 

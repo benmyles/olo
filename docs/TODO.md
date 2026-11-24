@@ -3167,6 +3167,14 @@ something nobody here has is in "Blocked", with what it waits for.
   it (the second investigator at once if it isn't plain), and test it:
   no selection after any way of switching, a selection made by the
   person kept where its text is.
+  **Done** 2026-11-24 (HACKING, the kit's views, "`on_drag_move` hears
+  every move in the window"): a pane's selection anchor, set by a click
+  in it, was never let go at the release, and its window-wide drag
+  listener extended a selection from it at the next press anywhere (a
+  tab or a sidebar's row clicked a pixel off), which the tab then
+  opened with; the anchor now goes with the left button's release. The
+  second investigator found it and reproduced it headless; the same run
+  now leaves nothing selected, and a drag in a pane still selects.
 - ~~**Rex's terminal: Option+← and → go a word back and on**~~ Done
   (2026-11-24; HACKING, Terminal's keys): Rex sent ESC before the
   arrow's own sequence; its panes now encode keys with Terminal's own
