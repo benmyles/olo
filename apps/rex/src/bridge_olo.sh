@@ -2,7 +2,9 @@
 # olo COMMAND [ARGUMENT…]: a command of the Olo desktop this Rex host is
 # used from, asked through Rex (olo.lua beside this file, run by
 # `rex do`): olo open URL, olo op …, olo screen …, olo notify TITLE
-# [BODY], olo clipboard TEXT. Part of Olo's skill for agents.
+# [BODY], olo clipboard TEXT, olo paste. Part of Olo's skill for agents,
+# and of the desktop commands (xdg-open and the rest, beside it). Its
+# status is 69 where the desktop couldn't be asked.
 here=$(dirname "$0")
 OLO_BRIDGE_CMD=${1:-}
 [ $# -gt 0 ] && shift

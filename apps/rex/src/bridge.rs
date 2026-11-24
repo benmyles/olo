@@ -360,7 +360,7 @@ pub fn fetch_op_reference(reference: &str, purpose: &str) -> Result<String, Stri
 /// Asks a host whether the skill for agents is on it (what
 /// [`generate_remote_skill_install_script`] puts there), and whether
 /// the shims of before are ([`OLD_SHIMS`]): a word for each that is.
-pub const PRESENT: &str = r#"sh -c 'if [ -d "$HOME/.local/share/olo-rex-bridge" ]; then echo shims; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; echo "skill-of $(cat "$HOME/.claude/skills/olo-rex-bridge/.olo-skill" 2> /dev/null)"; fi'"#;
+pub const PRESENT: &str = r#"sh -c 'if [ -d "$HOME/.local/share/olo-rex-bridge" ]; then echo shims; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; echo "skill-of $(cat "$HOME/.claude/skills/olo-rex-bridge/.olo-skill" 2> /dev/null)"; fi; if [ -f "$HOME/.local/share/olo/rex-commands/.olo-commands" ]; then echo commands; echo "commands-of $(cat "$HOME/.local/share/olo/rex-commands/.olo-commands" 2> /dev/null)"; fi'"#;
 
 /// Which skill this Olo carries, by its words and its command's: what
 /// the install leaves beside it on the host (`.olo-skill`), so that a
@@ -430,6 +430,83 @@ echo "Installed Olo's skill for agents in $SKILL_DIR"
         stamp = skill_stamp()
     )
 }
+
+/// The desktop commands on a host (Ben, 2026-11-23: "have the rex client
+/// support installing shims for xdg-open and other desktop integration
+/// commands so that apps running remotely can operate like they're on the
+/// local desktop"): one script ([`SHIM`]) under each of these names in a
+/// folder of the account's home, beside the `olo` command it asks through,
+/// put first on PATH by the shells' startup, and only in a Rex session.
+/// A link or a file opened, a notification, the clipboard both ways, a
+/// secret of Passwords: on the Olo desktop the session is shown on, as the
+/// host may (Preferences ▸ Rex); anywhere else, the host's own command.
+pub const SHIM: &str = include_str!("bridge_shim.sh");
+pub const COMMANDS: [&str; 10] = ["xdg-open", "x-www-browser", "sensible-browser", "www-browser", "notify-send", "wl-copy", "wl-paste", "xclip", "xsel", "op"];
+/// Where they go, under the account's home.
+pub const COMMANDS_DIR: &str = ".local/share/olo/rex-commands";
+/// The line each shell's startup file is given (and only that line is
+/// taken off again): the folder first on PATH, and `$BROWSER` its
+/// `xdg-open`, in a Rex session alone.
+const COMMANDS_LINE: &str = r#"[ -n "${REX_SESSION:-}" ] && [ -d "$HOME/.local/share/olo/rex-commands" ] && case ":$PATH:" in *":$HOME/.local/share/olo/rex-commands:"*) ;; *) PATH="$HOME/.local/share/olo/rex-commands:$PATH"; BROWSER=xdg-open; export PATH BROWSER ;; esac # Olo Rex: desktop commands"#;
+/// The same for fish, in a file of its own.
+const COMMANDS_FISH: &str = "if set -q REX_SESSION; and test -d $HOME/.local/share/olo/rex-commands; and not contains $HOME/.local/share/olo/rex-commands $PATH; set -gx PATH $HOME/.local/share/olo/rex-commands $PATH; set -gx BROWSER xdg-open; end # Olo Rex: desktop commands\n";
+
+/// Which desktop commands this Olo carries (what the install leaves
+/// beside them, `.olo-commands`): a host with another Olo's is given
+/// this one's as it is connected to.
+pub fn commands_stamp() -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in SHIM.bytes().chain(SKILL_OLO.bytes()).chain(SKILL_LUA.bytes()).chain(COMMANDS_LINE.bytes()) {
+        hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// What a host answered [`PRESENT`]: whether the desktop commands are
+/// there, and whether they are this Olo's.
+pub fn commands_there(output: &str) -> (bool, bool) {
+    let there = output.lines().any(|l| l.trim() == "commands");
+    let current = output.lines().any(|l| l.trim().strip_prefix("commands-of ").is_some_and(|stamp| stamp.trim() == commands_stamp()));
+    (there, there && current)
+}
+
+/// A shell script that puts the desktop commands on a far host: the
+/// folder, its files, and the line in each shell's startup that there is
+/// (`~/.profile` always, for a login shell's PATH), once.
+pub fn install_commands_script() -> String {
+    let links: String = COMMANDS.iter().map(|c| format!("ln -sf olo-desktop-command \"$DIR/{c}\"\n")).collect();
+    format!(
+        r#"set -eu
+DIR="$HOME/{COMMANDS_DIR}"
+mkdir -p "$DIR"
+cat <<'OLO_COMMANDS_EOF' > "$DIR/olo"
+{SKILL_OLO}OLO_COMMANDS_EOF
+cat <<'OLO_COMMANDS_EOF' > "$DIR/olo.lua"
+{SKILL_LUA}OLO_COMMANDS_EOF
+cat <<'OLO_COMMANDS_EOF' > "$DIR/olo-desktop-command"
+{SHIM}OLO_COMMANDS_EOF
+chmod +x "$DIR/olo" "$DIR/olo-desktop-command"
+{links}LINE='{line}'
+for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+  case $rc in "$HOME/.profile") ;; *) [ -f "$rc" ] || continue ;; esac
+  grep -qxF "$LINE" "$rc" 2> /dev/null || {{ sed -i '/# Olo Rex: desktop commands$/d' "$rc" 2> /dev/null || true; printf '%s\n' "$LINE" >> "$rc"; }}
+done
+if [ -d "$HOME/.config/fish" ]; then
+  mkdir -p "$HOME/.config/fish/conf.d"
+  printf '{fish}' > "$HOME/.config/fish/conf.d/olo-rex.fish"
+fi
+echo '{stamp}' > "$DIR/.olo-commands"
+echo "Installed Olo's desktop commands in $DIR"
+"#,
+        line = COMMANDS_LINE.replace('\'', "'\\''"),
+        fish = COMMANDS_FISH,
+        stamp = commands_stamp()
+    )
+}
+
+/// Takes the desktop commands off a host: their folder, and the line of
+/// theirs in each shell's startup (nothing else of those files).
+pub const REMOVE_COMMANDS: &str = r#"rm -rf "$HOME/.local/share/olo/rex-commands"; for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do [ -f "$rc" ] && sed -i '/# Olo Rex: desktop commands$/d' "$rc"; done; rm -f "$HOME/.config/fish/conf.d/olo-rex.fish""#;
 
 /// Check if a local directory path is safe to open in Olo Tracker.
 pub fn open_folder_in_tracker(path: &Path) {
@@ -592,5 +669,146 @@ mod present_tests {
         assert_eq!(present(&run(PRESENT)), (false, false));
         let _ = std::fs::remove_dir_all(&home);
         assert_eq!(present("Linux\n"), (false, false));
+    }
+}
+
+#[cfg(test)]
+mod commands_tests {
+    use super::*;
+
+    /// The desktop commands as a host has them: installed the way they
+    /// are over SSH (into a scratch home, its shells' startup files
+    /// given their one line), seen and kept in step, and taken off with
+    /// nothing else of those files.
+    #[test]
+    fn put_on_a_host_seen_and_taken_off() {
+        let home = std::path::PathBuf::from(format!("/var/tmp/olo-rex-commands-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".bashrc"), "alias ll='ls -l'\n").unwrap();
+        let run = |command: &str| {
+            let out = std::process::Command::new("sh").arg("-c").arg(command).env("HOME", &home).env("PATH", "/usr/bin:/bin").output().unwrap();
+            (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
+        };
+        assert_eq!(commands_there(&run(PRESENT).1), (false, false));
+        let (ok, _, err) = run(&format!("sh -c {}", crate::hub::shell_quote(&install_commands_script())));
+        assert!(ok, "{err}");
+        assert_eq!(commands_there(&run(PRESENT).1), (true, true));
+        for name in COMMANDS {
+            let link = std::fs::read_link(home.join(COMMANDS_DIR).join(name)).unwrap();
+            assert_eq!(link, std::path::PathBuf::from("olo-desktop-command"), "{name}");
+        }
+        // (Its line once in each startup file there, and .profile made;
+        // a second install adds none.)
+        run(&format!("sh -c {}", crate::hub::shell_quote(&install_commands_script())));
+        let bashrc = std::fs::read_to_string(home.join(".bashrc")).unwrap();
+        assert!(bashrc.starts_with("alias ll='ls -l'\n"), "{bashrc}");
+        assert_eq!(bashrc.matches("# Olo Rex: desktop commands").count(), 1, "{bashrc}");
+        assert_eq!(std::fs::read_to_string(home.join(".profile")).unwrap().matches("# Olo Rex: desktop commands").count(), 1);
+        assert!(!home.join(".zshrc").exists(), "a startup file the shell there doesn't have isn't made");
+        // (In a Rex session alone, the folder first on PATH.)
+        let path_in = |session: bool| {
+            let mut c = std::process::Command::new("sh");
+            c.arg("-c").arg(". \"$HOME/.profile\"; printf %s \"$PATH\"").env("HOME", &home).env("PATH", "/usr/bin:/bin");
+            if session {
+                c.env("REX_SESSION", "session:1");
+            } else {
+                c.env_remove("REX_SESSION");
+            }
+            String::from_utf8_lossy(&c.output().unwrap().stdout).into_owned()
+        };
+        assert!(path_in(true).starts_with(&format!("{}/{COMMANDS_DIR}:", home.display())), "{}", path_in(true));
+        assert_eq!(path_in(false), "/usr/bin:/bin");
+        // (Another Olo's are seen not to be this one's.)
+        std::fs::write(home.join(COMMANDS_DIR).join(".olo-commands"), "0000\n").unwrap();
+        assert_eq!(commands_there(&run(PRESENT).1), (true, false));
+        let (ok, _, err) = run(&format!("sh -c {}", crate::hub::shell_quote(REMOVE_COMMANDS)));
+        assert!(ok, "{err}");
+        assert_eq!(commands_there(&run(PRESENT).1), (false, false));
+        assert_eq!(std::fs::read_to_string(home.join(".bashrc")).unwrap(), "alias ll='ls -l'\n");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// What each command does, with stand-ins for `olo` (what it was
+    /// asked, and the status it answers) and for the host's own
+    /// commands (what they were given).
+    #[test]
+    fn each_asks_the_desktop_or_is_the_hosts_own() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-shim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (shims, own) = (dir.join("shims"), dir.join("own"));
+        std::fs::create_dir_all(&shims).unwrap();
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(shims.join("olo-desktop-command"), SHIM).unwrap();
+        // (`olo`: writes what it was asked; answers OLO_STATUS, and for
+        // `paste` what OLO_PASTED holds.)
+        std::fs::write(shims.join("olo"), "#!/bin/sh\nprintf '%s|' \"$@\" >> \"$LOG\"; echo >> \"$LOG\"; [ \"$1\" = paste ] && printf '%s' \"$OLO_PASTED\"; exit ${OLO_STATUS:-0}\n").unwrap();
+        for name in COMMANDS {
+            std::os::unix::fs::symlink("olo-desktop-command", shims.join(name)).unwrap();
+            // (The host's own: says it ran, its arguments and its input.)
+            std::fs::write(
+                own.join(name),
+                format!("#!/bin/sh\nprintf 'own {name}: ' >> \"$LOG\"; [ $# -gt 0 ] && printf '%s|' \"$@\" >> \"$LOG\"; input=$(cat); [ -n \"$input\" ] && printf 'in=%s' \"$input\" >> \"$LOG\"; echo >> \"$LOG\"\n"),
+            )
+            .unwrap();
+        }
+        for f in std::fs::read_dir(&shims).unwrap().chain(std::fs::read_dir(&own).unwrap()) {
+            let p = f.unwrap().path();
+            if !p.is_symlink() {
+                std::os::unix::fs::PermissionsExt::set_mode(&mut std::fs::metadata(&p).unwrap().permissions(), 0o755);
+                std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            }
+        }
+        let log = dir.join("log");
+        let run = |line: &str, session: bool, status: i32, input: Option<&str>| -> (i32, String, String) {
+            let _ = std::fs::remove_file(&log);
+            let mut c = std::process::Command::new("sh");
+            c.arg("-c")
+                .arg(line)
+                .current_dir(&dir)
+                .env("PATH", format!("{}:{}:/usr/bin:/bin", shims.display(), own.display()))
+                .env("LOG", &log)
+                .env("OLO_STATUS", status.to_string())
+                .env("OLO_PASTED", "from the desktop");
+            if session {
+                c.env("REX_SESSION", "session:1");
+            } else {
+                c.env_remove("REX_SESSION");
+            }
+            c.stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() }).stdout(std::process::Stdio::piped());
+            let mut child = c.spawn().unwrap();
+            if let Some(text) = input {
+                std::io::Write::write_all(&mut child.stdin.take().unwrap(), text.as_bytes()).unwrap();
+            }
+            let out = child.wait_with_output().unwrap();
+            (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).into_owned(), std::fs::read_to_string(&log).unwrap_or_default())
+        };
+        // Outside a Rex session: the host's own, as given.
+        assert_eq!(run("notify-send -u low Hi there", false, 0, None).2, "own notify-send: -u|low|Hi|there|\n");
+        // In one: asked of the desktop, its options left to it.
+        assert_eq!(run("notify-send -u low -i dialog Hi 'the body'", true, 0, None).2, "notify|Hi|the body|\n");
+        // Refused or no desktop (69): the host's own, with what it was given.
+        assert_eq!(run("notify-send Hi", true, 69, None).2, "notify|Hi||\nown notify-send: Hi|\n");
+        // A failure of the desktop's own is the command's: not tried again here.
+        assert_eq!(run("notify-send Hi", true, 3, None).0, 3);
+        // A link, and a file made whole.
+        assert_eq!(run("xdg-open https://example.com", true, 0, None).2, "open|https://example.com|\n");
+        std::fs::write(dir.join("report.txt"), "x").unwrap();
+        assert_eq!(run("xdg-open report.txt", true, 0, None).2, format!("open|{}/report.txt|\n", std::fs::canonicalize(&dir).unwrap().display()));
+        // The clipboard: what comes in, its last newline kept (or taken
+        // with -n); the host's own given it again when refused.
+        assert_eq!(run("wl-copy", true, 0, Some("two\nlines\n")).2, "clipboard|two\nlines\n|\n");
+        assert_eq!(run("wl-copy -n", true, 0, Some("one\n")).2, "clipboard|one|\n");
+        assert_eq!(run("wl-copy", true, 69, Some("kept")).2, "clipboard|kept|\nown wl-copy: in=kept\n");
+        assert_eq!(run("xclip -selection clipboard", true, 0, Some("x")).2, "clipboard|x|\n");
+        let (code, out, _) = run("wl-paste", true, 0, None);
+        assert_eq!((code, out.as_str()), (0, "from the desktop\n"));
+        assert_eq!(run("wl-paste -n", true, 0, None).1, "from the desktop");
+        assert_eq!(run("xclip -o -selection clipboard", true, 0, None).1, "from the desktop");
+        assert_eq!(run("xsel --clipboard --output", true, 0, None).1, "from the desktop");
+        assert_eq!(run("wl-paste", true, 69, None).2, "paste|\nown wl-paste: \n");
+        // Passwords' `op`, as given.
+        assert_eq!(run("op read op://Vault/Item/field", true, 0, None).2, "op|read|op://Vault/Item/field|\n");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

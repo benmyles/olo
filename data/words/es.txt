@@ -6075,6 +6075,9 @@ Permite que los agentes de programación titulen su pestaña de Terminal.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Permite que los programas de allí usen aquí enlaces, Passwords, claves SSH y Pantallas de agentes.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Hace que xdg-open, notify-send y los comandos de copiar y pegar de allí actúen aquí.
+
 Letting go of backups past keeping
 Soltando las copias que ya no se conservan
 
@@ -14108,6 +14111,9 @@ día
 
 deleting
 eliminando
+
+desktop commands
+comandos de escritorio
 
 downgrade {n} packages
 one: bajar de versión {n} paquete

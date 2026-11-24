@@ -6049,6 +6049,9 @@ Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 그 호스트의 프로그램이 여기서 링크, Passwords, SSH 키, 에이전트 화면을 쓸 수 있게 합니다.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+그 호스트의 xdg-open, notify-send, 복사·붙여 넣기 명령이 여기서 동작하게 합니다.
+
 Letting go of backups past keeping
 보관 기간이 지난 백업 정리 중
 
@@ -14073,6 +14076,9 @@ day
 
 deleting
 삭제 중
+
+desktop commands
+데스크톱 명령
 
 downgrade {n} packages
 other: 패키지 {n}개 다운그레이드

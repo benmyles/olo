@@ -209,6 +209,11 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
             Some(false) => absent(stands(Light::Off, "Not installed")),
             None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
         },
+        HostThing::Commands => match host.commands {
+            Some(true) => installed(stands(Light::On, "Installed")),
+            Some(false) => absent(stands(Light::Off, "Not installed")),
+            None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
+        },
     }
 }
 
@@ -269,14 +274,22 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // (How many letters a line of a well under a line's words holds.)
     let letter = f32::from(style::text_width("0000000000", MONO_SIZE, style::mono_font(olo_kit::FontWeight::NORMAL))) / 10.0;
     let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - under - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
-    let block = |title: &str, s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>| {
+    // A thing's line and what is under it; `named`: the line says what it
+    // is (one with no heading of its own, under another's).
+    let body = |s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>, named: Option<&str>| {
         let lamp = if s.busy { panels::busy_of(panels::LIGHT) } else { panels::light(s.light) };
-        let mut said = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(lamp).child(StringView::new(s.said.clone()));
+        let mut said = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(lamp);
+        // (Its state first and then what it is, as every line here reads:
+        // Opus's review.)
+        said = said.child(StringView::new(s.said.clone()));
+        if let Some(name) = named {
+            said = said.child(div().flex_shrink_0().child(StringView::new(format!("·  {name}")).dim(true)));
+        }
         if let Some(more) = &s.more {
             said = said.child(div().flex_1().min_w_0().child(StringView::new(format!("·  {more}")).dim(true).cut(true)));
         }
         let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(said).children(actions);
-        let mut block = div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(line);
+        let mut block = div().w_full().flex().flex_col().child(line);
         // (What the host said, as it said it, under the line that
         // says it couldn't: a line a line, a long one's rest set in.)
         if let Some(host_said) = &s.host_said {
@@ -301,7 +314,10 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         if let Some(path) = path {
             notes = notes.child(StringView::new(path.to_owned()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE)));
         }
-        block.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes).into_element()
+        block.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes)
+    };
+    let block = |title: &str, s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>| {
+        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, note, path, None)).into_element()
     };
     let reached = host.conn == HostConnState::Connected && host.ssh;
 
@@ -414,6 +430,10 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let mut there = Vec::new();
     for (thing, title, id, note, path) in [
         (HostThing::Bridge, "Bridge", "bridge", "Lets programs there use links, Passwords, SSH keys and Agent Screens here.", None),
+        // (The bridge's way on the host: the commands its programs
+        // already call, in a Rex session. Under the bridge's line, with
+        // no heading of its own: the window fits the smallest screen.)
+        (HostThing::Commands, "desktop commands", "commands", "Lets xdg-open, notify-send and copy and paste commands there act here.", Some("~/.local/share/olo/rex-commands")),
         // (What runs for the host first, the files put there after.)
         (HostThing::Pool, "Token Pool", "pool", "Lets agents there use your accounts, even with this computer off.", None),
         (HostThing::Skill, "Skill for agents", "skill", "Tells Claude Code and other agents there how to use the bridge and Rex.", Some("~/.claude/skills/olo-rex-bridge")),
@@ -451,6 +471,15 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         } else {
             olo_kit::words::tr(note).into()
         };
+        if thing == HostThing::Commands
+            && let Some(bridge) = page.pop()
+        {
+            let words = olo_kit::words::tr(title);
+            // (Nearer the bridge's line than a section is to the next: a
+            // part of it.)
+            page.push(div().w_full().flex().flex_col().child(bridge).child(div().h(px(4.0)).flex_shrink_0()).child(body(&s, actions, note, path, Some(words))).into_element());
+            continue;
+        }
         page.push(block(title, &s, actions, note, path));
     }
 
@@ -499,6 +528,7 @@ mod tests {
             granted: Vec::new(),
             agent_keys: None,
             skill: Some(false),
+            commands: Some(false),
             pool: None,
             version: Some("0.19.2".into()),
             account: None,

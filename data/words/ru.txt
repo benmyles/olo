@@ -6127,6 +6127,9 @@ Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Разрешает программам там пользоваться здесь ссылками, Passwords, ключами SSH и экранами агентов.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Позволяет xdg-open, notify-send и командам копирования и вставки там действовать здесь.
+
 Letting go of backups past keeping
 Удаление устаревших копий
 
@@ -14178,6 +14181,9 @@ day
 
 deleting
 удаление
+
+desktop commands
+команды рабочего стола
 
 downgrade {n} packages
 one: понизить версию {n} пакета

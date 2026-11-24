@@ -6049,6 +6049,9 @@ Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 そのホストのプログラムが、ここでリンク、Passwords、SSH鍵、エージェント画面を使えるようにします。
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+そのホストのxdg-open、notify-send、コピー＆ペーストのコマンドをここで働かせます。
+
 Letting go of backups past keeping
 期限切れのバックアップを削除中
 
@@ -14073,6 +14076,9 @@ day
 
 deleting
 削除中
+
+desktop commands
+デスクトップコマンド
 
 downgrade {n} packages
 other: {n}個のパッケージをダウングレード

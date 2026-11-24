@@ -6075,6 +6075,9 @@ Laat programmeeragents hun Terminal-tabblad een titel geven.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Laat programma’s daar hier links, Passwords, SSH-sleutels en Agentschermen gebruiken.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Laat xdg-open, notify-send en opdrachten om te kopiëren en plakken daar hier werken.
+
 Letting go of backups past keeping
 Verlopen back-ups verwijderen
 
@@ -14108,6 +14111,9 @@ dag
 
 deleting
 verwijderen
+
+desktop commands
+bureaubladopdrachten
 
 downgrade {n} packages
 one: {n} pakket downgraden

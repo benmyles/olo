@@ -6075,6 +6075,9 @@ Permet aux agents de code de titrer leur onglet Terminal.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Permet aux programmes de là-bas d’utiliser ici les liens, Passwords, les clés SSH et les Écrans d’agents.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Fait agir ici xdg-open, notify-send et les commandes de copier-coller de là-bas.
+
 Letting go of backups past keeping
 Abandon des sauvegardes qui ne sont plus gardées
 
@@ -14108,6 +14111,9 @@ jour
 
 deleting
 supprime
+
+desktop commands
+commandes du bureau
 
 downgrade {n} packages
 one: rétrograder {n} paquet

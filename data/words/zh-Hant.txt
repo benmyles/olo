@@ -6049,6 +6049,9 @@ Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 允許那裡的程式在這裡使用連結、Passwords、SSH 金鑰和代理螢幕。
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+讓那裡的 xdg-open、notify-send 及拷貝貼上指令在這裡起作用。
+
 Letting go of backups past keeping
 正在清理已過期的備份
 
@@ -14073,6 +14076,9 @@ day
 
 deleting
 正在刪除
+
+desktop commands
+桌面指令
 
 downgrade {n} packages
 other: 降級 {n} 個套件

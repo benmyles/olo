@@ -24,15 +24,18 @@ local asked = ({
   screen = function() return "olo.screen", { args = args } end,
   notify = function() return "olo.notify", { title = args[1] or "", body = args[2] or "" } end,
   clipboard = function() return "olo.clipboard.set", { text = args[1] or "" } end,
+  paste = function() return "olo.clipboard.get", {} end,
 })[cmd]
 if not asked then
-  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo notify TITLE [BODY] | olo clipboard TEXT", 2)
+  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 
 local session, block = os.getenv("REX_SESSION"), os.getenv("REX_BLOCK")
 local list, err = rex.call("client.list", {})
-if not list then fail("the Rex server here didn't answer: " .. tostring(err)) end
+-- (69: the desktop couldn't be asked, here or for this. The desktop
+-- commands beside this go on to the host's own then.)
+if not list then fail("the Rex server here didn't answer: " .. tostring(err), 69) end
 local app, shown
 for _, c in ipairs(list.clients or {}) do
   if c.connection_state == "connected" and c.info and c.info.kind == "app" and c.info.name == "Olo Rex" then
@@ -43,11 +46,11 @@ for _, c in ipairs(list.clients or {}) do
   end
 end
 app = shown or app
-if not app then fail("no Olo desktop is connected to this Rex server now (open this host in Olo's Rex)") end
+if not app then fail("no Olo desktop is connected to this Rex server now (open this host in Olo's Rex)", 69) end
 
 local function ask(name, with)
   local r, why = rex.call("client.perform", { client_id = app, action = name, args = with, session_id = session, block_id = block, timeout_ms = 30000 })
-  if not r then fail(tostring(why)) end
+  if not r then fail(tostring(why), 69) end
   return r.result or {}
 end
 

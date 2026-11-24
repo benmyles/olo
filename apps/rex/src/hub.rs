@@ -71,6 +71,10 @@ pub enum HubNotice {
     },
     /// Clipboard text requested by `olo.clipboard.set`.
     SetClipboard(String),
+    /// A host's file to copy here and open in its app (`olo open PATH`
+    /// on a host, its `xdg-open`): Quick Look's way, in the window that
+    /// shows the asking pane.
+    OpenHostFile(BlockKey, String),
     /// A passing word of the hub's own, for something it did that
     /// nobody asked for in a window (Olo's helper put on a host): the
     /// workspace's status bar says it for a few seconds, where nothing
@@ -1189,6 +1193,9 @@ pub enum HostThing {
     Bridge,
     /// The skill that tells agents there of the bridge and of Rex.
     Skill,
+    /// The desktop commands there (`xdg-open`, `notify-send`, the
+    /// clipboard's…): `bridge::COMMANDS`.
+    Commands,
     /// A Token Pool of its own there, with this computer's accounts
     /// (put there and kept in step by this computer's Token Pool:
     /// `pool`).
@@ -1222,6 +1229,8 @@ pub struct HostStands {
     /// of them ([`HostRuntime::agent_keys`]).
     pub agent_keys: Option<Result<usize, String>>,
     pub skill: Option<bool>,
+    /// The desktop commands there (`bridge::COMMANDS`): none until asked.
+    pub commands: Option<bool>,
     /// How its Token Pool stands, as this computer's Token Pool says;
     /// none: that isn't running here (or wasn't asked yet).
     pub pool: Option<crate::pool::PoolStands>,
@@ -1284,6 +1293,7 @@ pub struct HostRuntime {
     /// has been asked, and for a host that can't be (not over SSH).
     pub bridge_there: Option<bool>,
     pub skill_there: Option<bool>,
+    pub commands_there: Option<bool>,
     /// What Passwords last answered when the host's programs asked the
     /// forwarded agent for the SSH keys: how many, or why none could be
     /// had; none: not asked on this connection. (Unsaid, a host was
@@ -1487,6 +1497,7 @@ impl HubState {
                     Some("ready") => there.then_some(true),
                     _ => there.then_some(false),
                 },
+                commands: Some(there),
                 pool: Some(crate::pool::PoolStands { wanted: there, in_step: there, accounts: there.then_some(3), ..Default::default() }),
                 version: there.then(|| "0.19.2".to_owned()),
                 account: there.then(demo_account).flatten(),
@@ -1523,6 +1534,7 @@ impl HubState {
             granted: self.settings.policy_for_host(host_key, false).granted(),
             agent_keys: host.agent_keys.clone().filter(|_| self.settings.policy_for_host(host_key, false).allow_ssh_agent),
             skill: host.skill_there,
+            commands: host.commands_there,
             pool: self.pools.as_ref().map(|pools| pools.get(host_key).cloned().unwrap_or_default()),
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
             account: host.account.clone(),
@@ -1893,6 +1905,7 @@ impl RexHub {
                 helper: HostHelper::None,
                 bridge_there: None,
                 skill_there: None,
+                commands_there: None,
                 agent_keys: None,
                 account: None,
                 carried: None,
@@ -1933,6 +1946,7 @@ impl RexHub {
                         helper: HostHelper::None,
                         bridge_there: None,
                         skill_there: None,
+                        commands_there: None,
                         agent_keys: None,
                         account: None,
                         carried: None,
@@ -2235,6 +2249,7 @@ impl RexHub {
             helper: HostHelper::None,
             bridge_there: None,
             skill_there: None,
+            commands_there: None,
             agent_keys: None,
             account: None,
             carried: None,
@@ -2456,6 +2471,7 @@ impl RexHub {
                     helper: HostHelper::None,
                     bridge_there: None,
                     skill_there: None,
+                    commands_there: None,
                     agent_keys: None,
                     account: None,
                     carried: None,
@@ -3545,6 +3561,8 @@ impl RexHub {
                 }
                 (HostThing::Skill, true) => run(script(&bridge::generate_remote_skill_install_script())).await,
                 (HostThing::Skill, false) => run(script(bridge::REMOVE_SKILL)).await,
+                (HostThing::Commands, true) => run(script(&bridge::install_commands_script())).await,
+                (HostThing::Commands, false) => run(script(bridge::REMOVE_COMMANDS)).await,
             };
             if thing != HostThing::Helper {
                 inner.ask_what_the_host_has(&host_key, &pool, &target, askpass).await;
@@ -4279,14 +4297,20 @@ impl RexHubInner {
         // (A skill there from another Olo than this one: this one's is
         // put in its place. An agent goes by what the skill there says.)
         if skill_there && !bridge::skill_is_current(&ran.output) {
-            let _ = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(&bridge::generate_remote_skill_install_script())), &mut |_| {}).await;
+            let _ = pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(&bridge::generate_remote_skill_install_script())), &mut |_| {}).await;
+        }
+        // (The desktop commands kept in step as the skill is: another
+        // Olo's are given this one's.)
+        let (commands_there, commands_current) = bridge::commands_there(&ran.output);
+        if commands_there && !commands_current {
+            let _ = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(&bridge::install_commands_script())), &mut |_| {}).await;
         }
         let bridge_there = true;
         let changed = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(host) = st.hosts.get_mut(host_key) else { return };
-            let changed = (host.bridge_there, host.skill_there) != (Some(bridge_there), Some(skill_there));
-            (host.bridge_there, host.skill_there) = (Some(bridge_there), Some(skill_there));
+            let changed = (host.bridge_there, host.skill_there, host.commands_there) != (Some(bridge_there), Some(skill_there), Some(commands_there));
+            (host.bridge_there, host.skill_there, host.commands_there) = (Some(bridge_there), Some(skill_there), Some(commands_there));
             changed
         };
         if changed {
@@ -5760,6 +5784,23 @@ impl RexHubInner {
                 (is_local, policy)
             };
             let done = Some(json!({ "ok": true }));
+            // A file of a far host's, by its path (its `xdg-open FILE`,
+            // `olo open PATH`): not this computer's file at that path, as
+            // it was opened before, but the host's, copied here and opened
+            // in its app as Quick Look does.
+            if action == "olo.open"
+                && !is_local
+                && let Some(path) = args.as_ref().and_then(|a| a.get("target")).and_then(Value::as_str).filter(|t| t.starts_with('/'))
+            {
+                if !policy.allow_open_url {
+                    return None;
+                }
+                let (Some(session_id), Some(block_id)) = (session_id.clone(), block_id.clone()) else {
+                    return Some(json!({ "ok": false, "stderr": "olo: a file is opened from a pane of a Rex session\n" }));
+                };
+                (self.notify)(HubNotice::OpenHostFile(BlockKey { host_key: host_key.to_owned(), session_id, block_id }, path.to_owned()));
+                return Some(json!({ "ok": true, "stdout": format!("Opening {path} on the Olo desktop\n") }));
+            }
             match action.as_str() {
                 // What a session asks of this computer (`bridge`): a
                 // link opened, Passwords' `op`, an Agent Screen's
@@ -5799,6 +5840,21 @@ impl RexHubInner {
                 "olo.notify" => {
                     self.bridge_notice(host_key, session_id.as_deref(), block_id.as_deref(), args.as_ref().unwrap_or(&Value::Null));
                     return done;
+                }
+                // What's on this computer's clipboard, as text (a host's
+                // `wl-paste`, `xclip -o`, `olo paste`), where the host may
+                // read and set it.
+                "olo.clipboard.get" => {
+                    if !policy.allow_remote_control {
+                        return None;
+                    }
+                    const TEXT: [&str; 5] = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "TEXT", "STRING"];
+                    let read = tokio::task::spawn_blocking(|| olo_kit_base::clipboard::read(&TEXT)).await;
+                    return Some(match read {
+                        Ok(Ok(bytes)) => json!({ "ok": true, "stdout": String::from_utf8_lossy(&bytes.unwrap_or_default()) }),
+                        Ok(Err(e)) => json!({ "ok": false, "stderr": format!("olo: the clipboard couldn't be read: {e}\n") }),
+                        Err(e) => json!({ "ok": false, "stderr": format!("olo: the clipboard couldn't be read: {e}\n") }),
+                    });
                 }
                 "olo.clipboard.set" => {
                     if !policy.allow_remote_control {

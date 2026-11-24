@@ -421,6 +421,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             keywords: &["copy", "clipboard"],
             args_schema: Some(json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"]})),
         },
+        ActionSpec { id: "olo.clipboard.get", title: "Read Olo Clipboard", category: "Olo Bridge", keywords: &["paste", "clipboard"], args_schema: Some(json!({"type":"object","properties":{}})) },
     ]
 }
 

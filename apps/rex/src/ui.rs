@@ -426,6 +426,12 @@ fn handle_hub_notice(notice: HubNotice) {
                 w.messenger().send(WinMsg::SetClipboard(text));
             }
         }
+        // (In the window showing the asking pane, as its own Quick Look.)
+        HubNotice::OpenHostFile(bk, path) => {
+            if let Some(w) = selected_workspace(&bk.host_key, Some(&bk.session_id), Some(&bk.block_id)).or_else(workspace) {
+                w.messenger().send(WinMsg::OpenPreview(bk, path));
+            }
+        }
         HubNotice::Said(text) => {
             if let Some(w) = workspace() {
                 w.messenger().send(WinMsg::Said(text));

@@ -6075,6 +6075,9 @@ Lässt Coding-Agenten ihren Terminal-Tab benennen.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Erlaubt Programmen dort, hier Links, Passwords, SSH-Schlüssel und Agenten-Bildschirme zu nutzen.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Lässt xdg-open, notify-send und Befehle zum Kopieren und Einfügen dort hier wirken.
+
 Letting go of backups past keeping
 Nicht mehr aufzubewahrende Sicherungen werden freigegeben
 
@@ -14108,6 +14111,9 @@ Tag
 
 deleting
 löscht
+
+desktop commands
+Desktop-Befehle
 
 downgrade {n} packages
 one: {n} Paket herabstufen

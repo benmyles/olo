@@ -586,6 +586,7 @@ mod tests {
             granted: Vec::new(),
             agent_keys: None,
             skill,
+            commands: None,
             pool: None,
             version: None,
             account,

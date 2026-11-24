@@ -28569,6 +28569,34 @@ Rex server, as every Rex client offers its own
   but it still says nothing is granted", when it had been whether a
   server started at connection ran) with Permissions… as its one
   button; the status bar's mark is the same.
+- *The desktop commands* (Ben, 2026-11-23: "have the rex client
+  support installing shims for xdg-open and other desktop integration
+  commands so that apps running remotely can operate like they're on
+  the local desktop"): put on a host from its window (the Bridge
+  section's second line, Install and Remove; `HostThing::Commands`), one
+  script (`bridge_shim.sh`, `bridge::SHIM`) under the names programs
+  already call, in `~/.local/share/olo/rex-commands` beside a copy of `olo`:
+  `xdg-open` and the browser names (`$BROWSER` set to it), a link or a
+  file (made a whole path: the app copies the host's file here and opens
+  it in its app, Quick Look's way, in the window showing the asking
+  pane; before, a path was opened as this computer's file of that
+  name); `notify-send` (its title and body; its options the desktop's
+  to choose); `wl-copy`, `wl-paste`, `xclip`, `xsel` (copying, its last
+  newlines kept, or pasting: the new `olo.clipboard.get`, as the host's
+  clipboard grant allows); `op`. Only in a Rex session: one line in
+  `~/.profile` (and `~/.bashrc`, `~/.zshrc` where they are; a file of
+  its own for fish) puts the folder first on PATH where `REX_SESSION`
+  is set, and nothing else of those files is touched, on install or on
+  removal. A shell opened before it goes on without them (a new tab, or
+  `exec $SHELL`). Where the desktop can't be asked (no Olo desktop
+  connected, or not what the host may do: `olo` exits 69 then), each is
+  the host's own command of its name, given what it was given, its input
+  too; where the desktop answered, its answer and status are the
+  command's. Kept in step at each connection as the skill is
+  (`bridge::commands_there`, `.olo-commands`). Tried on the rig: copied
+  on the host and pasted back through this computer's clipboard; a
+  host's picture opened in Viewer here; with the clipboard not granted,
+  the host's own (`commands_tests` hold each command's case).
 - *The skill for agents* (`apps/rex/src/bridge_skill.md`, put on a
   host from its window or Agents ▸ Install Olo’s Skill for Agents)
   says exactly this, and a test holds it to the actions the app

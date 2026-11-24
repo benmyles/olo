@@ -2808,9 +2808,21 @@ an argument it doesn't know starts the lint (read its first lines).
   also the one run of twelve that passed twice the bytes while sixty
   keys were typed. What a measurement runs is written into the
   session's own program where it can be (`try.py behind`), not typed.
+- **A rig pane's `rex` reaches its own server only by `REX_SERVER`**:
+  the rig's far server runs on a socket of its own
+  (`$REX_SERVER_SOCKET` in its panes is the rig's name, which `rex`
+  doesn't read), so `rex do` there finds the account's default server,
+  starts an empty one, and says "block target default not found: no
+  sessions". On a real host the session's server is the default. A
+  test that runs `rex` (or `olo`) in a far pane sets
+  `REX_SERVER="unix://$REX_SERVER_SOCKET"` first.
 - **The Rex server takes one stream of a terminal from a client at a
   time**: a second one's hello is refused ("AlreadyConnected") until
   the first has ended, and its end takes a moment to reach the server.
+- **The pre-commit hook refuses a file staged in part** ("formatted, but
+  these have unstaged changes too"): to commit some of a file's hunks,
+  stage them (`git apply --cached` of their diff), set the rest aside
+  with `git stash push --keep-index`, commit, `git stash pop`.
 - **A new field in the desktop's settings needs the test session's
   app_server built again** (`jato build -p app_server`): an older one
   drops the field when it is set (`tsession ipc … set_settings`), and

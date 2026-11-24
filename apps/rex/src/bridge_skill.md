@@ -13,12 +13,14 @@ if it had run here:
 
 It works in a Rex session that is open in Olo's Rex, and only for what
 the person has allowed this host (Olo's Preferences ▸ Rex): a command
-that isn't allowed fails and says so. If it says no Olo desktop is
-connected, this host isn't open in Olo's Rex now: say so.
+that isn't allowed fails and says so (status 69, as when no Olo desktop
+is connected: then this host isn't open in Olo's Rex now, so say so).
 
 - **A link in the person's browser**: `olo open https://example.com`.
   A `http://localhost:PORT` of this host is reached through a forward
-  Rex makes for it, where that is allowed.
+  Rex makes for it, where that is allowed. **A file of this host's**,
+  by its whole path (`olo open /home/me/report.pdf`): copied to the
+  desktop and opened in its app there (a picture in Olo's Viewer).
 - **A secret from Olo Passwords** (1Password's command line, answered
   on the desktop after the person approves there; no secret is kept on
   this host): `olo op read op://Vault/Item/field`.
@@ -38,13 +40,21 @@ connected, this host isn't open in Olo's Rex now: say so.
   A `http://localhost:PORT` of this host among the arguments is reached
   through a forward, as for `olo open`.
 - Also `olo notify TITLE [BODY]` (a notification on the desktop, which
-  leads back to this pane) and `olo clipboard TEXT`.
+  leads back to this pane), `olo clipboard TEXT` (copied there) and
+  `olo paste` (what is copied there, as text).
+- **The desktop commands**, where the person has put them on this host
+  (Rex's Host window, "Desktop commands"): in a Rex session the usual
+  commands already go to the desktop, so a program doesn't need to know
+  of Olo: `xdg-open URL|FILE` (and `$BROWSER`), `notify-send`, `wl-copy`
+  and `wl-paste`, `xclip`, `xsel`, `op`. Where the desktop can't be
+  asked they are the host's own (`command -v wl-copy` shows which).
 
 Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):
 `rex do olo.open target=URL`, `rex do olo.op --args '{"args":[…]}'`,
 `rex do olo.screen --args '{"args":[…]}'`, `rex do olo.notify title=…`,
-`rex do olo.clipboard.set text=…`; an answer that says `pending` is
+`rex do olo.clipboard.set text=…`, `rex do olo.clipboard.get --args
+'{}'`; an answer that says `pending` is
 waited for with `rex do olo.wait id=…`, and a picture an answer lists
 under `files` is fetched with `rex do olo.file id=… offset=…` (base64,
 in pieces). The `olo` command does all of that: it picks the Olo

@@ -6075,6 +6075,9 @@ Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 वहाँ के प्रोग्राम को यहाँ लिंक, Passwords, SSH कुंजियाँ और एजेंट स्क्रीन इस्तेमाल करने देता है।
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+वहाँ के xdg-open, notify-send और कॉपी-पेस्ट कमांड को यहाँ काम करने देता है।
+
 Letting go of backups past keeping
 पुराने बैकअप हट रहे हैं
 
@@ -14108,6 +14111,9 @@ day
 
 deleting
 मिटा रहे हैं
+
+desktop commands
+डेस्कटॉप कमांड
 
 downgrade {n} packages
 one: {n} पैकेज का पुराना संस्करण लगाएँ

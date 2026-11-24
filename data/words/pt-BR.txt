@@ -6075,6 +6075,9 @@ Permite que agentes de programação definam o título da aba no Terminal.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Permite que os programas de lá usem aqui links, Passwords, chaves SSH e Telas de agente.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Faz xdg-open, notify-send e os comandos de copiar e colar de lá agirem aqui.
+
 Letting go of backups past keeping
 Excluindo backups fora do prazo
 
@@ -14108,6 +14111,9 @@ dia
 
 deleting
 excluindo
+
+desktop commands
+comandos da área de trabalho
 
 downgrade {n} packages
 one: rebaixar {n} pacote

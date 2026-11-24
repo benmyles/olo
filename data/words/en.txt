@@ -2014,6 +2014,7 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Lets xdg-open, notify-send and copy and paste commands there act here.
 Letting go of backups past keeping
 Level
 Level evened out
@@ -4689,6 +4690,7 @@ couldn't save the boost: {}
 couldn't save the setting: {}
 day
 deleting
+desktop commands
 downgrade {n} packages
 downloading
 driving {}

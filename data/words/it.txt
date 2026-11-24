@@ -6075,6 +6075,9 @@ Consente agli agenti di programmazione di dare un titolo alla loro scheda di Ter
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Consente ai programmi lì di usare qui link, Passwords, chiavi SSH e Schermi agente.
 
+Lets xdg-open, notify-send and copy and paste commands there act here.
+Fa agire qui xdg-open, notify-send e i comandi di copia e incolla di lì.
+
 Letting go of backups past keeping
 Rimozione dei backup scaduti
 
@@ -14108,6 +14111,9 @@ giorno
 
 deleting
 eliminazione
+
+desktop commands
+comandi del desktop
 
 downgrade {n} packages
 one: riportare {n} pacchetto a una versione precedente

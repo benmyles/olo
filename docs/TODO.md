@@ -1821,36 +1821,6 @@ something nobody here has is in "Blocked", with what it waits for.
   `log` don't show them; `agy-help` ends with 3 at a helper's first
   question, which reads as a failure.
 
-- **Desktop commands on a host, as on this desktop: shims Rex puts
-  there** (Ben, 2026-11-23: "have the rex client support installing
-  shims for xdg-open and other desktop integration commands so that
-  apps running remotely can operate like they're on the local
-  desktop"). The shims Rex once put on hosts (`xdg-open`, `op`,
-  `olo-screen`) waited for a port and a token nothing set, did nothing,
-  and were taken off (`bridge::OLD_SHIMS`; HACKING, Rex, "Nothing of
-  it is on the host"); since then the bridge's `olo` command has a way
-  that works (`rex do` to the Olo Rex app showing the session: the
-  app's actions, its files, what the host is granted). To find out
-  first: which commands programs on a host call for the desktop
-  (`xdg-open` and `$BROWSER` for a link or a sign-in page, `op` for a
-  secret, `notify-send`, the clipboard's `wl-copy`/`wl-paste` and
-  `xclip`/`xsel`, `xdg-email`, a file opened in its app), what each
-  is given and answers, and how a program finds a shim (a folder put
-  first on PATH by the shell's own startup, as the SSH config's
-  `Include` is put: shells already open too). Then: each a shim in the
-  account's home that asks through `rex do` (no port, no token; the
-  host's grant in Preferences ▸ Rex decides, as the bridge's skill
-  does), doing on this desktop what the command would (a link opened
-  in the person's browser, with what asked; a file copied here and
-  opened in its app; a notification; the clipboard, both ways), and
-  as the real command where there's no Rex app to ask (no session
-  shown, the host not granted) so nothing on the host breaks; put
-  and taken off from the Host window (Bridge: "Desktop commands"),
-  kept in step at each connection as the agent's SSH config is; tried
-  on the rig and on the real host (a sign-in link from a CLI, `op
-  read`, `notify-send`, a copy and a paste), and said in the skill
-  for agents.
-
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize
   ssh sessions and traffic on olo desktop, like maybe under prefs ->
@@ -2645,6 +2615,24 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Desktop commands on a host** (Ben, 2026-11-23: "have the rex
+  client support installing shims for xdg-open and other desktop
+  integration commands so that apps running remotely can operate like
+  they're on the local desktop"). Done (2026-11-24; HACKING, Rex, "The
+  desktop commands"): installed from the Host window's Bridge section;
+  `xdg-open` (links, and a host's files copied here and opened in their
+  app), `$BROWSER`, `notify-send`, `wl-copy`/`wl-paste`, `xclip`,
+  `xsel`, `op`, each asking this desktop in a Rex session and the
+  host's own command elsewhere; kept in step at each connection. Left:
+  tried on a real host (`gh auth login`'s browser, a sign-in link from a
+  CLI, `op read`); `xdg-email`; a clipboard larger than one argument
+  (about 128 kB) goes through `olo`'s environment, which can't take it.
+  Its line's other states pictured (Opus's look: the bridge Off with the
+  commands installed, Being installed…, Couldn't install: the window's
+  shared ones). From the same look, there before: Token Pool's button
+  says "Token Pool…" where the others name their action ("Set Up…");
+  the Account line's "without Program folder…" ("missing"); the Rex
+  server's note begins "Its services…" with no clear antecedent.
 - **Preferences ▸ Services** (Ben, 2026-11-23: "a Preferences ->
   Services app that shows all of the olo services and their status and
   lets me manage/restart them"). Done (2026-11-24; HACKING, "The
