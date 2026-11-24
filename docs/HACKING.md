@@ -29015,7 +29015,8 @@ Rex server, as every Rex client offers its own
   offers, both ways. It comes with one command, `olo`
   (`bridge_olo.sh`, and `bridge_olo.lua` which `rex do` runs for it;
   in the skill's own folder, on nobody's PATH): `olo open URL`, `olo
-  op …`, `olo screen …`, answered as if run on the host. It does what
+  op …`, `olo screen …`, `olo forward …`, answered as if run on the
+  host. It does what
   took an agent a loop or a guess by hand (its report, 2026-11-23):
   picks the Olo desktop among the server's clients (the connected one,
   the one showing this session where several are; `rex do` by itself
@@ -29025,6 +29026,52 @@ Rex server, as every Rex client offers its own
   the output. (Rex's Lua has no `os.execute`: a piece of a picture is
   decoded by the host's `base64` through `rex.exec`; decoded in Lua
   itself, a piece of 600 kB overflowed its stack.)
+- *Forwards a host makes* (`apps/rex/src/forwards.rs`; Ben,
+  2026-11-24, of an agent that had asked them to make one by hand:
+  "add functionality to olo bridge or olo rex skills or whatever so
+  that agents can self-manage forwarding etc"). `olo forward TARGET`
+  on the host (`rex do olo.forward --args '{"args":[…]}'`), read as
+  `rex forward open` reads its target (a port of the host's own,
+  `HOST:PORT`, a URL), makes a forward here at the target's own port:
+  a sign-in link, its cookie and the address a provider sends the
+  browser back to name one port, so it must be the same here as
+  there (`--port N` for another, `--any-port` for a free one; a port
+  under 1024 refused). It answers with the address here (a URL at its
+  port here, `localhost` kept as written: a cookie for localhost isn't
+  one for 127.0.0.1, and `olo open`'s forwards keep it too now, where
+  they made every page 127.0.0.1's). A port taken here is said, by
+  whom where it's a forward (this host's: `olo forward close N`; another
+  host's), never another one quietly chosen. `olo forward ls [--json]`
+  lists the host's forwards here (the port, what it reaches, how it
+  stands, who made it: `forwards::Made`, the person's, a page's or
+  `olo forward`'s), `olo forward close PORT… | --all` closes those made
+  from the host, never the person's. Asked again, the same forward
+  answers; `olo open` and `olo screen` go through one the host already
+  has to that address (`ensure_ephemeral_forward`, whoever made it,
+  before a new one at a free port). Under the host's permission for
+  local servers (Preferences ▸ Rex, "Reach its local servers"). A
+  forward is a tunnel block in the asking session on the host's server
+  (`create_forward`, which the Ports list's Forward uses too), so it
+  lasts until closed or that session ends; for this computer's own
+  server the port is here already, and said so. *Over an upgrade in
+  place* every forward comes back at its port (`hub::SavedForward`,
+  kept with the windows): Rex's process is replaced with `exec`, which
+  runs no destructor, so its blocks stay open on the server, and the
+  new Rex takes each up again when its host connects
+  (`olo_rex_client::resume_local_forward`: the same port here, the
+  block owned again; a new block where it is gone, the person told
+  where its port is taken now and the old block closed). Before, every
+  forward was gone at an upgrade and each left a block the server
+  listed as orphaned (`rex forward ls` warned of them). Tried on the
+  rig (`try.py bridge`): refused ungranted; the far host's own port
+  taken here (the rig's far host is this computer), said; made at the
+  port asked and its server reached through it; asked again the same;
+  a URL said at its address here; listed; a port held by its own
+  forward said; Rex re-executed (its binary touched, `SIGURG`, as
+  olo-session upgrades it) and the forward back at its port, through
+  its one block, nothing orphaned; closed. And the client's own test
+  (`remote_forwards`): a block left by one client taken up by another
+  at the same port, one stopped not.
 - *Olo's own tests name themselves "Olo Rex test"*, kind `test`
   (`ClientIdentity::a_test`): as the app, each left a client the
   server listed as lost on the host it ran against.

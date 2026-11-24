@@ -1,5 +1,5 @@
 -- Olo's skill for agents on a Rex host: one command of the Olo desktop
--- (`olo open|op|screen|notify|clipboard …`, beside this file), asked
+-- (`olo open|op|screen|forward|notify|clipboard …`, beside this file), asked
 -- through Rex and answered here as if it had run here. It is `rex do`
 -- underneath, and saves an agent the three things that took a loop or
 -- a guess by hand: which client is the Olo desktop (the one connected,
@@ -22,12 +22,13 @@ local asked = ({
   open = function() return "olo.open", { target = args[1] or "" } end,
   op = function() return "olo.op", { args = args } end,
   screen = function() return "olo.screen", { args = args } end,
+  forward = function() return "olo.forward", { args = args } end,
   notify = function() return "olo.notify", { title = args[1] or "", body = args[2] or "" } end,
   clipboard = function() return "olo.clipboard.set", { text = args[1] or "" } end,
   paste = function() return "olo.clipboard.get", {} end,
 })[cmd]
 if not asked then
-  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
+  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 

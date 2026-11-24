@@ -1079,7 +1079,36 @@ pub struct ActiveForward {
     pub remote_port: u16,
     pub local_addr: SocketAddr,
     pub state: ForwardState,
+    /// Who made it: a host closes only what was made from it.
+    pub made: crate::forwards::Made,
     handle: LocalForwardHandle,
+}
+
+/// A forward as Rex keeps it over an upgrade in place: its block is left
+/// open on its host's server as the old Rex ends, and taken up again
+/// (`resume_local_forward`) at the same port here when the host connects
+/// (`RexHubInner::resume_saved_forwards`): no orphaned block left there
+/// (`rex forward ls` warned of one for every forward at every upgrade),
+/// and no forward an agent's sign-in depends on gone.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SavedForward {
+    pub host_key: String,
+    pub session_id: String,
+    pub block_id: String,
+    pub remote_host: String,
+    pub remote_port: u16,
+    pub local_port: u16,
+    #[serde(default)]
+    pub made: crate::forwards::Made,
+}
+
+/// The forwards Rex had before an upgrade in place, each taken up again
+/// when its host connects.
+static SAVED_FORWARDS: std::sync::Mutex<Vec<SavedForward>> = std::sync::Mutex::new(Vec::new());
+
+/// (As Rex comes back from an upgrade, before its hub starts.)
+pub fn set_saved_forwards(forwards: Vec<SavedForward>) {
+    *SAVED_FORWARDS.lock().unwrap_or_else(|e| e.into_inner()) = forwards;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3431,7 +3460,7 @@ impl RexHub {
         let sid = session_id.to_owned();
         if self
             .with_control(host_key, move |ctrl, ep, inner| async move {
-                match inner.create_forward(&hk, &ctrl, ep, &sid, remote_host, remote_port, local_port).await {
+                match inner.create_forward(&hk, &ctrl, ep, &sid, remote_host, remote_port, local_port, crate::forwards::Made::Person).await {
                     Ok(local_addr) => {
                         if open_in_browser {
                             let url = format!("http://127.0.0.1:{}", local_addr.port());
@@ -3445,6 +3474,31 @@ impl RexHub {
         {
             feedback.problem("Couldn’t forward the port.", "The Rex server is disconnected.");
         }
+    }
+
+    /// The forwards as kept over an upgrade in place: each one here (its
+    /// block is left open as the process is replaced, `exec` running no
+    /// destructor), and those of before that no connection has taken up
+    /// yet.
+    pub fn saved_forwards(&self) -> Vec<SavedForward> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut kept: Vec<SavedForward> = st
+            .forwards
+            .iter()
+            .filter(|f| !matches!(f.state, ForwardState::Failed(_)))
+            .map(|f| SavedForward {
+                host_key: f.host_key.clone(),
+                session_id: f.handle.session_id.clone(),
+                block_id: f.handle.block_id.clone(),
+                remote_host: f.remote_host.clone(),
+                remote_port: f.remote_port,
+                local_port: f.local_addr.port(),
+                made: f.made,
+            })
+            .collect();
+        drop(st);
+        kept.extend(SAVED_FORWARDS.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned());
+        kept
     }
 
     pub fn remove_forward(&self, forward_id: &str) {
@@ -4560,10 +4614,115 @@ impl RexHubInner {
             }
         });
     }
+    /// What a host's `olo forward` asks, done: a forward made at the port
+    /// it names (its target's own unless it says), its host's forwards
+    /// listed, those made from it closed. Answered as the command's output.
+    async fn bridge_forward(self: &Arc<Self>, host_key: &str, is_local: bool, session_id: Option<String>, args: &[String]) -> Value {
+        use crate::forwards::{Ask, LOWEST, Listed, Made, USAGE, address_here, listed};
+        let fail = |why: String| json!({ "ok": false, "stderr": format!("olo: {why}\n") });
+        let ask = match crate::forwards::ask(args) {
+            Ok(ask) => ask,
+            Err(why) => return json!({ "ok": false, "stderr": format!("olo: {why}\n{USAGE}") }),
+        };
+        match ask {
+            Ask::Help => json!({ "ok": true, "stdout": USAGE }),
+            Ask::List { json: as_json } => {
+                let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                let rows: Vec<Listed> = st
+                    .forwards
+                    .iter()
+                    .filter(|f| f.host_key == host_key)
+                    .map(|f| Listed {
+                        port: f.local_addr.port(),
+                        to: if f.remote_host.contains(':') { format!("[{}]:{}", f.remote_host, f.remote_port) } else { format!("{}:{}", f.remote_host, f.remote_port) },
+                        state: match &f.state {
+                            ForwardState::Active => "forwarded".into(),
+                            ForwardState::Waiting => "waiting".into(),
+                            ForwardState::Failed(why) => format!("failed: {why}"),
+                        },
+                        made: f.made,
+                    })
+                    .collect();
+                json!({ "ok": true, "stdout": listed(&rows, as_json) })
+            }
+            Ask::Close { ports, all } => {
+                let (mut closed, mut refused) = (Vec::new(), Vec::new());
+                {
+                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    for p in &ports {
+                        match st.forwards.iter().find(|f| f.host_key == host_key && f.local_addr.port() == *p) {
+                            None => refused.push(format!("no forward of this host's listens on port {p} of the Olo desktop (olo forward ls lists them)")),
+                            Some(f) if !f.made.hosts() => refused.push(format!("the forward on port {p} is the person's: closed in Rex, not from here")),
+                            Some(_) => {}
+                        }
+                    }
+                    st.forwards.retain(|f| {
+                        let close = f.host_key == host_key && f.made.hosts() && (all || ports.contains(&f.local_addr.port()));
+                        if close {
+                            closed.push(f.local_addr.port());
+                        }
+                        !close
+                    });
+                }
+                if !closed.is_empty() {
+                    (self.notify)(HubNotice::StateChanged);
+                }
+                let stdout: String = closed.iter().map(|p| format!("closed {p}\n")).collect();
+                let stderr: String = refused.iter().map(|why| format!("olo: {why}\n")).collect();
+                json!({ "ok": refused.is_empty(), "stdout": stdout, "stderr": stderr })
+            }
+            Ask::Make { host, port, here, url } => {
+                // (This computer's own server: its ports are here already.)
+                if is_local {
+                    return json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), port)) });
+                }
+                let want = here.unwrap_or(if port >= LOWEST { port } else { 0 });
+                let (ctrl, ep, sid) = {
+                    let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let to = |f: &&ActiveForward| f.host_key == host_key && f.remote_host == host && f.remote_port == port;
+                    if let Some(f) = st.forwards.iter().filter(to).find(|f| f.state == ForwardState::Active && (want == 0 || f.local_addr.port() == want)) {
+                        return json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), f.local_addr.port())) });
+                    }
+                    if want != 0
+                        && let Some(f) = st.forwards.iter().find(|f| f.local_addr.port() == want)
+                    {
+                        return fail(if f.host_key == host_key {
+                            format!("port {want} of the Olo desktop is this host's forward to {}:{} (olo forward close {want} closes it); or --port N, --any-port", f.remote_host, f.remote_port)
+                        } else {
+                            format!("port {want} of the Olo desktop is a forward to another host: --port N, or --any-port")
+                        });
+                    }
+                    let Some(h) = st.hosts.get(host_key) else { return fail("this host isn't Rex's on the Olo desktop".into()) };
+                    let (Some(ctrl), Some(ep)) = (h.control.clone(), h.endpoint.clone()) else { return fail("this host isn't connected to the Olo desktop".into()) };
+                    let Some(sid) = session_id.filter(|s| h.session_summaries.iter().any(|x| &x.session_id == s)).or_else(|| h.session_summaries.first().map(|s| s.session_id.clone())) else {
+                        return fail("this host has no Rex session to forward through".into());
+                    };
+                    (ctrl, ep, sid)
+                };
+                if want != 0 && std::net::TcpListener::bind(("127.0.0.1", want)).is_err() {
+                    return fail(format!("port {want} of the Olo desktop is taken by another program there: --port N, or --any-port"));
+                }
+                match self.create_forward(host_key, &ctrl, ep, &sid, host, port, want, Made::Agent).await {
+                    Ok(at) => json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), at.port())) }),
+                    Err(why) => fail(format!("the forward couldn't be made: {why}")),
+                }
+            }
+        }
+    }
+
+    /// The forward a host's page opened here goes through (`olo open
+    /// http://localhost:…`, a link clicked in a pane): one of the host's
+    /// to that address already, whoever made it (an agent's `olo forward
+    /// 5173` first, so the page opens at the port its sign-in names), or
+    /// a new one at a free port.
     async fn ensure_ephemeral_forward(&self, host_key: &str, session_id: &str, remote_host: &str, remote_port: u16) -> Result<u16, String> {
         let (ctrl, ep) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(f) = st.forwards.iter().find(|f| f.host_key == host_key && f.handle.session_id == session_id && f.remote_host == remote_host && f.remote_port == remote_port) {
+            let to = |f: &&ActiveForward| f.host_key == host_key && f.remote_host == remote_host && f.remote_port == remote_port;
+            if let Some(f) = st.forwards.iter().filter(to).find(|f| f.state == ForwardState::Active) {
+                return Ok(f.local_addr.port());
+            }
+            if let Some(f) = st.forwards.iter().filter(to).find(|f| f.handle.session_id == session_id) {
                 return match &f.state {
                     ForwardState::Active => Ok(f.local_addr.port()),
                     ForwardState::Waiting => Err("The forward is waiting for its host.".into()),
@@ -4572,10 +4731,20 @@ impl RexHubInner {
             }
             st.hosts.get(host_key).and_then(|h| Some((h.control.clone()?, h.endpoint.clone()?))).ok_or_else(|| format!("host '{host_key}' is not connected"))?
         };
-        self.create_forward(host_key, &ctrl, ep, session_id, remote_host.to_owned(), remote_port, 0).await.map(|a| a.port())
+        self.create_forward(host_key, &ctrl, ep, session_id, remote_host.to_owned(), remote_port, 0, crate::forwards::Made::Link).await.map(|a| a.port())
     }
 
-    async fn create_forward(&self, host_key: &str, ctrl: &ControlClient, ep: RexEndpoint, session_id: &str, remote_host: String, remote_port: u16, local_port: u16) -> Result<SocketAddr, String> {
+    async fn create_forward(
+        &self,
+        host_key: &str,
+        ctrl: &ControlClient,
+        ep: RexEndpoint,
+        session_id: &str,
+        remote_host: String,
+        remote_port: u16,
+        local_port: u16,
+        made: crate::forwards::Made,
+    ) -> Result<SocketAddr, String> {
         let handle = start_local_forward(ctrl.clone(), ep, session_id.into(), remote_host.clone(), remote_port, local_port).await.map_err(|e| e.to_string())?;
         let local_addr = handle.local_addr;
         {
@@ -4583,10 +4752,83 @@ impl RexHubInner {
             if !st.hosts.get(host_key).and_then(|h| h.control.as_ref()).is_some_and(|c| c.same_connection(ctrl)) {
                 return Err("The host disconnected while opening the forward.".into());
             }
-            st.forwards.push(ActiveForward { id: uuid::Uuid::new_v4().to_string(), host_key: host_key.into(), remote_host, remote_port, local_addr, state: ForwardState::Active, handle });
+            st.forwards.push(ActiveForward { id: uuid::Uuid::new_v4().to_string(), host_key: host_key.into(), remote_host, remote_port, local_addr, state: ForwardState::Active, made, handle });
         }
         (self.notify)(HubNotice::StateChanged);
         Ok(local_addr)
+    }
+
+    /// The host's forwards of before an upgrade in place, taken up again
+    /// at their ports here: their own blocks, owned again; a new block
+    /// where one is gone (in the same session, or the host's first), and
+    /// the person told where a port here is taken now.
+    fn resume_saved_forwards(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint) {
+        let mine: Vec<SavedForward> = {
+            let mut saved = SAVED_FORWARDS.lock().unwrap_or_else(|e| e.into_inner());
+            let (mine, rest) = std::mem::take(&mut *saved).into_iter().partition(|f| f.host_key == host_key);
+            *saved = rest;
+            mine
+        };
+        for f in mine {
+            let (inner, ctrl, ep) = (self.clone(), ctrl.clone(), ep.clone());
+            tokio::spawn(async move {
+                let resumed = olo_rex_client::resume_local_forward(ctrl.clone(), ep.clone(), f.session_id.clone(), f.block_id.clone(), f.remote_host.clone(), f.remote_port, f.local_port).await;
+                let made = match resumed {
+                    Ok(handle) => {
+                        let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                        if !st.hosts.get(&f.host_key).and_then(|h| h.control.as_ref()).is_some_and(|c| c.same_connection(&ctrl)) {
+                            // (Gone again meanwhile: kept for its next connection.)
+                            drop(st);
+                            handle.leave();
+                            SAVED_FORWARDS.lock().unwrap_or_else(|e| e.into_inner()).push(f);
+                            return;
+                        }
+                        let local_addr = handle.local_addr;
+                        st.forwards.push(ActiveForward {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            host_key: f.host_key.clone(),
+                            remote_host: f.remote_host.clone(),
+                            remote_port: f.remote_port,
+                            local_addr,
+                            state: ForwardState::Active,
+                            made: f.made,
+                            handle,
+                        });
+                        Ok(())
+                    }
+                    Err(olo_rex_client::RexError::Io(e)) => {
+                        // (Its port here is taken now: its block closed,
+                        // not left orphaned on the server.)
+                        let _ = ctrl.block_close(&f.session_id, &f.block_id).await;
+                        Err(e.to_string())
+                    }
+                    Err(_) => {
+                        // (Its block is gone: a new one, in its session if
+                        // that is still there.)
+                        let sid = {
+                            let st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                            let h = st.hosts.get(&f.host_key);
+                            h.and_then(|h| h.session_summaries.iter().find(|s| s.session_id == f.session_id).or_else(|| h.session_summaries.first()).map(|s| s.session_id.clone()))
+                        };
+                        match sid {
+                            Some(sid) => inner.create_forward(&f.host_key, &ctrl, ep, &sid, f.remote_host.clone(), f.remote_port, f.local_port, f.made).await.map(|_| ()),
+                            None => Err("the host has no session to forward through".into()),
+                        }
+                    }
+                };
+                if let Err(why) = made {
+                    tracing::warn!(port = f.local_port, "a forward of before the upgrade couldn't be made again: {why}");
+                    let label = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&f.host_key).map(|h| h.label.clone()).unwrap_or_default();
+                    (inner.notify)(HubNotice::Attention {
+                        target: Target::Host(f.host_key.clone()),
+                        title: olo_kit::tr!("Port {} isn’t forwarded from {} any more", f.local_port, label),
+                        body: why,
+                        kind: olo_kit::notify::NoteKind::Important,
+                    });
+                }
+                (inner.notify)(HubNotice::StateChanged);
+            });
+        }
     }
 
     fn restore_forwards(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint) {
@@ -4909,6 +5151,7 @@ impl RexHubInner {
                     self.write_palette_index();
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
+                    self.resume_saved_forwards(&host_key, &ctrl, &endpoint);
 
                     (self.notify)(HubNotice::StateChanged);
 
@@ -5851,6 +6094,20 @@ impl RexHubInner {
                     let policy = if is_local { crate::settings::HostBridgePolicy { allow_localhost_autoforward: false, ..policy } } else { policy };
                     return Some(self.bridge_calls.answer(async move { bridge::handle_bridge_request(&label, &policy, req, &forward, &|_| {}).await }).await);
                 }
+                // A host's `olo forward`: a server it reaches, reached
+                // from here at the port it names (`forwards`).
+                "olo.forward" => {
+                    let given: Vec<String> = args
+                        .as_ref()
+                        .and_then(|a| a.get("args"))
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
+                        .unwrap_or_default();
+                    if !policy.allow_localhost_autoforward {
+                        return Some(json!({ "ok": false, "stderr": "olo: this host may not reach its servers from the Olo desktop (Preferences ▸ Rex: Reach its local servers)\n" }));
+                    }
+                    return Some(self.bridge_forward(host_key, is_local, session_id, &given).await);
+                }
                 "olo.notify" => {
                     self.bridge_notice(host_key, session_id.as_deref(), block_id.as_deref(), args.as_ref().unwrap_or(&Value::Null));
                     return done;
@@ -6268,9 +6525,20 @@ mod tests {
     fn what_was_let_go_of_is_kept_over_an_upgrade_and_what_was_kept_before_still_reads() {
         // (What Rex kept before there was a Disconnect has no such list.)
         let before: crate::ui::SavedAppState = serde_json::from_str(r#"{"workspaces":[]}"#).unwrap();
-        assert!(before.let_go.is_empty());
-        let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()], help: Vec::new() }).unwrap();
-        assert_eq!(serde_json::from_str::<crate::ui::SavedAppState>(&kept).unwrap().let_go, ["host-1"]);
+        assert!(before.let_go.is_empty() && before.forwards.is_empty());
+        let forward = SavedForward {
+            host_key: "host-1".into(),
+            session_id: "s".into(),
+            block_id: "b".into(),
+            remote_host: "localhost".into(),
+            remote_port: 5173,
+            local_port: 5173,
+            made: crate::forwards::Made::Agent,
+        };
+        let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()], help: Vec::new(), forwards: vec![forward.clone()] }).unwrap();
+        let read = serde_json::from_str::<crate::ui::SavedAppState>(&kept).unwrap();
+        assert_eq!(read.let_go, ["host-1"]);
+        assert_eq!(read.forwards, [forward]);
     }
 
     #[test]

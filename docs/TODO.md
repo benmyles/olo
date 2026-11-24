@@ -1771,6 +1771,17 @@ something nobody here has is in "Blocked", with what it waits for.
     host connects), and `rex`'s command line the same. Tried on the
     rig: made, listed, a page reached at the same port, the port taken,
     stopped, kept over a reconnect and over Rex's restart.
+    **Done** 2026-11-24 (HACKING, Rex, the bridge, "Forwards a host
+    makes"): `olo forward TARGET [--port N | --any-port]`, `ls
+    [--json]`, `close PORT… | --all`, read as `rex forward open` reads
+    a target, at the target's own port, a taken port said; `olo open`
+    and `olo screen` through the host's forward to that address; pages
+    keep `localhost`; every forward back at its port over an upgrade in
+    place, through its own block (none orphaned on the server). In the
+    skill. Tried on the rig. Left: `--keep` (a forward made again when
+    Rex starts, and as its host connects with its session gone), the
+    Ports list's New Forward… with Keep, and who made a forward shown
+    there.
   - *The Host window in tabs, and the account's window reached from it*
     (Ben, 2026-11-24: "make the rex manage host dialog a window with
     multiple tabs and group things under logical tabs e.g. Rex / Olo
@@ -3675,6 +3686,47 @@ something nobody here has is in "Blocked", with what it waits for.
   once for Mail, Calendar and DiskBackup, each Fastmail account one app
   password for Mail and Calendar, in a tab of its provider's as Ben
   then asked, rather than one list.)
+
+- **An agent screen asks for a password it hasn't been given** (Ben,
+  2026-11-24: "agent screens needs to support a way for an agent to
+  request access to a credential not yet shared with them. it should
+  show the permissions prompt on the user's desktop and auto approve if
+  auto approve is on. this also means that olo passwords should show all
+  available items shared or not but only the non-secret fields are
+  available when not shared and they will need to request access to get
+  the secrets if not shared. and make it easy for them to use like have
+  the extension still offer to fill password etc but then it
+  automatically requests the unshared secret"). Today a screen's
+  Passwords holds only what the person shared with it (HACKING,
+  "Passwords for agent screens": a sealed copy of those items), so an
+  agent can't see what else there is, nor ask. Wanted:
+  - The screen's copy holds every item, those not shared with it as
+    their non-secret fields alone (title, username, website, vault,
+    kind, tags: what Screen ▸ Passwords for Every Screen… already lists),
+    marked so in its list ("Not shared: ask for it"); a secret of one is
+    never in the copy.
+  - Asking, three ways, one request: Request Access in the screen's
+    Passwords (the item's details); `op read`/`op item get --reveal` of
+    one on the screen (waits for the answer, saying it asked the person
+    on the desktop); and the extension's fill: an unshared login is
+    offered for the page as a shared one is, and choosing it asks, then
+    fills once allowed (a passkey the same).
+  - The question on the person's desktop, never on the screen, from
+    their own Passwords (over the keychain socket, which knows the
+    asker is on a screen: `shared::on_a_screen`): "Allow the agent on
+    “SCREEN” to use “GitHub”?", which field, for which site, with Deny
+    (the default), Allow Once (the secret handed for this one use, not
+    written into the screen's copy) and Share With This Screen (added
+    to its shares, as the Passwords tab would). Asked while Passwords is
+    locked: it asks to be unlocked first, as `op` does. Under the tray's
+    Approve Without Asking: allowed at once (once, not shared), said in
+    a quiet notification, as Passwords says op's changes.
+  - Each ask and its answer in the screen's history (`actions.jsonl`,
+    as passkeys' uses are) and in `olo-screen history`; the skill for
+    agents says how to ask and that the person may say no.
+  - Tried headless: the copy's unshared items without a secret, each
+    way of asking (allowed, denied, under Approve Without Asking,
+    Passwords locked), the extension's fill after the answer.
 
 - **A passkey shared with an agent screen wasn't offered there** (Ben,
   2026-11-18, the google-setup screen: "google showed its own qr code

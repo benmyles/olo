@@ -394,6 +394,13 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             args_schema: command(),
         },
         ActionSpec {
+            id: "olo.forward",
+            title: "Reach a Server of the Host’s from the Olo Desktop",
+            category: "Olo Bridge",
+            keywords: &["forward", "port", "localhost", "tunnel"],
+            args_schema: command(),
+        },
+        ActionSpec {
             id: "olo.file",
             title: "Fetch a Picture an Answer Named",
             category: "Olo Bridge",

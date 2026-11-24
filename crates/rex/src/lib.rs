@@ -40,7 +40,7 @@ pub use model::*;
 pub use provision::ServerMode;
 pub use ssh::{AgentKey, AgentStatus, SshAskpass, SshSessionPool, SshTarget, inspect_ssh_agent};
 pub use transport::{RexEndpoint, RexStream, discover_or_start_local_socket, find_rex_binary, local_socket_candidates};
-pub use tunnel::{LocalForwardHandle, open_bytes_stream, relay_reverse_to_tcp, relay_stream_with_bytes_ws, start_local_forward};
+pub use tunnel::{LocalForwardHandle, open_bytes_stream, relay_reverse_to_tcp, relay_stream_with_bytes_ws, resume_local_forward, start_local_forward};
 
 #[cfg(test)]
 mod tests {

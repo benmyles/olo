@@ -1,6 +1,6 @@
 ---
 name: olo-rex-bridge
-description: From a Rex session on this host, use the person's Olo desktop - open a link or a local server's page in their browser, read a secret from their Olo Passwords, and see and drive graphical apps on a screen of your own there (Olo Agent Screens). Use when a task on this host needs a browser, a GUI, a password or the person's eyes on something.
+description: From a Rex session on this host, use the person's Olo desktop - open a link or a local server's page in their browser, reach a server of this host's there at the port it answers on here, read a secret from their Olo Passwords, and see and drive graphical apps on a screen of your own there (Olo Agent Screens). Use when a task on this host needs a browser, a GUI, a password or the person's eyes on something.
 ---
 
 # The Olo desktop, from this host
@@ -18,9 +18,23 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
 
 - **A link in the person's browser**: `olo open https://example.com`.
   A `http://localhost:PORT` of this host is reached through a forward
-  Rex makes for it, where that is allowed. **A file of this host's**,
+  Rex makes for it, where that is allowed (at a free port there, unless
+  `olo forward` made one first). **A file of this host's**,
   by its whole path (`olo open /home/me/report.pdf`): copied to the
   desktop and opened in its app there (a picture in Olo's Viewer).
+- **A server of this host's, reached from the desktop**: `olo forward
+  5173` makes the desktop's localhost:5173 reach this host's
+  localhost:5173 (also `olo forward HOST:PORT`, or a URL, which it
+  prints at its address there). Make one before anything whose page
+  must be at the same address there as here: a sign-in link, a cookie,
+  the address an OAuth provider sends the browser back to. It serves
+  the person's browser and your Agent Screens alike, and `olo open` and
+  `olo screen` go through it. `--port N` for another port there,
+  `--any-port` for a free one. `olo forward ls` lists this host's
+  forwards there (`--json`), `olo forward close PORT` closes one made
+  from here (the person's own are theirs). It lasts until closed or
+  this Rex session ends; a port taken there is said, never quietly
+  changed.
 - **A secret from Olo Passwords** (1Password's command line, answered
   on the desktop after the person approves there; no secret is kept on
   this host): `olo op read op://Vault/Item/field`. Changes too, as
@@ -60,7 +74,8 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
 Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):
 `rex do olo.open target=URL`, `rex do olo.op --args '{"args":[…]}'`,
-`rex do olo.screen --args '{"args":[…]}'`, `rex do olo.notify title=…`,
+`rex do olo.screen --args '{"args":[…]}'`, `rex do olo.forward --args
+'{"args":["5173"]}'`, `rex do olo.notify title=…`,
 `rex do olo.clipboard.set text=…`, `rex do olo.clipboard.get --args
 '{}'`; an answer that says `pending` is
 waited for with `rex do olo.wait id=…`, and a picture an answer lists

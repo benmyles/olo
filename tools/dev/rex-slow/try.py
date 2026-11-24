@@ -354,7 +354,8 @@ done
 exit 0
 """)
     os.chmod(f"{fake}/olo-op", 0o755)
-    with Rig("shell", delay=0, far=True, env=[f"OLO_REX_BRIDGE_BIN={fake}"], bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
+    # (OLO_SESSION: the kit listens for olo-session's word of an upgrade, which the forward's case below gives.)
+    with Rig("shell", delay=0, far=True, env=[f"OLO_REX_BRIDGE_BIN={fake}", "OLO_SESSION=1"], bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
         # (The rig's far host is this computer, and its Rex server the rig's one: the app is connected to it
         # twice, as this computer and as "far". A program there names the client it means, as it would where
         # two Olo desktops show one host; the far one is the one that refuses what "far" isn't granted.)
@@ -446,6 +447,63 @@ exit 0
         r.grant("far", agent_screens=False)
         line = r.wait(lambda: (lambda b: b if b and b.startswith("Off") else None)(bridge()), 10)
         check("taken back", line and do("olo.screen", {"args": ["tree", "agent"]}).get("ok") is False, line)
+        # `olo forward`: a server of the host's reached from here at the port it names. (The rig's far host is
+        # this computer: the server's own port is taken here by the server itself, which is the "taken" case;
+        # the forward is made at another port, and what answers there came through it.)
+        import socket, threading, signal as signals
+        server = socket.socket(); server.bind(("127.0.0.1", 0)); server.listen(); far_port = server.getsockname()[1]
+        def serve():
+            while True:
+                try: c, _ = server.accept()
+                except OSError: return
+                c.sendall(b"far server"); c.close()
+        threading.Thread(target=serve, daemon=True).start()
+        def free():
+            with socket.socket() as f: f.bind(("127.0.0.1", 0)); return f.getsockname()[1]
+        def reached(port):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=3) as c: return c.recv(64)
+            except OSError: return None
+        # (The far client, as above: the app's connection as this computer's own answers that a port of its
+        # own is here already, which the skill's command, picking the client that shows its session, gets.)
+        fwd = lambda *a: (lambda o: (o.get("stdout") or "") + (o.get("stderr") or ""))(do("olo.forward", {"args": list(a)}))
+        local = ran(f"{olo} forward {far_port}")
+        check("forward: the skill's command, this computer's own server: here already", local == f"localhost:{far_port}", local)
+        refused = do("olo.forward", {"args": [str(far_port)]})
+        check("forward: not granted, refused", refused.get("ok") is False and "Reach its local servers" in str(refused.get("stderr")), refused)
+        r.grant("far", forward_ports=True)
+        taken = r.wait(lambda: (lambda o: o if "taken" in o else None)(fwd(str(far_port))), 10)
+        check("forward: its own port taken here, said", taken and "--any-port" in taken, taken)
+        here = free()
+        made = fwd(str(far_port), "--port", str(here))
+        check("forward: made at the port asked", made == f"localhost:{here}\n", made)
+        check("forward: the host's server answers here", reached(here) == b"far server", reached(here))
+        again = fwd(str(far_port), "--port", str(here))
+        check("forward: asked again, the same one", again == made and fwd("ls").count(f"localhost:{far_port}") == 1, again)
+        url = fwd(f"http://localhost:{far_port}/sign-in?next=/", "--port", str(here))
+        check("forward: a URL, said at its address here", url == f"http://localhost:{here}/sign-in?next=/\n", url)
+        listed = fwd("ls")
+        check("forward: listed, as made by olo forward", f"{here}" in listed and f"localhost:{far_port}" in listed and "olo forward" in listed, listed)
+        clash = fwd(str(free()), "--port", str(here))
+        check("forward: its port here held by its own forward, said", f"olo forward close {here}" in clash, clash)
+        # Over an upgrade in place (its binary changed, olo-session's SIGURG: Rex re-executes with what it
+        # saved): the forward back at its port, through its own block, none left orphaned on the server.
+        before = {w["id"] for w in r.windows()}
+        os.utime(r.bin)
+        os.kill(r.win["pid"], signals.SIGURG)
+        again = r.wait(lambda: (lambda now: now if now and not (now & before) else None)({w["id"] for w in r.windows()}), 30, every=0.2)
+        back = r.wait(lambda: reached(here) == b"far server", 60, every=0.5)
+        blocks = json.loads(r.rex("forward", "ls", "--all", "--json") or "{}").get("forwards", [])
+        check("forward: back at its port after an upgrade in place, its own block, nothing orphaned",
+              again and back and len(blocks) == 1 and all(b.get("state") == "active" for b in blocks), {"re-executed": bool(again), "back": back, "blocks": [(b.get("block_id"), b.get("state")) for b in blocks]})
+        # (A new client of the app's after it: the far one found again.)
+        clients = [c["client_id"] for c in first(r.far.ran(f"{rex} client ls --json 2>/dev/null")).get("clients", []) if c.get("info", {}).get("kind") == "app" and c.get("connection_state") == "connected"]
+        for c in clients:
+            client[0] = c
+            if "olo forward" in fwd("ls"): break
+        closed = fwd("close", str(here))
+        check("forward: closed", closed == f"closed {here}\n" and r.wait(lambda: reached(here) is None, 5, every=0.1), closed)
+        server.close()
         print("PASS" if ok else "FAIL")
 elif what == "pool":
     # The Token Pool put on the far host over SSH by the desktop pool's own code, kept in step, borrowed from and

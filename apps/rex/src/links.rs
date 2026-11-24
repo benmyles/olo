@@ -147,7 +147,13 @@ pub fn parse_localhost_url(url: &str) -> Option<(String, u16, String)> {
     }
     let port: u16 = port_s.parse().ok()?;
     let target_host = if host_clean == "0.0.0.0" { "127.0.0.1" } else { host_clean };
-    Some((target_host.to_owned(), port, format!("{scheme}://127.0.0.1:{{PORT}}{path_and_query}")))
+    // (Here, the page is at the name it was given: `localhost` stays
+    // `localhost`, as its cookies and the address a sign-in sends the
+    // browser back to name it; the forward listens on 127.0.0.1, which
+    // a browser reaches by either. ::1 and 0.0.0.0, not listened on
+    // here, become `localhost`.)
+    let here = if host_clean == "127.0.0.1" { "127.0.0.1" } else { "localhost" };
+    Some((target_host.to_owned(), port, format!("{scheme}://{here}:{{PORT}}{path_and_query}")))
 }
 
 #[cfg(test)]
@@ -163,6 +169,19 @@ mod tests {
             LinkTarget::Url(u) => u,
             LinkTarget::FilePath { path, .. } => path,
         }
+    }
+
+    /// A page of a host's own is opened here at the name it was given
+    /// (a cookie for localhost isn't one for 127.0.0.1), at the port its
+    /// forward has here.
+    #[test]
+    fn a_hosts_page_keeps_its_name_here() {
+        let at = |url: &str| parse_localhost_url(url).map(|(host, port, tmpl)| (host, port, tmpl.replace("{PORT}", "5173")));
+        assert_eq!(at("http://localhost:5173/sign-in?next=/"), Some(("localhost".into(), 5173, "http://localhost:5173/sign-in?next=/".into())));
+        assert_eq!(at("http://127.0.0.1:8000/a"), Some(("127.0.0.1".into(), 8000, "http://127.0.0.1:5173/a".into())));
+        assert_eq!(at("http://0.0.0.0:3000"), Some(("127.0.0.1".into(), 3000, "http://localhost:5173".into())));
+        assert_eq!(at("https://[::1]:9000/x"), Some(("::1".into(), 9000, "https://localhost:5173/x".into())));
+        assert_eq!(at("http://example.com:80/"), None);
     }
 
     #[test]

@@ -98,6 +98,10 @@ pub struct SavedAppState {
     /// session and pane.
     #[serde(default)]
     pub help: Vec<(String, String, String, crate::agent::Help)>,
+    /// The forwards, each taken up again at its port when its host
+    /// connects (`hub::SavedForward`).
+    #[serde(default)]
+    pub forwards: Vec<crate::hub::SavedForward>,
 }
 
 /// Under this width (points) a pane's Auto Approve countdown says only
@@ -334,6 +338,11 @@ static WINS: OnceLock<Mutex<WinRegistry>> = OnceLock::new();
 
 pub fn app() -> olo_sync::MutexGuard<'static, RexApp> {
     APP.wait().lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The hub, where the app has started (its lock let go at once).
+pub fn app_hub() -> Option<Arc<RexHub>> {
+    APP.get().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hub.clone())
 }
 
 fn wins() -> olo_sync::MutexGuard<'static, WinRegistry> {

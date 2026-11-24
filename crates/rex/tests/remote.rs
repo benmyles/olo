@@ -240,9 +240,43 @@ case!(remote_forwards, {
     fwd.stop();
     assert_eq!(timeout(Duration::from_secs(2), active.read(&mut [0])).await??, 0);
     assert!(TcpStream::connect(addr).await.is_err());
-    let refused = start_local_forward(ctrl, ep, sid, "127.0.0.1".into(), 1, 0).await?;
+    let refused = start_local_forward(ctrl.clone(), ep.clone(), sid.clone(), "127.0.0.1".into(), 1, 0).await?;
     let mut peer = TcpStream::connect(refused.local_addr).await?;
     assert_eq!(timeout(Duration::from_secs(3), peer.read(&mut [0])).await??, 0);
+    // Left as Rex leaves its forwards across an upgrade in place (its
+    // process ends; the block stays on the server, owned by nobody), and
+    // taken up by another client on the same port: no second block.
+    let left = start_local_forward(ctrl.clone(), ep.clone(), sid.clone(), "127.0.0.1".into(), port, 0).await?;
+    let (block, here) = (left.block_id.clone(), left.local_addr);
+    left.leave();
+    let freed = Instant::now();
+    while TcpStream::connect(here).await.is_ok() {
+        assert!(freed.elapsed() < Duration::from_secs(2), "the left forward still listens");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let (other, _) = connect(&ep, None).await?;
+    other.session_bootstrap("all", None, None, &[]).await?;
+    let again = resume_local_forward(other.clone(), ep.clone(), sid.clone(), block.clone(), "127.0.0.1".into(), port, here.port()).await?;
+    assert_eq!(again.local_addr, here);
+    let mut peer = TcpStream::connect(here).await?;
+    peer.write_all(b"again").await?;
+    let mut seen = [0u8; 5];
+    timeout(Duration::from_secs(3), peer.read_exact(&mut seen)).await??;
+    assert_eq!(&seen, b"again");
+    // Stopped, it closes its block: there is nothing to take up then.
+    again.stop();
+    assert_eq!(timeout(Duration::from_secs(2), peer.read(&mut [0])).await??, 0);
+    let gone = Instant::now();
+    loop {
+        match resume_local_forward(other.clone(), ep.clone(), sid.clone(), block.clone(), "127.0.0.1".into(), port, 0).await {
+            Err(_) => break,
+            Ok(still) => {
+                still.leave();
+                assert!(gone.elapsed() < Duration::from_secs(2), "a closed forward's block was taken up again");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
     Ok(())
 });
 

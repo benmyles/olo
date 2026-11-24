@@ -11,6 +11,7 @@ mod attach;
 mod attention;
 mod bridge;
 mod copy_mode;
+mod forwards;
 mod frame;
 mod git;
 mod host;
@@ -113,12 +114,15 @@ fn main() {
     let restored: Option<SavedAppState> = restored_raw.as_deref().and_then(|s| serde_json::from_str::<SavedAppState>(s).ok());
     hub::set_let_go(restored.as_ref().map(|a| a.let_go.clone()).unwrap_or_default());
     hub::set_helps(restored.as_ref().map(|a| a.help.clone()).unwrap_or_default());
+    hub::set_saved_forwards(restored.as_ref().map(|a| a.forwards.clone()).unwrap_or_default());
     let restored_workspaces: Vec<SavedWorkspaceState> = restored.map(|a| a.workspaces).unwrap_or_default();
 
     // Register multi-window in-place upgrade hook so windows & sessions survive Olo upgrades!
     olo_kit::on_upgrade(|per_window| {
         let workspaces: Vec<SavedWorkspaceState> = per_window.into_iter().filter_map(|s| serde_json::from_str::<SavedWorkspaceState>(&s).ok()).collect();
-        if workspaces.is_empty() { None } else { serde_json::to_string(&SavedAppState { workspaces, let_go: hub::let_go(), help: hub::helps() }).ok() }
+        // (The hub taken from the app's lock before its own is.)
+        let forwards = ui::app_hub().map(|hub| hub.saved_forwards()).unwrap_or_default();
+        if workspaces.is_empty() { None } else { serde_json::to_string(&SavedAppState { workspaces, let_go: hub::let_go(), help: hub::helps(), forwards }).ok() }
     });
 
     let mut settings = Settings::load();

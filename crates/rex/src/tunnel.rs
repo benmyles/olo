@@ -37,6 +37,9 @@ pub struct LocalForwardHandle {
     pub total_connections: Arc<AtomicU64>,
     _stop: oneshot::Sender<()>,
     restore: mpsc::Sender<Restore>,
+    /// Set by [`LocalForwardHandle::leave`]: the forward's block is left
+    /// open on the server as it stops here.
+    left: Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct Restore {
@@ -63,19 +66,21 @@ impl LocalForwardHandle {
     pub fn stop(self) {
         drop(self);
     }
+
+    /// Stops listening here and leaves the forward's block open on the
+    /// server, as a client that ends without closing it does (Rex
+    /// itself across an upgrade in place): another client takes it up
+    /// again with [`resume_local_forward`].
+    pub fn leave(self) {
+        self.left.store(true, Ordering::Relaxed);
+        drop(self);
+    }
 }
 
 /// Create a `com.superlogical.tunnel.dial` block on the Rex server, bind a local
 /// loopback TCP listener on `127.0.0.1:<local_port>` (0 picks an ephemeral port),
 /// and relay every accepted TCP connection through `rex.data.bytes.v1`.
-pub async fn start_local_forward(
-    mut control: ControlClient,
-    mut endpoint: RexEndpoint,
-    session_id: String,
-    remote_host: String,
-    remote_port: u16,
-    local_port: u16,
-) -> Result<LocalForwardHandle, RexError> {
+pub async fn start_local_forward(control: ControlClient, endpoint: RexEndpoint, session_id: String, remote_host: String, remote_port: u16, local_port: u16) -> Result<LocalForwardHandle, RexError> {
     let listener = TcpListener::bind(("127.0.0.1", local_port)).await?;
     let local_addr = listener.local_addr()?;
 
@@ -96,7 +101,42 @@ pub async fn start_local_forward(
         let _ = control.block_close(&session_id, &block_id).await;
         return Err(e);
     }
+    Ok(run_local_forward(listener, local_addr, control, endpoint, session_id, block_id, remote_host, remote_port))
+}
 
+/// Takes up a forward's block that another client made and left open
+/// (Rex before an upgrade in place: its process ended without closing
+/// it, and the server lists it as orphaned), listening again on
+/// `127.0.0.1:<local_port>`. An error where the block is gone or isn't
+/// a forward's to own; the caller makes a new one then.
+pub async fn resume_local_forward(
+    control: ControlClient,
+    endpoint: RexEndpoint,
+    session_id: String,
+    block_id: String,
+    remote_host: String,
+    remote_port: u16,
+    local_port: u16,
+) -> Result<LocalForwardHandle, RexError> {
+    let listener = TcpListener::bind(("127.0.0.1", local_port)).await?;
+    let local_addr = listener.local_addr()?;
+    control.session_own_block(&session_id, &block_id).await?;
+    Ok(run_local_forward(listener, local_addr, control, endpoint, session_id, block_id, remote_host, remote_port))
+}
+
+/// A forward's work once its block is owned: each connection accepted on
+/// `listener` relayed through the block, until the handle is dropped.
+#[allow(clippy::too_many_arguments)]
+fn run_local_forward(
+    listener: TcpListener,
+    local_addr: SocketAddr,
+    mut control: ControlClient,
+    mut endpoint: RexEndpoint,
+    session_id: String,
+    block_id: String,
+    remote_host: String,
+    remote_port: u16,
+) -> LocalForwardHandle {
     let active_connections = Arc::new(AtomicU64::new(0));
     let total_connections = Arc::new(AtomicU64::new(0));
     let (stop, mut stopping) = oneshot::channel();
@@ -106,6 +146,8 @@ pub async fn start_local_forward(
     let total_c = total_connections.clone();
     let sid_c = session_id.clone();
     let bid_c = block_id.clone();
+    let left = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let left_c = left.clone();
 
     tokio::spawn(async move {
         let mut relays = tokio::task::JoinSet::new();
@@ -180,10 +222,12 @@ pub async fn start_local_forward(
         drop(listener);
         relays.shutdown().await;
         active_c.store(0, Ordering::Relaxed);
-        let _ = control.block_close(&sid_c, &bid_c).await;
+        if !left_c.load(Ordering::Relaxed) {
+            let _ = control.block_close(&sid_c, &bid_c).await;
+        }
     });
 
-    Ok(LocalForwardHandle { session_id, block_id, local_addr, remote_host, remote_port, active_connections, total_connections, _stop: stop, restore })
+    LocalForwardHandle { session_id, block_id, local_addr, remote_host, remote_port, active_connections, total_connections, _stop: stop, restore, left }
 }
 
 /// Relay one accepted reverse-tunnel (`-R` / `com.superlogical.tunnel.listen`)
