@@ -975,6 +975,40 @@ impl ToDoApp {
         todos.get(at + 1).or_else(|| at.checked_sub(1).and_then(|p| todos.get(p))).map(|s| (*s).to_owned())
     }
 
+    /// On a board, the chosen one stepped up or down its lane (`across`
+    /// false) or to the lane beside it, at the same place down it (true;
+    /// past an empty lane to the next with to-dos): a board's lanes are
+    /// read as columns, not in the list's order. With none chosen, the
+    /// first lane's first.
+    pub fn step_board(&mut self, by: isize, across: bool, cx: &mut Cx<Self>) {
+        let columns = self.columns.clone();
+        let uid_of = |i: usize| self.book.items.get(i).map(|item| item.todo.uid.clone());
+        let at = self.selected.as_deref().and_then(|s| columns.iter().enumerate().find_map(|(k, (_, items))| items.iter().position(|&i| uid_of(i).as_deref() == Some(s)).map(|n| (k, n))));
+        let to = match at {
+            None => columns.iter().find_map(|(_, items)| items.first().copied()),
+            Some((k, n)) if !across => {
+                let items = &columns[k].1;
+                items.get((n as isize + by).clamp(0, items.len() as isize - 1) as usize).copied()
+            }
+            Some((k, n)) => {
+                let mut lane = k as isize + by;
+                let mut found = None;
+                while lane >= 0 && (lane as usize) < columns.len() {
+                    let items = &columns[lane as usize].1;
+                    if !items.is_empty() {
+                        found = items.get(n.min(items.len() - 1)).copied();
+                        break;
+                    }
+                    lane += by;
+                }
+                found
+            }
+        };
+        if let Some(uid) = to.and_then(uid_of) {
+            self.select(Some(uid), cx);
+        }
+    }
+
     /// The chosen one stepped up or down the rows.
     pub fn step(&mut self, by: isize, cx: &mut Cx<Self>) {
         // (Its to-dos by their places among the book's: none copied.)

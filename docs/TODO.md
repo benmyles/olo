@@ -2498,11 +2498,10 @@ something nobody here has is in "Blocked", with what it waits for.
   sync can be put under it with nothing moved; Fastmail and others have
   task lists); to-dos due on a day shown in Calendar on that day (the
   item as first written said "in Calendar once that is there"); a
-  to-do that repeats (RRULE: Calendar's engine reads them); ↑ and ↓ on
-  a board stepping down a lane and ← → across lanes (they step in the
-  list's order now); several to-dos chosen at once (to move, to check
-  off); weekdays' and months' names in the person's language (with
-  Calendar's: Language, below).
+  to-do that repeats (RRULE: Calendar's engine reads them); several
+  to-dos chosen at once (to move, to check off); weekdays' and months'
+  names in the person's language (with Calendar's: Language, below).
+  (Done 2026-11-24: ↑ and ↓ on a board down a lane, ← → across.)
 
 - **The chord panel in the menu's words** (2026-11-20; both reviewers
   of the panel). While a group of shortcuts waits, the panel names each

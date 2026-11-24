@@ -25187,7 +25187,13 @@ test -p olo-todo`):
 - **`demo::fill(root, now)`**: made-up lists for pictures and the
   layout lint (`OLO_TODO_DEMO=1` with an empty `OLO_TODO_DIR`).
 
-## To-Do (apps/todo, `olo-todo`)
+## To-Do (apps/todo, `olo-todo`; its package `olo-todo-app`)
+
+The keys, where nothing typed in has the keyboard: ↑ and ↓ step through
+the to-dos (on a board down the chosen one's lane, ← and → to the lane
+beside it at the same place down it, past an empty lane: `step_board`;
+they went in the list's order before), Space checks one off, Return
+opens it, Delete deletes it.
 
 One window of three panes (`view.rs`): the places and the lists down the
 left (the kit's `Sidebar`, each list a dot of its colour, how many each

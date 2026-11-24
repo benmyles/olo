@@ -3082,3 +3082,11 @@ this one is, and what differs:
   for them); netem isn't loaded; the GPU is lavapipe, which crashes a
   process at exit after two Vulkan contexts were made and let go at
   once in it. Each of these broke a test that passed on Ben's computer.
+
+**A package's name isn't always its program's** (2026-11-24): To-Do's
+app is the package `olo-todo-app` (its program `olo-todo`); `jato build
+-p olo-todo` builds the engine crate of that name, and a test desktop
+then runs the program as it last was, which looked like a key handler
+never called. Before trusting a picture of a change, check the
+program's time (`ls -l target/debug/PROGRAM`) or build by its package
+(`grep '^name' apps/X/Cargo.toml`).

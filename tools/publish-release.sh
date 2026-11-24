@@ -128,8 +128,10 @@ if ! gh release create "$TAG" --title "$TITLE" --target "$SHA" --notes-file "$WO
     gh release view "$TAG" > /dev/null 2>&1 || fail "GitHub didn't take the release (see $LOG)"
     say "the release is there, some of its files may not be: sent again below"
 fi
-# (A file that didn't go up, or went up short, is sent again.)
-whole() { gh release view "$TAG" --json assets -q ".assets[] | select(.name == \"$(basename "$1")\") | .size" 2>/dev/null; }
+# (A file that didn't go up, or went up short, is sent again. What gh
+# says when it can't answer goes to the log: an empty answer was read as
+# "not whole", and update 8's check failed on a file that was.)
+whole() { gh release view "$TAG" --json assets -q ".assets[] | select(.name == \"$(basename "$1")\") | .size" 2>>"$LOG"; }
 for f in "${FILES[@]}"; do
     for try in 1 2 3; do
         [ "$(whole "$f")" = "$(stat -c %s "$f")" ] && break
@@ -139,8 +141,19 @@ for f in "${FILES[@]}"; do
 done
 
 step "8. checked"
+# (Asked again, a few seconds apart, before a file is said not to be
+# whole: GitHub's answer just after a large upload can lag or fail, and
+# update 8's wallpapers, whole there, were said not to be 7 s after they
+# were seen whole.)
 for f in "${FILES[@]}"; do
-    [ "$(whole "$f")" = "$(stat -c %s "$f")" ] || fail "$(basename "$f") isn't whole on GitHub after three tries"
+    want=$(stat -c %s "$f")
+    for try in 1 2 3 4 5; do
+        got=$(whole "$f")
+        [ "$got" = "$want" ] && break
+        [ "$try" = 5 ] && fail "$(basename "$f") isn't whole on GitHub: it says ${got:-nothing} of $want bytes"
+        say "$(basename "$f"): GitHub says ${got:-nothing} of $want bytes; asking again in 10 s ($try of 5)"
+        sleep 10
+    done
 done
 URL=$(gh release view "$TAG" --json url -q .url)
 say "published $URL"

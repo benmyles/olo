@@ -473,13 +473,19 @@ fn main_column(v: &mut ToDoApp, width: f32, board_h: f32, cx: &mut Cx<ToDoApp>) 
         col = col.child(div().px(px(list::CHECK_X)).py(px(4.0)).child(StringView::new(olo_kit::tr!("Couldn't save the change: {}", problem)).small(true).color(style::c(p.failure)).cut(true)));
     }
     // Keys, where nothing that's typed in has the keyboard: ↑ and ↓ step
-    // through the to-dos, Space checks the chosen one off, Return opens it,
+    // through the to-dos (on a board down a lane, ← and → across the
+    // lanes), Space checks the chosen one off, Return opens it,
     // Delete deletes it, Escape lets go of it.
     let keys = cx.listener(|v: &mut ToDoApp, e: &KeyDownEvent, cx| {
         if e.keystroke.modifiers.modified() {
             return;
         }
         match e.keystroke.key.as_str() {
+            // (On a board, down its lane, and ← → across the lanes.)
+            "up" if v.layout() == Layout::Board => v.step_board(-1, false, cx),
+            "down" if v.layout() == Layout::Board => v.step_board(1, false, cx),
+            "left" if v.layout() == Layout::Board => v.step_board(-1, true, cx),
+            "right" if v.layout() == Layout::Board => v.step_board(1, true, cx),
             "up" => v.step(-1, cx),
             "down" => v.step(1, cx),
             "space" if v.selected.is_some() => {
