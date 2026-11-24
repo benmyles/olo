@@ -34,13 +34,19 @@ pub struct Button {
     min_width: f32,
     /// Working on what it started (`Button::working`): how far, if known.
     working: Option<Option<f32>>,
+    /// It opens a menu (`Button::menu`).
+    menu: bool,
     on_click: Option<Handler>,
 }
+
+/// How much wider a button is that opens a menu: its triangle and the
+/// room before it.
+pub const MENU_MARK_ROOM: f32 = 14.0;
 
 impl Button {
     pub fn new(label: impl Into<SharedString>) -> Button {
         let label = crate::words::of(label);
-        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, on_click: None }
+        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, menu: false, on_click: None }
     }
 
     /// Its id, when two buttons share a label.
@@ -57,6 +63,17 @@ impl Button {
     /// Drawn held down: the chosen one of a set of tool buttons.
     pub fn pushed(mut self, on: bool) -> Self {
         self.pushed = on;
+        self
+    }
+
+    /// It opens a menu: a triangle pointing down after its label, as a
+    /// pop-up's and the filter bar's have, so it doesn't look like it
+    /// does what it says at once (Opus's look at Passwords' New for an SSH
+    /// key, 2026-11-24: "Nobody will expect a menu from New"); the button
+    /// `MENU_MARK_ROOM` wider for it, and held down while its menu is
+    /// open where its click says so (`pushed`).
+    pub fn menu(mut self) -> Self {
+        self.menu = true;
         self
     }
 
@@ -115,16 +132,19 @@ impl IntoElement for Button {
         let font_size = if self.small { style::DETAIL_SIZE } else { style::PLAIN_SIZE };
         let pad = if self.small { m::CONTROL_PAD * 0.6 } else { m::CONTROL_PAD };
         let tw = f32::from(style::text_width(self.label.clone(), font_size, style::ui_font(FontWeight::NORMAL)));
-        let w = (((tw + 2.0 * pad).max(self.min_width)) / 2.0).ceil() * 2.0;
+        let mark = if self.menu { MENU_MARK_ROOM } else { 0.0 };
+        let w = (((tw + 2.0 * pad + mark).max(self.min_width)) / 2.0).ceil() * 2.0;
         let h = if self.small { SMALL_BUTTON_HEIGHT } else { m::CONTROL_HEIGHT };
-        let (label, default, pushed, working) = (self.label.clone(), self.default, self.pushed, self.working);
+        let (label, default, pushed, working, menu) = (self.label.clone(), self.default, self.pushed, self.working, self.menu);
         let mut c = control(self.id.clone(), w, h, move |g, r, s| match working {
             Some(done) => paint_working(g, r, &label, done, font_size),
-            None => paint_button(g, r, s, &label, default, pushed, font_size),
+            None => {
+                paint_button(g, r, s, &label, default, pushed, font_size, menu);
+            }
         })
         // (How far, to a thousandth: drawn again as it moves, not for
         // each tick of a job's count.)
-        .look((&self.label, default, pushed, self.small, working.map(|d| d.map(|f| (f.clamp(0.0, 1.0) * 1000.0).round() as u32))))
+        .look((&self.label, default, pushed, self.small, menu, working.map(|d| d.map(|f| (f.clamp(0.0, 1.0) * 1000.0).round() as u32))))
         .enabled(self.enabled)
         .focusable();
         // (Its meter says it can't be pressed now: not faded too. Dimmed in
@@ -186,7 +206,7 @@ impl IntoElement for ArrowButton {
     fn into_element(self) -> Element {
         let back = self.back;
         let mut c = control(self.id.clone(), m::CONTROL_HEIGHT, m::CONTROL_HEIGHT, move |g, r, s| {
-            paint_button(g, r, s, "", false, false, style::PLAIN_SIZE);
+            paint_button(g, r, s, "", false, false, style::PLAIN_SIZE, false);
             let p = theme::palette();
             let off = if s.pressed { style::hairline(g) } else { px(0.0) };
             let at = Bounds { origin: point(r.left() + off, r.top() + off), size: r.size };
@@ -283,7 +303,7 @@ impl IntoElement for GlyphButton {
             let p = theme::palette();
             let over = s.enabled && (s.hovered || s.pressed);
             if over {
-                paint_button(g, r, s, "", false, false, style::DETAIL_SIZE);
+                paint_button(g, r, s, "", false, false, style::DETAIL_SIZE, false);
             }
             let ink = match (s.enabled, over) {
                 (false, _) => style::disabled_text(&p),
@@ -524,7 +544,8 @@ fn dims_itself() -> bool {
     theme::palette().mode == olo_theme::ThemeMode::Dark
 }
 
-fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str, default: bool, pushed: bool, font_size: f32) {
+#[allow(clippy::too_many_arguments)]
+fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str, default: bool, pushed: bool, font_size: f32, menu: bool) {
     let p = theme::palette();
     let bg = p.panel_background;
     // (Dimmed in a dark look: its face, groove and bevel as faded as a
@@ -561,7 +582,28 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     let off = if s.pressed && !pushed { style::hairline(g) } else { px(0.0) };
     let color = if s.enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
     let c = r.center();
-    let text = style::label(g, c.x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(FontWeight::NORMAL), color);
+    // (One that opens a menu: its label and the mark, the filter bar's
+    // triangle, centred together, the mark 7 points after the label as
+    // the bar has it: the room it was given went between the word and the
+    // mark, which read as a stray mark. Opus's look, 2026-11-24.)
+    const GAP: f32 = 7.0;
+    const MARK: f32 = 8.0;
+    let tw = if menu { style::text_width_app(label, font_size, &style::ui_font(FontWeight::NORMAL)) } else { 0.0 };
+    let unit_left = c.x - px((tw + GAP + MARK) / 2.0);
+    let label_x = if menu { unit_left + px(tw / 2.0) } else { c.x };
+    let text = style::label(g, label_x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(FontWeight::NORMAL), color);
+    if menu {
+        let ax = style::snap_coord(g, unit_left + px(tw + GAP + MARK / 2.0)) + off;
+        let ay = px(f32::from(c.y).round()) + off;
+        let mut path = olo_interface::PathBuilder::fill();
+        path.move_to(point(ax - px(4.0), ay - px(2.0)));
+        path.line_to(point(ax + px(4.0), ay - px(2.0)));
+        path.line_to(point(ax, ay + px(2.5)));
+        path.close();
+        if let Ok(path) = path.build() {
+            g.paint_path(path, color);
+        }
+    }
     if s.focused {
         focus_underline(g, text, &p);
     }

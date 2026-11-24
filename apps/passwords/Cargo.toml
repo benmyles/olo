@@ -31,10 +31,14 @@ p256 = { version = "0.14", features = ["pkcs8"] }
 # SEC1 was read as no key at all, and never offered.)
 p384 = { version = "0.14", features = ["pkcs8"] }
 p521 = { version = "0.14", features = ["pkcs8"] }
-# The SSH agent (`agent`): OpenSSH keys parsed and signed with, natively.
-ssh-key = { version = "=0.7.0-rc.11", default-features = false, features = ["std", "ed25519", "rsa", "p256", "p384", "p521"] }
-# (ssh-key's own: PKCS#8 RSA keys read, its signing trait.)
+# The SSH agent (`agent`): OpenSSH keys parsed and signed with, natively;
+# and a key file under a passphrase opened as it's imported (`sshkey`:
+# "encryption", whose crates the build has already, for Rex's keys).
+ssh-key = { version = "=0.7.0-rc.11", default-features = false, features = ["std", "ed25519", "rsa", "p256", "p384", "p521", "encryption"] }
+# (ssh-key's own: PKCS#8 RSA keys read and written, its signing trait;
+# an RSA key made with the system's random source, through `rand_core`.)
 rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["std", "encoding"] }
+rand_core = { version = "0.10", default-features = false }
 signature = "3"
 libc = "0.2"
 sha2 = "0.11"

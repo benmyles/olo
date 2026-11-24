@@ -941,6 +941,9 @@ Consentito con {}
 Along the Top
 Lungo il bordo superiore
 
+Already saved as “{}”.
+Già salvata come “{}”.
+
 Also from the Deskbar: click the cup.
 Puoi anche fare clic sulla tazza nella Deskbar.
 
@@ -2893,6 +2896,9 @@ Impossibile verificare {}
 
 Couldn’t look at {} again
 Impossibile verificare di nuovo {}
+
+Couldn’t make the key: {}
+Impossibile creare la chiave: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 Impossibile creare la cassaforte in 1Password. Anche gli elementi che contiene non sono stati inviati. {}
@@ -5251,8 +5257,14 @@ L’opzione Immediatamente richiede un componente che solo l’amministratore pu
 Import
 Importa
 
+Import Key File
+Importa file della chiave
+
 Import WireGuard…
 Importa WireGuard…
+
+Imported the key.
+Chiave importata.
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Importazione completata: {}{}{}. Alcune impostazioni verranno applicate al prossimo avvio delle app già aperte.{}
@@ -6393,6 +6405,9 @@ MacBook
 Machine:
 Macchina:
 
+Made a new {} key.
+Creata una nuova chiave {}.
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Creato qui. Dopo la tua verifica verrà creato anche in 1Password ({}) alla prossima sincronizzazione.
 
@@ -7082,6 +7097,9 @@ Nuova finestra di navigazione in incognito
 
 New Item
 Nuovo elemento
+
+New Key
+Nuova chiave
 
 New List
 Nuovo elenco
@@ -9990,6 +10008,9 @@ Agente SSH
 SSH Authentication
 Autenticazione SSH
 
+SSH Key
+Chiave SSH
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 Per impostazione predefinita SSH consente dieci sessioni per connessione; ogni riquadro ne usa una.
 
@@ -11514,6 +11535,9 @@ Strumento testo
 Text:
 Testo:
 
+That file isn’t a key Passwords can import: {}
+Quel file non è una chiave che Passwords può importare: {}
+
 That isn't a telephone number or an address.
 Inserisci un numero di telefono o un indirizzo valido.
 
@@ -11528,6 +11552,9 @@ La password del backup non è corretta.
 
 That isn’t a Copr project’s name.
 Nome del progetto Copr non valido.
+
+That passphrase didn’t open “{}”.
+Quella frase segreta non ha aperto “{}”.
 
 That password isn’t right.
 Password errata.
@@ -13701,6 +13728,9 @@ Documento Word…
 Working
 Al lavoro
 
+Working on the key…
+Preparazione della chiave…
+
 Working out what it comes to: every package it needs, and what it replaces…
 Calcolo dei pacchetti necessari e di quelli da sostituire…
 
@@ -14568,6 +14598,9 @@ scaduta, {}
 
 part of the screen
 parte dello schermo
+
+passphrase
+frase segreta
 
 plugged in, charge limit {}%
 collegato alla corrente, limite di carica {}%
@@ -16166,6 +16199,9 @@ Impossibile scrivere “{}”: {}
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 “{}” è già presente. Sostituirlo con la versione modificata {} o conservare entrambe? Il nome della versione ripristinata includerà l’orario.
+
+“{}” is under a passphrase.
+“{}” è protetto da una frase segreta.
 
 “{}” isn't a domain.
 “{}” non è un dominio.

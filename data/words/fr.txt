@@ -941,6 +941,9 @@ Autorisé avec {}
 Along the Top
 En haut
 
+Already saved as “{}”.
+Déjà enregistrée sous « {} ».
+
 Also from the Deskbar: click the cup.
 Aussi depuis la Deskbar : cliquez sur la tasse.
 
@@ -2893,6 +2896,9 @@ Impossible d’inspecter {}
 
 Couldn’t look at {} again
 Impossible d’inspecter {} à nouveau
+
+Couldn’t make the key: {}
+Impossible de créer la clé : {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 Impossible de créer ce coffre dans 1Password, ses éléments n’ont donc pas été envoyés non plus. {}
@@ -5251,8 +5257,14 @@ Immédiatement nécessite un petit assistant que seul l’administrateur peut in
 Import
 Importer
 
+Import Key File
+Importer un fichier de clé
+
 Import WireGuard…
 Importer WireGuard…
+
+Imported the key.
+Clé importée.
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Importé {}{}{}. Les apps ouvertes prennent certains réglages à leur prochain démarrage.{}
@@ -6393,6 +6405,9 @@ MacBook
 Machine:
 Machine :
 
+Made a new {} key.
+Nouvelle clé {} créée.
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Créé ici maintenant, et dans 1Password ({}) à la prochaine synchronisation, une fois que vous l’aurez vérifié.
 
@@ -7082,6 +7097,9 @@ Nouvelle fenêtre de navigation privée
 
 New Item
 Nouvel élément
+
+New Key
+Nouvelle clé
 
 New List
 Nouvelle liste
@@ -9990,6 +10008,9 @@ Agent SSH
 SSH Authentication
 Authentification SSH
 
+SSH Key
+Clé SSH
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH autorise dix sessions par connexion par défaut ; chaque volet en utilise une.
 
@@ -11514,6 +11535,9 @@ Outil de texte
 Text:
 Texte :
 
+That file isn’t a key Passwords can import: {}
+Ce fichier n’est pas une clé que Passwords peut importer : {}
+
 That isn't a telephone number or an address.
 Ce n’est ni un numéro de téléphone ni une adresse.
 
@@ -11528,6 +11552,9 @@ Ce n’est pas le mot de passe de la sauvegarde.
 
 That isn’t a Copr project’s name.
 Ce n’est pas le nom d’un projet Copr.
+
+That passphrase didn’t open “{}”.
+Cette phrase secrète n’a pas ouvert « {} ».
 
 That password isn’t right.
 Ce mot de passe n’est pas le bon.
@@ -13701,6 +13728,9 @@ Document Word…
 Working
 Au travail
 
+Working on the key…
+Préparation de la clé…
+
 Working out what it comes to: every package it needs, and what it replaces…
 Calcul de ce que cela implique : chaque paquet nécessaire, et ce qu’il remplace…
 
@@ -14568,6 +14598,9 @@ en retard, {}
 
 part of the screen
 une partie de l’écran
+
+passphrase
+phrase secrète
 
 plugged in, charge limit {}%
 sur secteur, limite de charge à {} %
@@ -16166,6 +16199,9 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 « {} » est là maintenant. Le remplacer par la version modifiée {}, ou garder les deux (la restaurée nommée avec son heure) ?
+
+“{}” is under a passphrase.
+« {} » est protégé par une phrase secrète.
 
 “{}” isn't a domain.
 « {} » n’est pas un domaine.

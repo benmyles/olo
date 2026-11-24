@@ -21,6 +21,7 @@ mod generator;
 mod lock;
 mod passkey;
 mod qr;
+mod sshkey;
 mod store;
 mod sync;
 mod undo;
@@ -193,6 +194,32 @@ fn remove_message(removed: &[Linked]) -> String {
     } else {
         olo_kit::tr!("Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.", names)
     }
+}
+
+/// A key worked on for the editor's SSH key field `field` (of item
+/// `item`: its id, "" for a new one): a key file chosen (to read and open
+/// off the UI thread), a key made, a key file opened.
+enum KeyWork {
+    Chosen {
+        item: String,
+        field: String,
+        path: std::path::PathBuf,
+    },
+    Made {
+        item: String,
+        field: String,
+        kind: sshkey::Kind,
+        got: Result<String, String>,
+    },
+    /// `text`: the file's, kept while it waits for its passphrase; `name`:
+    /// the file's, for the item's title if it has none.
+    Opened {
+        item: String,
+        field: String,
+        text: String,
+        name: String,
+        got: Result<String, sshkey::Refused>,
+    },
 }
 
 /// Whether app_server approves requests without asking (Deskbar's key),
@@ -397,9 +424,13 @@ pub struct Ui {
     /// The editor's fields came or went: counted, and its form is made
     /// again when this moves.
     pub form: u64,
-    /// A value put in the form from outside (the generator's Use): the
-    /// field, and its text.
-    pub form_value: Option<(usize, String)>,
+    /// A value put in the form from outside (the generator's Use, a key
+    /// made or imported): the field, its text, and whether it's shown.
+    pub form_value: Option<(usize, String, bool)>,
+    /// The key file's passphrase field takes the keyboard (an import waits
+    /// for it), or lets go of what was typed in it.
+    pub focus_passphrase: bool,
+    pub clear_passphrase: bool,
 }
 
 pub struct Passwords {
@@ -1931,7 +1962,157 @@ impl Passwords {
         let Some(i) = editor.fields.iter().position(|f| f.id == field) else { return };
         editor.fields[i].value = password.clone();
         editor.fields[i].reveal = true;
-        self.ui.form_value = Some((i, password));
+        self.ui.form_value = Some((i, password, true));
+        self.changed();
+    }
+
+    /// A new SSH key of `kind` in the editor's field `field`: made on a
+    /// worker thread (an RSA key of 4096 bits takes a second or more) and
+    /// put there when made, if the editor is still on that item.
+    pub fn make_key(&mut self, field: String, kind: sshkey::Kind) {
+        let Some(e) = self.editor.as_mut() else { return };
+        if e.key_busy.is_some() {
+            return;
+        }
+        let item = e.item_id().unwrap_or("").to_owned();
+        e.key_busy = Some(field.clone());
+        e.key_import = None;
+        let proxy = self.proxy.clone();
+        let spawned = std::thread::Builder::new().name("make-key".into()).spawn(move || proxy.send(KeyWork::Made { item, field, kind, got: sshkey::generate(kind) }));
+        if spawned.is_err()
+            && let Some(e) = self.editor.as_mut()
+        {
+            e.key_busy = None;
+        }
+        self.changed();
+    }
+
+    /// A key file chosen in an Open panel (in `~/.ssh` where there is
+    /// one), imported into the editor's field `field` on a worker thread:
+    /// one under a passphrase asks for it under the field.
+    pub fn import_key(&mut self, field: String) {
+        let Some(e) = self.editor.as_ref() else { return };
+        let item = e.item_id().unwrap_or("").to_owned();
+        let home = std::env::var_os("HOME").map_or_else(|| std::path::PathBuf::from("/"), std::path::PathBuf::from);
+        let ssh = home.join(".ssh");
+        let dir = if ssh.is_dir() { ssh } else { home };
+        let proxy = self.proxy.clone();
+        olo_kit::file_panel::show(olo_kit::words::tr("Import Key File"), olo_kit::file_panel::FilePanel::open(dir), move |answer| {
+            if let olo_kit::file_panel::PanelResult::Chosen(path) = answer.result {
+                proxy.send(KeyWork::Chosen { item, field, path });
+            }
+        });
+    }
+
+    /// The passphrase typed for a key file being imported: tried on a
+    /// worker thread (opening one takes most of a second, by design).
+    pub fn open_key_with(&mut self, passphrase: String) {
+        let Some(e) = self.editor.as_mut() else { return };
+        let Some(import) = e.key_import.as_ref() else { return };
+        if e.key_busy.is_some() || passphrase.is_empty() {
+            return;
+        }
+        let (item, field, text, name) = (e.item_id().unwrap_or("").to_owned(), import.field.clone(), import.text.clone(), import.name.clone());
+        e.key_busy = Some(field.clone());
+        self.ui.clear_passphrase = true;
+        let proxy = self.proxy.clone();
+        let spawned = std::thread::Builder::new().name("open-key".into()).spawn(move || {
+            let got = sshkey::import(&text, Some(&passphrase));
+            proxy.send(KeyWork::Opened { item, field, text, name, got })
+        });
+        if spawned.is_err()
+            && let Some(e) = self.editor.as_mut()
+        {
+            e.key_busy = None;
+        }
+        self.changed();
+    }
+
+    /// The key file waiting for its passphrase let go of.
+    pub fn cancel_key_import(&mut self) {
+        if let Some(e) = self.editor.as_mut() {
+            e.key_import = None;
+        }
+        self.ui.clear_passphrase = true;
+        self.changed();
+    }
+
+    /// What a worker made or opened for a key field, put in the editor if
+    /// it's still on that item.
+    fn key_work(&mut self, work: KeyWork) {
+        let (item, field) = match &work {
+            KeyWork::Chosen { item, field, .. } | KeyWork::Made { item, field, .. } | KeyWork::Opened { item, field, .. } => (item.clone(), field.clone()),
+        };
+        let Some(e) = self.editor.as_mut().filter(|e| e.item_id().unwrap_or("") == item) else { return };
+        let got = match work {
+            // (Read and opened off the UI thread: a file can be anywhere.)
+            KeyWork::Chosen { path, .. } => {
+                e.key_busy = Some(field.clone());
+                e.key_import = None;
+                let proxy = self.proxy.clone();
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let _ = std::thread::Builder::new().name("open-key".into()).spawn(move || {
+                    let text = match std::fs::File::open(&path).and_then(|f| {
+                        let mut text = String::new();
+                        std::io::Read::read_to_string(&mut std::io::Read::take(f, 1 << 20), &mut text).map(|_| text)
+                    }) {
+                        Ok(text) => text,
+                        Err(e) => return proxy.send(KeyWork::Opened { item, field, text: String::new(), name, got: Err(sshkey::Refused::Unread(e.to_string())) }),
+                    };
+                    let got = sshkey::import(&text, None);
+                    proxy.send(KeyWork::Opened { item, field, text, name, got })
+                });
+                self.changed();
+                return;
+            }
+            KeyWork::Made { kind, got, .. } => {
+                e.key_busy = None;
+                match got {
+                    Ok(key) => {
+                        self.flash(olo_kit::tr!("Made a new {} key.", kind.label()));
+                        Ok(key)
+                    }
+                    Err(why) => Err(olo_kit::tr!("Couldn’t make the key: {}", why).to_string()),
+                }
+            }
+            KeyWork::Opened { text, name, got, .. } => {
+                e.key_busy = None;
+                match got {
+                    Ok(key) => {
+                        e.key_import = None;
+                        // (Named after its file, as it was on disk, when
+                        // nothing else names it yet.)
+                        if e.title.trim().is_empty() && !name.is_empty() {
+                            e.title = name;
+                            self.ui.form += 1;
+                        }
+                        self.flash(olo_kit::words::tr("Imported the key."));
+                        Ok(key)
+                    }
+                    Err(sshkey::Refused::Passphrase { wrong }) => {
+                        e.key_import = Some(edit::KeyImport { field, text, wrong, name });
+                        self.ui.focus_passphrase = true;
+                        self.changed();
+                        return;
+                    }
+                    Err(sshkey::Refused::Unread(why)) => {
+                        e.key_import = None;
+                        Err(olo_kit::tr!("That file isn’t a key Passwords can import: {}", why).to_string())
+                    }
+                }
+            }
+        };
+        match got {
+            Ok(key) => {
+                let Some(e) = self.editor.as_mut() else { return };
+                if let Some(i) = e.fields.iter().position(|f| f.id == field) {
+                    e.fields[i].value = key.clone();
+                    e.fields[i].reveal = false;
+                    self.ui.form_value = Some((i, key, false));
+                }
+            }
+            Err(why) => self.show_error(why),
+        }
         self.changed();
     }
 
@@ -2643,6 +2824,13 @@ impl Passwords {
                     self.now_unlocked();
                 }
                 self.changed();
+                return;
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<KeyWork>() {
+            Ok(work) => {
+                self.key_work(*work);
                 return;
             }
             Err(m) => m,

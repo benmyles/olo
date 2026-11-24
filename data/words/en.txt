@@ -310,6 +310,7 @@ Allow {} to sign in to your hosts with your SSH keys?
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Allowed with {}
 Along the Top
+Already saved as “{}”.
 Also from the Deskbar: click the cup.
 Also leave out:
 Also used by
@@ -958,6 +959,7 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 Couldn’t look at {}
 Couldn’t look at {} again
+Couldn’t make the key: {}
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 Couldn’t open the file.
 Couldn’t open the sign-in page: {}.
@@ -1741,7 +1743,9 @@ Ignore the touchpad while typing
 Image
 Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.
 Import
+Import Key File
 Import WireGuard…
+Imported the key.
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
@@ -2120,6 +2124,7 @@ Luna 6
 MTU:
 MacBook
 Machine:
+Made a new {} key.
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Made room for newer ones
 Made the vault “{}”.
@@ -2350,6 +2355,7 @@ New Folder
 New Group…
 New Incognito Window
 New Item
+New Key
 New List
 New List…
 New Login
@@ -3318,6 +3324,7 @@ SSD temperature
 SSE
 SSH Agent
 SSH Authentication
+SSH Key
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH keys
 SSH keys offered: {}.
@@ -3825,11 +3832,13 @@ Text messages
 Text messages to “{}”
 Text tool
 Text:
+That file isn’t a key Passwords can import: {}
 That isn't a telephone number or an address.
 That isn't a value.
 That isn't one of the repository's worktrees.
 That isn't the backup's password.
 That isn’t a Copr project’s name.
+That passphrase didn’t open “{}”.
 That password isn’t right.
 That password isn’t right. Try again:
 That secret is empty in Passwords.
@@ -4554,6 +4563,7 @@ With this on, a program woken while the processors are busy runs at once instead
 Withdrawn by {}
 Word Document…
 Working
+Working on the key…
 Working out what it comes to: every package it needs, and what it replaces…
 Working…
 Works on a picture of the desktop.
@@ -4839,6 +4849,7 @@ organizer
 out of the archive
 overdue, {}
 part of the screen
+passphrase
 plugged in, charge limit {}%
 plugged in, held at the {}% limit
 plugged in, not charging
@@ -5349,6 +5360,7 @@ your own picture
 “{}” is still running in this window. Close it anyway?
 “{}” is there now.
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
+“{}” is under a passphrase.
 “{}” isn't a domain.
 “{}” isn't a number
 “{}” isn't a picture StyledEdit can read.

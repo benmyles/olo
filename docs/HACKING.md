@@ -3105,6 +3105,10 @@ it.
 - The BeOS controls (see them all in the kit's `gallery`, `controls`
   and `widgets` examples, `crates/kit/examples`, run in a test
   session): `Button` (`default`, `pushed`, `small`, `on_click`;
+  `menu()`: it opens a menu, a triangle pointing down after its label,
+  the filter bar's own, the button `MENU_MARK_ROOM` (14 points) wider,
+  so it isn't taken for doing what it says at once (Opus's look at
+  Passwords' New for an SSH key: "Nobody will expect a menu from New");
   `working(done)`: the job it started under way, for one expected to
   take five seconds or more, its progress on the button itself while it
   can't be pressed again: its face the status bar's sunken well filled
@@ -25624,6 +25628,47 @@ value is to the dates' rule). Cost,
 release build: the rows worked out once a key and looked up after
 (0.11 µs a draw for an Ed25519 key, 0.57 µs for RSA 4096, the key's
 text hashed; 35 and 14 µs the first time).
+
+A key is made or imported here as 1Password does (`sshkey.rs`), and
+kept as 1Password keeps keys, PKCS#8 (Ed25519's version 1, its public
+key after its seed, as 1Password, ring and RustCrypto write one), so
+1Password shows the same of it once synced: New Item ▸ SSH Key, whose
+private key field has New (a pop-up of the kinds 1Password makes:
+Ed25519, set apart; RSA of 2048, 3072 and 4096 bits: `Button::menu`)
+and Import… (a key file chosen in the Open panel, in `~/.ssh` where
+there is one), under the field when the column is narrow, as every
+secret's buttons are: from the value's edge to the row's end, as wide as
+the value and its − together, each of one width (set to the row's end,
+a row wider than the field stuck out past it; then it ended at no edge).
+Each runs on a worker
+thread and its result comes back as `KeyWork` (release build: Ed25519
+13–66 µs; RSA 2048 12–59 ms, 3072 0.25–0.44 s, 4096 0.2–0.9 s, its
+primes found by chance; a key under a passphrase opened in 161 ms,
+bcrypt's rounds); "Working on the key…" shows under the field
+meanwhile, and a result for an editor no longer on that item is let
+go. A key file under a passphrase (OpenSSH's own format; the older
+forms under one are refused, saying why) asks for it under the field:
+one line naming the file ("“id_ed25519” is under a passphrase."; a
+wrong one, "That passphrase didn’t open “id_ed25519”.", in the warning's ink,
+one line too, so the form doesn't move), a Passphrase: row as the
+title's is, its field in the value's column (`keeps_enter`), and Cancel
+and Import, as far apart as Cancel and Add, the window's default
+meanwhile (Add or Save isn't); New, Import… and Show not there (their
+room is the prompt's) and the field's − dimmed. Imported, an item with no title takes the
+file's name. Close under the field, once it holds a key, a line says
+what it is: its type and its fingerprint's hash cut in the middle
+(people check one by its ends; the whole is in the item), the hash in
+the monospaced face, and "Already saved as “NAME”." in the warning's
+ink when another item has the same key (about to be saved twice); drawn
+2 points up in its own box, close under the field (a negative margin
+there had the form lay out what follows beside the buttons: being
+looked into); nothing while a file waits for its passphrase (it
+would read as the file's). Show is dimmed while a secret's field is
+empty. A key pasted in (a one-line field turns its
+line breaks to spaces, which `agent::unfolded` puts back) is kept as
+PKCS#8 when it's saved (`sshkey::normalized`, only when its value
+changed, so an item not edited isn't changed); one under a passphrase
+or on a curve is kept as it is.
 
 Passwords is the session's SSH agent (`agent.rs`; Preferences ▸ Security
 ▸ "Be the SSH agent", on by default): the agent protocol

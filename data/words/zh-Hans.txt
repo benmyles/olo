@@ -937,6 +937,9 @@ Allowed with {}
 Along the Top
 沿顶部排列
 
+Already saved as “{}”.
+已保存为“{}”。
+
 Also from the Deskbar: click the cup.
 也可以点击 Deskbar 上的杯子。
 
@@ -2880,6 +2883,9 @@ Couldn’t look at {}
 
 Couldn’t look at {} again
 无法重新检查 {}
+
+Couldn’t make the key: {}
+无法创建密钥：{}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 无法在 1Password 中创建此保险库，因此其中的项目也未发送。{}
@@ -5230,8 +5236,14 @@ Immediately needs a small helper that only the administrator can install. Until 
 Import
 导入
 
+Import Key File
+导入密钥文件
+
 Import WireGuard…
 导入 WireGuard…
+
+Imported the key.
+已导入密钥。
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 已导入{}{}{}。已打开的应用会在下次启动时应用部分设置。{}
@@ -6367,6 +6379,9 @@ MacBook
 Machine:
 机器：
 
+Made a new {} key.
+已创建新的 {} 密钥。
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 已在本机创建。经您确认后，下次同步时会在 1Password（{}）中创建。
 
@@ -7056,6 +7071,9 @@ New Incognito Window
 
 New Item
 新建项目
+
+New Key
+新密钥
 
 New List
 新建列表
@@ -9961,6 +9979,9 @@ SSH 代理
 SSH Authentication
 SSH 身份验证
 
+SSH Key
+SSH 密钥
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH 默认允许单条连接开启 10 个会话，每个窗格占用 1 个。
 
@@ -11482,6 +11503,9 @@ Text tool
 Text:
 文本：
 
+That file isn’t a key Passwords can import: {}
+该文件不是 Passwords 可以导入的密钥：{}
+
 That isn't a telephone number or an address.
 这不是电话号码或地址。
 
@@ -11496,6 +11520,9 @@ That isn't the backup's password.
 
 That isn’t a Copr project’s name.
 这不是有效的 Copr 项目名称。
+
+That passphrase didn’t open “{}”.
+该口令未能打开“{}”。
 
 That password isn’t right.
 密码不正确。
@@ -13669,6 +13696,9 @@ Word 文档…
 Working
 工作中
 
+Working on the key…
+正在准备密钥…
+
 Working out what it comes to: every package it needs, and what it replaces…
 正在计算所需的软件包及其替换的内容…
 
@@ -14523,6 +14553,9 @@ overdue, {}
 
 part of the screen
 屏幕的一部分
+
+passphrase
+口令
 
 plugged in, charge limit {}%
 已接电，充电上限 {}%
@@ -16053,6 +16086,9 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 “{}”已存在。用 {} 修改的版本替换，还是两者都保留？若两者都保留，会在恢复的文件名中加上时间。
+
+“{}” is under a passphrase.
+“{}”受口令保护。
 
 “{}” isn't a domain.
 “{}”不是域名。

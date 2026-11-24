@@ -937,6 +937,9 @@ Allowed with {}
 Along the Top
 上端に横置き
 
+Already saved as “{}”.
+「{}」として保存済みです。
+
 Also from the Deskbar: click the cup.
 Deskbarのカップをクリックしても操作できます。
 
@@ -2880,6 +2883,9 @@ Couldn’t look at {}
 
 Couldn’t look at {} again
 {}を再確認できませんでした
+
+Couldn’t make the key: {}
+鍵を作成できませんでした: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 1Passwordで保管庫を作成できず、中の項目も送信できませんでした。{}
@@ -5230,8 +5236,14 @@ Immediately needs a small helper that only the administrator can install. Until 
 Import
 インポート
 
+Import Key File
+鍵ファイルをインポート
+
 Import WireGuard…
 WireGuard設定をインポート…
+
+Imported the key.
+鍵をインポートしました。
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 {}{}{}をインポートしました。開いているアプリでは、一部の設定は次回の起動時に反映されます。{}
@@ -6367,6 +6379,9 @@ MacBook
 Machine:
 マシン:
 
+Made a new {} key.
+新しい {} 鍵を作成しました。
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 手元に作成しました。内容を確認すると、次回の同期で1Password（{}）にも作成します。
 
@@ -7056,6 +7071,9 @@ New Incognito Window
 
 New Item
 新規項目
+
+New Key
+新しい鍵
 
 New List
 新規リスト
@@ -9961,6 +9979,9 @@ SSHエージェント
 SSH Authentication
 SSH認証
 
+SSH Key
+SSH 鍵
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSHは既定で1接続あたり10セッションまで許可し、各ペインが1つ使います。
 
@@ -11482,6 +11503,9 @@ Text tool
 Text:
 テキスト:
 
+That file isn’t a key Passwords can import: {}
+そのファイルはPasswordsでインポートできる鍵ではありません: {}
+
 That isn't a telephone number or an address.
 電話番号またはアドレスを入力してください。
 
@@ -11496,6 +11520,9 @@ That isn't the backup's password.
 
 That isn’t a Copr project’s name.
 Coprのプロジェクト名として無効です。
+
+That passphrase didn’t open “{}”.
+そのパスフレーズでは「{}」を開けませんでした。
 
 That password isn’t right.
 パスワードが違います。
@@ -13669,6 +13696,9 @@ Word文書…
 Working
 作業中
 
+Working on the key…
+鍵を準備しています…
+
 Working out what it comes to: every package it needs, and what it replaces…
 必要なパッケージと置き換えるパッケージを確認中…
 
@@ -14523,6 +14553,9 @@ overdue, {}
 
 part of the screen
 画面の一部
+
+passphrase
+パスフレーズ
 
 plugged in, charge limit {}%
 電源接続中、充電上限{}%
@@ -16053,6 +16086,9 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 「{}」はすでにあります。{}に変更された版に置き換えますか？ 両方残す場合、復元する方の名前に時刻を付けます。
+
+“{}” is under a passphrase.
+「{}」はパスフレーズで保護されています。
 
 “{}” isn't a domain.
 「{}」はドメイン名ではありません。

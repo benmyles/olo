@@ -44,7 +44,7 @@ use crate::{
 };
 
 /// What File ▸ New Item offers, most used first.
-pub const NEW_CATEGORIES: [ItemCategory; 13] = [
+pub const NEW_CATEGORIES: [ItemCategory; 14] = [
     ItemCategory::Login,
     ItemCategory::Password,
     ItemCategory::SecureNote,
@@ -52,6 +52,7 @@ pub const NEW_CATEGORIES: [ItemCategory; 13] = [
     ItemCategory::Identity,
     ItemCategory::BankAccount,
     ItemCategory::ApiCredentials,
+    ItemCategory::SshKey,
     ItemCategory::Database,
     ItemCategory::Email,
     ItemCategory::Server,
@@ -1201,7 +1202,7 @@ fn why_not_offered(value: &str) -> Option<String> {
 
 /// What follows from the SSH key `value` (its public key, fingerprint and
 /// kind), worked out once a key, as [`why_not_offered`] is.
-fn derived_of(value: &str) -> Option<crate::agent::Derived> {
+pub(crate) fn derived_of(value: &str) -> Option<crate::agent::Derived> {
     use std::{cell::RefCell, collections::HashMap, hash::Hasher as _};
     thread_local! {
         static SEEN: RefCell<HashMap<u64, Option<crate::agent::Derived>>> = RefCell::new(HashMap::new());
@@ -1323,6 +1324,13 @@ impl Detail {
         Detail { form: None, form_rev: 0, reveals: Vec::new(), hover: None, press: None, scroll: ScrollHandle::new(), editor_scroll: ScrollHandle::new(), wake: Due::default(), width: 0.0 }
     }
 
+    /// The passphrase typed for a key file being imported, tried.
+    pub fn open_key(&mut self, cx: &mut Cx<Self>) {
+        let Some(form) = &self.form else { return };
+        let passphrase = form.passphrase.read(cx).text().to_string();
+        app().open_key_with(passphrase);
+    }
+
     /// Something was typed in the editor's field `slot`: into the editor.
     pub fn typed(&mut self, slot: Slot, cx: &mut Cx<Self>) {
         let Some(text) = self.form.as_ref().and_then(|f| f.field(slot)).map(|f| f.read(cx).text().to_owned()) else { return };
@@ -1347,12 +1355,20 @@ impl Detail {
             self.hover = None;
             self.press = None;
         }
-        if let Some((i, text)) = a.ui.form_value.take()
+        if let Some((i, text, shown)) = a.ui.form_value.take()
             && let Some(form) = &self.form
         {
-            form.set_value(i, &text, true, cx);
+            form.set_value(i, &text, shown, cx);
             if let Some(r) = self.reveals.get_mut(i) {
-                *r = true;
+                *r = shown;
+            }
+        }
+        if let Some(form) = &self.form {
+            if std::mem::take(&mut a.ui.clear_passphrase) {
+                form.passphrase.update(cx, |f, cx| f.set_text(String::new(), cx));
+            }
+            if std::mem::take(&mut a.ui.focus_passphrase) {
+                form.passphrase.focus(cx);
             }
         }
         if let (Some(e), Some(form)) = (&a.editor, &self.form) {
@@ -1619,7 +1635,19 @@ impl View for Detail {
                 form.focus_field(editor, i, cx);
             }
             let vaults: Vec<_> = a.vaults.iter().map(|v| onepassword::VaultOverview { title: a.vault_name(v), ..v.clone() }).collect();
-            let content = edit::view(editor, form, &vaults, pane - 2.0 * m::WINDOW_INSET, cx);
+            // (An SSH key already in another item: which, said under it.)
+            let mine = editor.item_id();
+            let same_key: std::collections::HashMap<String, String> = editor
+                .fields
+                .iter()
+                .filter(|f| f.kind == ItemFieldType::SshKey && !f.value.is_empty())
+                .filter_map(|f| {
+                    let print = derived_of(&f.value)?.fingerprint;
+                    let (id, _) = a.index.iter().find(|(id, s)| Some(id.as_str()) != mine && s.fingerprint.as_deref() == Some(print.as_str()))?;
+                    Some((f.id.clone(), a.overview(id)?.title.clone()))
+                })
+                .collect();
+            let content = edit::view(editor, form, &vaults, pane - 2.0 * m::WINDOW_INSET, &same_key, cx);
             drop(a);
             let view = ScrollView::new(&self.editor_scroll).border(false).auto_hide(true).child(div().p(px(m::WINDOW_INSET)).child(content));
             return well(e, p.document_background, view);

@@ -941,6 +941,9 @@ Toegestaan met {}
 Along the Top
 Langs de bovenkant
 
+Already saved as “{}”.
+Al bewaard als ‘{}’.
+
 Also from the Deskbar: click the cup.
 Ook via de Deskbar: klik op het kopje.
 
@@ -2893,6 +2896,9 @@ Couldn’t look at {}
 
 Couldn’t look at {} again
 {} opnieuw controleren mislukt
+
+Couldn’t make the key: {}
+Kan de sleutel niet maken: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 De kluis kon niet in 1Password worden gemaakt. De inhoud is daarom ook niet verzonden. {}
@@ -5251,8 +5257,14 @@ Voor Onmiddellijk is een hulpprogramma nodig dat alleen de beheerder kan install
 Import
 Importeren
 
+Import Key File
+Sleutelbestand importeren
+
 Import WireGuard…
 WireGuard importeren…
+
+Imported the key.
+Sleutel geïmporteerd.
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Geïmporteerd: {}{}{}. Sommige instellingen worden pas bij de volgende start van geopende apps toegepast.{}
@@ -6393,6 +6405,9 @@ MacBook
 Machine:
 Computer:
 
+Made a new {} key.
+Nieuwe {}-sleutel gemaakt.
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Hier aangemaakt. Na uw controle wordt het bij de volgende synchronisatie ook in 1Password ({}) aangemaakt.
 
@@ -7082,6 +7097,9 @@ Nieuw incognitovenster
 
 New Item
 Nieuw onderdeel
+
+New Key
+Nieuwe sleutel
 
 New List
 Nieuwe lijst
@@ -9990,6 +10008,9 @@ SSH-agent
 SSH Authentication
 SSH-authenticatie
 
+SSH Key
+SSH-sleutel
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH staat standaard tien sessies per verbinding toe; elk paneel gebruikt er één.
 
@@ -11514,6 +11535,9 @@ Tekstgereedschap
 Text:
 Tekst:
 
+That file isn’t a key Passwords can import: {}
+Dat bestand is geen sleutel die Passwords kan importeren: {}
+
 That isn't a telephone number or an address.
 Dit is geen telefoonnummer of adres.
 
@@ -11528,6 +11552,9 @@ Dit is niet het wachtwoord van de back-up.
 
 That isn’t a Copr project’s name.
 Dit is geen geldige Copr-projectnaam.
+
+That passphrase didn’t open “{}”.
+Die wachtzin opende ‘{}’ niet.
 
 That password isn’t right.
 Het wachtwoord is onjuist.
@@ -13701,6 +13728,9 @@ Word-document…
 Working
 Bezig
 
+Working on the key…
+Sleutel wordt voorbereid…
+
 Working out what it comes to: every package it needs, and what it replaces…
 Benodigde pakketten en te vervangen pakketten bepalen…
 
@@ -14568,6 +14598,9 @@ te laat, {}
 
 part of the screen
 een deel van het scherm
+
+passphrase
+wachtzin
 
 plugged in, charge limit {}%
 op netvoeding, laadlimiet {}%
@@ -16166,6 +16199,9 @@ Verbinding met ‘{}’ is verbroken.
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 ‘{}’ staat er al. Vervangen door de versie die {} is gewijzigd, of beide bewaren? De herstelde versie krijgt het tijdstip in de naam.
+
+“{}” is under a passphrase.
+‘{}’ is beveiligd met een wachtzin.
 
 “{}” isn't a domain.
 ‘{}’ is geen domein.

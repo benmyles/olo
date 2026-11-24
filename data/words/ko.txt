@@ -937,6 +937,9 @@ Allowed with {}
 Along the Top
 위쪽 가장자리에
 
+Already saved as “{}”.
+이미 ‘{}’(으)로 저장되어 있습니다.
+
 Also from the Deskbar: click the cup.
 Deskbar의 컵을 클릭해도 됩니다.
 
@@ -2880,6 +2883,9 @@ Couldn’t look at {}
 
 Couldn’t look at {} again
 {} 다시 확인 실패
+
+Couldn’t make the key: {}
+키를 만들 수 없습니다: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 1Password에 이 금고를 만들 수 없어 항목도 전송하지 않았습니다. {}
@@ -5230,8 +5236,14 @@ Immediately needs a small helper that only the administrator can install. Until 
 Import
 가져오기
 
+Import Key File
+키 파일 가져오기
+
 Import WireGuard…
 WireGuard 가져오기…
+
+Imported the key.
+키를 가져왔습니다.
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 {}{}{} 가져오기 완료. 열려 있는 앱의 일부 설정은 다음 실행 때 적용됩니다.{}
@@ -6367,6 +6379,9 @@ MacBook
 Machine:
 컴퓨터:
 
+Made a new {} key.
+새 {} 키를 만들었습니다.
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 여기에 만들었습니다. 검토 후 다음 동기화 때 1Password({})에도 만듭니다.
 
@@ -7056,6 +7071,9 @@ New Incognito Window
 
 New Item
 새 항목
+
+New Key
+새 키
 
 New List
 새 목록
@@ -9961,6 +9979,9 @@ SSH 에이전트
 SSH Authentication
 SSH 인증
 
+SSH Key
+SSH 키
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH는 기본적으로 연결당 세션을 10개까지 허용하며 각 패널이 하나씩 사용합니다.
 
@@ -11482,6 +11503,9 @@ Text tool
 Text:
 텍스트:
 
+That file isn’t a key Passwords can import: {}
+그 파일은 Passwords에서 가져올 수 있는 키가 아닙니다: {}
+
 That isn't a telephone number or an address.
 전화번호나 주소 형식이 아닙니다.
 
@@ -11496,6 +11520,9 @@ That isn't the backup's password.
 
 That isn’t a Copr project’s name.
 Copr 프로젝트 이름 형식이 아닙니다.
+
+That passphrase didn’t open “{}”.
+그 암호문으로는 ‘{}’을(를) 열지 못했습니다.
 
 That password isn’t right.
 암호가 일치하지 않습니다.
@@ -13669,6 +13696,9 @@ Word 문서…
 Working
 작업 중
 
+Working on the key…
+키를 준비하는 중…
+
 Working out what it comes to: every package it needs, and what it replaces…
 필요한 패키지와 교체할 패키지를 모두 확인하는 중…
 
@@ -14523,6 +14553,9 @@ overdue, {}
 
 part of the screen
 화면 일부
+
+passphrase
+암호문
 
 plugged in, charge limit {}%
 전원 연결됨, 충전 한도 {}%
@@ -16053,6 +16086,9 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 ‘{0}’ 항목이 이미 있습니다. {1}에 수정한 버전으로 교체할까요, 둘 다 보관할까요? 둘 다 보관하면 복원한 파일 이름에 시각을 붙입니다.
+
+“{}” is under a passphrase.
+‘{}’은(는) 암호문으로 보호되어 있습니다.
 
 “{}” isn't a domain.
 ‘{}’ 값은 도메인이 아닙니다.

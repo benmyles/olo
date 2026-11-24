@@ -949,6 +949,9 @@ Allowed with {}
 Along the Top
 Вдоль верхнего края
 
+Already saved as “{}”.
+Уже сохранён как «{}».
+
 Also from the Deskbar: click the cup.
 Можно также нажать на чашку в Deskbar.
 
@@ -2919,6 +2922,9 @@ Couldn’t look at {}
 
 Couldn’t look at {} again
 Не удалось снова проверить {}
+
+Couldn’t make the key: {}
+Не удалось создать ключ: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 Не удалось создать сейф в 1Password, поэтому его записи тоже не отправлены. {}
@@ -5293,8 +5299,14 @@ Immediately needs a small helper that only the administrator can install. Until 
 Import
 Импортировать
 
+Import Key File
+Импорт файла ключа
+
 Import WireGuard…
 Импортировать WireGuard…
+
+Imported the key.
+Ключ импортирован.
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Импортировано: {}{}{}. Некоторые настройки открытых приложений вступят в силу при следующем запуске.{}
@@ -6445,6 +6457,9 @@ MacBook
 Machine:
 Компьютер:
 
+Made a new {} key.
+Создан новый ключ {}.
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Запись уже создана здесь. В 1Password ({}) она появится при следующей синхронизации после вашей проверки.
 
@@ -7134,6 +7149,9 @@ New Incognito Window
 
 New Item
 Новая запись
+
+New Key
+Новый ключ
 
 New List
 Новый список
@@ -10048,6 +10066,9 @@ SSH Agent
 SSH Authentication
 Аутентификация SSH
 
+SSH Key
+Ключ SSH
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 По умолчанию SSH допускает десять сеансов на одно соединение; каждая панель занимает один.
 
@@ -11578,6 +11599,9 @@ Text tool
 Text:
 Текст:
 
+That file isn’t a key Passwords can import: {}
+Этот файл — не ключ, который Passwords может импортировать: {}
+
 That isn't a telephone number or an address.
 Это не номер телефона и не адрес.
 
@@ -11592,6 +11616,9 @@ That isn't the backup's password.
 
 That isn’t a Copr project’s name.
 Недопустимое имя проекта Copr.
+
+That passphrase didn’t open “{}”.
+Эта парольная фраза не открыла «{}».
 
 That password isn’t right.
 Неверный пароль.
@@ -13765,6 +13792,9 @@ Word Document…
 Working
 Работает
 
+Working on the key…
+Готовим ключ…
+
 Working out what it comes to: every package it needs, and what it replaces…
 Расчёт необходимых пакетов и замен…
 
@@ -14658,6 +14688,9 @@ overdue, {}
 
 part of the screen
 часть экрана
+
+passphrase
+парольная фраза
 
 plugged in, charge limit {}%
 от сети, предел заряда {}%
@@ -16392,6 +16425,9 @@ other: В этом окне работают «{}» и ещё {n} програм
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 «{}» уже есть. Заменить версией от {} или сохранить обе? К имени восстановленной версии добавится время.
+
+“{}” is under a passphrase.
+«{}» защищён парольной фразой.
 
 “{}” isn't a domain.
 «{}» — недопустимое доменное имя.

@@ -941,6 +941,9 @@ Allowed with {}
 Along the Top
 ऊपरी किनारे पर
 
+Already saved as “{}”.
+पहले से “{}” के रूप में सहेजी गई है।
+
 Also from the Deskbar: click the cup.
 Deskbar में कप पर क्लिक करके भी खोल सकते हैं।
 
@@ -2893,6 +2896,9 @@ Couldn’t look at {}
 
 Couldn’t look at {} again
 {} फिर नहीं देख सके
+
+Couldn’t make the key: {}
+कुंजी नहीं बन सकी: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 1Password में यह तिजोरी नहीं बना सके, इसलिए इसके आइटम भी नहीं भेजे गए। {}
@@ -5251,8 +5257,14 @@ Immediately needs a small helper that only the administrator can install. Until 
 Import
 आयात करें
 
+Import Key File
+कुंजी फ़ाइल आयात करें
+
 Import WireGuard…
 WireGuard आयात करें…
+
+Imported the key.
+कुंजी आयात की गई।
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 {}{}{} आयात हुआ। खुले ऐप की कुछ सेटिंग अगली शुरुआत पर लागू होंगी।{}
@@ -6393,6 +6405,9 @@ MacBook
 Machine:
 मशीन:
 
+Made a new {} key.
+नई {} कुंजी बनाई गई।
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 यहाँ बन गया। आपकी समीक्षा के बाद अगले सिंक पर 1Password ({}) में भी बनेगा।
 
@@ -7082,6 +7097,9 @@ New Incognito Window
 
 New Item
 नया आइटम
+
+New Key
+नई कुंजी
 
 New List
 नई सूची
@@ -9990,6 +10008,9 @@ SSH एजेंट
 SSH Authentication
 SSH प्रमाणीकरण
 
+SSH Key
+SSH कुंजी
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH डिफ़ॉल्ट रूप से एक कनेक्शन पर दस सत्रों की अनुमति देता है; हर पैनल एक इस्तेमाल करता है।
 
@@ -11514,6 +11535,9 @@ Text tool
 Text:
 टेक्स्ट:
 
+That file isn’t a key Passwords can import: {}
+वह फ़ाइल ऐसी कुंजी नहीं है जिसे Passwords आयात कर सके: {}
+
 That isn't a telephone number or an address.
 यह फ़ोन नंबर या पता नहीं है।
 
@@ -11528,6 +11552,9 @@ That isn't the backup's password.
 
 That isn’t a Copr project’s name.
 यह Copr प्रोजेक्ट का नाम नहीं है।
+
+That passphrase didn’t open “{}”.
+उस पासफ़्रेज़ से “{}” नहीं खुला।
 
 That password isn’t right.
 पासवर्ड सही नहीं है।
@@ -13701,6 +13728,9 @@ Word दस्तावेज़…
 Working
 काम चल रहा है
 
+Working on the key…
+कुंजी तैयार हो रही है…
+
 Working out what it comes to: every package it needs, and what it replaces…
 ज़रूरी पैकेज और उनकी जगह हटने वाले पैकेज गिने जा रहे हैं…
 
@@ -14568,6 +14598,9 @@ overdue, {}
 
 part of the screen
 स्क्रीन का हिस्सा
+
+passphrase
+पासफ़्रेज़
 
 plugged in, charge limit {}%
 बिजली जुड़ी है, चार्ज सीमा {}%
@@ -16166,6 +16199,9 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 “{}” पहले से मौजूद है। इसे {} को बदले संस्करण से बदलें या दोनों रखें? दोनों रखने पर बहाल प्रति के नाम में समय जुड़ेगा।
+
+“{}” is under a passphrase.
+“{}” पासफ़्रेज़ से सुरक्षित है।
 
 “{}” isn't a domain.
 “{}” डोमेन नहीं है।

@@ -111,7 +111,7 @@ pub struct Derived {
 pub fn derived(text: &str) -> Option<Derived> {
     let public = match private_key(text) {
         Ok(key) => key.public_key().clone(),
-        Err(_) => PrivateKey::from_openssh(text.trim()).ok()?.public_key().clone(),
+        Err(_) => PrivateKey::from_openssh(unfolded(text.trim()).as_ref()).ok()?.public_key().clone(),
     };
     let line = public.to_openssh().ok()?;
     // (Without its comment: a field's key has the item's name for that.)
@@ -211,10 +211,29 @@ DjO8EkGZruSxBVUAAAAAAQID
 -----END OPENSSH PRIVATE KEY-----
 ";
 
+/// A key pasted into a field of one line, whose line breaks it took as
+/// spaces ("-----BEGIN … KEY----- b3Bl… -----END … KEY-----"), with its
+/// lines again: OpenSSH's own at 70 characters, as its reader wants them,
+/// the others at 64, as PEM's are. Anything else as it is.
+fn unfolded(text: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    if text.contains('\n') || !text.starts_with("-----BEGIN ") {
+        return Cow::Borrowed(text);
+    }
+    let Some(head_end) = text[11..].find("-----").map(|i| i + 16) else { return Cow::Borrowed(text) };
+    let Some(foot) = text.rfind("-----END ").filter(|&f| f >= head_end) else { return Cow::Borrowed(text) };
+    let head = &text[..head_end];
+    let body: String = text[head_end..foot].split_whitespace().collect();
+    let width = if head.contains("OPENSSH") { 70 } else { 64 };
+    let lines: Vec<&str> = body.as_bytes().chunks(width).map(|c| std::str::from_utf8(c).unwrap_or_default()).collect();
+    Cow::Owned(format!("{head}\n{}\n{}\n", lines.join("\n"), text[foot..].trim()))
+}
+
 /// An SSH key as kept in a field's value: OpenSSH's own format, or PKCS#8
 /// (what 1Password makes: Ed25519, RSA, ECDSA P-256).
 pub fn private_key(text: &str) -> Result<PrivateKey, String> {
-    let text = text.trim();
+    let text = unfolded(text.trim());
+    let text = text.as_ref();
     if text.contains("BEGIN OPENSSH PRIVATE KEY") {
         let key = PrivateKey::from_openssh(text).map_err(|e| e.to_string())?;
         if key.is_encrypted() {
@@ -411,6 +430,14 @@ mod tests {
         assert_eq!(d.public, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPF/l1l1Yjf1ZDo7S9YRDQzknw0RUiTw94W3wGF8Pv31");
         assert_eq!(d.fingerprint, "SHA256:D28AeCdq4A9yMQ6UOvCrgZn7Hrtebl3lcaYCA8y4m7s");
         assert_eq!(d.kind, "Ed25519");
+        // A key pasted into a field of one line, its line breaks spaces:
+        // the same key, OpenSSH's, PKCS#8's, and one under a passphrase.
+        let one_line = |t: &str| t.replace('\n', " ");
+        assert_eq!(derived(&one_line(&text)), derived(&text));
+        assert_eq!(derived(&one_line(RSA_KEY)), derived(RSA_KEY));
+        assert_eq!(derived(&one_line(LOCKED_KEY)), derived(LOCKED_KEY));
+        let pkcs8 = crate::sshkey::kept(&key).unwrap();
+        assert_eq!(private_key(&one_line(&pkcs8)).unwrap().public_key().key_data(), key.public_key().key_data());
         // An RSA key, its size in 1Password's words.
         let rsa = derived(RSA_KEY).expect("an RSA key");
         assert_eq!(rsa.kind, "RSA, 2048-bit");

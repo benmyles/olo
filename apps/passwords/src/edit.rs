@@ -39,6 +39,23 @@ pub struct Editor {
     pub tags: String,
     /// Why the last Save didn't (what 1Password wouldn't take).
     pub error: Option<String>,
+    /// A key file being imported into an SSH key field that waits for its
+    /// passphrase (asked for under the field).
+    pub key_import: Option<KeyImport>,
+    /// The SSH key field a key is being made or opened for, on a worker
+    /// thread (an RSA key of 4096 bits takes a second or more).
+    pub key_busy: Option<String>,
+}
+
+/// A key file under a passphrase, being imported into field `field`.
+pub struct KeyImport {
+    pub field: String,
+    /// The file's text (its key still sealed by the passphrase).
+    pub text: String,
+    /// The last passphrase given didn't open it.
+    pub wrong: bool,
+    /// The file's name, the item's title if it has none.
+    pub name: String,
 }
 
 /// A fresh custom field id, as 1Password makes them.
@@ -82,6 +99,9 @@ fn template(category: ItemCategory) -> Vec<EditField> {
         ItemCategory::Email => vec![field("username", "username", Email), field("password", "password", Concealed), field("server", "server", Text)],
         ItemCategory::Router => vec![field("network_name", "network name", Text), field("wireless_password", "password", Concealed)],
         ItemCategory::SoftwareLicense => vec![field("reg_code", "license key", Concealed), field("reg_name", "licensed to", Text)],
+        // (Made or imported with the field's New and Import…: 1Password's
+        // id and label.)
+        ItemCategory::SshKey => vec![field("private_key", "private key", SshKey)],
         _ => Vec::new(),
     }
 }
@@ -133,7 +153,7 @@ impl Editor {
             f.value = pw;
         }
         let websites = if category == ItemCategory::Login { vec![(String::new(), "website".into(), AutofillBehavior::AnywhereOnWebsite)] } else { Vec::new() };
-        Editor { base: None, category, vault, title: String::new(), fields, sections: Vec::new(), websites, notes: String::new(), tags: String::new(), error: None }
+        Editor { base: None, category, vault, title: String::new(), fields, sections: Vec::new(), websites, notes: String::new(), tags: String::new(), error: None, key_import: None, key_busy: None }
     }
 
     pub fn edit(item: &Item, vault: usize) -> Editor {
@@ -162,6 +182,8 @@ impl Editor {
             notes: item.notes.clone(),
             tags: item.tags.join(", "),
             error: None,
+            key_import: None,
+            key_busy: None,
         }
     }
 
@@ -180,6 +202,11 @@ impl Editor {
                     // Its text as 1Password wrote it while the parts are the same.
                     let value = base.filter(|b| fields::address(b) == f.address).map_or_else(|| fields::address_text(&f.address), |b| b.value.clone());
                     (value, Some(ItemFieldDetails::Address(Some(f.address.clone()))))
+                } else if f.kind == ItemFieldType::SshKey && base.is_none_or(|b| b.value != f.value) {
+                    // (A key typed or pasted in, kept as one made or
+                    // imported is, PKCS#8, as 1Password keeps it: so
+                    // 1Password shows the same of it.)
+                    (crate::sshkey::normalized(&f.value), None)
                 } else {
                     // Keep what 1Password computed unless the value changed.
                     (f.value.clone(), base.filter(|b| b.value == f.value).and_then(|b| b.details.clone()))
@@ -399,6 +426,8 @@ pub struct EditForm {
     websites: Vec<Child<TextField>>,
     notes: Child<TextField>,
     tags: Child<TextField>,
+    /// A key file's passphrase, while an import waits for one.
+    pub passphrase: Child<TextField>,
 }
 
 impl EditForm {
@@ -470,7 +499,15 @@ impl EditForm {
                 d.typed(Slot::Notes, cx);
             }
         });
-        EditForm { title, labels, values, parts, websites, notes, tags }
+        // (Its Return imports the key: the window's default button, Add or
+        // Save, would take it.)
+        let passphrase = text_field(cx, |f| f.name("Passphrase").password(true).keeps_enter());
+        cx.subscribe(&passphrase, |d: &mut Detail, ev: &TextFieldEvent, cx| {
+            if let TextFieldEvent::Entered = ev {
+                d.open_key(cx);
+            }
+        });
+        EditForm { title, labels, values, parts, websites, notes, tags, passphrase }
     }
 
     /// Field `i`'s value set from outside (the generator's Use).
@@ -493,10 +530,107 @@ impl EditForm {
     }
 }
 
+/// Close under an SSH key's field, once it holds a key: what it is, its
+/// type and its fingerprint's hash cut in the middle (people check a
+/// fingerprint by its ends: the whole is in the item once it's saved), the
+/// hash in the monospaced face as everywhere else; and when another item
+/// has the same key, which. "Working on the key…" while one is made or
+/// opened; nothing while a file waits for its passphrase (the key line
+/// above its question would read as the file's).
+fn key_line(e: &Editor, f: &EditField, label_w: f32, same: Option<&String>) -> Option<Element> {
+    if e.key_import.as_ref().is_some_and(|k| k.field == f.id) {
+        return None;
+    }
+    let busy = e.key_busy.as_deref() == Some(f.id.as_str());
+    let d = (!busy && !f.value.is_empty()).then(|| crate::view::derived_of(&f.value)).flatten();
+    if !busy && d.is_none() {
+        return None;
+    }
+    let (kind, hash, whole) = match &d {
+        Some(d) => {
+            let hash: Vec<char> = d.fingerprint.trim_start_matches("SHA256:").chars().collect();
+            let cut = if hash.len() > 16 { format!("{}…{}", hash[..8].iter().collect::<String>(), hash[hash.len() - 7..].iter().collect::<String>()) } else { hash.iter().collect() };
+            (format!("{} · ", d.kind), cut, format!("{} · {}", d.kind, d.fingerprint))
+        }
+        None => (olo_kit::words::tr("Working on the key…").to_owned(), String::new(), String::new()),
+    };
+    let same: Option<String> = same.map(|t| olo_kit::tr!("Already saved as “{}”.", t).to_string());
+    let lines = 1 + same.is_some() as usize;
+    let line_h = (style::SMALL_SIZE * style::LINE_HEIGHT).ceil();
+    let key = style::key((&kind, &hash, &same));
+    let face = canvas(move |g, b| {
+        let p = theme::palette();
+        let ink = style::disabled_text(&p);
+        let x = b.left() + px(label_w + m::TIGHT);
+        let room = (b.right() - x).max(px(0.0));
+        // (Its letters 2 points under the field's foot: the field's row has
+        // 2 under it, and a line's box 2.5 over its letters. Drawn up in its
+        // own box, not set up by a margin under nothing, which the layout
+        // took to put what follows the field beside its buttons.)
+        let y = b.top() + px(line_h / 2.0 - 2.0);
+        let k = style::label_fit(g, x, y, style::Align::Left, kind.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
+        let mut all = k;
+        if !hash.is_empty() {
+            let h = style::label_fit(g, k.right(), y, style::Align::Left, hash.clone(), style::SMALL_SIZE, style::mono_font(FontWeight::NORMAL), ink, (b.right() - k.right()).max(px(0.0)));
+            all = all.union(&h);
+        }
+        // (That it's already saved in the warning's ink: about to be saved
+        // twice, the one thing here to act on.)
+        if let Some(same) = &same {
+            let warn = style::c(olo_theme::readable(p.warning, p.document_background, 4.5));
+            let s = style::label_fit(g, x, y + px(line_h), style::Align::Left, same.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), warn, room);
+            all = all.union(&s);
+        }
+        let said: SharedString = match &same {
+            Some(same) if !whole.is_empty() => format!("{whole}. {same}").into(),
+            _ if !whole.is_empty() => whole.clone().into(),
+            _ => kind.clone().into(),
+        };
+        olo_kit::agent::record(g, olo_kit::agent::Node { role: "Label", name: Some("key".into()), value: Some(said), bounds: all, enabled: true, ..Default::default() });
+    })
+    .paint_key(key)
+    .absolute()
+    .inset_0();
+    Some(div().relative().w_full().h(px(lines as f32 * line_h - 2.0)).flex_shrink_0().child(face).into_any_element())
+}
+
+/// While a key file waits for its passphrase, under its SSH key field: a
+/// line naming it (in the warning's ink once a passphrase didn't open
+/// it), the passphrase in a row of its own as the title's is, and Cancel
+/// and Import (the window's default meanwhile) at its end. One line each,
+/// so a wrong passphrase doesn't move the form.
+fn passphrase_rows(e: &Editor, form: &EditForm, f: &EditField, label_w: f32, minus: f32, cx: &mut Cx<Detail>) -> Vec<Element> {
+    let Some(import) = e.key_import.as_ref().filter(|k| k.field == f.id) else { return Vec::new() };
+    let p = theme::palette();
+    let said = if import.wrong { olo_kit::tr!("That passphrase didn’t open “{}”.", import.name) } else { olo_kit::tr!("“{}” is under a passphrase.", import.name) };
+    let mut sentence = StringView::new(said).wrap(true);
+    sentence = if import.wrong { sentence.color(style::c(olo_theme::readable(p.warning, p.document_background, 4.5))) } else { sentence.dim(true) };
+    let busy = e.key_busy.is_some();
+    let line = || div().flex().flex_row().items_center().gap(px(m::TIGHT)).h(px(m::CONTROL_HEIGHT + 4.0)).flex_shrink_0();
+    vec![
+        div().mt(px(m::SPACING)).child(sentence).into_any_element(),
+        line()
+            .mt(px(2.0))
+            .child(div().flex_1().min_w_0().child(TextControl::new(cx, &form.passphrase).label("Passphrase:").divider(label_w + m::TIGHT)))
+            .child(div().w(px(minus)).flex_shrink_0())
+            .into_any_element(),
+        line()
+            .mt(px(2.0))
+            .justify_end()
+            .gap(px(m::SPACING))
+            .child(Button::new("Cancel").id("edit-key-cancel").on_click(|_: &ClickEvent, _| app().cancel_key_import()))
+            .child(Button::new("Import").id("edit-key-open").default(true).enabled(!busy).on_click(cx.listener(|d: &mut Detail, _: &ClickEvent, cx| d.open_key(cx))))
+            .child(div().w(px(minus + m::TIGHT - m::SPACING)).flex_shrink_0())
+            .into_any_element(),
+    ]
+}
+
 /// The form: the title, each section's fields (their labels and values,
 /// a secret's Show and New, −) and its own Add Field…, the websites, notes and tags, why it
 /// can't be saved, and Cancel and Save; `width` wide.
-pub fn view(e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, cx: &mut Cx<Detail>) -> Element {
+/// `same_key`: for an SSH key field, the title of another item that has
+/// the same key.
+pub fn view(e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, same_key: &std::collections::HashMap<String, String>, cx: &mut Cx<Detail>) -> Element {
     let p = theme::palette();
     let divider = 84.0;
     let label_w = divider + 40.0;
@@ -527,22 +661,88 @@ pub fn view(e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, c
                 let id = f.id.clone();
                 secret_buttons.push(Button::new("New").id(format!("edit-new-{i}")).min_width(56.0).on_click(move |_: &ClickEvent, _| app().generate_for(id.clone())));
             }
-            if concealed(f.kind) {
-                secret_buttons.push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_: &ClickEvent, _| app().toggle_edit_reveal(i)));
+            // (An SSH key's New, a key of the kind chosen, as 1Password's
+            // Generate offers them; and Import…, a key file.)
+            // (All three dimmed while it's worked on or a file waits for
+            // its passphrase: what's under it is the one thing to do.)
+            let key_busy = f.kind == ItemFieldType::SshKey && (e.key_busy.is_some() || e.key_import.as_ref().is_some_and(|k| k.field == f.id));
+            if f.kind == ItemFieldType::SshKey {
+                let id = f.id.clone();
+                secret_buttons.push(Button::new("New").id(format!("edit-new-{i}")).menu().min_width(56.0).enabled(!key_busy).on_click(move |_: &ClickEvent, cx| {
+                    // (Ed25519 set apart: the one to choose.)
+                    let mut m = Menu::new("New Key");
+                    for (n, kind) in crate::sshkey::Kind::ALL.iter().enumerate() {
+                        m = m.item(kind.label(), format!("key:{n}"));
+                        if n == 0 {
+                            m = m.separator();
+                        }
+                    }
+                    let id = id.clone();
+                    let b = cx.listener_bounds();
+                    menu::popup(cx, m, b, Corner::BottomLeft, move |cmd, _| {
+                        if let Some(kind) = cmd.strip_prefix("key:").and_then(|n| n.parse::<usize>().ok()).and_then(|n| crate::sshkey::Kind::ALL.get(n)) {
+                            app().make_key(id.clone(), *kind);
+                        }
+                    });
+                }));
+                let id = f.id.clone();
+                secret_buttons.push(Button::new("Import…").id(format!("edit-import-{i}")).min_width(56.0).enabled(!key_busy).on_click(move |_: &ClickEvent, _| app().import_key(id.clone())));
             }
-            let buttons = secret_buttons.len() as f32 * (56.0 + m::TIGHT);
+            if concealed(f.kind) {
+                // (Nothing to show while it's empty.)
+                secret_buttons.push(
+                    Button::new(if f.reveal { "Hide" } else { "Show" })
+                        .id(format!("edit-show-{i}"))
+                        .min_width(56.0)
+                        .enabled(!f.value.is_empty() && !key_busy)
+                        .on_click(move |_: &ClickEvent, _| app().toggle_edit_reveal(i)),
+                );
+            }
+            let buttons = secret_buttons.len() as f32 * (56.0 + m::TIGHT) + if f.kind == ItemFieldType::SshKey { olo_kit::widgets::MENU_MARK_ROOM } else { 0.0 };
             let below = buttons > 0.0 && width - label_w - minus - 2.0 * m::TIGHT - buttons < 96.0;
-            let remove = Button::new("−").id(format!("edit-remove-{i}")).min_width(minus).on_click(move |_: &ClickEvent, _| app().remove_edit_field(i));
+            let asking = f.kind == ItemFieldType::SshKey && e.key_import.as_ref().is_some_and(|k| k.field == f.id);
+            let remove = Button::new("−").id(format!("edit-remove-{i}")).min_width(minus).enabled(!asking).on_click(move |_: &ClickEvent, _| app().remove_edit_field(i));
             let label = div().w(px(label_w)).flex_shrink_0().child(TextControl::new(cx, &form.labels[i]));
             let value = div().flex_1().min_w_0().child(TextControl::new(cx, &form.values[i]));
             let mut line = row().child(label).child(value);
             let mut under = None;
-            if below {
-                under = Some(row().justify_end().children(secret_buttons).child(div().w(px(minus))));
+            if asking {
+                // (Not while a key file asks its passphrase: what's under
+                // it is the one thing to do, and its room is the prompt's.)
+            } else if below {
+                // (From the value's edge to the row's end, as wide as the
+                // value and its − together, the buttons of one width: set
+                // to the row's end, a row wider than the field stuck out
+                // past it, under the label; then it ended at no edge at
+                // all. Opus's looks, 2026-11-24.)
+                let room = width - label_w - m::TIGHT;
+                let n = secret_buttons.len().max(1) as f32;
+                let each = ((room - (n - 1.0) * m::TIGHT) / n / 2.0).floor() * 2.0;
+                let last = room - (n - 1.0) * (each + m::TIGHT);
+                let count = secret_buttons.len();
+                let sized: Vec<Button> = secret_buttons.into_iter().enumerate().map(|(k, b)| b.min_width(if k + 1 == count { last } else { each })).collect();
+                under = Some(row().child(div().w(px(label_w)).flex_shrink_0()).children(sized));
             } else {
                 line = line.children(secret_buttons);
             }
-            col = col.child(line.child(remove)).children(under);
+            // The field, what it holds (an SSH key's line, close under it),
+            // its buttons, and a key file's passphrase: one group, the
+            // form's spacing round it, not inside it.
+            let mut group = div().flex().flex_col().child(line.child(remove));
+            let described = f.kind == ItemFieldType::SshKey && {
+                let k = key_line(e, f, label_w, same_key.get(&f.id));
+                let some = k.is_some();
+                group = group.children(k);
+                some
+            };
+            if let Some(under) = under {
+                // (6 points under the field, or 8 under what's said of it.)
+                group = group.child(under.mt(px(if described { 4.0 } else { 2.0 })));
+            }
+            if f.kind == ItemFieldType::SshKey {
+                group = group.children(passphrase_rows(e, form, f, label_w, minus, cx));
+            }
+            col = col.child(group);
             if !form.parts[i].is_empty() {
                 // The rest of the address under its street, on the label and
                 // value columns: the city under the label and the rest across
@@ -607,7 +807,9 @@ pub fn view(e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, c
     col = col.child(div().h(px(m::SPACING))).child(
         button_row()
             .child(Button::new("Cancel").on_click(|_: &ClickEvent, _| app().cancel_editor()))
-            .child(Button::new(if e.base.is_some() { "Save" } else { "Add" }).default(true).on_click(|_: &ClickEvent, _| app().save_editor())),
+            // (Not the default while a key file waits for its passphrase:
+            // its Import is.)
+            .child(Button::new(if e.base.is_some() { "Save" } else { "Add" }).default(e.key_import.is_none()).on_click(|_: &ClickEvent, _| app().save_editor())),
     );
     div()
         .on_key_down(|ev: &KeyDownEvent, cx| {
@@ -634,6 +836,44 @@ mod tests {
         e.fields.push(f("extra", "more"));
         e.fields.push(f("bic", "bank"));
         e
+    }
+
+    /// A new SSH Key starts with its private key, by 1Password's id and
+    /// label; a key pasted in is kept as PKCS#8 (as one made or imported
+    /// is, and as 1Password keeps keys), and an item's key left as it was
+    /// isn't touched (or Discard would be asked of an item not changed).
+    #[test]
+    fn a_pasted_key_is_kept_as_one_made_here_is() {
+        let mut e = Editor::new_item(ItemCategory::SshKey, 0, None);
+        assert_eq!(e.fields.iter().map(|f| (f.id.as_str(), f.label.as_str(), f.kind)).collect::<Vec<_>>(), [("private_key", "private key", ItemFieldType::SshKey)]);
+        e.fields[0].value = crate::agent::RSA_KEY.to_owned();
+        let out = e.out_fields();
+        assert!(out[0].value.starts_with("-----BEGIN PRIVATE KEY-----"), "{}", out[0].value);
+        assert_eq!(crate::agent::derived(&out[0].value), crate::agent::derived(crate::agent::RSA_KEY));
+        // (A key under a passphrase as it was: it says so where it is.)
+        e.fields[0].value = crate::agent::LOCKED_KEY.to_owned();
+        assert_eq!(e.out_fields()[0].value, crate::agent::LOCKED_KEY);
+        // An item's own key, unchanged: as it is.
+        let now = chrono::Utc::now();
+        let item = Item {
+            id: "i1".into(),
+            title: "Server".into(),
+            category: ItemCategory::SshKey,
+            vault_id: "v1".into(),
+            fields: vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, crate::agent::RSA_KEY)],
+            sections: vec![],
+            notes: String::new(),
+            tags: vec![],
+            websites: vec![],
+            version: 1,
+            files: vec![],
+            document: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let e = Editor::edit(&item, 0);
+        assert_eq!(e.out_fields()[0].value, crate::agent::RSA_KEY);
+        assert!(!e.changed());
     }
 
     #[test]

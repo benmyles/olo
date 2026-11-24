@@ -941,6 +941,9 @@ Permitido com {}
 Along the Top
 Ao longo do topo
 
+Already saved as “{}”.
+Já salva como “{}”.
+
 Also from the Deskbar: click the cup.
 Você também pode clicar na xícara da Deskbar.
 
@@ -2893,6 +2896,9 @@ Não foi possível consultar {}
 
 Couldn’t look at {} again
 Não foi possível consultar {} novamente
+
+Couldn’t make the key: {}
+Não foi possível criar a chave: {}
 
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 Não foi possível criar este cofre no 1Password. Seus itens também não foram enviados. {}
@@ -5251,8 +5257,14 @@ A opção Imediatamente exige um componente que só o administrador pode instala
 Import
 Importar
 
+Import Key File
+Importar arquivo de chave
+
 Import WireGuard…
 Importar WireGuard…
+
+Imported the key.
+A chave foi importada.
 
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Importado {}{}{}. Alguns ajustes só entram em vigor quando os apps abertos forem reiniciados.{}
@@ -6393,6 +6405,9 @@ MacBook
 Machine:
 Máquina:
 
+Made a new {} key.
+Uma nova chave {} foi criada.
+
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Criado aqui. Após sua revisão, será criado no 1Password ({}) na próxima sincronização.
 
@@ -7082,6 +7097,9 @@ Nova janela anônima
 
 New Item
 Novo item
+
+New Key
+Nova chave
 
 New List
 Nova lista
@@ -9990,6 +10008,9 @@ Agente SSH
 SSH Authentication
 Autenticação SSH
 
+SSH Key
+Chave SSH
+
 SSH allows ten sessions on a connection by default; each pane uses one.
 Por padrão, o SSH permite dez sessões por conexão; cada painel usa uma.
 
@@ -11514,6 +11535,9 @@ Ferramenta de texto
 Text:
 Texto:
 
+That file isn’t a key Passwords can import: {}
+Esse arquivo não é uma chave que o Passwords possa importar: {}
+
 That isn't a telephone number or an address.
 Informe um número de telefone ou um endereço válido.
 
@@ -11528,6 +11552,9 @@ A senha do backup está incorreta.
 
 That isn’t a Copr project’s name.
 Nome de projeto Copr inválido.
+
+That passphrase didn’t open “{}”.
+Essa frase secreta não abriu “{}”.
 
 That password isn’t right.
 Senha incorreta.
@@ -13701,6 +13728,9 @@ Documento do Word…
 Working
 Trabalhando
 
+Working on the key…
+Preparando a chave…
+
 Working out what it comes to: every package it needs, and what it replaces…
 Calculando os pacotes necessários e os que serão substituídos…
 
@@ -14568,6 +14598,9 @@ em atraso, {}
 
 part of the screen
 parte da tela
+
+passphrase
+frase secreta
 
 plugged in, charge limit {}%
 na tomada, limite de carga de {}%
@@ -16166,6 +16199,9 @@ Não foi possível gravar “{}”: {}
 
 “{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 “{}” já existe nesse local. Substituir pela versão modificada em {} ou manter as duas? O nome da versão restaurada incluirá o horário.
+
+“{}” is under a passphrase.
+“{}” está protegido por uma frase secreta.
 
 “{}” isn't a domain.
 “{}” não é um domínio.

@@ -1789,6 +1789,39 @@ something nobody here has is in "Blocked", with what it waits for.
   say how much room the host has where a copy failed for want of it
   ("dev-box has 0.4 GB free; these need 1.2 GB"); the size of each
   choice in the pop-up ("Last 7 days 1.2 GB").
+  And from Opus's look at Passwords' SSH key editor (2026-11-24): a
+  dark menu's frame is faint ("In dark it is a flat slate rectangle with
+  no edge, so it floats like a web dropdown … give the dark menu the
+  same 1pt frame role as light: the light/top-left and dark/bottom-right
+  bevel used on Olo menus, plus the menu shadow if the desktop has one");
+  a button that opens a menu isn't held down while it's open ("New
+  should also look pressed (sunken bevel) while its menu is open"); a
+  long secret's dots run to the text field's edge, the last cut ("stop
+  the dots at the field's right inner padding (4pt), or show a fixed run
+  of dots … The fixed run reads better for a key, which has no useful
+  length"); a dimmed push button in a dark look barely dims ("In dark,
+  only the label goes grey: the frame, fill and bevel stay the same as
+  an enabled button … Drop the bevel's light and dark edges and draw the
+  frame at about half contrast against the panel").
+- **Passwords' editor: an item's built-in fields as fixed labels**
+  (Opus's look at the SSH key editor, 2026-11-24, older than it): "The
+  key is what defines an SSH Key item, but its row is built like a
+  user-added field. The name `private key` is in an editable text box,
+  there is a `−` remove button … make it a fixed label, `Private Key:`,
+  in the label column, in the same style as `Title:`. Remove its `−`
+  button. The value field can then run to x 910 like the Title field".
+  The same holds for a login's username and password (1Password's
+  built-in fields can't be renamed or removed): one change for every
+  category's built-in fields. And from its second look: the editor's
+  form scrolls as a whole when it outgrows the pane, its fields 14
+  points narrower for the scroller and its Cancel and Add cut off at the
+  foot ("Pin Cancel/Add to the pane's bottom with a 16 pt margin … Make
+  the Notes text box the part that stretches: it takes whatever height
+  is left between the Notes heading and Tags, with a 60 pt minimum …
+  Show a scroller only when Notes would go below 60 pt"); and the list
+  keeps the item chosen before New Item highlighted while the new one is
+  made ("clear the list's selection while New Item's form is open, or
+  show no highlight in the list until the item is added").
 
 - **The helpers' tool, from the minders' reports** (2026-11-23), what's
   left: its lines didn't name an Astra look while it ran (the look's own
@@ -1863,10 +1896,10 @@ something nobody here has is in "Blocked", with what it waits for.
   its ids and labels, copied, dragged, referred to and read with `op
   read` as 1Password's are; `op item get` lists them and the private
   key's `ssh_formats`; `?ssh-format=openssh` answered; the fingerprint's
-  hash as the list's second line. Left: a key made (Ed25519, RSA 2048 to
-  4096) or imported here (a key file, under a passphrase too), kept as
-  1Password keeps it (PKCS#8) so 1Password shows the same, through New
-  Item, which doesn't offer SSH Key yet; and attached files (1Password's
+  hash as the list's second line. And (HACKING, the same place) a key
+  made (Ed25519, RSA 2048 to 4096) or imported here (a key file, under a
+  passphrase too) through New Item ▸ SSH Key, kept as 1Password keeps it
+  (PKCS#8), so 1Password shows the same. Left: attached files (1Password's
   `items.files`: listed with their sizes, saved, added, synced both
   ways; the crate has the calls, the store keeps no file's contents
   yet). Not checked against a real 1Password item's JSON (no test
