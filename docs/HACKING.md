@@ -27829,7 +27829,11 @@ remote Rex workspaces (Rex API rev 19), alongside Terminal.
   with ETag caching, drag-and-drop
   uploads, Remote Access (this computer's server over Tailscale, a
   device paired by a code), the per-host Olo Desktop Bridge (`xdg-open`,
-  `op`, `olo-screen` with automatic remote `localhost` `-L` forwarding;
+  `op`, `olo-screen` with automatic remote `localhost` `-L` forwarding
+  of the addresses it opens (`run`'s and `start`'s programs' arguments,
+  `bridge::screen_opens_addresses`: never what is typed or set into a
+  page, which once turned an agent's page address in a field into the
+  forward's, 2026-11-24);
   what a host may use is Preferences ▸ Rex), Tracker `"Open in Rex"`,
   global Command Palette session search, and in-place upgrade state
   restoration.
@@ -29862,14 +29866,22 @@ its program calls itself, Claude Code's version, agy's name (Ben,
 2026-11-24: "it's showing some weird "2.1.331" title"). A program in
 any title is an agent by its own name (`BlockRuntime::program_title`:
 Claude Code's executable is named by its version, in
-`~/.local/share/claude/versions`). Under the name, what the program
-says of itself, else its
-folder's own name ("Home" for home: `folder_name`; a path cut at its
-end lost what tells two apart), then the host, apart by "·"; and at
-that line's end the state in a word ("Waiting" and "Failed" in their
-colours mixed toward the text's, "Working", "Done", "At rest"): its
-mark alone was a speck at 1× (Opus's review). At rest is a hollow grey
-ring (a grey dot was lost on the grey icon).
+`~/.local/share/claude/versions`). At the name line's end, before the
+marks, the state in a word ("Waiting" and "Failed" in their colours
+mixed toward the text's, "Working", "Done", "At rest"), one column down
+the list: its mark alone was a speck at 1× (Opus's review), and at the
+end of the line under the name it broke a sentence that went on to a
+second line ("…on Working the terminal…", both looks, 2026-11-24).
+Under the name, what the program says of itself, else its folder's own
+name ("Home" for home: `folder_name`; a path cut at its end lost what
+tells two apart), then the host, apart by "·": on two lines where one
+won't hold them (Ben, 2026-11-24: "let's allow for 2 lines in the
+description text under the title"; `two_lines`, broken where a word
+ends by the room the row will have, the row a line taller only then),
+the second cut short before the host, which stays (cut at its end, the
+host went first: Opus's look). The icon is at one height in every row,
+beside the name and the line under it. At rest is a hollow grey ring (a
+grey dot was lost on the grey icon).
 What an agent is doing is read as Terminal reads it, from the pane's
 bottom 16 rows (`ACTIVITY_LOOK`: 30, as Auto Approve reads, cost 20
 million instructions in 10 s more with a spinner turning four times a

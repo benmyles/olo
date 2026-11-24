@@ -2376,6 +2376,10 @@ impl RexHub {
         br_agent.title = "claude — Refactor VT renderer".to_owned();
         br_agent.pwd = "/home/you/olo/rex".to_owned();
         br_agent.agent_activity = AgentActivity::Working;
+        // (What it says of itself, as an agent's status does: Activity's
+        // line under its name, on two lines where one won't hold it.)
+        br_agent.program_statuses =
+            vec![ProgramStatusRecord { state: "working".into(), msg: Some("Running visual QA on the terminal pane's renderer at 1x, 1.5x and 2x".into()), ..Default::default() }];
         br_agent.data_connected = true;
         br_agent.terminal.vt_write(
             concat!(

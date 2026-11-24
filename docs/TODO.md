@@ -2954,6 +2954,15 @@ something nobody here has is in "Blocked", with what it waits for.
     and helper together, if one reads better.
   - *The head's note says "until it's connected" for one host and "until
     it connects" for another* (Opus): one way.
+- **Rex's Activity: what the looks found from before** (Opus 5.5,
+  2026-11-24, at the rows' two lines): the rows' icons start 16 points
+  further in than the segmented control over them ("Unless it's kept for
+  a disclosure triangle, move the icon in to line up with the control's
+  left edge"); Add Host… stays at the sidebar's foot in Activity, where
+  it belongs to Sessions; the light look's secondary grey is faint on the
+  sidebar at 1× ("Darken the secondary-text role one step in light mode
+  only").
+
 - **Bug: Rex's splitters overlap in a vertical half and a quarter**:
   `tools/dev/ui-lint --tiles Rex` on this computer's screen, "Splitter
   'Pane Height' and Splitter 'Rex Sidebar' overlap by 2.0×7.5 (a vertical
@@ -2983,6 +2992,8 @@ something nobody here has is in "Blocked", with what it waits for.
     typed into a field became another; "I had to type addresses without
     the scheme". Rewrite only what is opened (`run`'s URL, `open`), never
     what is typed, and say so in the skill.
+    **Done** 2026-11-24: only `run`'s and `start`'s arguments
+    (`bridge::screen_opens_addresses`), and the skill says so.
   - *No `olo-screen` on a Rex host*: the olo-screens skill says
     `olo-screen …` throughout; the agent made a shim of its own. Put
     `olo-screen` among the desktop commands (as `op` and `xdg-open`
@@ -3041,6 +3052,14 @@ something nobody here has is in "Blocked", with what it waits for.
     exec keeps the listener, `tunnel::resume_local_forward` reclaims
     only the saved ones: an unsaved one's socket is left behind?), close
     those an upgrade doesn't carry, and test it on the rig.
+    (A first look, 2026-11-24: since update 10 every forward that hasn't
+    failed is saved over an upgrade, the bridge's own too
+    (`RexHub::saved_forwards`), so this is a block left on the host's
+    server by the one upgrade out of a release that couldn't save it.
+    An orphan's owner may be another desktop's Rex, away and coming back
+    to take it up, so orphans can't all be closed: mark each forward
+    with the installation that made it, and close at connect the
+    orphans that are this one's and not among its saved.)
   - (And, not Olo's: agy in its stream mode denies a command outside its
     list and ends its turn with an empty answer. Olo's helpers run agy
     on its own screen in tmux, where a denial is asked; nothing to do.)
@@ -3079,6 +3098,10 @@ something nobody here has is in "Blocked", with what it waits for.
   line still a row of one), the state's word kept at the first line's end;
   at 1×, 1.5× and 2×, light and dark, with a long description, a short
   one and none; the sidebar's narrowest width too.
+  **Done** 2026-11-24 (HACKING, Rex, "Activity is a list to choose
+  from"): two lines where one won't hold it, the host kept, the state's
+  word moved to the name's line (at the first line's end it broke the
+  sentence: both looks), the icon at one height in every row.
 
 - **Rex's Activity: the agents an agent starts, under it; any agent's
   transcript as well as its terminal** (Ben, 2026-11-24: "in activity i

@@ -75,8 +75,10 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   - `olo screen look NAME`: a picture, saved on this host; the answer
     names the file here (under `/var/tmp/olo-rex-bridge`).
   - `olo screen stop NAME` when done; `olo screen --help` for the rest.
-  A `http://localhost:PORT` of this host among the arguments is reached
-  through a forward, as for `olo open`.
+  In `olo screen run` (and `start`), a `http://localhost:PORT` of this
+  host among the program's arguments (a browser's address) is reached
+  through a forward, as for `olo open`; what you `type` or `set` into a
+  page is sent as you wrote it, addresses too.
 - Also `olo notify TITLE [BODY]` (a notification on the desktop, which
   leads back to this pane), `olo clipboard TEXT` (copied there) and
   `olo paste` (what is copied there, as text).

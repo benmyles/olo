@@ -3447,7 +3447,8 @@ impl RexWindow {
             for row in activity_rows {
                 let bk_jump = row.bk.clone();
                 let selected = shown.as_ref() == Some(&row.bk);
-                rows = rows.child(sidebar_activity_row(row, selected, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
+                // (As wide as the list's room: the sidebar less its inset.)
+                rows = rows.child(sidebar_activity_row(row, selected, width - 2.0 * m::SPACING, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
             }
             list = list.child(rows);
         }
@@ -5743,6 +5744,28 @@ fn render_single_pane(
 /// "Activity" was cut once an agent waited).
 const SIDE_LEAST: f32 = widgets::STRIP_SIDE_WIDTH;
 const ROW_ICON: f32 = 16.0;
+/// An Activity row: its name's line and one line under it; a second line
+/// under it adds [`ACTIVITY_LINE`].
+const ACTIVITY_ROW: f32 = 38.0;
+const ACTIVITY_LINE: f32 = 15.0;
+
+/// `text` in at most two lines of `size` points, the first no wider than
+/// `room` (broken where a word ends: a word longer than that alone on it),
+/// the second what is left (cut short when it's drawn).
+fn two_lines(text: &str, room: f32, size: f32) -> (String, String) {
+    let font = style::ui_font(FontWeight::NORMAL);
+    let fits = |s: &str| f32::from(style::text_width(s.to_owned(), size, font.clone())) <= room;
+    if fits(text) {
+        return (text.to_owned(), String::new());
+    }
+    let words: Vec<&str> = text.split(' ').collect();
+    let mut first = 0;
+    while first < words.len() && fits(&words[..first + 1].join(" ")) {
+        first += 1;
+    }
+    let first = first.max(1);
+    (words[..first].join(" "), words[first..].join(" "))
+}
 /// What a pane's head has after its last button: as far from the pane's
 /// edge as its icon is from the other (the terminal's own inset, a
 /// window's).
@@ -5855,13 +5878,27 @@ fn bevel_colors(p: &olo_theme::Palette) -> (olo_kit::Hsla, olo_kit::Hsla) {
     }
 }
 
-fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+fn sidebar_activity_row(row: ActivityRow, selected: bool, width: f32, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
     let ActivityRow { host, title, detail, act, help, running, .. } = row;
     // (What tells rows apart first, its folder; then its host, apart by
     // the status bar's "·": Opus's review, 2026-11-24.)
-    let sub = if detail.is_empty() { host } else { format!("{detail} \u{b7} {host}") };
     let state = activity_state_word(act, running);
-    let key = style::key((&title, &sub, act as u8, &help, running, selected));
+    // (What it says of itself on two lines where one won't hold it: Ben,
+    // 2026-11-24, "let's allow for 2 lines in the description text under
+    // the title instead of the 1 it is now". Broken where a word ends, by
+    // the room the row will have, the host kept at the last line's end
+    // (cut, the end went first, and with it which machine: Opus's look);
+    // the row a line taller only then. The state's word is on the name's
+    // line: at the first line's end it broke the sentence, "…on Working
+    // the terminal…", both looks.)
+    let left = m::WINDOW_INSET + ROW_ICON + m::TIGHT;
+    let host_part = if detail.is_empty() { host.clone() } else { format!("\u{b7} {host}") };
+    let sub_lines = if detail.is_empty() { (host.clone(), String::new()) } else { two_lines(&format!("{detail} {host_part}"), width - left - m::TIGHT, style::SMALL_SIZE) };
+    // (The second line's description, cut short past its room less the
+    // host's: the host whole at its end.)
+    let second = if sub_lines.1.is_empty() { None } else { Some(sub_lines.1.strip_suffix(host_part.as_str()).map(|d| d.trim_end().to_owned()).unwrap_or_else(|| sub_lines.1.clone())) };
+    let height = if sub_lines.1.is_empty() { ACTIVITY_ROW } else { ACTIVITY_ROW + ACTIVITY_LINE };
+    let key = style::key((&title, &sub_lines, act as u8, &help, running, selected));
     let words = activity_row_words(act, running, &help);
     canvas(move |g, b| {
         let p = theme::palette();
@@ -5880,7 +5917,10 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(),
         // program runs); Auto Approve and Keep It Going at the row's right
         // end, where there is room, not on the icon (Opus's review: three
         // marks on 16 points hid the terminal).
-        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), b.center().y), ROW_ICON, ROW_ICON);
+        // (At one height in every row, beside the name and the line under
+        // it: centred on a taller row it floated between lines, both
+        // looks.)
+        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), b.top() + px(ACTIVITY_ROW / 2.0)), ROW_ICON, ROW_ICON);
         widgets::strip::drawn_on(ground, || widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(act, &crate::agent::Help::default(), running)));
         // (Auto Approve's disc last: a triangle at a row's very end read
         // as a disclosure arrow.)
@@ -5894,22 +5934,39 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(),
             widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), mid), 9.0, ground);
             right -= px(8.0 + m::MARK_GAP);
         }
-        let left = b.left() + px(m::WINDOW_INSET + ROW_ICON + m::TIGHT);
-        style::label_fit(g, left, b.top() + px(13.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, (right - px(m::TIGHT) - left).max(px(24.0)));
-        // What its agent is doing, in words at the line's end (its mark
-        // alone was a speck at 1×): waiting and failed in their colours,
-        // mixed toward the text's to read on the row.
-        let mut sub_right = b.right() - px(m::TIGHT);
+        let left = b.left() + px(left);
+        // What its agent is doing, in a word at the name line's end (its
+        // mark alone was a speck at 1×), one column down the list: waiting
+        // and failed in their colours, mixed toward the text's to read on
+        // the row.
         if let Some((word, urgent)) = state {
             let color = match urgent {
                 None => quiet,
                 Some(tone) => style::c(olo_theme::mix(tone, p.panel_text, 0.3)),
             };
             let weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
-            let at = style::label(g, sub_right, b.top() + px(28.0), style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(weight), color);
-            sub_right = at.left() - px(m::TIGHT);
+            // (On the name's baseline: centred on the line in its smaller
+            // size, it sat a pixel off the name at 1.25× to 1.75×, the
+            // review said.)
+            let baseline = style::baseline_at(g, b.top() + px(13.0), style::PLAIN_SIZE);
+            let at = style::label_on_baseline(g, right - px(m::TIGHT), baseline, style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(weight), color);
+            right = at.left();
         }
-        style::label_fit(g, left, b.top() + px(28.0), style::Align::Left, sub.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet, (sub_right - left).max(px(24.0)));
+        style::label_fit(g, left, b.top() + px(13.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, (right - px(m::TIGHT) - left).max(px(24.0)));
+        // Under it what it says of itself and its host, on two lines where
+        // one won't hold them, each to the row's one trailing edge; the
+        // second's description cut short before the host, which stays.
+        let edge = b.right() - px(m::TIGHT);
+        style::label_fit(g, left, b.top() + px(28.0), style::Align::Left, sub_lines.0.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet, (edge - left).max(px(24.0)));
+        if let Some(said) = &second {
+            let y = b.top() + px(28.0 + ACTIVITY_LINE);
+            let font = style::ui_font(FontWeight::NORMAL);
+            let host_w = if said.as_str() == sub_lines.1 { px(0.0) } else { style::text_width(format!(" {host_part}"), style::SMALL_SIZE, font.clone()) };
+            let shown = style::label_fit(g, left, y, style::Align::Left, said.clone(), style::SMALL_SIZE, font.clone(), quiet, (edge - left - host_w).max(px(24.0)));
+            if host_w > px(0.0) {
+                style::label(g, shown.right() + style::text_width(" ".to_owned(), style::SMALL_SIZE, font.clone()), y, style::Align::Left, host_part.clone(), style::SMALL_SIZE, font, quiet);
+            }
+        }
         g.agent(agent::Node {
             role: "ListItem",
             name: Some(title.clone().into()),
@@ -5923,7 +5980,7 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(),
     })
     .paint_key(key)
     .w_full()
-    .h(px(38.0))
+    .h(px(height))
     .cursor(CursorStyle::PointingHand)
     .on_mouse_down(MouseButton::Left, move |_, cx| {
         on_click(&(), cx);
@@ -6210,6 +6267,21 @@ mod activity_tests {
         assert_eq!(activity_title(Some("Claude Code"), 2, "Claude Code".into()), "Claude Code");
         assert_eq!(activity_title(None, 1, "Claude Code".into()), "Claude Code");
         assert_eq!(activity_title(Some("  "), 1, "Codex".into()), "Codex");
+    }
+
+    /// What an agent says of itself on two lines where one won't hold it:
+    /// broken where a word ends, the first line within its room, the rest
+    /// on the second; one that fits, one line.
+    #[test]
+    fn a_long_description_takes_two_lines() {
+        assert_eq!(two_lines("rex · This computer", 400.0, style::SMALL_SIZE), ("rex · This computer".to_owned(), String::new()));
+        let said = "Running visual QA on the terminal pane's renderer at 1x, 1.5x and 2x · This computer";
+        let (first, second) = two_lines(said, 160.0, style::SMALL_SIZE);
+        assert!(!first.is_empty() && !second.is_empty(), "{first:?} {second:?}");
+        assert_eq!(format!("{first} {second}"), said);
+        assert!(f32::from(style::text_width(first.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))) <= 160.0, "{first:?}");
+        // (A word longer than the room: alone on the first line.)
+        assert_eq!(two_lines("Supercalifragilistic word", 20.0, style::SMALL_SIZE).0, "Supercalifragilistic");
     }
 }
 

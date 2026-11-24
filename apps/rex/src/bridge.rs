@@ -429,10 +429,16 @@ pub async fn handle_bridge_request(
             let Some(screen_bin) = program("olo-screen") else {
                 return BridgeResponse::err("olo-screen is not installed on this Olo desktop");
             };
-            // Auto-rewrite any remote localhost URL argument through a `-L` tunnel!
+            // A `http://localhost:PORT` of the host's, where the screen
+            // opens it (`run`'s program's address, `start`'s), reached
+            // through a forward; never in what is typed or set into a page,
+            // or a name looked for: an agent's page address typed into a
+            // field became the forward's (an agent's report, 2026-11-24).
+            let opens = screen_opens_addresses(&req.args);
             let mut rewritten_args = Vec::with_capacity(req.args.len());
             for a in &req.args {
-                if policy.allow_localhost_autoforward
+                if opens
+                    && policy.allow_localhost_autoforward
                     && let Some((h, p, tmpl)) = parse_localhost_url(a)
                     && let Ok(local_port) = forward_localhost(h, p).await
                 {
@@ -465,6 +471,14 @@ pub async fn handle_bridge_request(
         }
         other => BridgeResponse::err(format!("unknown Olo Bridge command '{other}'")),
     }
+}
+
+/// Whether an `olo-screen` command opens what it is given (`run NAME
+/// PROGRAM ARGS…`, `start NAME [PROGRAM ARGS…]`): only then is a host's
+/// localhost address among its arguments made a forward's. Its command is
+/// its first argument that isn't an option.
+pub fn screen_opens_addresses(args: &[String]) -> bool {
+    matches!(args.iter().find(|a| !a.starts_with('-')).map(String::as_str), Some("run" | "start"))
 }
 
 /// Open a URL or file via Olo's native `olo_xdg::open` (triggering Olo Chrome's
@@ -664,6 +678,19 @@ pub fn open_folder_in_tracker(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A host's localhost address is made a forward's only where the
+    /// screen opens it: never in text typed or set into a page.
+    #[test]
+    fn only_what_a_screen_opens_is_forwarded() {
+        let args = |a: &[&str]| a.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert!(screen_opens_addresses(&args(&["run", "qa", "olo-chrome", "http://localhost:5176/"])));
+        assert!(screen_opens_addresses(&args(&["start", "qa"])));
+        assert!(!screen_opens_addresses(&args(&["type", "qa", "http://localhost:5176/signin"])));
+        assert!(!screen_opens_addresses(&args(&["set", "qa", "--name", "URL", "http://localhost:5176/"])));
+        assert!(!screen_opens_addresses(&args(&["wait", "qa", "--text", "http://localhost:5176"])));
+        assert!(!screen_opens_addresses(&args(&[])));
+    }
 
     #[tokio::test]
     async fn a_notice_keeps_the_callers_pane() {
