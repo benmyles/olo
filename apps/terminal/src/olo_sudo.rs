@@ -252,8 +252,15 @@ fn read_reply(r: &mut impl BufRead) -> Option<Reply> {
 }
 
 /// Start a `sudo -S -v` checking (run `run`), what it says going to `tx`.
-fn check(sudo: &Path, run: usize, tx: &mpsc::Sender<Event>) -> Option<ChildStdin> {
-    let mut child = sudo_command(sudo).args(["-S", "-v", "-p", PROMPT]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().ok()?;
+/// `approved`: approved without asking, said to sudo's PAM
+/// (`OLO_SUDO_APPROVED`, which Olo's face module heeds: it looks for no
+/// one, and the password Terminal holds is given at once).
+fn check(sudo: &Path, run: usize, tx: &mpsc::Sender<Event>, approved: bool) -> Option<ChildStdin> {
+    let mut command = sudo_command(sudo);
+    if approved {
+        command.env("OLO_SUDO_APPROVED", "1");
+    }
+    let mut child = command.args(["-S", "-v", "-p", PROMPT]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().ok()?;
     if run == 0 {
         CHILD.store(child.id() as i32, Ordering::Relaxed);
     }
@@ -315,12 +322,17 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outco
     let mut replies = BufReader::new(stream);
     let begin = Ask::Begin { args: args.iter().map(|a| a.to_string_lossy().into_owned()).collect(), cwd: std::env::current_dir().ok(), tty: has_tty(), quiet };
     say(begin);
-    if read_reply(&mut replies) != Some(Reply::Go) {
+    let mut first = read_reply(&mut replies);
+    let approved = first == Some(Reply::Approved);
+    if approved {
+        first = read_reply(&mut replies);
+    }
+    if first != Some(Reply::Go) {
         return Outcome::Pass;
     }
     let (tx, rx) = mpsc::channel();
     // Each check's input, while it may still ask.
-    let mut stdins: Vec<Option<ChildStdin>> = vec![check(sudo, 0, &tx)];
+    let mut stdins: Vec<Option<ChildStdin>> = vec![check(sudo, 0, &tx, approved)];
     if stdins[0].is_none() {
         return Outcome::Pass;
     }
@@ -353,7 +365,7 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outco
                 let second = run == 0 && stdins.len() == 1 && olo_system::fingerprint::listening(&t);
                 say(Ask::Info(t));
                 if second {
-                    stdins.push(check(sudo, 1, &tx));
+                    stdins.push(check(sudo, 1, &tx, approved));
                     if stdins[1].is_some() {
                         finger = true;
                         say(Ask::Finger(true));
@@ -463,13 +475,21 @@ mod tests {
     }
 
     /// A stand-in for `sudo -S -v`, as sudo's PAM goes with Touch ID:
-    /// the sensor (a folder in `$OLO_TEST_DIR`) free, it takes it, says
-    /// so and listens (a finger: `finger` there) for `$OLO_TEST_LISTEN`
-    /// tenths of a second, then the password; taken, or no finger
-    /// enrolled (`$OLO_TEST_NO_FINGER`), the password at once ("right"),
-    /// three tries.
+    /// with a face set up (`$OLO_TEST_FACE`), Olo's face module first,
+    /// which starts the camera (each start a line in `camera-starts`)
+    /// unless sudo was started approved; then the sensor (a folder in
+    /// `$OLO_TEST_DIR`) free, it takes it, says so and listens (a
+    /// finger: `finger` there) for `$OLO_TEST_LISTEN` tenths of a
+    /// second, then the password; taken, or no finger enrolled
+    /// (`$OLO_TEST_NO_FINGER`), the password at once ("right"), three
+    /// tries.
     const STAND_IN: &str = r#"#!/bin/bash
 D="$OLO_TEST_DIR"
+if [ -n "$OLO_TEST_FACE" ] && [ -z "$OLO_SUDO_APPROVED" ]; then
+  echo started >> "$D/camera-starts"
+  echo "Looking for your face…"
+  sleep 0.3
+fi
 if [ -z "$OLO_TEST_NO_FINGER" ] && mkdir "$D/sensor" 2>/dev/null; then
   echo "Place your finger on the fingerprint reader"
   for i in $(seq 1 "$OLO_TEST_LISTEN"); do
@@ -497,6 +517,13 @@ exit 1
 
     impl Window {
         fn open(name: &str, env: &[(&str, &str)]) -> Window {
+            Window::opened(name, env, false)
+        }
+
+        /// As Terminal answers a request approved without asking: the
+        /// fingerprint sensor held (as `sudo::Approval` holds it), and
+        /// Approved said before Go.
+        fn opened(name: &str, env: &[(&str, &str)], approved: bool) -> Window {
             let dir = std::env::temp_dir().join(format!("olo-sudo-test-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
@@ -514,10 +541,16 @@ exit 1
                     std::env::set_var(k, v);
                 }
             }
+            if approved {
+                std::fs::create_dir(dir.join("sensor")).unwrap();
+            }
             let (ours, theirs) = UnixStream::pair().unwrap();
             let asked = std::thread::spawn(move || matches!(ask(&sudo, theirs, &[OsString::from("true")], false), Outcome::Yes));
             let mut w = Window { lines: BufReader::new(ours.try_clone().unwrap()).lines(), out: ours, dir, asked };
             assert!(matches!(w.next(), Ask::Begin { .. }));
+            if approved {
+                w.reply(Reply::Approved);
+            }
             w.reply(Reply::Go);
             w
         }
@@ -591,6 +624,34 @@ exit 1
         w.reply(Reply::Answer("right".into()));
         assert_eq!(w.next(), Ask::Done(true));
         assert!(w.finish());
+    }
+
+    /// Approved without asking, nothing that looks for the person is
+    /// started (Ben, 2026-11-20: "it still starts the ir camera etc. for
+    /// a few seconds before it stops and approves. it should just
+    /// approve immediately without doing that at all"): the password is
+    /// asked for at once; asked of a person, the camera starts.
+    #[test]
+    fn approved_starts_nothing_that_looks() {
+        let _one = TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut w = Window::opened("approved", &[("OLO_TEST_FACE", "1")], true);
+        assert_eq!(w.next(), Ask::Prompt("Password:".into()));
+        w.reply(Reply::Answer("right".into()));
+        assert_eq!(w.next(), Ask::Done(true));
+        let started = w.dir.join("camera-starts").exists();
+        assert!(w.finish());
+        assert!(!started, "the camera was started for a request approved without asking");
+        // (And asked of a person, it is: the stand-in is what it says.)
+        let mut w = Window::opened("asked", &[("OLO_TEST_FACE", "1"), ("OLO_TEST_NO_FINGER", "1")], false);
+        assert_eq!(w.next(), Ask::Info("Looking for your face…".into()));
+        assert_eq!(w.next(), Ask::Prompt("Password:".into()));
+        w.reply(Reply::Answer("right".into()));
+        assert_eq!(w.next(), Ask::Done(true));
+        let started = w.dir.join("camera-starts").exists();
+        assert!(w.finish());
+        assert!(started);
+        // SAFETY: the tests that set them run one at a time (TESTS).
+        unsafe { std::env::remove_var("OLO_TEST_FACE") };
     }
 
     #[test]

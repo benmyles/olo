@@ -109,6 +109,15 @@ fn ask(bus: Option<String>, method: &'static str, user: String, timeout: Duratio
 pub unsafe extern "C" fn pam_sm_authenticate(pamh: *mut c_void, _flags: c_int, argc: c_int, argv: *const *const c_char) -> c_int {
     let args: Vec<String> = (0..argc.max(0) as usize).filter_map(|i| unsafe { argv.add(i).as_ref() }).filter_map(|p| unsafe { CStr::from_ptr(*p) }.to_str().ok().map(str::to_owned)).collect();
     let bus = args.iter().find_map(|a| a.strip_prefix("bus=")).map(str::to_owned);
+    // Approved without asking (Olo's Terminal, its sudo started saying
+    // so): look for no one, the camera left off, on to the password,
+    // which is given at once (Ben, 2026-11-20: "it still starts the ir
+    // camera etc. for a few seconds before it stops and approves").
+    // Stepping aside only ever leads to the password: nobody gains by
+    // setting it.
+    if std::env::var_os("OLO_SUDO_APPROVED").is_some() {
+        return PAM_IGNORE;
+    }
     // Only someone at this computer.
     let mut rhost: *const c_void = std::ptr::null();
     if unsafe { pam_get_item(pamh, PAM_RHOST, &mut rhost) } == PAM_SUCCESS && !rhost.is_null() && !unsafe { CStr::from_ptr(rhost as *const c_char) }.to_bytes().is_empty() {
@@ -140,4 +149,22 @@ pub unsafe extern "C" fn pam_sm_authenticate(pamh: *mut c_void, _flags: c_int, a
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pam_sm_setcred(_pamh: *mut c_void, _flags: c_int, _argc: c_int, _argv: *const *const c_char) -> c_int {
     PAM_SUCCESS
+}
+
+#[cfg(test)]
+mod approved_tests {
+    use super::*;
+
+    /// Approved without asking: the module looks for no one (it asks
+    /// nothing of PAM nor of the face service, the camera left off) and
+    /// steps aside for the password.
+    #[test]
+    fn steps_aside_when_approved() {
+        // SAFETY: this test alone in its process sets it.
+        unsafe { std::env::set_var("OLO_SUDO_APPROVED", "1") };
+        // (No PAM handle: one used would be a crash.)
+        let said = unsafe { pam_sm_authenticate(std::ptr::null_mut(), 0, 0, std::ptr::null()) };
+        unsafe { std::env::remove_var("OLO_SUDO_APPROVED") };
+        assert_eq!(said, PAM_IGNORE);
+    }
 }

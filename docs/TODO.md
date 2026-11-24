@@ -806,19 +806,6 @@ something nobody here has is in "Blocked", with what it waits for.
      0011's switch; (c) the write-up and the first three patches
      sent to NVIDIA (Ben's to send).
 
-- **Elevated permissions approved by themselves are approved at once,
-  with nothing started** (Ben, 2026-11-20: "when auto-approve
-  sudo/elevated permissions is enabled, it still starts the ir camera
-  etc. for a few seconds before it stops and approves. it should just
-  approve immediately without doing that at all"). Terminal's sudo
-  (apps/terminal/src/sudo.rs; its log says "sudo -n approved without
-  asking: the password didn't do", so the asking had begun: the face
-  camera, the fingerprint reader, the key) and whatever else asks
-  through the same ways (the polkit agent): where approval is the
-  setting's, decide first and start none of the ways in. With a test
-  that nothing was opened (the stand-ins for the camera and the
-  reader count their starts). After the responsiveness work.
-
 - **Left from the reviews of the Kernel tab** (2026-11-20; five
   rounds with both; what was about the new box and the tab's layout
   is done). From the last round, real and not this tab's alone: in
@@ -2615,6 +2602,16 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Elevated permissions approved by themselves are approved at once,
+  with nothing started** (Ben, 2026-11-20: "when auto-approve
+  sudo/elevated permissions is enabled, it still starts the ir camera
+  etc. for a few seconds before it stops and approves"). Done
+  (2026-11-24; HACKING, "Approving without asking"): Terminal tells
+  olo-sudo first, sudo is started saying so, and Olo's face module looks
+  for no one; the fingerprint sensor was already held, and no window
+  means no key. A test with a stand-in sudo whose face step counts the
+  camera's starts: none when approved. Left: tried on Ben's computer
+  with the IR camera (sudo's real PAM, never in a test).
 - **Desktop commands on a host** (Ben, 2026-11-23: "have the rex
   client support installing shims for xdg-open and other desktop
   integration commands so that apps running remotely can operate like

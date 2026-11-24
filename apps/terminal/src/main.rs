@@ -2494,6 +2494,13 @@ impl Terminal {
                 if tty && !self.settings.sudo_window && !quiet {
                     return r.reply(&sudo_wire::Reply::Pass);
                 }
+                // (Approved without asking: said first, so that sudo starts
+                // nothing that looks for the person. Ben, 2026-11-20:
+                // "it still starts the ir camera etc. for a few seconds
+                // before it stops and approves".)
+                if approval.is_some() {
+                    r.reply(&sudo_wire::Reply::Approved);
+                }
                 r.reply(&sudo_wire::Reply::Go);
                 // Approved without asking: sudo gets the password when
                 // it asks for it.

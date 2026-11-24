@@ -45,6 +45,12 @@ pub enum Ask {
 pub enum Reply {
     /// Asking in a window.
     Go,
+    /// Before `Go`: approved without asking (Preferences' auto-approve),
+    /// so sudo is started saying so and nothing looks for the person
+    /// (Olo's face module steps aside; the fingerprint sensor is held),
+    /// the password given at once. (An olo-sudo from before skips the
+    /// line: a reply it can't read.)
+    Approved,
     /// Ask in the terminal, as sudo does.
     Pass,
     /// The answer to the prompt.

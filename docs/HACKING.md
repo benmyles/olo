@@ -11787,7 +11787,16 @@ olo-terminal, `Conn::peer_is_ours`) and gives sudo that password;
 Passwords asks `PowerStatus` (on a thread) and unlocks, or lets a
 terminal's `op` in, without its window. Each says so in a quiet
 notification ("Approved without asking", "Passwords unlocked without
-asking"). Never test with the real PAM: debug builds take
+asking"). Approved, nothing that looks for the person starts (Ben,
+2026-11-20: "it still starts the ir camera etc. for a few seconds before
+it stops and approves. it should just approve immediately"): Terminal
+says `Reply::Approved` before `Go` (an olo-sudo from before skips the
+line), olo-sudo starts sudo with `OLO_SUDO_APPROVED`, and
+`pam_olo_face` steps aside at once (stepping aside only ever leads to
+the password, so nobody gains by setting it); the fingerprint sensor is
+held meanwhile (`sudo::Approval`), so `pam_fprintd` gives up at once;
+no window, so no security key is waited on. The polkit agent never
+approves without asking. Never test with the real PAM: debug builds take
 `OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE` (a stand-in `pam_exec` check),
 Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
 fprintd alone.
