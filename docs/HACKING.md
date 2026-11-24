@@ -22163,8 +22163,19 @@ folder, no helper of its own). It keeps `notes.md` as it goes and
 writes `answer.md` beside the brief. `agy-help` waits as `watch` does
 for that one agent: it returns 0 when the answer is written, 3 when
 the helper needs its lead (answer it, then run the same command again:
-it finds the helper it started and goes on waiting). What it says is a
-lead: checked, then fixed by whoever asked.
+it finds the helper it started and goes on waiting). A minder starts it
+with `--no-wait` and waits with its own `watch` alone (waited for by
+both, each question was said twice and the front door started again
+after each, twelve times in one run; and the front door's wait used up
+the "is DONE" a `watch` of several says once, so a front door waiting
+for its one no longer marks it seen). A question asked again after it
+was answered (the agent ran the command and asks to run it again) is
+said as "a second time" wherever it shows (`second_time`: `watch`'s
+alert, `approve`), not only in the half second after an answer; and
+the line a minute says the step the agent is on (its spinner's line),
+not the last of its plan's steps ("○ Write report.md" for ten minutes
+of a worker on its second step of six). What it says is a lead:
+checked, then fixed by whoever asked.
 
 **A second look at every change's pictures** (`tools/dev/astra-look`,
 which is `agents look`; Ben, 2026-11-18, after a status line set right

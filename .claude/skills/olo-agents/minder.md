@@ -22,10 +22,14 @@ alone), its settings, and its report when it is done.
 
 1. **Start** what the lead's message tells you to, with exactly the
    commands it gives (`tools/dev/agents start NAME CRATE BRIEF.md`;
-   `tools/dev/agy-help BRIEF.md`, `tools/dev/astra-look …`,
-   `tools/dev/opus-look …`, each of those three as a background
-   command of its own, since each waits for its agent). If the message
-   names agents already running, start nothing.
+   `tools/dev/astra-look …`, `tools/dev/opus-look …`, each of those two
+   as a background command of its own, since each waits for its agent).
+   The second investigator, `tools/dev/agy-help BRIEF.md`, you start
+   with `--no-wait` added, in the foreground: it starts the helper and
+   returns, and your `watch` is the one wait for it (waited for by both,
+   each question came twice and it had to be started again after each:
+   12 times, 2026-11-24). If the message names agents already running,
+   start nothing.
 2. **Wait** with `tools/dev/agents watch --for 2 --only PREFIX` (your
    agents' names begin with it: another minder's asking won't wake you) as a foreground
    command; when it returns saying nothing has needed you, run it

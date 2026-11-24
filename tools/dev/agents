@@ -697,9 +697,13 @@ def start(name, crate, brief):
     print(f"agents: now wait on `tools/dev/agents watch` to hear from it (a lead: in the background; a minder: `watch --for 2`)")
 
 
-def investigate(brief, where):
+def investigate(brief, where, wait=True):
     """Start a second investigator on `brief` (or find the one started
-    on it), then wait until it needs the lead or has answered."""
+    on it), then wait until it needs the lead or has answered; with
+    `wait` false (`--no-wait`, a minder's way), start it and return: the
+    minder's `watch` is the one wait, so each question is said once (a
+    minder waiting with both was told each twice and started this again
+    twelve times, 2026-11-24)."""
     refuse_nested()
     brief = os.path.abspath(brief)
     if not os.path.isfile(brief) or not open(brief).read().strip():
@@ -726,7 +730,10 @@ def investigate(brief, where):
         launch(name, d, ROOT, [work], os.path.join(work, "target"))
         print(f"agents: {name} started on {brief}; its answer will be {work}/answer.md, its notes {work}/notes.md", flush=True)
     else:
-        print(f"agents: {name} is on it already; waiting for it", flush=True)
+        print(f"agents: {name} is on it already" + ("; waiting for it" if wait else ""), flush=True)
+    if not wait:
+        print(f"agents: wait for {name} with `tools/dev/agents watch --only help-` (its questions, and DONE with {work}/answer.md)", flush=True)
+        sys.exit(0)
     sys.exit(watch(15, only=name))
 
 
@@ -957,7 +964,9 @@ def watch(stuck_min, only=None, at_most=None, among=None):
             if st == "asking" and trusts_own_folder(n):
                 continue
             if st == "asking":
-                alerts.append((n, f"asks you (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)", "\n".join(asked(n)[0])))
+                question = asked(n)[0]
+                again = second_time(n, question)
+                alerts.append((n, f"asks you (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)" + (f": {again}" if again else ""), "\n".join(question)))
             elif st == "exited" and m.get("seen_state") != "exited":
                 alerts.append((n, "has exited", screen(n, 40)))
             elif st == "idle":
@@ -974,9 +983,12 @@ def watch(stuck_min, only=None, at_most=None, among=None):
                 if p != m.get("seen") or (only and finished):
                     said = f"is DONE ({done_file(n)})" if finished else "finished a turn (a question, or waiting)"
                     alerts.append((n, said, screen(n, 40)))
-                    if finished:
+                    if finished and not only:
                         # (Said once: a watcher of several isn't called
-                        # back by the same finished one at every wait.)
+                        # back by the same finished one at every wait.
+                        # Not by a front door's wait for its one: that
+                        # used up the notice a minder's watch was to
+                        # get, and the minder waited on, 2026-11-24.)
                         seen(n)
             if st != "idle":
                 idle_since.pop(n, None)
@@ -1016,10 +1028,19 @@ def watch(stuck_min, only=None, at_most=None, among=None):
 
 
 def latest(name):
-    """The last line of what it has said or is doing: above its field."""
+    """What it is doing, or the last of what it has said: above its field.
+    Its spinner's line where one turns (the step it is on), else its last
+    line but its plan's steps, done or to do (agy lists them under its
+    work, "○ Write report.md": read as the latest, a worker on its second
+    step of six looked stuck writing its report for ten minutes, a
+    minder found, 2026-11-24)."""
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
     rules = [i for i, l in enumerate(lines) if set(l.strip()) == {RULE}]
     said = [l for l in (lines[:rules[-2]] if len(rules) >= 2 else lines) if not re.match(r"\s*└ Tip:", l)]
+    turning = [l for l in said if SPINNER.match(l)]
+    if turning:
+        return turning[-1].strip()[:160]
+    said = [l for l in said if not re.match(r"\s*[○◯☐✓✔☑]\s", l)] or said
     return said[-1].strip()[:160] if said else ""
 
 
@@ -1092,6 +1113,9 @@ def answer(name, how):
         sys.exit(f"agents: {name} isn't asking for anything ({state(name)})")
     text, choices = asked(name)
     print("\n".join(text))
+    again = second_time(name, text)
+    if again:
+        print(f"agents: {again}")
     if how.isdigit():
         pick = next((c for c in choices if c[0] == how), None)
     else:
@@ -1119,6 +1143,10 @@ def answer(name, how):
     while (screen(name, 400) or "") == before and time.time() < until:
         time.sleep(0.2)
     seen(name)
+    m = meta(name)
+    if m is not None:
+        m["answered"] = {"text": "\n".join(text), "at": time.time()}
+        save_meta(name, m)
     print(f"agents: answered {name}: {pick[1]}")
     if (screen(name, 400) or "") == before:
         print(f"agents: {name}'s screen hasn't changed since: look (agents peek {name}) before answering again")
@@ -1126,6 +1154,18 @@ def answer(name, how):
     time.sleep(0.5)
     if state(name) == "asking" and asked(name)[0] == text:
         print(f"agents: {name} asks the same again: a second time (its screen moved on in between), to be answered as one")
+
+
+def second_time(name, question):
+    """Said where an agent asks what it was answered before: it ran that,
+    and asks to run it again (a script run twice), a new question to be
+    answered as one, not the first left up. (Seen only after `approve`
+    had returned: the second asking came two seconds after the first was
+    answered, 2026-11-24.)"""
+    before = (meta(name) or {}).get("answered") or {}
+    if question and before.get("text") == "\n".join(question):
+        return f"the same as it asked {int(time.time() - before.get('at', time.time()))} s ago and was answered: a second time, to be answered as one"
+    return None
 
 
 KEYS = {"up": "Up", "down": "Down", "left": "Left", "right": "Right", "enter": "C-m", "esc": "Escape", "escape": "Escape", "tab": "Tab", "space": "Space"}
@@ -1256,8 +1296,9 @@ def main():
         say_tidied(tidy())
     if cmd == "start" and len(rest) == 3:
         start(*rest)
-    elif cmd == "investigate" and len(rest) in (1, 2):
-        investigate(rest[0], rest[1] if len(rest) > 1 else None)
+    elif cmd == "investigate" and len([r for r in rest if r != "--no-wait"]) in (1, 2):
+        given = [r for r in rest if r != "--no-wait"]
+        investigate(given[0], given[1] if len(given) > 1 else None, wait="--no-wait" not in rest)
     elif cmd == "look":
         look(rest)
     elif cmd == "list":

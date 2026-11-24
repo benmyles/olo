@@ -18,7 +18,10 @@
 # approve`). Run this in the background: it prints a line a minute of
 # what the helper is doing, and returns when the answer is written (0),
 # or as soon as the helper needs you (3: answer it, then run this again
-# with the same brief to go on waiting). It can take an hour. When
+# with the same brief to go on waiting). It can take an hour. A minder
+# starts it with `--no-wait` instead (`tools/dev/agy-help BRIEF.md
+# --no-wait`): started, it returns, and the minder's `agents watch` is
+# the one wait, its questions and its DONE said once. When
 # you've read the answer, `tools/dev/agents stop help-FOLDER` (and
 # `forget`).
 #
