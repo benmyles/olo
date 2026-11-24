@@ -34,7 +34,7 @@ too: "always do it through tmux never a script that just goes silent".
   agents list                        each one: what it's on, its state (working, asking,
                                      idle: a question or waiting, done: its result
                                      written, exited, gone), when it was started
-  agents watch [--stuck MIN] [--for MIN]
+  agents watch [--stuck MIN] [--for MIN] [--only NAME[,NAME…]]
                                      return once one needs you: an approval asked,
                                      a turn finished (DONE, a question), gone, or
                                      nothing new for MIN minutes (15) while working.
@@ -44,6 +44,8 @@ too: "always do it through tmux never a script that just goes silent".
                                      (what it is doing), to read as it goes. With
                                      --for, it returns after that long at most (for
                                      a minder, who waits on it in the foreground).
+                                     --only: the agents whose names begin with one
+                                     of those alone (`--only words-`: a minder's own)
   agents peek NAME [LINES]           the last LINES (60) of its screen
   agents log NAME                    its whole transcript
   agents say NAME [--now] TEXT...    a message to it: an answer, steering. While it
@@ -391,6 +393,10 @@ Building and testing
   the same names).
 - Nothing of the person's (their name, email, accounts, files, what
   their windows show) goes to any outside service.
+- A script of more than one line (python3 -c '…', a heredoc, a loop)
+  goes in a file in your scratch folder, run from there: a long command
+  shows folded where leave is asked ("⋯ N lines hidden"), can't be read,
+  and is refused.
 
 {approvals}
 
@@ -468,6 +474,10 @@ you look into.)
   their windows show) goes to any outside service.
 - You are the helper: don't start another (tools/dev/agy-help, the
   olo-debug-help skill), nor any other agent or subagent of your own.
+- A script of more than one line (python3 -c '…', a heredoc, a loop)
+  goes in a file in your folder, run from there: a long command shows
+  folded where leave is asked ("⋯ N lines hidden"), can't be read, and
+  is refused.
 - Measure, don't guess: a cause is found when you can make the bug
   happen and stop happening, or can show the faulty step in the code
   with the values that reach it. Say which of the two you have.
@@ -889,6 +899,9 @@ def list_():
         # (Its turn over and its result written: done. Idle without it:
         # a question, or waiting to be told more.)
         st = "done" if st == "idle" and os.path.exists(done_file(n)) else st
+        # (In its first moments it shows its prompt before it has begun:
+        # not a turn over. The watch waits as long for it.)
+        st = "starting" if st == "idle" and time.time() - m.get("started", 0) < 30 else st
         on = m.get("crate") or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"a bug ({m.get('work', '?')})")
         done = f" {os.path.basename(done_file(n))}" if os.path.exists(done_file(n)) else ""
         print(f"{n:16} {st:8} {on:28} started {ago(m['started'])} ago{done}")
@@ -917,10 +930,12 @@ def trusts_own_folder(name):
     return True
 
 
-def watch(stuck_min, only=None, at_most=None):
+def watch(stuck_min, only=None, at_most=None, among=None):
     """Return once an agent needs you; print who and why. With `only`,
     that one alone, and how to go on; 0 if it has answered. With
-    `at_most`, after that many minutes if nothing has."""
+    `at_most`, after that many minutes if nothing has. With `among`, the
+    agents whose names begin with one of those alone (a minder's own: one
+    minder was woken over and over by another's agent asking leave)."""
     last = {}
     idle_since = {}
     began = told = time.time()
@@ -929,7 +944,7 @@ def watch(stuck_min, only=None, at_most=None):
         if at_most and time.time() - began >= at_most * 60:
             print(f"agents: nothing has needed you in {at_most} minutes; run it again to go on waiting")
             return 0
-        rows = [n for n in names() if only in (None, n)]
+        rows = [n for n in names() if only in (None, n) and (not among or any(n.startswith(p) for p in among))]
         if not any(state(n) in ("working", "asking", "idle") for n in rows):
             print("agents: none running")
             return 1 if only else 0
@@ -982,7 +997,7 @@ def watch(stuck_min, only=None, at_most=None):
             if only:
                 if finished:
                     return 0
-                print(f"agents: answer it (approve, answer, say), then run this again to go on waiting for {only}")
+                print(f"agents: {only} is waiting on you, which isn't a failure (the 3 this ends with says so): answer it (approve, answer, say), then run this again to go on waiting for it")
                 return 3
             return 0
         if time.time() - told >= 60:
@@ -1229,7 +1244,8 @@ def main():
     elif cmd == "list":
         list_()
     elif cmd == "watch":
-        watch(int(rest[rest.index("--stuck") + 1]) if "--stuck" in rest else 15, at_most=int(rest[rest.index("--for") + 1]) if "--for" in rest else None)
+        among = [p for p in rest[rest.index("--only") + 1].split(",") if p] if "--only" in rest else None
+        watch(int(rest[rest.index("--stuck") + 1]) if "--stuck" in rest else 15, at_most=int(rest[rest.index("--for") + 1]) if "--for" in rest else None, among=among)
     elif cmd == "peek" and rest:
         peek(rest[0], int(rest[1]) if len(rest) > 1 else 60)
     elif cmd == "log" and rest:

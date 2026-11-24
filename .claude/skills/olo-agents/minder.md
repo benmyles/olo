@@ -26,7 +26,8 @@ alone), its settings, and its report when it is done.
    `tools/dev/opus-look …`, each of those three as a background
    command of its own, since each waits for its agent). If the message
    names agents already running, start nothing.
-2. **Wait** with `tools/dev/agents watch --for 2` as a foreground
+2. **Wait** with `tools/dev/agents watch --for 2 --only PREFIX` (your
+   agents' names begin with it: another minder's asking won't wake you) as a foreground
    command; when it returns saying nothing has needed you, run it
    again. (Two minutes, no longer: a foreground command that runs past
    three is moved to the background by your harness, and the wait is

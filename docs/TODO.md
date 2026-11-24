@@ -1799,15 +1799,13 @@ something nobody here has is in "Blocked", with what it waits for.
   of it ("dev-box has 0.4 GB free; these need 1.2 GB"); the size of
   each choice in the pop-up ("Last 7 days 1.2 GB").
 
-- **The helpers' tool, from the minders' reports** (2026-11-23):
-  `agents watch` can't be kept to named agents (a minder of two looks
-  was woken by another minder's investigator asking leave, and polled);
-  its lines didn't name an Astra look while it ran (the look's own
-  front door said its end); an approval prompt that hides lines of a
-  long command ("⋯ (7 lines hidden)") can't be judged, and `peek` and
-  `log` don't show them; `agy-help` ends with 3 at a helper's first
-  question, which reads as a failure.
-
+- **The helpers' tool, from the minders' reports** (2026-11-23), what's
+  left: its lines didn't name an Astra look while it ran (the look's own
+  front door said its end: to see again once Codex is signed in here).
+  (Done 2026-11-24: `watch --only` keeps a minder to its own agents;
+  agents are told to put a script of more than a line in a file, as a
+  folded command can't be judged; `list` says "starting" for an agent's
+  first moments; agy-help's 3 says it isn't a failure.)
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize
   ssh sessions and traffic on olo desktop, like maybe under prefs ->
