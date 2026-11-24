@@ -1657,6 +1657,38 @@ something nobody here has is in "Blocked", with what it waits for.
     nothing), what is sent is compressed, and what a sync cost is
     measured against what the change was (bytes on the wire for a
     build's artifacts changed by one file, by one byte, by nothing).
+    **The design** (2026-11-24; Gemini's proposal, kept at
+    `/var/tmp/claude-olo/rex-sync/gemini-design.md` while this is
+    built, weighed and cut down here): one engine, `crates/rex-sync`, a
+    library both ends link (the app, and the helper Olo already puts on
+    each host, `olo-rex-link sync`, spoken over `exec_io` first and a
+    QUIC stream of the link later). What one side has is an index (each
+    file's size, time, mode, BLAKE3, and its content-defined chunks, the
+    gear hash diskbackup's chunker uses, 4/16/64 KiB, each known by 128
+    bits of BLAKE3), kept so a look at an unchanged tree reads nothing;
+    the receiver says what it has, the sender sends per file the
+    cheapest recipe: nothing (the same), a copy of what the receiver
+    holds under any name (moves, copies: no bytes), the old file's
+    prefix and the new tail (a file that only grew: an agent's
+    transcript, a log), the chunks the receiver lacks, compressed with
+    zstd (the old bytes around as its prefix where that helps; small
+    files batched in one stream; what doesn't compress sent raw); the
+    receiver builds each file beside its place and checks its whole
+    BLAKE3 before renaming it in. A host never names a path of this
+    computer's: what a host sends lands in a folder of the person's
+    choosing per host (Downloads ▸ Rex ▸ HOST unless said), and a kept
+    folder only where the person made it, with a permission of its own
+    in Preferences ▸ Rex. In this order, each useful alone: (1) the
+    engine and Agent Sessions' copy through it (only what changed, the
+    item below); (2) one file or folder down or up, from a pane's path
+    menu, Hosts, and agents (`olo pull`, `olo send`); (3) folders kept
+    in step one way (watchers both ends: inotify, the helper's), Rex's
+    Synced Folders window; (4) agents' control (`olo sync …`); (5) both
+    ways, with conflicts kept as copies, never lost; (6) Tracker's and
+    Deskbar's marks. Measured at each step against the change: bytes on
+    the wire for a 200 MB transcript and 4 KiB appended, a binary with
+    one function changed, a tree of 50,000 files with one edited, a
+    rename, nothing changed; and idle costs nothing.
   - *Agent Sessions' copy sends only what changed in a file* (Ben,
     2026-11-24: "improve the agent sessions copy in rex so that it is
     smart enough to e.g. copy new lines only when a file has only had
@@ -1709,6 +1741,36 @@ something nobody here has is in "Blocked", with what it waits for.
     devices) and when not (what the host can do itself). Tried on the
     rig: asked, allowed, denied, auto-approved, a long command streamed
     and cancelled, the permission off.
+  - *Forwards an agent on a host makes and ends itself* (Ben,
+    2026-11-24, of an agent on a host that had asked them to run `rex
+    forward new -L 127.0.0.1:PORT:localhost:PORT` on the laptop and
+    leave it running, since the bridge's forward takes any free port
+    and its flows need the browser at the same address the host's
+    server answers on: "please add a todo to add functionality to olo
+    bridge or olo rex skills or whatever so that agents can
+    self-manage forwarding etc"). Sign-in links, cookies and the
+    addresses a service sends the browser back to name one port, so
+    the desktop's side must be that port. On the host: `olo forward
+    PORT[:HERE]` (and `rex do olo.forward`), the desktop's
+    `127.0.0.1:HERE` (PORT unless said) to the host's localhost:PORT,
+    made through the same `create_forward` the bridge's own forward
+    uses (it takes a local port; the bridge passes 0); `olo forward
+    --list` (this host's: each port, its port here, who made it, how it
+    stands), `olo forward --stop PORT`; `--keep` for one kept while the
+    agent is away (made again when the host connects and when Rex
+    starts: a forward made by an agent ends with the pane that made it
+    otherwise). A port taken here is said with what holds it, never a
+    port quietly chosen instead. Under the host's permission for local
+    servers (Preferences ▸ Rex), each forward shown in the Ports list
+    as the agent's (it can be stopped there), a port below 1024 or
+    listening beyond 127.0.0.1 refused. In the skill for agents: when
+    a page must be reached at the host's own address (sign-in,
+    callbacks), make the forward first, then `olo open` or the agent
+    screen's browser. And the person's own way to a lasting forward:
+    the Ports list's New Forward… with Keep (saved, made again as the
+    host connects), and `rex`'s command line the same. Tried on the
+    rig: made, listed, a page reached at the same port, the port taken,
+    stopped, kept over a reconnect and over Rex's restart.
   - *The Host window in tabs, and the account's window reached from it*
     (Ben, 2026-11-24: "make the rex manage host dialog a window with
     multiple tabs and group things under logical tabs e.g. Rex / Olo
