@@ -3039,6 +3039,13 @@ something nobody here has is in "Blocked", with what it waits for.
   - *A click under a page's sticky header said it pressed what it
     didn't*: hit-test the point first, scroll the element clear of what
     covers it, and say when something else would take the click.
+    **Done** 2026-11-24: the page's tree says what covers a control's
+    middle from a layer of the page's own (`covered`, extension
+    1.16.0); `click` and `set` wheel it out from under, else refuse
+    naming the layer; `tree` marks it `under=…`. `tree.js`'s part tried
+    in a headless Chromium (`tests/tree-covered.html`: PASS, and FAIL
+    without the check); olo-screen's wheeling unit-tested, not tried on
+    a live page.
   - *`select` on a native select types into whatever has the keyboard*:
     when the select hadn't it, the keys went to the page's "/" shortcut,
     another select, a search box. Make sure the select has the keyboard

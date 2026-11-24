@@ -3037,6 +3037,15 @@ the command takes it: an agent's shell may leave a pipe open, and
   loopback. A change to `extension/tree.js` can be tried without
   installing anything: a page that fetches the script and runs it on
   itself (`apps/chrome/tests/tree-text.html`).
+- **The dev server has no Google Chrome, but `tree.js`'s test pages run
+  in any headless Chromium** (2026-11-24, a browser-testing tool's
+  build in `~/.cache/ms-playwright/chromium-*/`, where there is one):
+  serve `apps/chrome` from loopback and `chrome --headless=new
+  --no-sandbox --user-data-dir=/var/tmp/YOURS --virtual-time-budget=5000
+  --dump-dom URL` prints the page with its PASS title. `--dump-dom`
+  doesn't wait for fetches begun after load without the budget; to time
+  the script, load it with a synchronous request and call it in the
+  page (in the top frame it runs synchronously).
 
 - **`olo-screen ACTION NAME --help` acts.** Only `olo-screen --help`
   prints help: `olo-screen type agent --help` typed "--help" into the

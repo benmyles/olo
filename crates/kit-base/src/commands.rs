@@ -124,6 +124,12 @@ pub struct UiNode {
     /// action.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub busy: bool,
+    /// What lies over its middle from a layer of a web page's own (its
+    /// sticky header, a fixed banner, a dialog's backdrop: "sticky
+    /// Banner"), from Olo's Chrome extension: a click there reaches that
+    /// instead, so Agent Screens scroll it clear first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub covered: Option<String>,
 }
 
 /// What one window shows.

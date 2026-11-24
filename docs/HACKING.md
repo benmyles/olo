@@ -21951,7 +21951,18 @@ down; then read again until it stops moving, as a browser's smooth
 scroll glides on). `click` and `set` scroll what they find into view
 first (`into_view`: its middle within its window's content and the
 screen): a web form's field listed at y 1045 of a 900-point screen was
-clicked where nothing is, and `set` failed 14 times on one screen. A
+clicked where nothing is, and `set` failed 14 times on one screen. And
+out from under a layer of its page's own (`UiNode::covered`, from the
+extension: a sticky header, a fixed banner), a notch at a time, up in
+the view's upper half and down in its lower (`wheel_out`), until the
+tree says nothing covers it, else refused naming what does: a click
+under a page's sticky header said it pressed what it never reached (an
+agent's report, 2026-11-24); `tree` marks such a control
+`under="sticky Banner"`. `set` reads the field back where it, at its
+place, still has the keyboard, typing once more as `type` does where it
+holds nothing or what it held (`set_not_kept`), and `select` types a
+page's select's words only once the select or its opened list has the
+keyboard (`keys_reach`). A
 point is `X Y`, `X,Y` or `--at X,Y`, `scroll` takes `--dx`/`--dy` and
 `--at`, and keys go by X11's and the web's names too (`Page_Down`,
 `Next`, `ArrowDown`, `KP_Enter`): what agents write, which failed
@@ -23028,13 +23039,20 @@ label was an element's own text nodes, cut at 300 letters: "Nvidia on
 Monday announced Huang has been reinstated" came back to an agent as
 "on Monday announced has been ,". `apps/chrome/tests/tree-text.html`
 runs the script on itself in a real Chrome and says in its title what
-held): ARIA roles, else the element's (Link, Button,
+held; any headless Chrome does: `chrome --headless=new --dump-dom
+--virtual-time-budget=5000 URL` prints it): ARIA roles, else the element's (Link, Button,
 TextInput, PasswordInput, CheckBox, ComboBox, Heading, Image, List, Row,
 Cell, Dialog, …), "Clickable" for script-made buttons (an `onclick`, a
 `tabindex`, or where the pointer cursor starts), and "Label" for text
 not inside anything named; names from `aria-labelledby`, `aria-label`,
 the control's `<label>` (which is then left out), `alt`, `placeholder`
-or the text; values, checked, selected, disabled and the focus.
+or the text; values, checked, selected, disabled and the focus; and,
+for what takes clicks, what lies over its middle from a layer of the
+page's own (`covered`, extension 1.16.0: `document.elementFromPoint` at
+its middle, kept where what it reaches is in a `fixed` or `sticky`
+element not holding the control: "sticky Banner", `fixed Dialog
+"Cookies"`; a control drawn over its own input, a check box's box or a
+field's floating label, is that control; `tests/tree-covered.html`).
 Passwords' values are never read (`••••••••`). Places are the viewport's
 CSS pixels times the tab's zoom, the page set at the bottom of the
 window below Chrome's tab strip and toolbar (`window.height − page

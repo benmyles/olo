@@ -280,7 +280,12 @@ says what it has.
 
 `click` and `set` scroll what they find into view first when it's out
 of sight (a web page's tree has the whole page: a field below the fold
-is listed at its place on the page, past the screen's edge).
+is listed at its place on the page, past the screen's edge), and out
+from under a layer of the page's own lying over it (its sticky header,
+a fixed banner: `tree` marks such a control `under="sticky Banner"`,
+what a click at its middle would reach instead). One that stays under
+it (a dialog's backdrop) is refused, saying what covers it: close that
+first.
 
 By position:
 

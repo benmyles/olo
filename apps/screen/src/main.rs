@@ -1413,30 +1413,48 @@ fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Re
     };
     s.input(vec![SyntheticEvent::Move { x, y }])?;
     // Straight to it, if it's there out of sight (a web page's tree has
-    // the whole page); else up to the top, then down; until it shows or
-    // the list stops moving.
+    // the whole page); out from under what lies over it, if it's in sight
+    // under a layer of its page's (a sticky header); else up to the top,
+    // then down; until it shows or the list stops moving.
+    let covered: [(i32, usize); 1];
     let plan: &[(i32, usize)] = match &first {
+        Some(f) if f.covered.is_some() && in_sight(s, f)? => {
+            covered = [(clear_of_cover(s, f)?, 12)];
+            &covered
+        }
         Some(f) if f.center.1 < view_of(s, f)?.1 => &[(-3, 1000)],
         Some(_) => &[(3, 1000)],
         None => &[(-10, 100), (3, 1000)],
     };
+    let mut under = first.filter(|f| f.covered.is_some());
     for &(notches, rounds) in plan {
         let mut last = String::new();
         for _ in 0..rounds {
             s.input_paced(screens::wheel(0, notches))?;
             std::thread::sleep(Duration::from_millis(80));
             let (found, now) = shown(s)?;
-            if let Some(f) = found
-                && whole(&f)
-                && in_view(s, &f)?
-            {
-                return settled(s, &shown, f);
+            if let Some(f) = found {
+                if whole(&f) && in_view(s, &f)? {
+                    return settled(s, &shown, f);
+                }
+                under = f.covered.is_some().then_some(f);
             }
             if now == last {
                 break;
             }
             last = now;
         }
+    }
+    // (In sight but under the page's own layer all along: a click would
+    // reach that, and said it pressed what it never did, an agent's
+    // report, 2026-11-24.)
+    if let Some(f) = under {
+        return Err(format!(
+            "the {} {:?} is under the page's {}, and scrolling didn't bring it out: a click at its middle would reach that instead (close it, or scroll the page yourself)",
+            f.role,
+            f.name.as_deref().unwrap_or(""),
+            f.covered.as_deref().unwrap_or("layer")
+        ));
     }
     Err(format!("scrolled the whole list; nothing matches {}", q.describe()))
 }
@@ -1470,9 +1488,29 @@ fn view_of(s: &screens::Screen, f: &find::Found) -> Result<(f32, f32, f32, f32),
 /// below the fold was at y 1045 of a 900-point screen, clicked where
 /// nothing is, and `set` failed seven times on 2026-11-13.)
 fn in_view(s: &screens::Screen, f: &find::Found) -> Result<bool, String> {
+    Ok(in_sight(s, f)? && f.covered.is_none())
+}
+
+/// Whether `f`'s middle is in its view, whatever lies over it.
+fn in_sight(s: &screens::Screen, f: &find::Found) -> Result<bool, String> {
     let (x, y) = f.center;
     let (left, top, right, bottom) = view_of(s, f)?;
     Ok(x >= left && x < right && y >= top && y < bottom)
+}
+
+/// Which way to wheel `f`, under a layer of its page's own, to bring it
+/// out: a notch up where it is in the view's upper half (under a sticky
+/// header, it comes out below it), down in the lower (a banner at the
+/// foot). A notch at a time: a header is a notch or two tall.
+fn clear_of_cover(s: &screens::Screen, f: &find::Found) -> Result<i32, String> {
+    let (_, top, _, bottom) = view_of(s, f)?;
+    Ok(wheel_out(f.center.1, top, bottom))
+}
+
+/// A notch up for a middle at `y` in the upper half of a view from `top`
+/// to `bottom`, else down: the way out from under what covers it.
+fn wheel_out(y: f32, top: f32, bottom: f32) -> i32 {
+    if y < (top + bottom) / 2.0 { -1 } else { 1 }
 }
 
 /// `f`, scrolled into view first if it's out of sight (`scroll_to`).
@@ -1766,6 +1804,9 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
                     let _ = write!(o, " {word}");
                 }
             }
+            if let Some(over) = &n.covered {
+                let _ = write!(o, " under={:?}", filter.cut(over));
+            }
             o.push('\n');
         }
     }
@@ -1838,6 +1879,7 @@ mod tests {
             row: None,
             rows: None,
             options: Vec::new(),
+            covered: None,
         };
         let f = field("TextInput", Some(""), 10.0);
         assert!(set_not_kept(&f, "123456", Some(&field("TextInput", Some(""), 10.0))).is_some(), "empty after");
@@ -1936,6 +1978,44 @@ mod tests {
         assert_eq!(found.len(), 1);
         let o = outline(std::slice::from_ref(&t), &Filter { visible_only: true, ..Default::default() });
         assert!(o.contains("Menu at 400,300 100x20") && o.contains("MenuItem \"Copy\" at 404,304"), "{o}");
+    }
+
+    /// A page's control under its sticky header: marked in `tree`'s line
+    /// with what covers it, carried by what is found (so `click` scrolls it
+    /// out first, a notch up under a header at the top, down under a
+    /// banner at the foot), and not in view while it is under it.
+    #[test]
+    fn a_control_under_a_pages_layer() {
+        let node = |covered: Option<&str>| commands::UiNode {
+            id: 1,
+            role: "Button".into(),
+            name: Some("Save".into()),
+            x: 100.0,
+            y: 40.0,
+            width: 80.0,
+            height: 24.0,
+            enabled: true,
+            clickable: true,
+            covered: covered.map(Into::into),
+            ..Default::default()
+        };
+        let t = |covered| ScreenTree {
+            window: 7,
+            app_id: "olo.chrome".into(),
+            title: "Shop".into(),
+            focused: true,
+            content: Frame { x: 0, y: 0, width: 800, height: 600 },
+            nodes: vec![node(covered)],
+            popups: Vec::new(),
+        };
+        let o = outline(&[t(Some("sticky Banner"))], &Filter::default());
+        assert!(o.contains("Button \"Save\" at 100,40 80x24 under=\"sticky Banner\""), "{o}");
+        assert!(!outline(&[t(None)], &Filter::default()).contains("under="));
+        let found = find::matches(&[t(Some("sticky Banner"))], &find::Query { name: Some("Save".into()), ..Default::default() });
+        assert_eq!(found[0].covered.as_deref(), Some("sticky Banner"));
+        // Out from under: up in the view's upper half, down in its lower.
+        assert_eq!(wheel_out(52.0, 0.0, 600.0), -1);
+        assert_eq!(wheel_out(580.0, 0.0, 600.0), 1);
     }
 
     /// Where, as agents write it: `X Y`, `X,Y`, `--at X,Y`; anything else

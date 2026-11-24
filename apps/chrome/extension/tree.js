@@ -165,6 +165,39 @@
     return getComputedStyle(e).cursor === "pointer";
   }
 
+  // The layer of the page's own that `h` is in, if any: what is drawn
+  // over the page as it scrolls (a sticky header, a fixed banner, a
+  // dialog's backdrop).
+  function layerOf(h) {
+    for (let a = h; a && a !== document.documentElement; a = a.parentElement) {
+      const p = getComputedStyle(a).position;
+      if (p === "fixed" || p === "sticky") return a;
+    }
+    return null;
+  }
+
+  // What a click at the middle of `e` would reach instead, where a layer
+  // of the page's own lies over it there (a page's sticky header over
+  // what was scrolled under it: a click "pressed" a button it never
+  // reached, an agent's report, 2026-11-24). Only such a layer, not
+  // holding `e` itself: a control drawn over its own input (a check
+  // box's box, a field's floating label) is that control to a person.
+  function coveredBy(e, r) {
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
+    const root = e.getRootNode();
+    const h = (root.elementFromPoint ? root : document).elementFromPoint(x, y);
+    if (!h || h === e || e.contains(h) || h.contains(e)) return null;
+    if (h.closest("label")?.control === e) return null;
+    const layer = layerOf(h);
+    if (!layer || layer.contains(e)) return null;
+    const role = roleOf(layer);
+    const name = role ? nameOf(layer, role) : "";
+    const kind = role || (layer.localName === "header" || layer.localName === "footer" ? layer.localName : "layer");
+    return `${getComputedStyle(layer).position} ${kind}${name ? ` "${clip(name)}"` : ""}`;
+  }
+
   function shown(e, r) {
     if (r.width <= 0 && r.height <= 0) return false;
     const st = getComputedStyle(e);
@@ -247,7 +280,11 @@
       const extra = {};
       const disabled = e.disabled || e.getAttribute("aria-disabled") === "true";
       if (disabled) extra.enabled = false;
-      if (clickable(e, role)) extra.clickable = true;
+      if (clickable(e, role)) {
+        extra.clickable = true;
+        const over = coveredBy(e, r);
+        if (over) extra.covered = over;
+      }
       if (document.activeElement === e) extra.focused = true;
       if (e.localName === "input" && (e.type === "checkbox" || e.type === "radio")) extra.checked = e.checked;
       else if (e.hasAttribute("aria-checked")) extra.checked = e.getAttribute("aria-checked") === "true";

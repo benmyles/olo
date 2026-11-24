@@ -88,6 +88,10 @@ pub struct Found {
     /// among them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<String>,
+    /// What a click at its middle would reach instead: a layer of a web
+    /// page's own over it (its sticky header: "sticky Banner").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub covered: Option<String>,
 }
 
 /// `s` as it's compared: lower case, curly quotes straight, "…" as three
@@ -149,6 +153,7 @@ impl Found {
             row: n.row,
             rows: n.rows,
             options: n.options.clone(),
+            covered: n.covered.clone(),
         }
     }
 }
@@ -434,6 +439,7 @@ mod tests {
             row: None,
             rows: None,
             options: Vec::new(),
+            covered: None,
         }
     }
 

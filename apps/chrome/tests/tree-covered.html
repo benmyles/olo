@@ -1,0 +1,57 @@
+<!-- The page tree's covered controls (extension/tree.js, `covered`: what a click at a control's middle would reach
+     instead, a layer of the page's own over it), run on this page by the page itself in a real Chrome, as
+     tree-text.html is: serve apps/chrome from loopback (python3 -m http.server --bind 127.0.0.1 PORT) and open
+     /tests/tree-covered.html, on an Agent Screen or headless (chrome --headless=new --dump-dom
+     --virtual-time-budget=5000 URL); its title says PASS or what failed. -->
+<!doctype html><html><head><meta charset="utf-8"><title>running</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  header { position: sticky; top: 0; height: 60px; background: #eee; z-index: 2; }
+  .spacer { height: 500px; }
+  .check { position: relative; display: inline-block; width: 20px; height: 20px; }
+  .check input, .check .box { position: absolute; left: 0; top: 0; width: 20px; height: 20px; margin: 0; }
+  .check input { opacity: 0; }
+  .check .box { border: 1px solid #888; box-sizing: border-box; }
+  .float { position: relative; width: 240px; }
+  .float input { width: 220px; height: 40px; }
+  .float label { position: absolute; left: 6px; top: 10px; }
+  #cookies { position: fixed; left: 0; right: 0; bottom: 0; height: 80px; background: #ffd; z-index: 3; }
+  #terms { position: absolute; left: 20px; }
+</style></head><body>
+<header role="banner"><a href="#home">Home</a> <button>Menu</button></header>
+<div class="spacer"></div>
+<button id="under">Save</button>
+<p><button>Clear of it</button></p>
+<p><span class="check"><input type="checkbox" aria-label="Agree"><span class="box"></span></span></p>
+<div class="float"><input id="email"><label for="email">Email</label></div>
+<div class="spacer"></div>
+<a id="terms" href="#terms">Terms</a>
+<div id="cookies" role="dialog" aria-label="Cookies">We use cookies. <button>Accept</button></div>
+<script>
+(async () => {
+  try {
+    // Save scrolled up under the sticky header; Terms placed under the
+    // fixed cookie dialog at the view's foot.
+    const under = document.getElementById("under");
+    scrollTo(0, under.getBoundingClientRect().top + scrollY - 20);
+    document.getElementById("terms").style.top = `${scrollY + innerHeight - 40}px`;
+    await new Promise((r) => requestAnimationFrame(() => r()));
+    const src = await (await fetch("../extension/tree.js")).text();
+    const r = await eval(src);
+    const node = (role, name) => r.nodes.find((n) => n.role === role && n.name === name);
+    const covered = (role, name) => node(role, name)?.covered;
+    const failed = [];
+    const want = (what, ok) => ok || failed.push(what);
+    want(`Save under the header (${covered("Button", "Save")})`, covered("Button", "Save")?.startsWith("sticky Banner"));
+    want(`Terms under the cookie dialog (${covered("Link", "Terms")})`, covered("Link", "Terms") === 'fixed Dialog "Cookies"');
+    for (const [role, name] of [["Button", "Clear of it"], ["Link", "Home"], ["Button", "Menu"], ["Button", "Accept"], ["CheckBox", "Agree"], ["TextInput", "Email"]]) {
+      want(`${role} ${name} found`, !!node(role, name));
+      want(`${role} ${name} not covered (${covered(role, name)})`, !covered(role, name));
+    }
+    document.title = failed.length ? `FAIL: ${failed.join("; ")}` : "PASS";
+  } catch (e) {
+    document.title = `FAIL: ${e}`;
+  }
+})();
+</script>
+</body></html>
