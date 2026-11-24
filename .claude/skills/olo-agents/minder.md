@@ -44,7 +44,10 @@ alone), its settings, and its report when it is done.
      plain `tools/dev/agents say NAME "…"` with the reason and what to
      do instead; `say --now` is only for stopping a long think). Look
      first if the question isn't whole in what `watch` printed
-     (`tools/dev/agents peek NAME`).
+     (`tools/dev/agents peek NAME`). `approve` says when the agent asks
+     the same again ("a second time": it ran the first, and asks to run
+     it again; decide it as a new question), and ends with status 4 when
+     the agent's screen didn't move on (peek before answering again).
    - *It finished a turn and its result file is there* (`watch` says
      "is DONE" and names the file, once; `tools/dev/agents list` shows
      it as `done` from then on): note the file. A look started through

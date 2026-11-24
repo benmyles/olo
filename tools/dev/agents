@@ -54,7 +54,9 @@ too: "always do it through tmux never a script that just goes silent".
   agents approve NAME [y|p|no]       answer what it asks leave for: yes this once (y),
                                      yes and don't ask again in this conversation for
                                      commands that start the same (p), or no (then
-                                     `say` why)
+                                     `say` why); says if its screen didn't move on
+                                     (status 4: look before answering again), or if
+                                     the same is asked a second time (answer it too)
   agents answer NAME N               take the Nth choice of any other question it
                                      shows with choices
   agents keys NAME KEY…              press keys in it (up, down, enter, esc, tab, a
@@ -941,9 +943,10 @@ def watch(stuck_min, only=None, at_most=None, among=None):
     began = told = time.time()
     while True:
         alerts = []
-        if at_most and time.time() - began >= at_most * 60:
-            print(f"agents: nothing has needed you in {at_most} minutes; run it again to go on waiting")
-            return 0
+        # (Looked at before the time is up: a question that came in the
+        # last moments was said as "nothing has needed you", and waited a
+        # minute on a minder that took it at its word, 2026-11-24.)
+        out_of_time = bool(at_most) and time.time() - began >= at_most * 60
         rows = [n for n in names() if only in (None, n) and (not among or any(n.startswith(p) for p in among))]
         if not any(state(n) in ("working", "asking", "idle") for n in rows):
             print("agents: none running")
@@ -999,6 +1002,9 @@ def watch(stuck_min, only=None, at_most=None, among=None):
                     return 0
                 print(f"agents: {only} is waiting on you, which isn't a failure (the 3 this ends with says so): answer it (approve, answer, say), then run this again to go on waiting for it")
                 return 3
+            return 0
+        if out_of_time:
+            print(f"agents: nothing has needed you in {at_most} minutes; run it again to go on waiting")
             return 0
         if time.time() - told >= 60:
             told = time.time()
@@ -1103,10 +1109,23 @@ def answer(name, how):
         sys.exit(f"agents: no such choice in what {name} asks: look (agents peek {name}), and answer with `agents answer {name} N`, or where its choices have no numbers move to one and confirm it (`agents keys {name} down enter`)")
     if any(x in pick[1] for x in SAVES):
         sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
+    before = screen(name, 400) or ""
     tmux("send-keys", "-t", f"={name}:0.0", pick[0], check=True)
-    time.sleep(0.5)
+    # (Whether it took: its screen moves on. The same question again after
+    # that is a second asking, not this one left up: an agent that ran a
+    # script asked to run it again, and the minder took it for an answer
+    # that hadn't taken, 2026-11-24.)
+    until = time.time() + 3
+    while (screen(name, 400) or "") == before and time.time() < until:
+        time.sleep(0.2)
     seen(name)
     print(f"agents: answered {name}: {pick[1]}")
+    if (screen(name, 400) or "") == before:
+        print(f"agents: {name}'s screen hasn't changed since: look (agents peek {name}) before answering again")
+        return 4
+    time.sleep(0.5)
+    if state(name) == "asking" and asked(name)[0] == text:
+        print(f"agents: {name} asks the same again: a second time (its screen moved on in between), to be answered as one")
 
 
 KEYS = {"up": "Up", "down": "Down", "left": "Left", "right": "Right", "enter": "C-m", "esc": "Escape", "escape": "Escape", "tab": "Tab", "space": "Space"}
@@ -1255,9 +1274,9 @@ def main():
     elif cmd == "say" and len(rest) >= 2:
         say(rest[0], " ".join(rest[1:]))
     elif cmd == "approve" and rest:
-        answer(rest[0], rest[1] if len(rest) > 1 else "y")
+        sys.exit(answer(rest[0], rest[1] if len(rest) > 1 else "y") or 0)
     elif cmd == "answer" and len(rest) == 2 and rest[1].isdigit():
-        answer(rest[0], rest[1])
+        sys.exit(answer(rest[0], rest[1]) or 0)
     elif cmd == "keys" and len(rest) >= 2:
         keys(rest[0], rest[1:])
     elif cmd == "stop" and rest:
