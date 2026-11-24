@@ -897,3 +897,47 @@ fn ui_lint_a_tab_views_pages_keep_one_height_and_show_one() {
     assert!(heights.iter().all(|h| (h - heights[0]).abs() < 0.5), "the window's height with each tab chosen: {heights:?}");
     assert!(heights[0] > 120.0, "as tall as the tall page: {heights:?}");
 }
+
+/// A text field with the keyboard and a segmented control beside it.
+struct Segments {
+    field: Child<TextField>,
+    chosen: usize,
+}
+
+impl View for Segments {
+    type Message = usize;
+
+    fn message(&mut self, i: usize, cx: &mut Cx<Self>) {
+        self.chosen = i;
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let chosen = cx.messenger();
+        let segments = olo_kit::widgets::SegmentedControl::new("views", ["Sessions", "Activity"], self.chosen).on_choose(move |i, _| {
+            chosen.send(*i);
+        });
+        div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(segments).child(TextControl::new(cx, &self.field).label("Name:").divider(60.0))
+    }
+}
+
+/// A click on a segment chooses it and leaves the keyboard where it was,
+/// as a button's does (BeOS's controls): Rex's Sessions and Activity, given
+/// the keyboard by a click, took the Space typed next from the pane.
+#[test]
+fn ui_lint_a_segment_clicked_leaves_the_keyboard_where_it_was() {
+    let _lint = Lint::new();
+    let window = olo_kit::open_window(WindowOptions::new("Segments", 360.0, 160.0), |cx| Segments { field: text_field(cx, |f| f), chosen: 0 });
+    ask(&window, |v, cx| v.field.focus(cx));
+    assert!(ask(&window, |v, cx| v.field.is_focused(cx)), "the field has the keyboard to begin with");
+    // (The second segment: right of the control's middle.)
+    let at = ask(&window, |_, cx| {
+        let c = cx.agent_nodes().into_iter().find(|n| n.role == "Segment" && n.name.as_ref().is_some_and(|s| s.as_ref() == "Activity")).map(|n| n.bounds).expect("the Activity segment");
+        olo_kit::point(c.origin.x + c.size.width / 2.0, c.origin.y + c.size.height / 2.0)
+    });
+    ask(&window, move |_, cx| cx.headless_click(at));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(ask(&window, |v, _| v.chosen), 1, "the segment is chosen");
+    assert!(ask(&window, |v, cx| v.field.is_focused(cx)), "and the field keeps the keyboard");
+    window.close();
+}

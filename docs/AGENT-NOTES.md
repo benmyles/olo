@@ -1346,7 +1346,12 @@ Again 2026-11-23, in its rest check: a build beside it slowed the
 Inbox's provider to half the check's changes ("the check itself is
 off"). The check now waits for room as the lint does and says the load
 when it fails; a push with a build beside it is still slower: wait for
-its completion notice.
+its completion notice. Again 2026-11-24, with the rig's cases run beside
+it: the lint waited for room ("processors short 44%"), the hook ran
+eleven minutes, and GitHub closed the push's connection meanwhile
+("Connection to github.com closed by remote host", exit 141, nothing
+pushed though the hook passed). No rig, suite or build while a push's
+hook runs; then push again.
 
 ### A soak counts threads and descriptors, not only memory (2026-11-21)
 

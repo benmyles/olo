@@ -2833,6 +2833,15 @@ something nobody here has is in "Blocked", with what it waits for.
     segmented control keeps the keyboard there, so Space presses the
     segment instead of typing a space in the pane (`apps/rex/src/ui.rs`,
     the control by the session's panes).
+    **Done** 2026-11-24: a press on the kit's segmented control leaves
+    the keyboard where it was (`keeps_focus`, the menu bar's titles'
+    way), tested. Found then: a press on any of the kit's controls (a
+    button, a check box) lets the window's root take the keyboard from a
+    text field, though `tab_stop`'s note says pressing a button leaves
+    it where it was (BeOS's way); a click on empty space does too. Make
+    controls keep it as their note says (`dispatch::mouse_down`: a tab
+    stop that doesn't take the keyboard keeping it where it is), after
+    looking at every form that relies on a press ending an edit.
 
 - **A host's folders in Tracker, Rex's own browser gone** (Ben,
   2026-11-24: "i want the file browser / go to folder stuff in the rex

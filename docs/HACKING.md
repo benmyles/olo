@@ -4663,7 +4663,9 @@ it.
   needs and an equal part of the rest (`shares`: Phone's Messages, with
   a count, beside Contacts in a third of a screen); and only then is a
   name cut (the review calls that out). A segment's room is measured with its name at the chosen weight,
-  so nothing moves when the choice does. A press chooses; it is one
+  so nothing moves when the choice does. A press chooses and leaves the
+  keyboard where it was (`keeps_focus`: given it, Rex's Sessions and
+  Activity took the Space typed next from the pane); it is one
   stop in the tab order, the arrows moving the choice and Home and End
   taking the first and last, the chosen name underlined while it
   has the keyboard; `Segment`s to agents, selected or not, the count

@@ -326,9 +326,15 @@ impl IntoElement for SegmentedControl {
             return el.disabled(!enabled).unfaded();
         }
         let (pressed, keys) = (on_choose.clone(), on_choose);
+        // (Tab reaches it; a press chooses and leaves the keyboard where it
+        // was, as BeOS's controls do, and as the menu bar's titles: given
+        // the keyboard by a click, Rex's Sessions and Activity took the
+        // Space typed next from the pane, the second investigator's notes.
+        // A tab stop alone isn't enough: what holds it, the window's root,
+        // took the keyboard at the press instead.)
         el = el
-            .focusable()
             .tab_stop()
+            .keeps_focus()
             .on_mouse_down(MouseButton::Left, move |e, cx| {
                 let hit = places(cx.scale_factor(), cx.listener_bounds(), &pressed_at).iter().position(|r| r.contains(&e.position));
                 if let (Some(i), Some(f)) = (hit, &pressed)
