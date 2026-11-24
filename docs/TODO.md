@@ -1693,6 +1693,36 @@ something nobody here has is in "Blocked", with what it waits for.
   and why none ("Passwords on this screen has no SSH keys shared with
   it", "Passwords isn't running", "locked"), and log it.
 
+- **Desktop commands on a host, as on this desktop: shims Rex puts
+  there** (Ben, 2026-11-23: "have the rex client support installing
+  shims for xdg-open and other desktop integration commands so that
+  apps running remotely can operate like they're on the local
+  desktop"). The shims Rex once put on hosts (`xdg-open`, `op`,
+  `olo-screen`) waited for a port and a token nothing set, did nothing,
+  and were taken off (`bridge::OLD_SHIMS`; HACKING, Rex, "Nothing of
+  it is on the host"); since then the bridge's `olo` command has a way
+  that works (`rex do` to the Olo Rex app showing the session: the
+  app's actions, its files, what the host is granted). To find out
+  first: which commands programs on a host call for the desktop
+  (`xdg-open` and `$BROWSER` for a link or a sign-in page, `op` for a
+  secret, `notify-send`, the clipboard's `wl-copy`/`wl-paste` and
+  `xclip`/`xsel`, `xdg-email`, a file opened in its app), what each
+  is given and answers, and how a program finds a shim (a folder put
+  first on PATH by the shell's own startup, as the SSH config's
+  `Include` is put: shells already open too). Then: each a shim in the
+  account's home that asks through `rex do` (no port, no token; the
+  host's grant in Preferences ▸ Rex decides, as the bridge's skill
+  does), doing on this desktop what the command would (a link opened
+  in the person's browser, with what asked; a file copied here and
+  opened in its app; a notification; the clipboard, both ways), and
+  as the real command where there's no Rex app to ask (no session
+  shown, the host not granted) so nothing on the host breaks; put
+  and taken off from the Host window (Bridge: "Desktop commands"),
+  kept in step at each connection as the agent's SSH config is; tried
+  on the rig and on the real host (a sign-in link from a CLI, `op
+  read`, `notify-send`, a copy and a paste), and said in the skill
+  for agents.
+
 - **Preferences ▸ Services: every Olo service, how it stands, and a
   way to manage it** (Ben, 2026-11-23, on asking whether Passwords'
   SSH agent had to be restarted by hand to get a fix: "a Preferences

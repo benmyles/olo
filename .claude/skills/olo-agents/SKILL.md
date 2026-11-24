@@ -22,7 +22,7 @@ Every helper is run this way, never as a script that answers only at
 its end (Ben, 2026-11-22: "always do it through tmux never a script
 that just goes silent … for all the subagents/reviewers etc"): the
 second investigator (`tools/dev/agy-help`, the `olo-debug-help` skill),
-Gemini's look at a change's pictures (`tools/dev/agy-look`) and Opus
+Astra 6.2's look at a change's pictures (`tools/dev/astra-look`, the Codex CLI) and Opus
 5.5's design review of them (`tools/dev/opus-look`) are front doors to
 the same `tools/dev/agents`, and everything under "Running them" below
 (peek, say, approve, the watching) holds for them too.
@@ -141,7 +141,7 @@ tools/dev/agents allowed                     # what goes ahead unasked, what is 
   whenever any agent runs; when it returns, deal with every agent it
   names (`peek` first), then start it again. Look at `agents list` now
   and then besides, between your own steps, so nothing waits on you
-  unseen. (`agy-help`, `agy-look` and `opus-look` do this waiting
+  unseen. (`agy-help`, `astra-look` and `opus-look` do this waiting
   themselves for the one they started: run those in the background the
   same way, and run the same command again after answering.)
 - **What goes ahead, what is refused, what comes to you.** An agent
@@ -186,7 +186,7 @@ When it says DONE:
    lints (`cargo ui-lint`, `tools/dev/ui-lint`, `--tiles`), and picture
    every window and state it changed at 1×, 1.5× and 2×, light and dark,
    judging each closely as a designer. Expect spacing, alignment,
-   hierarchy and words to need your hand. Then `agy-look` and
+   hierarchy and words to need your hand. Then `astra-look` and
    `opus-look`, as every change's pictures get.
 4. Fix what isn't right yourself, or, while it still runs, `say` it back
    with exact instructions.

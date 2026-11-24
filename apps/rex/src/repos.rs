@@ -154,9 +154,16 @@ pub fn render_panel(
 ) -> Element {
     let on_do: Rc<dyn Fn(&ReposDo, &mut WindowCx)> = Rc::new(on_do);
     let tall = |n: usize| px(olo_kit::widgets::list_height(n, m::LIST_ROW, true));
-    // (How each stands is of one host: named in the column's title.)
+    // (How each stands is of one host: named in the column's title
+    // where the name fits it, else "On the host", which the line under
+    // the buttons names. Cut, a long name lost what told it from its
+    // neighbours: "On build-farm-eu-wes…", Astra's look.)
     let status: String = match host {
-        Some(host) => olo_kit::tr!("On {}", host).into(),
+        Some(host) => {
+            let named: String = olo_kit::tr!("On {}", host).into();
+            let room = panels::STATUS - 2.0 * m::CELL_INSET;
+            if f32::from(style::text_width(named.clone(), style::PLAIN_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL))) <= room { named } else { olo_kit::words::tr("On the host").into() }
+        }
         None => olo_kit::words::tr("Status").into(),
     };
     let view = ColumnListView::new(
@@ -216,22 +223,26 @@ pub fn render_panel(
         });
     }
 
-    // The chosen one's line: one row, always (nothing moves as another
-    // is chosen), cut where it is too long, its whole in its tip.
+    // The chosen one's line, whole: a paragraph, so one too long for the
+    // window's width goes on to a second line (a long address, what a
+    // host said of a clone it refused). It was one row cut with "…",
+    // and the sentence for no row chosen, which named the host, lost
+    // its end on a host with a long name (Ben, 2026-11-23: "doesn't fit
+    // the text in the window"): nothing here is cut, and a long name
+    // makes the window a line taller (it fits its content).
     let row = style::line_row(style::PLAIN_SIZE);
     let wrong = |text: String| {
         div()
             .w_full()
-            .h(px(row))
             .flex()
             .flex_row()
-            .items_center()
+            .items_start()
             .gap(px(m::TIGHT))
-            .child(panels::light(Light::Down))
-            .child(div().flex_1().min_w_0().child(StringView::new(text).cut(true).height(row)))
+            .child(div().h(px(row)).flex().items_center().child(panels::light(Light::Down)))
+            .child(div().flex_1().min_w_0().child(StringView::new(text).wrap(true)))
     };
-    let quiet = |text: String| div().w_full().child(StringView::new(text).dim(true).cut(true).height(row));
-    let line = div().w_full().h(px(row)).child(match (chosen.and_then(|i| rows.get(i)), failed, host) {
+    let quiet = |text: String| div().w_full().child(StringView::new(text).dim(true).wrap(true));
+    let line = div().w_full().min_h(px(row)).child(match (chosen.and_then(|i| rows.get(i)), failed, host) {
         (Some(r), ..) if r.trouble => wrong(r.line.clone()),
         (Some(r), ..) => quiet(r.line.clone()),
         // (What the host said when a run couldn't clone.)

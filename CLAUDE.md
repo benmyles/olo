@@ -89,14 +89,15 @@ are universal and non-negotiable:
   (2026-11-18: "you should be visually reviewing everything you do").
   Check the picture shows what you meant to show (the right tab, the
   window in front) before judging it.
-- **Two more pairs of eyes on every picture: Gemini 4 Neon's and Opus
+- **Two more pairs of eyes on every picture: Astra 6.2's and Opus
   5.5's.** Give all the pictures of a change to both for a design
   review before it's committed (Ben, 2026-11-19, of a new app's first
   pictures: "omg so much is ugly make sure you get visual design reviews
-  from opus 5.5 and astra 6.2"; 2026-11-22, Gemini 4 Neon in Astra's
-  place: below):
-  `tools/dev/agy-look --about "WHAT CHANGED" PICTURE.png…`
-  (Gemini 4 Neon at high, in the Antigravity CLI: what's wrong by a
+  from opus 5.5 and astra 6.2"; 2026-11-23, after a day of Gemini 4
+  Neon's looks: "for the visual reviews please go back to using astra
+  6.2 on high -- neon is missing too much stuff"):
+  `tools/dev/astra-look --about "WHAT CHANGED" PICTURE.png…`
+  (Astra 6.2 at high, in the Codex CLI: what's wrong by a
   pixel) and `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
   PICTURE.png…` (Claude Opus 5.5: the design itself, what looks amateur
   or unfinished). Each looks in a tmux session of its own: run both in
@@ -194,8 +195,8 @@ are universal and non-negotiable:
   outside the repository.
 - **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
-  Gemini 4 Neon in the Antigravity CLI (`agy`) but the design review
-  (never Codex nor Astra: Ben, 2026-11-22, "stop using codex/astra for
+  Gemini 4 Neon in the Antigravity CLI (`agy`) but the looks at
+  pictures (never Codex nor Astra for the work: Ben, 2026-11-22, "stop using codex/astra for
   olo qa/dev tasks and everywhere we use codex/astra at the moment for
   olo dev/qa replace it with antigravity (`agy`) and gemini 4 neon on
   xhigh", at high since the same day; never a Claude fork, and the
@@ -220,15 +221,19 @@ are universal and non-negotiable:
     soon as a bug's cause isn't plain (below), while you keep working
     on your own line: two brains are better than one. It looks and
     reports; you check what it found and do the work.
-  - `tools/dev/agy-look`, the second look at every change's pictures
-    (above); and, the one Claude among them, `tools/dev/opus-look`, Opus
+  - `tools/dev/astra-look`, the second look at every change's
+    pictures (above): Astra 6.2 in the Codex CLI, in a tmux session,
+    on copies of the pictures, writing only there, with no network and
+    no leave to ask (Ben, 2026-11-23, above: the looks alone went back
+    to Astra; subagents and the investigator stay Gemini's); and, the
+    one Claude among them, `tools/dev/opus-look`, Opus
     5.5's design review of the same pictures (the Claude CLI in a tmux
     session, with the tools to read and write files in a folder of the
     pictures' copies and no other).
 - **Every helper in a tmux session, never a script that goes silent.**
   A subagent, the investigator and both reviewers each run their
   program's own interactive screen in a tmux session
-  (`tools/dev/agents`; `agy-help`, `agy-look` and `opus-look` are its
+  (`tools/dev/agents`; `agy-help`, `astra-look` and `opus-look` are its
   front doors), so what each is doing can be read at any moment
   (`agents peek NAME`), it can be told more (`agents say`), and what it
   asks leave for reaches you (`agents approve`). Never `agy --print`,
@@ -279,12 +284,13 @@ are universal and non-negotiable:
   program exited, one done and untouched for half an hour, one idle
   for three hours: `agents tidy`, which `list`, `watch` and `start`
   run), but that is the net, not the way.
-- **Gemini 4 Neon and Opus 5.5 at high.** Wherever Gemini reasons for
-  Olo (a subagent, the second investigator, the look at pictures), it
-  is Gemini 4 Neon with its effort at high (`gemini-4-neon-high`), and
-  Opus 5.5's design review runs at high too (Ben, 2026-11-22, after
-  first asking for xhigh: "let's also switch the reasoning level to
-  high for both of them").
+- **Gemini 4 Neon, Astra 6.2 and Opus 5.5 at high.** Wherever Gemini
+  reasons for Olo (a subagent, the second investigator), it is Gemini
+  4 Neon with its effort at high (`gemini-4-neon-high`); Astra 6.2's
+  look at pictures and Opus 5.5's design review run at high too (Ben,
+  2026-11-22, after first asking for xhigh: "let's also switch the
+  reasoning level to high for both of them"; 2026-11-23: "astra 6.2 on
+  high").
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`

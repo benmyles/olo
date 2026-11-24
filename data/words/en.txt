@@ -2622,6 +2622,7 @@ On disk
 On hold
 On it now
 On the day, at 9 AM
+On the host
 On the network
 On the path
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.

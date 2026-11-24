@@ -12,7 +12,7 @@ investigator on it and keep working on your own line meanwhile. Don't
 wait until you've circled for hours, and never settle for a guess. It
 is one of the helpers CLAUDE.md's "Subagents" allows (the others:
 subagents for narrow work items, `tools/dev/agents` and the
-`olo-agents` skill; and `agy-look` and `opus-look` for pictures), all
+`olo-agents` skill; and `astra-look` and `opus-look` for pictures), all
 Gemini 4 Neon in the Antigravity CLI but Opus's design review (Ben,
 2026-11-22: "stop using codex/astra for olo qa/dev tasks and … replace
 it with antigravity (`agy`) and gemini 4 neon on xhigh", at high since

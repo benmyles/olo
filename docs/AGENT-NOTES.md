@@ -557,7 +557,7 @@ Learned making To-Do (2026-11-19 and 20):
   one over it (two siblings' shared edge isn't one pixel row at every
   scale: draw the line from the pane both are in, `view::foot_line`).
 - **Reviewers' pictures: absolute paths, one command each.**
-  `agy-look` and `opus-look` are given the pictures' whole paths (each
+  `astra-look` and `opus-look` are given the pictures' whole paths (each
   works on copies in a folder of its own); started together in one
   shell line with `&`, one ran from the repository's other checkout
   (`cd X && A & B`: the `cd` is part of the first job only, and B ran
@@ -953,7 +953,7 @@ frames a second with nobody at it):
   an Agent-tool subagent is moved to the background by its harness
   after about three, so `agents watch --for 2`, again and again.
 - **Two reviewers started together**: set what they share on lines of
-  their own, then `( agy-look … ) & ( opus-look … ) & wait`. With
+  their own, then `( astra-look … ) & ( opus-look … ) & wait`. With
   `S=… && ABOUT=… && ( … ) & ( … ) & wait` the assignments are part of
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
@@ -1928,7 +1928,15 @@ Learned on the second pass (2026-11-20):
 - **Every helper is an agent in tmux** (`tools/dev/agents`, the
   `olo-agents` skill, which has the details; Gemini 4 Neon at high in
   `agy`, and Opus 5.5 in `claude` for the design review, since
-  2026-11-22: Codex and Astra before). What agy 1.5.14 does that its
+  2026-11-22: Codex and Astra before; the look at pictures Astra 6.2
+  at high in `codex` again since 2026-11-23). What codex-cli 0.171
+  does for a look: drawn inline (`--no-alt-screen`), "Working (…  esc
+  to interrupt)" stands above its field, never on its last line, so
+  `state` looks in its last eight lines; started in a folder it hasn't
+  seen it asks whether to trust it and waits, which `-c
+  projects."DIR".trust_level="trusted"` answers for that run alone;
+  `-a never` with `-s workspace-write`: what its sandbox refuses is
+  refused, and nothing is asked. What agy 1.5.14 does that its
   help doesn't say:
   - With no `--mode` it starts in `auto`, which judges for itself what
     is safe and runs a command outside its sandbox when the sandbox

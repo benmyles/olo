@@ -1894,7 +1894,13 @@ impl RexHub {
             control: None,
             input_tx: None,
         };
-        st.hosts.insert("dev-box".to_owned(), demo_host("dev-box", "dev-box", "ssh://you@dev-box.example", HostConnState::Connected, vec![remote]));
+        // (`OLO_REX_DEMO_LONG_NAME=1`: the host under a long name, as
+        // real ones have: every window that says the host's name is
+        // pictured with it too. With "dev-box" alone a sentence that
+        // named the host fitted its line in every picture and lost its
+        // end on the person's own host.)
+        let named = if std::env::var_os("OLO_REX_DEMO_LONG_NAME").is_some() { "build-farm-eu-west-production-01" } else { "dev-box" };
+        st.hosts.insert("dev-box".to_owned(), demo_host("dev-box", named, "ssh://you@dev-box.example", HostConnState::Connected, vec![remote]));
         st.host_order.push("dev-box".to_owned());
         // (`OLO_REX_DEMO_HOSTS=states`: hosts in the other states too,
         // for the Hosts window's pictures: connecting, disconnected, and

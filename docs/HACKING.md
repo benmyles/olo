@@ -21806,18 +21806,26 @@ the helper needs its lead (answer it, then run the same command again:
 it finds the helper it started and goes on waiting). What it says is a
 lead: checked, then fixed by whoever asked.
 
-**A second look at every change's pictures** (`tools/dev/agy-look`,
+**A second look at every change's pictures** (`tools/dev/astra-look`,
 which is `agents look`; Ben, 2026-11-18, after a status line set right
 under its paragraph reached them on every Integrations tab: "provide
 all screenshots of changes to a … agent … for a second review / set of
-eyes to identify anything you missed"): `agy-look --about "WHAT
-CHANGED" PICTURE.png…` copies the pictures into a folder of the look's
-own, where an agy named `agy-FOLDER` works (as Opus's is `opus-FOLDER`; it was `look-FOLDER` until 2026-11-23) (no command allowed
-unasked, nothing of the project loaded) with a designer's brief
-(spacing, alignment, text cut or crowded, what's out of keeping); its
-review is kept as `agy-look.md` beside the first picture (its
-transcript as `agy-look.log`) and printed, and its session ended.
-Three pictures took it about six minutes at xhigh. What it says is
+eyes to identify anything you missed"; Astra 6.2 at high since
+2026-11-23, after a day of Gemini 4 Neon's: "neon is missing too much
+stuff"): `astra-look --about "WHAT CHANGED" PICTURE.png…` copies the
+pictures into a folder of the look's own, where a Codex named
+`astra-FOLDER` works (as Opus's is `opus-FOLDER`): `codex -m
+gpt-6.2-astra -c model_reasoning_effort="high" -s workspace-write -a
+never --disable hooks --disable multi_agent --no-alt-screen`, its
+folder trusted for that run alone (`-c projects."DIR".trust_level`:
+unsaid, Codex asks whether to trust a folder new to it, and waits),
+so it writes only there, has no network and asks no leave; nothing of
+the project loaded, a designer's brief (spacing, alignment, text cut
+or crowded, what's out of keeping). Its review is kept as
+`astra-look.md` beside the first picture (its transcript as
+`astra-look.log`) and printed, and its session ended. (`agents look
+--by gemini`, `agy-look`, is the same with Gemini 4 Neon, as it was
+for a day.) A picture takes it a few minutes. What it says is
 checked against the picture, as the investigator's is.
 
 **And a designer's review of them** (`tools/dev/opus-look`, which is
@@ -21835,7 +21843,7 @@ keeping with the desktop, and what to do about each, the most important
 first. It keeps its review as `opus-look.md` beside the first picture.
 It can only look, so give it whole windows and enlarged crops. Every
 change's pictures go to both before a commit, and something new goes to
-both early, before it's built out: agy-look is for what's wrong by a
+both early, before it's built out: astra-look is for what's wrong by a
 pixel, opus-look for whether the design is any good. Run both in the
 background at once; each returns when its review is written, or when
 it needs its lead.

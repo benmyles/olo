@@ -2,8 +2,11 @@
 """Every agent that helps with Olo, each in a tmux session of its own:
 narrow, parallel work items, second investigators and the looks at a
 change's pictures. Each is an interactive Antigravity CLI (`agy`: Gemini
-4 Neon, its reasoning at high), but the design review, which is Opus
-5.5 in the Claude CLI (at high too); all are read, answered and steered from here
+4 Neon, its reasoning at high), but the looks at pictures: Astra 6.2's
+for what is wrong by a pixel, in the Codex CLI (Ben, 2026-11-23: "for
+the visual reviews please go back to using astra 6.2 on high -- neon
+is missing too much stuff"), and the design review, Opus 5.5 in the
+Claude CLI (both at high too); all are read, answered and steered from here
 (CLAUDE.md, "Subagents"; the olo-agents and olo-debug-help skills say
 how to use them). Ben, 2026-11-22: "stop using codex/astra for olo
 qa/dev tasks and … replace it with antigravity (`agy`) and gemini 4
@@ -21,8 +24,8 @@ too: "always do it through tmux never a script that just goes silent".
                                      and wait as `watch` does, for it alone; run
                                      again, it goes on waiting for the same one
   agents look [--by opus] [--about TEXT] PICTURE…
-                                     have a change's pictures looked at: by Gemini
-                                     for what's wrong by a pixel (tools/dev/agy-look
+                                     have a change's pictures looked at: by Astra 6.2
+                                     for what's wrong by a pixel (tools/dev/astra-look
                                      is this), or by Opus 5.5 for the design itself
                                      (--by opus: tools/dev/opus-look). The review is
                                      written beside the first picture and printed,
@@ -93,7 +96,7 @@ for it nor written (the tool never takes the choice that would save a
 rule there).
 
 An agent can't start agents: OLO_SUBAGENT is set in its environment,
-which this script, agy-help, agy-look and opus-look refuse, and agy,
+which this script, agy-help, astra-look, agy-look and opus-look refuse, and agy,
 codex and claude are in DENY.
 """
 import hashlib
@@ -118,16 +121,23 @@ MODEL = "gemini-4-neon-high"
 # The one Claude among them: Opus 5.5, for the design review of a
 # change's pictures (`look --by opus`, tools/dev/opus-look).
 OPUS = "claude-opus-5-5"
+# And Astra 6.2, in the Codex CLI at high: the look at a change's
+# pictures for what is wrong by a pixel (`look`, tools/dev/astra-look).
+# It was Gemini's for a day (Ben, 2026-11-23: "for the visual reviews
+# please go back to using astra 6.2 on high -- neon is missing too much
+# stuff"). The look only: subagents and the second investigator stay
+# Gemini's.
+ASTRA = "gpt-6.2-astra"
 # What each program's TUI shows (agy 1.5.14, Claude Code 2.1.330; both
 # drawn inline, so the pane's history is the transcript). A question
 # with choices (leave to run something among them) has this under it:
-ASKING = {"agy": "↑/↓ Navigate", "claude": "Esc to cancel"}
+ASKING = {"agy": "↑/↓ Navigate", "claude": "Esc to cancel", "codex": "Press enter to confirm or esc to cancel"}
 # and while it works, its last line holds this (agy's question has it
 # too: the question is looked for first):
-WORKING = {"agy": "esc to cancel", "claude": "esc to interrupt"}
+WORKING = {"agy": "esc to cancel", "claude": "esc to interrupt", "codex": "esc to interrupt"}
 # Lines that change while nothing else does: the spinner (agy's, in
 # braille), how long it has thought, a tip, the last line.
-VOLATILE = re.compile(r"^\s*[\u2800-\u28ff]|Thought for |^\s*└ Tip:|esc to cancel|\? for shortcuts|shift\+tab to cycle|esc to interrupt|\(\d+m? ?\d*s · |ctrl\+g to edit")
+VOLATILE = re.compile(r"Working \(|Context \d+% left|^\s*[\u2800-\u28ff]|Thought for |^\s*└ Tip:|esc to cancel|\? for shortcuts|shift\+tab to cycle|esc to interrupt|\(\d+m? ?\d*s · |ctrl\+g to edit")
 # agy's spinner: a braille figure at the start of the line it is on.
 SPINNER = re.compile(r"^\s*[\u2800-\u28ff]\s")
 # Its banner (drawn with these blocks) names the account the program is
@@ -158,7 +168,7 @@ TOOLS = ["tsession", "ui-lint", "cost", "bench", "scroll-check", "words", "layou
 # hears no at once and no approval waits on you that you'd never give.
 DENY = ["git push", "git commit", "git add", "git stash", "git checkout", "git switch", "git reset", "git restore", "git rebase", "git merge", "git clean", "git rm",
         "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "agy", "codex", "claude", "tools/dev/agents",
-        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
+        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/astra-look", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
         "systemctl", "loginctl", "reboot", "shutdown", "poweroff"]
 
 
@@ -262,6 +272,11 @@ def state(name):
         return "asking"
     if lines and WORKING[cli(name)] in lines[-1]:
         return "working"
+    # (Codex, codex-cli 0.171, drawn inline: "Working (12s • esc to
+    # interrupt)" stands above its field and the line under that, so it
+    # is never the last line.)
+    if cli(name) == "codex" and any(WORKING["codex"] in l for l in lines[-8:]):
+        return "working"
     # (agy with a message queued for it: its last line is about the
     # queue, "Press up to edit queued messages", and its spinner still
     # turns above the field. Read as idle, a look that was thinking was
@@ -350,7 +365,7 @@ Scope
 - No new dependencies (no edits to a Cargo.toml's dependencies, no
   Cargo.lock change) unless the task says so; if you need one, ask.
 - You are a subagent: don't start agents of any kind (no agy, codex,
-  claude, tools/dev/agents, tools/dev/agy-help, tools/dev/agy-look,
+  claude, tools/dev/agents, tools/dev/agy-help, tools/dev/astra-look, tools/dev/agy-look,
   tools/dev/opus-look, nor any subagent, multi-agent or delegation tool
   of your own).
 
@@ -383,7 +398,7 @@ How to work
   blocks the UI or polls, everything native, tests headless. What they
   say of the lead's own work does not, and where they and these rules
   differ, these rules win: you don't commit or push, build the release
-  workspace, start reviewers or helpers (agy-look, opus-look, agy-help),
+  workspace, start reviewers or helpers (astra-look, opus-look, agy-help),
   write docs/AGENT-NOTES.md or the journal, or remove your scratch
   folder. Say in your report what the lead should do of those.
 - Read the parts of docs/HACKING.md about what you touch, and follow
@@ -569,6 +584,19 @@ def launch_opus(name, cwd, brief):
                             "--permission-mode", "acceptEdits", "--disable-slash-commands", brief])
 
 
+def launch_astra(name, cwd):
+    """Astra 6.2 at high, for the look at pictures: the Codex CLI in a
+    session here, drawn inline so its screen reads as text. It may write
+    in `cwd` and nowhere else, has no network, and is never asked leave
+    nor asks it (`-a never`: what its sandbox refuses is refused); none
+    of the person's Codex hooks run, and it starts no agents. (`cwd` is
+    said to be trusted for this run alone: unsaid, Codex asks whether to
+    trust a folder it hasn't been in, and waits.)"""
+    session(name, cwd, [], ["codex", "-m", ASTRA, "-c", 'model_reasoning_effort="high"', "-s", "workspace-write", "-a", "never",
+                            "--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-C", cwd,
+                            "-c", f'projects."{cwd}".trust_level="trusted"', f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."])
+
+
 def launch(name, d, cwd, others, target=None, commands=True):
     """An agy of its own in a tmux session, working in `cwd` (and
     reading `d`, its folder here, and `others`): started on its brief,
@@ -591,7 +619,7 @@ def launch(name, d, cwd, others, target=None, commands=True):
 def room(name, program="agy"):
     """Refuse a name in use, or a sixth agent; those running."""
     if not shutil.which(program):
-        sys.exit(f"agents: no {program} on PATH ({'the Antigravity CLI' if program == 'agy' else 'the Claude CLI'}, signed in)")
+        sys.exit(f"agents: no {program} on PATH ({ {'agy': 'the Antigravity CLI', 'codex': 'the Codex CLI'}.get(program, 'the Claude CLI')}, signed in)")
     running = [n for n in names() if live(n)]
     if name in running:
         sys.exit(f"agents: {name} is running")
@@ -721,19 +749,21 @@ def say_swept(gone):
 def look(args):
     """Start a look at pictures (or find the one started on them), wait
     until it needs the lead or has written its review, and print it.
-    Gemini's look at what's wrong by a pixel, or with `--by opus` Opus
-    5.5's review of the design itself."""
+    Astra 6.2's look at what's wrong by a pixel, or with `--by opus`
+    Opus 5.5's review of the design itself. (`--by gemini`: Gemini 4
+    Neon's look, as it was for a day; kept for a comparison, not the
+    rule.)"""
     refuse_nested()
-    by, about = "gemini", ""
+    by, about = "astra", ""
     while len(args) >= 2 and args[0] in ("--by", "--about"):
         if args[0] == "--by":
             by = args[1]
         else:
             about = args[1]
         args = args[2:]
-    if by not in ("gemini", "opus"):
-        sys.exit("agents: look --by gemini, or --by opus")
-    front = "agy-look" if by == "gemini" else "opus-look"
+    if by not in ("astra", "gemini", "opus"):
+        sys.exit("agents: look --by astra, or --by opus")
+    front = {"astra": "astra-look", "gemini": "agy-look", "opus": "opus-look"}[by]
     if not args or args[0].startswith("--"):
         sys.exit(f'usage: tools/dev/{front} [--about "WHAT IT IS, WHAT CHANGED"] PICTURE.png…')
     pictures = []
@@ -746,14 +776,14 @@ def look(args):
         pictures.append(full)
     work = os.path.dirname(pictures[0])
     out = os.path.join(work, front + ".md")
-    name = (("agy-" if by == "gemini" else "opus-") + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
+    name = ({"astra": "astra-", "gemini": "agy-", "opus": "opus-"}[by] + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
     m = meta(name)
     if m and live(name) and (m.get("pictures"), m.get("about")) != (pictures, about):
         sys.exit(f"agents: {name} is looking at other pictures there: wait for it, or `tools/dev/agents stop {name}`")
     d = folder(name)
     review = os.path.join(d, "review.md")
     if not (m and live(name)):
-        room(name, "agy" if by == "gemini" else "claude")
+        room(name, {"astra": "codex", "gemini": "agy", "opus": "claude"}[by])
         if os.path.exists(d):
             shutil.rmtree(d)
         os.makedirs(d)
@@ -771,7 +801,12 @@ def look(args):
             copies.append(os.path.join(d, base))
         said = {"out": review, "pictures": "\n".join(copies)}
         record = {"work": work, "pictures": pictures, "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": review}
-        if by == "gemini":
+        if by == "astra":
+            brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
+            open(os.path.join(d, "brief.md"), "w").write(brief)
+            save_meta(name, {**record, "cli": "codex"})
+            launch_astra(name, d)
+        elif by == "gemini":
             brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
             open(os.path.join(d, "brief.md"), "w").write(brief)
             save_meta(name, {**record, "cli": "agy"})
