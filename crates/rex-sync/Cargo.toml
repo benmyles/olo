@@ -1,0 +1,16 @@
+[package]
+name = "olo-rex-sync"
+description = "Files kept in step between this computer and a Rex host: what each side has (content-defined chunks), the cheapest way to send a change, and the wire between them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# (A library both ends link: the app, and the helper Olo puts on each host,
+# `olo-rex-link sync`, built statically for x86_64 and aarch64 Linux with
+# zig compiling the C in it, as its TLS is: no async runtime here, plain
+# Read and Write.)
+[dependencies]
+blake3 = "1"
+zstd = "0.14"
+
+[dev-dependencies]

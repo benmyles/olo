@@ -61,6 +61,7 @@ olo-ocr = { path = "crates/ocr" }
 olo-rex-vt = { path = "crates/rex-vt" }
 olo-rex-client = { path = "crates/rex" }
 olo-rex-link = { path = "crates/rex-link" }
+olo-rex-sync = { path = "crates/rex-sync" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

@@ -1689,6 +1689,13 @@ something nobody here has is in "Blocked", with what it waits for.
     the wire for a 200 MB transcript and 4 KiB appended, a binary with
     one function changed, a tree of 50,000 files with one edited, a
     rename, nothing changed; and idle costs nothing.
+    *The engine* is built (2026-11-24, HACKING, Rex, "Files kept in
+    step: the engine"): 60 B for nothing changed in 5,000 files, 713 B
+    for 4 KiB appended to 200 MB (written in place there), 7.1 KiB for
+    a byte changed in 50 MB, 380 B for a rename. Next: the helper's
+    `olo-rex-link sync` over `exec_io`, and Agent Sessions' copy through
+    it (its home paths rewritten as it sends, so only a transcript's
+    new lines are rewritten and sent).
   - *Agent Sessions' copy sends only what changed in a file* (Ben,
     2026-11-24: "improve the agent sessions copy in rex so that it is
     smart enough to e.g. copy new lines only when a file has only had

@@ -29090,6 +29090,89 @@ Rex server, as every Rex client offers its own
 - *Left* (TODO): where two Olo apps show one host, `rex do` asks
   which (`-C`); what a command reads from its input isn't carried.
 
+**Files kept in step: the engine** (`crates/rex-sync`, olo-rex-sync,
+2026-11-24; Ben: "when syncing files/folders it would be very
+important to do it as optimally as possible, minimizing data transfer
+where possible via compression, file deltas, whatever is possible
+(really we should get it as close to mathematically optimal as
+possible for the syncs)"; and of Agent Sessions' copy: "copy new lines
+only when a file has only had appends like a log. or even better …
+a delta copy at the byte level"). One library both ends link (the app,
+and the helper on each host: no async runtime, plain `Read` and
+`Write`, `blake3` and `zstd` its only crates), its first users still
+to come (TODO, "Files from a host, and folders kept in step"). Built
+by a subagent from a brief (Gemini 4 Neon's design weighed first),
+reviewed and fixed here:
+- *What a side has* (`index::Index`): each file's size, times, inode,
+  mode, BLAKE3 and its content-defined chunks (`chunk`: FastCDC's
+  normalized gear hash as diskbackup's chunker, at 4, 16 and 64 KiB,
+  each chunk known by 128 bits of its BLAKE3; one read of a file gives
+  both), directories, symlinks with their targets (never followed).
+  Kept between sessions (`save`, `load`: its own binary form, checked
+  by a tag, renamed into place), so a file whose size, times and inode
+  are the same isn't read again: a look at an unchanged tree reads
+  nothing. A tree read as it changes goes on: a file gone between its
+  listing and its reading is left out; one that can't be read is
+  remembered as such (`Index::unread`) and neither sent nor, by a
+  mirror, taken away on the other side (what it holds isn't known); a
+  root that isn't there fails, since a folder gone isn't a folder
+  emptied.
+- *The session* (`wire::send`, `wire::receive`, over any byte stream,
+  frames of at most 8 MiB): the receiver says the hash of its whole
+  tree, and where it is the sender's that is all (60 bytes for 5,000
+  files); else its manifest (each entry's size, time, mode and hash:
+  no chunks), and the sender chooses per file the cheapest of: the
+  same; a copy of what the receiver has under any name (a move, a
+  copy: `CopyFile`, no bytes); an append, proven by 60 bytes
+  (`AppendProbe`: content-defined cuts before the receiver's end are
+  the same on both sides, so its chunks are ours up to there and one
+  remainder); a patch, the chunks it lacks found through groups of
+  about 32 chunks (`SuperChunk`) and then only within the groups that
+  differ; or all of it. What is sent is zstd at level 3 in pieces of
+  at most 2 MiB, with the receiver's own bytes just before as the
+  dictionary where there are some (`ref_prefix`: a transcript's new
+  lines against the 64 KiB before them), raw where it wouldn't shrink.
+  The receiver builds a file beside its place (`NAME.olo-sync-part`,
+  made new, never through a link left at that name, its owner's alone
+  until whole), checks its whole BLAKE3, gives it its mode and time,
+  and renames it in. *An append is written in place*: only the new
+  tail, after the old end, checked by its chunks (the sender's from the
+  old last chunk's start, in its `FileStart`) with no more read back
+  than that last chunk; cut back where it isn't the sender's, and,
+  where a session ends midway, still a prefix of the sender's, which
+  the next one finishes (built beside its place, the 200 MB file took
+  478 ms and 400 MB of disk on each sync; in place 246 ms, nearly all
+  of it the sender reading its changed file, which it must: a file
+  rewritten under the same inode may differ anywhere).
+- *Nothing outside its root*, and nothing taken away unasked: a path
+  absolute, with `..`, through a symlink, or a part file's name is
+  refused and said in the report; a folder where a file goes is taken
+  away only by a mirror (`Options::delete_extra`, the receiver's to
+  choose, which it says to the sender and holds to itself), and a
+  file newer there is left with `keep_newer`. A folder's owner always
+  may write in it there (`index::dir_mode`: a folder read only where it
+  comes from, as Go's module cache keeps its, would take nothing).
+  A malformed message is an error, never a panic, and nothing is
+  allocated as large as a peer says: pieces, frames and every list
+  (`MAX_ITEMS` over all its frames) are bounded.
+- *Measured* (`cargo run --release -p olo-rex-sync --example bench`,
+  two ends joined by a socket pair, this computer):
+
+  | Change | On the wire | Time |
+  | --- | ---: | ---: |
+  | nothing, in 5,000 files | 60 B | 17 ms |
+  | 4 KiB appended to a 200 MB transcript | 713 B | 246 ms |
+  | 1 byte in a 50 MB file of records | 7.1 KiB | 123 ms |
+  | a 50 MB file renamed | 380 B | 81 ms |
+  | 500 new files of 2 KiB of text | 163 KiB (of 1.09 MiB) | 20 ms |
+
+  Closer to the least that could be sent, still to do: the small new
+  files in one zstd stream (each its own frame now, their headers and
+  framing 46 KiB of the 163); a tree of many files with one changed
+  said by its folders' hashes, not its whole manifest; a changed chunk
+  sent as its difference from the old one; chunks found in any of the
+  receiver's files, not only the same path's.
+
 **The SSH agent on a host** (2026-11-23; Ben: "so that e.g. github
 and other ssh using stuff just magically works on the remote session
 through the ssh key i already have in olo passwords locally … go
