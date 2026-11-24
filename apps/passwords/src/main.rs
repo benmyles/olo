@@ -264,6 +264,35 @@ fn allow_host_message(origin: &olo_keychain::SshOrigin, ways: Option<String>) ->
     m
 }
 
+/// The question for letting one of Olo's own apps sign in to hosts
+/// with the SSH keys (`app`: its name, "Rex", "Token Pool"). They have
+/// no terminal, so nothing is said of one (the Token Pool asked as
+/// “olo-pool --service”, of "other commands from the same terminal").
+fn allow_own_message(app: &str, ways: Option<String>) -> String {
+    let mut m = olo_kit::tr!("Allow {} to sign in to your hosts with your SSH keys?", app).to_string();
+    if let Some(ways) = ways {
+        m.push(' ');
+        m.push_str(&ways);
+    }
+    m.push(' ');
+    m.push_str(&olo_kit::tr!("Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here."));
+    m
+}
+
+/// The Olo app the program `theirs` is, by the name the person knows:
+/// one of Olo's own, beside Passwords' own program `ours` (the one
+/// build, or the one install). A file replaced under a running program
+/// (an upgrade, before it starts anew) is still that program.
+fn olo_app(theirs: &std::path::Path, ours: &std::path::Path) -> Option<&'static str> {
+    let file = theirs.file_name()?.to_str()?.trim_end_matches(" (deleted)");
+    (theirs.parent() == ours.parent()).then(|| olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == file).map(|(_, name, _)| *name)).flatten()
+}
+
+/// [`olo_app`] of the running program `pid`.
+fn olos_own(pid: i32) -> Option<&'static str> {
+    olo_app(&std::fs::read_link(format!("/proc/{pid}/exe")).ok()?, &std::env::current_exe().ok()?)
+}
+
 /// Whether the program `pid` is this Olo's Rex: its file is `olo-rex`,
 /// beside Passwords' own (the one build, or the one install).
 fn carried_by_rex(pid: i32) -> bool {
@@ -1193,6 +1222,9 @@ impl Passwords {
                 let Some(session) = cli::session_of(incoming.pid) else {
                     return incoming.reply(Response::Error { message: "the program went away".into() });
                 };
+                // (One of Olo's own apps, signing in to a host by
+                // itself: one leave for them all, asked by its name.)
+                let session = if olos_own(incoming.pid).is_some() { cli::Session::of_olo() } else { session };
                 if !on_screen() && !self.grants.check(session) {
                     self.cli_waiting.push((session, incoming));
                     self.ask_approval(Some(session));
@@ -1530,20 +1562,23 @@ impl Passwords {
                     Request::SshSignFor { origin, .. } if *s == session => Some(origin.clone()),
                     _ => None,
                 });
-                let asker = match &host {
-                    Some(origin) => cli::Asker { command: host_named(origin), parent: None, cwd: None },
-                    None => cli::asker(pid),
+                let own = if session == cli::Session::of_olo() { olos_own(pid) } else { None };
+                let asker = match (&host, own) {
+                    (Some(origin), _) => cli::Asker { command: host_named(origin), parent: None, cwd: None },
+                    (None, Some(app)) => cli::Asker { command: app.to_owned(), parent: None, cwd: None },
+                    (None, None) => cli::asker(pid),
                 };
                 if on {
-                    let said = if host.is_some() { "SSH keys used without asking" } else { "op allowed without asking" };
+                    let said = if host.is_some() || own.is_some() { "SSH keys used without asking" } else { "op allowed without asking" };
                     tracing::info!(command = asker.command, "{said}");
                     quietly(&self.notifier, said, asker.command.clone());
                     self.answer_cli(session, true);
                 } else {
                     // Allowed by its button, or by what unlocks Passwords.
-                    let message = match &host {
-                        Some(origin) => allow_host_message(origin, ways.sentence()),
-                        None => allow_message(&asker, ssh, ways.sentence()),
+                    let message = match (&host, own) {
+                        (Some(origin), _) => allow_host_message(origin, ways.sentence()),
+                        (None, Some(app)) => allow_own_message(app, ways.sentence()),
+                        (None, None) => allow_message(&asker, ssh, ways.sentence()),
                     };
                     let waits = allow::Waits::start(ways, self.lock.user(), session, &self.proxy);
                     let window = open_app_alert("Passwords", "warning", &message, &["Deny", "Allow"], move |choice| app().answer_cli(session, choice == Some(1)));
@@ -3153,6 +3188,30 @@ impl Served {
 #[cfg(test)]
 mod tests {
     use super::unasked;
+
+    /// Olo's own apps that sign in to hosts by themselves are known by
+    /// their program beside Passwords' own, asked about by the name the
+    /// person knows, and share one leave.
+    #[test]
+    fn olos_own_apps_are_asked_about_by_name_with_one_leave() {
+        use std::path::Path;
+        let ours = Path::new("/opt/olo/bin/olo-passwords");
+        assert_eq!(super::olo_app(Path::new("/opt/olo/bin/olo-pool"), ours), Some("Token Pool"));
+        assert_eq!(super::olo_app(Path::new("/opt/olo/bin/olo-rex"), ours), Some("Rex"));
+        // (Replaced by an upgrade under the running program.)
+        assert_eq!(super::olo_app(Path::new("/opt/olo/bin/olo-pool (deleted)"), ours), Some("Token Pool"));
+        // Another's program of that name, and one that isn't Olo's: as any program is.
+        assert_eq!(super::olo_app(Path::new("/home/someone/bin/olo-pool"), ours), None);
+        assert_eq!(super::olo_app(Path::new("/opt/olo/bin/ssh"), ours), None);
+        let asked = super::allow_own_message("Token Pool", None);
+        assert_eq!(
+            asked,
+            "Allow Token Pool to sign in to your hosts with your SSH keys? Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here."
+        );
+        // (No session of the kernel's, nor a host's.)
+        let own = crate::cli::Session::of_olo();
+        assert!(own.sid < 1 && own != crate::cli::Session::of_host("you@build.example"));
+    }
 
     /// A socket served is let go of as Passwords quits, and so is free
     /// for the next; one bound since by another is left alone.

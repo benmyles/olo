@@ -144,10 +144,18 @@ pub fn private_key(text: &str) -> Result<PrivateKey, String> {
             }
         }
         _ => {
-            // Ed25519's PKCS#8: a fixed 16-byte head (version 0, the Ed25519 OID,
-            // an octet string of an octet string), then its 32-byte seed.
+            // Ed25519's PKCS#8: a 16-byte head (its length, its version,
+            // the Ed25519 OID, an octet string of an octet string), then
+            // its 32-byte seed. Version 0 ends there (OpenSSL's); version
+            // 1 has the public key after it, which is how 1Password
+            // writes the keys it makes (and ring, and RustCrypto), with
+            // another length in the head. Read by what the head says,
+            // not as sixteen fixed bytes: a key 1Password made was "a
+            // PKCS#8 key of a kind Passwords can't sign with", the third
+            // of Ben's three (2026-11-23: "but it still doesn't work").
             const ED25519: [u8; 16] = [0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20];
-            if der.len() >= 48 && der[..16] == ED25519 {
+            let ed25519 = der.len() >= 48 && der[0] == 0x30 && der[1] < 0x80 && der[2..4] == ED25519[2..4] && der[4] <= 1 && der[5..16] == ED25519[5..16];
+            if ed25519 {
                 let seed: [u8; 32] = der[16..48].try_into().map_err(|_| "a short Ed25519 key")?;
                 KeypairData::Ed25519(Ed25519Keypair::from_seed(&seed))
             } else if let Ok(rsa) = <rsa::RsaPrivateKey as rsa::pkcs8::DecodePrivateKey>::from_pkcs8_der(&der) {
@@ -159,11 +167,33 @@ pub fn private_key(text: &str) -> Result<PrivateKey, String> {
             } else if let Ok(secret) = <p521::SecretKey as p521::pkcs8::DecodePrivateKey>::from_pkcs8_der(&der) {
                 ecdsa!(secret, p521, NistP521)
             } else {
-                return Err("a PKCS#8 key of a kind Passwords can't sign with".into());
+                return Err(unread(&der));
             }
         }
     };
     PrivateKey::new(data, "").map_err(|e| e.to_string())
+}
+
+/// Why a PKCS#8 key none of the readers took can't be signed with: its
+/// kind, by what the key itself says it is (its algorithm, which is no
+/// secret), so the log names what is missing instead of "a kind".
+fn unread(der: &[u8]) -> String {
+    let Ok(info) = p256::pkcs8::PrivateKeyInfoRef::try_from(der) else {
+        return "a PKCS#8 key Passwords can't read (it isn't written as PKCS#8 is)".into();
+    };
+    let oid = info.algorithm.oid.to_string();
+    let curve = info.algorithm.parameters_oid().map(|c| c.to_string()).unwrap_or_default();
+    match oid.as_str() {
+        "1.2.840.113549.1.1.1" => match <rsa::RsaPrivateKey as rsa::pkcs8::DecodePrivateKey>::from_pkcs8_der(der) {
+            Err(why) => format!("an RSA key Passwords can't read ({why})"),
+            Ok(_) => "an RSA key Passwords can't read".into(),
+        },
+        "1.2.840.10045.2.1" => format!("a key on a curve Passwords can't sign with ({})", if curve.is_empty() { "unnamed" } else { &curve }),
+        "1.2.840.10040.4.1" => "a DSA key, which SSH hosts no longer take".into(),
+        "1.3.101.113" => "an Ed448 key, which SSH has no signature for".into(),
+        "1.3.101.112" => "an Ed25519 key written in a way Passwords can't read".into(),
+        _ => format!("a PKCS#8 key of a kind Passwords can't sign with (algorithm {oid})"),
+    }
 }
 
 /// The SSH keys in `data` (active items' SSH key fields), with each one's
@@ -253,6 +283,38 @@ mod tests {
     /// "EC PRIVATE KEY"; PKCS#8, "PRIVATE KEY"), on each of SSH's three
     /// curves: read, and signed with. (On P-384 and P-521 they were no
     /// key at all, and SEC1 on any.)
+    /// Ed25519's PKCS#8 with the public key after the seed (version 1:
+    /// what 1Password writes for a key it made) is the key its seed
+    /// makes, in both ways the public key is written; and a kind that
+    /// can't be signed with is named.
+    #[test]
+    fn an_ed25519_key_with_its_public_key_after_it_is_read() {
+        let seed: Vec<u8> = (1..=32).collect();
+        let head = |len: u8, version: u8| [vec![0x30, len, 0x02, 0x01, version, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20], seed.clone()].concat();
+        let pem = |der: Vec<u8>| format!("-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n", B64.encode(der));
+        let plain = private_key(&pem(head(0x2e, 0))).expect("version 0");
+        let public = match plain.key_data() {
+            KeypairData::Ed25519(pair) => pair.public.0.to_vec(),
+            _ => panic!("not Ed25519"),
+        };
+        // (RFC 5958's: the public key as [1], a bit string. And ring's
+        // and older RustCrypto's: [1] holding a bit string.)
+        let implicit = [head(0x51, 1), vec![0x81, 0x21, 0x00], public.clone()].concat();
+        let explicit = [head(0x53, 1), vec![0xa1, 0x23, 0x03, 0x21, 0x00], public.clone()].concat();
+        for (name, der) in [("implicit", implicit), ("explicit", explicit)] {
+            let key = private_key(&pem(der)).unwrap_or_else(|why| panic!("{name}: {why}"));
+            assert_eq!(key.public_key(), plain.public_key(), "{name}");
+            use signature::Signer as _;
+            assert!(key.key_data().try_sign(b"x").is_ok(), "{name}");
+        }
+        // A DSA key (its algorithm, then nothing a reader would take):
+        // said to be one.
+        let dsa = vec![0x30, 0x14, 0x02, 0x01, 0x00, 0x30, 0x0b, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x38, 0x04, 0x01, 0x05, 0x00, 0x04, 0x02, 0x04, 0x00];
+        assert_eq!(private_key(&pem(dsa)).unwrap_err(), "a DSA key, which SSH hosts no longer take");
+        let other = vec![0x30, 0x0e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x02, 0x04, 0x00];
+        assert_eq!(private_key(&pem(other)).unwrap_err(), "a PKCS#8 key of a kind Passwords can't sign with (algorithm 1.3.101.110)");
+    }
+
     #[test]
     fn a_curves_key_is_read_in_its_older_forms() {
         use signature::Signer as _;

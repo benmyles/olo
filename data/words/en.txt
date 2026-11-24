@@ -300,6 +300,7 @@ Allow Sleep
 Allow Sleep (awake until {})
 Allow it on the phone
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+Allow {} to sign in to your hosts with your SSH keys?
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Allowed with {}
 Along the Top
@@ -2594,6 +2595,7 @@ Olo’s bridge is on “{}”.
 Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
 Olo’s keyring isn’t running here; it starts with your session.
 Olo’s language:
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Olo’s phone service isn’t running.
 Olo’s skill for agents is on “{}”.
 Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
@@ -4180,6 +4182,7 @@ Updating…
 Upgrade Fedora
 Upgrade Olo
 Upgrade to Fedora {}
+Upgrading
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 Upload
 Upload at most:

@@ -1436,22 +1436,29 @@ something nobody here has is in "Blocked", with what it waits for.
       (2026-11-23). Left: the fourth mark in the status bar (a mark
       of the kit's has to be drawn for it, in whole device lines at
       every scale as the keyboard, the bridge and the book are, and
-      reviewed); Rex told when the pool's standing changes (it asks
-      as the Host window opens and at Check Again); the section's
+      reviewed); the section's
       other states pictured and reviewed (being installed, behind,
       couldn't install: Rex's demo shows two).
     - Lingering: where the host won't let the account's services run
       while it is signed out (`loginctl enable-linger` refused), the
       pool ends with the last session: said, with what to do as root
       (the Server window could do it).
-    - What Passwords asks when the pool signs in to a host by itself
+    - ~~What Passwords asks when the pool signs in to a host by itself
       (a background program with no terminal): it should count as
-      Rex's own connection to that host does.
-    - A host whose key this computer doesn't know yet (never
+      Rex's own connection to that host does.~~ Done (2026-11-23):
+      one leave for Olo's own apps, asked by the app's name. Left:
+      the pool asks from the background, at whatever moment it finds
+      the leave lapsed (ten minutes after the last use) and has to
+      sign in again; it should rather stand as "waiting for
+      Passwords" until the person is there (Sync Now, its window
+      opened), which needs a way to ask Passwords' agent for a
+      signature only if nobody has to be asked.
+    - ~~A host whose key this computer doesn't know yet (never
       connected to in Rex): said plainly, "connect to it in Rex
-      first".
-    - An upgrade of Olo puts the new program on the hosts by itself
-      (now: Install again).
+      first".~~ Done (2026-11-23).
+    - ~~An upgrade of Olo puts the new program on the hosts by itself
+      (now: Install again).~~ Done (2026-11-23): as the pool starts,
+      and tried again while a host can't be reached.
     - What the desktop missed while away, from the host pool's own
       record (it has the last 25 requests an account and a day's
       activity: shown as they are when it is next reached).
@@ -1674,6 +1681,42 @@ something nobody here has is in "Blocked", with what it waits for.
   - *The list*: each feature against each of the three agents in
     each of the two apps, written down in HACKING with how each was
     tried.
+
+- **Rex says when the keys it forwards can't be had** (2026-11-23,
+  seen on the person's host: Rex moved to an agent screen reconnected
+  from there, and its forwarded agent offered no keys without a word:
+  a program on an agent screen asks that screen's Passwords, which has
+  only what was shared with the screen). The relay answers an empty
+  list where the keychain can't be reached or has none
+  (`give_the_agent`: `olo_keychain::call(..).ok()`): Rex should say in
+  the Host window's SSH keys line how many keys the host is offered
+  and why none ("Passwords on this screen has no SSH keys shared with
+  it", "Passwords isn't running", "locked"), and log it.
+
+- **Preferences ▸ Services: every Olo service, how it stands, and a
+  way to manage it** (Ben, 2026-11-23, on asking whether Passwords'
+  SSH agent had to be restarted by hand to get a fix: "a Preferences
+  -> Services app that shows all of the olo services and their status
+  and lets me manage/restart them"). To find out first: what the
+  services are and who starts each (olo-session's `SHELL` and
+  `REAL_SHELL`, its bus's own services, an agent screen's, Terminal's
+  and Rex's keepers, the Token Pool, the pools on hosts) and what the
+  session already knows of each (running since when, its pid, started
+  again how often, left stopped after crashing, turned off in
+  Preferences: `SERVICE_NOT_WANTED`, still on the version before an
+  upgrade: `Session::check_stale`); how BeOS and Haiku showed theirs
+  (the roster, `launch_daemon` and `launch_roster`). Then: the
+  session answers a request for the list and for Restart, Stop and
+  Start of one (documented, so agents have it as people do: `olo
+  services`, JSON); a kit app in Preferences with a list (its name
+  as a person knows it and what it is for in a line, a light, since
+  when, its memory and CPU at rest from what `tools/dev/cost` reads,
+  its version against the installed one) and Restart, Stop, Start
+  and Show Log for the chosen one, live without polling (the session
+  says when one changes); what restarting one costs said before it
+  is done where it costs something (Terminal's keeper holds the
+  shells; app_server is the session's reload). Never a service
+  restarted to cure what a fix should: Root-cause rule.
 
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize

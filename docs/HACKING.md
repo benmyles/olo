@@ -25306,8 +25306,14 @@ be read was left out of what the agent offers without a word: of
 three SSH keys in a person's Passwords one was offered, here and on
 their host. Ben, 2026-11-23: "there are 3 keys in passwords it should
 be offering them". An `id_rsa` kept from before OpenSSH's own format
-is one.) A key that can't be offered (one under a passphrase) is
-logged by its item's name with why. Tests: the curves' older forms
+is one.) Ed25519's PKCS#8 is read by what its head says, version 0
+(OpenSSL's, the seed alone) and version 1 (the public key after the
+seed, both ways it is written: how 1Password writes a key it made);
+read as sixteen fixed bytes, a key 1Password made was "a PKCS#8 key of
+a kind Passwords can't sign with", the third of those three keys. A
+key that can't be offered (one under a passphrase, a DSA key) is
+logged by its item's name with why, naming its kind by the algorithm
+the key itself says (`unread`). Tests: the curves' older forms
 from fixed numbers; and `OLO_KEYS_PROBE`, a folder of ssh-keygen's
 keys of every kind in the three forms (21 of 21).
 
@@ -25326,7 +25332,13 @@ of a program of the person's own (`SO_PEERCRED`) is a keychain request
 `Incoming::local` and the program's pid), so it's answered as `op`'s:
 once unlocked (an agent-only Passwords opens its window to be unlocked),
 a signature once that terminal session is allowed ("Allow “ssh …” to
-sign in with your SSH keys?", one grant with `op`'s), the keys read and
+sign in with your SSH keys?", one grant with `op`'s; one of Olo's own
+apps that signs in to hosts by itself, Rex or the Token Pool keeping
+its pool on a host in step, is known by its program beside Passwords'
+own and asked about by its name, "Allow Token Pool to sign in to your
+hosts with your SSH keys?", with one leave for them all,
+`cli::Session::of_olo`: they have no terminal to be the leave's, and
+the pool's sign-in counts as Rex's own does), the keys read and
 used only on the store's thread (`agent::keys`, `agent::sign`): SSH Key
 fields of active items, OpenSSH text or PKCS#8 (Ed25519, RSA with
 SHA-256/512 as asked, ECDSA P-256), through RustCrypto's `ssh-key`.
@@ -25901,6 +25913,24 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   - *What is carried* is the accounts (new ones added, ones no longer
     carried removed, names and pauses followed) and never a pool's
     own reading of them (use, meters, cooldowns).
+  - *An upgrade of Olo reaches the hosts by itself.* The pool keeps
+    which program it put on each host (`Kept::build`: the name of the
+    build the app carries, a digest of the program itself, so it
+    changes only when the program does). A host whose pool runs
+    another counts as behind (`Hosts::stale`): as the pool starts,
+    and again a minute, two, up to ten later while it can't be
+    reached, the new program is put there, the service started with
+    it and the accounts carried ("Upgrading…" in the Hosts window);
+    its accounts and the sign-ins it keeps stay as they were. Where
+    that very program is there already, in its place and answering (a
+    pool put there before this was kept), it is looked at and left.
+    Not for a host Olo has no program for.
+  - *A host this computer has never met* (its key in no known_hosts,
+    because it was never connected to in Rex): the pool signs in with
+    nobody to ask, so it takes no key on trust and learns none
+    (`RexError::SshHostUnknown`, which any SSH call with no one to
+    ask gives); the host's row says "This computer hasn’t met that
+    host yet. Connect to it in Rex first."
   - *Tested* (`tests/hosted.rs`, against a provider that gives a new
     refresh token at each renewal and refuses one used twice): the
     host keeps and renews, the desktop borrows, neither renews what
@@ -25913,7 +25943,11 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     sign-in borrowed with one renewal, a rename here there a second
     or two later, installed again with its sign-in kept, removed with
     the sign-in taken back whole and renewed here again, no refresh
-    token spent twice); and against an account in a container with
+    token spent twice; and between: a pool started with another
+    program puts it there by itself, the old one gone, the sign-in
+    still kept, and one started again with the same touches nothing;
+    from a home that has never met the host, the plain sentence and
+    no key learnt); and against an account in a container with
     systemd (the service's own path: `olo-pool.service` active and
     enabled, the vault, its key and the socket 0600, Claude Code's
     settings pointed at the proxy; after removal nothing of the pool
@@ -28017,8 +28051,14 @@ to set them up").
   sign-in, history, sessions or a cache (none is on the list); in a
   settings file, never an entry of the environment whose name looks
   like a key or a token, nor what this computer's Token Pool put
-  there; in Codex's, not the folders trusted here nor the pool's old
-  provider. A path under this computer's home in a settings file is
+  there, nor its hooks (each runs a program of this computer's: Olo
+  Terminal's own were copied and named a program the host hasn't, Ben,
+  2026-11-23, "maybe we should skip hooks"); in Codex's, not the
+  folders trusted here, the pool's old provider, nor the MCP servers
+  that are this computer's (`olo-terminal`'s, one at a loopback
+  address). Hooks a copy of before put on the host are taken off
+  there (`File::taken_back`: this computer's, compared as they were
+  carried), the host's own kept. A path under this computer's home in a settings file is
   written as the host's home (`for_host`). The host is asked what it
   has (`carry::look`: a SHA-256 of each, by a script given on a
   shell's input, a line a file; `Stands::read`), the row says how many
@@ -28324,7 +28364,15 @@ forwarded to it, natively, over the SSH connection Rex keeps:
   `Include` line put at the head of `~/.ssh/config`, once; a config
   that is a link stays one; none there yet, one is made, 0600): it
   names the link as `IdentityAgent` while its socket is there and the
-  shell has no live agent of its own (`Match exec`). So `git`, `ssh`,
+  shell's own agent offers no keys (`Match exec`, `ssh-add -l` under
+  `timeout 2`: none, one gone, a live one with nothing in it, or one
+  that doesn't answer). Most hosts give every login a live, empty
+  agent (the openssh user service's, `/run/user/UID/openssh_agent`):
+  going by whether the shell had a live agent at all, Olo's was never
+  used there, and `git clone` in a Rex terminal was refused with the
+  keys forwarded beside it (Ben, 2026-11-23, "on rex it doesn't
+  work"; seen on the real host, and the new rule tried there in a
+  scratch config: the empty agent gives way). So `git`, `ssh`,
   `scp` and `rsync` sign in with the keys in every shell, the ones
   that were open before the keys were given too; with the keys taken
   back the socket goes, the file says nothing, and `ssh` is as it was.

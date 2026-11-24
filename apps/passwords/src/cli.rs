@@ -33,6 +33,16 @@ pub struct Session {
 }
 
 impl Session {
+    /// Olo's own apps that sign in to hosts by themselves (Rex, the
+    /// Token Pool, which keeps its pool on a host in step with no
+    /// window and no terminal): one leave for them all, so the pool's
+    /// sign-in counts as Rex's own does, whatever session of the
+    /// kernel's each happens to be in. (No session of the kernel's has
+    /// a number below 1.)
+    pub fn of_olo() -> Session {
+        Session { sid: -2, tty: 0 }
+    }
+
     /// A host whose terminals ask through Rex (`address`: as Rex
     /// reaches it), allowed and forgotten as a terminal session of this
     /// computer is. (No session of the kernel's has a number below

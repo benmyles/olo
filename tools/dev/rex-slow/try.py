@@ -385,7 +385,13 @@ elif what == "pool":
             try:
                 out = subprocess.run([binary, "--ignored", "--nocapture", "a_pool_is_put_on_a_host"], capture_output=True, text=True, timeout=170, env=env)
                 print("\n".join(l for l in (out.stdout + out.stderr).splitlines() if any(w in l for w in ("the pool", "test result", "panicked", "left:", "right:", "said"))).replace(getpass.getuser(), "USER")[:3000])
-                print("PASS" if "test result: ok. 1 passed" in out.stdout else "FAIL")
+                # (And from a home that has never met the far host: said plainly, nothing taken on trust.)
+                home2 = f"{D}/far/poolhome-new"; shutil.rmtree(home2, ignore_errors=True); os.makedirs(home2)
+                env2 = dict(env, HOME=home2, XDG_CONFIG_HOME=f"{home2}/.config", XDG_STATE_HOME=f"{home2}/state")
+                out2 = subprocess.run([binary, "--ignored", "--nocapture", "a_host_never_met"], capture_output=True, text=True, timeout=60, env=env2)
+                print("\n".join(l for l in (out2.stdout + out2.stderr).splitlines() if any(w in l for w in ("the pool", "test result", "panicked", "left:", "right:"))).replace(getpass.getuser(), "USER")[:1500])
+                assert not os.path.exists(f"{home2}/.ssh/known_hosts"), "a key was learnt with nobody asked"
+                print("PASS" if "test result: ok. 1 passed" in out.stdout and "test result: ok. 1 passed" in out2.stdout else "FAIL")
             finally:
                 # (Whatever became of the test: no pool of its is left running on the far host, nor anything of it there.)
                 far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')

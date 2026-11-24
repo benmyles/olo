@@ -9,8 +9,15 @@
 //! prompts ([`gather`]). *What never is*: a sign-in (credentials, auth
 //! files), history, sessions, caches; in a settings file, the
 //! environment's entries that are this computer's Token Pool's or
-//! that look like a key or a token; in Codex's, the folders trusted
-//! here and the pool's old provider. A path under this computer's
+//! that look like a key or a token, and its hooks (each runs a program
+//! of this computer's: Olo Terminal's own were copied, and named a
+//! program the host hasn't, Ben, 2026-11-23: "it also gets hooks that
+//! are invalid for the rex env e.g. olo terminal hooks. maybe we should
+//! skip hooks"); in Codex's, the folders trusted here, the pool's old
+//! provider and the MCP servers that are this computer's (Olo
+//! Terminal's, or one at its loopback address). Hooks a copy made
+//! before carried there are taken off again ([`merged`]'s
+//! `taken_back`), the host's own kept. A path under this computer's
 //! home in a settings file is said as the host's home.
 //!
 //! *On the host* nothing is lost: a file that is there and differs is
@@ -31,6 +38,10 @@ pub struct File {
     pub bytes: Vec<u8>,
     /// Whether it can be run (a skill's script).
     pub runs: bool,
+    /// Of Claude Code's settings: the hooks this computer's have, which
+    /// are never carried, as JSON (`{"Stop": [...]}`): where a copy of
+    /// before put them on the host, they are taken off there.
+    pub taken_back: Option<String>,
 }
 
 /// Claude Code's settings: the one file that is put together with the
@@ -68,10 +79,11 @@ pub fn gather(home: &Path) -> (Vec<File>, bool) {
         let Ok(text) = String::from_utf8(bytes) else { continue };
         let looked = match path {
             CLAUDE_SETTINGS | ".gemini/antigravity-cli/settings.json" => json_settings(&text),
-            _ => codex_config(&text),
+            _ => codex_config(&text).map(|text| (text, None)),
         };
-        if let Some(text) = looked {
-            files.push(File { path: path.to_owned(), bytes: text.replace(&here, HOME_THERE).into_bytes(), runs: false });
+        if let Some((text, hooks)) = looked {
+            let taken_back = hooks.filter(|_| path == CLAUDE_SETTINGS).map(|hooks| hooks.to_string().replace(&here, HOME_THERE));
+            files.push(File { path: path.to_owned(), bytes: text.replace(&here, HOME_THERE).into_bytes(), runs: false, taken_back });
         }
     }
     for path in WHOLE {
@@ -96,7 +108,11 @@ pub fn for_host(files: &[File], home: &str) -> Vec<File> {
     files
         .iter()
         .map(|file| match SETTINGS.contains(&file.path.as_str()) {
-            true => File { bytes: String::from_utf8_lossy(&file.bytes).replace(HOME_THERE, home.trim_end_matches('/')).into_bytes(), ..file.clone() },
+            true => File {
+                bytes: String::from_utf8_lossy(&file.bytes).replace(HOME_THERE, home.trim_end_matches('/')).into_bytes(),
+                taken_back: file.taken_back.as_ref().map(|hooks| hooks.replace(HOME_THERE, home.trim_end_matches('/'))),
+                ..file.clone()
+            },
             false => file.clone(),
         })
         .collect()
@@ -106,7 +122,7 @@ fn read(home: &Path, path: &str) -> Option<File> {
     let full = home.join(path);
     let meta = std::fs::metadata(&full).ok().filter(|m| m.is_file() && m.len() <= LARGEST)?;
     use std::os::unix::fs::PermissionsExt as _;
-    Some(File { path: path.to_owned(), bytes: std::fs::read(&full).ok()?, runs: meta.permissions().mode() & 0o111 != 0 })
+    Some(File { path: path.to_owned(), bytes: std::fs::read(&full).ok()?, runs: meta.permissions().mode() & 0o111 != 0, taken_back: None })
 }
 
 fn walk(home: &Path, folder: &str, depth: usize, files: &mut Vec<File>, short: &mut bool) {
@@ -140,10 +156,13 @@ fn secret(name: &str) -> bool {
 }
 
 /// A JSON settings file as it is carried: without the entries of its
-/// environment that are a Token Pool's, or that look like a secret.
-/// None: it isn't JSON, and is left where it is.
-fn json_settings(text: &str) -> Option<String> {
+/// environment that are a Token Pool's, or that look like a secret,
+/// and without its hooks, which are given back beside it (each runs a
+/// program of this computer's). None: it isn't JSON, and is left where
+/// it is.
+fn json_settings(text: &str) -> Option<(String, Option<Value>)> {
     let mut settings: Value = serde_json::from_str(text).ok()?;
+    let hooks = settings.as_object_mut()?.remove("hooks").filter(|hooks| hooks.as_object().is_some_and(|h| !h.is_empty()));
     if let Some(env) = settings.get_mut("env").and_then(Value::as_object_mut) {
         // (The pool's: where the way out goes through this computer.)
         let through_here = env.get("HTTPS_PROXY").and_then(Value::as_str).is_some_and(|url| url.contains("127.0.0.1") || url.contains("localhost"));
@@ -155,7 +174,7 @@ fn json_settings(text: &str) -> Option<String> {
             settings.as_object_mut()?.remove("env");
         }
     }
-    serde_json::to_string_pretty(&settings).ok().map(|text| text + "\n")
+    serde_json::to_string_pretty(&settings).ok().map(|text| (text + "\n", hooks))
 }
 
 /// Codex's configuration as it is carried: without the folders trusted
@@ -174,6 +193,25 @@ fn codex_config(text: &str) -> Option<String> {
     if config.get("model_providers").and_then(|p| p.as_table_like()).is_some_and(|p| p.is_empty()) {
         config.remove("model_providers");
     }
+    // (The MCP servers that are this computer's: Olo Terminal's tab
+    // title tool, and any served at this computer's loopback address,
+    // which on the host is the host's, where nothing answers.)
+    if let Some(servers) = config.get_mut("mcp_servers").and_then(|s| s.as_table_like_mut()) {
+        let here: Vec<String> = servers
+            .iter()
+            .filter(|(name, server)| {
+                let url = server.get("url").and_then(|u| u.as_str()).unwrap_or_default();
+                *name == "olo-terminal" || ["127.0.0.1", "localhost", "[::1]"].iter().any(|loopback| url.contains(loopback))
+            })
+            .map(|(name, _)| name.to_owned())
+            .collect();
+        for name in here {
+            servers.remove(&name);
+        }
+    }
+    if config.get("mcp_servers").and_then(|s| s.as_table_like()).is_some_and(|s| s.is_empty()) {
+        config.remove("mcp_servers");
+    }
     Some(config.to_string())
 }
 
@@ -183,11 +221,23 @@ fn codex_config(text: &str) -> Option<String> {
 /// skill set-up wrote there: copied over, each came back at the next
 /// look as a file to copy, for ever); where both say something, ours
 /// is what is said; a list is ours and then what the host's has
-/// besides.
-pub fn merged(ours: &[u8], theirs: &[u8]) -> Vec<u8> {
+/// besides. `taken_back`: this computer's hooks ([`File::taken_back`]),
+/// each taken off the host's hooks where a copy of before put it there.
+pub fn merged(ours: &[u8], theirs: &[u8], taken_back: Option<&str>) -> Vec<u8> {
     let (Ok(ours_json), Ok(mut put)) = (serde_json::from_slice::<Value>(ours), serde_json::from_slice::<Value>(theirs)) else { return ours.to_vec() };
     if !put.is_object() || !ours_json.is_object() {
         return ours.to_vec();
+    }
+    if let (Some(back), Some(hooks)) = (taken_back.and_then(|t| serde_json::from_str::<Value>(t).ok()), put.get_mut("hooks").and_then(Value::as_object_mut)) {
+        for (event, list) in hooks.iter_mut() {
+            if let (Some(list), Some(ours)) = (list.as_array_mut(), back.get(event).and_then(Value::as_array)) {
+                list.retain(|hook| !ours.contains(hook));
+            }
+        }
+        hooks.retain(|_, list| list.as_array().is_none_or(|l| !l.is_empty()));
+        if hooks.is_empty() {
+            put.as_object_mut().map(|o| o.remove("hooks"));
+        }
     }
     over(&mut put, ours_json);
     serde_json::to_string_pretty(&put).map(|text| (text + "\n").into_bytes()).unwrap_or_else(|_| ours.to_vec())
@@ -257,7 +307,7 @@ impl Stands {
         let mut stands = Stands { home: home.clone(), short, ..Stands::default() };
         for mut file in for_host(files, &home) {
             if let (CLAUDE_SETTINGS, Some(theirs)) = (file.path.as_str(), &theirs) {
-                file.bytes = merged(&file.bytes, theirs);
+                file.bytes = merged(&file.bytes, theirs, file.taken_back.as_deref());
             }
             match has.get(file.path.replace(['"', '$', '`', '\\'], "_").as_str()) {
                 Some(sum) if *sum == sha256(&file.bytes) => stands.same += 1,
@@ -327,7 +377,7 @@ mod tests {
             &home,
             ".claude/settings.json",
             &format!(
-                r#"{{"model":"opus","env":{{"HTTPS_PROXY":"http://127.0.0.1:17892","NODE_EXTRA_CA_CERTS":"{here}/.config/olo/pool-ca.pem","NO_PROXY":"localhost","EDITOR":"vi","GITHUB_TOKEN":"made-up"}},"statusLine":{{"command":"{here}/bin/status"}}}}"#
+                r#"{{"model":"opus","env":{{"HTTPS_PROXY":"http://127.0.0.1:17892","NODE_EXTRA_CA_CERTS":"{here}/.config/olo/pool-ca.pem","NO_PROXY":"localhost","EDITOR":"vi","GITHUB_TOKEN":"made-up"}},"statusLine":{{"command":"{here}/bin/status"}},"hooks":{{"UserPromptSubmit":[{{"hooks":[{{"type":"command","command":"{here}/.local/bin/olo-terminal --agent-context"}}]}}]}}}}"#
             ),
         );
         write(&home, ".claude/CLAUDE.md", "Be brief.\n");
@@ -341,7 +391,9 @@ mod tests {
         write(
             &home,
             ".codex/config.toml",
-            &format!("model = \"gpt\"\nmodel_provider = \"olo_pool\"\n\n[model_providers.olo_pool]\nbase_url = \"http://127.0.0.1:17891\"\n\n[projects.\"{here}/src\"]\ntrust_level = \"trusted\"\n"),
+            &format!(
+                "model = \"gpt\"\nmodel_provider = \"olo_pool\"\n\n[model_providers.olo_pool]\nbase_url = \"http://127.0.0.1:17891\"\n\n[projects.\"{here}/src\"]\ntrust_level = \"trusted\"\n\n[mcp_servers.olo-terminal]\nurl = \"http://127.0.0.1:41234/mcp\"\n\n[mcp_servers.docs]\nurl = \"https://docs.example/mcp\"\n"
+            ),
         );
         write(&home, ".codex/auth.json", "{\"made\":\"up\"}");
         write(&home, ".codex/AGENTS.md", "Tests first.\n");
@@ -379,32 +431,43 @@ mod tests {
         let claude: Value = serde_json::from_slice(&there.iter().find(|f| f.path == CLAUDE_SETTINGS).unwrap().bytes).unwrap();
         assert_eq!(claude["env"], serde_json::json!({"EDITOR": "vi"}));
         assert_eq!((claude["model"].as_str(), claude["statusLine"]["command"].as_str()), (Some("opus"), Some("/home/far/bin/status")));
-        // Codex's: the folders trusted here and the pool's old provider gone.
+        // No hooks (each runs a program of this computer's): given back
+        // beside, as they would be on the host, to be taken off there.
+        assert!(claude.get("hooks").is_none());
+        let back: Value = serde_json::from_str(there.iter().find(|f| f.path == CLAUDE_SETTINGS).unwrap().taken_back.as_deref().unwrap()).unwrap();
+        assert_eq!(back["UserPromptSubmit"][0]["hooks"][0]["command"], "/home/far/.local/bin/olo-terminal --agent-context");
+        // Codex's: the folders trusted here, the pool's old provider and
+        // this computer's MCP servers gone; another's kept.
         let codex = String::from_utf8(there.iter().find(|f| f.path == ".codex/config.toml").unwrap().bytes.clone()).unwrap();
-        assert_eq!(codex.trim(), "model = \"gpt\"");
+        assert_eq!(codex.trim(), "model = \"gpt\"\n\n[mcp_servers.docs]\nurl = \"https://docs.example/mcp\"");
         let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]
     fn what_only_the_host_has_stays_in_claude_codes_settings() {
-        let ours = br#"{"model":"opus","env":{"EDITOR":"vi"},"permissions":{"allow":["Bash(ls)"]},"hooks":{"Stop":[{"x":1}]}}"#;
-        let theirs = br#"{"env":{"HTTPS_PROXY":"http://127.0.0.1:27892","EDITOR":"nano"},"theme":"light","permissions":{"allow":["Bash(cargo)","Bash(ls)"]},"hooks":{"SessionStart":[{"rex":true}]}}"#;
-        let put: Value = serde_json::from_slice(&merged(ours, theirs)).unwrap();
+        let ours = br#"{"model":"opus","env":{"EDITOR":"vi"},"permissions":{"allow":["Bash(ls)"]}}"#;
+        // (The host's: its own hook, Rex's; and two of this computer's,
+        // which a copy of before put there.)
+        let theirs = br#"{"env":{"HTTPS_PROXY":"http://127.0.0.1:27892","EDITOR":"nano"},"theme":"light","permissions":{"allow":["Bash(cargo)","Bash(ls)"]},"hooks":{"SessionStart":[{"rex":true},{"here":1}],"Stop":[{"x":1}]}}"#;
+        let back = Some(r#"{"SessionStart":[{"here":1}],"Stop":[{"x":1}]}"#);
+        let put: Value = serde_json::from_slice(&merged(ours, theirs, back)).unwrap();
         assert_eq!(
             put,
             serde_json::json!({
                 "env": {"HTTPS_PROXY": "http://127.0.0.1:27892", "EDITOR": "vi"},
                 "theme": "light",
                 "permissions": {"allow": ["Bash(ls)", "Bash(cargo)"]},
-                "hooks": {"SessionStart": [{"rex": true}], "Stop": [{"x": 1}]},
+                "hooks": {"SessionStart": [{"rex": true}]},
                 "model": "opus"
             })
         );
         // (Put there, it is what is there: nothing to copy at the next look.)
-        let there = merged(ours, theirs);
-        assert_eq!(merged(ours, &there), there);
+        let there = merged(ours, theirs, back);
+        assert_eq!(merged(ours, &there, back), there);
         // (What isn't settings there: ours as they are.)
-        assert_eq!(merged(ours, b"not json"), ours);
+        assert_eq!(merged(ours, b"not json", back), ours);
+        // (None taken back: the host's hooks as they are.)
+        assert_eq!(serde_json::from_slice::<Value>(&merged(ours, theirs, None)).unwrap()["hooks"]["Stop"], serde_json::json!([{"x": 1}]));
     }
 
     /// The scripts against a real home on this machine: asked of an

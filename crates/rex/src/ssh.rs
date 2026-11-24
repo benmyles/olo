@@ -497,8 +497,17 @@ const AGENT_MESSAGE_MOST: usize = 256 * 1024;
 /// And `ssh` there is told of it, whatever shell runs it: a file of
 /// Olo's own beside the account's SSH config (`~/.ssh/olo-rex.conf`,
 /// read first by one `Include` line put at the config's head, once)
-/// names the link as the agent while its socket is there and the shell
-/// has no live agent of its own. A shell that was open before the keys
+/// names the link as the agent while its socket is there and the shell's
+/// own agent offers no keys: none, one that is gone, or a live one with
+/// nothing in it. (Live and empty is what most hosts give: the
+/// openssh user service starts an `ssh-agent` for every login and puts
+/// it in `SSH_AUTH_SOCK`, `/run/user/UID/openssh_agent`. Going by
+/// whether the shell had a live agent, Olo's was never used there, and
+/// `git clone` in a Rex terminal was "Permission denied (publickey)"
+/// with the keys forwarded beside it: Ben, 2026-11-23, "on rex it
+/// doesn't work". `ssh-add -l` says no keys by its exit, and
+/// `timeout` keeps an agent that never answers from holding up every
+/// `ssh`: one that doesn't answer in two seconds counts as none.) A shell that was open before the keys
 /// were given has no `SSH_AUTH_SOCK` for it, which is most shells in
 /// sessions that last for weeks: there `git clone` was refused,
 /// "Permission denied (publickey)", with the agent working beside it
@@ -507,7 +516,7 @@ const AGENT_MESSAGE_MOST: usize = 256 * 1024;
 const AGENT_KEPT: &str = r##"d="$HOME/.local/state/olo-rex"; mkdir -p "$d" && chmod 700 "$d" && [ -n "$SSH_AUTH_SOCK" ] && ln -sfn "$SSH_AUTH_SOCK" "$d/agent.sock" || exit 1
 s="$HOME/.ssh"; c="$s/config"
 if mkdir -p "$s" 2> /dev/null && chmod 700 "$s" 2> /dev/null; then
-  printf '%s\n' "# Olo's Rex: your SSH keys from Olo Passwords on this host, while Rex is connected and has" "# been given them (Preferences > Rex). Used where a shell has no agent of its own." 'Match exec "[ -S $HOME/.local/state/olo-rex/agent.sock ] && [ ! -S ${SSH_AUTH_SOCK:-/dev/null} ]"' '    IdentityAgent ~/.local/state/olo-rex/agent.sock' > "$s/olo-rex.conf" && chmod 600 "$s/olo-rex.conf"
+  printf '%s\n' "# Olo's Rex: your SSH keys from Olo Passwords on this host, while Rex is connected and has" "# been given them (Preferences > Rex). Used where a shell's own agent offers no keys." 'Match exec "[ -S $HOME/.local/state/olo-rex/agent.sock ] && ! timeout 2 ssh-add -l > /dev/null 2>&1"' '    IdentityAgent ~/.local/state/olo-rex/agent.sock' > "$s/olo-rex.conf" && chmod 600 "$s/olo-rex.conf"
   if ! grep -qs 'olo-rex\.conf' "$c"; then
     { echo 'Include ~/.ssh/olo-rex.conf'; echo; cat "$c" 2> /dev/null || true; } > "$s/.olo-rex.new" && { [ -e "$c" ] || { : > "$c" && chmod 600 "$c"; }; } && cat "$s/.olo-rex.new" > "$c"
     rm -f "$s/.olo-rex.new"
@@ -1247,6 +1256,13 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
         fixed: window_knob.is_some(),
         agent,
     };
+    // (A key nobody could be asked about is its own error: what to do
+    // about it is another thing than for a host that can't be reached.)
+    let unasked = askpass.is_none();
+    let failed_at = |how: &str, e: russh::Error| match e {
+        russh::Error::UnknownKey if unasked => RexError::SshHostUnknown(format!("{}:{}", resolved.hostname, resolved.port)),
+        e => RexError::Ssh(format!("{how} failed: {e}")),
+    };
     let connection = async {
         if let Some(pc) = &resolved.proxy_command {
             let expanded = expand_proxy(pc, &resolved)?;
@@ -1262,7 +1278,7 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
             let stdin = child.stdin.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdin".into()))?;
             let stdout = child.stdout.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdout".into()))?;
             let stream = ChildStdioStream { _child: child, stdout, stdin };
-            client::connect_stream(packed(config, None), stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect via ProxyCommand failed: {e}")))
+            client::connect_stream(packed(config, None), stream, handler).await.map_err(|e| failed_at("SSH connect via ProxyCommand", e))
         } else {
             // (The connection is opened here, not by russh, to know
             // how long it took: the host's name is looked up first, so
@@ -1280,7 +1296,7 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
             handler.round_trip = Some(opened_in);
             *peer.lock().unwrap_or_else(|e| e.into_inner()) = stream.peer_addr().ok().map(|a| (a.ip(), opened_in));
             stream.set_nodelay(true).map_err(failed)?;
-            client::connect_stream(packed(config, Some(opened_in)), stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))
+            client::connect_stream(packed(config, Some(opened_in)), stream, handler).await.map_err(|e| failed_at(&format!("SSH connect {}:{}", resolved.hostname, resolved.port), e))
         }
     };
 
@@ -1536,8 +1552,19 @@ mod dial_tests {
         if std::process::Command::new("ssh").arg("-V").output().is_ok() {
             assert_eq!(agent(None), link.to_str().unwrap(), "a shell with no agent: Olo's");
             assert_eq!(agent(Some(&home.join("gone.sock"))), link.to_str().unwrap(), "a shell whose agent is gone: Olo's");
+            // A live agent with nothing in it (the host's own openssh
+            // service gives every login one): Olo's.
+            let empty = home.join("empty.sock");
+            fake_agent(&empty, false);
+            assert_eq!(agent(Some(&empty)), link.to_str().unwrap(), "a shell whose agent is empty: Olo's");
             // (No agent named: ssh goes by the shell's own, as without the file.)
-            assert_eq!(agent(Some(&forwarded)), "", "a shell with a live agent of its own keeps it");
+            let keyed = home.join("keyed.sock");
+            fake_agent(&keyed, true);
+            assert_eq!(agent(Some(&keyed)), "", "a shell whose own agent has keys keeps it");
+            // One that never answers holds nothing up for long, and counts as none.
+            let began = std::time::Instant::now();
+            assert_eq!(agent(Some(&forwarded)), link.to_str().unwrap(), "a shell whose agent never answers: Olo's");
+            assert!(began.elapsed() < Duration::from_secs(5), "{:?}", began.elapsed());
             // The keys taken back: the socket goes, and ssh is as it was.
             drop(_listening);
             std::fs::remove_file(&forwarded).unwrap();
@@ -1552,6 +1579,35 @@ mod dial_tests {
         assert_eq!(std::fs::read_to_string(home.join(".ssh/config")).unwrap(), "Include ~/.ssh/olo-rex.conf\n\n");
         assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(home.join(".ssh/config")).unwrap().permissions()) & 0o777, 0o600);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// An SSH agent at `path` for the test, on a thread: asked for its
+    /// keys, it has none, or one (an Ed25519 key's public half).
+    fn fake_agent(path: &std::path::Path, with_a_key: bool) {
+        use std::io::{Read, Write};
+        let listening = std::os::unix::net::UnixListener::bind(path).unwrap();
+        std::thread::spawn(move || {
+            for mut stream in listening.incoming().flatten() {
+                let mut len = [0u8; 4];
+                while stream.read_exact(&mut len).is_ok() {
+                    let mut msg = vec![0u8; u32::from_be_bytes(len) as usize];
+                    if stream.read_exact(&mut msg).is_err() {
+                        break;
+                    }
+                    let string = |b: &[u8]| [&(b.len() as u32).to_be_bytes()[..], b].concat();
+                    // (SSH_AGENT_IDENTITIES_ANSWER, 12: how many, then each key's blob and comment.)
+                    let mut answer = vec![12u8];
+                    if with_a_key {
+                        answer.extend(1u32.to_be_bytes());
+                        answer.extend(string(&[string(b"ssh-ed25519"), string(&[7u8; 32])].concat()));
+                        answer.extend(string(b"test"));
+                    } else {
+                        answer.extend(0u32.to_be_bytes());
+                    }
+                    let _ = stream.write_all(&[&(answer.len() as u32).to_be_bytes()[..], &answer].concat());
+                }
+            }
+        });
     }
 
     /// The link is used where UDP's round trip is about TCP's, not

@@ -61,6 +61,12 @@ pub enum RexError {
     /// no key of the agent's, no key file, no password asked for.
     #[error("ssh error: SSH authentication failed for {0}")]
     SshRefused(String),
+    /// This computer has never met the host (`host:port`: its key is in
+    /// no known_hosts) and nobody was there to be asked whether to
+    /// trust it: a program in the background, which never learns a key
+    /// by itself.
+    #[error("ssh error: the key of {0} isn’t known to this computer")]
+    SshHostUnknown(String),
     #[error("tls error: {0}")]
     Tls(String),
     #[error("protocol error: {0}")]

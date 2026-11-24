@@ -2922,3 +2922,20 @@ an argument it doesn't know starts the lint (read its first lines).
   loopback. A change to `extension/tree.js` can be tried without
   installing anything: a page that fetches the script and runs it on
   itself (`apps/chrome/tests/tree-text.html`).
+
+- **`olo-screen ACTION NAME --help` acts.** Only `olo-screen --help`
+  prints help: `olo-screen type agent --help` typed "--help" into the
+  focused window of that screen (a terminal on the person's host, at
+  its prompt; cleared with Ctrl+U before anything ran). Read
+  `olo-screen --help` for an action's arguments, never ask the action.
+- **A Rex moved to an agent screen forwards that screen's keys.** It
+  reconnects from the screen, and its keychain is the screen's
+  Passwords (what the person shared with the screen), so a host's
+  forwarded agent offers none of the person's own keys until Rex is
+  back on their display. (Seen 2026-11-23: 0 keys on the host after
+  the move, 2 before.)
+- **Most Linux hosts give every login a live, empty `ssh-agent`**
+  (`SSH_AUTH_SOCK=/run/user/UID/openssh_agent`, the openssh user
+  service): "has the shell an agent?" isn't "has it keys?"; ask
+  `ssh-add -l`.
+

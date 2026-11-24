@@ -76,6 +76,11 @@ pub struct Stands {
 struct Kept {
     #[serde(default)]
     wanted: bool,
+    /// The program put there, by its build's name ([`Hosts::build_id`]):
+    /// another than the one this Olo carries, after an upgrade of Olo,
+    /// and the new one is put there by itself.
+    #[serde(default)]
+    build: Option<String>,
     /// What was last carried and taken, by its digest; and when.
     #[serde(default)]
     carried: Option<u64>,
@@ -236,7 +241,7 @@ impl Hosts {
             Some(input) => self.ssh.put(target, None, command, input).await,
             None => self.ssh.exec(target, None, command, &mut |_| {}).await,
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(said)?;
         Ok((ran.ok(), ran.output))
     }
 
@@ -306,9 +311,19 @@ impl Hosts {
             .filter(|id| {
                 // (Asked without marking anything: what would be carried, were it.)
                 let now_is = Self::digest(&self.shared.would_carry(id, "this computer"));
-                self.state.lock().unwrap().kept.get(id).is_some_and(|k| k.carried != Some(now_is))
+                self.stale(id) || self.state.lock().unwrap().kept.get(id).is_some_and(|k| k.carried != Some(now_is))
             })
             .collect()
+    }
+
+    /// The pool on host `id` runs another program than the one this
+    /// Olo carries: Olo was upgraded since it was put there. (Not where
+    /// Olo carries none, nor for a host it has none for.)
+    fn stale(&self, id: &str) -> bool {
+        let st = self.state.lock().unwrap();
+        self.builds.iter().any(|b| !b.bytes.is_empty())
+            && st.kept.get(id).is_some_and(|k| k.wanted && k.build.as_deref() != Some(self.build_id.as_str()))
+            && st.live.get(id).is_none_or(|l| !l.hopeless)
     }
 
     /// The accounts changed (or a host came to be known): every pool
@@ -325,12 +340,19 @@ impl Hosts {
 
     /// Carried, and said: in step, or behind and why, to be tried again
     /// by itself (a minute, then two, up to ten) for as long as it is.
+    /// Where the host's program isn't this Olo's (an upgrade of Olo),
+    /// that is put there first: an upgrade reaches the hosts by itself.
     async fn carry_and_say(self: Arc<Self>, id: String, asked: bool) {
         if self.state.lock().unwrap().live.get(&id).is_some_and(|l| l.doing.is_some()) {
             return;
         }
-        self.live(&id, |l| l.doing = Some("Carrying the accounts".into()));
-        let done = self.carry(&id).await;
+        let stale = self.stale(&id);
+        self.live(&id, |l| l.doing = Some(if stale { "Upgrading" } else { "Carrying the accounts" }.into()));
+        let put = if stale { self.put(&id, false).await } else { Ok(()) };
+        let done = match put {
+            Ok(()) => self.carry(&id).await,
+            Err(why) => Err(why),
+        };
         let again = {
             let mut st = self.state.lock().unwrap();
             let again = match &done {
@@ -366,12 +388,30 @@ impl Hosts {
     /// started again, with the program the app carries now), then the
     /// accounts carried.
     async fn install(&self, id: &str) -> Result<(), String> {
+        self.put(id, true).await?;
+        self.state.lock().unwrap().kept.entry(id.to_owned()).or_default().wanted = true;
+        self.save();
+        self.carry(id).await
+    }
+
+    /// The program this Olo carries put on host `id` and its service
+    /// started with it. `asked`: by the person (Install: the service
+    /// is started anew whatever is there); else by itself, after an
+    /// upgrade of Olo, and where that very program is there already,
+    /// in its place and answering, nothing is touched.
+    async fn put(&self, id: &str, asked: bool) -> Result<(), String> {
         let target = self.target(id)?;
         let name = format!("olo-pool-host-{}", self.build_id);
-        let (_, said) = self.run(&target, &format!("sh -c {}", word(&format!("uname -sm; [ -x \"$HOME\"/{DIR}/{name} ] && \"$HOME\"/{DIR}/{name} --version"))), None).await?;
+        let (_, said) = self
+            .run(&target, &format!("sh -c {}", word(&format!("uname -sm; [ -x \"$HOME\"/{DIR}/{name} ] && \"$HOME\"/{DIR}/{name} --version; readlink \"$HOME\"/{DIR}/olo-pool-host"))), None)
+            .await?;
         let mut lines = said.lines();
         let uname = lines.next().unwrap_or_default().to_owned();
-        let there = lines.any(|l| l.trim() == format!("olo-pool-host {}", crate::host::VERSION));
+        let rest: Vec<&str> = lines.map(str::trim).collect();
+        let there = rest.contains(&format!("olo-pool-host {}", crate::host::VERSION).as_str());
+        if !asked && there && rest.contains(&name.as_str()) && self.ask(&target, &Ask::Status).await.is_ok() {
+            return self.put_there(id);
+        }
         if !there {
             let mut kind = uname.split_whitespace();
             let (system, machine) = (kind.next().unwrap_or_default(), kind.next().unwrap_or_default());
@@ -413,9 +453,14 @@ impl Hosts {
         if !ok {
             return Err(format!("The Token Pool’s service couldn’t be started there: {}", last(&said)));
         }
-        self.state.lock().unwrap().kept.entry(id.to_owned()).or_default().wanted = true;
+        self.put_there(id)
+    }
+
+    /// Host `id` has this Olo's program: kept, so it isn't put again.
+    fn put_there(&self, id: &str) -> Result<(), String> {
+        self.state.lock().unwrap().kept.entry(id.to_owned()).or_default().build = Some(self.build_id.clone());
         self.save();
-        self.carry(id).await
+        Ok(())
     }
 
     /// The host's pool taken away: every sign-in it keeps given back
@@ -517,6 +562,17 @@ impl Hosting for Hosts {
 
     fn act(self: Arc<Self>, id: &str, what: &str) -> Result<(), String> {
         Hosts::act(&self, id, what)
+    }
+}
+
+/// Why a host couldn't be reached, as the windows say it. A host this
+/// computer has never met: the pool signs in with nobody to ask, so it
+/// never takes a key on trust; Rex asks, once, and after that the pool
+/// knows it too.
+fn said(e: olo_rex_client::RexError) -> String {
+    match e {
+        olo_rex_client::RexError::SshHostUnknown(_) => "This computer hasn’t met that host yet. Connect to it in Rex first.".to_owned(),
+        e => e.to_string(),
     }
 }
 
