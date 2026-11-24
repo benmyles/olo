@@ -8516,6 +8516,39 @@ Display (the `next-display` shortcuts for each window), and Move (All)
 to Agent Screen ▸ (as the window menu's; a workspace heading's menu has
 Move All Windows to Agent Screen ▸ too).
 
+**A window activated is told so** (`WindowElement::set_activate`;
+Ben, 2026-11-24: switched to "by clicking on the app on the deskbar or
+cmd+tab sometimes it doesn't seem to focus the window for text
+entry"). Whatever raises a window with the keyboard (a click, ⌘Tab,
+Deskbar, an agent's `activate`) sets xdg_toplevel's Activated state on
+it and takes it off the one before, and the configure that says so goes
+to each client then, before its keyboard enter. It was set and never
+sent (smithay's anvil, which app_server grew from, sends every window's
+pending configure after raising one; app_server didn't): a window
+switched away from learnt it wasn't active from the next configure of
+any kind (a tile laid out, a zoom), and switched back to by the
+keyboard or Deskbar, never clicked in, it was never told it was again.
+Chrome, GTK and Qt go by that state, not by having the keyboard, and
+took no typing until clicked in; the kit's own windows go by the
+keyboard (`wl_keyboard` enter and leave), and answer an activation
+alone without drawing. Not before a window's first configure (that one
+says it), and not where a size waits to go (`size_waits`: a resize's
+round holds it back and sends this with it, and `undrawn_ask` looks at
+sizes alone, so no window counts as unsettled by it). Found by the
+second investigator (Alacritty's `WAYLAND_DEBUG`: activated in its
+first configure, a tile's configures without it, ⌘Tab back with a
+keyboard enter and no configure), and checked the same way after:
+Alacritty switched away from and back to by ⌘Tab and by Deskbar, told
+each time. *Deskbar's row* brings an app forward as ⌘Tab does
+(`activate_app`): its windows on the chosen one's workspace raised in
+their order without the keyboard, minimized ones there shown again,
+and the chosen one restored last with the keyboard: never a picture in
+picture where there is another, nor a tab behind its group's front;
+the one used last, else the one in front (`recent` is kept only while
+app_server runs). Each was restored in turn: every window had the
+keyboard for a moment, and a group's background tab could come out in
+front of the tab that was and take the typing.
+
 Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`; while ⌘ or ⌥ is held the
 pointer chooses too: over a cell it is the one chosen, a click on it
 chooses it and ends the switching, its release going nowhere:
@@ -8528,7 +8561,9 @@ let go only the chosen window has moved. ⌥Tab has the apps on this
 workspace; ⌘Tab (`Action::NextApp { all }`, `Twitch::all`) has a row for
 each workspace with windows on it (`twitch_rows`, numbered at the left
 when there are more than one), and so does ⌘\` for the focused app's
-windows; each app's cell is its most recently used window. Tab walks
+windows; each app's cell is its most recently used window (an app's
+picture in picture after its other windows: kept over everything, it
+came first among them where none had been used yet). Tab walks
 every cell in order of use (`AnvilState::recent`, kept by `note_recent`
 in `tick`, not while switching), so ⌘Tab goes back and forth between the
 last two apps wherever they are and ⌥Tab between the last two here (the

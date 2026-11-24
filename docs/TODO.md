@@ -2791,7 +2791,35 @@ something nobody here has is in "Blocked", with what it waits for.
   after the switch must reach the field), find the cause (a second
   investigator at once if it isn't plain), fix it there, and a test
   that types after each way of switching.
+  **Done** 2026-11-24 (HACKING, "A window activated is told so"):
+  app_server set a window's activated state and never sent it, so
+  Chrome, GTK and Qt windows switched back to by ⌘Tab or Deskbar after
+  any configure while away weren't told they were active and took no
+  typing until clicked in (the kit's own go by the keyboard, and did);
+  now each activation is sent as it changes. And Deskbar's row brings
+  an app forward as ⌘Tab does, the keyboard to one window (never a
+  picture in picture or a tab behind its group's front), not to each in
+  turn; ⌘Tab passes over a picture in picture. Found with the second
+  investigator; checked on Alacritty's own words (`WAYLAND_DEBUG`).
+  Left: the person to say whether Chrome takes the typing now.
+  - From the investigator's notes, to look at: in Rex a click on a
+    segmented control keeps the keyboard there, so Space presses the
+    segment instead of typing a space in the pane (`apps/rex/src/ui.rs`,
+    the control by the session's panes).
 
+- **Rex: a tab switched to opens with text selected** (Ben, 2026-11-24:
+  "in rex terminal sometimes when switching between tabs a tab will
+  open with some text selected for no obvious reason", with a picture of
+  it on their computer). Find what selects: a click that switched tabs
+  taken by the pane under it as the start of a drag (the tab strip's
+  press, its release over the pane), a selection kept per pane and shown
+  again when the tab comes back after its text moved (the selection's
+  rows not following the scrollback), or one restored with the pane's
+  state after an upgrade. Reproduce on the rig (switch tabs by click,
+  by ⌘1…9 and ⌘⇧[ ], with output arriving in the tab behind), root-cause
+  it (the second investigator at once if it isn't plain), and test it:
+  no selection after any way of switching, a selection made by the
+  person kept where its text is.
 - ~~**Rex's terminal: Option+← and → go a word back and on**~~ Done
   (2026-11-24; HACKING, Terminal's keys): Rex sent ESC before the
   arrow's own sequence; its panes now encode keys with Terminal's own

@@ -1186,6 +1186,44 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.focus_window(window);
     }
 
+    /// An app's windows brought forward together (Deskbar's row, as BeOS's
+    /// roster activates an app; ⌘Tab's own is `twitch_show`): those on the
+    /// chosen one's workspace raised in their order without the keyboard,
+    /// minimized ones there shown again, and the chosen one restored last,
+    /// in front, with the keyboard. Chosen: never a picture in picture
+    /// where there is another, nor a tab behind its group's front; the one
+    /// used last; where none has been since app_server started (`recent`
+    /// is kept only while it runs), the one in front. (Each was restored
+    /// in turn, by when it was used: after a reload a group's background
+    /// tab came out in front of the tab that was and took the typing, and
+    /// every window had the keyboard for a moment; the second
+    /// investigator's finding, 2026-11-24.)
+    pub fn activate_app(&mut self, windows: &[WindowElement]) -> bool {
+        // (Ranked before anything moves: the last is the one chosen.)
+        let stack: Vec<u64> = self.space.elements().map(|w| w.id()).collect();
+        let mut ranked: Vec<_> =
+            windows.iter().map(|w| ((!w.meta().pip.get(), !w.decoration().behind, std::cmp::Reverse(self.recency(w.id())), stack.iter().position(|id| *id == w.id())), w.clone())).collect();
+        ranked.sort_by(|a, b| a.0.cmp(&b.0));
+        let Some((_, front)) = ranked.pop() else { return false };
+        if !self.shows(&front)
+            && let Some(o) = self.display_of(&front)
+        {
+            self.switch_workspace_on(&o, self.workspace_of(&front));
+        }
+        let (ws, display) = (self.workspace_of(&front), self.display_of(&front));
+        let others: Vec<WindowElement> = ranked.into_iter().map(|(_, w)| w).filter(|w| self.workspace_of(w) == ws && self.display_of(w) == display).collect();
+        for w in &others {
+            if self.parked.0.borrow().contains(w) {
+                self.unpark(w);
+            }
+            if self.space.element_location(w).is_some() {
+                self.space.raise_element(w, false);
+            }
+        }
+        self.restore(&front);
+        true
+    }
+
     pub fn focus_topmost(&mut self) {
         // (Not picture in picture, over everything but never handed the
         // keyboard.)
@@ -1330,7 +1368,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         for ws in 0..count {
             let windows: Vec<WindowElement> = if all { self.windows_on_workspace(ws) } else { showing.iter().filter(|w| self.workspace_of(w) == ws).cloned().collect() };
             let mut windows: Vec<(usize, WindowElement)> = windows.into_iter().map(|w| (column(&w), w)).collect();
-            windows.sort_by_key(|(c, w)| (*c, self.recency(w.id())));
+            // (An app's picture in picture after its other windows: it is
+            // kept over everything, so it came first among them where none
+            // had been used yet, and ⌘Tab gave it the keyboard.)
+            windows.sort_by_key(|(c, w)| (*c, w.meta().pip.get(), self.recency(w.id())));
             let mut seen = Vec::new();
             let mut ids = Vec::new();
             for (c, w) in windows {

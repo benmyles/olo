@@ -350,6 +350,19 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
     fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _tool_descriptor: &smithay::backend::input::TabletToolDescriptor, _time: InputTime) {}
 }
 
+/// Whether a size waits in a toplevel's state to be sent: one a resize's
+/// round holds back until its client has caught up (`grabs`,
+/// `rounds`), which an activation's configure mustn't send early.
+fn size_waits(t: &smithay::wayland::shell::xdg::ToplevelSurface) -> bool {
+    use smithay::wayland::shell::xdg::XdgToplevelSurfaceData;
+    smithay::wayland::compositor::with_states(t.wl_surface(), |states| {
+        states.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| {
+            let d = d.lock().unwrap();
+            d.server_pending.as_ref().is_some_and(|p| p.size != d.current_server_state().size)
+        })
+    })
+}
+
 impl SpaceElement for WindowElement {
     fn geometry(&self) -> Rectangle<i32, Logical> {
         let geo = SpaceElement::geometry(&self.0);
@@ -388,7 +401,25 @@ impl SpaceElement for WindowElement {
         if activated && self.meta().unread.get().is_some_and(|u| u.clear_on_focus) {
             self.meta().unread_fade();
         }
-        SpaceElement::set_activate(&self.0, activated);
+        // Its client told at once (Ben, 2026-11-24: switched to "by
+        // clicking on the app on the deskbar or cmd+tab sometimes it
+        // doesn't seem to focus the window for text entry"). The state was
+        // set and never sent: a window switched away from learnt it wasn't
+        // active from the next configure of any kind (a tile, a zoom), and
+        // switched back to by the keyboard or Deskbar it was never told it
+        // was again. Chrome, GTK and Qt go by that state, not by having
+        // the keyboard, and took no typing until clicked in; the kit's own
+        // windows go by the keyboard, and an activation alone they answer
+        // without drawing. Not before its first configure (that one says
+        // it), and not where a size waits to go (a resize's round holds
+        // it back, and sends this with it).
+        if self.0.set_activated(activated)
+            && let WindowSurface::Wayland(t) = self.0.underlying_surface()
+            && t.is_initial_configure_sent()
+            && !size_waits(t)
+        {
+            t.send_pending_configure();
+        }
     }
     fn output_enter(&self, output: &Output, overlap: Rectangle<i32, Logical>) {
         SpaceElement::output_enter(&self.0, output, overlap);
