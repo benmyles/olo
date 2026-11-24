@@ -19742,7 +19742,16 @@ then. The menus read ⌘N, ⌘T, ⌘+, as pressed. ⌥←/⌥→ send ESC b / ES
 using the kitty keyboard protocol (Claude Code), which gets the
 protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b. (The
 arrows must stay legacy `CSI 1;mod X` keys there, so `view::kitty_code`
-has no code for them.)
+has no code for them.) The legacy encoding is the kit's,
+`olo_kit::term_keys::bytes(Key, Modes { app_cursor, kitty })`, and
+Rex's panes send what Terminal sends (Ben, 2026-11-24, of Rex:
+"alt+left/right doesn't seem to move back/forward a word properly it
+is sending some other escape code"): Rex put ESC before an arrow's own
+sequence for Alt (`ESC ESC [ D`, Escape then a stray `[D` to a shell)
+and dropped Ctrl and Shift on an arrow; it reads its pane's modes from
+Ghostty (`dec_mode(1)`, `kitty_keyboard_flags`), and leaves to the Rex
+server's key event what it doesn't encode. Tried on the rig: ⌥← twice
+in bash through Rex goes back two words.
 
 **Colours** (`src/colors.rs`, View ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light

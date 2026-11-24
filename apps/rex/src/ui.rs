@@ -2400,7 +2400,12 @@ impl RexWindow {
         let targets = self.input_target_blocks(&bk);
         let hub = app().hub.clone();
 
-        if let Some(bytes) = encode_terminal_special_key(k).filter(|_| !cmd) {
+        // (What the pane's program asked of its keys.)
+        let modes = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map_or_else(Default::default, |b| {
+            let b = b.lock().unwrap_or_else(|e| e.into_inner());
+            olo_kit::term_keys::Modes { app_cursor: b.terminal.dec_mode(1), kitty: b.terminal.kitty_keyboard_flags() != 0 }
+        });
+        if let Some(bytes) = encode_terminal_special_key(k, modes).filter(|_| !cmd) {
             for t in targets {
                 hub.send_input(&t, bytes.clone());
             }
@@ -5988,80 +5993,71 @@ fn own_plain_shortcut(k: &olo_kit::Keystroke) -> bool {
     })
 }
 
-fn encode_terminal_special_key(ks: &olo_kit::Keystroke) -> Option<Vec<u8>> {
-    let ctrl = ks.modifiers.control;
-    let alt = ks.modifiers.alt;
-    let shift = ks.modifiers.shift;
-    let meta = ks.modifiers.platform;
-    if meta {
+/// A key's bytes for the pane's program, as Terminal sends them
+/// (`olo_kit::term_keys`: Option+←/→ a word back and on, modifiers in
+/// xterm's `CSI 1;mods X`, the program's application cursor keys), or
+/// None for what goes as text or to Rex's own key event. (It sent ESC
+/// before an arrow's own sequence for Alt, ESC ESC [ D, which a shell
+/// takes as Escape and then a stray `[D`; Ctrl and Shift on an arrow were
+/// dropped.)
+fn encode_terminal_special_key(ks: &olo_kit::Keystroke, modes: olo_kit::term_keys::Modes) -> Option<Vec<u8>> {
+    if ks.modifiers.platform {
         return None;
     }
-
-    if ctrl && !alt && ks.key.len() == 1 {
-        let ch = ks.key.bytes().next()?;
-        let lower = ch.to_ascii_lowercase();
-        if (b'a'..=b'z').contains(&lower) {
-            return Some(vec![lower - b'a' + 1]);
-        }
-        return match ch {
-            b'[' => Some(vec![0x1b]),
-            b'\\' => Some(vec![0x1c]),
-            b']' => Some(vec![0x1d]),
-            b'^' | b'6' => Some(vec![0x1e]),
-            b'_' | b'-' => Some(vec![0x1f]),
-            b' ' => Some(vec![0x00]),
-            _ => None,
-        };
-    }
-
-    let base: Option<&[u8]> = match ks.key.as_str() {
-        "enter" | "return" => Some(b"\r"),
-        "backspace" => Some(b"\x7f"),
-        "tab" => Some(if shift { b"\x1b[Z" } else { b"\t" }),
-        "escape" => Some(b"\x1b"),
-        "up" => Some(b"\x1b[A"),
-        "down" => Some(b"\x1b[B"),
-        "right" => Some(b"\x1b[C"),
-        "left" => Some(b"\x1b[D"),
-        "home" => Some(b"\x1b[H"),
-        "end" => Some(b"\x1b[F"),
-        "pageup" => Some(b"\x1b[5~"),
-        "pagedown" => Some(b"\x1b[6~"),
-        "delete" => Some(b"\x1b[3~"),
-        "insert" => Some(b"\x1b[2~"),
-        "f1" => Some(b"\x1bOP"),
-        "f2" => Some(b"\x1bOQ"),
-        "f3" => Some(b"\x1bOR"),
-        "f4" => Some(b"\x1bOS"),
-        "f5" => Some(b"\x1b[15~"),
-        "f6" => Some(b"\x1b[17~"),
-        "f7" => Some(b"\x1b[18~"),
-        "f8" => Some(b"\x1b[19~"),
-        "f9" => Some(b"\x1b[20~"),
-        "f10" => Some(b"\x1b[21~"),
-        "f11" => Some(b"\x1b[23~"),
-        "f12" => Some(b"\x1b[24~"),
-        _ => None,
-    };
-    if let Some(seq) = base {
-        let mut out = Vec::with_capacity(seq.len() + 1);
-        if alt {
-            out.push(0x1b);
-        }
-        out.extend_from_slice(seq);
-        return Some(out);
-    }
-    if alt && ks.key.len() == 1 {
-        let mut out = vec![0x1b];
-        out.extend_from_slice(ks.key.as_bytes());
-        return Some(out);
-    }
-    None
+    olo_kit::term_keys::bytes(olo_kit::term_keys::Key::of(ks), modes)
 }
 
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    /// What a key press costs: its pane's modes read from Ghostty and its
+    /// bytes encoded (`cargo test --release -p olo-rex key_cost --
+    /// --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn key_cost() {
+        let terminal = std::sync::Mutex::new(olo_rex_vt::GhosttyTerminal::new(120, 40).unwrap());
+        let mut k = olo_kit::Keystroke::parse("left").unwrap();
+        k.modifiers.alt = true;
+        let n = 200_000u32;
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            let modes = {
+                let t = terminal.lock().unwrap();
+                olo_kit::term_keys::Modes { app_cursor: t.dec_mode(1), kitty: t.kitty_keyboard_flags() != 0 }
+            };
+            std::hint::black_box(encode_terminal_special_key(std::hint::black_box(&k), modes));
+        }
+        println!("a key press: {:?}", t.elapsed() / n);
+    }
+
+    /// A pane's keys as Terminal sends them: Option+←/→ a word back and
+    /// on (not ESC before the arrow's own sequence), Ctrl and Shift on an
+    /// arrow in xterm's form, application cursor keys where the program
+    /// asked, Cmd's left to the app.
+    #[test]
+    fn a_panes_keys_are_terminals() {
+        use olo_kit::term_keys::Modes;
+        let key = |name: &str, alt: bool, ctrl: bool, shift: bool| {
+            let mut k = olo_kit::Keystroke::parse(name).unwrap();
+            (k.modifiers.alt, k.modifiers.control, k.modifiers.shift) = (alt, ctrl, shift);
+            k
+        };
+        let plain = Modes::default();
+        assert_eq!(encode_terminal_special_key(&key("left", true, false, false), plain).unwrap(), b"\x1bb");
+        assert_eq!(encode_terminal_special_key(&key("right", true, false, false), plain).unwrap(), b"\x1bf");
+        assert_eq!(encode_terminal_special_key(&key("left", false, true, false), plain).unwrap(), b"\x1b[1;5D");
+        assert_eq!(encode_terminal_special_key(&key("up", false, false, true), plain).unwrap(), b"\x1b[1;2A");
+        assert_eq!(encode_terminal_special_key(&key("left", false, false, false), plain).unwrap(), b"\x1b[D");
+        assert_eq!(encode_terminal_special_key(&key("up", false, false, false), Modes { app_cursor: true, kitty: false }).unwrap(), b"\x1bOA");
+        // (Under the kitty protocol, Option+← keeps xterm's form.)
+        assert_eq!(encode_terminal_special_key(&key("left", true, false, false), Modes { app_cursor: false, kitty: true }).unwrap(), b"\x1b[1;3D");
+        assert_eq!(encode_terminal_special_key(&key("c", false, true, false), plain).unwrap(), vec![3]);
+        let mut cmd = key("left", false, false, false);
+        cmd.modifiers.platform = true;
+        assert_eq!(encode_terminal_special_key(&cmd, plain), None);
+    }
 
     #[test]
     fn a_session_must_have_a_name_and_a_tab_need_not() {

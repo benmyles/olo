@@ -2406,6 +2406,16 @@ design reviewed is a new design: it gets its own review before it is
 built, or it isn't built. And `tools/dev/ui-lint` has no `--help`:
 an argument it doesn't know starts the lint (read its first lines).
 
+### Typing on the Rex rig (2026-11-24)
+
+The rig's `Rig.type` types unshifted characters only (`CODES`): an
+uppercase letter is a KeyError, and `>` typed nothing a command could
+use (an `echo … > FILE` wrote no file, and the test looked like a key
+bug). Write a test's command without Shift (`touch a b c` in a folder of
+its own, then look at what it made), and press a key with modifiers
+through `r.ts("key", r.name, "56", "105")` (Alt and ←, evdev codes,
+pressed together).
+
 ### The bridge's Lua on a host, and what it can and can't see (2026-11-24)
 
 The host side of Rex's bridge is a shell script and a Lua script run by

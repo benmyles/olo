@@ -2712,7 +2712,11 @@ something nobody here has is in "Blocked", with what it waits for.
   investigator at once if it isn't plain), fix it there, and a test
   that types after each way of switching.
 
-- **Rex's terminal: Option+← and → go a word back and on** (Ben,
+- ~~**Rex's terminal: Option+← and → go a word back and on**~~ Done
+  (2026-11-24; HACKING, Terminal's keys): Rex sent ESC before the
+  arrow's own sequence; its panes now encode keys with Terminal's own
+  encoder (`olo_kit::term_keys`), their modes read from Ghostty; tried
+  on the rig in bash. (Ben,
   2026-11-24: "in rex terminal using alt+left/right doesn't seem to
   move back/forward a word properly it is sending some other escape
   code that screws things up"). Read what Rex sends for them (its key
