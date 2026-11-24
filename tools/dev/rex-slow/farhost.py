@@ -60,7 +60,9 @@ class FarHost:
             raise
     def begin(self):
         quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        os.makedirs(self.home, exist_ok=True); os.chmod(self.dir, 0o700)
+        # (Its own folder made too: it was there only where a run before had left it, and a rig of a folder of
+        # its own, at_once.py's, failed for want of it.)
+        os.makedirs(self.home, exist_ok=True); os.makedirs(self.dir, exist_ok=True); os.chmod(self.dir, 0o700)
         for key in ("host_key", "client_key"):
             if not os.path.exists(f"{self.dir}/{key}"):
                 subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "olo-rex-rig", "-f", f"{self.dir}/{key}"], check=True, **quiet)

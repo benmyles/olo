@@ -1450,7 +1450,9 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   agents in any shell: `pbcopy` puts what it reads on the clipboard as
   text and returns once it's there (a copy of itself, in a session of
   its own, serves it until something else is copied: `hold_then`);
-  `pbpaste` prints the clipboard's text (`read`). They're
+  `pbpaste` prints the clipboard's text (`read`). `pbcopy --type MIME`
+  (Olo's own) puts what it reads on the clipboard as that type alone: a
+  picture, `pbcopy --type image/png < shot.png`. They're
   `olo-pbcopy` and `olo-pbpaste`, installed with Olo's programs; the
   session (`graphical::command_names`) and the installer link `pbcopy`
   and `pbpaste` to them beside them, never over the person's own.
@@ -28919,6 +28921,22 @@ Terminal's. What an agent is doing there is the kit's mark on the
 icon's corner (`widgets::agent_marks`, as Terminal's tabs: the turning
 ring, "!", the green and grey dots, the red cross), said in words by
 the row's tip and to agents as its value (`activity_words`).
+
+**A picture pasted into a pane** (Ben, 2026-11-24: "make it so that
+copy and paste of images works properly in a rex session e.g. when i
+paste an image for you in here that was on my clipboard it should make
+it available to you properly"). An agent on a far host can't read this
+computer's clipboard (locally, Claude Code and Codex read a picture
+from it themselves). Paste with no text on the clipboard but a picture
+(`clipboard::paste_as`, its own bytes and type): Rex writes it to a
+file of its own (`<cache>/rex-pasted/pasted-DATE-TIME.png`, on a worker;
+a day's kept) and hands it to `upload_files`, as a file dropped on the
+pane: on this computer its path is typed; on a host it is uploaded
+(`upload_begin`, Rex's data stream) and the Rex server types its path
+there. Claude Code and Codex take a pasted picture's path as the
+picture. Tried headless (`pbcopy --type image/png` putting one on a test
+session's clipboard): on this computer and on a far host over SSH, the
+path typed, its file the same picture.
 
 **The mouse as in a local terminal** (Ben, 2026-11-24: "in olo rex we
 need to get mouse scrolling / mouse interactions working properly like

@@ -50,15 +50,6 @@ something nobody here has is in "Blocked", with what it waits for.
   `avail_w`), so a pane head's buttons decide by more width than the
   pane has; Activity's done and failed states, a far host's rows and a
   row under the pointer not yet pictured.
-- **Rex: images pasted into a remote agent** (Ben, 2026-11-24: "make it
-  so that copy and paste of images works properly in a rex session e.g.
-  when i paste an image for you in here that was on my clipboard it
-  should make it available to you properly"): an image on the
-  clipboard pasted into a pane is put on the pane's host (its upload,
-  `upload_begin`) and its path typed, as Claude Code, Codex and
-  Antigravity take a pasted image's path; find first what each agent
-  does with a paste locally (Terminal's paste of an image) and do the
-  same over Rex.
 - **Rex: its preferences and settings, put in order** (Ben, 2026-11-24:
   "all the different rex prefs and settings and stuff has got really
   confusing and disorganized. please do a pass through all that and

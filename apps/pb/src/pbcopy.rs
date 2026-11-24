@@ -4,7 +4,9 @@
 //! session of its own, no terminal), serves it to whoever pastes
 //! (`olo_kit_base::clipboard::hold`). The session puts it on PATH as
 //! `pbcopy` (and `olo-pbpaste` as `pbpaste`). macOS's `-pboard` and
-//! `-help` are taken and the rest ignored, as there.
+//! `-help` are taken and the rest ignored, as there; and Olo's own
+//! `--type MIME`: what it reads put on the clipboard as that type alone (a
+//! picture: `pbcopy --type image/png < shot.png`), not as text.
 
 use std::io::{Read as _, Write as _};
 
@@ -12,7 +14,7 @@ fn main() {
     olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-help" || a == "--help") {
-        println!("usage: pbcopy [-pboard {{general | ruler | find | font}}]\n  Copies what it reads to the clipboard, as text.");
+        println!("usage: pbcopy [-pboard {{general | ruler | find | font}}] [--type MIME]\n  Copies what it reads to the clipboard, as text (or as MIME: an image/png's bytes).");
         return;
     }
     let mut data = Vec::new();
@@ -20,7 +22,12 @@ fn main() {
         eprintln!("pbcopy: {e}");
         std::process::exit(1);
     }
-    let clip = olo_kit_base::clipboard::text(&String::from_utf8_lossy(&data));
+    // (Of a type said, as that type alone: a picture's bytes aren't text.)
+    let kind = args.iter().position(|a| a == "--type").and_then(|i| args.get(i + 1)).filter(|t| t.contains('/') && !t.contains(char::is_whitespace));
+    let clip = match kind {
+        Some(mime) => vec![(mime.clone(), std::sync::Arc::<[u8]>::from(data))],
+        None => olo_kit_base::clipboard::text(&String::from_utf8_lossy(&data)),
+    };
     let (mut said, tell) = match std::io::pipe() {
         Ok(p) => p,
         Err(e) => {

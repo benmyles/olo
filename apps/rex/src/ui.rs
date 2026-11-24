@@ -144,6 +144,53 @@ fn tab_agent_panes(hub: &RexHub, host_key: &str, session_id: &str, w: &olo_rex_c
     w.focused_block_id.as_deref().or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(key).into_iter().collect()
 }
 
+/// A picture pasted into a pane, as a file to put on its host: in Rex's
+/// own folder of them (`<cache>/rex-pasted`), named by when, its kind's
+/// ending ("pasted-2026-11-24-101203.png": no spaces, which an agent
+/// would read as two words); those older than a day removed.
+fn pasted_image_file(mime: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    let dir = olo_xdg::cache_dir().join("rex-pasted");
+    std::fs::create_dir_all(&dir)?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            if e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > Duration::from_secs(86_400)) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let ending = match mime {
+        "image/jpeg" => "jpg",
+        "image/svg+xml" => "svg",
+        m => m.strip_prefix("image/").filter(|e| e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("png"),
+    };
+    let when = utc_stamp(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()));
+    let mut path = dir.join(format!("pasted-{when}.{ending}"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("pasted-{when}-{n}.{ending}"));
+        n += 1;
+    }
+    std::fs::write(&path, bytes)?;
+    Ok(path)
+}
+
+/// `secs` since the epoch as "2026-11-24-101203" (UTC: a name, not a
+/// time to read).
+fn utc_stamp(secs: u64) -> String {
+    let (days, rest) = (secs / 86_400, secs % 86_400);
+    // (Days to a date: Howard Hinnant's civil_from_days.)
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}-{:02}{:02}{:02}", rest / 3600, rest % 3600 / 60, rest % 60)
+}
+
 /// The modifiers held, as a terminal's mouse report says them.
 fn key_mods(m: &olo_kit::Modifiers) -> olo_rex_vt::input::KeyMods {
     use olo_rex_vt::input::KeyMods;
@@ -661,6 +708,8 @@ pub enum WinMsg {
     },
     SetClipboard(String),
     PasteText(BlockKey, olo_rex_client::ControlClient, String),
+    /// A picture pasted (its type and bytes): to the pane's host, its path typed.
+    PasteImage(BlockKey, String, Vec<u8>),
     PaneCommand(BlockKey, String),
     FocusBlock(BlockKey),
     Command(String),
@@ -1867,7 +1916,20 @@ impl RexWindow {
                 olo_kit::clipboard::paste_item(move |item| {
                     if let Some(text) = item.and_then(|i| i.text()).filter(|s| !s.is_empty()) {
                         to.send(WinMsg::PasteText(bk, connection, text));
+                        return;
                     }
+                    // No text: a picture, put on the pane's host as a
+                    // file of its own and its path typed, as a file
+                    // dropped on the pane is (Claude Code and Codex take
+                    // a pasted picture's path as the picture: an agent
+                    // there can't read this computer's clipboard). Ben,
+                    // 2026-11-24: "make it so that copy and paste of
+                    // images works properly in a rex session".
+                    olo_kit::clipboard::paste_as(vec!["image/png".into(), "image/".into()], move |got| {
+                        if let Some((mime, bytes)) = got {
+                            to.send(WinMsg::PasteImage(bk, mime, bytes));
+                        }
+                    });
                 });
             }
             "terminal.select_all" => {
@@ -3950,6 +4012,16 @@ impl View for RexWindow {
                     hub.write_input(&bk, encoded, Some(&connection));
                 }
             }
+            WinMsg::PasteImage(bk, mime, bytes) => {
+                if self.focused_block_key().as_ref() == Some(&bk) {
+                    let feedback = Feedback::start(self.id);
+                    // (Written on a worker: a picture is megabytes.)
+                    std::thread::spawn(move || match pasted_image_file(&mime, &bytes) {
+                        Ok(path) => app().hub.upload_files(&bk, vec![path], feedback),
+                        Err(e) => feedback.problem("Couldn’t paste the picture.", e),
+                    });
+                }
+            }
             WinMsg::FocusBlock(bk) => {
                 self.jump_to(JumpTarget::Pane(bk), cx);
                 cx.activate_window();
@@ -6006,5 +6078,18 @@ mod workspace_tests {
         assert_eq!(selected_session_index(&rows, Some("gone"), 0), Some(0));
         assert_eq!(selected_session_index(&rows, Some("fourth"), 3), Some(2));
         assert_eq!(selected_session_index(&[], Some("gone"), 0), None);
+    }
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    /// A pasted picture's name: the UTC time, as a date and a time.
+    #[test]
+    fn a_pasted_pictures_name() {
+        assert_eq!(utc_stamp(0), "1970-01-01-000000");
+        assert_eq!(utc_stamp(1_795_512_965), "2026-11-24-093605");
+        assert_eq!(utc_stamp(951_782_400), "2000-02-29-000000");
     }
 }

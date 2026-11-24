@@ -161,7 +161,10 @@ READING = ["ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "sort", "uni
         "echo", "printf", "pwd", "date", "true", "test", "basename", "dirname", "realpath", "readlink", "nl", "tac", "column", "jq", "xxd", "od", "sha256sum",
         "sed -n", "awk", "id", "uname", "nproc", "free", "uptime", "cd", "mkdir", "touch", "sleep"]
 CARGO = ["cargo build", "cargo check", "cargo test", "cargo clippy", "cargo fmt -p", "cargo ui-lint", "cargo metadata", "cargo tree", "cargo doc", "cargo bench",
-         "cargo run", "cargo --version", "cargo -V", "rustc --version", "rustc -V", "rustc --print", "rustup show"]
+         "cargo run", "cargo --version", "cargo -V", "rustc --version", "rustc -V", "rustc --print", "rustup show",
+         # (Jato, which every build here goes through: its builds and tests are cargo's. Each
+         # translator's `jato test` waited on an approval, 2026-11-24.)
+         "jato build", "jato check", "jato test", "jato clippy", "jato cargo fmt -p", "jato --version"]
 GIT = ["git status", "git diff", "git log", "git show", "git blame", "git ls-files", "git grep", "git rev-parse", "git merge-base", "git describe", "git cat-file",
        "git branch --show-current", "git worktree list"]
 TOOLS = ["tsession", "ui-lint", "cost", "bench", "scroll-check", "words", "layout-check", "damage-check", "rest-check"]
