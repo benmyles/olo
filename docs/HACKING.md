@@ -28031,6 +28031,20 @@ to set them up").
   is ours and what the host's has besides. Asked with the account
   (`RexHub::ask_account`), and again when a run ends. Agents:
   `host.ready:KEY:settings`.
+- *The person's repositories* (`crates/rex/src/repos.rs`; Ben:
+  "choosing what repos to clone and how to set them up"): a `Repo` is
+  an address, a folder under the home (empty: `src/NAME`) and a
+  command that sets it up. `repos::look` asks a host how each stands
+  (`There`: absent; cloned, and whether its set-up has run; another
+  repository in its folder; its folder taken by something else), and
+  `Repo::clone_script` clones and sets up what is missing: never over
+  what is there, the set-up once (noted in the clone's `.git/
+  olo-set-up` by the command's own hash, so a changed command runs
+  again), with nothing to answer (`GIT_TERMINAL_PROMPT=0`; over SSH
+  `BatchMode` and a new host's key trusted as first met, a changed
+  one refused; the keys are those Rex forwards). `Repo::wrong` says
+  what is wrong with one as typed (an option for an address, a folder
+  outside the home). The window for them is to come (TODO).
 - *A step is a small thing to add*: a variant of `Step`, its title and
   its line, a line of `ready::LOOK` (the script that asks the host how
   the account stands; `Account::read` reads its answer) and the script
