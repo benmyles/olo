@@ -246,7 +246,10 @@ Find things by what they are rather than where: `--name` (exact, else
 the same but for case, quotes and dots, "Don't save" for "Don’t
 Save", "Open..." for "Open…", else part of it; a field's value
 counts), `--role`, `--match ROLE:TEXT`, `--text` (anywhere in name or
-value), `--index N` (from 0) and `--window ID`. On a screen still
+value), `--index N` (from 0) and `--window ID`. By `--name` alone,
+what you can act on (a field, a button, a link) comes before what only
+says the same words (a heading, a label): give `--role` for the heading.
+On a screen still
 changing (a page loading, a dialog coming), what isn't there yet is
 looked for again for a moment, so click right after what brings it. A
 miss says the same words under another role if they're there ("there

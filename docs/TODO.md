@@ -3014,6 +3014,8 @@ something nobody here has is in "Blocked", with what it waits for.
   - *`click --name` chose a heading over the field of the same name*:
     prefer what can be acted on (a field, a button, a link) on a tie, or
     refuse and list the matches.
+    **Done** 2026-11-24: by name alone, what is acted on first
+    (`find::acted_on`), and the skill says so.
   - *A click under a page's sticky header said it pressed what it
     didn't*: hit-test the point first, scroll the element clear of what
     covers it, and say when something else would take the click.

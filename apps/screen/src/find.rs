@@ -186,9 +186,44 @@ pub fn matches(trees: &[ScreenTree], q: &Query) -> Vec<Found> {
             }
         }
     }
+    // (Asked by name alone, what is acted on comes before what only says
+    // something, where both have the words: `click --name "Enter code"`
+    // took a sign-in page's heading over its field of that name, an
+    // agent's report, 2026-11-24. Stable: each as they come otherwise.)
+    if q.role.is_none() {
+        for tier in [&mut exact, &mut same, &mut partial] {
+            tier.sort_by_key(|f| !acted_on(&f.role));
+        }
+    }
     exact.extend(same);
     exact.extend(partial);
     exact
+}
+
+/// Roles a person acts on (clicks, types into, chooses), as against what
+/// only says something (a heading, a label, an image).
+pub fn acted_on(role: &str) -> bool {
+    matches!(
+        role,
+        "Button"
+            | "ToggleButton"
+            | "CheckBox"
+            | "RadioButton"
+            | "TextInput"
+            | "MultilineTextInput"
+            | "SearchInput"
+            | "PasswordInput"
+            | "SpinButton"
+            | "ComboBox"
+            | "MenuItem"
+            | "Menu"
+            | "Tab"
+            | "Link"
+            | "ListItem"
+            | "Row"
+            | "Cell"
+            | "Slider"
+    )
 }
 
 /// The one element `q` means.
@@ -433,6 +468,16 @@ mod tests {
         assert_eq!(names("open..."), ["Open\u{2026}"]);
         assert_eq!(names("Don't save"), ["Don\u{2019}t Save"]);
         assert_eq!(names("Open"), ["Open With\u{2026}", "Open\u{2026}"], "both hold it, as they come");
+    }
+
+    /// By name alone, a field before a heading of the same words (a
+    /// sign-in page's "Enter code"); with a role, as they come.
+    #[test]
+    fn what_is_acted_on_before_what_only_says_it() {
+        let t = tree(&[("Heading", "Enter code"), ("Label", "Enter code"), ("TextInput", "Enter code"), ("Button", "Enter code again")]);
+        let roles = |q: Query| matches(std::slice::from_ref(&t), &q).into_iter().map(|f| f.role).collect::<Vec<_>>();
+        assert_eq!(roles(Query { name: Some("Enter code".into()), ..Default::default() }), ["TextInput", "Heading", "Label", "Button"]);
+        assert_eq!(roles(Query { role: Some("Heading".into()), name: Some("Enter code".into()), ..Default::default() }), ["Heading"]);
     }
 
     /// Nothing matches: the same words under another role are pointed to,
