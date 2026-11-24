@@ -1,7 +1,7 @@
 #!/bin/sh
 # A desktop command on this host done on the Olo desktop it is used from,
 # through Rex: xdg-open (and $BROWSER), notify-send, wl-copy, wl-paste,
-# xclip, xsel and op, under each of those names beside `olo` in this
+# xclip, xsel, op and olo-screen, under each of those names beside `olo` in this
 # folder. Only in a Rex session (REX_SESSION) shown in Olo's Rex, and only
 # what the host may do there (Preferences ▸ Rex); otherwise, or where the
 # desktop can't be asked, the host's own command of the name, as if this
@@ -160,6 +160,12 @@ wl-paste)
 	;;
 op)
 	asked op "$@"
+	real "$@"
+	;;
+olo-screen)
+	# Agent Screens on the desktop, by their own command line (the
+	# olo-screens skill's), as `olo screen` asks them; pictures saved here.
+	asked screen "$@"
 	real "$@"
 	;;
 *)

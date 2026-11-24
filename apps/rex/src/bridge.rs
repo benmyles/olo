@@ -598,7 +598,7 @@ echo "Installed Olo's skill for agents in $SKILL_DIR"
 /// secret of Passwords: on the Olo desktop the session is shown on, as the
 /// host may (Preferences ▸ Rex); anywhere else, the host's own command.
 pub const SHIM: &str = include_str!("bridge_shim.sh");
-pub const COMMANDS: [&str; 10] = ["xdg-open", "x-www-browser", "sensible-browser", "www-browser", "notify-send", "wl-copy", "wl-paste", "xclip", "xsel", "op"];
+pub const COMMANDS: [&str; 11] = ["xdg-open", "x-www-browser", "sensible-browser", "www-browser", "notify-send", "wl-copy", "wl-paste", "xclip", "xsel", "op", "olo-screen"];
 /// Where they go, under the account's home.
 pub const COMMANDS_DIR: &str = ".local/share/olo/rex-commands";
 /// The line each shell's startup file is given (and only that line is
@@ -613,7 +613,9 @@ const COMMANDS_FISH: &str = "if set -q REX_SESSION; and test -d $HOME/.local/sha
 /// this one's as it is connected to.
 pub fn commands_stamp() -> String {
     let mut hash = 0xcbf29ce484222325u64;
-    for byte in SHIM.bytes().chain(SKILL_OLO.bytes()).chain(SKILL_LUA.bytes()).chain(COMMANDS_LINE.bytes()) {
+    // (Its names too: one added is put on every host as it connects.)
+    let names = COMMANDS.join(" ");
+    for byte in SHIM.bytes().chain(SKILL_OLO.bytes()).chain(SKILL_LUA.bytes()).chain(COMMANDS_LINE.bytes()).chain(names.bytes()) {
         hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
     }
     format!("{hash:016x}")
@@ -1022,6 +1024,11 @@ mod commands_tests {
         assert_eq!(run("wl-paste", true, 69, None).2, "paste|\nown wl-paste: \n");
         // Passwords' `op`, as given.
         assert_eq!(run("op read op://Vault/Item/field", true, 0, None).2, "op|read|op://Vault/Item/field|\n");
+        // Agent Screens by their own command's name, as the olo-screens
+        // skill says it: the desktop's; the host's own where it can't be.
+        assert_eq!(run("olo-screen run qa olo-chrome https://example.com", true, 0, None).2, "screen|run|qa|olo-chrome|https://example.com|\n");
+        assert_eq!(run("olo-screen tree qa", true, 69, None).2, "screen|tree|qa|\nown olo-screen: tree|qa|\n");
+        assert_eq!(run("olo-screen tree qa", false, 0, None).2, "own olo-screen: tree|qa|\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

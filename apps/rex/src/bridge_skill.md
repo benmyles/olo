@@ -64,7 +64,8 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   and run the command here.
 - **A screen of your own on the desktop** (Olo Agent Screens: a
   headless desktop the person can watch), with `olo-screen`'s own
-  command line:
+  command line (`olo-screen` itself works here too, with the desktop
+  commands installed, as the olo-screens skill writes it):
   - `olo screen start NAME`
   - `olo screen run NAME olo-chrome https://example.com` (a web page)
   - `olo screen tree NAME`: what is on it, as text. Read this first,

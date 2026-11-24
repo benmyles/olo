@@ -29156,7 +29156,12 @@ Rex server, as every Rex client offers its own
   name); `notify-send` (its title and body; its options the desktop's
   to choose); `wl-copy`, `wl-paste`, `xclip`, `xsel` (copying, its last
   newlines kept, or pasting: the new `olo.clipboard.get`, as the host's
-  clipboard grant allows); `op`. Only in a Rex session: one line in
+  clipboard grant allows); `op`; `olo-screen`, Agent Screens by their
+  own command's name as the olo-screens skill writes it (an agent on a
+  host made a shim of its own for want of it, 2026-11-24), asked as `olo
+  screen` asks. A host's commands are put there again as it connects
+  when this Olo's differ, by a stamp of the script, `olo` and the names
+  (`bridge::commands_stamp`). Only in a Rex session: one line in
   `~/.profile` (and `~/.bashrc`, `~/.zshrc` where they are; a file of
   its own for fish) puts the folder first on PATH where `REX_SESSION`
   is set, and nothing else of those files is touched, on install or on

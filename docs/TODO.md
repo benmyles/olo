@@ -2998,6 +2998,8 @@ something nobody here has is in "Blocked", with what it waits for.
     `olo-screen …` throughout; the agent made a shim of its own. Put
     `olo-screen` among the desktop commands (as `op` and `xdg-open`
     are), or say in the skill how to reach it from a host.
+    **Done** 2026-11-24: one of the desktop commands (`bridge::COMMANDS`),
+    put on each host again as it connects, and the skill says so.
   - *`rex forward new` on a host listens on the host* (Rex's own
     command): the skill to say so where it tells of `olo forward`, the
     desktop's side.
