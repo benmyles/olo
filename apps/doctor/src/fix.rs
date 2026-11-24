@@ -1477,6 +1477,9 @@ mod tests {
         unsafe { std::env::set_var("OLO_DOCTOR_KEPT", dir.join("kept")) };
         let (conf, rule, program) = (dir.join("etc/main.conf"), dir.join("etc/new.rules"), dir.join("etc/program"));
         std::fs::write(&conf, "[General]\n#Class = 0x000100\n").unwrap();
+        // (Its mode as a settings file's is, whatever the umask: the undo
+        // keeps the mode it finds, 664 under 0002.)
+        std::fs::set_permissions(&conf, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
         std::fs::write(&program, [0u8, 159, 146, 150, 255]).unwrap();
         let steps = vec![
             Step::WriteFile { path: conf.clone(), content: "[General]\nClass = 0x000408\n".into(), mode: 0o644 },

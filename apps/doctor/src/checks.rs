@@ -637,6 +637,11 @@ fn processes(fs: &Path) -> Vec<Proc> {
         let scope = scope_of(&std::fs::read_to_string(dir.join("cgroup")).unwrap_or_default());
         v.push(Proc { pid, uid: meta.uid(), name, exe, scope });
     }
+    // (By process, as /proc lists them: a folder elsewhere, a test's on
+    // ext4, lists in another order, and what is said of them, and the
+    // order of a fix's steps, came out in that one. 2026-11-24, on the dev
+    // server.)
+    v.sort_by_key(|p| p.pid);
     v
 }
 
@@ -1644,6 +1649,19 @@ fn foreign(roots: &Roots, procs: &[Proc], r: &mut Report) {
 /// portal backend (xdg-desktop-portal-gtk, processes 1, 2 and 3)", and
 /// what follows a `|` in its description after them (", where olo-portal
 /// is the backend").
+/// The processes `found`, a program's together, the programs in the order
+/// they were first found: as [`by_program`] lists them.
+fn in_program_order(found: &[(&Proc, &str)]) -> Vec<i32> {
+    let mut programs: Vec<(&str, Vec<i32>)> = Vec::new();
+    for (p, _) in found {
+        match programs.iter_mut().find(|(name, _)| *name == p.name) {
+            Some((_, pids)) => pids.push(p.pid),
+            None => programs.push((&p.name, vec![p.pid])),
+        }
+    }
+    programs.into_iter().flat_map(|(_, pids)| pids).collect()
+}
+
 fn by_program(found: &[(&Proc, &str)]) -> Vec<String> {
     let mut programs: Vec<(&str, &str, Vec<i32>)> = Vec::new();
     for (p, what) in found {
@@ -1698,7 +1716,8 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
             names.join("; "),
             if gvfs { " Programs started before keep asking gvfs for network folders until they're started again." } else { "" }
         ),
-        fix: Some(Fix { label: "Quit Them".into(), root: false, steps: found.iter().map(|(p, _)| Step::Signal { pid: p.pid, signal: libc::SIGTERM }).collect() }),
+        // (Quit as they are listed, a program's processes together.)
+        fix: Some(Fix { label: "Quit Them".into(), root: false, steps: in_program_order(&found).into_iter().map(|pid| Step::Signal { pid, signal: libc::SIGTERM }).collect() }),
     });
 }
 
@@ -5523,8 +5542,11 @@ mod tests {
         // without the capability (a session from before the choice).
         // (Root's folder, there on a computer Olo was installed on.)
         std::fs::create_dir_all(fs.join("etc/olo")).unwrap();
-        std::fs::set_permissions(fs.join("etc/olo"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-        std::fs::set_permissions(fs.join("etc"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        // (Each folder on the way as root's are, whatever the umask: under
+        // 0002 the made-up root was writable by its group, and refused.)
+        for d in [fs.join("etc/olo"), fs.join("etc"), fs.to_path_buf()] {
+            std::fs::set_permissions(d, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        }
         olo_system::caps::set_choice(&roots.fs, roots.uid, roots.uid, true).unwrap();
         let r = look(&roots);
         assert_eq!(ids(&r), ["compositor-grant-status"]);
