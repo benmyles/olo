@@ -1018,6 +1018,20 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             s.type_text(&text)?;
             let after = afterwards(&s, quick, None);
             warn_if_not_text(&after.focus);
+            // (Read back: a page's own field can drop what is typed into it
+            // and `set` said it was set, a sign-in's code field among them:
+            // an agent's report, 2026-11-24. Once more as `type` does, a
+            // click and the keys alone, which worked there; then said.)
+            if let Some(why) = set_not_kept(&f, &text, after.focus.focused.as_ref()) {
+                s.input(screens::click(f.center.0 as f64, f.center.1 as f64, screens::LEFT, 1))?;
+                s.type_text(&text)?;
+                let again = afterwards(&s, quick, None);
+                if set_not_kept(&f, &text, again.focus.focused.as_ref()).is_some() {
+                    return Err(why);
+                }
+                print_json(&json!({ "field": f, "after": again, "typed_again": true }));
+                return Ok(());
+            }
             print_json(&json!({ "field": f, "after": after }));
             Ok(())
         })(),
@@ -1036,8 +1050,26 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             if !field.options.is_empty() {
                 let want = find::option_meant(&field.options, &item).map_err(|e| format!("{} {:?}: {e}", field.role, field.name.as_deref().unwrap_or("")))?.clone();
                 if field.value.as_deref().map(find::plain) != Some(find::plain(&want)) {
-                    s.input(screens::click(field.center.0 as f64, field.center.1 as f64, screens::LEFT, 1))?;
-                    std::thread::sleep(Duration::from_millis(250));
+                    // (Its words typed only where they reach it: the
+                    // select, or its list, opened. Where the click left the
+                    // keyboard elsewhere, they went to a search box, the
+                    // page's "/" shortcut, another select, which they
+                    // changed: an agent's report, 2026-11-24. Clicked once
+                    // more, then said, nothing typed.)
+                    let mut reach = false;
+                    for _ in 0..2 {
+                        s.input(screens::click(field.center.0 as f64, field.center.1 as f64, screens::LEFT, 1))?;
+                        std::thread::sleep(Duration::from_millis(250));
+                        if keys_reach(&field, find::after(&s).focused.as_ref()) {
+                            reach = true;
+                            break;
+                        }
+                        s.input(screens::chord(&screens::parse_chord("Esc")?))?;
+                    }
+                    if !reach {
+                        let now = find::after(&s).focused.map(|n| format!("the {} {:?}", n.role, n.name.unwrap_or_default())).unwrap_or_else(|| "something else".into());
+                        return Err(format!("clicked the {} {:?} twice but {now} kept the keyboard; nothing typed", field.role, field.name.as_deref().unwrap_or("")));
+                    }
                     s.type_text(&want)?;
                     std::thread::sleep(Duration::from_millis(150));
                     s.input(screens::chord(&screens::parse_chord("Enter")?))?;
@@ -1278,6 +1310,43 @@ fn ok(reply: Reply) -> Result<(), String> {
 }
 
 /// Typing that went somewhere that doesn't take text says so.
+/// Whether keys typed now reach the dropdown `field` (a page's select): it
+/// has the keyboard (itself, where it is), or its list, opened, does (an
+/// option, a list, a menu). Anything else that has it would take them (a
+/// search box, another select), and with nothing that has it, the page
+/// does (its "/" shortcut: the page's whole document, which takes text,
+/// lies over the select, so the same place alone isn't it).
+fn keys_reach(field: &find::Found, now: Option<&find::Found>) -> bool {
+    let Some(now) = now else { return false };
+    let same_place = now.window == field.window && now.x < field.x + field.width && field.x < now.x + now.width && now.y < field.y + field.height && field.y < now.y + now.height;
+    (same_place && now.role == field.role)
+        || matches!(now.role.as_str(), "ListBoxOption" | "ListItem" | "List" | "ListBox" | "MenuItem" | "MenuItemRadio" | "Menu" | "MenuListOption" | "MenuListPopup")
+}
+
+/// Why `f` didn't keep `text` set into it, as the screen says after (`now`,
+/// what has the keyboard): its value empty, or as it was before. None
+/// where it did, or where that can't be told: no value said, a password's
+/// (never shown), the keyboard moved on (a code's boxes, each taking one,
+/// often of one name: so the same place, not the same name).
+/// A value shown otherwise (a number grouped, a date formatted) is kept.
+fn set_not_kept(f: &find::Found, text: &str, now: Option<&find::Found>) -> Option<String> {
+    let now = now?;
+    let same_place = now.window == f.window && now.x < f.x + f.width && f.x < now.x + now.width && now.y < f.y + f.height && f.y < now.y + now.height;
+    if text.is_empty() || now.role == "PasswordInput" || !same_place {
+        return None;
+    }
+    let value = now.value.as_deref()?;
+    let before = f.value.as_deref().unwrap_or("");
+    let dropped = value.trim().is_empty() || (value == before && before != text);
+    dropped.then(|| {
+        format!(
+            "typed {text:?} into the {} {:?}, twice, but it holds {value:?}: the page didn't keep it (look at it, or try `click` then `key` for each character)",
+            now.role,
+            now.name.as_deref().unwrap_or("")
+        )
+    })
+}
+
 fn warn_if_not_text(after: &find::After) {
     match &after.focused {
         Some(f) if !find::takes_text(&f.role) => eprintln!("olo-screen: the keys went to a {} ({}), not a text field", f.role, f.name.as_deref().unwrap_or("unnamed")),
@@ -1749,6 +1818,46 @@ fn video_path(name: &str) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A field read back after `set`: what it holds empty, or as before,
+    /// is a field that didn't keep it; formatted, kept; and nothing said
+    /// where it can't be told (a password, no value, the keyboard gone on).
+    #[test]
+    fn a_set_field_is_read_back() {
+        let field = |role: &str, value: Option<&str>, x: f32| find::Found {
+            window: 1,
+            role: role.into(),
+            name: Some("Enter code".into()),
+            value: value.map(Into::into),
+            x,
+            y: 100.0,
+            width: 200.0,
+            height: 30.0,
+            center: (x + 100.0, 115.0),
+            focused: true,
+            row: None,
+            rows: None,
+            options: Vec::new(),
+        };
+        let f = field("TextInput", Some(""), 10.0);
+        assert!(set_not_kept(&f, "123456", Some(&field("TextInput", Some(""), 10.0))).is_some(), "empty after");
+        assert!(set_not_kept(&field("TextInput", Some("old"), 10.0), "new", Some(&field("TextInput", Some("old"), 10.0))).is_some(), "as before");
+        assert!(set_not_kept(&f, "123456", Some(&field("TextInput", Some("123 456"), 10.0))).is_none(), "formatted: kept");
+        assert!(set_not_kept(&f, "secret", Some(&field("PasswordInput", Some(""), 10.0))).is_none(), "a password: can't be told");
+        assert!(set_not_kept(&f, "123456", Some(&field("TextInput", None, 10.0))).is_none(), "no value said");
+        assert!(set_not_kept(&f, "1", Some(&field("TextInput", Some(""), 400.0))).is_none(), "the keyboard moved on");
+        assert!(set_not_kept(&f, "123456", None).is_none());
+        // A select's words reach it, or its list, opened; not a search box
+        // or another select that has the keyboard.
+        let select = |name: &str, x: f32| find::Found { role: "ComboBox".into(), name: Some(name.into()), ..field("ComboBox", None, x) };
+        let sel = select("Country", 10.0);
+        assert!(keys_reach(&sel, Some(&select("Country", 10.0))));
+        assert!(keys_reach(&sel, Some(&find::Found { role: "ListBoxOption".into(), ..field("ListBoxOption", None, 300.0) })));
+        assert!(!keys_reach(&sel, None), "nothing has it: the page takes them");
+        assert!(!keys_reach(&sel, Some(&select("Language", 300.0))), "another select");
+        assert!(!keys_reach(&sel, Some(&find::Found { role: "SearchInput".into(), ..field("SearchInput", None, 300.0) })), "a search box");
+        assert!(!keys_reach(&sel, Some(&find::Found { role: "Document".into(), ..field("Document", None, 0.0) })), "the page");
+    }
 
     fn args(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| (*s).to_owned()).collect()

@@ -34,7 +34,9 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   forwards there (`--json`), `olo forward close PORT` closes one made
   from here (the person's own are theirs). It lasts until closed or
   this Rex session ends; a port taken there is said, never quietly
-  changed.
+  changed. (Rex's own `rex forward new`, `open` and `share`, run here,
+  listen on this host, where `rex` runs, not on the desktop: the
+  desktop's side is `olo forward`'s.)
 - **Files and folders of this host, saved on the desktop**: `olo send
   dist/app.tar.zst build/` puts each in the person's Downloads ▸ Rex ▸
   HOST (a folder as a folder of its name), where the person may look at
@@ -91,6 +93,25 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   of Olo: `xdg-open URL|FILE` (and `$BROWSER`), `notify-send`, `wl-copy`
   and `wl-paste`, `xclip`, `xsel`, `op`. Where the desktop can't be
   asked they are the host's own (`command -v wl-copy` shows which).
+
+## A dev server here, seen on the desktop
+
+A web app's dev server on this host (Vite at 5173, say), in the
+person's browser or on your own screen there:
+
+1. `olo forward 5173`: the desktop's localhost:5173 reaches this host's
+   from then on, at the same port, so the app's own links, cookies and
+   sign-in callbacks name an address that works there too.
+2. `olo open http://localhost:5173` for the person, or
+   `olo screen run NAME olo-chrome http://localhost:5173` for yourself:
+   the address goes through that forward (the page still says
+   `localhost`).
+3. Drive it on the screen: `olo-screen tree NAME`, `click`, `type`,
+   `set`, `look`. What you type is sent as you wrote it, an address
+   too: only what is opened (`run`'s and `start`'s arguments, `olo
+   open`) is sent through a forward.
+4. `olo forward close 5173` when you're done; it closes by itself when
+   this Rex session ends.
 
 Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):

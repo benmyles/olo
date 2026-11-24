@@ -3012,14 +3012,25 @@ something nobody here has is in "Blocked", with what it waits for.
   - *`rex forward new` on a host listens on the host* (Rex's own
     command): the skill to say so where it tells of `olo forward`, the
     desktop's side.
+    **Done** 2026-11-24: the skill says Rex's own `rex forward new`,
+    `open` and `share`, run on the host, listen there (`rex forward
+    --help`: "this machine" is where `rex` runs).
   - *A section in the skill on a dev server on a host*: reached from
     the desktop's browser and an Agent Screen (`olo forward` at its own
     port, what is rewritten, `olo-screen` from the host): "would have
     saved an hour".
+    **Done** 2026-11-24: "A dev server here, seen on the desktop", four
+    steps (forward, open or run, drive, close).
   - *Agent Screens' `set` says it set what the page didn't keep*
     (framework-controlled fields: a code field of a sign-in page, of a
     CRM's log-in): fire the input events such fields need, read the
     value back, and fail, or type instead, when it didn't stick.
+    **Done** 2026-11-24: read back where the field, at its place, still
+    has the keyboard; empty, or as before, is typed once more as `type`
+    types (a click, the keys alone), then refused with what it holds
+    (`set_not_kept`: a password's, none said, or the keyboard gone on
+    to a code's next box can't be told). Tried live on a kit app's
+    field (kept, no second try); not on a page (no Chrome here).
   - *`click --name` chose a heading over the field of the same name*:
     prefer what can be acted on (a field, a button, a link) on a tie, or
     refuse and list the matches.
@@ -3032,6 +3043,11 @@ something nobody here has is in "Blocked", with what it waits for.
     when the select hadn't it, the keys went to the page's "/" shortcut,
     another select, a search box. Make sure the select has the keyboard
     before typing, and read the chosen value back.
+    **Done** 2026-11-24: its words typed only once the select itself, or
+    its list opened, has the keyboard (`keys_reach`: not the page, which
+    lies over it and takes text, nor nothing); clicked twice, then
+    refused naming what kept it, nothing typed. The value was read back
+    already. Unit-tested; not on a live page (no Chrome here).
   - *Olo's Chrome on a fresh screen's profile*: a "What's New" tab in
     front of the page asked for, and after a Google sign-in Chrome's
     "Sign in to Chrome?" sheet, which took the keys meant for the page;
