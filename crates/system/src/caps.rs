@@ -156,7 +156,12 @@ mod tests {
         let dir = file.parent().unwrap();
         std::fs::create_dir_all(dir).unwrap();
         let mode = |p: &std::path::Path, m: u32| std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap();
-        mode(dir, 0o755);
+        // (Every folder on the way as root's are, whatever the umask: under
+        // 0002, the scratch folder, etc and etc/olo were writable by their
+        // group, and refused.)
+        for d in [root.to_path_buf(), root.join("etc"), root.join("etc/olo"), dir.to_path_buf()] {
+            mode(&d, 0o755);
+        }
         set_choice(root, me, 1000, true).unwrap();
         assert!(!chosen(root, me, 1001));
         mode(&file, 0o644);

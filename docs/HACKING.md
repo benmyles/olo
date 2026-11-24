@@ -3140,7 +3140,10 @@ it.
   those would need too, what it may come to show that isn't among its
   options yet, so it and what's beside it stay put when it does; its
   menu opens with the current
-  choice over the field: `menu::popup_over`; `MenuField::many(id,
+  choice over the field, its words on the field's (the menu as far left
+  of the field as its check column, and as much wider): `menu::popup_over`;
+  an open menu in a dark look is a step lighter than what it opens over,
+  as what is above shows in the dark (`MenuPopup`'s paint); `MenuField::many(id,
   options, chosen, none)` for any number of choices (a `BMenu` out of
   radio mode marks any number of items, but its field then stops
   showing them, `SetLabelFromMarked(false)`; this one says them): it
@@ -4865,7 +4868,7 @@ quarter while it plays, then put back channel by channel, unless it
 was changed meanwhile, which is the person's and stays). An output at
 nothing is as muted. `olo-notifications --startup-level` says how it
 would play now without playing (the output's volume, whose it is, the
-stream's level); `crates/preview/tests/loudness.rs` plays to
+stream's level); `crates/fakesound/tests/loudness.rs` plays to
 `olo-fakesound` at several volumes, muted, changing and lent.
 Preferences ▸ Sound's
 Play beside the choice runs `olo-notifications --startup-sound

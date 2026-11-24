@@ -7745,6 +7745,7 @@ name = "olo-fakesound"
 version = "0.1.0"
 dependencies = [
  "olo-crash",
+ "olo-preview",
  "olo-sync",
  "pulseaudio",
 ]
@@ -8603,6 +8604,7 @@ dependencies = [
  "http",
  "jiff",
  "libc",
+ "olo-crash",
  "olo-protocol",
  "olo-rex-link",
  "olo-sync",

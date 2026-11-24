@@ -1,7 +1,9 @@
 //! Every Olo program installs the crash report first thing: each file
 //! with a program's `main` in apps/ and crates/ (not tests, benches,
 //! examples or build scripts) calls `olo_crash::install()` before
-//! anything else.
+//! anything else; but for the programs Rex puts on a far host, which run
+//! there and not under Olo, whose reports would be written in a folder
+//! nobody reads (`ON_A_HOST`).
 
 use std::path::{Path, PathBuf};
 
@@ -20,6 +22,10 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Programs that run on a host Rex reaches, not under Olo: the typing
+/// helper and the Token Pool's own there.
+const ON_A_HOST: [&str; 2] = ["crates/rex-link/src/main.rs", "crates/pool/src/bin/olo-pool-host.rs"];
+
 #[test]
 fn every_program_installs_it_first() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -34,6 +40,10 @@ fn every_program_installs_it_first() {
         let Some(at) = text.lines().position(|l| l.starts_with("fn main()")) else { continue };
         mains += 1;
         let first = text.lines().skip(at + 1).map(str::trim).find(|l| !l.is_empty());
+        let rel = f.strip_prefix(&root).unwrap_or(&f).display().to_string();
+        if ON_A_HOST.contains(&rel.as_str()) {
+            continue;
+        }
         if first != Some("olo_crash::install();") {
             missing.push(f.strip_prefix(&root).unwrap_or(&f).display().to_string());
         }

@@ -363,8 +363,15 @@ mod tests {
     /// does, a picture a frame): nothing is left to do to it, the frame
     /// doesn't panic on its empty slot, and a texture that takes its slot
     /// gets only its own picture. Needs a GPU (skipped without one).
+    /// One test's GPU at a time: two made and let go at once in one process
+    /// (the tests, in parallel; never a program, which has one renderer)
+    /// ended the test program with a segmentation fault as it exited,
+    /// under lavapipe on the dev server, every time; each alone, never.
+    static ONE_GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn a_texture_let_go_before_its_frame() {
+        let _one = ONE_GPU.lock().unwrap_or_else(|e| e.into_inner());
         let Ok(gpu) = (unsafe { gpu::Context::init(gpu::ContextDesc { presentation: false, ..Default::default() }) }) else {
             eprintln!("no GPU here: nothing to try");
             return;
@@ -412,6 +419,7 @@ mod tests {
     /// (skipped without one).
     #[test]
     fn pictures_replaced_keep_their_texture() {
+        let _one = ONE_GPU.lock().unwrap_or_else(|e| e.into_inner());
         let Ok(gpu) = (unsafe { gpu::Context::init(gpu::ContextDesc { presentation: false, ..Default::default() }) }) else {
             eprintln!("no GPU here: nothing to try");
             return;

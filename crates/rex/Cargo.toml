@@ -10,6 +10,9 @@ name = "olo-rex-glance"
 path = "src/bin/olo-rex-glance.rs"
 
 [dependencies]
+# (Its Deskbar widget's provider, `olo-rex-glance`, reports a crash as every
+# program of Olo's does.)
+olo-crash.workspace = true
 olo-protocol.workspace = true
 olo-sync.workspace = true
 olo-theme.workspace = true

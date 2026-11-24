@@ -562,7 +562,13 @@ pub fn popup_then(
 /// least as wide as the field.
 pub fn popup_over(cx: &mut WindowCx, menu: Menu, field: Bounds<Pixels>, current: usize, on_choose: impl Fn(&str, &mut WindowCx) + 'static) -> Option<LocalWindow<MenuPopup>> {
     let dy = POPUP_PAD + item_offset(&menu, current) - (f32::from(field.size.height) - ITEM_HEIGHT) / 2.0;
-    let place = Place { anchor: field, corner: Corner::TopLeft, offset: point(px(0.0), px(-dy.round())), min_width: f32::from(field.size.width).round(), selected: Some(current) };
+    // (Its words over the field's: the chosen item's on the field's own,
+    // as far left as its check column, and as much wider, so the field is
+    // still covered to its right end. At the field's left edge, the words
+    // stood a check mark's width right of the field's: both looks at Rex's
+    // Agent sessions row.)
+    let dx = (POPUP_BORDER + columns(&menu).1 - olo_kit_base::metrics::TEXT_INSET).max(0.0).round();
+    let place = Place { anchor: field, corner: Corner::TopLeft, offset: point(px(-dx), px(-dy.round())), min_width: (f32::from(field.size.width) + dx).round(), selected: Some(current) };
     open_first(cx, menu, place, Rc::new(on_choose), None)
 }
 
@@ -996,9 +1002,14 @@ impl MenuPopup {
         let open = self.sub.map(|(i, _)| i);
         let (icon_left, label_left) = columns(menu);
         let (arrow_up, arrow_down) = self.arrows();
-        style::fill_rect(g, b, style::c(p.menu_background));
+        // (In a dark look, a step lighter than the window and the bar it opens
+        // over, as what is above shows in the dark: on their own ground it
+        // read as a box drawn on the page, "almost the same colour as the
+        // window" (Opus's look at Rex's Agent sessions row).)
+        let ground = if p.mode == olo_theme::ThemeMode::Dark { olo_theme::mix(p.menu_background, p.menu_item_text, 0.06) } else { p.menu_background };
+        style::fill_rect(g, b, style::c(ground));
         // The outline, then a light inner edge on top and left.
-        style::frame_rect(g, b, style::tint(p.menu_background, 1.55));
+        style::frame_rect(g, b, style::tint(ground, 1.55));
         let lined = style::inset(g, b, 1.0);
         style::hline(g, lined.left(), lined.right(), lined.top(), style::c(p.shine));
         style::vline(g, lined.left(), lined.top(), lined.bottom(), style::c(p.shine));

@@ -814,6 +814,15 @@ mod tests {
         assert_eq!((playing.position, playing.duration, playing.rate), (Some(0.0), Some(600.0), 1.0));
         assert_eq!(play.fetched(), Some(bytes.len() as u64 + 10));
         drop(play);
+        // (The last answer is sent before the end is said, `events.rs`; the
+        // fake counts answers on a thread of its own, which on a loaded
+        // computer had read three of four when the count was looked at: a
+        // whole workspace's tests at once, 2026-11-24. Waited for, a few
+        // seconds at most.)
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while tv.lock().unwrap().answered < 4 && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         let tv = tv.lock().unwrap();
         assert_eq!(tv.asked, ["SETUP", "GET /info", "RECORD", "SETUP streams", "command insertPlayQueueItem", "command setProperty", "command setProperty", "command setRate", "TEARDOWN"]);
         assert_eq!(tv.sender, "Olo of the test");

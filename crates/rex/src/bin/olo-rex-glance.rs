@@ -299,6 +299,7 @@ async fn serve() -> io::Result<()> {
 }
 
 fn main() -> ExitCode {
+    olo_crash::install();
     let result = tokio::runtime::Builder::new_current_thread().enable_all().build().and_then(|rt| rt.block_on(serve()));
     if let Err(e) = result {
         eprintln!("olo-rex-glance: {e}");

@@ -474,8 +474,11 @@ async fn what_a_program_copies_is_told_short_and_read_long() -> Result {
     let (sid, _, bid) = server.session(&ctrl, "clip").await?;
     ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
     for len in [15usize, 300_003] {
-        // (Base64 of so many "a": "YWFh" for every three.)
-        ctrl.terminal_write(&sid, &bid, &format!("printf '\\033]52;c;%s\\a' {}\n", "YWFh".repeat(len / 3))).await?;
+        // (Base64 of so many "a": "YWFh" for every three; made by the shell,
+        // not typed: a line typed whole is cut at 4,096 by the terminal where
+        // the shell reads in its canonical mode (dash, Ubuntu's /bin/sh),
+        // and 300,003 came out 3,053.)
+        ctrl.terminal_write(&sid, &bid, &format!("printf '\\033]52;c;%s\\a' \"$(yes YWFh | head -n {} | tr -d '\\n')\"\n", len / 3)).await?;
         let ControlEvent::BlockEvent { payload, .. } = event(&mut events, |e| matches!(e, ControlEvent::BlockEvent { name, .. } if name == "clipboard_written")).await? else { unreachable!() };
         assert_eq!(payload["bytes"].as_u64(), Some(len as u64), "{payload}");
         let id = payload["id"].as_u64().expect("its number");

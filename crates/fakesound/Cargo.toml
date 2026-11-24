@@ -12,3 +12,10 @@ license.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true
 pulseaudio = "0.3"
+
+# (Its tests play Olo's own sounds into it: olo-preview's players, for
+# its tests only. Under olo-preview they named this package's executable,
+# which Cargo names only to a test of the package it is in, and the
+# workspace's tests stopped compiling there: `cargo test --workspace`.)
+[dev-dependencies]
+olo-preview.workspace = true

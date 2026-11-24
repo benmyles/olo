@@ -162,12 +162,16 @@ true
 /// something reads what the command was given to read, which ends
 /// when the channel does, and then ends the whole group. What the
 /// script answers is what this answers.
+// (Its process group ended with `kill -TERM "-$p"`: dash, /bin/sh on
+// Debian and Ubuntu hosts, takes no `--` there ("Illegal number: -"), and
+// its fallback ended the script alone, what it had started going on to
+// its end. Found on the dev server, 2026-11-24.)
 pub fn cancellable(script: &str) -> String {
     format!(
         r#"exec 3<&0
 if command -v setsid > /dev/null 2>&1; then setsid sh -c {script} < /dev/null & else sh -c {script} < /dev/null & fi
 p=$!
-( cat <&3 > /dev/null 2>&1; kill -TERM -- "-$p" 2> /dev/null || kill -TERM "$p" 2> /dev/null ) &
+( cat <&3 > /dev/null 2>&1; kill -TERM "-$p" 2> /dev/null || kill -TERM "$p" 2> /dev/null ) &
 w=$!
 wait "$p"
 rc=$?

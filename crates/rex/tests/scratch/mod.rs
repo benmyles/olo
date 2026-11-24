@@ -24,6 +24,21 @@ use uuid::Uuid;
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub type Events = mpsc::UnboundedReceiver<ControlEventEnvelope>;
 
+/// This account's login shell (passwd's), if it says one.
+fn login_shell() -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt as _;
+    // SAFETY: getpwuid's entry is read at once, on this thread, before any
+    // other call that could change it.
+    unsafe {
+        let pw = libc::getpwuid(libc::geteuid());
+        if pw.is_null() || (*pw).pw_shell.is_null() {
+            return None;
+        }
+        let shell = std::ffi::CStr::from_ptr((*pw).pw_shell);
+        Some(PathBuf::from(std::ffi::OsStr::from_bytes(shell.to_bytes())))
+    }
+}
+
 pub struct Scratch {
     pub child: Child,
     pub dir: PathBuf,
@@ -62,6 +77,12 @@ impl Scratch {
         // Map that and /tmp to scratch disk. No host /home, /run or network.
         let addr = format!("unix://{}", sock.display());
         let uid = unsafe { libc::geteuid() };
+        // The account's own shell, where it is outside what's bound: the
+        // server starts it for a terminal made with no command (not
+        // $SHELL), and one in the home folder (brush in ~/.local/bin, on the
+        // dev server) wasn't there, so every such terminal failed. Bound
+        // alone, read-only.
+        let shell = login_shell().filter(|s| s.is_file() && !["/usr/", "/bin/", "/lib"].iter().any(|top| s.starts_with(top)));
         let child = Command::new("bwrap")
             .args([
                 "--die-with-parent",
@@ -97,6 +118,7 @@ impl Scratch {
             .arg("--bind")
             .arg(dir.join("tmp"))
             .arg("/tmp")
+            .args(shell.iter().flat_map(|s| [std::ffi::OsStr::new("--ro-bind"), s.as_os_str(), s.as_os_str()]))
             .arg("--chdir")
             .arg(&home)
             .args(["--clearenv", "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "SHELL", "/bin/sh", "--setenv", "HOME"])
@@ -139,7 +161,11 @@ impl Scratch {
     }
 
     pub async fn session(&self, ctrl: &ControlClient, label: &str) -> Result<(String, String, String)> {
-        let r = ctrl.session_create(Some(label), Some(json!({"command":["/bin/sh"],"cwd": self.dir.join("home")}))).await?.payload;
+        // (Bash by its name: /bin/sh is bash on Fedora, with a line editor,
+        // and dash on Ubuntu, which reads a line in the terminal's own
+        // canonical mode: a terminal's mode, and a typed line's longest,
+        // were the distribution's.)
+        let r = ctrl.session_create(Some(label), Some(json!({"command":["/bin/bash"],"cwd": self.dir.join("home")}))).await?.payload;
         Ok((r["session_id"].as_str().unwrap().into(), r["initial_windows"][0]["window_id"].as_str().unwrap().into(), r["initial_windows"][0]["block_ids"][0].as_str().unwrap().into()))
     }
 }

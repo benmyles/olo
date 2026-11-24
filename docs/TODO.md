@@ -1776,20 +1776,19 @@ something nobody here has is in "Blocked", with what it waits for.
     stand-in pool, never the person's.
 
 - **The kit's pop-up and status bar, from the looks at Rex's Agent
-  sessions row** (2026-11-23), the kit's everywhere: the open menu
-  "shifts the words right by about a checkmark's width" (Astra; Opus:
-  "move the menu left by 14.5 pt so 'Last 7 days' in the menu lands
-  exactly on 'Last 7 days' in the field"), runs past the window's right
-  edge, is "far wider than its content", has no shadow ("in dark its
-  background is almost the same colour as the window"), stops 8 pt
-  short of covering the button under it and sits 3 pt under the one
-  above; and the level bar's trough "has no bottom or right edge" in
-  light: its light lower and right lines are drawn against its white
-  inside (measured: 250 against 255) — "frame the trough as the kit's
-  sunken well on all four sides". And for the sessions row itself,
-  later: say how much room the host has where a copy failed for want
-  of it ("dev-box has 0.4 GB free; these need 1.2 GB"); the size of
-  each choice in the pop-up ("Last 7 days 1.2 GB").
+  sessions row** (2026-11-23). Done 2026-11-24: a pop-up opens with its
+  chosen item's words on the field's (15 points further left, as much
+  wider: "move the menu left by 14.5 pt so 'Last 7 days' in the menu
+  lands exactly on 'Last 7 days' in the field"); an open menu in a dark
+  look a step lighter than what it opens over (42,60,71 on 24,43,54:
+  "in dark its background is almost the same colour as the window");
+  the level bar in the kit's sunken well. Kept: a menu as wide as its
+  field and running past the window's edge (a menu is the screen's, as
+  macOS's are). Left, of the sessions row itself: it "stops 8 pt short
+  of covering the button under it and sits 3 pt under the one above";
+  say how much room the host has where a copy failed for want of it
+  ("dev-box has 0.4 GB free; these need 1.2 GB"); the size of each
+  choice in the pop-up ("Last 7 days 1.2 GB").
 
 - **The helpers' tool, from the minders' reports** (2026-11-23), what's
   left: its lines didn't name an Astra look while it ran (the look's own
@@ -1797,7 +1796,10 @@ something nobody here has is in "Blocked", with what it waits for.
   (Done 2026-11-24: `watch --only` keeps a minder to its own agents;
   agents are told to put a script of more than a line in a file, as a
   folded command can't be judged; `list` says "starting" for an agent's
-  first moments; agy-help's 3 says it isn't a failure.)
+  first moments; agy-help's 3 says it isn't a failure; `watch --for`
+  looks at the agents before saying its time is up; `approve` says
+  whether the agent's screen moved on, and a second asking of the same
+  question as such.)
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize
   ssh sessions and traffic on olo desktop, like maybe under prefs ->

@@ -306,6 +306,9 @@ mod tests {
         let own = "/user.slice/user-1000.slice/session-7.scope";
         let scope = dir.path().join(own.trim_start_matches('/'));
         fs::create_dir_all(&scope).unwrap();
+        // (As the kernel makes a scope, whatever the umask: under 0002 it was
+        // writable by its group, and refused as not the worker's boundary.)
+        fs::set_permissions(&scope, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         fs::write(scope.join("cgroup.procs"), procs).unwrap();
         fs::write(scope.join("cgroup.controllers"), controllers).unwrap();
         fs::write(scope.join("cgroup.subtree_control"), "").unwrap();

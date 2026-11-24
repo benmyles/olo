@@ -30,6 +30,12 @@ def outer(binary, case):
         if not shutil.which(program):
             print(f"SKIP {case}: {program} missing", flush=True)
             return
+    # (The slow link is netem's, which a namespace can't load: where the
+    # kernel hasn't, `tc` there is refused, "Operation not permitted", and
+    # nothing about Rex was tried. The dev server, 2026-11-24.)
+    if case == "remote_slow" and not Path("/sys/module/sch_netem").exists():
+        print(f"SKIP {case}: the netem qdisc isn't loaded (sudo modprobe sch_netem), and a namespace can't load it", flush=True)
+        return
     with tempfile.TemporaryDirectory(prefix="rex-remote-", dir=os.environ.get("OLO_REX_TEST_DIR", "/var/tmp")) as scratch:
         base = Path(scratch)
         for sub in ("home/.ssh", "run", "state", "tmp", "rex", "etc"):
