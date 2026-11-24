@@ -16,7 +16,8 @@ approval stuff [configured] to auto approve all the most common
 commands it might need to run"; and of every helper, the reviewers
 too: "always do it through tmux never a script that just goes silent".
 
-  agents start NAME CRATE BRIEF.md   start a worker on CRATE (a folder, apps/updates)
+  agents start NAME CRATE BRIEF.md   start a worker on CRATE (a folder, apps/updates; or a
+                                     file or folder that isn't a crate, data/words/de.txt)
                                      with the task in BRIEF.md; at most 5 at once
   agents investigate BRIEF.md [DIR]  start a second investigator on the bug in
                                      BRIEF.md (tools/dev/agy-help is this), its
@@ -633,8 +634,14 @@ def start(name, crate, brief):
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,30}", name):
         sys.exit("agents: a NAME of lowercase letters, digits and dashes")
     crate_dir = os.path.normpath(os.path.join(ROOT, crate))
-    if not os.path.isfile(os.path.join(crate_dir, "Cargo.toml")):
-        sys.exit(f"agents: {crate} isn't a crate (no Cargo.toml in it)")
+    # (A scope that isn't a crate, a data file or a folder of them: a
+    # language's word catalog, say, five translated at once. Nothing of
+    # it is built; its own task says how it is checked.)
+    is_crate = os.path.isfile(os.path.join(crate_dir, "Cargo.toml"))
+    if not is_crate and not os.path.exists(crate_dir):
+        sys.exit(f"agents: no {crate} in the repository")
+    if not is_crate and not os.path.realpath(crate_dir).startswith(os.path.realpath(ROOT) + os.sep):
+        sys.exit(f"agents: {crate} is outside the repository")
     crate = os.path.relpath(crate_dir, ROOT)
     task = open(brief).read().strip()
     if not task:
@@ -643,13 +650,17 @@ def start(name, crate, brief):
         other = meta(n).get("crate")
         if other and (other == crate or other.startswith(crate + "/") or crate.startswith(other + "/")):
             sys.exit(f"agents: {n} is working in {other}: one agent to a crate")
-    package = next((l.split('"')[1] for l in open(os.path.join(crate_dir, "Cargo.toml")) if l.startswith("name")), crate)
+    package = next((l.split('"')[1] for l in open(os.path.join(crate_dir, "Cargo.toml")) if l.startswith("name")), crate) if is_crate else None
     d = folder(name)
     if os.path.exists(d):
         shutil.rmtree(d)
     os.makedirs(os.path.join(d, "target"))
     open(os.path.join(d, "task.md"), "w").write(task + "\n")
-    open(os.path.join(d, "brief.md"), "w").write(RULES.format(root=ROOT, crate=crate, package=package, name=name, dir=d, approvals=APPROVALS) + task + "\n")
+    rules = RULES.format(root=ROOT, crate=crate, package=package or "-", name=name, dir=d, approvals=APPROVALS)
+    if not is_crate:
+        # (Its scope a file or a folder, not a crate: the rules' crate words read for it.)
+        rules = rules.replace(f"- Change files under {crate}/ only", f"- Change {crate} only (it isn't a crate: build nothing of Olo's unless the task says how it is checked)")
+    open(os.path.join(d, "brief.md"), "w").write(rules + task + "\n")
     save_meta(name, {"crate": crate, "package": package, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
     launch(name, d, ROOT, [], os.path.join(d, "target"))
     print(f"agents: {name} started on {crate} ({package}); its folder is {d}")
