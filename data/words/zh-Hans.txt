@@ -64,8 +64,17 @@ other: 另有 {n} 项
 1 Minute
 1 分钟
 
+1 SSH key
+1 个 SSH 密钥
+
 1 Second
 1 秒
+
+1 account
+1 个账户
+
+1 couldn’t be cloned
+1 个未能克隆
 
 1 day before
 1 天前
@@ -82,8 +91,17 @@ other: 另有 {n} 项
 1 minute
 1 分钟
 
+1 request running
+1 个请求运行中
+
+1 request today
+今日 1 个请求
+
 1 second
 1 秒
+
+1 session
+1 个会话
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. 输入账户密码，然后选择“设置”。Olo 会加密保存密码，只有这把密钥才能解锁。
@@ -163,6 +181,9 @@ other: 另有 {n} 项
 2 hours before
 2 小时前
 
+2 items
+2 项
+
 2 minutes
 2 分钟
 
@@ -232,6 +253,9 @@ other: 另有 {n} 项
 4 hours
 4 小时
 
+4 items
+4 项
+
 4 weeks
 4 周
 
@@ -274,6 +298,9 @@ other: 另有 {n} 项
 52 weeks
 52 周
 
+6 items
+6 项
+
 6 months
 6 个月
 
@@ -312,6 +339,9 @@ A Disk or Folder
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 编码一帧 4K 画面，GPU 约需 15 毫秒，CPU 约需 110 毫秒。录制快速运动的画面时，GPU 能保留每一帧，CPU 每秒约能录下 9 帧。
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+Rex 主机可以拥有自己的 Token Pool 并使用这些账户：即使本机关机，远程主机上的 Claude Code 和 Codex 仍可继续工作。
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 WireGuard 配置文件（来自服务器或 wg-quick）会与密钥一起保存。连接期间只使用其中指定的 DNS 服务器。
@@ -358,6 +388,9 @@ A finger on the fingerprint sensor can stand for your password. Fingers enrolled
 A frame dropped in the last minute
 过去一分钟丢了 1 帧
 
+A key with no name
+未命名密钥
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 可选择的控件、菜单项、窗口和 Deskbar 上都会显示字母。按字母即可选择，或让其中的项目显示字母。按退格键返回，按 Esc 隐藏。
 
@@ -393,6 +426,12 @@ Olo 新构建版本已就绪（{}）。现在安装吗？打开的窗口会保�
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 Olo 新构建版本已就绪（{}）。安装时会重启窗口服务器。Olo 的窗口会保留，但 {} 将关闭。
+
+A new name for the session “{}”:
+会话“{}”的新名称：
+
+A new name for the tab “{}”:
+标签页“{}”的新名称：
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 在 Chrome 和其他程序中，滚轮每滚动一格的距离与 Olo 应用一致。
@@ -499,6 +538,9 @@ API 密钥：
 About 
 关于 
 
+About Olo
+关于 Olo
+
 About Olo Desktop
 关于 Olo Desktop
 
@@ -520,14 +562,23 @@ Access
 Account
 账户
 
+Account on “{}”
+“{}”上的账户
+
 Account:
 账户：
 
 Accounts
 账户
 
+Accounts that may sign in through the login server, kept in {}.
+允许通过登录服务器登录的账户，保存在 {} 中。
+
 Accounts:
 账户：
+
+Account…
+账户…
 
 Action
 操作
@@ -580,6 +631,12 @@ Add Fingerprint
 Add Graph
 添加图表
 
+Add Host
+添加主机
+
+Add Host…
+添加主机…
+
 Add Kind
 添加类型
 
@@ -591,6 +648,9 @@ Add Place…
 
 Add RPM Fusion
 添加 RPM Fusion
+
+Add Repository
+添加仓库
 
 Add Repository…
 添加软件源…
@@ -649,6 +709,9 @@ Add an account in Preferences
 Add lunch tomorrow at noon
 添加明天中午的午餐日程
 
+Add one in Rex or in Preferences ▸ Rex.
+请在 Rex 或“偏好设置 ▸ Rex”中添加主机。
+
 Add the one-time code this page shows to your login {}?
 将此页面显示的一次性验证码添加到登录项“{}”吗？
 
@@ -675,6 +738,9 @@ Address:
 
 Addresses can’t be looked up: {}
 无法查询地址：{}
+
+Add…
+添加…
 
 Adjust Size
 调整大小
@@ -732,6 +798,18 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 智能体屏幕
+
+Agent sessions
+智能体会话
+
+Agent settings
+智能体设置
+
+Agents
+智能体
+
+Agents and settings in your account there.
+远程账户中的智能体和设置。
 
 Agree
 同意
@@ -793,8 +871,14 @@ All Metric
 All Preferences
 所有偏好设置
 
+All Set
+全部就绪
+
 All accounts together
 合并显示所有账户
+
+All agents and shells are quiet.
+所有智能体和 shell 均处于静默状态。
 
 All day
 全天
@@ -807,6 +891,9 @@ Olo 的 {0} 条文案均已译为{1}。
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 这些设置全都作用于整台电脑，因此更改时需要管理员密码。
+
+All time
+全部时间
 
 All waiting
 全部等待中
@@ -832,6 +919,12 @@ Allow Sleep (awake until {})
 Allow it on the phone
 在手机上允许
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+允许“{}”上的程序使用您的 SSH 密钥登录吗？该主机上的终端正通过 Rex 发出此请求。
+
+Allow {} to sign in to your hosts with your SSH keys?
+允许 {} 使用您的 SSH 密钥登录您的主机吗？
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 允许“{0}”使用{1}{2}吗？选择“始终允许”后，此应用每次请求时都可使用。可在“文件 ▸ 已获准的应用…”中撤销。
 
@@ -846,6 +939,9 @@ Also from the Deskbar: click the cup.
 
 Also leave out:
 同时排除：
+
+Also used by
+共同使用者
 
 Also when running on battery
 使用电池时也启用
@@ -891,6 +987,9 @@ An account can answer again.
 
 An administrator's password is needed.
 需要管理员密码。
+
+An agent is at rest here
+此处有智能体在待命
 
 An app
 应用
@@ -952,17 +1051,35 @@ Answering now
 Answering now · {}
 正在响应 · {}
 
+Anthropic’s coding agent.
+Anthropic 的编程智能体。
+
+Antigravity
+Antigravity
+
 Any of the {}
 {} 中的任意一个
 
 Any storms on the way?
 会有暴风雨吗？
 
+Any tagged device on the tailnet
+tailnet 上任意带标签的设备
+
 Any time
 不限时间
 
 Any touch
 任意触摸
+
+Anyone at all
+任何人
+
+Anyone on the tailnet
+tailnet 上的任何人
+
+Anyone who is identified
+任何已验证身份的用户
 
 App
 应用
@@ -1081,6 +1198,12 @@ As in Themes ({})
 As it goes
 随进度调整
 
+As on this computer
+与本机一致
+
+As root, over SSH
+通过 SSH 以 root 身份
+
 As set now
 按当前设置
 
@@ -1093,8 +1216,14 @@ As the other mice
 As wide as the widgets
 与小组件等宽
 
+As {}, over SSH
+通过 SSH 以 {} 身份
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 按{0}处理：nice 从 {1} 调为 {2}，调度为{3}，I/O 优先级为{4}{5}，以保持活动窗口和 Olo 反应灵敏。
+
+As {}’s package manager last heard from Rex’s repository.
+根据 {} 的软件包管理器上次从 Rex 软件源获取的信息。
 
 Ask
 询问
@@ -1138,11 +1267,20 @@ Ask what to do about urgent ones
 Asked now:
 当前请求值：
 
+Asking
+正在查询
+
+Asking GitHub for Olo's releases…
+正在向 GitHub 查询 Olo 版本…
+
 Asking Passwords…
 正在询问 Passwords…
 
 Asking Telegram…
 正在询问 Telegram…
+
+Asking how Rex is set up there
+正在查询远程主机的 Rex 配置
 
 Asking it…
 正在请求…
@@ -1219,6 +1357,9 @@ Attach a file or a link
 Attach what's on the clipboard
 附加剪贴板中的内容
 
+Attaching terminal stream…
+正在连接终端流…
+
 Attachments
 附件
 
@@ -1233,6 +1374,12 @@ Auto
 
 Auto Approve
 自动批准
+
+Auto Approve answers Yes in {} s
+自动批准将在 {} 秒后回答“是”
+
+Auto Approve in “{}”
+在“{}”中自动批准
 
 Auto Approve: Yes in {} s
 自动批准：{} 秒后同意
@@ -1447,6 +1594,18 @@ Before import {}.{}
 Begin
 开始
 
+Behind
+未同步
+
+Behind since {}
+自 {} 起未同步
+
+Being installed…
+正在安装…
+
+Being updated…
+正在更新…
+
 Benchmark…
 性能测试…
 
@@ -1570,17 +1729,26 @@ Bring It Into Olo…
 Brown
 棕色
 
+Browse Folders…
+浏览文件夹…
+
 Bug Fixes
 问题修复
 
 Builds
 构建
 
+Builds and agents open many files and start many tasks at once.
+构建任务和智能体会同时打开大量文件并启动许多进程。
+
 Builds by the hour
 每小时构建次数
 
 Builds go on without the cache until it starts.
 缓存启动前，构建会继续，但不使用缓存。
+
+Built from source
+从源码构建
 
 Built incrementally
 增量构建
@@ -1774,6 +1942,9 @@ Capture debug information whenever a frame drops
 Cards
 卡片
 
+Carrying the accounts
+正在同步账户
+
 Cascade All
 层叠所有窗口
 
@@ -1855,8 +2026,17 @@ Changing the CPU governor
 Changing the cores process {} may use
 正在更改进程 {} 可使用的核心
 
+Changing the machine’s settings as {}
+正在以 {} 身份更改机器设置
+
 Changing the priority of process {}
 正在更改进程 {} 的优先级
+
+Changing the rex group as {}
+正在以 {} 身份更改 rex 组
+
+Changing {} as {}
+正在以 {1} 身份更改 {0}
 
 Changing…
 正在更改…
@@ -1879,6 +2059,9 @@ Check Again
 Check Health
 检查健康状况
 
+Check Now
+立即检查
+
 Check Spelling While Typing
 键入时检查拼写
 
@@ -1888,11 +2071,17 @@ Check everything
 Check for Updates
 检查更新
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+请检查账户名称，并确认您的某个密钥已添加到远程主机的 ~{}/.ssh/authorized_keys 中。
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 快速检查所选备份是否完整：确认数据齐全、核对存储中的校验和与发送时是否一致，再抽样读回检查，步骤与每次备份完成后的检查相同。发现损坏时会尽量修复。
 
 Checked
 已检查
+
+Checked {}
+上次检查：{}
 
 Checking for updates…
 正在检查更新…
@@ -1945,6 +2134,12 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 选择列表中的聊天即可发送消息。
 
+Choose a host to connect it, disconnect it or manage it.
+选择一台主机以连接、断开连接或管理。
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+请选择远程主机 root 接受的密钥。若均不可用，请将公钥添加到该机器的 /root/.ssh/authorized_keys 后重试。
+
 Choose a network to join it.
 选择要加入的网络。
 
@@ -1959,6 +2154,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 选取所有更新
+
+Choose how they look and sound in Notifications.
+可在“通知”中选择提醒的显示和声音方式。
 
 Choose what to scan:
 选择扫描范围：
@@ -2019,6 +2217,15 @@ Claude Code and Codex get a tool to title their tab with what they’re working 
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 如果标签页组涉及多个仓库，组内启动的 Claude Code 和 Codex 会收到组名、各仓库和工作树的信息，以及当前位置标记。Codex 会询问一次是否信任 Terminal 的钩子（/hooks）。
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+复制 Claude Code、Codex 和 Antigravity 的会话，以便在远程继续。
+
+Claude Code and Codex there go back to their own sign-ins.
+远程主机上的 Claude Code 和 Codex 将恢复使用各自的登录状态。
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+远程主机上的 Claude Code 和 Codex 将恢复使用各自的登录状态。各账户最新的登录信息会先复制回本机。
 
 Clean Up
 清理
@@ -2122,6 +2329,21 @@ Clients
 Clock
 时钟
 
+Clone
+克隆
+
+Clone {}
+克隆 {}
+
+Cloned
+已克隆
+
+Cloning {}…
+正在克隆 {}…
+
+Cloning…
+正在克隆…
+
 Close
 关闭
 
@@ -2139,6 +2361,9 @@ Close Other Tabs
 
 Close Others
 关闭其他
+
+Close Pane
+关闭窗格
 
 Close Tab
 关闭标签页
@@ -2314,8 +2539,14 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 连接 Google Drive…
 
+Connect Remote Host…
+连接远程主机…
+
 Connect automatically when you put them in near this computer
 在此电脑附近戴上时自动连接
+
+Connect when Rex starts
+Rex 启动时自动连接
 
 Connect with a Token…
 使用令牌连接…
@@ -2328,6 +2559,9 @@ Connected
 
 Connected as {}, through {}.
 已通过 {1} 以 {0} 身份连接。
+
+Connected to Tailscale.
+已连接到 Tailscale。
 
 Connected to “{}”
 已连接到“{}”
@@ -2347,14 +2581,32 @@ Connected.
 Connecting to Telegram…
 正在连接 Telegram…
 
+Connecting to {}…
+正在连接到 {}…
+
 Connecting to “{}”…
 正在连接“{}”…
 
 Connecting…
 正在连接…
 
+Connecting… Your key agent is asking you about this sign-in.
+正在连接… 密钥代理正在向您确认此次登录。
+
 Connection
 连接
+
+Connection lost just now.
+连接刚刚断开。
+
+Connection lost {n} days ago.
+other: 连接已在 {n} 天前断开。
+
+Connection lost {n} hours ago.
+other: 连接已在 {n} 小时前断开。
+
+Connection lost {n} minutes ago.
+other: 连接已在 {n} 分钟前断开。
 
 Connection:
 连接：
@@ -2419,11 +2671,17 @@ Copr 项目
 Copy
 复制
 
+Copy Address
+复制地址
+
 Copy Code
 复制验证码
 
 Copy Conversation
 复制对话
+
+Copy Debug Info
+复制调试信息
 
 Copy Here
 复制到此处
@@ -2433,6 +2691,9 @@ Copy Latest Code
 
 Copy Link
 复制链接
+
+Copy Mode
+复制模式
 
 Copy Name
 复制名称
@@ -2452,6 +2713,12 @@ Copy Path
 Copy Reference
 复制引用
 
+Copy Screen as HTML
+将屏幕内容复制为 HTML
+
+Copy Screen as Text
+将屏幕内容复制为纯文本
+
 Copy Text
 复制文字
 
@@ -2460,6 +2727,9 @@ Copy Username
 
 Copy Value
 复制值
+
+Copy Version Info
+复制版本信息
 
 Copy a code no tab is waiting for
 复制没有标签页在等待的验证码
@@ -2476,8 +2746,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 已对 index.db 关闭写时复制以防止 Btrfs 碎片化；存储区仍保留写时复制以支持 reflink。恢复时会短暂重启 kache。
 
+Copying sessions…
+正在复制会话…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 正在从 1Password 复制 {} 中的项目。如果 1Password 询问是否允许 Passwords 访问，请选择“允许”。如已锁定，请先解锁。
+
+Copying…
+正在复制…
 
 Core
 核心
@@ -2488,11 +2764,17 @@ Cores
 Couldn't be cached
 无法缓存
 
+Couldn't check for a newer release.
+无法检查是否有新版本。
+
 Couldn't create a folder: {}
 无法创建文件夹：{}
 
 Couldn't create a link: {}
 无法创建链接：{}
+
+Couldn't look for a newer release: {}
+无法查找新版本：{}
 
 Couldn't paste: {}
 无法粘贴：{}
@@ -2530,14 +2812,38 @@ Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
 {}检查失败：{}。
 
+Couldn’t be cloned
+未能克隆
+
+Couldn’t be copied
+未能复制
+
+Couldn’t be installed
+未能安装
+
+Couldn’t be set
+未能设置
+
 Couldn’t change this vault in 1Password. {}
 无法在 1Password 中更改此保险库。{}
+
+Couldn’t clone
+未能克隆
+
+Couldn’t copy the file from the host.
+无法从主机复制文件。
 
 Couldn’t delete it in 1Password. {}
 无法在 1Password 中删除此项。{}
 
 Couldn’t delete this vault from 1Password. {}
 无法从 1Password 删除此保险库。{}
+
+Couldn’t get a sign-in link: {}.
+无法获取登录链接：{}。
+
+Couldn’t install
+未能安装
 
 Couldn’t keep the approval: {}
 无法保存授权：{}
@@ -2551,14 +2857,32 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 无法列出其中的项目。{}
 
+Couldn’t look at {}
+无法检查 {}
+
+Couldn’t look at {} again
+无法重新检查 {}
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 无法在 1Password 中创建此保险库，因此其中的项目也未发送。{}
+
+Couldn’t open the file.
+无法打开文件。
+
+Couldn’t open the sign-in page: {}.
+无法打开登录页面：{}。
 
 Couldn’t open this item: {}
 无法打开此项：{}
 
+Couldn’t paste the picture.
+无法粘贴图片。
+
 Couldn’t reach the login keyring: {}
 无法访问登录密钥环：{}
+
+Couldn’t reach {}
+无法连接 {}
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 无法读取 1Password 中的副本进行比较，因此没有发送您的版本。{}
@@ -2602,8 +2926,20 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 无法撤销授权：{}
 
+Couldn’t turn off Tailscale: {}.
+无法关闭 Tailscale：{}。
+
+Couldn’t turn on Tailscale: {}.
+无法开启 Tailscale：{}。
+
 Couldn’t write the shared copy: {}
 无法写入共享副本：{}
+
+Couldn’t {}
+无法{}
+
+Couldn’t {} on {}
+无法在 {1} 上{0}
 
 Count accounts turned off or signed out
 计入已停用或已退出登录的账户
@@ -2953,6 +3289,9 @@ Developer Tools
 Device
 设备
 
+Devices tagged {}, over Tailscale
+通过 Tailscale，带 {} 标签的设备
+
 Dew point
 露点
 
@@ -2965,8 +3304,14 @@ Dew point spread {}
 Dew point {}
 露点 {}
 
+Diagnostics…
+诊断…
+
 Diff
 Diff
+
+Differs from this computer
+与本机不同
 
 Dim the built-in display when idle
 空闲时调暗内建显示器
@@ -3000,6 +3345,15 @@ Disconnect Google Drive
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 断开 Google Drive（{}）吗？DiskBackup 将停止向该账户备份并移除本机的登录信息。Drive 中的备份会保留，重新连接即可继续备份或从中恢复。
+
+Disconnected
+已断开连接
+
+Disconnected.
+已断开连接。
+
+Disconnected: {}
+已断开连接：{}
 
 Disconnecting from Google Drive…
 正在断开 Google Drive…
@@ -3163,6 +3517,9 @@ Don’t Trust
 Double-press speed
 连按两次的速度
 
+Down
+下
+
 Down (received)
 下行（接收）
 
@@ -3177,6 +3534,18 @@ Download at most:
 
 Download, Then Restart to Install
 下载后重启安装
+
+Downloading
+正在下载
+
+Downloading preview from Rex server…
+正在从 Rex 服务器下载预览…
+
+Downloading {} from {}…
+正在下载{}（来自{}）…
+
+Downloading {}…
+正在下载 {}…
 
 Downloading: {}
 正在下载：{}
@@ -3328,6 +3697,9 @@ Each display is drawn by the graphics it's wired to, so no frame crosses between
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 各显示器的 Deskbar 会展开本屏的当前工作区，其他工作区只显示标题。点击箭头可以在该 Deskbar 中展开或收起其应用列表。
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+每个仓库都会克隆到 {} 上您主目录中的对应文件夹，然后运行一次其初始化命令。
+
 Each is judged from several signals together; a finding says how sure it is and why.
 综合多种信号判断。每项结果都会说明把握有多大，以及这样判断的原因。
 
@@ -3348,6 +3720,12 @@ Each new window takes half of the one you were using.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 设置后，各种验证方式可同时代替密码，用于 Passwords、Terminal 中的 sudo 和管理员请求。人脸和指纹还可用于锁屏和登录。先使用哪一种，就用哪一种验证。
+
+Each person gets their own Rex server, and signs in through this one.
+每位用户拥有各自的 Rex 服务器，并通过此服务器登录。
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+{} 上的每位用户都拥有各自的 Rex 服务器，并通过此服务器登录。
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 每个仓库在此各有一个文件夹，例如 olo 的 fix-tabs 工作树位于 {}/olo/fix-tabs。
@@ -3378,6 +3756,9 @@ Edit Message
 
 Edit Name
 编辑名称
+
+Edit Repository
+编辑仓库
 
 Edit Video…
 编辑视频…
@@ -3445,6 +3826,9 @@ Encrypt it with a passphrase
 End
 结束
 
+End Session
+结束会话
+
 End Test
 结束测试
 
@@ -3481,6 +3865,9 @@ Enrolling your {}
 Enter Full Screen
 进入全屏
 
+Enter secret…
+输入密钥…
+
 Enter the password for “{}” to unlock it.
 输入“{}”的密码以解锁。
 
@@ -3507,6 +3894,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Error
+错误
 
 Esc cancels
 按 Esc 取消
@@ -3598,6 +3988,15 @@ Every list's to-dos show here.
 Every month
 每月
 
+Every regular account
+所有普通账户
+
+Every step ran, and it still needs: {}.
+所有步骤均已执行，仍缺少：{}。
+
+Every step ran.
+所有步骤均已执行。
+
 Every week
 每周
 
@@ -3627,6 +4026,18 @@ other: 每 {n} 周
 
 Every {n} years
 other: 每 {n} 年
+
+Everyone in the rex group shares one server, run as the rex account.
+rex 组中的所有成员共用一个以 rex 账户运行的服务器。
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+rex 组中的所有成员共用此服务器，其上的所有终端都以 rex 账户运行。
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+{} 上拥有账户的所有用户都在 rex 组中，并使用共享服务器。
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+{} 上拥有账户的所有用户均可登录。名单保存在 {} 中。
 
 Everything
 全部
@@ -3730,6 +4141,21 @@ Fade Colors
 Fahrenheit (°F)
 Fahrenheit (°F)
 
+Failed
+失败
+
+Failed just now
+刚刚失败
+
+Failed {n} days ago
+other: {n} 天前失败
+
+Failed {n} hours ago
+other: {n} 小时前失败
+
+Failed {n} minutes ago
+other: {n} 分钟前失败
+
 Fan Out
 扇形排列
 
@@ -3823,6 +4249,9 @@ File
 File system:
 文件系统：
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+文件监视器、链接器和大型程序容易触及内核自身的上限。
+
 Files
 文件
 
@@ -3834,6 +4263,9 @@ File…
 
 Fill It In
 填入
+
+Filter
+筛选
 
 Find
 查找
@@ -3861,6 +4293,9 @@ Find an app
 
 Find in document
 在文稿中查找
+
+Find in terminal…
+在终端中查找…
 
 Find the selection
 查找所选内容
@@ -4018,6 +4453,12 @@ Fog likely · spread {}
 Folder
 文件夹
 
+Folder taken
+文件夹已被占用
+
+Folder:
+文件夹：
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 文件和文件夹用逗号分隔。~/ 表示主文件夹，**/ 表示任意位置，* 匹配任意名称。
 
@@ -4101,6 +4542,9 @@ Format…
 
 Forward
 前进
+
+Forward Port
+转发端口
 
 Forwarded from {}
 转发自 {}
@@ -4213,6 +4657,9 @@ Get Full Access…
 Get Info
 显示简介
 
+Get items from Passwords
+从 Passwords 获取项目
+
 Getting ready
 正在准备
 
@@ -4221,6 +4668,9 @@ Getting the sensor ready…
 
 Git Worktrees
 Git 工作树
+
+Git identity
+Git 身份
 
 GitHub
 GitHub
@@ -4237,6 +4687,9 @@ GitHub couldn’t be reached ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHub 拒绝了令牌。令牌可能已过期或被撤销。
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+为 Rex 主机配置独立的 Token Pool 并同步相同账户，这样即使本机关机，远程的 Claude Code 和 Codex 也能继续工作。
+
 Give a new key
 提供新密钥
 
@@ -4246,6 +4699,30 @@ Give compilers and linkers only spare memory
 Give it a name.
 请为其命名。
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+仅将 SSH 密钥和剪贴板交给\n您与本机同等信任的主机。
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+仅将 SSH 密钥交给\n您与本机同等信任的主机。
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+仅将剪贴板交给\n您与本机同等信任的主机。
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+仅将密码和 SSH 密钥交给\n您与本机同等信任的主机。
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+仅将密码和剪贴板交给\n您与本机同等信任的主机。
+
+Give your passwords only to a host\nyou trust as much as this computer.
+仅将密码交给\n您与本机同等信任的主机。
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+仅将密码、SSH 密钥和剪贴板\n交给您与本机同等信任的主机。
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+让远程的 Claude Code 和 Codex 随时使用您的账户，无论本机是否开机。
+
 Glide
 滑行距离
 
@@ -4254,6 +4731,15 @@ Glow new windows for
 
 Go
 跳转
+
+Go Back
+回退
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+要回退到 {} 吗？\n\n它将替换 {}。Olo 会下载该版本（约 {} MB）、安装并就地重启。您的设置会保留；此版本之后新增的功能在再次升级前将不可用。
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+要回退到 {} 吗？\n\n它将替换 {}：Olo 会下载该版本（约 {} MB）、安装并就地重启。您的设置会保持原样；此版本之后新增的功能在再次升级前将不可用。
 
 Go to
 转到
@@ -4266,6 +4752,9 @@ Go to File or Folder
 
 Go to File or Folder…
 前往文件或文件夹…
+
+Go to Folder…
+前往文件夹…
 
 Go to:
 前往：
@@ -4302,6 +4791,9 @@ Google and Fastmail accounts for Mail (Integrations) are looked in too.
 
 Google no longer takes its sign-in: sign in again.
 Google 不再接受现有的登录凭据，请重新登录。
+
+Google’s coding agent (agy).
+Google 的编程智能体（agy）。
 
 Got it. Touch the key once more: its light is blinking again.
 已确认。密钥指示灯又开始闪烁了，请再触摸一次。
@@ -4402,8 +4894,23 @@ Hardware Address: {}
 Hardware address:
 硬件地址：
 
+Has failed
+出错时
+
+Has finished
+完成时
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+已超过 1 分钟未响应
+
+Hasn’t answered for over {} minutes
+已超过 {} 分钟未响应
+
+Hasn’t answered for {} seconds
+已 {} 秒未响应
 
 Header & Footer…
 页眉与页脚…
@@ -4555,8 +5062,17 @@ Home
 Home Page
 主页
 
+Host
+主机
+
+Host “{}”
+主机“{}”
+
 Hosts
 主机
+
+Hosts and Ports…
+主机与端口…
 
 Hotspot
 热点
@@ -4708,6 +5224,9 @@ In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 只要应用报告有未读或待办事项，就以此替代通知的蓝点。
 
+In step
+已同步
+
 In the Scratchpad
 在暂存区
 
@@ -4819,8 +5338,17 @@ Inspect Parent
 Inspect Process
 检查进程
 
+Install
+安装
+
 Install Now
 现在安装
+
+Install Olo’s Bridge
+安装 Olo 桥接
+
+Install Olo’s Skill for Agents
+安装 Olo 智能体技能
 
 Install When Restarting
 重启时安装
@@ -4834,8 +5362,29 @@ Install just
 Install the Helper…
 安装辅助程序…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+要安装 {} 吗？\n\nOlo 会下载该版本（约 {} MB）、安装并就地重启。
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+要安装 {} 吗？\n\nOlo 会下载该版本（约 {} MB）、安装并就地重启。
+
 Installed
 已安装
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+使用各自官方安装程序以您的身份安装到远程主文件夹中，无需 root 权限。
+
+Installing
+正在安装
+
+Installing {}: {} ({}%)…
+正在安装 {}：{}（{}%）…
+
+Installing {}…
+正在安装 {}…
+
+Installing…
+正在安装…
 
 Install…
 安装…
@@ -4867,6 +5416,9 @@ Invert Selection
 Invite:
 邀请：
 
+Is waiting for me
+等待我响应时
+
 It Matches
 号码一致
 
@@ -4876,8 +5428,17 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 电脑接通电源后会开始备份。{}。{}。
 
+It can’t be stopped once it has started.
+开始后无法中途停止。
+
 It couldn’t be fetched: {}
 无法获取：{}
+
+It couldn’t be reached ({}). Olo keeps trying.
+无法连接（{}），Olo 会继续尝试。
+
+It couldn’t be reached: {}. Olo keeps trying.
+无法连接：{}。Olo 会继续尝试。
 
 It couldn’t be read: {}
 无法读取：{}
@@ -4887,6 +5448,9 @@ It didn't work.
 
 It didn’t open: {}.
 未能打开：{}。
+
+It didn’t say why.
+未说明原因。
 
 It downloads {}
 需下载 {}
@@ -4915,6 +5479,9 @@ It needs at least three palms and three fingers among the touches it learns from
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 无论当前音量如何，都会以最大音量的四分之一播放。静音时不会播放。
 
+It starts when {} starts.
+随 {} 启动而自动启动。
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 只使用空闲的 CPU 时间和磁盘资源。您工作时它会慢一些，但不会妨碍其他任务。
 
@@ -4929,6 +5496,9 @@ It wasn't forgotten ({}).
 
 It wasn't set up ({}).
 未能完成设置（{}）。
+
+It won’t start again when {} restarts.
+{} 重启后不会自动启动。
 
 It's in use now, in place of Olo's own.
 现已使用此模型代替 Olo 自带的模型。
@@ -4998,6 +5568,12 @@ Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords 
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 此服务随会话启动。请退出后重新登录，或在 Olo Doctor 中启动它。
+
+Its services, accounts and log, managed as root in their own window.
+在独立窗口中以 root 身份管理其服务、账户和日志。
+
+Its sessions may:
+其会话可：
 
 Its sign-in isn’t in the keyring: sign in again.
 密钥环中没有登录信息，请重新登录。
@@ -5083,6 +5659,9 @@ Keep HDR on for {}?
 Keep It Going
 继续工作
 
+Keep It Going in “{}”
+在“{}”中继续工作
+
 Keep It Going says
 继续工作提示语
 
@@ -5161,6 +5740,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 正在保存已完成的部分…
 
+Keeps a build’s files in memory and running programs out of swap.
+将构建文件留在内存中，避免运行中的程序被换出到交换空间。
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 在大量同步写入或丢弃操作涌向 NVMe 硬盘时仍可限制读取延迟，而 Linux 默认的 "none" 仅限制后台回写 (queue/scheduler)。
 
@@ -5185,6 +5767,9 @@ Kept on this computer; made in 1Password once you sync an account.
 Kernel
 内核
 
+Kernel limits
+内核限制
+
 Kernel:
 内核：
 
@@ -5199,6 +5784,9 @@ Key password:
 
 Key {} trusted.
 已信任密钥 {}。
+
+Key:
+密钥：
 
 Keyboard
 键盘
@@ -5275,6 +5863,12 @@ Larger Pointer
 Last
 上次
 
+Last 30 days
+最近 30 天
+
+Last 7 days
+最近 7 天
+
 Last Page
 最后一页
 
@@ -5286,6 +5880,9 @@ Last backed up {}
 
 Last clean-up
 上次清理
+
+Last day
+最近 1 天
 
 Last used
 上次使用
@@ -5383,6 +5980,15 @@ Less space between windows
 Let coding agents keep their tab’s title current
 允许编程智能体更新标签页标题
 
+Let your other devices reach this computer’s sessions over Tailscale
+允许其他设备通过 Tailscale 访问本机上的会话
+
+Lets a build’s many small writes reach the disk together.
+让构建产生的大量小写入合并写入磁盘。
+
+Lets agents there use your accounts, even with this computer off.
+即使本机关机，远程智能体也能使用您的账户。
+
 Letting go of backups past keeping
 正在清理已过期的备份
 
@@ -5446,6 +6052,9 @@ Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 限制等待写入的数据量
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+提高 Linux 系统的默认限制，以适应长时间构建和大量会话。
+
 Line
 行
 
@@ -5493,6 +6102,9 @@ Lists
 
 Live
 实时
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+实时查看 Rex 中等待、出错及运行中的编程智能体和已打开会话。
 
 Load
 负载
@@ -5578,6 +6190,12 @@ Look for codes in:
 Look:
 外观：
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+管理服务器需要 root 权限。请选择远程主机 root 接受的密钥。若均不可用，请将公钥添加到该机器的 /root/.ssh/authorized_keys 后重试。
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+管理服务器需要 root 权限。请解锁 Olo Passwords，或在其中添加 {} 的 root 接受的密钥。
+
 Looking at Bluetooth…
 正在检查蓝牙…
 
@@ -5592,6 +6210,9 @@ Looking at what’s there…
 
 Looking at which processes use it…
 正在查找使用它的进程…
+
+Looking at {}…
+正在检查 {}…
 
 Looking for Bluetooth…
 正在查找蓝牙…
@@ -5788,6 +6409,12 @@ Making it again, empty
 Making it…
 正在创建…
 
+Manage Host…
+管理主机…
+
+Manage Rex Server…
+管理 Rex 服务器…
+
 Manually
 手动
 
@@ -5854,6 +6481,9 @@ Media errors
 Medium
 中
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+rex 组成员使用共享服务器，其中的所有终端都以 rex 账户运行。更改将在他们下次登录时生效。
+
 Membership
 成员身份
 
@@ -5862,6 +6492,9 @@ Memory
 
 Memory Pressure
 内存压力
+
+Memory for builds
+构建内存
 
 Memory free
 可用内存
@@ -6127,6 +6760,12 @@ Move Group to Window
 Move Here
 移动到此处
 
+Move Tab Left
+将标签页左移
+
+Move Tab Right
+将标签页右移
+
 Move Tab to New Window
 将标签页移动到新窗口
 
@@ -6211,6 +6850,9 @@ Moving {} to the Trash
 Moving {} to the Trash…
 正在将 {} 移到废纸篓…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+使用 Ghostty VT、分屏、浮动层与实时 AI 智能体监控，复用本地与远程 SSH/Tailscale 工作区。
+
 Music
 音乐
 
@@ -6283,8 +6925,17 @@ Nearby
 Needed by another package
 其他软件包所需
 
+Needs curl there
+远程主机需要安装 curl
+
 Needs full access
 需要完全访问权限
+
+Needs git there
+远程主机需要安装 git
+
+Neither kind of Rex server is in use on {}. Start one of them:
+{} 上未启用任何 Rex 服务器，请启动其中一种：
 
 Network
 网络
@@ -6318,6 +6969,9 @@ New Conversation
 
 New Event…
 新建日程…
+
+New Floating Terminal
+新建浮动终端
 
 New Folder
 新建文件夹
@@ -6358,6 +7012,9 @@ New Sections
 New Section…
 新建分组…
 
+New Session
+新建会话
+
 New Signature…
 新建签名…
 
@@ -6396,6 +7053,9 @@ New description
 
 New event
 新建日程
+
+New host
+新建主机
 
 New message
 新消息
@@ -6456,6 +7116,9 @@ Next Page
 
 Next Tab
 下一个标签页
+
+Next Waiting Agent
+下一个等待中的智能体
 
 Next Week
 下周
@@ -6538,6 +7201,9 @@ No Pull Request
 No Receivers Paired
 没有已配对的接收器
 
+No SSH hosts yet
+尚无 SSH 主机
+
 No Saved Groups
 没有已保存的组
 
@@ -6549,6 +7215,12 @@ No To-Do Chosen
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 没有 VPN。请导入 WireGuard 配置，或使用提供方的应用添加 VPN。
+
+No account is listed: nobody can sign in through the login server.
+名单为空，没有人能通过登录服务器登录。
+
+No active SSH authentication request.
+当前没有活动的 SSH 身份验证请求。
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 应用必须先请求授权才能访问项目。请求出现时，选择“始终批准”即可长期授权，之后可在这里撤销。
@@ -6616,6 +7288,9 @@ No keyboards are plugged in.
 No limit
 没有限制
 
+No matching entries
+无匹配项
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 尚未与 {} 互发消息。下方输入的内容将由您的手机作为短信发送。
 
@@ -6643,6 +7318,9 @@ No phone or mail account is set up: a phone in Phone, a Google or Fastmail accou
 No phone paired
 未配对手机
 
+No pool
+未配置 Token Pool
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 电源配置服务未运行（power-profiles-daemon，Fedora 也可用 tuned-ppd）。Olo 需要通过此服务设置电源模式。
 
@@ -6660,6 +7338,12 @@ No process uses much of it now
 
 No processes match.
 没有匹配的进程。
+
+No programs in the panes are listening on ports, and none is forwarded here.
+各窗格中没有程序在监听端口，也没有转发到此处的端口。
+
+No repositories yet.
+尚无仓库。
 
 No screen recordings yet. Record one with ⌘⇧6.
 尚无屏幕录像。按 ⌘⇧6 开始录制。
@@ -6687,6 +7371,9 @@ No {} for this account.
 
 No: it did no better ({}), so the weights before stay
 否：效果未改善（{}），保留原权重
+
+Nobody is in the rex group.
+rex 组中还没有成员。
 
 Noise
 噪声
@@ -6718,8 +7405,17 @@ None (flat)
 None asked for yet: type in brush
 尚未请求建议，请在 brush 中输入
 
+None chosen
+未选择
+
 None connected to Olo yet.
 尚无设备连接到 Olo。
+
+None found
+未找到
+
+None in that time
+该时间段内无会话
 
 None in the last minute
 过去一分钟没有
@@ -6817,6 +7513,9 @@ Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 尚未检查。选择“验证”可读回数据并检查完整性。
 
+Not cloned
+未克隆
+
 Not connected
 未连接
 
@@ -6828,6 +7527,9 @@ Not connected: {}.
 
 Not enough touches to learn from
 触摸样本不足
+
+Not fixed with the others: it has its own button.
+不会随其他项一并修复，请使用其单独按钮。
 
 Not found
 未找到
@@ -6847,6 +7549,15 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 过去一分钟没有，自此窗口打开以来有 {}
 
+Not installed
+未安装
+
+Not known
+未知
+
+Not on the path
+未加入 PATH
+
 Not paired
 未配对
 
@@ -6864,6 +7575,9 @@ Not saved: {}
 
 Not sent: {}
 未发送：{}
+
+Not set
+未设置
 
 Not set up
 未设置
@@ -6922,6 +7636,9 @@ Nothing backed up yet.
 Nothing came from the microphone.
 未收到麦克风输入。
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+无法从这里在 {} 上安装任何内容，因为它未通过 SSH 连接。
+
 Nothing changed: Olo's own model is still in use.
 未作更改，仍在使用 Olo 自带的模型。
 
@@ -6937,6 +7654,9 @@ Nothing done yet
 Nothing due today
 今天没有到期的任务
 
+Nothing else was changed.
+未更改其他内容。
+
 Nothing found
 未找到
 
@@ -6949,6 +7669,9 @@ Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 恢复前不会备份或发送任何内容。{}。{}。
 
+Nothing is changed until you choose something to do.
+在您选择操作之前不会更改任何内容。
+
 Nothing more today
 今天没有其他日程
 
@@ -6957,6 +7680,18 @@ Nothing new
 
 Nothing new to learn
 没有新的学习内容
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+本机未向“{}”授予任何权限。如需授权，请前往“偏好设置 ▸ Rex”。
+
+Nothing on {} is changed yet.
+{} 上尚未做出任何更改。
+
+Nothing on {} is known until it connects.
+连接后才能查看 {} 上的情况。
+
+Nothing on {} is known until it’s connected.
+连接后才能查看 {} 上的情况。
 
 Nothing read yet
 尚未读取
@@ -6976,11 +7711,17 @@ Nothing to do here
 Nothing to do.
 无需操作。
 
+Nothing to rename.
+没有可重命名的项目。
+
 Nothing to show yet
 暂无可显示的内容
 
 Nothing to tune for its driver ({}) yet.
 暂时无法调节此驱动（{}）。
+
+Nothing was changed on {}.
+{} 上未做任何更改。
 
 Notification
 通知
@@ -7111,8 +7852,29 @@ Olo 安装程序
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 这台电脑上没有 {} 的专属应用。请填入客户端 ID 和密钥（Google Cloud ▸ 对应的 Olo 项目 ▸ 客户端），或取消并选择“添加 Google 账户…”，让智能体代为设置。
 
+Olo has no releases yet.
+Olo 尚无发布版本。
+
+Olo has no typing helper for {}.
+Olo 没有适用于 {} 的输入助手。
+
+Olo is up to date (looked {}).
+Olo 已是最新版本（检查于 {}）。
+
+Olo is up to date.
+Olo 已是最新版本。
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo 保存着{}{}的登录凭据、密钥和 Wi-Fi 密码，可用登录密码解锁。
+
+Olo looks for a newer release every hour.
+Olo 每小时检查一次新版本。
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo 在启动两分钟后检查新版本，之后每小时检查一次。
+
+Olo restarts once it's installed.
+安装完成后 Olo 将自动重启。
 
 Olo saying its name
 Olo 读出自己的名字
@@ -7138,14 +7900,59 @@ Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 Olo 自带的手掌模型，由 {} 次真实手部触摸训练而成。可在“偏好设置 ▸ 触控板与鼠标 ▸ 触摸”中训练自己的模型
 
+Olo's releases couldn't be listed: {}
+无法列出 Olo 的发布版本：{}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+“{}”已安装 Olo 桥接，但尚未授予任何权限。如需授权，请前往“偏好设置 ▸ Rex”。
+
+Olo’s bridge is on “{}”.
+“{}”已安装 Olo 桥接。
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+“{}”未安装 Olo 桥接。如需安装，请选择“智能体 ▸ 安装 Olo 桥接”。
+
 Olo’s keyring isn’t running here; it starts with your session.
 Olo 密钥环未在此处运行，它会随您的会话启动。
 
 Olo’s language:
 Olo 语言：
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+之后 Olo 自带应用即可用这些密钥登录，直到 Passwords 锁定或最后一次使用后 10 分钟。密钥本身仍留在本机。
+
 Olo’s phone service isn’t running.
 Olo 电话服务未运行。
+
+Olo’s skill for agents is on “{}”.
+“{}”已安装 Olo 智能体技能。
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+“{}”未安装 Olo 智能体技能。如需安装，请选择“智能体 ▸ 安装 Olo 智能体技能”。
+
+Olo’s typing helper is being added to “{}”…
+正在将 Olo 输入助手添加到“{}”…
+
+Olo’s typing helper is on “{}”.
+“{}”已安装 Olo 输入助手。
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo 输入助手已关闭。如需使用，请选择“设置 ▸ 在主机上使用 Olo 输入助手”。
+
+Olo’s typing helper isn’t on “{}”.
+“{}”未安装 Olo 输入助手。
+
+Olo’s typing helper isn’t on “{}”: {}
+“{}”未安装 Olo 输入助手：{}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+已将 Olo 输入助手添加到您在“{}”上的账户，下次连接时启用。
+
+Olo’s typing helper was added to your account on “{}”.
+已将 Olo 输入助手添加到您在“{}”上的账户。
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+已将 Olo 输入助手添加到“{}”，下次连接时启用。
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Olo 窗口会立即切换语言。其他程序会在下次启动时切换到各自支持的语言。
@@ -7192,14 +7999,29 @@ On it now
 On the day, at 9 AM
 当天上午 9 点
 
+On the host
+在主机上
+
 On the network
 网络上
+
+On the path
+已加入 PATH
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 在手机上打开“设置 ▸ 蓝牙”并停留在该页面。片刻后，手机就会出现在这里。
 
+On the tailnet as {}.
+已加入 tailnet，名称为 {}。
+
+On this computer
+在本机上
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 在手机的 Telegram 中打开“设置 ▸ 设备 ▸ 连接桌面设备”，然后扫描此码。
+
+On {}
+在 {} 上
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 当前使用{0}：{1}。改动设置后会切换到自定义{2}。各模式的具体配置见“电源模式”。
@@ -7261,6 +8083,9 @@ Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 相同通知仅保留最新一条
 
+Only this computer can reach these sessions.
+仅本机可访问这些会话。
+
 Only when I choose Sync Now
 仅在选择“立即同步”时
 
@@ -7318,6 +8143,9 @@ Open Power
 Open Pull Request #{}
 打开拉取请求 #{}
 
+Open Rex Preferences
+打开 Rex 偏好设置
+
 Open Saved Group
 打开已保存的组
 
@@ -7342,11 +8170,20 @@ Open With
 Open With Offers
 “打开方式”选项
 
+Open a host’s Account window to see how each stands there, and to clone.
+打开主机的“账户”窗口即可查看各仓库状态并进行克隆。
+
 Open files
 打开文件
 
+Open files and tasks
+打开文件与任务数
+
 Open in Google Drive
 在 Google Drive 中打开
+
+Open in Rex
+在 Rex 中打开
 
 Open in Terminal
 在 Terminal 中打开
@@ -7356,6 +8193,9 @@ Open in Tracker
 
 Open kache's Log
 打开 kache 日志
+
+Open links on this computer
+在本机打开链接
 
 Open my.telegram.org
 打开 my.telegram.org
@@ -7372,11 +8212,17 @@ Open {} to see it.
 Open {} to see them.
 打开 {} 即可查看这些项目。
 
+OpenAI’s coding agent.
+OpenAI 的编程智能体。
+
 OpenDocument Text…
 OpenDocument 文本…
 
 Opening programs’ secrets…
 正在打开程序的机密信息…
+
+Opening session…
+正在打开会话…
 
 Opening the backup in {}
 正在打开 {} 中的备份
@@ -7425,6 +8271,9 @@ Other Mice
 
 Other Updates
 其他更新
+
+Other releases:
+其他版本：
 
 Other workspaces’ applications start collapsed
 默认折叠其他工作区的应用
@@ -7521,6 +8370,9 @@ Palms caught
 
 Palms while typing
 打字时的手掌
+
+Pane
+窗格
 
 Panel
 面板
@@ -7624,6 +8476,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 密码和登录信息：这里没有可用于存储的登录密钥环，因此未导入。
 
+Passwords answered something else
+Passwords 返回了意外响应
+
 Passwords answered something else.
 Passwords 返回了意外的响应。
 
@@ -7648,17 +8503,26 @@ Passwords 未保存密钥。
 Passwords for Every Screen…
 所有屏幕的密码…
 
+Passwords has no SSH keys to offer.
+Passwords 中没有可用的 SSH 密钥。
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords 中没有 Google 账户的登录项。请先添加登录项，或手动设置应用。
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 Passwords 中没有“{}”项目。请在“文件 ▸ 数据提供方…”中重新输入密钥。
 
+Passwords is locked
+Passwords 已锁定
+
 Passwords is locked.
 Passwords 已锁定。
 
 Passwords isn’t running.
 Passwords 未运行。
+
+Passwords isn’t set up
+Passwords 尚未设置
 
 Passwords isn’t set up yet.
 尚未设置 Passwords。
@@ -7692,6 +8556,9 @@ Passwords’ password is used now: try again.
 
 Paste
 粘贴
+
+Paste Password…
+粘贴密码…
 
 Paste as Attachment
 粘贴为附件
@@ -7854,6 +8721,15 @@ Polish
 
 Pool
 Pool
+
+Port
+端口
+
+Port:
+端口：
+
+Ports
+端口
 
 Portuguese
 葡萄牙语
@@ -8047,14 +8923,26 @@ Profile:
 Program
 程序
 
+Program folder
+程序文件夹
+
 Program names, comma separated
 程序名称，以逗号分隔
+
+Programs
+程序
 
 Programs Using the Network
 使用网络的程序
 
 Programs Using the {}
 使用{}的程序
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+之后该主机上的程序即可使用这些密钥，直到 Passwords 锁定或最后一次使用后 10 分钟。密钥本身仍留在本机。
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+“{}”上的程序可按权限设置（偏好设置 ▸ Rex）通过 Rex 使用本机功能。
 
 Programs’ Secrets
 程序的机密信息
@@ -8097,6 +8985,9 @@ Put the computer to sleep after:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 将备份中的所选项目恢复到当前位置，其他内容会保留。操作前会先保存现有内容。
+
+Putting it in place
+正在部署
 
 Putting {} back
 正在将 {} 放回原处
@@ -8179,6 +9070,12 @@ Ran for
 Range
 范围
 
+Reach its local servers
+访问其本地服务器
+
+Reach their local servers
+访问其本地服务器
+
 Reaches:
 范围：
 
@@ -8191,14 +9088,26 @@ Read
 Read Quota Now
 立即读取额度
 
+Read and set the clipboard
+读取和设置剪贴板
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 从存储位置读回所选备份所需的每个字节，并像实际恢复时一样逐块验证
+
+Read just now
+刚刚读取
 
 Read ones fade, then move to Cleared; unread ones stay.
 已读通知会淡出并移至“已清除”，未读通知会保留。
 
 Read only
 只读
+
+Read {} h ago
+{} 小时前读取
+
+Read {} min ago
+{} 分钟前读取
 
 Reading /etc/hosts…
 正在读取 /etc/hosts…
@@ -8230,6 +9139,9 @@ Reading the index again
 Reading the journal…
 正在读取日志…
 
+Reading the log…
+正在读取日志…
+
 Reading the packages…
 正在读取软件包…
 
@@ -8244,6 +9156,12 @@ Reading…
 
 Reads
 读取次数
+
+Ready
+就绪
+
+Ready: it starts when somebody signs in
+就绪：有人登录时自动启动
 
 Real-time priority
 实时优先级
@@ -8268,6 +9186,12 @@ Recommended by another package
 
 Recommended for it
 此设备的建议值
+
+Reconnecting (try {})…
+正在重新连接（第 {} 次尝试）…
+
+Reconnecting. {}
+正在重新连接。{}
 
 Record
 录制
@@ -8377,8 +9301,14 @@ Reinstall Selected…
 Reject
 拒绝
 
+Release:
+版本：
+
 Reload
 重新加载
+
+Reload Server Configuration
+重新加载服务器配置
 
 Reload Without the Cache
 忽略缓存重新加载
@@ -8395,6 +9325,9 @@ Reminder:
 Remote
 远程
 
+Remote Access…
+远程访问…
+
 Removable Disks
 可移动磁盘
 
@@ -8407,8 +9340,14 @@ Remove Account
 Remove Graph
 移除图表
 
+Remove Host
+移除主机
+
 Remove Place
 移除地点
+
+Remove Pool
+移除 Token Pool
 
 Remove Repository
 移除软件源
@@ -8434,8 +9373,17 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 从池中移除此账户吗？本机的登录信息会被删除，账户本身会保留。
 
+Remove the Token Pool from {}?
+要从 {} 移除 Token Pool 吗？
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+要从 {} 移除 Token Pool 吗？远程主机上的 Claude Code 和 Codex 将恢复使用各自的登录状态。其账户登录信息会先取回本机。
+
 Remove the VPN “{}”? Its settings and keys go with it.
 移除 VPN“{}”吗？其设置和密钥也将移除。
+
+Remove the bridge, skill and typing helper?
+要移除桥接、技能和输入助手吗？
 
 Remove the {}? It will no longer unlock anything.
 移除{}吗？此后将无法再用它解锁。
@@ -8451,6 +9399,9 @@ Remove “{}” from Favorites
 
 Remove…
 移除…
+
+Removing
+正在移除
 
 Removing…
 正在移除…
@@ -8472,6 +9423,12 @@ Rename Place…
 
 Rename Section
 重命名分组
+
+Rename Session…
+重命名会话…
+
+Rename Tab…
+重命名标签页…
 
 Rename Worktree…
 重命名工作树…
@@ -8554,6 +9511,9 @@ Reset Passwords
 Reset Passwords…
 重置 Passwords…
 
+Reset Terminal
+重置终端
+
 Reset Thresholds
 重置阈值
 
@@ -8610,6 +9570,12 @@ Restart kache
 
 Restart, Asking First
 先询问再重启
+
+Restarting or stopping it ends every session.
+重启或停止它将结束所有会话。
+
+Restarting or stopping it leaves open sessions running.
+重启或停止它不会中断已打开的会话。
 
 Restart…
 重启…
@@ -8692,6 +9658,54 @@ Reverting in {} seconds.
 Rewriting index.db…
 正在重写 index.db…
 
+Rex
+Rex
+
+Rex Server
+Rex 服务器
+
+Rex Server on {}
+{} 上的 Rex 服务器
+
+Rex adds these entries to {} as {}:
+Rex 将以 {1} 身份向 {0} 添加以下条目：
+
+Rex changes {} as {}:
+Rex 将以 {1} 身份更改 {0}：
+
+Rex isn’t installed
+Rex 未安装
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+Rex 尚无通过 SSH 连接的主机。请在 Rex 或“偏好设置 ▸ Rex”中添加。
+
+Rex needs an address to connect.
+Rex 需要地址才能连接。
+
+Rex picks a free port on this computer; the Ports list shows it.
+Rex 会自动选择本机上的空闲端口，并在端口列表中显示。
+
+Rex removes these as {}:
+Rex 将以 {} 身份移除以下内容：
+
+Rex runs this as {}:
+Rex 将以 {} 身份运行此命令：
+
+Rex sets these as {}:
+Rex 将以 {} 身份设置以下内容：
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex 将使用 Olo Passwords 中的 SSH 密钥以 {} 身份登录，验证成功前不会做出任何更改。
+
+Rex signs in as {}@{}, as it will to connect.
+Rex 将以 {}@{} 身份登录，与连接时相同。
+
+Rex: Agents & Sessions
+Rex：智能体与会话
+
+Rex’s own server. It can’t be disconnected or removed.
+Rex 自带服务器，无法断开连接或移除。
+
 Rich Text (RTF)…
 富文本（RTF）…
 
@@ -8725,6 +9739,9 @@ Roll up or down
 Room:
 空间：
 
+Root on {} didn’t accept your keys
+{} 上的 root 未接受您的密钥
+
 Rotate Left
 向左旋转
 
@@ -8749,6 +9766,9 @@ Router:
 Rows
 行
 
+Rows:
+行数：
+
 Ruby
 Ruby
 
@@ -8763,6 +9783,15 @@ Run on it with “olo-screen run”
 
 Running
 运行中
+
+Running Rex’s installer as {}
+正在以 {} 身份运行 Rex 安装程序
+
+Running for {}
+已运行 {}
+
+Running systemctl as {}
+正在以 {} 身份运行 systemctl
 
 Runs on
 运行设备
@@ -8793,6 +9822,18 @@ SSD 温度
 
 SSE
 东南偏南
+
+SSH Authentication
+SSH 身份验证
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSH 默认允许单条连接开启 10 个会话，每个窗格占用 1 个。
+
+SSH keys
+SSH 密钥
+
+SSH sessions
+SSH 会话
 
 SSW
 西南偏南
@@ -9025,6 +10066,9 @@ Select All Conversations
 Select All Screens
 选择所有屏幕
 
+Select Last Output
+选中上次输出
+
 Select None
 取消全选
 
@@ -9133,11 +10177,29 @@ Service Order
 Session:
 会话：
 
+Sessions
+会话
+
+Sessions on this computer may:
+本机上的会话可：
+
+Sessions on {} may:
+{} 上的会话可：
+
+Sessions there keep running.
+远程会话将继续运行。
+
+Sessions used in
+会话时间范围
+
 Set
 设置
 
 Set Background
 设置背景
+
+Set Rex up there if it needs it
+如需要则在远程配置 Rex
 
 Set Time Zone
 设置时区
@@ -9148,8 +10210,14 @@ Set Up
 Set Up Again…
 重新设置…
 
+Set Up This Host’s Account…
+设置此主机的账户…
+
 Set Up by Hand…
 手动设置…
+
+Set Up {}
+设置 {}
 
 Set Up…
 设置…
@@ -9163,6 +10231,21 @@ Set for the whole computer by {}{}.
 Set up ({} looks).
 已设置（已录入 {} 种面容）。
 
+Set up with
+初始化命令
+
+Set up with:
+初始化命令：
+
+Set up your own Rex server on {}
+在 {} 上设置您的专属 Rex 服务器
+
+Set up {} as a Rex login server
+将 {} 设置为 Rex 登录服务器
+
+Set up {} as a shared Rex server
+将 {} 设置为共享 Rex 服务器
+
 Setting
 设置
 
@@ -9171,6 +10254,9 @@ Setting it: an administrator's password is asked…
 
 Setting up backups to {}…
 正在设置到 {} 的备份…
+
+Setting up needs root. Nothing on {} is changed yet.
+设置需要 root 权限，{} 上尚未做出任何更改。
 
 Setting up the backups in {}’s Google Drive…
 正在 {} 的 Google Drive 中设置备份…
@@ -9181,11 +10267,26 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 设置{}需要输入密码和密钥 PIN，并触摸密钥两次：
 
+Setting up {} of {}…
+正在设置第 {} 项（共 {} 项）…
+
+Setting up {}…
+正在设置 {}…
+
+Setting up…
+正在设置…
+
 Settings
 设置
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+包含设置、指令、技能和命令，绝不包含登录信息或密钥。
+
 Settings:
 设置：
+
+Setting…
+正在设置…
 
 Seventh folder
 第 7 个文件夹
@@ -9289,11 +10390,17 @@ Show File in Tracker
 Show Hidden Files
 显示隐藏文件
 
+Show Idle Panes in Activity
+在活动中显示空闲窗格
+
 Show Notifications
 显示通知
 
 Show Only {}
 仅显示{}
+
+Show Pane Headers
+显示窗格标题栏
 
 Show Places
 显示地点
@@ -9318,6 +10425,9 @@ Show Source
 
 Show Toolbars
 显示工具栏
+
+Show Typing Immediately
+立即显示键入内容
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 右键点击窗口标题或打开其 Deskbar 菜单，选择“通过 AirPlay 显示”即可投送窗口。在 Viewer 或 Tracker 中选择“播放到”可投送影片。
@@ -9421,6 +10531,9 @@ Sign In Again in Terminal…
 Sign In Again…
 重新登录…
 
+Sign In to Tailscale…
+登录 Tailscale…
+
 Sign In with Google
 使用 Google 登录
 
@@ -9432,6 +10545,12 @@ Sign Out
 
 Sign Out…
 退出登录…
+
+Sign in to connect this server to Tailscale.
+请登录以将此服务器连接到 Tailscale。
+
+Sign in to other hosts with your SSH keys
+使用您的 SSH 密钥登录其他主机
 
 Sign in to {} as “{}” with your passkey?
 使用通行密钥以“{1}”的身份登录 {0} 吗？
@@ -9454,6 +10573,12 @@ Signed in as {} ({}).
 Signed in as {}.
 已以 {} 的身份登录。
 
+Signing in as {} with a key from Olo Passwords
+正在使用 Olo Passwords 中的密钥以 {} 身份登录
+
+Signing in as {}…
+正在以 {} 身份登录…
+
 Signing in to Fastmail…
 正在登录 Fastmail…
 
@@ -9471,6 +10596,9 @@ Size
 
 Size:
 大小：
+
+Skill for agents
+智能体技能
 
 Skip syncing the index to disk
 跳过将索引同步到磁盘
@@ -9549,6 +10677,9 @@ Soft
 
 Software License
 软件许可证
+
+Software Update
+软件更新
 
 Sol 6.1
 Sol 6.1
@@ -9631,6 +10762,15 @@ Speed:
 Spiral
 螺旋
 
+Split Down
+向下拆分
+
+Split Right
+向右拆分
+
+Split to Fit
+自适应拆分
+
 Standard
 标准
 
@@ -9648,6 +10788,9 @@ Start Over
 
 Start Over…
 重新开始…
+
+Start Terminal Here
+在此启动终端
 
 Start Test
 开始测试
@@ -9678,6 +10821,9 @@ other: 开始于 {n} 小时前
 
 Started {n} minutes ago
 other: 开始于 {n} 分钟前
+
+Starting Tailscale…
+正在启动 Tailscale…
 
 Starting Up
 正在启动
@@ -9739,8 +10885,14 @@ Steady sleet
 Steady snow
 持续降雪
 
+Step 1 is done. Try Again carries on from step 2.
+第 1 步已完成。点击“重试”将从第 2 步继续。
+
 Step {} of {}
 第 {} 步，共 {} 步
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+步骤 1 至 {} 已完成。点击“重试”将从第 {} 步继续。
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 已过 {} 仍在进行。其他修复会等待它完成；如果一直无法完成，重新启动电脑即可停止。
@@ -9781,6 +10933,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 停止与 {} 同步吗？这些账户的项目以及本机尚未发送的更改都将从本机移除。1Password 中的内容不受影响。
 
+Stopped before step {} of {}
+已在第 {} 步（共 {} 步）前停止
+
 Stopped part way, {}
 中途停止，{}
 
@@ -9792,6 +10947,9 @@ Stopped.
 
 Stopped: what was restored so far is there.
 已停止。已经恢复的内容仍会保留。
+
+Stopping after this step…
+将在此步骤后停止…
 
 Stopping the backup
 正在停止备份
@@ -9994,6 +11152,9 @@ Tab 8
 Tab 9
 标签页 9
 
+Tab {}
+标签页 {}
+
 Table
 表格
 
@@ -10008,6 +11169,12 @@ Tabs on Agent Screens are never given a code.
 
 Tags:
 标签：
+
+Tailscale status is unavailable.
+无法获取 Tailscale 状态。
+
+Tailscale: {}.
+Tailscale：{}。
 
 Take Back
 撤销授权
@@ -10075,6 +11242,9 @@ Tell coding agents to use Olo’s Agent Screens
 Tell me of:
 通知我：
 
+Tell me when an agent whose pane isn’t in front:
+当不在前台窗格中的智能体出现以下情况时提醒我：
+
 Tell me when it runs out, and when it's back
 额度耗尽或恢复时通知我
 
@@ -10083,6 +11253,12 @@ Tell palms apart with a palm model
 
 Tell palms apart with a palm model too
 同时使用手掌模型辅助识别
+
+Telling Codex there of them
+正在告知远程 Codex
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+告知远程主机上的 Claude Code 和其他智能体如何使用桥接和 Rex。
 
 Temperature
 温度
@@ -10219,8 +11395,14 @@ MTU 必须是以字节为单位的数值。
 The New Build
 新构建版本
 
+The Rex server isn’t connected.
+Rex 服务器未连接。
+
 The Theme’s Own
 主题默认值
+
+The Token Pool running on this computer is older: upgrade it first.
+本机运行的 Token Pool 版本较旧，请先升级。
 
 The VPN couldn't be saved.
 无法保存 VPN。
@@ -10230,6 +11412,15 @@ The account answering now
 
 The account couldn’t be saved ({}).
 无法保存账户（{}）。
+
+The accounts file couldn’t be read.
+无法读取账户文件。
+
+The accounts’ latest sign-ins are copied back here first.
+各账户最新的登录信息会先复制回本机。
+
+The address has no repository’s name in it.
+地址中未包含仓库名称。
 
 The address search answered {}.
 地址搜索响应：{}。
@@ -10285,6 +11476,9 @@ The code from {}, at {}.
 The coming days, each its sky, low and high.
 未来几天的天气，以及每天的最低和最高气温。
 
+The command runs once, in the new clone. Leave it empty for none.
+克隆完成后会在新目录中运行一次此命令，留空则不运行。
+
 The computer couldn't be restarted: {}
 无法重启电脑：{}
 
@@ -10330,8 +11524,17 @@ The first backup starts in a moment.
 The first fine-tune failed: {}
 首次微调失败：{}
 
+The first look is two minutes after it starts.
+启动两分钟后进行首次检查。
+
+The folder is a place under your home there (src/name).
+文件夹位于远程主目录下（如 src/name）。
+
 The hand-written ones: not fine-tuned yet
 手写规则：尚未微调
+
+The host didn’t say what it has.
+主机未报告已安装内容。
 
 The icons {} is drawn with, everywhere.
 {} 在各处使用的图标。
@@ -10396,6 +11599,12 @@ The last backup was {}
 The last hour of use
 最近一小时的使用情况
 
+The last install didn't go through.
+上次安装未成功。
+
+The last install didn't go through: {}
+上次安装未成功：{}
+
 The last whole one was {}
 上次完整备份：{}
 
@@ -10407,6 +11616,9 @@ The log can't be opened: {}
 
 The login keyring couldn't be read: {}
 无法读取登录密钥环：{}
+
+The login server isn’t running.
+登录服务器未运行。
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 所有应用的图标、窗口和控件外观，以及相配的墙纸。
@@ -10458,6 +11670,12 @@ The next hours, each its sky and temperature, with the chance of rain or the clo
 
 The one it started on
 最初所在的位置
+
+The ones you choose, cloned in your home folder there and set up once.
+您选择的仓库会克隆到远程主文件夹中并完成一次初始化。
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+打开文件数限制将在下次登录时生效（已打开的窗格需断开并重新连接），服务则在下次启动时生效。
 
 The package service reads what’s installed and what each repository has.
 软件包服务正在读取已安装的软件包和各软件源的内容。
@@ -10540,6 +11758,9 @@ CPU
 The processor (OpenH264)
 CPU（OpenH264）
 
+The program in this pane is asking for a password.
+此窗格中的程序正在请求密码。
+
 The repository has a worktree called {} already.
 此仓库已有名为 {} 的工作树。
 
@@ -10557,6 +11778,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 输入服务器的 CalDAV 地址、登录名和密码。密码将保存在登录密钥环中。
+
+The shared server isn’t running.
+共享服务器未运行。
 
 The shell has ended.
 Shell 已结束。
@@ -10672,6 +11896,9 @@ There is no limit “{}”.
 There is nothing to share.
 没有可共享的内容。
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+{} 上空间不足。请选择更短的时间范围，或清理空间。
+
 There's no Bluetooth adapter.
 没有蓝牙适配器。
 
@@ -10686,6 +11913,9 @@ There's no fingerprint sensor, or fprintd isn't running.
 
 There's no infrared camera.
 没有红外摄像头。
+
+There: {} <{}>  ·  Here: {} <{}>
+远程：{} <{}>  ·  本机：{} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 这些应用每次请求时都可以访问列出的项目。撤销授权后，下次请求时会重新询问。
@@ -10717,6 +11947,15 @@ This Computer
 This Computer's Microphones
 本机麦克风
 
+This Olo upgrades from the build it came from, not from releases.
+此 Olo 从其构建来源升级，而不从发布版本升级。
+
+This Olo was built from source: it upgrades from its build, not from releases.
+此 Olo 从源码构建，从本地构建升级，而不从发布版本升级。
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+此 Olo 构建时未包含主机版 Token Pool，因此无法安装。
+
 This PDF can't be edited, so it can't be saved.
 此 PDF 无法编辑，因此无法保存。
 
@@ -10741,6 +11980,9 @@ This account has a two-step password.
 This backup was made by a newer Olo.
 此备份由更新版本的 Olo 创建。
 
+This computer
+本机
+
 This computer has no Bluetooth.
 这台电脑没有蓝牙。
 
@@ -10762,6 +12004,9 @@ This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and l
 This computer's sensor sees when someone is in front of it.
 本机的传感器可以检测电脑前是否有人。
 
+This computer’s git doesn’t say who you are.
+本机的 git 未配置用户信息。
+
 This display reports no modes.
 此显示器未报告任何显示模式。
 
@@ -10771,6 +12016,12 @@ This event
 This folder was moved or deleted.
 此文件夹已被移动或删除。
 
+This host isn’t reached over SSH.
+此主机未通过 SSH 连接。
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+此主机未通过 SSH 连接，无法从此处查看或更改其账户设置。
+
 This is the recommended profile for this touchpad.
 这是此触控板的推荐配置。
 
@@ -10779,6 +12030,9 @@ This isn't an Olo backup.
 
 This isn't the session at the computer, so the computer isn't restarted.
 这不是电脑本地会话，因此未重启电脑。
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+这不是有效的仓库地址（如 git@host:owner/name.git 或 https://…）。
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 此内核不支持按磁盘分别设定限制（Linux 6.2 及以上版本支持）。
@@ -10927,6 +12181,9 @@ To the next display
 To the previous display
 移到上一个显示器
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+如需使用，请选择“设置 ▸ 在主机上使用 Olo 输入助手”。
+
 To {}
 到 {}
 
@@ -10972,17 +12229,29 @@ Today {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Pool 返回了意外响应。
+
 Token Pool asks {} to wait until one resets.
 Token Pool 已请 {} 等待，直至有额度重置。
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool 未运行，启动后即可查看额度。
 
+Token Pool isn’t running on this computer
+本机未运行 Token Pool
+
+Token Pool isn’t running on this computer.
+本机未运行 Token Pool。
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool：导入的账户已暂停使用。请在另一台电脑的池不再使用它们后，再在这里启用。登录凭据会自动续期；两台电脑若同时续期同一份凭据，会导致彼此退出登录。
+
+Token Pool…
+Token Pool…
 
 Token:
 令牌：
@@ -11110,6 +12379,9 @@ Trim…
 Trust
 信任
 
+Trust & Connect
+信任并连接
+
 Trust this repository’s key?
 信任此软件源的密钥吗？
 
@@ -11173,6 +12445,12 @@ Turn off displays
 Turn off screen
 关闭屏幕
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+要为“{}”打开自动批准吗？\n\n这是另一个程序请求的，不是你。当此窗格中的编程智能体请求继续（“Do you want to proceed?”）时，除非你在窗格中输入或按下停止，Rex 会在 {} 秒后回答“是”。
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+要为“{}”打开自动批准吗？\n\n这是另一个程序请求的，不是你。当此标签页中的编程智能体请求继续（“Do you want to proceed?”）时，除非你在标签页中输入或按下停止，Terminal 会在 {} 秒后回答“是”。
+
 Turn on for a laptop usually plugged in.
 经常接电使用的笔记本电脑建议开启。
 
@@ -11215,6 +12493,9 @@ Type a to-do above, and press Return.
 Type here to try the settings
 在这里输入以试用设置
 
+Type in All Panes
+在所有窗格中输入
+
 Type the PIN for “{}” (often 0000).
 请输入“{}”的 PIN（通常为 0000）。
 
@@ -11236,8 +12517,14 @@ Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 输入用于解锁的密码。
 
+Type the repository’s address.
+请输入仓库地址。
+
 Type this
 输入以下内容
+
+Type to filter…
+键入以筛选…
 
 Type with your palms down
 放下手掌打字
@@ -11347,6 +12634,9 @@ Unknown caller
 Unless the app says; kept while the pointer is over it.
 应用另有设置时优先；指针悬停时保留。
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+请解锁 Olo Passwords，或在其中添加 {} 的 root 接受的密钥。
+
 Unlock…
 解锁…
 
@@ -11358,6 +12648,9 @@ Unmute
 
 Unmute All
 全部取消静音
+
+Unpacking
+正在解压
 
 Unread notifications put a blue dot beside their app.
 有未读通知时，在应用旁显示蓝点。
@@ -11386,6 +12679,9 @@ Up a level
 Up for
 运行时长
 
+Up to date
+已是最新
+
 Upcoming
 即将到期
 
@@ -11398,14 +12694,23 @@ Update Interval
 Update Only This…
 仅更新此项…
 
+Update Rex on {} to {}?
+要将 {} 上的 Rex 更新到 {} 吗？
+
 Update Selected Only…
 仅更新所选项目…
 
 Update These {}…
 更新这 {} 项…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+更新会向 Rex 软件源查询新版本，如有则自动安装。
+
 Update every:
 更新间隔：
+
+Update installs it, with Rex’s installer.
+更新将通过 Rex 安装程序进行安装。
 
 Update the power service in Olo Doctor to use these policies.
 请在 Olo Doctor 中更新电源服务以使用这些策略。
@@ -11425,6 +12730,9 @@ Updates are downloaded and wait for the computer to restart: they’re installed
 Updating…
 正在更新…
 
+Upgrade
+升级
+
 Upgrade Fedora
 升级 Fedora
 
@@ -11433,6 +12741,9 @@ Upgrade Olo
 
 Upgrade to Fedora {}
 升级到 Fedora {}
+
+Upgrading
+正在升级
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 升级会先在后台下载 Fedora {} 的所有软件包，再在重启时安装。安装需要一段时间，其间无法使用电脑。文件、设置和应用都会保留。请先将当前发行版更新到最新状态，并做好备份。
@@ -11445,6 +12756,9 @@ Upload at most:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 备份时上传，恢复和清理时下载。限速立即生效，正在进行的备份也会受到限制。
+
+Uploading {}…
+正在上传 {}…
 
 Uploading: {}
 正在上传：{}
@@ -11461,6 +12775,9 @@ Urgent at
 Use
 使用
 
+Use Agent Screens
+使用智能体屏幕
+
 Use Battery Saver automatically
 自动启用省电模式
 
@@ -11476,8 +12793,14 @@ Use F1, F2, etc. as standard function keys
 Use Google Drive Instead…
 改用 Google Drive…
 
+Use Mine
+使用本机配置
+
 Use Music Quality
 使用音乐音质
+
+Use Olo’s Typing Helper on Hosts
+在主机上使用 Olo 输入助手
 
 Use Passwords for ssh
 让 SSH 使用 Passwords
@@ -11520,6 +12843,9 @@ Use:
 
 User
 用户
+
+User {}, over SSH
+用户 {}，通过 SSH
 
 Username or Site
 用户名或网站
@@ -11701,11 +13027,20 @@ Waiting
 Waiting for Ethernet
 正在等待以太网连接
 
+Waiting for a key from Olo Passwords
+正在等待 Olo Passwords 提供密钥
+
 Waiting for another fix to finish…
 正在等待另一项修复完成…
 
 Waiting for app_server…
 正在等待 app_server…
+
+Waiting for approval
+等待批准
+
+Waiting for host
+正在等待主机
 
 Waiting for it…
 正在等待响应…
@@ -11727,6 +13062,15 @@ Waiting for the touchpad…
 
 Waiting for you to sign in to Google in the browser…
 正在等待您在浏览器中登录 Google…
+
+Waiting for you to sign in…
+正在等待您登录…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+正在等待密钥代理登录到“{}”。如果密钥保存在 Passwords 中，它可能已锁定。
+
+Waiting for your key agent…
+正在等待密钥代理…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 正在等待“{}”授权。请检查其蓝牙设置中此电脑对应的开关。
@@ -11797,6 +13141,9 @@ Week Starts On
 Weights
 权重
 
+Welcome to Olo Rex
+欢迎使用 Olo Rex
+
 What
 类型
 
@@ -11842,6 +13189,9 @@ What should I wear today?
 What should I wear tomorrow?
 明天穿什么合适？
 
+What was done stays done. Setting it up again carries on from there.
+已完成的步骤会保留，再次设置将从断点继续。
+
 What you change applies when you leave Rescue.
 所做更改在退出救援模式时生效。
 
@@ -11880,6 +13230,12 @@ What’s coming up next week?
 
 What’s in the Trash
 废纸篓中的内容
+
+What’s installed on {} isn’t known until it connects.
+连接后才能查看 {} 上已安装的内容。
+
+What’s installed on {} isn’t known until it’s connected.
+连接后才能查看 {} 上已安装的内容。
 
 What’s next?
 接下来有什么安排？
@@ -12112,6 +13468,9 @@ Withdrawn by {}
 Word Document…
 Word 文档…
 
+Working
+工作中
+
 Working out what it comes to: every package it needs, and what it replaces…
 正在计算所需的软件包及其替换的内容…
 
@@ -12172,6 +13531,9 @@ Writes
 Writing the backup’s lists…
 正在写入备份清单…
 
+Writing to disk
+磁盘写入
+
 Written
 已写入
 
@@ -12186,6 +13548,9 @@ Yellow
 
 Yes
 是
+
+Yes in {} s
+{} 秒后同意
 
 Yesterday
 昨天
@@ -12244,8 +13609,14 @@ Your home folder is backed up every hour, leaving out what can be downloaded or 
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 在这台电脑上查看手机信息、联系人和短信验证码。通过蓝牙直接连接，无需中转或另装软件。
 
+Your name and address on commits made there, as on this computer.
+远程提交使用的姓名和邮箱，与本机一致。
+
 Your notes, files and forwarded messages
 您的笔记、文件和转发的消息
+
+Your other devices on Tailscale can reach these sessions.
+您在 Tailscale 上的其他设备可以访问这些会话。
 
 Your own files and folders
 您的文件和文件夹
@@ -12273,6 +13644,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 无法验证您的密码（{}）。
+
+Your repositories
+您的仓库
 
 Your settings as they were are in “{}”.
 您原有的设置保存在“{}”中。
@@ -12328,6 +13702,9 @@ Zoom In
 Zoom Out
 缩小
 
+Zoom Pane
+缩放窗格
+
 Zoom horizontally
 水平缩放
 
@@ -12382,6 +13759,18 @@ a window ({})
 a {} W power limit
 {} W 功耗上限
 
+about a minute left
+约剩 1 分钟
+
+about an hour left
+约剩 1 小时
+
+about {n} hours left
+other: 约剩 {n} 小时
+
+about {n} minutes left
+other: 约剩 {n} 分钟
+
 about {}
 约 {}
 
@@ -12415,11 +13804,20 @@ and {} more
 app_server's main thread: nice {}{}, {}
 app_server 主线程：nice {}{}，{}
 
+applied
+已应用
+
 as in 1Password's sidebar, or its UUID
 与 1Password 边栏中的名称一致，也可用 UUID
 
 as it goes
 随进度调整
+
+as of {}
+截至 {}
+
+as the machine has it
+机器默认值
 
 at most {}
 最多 {}
@@ -12427,11 +13825,17 @@ at most {}
 at {}
 在 {}
 
+auto approving
+自动批准中
+
 auto approving (Yes after {} s; {} answered)
 自动批准中（{} 秒后同意，已答复 {} 次）
 
 backing up
 正在备份
+
+behind
+未同步
 
 bell rang
 铃声已响
@@ -12447,6 +13851,9 @@ brush 的灰色提示，来自用您自己的命令训练的小模型
 
 built most, the last 24 hours
 过去 24 小时构建次数最多
+
+busy
+繁忙
 
 ceiling {}%
 上限 {}%
@@ -12474,6 +13881,9 @@ deleting
 
 downgrade {n} packages
 other: 降级 {n} 个软件包
+
+downloading
+正在下载
 
 driving {}
 驱动{}
@@ -12586,14 +13996,23 @@ in {}
 install {n} packages
 other: 安装 {n} 个软件包
 
+installing
+正在安装
+
 it couldn't be ended: {}
 无法结束：{}
+
+it didn’t say why
+未说明原因
 
 it is on a different volume from the Trash, so it can only be deleted
 它与废纸篓不在同一卷上，只能直接删除
 
 it took too long
 等待超时
+
+its accounts are behind
+账户未同步
 
 its address can’t be found (is the computer online?)
 找不到地址（电脑已联网吗？）
@@ -12609,6 +14028,9 @@ its disk has {}
 
 its ports: {}
 其端口：{}
+
+its session has ended.
+其会话已结束。
 
 its shells have all ended
 其所有 shell 均已结束
@@ -12664,11 +14086,20 @@ kache{} 正在运行
 kbit/s
 kbit/s
 
+kept going
+继续工作中
+
 last seen recently
 最近上线过
 
 left to the firmware for now
 暂由固件控制
+
+less than a minute
+不足 1 分钟
+
+less than a minute left
+剩余不足 1 分钟
 
 level {} of 7
 第 {} 档，共 7 档
@@ -12697,6 +14128,9 @@ ms
 no
 否
 
+no SSH keys
+无 SSH 密钥
+
 no display ports
 无显示接口
 
@@ -12708,6 +14142,9 @@ no limit to its space
 
 no network: it goes on once there’s one
 无网络，重新联网后继续
+
+no sessions open
+无打开的会话
 
 no wired network: it waits for one
 无有线网络，正在等待连接
@@ -12910,6 +14347,9 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh、git 等程序可使用 Passwords 中的 SSH 密钥登录。每个程序在首次请求使用时需获得授权。
 
+ssh://you@host or host.ts.net
+ssh://you@host 或 host.ts.net
+
 sudo needs your password to run this{}:
 sudo 需要您的密码以运行以下命令{}：
 
@@ -13003,6 +14443,9 @@ the secret at {}
 the server answered {}
 服务器响应：{}
 
+the server couldn’t complete the request
+服务器无法完成该请求
+
 the service answered {}
 服务响应：{}
 
@@ -13023,6 +14466,9 @@ the window server
 
 the {} didn't get going: {}
 {} 未能启动：{}
+
+there isn’t one for {}
+没有适用于 {} 的版本
 
 these {n} backups need
 other: 这 {n} 个备份所需的
@@ -13084,8 +14530,14 @@ under a minute
 under a second
 不到一秒
 
+unpacking
+正在解压
+
 up to
 最高
+
+up to date
+已是最新
 
 up to {} dpi
 最高 {} dpi
@@ -13113,6 +14565,12 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 包含 {n} 个已修改但未提交的文件
+
+without {}
+不含 {}
+
+without {}, {} and {} more
+不含 {}、{} 及其他 {} 项
 
 yes
 是
@@ -13144,6 +14602,9 @@ other: 找到 {n} 个日程
 {n} More in Calendar…
 other: 在日历中查看更多（{n} 个）…
 
+{n} SSH keys
+other: {n} 个 SSH 密钥
+
 {n} agent screens are running. Click to watch them.
 other: 有 {n} 个智能体屏幕正在运行。点击查看。
 
@@ -13156,11 +14617,17 @@ other: {n} 份备份
 {n} backups chosen.
 other: 已选择 {n} 份备份。
 
+{n} cloned
+other: 已克隆 {n} 个
+
 {n} coming up
 other: {n} 项即将到期
 
 {n} conversations
 other: {n} 个对话
+
+{n} couldn’t be done
+other: {n} 项未能完成
 
 {n} days
 other: {n} 天
@@ -13180,11 +14647,20 @@ other: {n} 个文件
 {n} files couldn’t be read.
 other: 有 {n} 个文件无法读取。
 
+{n} files to copy
+other: 待复制 {n} 个文件
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 接收器正在播放 {n} 部影片。点击暂停或停止。
 
 {n} folders couldn't be read
 other: 有 {n} 个文件夹无法读取
+
+{n} folders taken
+other: {n} 个文件夹已被占用
+
+{n} forwarded ports are waiting.
+other: {n} 个转发端口正在等待。
 
 {n} hours
 other: {n} 小时
@@ -13228,6 +14704,9 @@ other: {n} 个数据包的校验和与发送时一致
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 接收器上有 {n} 项正在播放或显示。点击暂停或停止。
 
+{n} ports forwarded here.
+other: 已转发 {n} 个端口到此电脑。
+
 {n} problems reading 1Password…
 other: 读取 1Password 时遇到 {n} 个问题…
 
@@ -13248,6 +14727,15 @@ other: {n} 秒
 
 {n} secrets
 other: {n} 项机密信息
+
+{n} sessions
+other: {n} 个会话
+
+{n} sessions open
+other: 已打开 {n} 个会话
+
+{n} sessions there.
+other: 远程有 {n} 个会话。
 
 {n} shares, control among them. Click to stop them.
 other: 有 {n} 项共享，其中包括远程控制。点击停止。
@@ -13279,6 +14767,12 @@ other: 有 {n} 项等待在应用中处理
 {n} weeks
 other: {n} 周
 
+{}  ·  Set up with nothing
+{}  ·  无初始化命令
+
+{}  ·  Set up with {}
+{}  ·  初始化命令：{}
+
 {} (AV1 and VP9)
 {}（AV1 和 VP9）
 
@@ -13287,6 +14781,9 @@ other: {n} 周
 
 {} (in use)
 {}（使用中）
+
+{} (installed)
+{}（已安装）
 
 {} (lower wins)
 {}（越低越优先）
@@ -13357,6 +14854,9 @@ other: {n} 周
 {} a second
 每秒 {}
 
+{} accounts
+{} 个账户
+
 {} ago · click a graph for another moment
 {}前 · 点击图表查看其他时刻
 
@@ -13371,6 +14871,9 @@ other: {n} 周
 
 {} answered {} (not a speed test server?)
 {} 响应：{}（可能不是测速服务器）
+
+{} answering now
+{} 个正在响应
 
 {} applications are keeping the display awake.
 有 {} 个应用正在阻止显示器休眠。
@@ -13399,11 +14902,17 @@ other: {n} 周
 {} cleared · kept for {} days, the last {}
 已清除 {} 条 · 保存 {} 天，最多保留最近 {} 条
 
+{} continued there
+远程有 {} 个更新
+
 {} copied: 1Password doesn’t let other apps read its archive.
 已复制 {}。1Password 不允许其他应用读取归档。
 
 {} couldn't be found: {}
 找不到 {}：{}
+
+{} couldn’t be cloned: {}
+无法克隆 {}：{}
 
 {} couldn’t be unpacked.
 无法解压 {}。
@@ -13426,8 +14935,17 @@ other: {n} 周
 {} didn't start pairing: {}.
 {} 未开始配对：{}。
 
+{} didn’t accept your keys for root
+{} 未接受用于 root 的密钥
+
+{} didn’t accept your keys for {}
+{} 未接受用于 {} 的密钥
+
 {} didn’t download: {}
 {} 下载失败：{}
+
+{} didn’t say how its limits stand.
+{} 未报告其限制状态。
 
 {} different commands, of {} run
 共运行 {1} 次，涉及 {0} 条不同的命令
@@ -13477,8 +14995,20 @@ other: {n} 周
 {} h {} min
 {} 小时 {} 分钟
 
+{} hasn’t answered for over a minute
+{} 已超过 1 分钟未响应
+
+{} hasn’t answered for over {} minutes
+{} 已超过 {} 分钟未响应
+
+{} hasn’t answered for {} seconds
+{} 已 {} 秒未响应
+
 {} hours ago
 {} 小时前
+
+{} in
+{} 输入
 
 {} in all
 共 {}
@@ -13513,6 +15043,9 @@ other: {n} 周
 {} is Fedora’s own: it can be turned off, not removed.
 {} 是 Fedora 自带的软件源，可以停用，但不能移除。
 
+{} is available.
+可更新至 {}。
+
 {} is back
 {} 已恢复可用
 
@@ -13527,6 +15060,15 @@ other: {n} 周
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {} 正在独占输入设备。它接管的鼠标通过虚拟指针移动，这里的设置对其无效。
+
+{} is installed
+已安装 {}
+
+{} is installed  ·  up to date
+已安装 {}  ·  已是最新
+
+{} is installed  ·  {} is available
+已安装 {}  ·  可更新至 {}
 
 {} is protected by a password.
 {} 受密码保护。
@@ -13582,6 +15124,9 @@ other: {n} 周
 {} keys
 {} 按键
 
+{} keys, at {}
+{} 把密钥，位于 {}
+
 {} knows this computer.
 {} 已识别此电脑。
 
@@ -13633,6 +15178,9 @@ other: {n} 周
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 本次新增 {} · 已压缩并加密发送 {}（{}/秒{}）
 
+{} now, {} suggested
+当前 {}，建议 {}
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
@@ -13666,6 +15214,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} of {} Events Found
 找到 {} 个日程，共 {} 个
 
+{} of {} cloned
+已克隆 {} / {}
+
 {} of {} connected.
 已连接 {} 个，共 {} 个。
 
@@ -13687,6 +15238,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} of {} read back
 已读回 {}，共 {}
 
+{} of {} ready
+已就绪 {} / {}
+
 {} of {} selected
 已选择 {} 项，共 {} 项
 
@@ -13696,11 +15250,26 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} of {} slots
 插槽 {} / {}
 
+{} of {} to change
+待更改 {} / {}
+
 {} on Workspace {}
 {1} 号工作区中的 {0}
 
 {} on this computer
 本机上有 {}
+
+{} on {}?
+要在 {1} 上{0}吗？
+
+{} on {}…
+正在 {1} 上{0}…
+
+{} open
+已打开 {} 个
+
+{} out
+{} 输出
 
 {} over 5 ms in the last minute, the longest {}
 过去一分钟超过 5 毫秒的有 {} 次，最长 {}
@@ -13729,6 +15298,12 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} repositories, {} on. Packages come from those that are on.
 共 {} 个软件源，已启用 {} 个。软件包来自已启用的软件源。
 
+{} requests running
+{} 个请求运行中
+
+{} requests today
+今日 {} 个请求
+
 {} right first
 首选建议准确率 {}
 
@@ -13737,6 +15312,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {} s ago
 {} 秒前
+
+{} said:
+{} 返回：
 
 {} shared with this screen
 与此屏幕共享的有 {}
@@ -13749,6 +15327,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 过去一分钟滚动 {} 格（滚轮刻度或触控板移动）
+
+{} still isn’t set up
+{} 仍未设置
 
 {} stopped answering: {}
 {} 已停止响应：{}
@@ -13764,6 +15345,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 还有 {} 项聊天更改（归档、已读、静音或置顶）尚未发送。未发送的更改将保留，等下次打开 Telegram 时发送。
+
+{} to copy
+待复制 {}
 
 {} to deal with, {}
 有 {} 项待处理，{}
@@ -13858,6 +15442,12 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} — {} ({}% of this folder){}{}
 {} — {}（占此文件夹的 {}%）{}{}
 
+{}%  ·  {}
+{}%  ·  {}
+
+{}%  ·  {}  ·  {}
+{}%  ·  {}  ·  {}
+
 {}% chance this hour
 本小时降水概率 {}%
 
@@ -13912,6 +15502,12 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {}, on set days
 {}，在指定日期
 
+{}, over SSH
+{}，通过 SSH
+
+{}, over Tailscale
+{}，通过 Tailscale
+
 {}, until {}
 {}，直至 {}
 
@@ -13923,6 +15519,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {}, {} shown in this Terminal.
 {}，此 Terminal 中显示 {} 个。
+
+{}, {}%
+{}，{}%
 
 {}, {}% of its life used
 {}，已用寿命 {}%
@@ -13966,6 +15565,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {}: a whole number, please
 {}：请输入整数
 
+{}: expected auto, conservative, or off
+{}：应为 auto、conservative 或 off
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}：每次使用都需要输入 PIN，无法通过触摸来代替密码
 
@@ -13980,6 +15582,12 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {}: not here yet
 {}：此处尚无
+
+{}: off
+{}：关闭
+
+{}: on
+{}：开启
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}：请在此电脑上重新登录（每台电脑均须单独登录）。
@@ -14032,6 +15640,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {}’s data centre
 {} 的数据中心
 
+{}’s package manager checked Rex’s repository when this window opened.
+此窗口打开时，{} 的软件包管理器已检查过 Rex 软件源。
+
 {}″ ({} × {} mm), {} pixels per inch
 {} 英寸（{} × {} 毫米），每英寸 {} 像素
 
@@ -14041,6 +15652,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle、~/.m2/repository 和项目中的 .gradle
 
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin：智能体和 Rex 的安装位置，以便远程 shell 找到它们。
+
 ~/.local/share/Trash
 ~/.local/share/Trash
 
@@ -14055,6 +15669,18 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 ~/worktrees
 ~/worktrees
+
+~/{} already holds another repository on {}: {}
+{1} 上的 ~/{0} 已有另一个仓库：{2}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+{1} 上的 ~/{0} 已有其他内容。请将其移走，或选择“编辑…”更改文件夹。
+
+~/{} already holds something else. Choose… to see it.
+~/{} 已有其他内容。请选择“选择…”查看。
+
+~/{} is already {}’s folder. Type another one.
+~/{} 已是 {} 的文件夹，请输入其他名称。
 
 ·
 ·
@@ -14070,6 +15696,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 ½ second
 0.5 秒
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 “[{}]”不是有效的软件源 ID。
@@ -14119,6 +15748,12 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 “{}”未指明软件包位置（缺少 baseurl、metalink 或 mirrorlist）。
 
+“{}” has no sessions.
+“{}”没有会话。
+
+“{}” has no terminals.
+“{}”没有终端。
+
 “{}” has no {}.
 “{}”没有{}。
 
@@ -14139,6 +15774,9 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 “{}”已连接，但其信息没有响应。Olo 会继续尝试。
+
+“{}” is disconnected.
+“{}”已断开连接。
 
 “{}” is imported.
 已导入“{}”。
@@ -14238,39 +15876,3 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 
 ⌘ Command (the Super key)
 ⌘ Command（Super 键）
-
-Auto Approve answers Yes in {} s
-自动批准将在 {} 秒后回答“是”
-
-kept going
-继续工作中
-
-auto approving
-自动批准中
-
-Waiting for approval
-等待批准
-
-Working
-工作中
-
-Error
-错误
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-要为“{}”打开自动批准吗？\n\n这是另一个程序请求的，不是你。当此窗格中的编程智能体请求继续（“Do you want to proceed?”）时，除非你在窗格中输入或按下停止，Rex 会在 {} 秒后回答“是”。
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-要为“{}”打开自动批准吗？\n\n这是另一个程序请求的，不是你。当此标签页中的编程智能体请求继续（“Do you want to proceed?”）时，除非你在标签页中输入或按下停止，Terminal 会在 {} 秒后回答“是”。
-
-Yes in {} s
-{} 秒后同意
-
-Keep It Going in “{}”
-在“{}”中继续工作
-
-Auto Approve in “{}”
-在“{}”中自动批准
-
-An agent is at rest here
-此处有智能体在待命

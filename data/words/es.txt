@@ -66,8 +66,17 @@ No se puede leer /etc/hosts: {}
 1 Minute
 1 minuto
 
+1 SSH key
+1 clave SSH
+
 1 Second
 1 segundo
+
+1 account
+1 cuenta
+
+1 couldn’t be cloned
+1 no se pudo clonar
 
 1 day before
 1 día antes
@@ -84,8 +93,17 @@ No se puede leer /etc/hosts: {}
 1 minute
 1 minuto
 
+1 request running
+1 solicitud en curso
+
+1 request today
+1 solicitud hoy
+
 1 second
 1 segundo
+
+1 session
+1 sesión
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. Escribe la contraseña de tu cuenta y elige Configurar. Olo la guarda cerrada para que solo esta llave pueda abrirla.
@@ -165,6 +183,9 @@ Cuentas de 1Password…
 2 hours before
 2 horas antes
 
+2 items
+2 elementos
+
 2 minutes
 2 minutos
 
@@ -234,6 +255,9 @@ Reloj de 24 horas
 4 hours
 4 horas
 
+4 items
+4 elementos
+
 4 weeks
 4 semanas
 
@@ -276,6 +300,9 @@ Reloj de 24 horas
 52 weeks
 52 semanas
 
+6 items
+6 elementos
+
 6 months
 6 meses
 
@@ -314,6 +341,9 @@ Un disco o una carpeta
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 El codificador de una GPU procesa una pantalla 4K en unos 15 ms por fotograma; el procesador, en unos 110: las grabaciones con mucho movimiento conservan todos los fotogramas en la GPU y unos nueve por segundo en el procesador.
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+Un host de Rex puede tener su propio Token Pool con estas cuentas: Claude Code y Codex siguen funcionando allí cuando este ordenador está apagado.
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 Un archivo de WireGuard (del servidor o de wg-quick) se guarda con sus claves; mientras está conectado, solo se consultan sus servidores DNS.
@@ -360,6 +390,9 @@ Un dedo en el sensor de huellas puede sustituir a tu contraseña. Dedos registra
 A frame dropped in the last minute
 Se perdió un fotograma en el último minuto
 
+A key with no name
+Una clave sin nombre
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 Todo lo que puedes elegir lleva una letra: controles, elementos de menú, ventanas, la Deskbar. Escribe una para elegirlo o para poner letras a lo que hay dentro; Retroceso vuelve atrás y Esc las quita.
 
@@ -395,6 +428,12 @@ Una nueva compilación de Olo está lista ({}). ¿Instalarla ahora? Tus ventanas
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 Una nueva compilación de Olo está lista ({}). Instalarla reinicia el servidor de ventanas: las ventanas de Olo siguen abiertas, pero {} se cerrará.
+
+A new name for the session “{}”:
+Nuevo nombre para la sesión «{}»:
+
+A new name for the tab “{}”:
+Nuevo nombre para la pestaña «{}»:
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Un paso de la rueda desplaza lo mismo en Chrome y en otros programas que en las apps de Olo.
@@ -501,6 +540,9 @@ Clave de API:
 About 
 Acerca de 
 
+About Olo
+Acerca de Olo
+
 About Olo Desktop
 Acerca de Olo Desktop
 
@@ -522,14 +564,23 @@ Acceso
 Account
 Cuenta
 
+Account on “{}”
+Cuenta en «{}»
+
 Account:
 Cuenta:
 
 Accounts
 Cuentas
 
+Accounts that may sign in through the login server, kept in {}.
+Cuentas que pueden iniciar sesión a través del servidor de inicio de sesión, guardadas en {}.
+
 Accounts:
 Cuentas:
+
+Account…
+Cuenta…
 
 Action
 Acción
@@ -582,6 +633,12 @@ Añadir huella
 Add Graph
 Añadir gráfica
 
+Add Host
+Añadir host
+
+Add Host…
+Añadir host…
+
 Add Kind
 Añadir tipo
 
@@ -593,6 +650,9 @@ Añadir lugar…
 
 Add RPM Fusion
 Añadir RPM Fusion
+
+Add Repository
+Añadir repositorio
 
 Add Repository…
 Añadir repositorio…
@@ -651,6 +711,9 @@ Añade una cuenta en Preferencias
 Add lunch tomorrow at noon
 Añadir comida mañana a mediodía
 
+Add one in Rex or in Preferences ▸ Rex.
+Añade uno en Rex o en Preferencias ▸ Rex.
+
 Add the one-time code this page shows to your login {}?
 ¿Añadir el código de un solo uso que muestra esta página a tu inicio de sesión {}?
 
@@ -677,6 +740,9 @@ Dirección:
 
 Addresses can’t be looked up: {}
 No se pueden buscar direcciones: {}
+
+Add…
+Añadir…
 
 Adjust Size
 Ajustar tamaño
@@ -736,6 +802,18 @@ La pantalla de agente «{}» espera un código
 
 Agent Screens
 Pantallas de agentes
+
+Agent sessions
+Sesiones de agentes
+
+Agent settings
+Ajustes de agentes
+
+Agents
+Agentes
+
+Agents and settings in your account there.
+Agentes y ajustes de tu cuenta allí.
 
 Agree
 Acepto
@@ -797,8 +875,14 @@ Todo métrico
 All Preferences
 Todas las preferencias
 
+All Set
+Todo listo
+
 All accounts together
 Todas las cuentas juntas
+
+All agents and shells are quiet.
+Todos los agentes y shells están tranquilos.
 
 All day
 Todo el día
@@ -811,6 +895,9 @@ Las {} palabras de Olo están en {}.
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 Todos estos ajustes son de todo el ordenador, así que cambiar uno pide la contraseña de un administrador.
+
+All time
+Todo el tiempo
 
 All waiting
 Todos esperando
@@ -836,6 +923,12 @@ Permitir reposo (despierto hasta {})
 Allow it on the phone
 Permítelo en el teléfono
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+¿Permitir que los programas de «{}» inicien sesión con tus claves SSH? Lo pide un terminal allí a través de Rex.
+
+Allow {} to sign in to your hosts with your SSH keys?
+¿Permitir que {} inicie sesión en tus hosts con tus claves SSH?
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 ¿Permitir que «{}» use {}{}? Siempre se lo deja usar cada vez que lo pida, hasta que lo retires (Archivo ▸ Apps permitidas…).
 
@@ -850,6 +943,9 @@ También desde la Deskbar: haz clic en la taza.
 
 Also leave out:
 Excluir también:
+
+Also used by
+También usado por
 
 Also when running on battery
 También con batería
@@ -895,6 +991,9 @@ Una cuenta puede volver a responder.
 
 An administrator's password is needed.
 Se necesita la contraseña de un administrador.
+
+An agent is at rest here
+Aquí hay un agente en reposo
 
 An app
 Una app
@@ -957,17 +1056,35 @@ Respondiendo ahora
 Answering now · {}
 Respondiendo ahora · {}
 
+Anthropic’s coding agent.
+El agente de programación de Anthropic.
+
+Antigravity
+Antigravity
+
 Any of the {}
 Cualquiera de los {}
 
 Any storms on the way?
 ¿Viene alguna tormenta?
 
+Any tagged device on the tailnet
+Cualquier dispositivo etiquetado de la tailnet
+
 Any time
 Cualquier hora
 
 Any touch
 Cualquier toque
+
+Anyone at all
+Cualquiera
+
+Anyone on the tailnet
+Cualquiera en la tailnet
+
+Anyone who is identified
+Cualquiera que esté identificado
 
 App
 App
@@ -1087,6 +1204,12 @@ Como en Temas ({})
 As it goes
 Tan rápido como va
 
+As on this computer
+Como en este ordenador
+
+As root, over SSH
+Como root, por SSH
+
 As set now
 Como está ahora
 
@@ -1099,8 +1222,14 @@ Como los demás ratones
 As wide as the widgets
 Tan ancho como los widgets
 
+As {}, over SSH
+Como {}, por SSH
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 Como {}: nice {} → {}, planificación {}, prioridad de E/S {}{}, para que la app de la ventana activa y Olo sigan rápidas.
+
+As {}’s package manager last heard from Rex’s repository.
+Según la última comprobación del gestor de paquetes de {} en el repositorio de Rex.
 
 Ask
 Preguntar
@@ -1144,11 +1273,20 @@ Preguntar qué hacer con los urgentes
 Asked now:
 Preguntado ahora:
 
+Asking
+Consultando
+
+Asking GitHub for Olo's releases…
+Consultando en GitHub las versiones de Olo…
+
 Asking Passwords…
 Preguntando a Passwords…
 
 Asking Telegram…
 Preguntando a Telegram…
+
+Asking how Rex is set up there
+Consultando cómo está configurado Rex allí
 
 Asking it…
 Preguntando…
@@ -1225,6 +1363,9 @@ Adjuntar un archivo o un enlace
 Attach what's on the clipboard
 Adjuntar lo que hay en el portapapeles
 
+Attaching terminal stream…
+Conectando el flujo del terminal…
+
 Attachments
 Adjuntos
 
@@ -1239,6 +1380,12 @@ Automático
 
 Auto Approve
 Aprobar solo
+
+Auto Approve answers Yes in {} s
+Aprobación automática responde Sí en {} s
+
+Auto Approve in “{}”
+Aprobar solo en «{}»
 
 Auto Approve: Yes in {} s
 Aprobación automática: Sí en {} s
@@ -1454,6 +1601,18 @@ Antes de importar {}.{}
 Begin
 Empezar
 
+Behind
+Desactualizado
+
+Behind since {}
+Desactualizado desde {}
+
+Being installed…
+Instalándose…
+
+Being updated…
+Actualizándose…
+
 Benchmark…
 Prueba de rendimiento…
 
@@ -1577,17 +1736,26 @@ Traerla a Olo…
 Brown
 Marrón
 
+Browse Folders…
+Explorar carpetas…
+
 Bug Fixes
 Correcciones
 
 Builds
 Compilaciones
 
+Builds and agents open many files and start many tasks at once.
+Las compilaciones y los agentes abren muchos archivos e inician muchas tareas a la vez.
+
 Builds by the hour
 Compilaciones por hora
 
 Builds go on without the cache until it starts.
 Las compilaciones siguen sin la caché hasta que se inicie.
+
+Built from source
+Compilado desde el código fuente
 
 Built incrementally
 Compilado de forma incremental
@@ -1781,6 +1949,9 @@ Capturar información de depuración cada vez que se pierda un fotograma
 Cards
 Tarjetas
 
+Carrying the accounts
+Llevando las cuentas
+
 Cascade All
 Todo en cascada
 
@@ -1862,8 +2033,17 @@ Cambiando el gobernador de la CPU
 Changing the cores process {} may use
 Cambiando los núcleos que puede usar el proceso {}
 
+Changing the machine’s settings as {}
+Cambiando los ajustes del equipo como {}
+
 Changing the priority of process {}
 Cambiando la prioridad del proceso {}
+
+Changing the rex group as {}
+Cambiando el grupo rex como {}
+
+Changing {} as {}
+Cambiando {} como {}
 
 Changing…
 Cambiando…
@@ -1886,6 +2066,9 @@ Comprobar de nuevo
 Check Health
 Comprobar estado
 
+Check Now
+Comprobar ahora
+
 Check Spelling While Typing
 Revisar la ortografía al escribir
 
@@ -1895,11 +2078,17 @@ Comprobar todo
 Check for Updates
 Buscar actualizaciones
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+Comprueba el nombre de la cuenta y que una de tus claves esté allí en ~{}/.ssh/authorized_keys.
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Comprobar rápidamente que las copias elegidas están completas: todo lo que necesitan está ahí, las sumas de verificación del almacén coinciden con lo enviado y se releen unas muestras (como tras cada copia). Lo dañado se repara en la medida de lo posible.
 
 Checked
 Comprobado
+
+Checked {}
+Comprobado {}
 
 Checking for updates…
 Buscando actualizaciones…
@@ -1954,6 +2143,12 @@ Elige una copia para ver lo que contiene antes de importarla.
 Choose a chat from the list to start messaging.
 Elige un chat de la lista para empezar a escribir.
 
+Choose a host to connect it, disconnect it or manage it.
+Elige un host para conectarlo, desconectarlo o gestionarlo.
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+Elige una clave que root acepte allí. Si ninguna funciona, añade tu clave pública a /root/.ssh/authorized_keys en ese equipo y vuelve a intentarlo.
+
 Choose a network to join it.
 Elige una red para conectarte a ella.
 
@@ -1968,6 +2163,9 @@ Elige un widget para cambiarlo o añade uno.
 
 Choose every update
 Elegir todas las actualizaciones
+
+Choose how they look and sound in Notifications.
+Elige cómo se ven y suenan en Notificaciones.
 
 Choose what to scan:
 Elige qué analizar:
@@ -2028,6 +2226,15 @@ Claude Code y Codex reciben una herramienta para titular su pestaña con aquello
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 A Claude Code y Codex iniciados en una pestaña de un grupo cuyas pestañas están en más de un repositorio se les indica el nombre del grupo y esos repositorios y worktrees, con el suyo marcado. Codex te pide una vez que confíes en el hook de Terminal (/hooks).
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+Sesiones de Claude Code, Codex y Antigravity, para reanudarlas allí.
+
+Claude Code and Codex there go back to their own sign-ins.
+Claude Code y Codex allí vuelven a sus propios inicios de sesión.
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+Claude Code y Codex allí vuelven a sus propios inicios de sesión. Antes se copian aquí los últimos inicios de sesión de las cuentas.
 
 Clean Up
 Ordenar
@@ -2132,6 +2339,21 @@ Clientes
 Clock
 Reloj
 
+Clone
+Clonar
+
+Clone {}
+Clonar {}
+
+Cloned
+Clonado
+
+Cloning {}…
+Clonando {}…
+
+Cloning…
+Clonando…
+
 Close
 Cerrar
 
@@ -2149,6 +2371,9 @@ Cerrar las demás pestañas
 
 Close Others
 Cerrar las demás
+
+Close Pane
+Cerrar panel
 
 Close Tab
 Cerrar pestaña
@@ -2324,8 +2549,14 @@ Conectar GitHub para las pull requests…
 Connect Google Drive…
 Conectar Google Drive…
 
+Connect Remote Host…
+Conectar host remoto…
+
 Connect automatically when you put them in near this computer
 Conectar automáticamente al ponértelos cerca de este ordenador
+
+Connect when Rex starts
+Conectar al iniciar Rex
 
 Connect with a Token…
 Conectar con un token…
@@ -2338,6 +2569,9 @@ Conectado
 
 Connected as {}, through {}.
 Conectado como {}, a través de {}.
+
+Connected to Tailscale.
+Conectado a Tailscale.
 
 Connected to “{}”
 Conectado a «{}»
@@ -2357,14 +2591,35 @@ Conectado.
 Connecting to Telegram…
 Conectando con Telegram…
 
+Connecting to {}…
+Conectando con {}…
+
 Connecting to “{}”…
 Conectando con «{}»…
 
 Connecting…
 Conectando…
 
+Connecting… Your key agent is asking you about this sign-in.
+Conectando… Tu agente de claves te pregunta por este inicio de sesión.
+
 Connection
 Conexión
+
+Connection lost just now.
+Se perdió la conexión ahora mismo.
+
+Connection lost {n} days ago.
+one: Se perdió la conexión hace {n} día.
+other: Se perdió la conexión hace {n} días.
+
+Connection lost {n} hours ago.
+one: Se perdió la conexión hace {n} hora.
+other: Se perdió la conexión hace {n} horas.
+
+Connection lost {n} minutes ago.
+one: Se perdió la conexión hace {n} minuto.
+other: Se perdió la conexión hace {n} minutos.
 
 Connection:
 Conexión:
@@ -2429,11 +2684,17 @@ Proyecto de Copr
 Copy
 Copiar
 
+Copy Address
+Copiar dirección
+
 Copy Code
 Copiar código
 
 Copy Conversation
 Copiar conversación
+
+Copy Debug Info
+Copiar información de depuración
 
 Copy Here
 Copiar aquí
@@ -2443,6 +2704,9 @@ Copiar el último código
 
 Copy Link
 Copiar enlace
+
+Copy Mode
+Modo copia
 
 Copy Name
 Copiar nombre
@@ -2462,6 +2726,12 @@ Copiar ruta
 Copy Reference
 Copiar referencia
 
+Copy Screen as HTML
+Copiar pantalla como HTML
+
+Copy Screen as Text
+Copiar pantalla como texto
+
 Copy Text
 Copiar texto
 
@@ -2470,6 +2740,9 @@ Copiar usuario
 
 Copy Value
 Copiar valor
+
+Copy Version Info
+Copiar información de versión
 
 Copy a code no tab is waiting for
 Copiar un código que ninguna pestaña espera
@@ -2486,8 +2759,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Copy-on-write está desactivado en index.db para evitar fragmentación en Btrfs; el almacén conserva copy-on-write para reflinks. Restaurarlo reinicia brevemente kache.
 
+Copying sessions…
+Copiando sesiones…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Copiando los elementos de {} desde 1Password. Si 1Password pregunta si permitir a Passwords, elige Permitir (y desbloquéalo si está bloqueado).
+
+Copying…
+Copiando…
 
 Core
 Núcleo
@@ -2498,11 +2777,17 @@ Núcleos
 Couldn't be cached
 No se pudo guardar en caché
 
+Couldn't check for a newer release.
+No se pudo buscar una versión más reciente.
+
 Couldn't create a folder: {}
 No se pudo crear una carpeta: {}
 
 Couldn't create a link: {}
 No se pudo crear un enlace: {}
+
+Couldn't look for a newer release: {}
+No se pudo buscar una versión más reciente: {}
 
 Couldn't paste: {}
 No se pudo pegar: {}
@@ -2540,14 +2825,38 @@ No se pudo pedir que se desbloquee tu llavero: {}
 Couldn’t be checked {}: {}.
 No se pudo comprobar {}: {}.
 
+Couldn’t be cloned
+No se pudo clonar
+
+Couldn’t be copied
+No se pudo copiar
+
+Couldn’t be installed
+No se pudo instalar
+
+Couldn’t be set
+No se pudo establecer
+
 Couldn’t change this vault in 1Password. {}
 No se pudo cambiar esta bóveda en 1Password. {}
+
+Couldn’t clone
+No se pudo clonar
+
+Couldn’t copy the file from the host.
+No se pudo copiar el archivo desde el host.
 
 Couldn’t delete it in 1Password. {}
 No se pudo eliminar en 1Password. {}
 
 Couldn’t delete this vault from 1Password. {}
 No se pudo eliminar esta bóveda de 1Password. {}
+
+Couldn’t get a sign-in link: {}.
+No se pudo obtener un enlace de inicio de sesión: {}.
+
+Couldn’t install
+No se pudo instalar
 
 Couldn’t keep the approval: {}
 No se pudo guardar la aprobación: {}
@@ -2561,14 +2870,32 @@ No se pudo guardar la clave: {}
 Couldn’t list its items. {}
 No se pudieron listar sus elementos. {}
 
+Couldn’t look at {}
+No se pudo consultar {}
+
+Couldn’t look at {} again
+No se pudo volver a consultar {}
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 No se pudo crear esta bóveda en 1Password, así que tampoco se enviaron sus elementos. {}
+
+Couldn’t open the file.
+No se pudo abrir el archivo.
+
+Couldn’t open the sign-in page: {}.
+No se pudo abrir la página de inicio de sesión: {}.
 
 Couldn’t open this item: {}
 No se pudo abrir este elemento: {}
 
+Couldn’t paste the picture.
+No se pudo pegar la imagen.
+
 Couldn’t reach the login keyring: {}
 No se pudo acceder al llavero de inicio de sesión: {}
+
+Couldn’t reach {}
+No se pudo conectar con {}
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 No se pudo leer la copia de 1Password para comparar, así que la tuya no se envió. {}
@@ -2612,8 +2939,20 @@ No se pudo sincronizar esta cuenta. {}
 Couldn’t take the approval back: {}
 No se pudo retirar la aprobación: {}
 
+Couldn’t turn off Tailscale: {}.
+No se pudo desactivar Tailscale: {}.
+
+Couldn’t turn on Tailscale: {}.
+No se pudo activar Tailscale: {}.
+
 Couldn’t write the shared copy: {}
 No se pudo escribir la copia compartida: {}
+
+Couldn’t {}
+No se pudo {}
+
+Couldn’t {} on {}
+No se pudo {} en {}
 
 Count accounts turned off or signed out
 Contar cuentas desactivadas o con la sesión cerrada
@@ -2963,6 +3302,9 @@ Herramientas para desarrolladores
 Device
 Dispositivo
 
+Devices tagged {}, over Tailscale
+Dispositivos etiquetados como {}, por Tailscale
+
 Dew point
 Punto de rocío
 
@@ -2975,8 +3317,14 @@ Dif. punto de rocío {}
 Dew point {}
 Punto de rocío {}
 
+Diagnostics…
+Diagnóstico…
+
 Diff
 Diff
+
+Differs from this computer
+Difiere de este ordenador
 
 Dim the built-in display when idle
 Atenuar la pantalla integrada en reposo
@@ -3010,6 +3358,15 @@ Desconectar Google Drive
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 ¿Desconectar Google Drive ({})? DiskBackup deja de copiar allí y olvida su inicio de sesión en este ordenador. Las copias de tu Drive se quedan como están: vuelve a conectarlo para seguir desde ellas o para restaurar desde ellas.
+
+Disconnected
+Desconectado
+
+Disconnected.
+Desconectado.
+
+Disconnected: {}
+Desconectado: {}
 
 Disconnecting from Google Drive…
 Desconectando de Google Drive…
@@ -3174,6 +3531,9 @@ No confiar
 Double-press speed
 Velocidad de doble pulsación
 
+Down
+Abajo
+
 Down (received)
 Bajada (recibido)
 
@@ -3188,6 +3548,18 @@ Descargar como máximo:
 
 Download, Then Restart to Install
 Descargar y reiniciar para instalar
+
+Downloading
+Descargando
+
+Downloading preview from Rex server…
+Descargando vista previa del servidor Rex…
+
+Downloading {} from {}…
+Descargando {} de {}…
+
+Downloading {}…
+Descargando {}…
 
 Downloading: {}
 Descargando: {}
@@ -3339,6 +3711,9 @@ Cada pantalla la dibuja la gráfica a la que está conectada, así que ningún f
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 La Deskbar de cada pantalla deja abierto el espacio de trabajo que muestra esa pantalla; cada uno de los demás es su encabezado, con una flecha que muestra sus aplicaciones y vuelve a guardarlas, solo en esa Deskbar.
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+Cada uno se clona en su carpeta dentro de tu carpeta personal en {} y se configura una vez con su comando.
+
 Each is judged from several signals together; a finding says how sure it is and why.
 Cada uno se valora a partir de varias señales juntas; un hallazgo dice cuán seguro es y por qué.
 
@@ -3359,6 +3734,12 @@ Cada ventana nueva ocupa la mitad de la que estabas usando.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Cada uno de estos, una vez configurado, sustituye a tu contraseña dondequiera que se pida (Passwords, sudo en Terminal, peticiones de administrador; una cara o una huella también en las pantallas de bloqueo e inicio de sesión), todos a la vez: el que uses primero.
+
+Each person gets their own Rex server, and signs in through this one.
+Cada persona tiene su propio servidor Rex e inicia sesión a través de este.
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+Cada persona en {} tiene su propio servidor Rex; inician sesión a través de este.
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 Cada repositorio tiene ahí una carpeta: el worktree fix-tabs de olo va en {}/olo/fix-tabs.
@@ -3389,6 +3770,9 @@ Editar mensaje
 
 Edit Name
 Editar nombre
+
+Edit Repository
+Editar repositorio
 
 Edit Video…
 Editar vídeo…
@@ -3456,6 +3840,9 @@ Cifrarlo con una frase de contraseña
 End
 Fin
 
+End Session
+Terminar sesión
+
 End Test
 Terminar la prueba
 
@@ -3492,6 +3879,9 @@ Registrando tu {}
 Enter Full Screen
 Pantalla completa
 
+Enter secret…
+Escribe el secreto…
+
 Enter the password for “{}” to unlock it.
 Escribe la contraseña de «{}» para desbloquearlo.
 
@@ -3518,6 +3908,9 @@ El borrado sigue solo en cuanto vuelva, desde donde se quedó.
 
 Erlang
 Erlang
+
+Error
+Error
 
 Esc cancels
 Esc cancela
@@ -3609,6 +4002,15 @@ Aquí aparecen las tareas de todas las listas.
 Every month
 Cada mes
 
+Every regular account
+Todas las cuentas normales
+
+Every step ran, and it still needs: {}.
+Se ejecutaron todos los pasos y aún falta: {}.
+
+Every step ran.
+Se ejecutaron todos los pasos.
+
 Every week
 Cada semana
 
@@ -3642,6 +4044,18 @@ other: Cada {n} semanas
 Every {n} years
 one: Cada año
 other: Cada {n} años
+
+Everyone in the rex group shares one server, run as the rex account.
+Todos los miembros del grupo rex comparten un servidor, ejecutado como la cuenta rex.
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+Todos los miembros del grupo rex comparten este servidor, y cada terminal se ejecuta como la cuenta rex.
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+Todos los que tienen cuenta en {} están en el grupo rex y usan el servidor compartido.
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+Todos los que tienen cuenta en {} pueden iniciar sesión. La lista se guarda en {}.
 
 Everything
 Todo
@@ -3745,6 +4159,24 @@ Desvanecer colores
 Fahrenheit (°F)
 Fahrenheit (°F)
 
+Failed
+Error
+
+Failed just now
+Falló ahora mismo
+
+Failed {n} days ago
+one: Falló hace {n} día
+other: Falló hace {n} días
+
+Failed {n} hours ago
+one: Falló hace {n} hora
+other: Falló hace {n} horas
+
+Failed {n} minutes ago
+one: Falló hace {n} minuto
+other: Falló hace {n} minutos
+
 Fan Out
 Abanico
 
@@ -3838,6 +4270,9 @@ Archivo
 File system:
 Sistema de archivos:
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+Los vigilantes de archivos, los enlazadores y los programas grandes topan con los límites propios del núcleo.
+
 Files
 Archivos
 
@@ -3849,6 +4284,9 @@ Archivo…
 
 Fill It In
 Rellenarlo
+
+Filter
+Filtrar
 
 Find
 Buscar
@@ -3876,6 +4314,9 @@ Buscar una app
 
 Find in document
 Buscar en el documento
+
+Find in terminal…
+Buscar en el terminal…
 
 Find the selection
 Buscar la selección
@@ -4033,6 +4474,12 @@ Niebla probable · diferencia {}
 Folder
 Carpeta
 
+Folder taken
+Carpeta ocupada
+
+Folder:
+Carpeta:
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Carpetas y archivos, separados por comas: ~/ es tu carpeta personal, **/ en cualquier sitio, * cualquier nombre.
 
@@ -4116,6 +4563,9 @@ Formatear…
 
 Forward
 Adelante
+
+Forward Port
+Reenviar puerto
 
 Forwarded from {}
 Reenviado de {}
@@ -4228,6 +4678,9 @@ Obtener acceso total…
 Get Info
 Obtener información
 
+Get items from Passwords
+Obtener elementos de Passwords
+
 Getting ready
 Preparando
 
@@ -4236,6 +4689,9 @@ Preparando el sensor…
 
 Git Worktrees
 Worktrees de Git
+
+Git identity
+Identidad de Git
 
 GitHub
 GitHub
@@ -4252,6 +4708,9 @@ No se pudo contactar con GitHub ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHub no aceptó el token: puede que haya caducado o se haya revocado.
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+Dale a un host de Rex su propio Token Pool, con las mismas cuentas, para que Claude Code y Codex sigan trabajando allí mientras este ordenador está apagado.
+
 Give a new key
 Dar una clave nueva
 
@@ -4261,6 +4720,30 @@ Dar a compiladores y enlazadores solo la memoria libre
 Give it a name.
 Ponle un nombre.
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+Da tus claves SSH y tu portapapeles solo a\nun host en el que confíes tanto como en este ordenador.
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+Da tus claves SSH solo a un host\nen el que confíes tanto como en este ordenador.
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+Da tu portapapeles solo a un host\nen el que confíes tanto como en este ordenador.
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+Da tus contraseñas y claves SSH solo a\nun host en el que confíes tanto como en este ordenador.
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+Da tus contraseñas y portapapeles solo a\nun host en el que confíes tanto como en este ordenador.
+
+Give your passwords only to a host\nyou trust as much as this computer.
+Da tus contraseñas solo a un host\nen el que confíes tanto como en este ordenador.
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+Da tus contraseñas, claves SSH y portapapeles\nsolo a un host en el que confíes tanto como en este ordenador.
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+Da a Claude Code y Codex allí tus cuentas, esté este ordenador encendido o apagado.
+
 Glide
 Deslizamiento
 
@@ -4269,6 +4752,15 @@ Resaltar las ventanas nuevas durante
 
 Go
 Ir
+
+Go Back
+Volver
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+¿Volver a {}?\n\nSustituye a {}. Olo la descargará (unos {} MB), la instalará y se reiniciará sin cerrar tus ventanas. Tus ajustes se mantienen; lo que Olo añadió desde entonces desaparecerá hasta que vuelvas a actualizar.
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+¿Volver a {}?\n\nSustituye a {}: Olo la descarga (unos {} MB), la instala y se reinicia sin cerrar tus ventanas. Tus ajustes se mantienen; lo posterior desaparece hasta que vuelvas a actualizar.
 
 Go to
 Ir a
@@ -4281,6 +4773,9 @@ Ir a archivo o carpeta
 
 Go to File or Folder…
 Ir a archivo o carpeta…
+
+Go to Folder…
+Ir a la carpeta…
 
 Go to:
 Ir a:
@@ -4317,6 +4812,9 @@ También se mira en las cuentas de Google y Fastmail para Mail (Integraciones).
 
 Google no longer takes its sign-in: sign in again.
 Google ya no acepta su inicio de sesión: vuelve a entrar.
+
+Google’s coding agent (agy).
+El agente de programación de Google (agy).
 
 Got it. Touch the key once more: its light is blinking again.
 Entendido. Toca la llave una vez más: su luz vuelve a parpadear.
@@ -4417,8 +4915,23 @@ Dirección de hardware: {}
 Hardware address:
 Dirección de hardware:
 
+Has failed
+Ha fallado
+
+Has finished
+Ha terminado
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+Lleva más de un minuto sin responder
+
+Hasn’t answered for over {} minutes
+Lleva más de {} minutos sin responder
+
+Hasn’t answered for {} seconds
+Lleva {} segundos sin responder
 
 Header & Footer…
 Encabezado y pie…
@@ -4570,8 +5083,17 @@ Carpeta personal
 Home Page
 Página de inicio
 
+Host
+Host
+
+Host “{}”
+Host «{}»
+
 Hosts
 Hosts
+
+Hosts and Ports…
+Hosts y puertos…
 
 Hotspot
 Punto de acceso
@@ -4723,6 +5245,9 @@ A su manera
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 En lugar del punto azul de sus notificaciones, mientras la app diga que tiene algo sin leer o pendiente.
 
+In step
+Al día
+
 In the Scratchpad
 En el borrador
 
@@ -4837,8 +5362,17 @@ Inspeccionar el padre
 Inspect Process
 Inspeccionar proceso
 
+Install
+Instalar
+
 Install Now
 Instalar ahora
+
+Install Olo’s Bridge
+Instalar el puente de Olo
+
+Install Olo’s Skill for Agents
+Instalar la skill de Olo para agentes
 
 Install When Restarting
 Instalar al reiniciar
@@ -4852,8 +5386,29 @@ Instalar solo
 Install the Helper…
 Instalar el ayudante…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+¿Instalar {}?\n\nOlo la descarga (unos {} MB), la instala y se reinicia sin cerrar tus ventanas.
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+¿Instalar {}?\n\nOlo la descargará (unos {} MB), la instalará y se reiniciará sin cerrar tus ventanas.
+
 Installed
 Instalado
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+Instalado allí en tu carpeta personal, como tu usuario, por el instalador propio de cada fabricante. Nada se ejecuta como root.
+
+Installing
+Instalando
+
+Installing {}: {} ({}%)…
+Instalando {}: {} ({} %)…
+
+Installing {}…
+Instalando {}…
+
+Installing…
+Instalando…
 
 Install…
 Instalar…
@@ -4885,6 +5440,9 @@ Invertir selección
 Invite:
 Invitar:
 
+Is waiting for me
+Me está esperando
+
 It Matches
 Coincide
 
@@ -4894,8 +5452,17 @@ Hace la copia en cuanto el ordenador se conecte por cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 Hace la copia en cuanto el ordenador se enchufe. {}. {}.
 
+It can’t be stopped once it has started.
+No se puede detener una vez empezado.
+
 It couldn’t be fetched: {}
 No se pudo descargar: {}
+
+It couldn’t be reached ({}). Olo keeps trying.
+No se pudo conectar ({}). Olo sigue intentándolo.
+
+It couldn’t be reached: {}. Olo keeps trying.
+No se pudo conectar: {}. Olo sigue intentándolo.
 
 It couldn’t be read: {}
 No se pudo leer: {}
@@ -4905,6 +5472,9 @@ No funcionó.
 
 It didn’t open: {}.
 No se abrió: {}.
+
+It didn’t say why.
+No dijo por qué.
 
 It downloads {}
 Descarga {}
@@ -4933,6 +5503,9 @@ Necesita al menos tres palmas y tres dedos entre los toques de los que aprende. 
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 Suena a un cuarto del volumen máximo, tengas el tuyo como lo tengas, y no mientras el sonido esté silenciado.
 
+It starts when {} starts.
+Arranca cuando arranca {}.
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 Solo usa lo que nada más quiere del tiempo del procesador y del disco: nunca te estorba, aunque va más lento mientras trabajas.
 
@@ -4947,6 +5520,9 @@ No se olvidó ({}).
 
 It wasn't set up ({}).
 No se configuró ({}).
+
+It won’t start again when {} restarts.
+No volverá a arrancar cuando {} se reinicie.
 
 It's in use now, in place of Olo's own.
 Ahora está en uso, en lugar del propio de Olo.
@@ -5016,6 +5592,12 @@ Su referencia secreta, tal como la da «Copiar referencia secreta» de Passwords
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 Su servicio se inicia con tu sesión: cierra la sesión y vuelve a entrar, o pide a Olo Doctor que lo inicie.
+
+Its services, accounts and log, managed as root in their own window.
+Sus servicios, cuentas y registro, gestionados como root en su propia ventana.
+
+Its sessions may:
+Sus sesiones pueden:
 
 Its sign-in isn’t in the keyring: sign in again.
 Su inicio de sesión no está en el llavero: vuelve a entrar.
@@ -5103,6 +5685,9 @@ Keep HDR on for {}?
 Keep It Going
 Que siga
 
+Keep It Going in “{}”
+Que siga en «{}»
+
 Keep It Going says
 «Sigue adelante» dice
 
@@ -5181,6 +5766,9 @@ Guardando la clave en Passwords (desbloquéalo si lo pide)…
 Keeping what’s done…
 Guardando lo hecho…
 
+Keeps a build’s files in memory and running programs out of swap.
+Mantiene en memoria los archivos de una compilación y los programas en marcha fuera del intercambio.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Mantiene acotada la latencia de lectura cuando escrituras síncronas o descartes intensos saturan una unidad NVMe, donde el valor predeterminado "none" de Linux solo frena la escritura en segundo plano (queue/scheduler).
 
@@ -5205,6 +5793,9 @@ Guardado en este ordenador; se crea en 1Password cuando sincronices una cuenta.
 Kernel
 Núcleo
 
+Kernel limits
+Límites del núcleo
+
 Kernel:
 Núcleo:
 
@@ -5219,6 +5810,9 @@ Contraseña de la clave:
 
 Key {} trusted.
 Clave {} de confianza.
+
+Key:
+Clave:
 
 Keyboard
 Teclado
@@ -5295,6 +5889,12 @@ Puntero más grande
 Last
 Último
 
+Last 30 days
+Últimos 30 días
+
+Last 7 days
+Últimos 7 días
+
 Last Page
 Última página
 
@@ -5306,6 +5906,9 @@ Last backed up {}
 
 Last clean-up
 Última limpieza
+
+Last day
+Último día
 
 Last used
 Último uso
@@ -5403,6 +6006,15 @@ Menos espacio entre ventanas
 Let coding agents keep their tab’s title current
 Dejar que los agentes titulen su pestaña
 
+Let your other devices reach this computer’s sessions over Tailscale
+Permitir que tus otros dispositivos accedan a las sesiones de este ordenador por Tailscale
+
+Lets a build’s many small writes reach the disk together.
+Permite que las muchas escrituras pequeñas de una compilación lleguen juntas al disco.
+
+Lets agents there use your accounts, even with this computer off.
+Permite que los agentes allí usen tus cuentas, incluso con este ordenador apagado.
+
 Letting go of backups past keeping
 Soltando las copias que ya no se conservan
 
@@ -5466,6 +6078,9 @@ Limitar la pantalla integrada a 60 Hz
 Limit what waits to be written to them
 Limitar lo que espera a escribirse en ellos
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+Límites que trae un equipo Linux, ampliados para compilaciones largas y muchas sesiones.
+
 Line
 Línea
 
@@ -5513,6 +6128,9 @@ Listas
 
 Live
 En directo
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+Agentes de programación bloqueados, con error o trabajando y sesiones abiertas en Rex en directo.
 
 Load
 Carga
@@ -5598,6 +6216,12 @@ Buscar códigos en:
 Look:
 Aspecto:
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+Gestionar un servidor requiere root. Elige una clave que root acepte allí. Si ninguna vale, añade tu clave pública a /root/.ssh/authorized_keys en ese equipo y vuelve a intentarlo.
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Gestionar un servidor requiere root. Desbloquea Olo Passwords o añádele una clave que root acepte en {}.
+
 Looking at Bluetooth…
 Mirando Bluetooth…
 
@@ -5612,6 +6236,9 @@ Mirando lo que hay…
 
 Looking at which processes use it…
 Mirando qué procesos lo usan…
+
+Looking at {}…
+Consultando {}…
 
 Looking for Bluetooth…
 Buscando Bluetooth…
@@ -5808,6 +6435,12 @@ Creándola de nuevo, vacía
 Making it…
 Creándolo…
 
+Manage Host…
+Gestionar host…
+
+Manage Rex Server…
+Gestionar servidor Rex…
+
 Manually
 Manualmente
 
@@ -5874,6 +6507,9 @@ Errores del medio
 Medium
 Medio
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+Los miembros del grupo rex usan el servidor compartido, donde cada terminal se ejecuta como la cuenta rex. Los cambios surten efecto la próxima vez que inicien sesión.
+
 Membership
 Suscripción
 
@@ -5882,6 +6518,9 @@ Memoria
 
 Memory Pressure
 Presión de memoria
+
+Memory for builds
+Memoria para compilaciones
 
 Memory free
 Memoria libre
@@ -6147,6 +6786,12 @@ Mover el grupo a la ventana
 Move Here
 Mover aquí
 
+Move Tab Left
+Mover pestaña a la izquierda
+
+Move Tab Right
+Mover pestaña a la derecha
+
 Move Tab to New Window
 Mover la pestaña a una ventana nueva
 
@@ -6231,6 +6876,9 @@ Moviendo {} a la papelera
 Moving {} to the Trash…
 Moviendo {} a la papelera…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+Multiplexa espacios de trabajo locales y remotos por SSH/Tailscale con Ghostty VT, divisiones, capas flotantes y seguimiento en directo de agentes de IA.
+
 Music
 Música
 
@@ -6303,8 +6951,17 @@ Cerca
 Needed by another package
 Lo necesita otro paquete
 
+Needs curl there
+Necesita curl allí
+
 Needs full access
 Necesita acceso completo
+
+Needs git there
+Necesita git allí
+
+Neither kind of Rex server is in use on {}. Start one of them:
+No se está usando ningún tipo de servidor Rex en {}. Inicia uno de ellos:
 
 Network
 Red
@@ -6338,6 +6995,9 @@ Nueva conversación
 
 New Event…
 Nuevo evento…
+
+New Floating Terminal
+Nuevo Terminal flotante
 
 New Folder
 Nueva carpeta
@@ -6378,6 +7038,9 @@ Nuevas secciones
 New Section…
 Nueva sección…
 
+New Session
+Nueva sesión
+
 New Signature…
 Nueva firma…
 
@@ -6416,6 +7079,9 @@ Nueva descripción
 
 New event
 Evento nuevo
+
+New host
+Nuevo host
 
 New message
 Mensaje nuevo
@@ -6476,6 +7142,9 @@ Página siguiente
 
 Next Tab
 Pestaña siguiente
+
+Next Waiting Agent
+Siguiente agente en espera
 
 Next Week
 Semana siguiente
@@ -6558,6 +7227,9 @@ Sin pull request
 No Receivers Paired
 Ningún receptor enlazado
 
+No SSH hosts yet
+Aún no hay hosts SSH
+
 No Saved Groups
 Ningún grupo guardado
 
@@ -6569,6 +7241,12 @@ Ninguna tarea seleccionada
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 No hay VPN. Importa una configuración de WireGuard o añade una con la app de su fabricante.
+
+No account is listed: nobody can sign in through the login server.
+No hay ninguna cuenta en la lista: nadie puede iniciar sesión a través del servidor de inicio de sesión.
+
+No active SSH authentication request.
+No hay ninguna solicitud de autenticación SSH activa.
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 Ninguna app puede tener un elemento sin preguntar. Cuando una pide un elemento, Aprobar siempre se lo permite para siempre, y aparece aquí para retirarlo.
@@ -6636,6 +7314,9 @@ No hay teclados conectados.
 No limit
 Sin límite
 
+No matching entries
+No hay entradas coincidentes
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 Aún no hay mensajes con {}. Lo que escribas abajo se envía como SMS desde tu teléfono.
 
@@ -6663,6 +7344,9 @@ No hay ningún teléfono ni cuenta de correo configurados: un teléfono en Telé
 No phone paired
 Ningún teléfono enlazado
 
+No pool
+Sin pool
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 No funciona ningún servicio de perfiles de energía (power-profiles-daemon, o tuned-ppd en Fedora): Olo fija el modo de energía a través de él.
 
@@ -6680,6 +7364,12 @@ Ningún proceso usa mucho ahora
 
 No processes match.
 Ningún proceso coincide.
+
+No programs in the panes are listening on ports, and none is forwarded here.
+Ningún programa en los paneles escucha en puertos, y no hay ninguno reenviado aquí.
+
+No repositories yet.
+Aún no hay repositorios.
 
 No screen recordings yet. Record one with ⌘⇧6.
 Aún no hay grabaciones de pantalla. Graba una con ⌘⇧6.
@@ -6707,6 +7397,9 @@ Ningún {} para esta cuenta.
 
 No: it did no better ({}), so the weights before stay
 No: no fue mejor ({}), así que se quedan los pesos anteriores
+
+Nobody is in the rex group.
+Nadie está en el grupo rex.
 
 Noise
 Ruido
@@ -6738,8 +7431,17 @@ Ninguno (plano)
 None asked for yet: type in brush
 Aún no se ha pedido ninguno: escribe en brush
 
+None chosen
+Ninguno elegido
+
 None connected to Olo yet.
 Ninguno conectado a Olo todavía.
+
+None found
+Ninguno encontrado
+
+None in that time
+Ninguno en ese tiempo
 
 None in the last minute
 Ninguno en el último minuto
@@ -6837,6 +7539,9 @@ Sin comprobar ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 Aún sin comprobar: Validar la relee y comprueba que está completa.
 
+Not cloned
+Sin clonar
+
 Not connected
 No conectado
 
@@ -6848,6 +7553,9 @@ No conectado: {}.
 
 Not enough touches to learn from
 No hay suficientes toques para aprender
+
+Not fixed with the others: it has its own button.
+No se corrige con los demás: tiene su propio botón.
 
 Not found
 No encontrado
@@ -6867,6 +7575,15 @@ Sin efecto: {}
 Not in the last minute; {} since this window opened
 No en el último minuto; {} desde que se abrió esta ventana
 
+Not installed
+No instalado
+
+Not known
+Desconocido
+
+Not on the path
+No está en el PATH
+
 Not paired
 Sin enlazar
 
@@ -6884,6 +7601,9 @@ No guardado: {}
 
 Not sent: {}
 No enviado: {}
+
+Not set
+Sin establecer
 
 Not set up
 Sin configurar
@@ -6942,6 +7662,9 @@ Aún no se ha copiado nada.
 Nothing came from the microphone.
 No llegó nada del micrófono.
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+No se puede instalar nada en {} desde aquí: no se accede por SSH.
+
 Nothing changed: Olo's own model is still in use.
 No ha cambiado nada: se sigue usando el modelo propio de Olo.
 
@@ -6957,6 +7680,9 @@ Aún no hay tareas completadas
 Nothing due today
 Hoy no vence ninguna tarea
 
+Nothing else was changed.
+No se cambió nada más.
+
 Nothing found
 No se encontró nada
 
@@ -6969,6 +7695,9 @@ Aún no hay nada en el historial.
 Nothing is backed up or sent until you resume. {}. {}.
 No se copia ni se envía nada hasta que reanudes. {}. {}.
 
+Nothing is changed until you choose something to do.
+No cambia nada hasta que elijas qué hacer.
+
 Nothing more today
 Nada más hoy
 
@@ -6977,6 +7706,18 @@ Nada nuevo
 
 Nothing new to learn
 Nada nuevo que aprender
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+Nada de este ordenador está concedido a «{}». Para concederle algo, ve a Preferencias ▸ Rex.
+
+Nothing on {} is changed yet.
+Aún no se ha cambiado nada en {}.
+
+Nothing on {} is known until it connects.
+No se sabe nada de {} hasta que se conecte.
+
+Nothing on {} is known until it’s connected.
+No se sabe nada de {} hasta que esté conectado.
 
 Nothing read yet
 Aún no se ha leído nada
@@ -6996,11 +7737,17 @@ Aquí no hay tareas pendientes
 Nothing to do.
 Nada que hacer.
 
+Nothing to rename.
+Nada que renombrar.
+
 Nothing to show yet
 Aún no hay nada que mostrar
 
 Nothing to tune for its driver ({}) yet.
 Aún no hay nada que ajustar para su driver ({}).
+
+Nothing was changed on {}.
+No se cambió nada en {}.
 
 Notification
 Notificación
@@ -7131,8 +7878,29 @@ Instalador de Olo
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 Olo no tiene la app {} en este ordenador: da el ID y el secreto de su cliente (Google Cloud ▸ su proyecto Olo ▸ Clientes), o Cancelar y Añadir una cuenta de Google… para que lo haga el agente.
 
+Olo has no releases yet.
+Olo aún no tiene versiones publicadas.
+
+Olo has no typing helper for {}.
+Olo no tiene asistente de escritura para {}.
+
+Olo is up to date (looked {}).
+Olo está al día (comprobado {}).
+
+Olo is up to date.
+Olo está al día.
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo guarda {}{}: sus inicios de sesión, claves y contraseñas Wi-Fi, abiertos con tu contraseña de inicio de sesión.
+
+Olo looks for a newer release every hour.
+Olo busca una versión más reciente cada hora.
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo busca una versión más reciente dos minutos después de arrancar y luego cada hora.
+
+Olo restarts once it's installed.
+Olo se reinicia una vez instalada.
 
 Olo saying its name
 Olo diciendo su nombre
@@ -7158,14 +7926,59 @@ Se sigue usando el modelo propio de Olo.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 El modelo de palmas de Olo, hecho con {} toques de manos reales (Preferencias ▸ Panel táctil y ratón ▸ Toque entrena uno tuyo)
 
+Olo's releases couldn't be listed: {}
+No se pudieron listar las versiones de Olo: {}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+El puente de Olo está en «{}», sin nada concedido. Para concederle algo, ve a Preferencias ▸ Rex.
+
+Olo’s bridge is on “{}”.
+El puente de Olo está en «{}».
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+El puente de Olo no está en «{}». Para instalarlo, elige Agentes ▸ Instalar el puente de Olo.
+
 Olo’s keyring isn’t running here; it starts with your session.
 El llavero de Olo no funciona aquí; se inicia con tu sesión.
 
 Olo’s language:
 Idioma de Olo:
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Las apps propias de Olo podrán iniciar sesión con ellas hasta que Passwords se bloquee o durante 10 minutos tras la última vez. Las claves se quedan aquí.
+
 Olo’s phone service isn’t running.
 El servicio de teléfono de Olo no está en marcha.
+
+Olo’s skill for agents is on “{}”.
+La skill de Olo para agentes está en «{}».
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+La skill de Olo para agentes no está en «{}». Para instalarla, elige Agentes ▸ Instalar la skill de Olo para agentes.
+
+Olo’s typing helper is being added to “{}”…
+Se está añadiendo el asistente de escritura de Olo a «{}»…
+
+Olo’s typing helper is on “{}”.
+El asistente de escritura de Olo está en «{}».
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+El asistente de escritura de Olo está desactivado. Para usarlo, elige Ajustes ▸ Usar el asistente de escritura de Olo en hosts.
+
+Olo’s typing helper isn’t on “{}”.
+El asistente de escritura de Olo no está en «{}».
+
+Olo’s typing helper isn’t on “{}”: {}
+El asistente de escritura de Olo no está en «{}»: {}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+Se añadió el asistente de escritura de Olo a tu cuenta en «{}» y se usará la próxima vez que te conectes.
+
+Olo’s typing helper was added to your account on “{}”.
+Se añadió el asistente de escritura de Olo a tu cuenta en «{}».
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+Se añadió el asistente de escritura de Olo a «{}». Se usará la próxima vez que te conectes.
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Las ventanas de Olo cambian al instante. Los demás programas lo adoptan la próxima vez que se inicien, en los idiomas que tengan.
@@ -7212,14 +8025,29 @@ Lo usan ahora
 On the day, at 9 AM
 El mismo día a las 9:00
 
+On the host
+En el host
+
 On the network
 En la red
+
+On the path
+En el PATH
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 En el teléfono, abre Ajustes ▸ Bluetooth y déjalo abierto ahí. Aparecerá aquí en un momento.
 
+On the tailnet as {}.
+En la tailnet como {}.
+
+On this computer
+En este ordenador
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 En tu teléfono, abre Telegram ▸ Ajustes ▸ Dispositivos ▸ Vincular dispositivo de escritorio, y apúntalo a este código.
+
+On {}
+En {}
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 Ahora en {}: {}. Mover un ajuste lo pone en Personalizado {}; Modos de energía dice en qué lo pone cada modo.
@@ -7281,6 +8109,9 @@ Solo se ve la ventana activa, ampliada, con sus diálogos encima.
 Only the latest of the same notification
 Solo la última de la misma notificación
 
+Only this computer can reach these sessions.
+Solo este ordenador puede acceder a estas sesiones.
+
 Only when I choose Sync Now
 Solo cuando elija Sincronizar ahora
 
@@ -7338,6 +8169,9 @@ Abrir Energía
 Open Pull Request #{}
 Abrir pull request #{}
 
+Open Rex Preferences
+Abrir Preferencias de Rex
+
 Open Saved Group
 Abrir grupo guardado
 
@@ -7362,11 +8196,20 @@ Abrir con
 Open With Offers
 Ofertas de Abrir con
 
+Open a host’s Account window to see how each stands there, and to clone.
+Abre la ventana Cuenta de un host para ver cómo está cada uno allí y clonar.
+
 Open files
 Archivos abiertos
 
+Open files and tasks
+Archivos abiertos y tareas
+
 Open in Google Drive
 Abrir en Google Drive
+
+Open in Rex
+Abrir en Rex
 
 Open in Terminal
 Abrir en Terminal
@@ -7376,6 +8219,9 @@ Abrir en Tracker
 
 Open kache's Log
 Abrir el registro de kache
+
+Open links on this computer
+Abrir enlaces en este ordenador
 
 Open my.telegram.org
 Abrir my.telegram.org
@@ -7392,11 +8238,17 @@ Abre {} para verla.
 Open {} to see them.
 Abre {} para verlas.
 
+OpenAI’s coding agent.
+El agente de programación de OpenAI.
+
 OpenDocument Text…
 Texto OpenDocument…
 
 Opening programs’ secrets…
 Abriendo los secretos de los programas…
+
+Opening session…
+Abriendo sesión…
 
 Opening the backup in {}
 Abriendo la copia en {}
@@ -7445,6 +8297,9 @@ Otros ratones
 
 Other Updates
 Otras actualizaciones
+
+Other releases:
+Otras versiones:
 
 Other workspaces’ applications start collapsed
 Las apps de otros espacios empiezan plegadas
@@ -7541,6 +8396,9 @@ Palmas detectadas
 
 Palms while typing
 Palmas al escribir
+
+Pane
+Panel
 
 Panel
 Panel
@@ -7644,6 +8502,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 Contraseñas e inicios de sesión: aquí no hay llavero de inicio de sesión donde guardarlos, así que no se trajeron.
 
+Passwords answered something else
+Passwords respondió otra cosa
+
 Passwords answered something else.
 Passwords respondió otra cosa.
 
@@ -7668,17 +8529,26 @@ Passwords no guardó la clave.
 Passwords for Every Screen…
 Contraseñas para cada pantalla…
 
+Passwords has no SSH keys to offer.
+Passwords no tiene claves SSH que ofrecer.
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords no tiene ningún inicio de sesión para una cuenta de Google: añade antes ahí el de la cuenta, o configura la app a mano.
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 Passwords no tiene ningún elemento «{}»: vuelve a dar la clave en Archivo ▸ Proveedor de datos…
 
+Passwords is locked
+Passwords está bloqueado
+
 Passwords is locked.
 Passwords está bloqueado.
 
 Passwords isn’t running.
 Passwords no se está ejecutando.
+
+Passwords isn’t set up
+Passwords no está configurado
 
 Passwords isn’t set up yet.
 Passwords aún no está configurado.
@@ -7712,6 +8582,9 @@ Ahora se usa la contraseña de Passwords: inténtalo de nuevo.
 
 Paste
 Pegar
+
+Paste Password…
+Pegar contraseña…
 
 Paste as Attachment
 Pegar como adjunto
@@ -7876,6 +8749,15 @@ Polaco
 
 Pool
 Pool
+
+Port
+Puerto
+
+Port:
+Puerto:
+
+Ports
+Puertos
 
 Portuguese
 Portugués
@@ -8069,14 +8951,26 @@ Perfil:
 Program
 Programa
 
+Program folder
+Carpeta de programas
+
 Program names, comma separated
 Nombres de programas, separados por comas
+
+Programs
+Programas
 
 Programs Using the Network
 Programas que usan la red
 
 Programs Using the {}
 Programas que usan {}
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Los programas de ese host podrán usarlas hasta que Passwords se bloquee o durante 10 minutos tras la última vez. Las claves se quedan aquí.
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+Los programas de «{}» pueden usar este ordenador a través de Rex, según indiquen sus permisos (Preferencias ▸ Rex).
 
 Programs’ Secrets
 Secretos de los programas
@@ -8119,6 +9013,9 @@ Dormir el ordenador al cabo de:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 Pone lo que elijas de una copia en lugar de lo que hay aquí; el resto se queda como está. Lo que tienes ahora se guarda antes.
+
+Putting it in place
+Colocándola en su sitio
 
 Putting {} back
 Devolviendo {}
@@ -8201,6 +9098,12 @@ Duró
 Range
 Periodo
 
+Reach its local servers
+Acceder a sus servidores locales
+
+Reach their local servers
+Acceder a sus servidores locales
+
 Reaches:
 Alcanza:
 
@@ -8213,14 +9116,26 @@ Leído
 Read Quota Now
 Leer la cuota ahora
 
+Read and set the clipboard
+Leer y cambiar el portapapeles
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 Releer desde donde se guardan todos los bytes que necesitan las copias elegidas y comprobar cada pieza, como haría una restauración
+
+Read just now
+Leído ahora mismo
 
 Read ones fade, then move to Cleared; unread ones stay.
 Las leídas se apagan y van a Borradas; las demás se quedan.
 
 Read only
 Solo lectura
+
+Read {} h ago
+Leído hace {} h
+
+Read {} min ago
+Leído hace {} min
 
 Reading /etc/hosts…
 Leyendo /etc/hosts…
@@ -8252,6 +9167,9 @@ Volviendo a leer el índice
 Reading the journal…
 Leyendo el diario…
 
+Reading the log…
+Leyendo el registro…
+
 Reading the packages…
 Leyendo los paquetes…
 
@@ -8266,6 +9184,12 @@ Leyendo…
 
 Reads
 Lecturas
+
+Ready
+Listo
+
+Ready: it starts when somebody signs in
+Listo: arranca cuando alguien inicia sesión
 
 Real-time priority
 Prioridad de tiempo real
@@ -8290,6 +9214,12 @@ Lo recomienda otro paquete
 
 Recommended for it
 Recomendado para él
+
+Reconnecting (try {})…
+Reconectando (intento {})…
+
+Reconnecting. {}
+Reconectando. {}
 
 Record
 Grabar
@@ -8399,8 +9329,14 @@ Reinstalar la selección…
 Reject
 Rechazar
 
+Release:
+Versión:
+
 Reload
 Recargar
+
+Reload Server Configuration
+Recargar configuración del servidor
 
 Reload Without the Cache
 Recargar sin la caché
@@ -8417,6 +9353,9 @@ Recordatorio:
 Remote
 Remoto
 
+Remote Access…
+Acceso remoto…
+
 Removable Disks
 Discos extraíbles
 
@@ -8429,8 +9368,14 @@ Quitar cuenta
 Remove Graph
 Quitar gráfica
 
+Remove Host
+Quitar host
+
 Remove Place
 Quitar lugar
+
+Remove Pool
+Quitar pool
 
 Remove Repository
 Quitar repositorio
@@ -8456,8 +9401,17 @@ Quitar del pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 ¿Quitarla del pool? Su inicio de sesión aquí se elimina; la cuenta en sí no se toca.
 
+Remove the Token Pool from {}?
+¿Quitar el Token Pool de {}?
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+¿Quitar el Token Pool de {}? Claude Code y Codex allí vuelven a sus propios inicios de sesión. Antes se traen de vuelta a este ordenador los inicios de sesión de sus cuentas.
+
 Remove the VPN “{}”? Its settings and keys go with it.
 ¿Quitar la VPN «{}»? Sus ajustes y claves se van con ella.
+
+Remove the bridge, skill and typing helper?
+¿Quitar el puente, la skill y el asistente de escritura?
 
 Remove the {}? It will no longer unlock anything.
 ¿Quitar la {}? Ya no desbloqueará nada.
@@ -8473,6 +9427,9 @@ Quitar «{}» de Favoritos
 
 Remove…
 Quitar…
+
+Removing
+Quitando
 
 Removing…
 Quitando…
@@ -8494,6 +9451,12 @@ Renombrar lugar…
 
 Rename Section
 Renombrar sección
+
+Rename Session…
+Renombrar sesión…
+
+Rename Tab…
+Renombrar pestaña…
 
 Rename Worktree…
 Renombrar worktree…
@@ -8576,6 +9539,9 @@ Restablecer contraseñas
 Reset Passwords…
 Restablecer contraseñas…
 
+Reset Terminal
+Restablecer terminal
+
 Reset Thresholds
 Restablecer umbrales
 
@@ -8632,6 +9598,12 @@ Reiniciar kache
 
 Restart, Asking First
 Reiniciar preguntando antes
+
+Restarting or stopping it ends every session.
+Reiniciarlo o detenerlo cierra todas las sesiones.
+
+Restarting or stopping it leaves open sessions running.
+Reiniciarlo o detenerlo deja en marcha las sesiones abiertas.
 
 Restart…
 Reiniciar…
@@ -8714,6 +9686,54 @@ Volviendo atrás en {} segundos.
 Rewriting index.db…
 Reescribiendo index.db…
 
+Rex
+Rex
+
+Rex Server
+Servidor Rex
+
+Rex Server on {}
+Servidor Rex en {}
+
+Rex adds these entries to {} as {}:
+Rex añade estas entradas a {} como {}:
+
+Rex changes {} as {}:
+Rex cambia {} como {}:
+
+Rex isn’t installed
+Rex no está instalado
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+Rex no conoce ningún host accesible por SSH. Añade uno en Rex o en Preferencias ▸ Rex.
+
+Rex needs an address to connect.
+Rex necesita una dirección para conectar.
+
+Rex picks a free port on this computer; the Ports list shows it.
+Rex elige un puerto libre en este ordenador; aparece en la lista Puertos.
+
+Rex removes these as {}:
+Rex quita esto como {}:
+
+Rex runs this as {}:
+Rex ejecuta esto como {}:
+
+Rex sets these as {}:
+Rex establece esto como {}:
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex inicia sesión como {} con una clave SSH de Olo Passwords y no cambia nada hasta que funcione.
+
+Rex signs in as {}@{}, as it will to connect.
+Rex inicia sesión como {}@{}, igual que hará para conectar.
+
+Rex: Agents & Sessions
+Rex: Agentes y sesiones
+
+Rex’s own server. It can’t be disconnected or removed.
+El servidor propio de Rex. No se puede desconectar ni quitar.
+
 Rich Text (RTF)…
 Texto enriquecido (RTF)…
 
@@ -8747,6 +9767,9 @@ Enrollar o desenrollar
 Room:
 Espacio:
 
+Root on {} didn’t accept your keys
+Root en {} no aceptó tus claves
+
 Rotate Left
 Girar a la izquierda
 
@@ -8771,6 +9794,9 @@ Router:
 Rows
 Filas
 
+Rows:
+Filas:
+
 Ruby
 Ruby
 
@@ -8785,6 +9811,15 @@ Ejecuta en ella con «olo-screen run»
 
 Running
 En marcha
+
+Running Rex’s installer as {}
+Ejecutando el instalador de Rex como {}
+
+Running for {}
+En marcha desde hace {}
+
+Running systemctl as {}
+Ejecutando systemctl como {}
 
 Runs on
 Se ejecuta en
@@ -8815,6 +9850,18 @@ Temperatura del SSD
 
 SSE
 SSE
+
+SSH Authentication
+Autenticación SSH
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSH permite diez sesiones por conexión de forma predeterminada; cada panel usa una.
+
+SSH keys
+Claves SSH
+
+SSH sessions
+Sesiones SSH
 
 SSW
 SSO
@@ -9047,6 +10094,9 @@ Seleccionar todas las conversaciones
 Select All Screens
 Seleccionar todas las pantallas
 
+Select Last Output
+Seleccionar la última salida
+
 Select None
 No seleccionar nada
 
@@ -9156,11 +10206,29 @@ Prioridad
 Session:
 Sesión:
 
+Sessions
+Sesiones
+
+Sessions on this computer may:
+Las sesiones en este ordenador pueden:
+
+Sessions on {} may:
+Las sesiones en {} pueden:
+
+Sessions there keep running.
+Las sesiones allí siguen en marcha.
+
+Sessions used in
+Sesiones usadas en
+
 Set
 Fijar
 
 Set Background
 Poner como fondo
+
+Set Rex up there if it needs it
+Configurar Rex allí si hace falta
 
 Set Time Zone
 Fijar zona horaria
@@ -9171,8 +10239,14 @@ Configurar
 Set Up Again…
 Volver a configurar…
 
+Set Up This Host’s Account…
+Configurar la cuenta de este host…
+
 Set Up by Hand…
 Configurar a mano…
+
+Set Up {}
+Configurar {}
 
 Set Up…
 Configurar…
@@ -9186,6 +10260,21 @@ Fijado para todo el ordenador por {}{}.
 Set up ({} looks).
 Configurado ({} aspectos).
 
+Set up with
+Configurar con
+
+Set up with:
+Configurar con:
+
+Set up your own Rex server on {}
+Configurar tu propio servidor Rex en {}
+
+Set up {} as a Rex login server
+Configurar {} como servidor Rex de inicio de sesión
+
+Set up {} as a shared Rex server
+Configurar {} como servidor Rex compartido
+
 Setting
 Ajuste
 
@@ -9194,6 +10283,9 @@ Fijándolo: se pide la contraseña de un administrador…
 
 Setting up backups to {}…
 Configurando copias en {}…
+
+Setting up needs root. Nothing on {} is changed yet.
+Configurar requiere root. Aún no se ha cambiado nada en {}.
 
 Setting up the backups in {}’s Google Drive…
 Configurando las copias en el Google Drive de {}…
@@ -9204,11 +10296,26 @@ Configurar tu {} requiere tu contraseña y dos toques de la llave:
 Setting up your {} takes your password, its PIN and two touches of the key:
 Configurar tu {} requiere tu contraseña, su PIN y dos toques de la llave:
 
+Setting up {} of {}…
+Configurando {} de {}…
+
+Setting up {}…
+Configurando {}…
+
+Setting up…
+Configurando…
+
 Settings
 Ajustes
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+Ajustes, instrucciones, skills y comandos. Nunca un inicio de sesión ni una clave.
+
 Settings:
 Ajustes:
+
+Setting…
+Estableciendo…
 
 Seventh folder
 Séptima carpeta
@@ -9312,11 +10419,17 @@ Mostrar archivo en Tracker
 Show Hidden Files
 Mostrar archivos ocultos
 
+Show Idle Panes in Activity
+Mostrar paneles en reposo en Actividad
+
 Show Notifications
 Mostrar notificaciones
 
 Show Only {}
 Mostrar solo {}
+
+Show Pane Headers
+Mostrar cabeceras de paneles
 
 Show Places
 Mostrar lugares
@@ -9341,6 +10454,9 @@ Mostrar código fuente
 
 Show Toolbars
 Mostrar barras de herramientas
+
+Show Typing Immediately
+Mostrar lo escrito al instante
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Muestra una ventana desde el menú de su pestaña (clic derecho en su título) o su fila de la Deskbar: Mostrar en AirPlay. Reproduce una película desde Viewer o Tracker: Reproducir en.
@@ -9444,6 +10560,9 @@ Volver a entrar en Terminal…
 Sign In Again…
 Volver a entrar…
 
+Sign In to Tailscale…
+Iniciar sesión en Tailscale…
+
 Sign In with Google
 Iniciar sesión con Google
 
@@ -9455,6 +10574,12 @@ Cerrar sesión
 
 Sign Out…
 Cerrar sesión…
+
+Sign in to connect this server to Tailscale.
+Inicia sesión para conectar este servidor a Tailscale.
+
+Sign in to other hosts with your SSH keys
+Iniciar sesión en otros hosts con tus claves SSH
 
 Sign in to {} as “{}” with your passkey?
 ¿Iniciar sesión en {} como «{}» con tu llave de acceso?
@@ -9477,6 +10602,12 @@ Sesión iniciada como {} ({}).
 Signed in as {}.
 Sesión iniciada como {}.
 
+Signing in as {} with a key from Olo Passwords
+Iniciando sesión como {} con una clave de Olo Passwords
+
+Signing in as {}…
+Iniciando sesión como {}…
+
 Signing in to Fastmail…
 Iniciando sesión en Fastmail…
 
@@ -9494,6 +10625,9 @@ Tamaño
 
 Size:
 Tamaño:
+
+Skill for agents
+Skill para agentes
 
 Skip syncing the index to disk
 No sincronizar el índice con el disco
@@ -9572,6 +10706,9 @@ Blando
 
 Software License
 Licencia de software
+
+Software Update
+Actualización de software
 
 Sol 6.1
 Sol 6.1
@@ -9654,6 +10791,15 @@ Velocidad:
 Spiral
 Espiral
 
+Split Down
+Dividir abajo
+
+Split Right
+Dividir a la derecha
+
+Split to Fit
+Dividir para ajustar
+
 Standard
 Estándar
 
@@ -9671,6 +10817,9 @@ Empezar de nuevo
 
 Start Over…
 Empezar de nuevo…
+
+Start Terminal Here
+Abrir Terminal aquí
 
 Start Test
 Iniciar prueba
@@ -9703,6 +10852,9 @@ other: Empezó hace {n} horas
 Started {n} minutes ago
 one: Empezó hace {n} minuto
 other: Empezó hace {n} minutos
+
+Starting Tailscale…
+Iniciando Tailscale…
 
 Starting Up
 Al iniciar
@@ -9764,8 +10916,14 @@ Aguanieve constante
 Steady snow
 Nevada constante
 
+Step 1 is done. Try Again carries on from step 2.
+El paso 1 está hecho. Reintentar sigue desde el paso 2.
+
 Step {} of {}
 Paso {} de {}
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+Los pasos 1 a {} están hechos. Reintentar sigue desde el paso {}.
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 Sigue en curso tras {}. Los demás arreglos esperan a que termine; si no termina nunca, reiniciar el equipo lo detiene.
@@ -9806,6 +10964,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 ¿Dejar de sincronizar con {}? Sus elementos se quitan de este ordenador, junto con los cambios hechos aquí y aún sin enviar. En 1Password no cambia nada.
 
+Stopped before step {} of {}
+Detenido antes del paso {} de {}
+
 Stopped part way, {}
 Detenida a medias, {}
 
@@ -9817,6 +10978,9 @@ Detenido.
 
 Stopped: what was restored so far is there.
 Detenido: lo restaurado hasta ahora está ahí.
+
+Stopping after this step…
+Deteniéndose tras este paso…
 
 Stopping the backup
 Deteniendo la copia
@@ -10019,6 +11183,9 @@ Pestaña 8
 Tab 9
 Pestaña 9
 
+Tab {}
+Pestaña {}
+
 Table
 Tabla
 
@@ -10033,6 +11200,12 @@ Las pestañas de las pantallas de agentes nunca reciben un código.
 
 Tags:
 Etiquetas:
+
+Tailscale status is unavailable.
+El estado de Tailscale no está disponible.
+
+Tailscale: {}.
+Tailscale: {}.
 
 Take Back
 Recuperar
@@ -10100,6 +11273,9 @@ Pedir a los agentes que usen las Pantallas de agentes
 Tell me of:
 Avisarme de:
 
+Tell me when an agent whose pane isn’t in front:
+Avisarme cuando un agente cuyo panel no esté en primer plano:
+
 Tell me when it runs out, and when it's back
 Avisarme cuando se agote y cuando vuelva
 
@@ -10108,6 +11284,12 @@ Distinguir las palmas con un modelo de palma
 
 Tell palms apart with a palm model too
 Distinguir también las palmas con un modelo de palma
+
+Telling Codex there of them
+Informando de ellas a Codex allí
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+Indica a Claude Code y a otros agentes allí cómo usar el puente y Rex.
 
 Temperature
 Temperatura
@@ -10244,8 +11426,14 @@ La MTU es un número de bytes.
 The New Build
 La compilación nueva
 
+The Rex server isn’t connected.
+El servidor Rex no está conectado.
+
 The Theme’s Own
 El del tema
+
+The Token Pool running on this computer is older: upgrade it first.
+El Token Pool en marcha en este ordenador es más antiguo: actualízalo primero.
 
 The VPN couldn't be saved.
 No se pudo guardar la VPN.
@@ -10255,6 +11443,15 @@ La cuenta que responde ahora
 
 The account couldn’t be saved ({}).
 No se pudo guardar la cuenta ({}).
+
+The accounts file couldn’t be read.
+No se pudo leer el archivo de cuentas.
+
+The accounts’ latest sign-ins are copied back here first.
+Antes se copian aquí los últimos inicios de sesión de las cuentas.
+
+The address has no repository’s name in it.
+La dirección no contiene el nombre del repositorio.
 
 The address search answered {}.
 La búsqueda de direcciones respondió {}.
@@ -10310,6 +11507,9 @@ El código de {}, en {}.
 The coming days, each its sky, low and high.
 Los próximos días, cada uno con su cielo, mínima y máxima.
 
+The command runs once, in the new clone. Leave it empty for none.
+El comando se ejecuta una vez en el clon nuevo. Déjalo vacío si no hay ninguno.
+
 The computer couldn't be restarted: {}
 No se pudo reiniciar el ordenador: {}
 
@@ -10355,8 +11555,17 @@ La primera copia empieza en un momento.
 The first fine-tune failed: {}
 Falló el primer ajuste fino: {}
 
+The first look is two minutes after it starts.
+La primera comprobación es dos minutos después de arrancar.
+
+The folder is a place under your home there (src/name).
+La carpeta es una ruta dentro de tu carpeta personal allí (src/nombre).
+
 The hand-written ones: not fine-tuned yet
 Los escritos a mano: aún sin ajustar
+
+The host didn’t say what it has.
+El host no dijo qué tiene.
 
 The icons {} is drawn with, everywhere.
 Los iconos con los que se dibuja {}, en todas partes.
@@ -10421,6 +11630,12 @@ La última copia fue {}
 The last hour of use
 La última hora de uso
 
+The last install didn't go through.
+La última instalación no salió adelante.
+
+The last install didn't go through: {}
+La última instalación no salió adelante: {}
+
 The last whole one was {}
 La última completa fue {}
 
@@ -10432,6 +11647,9 @@ No se puede abrir el registro: {}
 
 The login keyring couldn't be read: {}
 No se pudo leer el llavero de inicio de sesión: {}
+
+The login server isn’t running.
+El servidor de inicio de sesión no está en marcha.
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 El aspecto de cada icono, ventana y control, en cada app, y un fondo de pantalla a juego.
@@ -10483,6 +11701,12 @@ Las próximas horas, cada una con su cielo y temperatura, con la probabilidad de
 
 The one it started on
 En la que empezó
+
+The ones you choose, cloned in your home folder there and set up once.
+Los que elijas, clonados en tu carpeta personal allí y configurados una vez.
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+El límite de archivos abiertos rige desde el próximo inicio de sesión (para los paneles abiertos, tras Desconectar y Conectar) y para los servicios desde su próximo arranque.
 
 The package service reads what’s installed and what each repository has.
 El servicio de paquetes lee lo instalado y lo que tiene cada repositorio.
@@ -10565,6 +11789,9 @@ El procesador
 The processor (OpenH264)
 El procesador (OpenH264)
 
+The program in this pane is asking for a password.
+El programa de este panel pide una contraseña.
+
 The repository has a worktree called {} already.
 El repositorio ya tiene un worktree llamado {}.
 
@@ -10582,6 +11809,9 @@ El servidor no aceptó el nombre y la contraseña.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 La dirección CalDAV del servidor, y el nombre y la contraseña con los que te identifica. La contraseña se guarda en tu llavero de inicio de sesión.
+
+The shared server isn’t running.
+El servidor compartido no está en marcha.
 
 The shell has ended.
 El shell ha terminado.
@@ -10697,6 +11927,9 @@ No hay ningún límite «{}».
 There is nothing to share.
 No hay nada que compartir.
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+No hay sitio para ellas en {}. Elige menos tiempo o haz espacio allí.
+
 There's no Bluetooth adapter.
 No hay ningún adaptador Bluetooth.
 
@@ -10711,6 +11944,9 @@ No hay sensor de huellas, o fprintd no está en marcha.
 
 There's no infrared camera.
 No hay cámara de infrarrojos.
+
+There: {} <{}>  ·  Here: {} <{}>
+Allí: {} <{}>  ·  Aquí: {} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 Estas apps pueden tener estos elementos siempre que los pidan. Retira una y se le volverá a preguntar la próxima vez.
@@ -10742,6 +11978,15 @@ Este ordenador
 This Computer's Microphones
 Micrófonos de este ordenador
 
+This Olo upgrades from the build it came from, not from releases.
+Este Olo se actualiza desde la compilación de la que salió, no desde las versiones publicadas.
+
+This Olo was built from source: it upgrades from its build, not from releases.
+Este Olo se compiló desde el código fuente: se actualiza desde su compilación, no desde las versiones publicadas.
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+Este Olo se compiló sin el Token Pool para hosts, así que no se puede instalar ninguno.
+
 This PDF can't be edited, so it can't be saved.
 Este PDF no se puede editar, así que no se puede guardar.
 
@@ -10766,6 +12011,9 @@ Esta cuenta tiene una contraseña en dos pasos.
 This backup was made by a newer Olo.
 Esta copia la hizo un Olo más nuevo.
 
+This computer
+Este ordenador
+
 This computer has no Bluetooth.
 Este ordenador no tiene Bluetooth.
 
@@ -10787,6 +12035,9 @@ El núcleo de este ordenador no puede cargar otro planificador (sched_ext: desde
 This computer's sensor sees when someone is in front of it.
 El sensor de este ordenador detecta cuando hay alguien delante.
 
+This computer’s git doesn’t say who you are.
+El git de este ordenador no dice quién eres.
+
 This display reports no modes.
 Esta pantalla no indica ningún modo.
 
@@ -10796,6 +12047,12 @@ Este evento
 This folder was moved or deleted.
 Esta carpeta se movió o se eliminó.
 
+This host isn’t reached over SSH.
+A este host no se accede por SSH.
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+A este host no se accede por SSH: desde aquí no se puede consultar el estado de su cuenta ni cambiarla.
+
 This is the recommended profile for this touchpad.
 Este es el perfil recomendado para este touchpad.
 
@@ -10804,6 +12061,9 @@ No es una copia de Olo.
 
 This isn't the session at the computer, so the computer isn't restarted.
 Esta no es la sesión del ordenador, así que el ordenador no se reinicia.
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+No es una dirección de repositorio (git@host:propietario/nombre.git o https://…).
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Este núcleo no puede sujetar un disco a un límite propio (Linux 6.2 y posteriores pueden).
@@ -10952,6 +12212,9 @@ A la pantalla siguiente
 To the previous display
 A la pantalla anterior
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Para usarlo, elige Ajustes ▸ Usar el asistente de escritura de Olo en hosts.
+
 To {}
 En {}
 
@@ -10997,17 +12260,29 @@ Hoy {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Pool respondió otra cosa.
+
 Token Pool asks {} to wait until one resets.
 Token Pool pide a {} que espere hasta que se restablezca una.
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool no está en marcha: sus cuotas aparecen cuando lo esté.
 
+Token Pool isn’t running on this computer
+Token Pool no está en marcha en este ordenador
+
+Token Pool isn’t running on this computer.
+Token Pool no está en marcha en este ordenador.
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool: sus cuentas llegaron en pausa. Actívalas aquí cuando el pool del otro ordenador ya no las use: cada inicio de sesión se renueva solo, y dos ordenadores renovando uno se cierran la sesión mutuamente.
+
+Token Pool…
+Token Pool…
 
 Token:
 Token:
@@ -11135,6 +12410,9 @@ Recortar…
 Trust
 Confiar
 
+Trust & Connect
+Confiar y conectar
+
 Trust this repository’s key?
 ¿Confiar en la clave de este repositorio?
 
@@ -11198,6 +12476,12 @@ Apagar pantallas
 Turn off screen
 Apagar la pantalla
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+¿Activar Aprobar solo para «{}»?\n\nLo pidió otro programa, no usted. Cuando el agente de código de este panel pida permiso para seguir («Do you want to proceed?»), Rex responderá Sí al cabo de {} segundos, salvo que escriba en el panel o pulse Detener.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+¿Activar Aprobar solo para «{}»?\n\nLo pidió otro programa, no usted. Cuando el agente de código de esta pestaña pida permiso para seguir («Do you want to proceed?»), Terminal responderá Sí al cabo de {} segundos, salvo que escriba en la pestaña o pulse Detener.
+
 Turn on for a laptop usually plugged in.
 Actívalo si el portátil suele estar enchufado.
 
@@ -11240,6 +12524,9 @@ Escribe una tarea arriba y pulsa Intro.
 Type here to try the settings
 Escribe aquí para probar los ajustes
 
+Type in All Panes
+Escribir en todos los paneles
+
 Type the PIN for “{}” (often 0000).
 Escribe el PIN de «{}» (a menudo 0000).
 
@@ -11261,8 +12548,14 @@ Escribe la clave que muestra «{}».
 Type the password it’s to be opened with.
 Escribe la contraseña con la que se abrirá.
 
+Type the repository’s address.
+Escribe la dirección del repositorio.
+
 Type this
 Escribe esto
+
+Type to filter…
+Escribe para filtrar…
 
 Type with your palms down
 Escribe con las palmas apoyadas
@@ -11372,6 +12665,9 @@ Llamada desconocida
 Unless the app says; kept while the pointer is over it.
 Salvo que la app diga; se queda con el puntero encima.
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Desbloquea Olo Passwords o añádele una clave que root acepte en {}.
+
 Unlock…
 Desbloquear…
 
@@ -11383,6 +12679,9 @@ Activar sonido
 
 Unmute All
 Activar todo el sonido
+
+Unpacking
+Desempaquetando
 
 Unread notifications put a blue dot beside their app.
 Las no leídas ponen un punto azul junto a su app.
@@ -11411,6 +12710,9 @@ Subir un nivel
 Up for
 Activo desde hace
 
+Up to date
+Al día
+
 Upcoming
 Próximas
 
@@ -11423,14 +12725,23 @@ Intervalo de actualización
 Update Only This…
 Actualizar solo esto…
 
+Update Rex on {} to {}?
+¿Actualizar Rex en {} a {}?
+
 Update Selected Only…
 Actualizar solo la selección…
 
 Update These {}…
 Actualizar estas {}…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+Actualizar consulta al repositorio de Rex si hay una versión más reciente y la instala si la hay.
+
 Update every:
 Actualizar cada:
+
+Update installs it, with Rex’s installer.
+Actualizar lo instala con el instalador de Rex.
 
 Update the power service in Olo Doctor to use these policies.
 Actualiza el servicio de energía en Olo Doctor para utilizar estos modos.
@@ -11450,6 +12761,9 @@ Las actualizaciones están descargadas y esperan a que se reinicie el ordenador:
 Updating…
 Actualizando…
 
+Upgrade
+Actualizar
+
 Upgrade Fedora
 Actualizar Fedora
 
@@ -11458,6 +12772,9 @@ Actualizar Olo
 
 Upgrade to Fedora {}
 Actualizar a Fedora {}
+
+Upgrading
+Actualizando
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 La actualización descarga ahora todos los paquetes de Fedora {}, mientras trabajas, y luego los instala al reiniciar el ordenador: tarda un rato y mientras tanto no se puede usar el ordenador. Tus archivos, ajustes y apps se conservan. Actualiza antes a lo más reciente de esta versión y ten una copia de seguridad.
@@ -11470,6 +12787,9 @@ Subir como máximo:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 Subir es hacer copia; bajar es restaurar y ordenar. Un límite se aplica al instante, también a una copia en curso.
+
+Uploading {}…
+Subiendo {}…
 
 Uploading: {}
 Subiendo: {}
@@ -11486,6 +12806,9 @@ Urgente desde
 Use
 Usar
 
+Use Agent Screens
+Usar Pantallas de agentes
+
 Use Battery Saver automatically
 Activar el ahorro de batería automáticamente
 
@@ -11501,8 +12824,14 @@ Usar F1, F2, etc. como teclas de función estándar
 Use Google Drive Instead…
 Usar Google Drive en su lugar…
 
+Use Mine
+Usar la mía
+
 Use Music Quality
 Usar calidad de música
+
+Use Olo’s Typing Helper on Hosts
+Usar el asistente de escritura de Olo en hosts
 
 Use Passwords for ssh
 Usar Passwords para ssh
@@ -11545,6 +12874,9 @@ Usar:
 
 User
 Usuario
+
+User {}, over SSH
+Usuario {}, por SSH
 
 Username or Site
 Usuario o sitio
@@ -11726,11 +13058,20 @@ Esperando
 Waiting for Ethernet
 Esperando Ethernet
 
+Waiting for a key from Olo Passwords
+Esperando una clave de Olo Passwords
+
 Waiting for another fix to finish…
 Esperando a que termine otro arreglo…
 
 Waiting for app_server…
 Esperando a app_server…
+
+Waiting for approval
+Esperando aprobación
+
+Waiting for host
+Esperando al host
 
 Waiting for it…
 Esperándolo…
@@ -11752,6 +13093,15 @@ Esperando al touchpad…
 
 Waiting for you to sign in to Google in the browser…
 Esperando a que inicies sesión en Google en el navegador…
+
+Waiting for you to sign in…
+Esperando a que inicies sesión…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+Esperando a que tu agente de claves inicie sesión en «{}». Si tus claves están en Passwords, puede que esté bloqueado.
+
+Waiting for your key agent…
+Esperando a tu agente de claves…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Esperando a que «{}» lo permita (sus interruptores para este ordenador, en sus ajustes de Bluetooth).
@@ -11822,6 +13172,9 @@ La semana empieza el
 Weights
 Pesos
 
+Welcome to Olo Rex
+Bienvenido a Olo Rex
+
 What
 Qué
 
@@ -11867,6 +13220,9 @@ What should I wear today?
 What should I wear tomorrow?
 ¿Qué me pongo mañana?
 
+What was done stays done. Setting it up again carries on from there.
+Lo ya hecho queda hecho. Volver a configurarlo continúa desde ahí.
+
 What you change applies when you leave Rescue.
 Lo que cambies se aplica al salir de Rescue.
 
@@ -11905,6 +13261,12 @@ What’s coming up next week?
 
 What’s in the Trash
 Lo que hay en la Papelera
+
+What’s installed on {} isn’t known until it connects.
+No se sabe qué hay instalado en {} hasta que se conecte.
+
+What’s installed on {} isn’t known until it’s connected.
+No se sabe qué hay instalado en {} hasta que esté conectado.
 
 What’s next?
 ¿Qué es lo siguiente?
@@ -12137,6 +13499,9 @@ Retirada por {}
 Word Document…
 Documento de Word…
 
+Working
+Trabajando
+
 Working out what it comes to: every package it needs, and what it replaces…
 Calculando el resultado: cada paquete que necesita y lo que sustituye…
 
@@ -12197,6 +13562,9 @@ Escrituras
 Writing the backup’s lists…
 Escribiendo las listas de la copia…
 
+Writing to disk
+Escritura en disco
+
 Written
 Escrito
 
@@ -12211,6 +13579,9 @@ Amarillo
 
 Yes
 Sí
+
+Yes in {} s
+Sí en {} s
 
 Yesterday
 Ayer
@@ -12269,8 +13640,14 @@ Se copia tu carpeta personal cada hora, sin lo que se puede volver a descargar o
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Tus mensajes, tus contactos y los códigos de un solo uso que te llegan por SMS, en este ordenador: por Bluetooth, sin nada en medio y sin nada más que instalar.
 
+Your name and address on commits made there, as on this computer.
+Tu nombre y correo en los commits hechos allí, como en este ordenador.
+
 Your notes, files and forwarded messages
 Tus notas, archivos y mensajes reenviados
+
+Your other devices on Tailscale can reach these sessions.
+Tus otros dispositivos en Tailscale pueden acceder a estas sesiones.
 
 Your own files and folders
 Tus propios archivos y carpetas
@@ -12298,6 +13675,9 @@ Tu palma sobre el borde derecho
 
 Your password couldn’t be checked ({}).
 No se pudo comprobar tu contraseña ({}).
+
+Your repositories
+Tus repositorios
 
 Your settings as they were are in “{}”.
 Tus ajustes tal como estaban están en «{}».
@@ -12353,6 +13733,9 @@ Ampliar
 Zoom Out
 Reducir
 
+Zoom Pane
+Ampliar panel
+
 Zoom horizontally
 Zoom horizontal
 
@@ -12407,6 +13790,20 @@ una ventana ({})
 a {} W power limit
 un límite de potencia de {} W
 
+about a minute left
+queda aproximadamente un minuto
+
+about an hour left
+queda aproximadamente una hora
+
+about {n} hours left
+one: queda aproximadamente {n} hora
+other: quedan unas {n} horas
+
+about {n} minutes left
+one: queda aproximadamente {n} minuto
+other: quedan unos {n} minutos
+
 about {}
 unos {}
 
@@ -12441,11 +13838,20 @@ y {} más
 app_server's main thread: nice {}{}, {}
 hilo principal de app_server: nice {}{}, {}
 
+applied
+aplicado
+
 as in 1Password's sidebar, or its UUID
 como en la barra lateral de 1Password, o su UUID
 
 as it goes
 tan rápido como va
+
+as of {}
+a fecha de {}
+
+as the machine has it
+tal como lo tiene el equipo
 
 at most {}
 como máximo {}
@@ -12453,11 +13859,17 @@ como máximo {}
 at {}
 a las {}
 
+auto approving
+aprobando solo
+
 auto approving (Yes after {} s; {} answered)
 aprobando automáticamente (Sí tras {} s; {} contestadas)
 
 backing up
 copiando
+
+behind
+desactualizado
 
 bell rang
 sonó la campana
@@ -12473,6 +13885,9 @@ Las sugerencias grises de brush, de un modelo diminuto de tus propias órdenes
 
 built most, the last 24 hours
 lo más compilado, últimas 24 horas
+
+busy
+ocupado
 
 ceiling {}%
 límite superior del {} %
@@ -12501,6 +13916,9 @@ eliminando
 downgrade {n} packages
 one: bajar de versión {n} paquete
 other: bajar de versión {n} paquetes
+
+downloading
+descargando
 
 driving {}
 controla {}
@@ -12617,14 +14035,23 @@ install {n} packages
 one: instalar {n} paquete
 other: instalar {n} paquetes
 
+installing
+instalando
+
 it couldn't be ended: {}
 no se pudo terminar: {}
+
+it didn’t say why
+no dijo por qué
 
 it is on a different volume from the Trash, so it can only be deleted
 está en un volumen distinto del de la papelera, así que solo se puede eliminar
 
 it took too long
 tardó demasiado
+
+its accounts are behind
+sus cuentas están desactualizadas
 
 its address can’t be found (is the computer online?)
 no se encuentra su dirección (¿está conectado el ordenador?)
@@ -12640,6 +14067,9 @@ su disco tiene {}
 
 its ports: {}
 sus puertos: {}
+
+its session has ended.
+su sesión ha terminado.
 
 its shells have all ended
 todas sus shells han terminado
@@ -12695,11 +14125,20 @@ kache{} se está ejecutando
 kbit/s
 kbit/s
 
+kept going
+sigue trabajando
+
 last seen recently
 visto recientemente
 
 left to the firmware for now
 en manos del firmware por ahora
+
+less than a minute
+menos de un minuto
+
+less than a minute left
+queda menos de un minuto
 
 level {} of 7
 nivel {} de 7
@@ -12728,6 +14167,9 @@ ms
 no
 no
 
+no SSH keys
+sin claves SSH
+
 no display ports
 sin puertos de pantalla
 
@@ -12739,6 +14181,9 @@ sin límite de espacio
 
 no network: it goes on once there’s one
 sin red: sigue en cuanto haya una
+
+no sessions open
+ninguna sesión abierta
 
 no wired network: it waits for one
 sin red por cable: espera a que haya una
@@ -12948,6 +14393,9 @@ ahora hay otra cosa llamada «{}» allí
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh, git y otros programas inician sesión con las claves SSH de Passwords, cada uno con permiso la primera vez que pide.
 
+ssh://you@host or host.ts.net
+ssh://usuario@host o host.ts.net
+
 sudo needs your password to run this{}:
 sudo necesita tu contraseña para ejecutar esto{}:
 
@@ -13044,6 +14492,9 @@ el secreto en {}
 the server answered {}
 el servidor respondió {}
 
+the server couldn’t complete the request
+el servidor no pudo completar la solicitud
+
 the service answered {}
 el servicio respondió {}
 
@@ -13064,6 +14515,9 @@ el servidor de ventanas
 
 the {} didn't get going: {}
 la {} no arrancó: {}
+
+there isn’t one for {}
+no hay ninguno para {}
 
 these {n} backups need
 one: esta copia necesita
@@ -13126,8 +14580,14 @@ menos de un minuto
 under a second
 menos de un segundo
 
+unpacking
+desempaquetando
+
 up to
 hasta
+
+up to date
+al día
 
 up to {} dpi
 hasta {} ppp
@@ -13157,6 +14617,12 @@ donde lo pone el planificador
 with the {n} files changed in it and not committed
 one: con el archivo cambiado en él y sin confirmar
 other: con los {n} archivos cambiados en él y sin confirmar
+
+without {}
+sin {}
+
+without {}, {} and {} more
+sin {}, {} y {} más
 
 yes
 sí
@@ -13191,6 +14657,10 @@ other: {n} eventos encontrados
 one: {n} más en Calendario…
 other: {n} más en Calendario…
 
+{n} SSH keys
+one: {n} clave SSH
+other: {n} claves SSH
+
 {n} agent screens are running. Click to watch them.
 one: Hay una pantalla de agente en marcha. Haz clic para verla.
 other: Hay {n} pantallas de agentes en marcha. Haz clic para verlas.
@@ -13207,6 +14677,10 @@ other: {n} copias
 one: {n} copia elegida.
 other: {n} copias elegidas.
 
+{n} cloned
+one: {n} clonado
+other: {n} clonados
+
 {n} coming up
 one: {n} próxima
 other: {n} próximas
@@ -13214,6 +14688,10 @@ other: {n} próximas
 {n} conversations
 one: {n} conversación
 other: {n} conversaciones
+
+{n} couldn’t be done
+one: {n} no se pudo hacer
+other: {n} no se pudieron hacer
 
 {n} days
 one: {n} día
@@ -13239,6 +14717,10 @@ other: {n} archivos
 one: No se pudo leer {n} archivo.
 other: No se pudieron leer {n} archivos.
 
+{n} files to copy
+one: {n} archivo por copiar
+other: {n} archivos por copiar
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 one: {n} película en un receptor AirPlay. Haz clic para pausarla o detenerla.
 other: {n} películas en receptores AirPlay. Haz clic para pausarlas o detenerlas.
@@ -13246,6 +14728,14 @@ other: {n} películas en receptores AirPlay. Haz clic para pausarlas o detenerla
 {n} folders couldn't be read
 one: no se pudo leer {n} carpeta
 other: no se pudieron leer {n} carpetas
+
+{n} folders taken
+one: {n} carpeta ocupada
+other: {n} carpetas ocupadas
+
+{n} forwarded ports are waiting.
+one: Hay {n} puerto reenviado esperando.
+other: Hay {n} puertos reenviados esperando.
 
 {n} hours
 one: {n} hora
@@ -13303,6 +14793,10 @@ other: {n} paquetes tal como se enviaron, por sus sumas de verificación
 one: {n} reproduciéndose o mostrándose en un receptor AirPlay. Haz clic para pausarlo o detenerlo.
 other: {n} reproduciéndose y mostrándose en receptores AirPlay. Haz clic para pausarlos o detenerlos.
 
+{n} ports forwarded here.
+one: {n} puerto reenviado aquí.
+other: {n} puertos reenviados aquí.
+
 {n} problems reading 1Password…
 one: {n} problema al leer 1Password…
 other: {n} problemas al leer 1Password…
@@ -13330,6 +14824,18 @@ other: {n} segundos
 {n} secrets
 one: {n} secreto
 other: {n} secretos
+
+{n} sessions
+one: {n} sesión
+other: {n} sesiones
+
+{n} sessions open
+one: {n} sesión abierta
+other: {n} sesiones abiertas
+
+{n} sessions there.
+one: {n} sesión allí.
+other: {n} sesiones allí.
 
 {n} shares, control among them. Click to stop them.
 one: {n} uso compartido, con control. Haz clic para detenerlo.
@@ -13371,6 +14877,12 @@ other: {n} esperando en sus apps
 one: {n} semana
 other: {n} semanas
 
+{}  ·  Set up with nothing
+{}  ·  Configurar sin nada
+
+{}  ·  Set up with {}
+{}  ·  Configurar con {}
+
 {} (AV1 and VP9)
 {} (AV1 y VP9)
 
@@ -13379,6 +14891,9 @@ other: {n} semanas
 
 {} (in use)
 {} (en uso)
+
+{} (installed)
+{} (instalado)
 
 {} (lower wins)
 {} (gana el menor)
@@ -13449,6 +14964,9 @@ other: {n} semanas
 {} a second
 {}/s
 
+{} accounts
+{} cuentas
+
 {} ago · click a graph for another moment
 hace {} · haz clic en un gráfico para otro momento
 
@@ -13463,6 +14981,9 @@ hace {} · haz clic en un gráfico para otro momento
 
 {} answered {} (not a speed test server?)
 {} respondió {} (¿no es un servidor de pruebas de velocidad?)
+
+{} answering now
+{} respondiendo ahora
 
 {} applications are keeping the display awake.
 {} aplicaciones mantienen la pantalla despierta.
@@ -13491,11 +15012,17 @@ hace {} · haz clic en un gráfico para otro momento
 {} cleared · kept for {} days, the last {}
 {} borradas · se guardan {} días, las últimas {}
 
+{} continued there
+{} continuadas allí
+
 {} copied: 1Password doesn’t let other apps read its archive.
 {}: 1Password no deja que otras apps lean su archivo.
 
 {} couldn't be found: {}
 No se encontró {}: {}
+
+{} couldn’t be cloned: {}
+No se pudo clonar {}: {}
 
 {} couldn’t be unpacked.
 No se pudo desempaquetar {}.
@@ -13518,8 +15045,17 @@ hace {} días
 {} didn't start pairing: {}.
 {} no empezó el enlace: {}.
 
+{} didn’t accept your keys for root
+{} no aceptó tus claves para root
+
+{} didn’t accept your keys for {}
+{} no aceptó tus claves para {}
+
 {} didn’t download: {}
 {} no se descargó: {}
+
+{} didn’t say how its limits stand.
+{} no dijo cómo están sus límites.
 
 {} different commands, of {} run
 {} órdenes distintas, de {} ejecutadas
@@ -13569,8 +15105,20 @@ hace {} h
 {} h {} min
 {} h {} min
 
+{} hasn’t answered for over a minute
+{} lleva más de un minuto sin responder
+
+{} hasn’t answered for over {} minutes
+{} lleva más de {} minutos sin responder
+
+{} hasn’t answered for {} seconds
+{} lleva {} segundos sin responder
+
 {} hours ago
 hace {} horas
+
+{} in
+{} entrada
 
 {} in all
 {} en total
@@ -13605,6 +15153,9 @@ hace {} horas
 {} is Fedora’s own: it can be turned off, not removed.
 {} es propio de Fedora: se puede desactivar, no quitar.
 
+{} is available.
+{} está disponible.
+
 {} is back
 {} ha vuelto
 
@@ -13619,6 +15170,15 @@ Instalando {} ({}, {} %). Olo pasa a ella cuando termine: tus ventanas siguen ab
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {} está capturando dispositivos de entrada: un ratón capturado se mueve a través de su puntero virtual, y los ajustes hechos aquí no le llegan.
+
+{} is installed
+{} está instalado
+
+{} is installed  ·  up to date
+{} está instalado  ·  al día
+
+{} is installed  ·  {} is available
+{} está instalado  ·  {} disponible
 
 {} is protected by a password.
 {} está protegido con contraseña.
@@ -13674,6 +15234,9 @@ Instalando {} ({}, {} %). Olo pasa a ella cuando termine: tus ventanas siguen ab
 {} keys
 Teclas de {}
 
+{} keys, at {}
+{} claves, en {}
+
 {} knows this computer.
 {} conoce este ordenador.
 
@@ -13725,6 +15288,9 @@ hace {} minutos
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 {} nuevos para la copia · {} enviados, comprimidos y cifrados ({}/s{})
 
+{} now, {} suggested
+{} ahora, {} sugerido
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 {} de las {} palabras de Olo están en {} por ahora; el resto queda en inglés.
 
@@ -13758,6 +15324,9 @@ hace {} minutos
 {} of {} Events Found
 {} de {} eventos encontrados
 
+{} of {} cloned
+{} de {} clonados
+
 {} of {} connected.
 {} de {} conectadas.
 
@@ -13779,6 +15348,9 @@ hace {} minutos
 {} of {} read back
 {} de {} releídos
 
+{} of {} ready
+{} de {} listos
+
 {} of {} selected
 {} de {} seleccionados
 
@@ -13788,11 +15360,26 @@ hace {} minutos
 {} of {} slots
 {} de {} huecos
 
+{} of {} to change
+{} de {} por cambiar
+
 {} on Workspace {}
 {} en el espacio de trabajo {}
 
 {} on this computer
 {} en este ordenador
+
+{} on {}?
+¿{} en {}?
+
+{} on {}…
+{} en {}…
+
+{} open
+{} abiertas
+
+{} out
+{} salida
 
 {} over 5 ms in the last minute, the longest {}
 {} de más de 5 ms en el último minuto, la más larga {}
@@ -13821,6 +15408,12 @@ Perfil {} · sin efecto: {}
 {} repositories, {} on. Packages come from those that are on.
 {} repositorios, {} activos. Los paquetes vienen de los activos.
 
+{} requests running
+{} solicitudes en curso
+
+{} requests today
+{} solicitudes hoy
+
 {} right first
 {} acertadas a la primera
 
@@ -13829,6 +15422,9 @@ Perfil {} · sin efecto: {}
 
 {} s ago
 hace {} s
+
+{} said:
+{} dijo:
 
 {} shared with this screen
 {} compartido con esta pantalla
@@ -13841,6 +15437,9 @@ hace {} s
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 {} pasos en el último minuto (muescas de una rueda, movimientos de un panel táctil)
+
+{} still isn’t set up
+{} aún no está configurado
 
 {} stopped answering: {}
 {} dejó de responder: {}
@@ -13856,6 +15455,9 @@ hace {} s
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 {} a chats (archivados, leídos, silenciados o fijados) pendientes de enviar. Lo que no se envíe ahora se guarda y se envía cuando Telegram vuelva a abrirse.
+
+{} to copy
+{} por copiar
 
 {} to deal with, {}
 {} por atender, {}
@@ -13950,6 +15552,12 @@ Se activó {}.
 {} — {} ({}% of this folder){}{}
 {} — {} ({} % de esta carpeta){}{}
 
+{}%  ·  {}
+{} %  ·  {}
+
+{}%  ·  {}  ·  {}
+{} %  ·  {}  ·  {}
+
 {}% chance this hour
 {} % esta hora
 
@@ -14004,6 +15612,12 @@ cuota de {}
 {}, on set days
 {}, en días fijos
 
+{}, over SSH
+{}, por SSH
+
+{}, over Tailscale
+{}, por Tailscale
+
 {}, until {}
 {}, hasta el {}
 
@@ -14015,6 +15629,9 @@ cuota de {}
 
 {}, {} shown in this Terminal.
 {}, {} mostradas en este Terminal.
+
+{}, {}%
+{}, {} %
 
 {}, {}% of its life used
 {}, {} % de su vida útil usado
@@ -14058,6 +15675,9 @@ cuota de {}
 {}: a whole number, please
 {}: un número entero, por favor
 
+{}: expected auto, conservative, or off
+{}: se esperaba auto, conservative u off
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: pide su PIN en cada uso, así que un toque no puede sustituir a tu contraseña
 
@@ -14072,6 +15692,12 @@ cuota de {}
 
 {}: not here yet
 {}: aún no está
+
+{}: off
+{}: desactivado
+
+{}: on
+{}: activado
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}: vuelve a entrar en este ordenador (cada ordenador inicia sesión por sí mismo).
@@ -14124,6 +15750,9 @@ intervalo de rendimiento del {} al {} %
 {}’s data centre
 Centro de datos de {}
 
+{}’s package manager checked Rex’s repository when this window opened.
+El gestor de paquetes de {} comprobó el repositorio de Rex al abrir esta ventana.
+
 {}″ ({} × {} mm), {} pixels per inch
 {}″ ({} × {} mm), {} píxeles por pulgada
 
@@ -14132,6 +15761,9 @@ Centro de datos de {}
 
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle, ~/.m2/repository, el .gradle de un proyecto
+
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin: donde se ponen los agentes y Rex para que tus shells allí los encuentren.
 
 ~/.local/share/Trash
 ~/.local/share/Trash
@@ -14148,6 +15780,18 @@ Centro de datos de {}
 ~/worktrees
 ~/worktrees
 
+~/{} already holds another repository on {}: {}
+~/{} ya contiene otro repositorio en {}: {}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+~/{} ya contiene otra cosa en {}. Muévela o elige Editar… para cambiar la carpeta.
+
+~/{} already holds something else. Choose… to see it.
+~/{} ya contiene otra cosa. Pulsa Elegir… para verla.
+
+~/{} is already {}’s folder. Type another one.
+~/{} ya es la carpeta de {}. Escribe otra.
+
 ·
 ·
 
@@ -14162,6 +15806,9 @@ Centro de datos de {}
 
 ½ second
 ½ segundo
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 «[{}]» no es el id de un repositorio.
@@ -14213,6 +15860,12 @@ No se pudo escribir «{}»: {}
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 «{}» no dice dónde están sus paquetes (sin baseurl, metalink ni mirrorlist).
 
+“{}” has no sessions.
+«{}» no tiene sesiones.
+
+“{}” has no terminals.
+«{}» no tiene terminales.
+
 “{}” has no {}.
 «{}» no tiene {}.
 
@@ -14233,6 +15886,9 @@ No se pudo escribir «{}»: {}
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 «{}» está conectado, pero sus mensajes no responden. Olo sigue intentándolo.
+
+“{}” is disconnected.
+«{}» está desconectado.
 
 “{}” is imported.
 «{}» importado.
@@ -14332,39 +15988,3 @@ No se reconoce la hora «{}». Prueba con 14:30 o 2:30 PM.
 
 ⌘ Command (the Super key)
 ⌘ Comando (la tecla Super)
-
-Auto Approve answers Yes in {} s
-Aprobación automática responde Sí en {} s
-
-kept going
-sigue trabajando
-
-auto approving
-aprobando solo
-
-Waiting for approval
-Esperando aprobación
-
-Working
-Trabajando
-
-Error
-Error
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-¿Activar Aprobar solo para «{}»?\n\nLo pidió otro programa, no usted. Cuando el agente de código de este panel pida permiso para seguir («Do you want to proceed?»), Rex responderá Sí al cabo de {} segundos, salvo que escriba en el panel o pulse Detener.
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-¿Activar Aprobar solo para «{}»?\n\nLo pidió otro programa, no usted. Cuando el agente de código de esta pestaña pida permiso para seguir («Do you want to proceed?»), Terminal responderá Sí al cabo de {} segundos, salvo que escriba en la pestaña o pulse Detener.
-
-Yes in {} s
-Sí en {} s
-
-Keep It Going in “{}”
-Que siga en «{}»
-
-Auto Approve in “{}”
-Aprobar solo en «{}»
-
-An agent is at rest here
-Aquí hay un agente en reposo

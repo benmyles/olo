@@ -68,13 +68,6 @@ something nobody here has is in "Blocked", with what it waits for.
   goes where (desktop-wide in Preferences, this window's in Rex, a
   host's in its Host window), the same words for the same thing, each
   setting found once, and pictures of before and after.
-- **489 words untranslated in every language** (found 2026-11-24:
-  `tools/dev/words missing de` lists them, the same in each; Rex's
-  menus and windows, the Account window, Agent Sessions among them).
-  `words merge` refuses a catalog that isn't whole, so new sentences
-  went in as blocks of their own meanwhile. Translate them, a language
-  at a time (a subagent's work: one catalog each), then merge so each
-  catalog is whole and in order again.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

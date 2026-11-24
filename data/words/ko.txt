@@ -64,8 +64,17 @@ other: 외 {n}개
 1 Minute
 1분
 
+1 SSH key
+SSH 키 1개
+
 1 Second
 1초
+
+1 account
+계정 1개
+
+1 couldn’t be cloned
+1개 복제 실패
 
 1 day before
 1일 전
@@ -82,8 +91,17 @@ other: 외 {n}개
 1 minute
 1분
 
+1 request running
+실행 중인 요청 1건
+
+1 request today
+오늘 요청 1건
+
 1 second
 1초
+
+1 session
+세션 1개
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. 계정 암호를 입력하고 ‘설정’을 선택하세요. Olo는 이 키로만 풀 수 있도록 암호를 잠가 보관합니다.
@@ -163,6 +181,9 @@ other: 외 {n}개
 2 hours before
 2시간 전
 
+2 items
+2개 항목
+
 2 minutes
 2분
 
@@ -232,6 +253,9 @@ other: 외 {n}개
 4 hours
 4시간
 
+4 items
+4개 항목
+
 4 weeks
 4주
 
@@ -274,6 +298,9 @@ other: 외 {n}개
 52 weeks
 52주
 
+6 items
+6개 항목
+
 6 months
 6개월
 
@@ -312,6 +339,9 @@ A Disk or Folder
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 4K 화면 한 프레임을 인코딩하는 데 GPU는 약 15ms, CPU는 약 110ms가 걸립니다. 움직임이 많을 때 GPU로는 모든 프레임을, CPU로는 초당 약 9프레임을 녹화합니다.
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+Rex 호스트에 이 계정들로 자체 Token Pool을 둘 수 있습니다. 그러면 이 컴퓨터가 꺼져 있어도 그곳의 Claude Code와 Codex가 계속 작동합니다.
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 서버나 wg-quick에서 받은 WireGuard 파일은 키와 함께 저장합니다. 연결 중에는 그 파일에 지정된 DNS 서버만 사용합니다.
@@ -358,6 +388,9 @@ A finger on the fingerprint sensor can stand for your password. Fingers enrolled
 A frame dropped in the last minute
 지난 1분간 프레임 1개 누락
 
+A key with no name
+이름 없는 키
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 컨트롤, 메뉴 항목, 창, Deskbar 등 선택할 수 있는 곳에 글자가 표시됩니다. 해당 글자를 눌러 선택하거나 안쪽 항목의 글자를 표시하세요. Backspace로 돌아가고 Esc로 숨깁니다.
 
@@ -393,6 +426,12 @@ A new build of Olo is ready ({}). Install it now? Your windows stay open.
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 새 Olo 빌드({0})가 준비되었습니다. 설치하면 창 서버가 재시작됩니다. Olo 창은 유지되고 {1} 창은 닫힙니다.
+
+A new name for the session “{}”:
+세션 ‘{}’의 새 이름:
+
+A new name for the tab “{}”:
+탭 ‘{}’의 새 이름:
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 휠 한 칸으로 Chrome과 다른 프로그램에서도 Olo 앱과 같은 거리만큼 스크롤합니다.
@@ -499,6 +538,9 @@ API 키:
 About 
 앱 정보: 
 
+About Olo
+Olo 정보
+
 About Olo Desktop
 Olo Desktop 정보
 
@@ -520,14 +562,23 @@ Access
 Account
 계정
 
+Account on “{}”
+‘{}’의 계정
+
 Account:
 계정:
 
 Accounts
 계정
 
+Accounts that may sign in through the login server, kept in {}.
+로그인 서버를 통해 로그인할 수 있는 계정 목록입니다({}에 저장됨).
+
 Accounts:
 계정:
+
+Account…
+계정…
 
 Action
 동작
@@ -580,6 +631,12 @@ Add Fingerprint
 Add Graph
 그래프 추가
 
+Add Host
+호스트 추가
+
+Add Host…
+호스트 추가…
+
 Add Kind
 종류 추가
 
@@ -591,6 +648,9 @@ Add Place…
 
 Add RPM Fusion
 RPM Fusion 추가
+
+Add Repository
+저장소 추가
 
 Add Repository…
 저장소 추가…
@@ -649,6 +709,9 @@ Add an account in Preferences
 Add lunch tomorrow at noon
 내일 정오에 점심 일정 추가
 
+Add one in Rex or in Preferences ▸ Rex.
+Rex 또는 환경설정 ▸ Rex에서 추가하세요.
+
 Add the one-time code this page shows to your login {}?
 이 페이지의 일회용 코드를 로그인 항목 {}에 추가할까요?
 
@@ -675,6 +738,9 @@ Address:
 
 Addresses can’t be looked up: {}
 주소를 조회할 수 없습니다: {}
+
+Add…
+추가…
 
 Adjust Size
 크기 조절
@@ -732,6 +798,18 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 에이전트 화면
+
+Agent sessions
+에이전트 세션
+
+Agent settings
+에이전트 설정
+
+Agents
+에이전트
+
+Agents and settings in your account there.
+호스트 계정의 에이전트와 설정입니다.
 
 Agree
 동의
@@ -793,8 +871,14 @@ All Metric
 All Preferences
 모든 환경설정
 
+All Set
+설정 완료
+
 All accounts together
 모든 계정을 한곳에
+
+All agents and shells are quiet.
+모든 에이전트와 셸이 조용합니다.
 
 All day
 종일
@@ -807,6 +891,9 @@ Olo 문구 {0}개 모두 {1}(으)로 제공됩니다.
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 이 설정은 모두 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
+
+All time
+전체 기간
 
 All waiting
 모두 대기 중
@@ -832,6 +919,12 @@ Allow Sleep (awake until {})
 Allow it on the phone
 휴대전화에서 허용
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+‘{}’의 프로그램이 내 SSH 키로 로그인하도록 허용할까요? 그곳의 터미널이 Rex를 통해 요청했습니다.
+
+Allow {} to sign in to your hosts with your SSH keys?
+{}에서 내 SSH 키로 호스트에 로그인하도록 허용할까요?
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 ‘{0}’에서 {1}{2} 사용을 허용할까요? ‘항상’을 선택하면 파일 ▸ 허용된 앱…에서 취소할 때까지 계속 허용합니다.
 
@@ -846,6 +939,9 @@ Deskbar의 컵을 클릭해도 됩니다.
 
 Also leave out:
 추가 제외 항목:
+
+Also used by
+함께 사용 중
 
 Also when running on battery
 배터리 사용 중에도 적용
@@ -891,6 +987,9 @@ An account can answer again.
 
 An administrator's password is needed.
 관리자 암호가 필요합니다.
+
+An agent is at rest here
+여기서 에이전트가 쉬고 있습니다
 
 An app
 앱
@@ -952,17 +1051,35 @@ Answering now
 Answering now · {}
 지금 응답 중 · {}
 
+Anthropic’s coding agent.
+Anthropic의 코딩 에이전트입니다.
+
+Antigravity
+Antigravity
+
 Any of the {}
 {} 중 하나
 
 Any storms on the way?
 폭풍이 오나요?
 
+Any tagged device on the tailnet
+tailnet의 태그가 지정된 모든 기기
+
 Any time
 시간 지정 안 함
 
 Any touch
 모든 터치
+
+Anyone at all
+제한 없음
+
+Anyone on the tailnet
+tailnet의 모든 기기
+
+Anyone who is identified
+인증된 모든 기기
 
 App
 앱
@@ -1081,6 +1198,12 @@ As in Themes ({})
 As it goes
 진행에 맞춰
 
+As on this computer
+이 컴퓨터와 같음
+
+As root, over SSH
+SSH를 통해 root로 연결
+
 As set now
 현재 설정대로
 
@@ -1093,8 +1216,14 @@ As the other mice
 As wide as the widgets
 위젯 너비에 맞춤
 
+As {}, over SSH
+SSH를 통해 {} 계정으로 연결
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 {0} 적용: nice {1} → {2}, {3} 스케줄링, {4} I/O 우선순위{5}. 활성 앱과 Olo가 빠르게 반응합니다.
+
+As {}’s package manager last heard from Rex’s repository.
+{}의 패키지 관리자가 Rex 저장소에서 마지막으로 확인한 정보입니다.
 
 Ask
 묻기
@@ -1138,11 +1267,20 @@ Ask what to do about urgent ones
 Asked now:
 지금 요청한 값:
 
+Asking
+확인 중
+
+Asking GitHub for Olo's releases…
+GitHub에서 Olo 릴리스 확인 중…
+
 Asking Passwords…
 Passwords에 요청 중…
 
 Asking Telegram…
 Telegram에 요청 중…
+
+Asking how Rex is set up there
+호스트의 Rex 설정 확인 중
 
 Asking it…
 요청 중…
@@ -1219,6 +1357,9 @@ Attach a file or a link
 Attach what's on the clipboard
 클립보드 내용 첨부
 
+Attaching terminal stream…
+터미널 스트림 연결 중…
+
 Attachments
 첨부 항목
 
@@ -1233,6 +1374,12 @@ Auto
 
 Auto Approve
 자동 승인
+
+Auto Approve answers Yes in {} s
+자동 승인이 {}초 후 예라고 답합니다
+
+Auto Approve in “{}”
+“{}”에서 자동 승인
 
 Auto Approve: Yes in {} s
 자동 승인: {}초 후 허용
@@ -1447,6 +1594,18 @@ Before import {}.{}
 Begin
 시작
 
+Behind
+뒤처짐
+
+Behind since {}
+{}부터 뒤처짐
+
+Being installed…
+설치 중…
+
+Being updated…
+업데이트 중…
+
 Benchmark…
 벤치마크…
 
@@ -1570,17 +1729,26 @@ Olo로 가져오기…
 Brown
 갈색
 
+Browse Folders…
+폴더 찾아보기…
+
 Bug Fixes
 버그 수정
 
 Builds
 빌드
 
+Builds and agents open many files and start many tasks at once.
+빌드와 에이전트는 한꺼번에 많은 파일을 열고 여러 작업을 시작합니다.
+
 Builds by the hour
 시간별 빌드
 
 Builds go on without the cache until it starts.
 캐시가 시작될 때까지 캐시 없이 빌드합니다.
+
+Built from source
+소스에서 빌드됨
 
 Built incrementally
 증분 빌드
@@ -1774,6 +1942,9 @@ Capture debug information whenever a frame drops
 Cards
 카드
 
+Carrying the accounts
+계정 동기화 중
+
 Cascade All
 모두 계단식 배치
 
@@ -1855,8 +2026,17 @@ CPU 주파수 조절기 변경
 Changing the cores process {} may use
 프로세스 {}가 사용할 수 있는 코어 변경
 
+Changing the machine’s settings as {}
+{} 권한으로 시스템 설정 변경 중
+
 Changing the priority of process {}
 프로세스 {}의 우선순위 변경
+
+Changing the rex group as {}
+{} 권한으로 rex 그룹 변경 중
+
+Changing {} as {}
+{1} 권한으로 {0} 변경 중
 
 Changing…
 변경 중…
@@ -1879,6 +2059,9 @@ Check Again
 Check Health
 상태 검사
 
+Check Now
+지금 확인
+
 Check Spelling While Typing
 입력할 때 맞춤법 검사
 
@@ -1888,11 +2071,17 @@ Check everything
 Check for Updates
 업데이트 검사
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+계정 이름과 호스트의 ~{}/.ssh/authorized_keys에 내 키가 들어 있는지 확인하세요.
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 선택한 백업의 무결성을 빠르게 검사합니다. 필요한 데이터가 모두 있는지 확인하고 저장소의 체크섬을 전송 당시 값과 비교한 뒤, 매번 백업 후에 하듯 일부를 다시 읽습니다. 손상된 부분은 가능한 만큼 복구합니다.
 
 Checked
 확인됨
+
+Checked {}
+{} 확인됨
 
 Checking for updates…
 업데이트 확인 중…
@@ -1945,6 +2134,12 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 목록에서 채팅을 선택해 메시지를 보내세요.
 
+Choose a host to connect it, disconnect it or manage it.
+연결, 연결 끊기 또는 관리할 호스트를 선택하세요.
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+호스트의 root가 허용하는 키를 선택하세요. 맞는 키가 없으면 그 컴퓨터의 /root/.ssh/authorized_keys에 공개 키를 추가한 뒤 다시 시도하세요.
+
 Choose a network to join it.
 연결할 네트워크를 선택하세요.
 
@@ -1959,6 +2154,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 모든 업데이트 선택
+
+Choose how they look and sound in Notifications.
+표시 방식과 소리는 알림에서 설정하세요.
 
 Choose what to scan:
 검사 대상:
@@ -2019,6 +2217,15 @@ Claude Code와 Codex에 작업 내용을 탭 제목으로 표시하는 도구를
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 여러 저장소의 탭이 섞인 그룹에서 Claude Code나 Codex를 시작하면 그룹 이름, 저장소와 작업 트리를 알려 주고 현재 위치를 표시합니다. Codex는 Terminal 훅(/hooks)의 신뢰 여부를 한 번 묻습니다.
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+호스트에서 이어서 작업할 수 있도록 Claude Code, Codex, Antigravity 세션을 복사합니다.
+
+Claude Code and Codex there go back to their own sign-ins.
+호스트의 Claude Code와 Codex는 각자의 로그인 상태로 돌아갑니다.
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+호스트의 Claude Code와 Codex는 각자의 로그인 상태로 돌아갑니다. 최신 로그인 정보는 먼저 이 컴퓨터로 복사합니다.
 
 Clean Up
 정리
@@ -2122,6 +2329,21 @@ Clients
 Clock
 시계
 
+Clone
+복제
+
+Clone {}
+{} 복제
+
+Cloned
+복제됨
+
+Cloning {}…
+{} 복제 중…
+
+Cloning…
+복제 중…
+
 Close
 닫기
 
@@ -2139,6 +2361,9 @@ Close Other Tabs
 
 Close Others
 나머지 닫기
+
+Close Pane
+패널 닫기
 
 Close Tab
 탭 닫기
@@ -2314,8 +2539,14 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 Google Drive 연결…
 
+Connect Remote Host…
+원격 호스트 연결…
+
 Connect automatically when you put them in near this computer
 이 컴퓨터 근처에서 착용하면 자동 연결
+
+Connect when Rex starts
+Rex 시작 시 연결
 
 Connect with a Token…
 토큰으로 연결…
@@ -2328,6 +2559,9 @@ Connected
 
 Connected as {}, through {}.
 {1}을 통해 {0} 계정으로 연결했습니다.
+
+Connected to Tailscale.
+Tailscale에 연결되었습니다.
 
 Connected to “{}”
 ‘{}’에 연결됨
@@ -2347,14 +2581,32 @@ Connected.
 Connecting to Telegram…
 Telegram에 연결 중…
 
+Connecting to {}…
+{}에 연결 중…
+
 Connecting to “{}”…
 ‘{}’에 연결 중…
 
 Connecting…
 연결하는 중…
 
+Connecting… Your key agent is asking you about this sign-in.
+연결 중… 키 에이전트가 이 로그인의 허용 여부를 묻고 있습니다.
+
 Connection
 연결
+
+Connection lost just now.
+방금 연결이 끊어졌습니다.
+
+Connection lost {n} days ago.
+other: {n}일 전에 연결이 끊어졌습니다.
+
+Connection lost {n} hours ago.
+other: {n}시간 전에 연결이 끊어졌습니다.
+
+Connection lost {n} minutes ago.
+other: {n}분 전에 연결이 끊어졌습니다.
 
 Connection:
 연결:
@@ -2419,11 +2671,17 @@ Copr 프로젝트
 Copy
 복사
 
+Copy Address
+주소 복사
+
 Copy Code
 코드 복사
 
 Copy Conversation
 대화 복사
+
+Copy Debug Info
+디버그 정보 복사
 
 Copy Here
 여기로 복사
@@ -2433,6 +2691,9 @@ Copy Latest Code
 
 Copy Link
 링크 복사
+
+Copy Mode
+복사 모드
 
 Copy Name
 이름 복사
@@ -2452,6 +2713,12 @@ Copy Path
 Copy Reference
 참조 복사
 
+Copy Screen as HTML
+화면을 HTML로 복사
+
+Copy Screen as Text
+화면을 텍스트로 복사
+
 Copy Text
 텍스트 복사
 
@@ -2460,6 +2727,9 @@ Copy Username
 
 Copy Value
 값 복사
+
+Copy Version Info
+버전 정보 복사
 
 Copy a code no tab is waiting for
 기다리는 탭이 없는 코드 복사
@@ -2476,8 +2746,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Btrfs 조각화를 막기 위해 index.db의 쓰기 시 복사가 꺼져 있습니다. 저장소는 reflink를 위해 유지됩니다. 복원하면 kache가 잠시 재시작됩니다.
 
+Copying sessions…
+세션 복사 중…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 1Password에서 {}의 항목을 복사하고 있습니다. Passwords를 허용할지 물으면 ‘허용’을 선택하세요. 잠겨 있으면 먼저 잠금을 해제하세요.
+
+Copying…
+복사 중…
 
 Core
 코어
@@ -2488,11 +2764,17 @@ Cores
 Couldn't be cached
 캐시할 수 없었음
 
+Couldn't check for a newer release.
+새 릴리스를 확인할 수 없습니다.
+
 Couldn't create a folder: {}
 폴더를 만들 수 없습니다: {}
 
 Couldn't create a link: {}
 링크를 만들 수 없습니다: {}
+
+Couldn't look for a newer release: {}
+새 릴리스를 확인할 수 없습니다: {}
 
 Couldn't paste: {}
 붙여넣을 수 없습니다: {}
@@ -2530,14 +2812,38 @@ Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
 {}에 검사하지 못했습니다: {}.
 
+Couldn’t be cloned
+복제 실패
+
+Couldn’t be copied
+복사 실패
+
+Couldn’t be installed
+설치 실패
+
+Couldn’t be set
+설정 실패
+
 Couldn’t change this vault in 1Password. {}
 1Password에서 이 금고를 변경할 수 없습니다. {}
+
+Couldn’t clone
+복제할 수 없음
+
+Couldn’t copy the file from the host.
+호스트에서 파일을 복사할 수 없습니다.
 
 Couldn’t delete it in 1Password. {}
 1Password에서 삭제할 수 없습니다. {}
 
 Couldn’t delete this vault from 1Password. {}
 1Password에서 이 금고를 삭제할 수 없습니다. {}
+
+Couldn’t get a sign-in link: {}.
+로그인 링크를 가져올 수 없습니다: {}.
+
+Couldn’t install
+설치할 수 없음
 
 Couldn’t keep the approval: {}
 승인을 저장할 수 없습니다: {}
@@ -2551,14 +2857,32 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 항목 목록을 가져올 수 없습니다. {}
 
+Couldn’t look at {}
+{} 확인 실패
+
+Couldn’t look at {} again
+{} 다시 확인 실패
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 1Password에 이 금고를 만들 수 없어 항목도 전송하지 않았습니다. {}
+
+Couldn’t open the file.
+파일을 열 수 없습니다.
+
+Couldn’t open the sign-in page: {}.
+로그인 페이지를 열 수 없습니다: {}.
 
 Couldn’t open this item: {}
 이 항목을 열 수 없습니다: {}
 
+Couldn’t paste the picture.
+그림을 붙여 넣을 수 없습니다.
+
 Couldn’t reach the login keyring: {}
 로그인 키 모음에 접근할 수 없습니다: {}
+
+Couldn’t reach {}
+{}에 연결할 수 없음
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 비교할 1Password 사본을 읽을 수 없어 이쪽 사본을 전송하지 않았습니다. {}
@@ -2602,8 +2926,20 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 승인을 취소할 수 없습니다: {}
 
+Couldn’t turn off Tailscale: {}.
+Tailscale을 끌 수 없습니다: {}.
+
+Couldn’t turn on Tailscale: {}.
+Tailscale을 켤 수 없습니다: {}.
+
 Couldn’t write the shared copy: {}
 공유 사본을 쓸 수 없습니다: {}
+
+Couldn’t {}
+{} 실패
+
+Couldn’t {} on {}
+{1}에서 {0} 실패
 
 Count accounts turned off or signed out
 꺼져 있거나 로그아웃한 계정도 포함
@@ -2953,6 +3289,9 @@ Developer Tools
 Device
 장치
 
+Devices tagged {}, over Tailscale
+Tailscale의 {} 태그 기기
+
 Dew point
 이슬점
 
@@ -2965,8 +3304,14 @@ Dew point spread {}
 Dew point {}
 이슬점 {}
 
+Diagnostics…
+진단…
+
 Diff
 Diff
+
+Differs from this computer
+이 컴퓨터와 다름
 
 Dim the built-in display when idle
 유휴 시 내장 디스플레이 어둡게
@@ -3000,6 +3345,15 @@ Google Drive 연결 해제
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 Google Drive({}) 연결을 해제할까요? DiskBackup은 이곳으로의 백업을 중단하고 컴퓨터에 저장한 로그인 정보를 지웁니다. Drive의 백업은 그대로 남습니다. 다시 연결하면 이어서 백업하거나 복원할 수 있습니다.
+
+Disconnected
+연결 끊김
+
+Disconnected.
+연결이 끊어졌습니다.
+
+Disconnected: {}
+연결 끊김: {}
 
 Disconnecting from Google Drive…
 Google Drive 연결 해제 중…
@@ -3163,6 +3517,9 @@ Don’t Trust
 Double-press speed
 두 번 누르기 속도
 
+Down
+아래로
+
 Down (received)
 다운로드 (수신)
 
@@ -3177,6 +3534,18 @@ Download at most:
 
 Download, Then Restart to Install
 다운로드 후 재시작하여 설치
+
+Downloading
+다운로드 중
+
+Downloading preview from Rex server…
+Rex 서버에서 미리 보기 다운로드 중…
+
+Downloading {} from {}…
+{}을(를) {}에서 다운로드하는 중…
+
+Downloading {}…
+{} 다운로드 중…
 
 Downloading: {}
 다운로드 중: {}
@@ -3328,6 +3697,9 @@ Each display is drawn by the graphics it's wired to, so no frame crosses between
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 각 디스플레이의 Deskbar에는 현재 작업 공간이 펼쳐져 있습니다. 다른 작업 공간은 제목으로 표시되며 화살표를 누르면 해당 Deskbar에서만 앱 목록을 펼치거나 접습니다.
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+각 저장소는 {}의 홈 폴더 안에 복제한 뒤 지정된 명령으로 한 번 설정합니다.
+
 Each is judged from several signals together; a finding says how sure it is and why.
 여러 신호를 종합해 판단합니다. 각 결과에 얼마나 확실한지와 그 이유가 표시됩니다.
 
@@ -3348,6 +3720,12 @@ Each new window takes half of the one you were using.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 설정한 인증 수단은 Passwords, Terminal의 sudo, 관리자 요청에서 모두 암호를 대신합니다. 얼굴과 지문은 잠금 해제와 로그인에도 쓸 수 있습니다. 먼저 사용한 수단으로 인증합니다.
+
+Each person gets their own Rex server, and signs in through this one.
+각 사용자가 자신만의 Rex 서버를 사용하며 이 서버를 통해 로그인합니다.
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+{}의 각 사용자가 자신만의 Rex 서버를 사용하며 이 서버를 통해 로그인합니다.
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 여기에 저장소별 폴더가 생깁니다. 예를 들어 olo의 fix-tabs 작업 트리는 {}/olo/fix-tabs에 저장합니다.
@@ -3378,6 +3756,9 @@ Edit Message
 
 Edit Name
 이름 편집
+
+Edit Repository
+저장소 편집
 
 Edit Video…
 동영상 편집…
@@ -3445,6 +3826,9 @@ Encrypt it with a passphrase
 End
 종료
 
+End Session
+세션 종료
+
 End Test
 테스트 종료
 
@@ -3481,6 +3865,9 @@ Enrolling your {}
 Enter Full Screen
 전체 화면 시작
 
+Enter secret…
+비밀 값 입력…
+
 Enter the password for “{}” to unlock it.
 ‘{}’의 잠금을 해제하려면 암호를 입력하세요.
 
@@ -3507,6 +3894,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Error
+오류
 
 Esc cancels
 Esc로 취소
@@ -3598,6 +3988,15 @@ Every list's to-dos show here.
 Every month
 매월
 
+Every regular account
+모든 일반 계정
+
+Every step ran, and it still needs: {}.
+모든 단계를 실행했지만 다음 항목이 아직 필요합니다: {}.
+
+Every step ran.
+모든 단계를 실행했습니다.
+
 Every week
 매주
 
@@ -3627,6 +4026,18 @@ other: {n}주마다
 
 Every {n} years
 other: {n}년마다
+
+Everyone in the rex group shares one server, run as the rex account.
+rex 그룹의 모든 사용자가 rex 계정으로 실행되는 서버 하나를 공유합니다.
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+rex 그룹의 모든 사용자가 이 서버를 공유하며, 여기서 여는 모든 터미널은 rex 계정으로 실행됩니다.
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+{}에 계정이 있는 모든 사용자가 rex 그룹에 속하며 공유 서버를 사용합니다.
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+{0}에 계정이 있는 모든 사용자가 로그인할 수 있습니다. 목록은 {1}에 저장됩니다.
 
 Everything
 전체
@@ -3730,6 +4141,21 @@ Fade Colors
 Fahrenheit (°F)
 Fahrenheit (°F)
 
+Failed
+실패
+
+Failed just now
+방금 실패함
+
+Failed {n} days ago
+other: {n}일 전 실패
+
+Failed {n} hours ago
+other: {n}시간 전 실패
+
+Failed {n} minutes ago
+other: {n}분 전 실패
+
 Fan Out
 부채꼴로 펼치기
 
@@ -3823,6 +4249,9 @@ File
 File system:
 파일 시스템:
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+파일 감시자, 링커, 대형 프로그램은 커널 기본 한도에 자주 걸립니다.
+
 Files
 파일
 
@@ -3834,6 +4263,9 @@ File…
 
 Fill It In
 채우기
+
+Filter
+필터
 
 Find
 찾기
@@ -3861,6 +4293,9 @@ Find an app
 
 Find in document
 문서에서 찾기
+
+Find in terminal…
+터미널에서 찾기…
 
 Find the selection
 선택 항목 찾기
@@ -4018,6 +4453,12 @@ Fog likely · spread {}
 Folder
 폴더
 
+Folder taken
+폴더 사용 중
+
+Folder:
+폴더:
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 폴더와 파일은 쉼표로 구분합니다. ~/는 홈 폴더, **/는 모든 위치, *는 모든 이름을 뜻합니다.
 
@@ -4101,6 +4542,9 @@ Format…
 
 Forward
 앞으로
+
+Forward Port
+포트 포워딩
 
 Forwarded from {}
 {}에서 전달됨
@@ -4213,6 +4657,9 @@ Get Full Access…
 Get Info
 정보 보기
 
+Get items from Passwords
+Passwords에서 항목 가져오기
+
 Getting ready
 준비 중
 
@@ -4221,6 +4668,9 @@ Getting the sensor ready…
 
 Git Worktrees
 Git 작업 트리
+
+Git identity
+Git 사용자 정보
 
 GitHub
 GitHub
@@ -4237,6 +4687,9 @@ GitHub에 연결할 수 없습니다({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHub가 토큰을 거부했습니다. 만료되었거나 폐기되었을 수 있습니다.
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+Rex 호스트에 같은 계정으로 자체 Token Pool을 두면 이 컴퓨터가 꺼져 있어도 그곳의 Claude Code와 Codex가 계속 작동합니다.
+
 Give a new key
 새 키 지정
 
@@ -4246,6 +4699,30 @@ Give compilers and linkers only spare memory
 Give it a name.
 이름을 입력하세요.
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\nSSH 키와 클립보드를 허용하세요.
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\nSSH 키를 허용하세요.
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\n클립보드를 허용하세요.
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\n암호와 SSH 키를 허용하세요.
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\n암호와 클립보드를 허용하세요.
+
+Give your passwords only to a host\nyou trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\n암호를 허용하세요.
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+이 컴퓨터만큼 신뢰하는 호스트에만\n암호, SSH 키, 클립보드를 허용하세요.
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+이 컴퓨터가 켜져 있든 꺼져 있든 호스트의 Claude Code와 Codex에 내 계정을 제공합니다.
+
 Glide
 미끄러지듯 이동
 
@@ -4254,6 +4731,15 @@ Glow new windows for
 
 Go
 이동
+
+Go Back
+되돌리기
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+{0} 버전으로 되돌릴까요?\n\n현재 {1} 버전을 대체합니다. Olo가 약 {2} MB를 다운로드해 설치한 뒤 바로 재시작합니다. 설정은 유지되며, 그 이후 추가된 기능은 다시 업그레이드할 때까지 사용할 수 없습니다.
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+{0} 버전으로 되돌릴까요?\n\n현재 {1} 버전을 대체합니다. Olo가 약 {2} MB를 다운로드해 설치한 뒤 바로 재시작합니다. 설정은 유지되며, 그 이후 추가된 기능은 다시 업그레이드할 때까지 사용할 수 없습니다.
 
 Go to
 이동
@@ -4266,6 +4752,9 @@ Go to File or Folder
 
 Go to File or Folder…
 파일 또는 폴더로 이동…
+
+Go to Folder…
+폴더로 이동…
 
 Go to:
 이동 위치:
@@ -4302,6 +4791,9 @@ Mail에 연결한 Google 및 Fastmail 계정(연동)에서도 찾습니다.
 
 Google no longer takes its sign-in: sign in again.
 Google이 기존 로그인을 허용하지 않습니다. 다시 로그인하세요.
+
+Google’s coding agent (agy).
+Google의 코딩 에이전트(agy)입니다.
 
 Got it. Touch the key once more: its light is blinking again.
 확인했습니다. 표시등이 다시 깜박이면 키를 한 번 더 터치하세요.
@@ -4402,8 +4894,23 @@ Hardware Address: {}
 Hardware address:
 하드웨어 주소:
 
+Has failed
+오류가 발생했을 때
+
+Has finished
+작업을 마쳤을 때
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+1분 이상 응답 없음
+
+Hasn’t answered for over {} minutes
+{}분 이상 응답 없음
+
+Hasn’t answered for {} seconds
+{}초 동안 응답 없음
 
 Header & Footer…
 머리글 및 바닥글…
@@ -4555,8 +5062,17 @@ Home
 Home Page
 홈페이지
 
+Host
+호스트
+
+Host “{}”
+호스트 ‘{}’
+
 Hosts
 호스트
+
+Hosts and Ports…
+호스트 및 포트…
 
 Hotspot
 핫스팟
@@ -4708,6 +5224,9 @@ In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 앱에 읽지 않았거나 대기 중인 항목이 있다고 표시하는 동안에는 파란 알림 점 대신 표시합니다.
 
+In step
+동기화됨
+
 In the Scratchpad
 스크래치패드에
 
@@ -4819,8 +5338,17 @@ Inspect Parent
 Inspect Process
 프로세스 검사
 
+Install
+설치
+
 Install Now
 지금 설치
+
+Install Olo’s Bridge
+Olo 브리지 설치
+
+Install Olo’s Skill for Agents
+Olo 에이전트 스킬 설치
 
 Install When Restarting
 재시작할 때 설치
@@ -4834,8 +5362,29 @@ Install just
 Install the Helper…
 보조 프로그램 설치…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+{} 버전을 설치할까요?\n\nOlo가 약 {} MB를 다운로드해 설치한 뒤 바로 재시작합니다.
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+{} 버전을 설치할까요?\n\nOlo가 약 {} MB를 다운로드해 설치한 뒤 바로 재시작합니다.
+
 Installed
 설치함
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+각 제작사의 공식 설치 프로그램으로 호스트의 홈 폴더에 사용자 권한으로 설치합니다. root 권한은 사용하지 않습니다.
+
+Installing
+설치 중
+
+Installing {}: {} ({}%)…
+{} 설치 중: {} ({}%)…
+
+Installing {}…
+{} 설치 중…
+
+Installing…
+설치 중…
 
 Install…
 설치…
@@ -4867,6 +5416,9 @@ Invert Selection
 Invite:
 초대:
 
+Is waiting for me
+내 입력을 기다릴 때
+
 It Matches
 일치함
 
@@ -4876,8 +5428,17 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 컴퓨터에 전원을 연결하면 백업합니다. {}. {}.
 
+It can’t be stopped once it has started.
+한 번 시작하면 중지할 수 없습니다.
+
 It couldn’t be fetched: {}
 가져올 수 없습니다: {}
+
+It couldn’t be reached ({}). Olo keeps trying.
+연결할 수 없습니다({}). Olo가 계속 다시 시도합니다.
+
+It couldn’t be reached: {}. Olo keeps trying.
+연결할 수 없습니다: {}. Olo가 계속 다시 시도합니다.
 
 It couldn’t be read: {}
 읽을 수 없습니다: {}
@@ -4887,6 +5448,9 @@ It didn't work.
 
 It didn’t open: {}.
 열리지 않았습니다: {}.
+
+It didn’t say why.
+원인이 보고되지 않았습니다.
 
 It downloads {}
 {} 다운로드
@@ -4915,6 +5479,9 @@ It needs at least three palms and three fingers among the touches it learns from
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 설정한 음량과 관계없이 최대 음량의 ¼로 재생합니다. 음소거 중에는 재생하지 않습니다.
 
+It starts when {} starts.
+{}이(가) 시작될 때 함께 시작됩니다.
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 다른 작업이 쓰지 않는 CPU 시간과 디스크만 사용합니다. 작업 중에는 느려질 수 있지만 하던 일을 방해하지 않습니다.
 
@@ -4929,6 +5496,9 @@ It wasn't forgotten ({}).
 
 It wasn't set up ({}).
 설정하지 못했습니다({}).
+
+It won’t start again when {} restarts.
+{}이(가) 재시작되어도 자동으로 시작되지 않습니다.
 
 It's in use now, in place of Olo's own.
 지금은 Olo 기본 모델 대신 이 모델을 사용합니다.
@@ -4998,6 +5568,12 @@ Passwords의 ‘비밀 참조 복사’로 얻은 참조를 입력하세요. Pas
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 세션 시작 시 서비스가 실행됩니다. 로그아웃했다가 다시 로그인하거나 Olo Doctor에서 서비스를 시작하세요.
+
+Its services, accounts and log, managed as root in their own window.
+서비스, 계정, 로그를 별도 창에서 root 권한으로 관리합니다.
+
+Its sessions may:
+이 호스트의 세션 허용 권한:
 
 Its sign-in isn’t in the keyring: sign in again.
 키 모음에 로그인 정보가 없습니다. 다시 로그인하세요.
@@ -5083,6 +5659,9 @@ Keep HDR on for {}?
 Keep It Going
 계속 진행
 
+Keep It Going in “{}”
+“{}”에서 계속 진행
+
 Keep It Going says
 계속 진행 메시지
 
@@ -5161,6 +5740,9 @@ Passwords에 키 보관 중(요청하면 잠금을 해제하세요)…
 Keeping what’s done…
 완료된 부분 보관 중…
 
+Keeps a build’s files in memory and running programs out of swap.
+빌드 파일을 메모리에 유지하고 실행 중인 프로그램이 스왑으로 내려가지 않게 합니다.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연을 억제합니다. Linux 기본값 "none"은 백그라운드 라이트백만 조절합니다 (queue/scheduler).
 
@@ -5185,6 +5767,9 @@ Kept on this computer; made in 1Password once you sync an account.
 Kernel
 커널
 
+Kernel limits
+커널 한도
+
 Kernel:
 커널:
 
@@ -5199,6 +5784,9 @@ Key password:
 
 Key {} trusted.
 {} 키를 신뢰하도록 설정했습니다.
+
+Key:
+키:
 
 Keyboard
 키보드
@@ -5275,6 +5863,12 @@ Larger Pointer
 Last
 마지막
 
+Last 30 days
+최근 30일
+
+Last 7 days
+최근 7일
+
 Last Page
 마지막 페이지
 
@@ -5286,6 +5880,9 @@ Last backed up {}
 
 Last clean-up
 최근 정리
+
+Last day
+최근 1일
 
 Last used
 최근 사용
@@ -5383,6 +5980,15 @@ Less space between windows
 Let coding agents keep their tab’s title current
 코딩 에이전트의 탭 제목 업데이트 허용
 
+Let your other devices reach this computer’s sessions over Tailscale
+다른 기기가 Tailscale을 통해 이 컴퓨터의 세션에 접속하도록 허용
+
+Lets a build’s many small writes reach the disk together.
+빌드의 수많은 작은 쓰기 작업을 묶어서 디스크에 기록합니다.
+
+Lets agents there use your accounts, even with this computer off.
+이 컴퓨터가 꺼져 있어도 호스트의 에이전트가 내 계정을 사용할 수 있습니다.
+
 Letting go of backups past keeping
 보관 기간이 지난 백업 정리 중
 
@@ -5446,6 +6052,9 @@ Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 쓰기 대기 데이터 제한
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+긴 빌드와 많은 세션에 맞게 Linux 기본 한도를 높입니다.
+
 Line
 줄
 
@@ -5493,6 +6102,9 @@ Lists
 
 Live
 라이브
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+Rex의 대기 중, 오류, 작업 중인 코딩 에이전트와 열린 세션을 실시간으로 보여줍니다.
 
 Load
 부하
@@ -5578,6 +6190,12 @@ Look for codes in:
 Look:
 모양:
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+서버 관리에는 root 권한이 필요합니다. 호스트의 root가 허용하는 키를 선택하세요. 맞는 키가 없으면 그 컴퓨터의 /root/.ssh/authorized_keys에 공개 키를 추가한 뒤 다시 시도하세요.
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+서버 관리에는 root 권한이 필요합니다. Olo Passwords의 잠금을 해제하거나 {}의 root가 허용하는 키를 추가하세요.
+
 Looking at Bluetooth…
 Bluetooth 확인 중…
 
@@ -5592,6 +6210,9 @@ Looking at what’s there…
 
 Looking at which processes use it…
 사용 중인 프로세스 확인 중…
+
+Looking at {}…
+{} 확인 중…
 
 Looking for Bluetooth…
 Bluetooth를 찾는 중…
@@ -5788,6 +6409,12 @@ Making it again, empty
 Making it…
 만드는 중…
 
+Manage Host…
+호스트 관리…
+
+Manage Rex Server…
+Rex 서버 관리…
+
 Manually
 수동으로
 
@@ -5854,6 +6481,9 @@ Media errors
 Medium
 중간
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+rex 그룹 구성원은 공유 서버를 사용하며 모든 터미널이 rex 계정으로 실행됩니다. 변경 사항은 다음 로그인부터 적용됩니다.
+
 Membership
 참여 상태
 
@@ -5862,6 +6492,9 @@ Memory
 
 Memory Pressure
 메모리 부하
+
+Memory for builds
+빌드용 메모리
 
 Memory free
 여유 메모리
@@ -6127,6 +6760,12 @@ Move Group to Window
 Move Here
 여기로 옮기기
 
+Move Tab Left
+탭을 왼쪽으로 이동
+
+Move Tab Right
+탭을 오른쪽으로 이동
+
 Move Tab to New Window
 탭을 새 창으로 이동
 
@@ -6211,6 +6850,9 @@ Moving {} to the Trash
 Moving {} to the Trash…
 {} 휴지통으로 이동 중…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+Ghostty VT, 화면 분할, 플로팅 레이어, 실시간 AI 에이전트 모니터링으로 로컬 및 원격 SSH/Tailscale 작업 공간을 통합 관리합니다.
+
 Music
 음악
 
@@ -6283,8 +6925,17 @@ Nearby
 Needed by another package
 다른 패키지에 필요함
 
+Needs curl there
+호스트에 curl이 필요합니다
+
 Needs full access
 전체 접근 권한 필요
+
+Needs git there
+호스트에 git이 필요합니다
+
+Neither kind of Rex server is in use on {}. Start one of them:
+{}에서 실행 중인 Rex 서버가 없습니다. 하나를 선택해 시작하세요:
 
 Network
 네트워크
@@ -6318,6 +6969,9 @@ New Conversation
 
 New Event…
 새 일정…
+
+New Floating Terminal
+새 플로팅 터미널
 
 New Folder
 새 폴더
@@ -6358,6 +7012,9 @@ New Sections
 New Section…
 새 섹션…
 
+New Session
+새 세션
+
 New Signature…
 새 서명…
 
@@ -6396,6 +7053,9 @@ New description
 
 New event
 새로운 이벤트
+
+New host
+새 호스트
 
 New message
 새 메시지
@@ -6456,6 +7116,9 @@ Next Page
 
 Next Tab
 다음 탭
+
+Next Waiting Agent
+다음 대기 중인 에이전트
 
 Next Week
 다음 주
@@ -6538,6 +7201,9 @@ No Pull Request
 No Receivers Paired
 페어링된 수신기 없음
 
+No SSH hosts yet
+SSH 호스트가 아직 없습니다
+
 No Saved Groups
 저장한 그룹 없음
 
@@ -6549,6 +7215,12 @@ No To-Do Chosen
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 VPN이 없습니다. WireGuard 설정을 가져오거나 제공업체 앱에서 추가하세요.
+
+No account is listed: nobody can sign in through the login server.
+등록된 계정이 없어 로그인 서버로 로그인할 수 있는 사용자가 없습니다.
+
+No active SSH authentication request.
+진행 중인 SSH 인증 요청이 없습니다.
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 앱은 먼저 요청해야 항목에 접근할 수 있습니다. 요청 시 ‘항상 승인’을 선택하면 계속 허용하며 여기서 허가를 취소할 수 있습니다.
@@ -6616,6 +7288,9 @@ No keyboards are plugged in.
 No limit
 무제한
 
+No matching entries
+일치하는 항목 없음
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 아직 {} 연락처와 주고받은 메시지가 없습니다. 아래에 입력하면 휴대전화에서 문자로 보냅니다.
 
@@ -6643,6 +7318,9 @@ No phone or mail account is set up: a phone in Phone, a Google or Fastmail accou
 No phone paired
 페어링된 휴대전화 없음
 
+No pool
+풀 없음
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 전원 프로필 서비스(power-profiles-daemon, Fedora에서는 tuned-ppd도 가능)가 실행 중이지 않습니다. Olo는 이 서비스를 통해 전원 모드를 설정합니다.
 
@@ -6660,6 +7338,12 @@ No process uses much of it now
 
 No processes match.
 일치하는 프로세스가 없습니다.
+
+No programs in the panes are listening on ports, and none is forwarded here.
+패널에서 포트를 수신 대기 중인 프로그램이 없으며 여기에 포워딩된 포트도 없습니다.
+
+No repositories yet.
+저장소가 아직 없습니다.
 
 No screen recordings yet. Record one with ⌘⇧6.
 아직 화면 녹화가 없습니다. ⌘⇧6으로 녹화하세요.
@@ -6687,6 +7371,9 @@ No {} for this account.
 
 No: it did no better ({}), so the weights before stay
 아니요. 성능이 나아지지 않아({}) 이전 가중치를 유지합니다
+
+Nobody is in the rex group.
+rex 그룹에 속한 사용자가 없습니다.
 
 Noise
 소음
@@ -6718,8 +7405,17 @@ None (flat)
 None asked for yet: type in brush
 아직 요청이 없습니다. brush에서 입력하세요
 
+None chosen
+선택한 항목 없음
+
 None connected to Olo yet.
 아직 Olo에 연결된 항목이 없습니다.
+
+None found
+찾은 항목 없음
+
+None in that time
+해당 기간에 없음
 
 None in the last minute
 지난 1분간 없음
@@ -6817,6 +7513,9 @@ Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 아직 검사하지 않았습니다. ‘검증’을 누르면 다시 읽어 무결성을 확인합니다.
 
+Not cloned
+복제 안 됨
+
 Not connected
 연결되지 않음
 
@@ -6828,6 +7527,9 @@ Not connected: {}.
 
 Not enough touches to learn from
 학습에 필요한 터치가 부족합니다
+
+Not fixed with the others: it has its own button.
+다른 항목과 함께 설정되지 않으며 자체 버튼으로 관리합니다.
 
 Not found
 찾을 수 없음
@@ -6847,6 +7549,15 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 지난 1분간 없음. 이 창을 연 뒤 {}
 
+Not installed
+설치되지 않음
+
+Not known
+알 수 없음
+
+Not on the path
+PATH에 없음
+
 Not paired
 페어링 안 됨
 
@@ -6864,6 +7575,9 @@ Not saved: {}
 
 Not sent: {}
 보내지 못했습니다: {}
+
+Not set
+설정되지 않음
 
 Not set up
 설정하지 않음
@@ -6922,6 +7636,9 @@ Nothing backed up yet.
 Nothing came from the microphone.
 마이크에서 소리가 입력되지 않았습니다.
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+{}에는 SSH로 연결되지 않아 여기서 아무것도 설치할 수 없습니다.
+
 Nothing changed: Olo's own model is still in use.
 변경 사항이 없습니다. Olo 기본 모델을 계속 사용합니다.
 
@@ -6937,6 +7654,9 @@ Nothing done yet
 Nothing due today
 오늘 마감인 일이 없습니다
 
+Nothing else was changed.
+다른 항목은 변경되지 않았습니다.
+
 Nothing found
 검색 결과 없음
 
@@ -6949,6 +7669,9 @@ Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 재개하기 전에는 백업하거나 전송하지 않습니다. {}. {}.
 
+Nothing is changed until you choose something to do.
+작업을 선택하기 전까지는 아무것도 변경되지 않습니다.
+
 Nothing more today
 오늘 남은 일정 없음
 
@@ -6957,6 +7680,18 @@ Nothing new
 
 Nothing new to learn
 새로 학습할 내용 없음
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+‘{}’에 허용된 이 컴퓨터의 권한이 없습니다. 권한을 부여하려면 환경설정 ▸ Rex에서 설정하세요.
+
+Nothing on {} is changed yet.
+{}에서 아직 변경된 내용은 없습니다.
+
+Nothing on {} is known until it connects.
+연결되기 전까지는 {}의 상태를 알 수 없습니다.
+
+Nothing on {} is known until it’s connected.
+연결되기 전까지는 {}의 상태를 알 수 없습니다.
 
 Nothing read yet
 아직 읽은 내용 없음
@@ -6976,11 +7711,17 @@ Nothing to do here
 Nothing to do.
 처리가 필요하지 않습니다.
 
+Nothing to rename.
+이름을 바꿀 항목이 없습니다.
+
 Nothing to show yet
 아직 표시할 내용 없음
 
 Nothing to tune for its driver ({}) yet.
 아직 이 드라이버({})에 조정할 항목이 없습니다.
+
+Nothing was changed on {}.
+{}에서 변경된 내용이 없습니다.
 
 Notification
 알림
@@ -7111,8 +7852,29 @@ Olo 설치 프로그램
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 이 컴퓨터에는 {}용 Olo 앱이 없습니다. Google Cloud ▸ 해당 Olo 프로젝트 ▸ 클라이언트에서 클라이언트 ID와 비밀 키를 입력하거나, 취소한 뒤 ‘Google 계정 추가…’를 선택하면 에이전트가 설정합니다.
 
+Olo has no releases yet.
+Olo 릴리스가 아직 없습니다.
+
+Olo has no typing helper for {}.
+{}용 Olo 입력 도우미가 없습니다.
+
+Olo is up to date (looked {}).
+Olo가 최신 상태입니다({} 확인).
+
+Olo is up to date.
+Olo가 최신 상태입니다.
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo가 {}{}의 로그인 정보, 키, Wi-Fi 암호를 보관합니다. 로그인 암호로 잠금을 해제합니다.
+
+Olo looks for a newer release every hour.
+Olo가 매시간 새 릴리스를 확인합니다.
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo가 시작 2분 후와 그 이후 매시간 새 릴리스를 확인합니다.
+
+Olo restarts once it's installed.
+설치가 끝나면 Olo가 재시작됩니다.
 
 Olo saying its name
 Olo가 자기 이름을 말하는 소리
@@ -7138,14 +7900,59 @@ Olo 기본 모델을 계속 사용합니다.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 실제 손의 터치 {}회로 만든 Olo 기본 손바닥 모델입니다. 환경설정 ▸ 터치패드 및 마우스 ▸ 터치에서 나에게 맞게 학습할 수 있습니다
 
+Olo's releases couldn't be listed: {}
+Olo 릴리스 목록을 불러올 수 없습니다: {}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+‘{}’에 Olo 브리지가 설치되어 있지만 허용된 권한이 없습니다. 권한을 부여하려면 환경설정 ▸ Rex에서 설정하세요.
+
+Olo’s bridge is on “{}”.
+‘{}’에 Olo 브리지가 설치되어 있습니다.
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+‘{}’에 Olo 브리지가 설치되어 있지 않습니다. 설치하려면 에이전트 ▸ Olo 브리지 설치를 선택하세요.
+
 Olo’s keyring isn’t running here; it starts with your session.
 여기서는 Olo 키 모음이 실행 중이지 않습니다. 세션과 함께 시작됩니다.
 
 Olo’s language:
 Olo 언어:
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+그러면 Passwords가 잠기거나 마지막 사용 후 10분이 지날 때까지 Olo 앱이 이 키로 로그인할 수 있습니다. 키 자체는 이 컴퓨터에 남습니다.
+
 Olo’s phone service isn’t running.
 Olo 전화 서비스가 실행 중이지 않습니다.
+
+Olo’s skill for agents is on “{}”.
+‘{}’에 Olo 에이전트 스킬이 설치되어 있습니다.
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+‘{}’에 Olo 에이전트 스킬이 설치되어 있지 않습니다. 설치하려면 에이전트 ▸ Olo 에이전트 스킬 설치를 선택하세요.
+
+Olo’s typing helper is being added to “{}”…
+‘{}’에 Olo 입력 도우미를 추가하는 중…
+
+Olo’s typing helper is on “{}”.
+‘{}’에 Olo 입력 도우미가 설치되어 있습니다.
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo 입력 도우미가 꺼져 있습니다. 사용하려면 설정 ▸ 호스트에서 Olo 입력 도우미 사용을 선택하세요.
+
+Olo’s typing helper isn’t on “{}”.
+‘{}’에 Olo 입력 도우미가 설치되어 있지 않습니다.
+
+Olo’s typing helper isn’t on “{}”: {}
+‘{}’에 Olo 입력 도우미가 없습니다: {}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+‘{}’의 계정에 Olo 입력 도우미를 추가했습니다. 다음 연결부터 사용합니다.
+
+Olo’s typing helper was added to your account on “{}”.
+‘{}’의 계정에 Olo 입력 도우미를 추가했습니다.
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+‘{}’에 Olo 입력 도우미를 추가했습니다. 다음 연결부터 사용합니다.
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Olo 창에는 바로 적용됩니다. 다른 프로그램은 해당 언어를 지원하면 다음 실행부터 적용됩니다.
@@ -7192,14 +7999,29 @@ On it now
 On the day, at 9 AM
 마감 당일 오전 9시
 
+On the host
+호스트에서
+
 On the network
 네트워크에서
+
+On the path
+PATH에 있음
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 휴대전화에서 설정 ▸ Bluetooth를 열어 두세요. 잠시 후 여기에 나타납니다.
 
+On the tailnet as {}.
+tailnet에 {} 이름으로 연결됨.
+
+On this computer
+이 컴퓨터에서
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 휴대전화에서 Telegram ▸ 설정 ▸ 기기 ▸ 데스크톱 기기 연결을 열고 이 코드를 비추세요.
+
+On {}
+{}에서
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 현재 {0}: {1}. 설정을 움직이면 사용자 설정 {2}(으)로 바뀝니다. 각 모드의 설정은 ‘전원 모드’에서 확인하세요.
@@ -7261,6 +8083,9 @@ Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 같은 알림은 최신 것만 표시
 
+Only this computer can reach these sessions.
+이 컴퓨터에서만 이 세션에 접속할 수 있습니다.
+
 Only when I choose Sync Now
 ‘지금 동기화’를 선택할 때만
 
@@ -7318,6 +8143,9 @@ Open Power
 Open Pull Request #{}
 풀 리퀘스트 #{} 열기
 
+Open Rex Preferences
+Rex 환경설정 열기
+
 Open Saved Group
 저장한 그룹 열기
 
@@ -7342,11 +8170,20 @@ Open With
 Open With Offers
 ‘다음으로 열기’ 후보
 
+Open a host’s Account window to see how each stands there, and to clone.
+각 호스트의 상태를 확인하고 저장소를 복제하려면 호스트의 계정 창을 여세요.
+
 Open files
 파일 열기
 
+Open files and tasks
+열린 파일 및 작업 수
+
 Open in Google Drive
 Google Drive에서 열기
+
+Open in Rex
+Rex에서 열기
 
 Open in Terminal
 Terminal에서 열기
@@ -7356,6 +8193,9 @@ Tracker에서 열기
 
 Open kache's Log
 kache 로그 열기
+
+Open links on this computer
+이 컴퓨터에서 링크 열기
 
 Open my.telegram.org
 my.telegram.org 열기
@@ -7372,11 +8212,17 @@ Open {} to see it.
 Open {} to see them.
 {} 앱에서 확인하세요.
 
+OpenAI’s coding agent.
+OpenAI의 코딩 에이전트입니다.
+
 OpenDocument Text…
 OpenDocument 텍스트…
 
 Opening programs’ secrets…
 프로그램의 비밀 정보 여는 중…
+
+Opening session…
+세션 여는 중…
 
 Opening the backup in {}
 {}의 백업 여는 중
@@ -7425,6 +8271,9 @@ Other Mice
 
 Other Updates
 기타 업데이트
+
+Other releases:
+기타 릴리스:
 
 Other workspaces’ applications start collapsed
 다른 작업 공간의 앱 목록은 접어서 시작
@@ -7521,6 +8370,9 @@ Palms caught
 
 Palms while typing
 입력 중 손바닥 접촉
+
+Pane
+패널
 
 Panel
 패널
@@ -7624,6 +8476,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 암호 및 로그인 정보: 여기에 로그인 키 모음이 없어 가져오지 못했습니다.
 
+Passwords answered something else
+Passwords가 예상과 다른 응답을 보냈습니다
+
 Passwords answered something else.
 Passwords가 다른 응답을 보냈습니다.
 
@@ -7648,17 +8503,26 @@ Passwords가 키를 보관하지 못했습니다.
 Passwords for Every Screen…
 모든 화면의 암호…
 
+Passwords has no SSH keys to offer.
+Passwords에 제공할 SSH 키가 없습니다.
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords에 Google 계정의 로그인 정보가 없습니다. 먼저 계정 정보를 추가하거나 앱을 수동으로 설정하세요.
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 Passwords에 ‘{}’ 항목이 없습니다. 파일 ▸ 데이터 제공자…에서 키를 다시 입력하세요.
 
+Passwords is locked
+Passwords가 잠겨 있습니다
+
 Passwords is locked.
 Passwords가 잠겨 있습니다.
 
 Passwords isn’t running.
 Passwords가 실행 중이지 않습니다.
+
+Passwords isn’t set up
+Passwords가 설정되지 않았습니다
 
 Passwords isn’t set up yet.
 Passwords가 아직 설정되지 않았습니다.
@@ -7692,6 +8556,9 @@ Passwords’ password is used now: try again.
 
 Paste
 붙여넣기
+
+Paste Password…
+암호 붙여넣기…
 
 Paste as Attachment
 첨부 항목으로 붙여넣기
@@ -7854,6 +8721,15 @@ Polish
 
 Pool
 Pool
+
+Port
+포트
+
+Port:
+포트:
+
+Ports
+포트
 
 Portuguese
 포르투갈어
@@ -8047,14 +8923,26 @@ Profile:
 Program
 프로그램
 
+Program folder
+프로그램 폴더
+
 Program names, comma separated
 프로그램 이름 (쉼표로 구분)
+
+Programs
+프로그램
 
 Programs Using the Network
 네트워크를 사용하는 프로그램
 
 Programs Using the {}
 {} 사용 프로그램
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+그러면 Passwords가 잠기거나 마지막 사용 후 10분이 지날 때까지 그 호스트의 프로그램이 이 키를 사용할 수 있습니다. 키 자체는 이 컴퓨터에 남습니다.
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+‘{}’의 프로그램이 허용된 권한에 따라 Rex를 통해 이 컴퓨터를 사용할 수 있습니다(환경설정 ▸ Rex).
 
 Programs’ Secrets
 프로그램의 비밀 정보
@@ -8097,6 +8985,9 @@ Put the computer to sleep after:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 백업에서 선택한 항목으로 현재 항목을 교체하고 나머지는 그대로 둡니다. 현재 상태를 먼저 저장합니다.
+
+Putting it in place
+설치 적용 중
 
 Putting {} back
 {} 원래 위치로 복원 중
@@ -8179,6 +9070,12 @@ Ran for
 Range
 범위
 
+Reach its local servers
+해당 호스트의 로컬 서버에 접속
+
+Reach their local servers
+각 호스트의 로컬 서버에 접속
+
 Reaches:
 범위:
 
@@ -8191,14 +9088,26 @@ Read
 Read Quota Now
 지금 사용 한도 읽기
 
+Read and set the clipboard
+클립보드 읽기 및 쓰기
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 선택한 백업에 필요한 데이터를 저장 위치에서 전부 다시 읽어 실제 복원할 때처럼 각 조각을 검사합니다
+
+Read just now
+방금 읽음
 
 Read ones fade, then move to Cleared; unread ones stay.
 읽은 알림은 흐려진 뒤 ‘지운 알림’으로 옮기고 안 읽은 알림은 남깁니다.
 
 Read only
 읽기 전용
+
+Read {} h ago
+{}시간 전 읽음
+
+Read {} min ago
+{}분 전 읽음
 
 Reading /etc/hosts…
 /etc/hosts 읽는 중…
@@ -8230,6 +9139,9 @@ Reading the index again
 Reading the journal…
 저널 읽는 중…
 
+Reading the log…
+로그 읽는 중…
+
 Reading the packages…
 패키지 읽는 중…
 
@@ -8244,6 +9156,12 @@ Reading…
 
 Reads
 읽기
+
+Ready
+준비됨
+
+Ready: it starts when somebody signs in
+준비됨: 누군가 로그인하면 시작됩니다
 
 Real-time priority
 실시간 우선순위
@@ -8268,6 +9186,12 @@ Recommended by another package
 
 Recommended for it
 이 기기 권장값
+
+Reconnecting (try {})…
+다시 연결 중({}회차)…
+
+Reconnecting. {}
+다시 연결 중. {}
 
 Record
 기록 시작
@@ -8377,8 +9301,14 @@ Reinstall Selected…
 Reject
 거부
 
+Release:
+릴리스:
+
 Reload
 새로고침
+
+Reload Server Configuration
+서버 구성 다시 불러오기
 
 Reload Without the Cache
 캐시 없이 새로고침
@@ -8395,6 +9325,9 @@ Reminder:
 Remote
 원격
 
+Remote Access…
+원격 접속…
+
 Removable Disks
 이동식 디스크
 
@@ -8407,8 +9340,14 @@ Remove Account
 Remove Graph
 그래프 제거
 
+Remove Host
+호스트 제거
+
 Remove Place
 장소 제거
+
+Remove Pool
+풀 제거
 
 Remove Repository
 저장소 제거
@@ -8434,8 +9373,17 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 풀에서 제거할까요? 여기 저장된 로그인 정보만 지워지며 계정 자체는 유지됩니다.
 
+Remove the Token Pool from {}?
+{}에서 Token Pool을 제거할까요?
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+{}에서 Token Pool을 제거할까요? 그곳의 Claude Code와 Codex는 각자의 로그인 상태로 돌아가며, 계정의 최신 로그인 정보는 먼저 이 컴퓨터로 가져옵니다.
+
 Remove the VPN “{}”? Its settings and keys go with it.
 ‘{}’ VPN을 제거할까요? 설정과 키도 함께 지워집니다.
+
+Remove the bridge, skill and typing helper?
+브리지, 스킬 및 입력 도우미를 제거할까요?
 
 Remove the {}? It will no longer unlock anything.
 {} 등록을 해제할까요? 이후에는 이 수단으로 잠금을 해제할 수 없습니다.
@@ -8451,6 +9399,9 @@ Remove “{}” from Favorites
 
 Remove…
 제거…
+
+Removing
+제거 중
 
 Removing…
 제거하는 중…
@@ -8472,6 +9423,12 @@ Rename Place…
 
 Rename Section
 섹션 이름 변경
+
+Rename Session…
+세션 이름 바꾸기…
+
+Rename Tab…
+탭 이름 바꾸기…
 
 Rename Worktree…
 작업 트리 이름 변경…
@@ -8554,6 +9511,9 @@ Passwords 초기화
 Reset Passwords…
 Passwords 초기화…
 
+Reset Terminal
+터미널 초기화
+
 Reset Thresholds
 임계값 초기화
 
@@ -8610,6 +9570,12 @@ kache 재시작
 
 Restart, Asking First
 먼저 묻고 재시작
+
+Restarting or stopping it ends every session.
+재시작하거나 중지하면 모든 세션이 종료됩니다.
+
+Restarting or stopping it leaves open sessions running.
+재시작하거나 중지해도 열린 세션은 계속 실행됩니다.
 
 Restart…
 재시작…
@@ -8692,6 +9658,54 @@ Reverting in {} seconds.
 Rewriting index.db…
 index.db 다시 쓰는 중…
 
+Rex
+Rex
+
+Rex Server
+Rex 서버
+
+Rex Server on {}
+{}의 Rex 서버
+
+Rex adds these entries to {} as {}:
+Rex가 {1} 권한으로 {0}에 다음 항목을 추가합니다:
+
+Rex changes {} as {}:
+Rex가 {1} 권한으로 {0}을(를) 변경합니다:
+
+Rex isn’t installed
+Rex가 설치되지 않음
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+SSH로 연결하는 호스트가 등록되어 있지 않습니다. Rex 또는 환경설정 ▸ Rex에서 추가하세요.
+
+Rex needs an address to connect.
+연결하려면 주소가 필요합니다.
+
+Rex picks a free port on this computer; the Ports list shows it.
+Rex가 이 컴퓨터의 빈 포트를 자동으로 선택하며 포트 목록에 표시됩니다.
+
+Rex removes these as {}:
+Rex가 {} 권한으로 다음 항목을 제거합니다:
+
+Rex runs this as {}:
+Rex가 {} 권한으로 다음 명령을 실행합니다:
+
+Rex sets these as {}:
+Rex가 {} 권한으로 다음 항목을 설정합니다:
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex가 Olo Passwords의 SSH 키로 {} 계정에 로그인하며, 연결에 성공하기 전에는 아무것도 변경하지 않습니다.
+
+Rex signs in as {}@{}, as it will to connect.
+Rex가 연결할 때와 같이 {}@{} 계정으로 로그인합니다.
+
+Rex: Agents & Sessions
+Rex: 에이전트 및 세션
+
+Rex’s own server. It can’t be disconnected or removed.
+Rex 자체 서버입니다. 연결을 끊거나 제거할 수 없습니다.
+
 Rich Text (RTF)…
 서식 있는 텍스트 (RTF)…
 
@@ -8725,6 +9739,9 @@ Roll up or down
 Room:
 공간:
 
+Root on {} didn’t accept your keys
+{}의 root가 내 키를 거부했습니다
+
 Rotate Left
 좌측으로 회전
 
@@ -8749,6 +9766,9 @@ Router:
 Rows
 행
 
+Rows:
+행 수:
+
 Ruby
 Ruby
 
@@ -8763,6 +9783,15 @@ Run on it with “olo-screen run”
 
 Running
 실행 중
+
+Running Rex’s installer as {}
+{} 권한으로 Rex 설치 프로그램 실행 중
+
+Running for {}
+{} 동안 실행 중
+
+Running systemctl as {}
+{} 권한으로 systemctl 실행 중
 
 Runs on
 실행 장치
@@ -8793,6 +9822,18 @@ SSD 온도
 
 SSE
 남남동
+
+SSH Authentication
+SSH 인증
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSH는 기본적으로 연결당 세션을 10개까지 허용하며 각 패널이 하나씩 사용합니다.
+
+SSH keys
+SSH 키
+
+SSH sessions
+SSH 세션
 
 SSW
 남남서
@@ -9025,6 +10066,9 @@ Select All Conversations
 Select All Screens
 모든 화면 선택
 
+Select Last Output
+마지막 출력 선택
+
 Select None
 선택 해제
 
@@ -9133,11 +10177,29 @@ Service Order
 Session:
 세션:
 
+Sessions
+세션
+
+Sessions on this computer may:
+이 컴퓨터의 세션 허용 권한:
+
+Sessions on {} may:
+{}의 세션 허용 권한:
+
+Sessions there keep running.
+호스트의 세션은 계속 실행됩니다.
+
+Sessions used in
+포함할 세션 기간
+
 Set
 설정
 
 Set Background
 배경 설정
+
+Set Rex up there if it needs it
+필요하면 호스트에 Rex 설정
 
 Set Time Zone
 시간대 설정
@@ -9148,8 +10210,14 @@ Set Up
 Set Up Again…
 다시 설정…
 
+Set Up This Host’s Account…
+이 호스트 계정 설정…
+
 Set Up by Hand…
 수동 설정…
+
+Set Up {}
+{} 설정
 
 Set Up…
 설정…
@@ -9163,6 +10231,21 @@ Set for the whole computer by {}{}.
 Set up ({} looks).
 설정됨 (모습 {}개).
 
+Set up with
+설정 명령
+
+Set up with:
+설정 명령:
+
+Set up your own Rex server on {}
+{}에 내 Rex 서버 설정
+
+Set up {} as a Rex login server
+{}을(를) Rex 로그인 서버로 설정
+
+Set up {} as a shared Rex server
+{}을(를) 공유 Rex 서버로 설정
+
 Setting
 설정
 
@@ -9171,6 +10254,9 @@ Setting it: an administrator's password is asked…
 
 Setting up backups to {}…
 {}에 백업 설정 중…
+
+Setting up needs root. Nothing on {} is changed yet.
+설정에는 root 권한이 필요합니다. {}에서 아직 변경된 내용은 없습니다.
 
 Setting up the backups in {}’s Google Drive…
 {} 계정의 Google Drive에 백업 설정 중…
@@ -9181,11 +10267,26 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 {} 설정에는 암호와 키 PIN 입력, 키 터치 두 번이 필요합니다.
 
+Setting up {} of {}…
+{1}개 중 {0}개 설정 중…
+
+Setting up {}…
+{} 설정 중…
+
+Setting up…
+설정 중…
+
 Settings
 설정
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+설정, 지침, 스킬 및 명령입니다. 로그인 정보나 키는 포함하지 않습니다.
+
 Settings:
 설정:
+
+Setting…
+설정하는 중…
 
 Seventh folder
 일곱 번째 폴더
@@ -9289,11 +10390,17 @@ Tracker에서 파일 보기
 Show Hidden Files
 숨긴 파일 표시
 
+Show Idle Panes in Activity
+활동에 유휴 패널 표시
+
 Show Notifications
 알림 표시
 
 Show Only {}
 {}만 표시
+
+Show Pane Headers
+패널 헤더 표시
 
 Show Places
 장소 표시
@@ -9318,6 +10425,9 @@ Show Source
 
 Show Toolbars
 도구 막대 표시
+
+Show Typing Immediately
+입력 즉시 표시
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 창 제목을 오른쪽 클릭하거나 Deskbar에서 해당 창의 메뉴를 열어 ‘AirPlay로 표시’를 선택하세요. Viewer나 Tracker에서 영화를 보내려면 ‘재생 기기’를 선택하세요.
@@ -9421,6 +10531,9 @@ Terminal에서 다시 로그인…
 Sign In Again…
 다시 로그인…
 
+Sign In to Tailscale…
+Tailscale 로그인…
+
 Sign In with Google
 Google로 로그인
 
@@ -9432,6 +10545,12 @@ Sign Out
 
 Sign Out…
 로그아웃…
+
+Sign in to connect this server to Tailscale.
+이 서버를 Tailscale에 연결하려면 로그인하세요.
+
+Sign in to other hosts with your SSH keys
+내 SSH 키로 다른 호스트에 로그인
 
 Sign in to {} as “{}” with your passkey?
 패스키를 사용해 {0}에 ‘{1}’ 계정으로 로그인할까요?
@@ -9454,6 +10573,12 @@ Signed in as {} ({}).
 Signed in as {}.
 {} 계정으로 로그인했습니다.
 
+Signing in as {} with a key from Olo Passwords
+Olo Passwords의 키로 {} 계정에 로그인하는 중
+
+Signing in as {}…
+{} 계정으로 로그인 중…
+
 Signing in to Fastmail…
 Fastmail에 로그인 중…
 
@@ -9471,6 +10596,9 @@ Size
 
 Size:
 크기:
+
+Skill for agents
+에이전트 스킬
 
 Skip syncing the index to disk
 인덱스 디스크 동기화 건너뛰기
@@ -9549,6 +10677,9 @@ Soft
 
 Software License
 소프트웨어 라이선스
+
+Software Update
+소프트웨어 업데이트
 
 Sol 6.1
 Sol 6.1
@@ -9631,6 +10762,15 @@ Speed:
 Spiral
 나선형
 
+Split Down
+아래로 분할
+
+Split Right
+오른쪽으로 분할
+
+Split to Fit
+알맞게 분할
+
 Standard
 표준
 
@@ -9648,6 +10788,9 @@ Start Over
 
 Start Over…
 처음부터 다시…
+
+Start Terminal Here
+여기서 터미널 시작
 
 Start Test
 테스트 시작
@@ -9678,6 +10821,9 @@ other: {n}시간 전에 시작
 
 Started {n} minutes ago
 other: {n}분 전에 시작
+
+Starting Tailscale…
+Tailscale 시작 중…
 
 Starting Up
 시작 중
@@ -9739,8 +10885,14 @@ Steady sleet
 Steady snow
 계속 내리는 눈
 
+Step 1 is done. Try Again carries on from step 2.
+1단계가 완료되었습니다. 다시 시도하면 2단계부터 이어서 진행합니다.
+
 Step {} of {}
 {1}단계 중 {0}단계
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+1~{}단계가 완료되었습니다. 다시 시도하면 {}단계부터 이어서 진행합니다.
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 {}이 지나도 계속 진행 중입니다. 다른 수정은 이 작업이 끝날 때까지 기다립니다. 끝나지 않으면 컴퓨터를 재시동하면 멈춥니다.
@@ -9781,6 +10933,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 {} 계정과의 동기화를 중지할까요? 이 컴퓨터에서 해당 계정의 항목과 아직 전송하지 않은 변경 사항이 지워집니다. 1Password의 내용은 그대로 유지됩니다.
 
+Stopped before step {} of {}
+{1}단계 중 {0}단계 전에서 중지됨
+
 Stopped part way, {}
 도중에 중지됨, {}
 
@@ -9792,6 +10947,9 @@ Stopped.
 
 Stopped: what was restored so far is there.
 중지했습니다. 지금까지 복원한 항목은 남아 있습니다.
+
+Stopping after this step…
+이 단계 후 중지하는 중…
 
 Stopping the backup
 백업 중지 중
@@ -9994,6 +11152,9 @@ Tab 8
 Tab 9
 탭 9
 
+Tab {}
+탭 {}
+
 Table
 표
 
@@ -10008,6 +11169,12 @@ Tabs on Agent Screens are never given a code.
 
 Tags:
 태그:
+
+Tailscale status is unavailable.
+Tailscale 상태를 확인할 수 없습니다.
+
+Tailscale: {}.
+Tailscale: {}.
 
 Take Back
 허가 취소
@@ -10075,6 +11242,9 @@ Tell coding agents to use Olo’s Agent Screens
 Tell me of:
 알림 대상:
 
+Tell me when an agent whose pane isn’t in front:
+앞면에 없는 패널의 에이전트에 알림을 보낼 상황:
+
 Tell me when it runs out, and when it's back
 소진되거나 다시 쓸 수 있을 때 알림
 
@@ -10083,6 +11253,12 @@ Tell palms apart with a palm model
 
 Tell palms apart with a palm model too
 손바닥 모델도 함께 사용
+
+Telling Codex there of them
+호스트의 Codex에 알리는 중
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+호스트의 Claude Code와 다른 에이전트에 브리지와 Rex 사용법을 알려 줍니다.
 
 Temperature
 온도
@@ -10219,8 +11395,14 @@ MTU는 바이트 단위의 숫자입니다.
 The New Build
 새 빌드
 
+The Rex server isn’t connected.
+Rex 서버가 연결되어 있지 않습니다.
+
 The Theme’s Own
 테마 기본값
+
+The Token Pool running on this computer is older: upgrade it first.
+이 컴퓨터에서 실행 중인 Token Pool이 이전 버전입니다. 먼저 업그레이드하세요.
 
 The VPN couldn't be saved.
 VPN을 저장할 수 없습니다.
@@ -10230,6 +11412,15 @@ The account answering now
 
 The account couldn’t be saved ({}).
 계정을 저장할 수 없습니다({}).
+
+The accounts file couldn’t be read.
+계정 파일을 읽을 수 없습니다.
+
+The accounts’ latest sign-ins are copied back here first.
+계정의 최신 로그인 정보는 먼저 이 컴퓨터로 복사합니다.
+
+The address has no repository’s name in it.
+주소에 저장소 이름이 없습니다.
 
 The address search answered {}.
 주소 검색 응답: {}.
@@ -10285,6 +11476,9 @@ The code from {}, at {}.
 The coming days, each its sky, low and high.
 앞으로 며칠간의 하늘 상태와 최저·최고 기온.
 
+The command runs once, in the new clone. Leave it empty for none.
+새로 복제한 폴더에서 한 번 실행할 명령입니다. 없으면 비워 두세요.
+
 The computer couldn't be restarted: {}
 컴퓨터를 다시 시작할 수 없습니다: {}
 
@@ -10330,8 +11524,17 @@ The first backup starts in a moment.
 The first fine-tune failed: {}
 첫 추가 학습 실패: {}
 
+The first look is two minutes after it starts.
+첫 확인은 시작 2분 후입니다.
+
+The folder is a place under your home there (src/name).
+호스트의 홈 폴더 아래 경로입니다(예: src/name).
+
 The hand-written ones: not fine-tuned yet
 수작업 규칙: 아직 추가 학습 전
+
+The host didn’t say what it has.
+호스트가 설치 상태를 응답하지 않았습니다.
 
 The icons {} is drawn with, everywhere.
 모든 곳에서 {} 표시 시 사용할 아이콘입니다.
@@ -10396,6 +11599,12 @@ The last backup was {}
 The last hour of use
 최근 1시간 사용량
 
+The last install didn't go through.
+마지막 설치가 완료되지 않았습니다.
+
+The last install didn't go through: {}
+마지막 설치가 완료되지 않았습니다: {}
+
 The last whole one was {}
 최근 완전한 백업: {}
 
@@ -10407,6 +11616,9 @@ The log can't be opened: {}
 
 The login keyring couldn't be read: {}
 로그인 키 모음을 읽을 수 없습니다: {}
+
+The login server isn’t running.
+로그인 서버가 실행 중이 아닙니다.
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 모든 앱의 아이콘, 창, 컨트롤 모양과 그에 맞는 배경화면입니다.
@@ -10458,6 +11670,12 @@ The next hours, each its sky and temperature, with the chance of rain or the clo
 
 The one it started on
 처음 시작한 곳
+
+The ones you choose, cloned in your home folder there and set up once.
+선택한 저장소를 호스트의 홈 폴더에 복제하고 한 번 설정합니다.
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+열린 파일 한도는 다음 로그인부터 적용되며(열려 있는 패널은 연결 끊기 후 다시 연결 시), 서비스는 다음 시작부터 적용됩니다.
 
 The package service reads what’s installed and what each repository has.
 패키지 서비스가 설치된 패키지와 각 저장소의 패키지를 읽습니다.
@@ -10540,6 +11758,9 @@ CPU
 The processor (OpenH264)
 CPU (OpenH264)
 
+The program in this pane is asking for a password.
+이 패널의 프로그램이 암호를 요청하고 있습니다.
+
 The repository has a worktree called {} already.
 저장소에 {} 이름의 작업 트리가 이미 있습니다.
 
@@ -10557,6 +11778,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 서버의 CalDAV 주소와 로그인 이름, 암호를 입력하세요. 암호는 로그인 키 모음에 보관합니다.
+
+The shared server isn’t running.
+공유 서버가 실행 중이 아닙니다.
 
 The shell has ended.
 셸이 종료되었습니다.
@@ -10672,6 +11896,9 @@ There is no limit “{}”.
 There is nothing to share.
 공유할 항목이 없습니다.
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+{}에 공간이 부족합니다. 기간을 줄이거나 호스트의 공간을 확보하세요.
+
 There's no Bluetooth adapter.
 Bluetooth 어댑터가 없습니다.
 
@@ -10686,6 +11913,9 @@ There's no fingerprint sensor, or fprintd isn't running.
 
 There's no infrared camera.
 적외선 카메라가 없습니다.
+
+There: {} <{}>  ·  Here: {} <{}>
+호스트: {} <{}>  ·  여기: {} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 이 앱들은 요청할 때마다 나열된 항목에 접근할 수 있습니다. 허가를 취소하면 다음 요청 때 다시 묻습니다.
@@ -10717,6 +11947,15 @@ This Computer
 This Computer's Microphones
 이 컴퓨터의 마이크
 
+This Olo upgrades from the build it came from, not from releases.
+이 Olo는 릴리스가 아니라 빌드된 소스에서 업그레이드합니다.
+
+This Olo was built from source: it upgrades from its build, not from releases.
+이 Olo는 소스에서 빌드되었습니다. 릴리스가 아니라 빌드에서 업그레이드합니다.
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+이 Olo는 호스트용 Token Pool 없이 빌드되어 설치할 수 없습니다.
+
 This PDF can't be edited, so it can't be saved.
 편집할 수 없는 PDF이므로 저장할 수 없습니다.
 
@@ -10741,6 +11980,9 @@ This account has a two-step password.
 This backup was made by a newer Olo.
 더 최신 Olo에서 만든 백업입니다.
 
+This computer
+이 컴퓨터
+
 This computer has no Bluetooth.
 이 컴퓨터에는 Bluetooth가 없습니다.
 
@@ -10762,6 +12004,9 @@ This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and l
 This computer's sensor sees when someone is in front of it.
 이 컴퓨터의 센서는 앞에 사람이 있는지 감지합니다.
 
+This computer’s git doesn’t say who you are.
+이 컴퓨터의 git에 사용자 정보가 설정되어 있지 않습니다.
+
 This display reports no modes.
 이 디스플레이는 지원 모드를 알려 주지 않습니다.
 
@@ -10771,6 +12016,12 @@ This event
 This folder was moved or deleted.
 이 폴더가 이동되었거나 삭제되었습니다.
 
+This host isn’t reached over SSH.
+이 호스트는 SSH로 연결되지 않습니다.
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+이 호스트는 SSH로 연결되지 않아 여기서 계정 상태를 확인하거나 변경할 수 없습니다.
+
 This is the recommended profile for this touchpad.
 이 터치패드에 권장하는 프로필입니다.
 
@@ -10779,6 +12030,9 @@ Olo 백업이 아닙니다.
 
 This isn't the session at the computer, so the computer isn't restarted.
 컴퓨터에서 직접 로그인한 세션이 아니므로 재시작하지 않습니다.
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+올바른 저장소 주소가 아닙니다(git@host:owner/name.git 또는 https://…).
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 이 커널은 디스크별 제한을 지원하지 않습니다(Linux 6.2 이상에서 지원).
@@ -10927,6 +12181,9 @@ To the next display
 To the previous display
 이전 디스플레이로
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+사용하려면 설정 ▸ 호스트에서 Olo 입력 도우미 사용을 선택하세요.
+
 To {}
 {}에게
 
@@ -10972,17 +12229,29 @@ Today {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Pool이 예상과 다른 응답을 보냈습니다.
+
 Token Pool asks {} to wait until one resets.
 한도가 초기화될 때까지 Token Pool에서 {}에 대기를 요청합니다.
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool이 실행 중이지 않습니다. 시작되면 사용 한도가 표시됩니다.
 
+Token Pool isn’t running on this computer
+이 컴퓨터에서 Token Pool이 실행 중이 아닙니다
+
+Token Pool isn’t running on this computer.
+이 컴퓨터에서 Token Pool이 실행 중이 아닙니다.
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool: 계정을 일시 정지 상태로 가져왔습니다. 다른 컴퓨터의 풀이 계정을 사용하지 않을 때 여기서 켜세요. 로그인 정보는 자동 갱신되며 두 컴퓨터가 같은 정보를 갱신하면 서로 로그아웃됩니다.
+
+Token Pool…
+Token Pool…
 
 Token:
 토큰:
@@ -11110,6 +12379,9 @@ Trim…
 Trust
 신뢰
 
+Trust & Connect
+신뢰 및 연결
+
 Trust this repository’s key?
 이 저장소 키를 신뢰할까요?
 
@@ -11173,6 +12445,12 @@ Turn off displays
 Turn off screen
 화면 끄기
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+“{}”에 자동 승인을 켤까요?\n\n사용자가 아니라 다른 프로그램이 요청했습니다. 이 창의 코딩 에이전트가 계속해도 되는지 물으면(“Do you want to proceed?”), 창에 입력하거나 중지를 누르지 않는 한 Rex가 {}초 후 예라고 답합니다.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+“{}”에 자동 승인을 켤까요?\n\n사용자가 아니라 다른 프로그램이 요청했습니다. 이 탭의 코딩 에이전트가 계속해도 되는지 물으면(“Do you want to proceed?”), 탭에 입력하거나 중지를 누르지 않는 한 Terminal이 {}초 후 예라고 답합니다.
+
 Turn on for a laptop usually plugged in.
 주로 전원을 연결해서 쓰는 노트북이라면 켜세요.
 
@@ -11215,6 +12493,9 @@ Type a to-do above, and press Return.
 Type here to try the settings
 여기에 입력해 설정을 시험하세요
 
+Type in All Panes
+모든 패널에 입력
+
 Type the PIN for “{}” (often 0000).
 ‘{}’의 PIN을 입력하세요(보통 0000).
 
@@ -11236,8 +12517,14 @@ Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 열 때 사용할 암호를 입력하세요.
 
+Type the repository’s address.
+저장소 주소를 입력하세요.
+
 Type this
 다음 내용 입력
+
+Type to filter…
+입력하여 필터링…
 
 Type with your palms down
 손바닥을 얹고 입력
@@ -11347,6 +12634,9 @@ Unknown caller
 Unless the app says; kept while the pointer is over it.
 앱 지정 시간을 우선하며 포인터를 올려 두면 유지합니다.
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Olo Passwords의 잠금을 해제하거나 {}의 root가 허용하는 키를 추가하세요.
+
 Unlock…
 잠금 해제…
 
@@ -11358,6 +12648,9 @@ Unmute
 
 Unmute All
 모두 음소거 해제
+
+Unpacking
+압축 해제 중
 
 Unread notifications put a blue dot beside their app.
 읽지 않은 알림이 있는 앱 옆에 파란 점을 표시합니다.
@@ -11386,6 +12679,9 @@ Up a level
 Up for
 가동 시간
 
+Up to date
+최신 상태
+
 Upcoming
 예정
 
@@ -11398,14 +12694,23 @@ Update Interval
 Update Only This…
 이 항목만 업데이트…
 
+Update Rex on {} to {}?
+{}의 Rex를 {} 버전으로 업데이트할까요?
+
 Update Selected Only…
 선택 항목만 업데이트…
 
 Update These {}…
 이 {}개 업데이트…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+업데이트를 누르면 Rex 저장소에서 새 버전을 확인하고 있으면 설치합니다.
+
 Update every:
 갱신 간격:
+
+Update installs it, with Rex’s installer.
+업데이트를 누르면 Rex 설치 프로그램으로 설치합니다.
 
 Update the power service in Olo Doctor to use these policies.
 이 정책을 사용하려면 Olo Doctor에서 전원 서비스를 업데이트하세요.
@@ -11425,6 +12730,9 @@ Updates are downloaded and wait for the computer to restart: they’re installed
 Updating…
 업데이트 중…
 
+Upgrade
+업그레이드
+
 Upgrade Fedora
 Fedora 업그레이드
 
@@ -11433,6 +12741,9 @@ Olo 업그레이드
 
 Upgrade to Fedora {}
 Fedora {}(으)로 업그레이드
+
+Upgrading
+업그레이드 중
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 작업하는 동안 Fedora {}의 패키지를 모두 다운로드하고 재시작할 때 설치합니다. 설치에는 시간이 걸리며 그동안 컴퓨터를 쓸 수 없습니다. 파일, 설정, 앱은 유지됩니다. 먼저 현재 릴리스를 최신으로 업데이트하고 백업해 두세요.
@@ -11445,6 +12756,9 @@ Upload at most:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 백업할 때 업로드하고 복원하거나 정리할 때 다운로드합니다. 제한은 진행 중인 백업에도 즉시 적용됩니다.
+
+Uploading {}…
+{} 업로드 중…
 
 Uploading: {}
 업로드 중: {}
@@ -11461,6 +12775,9 @@ Urgent at
 Use
 사용
 
+Use Agent Screens
+에이전트 화면 사용
+
 Use Battery Saver automatically
 배터리 절약 자동 사용
 
@@ -11476,8 +12793,14 @@ F1, F2 등을 표준 기능 키로 사용
 Use Google Drive Instead…
 대신 Google Drive 사용…
 
+Use Mine
+내 정보 사용
+
 Use Music Quality
 음악 음질 사용
+
+Use Olo’s Typing Helper on Hosts
+호스트에서 Olo 입력 도우미 사용
 
 Use Passwords for ssh
 ssh에 Passwords 사용
@@ -11520,6 +12843,9 @@ Use:
 
 User
 사용자
+
+User {}, over SSH
+SSH를 통해 {} 사용자로 연결
 
 Username or Site
 사용자 이름 또는 사이트
@@ -11701,11 +13027,20 @@ Waiting
 Waiting for Ethernet
 이더넷 연결 대기 중
 
+Waiting for a key from Olo Passwords
+Olo Passwords의 키를 기다리는 중
+
 Waiting for another fix to finish…
 다른 수정이 끝나기를 기다리는 중…
 
 Waiting for app_server…
 app_server 대기 중…
+
+Waiting for approval
+승인 대기 중
+
+Waiting for host
+호스트 대기 중
 
 Waiting for it…
 응답 대기 중…
@@ -11727,6 +13062,15 @@ Waiting for the touchpad…
 
 Waiting for you to sign in to Google in the browser…
 브라우저에서 Google 로그인 대기 중…
+
+Waiting for you to sign in…
+로그인 대기 중…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+키 에이전트가 ‘{}’에 로그인하기를 기다리는 중입니다. 키가 Passwords에 있다면 잠겨 있을 수 있습니다.
+
+Waiting for your key agent…
+키 에이전트 대기 중…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 ‘{}’의 허용 대기 중(Bluetooth 설정에서 이 컴퓨터의 옵션을 켜세요).
@@ -11797,6 +13141,9 @@ Week Starts On
 Weights
 가중치
 
+Welcome to Olo Rex
+Olo Rex 시작하기
+
 What
 대상
 
@@ -11842,6 +13189,9 @@ What should I wear today?
 What should I wear tomorrow?
 내일은 무엇을 입으면 좋을까요?
 
+What was done stays done. Setting it up again carries on from there.
+이미 완료된 단계는 유지됩니다. 다시 설정하면 그다음부터 이어서 진행합니다.
+
 What you change applies when you leave Rescue.
 변경 사항은 복구 모드에서 나갈 때 적용됩니다.
 
@@ -11880,6 +13230,12 @@ What’s coming up next week?
 
 What’s in the Trash
 휴지통 내용
+
+What’s installed on {} isn’t known until it connects.
+연결되기 전까지는 {}에 무엇이 설치되어 있는지 알 수 없습니다.
+
+What’s installed on {} isn’t known until it’s connected.
+연결되기 전까지는 {}에 무엇이 설치되어 있는지 알 수 없습니다.
 
 What’s next?
 다음 일정은 무엇인가요?
@@ -12112,6 +13468,9 @@ Withdrawn by {}
 Word Document…
 Word 문서…
 
+Working
+작업 중
+
 Working out what it comes to: every package it needs, and what it replaces…
 필요한 패키지와 교체할 패키지를 모두 확인하는 중…
 
@@ -12172,6 +13531,9 @@ Writes
 Writing the backup’s lists…
 백업 목록 쓰는 중…
 
+Writing to disk
+디스크 쓰기
+
 Written
 기록됨
 
@@ -12186,6 +13548,9 @@ Yellow
 
 Yes
 예
+
+Yes in {} s
+{}초 후 예
 
 Yesterday
 어제
@@ -12244,8 +13609,14 @@ Your home folder is backed up every hour, leaving out what can be downloaded or 
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 별도 설치나 중계 없이 Bluetooth로 이 컴퓨터에서 메시지, 연락처와 문자로 받은 일회용 코드를 확인하세요.
 
+Your name and address on commits made there, as on this computer.
+호스트에서 만드는 커밋에 이 컴퓨터와 같은 이름과 이메일 주소를 사용합니다.
+
 Your notes, files and forwarded messages
 내 메모, 파일 및 전달한 메시지
+
+Your other devices on Tailscale can reach these sessions.
+Tailscale에 연결된 다른 기기에서 이 세션에 접속할 수 있습니다.
 
 Your own files and folders
 내 파일 및 폴더
@@ -12273,6 +13644,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 암호를 확인할 수 없습니다({}).
+
+Your repositories
+내 저장소
 
 Your settings as they were are in “{}”.
 이전 설정은 ‘{}’에 있습니다.
@@ -12328,6 +13702,9 @@ Zoom In
 Zoom Out
 축소
 
+Zoom Pane
+패널 확대/축소
+
 Zoom horizontally
 가로로 확대
 
@@ -12382,6 +13759,18 @@ a window ({})
 a {} W power limit
 {}W 전력 한도
 
+about a minute left
+약 1분 남음
+
+about an hour left
+약 1시간 남음
+
+about {n} hours left
+other: 약 {n}시간 남음
+
+about {n} minutes left
+other: 약 {n}분 남음
+
 about {}
 약 {}
 
@@ -12415,11 +13804,20 @@ and {} more
 app_server's main thread: nice {}{}, {}
 app_server 주 스레드: nice {}{}, {}
 
+applied
+적용됨
+
 as in 1Password's sidebar, or its UUID
 1Password 사이드바의 이름 또는 UUID
 
 as it goes
 진행에 맞춰
+
+as of {}
+{} 기준
+
+as the machine has it
+기본값 충족
 
 at most {}
 최대 {}
@@ -12427,11 +13825,17 @@ at most {}
 at {}
 {}에
 
+auto approving
+자동 승인 중
+
 auto approving (Yes after {} s; {} answered)
 자동 승인 중 ({}초 후 허용, {}건 응답)
 
 backing up
 백업 중
+
+behind
+뒤처짐
 
 bell rang
 벨 울림
@@ -12447,6 +13851,9 @@ brush’s grey hints, from a tiny model of your own commands
 
 built most, the last 24 hours
 지난 24시간 동안 가장 많이 빌드됨
+
+busy
+사용 중
 
 ceiling {}%
 상한 {}%
@@ -12474,6 +13881,9 @@ deleting
 
 downgrade {n} packages
 other: 패키지 {n}개 다운그레이드
+
+downloading
+다운로드 중
 
 driving {}
 {} 구동
@@ -12586,14 +13996,23 @@ in {}
 install {n} packages
 other: 패키지 {n}개 설치
 
+installing
+설치 중
+
 it couldn't be ended: {}
 종료할 수 없음: {}
+
+it didn’t say why
+원인 미상
 
 it is on a different volume from the Trash, so it can only be deleted
 휴지통과 다른 볼륨에 있어 삭제만 가능합니다
 
 it took too long
 시간이 너무 오래 걸렸습니다
+
+its accounts are behind
+계정이 뒤처짐
 
 its address can’t be found (is the computer online?)
 주소를 찾을 수 없습니다. 인터넷 연결을 확인하세요
@@ -12609,6 +14028,9 @@ its disk has {}
 
 its ports: {}
 포트: {}
+
+its session has ended.
+세션이 종료되었습니다.
 
 its shells have all ended
 모든 셸이 종료됨
@@ -12664,11 +14086,20 @@ kache{} 실행 중
 kbit/s
 kbit/s
 
+kept going
+계속 진행 중
+
 last seen recently
 최근 접속
 
 left to the firmware for now
 지금은 펌웨어에 맡김
+
+less than a minute
+1분 미만
+
+less than a minute left
+1분 미만 남음
 
 level {} of 7
 7단계 중 {}단계
@@ -12697,6 +14128,9 @@ ms
 no
 아니요
 
+no SSH keys
+SSH 키 없음
+
 no display ports
 디스플레이 포트 없음
 
@@ -12708,6 +14142,9 @@ no limit to its space
 
 no network: it goes on once there’s one
 네트워크 없음: 연결되면 재개
+
+no sessions open
+열린 세션 없음
 
 no wired network: it waits for one
 유선 네트워크 연결 대기 중
@@ -12910,6 +14347,9 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh, git 등에서 Passwords의 SSH 키로 로그인합니다. 프로그램마다 처음 요청할 때 허용 여부를 묻습니다.
 
+ssh://you@host or host.ts.net
+ssh://you@host 또는 host.ts.net
+
 sudo needs your password to run this{}:
 sudo에서 다음 작업{}을 실행하려면 암호가 필요합니다:
 
@@ -13003,6 +14443,9 @@ the secret at {}
 the server answered {}
 서버 응답: {}
 
+the server couldn’t complete the request
+서버가 요청을 완료하지 못했습니다
+
 the service answered {}
 서비스 응답: {}
 
@@ -13023,6 +14466,9 @@ the window server
 
 the {} didn't get going: {}
 {} 시작 실패: {}
+
+there isn’t one for {}
+{}용 도우미가 없습니다
 
 these {n} backups need
 other: 이 백업 {n}개에 필요한
@@ -13084,8 +14530,14 @@ under a minute
 under a second
 1초 미만
 
+unpacking
+압축 해제 중
+
 up to
 최대
+
+up to date
+최신 상태
 
 up to {} dpi
 최대 {}dpi
@@ -13113,6 +14565,12 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 커밋하지 않은 변경 파일 {n}개 포함
+
+without {}
+{} 없음
+
+without {}, {} and {} more
+{}, {} 외 {}개 없음
 
 yes
 예
@@ -13144,6 +14602,9 @@ other: 일정 {n}개 찾음
 {n} More in Calendar…
 other: 캘린더에서 {n}개 더 보기…
 
+{n} SSH keys
+other: SSH 키 {n}개
+
 {n} agent screens are running. Click to watch them.
 other: 에이전트 화면 {n}개가 실행 중입니다. 클릭해서 보세요.
 
@@ -13156,11 +14617,17 @@ other: 백업 {n}개
 {n} backups chosen.
 other: 백업 {n}개 선택됨.
 
+{n} cloned
+other: {n}개 복제됨
+
 {n} coming up
 other: 예정 {n}건
 
 {n} conversations
 other: 대화 {n}개
+
+{n} couldn’t be done
+other: {n}개 실패
 
 {n} days
 other: {n}일
@@ -13180,11 +14647,20 @@ other: 파일 {n}개
 {n} files couldn’t be read.
 other: 파일 {n}개를 읽을 수 없습니다.
 
+{n} files to copy
+other: 복사할 파일 {n}개
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 수신기에서 동영상 {n}개를 재생 중입니다. 클릭해 일시 정지하거나 중지하세요.
 
 {n} folders couldn't be read
 other: 폴더 {n}개를 읽을 수 없음
+
+{n} folders taken
+other: 폴더 {n}개 사용 중
+
+{n} forwarded ports are waiting.
+other: 포워딩된 포트 {n}개가 대기 중입니다.
 
 {n} hours
 other: {n}시간
@@ -13228,6 +14704,9 @@ other: 팩 {n}개의 체크섬이 전송 당시와 일치
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 수신기에서 재생·표시 중인 항목 {n}개. 클릭해 일시 정지하거나 중지하세요.
 
+{n} ports forwarded here.
+other: 포트 {n}개가 여기에 포워딩됨.
+
 {n} problems reading 1Password…
 other: 1Password 읽기 오류 {n}건…
 
@@ -13248,6 +14727,15 @@ other: {n}초
 
 {n} secrets
 other: 비밀 정보 {n}개
+
+{n} sessions
+other: 세션 {n}개
+
+{n} sessions open
+other: 열린 세션 {n}개
+
+{n} sessions there.
+other: 호스트에 세션 {n}개.
 
 {n} shares, control among them. Click to stop them.
 other: 공유 {n}건(제어 포함). 클릭해 중지하세요.
@@ -13279,6 +14767,12 @@ other: 앱에서 {n}개 대기 중
 {n} weeks
 other: {n}주
 
+{}  ·  Set up with nothing
+{}  ·  설정 명령 없음
+
+{}  ·  Set up with {}
+{}  ·  설정 명령: {}
+
 {} (AV1 and VP9)
 {} (AV1 및 VP9)
 
@@ -13287,6 +14781,9 @@ other: {n}주
 
 {} (in use)
 {} (사용 중)
+
+{} (installed)
+{} (설치됨)
 
 {} (lower wins)
 {} (낮을수록 우선)
@@ -13357,6 +14854,9 @@ other: {n}주
 {} a second
 초당 {}
 
+{} accounts
+계정 {}개
+
 {} ago · click a graph for another moment
 {} 전 · 그래프를 클릭해 다른 시점 보기
 
@@ -13371,6 +14871,9 @@ other: {n}주
 
 {} answered {} (not a speed test server?)
 {} 응답: {} (속도 측정 서버인지 확인하세요)
+
+{} answering now
+현재 {} 응답 중
 
 {} applications are keeping the display awake.
 앱 {}개가 화면이 꺼지지 않게 하고 있습니다.
@@ -13399,11 +14902,17 @@ other: {n}주
 {} cleared · kept for {} days, the last {}
 지운 알림 {}개 · {}일간 최근 {}개 보관
 
+{} continued there
+{}개는 호스트에서 이어짐
+
 {} copied: 1Password doesn’t let other apps read its archive.
 {} 복사됨: 1Password는 다른 앱에서 보관함을 읽지 못하게 합니다.
 
 {} couldn't be found: {}
 {} 찾기 실패: {}
+
+{} couldn’t be cloned: {}
+{} 복제 실패: {}
 
 {} couldn’t be unpacked.
 {} 압축을 풀 수 없습니다.
@@ -13426,8 +14935,17 @@ other: {n}주
 {} didn't start pairing: {}.
 {} 페어링 시작 실패: {}.
 
+{} didn’t accept your keys for root
+{}의 root가 내 키를 거부했습니다
+
+{} didn’t accept your keys for {}
+{}의 {} 계정이 내 키를 거부했습니다
+
 {} didn’t download: {}
 {} 다운로드 실패: {}
+
+{} didn’t say how its limits stand.
+{}이(가) 한도 상태를 응답하지 않았습니다.
 
 {} different commands, of {} run
 총 {1}회 실행한 명령 중 서로 다른 명령 {0}개
@@ -13477,8 +14995,20 @@ other: {n}주
 {} h {} min
 {}시간 {}분
 
+{} hasn’t answered for over a minute
+{}이(가) 1분 이상 응답하지 않습니다
+
+{} hasn’t answered for over {} minutes
+{}이(가) {}분 이상 응답하지 않습니다
+
+{} hasn’t answered for {} seconds
+{}이(가) {}초 동안 응답하지 않습니다
+
 {} hours ago
 {}시간 전
+
+{} in
+입력 {}
 
 {} in all
 총 {}
@@ -13513,6 +15043,9 @@ other: {n}주
 {} is Fedora’s own: it can be turned off, not removed.
 {} 항목은 Fedora 기본 저장소입니다. 끌 수 있지만 제거할 수는 없습니다.
 
+{} is available.
+{} 버전을 사용할 수 있습니다.
+
 {} is back
 {} 다시 사용 가능
 
@@ -13527,6 +15060,15 @@ other: {n}주
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {} 프로그램이 입력 장치를 독점하고 있습니다. 해당 마우스는 가상 포인터를 통해 작동하므로 여기서 바꾼 설정이 적용되지 않습니다.
+
+{} is installed
+{} 설치됨
+
+{} is installed  ·  up to date
+{} 설치됨  ·  최신 상태
+
+{} is installed  ·  {} is available
+{} 설치됨  ·  {} 사용 가능
 
 {} is protected by a password.
 {} 항목은 암호로 보호되어 있습니다.
@@ -13582,6 +15124,9 @@ other: {n}주
 {} keys
 {} 키
 
+{} keys, at {}
+키 {}개, 위치: {}
+
 {} knows this computer.
 {} 기기가 이 컴퓨터를 인식합니다.
 
@@ -13633,6 +15178,9 @@ other: {n}주
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 새 백업 데이터 {} · 압축·암호화하여 {} 전송 (초당 {}{})
 
+{} now, {} suggested
+현재 {}, 권장 {}
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어로 표시됩니다.
 
@@ -13666,6 +15214,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} of {} Events Found
 일정 {1}개 중 {0}개 찾음
 
+{} of {} cloned
+{1}개 중 {0}개 복제됨
+
 {} of {} connected.
 {1}개 중 {0}개 연결됨.
 
@@ -13687,6 +15238,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} of {} read back
 다시 읽음 {} / {}
 
+{} of {} ready
+{1}개 중 {0}개 준비됨
+
 {} of {} selected
 선택 {} / {}
 
@@ -13696,11 +15250,26 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} of {} slots
 슬롯 {} / {}
 
+{} of {} to change
+{1}개 중 {0}개 변경 필요
+
 {} on Workspace {}
 {1}번 작업 공간의 {0}
 
 {} on this computer
 이 컴퓨터에 {}
+
+{} on {}?
+{1}에서 {0} 작업을 진행할까요?
+
+{} on {}…
+{1}에서 {0}…
+
+{} open
+{}개 열림
+
+{} out
+출력 {}
 
 {} over 5 ms in the last minute, the longest {}
 지난 1분간 5ms 초과 {}회, 최장 {}
@@ -13729,6 +15298,12 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} repositories, {} on. Packages come from those that are on.
 저장소 {}개 중 {}개가 켜져 있습니다. 켜진 저장소에서 패키지를 가져옵니다.
 
+{} requests running
+실행 중인 요청 {}건
+
+{} requests today
+오늘 요청 {}건
+
 {} right first
 첫 제안 적중률 {}
 
@@ -13737,6 +15312,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 
 {} s ago
 {}초 전
+
+{} said:
+{} 응답:
 
 {} shared with this screen
 이 화면과 {} 공유 중
@@ -13749,6 +15327,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 지난 1분간 {}단계 (휠 눈금 또는 터치패드 움직임)
+
+{} still isn’t set up
+{}이(가) 아직 설정되지 않았습니다
 
 {} stopped answering: {}
 {} 응답 중지: {}
@@ -13764,6 +15345,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 채팅 변경 사항(보관, 읽음, 음소거, 고정) {}개 전송 대기 중. 지금 보내지 못한 내용은 저장했다가 다음에 Telegram을 열 때 보냅니다.
+
+{} to copy
+복사할 크기 {}
 
 {} to deal with, {}
 처리할 항목 {}개, {}
@@ -13858,6 +15442,12 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} — {} ({}% of this folder){}{}
 {} — {} (이 폴더의 {}%){}{}
 
+{}%  ·  {}
+{}%  ·  {}
+
+{}%  ·  {}  ·  {}
+{}%  ·  {}  ·  {}
+
 {}% chance this hour
 이번 시간대 강수 확률 {}%
 
@@ -13912,6 +15502,12 @@ RAM의 {}%
 {}, on set days
 {}, 지정한 요일에
 
+{}, over SSH
+{} (SSH)
+
+{}, over Tailscale
+{} (Tailscale)
+
 {}, until {}
 {}, {}까지
 
@@ -13923,6 +15519,9 @@ RAM의 {}%
 
 {}, {} shown in this Terminal.
 {}, 이 Terminal에 {}개 표시.
+
+{}, {}%
+{}, {}%
 
 {}, {}% of its life used
 {}, 수명 {}% 사용
@@ -13966,6 +15565,9 @@ RAM의 {}%
 {}: a whole number, please
 {}: 정수를 입력하세요
 
+{}: expected auto, conservative, or off
+{}: auto, conservative 또는 off여야 합니다
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: 사용할 때마다 PIN을 요청해 터치로 암호를 대신할 수 없습니다
 
@@ -13980,6 +15582,12 @@ RAM의 {}%
 
 {}: not here yet
 {}: 아직 없음
+
+{}: off
+{}: 꺼짐
+
+{}: on
+{}: 켜짐
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}: 이 컴퓨터에서 다시 로그인하세요. 컴퓨터마다 따로 로그인합니다.
@@ -14032,6 +15640,9 @@ RAM의 {}%
 {}’s data centre
 {} 데이터 센터
 
+{}’s package manager checked Rex’s repository when this window opened.
+이 창을 열 때 {}의 패키지 관리자가 Rex 저장소를 확인했습니다.
+
 {}″ ({} × {} mm), {} pixels per inch
 {}인치 ({} × {}mm), 인치당 {}픽셀
 
@@ -14041,6 +15652,9 @@ RAM의 {}%
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle, ~/.m2/repository, 프로젝트의 .gradle
 
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin: 에이전트와 Rex가 설치되어 호스트의 셸에서 찾을 수 있는 경로입니다.
+
 ~/.local/share/Trash
 ~/.local/share/Trash
 
@@ -14055,6 +15669,18 @@ RAM의 {}%
 
 ~/worktrees
 ~/worktrees
+
+~/{} already holds another repository on {}: {}
+{1}의 ~/{0}에 이미 다른 저장소가 있습니다: {2}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+{1}의 ~/{0}에 이미 다른 파일이 있습니다. 옮기거나 ‘편집…’으로 폴더를 바꾸세요.
+
+~/{} already holds something else. Choose… to see it.
+~/{}에 이미 다른 파일이 있습니다. ‘선택…’을 눌러 확인하세요.
+
+~/{} is already {}’s folder. Type another one.
+~/{}은(는) 이미 {}의 폴더입니다. 다른 경로를 입력하세요.
 
 ·
 ·
@@ -14070,6 +15696,9 @@ RAM의 {}%
 
 ½ second
 0.5초
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 ‘[{}]’은 저장소 ID 형식이 아닙니다.
@@ -14119,6 +15748,12 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 ‘{}’에 패키지 위치가 없습니다(baseurl, metalink, mirrorlist 없음).
 
+“{}” has no sessions.
+‘{}’에 세션이 없습니다.
+
+“{}” has no terminals.
+‘{}’에 터미널이 없습니다.
+
 “{}” has no {}.
 ‘{}’에 {} 항목이 없습니다.
 
@@ -14139,6 +15774,9 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 ‘{}’이(가) 연결되어 있지만 메시지가 응답하지 않습니다. Olo가 계속 시도합니다.
+
+“{}” is disconnected.
+‘{}’의 연결이 끊어졌습니다.
 
 “{}” is imported.
 ‘{}’ 항목을 가져왔습니다.
@@ -14238,39 +15876,3 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 ⌘ Command (the Super key)
 ⌘ Command (Super 키)
-
-Auto Approve answers Yes in {} s
-자동 승인이 {}초 후 예라고 답합니다
-
-kept going
-계속 진행 중
-
-auto approving
-자동 승인 중
-
-Waiting for approval
-승인 대기 중
-
-Working
-작업 중
-
-Error
-오류
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-“{}”에 자동 승인을 켤까요?\n\n사용자가 아니라 다른 프로그램이 요청했습니다. 이 창의 코딩 에이전트가 계속해도 되는지 물으면(“Do you want to proceed?”), 창에 입력하거나 중지를 누르지 않는 한 Rex가 {}초 후 예라고 답합니다.
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-“{}”에 자동 승인을 켤까요?\n\n사용자가 아니라 다른 프로그램이 요청했습니다. 이 탭의 코딩 에이전트가 계속해도 되는지 물으면(“Do you want to proceed?”), 탭에 입력하거나 중지를 누르지 않는 한 Terminal이 {}초 후 예라고 답합니다.
-
-Yes in {} s
-{}초 후 예
-
-Keep It Going in “{}”
-“{}”에서 계속 진행
-
-Auto Approve in “{}”
-“{}”에서 자동 승인
-
-An agent is at rest here
-여기서 에이전트가 쉬고 있습니다

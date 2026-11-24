@@ -70,8 +70,17 @@ other: Ещё {n}
 1 Minute
 1 минута
 
+1 SSH key
+1 ключ SSH
+
 1 Second
 1 секунда
+
+1 account
+1 учётная запись
+
+1 couldn’t be cloned
+1 не удалось клонировать
 
 1 day before
 За 1 день
@@ -88,8 +97,17 @@ other: Ещё {n}
 1 minute
 1 минута
 
+1 request running
+1 запрос выполняется
+
+1 request today
+1 запрос сегодня
+
 1 second
 1 секунда
+
+1 session
+1 сеанс
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. Введите пароль учётной записи и нажмите «Настроить». Olo сохранит пароль в зашифрованном виде. Расшифровать его можно будет только этим ключом.
@@ -169,6 +187,9 @@ other: Ещё {n}
 2 hours before
 За 2 часа
 
+2 items
+2 элемента
+
 2 minutes
 2 минуты
 
@@ -238,6 +259,9 @@ other: Ещё {n}
 4 hours
 4 часа
 
+4 items
+4 элемента
+
 4 weeks
 4 недели
 
@@ -280,6 +304,9 @@ other: Ещё {n}
 52 weeks
 52 недели
 
+6 items
+6 элементов
+
 6 months
 6 месяцев
 
@@ -318,6 +345,9 @@ A Disk or Folder
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 На кодирование кадра экрана 4K видеокарте нужно около 15 мс, процессору — около 110 мс. При записи быстрого движения видеокарта сохраняет каждый кадр, а процессор — около девяти кадров в секунду.
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+У узла Rex может быть собственный Token Pool с этими учётными записями: Claude Code и Codex там продолжат работу, даже когда этот компьютер выключен.
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 Файл WireGuard с сервера или из wg-quick сохраняется вместе с ключами. Пока соединение активно, запросы идут только на указанные в нём DNS-серверы.
@@ -364,6 +394,9 @@ A finger on the fingerprint sensor can stand for your password. Fingers enrolled
 A frame dropped in the last minute
 За последнюю минуту пропущен один кадр
 
+A key with no name
+Ключ без имени
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 Нажмите букву у окна, меню, элемента или Deskbar, чтобы выбрать его или увидеть метки внутри. Backspace — назад, Esc — скрыть метки.
 
@@ -399,6 +432,12 @@ A new build of Olo is ready ({}). Install it now? Your windows stay open.
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 Готова новая сборка Olo ({}). При установке перезапустится оконный сервер. Окна Olo останутся открытыми, но будут закрыты: {}.
+
+A new name for the session “{}”:
+Новое имя для сеанса «{}»:
+
+A new name for the tab “{}”:
+Новое имя для вкладки «{}»:
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Один шаг колеса прокручивает страницу в Chrome и других программах на то же расстояние, что и в приложениях Olo.
@@ -505,6 +544,9 @@ API key:
 About 
 О программе 
 
+About Olo
+Об Olo
+
 About Olo Desktop
 Об Olo Desktop
 
@@ -526,14 +568,23 @@ Access
 Account
 Учётная запись
 
+Account on “{}”
+Учётная запись на «{}»
+
 Account:
 Учётная запись:
 
 Accounts
 Учётные записи
 
+Accounts that may sign in through the login server, kept in {}.
+Учётные записи с правом входа через сервер входа (хранятся в {}).
+
 Accounts:
 Учётные записи:
+
+Account…
+Учётная запись…
 
 Action
 Действие
@@ -586,6 +637,12 @@ Add Fingerprint
 Add Graph
 Добавить график
 
+Add Host
+Добавить узел
+
+Add Host…
+Добавить узел…
+
 Add Kind
 Добавить тип
 
@@ -597,6 +654,9 @@ Add Place…
 
 Add RPM Fusion
 Добавить RPM Fusion
+
+Add Repository
+Добавить репозиторий
 
 Add Repository…
 Добавить репозиторий…
@@ -655,6 +715,9 @@ Add an account in Preferences
 Add lunch tomorrow at noon
 Добавить обед завтра в полдень
 
+Add one in Rex or in Preferences ▸ Rex.
+Добавьте его в Rex или в «Настройки ▸ Rex».
+
 Add the one-time code this page shows to your login {}?
 Добавить одноразовый код с этой страницы к логину {}?
 
@@ -681,6 +744,9 @@ Address:
 
 Addresses can’t be looked up: {}
 Не удалось найти адреса: {}
+
+Add…
+Добавить…
 
 Adjust Size
 Изменить размер
@@ -745,6 +811,18 @@ Agent Screen “{}” is waiting for a code
 Agent Screens
 Экраны агентов
 
+Agent sessions
+Сеансы агентов
+
+Agent settings
+Настройки агентов
+
+Agents
+Агенты
+
+Agents and settings in your account there.
+Агенты и настройки вашей учётной записи на этом узле.
+
 Agree
 Согласиться
 
@@ -805,8 +883,14 @@ All Metric
 All Preferences
 Все настройки
 
+All Set
+Всё готово
+
 All accounts together
 Все учётные записи вместе
+
+All agents and shells are quiet.
+Все агенты и оболочки в покое.
 
 All day
 Весь день
@@ -819,6 +903,9 @@ All of Olo’s {} words are in {}.
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 Все эти настройки относятся ко всему компьютеру, поэтому для их изменения запрашивается пароль администратора.
+
+All time
+За всё время
 
 All waiting
 Все ожидают
@@ -844,6 +931,12 @@ Allow Sleep (awake until {})
 Allow it on the phone
 Разрешите доступ на телефоне
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+Разрешить программам на «{}» входить с вашими ключами SSH? Запрос поступил из терминала там через Rex.
+
+Allow {} to sign in to your hosts with your SSH keys?
+Разрешить {} входить на ваши узлы с вашими ключами SSH?
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Разрешить приложению «{0}» доступ к {1}{2}? Если выбрать «Всегда», доступ будет предоставляться при каждом запросе. Отозвать его можно в меню «Файл ▸ Приложения с доступом…».
 
@@ -858,6 +951,9 @@ Also from the Deskbar: click the cup.
 
 Also leave out:
 Также исключить:
+
+Also used by
+Также используется
 
 Also when running on battery
 В том числе при работе от батареи
@@ -903,6 +999,9 @@ An account can answer again.
 
 An administrator's password is needed.
 Нужен пароль администратора.
+
+An agent is at rest here
+Здесь агент в ожидании
 
 An app
 Приложение
@@ -967,17 +1066,35 @@ Answering now
 Answering now · {}
 Сейчас отвечает · {}
 
+Anthropic’s coding agent.
+Агент для разработки от Anthropic.
+
+Antigravity
+Antigravity
+
 Any of the {}
 Любой из {}
 
 Any storms on the way?
 Ожидается ли гроза?
 
+Any tagged device on the tailnet
+Любое устройство с тегом в сети Tailscale
+
 Any time
 В любое время
 
 Any touch
 Любое касание
+
+Anyone at all
+Кто угодно
+
+Anyone on the tailnet
+Любой в сети Tailscale
+
+Anyone who is identified
+Любой опознанный пользователь
 
 App
 Приложение
@@ -1099,6 +1216,12 @@ As in Themes ({})
 As it goes
 По ходу работы
 
+As on this computer
+Как на этом компьютере
+
+As root, over SSH
+От имени root по SSH
+
 As set now
 Как настроено сейчас
 
@@ -1111,8 +1234,14 @@ As the other mice
 As wide as the widgets
 По ширине виджетов
 
+As {}, over SSH
+От имени {} по SSH
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 По правилу «{0}»: nice {1} → {2}, планирование — {3}, приоритет ввода-вывода — {4}{5}. Активное приложение и Olo сохраняют отзывчивость.
+
+As {}’s package manager last heard from Rex’s repository.
+По последним данным менеджера пакетов {} из репозитория Rex.
 
 Ask
 Спрашивать
@@ -1156,11 +1285,20 @@ Ask what to do about urgent ones
 Asked now:
 Сейчас запрошено:
 
+Asking
+Запрос
+
+Asking GitHub for Olo's releases…
+Запрос выпусков Olo на GitHub…
+
 Asking Passwords…
 Запрос к Passwords…
 
 Asking Telegram…
 Запрос к Telegram…
+
+Asking how Rex is set up there
+Проверка настройки Rex на узле
 
 Asking it…
 Отправка запроса…
@@ -1237,6 +1375,9 @@ Attach a file or a link
 Attach what's on the clipboard
 Прикрепить содержимое буфера обмена
 
+Attaching terminal stream…
+Подключение потока терминала…
+
 Attachments
 Вложения
 
@@ -1251,6 +1392,12 @@ Auto
 
 Auto Approve
 Автоодобрение
+
+Auto Approve answers Yes in {} s
+Автоодобрение ответит «Да» через {} с
+
+Auto Approve in “{}”
+Автоодобрение в «{}»
 
 Auto Approve: Yes in {} s
 Автоодобрение: «Да» через {} с
@@ -1468,6 +1615,18 @@ Before import {}.{}
 Begin
 Начать
 
+Behind
+Отстаёт
+
+Behind since {}
+Отстаёт с {}
+
+Being installed…
+Устанавливается…
+
+Being updated…
+Обновляется…
+
 Benchmark…
 Тест производительности…
 
@@ -1591,17 +1750,26 @@ Bring It Into Olo…
 Brown
 Коричневый
 
+Browse Folders…
+Обзор папок…
+
 Bug Fixes
 Исправления ошибок
 
 Builds
 Сборки
 
+Builds and agents open many files and start many tasks at once.
+Сборки и агенты одновременно открывают много файлов и запускают много задач.
+
 Builds by the hour
 Сборки по часам
 
 Builds go on without the cache until it starts.
 До запуска кеша сборки продолжатся без кеширования.
+
+Built from source
+Собрано из исходного кода
 
 Built incrementally
 Инкрементальная сборка
@@ -1795,6 +1963,9 @@ Capture debug information whenever a frame drops
 Cards
 Карточки
 
+Carrying the accounts
+Передача учётных записей
+
 Cascade All
 Все окна каскадом
 
@@ -1876,8 +2047,17 @@ Changing the CPU governor
 Changing the cores process {} may use
 Выбор ядер для процесса {}
 
+Changing the machine’s settings as {}
+Изменение настроек машины от имени {}
+
 Changing the priority of process {}
 Изменение приоритета процесса {}
+
+Changing the rex group as {}
+Изменение группы rex от имени {}
+
+Changing {} as {}
+Изменение {} от имени {}
 
 Changing…
 Изменение…
@@ -1900,6 +2080,9 @@ Check Again
 Check Health
 Проверить состояние
 
+Check Now
+Проверить сейчас
+
 Check Spelling While Typing
 Проверять орфографию при вводе
 
@@ -1909,11 +2092,17 @@ Check everything
 Check for Updates
 Проверить обновления
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+Проверьте имя учётной записи и убедитесь, что один из ваших ключей есть в ~{}/.ssh/authorized_keys на узле.
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Быстрая проверка выбранных копий: все ли данные на месте, совпадают ли контрольные суммы с исходными, читаются ли отдельные образцы. Та же проверка выполняется после каждого копирования. При возможности повреждения исправляются.
 
 Checked
 Проверено
+
+Checked {}
+Проверено {}
 
 Checking for updates…
 Поиск обновлений…
@@ -1972,6 +2161,12 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 Выберите чат в списке, чтобы отправить сообщение.
 
+Choose a host to connect it, disconnect it or manage it.
+Выберите узел, чтобы подключить, отключить или настроить его.
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+Выберите ключ, который принимает root на этом узле. Если ни один не подходит, добавьте открытый ключ в /root/.ssh/authorized_keys на той машине и попробуйте снова.
+
 Choose a network to join it.
 Выберите сеть для подключения.
 
@@ -1986,6 +2181,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 Выбрать все обновления
+
+Choose how they look and sound in Notifications.
+Вид и звук уведомлений настраиваются в разделе «Уведомления».
 
 Choose what to scan:
 Что сканировать:
@@ -2046,6 +2244,15 @@ Claude Code и Codex получают инструмент для изменен
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 Если вкладки группы относятся к разным репозиториям, Claude Code и Codex при запуске узнают имя группы, репозитории и рабочие деревья. Текущее дерево отмечено. Codex один раз попросит подтвердить доверие к хуку Terminal (/hooks).
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+Сеансы Claude Code, Codex и Antigravity, чтобы продолжить их там.
+
+Claude Code and Codex there go back to their own sign-ins.
+Claude Code и Codex там вернутся к своим учётным записям.
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+Claude Code и Codex там вернутся к своим учётным записям. Сначала сюда скопируются их последние данные входа.
 
 Clean Up
 Очистить
@@ -2152,6 +2359,21 @@ Clients
 Clock
 Часы
 
+Clone
+Клонировать
+
+Clone {}
+Клонировать {}
+
+Cloned
+Клонировано
+
+Cloning {}…
+Клонирование {}…
+
+Cloning…
+Клонирование…
+
 Close
 Закрыть
 
@@ -2169,6 +2391,9 @@ Close Other Tabs
 
 Close Others
 Закрыть остальные
+
+Close Pane
+Закрыть панель
 
 Close Tab
 Закрыть вкладку
@@ -2344,8 +2569,14 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 Подключить Google Drive…
 
+Connect Remote Host…
+Подключить удалённый узел…
+
 Connect automatically when you put them in near this computer
 Подключать при надевании рядом с компьютером
+
+Connect when Rex starts
+Подключаться при запуске Rex
 
 Connect with a Token…
 Подключить с помощью токена…
@@ -2358,6 +2589,9 @@ Connected
 
 Connected as {}, through {}.
 Подключено как {0} через {1}.
+
+Connected to Tailscale.
+Подключено к Tailscale.
 
 Connected to “{}”
 Подключено к «{}»
@@ -2377,14 +2611,41 @@ Connected.
 Connecting to Telegram…
 Подключение к Telegram…
 
+Connecting to {}…
+Подключение к {}…
+
 Connecting to “{}”…
 Подключение к «{}»…
 
 Connecting…
 Подключение…
 
+Connecting… Your key agent is asking you about this sign-in.
+Подключение… Агент ключей запрашивает подтверждение этого входа.
+
 Connection
 Подключение
+
+Connection lost just now.
+Соединение потеряно только что.
+
+Connection lost {n} days ago.
+one: Соединение потеряно {n} день назад.
+few: Соединение потеряно {n} дня назад.
+many: Соединение потеряно {n} дней назад.
+other: Соединение потеряно {n} дня назад.
+
+Connection lost {n} hours ago.
+one: Соединение потеряно {n} час назад.
+few: Соединение потеряно {n} часа назад.
+many: Соединение потеряно {n} часов назад.
+other: Соединение потеряно {n} часа назад.
+
+Connection lost {n} minutes ago.
+one: Соединение потеряно {n} минуту назад.
+few: Соединение потеряно {n} минуты назад.
+many: Соединение потеряно {n} минут назад.
+other: Соединение потеряно {n} минуты назад.
 
 Connection:
 Соединение:
@@ -2449,11 +2710,17 @@ Copr project
 Copy
 Копировать
 
+Copy Address
+Копировать адрес
+
 Copy Code
 Скопировать код
 
 Copy Conversation
 Скопировать беседу
+
+Copy Debug Info
+Копировать отладочные сведения
 
 Copy Here
 Копировать сюда
@@ -2463,6 +2730,9 @@ Copy Latest Code
 
 Copy Link
 Копировать ссылку
+
+Copy Mode
+Режим копирования
 
 Copy Name
 Скопировать имя
@@ -2482,6 +2752,12 @@ Copy Path
 Copy Reference
 Скопировать ссылку
 
+Copy Screen as HTML
+Копировать экран как HTML
+
+Copy Screen as Text
+Копировать экран как текст
+
 Copy Text
 Копировать текст
 
@@ -2490,6 +2766,9 @@ Copy Username
 
 Copy Value
 Скопировать значение
+
+Copy Version Info
+Копировать сведения о версии
 
 Copy a code no tab is waiting for
 Копировать код, если его не ждёт ни одна вкладка
@@ -2506,8 +2785,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Copy-on-write отключён для index.db, чтобы избежать фрагментации Btrfs; для хранилища он сохранён ради reflink. Восстановление ненадолго перезапустит kache.
 
+Copying sessions…
+Копирование сеансов…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Копирование записей {} из 1Password. Если 1Password спросит о доступе для Passwords, выберите «Разрешить». При необходимости разблокируйте 1Password.
+
+Copying…
+Копирование…
 
 Core
 Ядро
@@ -2518,11 +2803,17 @@ Cores
 Couldn't be cached
 Не удалось закешировать
 
+Couldn't check for a newer release.
+Не удалось проверить наличие нового выпуска.
+
 Couldn't create a folder: {}
 Не удалось создать папку: {}
 
 Couldn't create a link: {}
 Не удалось создать ссылку: {}
+
+Couldn't look for a newer release: {}
+Не удалось проверить наличие нового выпуска: {}
 
 Couldn't paste: {}
 Не удалось вставить: {}
@@ -2560,14 +2851,38 @@ Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
 Проверка не удалась ({}): {}.
 
+Couldn’t be cloned
+Не удалось клонировать
+
+Couldn’t be copied
+Не удалось скопировать
+
+Couldn’t be installed
+Не удалось установить
+
+Couldn’t be set
+Не удалось задать
+
 Couldn’t change this vault in 1Password. {}
 Не удалось изменить этот сейф в 1Password. {}
+
+Couldn’t clone
+Не удалось клонировать
+
+Couldn’t copy the file from the host.
+Не удалось скопировать файл с узла.
 
 Couldn’t delete it in 1Password. {}
 Не удалось удалить запись в 1Password. {}
 
 Couldn’t delete this vault from 1Password. {}
 Не удалось удалить сейф из 1Password. {}
+
+Couldn’t get a sign-in link: {}.
+Не удалось получить ссылку для входа: {}.
+
+Couldn’t install
+Не удалось установить
 
 Couldn’t keep the approval: {}
 Не удалось сохранить разрешение: {}
@@ -2581,14 +2896,32 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 Не удалось получить список записей. {}
 
+Couldn’t look at {}
+Не удалось проверить {}
+
+Couldn’t look at {} again
+Не удалось снова проверить {}
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 Не удалось создать сейф в 1Password, поэтому его записи тоже не отправлены. {}
+
+Couldn’t open the file.
+Не удалось открыть файл.
+
+Couldn’t open the sign-in page: {}.
+Не удалось открыть страницу входа: {}.
 
 Couldn’t open this item: {}
 Не удалось открыть запись: {}
 
+Couldn’t paste the picture.
+Не удалось вставить изображение.
+
 Couldn’t reach the login keyring: {}
 Связка ключей для входа недоступна: {}
+
+Couldn’t reach {}
+Не удалось связаться с {}
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Не удалось прочитать копию из 1Password для сравнения, поэтому ваша версия не отправлена. {}
@@ -2632,8 +2965,20 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 Не удалось отозвать разрешение: {}
 
+Couldn’t turn off Tailscale: {}.
+Не удалось отключить Tailscale: {}.
+
+Couldn’t turn on Tailscale: {}.
+Не удалось включить Tailscale: {}.
+
 Couldn’t write the shared copy: {}
 Не удалось записать общую копию: {}
+
+Couldn’t {}
+Не удалось {}
+
+Couldn’t {} on {}
+Не удалось {} на {}
 
 Count accounts turned off or signed out
 Учитывать отключённые записи и записи без входа
@@ -2983,6 +3328,9 @@ Developer Tools
 Device
 Устройство
 
+Devices tagged {}, over Tailscale
+Устройства с тегом {} через Tailscale
+
 Dew point
 Точка росы
 
@@ -2995,8 +3343,14 @@ Dew point spread {}
 Dew point {}
 Точка росы: {}
 
+Diagnostics…
+Диагностика…
+
 Diff
 Diff
+
+Differs from this computer
+Отличается от этого компьютера
 
 Dim the built-in display when idle
 Затемнять встроенный экран в простое
@@ -3030,6 +3384,15 @@ Disconnect Google Drive
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 Отключить Google Drive ({})? DiskBackup перестанет сохранять туда копии и удалит данные входа с этого компьютера. Копии на диске останутся. Позже можно подключиться снова, чтобы продолжить копирование или восстановить файлы.
+
+Disconnected
+Отключено
+
+Disconnected.
+Отключено.
+
+Disconnected: {}
+Отключено: {}
 
 Disconnecting from Google Drive…
 Отключение Google Drive…
@@ -3196,6 +3559,9 @@ Don’t Trust
 Double-press speed
 Скорость двойного нажатия
 
+Down
+Вниз
+
 Down (received)
 Входящий трафик
 
@@ -3210,6 +3576,18 @@ Download at most:
 
 Download, Then Restart to Install
 Загрузить и установить при перезапуске
+
+Downloading
+Загрузка
+
+Downloading preview from Rex server…
+Загрузка предпросмотра с сервера Rex…
+
+Downloading {} from {}…
+Загрузка {} с {}…
+
+Downloading {}…
+Загрузка {}…
 
 Downloading: {}
 Загрузка: {}
@@ -3361,6 +3739,9 @@ Each display is drawn by the graphics it's wired to, so no frame crosses between
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 В Deskbar каждого экрана раскрыто текущее рабочее пространство этого экрана. У остальных видны заголовки. Стрелка раскрывает и сворачивает список приложений только в этом Deskbar.
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+Каждый клонируется в свою папку в вашей домашней папке на {}, а затем один раз настраивается своей командой.
+
 Each is judged from several signals together; a finding says how sure it is and why.
 Оценка учитывает несколько признаков. Для каждого случая указаны степень уверенности и причины.
 
@@ -3381,6 +3762,12 @@ Each new window takes half of the one you were using.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Все настроенные способы позволяют обойтись без ввода пароля в Passwords, при sudo в Terminal и при запросах администратора. Лицо и отпечаток также подходят для входа и разблокировки. Сработает тот способ, которым вы воспользуетесь первым.
+
+Each person gets their own Rex server, and signs in through this one.
+Каждый пользователь получает свой сервер Rex и входит через этот.
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+Каждый пользователь на {} получает свой сервер Rex; вход выполняется через этот.
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 Для каждого репозитория будет создана папка. Например, рабочее дерево fix-tabs репозитория olo будет в {}/olo/fix-tabs.
@@ -3411,6 +3798,9 @@ Edit Message
 
 Edit Name
 Изменить имя
+
+Edit Repository
+Изменить репозиторий
 
 Edit Video…
 Редактировать видео…
@@ -3478,6 +3868,9 @@ Encrypt it with a passphrase
 End
 Конец
 
+End Session
+Завершить сеанс
+
 End Test
 Завершить тест
 
@@ -3514,6 +3907,9 @@ Enrolling your {}
 Enter Full Screen
 На весь экран
 
+Enter secret…
+Введите секрет…
+
 Enter the password for “{}” to unlock it.
 Введите пароль, чтобы открыть «{}».
 
@@ -3540,6 +3936,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Error
+Ошибка
 
 Esc cancels
 Esc отменяет
@@ -3631,6 +4030,15 @@ Every list's to-dos show here.
 Every month
 Каждый месяц
 
+Every regular account
+Все обычные учётные записи
+
+Every step ran, and it still needs: {}.
+Все шаги выполнены, но ещё требуется: {}.
+
+Every step ran.
+Все шаги выполнены.
+
 Every week
 Каждую неделю
 
@@ -3672,6 +4080,18 @@ one: Раз в {n} год
 few: Раз в {n} года
 many: Раз в {n} лет
 other: Раз в {n} года
+
+Everyone in the rex group shares one server, run as the rex account.
+Все участники группы rex делят один сервер, работающий от учётной записи rex.
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+Все участники группы rex делят этот сервер, и каждый терминал на нём работает от учётной записи rex.
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+Все пользователи с учётной записью на {} входят в группу rex и пользуются общим сервером.
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+Входить могут все пользователи с учётной записью на {}. Список хранится в {}.
 
 Everything
 Всё
@@ -3775,6 +4195,30 @@ Fade Colors
 Fahrenheit (°F)
 Градусы Фаренгейта (°F)
 
+Failed
+Ошибка
+
+Failed just now
+Сбой только что
+
+Failed {n} days ago
+one: Сбой {n} день назад
+few: Сбой {n} дня назад
+many: Сбой {n} дней назад
+other: Сбой {n} дня назад
+
+Failed {n} hours ago
+one: Сбой {n} час назад
+few: Сбой {n} часа назад
+many: Сбой {n} часов назад
+other: Сбой {n} часа назад
+
+Failed {n} minutes ago
+one: Сбой {n} минуту назад
+few: Сбой {n} минуты назад
+many: Сбой {n} минут назад
+other: Сбой {n} минуты назад
+
 Fan Out
 Разложить веером
 
@@ -3868,6 +4312,9 @@ File
 File system:
 Файловая система:
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+Отслеживание файлов, компоновщики и крупные программы упираются в пределы ядра.
+
 Files
 Файлы
 
@@ -3879,6 +4326,9 @@ File…
 
 Fill It In
 Заполнить
+
+Filter
+Фильтр
 
 Find
 Найти
@@ -3906,6 +4356,9 @@ Find an app
 
 Find in document
 Найти в документе
+
+Find in terminal…
+Найти в терминале…
 
 Find the selection
 Найти выделенное
@@ -4063,6 +4516,12 @@ Fog likely · spread {}
 Folder
 Папка
 
+Folder taken
+Папка занята
+
+Folder:
+Папка:
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Папки и файлы через запятую. ~/ — домашняя папка, **/ — любое расположение, * — любое имя.
 
@@ -4146,6 +4605,9 @@ Format…
 
 Forward
 Вперёд
+
+Forward Port
+Перенаправить порт
 
 Forwarded from {}
 Переслано от {}
@@ -4258,6 +4720,9 @@ Get Full Access…
 Get Info
 Свойства
 
+Get items from Passwords
+Получать записи из Passwords
+
 Getting ready
 Подготовка
 
@@ -4266,6 +4731,9 @@ Getting the sensor ready…
 
 Git Worktrees
 Рабочие деревья Git
+
+Git identity
+Профиль Git
 
 GitHub
 GitHub
@@ -4282,6 +4750,9 @@ GitHub couldn’t be reached ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHub отклонил токен. Возможно, истёк срок действия или токен был отозван.
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+Создайте на узле Rex собственный Token Pool с теми же учётными записями, чтобы Claude Code и Codex там продолжали работать, когда этот компьютер выключен.
+
 Give a new key
 Указать новый ключ
 
@@ -4291,6 +4762,30 @@ Give compilers and linkers only spare memory
 Give it a name.
 Введите название.
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+Предоставляйте ключи SSH и буфер обмена только\nузлу, которому доверяете так же, как этому компьютеру.
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+Предоставляйте ключи SSH только узлу,\nкоторому доверяете так же, как этому компьютеру.
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+Предоставляйте буфер обмена только узлу,\nкоторому доверяете так же, как этому компьютеру.
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+Предоставляйте пароли и ключи SSH только\nузлу, которому доверяете так же, как этому компьютеру.
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+Предоставляйте пароли и буфер обмена только\nузлу, которому доверяете так же, как этому компьютеру.
+
+Give your passwords only to a host\nyou trust as much as this computer.
+Предоставляйте пароли только узлу,\nкоторому доверяете так же, как этому компьютеру.
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+Предоставляйте пароли, ключи SSH и буфер обмена\nтолько узлу, которому доверяете так же, как этому компьютеру.
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+Предоставляет Claude Code и Codex там ваши учётные записи независимо от того, включён ли этот компьютер.
+
 Glide
 Скольжение
 
@@ -4299,6 +4794,15 @@ Glow new windows for
 
 Go
 Перейти
+
+Go Back
+Вернуться
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Вернуться к {}?\n\nЭтот выпуск заменит {}. Olo загрузит его (около {} МБ), установит и перезапустится на месте. Настройки сохранятся; всё, что появилось в Olo позже, будет недоступно до следующего обновления.
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+Вернуться к {}?\n\nЭтот выпуск заменит {}: Olo загрузит его (около {} МБ), установит и перезапустится на месте. Настройки сохранятся; всё, что появилось позже, будет недоступно до следующего обновления.
 
 Go to
 Перейти
@@ -4311,6 +4815,9 @@ Go to File or Folder
 
 Go to File or Folder…
 Перейти к файлу или папке…
+
+Go to Folder…
+Перейти к папке…
 
 Go to:
 Перейти к:
@@ -4347,6 +4854,9 @@ Google and Fastmail accounts for Mail (Integrations) are looked in too.
 
 Google no longer takes its sign-in: sign in again.
 Google больше не принимает эти данные входа. Войдите снова.
+
+Google’s coding agent (agy).
+Агент для разработки от Google (agy).
 
 Got it. Touch the key once more: its light is blinking again.
 Готово. Индикатор снова мигает. Ещё раз коснитесь ключа.
@@ -4447,8 +4957,23 @@ Hardware Address: {}
 Hardware address:
 Аппаратный адрес:
 
+Has failed
+Завершился с ошибкой
+
+Has finished
+Завершил работу
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+Не отвечает более минуты
+
+Hasn’t answered for over {} minutes
+Не отвечает более {} мин
+
+Hasn’t answered for {} seconds
+Не отвечает {} с
 
 Header & Footer…
 Колонтитулы…
@@ -4600,8 +5125,17 @@ Home
 Home Page
 Домашняя страница
 
+Host
+Узел
+
+Host “{}”
+Узел «{}»
+
 Hosts
 Узлы
+
+Hosts and Ports…
+Узлы и порты…
 
 Hotspot
 Точка доступа
@@ -4753,6 +5287,9 @@ In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 Вместо синей точки уведомлений, пока в приложении есть непрочитанные или ожидающие действия элементы.
 
+In step
+Синхронизировано
+
 In the Scratchpad
 В черновике
 
@@ -4873,8 +5410,17 @@ Inspect Parent
 Inspect Process
 Исследовать процесс
 
+Install
+Установить
+
 Install Now
 Установить сейчас
+
+Install Olo’s Bridge
+Установить мост Olo
+
+Install Olo’s Skill for Agents
+Установить навык Olo для агентов
 
 Install When Restarting
 Установить при перезапуске
@@ -4888,8 +5434,29 @@ Install just
 Install the Helper…
 Установить помощник…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+Установить {}?\n\nOlo загрузит выпуск (около {} МБ), установит его и перезапустится на месте.
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Установить {}?\n\nOlo загрузит выпуск (около {} МБ), установит его и перезапустится на месте.
+
 Installed
 Установлено
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+Устанавливаются в вашу домашнюю папку на узле от вашего имени фирменными установщиками. От root ничего не запускается.
+
+Installing
+Установка
+
+Installing {}: {} ({}%)…
+Установка {}: {} ({}%)…
+
+Installing {}…
+Установка {}…
+
+Installing…
+Установка…
 
 Install…
 Установить…
@@ -4921,6 +5488,9 @@ Invert Selection
 Invite:
 Пригласить:
 
+Is waiting for me
+Ждёт моего ответа
+
 It Matches
 Совпадает
 
@@ -4930,8 +5500,17 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 Копирование начнётся при подключении компьютера к питанию. {}. {}.
 
+It can’t be stopped once it has started.
+После запуска операцию нельзя остановить.
+
 It couldn’t be fetched: {}
 Не удалось получить: {}
+
+It couldn’t be reached ({}). Olo keeps trying.
+Не удалось связаться ({}). Olo продолжает попытки.
+
+It couldn’t be reached: {}. Olo keeps trying.
+Не удалось связаться: {}. Olo продолжает попытки.
 
 It couldn’t be read: {}
 Не удалось прочитать: {}
@@ -4941,6 +5520,9 @@ It didn't work.
 
 It didn’t open: {}.
 Не удалось открыть: {}.
+
+It didn’t say why.
+Причина не указана.
 
 It downloads {}
 Будет загружено {}
@@ -4969,6 +5551,9 @@ It needs at least three palms and three fingers among the touches it learns from
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 Всегда звучит на 25% громкости, кроме беззвучного режима.
 
+It starts when {} starts.
+Запускается при старте {}.
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 Используются только свободное время процессора и незанятый диск. Пока вы работаете, копирование идёт медленнее и не мешает вашим задачам.
 
@@ -4983,6 +5568,9 @@ It wasn't forgotten ({}).
 
 It wasn't set up ({}).
 Не удалось настроить ({}).
+
+It won’t start again when {} restarts.
+Не запустится снова после перезапуска {}.
 
 It's in use now, in place of Olo's own.
 Теперь вместо штатной модели Olo используется эта.
@@ -5052,6 +5640,12 @@ Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords 
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 Служба запускается вместе с сеансом. Выйдите и войдите снова или запустите её через Olo Doctor.
+
+Its services, accounts and log, managed as root in their own window.
+Службы, учётные записи и журнал, управляемые от root в отдельном окне.
+
+Its sessions may:
+Его сеансам разрешено:
 
 Its sign-in isn’t in the keyring: sign in again.
 В связке ключей нет данных для входа. Войдите снова.
@@ -5143,6 +5737,9 @@ Keep HDR on for {}?
 Keep It Going
 Продолжать работу
 
+Keep It Going in “{}”
+Продолжать работу в «{}»
+
 Keep It Going says
 Сообщение для продолжения
 
@@ -5221,6 +5818,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 Сохранение выполненной части…
 
+Keeps a build’s files in memory and running programs out of swap.
+Держит файлы сборки в памяти и не выгружает работающие программы в подкачку.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux "none" ограничивает лишь фоновый сброс (queue/scheduler).
 
@@ -5245,6 +5845,9 @@ Kept on this computer; made in 1Password once you sync an account.
 Kernel
 Ядро
 
+Kernel limits
+Лимиты ядра
+
 Kernel:
 Ядро:
 
@@ -5259,6 +5862,9 @@ Key password:
 
 Key {} trusted.
 Ключ {} отмечен как доверенный.
+
+Key:
+Ключ:
 
 Keyboard
 Клавиатура
@@ -5335,6 +5941,12 @@ Larger Pointer
 Last
 Последний
 
+Last 30 days
+За последние 30 дней
+
+Last 7 days
+За последние 7 дней
+
 Last Page
 Последняя страница
 
@@ -5346,6 +5958,9 @@ Last backed up {}
 
 Last clean-up
 Последняя очистка
+
+Last day
+За последние сутки
 
 Last used
 Последнее использование
@@ -5443,6 +6058,15 @@ Less space between windows
 Let coding agents keep their tab’s title current
 Разрешить агентам обновлять заголовки вкладок
 
+Let your other devices reach this computer’s sessions over Tailscale
+Разрешить другим вашим устройствам доступ к сеансам этого компьютера через Tailscale
+
+Lets a build’s many small writes reach the disk together.
+Позволяет записывать множество мелких операций сборки на диск пакетами.
+
+Lets agents there use your accounts, even with this computer off.
+Позволяет агентам там использовать ваши учётные записи, даже когда этот компьютер выключен.
+
 Letting go of backups past keeping
 Удаление устаревших копий
 
@@ -5506,6 +6130,9 @@ Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 Ограничивать объём данных в очереди на запись
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+Стандартные лимиты Linux, повышенные для долгих сборок и множества сеансов.
+
 Line
 Строка
 
@@ -5553,6 +6180,9 @@ Lists
 
 Live
 В реальном времени
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+Заблокированные, завершившиеся с ошибкой и работающие агенты, а также открытые сеансы в Rex.
 
 Load
 Загрузить
@@ -5638,6 +6268,12 @@ Look for codes in:
 Look:
 Оформление:
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+Для управления сервером нужен доступ root. Выберите ключ, который принимает root на этом узле. Если ни один не подходит, добавьте открытый ключ в /root/.ssh/authorized_keys на той машине и попробуйте снова.
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Для управления сервером нужен доступ root. Разблокируйте Olo Passwords или добавьте туда ключ, который принимает root на {}.
+
 Looking at Bluetooth…
 Проверка Bluetooth…
 
@@ -5652,6 +6288,9 @@ Looking at what’s there…
 
 Looking at which processes use it…
 Поиск процессов, использующих устройство…
+
+Looking at {}…
+Проверка {}…
 
 Looking for Bluetooth…
 Поиск Bluetooth…
@@ -5848,6 +6487,12 @@ Making it again, empty
 Making it…
 Создание…
 
+Manage Host…
+Управление узлом…
+
+Manage Rex Server…
+Управление сервером Rex…
+
 Manually
 Вручную
 
@@ -5914,6 +6559,9 @@ Media errors
 Medium
 Средний
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+Участники группы rex пользуются общим сервером, где каждый терминал работает от учётной записи rex. Изменения вступят в силу при следующем входе.
+
 Membership
 Участие
 
@@ -5922,6 +6570,9 @@ Memory
 
 Memory Pressure
 Нагрузка на память
+
+Memory for builds
+Память для сборок
 
 Memory free
 Свободно памяти
@@ -6187,6 +6838,12 @@ Move Group to Window
 Move Here
 Переместить сюда
 
+Move Tab Left
+Переместить вкладку влево
+
+Move Tab Right
+Переместить вкладку вправо
+
 Move Tab to New Window
 Переместить вкладку в новое окно
 
@@ -6271,6 +6928,9 @@ Moving {} to the Trash
 Moving {} to the Trash…
 Перемещение {} в корзину…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+Локальные и удалённые рабочие пространства SSH/Tailscale с Ghostty VT, разделением панелей, плавающими слоями и отслеживанием ИИ-агентов.
+
 Music
 Музыка
 
@@ -6343,8 +7003,17 @@ Nearby
 Needed by another package
 Нужен другому пакету
 
+Needs curl there
+Там требуется curl
+
 Needs full access
 Нужен полный доступ
+
+Needs git there
+Там требуется git
+
+Neither kind of Rex server is in use on {}. Start one of them:
+На {} не используется ни один из типов сервера Rex. Запустите один из них:
 
 Network
 Сеть
@@ -6378,6 +7047,9 @@ New Conversation
 
 New Event…
 Создать событие…
+
+New Floating Terminal
+Новый плавающий терминал
 
 New Folder
 Создать папку
@@ -6418,6 +7090,9 @@ New Sections
 New Section…
 Новый раздел…
 
+New Session
+Новый сеанс
+
 New Signature…
 Новая подпись…
 
@@ -6456,6 +7131,9 @@ New description
 
 New event
 Новое событие
+
+New host
+Новый узел
 
 New message
 Новое сообщение
@@ -6516,6 +7194,9 @@ Next Page
 
 Next Tab
 Следующая вкладка
+
+Next Waiting Agent
+Следующий ожидающий агент
 
 Next Week
 Следующая неделя
@@ -6598,6 +7279,9 @@ No Pull Request
 No Receivers Paired
 Нет сопряжённых приёмников
 
+No SSH hosts yet
+Узлов SSH пока нет
+
 No Saved Groups
 Нет сохранённых групп
 
@@ -6609,6 +7293,12 @@ No To-Do Chosen
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 Нет VPN. Импортируйте конфигурацию WireGuard или добавьте VPN через приложение поставщика.
+
+No account is listed: nobody can sign in through the login server.
+Ни одной учётной записи не указано: никто не сможет войти через сервер входа.
+
+No active SSH authentication request.
+Нет активных запросов аутентификации SSH.
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 Приложения должны запрашивать доступ к записям. Выберите «Разрешать всегда», чтобы выдать постоянное разрешение. Его можно будет отозвать здесь.
@@ -6676,6 +7366,9 @@ No keyboards are plugged in.
 No limit
 Без ограничений
 
+No matching entries
+Нет подходящих записей
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 Переписки с {} пока нет. Введите сообщение ниже: оно будет отправлено как SMS с вашего телефона.
 
@@ -6703,6 +7396,9 @@ No phone or mail account is set up: a phone in Phone, a Google or Fastmail accou
 No phone paired
 Нет телефона в паре
 
+No pool
+Нет пула
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 Не запущена служба профилей питания (power-profiles-daemon или tuned-ppd в Fedora). Olo использует её для выбора режима питания.
 
@@ -6720,6 +7416,12 @@ No process uses much of it now
 
 No processes match.
 Подходящих процессов нет.
+
+No programs in the panes are listening on ports, and none is forwarded here.
+Программы в панелях не слушают порты, и ни один порт сюда не перенаправлен.
+
+No repositories yet.
+Репозиториев пока нет.
 
 No screen recordings yet. Record one with ⌘⇧6.
 Записей экрана пока нет. Начните запись с помощью ⌘⇧6.
@@ -6747,6 +7449,9 @@ No {} for this account.
 
 No: it did no better ({}), so the weights before stay
 Нет: результат не улучшился ({}), сохранены прежние веса
+
+Nobody is in the rex group.
+В группе rex никого нет.
 
 Noise
 Шум
@@ -6778,8 +7483,17 @@ None (flat)
 None asked for yet: type in brush
 Запросов ещё не было. Начните ввод в brush
 
+None chosen
+Ничего не выбрано
+
 None connected to Olo yet.
 К Olo пока ничего не подключено.
+
+None found
+Ничего не найдено
+
+None in that time
+За это время нет
 
 None in the last minute
 Не было за последнюю минуту
@@ -6877,6 +7591,9 @@ Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 Ещё не проверено. Нажмите «Проверить», чтобы прочитать данные и убедиться в их целостности.
 
+Not cloned
+Не клонировано
+
 Not connected
 Не подключено
 
@@ -6888,6 +7605,9 @@ Not connected: {}.
 
 Not enough touches to learn from
 Недостаточно касаний для обучения
+
+Not fixed with the others: it has its own button.
+Не исправляется вместе с остальными: для этого есть своя кнопка.
 
 Not found
 Не найдено
@@ -6907,6 +7627,15 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 За последнюю минуту не было; с открытия окна: {}
 
+Not installed
+Не установлено
+
+Not known
+Неизвестно
+
+Not on the path
+Нет в PATH
+
 Not paired
 Нет пары
 
@@ -6924,6 +7653,9 @@ Not saved: {}
 
 Not sent: {}
 Не отправлено: {}
+
+Not set
+Не задано
 
 Not set up
 Не настроено
@@ -6982,6 +7714,9 @@ Nothing backed up yet.
 Nothing came from the microphone.
 С микрофона не поступил звук.
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+Отсюда на {} ничего нельзя установить: подключение идёт не по SSH.
+
 Nothing changed: Olo's own model is still in use.
 Без изменений. По-прежнему используется штатная модель Olo.
 
@@ -6997,6 +7732,9 @@ Nothing done yet
 Nothing due today
 На сегодня задач нет
 
+Nothing else was changed.
+Больше ничего не изменено.
+
 Nothing found
 Ничего не найдено
 
@@ -7009,6 +7747,9 @@ Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 До возобновления работы данные не копируются и не отправляются. {}. {}.
 
+Nothing is changed until you choose something to do.
+Ничего не изменится, пока вы не выберете действие.
+
 Nothing more today
 На сегодня больше ничего
 
@@ -7017,6 +7758,18 @@ Nothing new
 
 Nothing new to learn
 Новых примеров для обучения нет
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+Узлу «{}» не предоставлено никаких разрешений на этом компьютере. Настроить доступ можно в «Настройки ▸ Rex».
+
+Nothing on {} is changed yet.
+На {} пока ничего не изменено.
+
+Nothing on {} is known until it connects.
+Состояние {} станет известно после подключения.
+
+Nothing on {} is known until it’s connected.
+Состояние {} станет известно после подключения.
 
 Nothing read yet
 Ещё ничего не прочитано
@@ -7036,11 +7789,17 @@ Nothing to do here
 Nothing to do.
 Всё готово.
 
+Nothing to rename.
+Нечего переименовывать.
+
 Nothing to show yet
 Пока нечего показать
 
 Nothing to tune for its driver ({}) yet.
 Для этого драйвера ({}) пока нет доступных настроек.
+
+Nothing was changed on {}.
+На {} ничего не изменилось.
 
 Notification
 Уведомление
@@ -7171,8 +7930,29 @@ Olo Installer
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 На этом компьютере нет приложения для {}. Введите ID и секрет клиента (Google Cloud ▸ проект Olo ▸ Clients) или нажмите «Отменить», затем «Добавить учётную запись Google…», чтобы поручить настройку агенту.
 
+Olo has no releases yet.
+У Olo пока нет выпусков.
+
+Olo has no typing helper for {}.
+Для {} нет помощника ввода Olo.
+
+Olo is up to date (looked {}).
+Установлена актуальная версия Olo (проверено {}).
+
+Olo is up to date.
+Установлена актуальная версия Olo.
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo хранит {}{}: данные входа, ключи и пароли Wi-Fi. Они открываются вашим паролем для входа.
+
+Olo looks for a newer release every hour.
+Olo проверяет наличие новых выпусков каждый час.
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo проверяет наличие новых выпусков через две минуты после запуска, а затем каждый час.
+
+Olo restarts once it's installed.
+После установки Olo перезапустится.
 
 Olo saying its name
 Голос произносит «Olo»
@@ -7198,14 +7978,59 @@ Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 Встроенная модель Olo, обученная на реальных касаниях ({}). Свою модель можно обучить в разделе «Настройки ▸ Сенсорная панель и мышь ▸ Касания»
 
+Olo's releases couldn't be listed: {}
+Не удалось получить список выпусков Olo: {}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+Мост Olo установлен на «{}», но ему не выдано никаких разрешений. Настроить доступ можно в «Настройки ▸ Rex».
+
+Olo’s bridge is on “{}”.
+Мост Olo установлен на «{}».
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+Мост Olo не установлен на «{}». Чтобы установить его, выберите «Агенты ▸ Установить мост Olo».
+
 Olo’s keyring isn’t running here; it starts with your session.
 Связка ключей Olo здесь не запущена. Она открывается вместе с вашим сеансом.
 
 Olo’s language:
 Язык Olo:
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Собственные приложения Olo смогут входить с их помощью, пока Passwords не заблокируется или в течение 10 минут после последнего использования. Сами ключи остаются здесь.
+
 Olo’s phone service isn’t running.
 Служба телефона Olo не запущена.
+
+Olo’s skill for agents is on “{}”.
+Навык Olo для агентов установлен на «{}».
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+Навык Olo для агентов не установлен на «{}». Чтобы установить его, выберите «Агенты ▸ Установить навык Olo для агентов».
+
+Olo’s typing helper is being added to “{}”…
+Помощник ввода Olo устанавливается на «{}»…
+
+Olo’s typing helper is on “{}”.
+Помощник ввода Olo установлен на «{}».
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Помощник ввода Olo выключен. Чтобы включить его, выберите «Настройки ▸ Использовать помощник ввода Olo на узлах».
+
+Olo’s typing helper isn’t on “{}”.
+Помощник ввода Olo не установлен на «{}».
+
+Olo’s typing helper isn’t on “{}”: {}
+Помощник ввода Olo не установлен на «{}»: {}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+Помощник ввода Olo добавлен в вашу учётную запись на «{}» и заработает при следующем подключении.
+
+Olo’s typing helper was added to your account on “{}”.
+Помощник ввода Olo добавлен в вашу учётную запись на «{}».
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+Помощник ввода Olo добавлен на «{}». Он заработает при следующем подключении.
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Окна Olo сменят язык сразу. Другие программы переключатся после перезапуска, если поддерживают выбранный язык.
@@ -7252,14 +8077,29 @@ On it now
 On the day, at 9 AM
 В день выполнения, в 9:00
 
+On the host
+На узле
+
 On the network
 В сети
+
+On the path
+В PATH
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 На телефоне откройте «Настройки ▸ Bluetooth» и не закрывайте этот раздел. Через несколько секунд телефон появится здесь.
 
+On the tailnet as {}.
+В сети Tailscale как {}.
+
+On this computer
+На этом компьютере
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 На телефоне откройте «Telegram ▸ Настройки ▸ Устройства ▸ Подключить устройство» и отсканируйте этот код.
+
+On {}
+На {}
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 Сейчас {0}: {1}. После изменения любого параметра включится свой режим {2}. Настройки режимов приведены в разделе «Режимы питания».
@@ -7321,6 +8161,9 @@ Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 Хранить лишь последнее из одинаковых
 
+Only this computer can reach these sessions.
+Эти сеансы доступны только с этого компьютера.
+
 Only when I choose Sync Now
 Только по команде «Синхронизировать сейчас»
 
@@ -7378,6 +8221,9 @@ Open Power
 Open Pull Request #{}
 Открыть запрос на слияние №{}
 
+Open Rex Preferences
+Открыть настройки Rex
+
 Open Saved Group
 Открыть сохранённую группу
 
@@ -7402,11 +8248,20 @@ Open With
 Open With Offers
 Варианты открытия
 
+Open a host’s Account window to see how each stands there, and to clone.
+Откройте окно «Учётная запись» узла, чтобы проверить состояние каждого репозитория и клонировать их.
+
 Open files
 Открытые файлы
 
+Open files and tasks
+Открытые файлы и задачи
+
 Open in Google Drive
 Открыть в Google Drive
+
+Open in Rex
+Открыть в Rex
 
 Open in Terminal
 Открыть в Terminal
@@ -7416,6 +8271,9 @@ Open in Tracker
 
 Open kache's Log
 Открыть журнал kache
+
+Open links on this computer
+Открывать ссылки на этом компьютере
 
 Open my.telegram.org
 Открыть my.telegram.org
@@ -7432,11 +8290,17 @@ Open {} to see it.
 Open {} to see them.
 Для просмотра откройте {}.
 
+OpenAI’s coding agent.
+Агент для разработки от OpenAI.
+
 OpenDocument Text…
 Текст OpenDocument…
 
 Opening programs’ secrets…
 Открытие секретов программ…
+
+Opening session…
+Открытие сеанса…
 
 Opening the backup in {}
 Открытие резервной копии в {}
@@ -7485,6 +8349,9 @@ Other Mice
 
 Other Updates
 Другие обновления
+
+Other releases:
+Другие выпуски:
 
 Other workspaces’ applications start collapsed
 Сворачивать списки в других пространствах
@@ -7581,6 +8448,9 @@ Palms caught
 
 Palms while typing
 Касания ладонью при наборе
+
+Pane
+Панель
 
 Panel
 Панель
@@ -7684,6 +8554,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 Пароли и данные входа не перенесены: здесь нет связки ключей для их хранения.
 
+Passwords answered something else
+Passwords вернул неожиданный ответ
+
 Passwords answered something else.
 Неожиданный ответ от Passwords.
 
@@ -7708,17 +8581,26 @@ Passwords не сохранил ключ.
 Passwords for Every Screen…
 Пароли для всех экранов…
 
+Passwords has no SSH keys to offer.
+В Passwords нет ключей SSH.
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 В Passwords нет данных для входа в Google. Сначала добавьте логин или настройте приложение вручную.
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 В Passwords нет записи «{}». Задайте ключ заново в меню «Файл ▸ Поставщик данных…»
 
+Passwords is locked
+Passwords заблокирован
+
 Passwords is locked.
 Passwords заблокирован.
 
 Passwords isn’t running.
 Passwords не запущен.
+
+Passwords isn’t set up
+Passwords не настроен
 
 Passwords isn’t set up yet.
 Passwords ещё не настроен.
@@ -7752,6 +8634,9 @@ Passwords’ password is used now: try again.
 
 Paste
 Вставить
+
+Paste Password…
+Вставить пароль…
 
 Paste as Attachment
 Вставить как вложение
@@ -7920,6 +8805,15 @@ Polish
 
 Pool
 Pool
+
+Port
+Порт
+
+Port:
+Порт:
+
+Ports
+Порты
 
 Portuguese
 Португальский
@@ -8113,14 +9007,26 @@ Profile:
 Program
 Программа
 
+Program folder
+Папка программ
+
 Program names, comma separated
 Названия программ через запятую
+
+Programs
+Программы
 
 Programs Using the Network
 Программы, использующие сеть
 
 Programs Using the {}
 Программы, использующие {}
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Программы на этом узле смогут пользоваться ими, пока Passwords не заблокируется или в течение 10 минут после последнего использования. Сами ключи остаются здесь.
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+Программы на «{}» могут обращаться к этому компьютеру через Rex в пределах выданных разрешений («Настройки ▸ Rex»).
 
 Programs’ Secrets
 Секреты программ
@@ -8163,6 +9069,9 @@ Put the computer to sleep after:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 Выбранные данные из копии заменят текущие, а остальные останутся на месте. Сначала будет сохранено текущее состояние.
+
+Putting it in place
+Установка на место
 
 Putting {} back
 Возврат {} на место
@@ -8245,6 +9154,12 @@ Ran for
 Range
 Диапазон
 
+Reach its local servers
+Подключаться к его локальным серверам
+
+Reach their local servers
+Подключаться к их локальным серверам
+
 Reaches:
 Доступно для:
 
@@ -8257,14 +9172,26 @@ Read
 Read Quota Now
 Проверить квоту
 
+Read and set the clipboard
+Читать и изменять буфер обмена
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 Прочитать из хранилища каждый байт, необходимый для выбранных копий, и проверить каждый блок, как при восстановлении
+
+Read just now
+Прочитано только что
 
 Read ones fade, then move to Cleared; unread ones stay.
 Гаснут и уходят в «Сброшенные» только прочитанные.
 
 Read only
 Только для чтения
+
+Read {} h ago
+Прочитано {} ч назад
+
+Read {} min ago
+Прочитано {} мин назад
 
 Reading /etc/hosts…
 Чтение /etc/hosts…
@@ -8296,6 +9223,9 @@ Reading the index again
 Reading the journal…
 Чтение системного журнала…
 
+Reading the log…
+Чтение журнала…
+
 Reading the packages…
 Чтение пакетов…
 
@@ -8310,6 +9240,12 @@ Reading…
 
 Reads
 Операции чтения
+
+Ready
+Готово
+
+Ready: it starts when somebody signs in
+Готов: запустится при входе пользователя
 
 Real-time priority
 Приоритет реального времени
@@ -8334,6 +9270,12 @@ Recommended by another package
 
 Recommended for it
 Рекомендация для устройства
+
+Reconnecting (try {})…
+Переподключение (попытка {})…
+
+Reconnecting. {}
+Переподключение. {}
 
 Record
 Записать
@@ -8443,8 +9385,14 @@ Reinstall Selected…
 Reject
 Отклонить
 
+Release:
+Выпуск:
+
 Reload
 Обновить
+
+Reload Server Configuration
+Перезагрузить конфигурацию сервера
 
 Reload Without the Cache
 Обновить без кеша
@@ -8461,6 +9409,9 @@ Reminder:
 Remote
 Удалённый
 
+Remote Access…
+Удалённый доступ…
+
 Removable Disks
 Съёмные диски
 
@@ -8473,8 +9424,14 @@ Remove Account
 Remove Graph
 Убрать график
 
+Remove Host
+Удалить узел
+
 Remove Place
 Удалить место
+
+Remove Pool
+Удалить пул
 
 Remove Repository
 Удалить репозиторий
@@ -8500,8 +9457,17 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 Удалить из пула? Данные входа на этом компьютере будут удалены. Сама учётная запись сохранится.
 
+Remove the Token Pool from {}?
+Удалить Token Pool с {}?
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+Удалить Token Pool с {}? Claude Code и Codex там вернутся к своим учётным записям. Сначала данные входа его учётных записей будут перенесены обратно на этот компьютер.
+
 Remove the VPN “{}”? Its settings and keys go with it.
 Удалить VPN «{}» вместе с настройками и ключами?
+
+Remove the bridge, skill and typing helper?
+Удалить мост, навык и помощник ввода?
 
 Remove the {}? It will no longer unlock anything.
 Удалить {}? После этого такой способ разблокировки больше не будет доступен.
@@ -8517,6 +9483,9 @@ Remove “{}” from Favorites
 
 Remove…
 Удалить…
+
+Removing
+Удаление
 
 Removing…
 Удаление…
@@ -8538,6 +9507,12 @@ Rename Place…
 
 Rename Section
 Переименовать раздел
+
+Rename Session…
+Переименовать сеанс…
+
+Rename Tab…
+Переименовать вкладку…
 
 Rename Worktree…
 Переименовать рабочее дерево…
@@ -8620,6 +9595,9 @@ Reset Passwords
 Reset Passwords…
 Сбросить Passwords…
 
+Reset Terminal
+Сбросить терминал
+
 Reset Thresholds
 Сбросить пороги
 
@@ -8676,6 +9654,12 @@ Restart kache
 
 Restart, Asking First
 Спросить и перезапустить
+
+Restarting or stopping it ends every session.
+Перезапуск или остановка завершат все сеансы.
+
+Restarting or stopping it leaves open sessions running.
+При перезапуске или остановке открытые сеансы продолжат работу.
 
 Restart…
 Перезапуск…
@@ -8758,6 +9742,54 @@ Reverting in {} seconds.
 Rewriting index.db…
 Перезапись index.db…
 
+Rex
+Rex
+
+Rex Server
+Сервер Rex
+
+Rex Server on {}
+Сервер Rex на {}
+
+Rex adds these entries to {} as {}:
+Rex добавит эти записи в {} от имени {}:
+
+Rex changes {} as {}:
+Rex изменит {} от имени {}:
+
+Rex isn’t installed
+Rex не установлен
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+У Rex нет узлов, подключаемых по SSH. Добавьте узел в Rex или в «Настройки ▸ Rex».
+
+Rex needs an address to connect.
+Для подключения Rex нужен адрес.
+
+Rex picks a free port on this computer; the Ports list shows it.
+Rex выберет свободный порт на этом компьютере; его можно увидеть в списке портов.
+
+Rex removes these as {}:
+Rex удалит следующее от имени {}:
+
+Rex runs this as {}:
+Rex выполнит это от имени {}:
+
+Rex sets these as {}:
+Rex задаст следующее от имени {}:
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex войдёт как {} с ключом SSH из Olo Passwords и ничего не изменит, пока вход не удастся.
+
+Rex signs in as {}@{}, as it will to connect.
+Rex войдёт как {}@{}, как и при обычном подключении.
+
+Rex: Agents & Sessions
+Rex: агенты и сеансы
+
+Rex’s own server. It can’t be disconnected or removed.
+Собственный сервер Rex. Его нельзя отключить или удалить.
+
 Rich Text (RTF)…
 Форматированный текст (RTF)…
 
@@ -8791,6 +9823,9 @@ Roll up or down
 Room:
 Место:
 
+Root on {} didn’t accept your keys
+Root на {} не принял ваши ключи
+
 Rotate Left
 Повернуть влево
 
@@ -8815,6 +9850,9 @@ Router:
 Rows
 Строки
 
+Rows:
+Строки:
+
 Ruby
 Ruby
 
@@ -8829,6 +9867,15 @@ Run on it with “olo-screen run”
 
 Running
 Работает
+
+Running Rex’s installer as {}
+Запуск установщика Rex от имени {}
+
+Running for {}
+Работает {}
+
+Running systemctl as {}
+Запуск systemctl от имени {}
 
 Runs on
 Выполняется на
@@ -8859,6 +9906,18 @@ SSD temperature
 
 SSE
 ЮЮВ
+
+SSH Authentication
+Аутентификация SSH
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+По умолчанию SSH допускает десять сеансов на одно соединение; каждая панель занимает один.
+
+SSH keys
+Ключи SSH
+
+SSH sessions
+Сеансы SSH
 
 SSW
 ЮЮЗ
@@ -9091,6 +10150,9 @@ Select All Conversations
 Select All Screens
 Выбрать все экраны
 
+Select Last Output
+Выделить последний вывод
+
 Select None
 Снять выделение
 
@@ -9202,11 +10264,29 @@ Service Order
 Session:
 Сеанс:
 
+Sessions
+Сеансы
+
+Sessions on this computer may:
+Сеансам на этом компьютере разрешено:
+
+Sessions on {} may:
+Сеансам на {} разрешено:
+
+Sessions there keep running.
+Сеансы там продолжают работу.
+
+Sessions used in
+Сеансы за период
+
 Set
 Установить
 
 Set Background
 Установить как фон
+
+Set Rex up there if it needs it
+Настроить Rex там при необходимости
 
 Set Time Zone
 Задать часовой пояс
@@ -9217,8 +10297,14 @@ Set Up
 Set Up Again…
 Настроить заново…
 
+Set Up This Host’s Account…
+Настроить учётную запись этого узла…
+
 Set Up by Hand…
 Настроить вручную…
+
+Set Up {}
+Настроить {}
 
 Set Up…
 Настроить…
@@ -9232,6 +10318,21 @@ Set for the whole computer by {}{}.
 Set up ({} looks).
 Настроено (образцов лица: {}).
 
+Set up with
+Команда настройки
+
+Set up with:
+Команда настройки:
+
+Set up your own Rex server on {}
+Настроить свой сервер Rex на {}
+
+Set up {} as a Rex login server
+Настроить {} как сервер входа Rex
+
+Set up {} as a shared Rex server
+Настроить {} как общий сервер Rex
+
 Setting
 Параметр
 
@@ -9240,6 +10341,9 @@ Setting it: an administrator's password is asked…
 
 Setting up backups to {}…
 Настройка копирования в {}…
+
+Setting up needs root. Nothing on {} is changed yet.
+Для настройки нужен доступ root. На {} пока ничего не изменено.
 
 Setting up the backups in {}’s Google Drive…
 Настройка копий на Google Drive пользователя {}…
@@ -9250,11 +10354,26 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 Для настройки {} введите свой пароль, PIN-код ключа и дважды коснитесь ключа:
 
+Setting up {} of {}…
+Настройка {} из {}…
+
+Setting up {}…
+Настройка {}…
+
+Setting up…
+Настройка…
+
 Settings
 Настройки
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+Настройки, инструкции, навыки и команды. Без данных входа и ключей.
+
 Settings:
 Настройки:
+
+Setting…
+Настройка…
 
 Seventh folder
 Седьмая папка
@@ -9358,11 +10477,17 @@ Show File in Tracker
 Show Hidden Files
 Показывать скрытые файлы
 
+Show Idle Panes in Activity
+Показывать неактивные панели в «Активности»
+
 Show Notifications
 Показать уведомления
 
 Show Only {}
 Показать только {}
+
+Show Pane Headers
+Показывать заголовки панелей
 
 Show Places
 Показать места
@@ -9387,6 +10512,9 @@ Show Source
 
 Show Toolbars
 Показать панели инструментов
+
+Show Typing Immediately
+Показывать ввод сразу
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 В меню заголовка окна (правая кнопка мыши) или в его строке в Deskbar выберите «Показать по AirPlay». Для показа фильма выберите «Воспроизвести на» в Viewer или Tracker.
@@ -9490,6 +10618,9 @@ Sign In Again in Terminal…
 Sign In Again…
 Войти снова…
 
+Sign In to Tailscale…
+Войти в Tailscale…
+
 Sign In with Google
 Войти через Google
 
@@ -9501,6 +10632,12 @@ Sign Out
 
 Sign Out…
 Выйти из аккаунта…
+
+Sign in to connect this server to Tailscale.
+Войдите, чтобы подключить этот сервер к Tailscale.
+
+Sign in to other hosts with your SSH keys
+Входить на другие узлы с вашими ключами SSH
 
 Sign in to {} as “{}” with your passkey?
 Войти на {0} как «{1}» с помощью ключа доступа?
@@ -9523,6 +10660,12 @@ Signed in as {} ({}).
 Signed in as {}.
 Вход выполнен как {}.
 
+Signing in as {} with a key from Olo Passwords
+Вход как {} с ключом из Olo Passwords
+
+Signing in as {}…
+Вход как {}…
+
 Signing in to Fastmail…
 Вход в Fastmail…
 
@@ -9540,6 +10683,9 @@ Size
 
 Size:
 Размер:
+
+Skill for agents
+Навык для агентов
 
 Skip syncing the index to disk
 Не синхронизировать индекс с диском
@@ -9618,6 +10764,9 @@ Soft
 
 Software License
 Лицензия на ПО
+
+Software Update
+Обновление ПО
 
 Sol 6.1
 Sol 6.1
@@ -9700,6 +10849,15 @@ Speed:
 Spiral
 Спираль
 
+Split Down
+Разделить вниз
+
+Split Right
+Разделить вправо
+
+Split to Fit
+Разделить оптимально
+
 Standard
 Стандарт
 
@@ -9717,6 +10875,9 @@ Start Over
 
 Start Over…
 Начать заново…
+
+Start Terminal Here
+Открыть терминал здесь
 
 Start Test
 Начать тест
@@ -9753,6 +10914,9 @@ one: Начато {n} минуту назад
 few: Начато {n} минуты назад
 many: Начато {n} минут назад
 other: Начато {n} минуты назад
+
+Starting Tailscale…
+Запуск Tailscale…
 
 Starting Up
 Запуск
@@ -9814,8 +10978,14 @@ Steady sleet
 Steady snow
 Продолжительный снег
 
+Step 1 is done. Try Again carries on from step 2.
+Шаг 1 выполнен. «Попробовать снова» продолжит с шага 2.
+
 Step {} of {}
 Шаг {} из {}
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+Шаги с 1 по {} выполнены. «Попробовать снова» продолжит с шага {}.
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 Всё ещё выполняется спустя {}. Остальные исправления ждут его завершения; если оно так и не завершится, его остановит перезагрузка компьютера.
@@ -9856,6 +11026,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 Отключить синхронизацию с {}? Записи этих аккаунтов и ещё не отправленные изменения будут удалены с этого компьютера. Данные в 1Password сохранятся.
 
+Stopped before step {} of {}
+Остановлено перед шагом {} из {}
+
 Stopped part way, {}
 Остановлено до завершения, {}
 
@@ -9867,6 +11040,9 @@ Stopped.
 
 Stopped: what was restored so far is there.
 Остановлено. Уже восстановленные данные остались на месте.
+
+Stopping after this step…
+Остановка после этого шага…
 
 Stopping the backup
 Остановка копирования
@@ -10069,6 +11245,9 @@ Tab 8
 Tab 9
 Вкладка 9
 
+Tab {}
+Вкладка {}
+
 Table
 Таблица
 
@@ -10083,6 +11262,12 @@ Tabs on Agent Screens are never given a code.
 
 Tags:
 Метки:
+
+Tailscale status is unavailable.
+Статус Tailscale недоступен.
+
+Tailscale: {}.
+Tailscale: {}.
 
 Take Back
 Отозвать
@@ -10150,6 +11335,9 @@ Tell coding agents to use Olo’s Agent Screens
 Tell me of:
 Уведомлять о:
 
+Tell me when an agent whose pane isn’t in front:
+Сообщать, когда агент в фоновой панели:
+
 Tell me when it runs out, and when it's back
 Сообщать об исчерпании и восстановлении квоты
 
@@ -10158,6 +11346,12 @@ Tell palms apart with a palm model
 
 Tell palms apart with a palm model too
 Дополнительно распознавать ладони с помощью модели
+
+Telling Codex there of them
+Передача списка учётных записей Codex на узле
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+Объясняет Claude Code и другим агентам там, как пользоваться мостом и Rex.
 
 Temperature
 Температура
@@ -10294,8 +11488,14 @@ MTU — это число байтов.
 The New Build
 Новая сборка
 
+The Rex server isn’t connected.
+Сервер Rex не подключён.
+
 The Theme’s Own
 Из темы
+
+The Token Pool running on this computer is older: upgrade it first.
+Запущенный на этом компьютере Token Pool устарел: сначала обновите его.
 
 The VPN couldn't be saved.
 Не удалось сохранить VPN.
@@ -10305,6 +11505,15 @@ The account answering now
 
 The account couldn’t be saved ({}).
 Не удалось сохранить учётную запись ({}).
+
+The accounts file couldn’t be read.
+Не удалось прочитать файл учётных записей.
+
+The accounts’ latest sign-ins are copied back here first.
+Сначала сюда скопируются последние данные входа этих учётных записей.
+
+The address has no repository’s name in it.
+В адресе нет имени репозитория.
 
 The address search answered {}.
 Ответ службы поиска адресов: {}.
@@ -10360,6 +11569,9 @@ The code from {}, at {}.
 The coming days, each its sky, low and high.
 Погода на ближайшие дни, минимум и максимум температуры на каждый день.
 
+The command runs once, in the new clone. Leave it empty for none.
+Команда выполнится один раз в новом клоне. Оставьте пустым, если не нужна.
+
 The computer couldn't be restarted: {}
 Не удалось перезапустить компьютер: {}
 
@@ -10405,8 +11617,17 @@ The first backup starts in a moment.
 The first fine-tune failed: {}
 Первое дообучение не удалось: {}
 
+The first look is two minutes after it starts.
+Первая проверка — через две минуты после запуска.
+
+The folder is a place under your home there (src/name).
+Папка внутри вашей домашней папки на узле (src/name).
+
 The hand-written ones: not fine-tuned yet
 Ручные правила, без дообучения
+
+The host didn’t say what it has.
+Узел не сообщил, что на нём установлено.
 
 The icons {} is drawn with, everywhere.
 Значки, которые используются для {} во всей системе.
@@ -10471,6 +11692,12 @@ The last backup was {}
 The last hour of use
 Последний час работы
 
+The last install didn't go through.
+Последняя установка не удалась.
+
+The last install didn't go through: {}
+Последняя установка не удалась: {}
+
 The last whole one was {}
 Последняя полная копия: {}
 
@@ -10482,6 +11709,9 @@ The log can't be opened: {}
 
 The login keyring couldn't be read: {}
 Не удалось прочитать связку ключей для входа: {}
+
+The login server isn’t running.
+Сервер входа не запущен.
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 Оформление значков, окон и элементов управления во всех приложениях, а также подходящие обои.
@@ -10533,6 +11763,12 @@ The next hours, each its sky and temperature, with the chance of rain or the clo
 
 The one it started on
 То, с которого началась работа
+
+The ones you choose, cloned in your home folder there and set up once.
+Выбранные репозитории будут клонированы в вашу домашнюю папку там и один раз настроены.
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+Лимит открытых файлов вступит в силу со следующего входа (для открытых панелей — после отключения и подключения), а для служб — со следующего запуска.
 
 The package service reads what’s installed and what each repository has.
 Служба пакетов читает список установленных пакетов и содержимое репозиториев.
@@ -10615,6 +11851,9 @@ The processor
 The processor (OpenH264)
 Процессор (OpenH264)
 
+The program in this pane is asking for a password.
+Программа в этой панели запрашивает пароль.
+
 The repository has a worktree called {} already.
 В репозитории уже есть рабочее дерево с именем {}.
 
@@ -10632,6 +11871,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 Введите адрес сервера CalDAV, имя и пароль для входа. Пароль будет сохранён в связке ключей для входа.
+
+The shared server isn’t running.
+Общий сервер не запущен.
 
 The shell has ended.
 Работа оболочки завершена.
@@ -10747,6 +11989,9 @@ There is no limit “{}”.
 There is nothing to share.
 Нечем поделиться.
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+На {} недостаточно места. Выберите меньший период или освободите место там.
+
 There's no Bluetooth adapter.
 Адаптер Bluetooth не найден.
 
@@ -10761,6 +12006,9 @@ There's no fingerprint sensor, or fprintd isn't running.
 
 There's no infrared camera.
 Нет инфракрасной камеры.
+
+There: {} <{}>  ·  Here: {} <{}>
+Там: {} <{}>  ·  Здесь: {} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 Эти приложения могут получать указанные записи при каждом запросе. Если отозвать разрешение, при следующем запросе снова потребуется подтверждение.
@@ -10792,6 +12040,15 @@ This Computer
 This Computer's Microphones
 Микрофоны компьютера
 
+This Olo upgrades from the build it came from, not from releases.
+Эта версия Olo обновляется из своей сборки, а не из выпусков.
+
+This Olo was built from source: it upgrades from its build, not from releases.
+Эта версия Olo собрана из исходного кода: она обновляется из своей сборки, а не из выпусков.
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+Эта версия Olo собрана без Token Pool для узлов, поэтому его нельзя установить.
+
 This PDF can't be edited, so it can't be saved.
 Этот PDF недоступен для редактирования, поэтому его нельзя сохранить.
 
@@ -10816,6 +12073,9 @@ This account has a two-step password.
 This backup was made by a newer Olo.
 Копия создана в более новой версии Olo.
 
+This computer
+Этот компьютер
+
 This computer has no Bluetooth.
 На этом компьютере нет Bluetooth.
 
@@ -10837,6 +12097,9 @@ This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and l
 This computer's sensor sees when someone is in front of it.
 Датчик компьютера определяет, есть ли перед ним человек.
 
+This computer’s git doesn’t say who you are.
+В настройках git на этом компьютере не указано ваше имя.
+
 This display reports no modes.
 Экран не сообщил ни одного режима.
 
@@ -10846,6 +12109,12 @@ This event
 This folder was moved or deleted.
 Эта папка перемещена или удалена.
 
+This host isn’t reached over SSH.
+Этот узел подключён не по SSH.
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+Этот узел подключён не по SSH: проверить или изменить его учётную запись отсюда нельзя.
+
 This is the recommended profile for this touchpad.
 Рекомендуемый профиль для этой сенсорной панели.
 
@@ -10854,6 +12123,9 @@ This isn't an Olo backup.
 
 This isn't the session at the computer, so the computer isn't restarted.
 Это не локальный сеанс компьютера, поэтому перезапуск не выполнен.
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+Это не адрес репозитория (git@host:owner/name.git или https://…).
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 В этом ядре нельзя ограничивать диски по отдельности (нужен Linux 6.2 или новее).
@@ -11002,6 +12274,9 @@ To the next display
 To the previous display
 На предыдущий экран
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Чтобы включить его, выберите «Настройки ▸ Использовать помощник ввода Olo на узлах».
+
 To {}
 В {}
 
@@ -11047,17 +12322,29 @@ Today {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Pool вернул неожиданный ответ.
+
 Token Pool asks {} to wait until one resets.
 Token Pool просит {} подождать, пока не обновится одна из квот.
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool не запущен. Квоты появятся после его запуска.
 
+Token Pool isn’t running on this computer
+Token Pool не запущен на этом компьютере
+
+Token Pool isn’t running on this computer.
+Token Pool не запущен на этом компьютере.
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool: перенесённые аккаунты приостановлены. Включите их, когда пул на другом компьютере перестанет ими пользоваться. Данные входа обновляются автоматически; при обновлении одних и тех же данных с двух компьютеров сеансы взаимно завершаются.
+
+Token Pool…
+Token Pool…
 
 Token:
 Токен:
@@ -11185,6 +12472,9 @@ Trim…
 Trust
 Доверять
 
+Trust & Connect
+Доверять и подключиться
+
 Trust this repository’s key?
 Доверять ключу этого репозитория?
 
@@ -11248,6 +12538,12 @@ Turn off displays
 Turn off screen
 Гасить экран
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Включить автоодобрение для «{}»?\n\nОб этом попросила другая программа, а не вы. Когда агент для программирования в этой панели спросит, можно ли продолжать («Do you want to proceed?»), Rex ответит «Да» через {} с, если вы не начнёте печатать в панели и не нажмёте «Остановить».
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+Включить автоодобрение для «{}»?\n\nОб этом попросила другая программа, а не вы. Когда агент для программирования в этой вкладке спросит, можно ли продолжать («Do you want to proceed?»), Terminal ответит «Да» через {} с, если вы не начнёте печатать во вкладке и не нажмёте «Остановить».
+
 Turn on for a laptop usually plugged in.
 Включите, если ноутбук обычно работает от сети.
 
@@ -11290,6 +12586,9 @@ Type a to-do above, and press Return.
 Type here to try the settings
 Введите текст, чтобы проверить настройки
 
+Type in All Panes
+Вводить во все панели
+
 Type the PIN for “{}” (often 0000).
 Введите PIN-код для «{}» (часто это 0000).
 
@@ -11311,8 +12610,14 @@ Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 Введите пароль, которым нужно будет открывать файл.
 
+Type the repository’s address.
+Введите адрес репозитория.
+
 Type this
 Введите этот текст
+
+Type to filter…
+Введите для фильтрации…
 
 Type with your palms down
 Печатайте, опираясь на ладони
@@ -11422,6 +12727,9 @@ Unknown caller
 Unless the app says; kept while the pointer is over it.
 Срок может задать приложение. Наведите, чтобы задержать.
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Разблокируйте Olo Passwords или добавьте туда ключ, который принимает root на {}.
+
 Unlock…
 Разблокировать…
 
@@ -11433,6 +12741,9 @@ Unmute
 
 Unmute All
 Включить весь звук
+
+Unpacking
+Распаковка
 
 Unread notifications put a blue dot beside their app.
 Синяя точка у приложения означает «не прочитано».
@@ -11461,6 +12772,9 @@ Up a level
 Up for
 Время работы
 
+Up to date
+Актуально
+
 Upcoming
 Предстоящие
 
@@ -11473,14 +12787,23 @@ Update Interval
 Update Only This…
 Обновить только этот пакет…
 
+Update Rex on {} to {}?
+Обновить Rex на {} до {}?
+
 Update Selected Only…
 Обновить только выбранное…
 
 Update These {}…
 Обновить выбранные ({})…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+Обновление проверит наличие новой версии в репозитории Rex и установит её.
+
 Update every:
 Обновлять каждые:
+
+Update installs it, with Rex’s installer.
+Обновление установит её через установщик Rex.
 
 Update the power service in Olo Doctor to use these policies.
 Для этих политик обновите службу питания через Olo Doctor.
@@ -11500,6 +12823,9 @@ Updates are downloaded and wait for the computer to restart: they’re installed
 Updating…
 Обновление…
 
+Upgrade
+Обновить
+
 Upgrade Fedora
 Обновить Fedora
 
@@ -11508,6 +12834,9 @@ Upgrade Olo
 
 Upgrade to Fedora {}
 Обновить до Fedora {}
+
+Upgrading
+Обновление
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 Пока вы работаете, будут загружены все пакеты Fedora {}. Они установятся при перезапуске компьютера. Это займёт некоторое время, в течение которого компьютер будет недоступен. Файлы, настройки и приложения сохранятся. Сначала установите все обновления текущего выпуска и создайте резервную копию.
@@ -11520,6 +12849,9 @@ Upload at most:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 Резервное копирование отправляет данные, восстановление и очистка — загружают их. Ограничение действует сразу, в том числе во время копирования.
+
+Uploading {}…
+Отправка {}…
 
 Uploading: {}
 Отправка: {}
@@ -11536,6 +12868,9 @@ Urgent at
 Use
 Использовать
 
+Use Agent Screens
+Использовать экраны агентов
+
 Use Battery Saver automatically
 Автоматически включать экономию заряда
 
@@ -11551,8 +12886,14 @@ F1–F12 как обычные функциональные клавиши
 Use Google Drive Instead…
 Использовать Google Drive…
 
+Use Mine
+Взять мои
+
 Use Music Quality
 Для музыки
+
+Use Olo’s Typing Helper on Hosts
+Использовать помощник ввода Olo на узлах
 
 Use Passwords for ssh
 Использовать Passwords для SSH
@@ -11595,6 +12936,9 @@ Use:
 
 User
 Пользователь
+
+User {}, over SSH
+Пользователь {}, по SSH
 
 Username or Site
 Имя пользователя или сайт
@@ -11776,11 +13120,20 @@ Waiting
 Waiting for Ethernet
 Ожидание Ethernet
 
+Waiting for a key from Olo Passwords
+Ожидание ключа из Olo Passwords
+
 Waiting for another fix to finish…
 Ожидание завершения другого исправления…
 
 Waiting for app_server…
 Ожидание app_server…
+
+Waiting for approval
+Ждёт одобрения
+
+Waiting for host
+Ожидание узла
 
 Waiting for it…
 Ожидание ответа…
@@ -11802,6 +13155,15 @@ Waiting for the touchpad…
 
 Waiting for you to sign in to Google in the browser…
 Завершите вход в Google в браузере…
+
+Waiting for you to sign in…
+Ожидание вашего входа…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+Ожидание агента ключей для входа на «{}». Если ключи хранятся в Passwords, возможно, он заблокирован.
+
+Waiting for your key agent…
+Ожидание агента ключей…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Ожидание разрешения от «{}». Проверьте переключатели для этого компьютера в настройках Bluetooth устройства.
@@ -11872,6 +13234,9 @@ Week Starts On
 Weights
 Веса
 
+Welcome to Olo Rex
+Добро пожаловать в Olo Rex
+
 What
 Что
 
@@ -11917,6 +13282,9 @@ What should I wear today?
 What should I wear tomorrow?
 Что лучше надеть завтра?
 
+What was done stays done. Setting it up again carries on from there.
+Выполненные шаги сохранятся. Повторная настройка продолжится с места остановки.
+
 What you change applies when you leave Rescue.
 Изменения применятся при выходе из режима восстановления.
 
@@ -11955,6 +13323,12 @@ What’s coming up next week?
 
 What’s in the Trash
 Содержимое корзины
+
+What’s installed on {} isn’t known until it connects.
+Что установлено на {}, станет известно после подключения.
+
+What’s installed on {} isn’t known until it’s connected.
+Что установлено на {}, станет известно после подключения.
 
 What’s next?
 Что дальше?
@@ -12187,6 +13561,9 @@ Withdrawn by {}
 Word Document…
 Документ Word…
 
+Working
+Работает
+
 Working out what it comes to: every package it needs, and what it replaces…
 Расчёт необходимых пакетов и замен…
 
@@ -12247,6 +13624,9 @@ Writes
 Writing the backup’s lists…
 Запись списков резервной копии…
 
+Writing to disk
+Запись на диск
+
 Written
 Записано
 
@@ -12261,6 +13641,9 @@ Yellow
 
 Yes
 Да
+
+Yes in {} s
+«Да» через {} с
 
 Yesterday
 Вчера
@@ -12319,8 +13702,14 @@ Your home folder is backed up every hour, leaving out what can be downloaded or 
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Сообщения, контакты и одноразовые коды из SMS доступны на компьютере напрямую по Bluetooth, без посредников и дополнительных программ.
 
+Your name and address on commits made there, as on this computer.
+Ваши имя и почта в коммитах там, как на этом компьютере.
+
 Your notes, files and forwarded messages
 Ваши заметки, файлы и пересланные сообщения
+
+Your other devices on Tailscale can reach these sessions.
+Другие ваши устройства в Tailscale могут подключаться к этим сеансам.
 
 Your own files and folders
 Ваши файлы и папки
@@ -12348,6 +13737,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 Не удалось проверить пароль ({}).
+
+Your repositories
+Ваши репозитории
 
 Your settings as they were are in “{}”.
 Ваши прежние настройки находятся в «{}».
@@ -12403,6 +13795,9 @@ Zoom In
 Zoom Out
 Уменьшить
 
+Zoom Pane
+Развернуть панель
+
 Zoom horizontally
 Развернуть по горизонтали
 
@@ -12457,6 +13852,24 @@ a window ({})
 a {} W power limit
 предел мощности {} Вт
 
+about a minute left
+осталось около минуты
+
+about an hour left
+осталось около часа
+
+about {n} hours left
+one: осталось около {n} часа
+few: осталось около {n} часов
+many: осталось около {n} часов
+other: осталось около {n} часа
+
+about {n} minutes left
+one: осталось около {n} минуты
+few: осталось около {n} минут
+many: осталось около {n} минут
+other: осталось около {n} минуты
+
 about {}
 около {}
 
@@ -12493,11 +13906,20 @@ and {} more
 app_server's main thread: nice {}{}, {}
 главный поток app_server: nice {}{}, {}
 
+applied
+применено
+
 as in 1Password's sidebar, or its UUID
 как в боковой панели 1Password, или UUID
 
 as it goes
 по ходу работы
+
+as of {}
+на {}
+
+as the machine has it
+как на машине
 
 at most {}
 не более {}
@@ -12505,11 +13927,17 @@ at most {}
 at {}
 в {}
 
+auto approving
+автоодобрение
+
 auto approving (Yes after {} s; {} answered)
 автоодобрение («Да» через {} с; ответов: {})
 
 backing up
 копирование
+
+behind
+отстаёт
 
 bell rang
 прозвучал звонок
@@ -12525,6 +13953,9 @@ brush’s grey hints, from a tiny model of your own commands
 
 built most, the last 24 hours
 самые частые сборки за последние 24 часа
+
+busy
+занято
 
 ceiling {}%
 верхний предел {}%
@@ -12555,6 +13986,9 @@ one: понизить версию {n} пакета
 few: понизить версию {n} пакетов
 many: понизить версию {n} пакетов
 other: понизить версию {n} пакетов
+
+downloading
+загрузка
 
 driving {}
 обслуживает {}
@@ -12679,14 +14113,23 @@ few: установить {n} пакета
 many: установить {n} пакетов
 other: установить {n} пакета
 
+installing
+установка
+
 it couldn't be ended: {}
 не удалось завершить: {}
+
+it didn’t say why
+причина не указана
 
 it is on a different volume from the Trash, so it can only be deleted
 объект находится на другом томе, поэтому его можно только удалить без корзины
 
 it took too long
 время ожидания истекло
+
+its accounts are behind
+учётные записи отстают
 
 its address can’t be found (is the computer online?)
 адрес не найден (проверьте подключение к интернету)
@@ -12702,6 +14145,9 @@ its disk has {}
 
 its ports: {}
 порты: {}
+
+its session has ended.
+сеанс завершён.
 
 its shells have all ended
 все оболочки завершены
@@ -12757,11 +14203,20 @@ kache{} работает
 kbit/s
 kbit/s
 
+kept going
+работа продолжается
+
 last seen recently
 недавно в сети
 
 left to the firmware for now
 пока управляет прошивка
+
+less than a minute
+меньше минуты
+
+less than a minute left
+осталось меньше минуты
 
 level {} of 7
 уровень {} из 7
@@ -12790,6 +14245,9 @@ ms
 no
 нет
 
+no SSH keys
+нет ключей SSH
+
 no display ports
 нет видеовыходов
 
@@ -12801,6 +14259,9 @@ no limit to its space
 
 no network: it goes on once there’s one
 нет сети: продолжится после подключения
+
+no sessions open
+нет открытых сеансов
 
 no wired network: it waits for one
 ожидание проводной сети
@@ -13024,6 +14485,9 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh, git и другие программы могут входить с ключами SSH из Passwords. Разрешение для каждой программы запрашивается при первом обращении.
 
+ssh://you@host or host.ts.net
+ssh://you@host или host.ts.net
+
 sudo needs your password to run this{}:
 sudo запрашивает ваш пароль для выполнения команды{}:
 
@@ -13126,6 +14590,9 @@ the secret at {}
 the server answered {}
 ответ сервера: {}
 
+the server couldn’t complete the request
+сервер не смог выполнить запрос
+
 the service answered {}
 ответ службы: {}
 
@@ -13146,6 +14613,9 @@ the window server
 
 the {} didn't get going: {}
 не удалось запустить {}: {}
+
+there isn’t one for {}
+для {} его нет
 
 these {n} backups need
 one: для {n} выбранной копии нужно
@@ -13210,8 +14680,14 @@ under a minute
 under a second
 меньше секунды
 
+unpacking
+распаковка
+
 up to
 до
+
+up to date
+актуально
 
 up to {} dpi
 до {} dpi
@@ -13245,6 +14721,12 @@ one: изменения в файлах ещё не зафиксированы (
 few: изменения в файлах ещё не зафиксированы ({n})
 many: изменения в файлах ещё не зафиксированы ({n})
 other: изменения в файлах ещё не зафиксированы ({n})
+
+without {}
+без {}
+
+without {}, {} and {} more
+без {}, {} и ещё {}
 
 yes
 да
@@ -13285,6 +14767,12 @@ few: Ещё {n} в Календаре…
 many: Ещё {n} в Календаре…
 other: Ещё {n} в Календаре…
 
+{n} SSH keys
+one: {n} ключ SSH
+few: {n} ключа SSH
+many: {n} ключей SSH
+other: {n} ключа SSH
+
 {n} agent screens are running. Click to watch them.
 one: Открыт {n} экран агента. Нажмите для просмотра.
 few: Открыты {n} экрана агентов. Нажмите для просмотра.
@@ -13309,6 +14797,12 @@ few: Выбрано резервных копий: {n}.
 many: Выбрано резервных копий: {n}.
 other: Выбрано резервных копий: {n}.
 
+{n} cloned
+one: Клонировано: {n}
+few: Клонировано: {n}
+many: Клонировано: {n}
+other: Клонировано: {n}
+
 {n} coming up
 one: {n} предстоящая задача
 few: {n} предстоящие задачи
@@ -13320,6 +14814,12 @@ one: {n} разговор
 few: {n} разговора
 many: {n} разговоров
 other: {n} разговора
+
+{n} couldn’t be done
+one: Не удалось выполнить: {n}
+few: Не удалось выполнить: {n}
+many: Не удалось выполнить: {n}
+other: Не удалось выполнить: {n}
 
 {n} days
 one: {n} день
@@ -13357,6 +14857,12 @@ few: Не удалось прочитать {n} файла.
 many: Не удалось прочитать {n} файлов.
 other: Не удалось прочитать {n} файла.
 
+{n} files to copy
+one: {n} файл к копированию
+few: {n} файла к копированию
+many: {n} файлов к копированию
+other: {n} файла к копированию
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 one: На приёмниках AirPlay воспроизводится видео: {n}. Нажмите, чтобы приостановить или остановить показ.
 few: На приёмниках AirPlay воспроизводится видео: {n}. Нажмите, чтобы приостановить или остановить показ.
@@ -13368,6 +14874,18 @@ one: Не удалось прочитать {n} папку
 few: Не удалось прочитать {n} папки
 many: Не удалось прочитать {n} папок
 other: Не удалось прочитать {n} папки
+
+{n} folders taken
+one: {n} папка занята
+few: {n} папки заняты
+many: {n} папок занято
+other: {n} папки занято
+
+{n} forwarded ports are waiting.
+one: Ожидает {n} перенаправленный порт.
+few: Ожидают {n} перенаправленных порта.
+many: Ожидают {n} перенаправленных портов.
+other: Ожидает {n} перенаправленных порта.
 
 {n} hours
 one: {n} час
@@ -13453,6 +14971,12 @@ few: Трансляций на приёмники AirPlay: {n}. Нажмите, 
 many: Трансляций на приёмники AirPlay: {n}. Нажмите, чтобы приостановить или остановить показ.
 other: Трансляций на приёмники AirPlay: {n}. Нажмите, чтобы приостановить или остановить показ.
 
+{n} ports forwarded here.
+one: Сюда перенаправлен {n} порт.
+few: Сюда перенаправлено {n} порта.
+many: Сюда перенаправлено {n} портов.
+other: Сюда перенаправлено {n} порта.
+
 {n} problems reading 1Password…
 one: Ошибок чтения 1Password: {n}…
 few: Ошибок чтения 1Password: {n}…
@@ -13494,6 +15018,24 @@ one: {n} секрет
 few: {n} секрета
 many: {n} секретов
 other: {n} секрета
+
+{n} sessions
+one: {n} сеанс
+few: {n} сеанса
+many: {n} сеансов
+other: {n} сеанса
+
+{n} sessions open
+one: Открыт {n} сеанс
+few: Открыто {n} сеанса
+many: Открыто {n} сеансов
+other: Открыто {n} сеанса
+
+{n} sessions there.
+one: Там {n} сеанс.
+few: Там {n} сеанса.
+many: Там {n} сеансов.
+other: Там {n} сеанса.
 
 {n} shares, control among them. Click to stop them.
 one: Сеансов показа экрана: {n}, в том числе с управлением. Нажмите, чтобы завершить их.
@@ -13555,6 +15097,12 @@ few: {n} недели
 many: {n} недель
 other: {n} недели
 
+{}  ·  Set up with nothing
+{}  ·  Без команды настройки
+
+{}  ·  Set up with {}
+{}  ·  Настройка: {}
+
 {} (AV1 and VP9)
 {} (AV1 и VP9)
 
@@ -13563,6 +15111,9 @@ other: {n} недели
 
 {} (in use)
 {} (используется)
+
+{} (installed)
+{} (установлено)
 
 {} (lower wins)
 {} (чем меньше, тем лучше)
@@ -13633,6 +15184,9 @@ other: {n} недели
 {} a second
 {} в секунду
 
+{} accounts
+Учётных записей: {}
+
 {} ago · click a graph for another moment
 {} назад · нажмите на график, чтобы выбрать другое время
 
@@ -13647,6 +15201,9 @@ other: {n} недели
 
 {} answered {} (not a speed test server?)
 {} отвечает {} (возможно, это не сервер проверки скорости)
+
+{} answering now
+{} сейчас отвечает
 
 {} applications are keeping the display awake.
 Приложения не дают экрану погаснуть: {}.
@@ -13675,11 +15232,17 @@ other: {n} недели
 {} cleared · kept for {} days, the last {}
 Очищено: {} · срок хранения: {} дн., последние {}
 
+{} continued there
+Продолжено там: {}
+
 {} copied: 1Password doesn’t let other apps read its archive.
 {}: 1Password не даёт другим приложениям читать свой архив.
 
 {} couldn't be found: {}
 Не удалось найти {}: {}
+
+{} couldn’t be cloned: {}
+Не удалось клонировать {}: {}
 
 {} couldn’t be unpacked.
 Не удалось распаковать {}.
@@ -13702,8 +15265,17 @@ other: {n} недели
 {} didn't start pairing: {}.
 Не удалось начать сопряжение с {}: {}.
 
+{} didn’t accept your keys for root
+{} не принял ваши ключи для root
+
+{} didn’t accept your keys for {}
+{} не принял ваши ключи для {}
+
 {} didn’t download: {}
 Не удалось скачать {}: {}
+
+{} didn’t say how its limits stand.
+{} не сообщил состояние своих лимитов.
 
 {} different commands, of {} run
 Разных команд: {}, всего запущено: {}
@@ -13753,8 +15325,20 @@ other: {n} недели
 {} h {} min
 {} ч {} мин
 
+{} hasn’t answered for over a minute
+{} не отвечает более минуты
+
+{} hasn’t answered for over {} minutes
+{} не отвечает более {} мин
+
+{} hasn’t answered for {} seconds
+{} не отвечает {} с
+
 {} hours ago
 {} ч назад
+
+{} in
+{} вх.
 
 {} in all
 {} всего
@@ -13789,6 +15373,9 @@ other: {n} недели
 {} is Fedora’s own: it can be turned off, not removed.
 {} входит в Fedora. Его можно отключить, но нельзя удалить.
 
+{} is available.
+Доступна версия {}.
+
 {} is back
 {} снова на связи
 
@@ -13803,6 +15390,15 @@ other: {n} недели
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {} перехватывает устройства ввода. Мышь, которую оно перехватило, управляет виртуальным указателем и не реагирует на эти настройки.
+
+{} is installed
+Установлено: {}
+
+{} is installed  ·  up to date
+Установлено: {}  ·  актуально
+
+{} is installed  ·  {} is available
+Установлено: {}  ·  доступна {}
 
 {} is protected by a password.
 Для доступа к {} нужен пароль.
@@ -13858,6 +15454,9 @@ other: {n} недели
 {} keys
 Клавиши {}
 
+{} keys, at {}
+Ключей: {}, адрес {}
+
 {} knows this computer.
 {} узнаёт этот компьютер.
 
@@ -13909,6 +15508,9 @@ other: {n} недели
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 Новых данных: {} · отправлено после сжатия и шифрования: {} ({}/с{})
 
+{} now, {} suggested
+Сейчас {}, рекомендуется {}
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 На языке «{2}» доступно {0} из {1} строк Olo. Остальные пока на английском.
 
@@ -13942,6 +15544,9 @@ other: {n} недели
 {} of {} Events Found
 Найдено событий: {} из {}
 
+{} of {} cloned
+Клонировано: {} из {}
+
 {} of {} connected.
 Подключено {} из {}.
 
@@ -13963,6 +15568,9 @@ other: {n} недели
 {} of {} read back
 Прочитано обратно: {} из {}
 
+{} of {} ready
+Готово: {} из {}
+
 {} of {} selected
 Выбрано {} из {}
 
@@ -13972,11 +15580,26 @@ other: {n} недели
 {} of {} slots
 Слотов: {} из {}
 
+{} of {} to change
+Изменить: {} из {}
+
 {} on Workspace {}
 {} в рабочем пространстве {}
 
 {} on this computer
 {} на этом компьютере
+
+{} on {}?
+{} на {}?
+
+{} on {}…
+{} на {}…
+
+{} open
+Открыто: {}
+
+{} out
+{} исх.
 
 {} over 5 ms in the last minute, the longest {}
 Дольше 5 мс за минуту: {}, максимум {}
@@ -14005,6 +15628,12 @@ other: {n} недели
 {} repositories, {} on. Packages come from those that are on.
 Репозиториев: {}, включено: {}. Пакеты берутся из включённых.
 
+{} requests running
+Выполняется запросов: {}
+
+{} requests today
+Запросов сегодня: {}
+
 {} right first
 {} верно с первой попытки
 
@@ -14013,6 +15642,9 @@ other: {n} недели
 
 {} s ago
 {} с назад
+
+{} said:
+{} ответил:
 
 {} shared with this screen
 Этому экрану доступно: {}
@@ -14025,6 +15657,9 @@ other: {n} недели
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 Шагов за минуту: {} (щелчки колеса, движения по тачпаду)
+
+{} still isn’t set up
+{} всё ещё не настроен
 
 {} stopped answering: {}
 {} перестал отвечать: {}
@@ -14040,6 +15675,9 @@ other: {n} недели
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 Осталось отправить изменения в чатах (архив, прочтение, звук, закрепление): {}. Остальное будет отправлено при следующем открытии Telegram.
+
+{} to copy
+{} к копированию
 
 {} to deal with, {}
 Требуют внимания: {}, {}
@@ -14134,6 +15772,12 @@ other: {n} недели
 {} — {} ({}% of this folder){}{}
 {} — {} ({}% этой папки){}{}
 
+{}%  ·  {}
+{}%  ·  {}
+
+{}%  ·  {}  ·  {}
+{}%  ·  {}  ·  {}
+
 {}% chance this hour
 Вероятность осадков в этот час: {}%
 
@@ -14188,6 +15832,12 @@ other: {n} недели
 {}, on set days
 {}, в заданные дни
 
+{}, over SSH
+{}, по SSH
+
+{}, over Tailscale
+{}, через Tailscale
+
 {}, until {}
 {}, до {}
 
@@ -14199,6 +15849,9 @@ other: {n} недели
 
 {}, {} shown in this Terminal.
 {}, в этом Терминале показано: {}.
+
+{}, {}%
+{}, {}%
 
 {}, {}% of its life used
 {}, израсходовано {}% ресурса
@@ -14242,6 +15895,9 @@ other: {n} недели
 {}: a whole number, please
 {}: введите целое число
 
+{}: expected auto, conservative, or off
+{}: ожидается auto, conservative или off
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: при каждом использовании нужен PIN-код, поэтому касание не может заменить пароль
 
@@ -14256,6 +15912,12 @@ other: {n} недели
 
 {}: not here yet
 {}: пока отсутствует
+
+{}: off
+{}: выкл.
+
+{}: on
+{}: вкл.
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}: войдите заново на этом компьютере (каждый компьютер проходит вход отдельно).
@@ -14308,6 +15970,9 @@ other: {n} недели
 {}’s data centre
 Центр обработки данных {}
 
+{}’s package manager checked Rex’s repository when this window opened.
+Менеджер пакетов {} проверил репозиторий Rex при открытии этого окна.
+
 {}″ ({} × {} mm), {} pixels per inch
 {}″ ({} × {} мм), {} пикселей на дюйм
 
@@ -14317,6 +15982,9 @@ other: {n} недели
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle, ~/.m2/repository, папка .gradle проекта
 
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin: сюда устанавливаются агенты и Rex, чтобы ваши оболочки там их находили.
+
 ~/.local/share/Trash
 ~/.local/share/Trash
 
@@ -14331,6 +15999,18 @@ other: {n} недели
 
 ~/worktrees
 ~/worktrees
+
+~/{} already holds another repository on {}: {}
+В ~/{} на {} уже находится другой репозиторий: {}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+В ~/{} на {} уже находится что-то другое. Переместите содержимое или нажмите «Изменить…» для папки.
+
+~/{} already holds something else. Choose… to see it.
+В ~/{} уже находится что-то другое. Нажмите «Выбрать…», чтобы посмотреть.
+
+~/{} is already {}’s folder. Type another one.
+~/{} уже используется как папка для {}. Укажите другую.
 
 ·
 ·
@@ -14346,6 +16026,9 @@ other: {n} недели
 
 ½ second
 ½ секунды
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 «[{}]» — недопустимый идентификатор репозитория.
@@ -14401,6 +16084,12 @@ other: В этом окне работают «{}» и ещё {n} програм
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 Для «{}» не указан источник пакетов (нет baseurl, metalink или mirrorlist).
 
+“{}” has no sessions.
+На «{}» нет сеансов.
+
+“{}” has no terminals.
+На «{}» нет терминалов.
+
 “{}” has no {}.
 В «{}» отсутствует {}.
 
@@ -14421,6 +16110,9 @@ other: В этом окне работают «{}» и ещё {n} програм
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 «{}» подключён, но его сообщения не отвечают. Olo продолжает попытки.
+
+“{}” is disconnected.
+«{}» отключён.
 
 “{}” is imported.
 Импортировано: «{}».
@@ -14520,39 +16212,3 @@ StyledEdit не может прочитать изображение «{}».
 
 ⌘ Command (the Super key)
 ⌘ Command (клавиша Super)
-
-Auto Approve answers Yes in {} s
-Автоодобрение ответит «Да» через {} с
-
-kept going
-работа продолжается
-
-auto approving
-автоодобрение
-
-Waiting for approval
-Ждёт одобрения
-
-Working
-Работает
-
-Error
-Ошибка
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-Включить автоодобрение для «{}»?\n\nОб этом попросила другая программа, а не вы. Когда агент для программирования в этой панели спросит, можно ли продолжать («Do you want to proceed?»), Rex ответит «Да» через {} с, если вы не начнёте печатать в панели и не нажмёте «Остановить».
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-Включить автоодобрение для «{}»?\n\nОб этом попросила другая программа, а не вы. Когда агент для программирования в этой вкладке спросит, можно ли продолжать («Do you want to proceed?»), Terminal ответит «Да» через {} с, если вы не начнёте печатать во вкладке и не нажмёте «Остановить».
-
-Yes in {} s
-«Да» через {} с
-
-Keep It Going in “{}”
-Продолжать работу в «{}»
-
-Auto Approve in “{}”
-Автоодобрение в «{}»
-
-An agent is at rest here
-Здесь агент в ожидании

@@ -66,8 +66,17 @@ other: +{n} और
 1 Minute
 1 मिनट
 
+1 SSH key
+1 SSH कुंजी
+
 1 Second
 1 सेकंड
+
+1 account
+1 खाता
+
+1 couldn’t be cloned
+1 क्लोन नहीं हो सका
 
 1 day before
 1 दिन पहले
@@ -84,8 +93,17 @@ other: +{n} और
 1 minute
 1 मिनट
 
+1 request running
+1 अनुरोध चल रहा है
+
+1 request today
+आज 1 अनुरोध
+
 1 second
 1 सेकंड
+
+1 session
+1 सत्र
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. अपने खाते का पासवर्ड लिखें और “सेट अप करें” चुनें। Olo पासवर्ड को इस तरह सुरक्षित रखता है कि सिर्फ़ यही कुंजी उसे खोल सके।
@@ -165,6 +183,9 @@ other: +{n} और
 2 hours before
 2 घंटे पहले
 
+2 items
+2 आइटम
+
 2 minutes
 2 मिनट
 
@@ -234,6 +255,9 @@ other: +{n} और
 4 hours
 4 घंटे
 
+4 items
+4 आइटम
+
 4 weeks
 4 हफ़्ते
 
@@ -276,6 +300,9 @@ other: +{n} और
 52 weeks
 52 हफ़्ते
 
+6 items
+6 आइटम
+
 6 months
 6 महीने
 
@@ -314,6 +341,9 @@ A Disk or Folder
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 4K स्क्रीन का एक फ़्रेम एन्कोड करने में GPU को लगभग 15 ms और प्रोसेसर को लगभग 110 ms लगते हैं। तेज़ हलचल रिकॉर्ड करते समय GPU हर फ़्रेम रख पाता है, प्रोसेसर लगभग नौ फ़्रेम प्रति सेकंड।
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+Rex होस्ट का इन्हीं खातों के साथ अपना Token Pool हो सकता है, जिससे यह कंप्यूटर बंद होने पर भी वहाँ Claude Code और Codex काम करते रहें।
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 सर्वर या wg-quick की WireGuard फ़ाइल उसकी कुंजियों के साथ सहेजी जाती है। कनेक्ट होने पर सिर्फ़ उसी के DNS सर्वर इस्तेमाल होते हैं।
@@ -360,6 +390,9 @@ A finger on the fingerprint sensor can stand for your password. Fingers enrolled
 A frame dropped in the last minute
 पिछले मिनट में एक फ़्रेम छूटा
 
+A key with no name
+बिना नाम की कुंजी
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 हर चुनने योग्य कंट्रोल, मेनू आइटम, विंडो और Deskbar पर एक अक्षर दिखता है। उसे दबाकर वह चीज़ चुनें या उसके अंदर के विकल्पों के अक्षर देखें। Backspace से लौटें, Esc से अक्षर छिपाएँ।
 
@@ -395,6 +428,12 @@ Olo का नया बिल्ड तैयार है ({})। अभी �
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 Olo का नया बिल्ड तैयार है ({})। इंस्टॉल करने पर विंडो सर्वर फिर शुरू होगा। Olo की विंडो खुली रहेंगी, लेकिन {} बंद हो जाएँगे।
+
+A new name for the session “{}”:
+सत्र “{}” का नया नाम:
+
+A new name for the tab “{}”:
+टैब “{}” का नया नाम:
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 पहिए का एक खटका Chrome और दूसरे प्रोग्राम में उतना ही स्क्रॉल करता है जितना Olo के ऐप में।
@@ -501,6 +540,9 @@ API कुंजी:
 About 
 परिचय: 
 
+About Olo
+Olo का परिचय
+
 About Olo Desktop
 Olo Desktop का परिचय
 
@@ -522,14 +564,23 @@ Access
 Account
 खाता
 
+Account on “{}”
+“{}” पर खाता
+
 Account:
 खाता:
 
 Accounts
 खाते
 
+Accounts that may sign in through the login server, kept in {}.
+वे खाते जो लॉगिन सर्वर से लॉगिन कर सकते हैं ({} में सहेजे गए)।
+
 Accounts:
 खाते:
+
+Account…
+खाता…
 
 Action
 कार्रवाई
@@ -582,6 +633,12 @@ Add Fingerprint
 Add Graph
 ग्राफ़ जोड़ें
 
+Add Host
+होस्ट जोड़ें
+
+Add Host…
+होस्ट जोड़ें…
+
 Add Kind
 प्रकार जोड़ें
 
@@ -593,6 +650,9 @@ Add Place…
 
 Add RPM Fusion
 RPM Fusion जोड़ें
+
+Add Repository
+रिपॉज़िटरी जोड़ें
 
 Add Repository…
 सॉफ़्टवेयर स्रोत जोड़ें…
@@ -651,6 +711,9 @@ Add an account in Preferences
 Add lunch tomorrow at noon
 कल दोपहर 12 बजे भोजन का कार्यक्रम जोड़ें
 
+Add one in Rex or in Preferences ▸ Rex.
+Rex में या वरीयताएँ ▸ Rex में कोई होस्ट जोड़ें।
+
 Add the one-time code this page shows to your login {}?
 इस पेज का एकबारगी कोड अपने लॉगिन {} में जोड़ें?
 
@@ -677,6 +740,9 @@ Address:
 
 Addresses can’t be looked up: {}
 पते नहीं खोज सके: {}
+
+Add…
+जोड़ें…
 
 Adjust Size
 आकार बदलें
@@ -736,6 +802,18 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 एजेंट स्क्रीन
+
+Agent sessions
+एजेंट सत्र
+
+Agent settings
+एजेंट सेटिंग
+
+Agents
+एजेंट
+
+Agents and settings in your account there.
+वहाँ आपके खाते के एजेंट और सेटिंग।
 
 Agree
 सहमत
@@ -797,8 +875,14 @@ All Metric
 All Preferences
 सभी वरीयताएँ
 
+All Set
+सब तैयार
+
 All accounts together
 सभी खाते एक साथ
+
+All agents and shells are quiet.
+सभी एजेंट और शेल शांत हैं।
 
 All day
 पूरा दिन
@@ -811,6 +895,9 @@ Olo के सभी {0} संदेश {1} में उपलब्ध है
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 ये सभी सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
+
+All time
+पूरा समय
 
 All waiting
 सभी प्रतीक्षा में
@@ -836,6 +923,12 @@ Allow Sleep (awake until {})
 Allow it on the phone
 फ़ोन पर अनुमति दें
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+“{}” के प्रोग्राम को अपनी SSH कुंजियों से लॉगिन की अनुमति दें? वहाँ के एक टर्मिनल ने Rex के ज़रिए यह अनुरोध किया है।
+
+Allow {} to sign in to your hosts with your SSH keys?
+क्या {} को अपनी SSH कुंजियों से आपके होस्ट में लॉगिन की अनुमति दें?
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 “{0}” को {1}{2} का इस्तेमाल करने दें? “हमेशा” चुनने पर उसे हर बार अनुमति मिलेगी। फ़ाइल ▸ अनुमत ऐप… में इसे वापस ले सकते हैं।
 
@@ -850,6 +943,9 @@ Deskbar में कप पर क्लिक करके भी खोल �
 
 Also leave out:
 इन्हें भी छोड़ें:
+
+Also used by
+इनके भी उपयोग में
 
 Also when running on battery
 बैटरी पर भी
@@ -895,6 +991,9 @@ An account can answer again.
 
 An administrator's password is needed.
 प्रशासक का पासवर्ड चाहिए।
+
+An agent is at rest here
+यहाँ एक एजेंट रुका हुआ है
 
 An app
 एक ऐप
@@ -957,17 +1056,35 @@ Answering now
 Answering now · {}
 अभी जवाब दे रहा है · {}
 
+Anthropic’s coding agent.
+Anthropic का कोडिंग एजेंट।
+
+Antigravity
+Antigravity
+
 Any of the {}
 {} में से कोई भी
 
 Any storms on the way?
 क्या कोई तूफ़ान आने वाला है?
 
+Any tagged device on the tailnet
+tailnet पर कोई भी टैग किया डिवाइस
+
 Any time
 कोई भी समय
 
 Any touch
 कोई भी स्पर्श
+
+Anyone at all
+कोई भी
+
+Anyone on the tailnet
+tailnet पर कोई भी
+
+Anyone who is identified
+कोई भी प्रमाणित उपयोगकर्ता
 
 App
 ऐप
@@ -1087,6 +1204,12 @@ As in Themes ({})
 As it goes
 काम के साथ-साथ
 
+As on this computer
+इस कंप्यूटर जैसा ही
+
+As root, over SSH
+SSH पर, root के रूप में
+
 As set now
 मौजूदा सेटिंग के अनुसार
 
@@ -1099,8 +1222,14 @@ As the other mice
 As wide as the widgets
 विजेट जितना चौड़ा
 
+As {}, over SSH
+SSH पर, {} के रूप में
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 {0} की तरह: nice {1} से {2}, {3} शेड्यूलिंग, {4} I/O प्राथमिकता{5}। इससे सक्रिय ऐप और Olo तेज़ रहते हैं।
+
+As {}’s package manager last heard from Rex’s repository.
+{} के पैकेज प्रबंधक को Rex की रिपॉज़िटरी से आखिरी बार मिली जानकारी के अनुसार।
 
 Ask
 पूछें
@@ -1144,11 +1273,20 @@ Ask what to do about urgent ones
 Asked now:
 अभी अनुरोधित:
 
+Asking
+पूछ रहा है
+
+Asking GitHub for Olo's releases…
+GitHub से Olo के संस्करण पूछे जा रहे हैं…
+
 Asking Passwords…
 Passwords से पूछ रहे हैं…
 
 Asking Telegram…
 Telegram से पूछ रहे हैं…
+
+Asking how Rex is set up there
+वहाँ Rex के सेटअप की जानकारी ली जा रही है
 
 Asking it…
 पूछ रहे हैं…
@@ -1225,6 +1363,9 @@ Attach a file or a link
 Attach what's on the clipboard
 क्लिपबोर्ड की सामग्री संलग्न करें
 
+Attaching terminal stream…
+टर्मिनल स्ट्रीम जुड़ रही है…
+
 Attachments
 अटैचमेंट
 
@@ -1239,6 +1380,12 @@ Auto
 
 Auto Approve
 अपने आप मंज़ूर करें
+
+Auto Approve answers Yes in {} s
+अपने आप मंज़ूरी {} सेकंड बाद हाँ कहेगी
+
+Auto Approve in “{}”
+“{}” में अपने आप मंज़ूर करें
 
 Auto Approve: Yes in {} s
 अपने आप मंज़ूरी: {} सेकंड बाद हाँ
@@ -1454,6 +1601,18 @@ Before import {}.{}
 Begin
 शुरू करें
 
+Behind
+पीछे
+
+Behind since {}
+{} से पीछे
+
+Being installed…
+इंस्टॉल हो रहा है…
+
+Being updated…
+अपडेट हो रहा है…
+
 Benchmark…
 गति की जाँच…
 
@@ -1577,17 +1736,26 @@ Olo में लाएँ…
 Brown
 भूरा
 
+Browse Folders…
+फ़ोल्डर ब्राउज़ करें…
+
 Bug Fixes
 गड़बड़ियों के सुधार
 
 Builds
 बिल्ड
 
+Builds and agents open many files and start many tasks at once.
+बिल्ड और एजेंट एक साथ कई फ़ाइलें खोलते हैं और कई कार्य शुरू करते हैं।
+
 Builds by the hour
 प्रति घंटे बिल्ड
 
 Builds go on without the cache until it starts.
 कैश शुरू होने तक बिल्ड बिना कैश के चलते रहेंगे।
+
+Built from source
+स्रोत से निर्मित
 
 Built incrementally
 इन्क्रिमेंटल बिल्ड
@@ -1781,6 +1949,9 @@ Capture debug information whenever a frame drops
 Cards
 कार्ड
 
+Carrying the accounts
+खाते भेजे जा रहे हैं
+
 Cascade All
 सभी विंडो सीढ़ीनुमा लगाएँ
 
@@ -1862,8 +2033,17 @@ CPU की गति नियंत्रित करने की नीत�
 Changing the cores process {} may use
 प्रक्रिया {} के लिए उपलब्ध कोर बदल रहे हैं
 
+Changing the machine’s settings as {}
+{} के रूप में मशीन की सेटिंग बदली जा रही हैं
+
 Changing the priority of process {}
 प्रक्रिया {} की प्राथमिकता बदल रहे हैं
+
+Changing the rex group as {}
+{} के रूप में rex समूह बदला जा रहा है
+
+Changing {} as {}
+{1} के रूप में {0} बदला जा रहा है
 
 Changing…
 बदल रहे हैं…
@@ -1886,6 +2066,9 @@ Check Again
 Check Health
 स्थिति जाँचें
 
+Check Now
+अभी जाँचें
+
 Check Spelling While Typing
 टाइप करते समय वर्तनी जाँचें
 
@@ -1895,11 +2078,17 @@ Check everything
 Check for Updates
 अपडेट जाँचें
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+खाते का नाम जाँचें और सुनिश्चित करें कि आपकी कोई कुंजी वहाँ ~{}/.ssh/authorized_keys में है।
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 चुने हुए बैकअप की जल्दी जाँच करें। ज़रूरी डेटा मौजूद है या नहीं देखें, भेजे गए डेटा से चेकसम मिलाएँ और कुछ नमूने वापस पढ़ें, जैसे हर बैकअप के बाद होता है। जहाँ संभव हो, क्षतिग्रस्त डेटा ठीक किया जाएगा।
 
 Checked
 जाँचा गया
+
+Checked {}
+{} जाँचा गया
 
 Checking for updates…
 अपडेट जाँचे जा रहे हैं…
@@ -1954,6 +2143,12 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 संदेश भेजने के लिए सूची में कोई चैट चुनें।
 
+Choose a host to connect it, disconnect it or manage it.
+जुड़ने, डिस्कनेक्ट करने या प्रबंधित करने के लिए कोई होस्ट चुनें।
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+ऐसी कुंजी चुनें जिसे वहाँ root स्वीकार करे। कोई भी न चले, तो उस मशीन पर अपनी सार्वजनिक कुंजी /root/.ssh/authorized_keys में जोड़ें और फिर कोशिश करें।
+
 Choose a network to join it.
 जुड़ने के लिए नेटवर्क चुनें।
 
@@ -1968,6 +2163,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 सभी अपडेट चुनें
+
+Choose how they look and sound in Notifications.
+वे कैसे दिखें और उनकी आवाज़ कैसी हो, यह सूचनाएँ में चुनें।
 
 Choose what to scan:
 स्कैन का दायरा:
@@ -2028,6 +2226,15 @@ Claude Code और Codex को अपने काम के अनुसार
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 अगर एक टैब समूह में कई रिपॉज़िटरी हैं, तो उसमें शुरू होने वाले Claude Code और Codex को समूह का नाम, रिपॉज़िटरी और वर्कट्री बताए जाते हैं। उनकी अपनी जगह चिह्नित होती है। Codex एक बार Terminal के हुक (/hooks) पर भरोसे की अनुमति पूछता है।
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+Claude Code, Codex और Antigravity के सत्र, ताकि उन्हें वहाँ फिर शुरू किया जा सके।
+
+Claude Code and Codex there go back to their own sign-ins.
+वहाँ Claude Code और Codex अपने निजी लॉगिन पर लौट जाएँगे।
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+वहाँ Claude Code और Codex अपने निजी लॉगिन पर लौट जाएँगे। पहले खातों के ताज़ा लॉगिन वापस यहाँ कॉपी किए जाते हैं।
 
 Clean Up
 साफ़ करें
@@ -2132,6 +2339,21 @@ Clients
 Clock
 घड़ी
 
+Clone
+क्लोन करें
+
+Clone {}
+{} क्लोन करें
+
+Cloned
+क्लोन हुआ
+
+Cloning {}…
+{} क्लोन हो रहा है…
+
+Cloning…
+क्लोन हो रहा है…
+
 Close
 बंद करें
 
@@ -2149,6 +2371,9 @@ Close Other Tabs
 
 Close Others
 बाकी बंद करें
+
+Close Pane
+पैनल बंद करें
 
 Close Tab
 टैब बंद करें
@@ -2324,8 +2549,14 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 Google Drive से जुड़ें…
 
+Connect Remote Host…
+दूरस्थ होस्ट से जुड़ें…
+
 Connect automatically when you put them in near this computer
 इस कंप्यूटर के पास कान में लगाने पर अपने आप जोड़ें
+
+Connect when Rex starts
+Rex शुरू होने पर जुड़ें
 
 Connect with a Token…
 टोकन से जुड़ें…
@@ -2338,6 +2569,9 @@ Connected
 
 Connected as {}, through {}.
 {1} के ज़रिए {0} के रूप में जुड़े हैं।
+
+Connected to Tailscale.
+Tailscale से जुड़ा है।
 
 Connected to “{}”
 “{}” से जुड़ा है
@@ -2357,14 +2591,35 @@ Connected.
 Connecting to Telegram…
 Telegram से जुड़ रहे हैं…
 
+Connecting to {}…
+{} से जुड़ रहे हैं…
+
 Connecting to “{}”…
 “{}” से जुड़ रहे हैं…
 
 Connecting…
 जुड़ रहा है…
 
+Connecting… Your key agent is asking you about this sign-in.
+जुड़ रहे हैं… आपका कुंजी एजेंट इस लॉगिन की पुष्टि पूछ रहा है।
+
 Connection
 कनेक्शन
+
+Connection lost just now.
+अभी कनेक्शन टूटा।
+
+Connection lost {n} days ago.
+one: {n} दिन पहले कनेक्शन टूटा।
+other: {n} दिन पहले कनेक्शन टूटा।
+
+Connection lost {n} hours ago.
+one: {n} घंटे पहले कनेक्शन टूटा।
+other: {n} घंटे पहले कनेक्शन टूटा।
+
+Connection lost {n} minutes ago.
+one: {n} मिनट पहले कनेक्शन टूटा।
+other: {n} मिनट पहले कनेक्शन टूटा।
 
 Connection:
 कनेक्शन:
@@ -2429,11 +2684,17 @@ Copr प्रोजेक्ट
 Copy
 कॉपी करें
 
+Copy Address
+पता कॉपी करें
+
 Copy Code
 कोड कॉपी करें
 
 Copy Conversation
 बातचीत कॉपी करें
+
+Copy Debug Info
+डीबग जानकारी कॉपी करें
 
 Copy Here
 यहाँ कॉपी करें
@@ -2443,6 +2704,9 @@ Copy Latest Code
 
 Copy Link
 लिंक कॉपी करें
+
+Copy Mode
+कॉपी मोड
 
 Copy Name
 नाम कॉपी करें
@@ -2462,6 +2726,12 @@ Copy Path
 Copy Reference
 संदर्भ कॉपी करें
 
+Copy Screen as HTML
+स्क्रीन HTML के रूप में कॉपी करें
+
+Copy Screen as Text
+स्क्रीन टेक्स्ट के रूप में कॉपी करें
+
 Copy Text
 टेक्स्ट कॉपी करें
 
@@ -2470,6 +2740,9 @@ Copy Username
 
 Copy Value
 मान कॉपी करें
+
+Copy Version Info
+संस्करण जानकारी कॉपी करें
 
 Copy a code no tab is waiting for
 वह कोड कॉपी करें जिसका कोई टैब इंतज़ार नहीं कर रहा
@@ -2486,8 +2759,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Btrfs फ्रेगमेंटेशन रोकने के लिए index.db पर कॉपी-ऑन-राइट बंद है; स्टोर reflinks के लिए कॉपी-ऑन-राइट पर रहता है। इसे वापस चालू करने पर kache थोड़े समय के लिए पुनरारंभ होगा।
 
+Copying sessions…
+सत्र कॉपी हो रहे हैं…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 1Password से {} के आइटम कॉपी किए जा रहे हैं। अगर 1Password पूछे तो Passwords को अनुमति दें। ताला लगा हो तो पहले खोलें।
+
+Copying…
+कॉपी हो रहा है…
 
 Core
 कोर
@@ -2498,11 +2777,17 @@ Cores
 Couldn't be cached
 कैश नहीं हो सका
 
+Couldn't check for a newer release.
+नए संस्करण की जाँच नहीं हो सकी।
+
 Couldn't create a folder: {}
 फ़ोल्डर नहीं बना सके: {}
 
 Couldn't create a link: {}
 लिंक नहीं बना सके: {}
+
+Couldn't look for a newer release: {}
+नया संस्करण नहीं खोज सके: {}
 
 Couldn't paste: {}
 पेस्ट नहीं कर सके: {}
@@ -2540,14 +2825,38 @@ Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
 {} जाँच नहीं हो सकी: {}।
 
+Couldn’t be cloned
+क्लोन नहीं हो सका
+
+Couldn’t be copied
+कॉपी नहीं हो सका
+
+Couldn’t be installed
+इंस्टॉल नहीं हो सका
+
+Couldn’t be set
+तय नहीं हो सका
+
 Couldn’t change this vault in 1Password. {}
 1Password में यह तिजोरी नहीं बदल सके। {}
+
+Couldn’t clone
+क्लोन नहीं कर सके
+
+Couldn’t copy the file from the host.
+होस्ट से फ़ाइल कॉपी नहीं कर सके।
 
 Couldn’t delete it in 1Password. {}
 1Password में इसे नहीं मिटा सके। {}
 
 Couldn’t delete this vault from 1Password. {}
 1Password से यह तिजोरी नहीं मिटा सके। {}
+
+Couldn’t get a sign-in link: {}.
+लॉगिन लिंक नहीं मिल सका: {}।
+
+Couldn’t install
+इंस्टॉल नहीं कर सके
 
 Couldn’t keep the approval: {}
 मंज़ूरी सहेज नहीं सके: {}
@@ -2561,14 +2870,32 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 आइटम की सूची नहीं बना सके। {}
 
+Couldn’t look at {}
+{} नहीं देख सके
+
+Couldn’t look at {} again
+{} फिर नहीं देख सके
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 1Password में यह तिजोरी नहीं बना सके, इसलिए इसके आइटम भी नहीं भेजे गए। {}
+
+Couldn’t open the file.
+फ़ाइल नहीं खोल सके।
+
+Couldn’t open the sign-in page: {}.
+लॉगिन पेज नहीं खोल सके: {}।
 
 Couldn’t open this item: {}
 यह आइटम नहीं खोल सके: {}
 
+Couldn’t paste the picture.
+तस्वीर पेस्ट नहीं कर सके।
+
 Couldn’t reach the login keyring: {}
 लॉगिन कीरिंग उपलब्ध नहीं: {}
+
+Couldn’t reach {}
+{} तक नहीं पहुँच सके
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 तुलना के लिए 1Password की प्रति नहीं पढ़ सके, इसलिए आपकी प्रति नहीं भेजी गई। {}
@@ -2612,8 +2939,20 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 मंज़ूरी वापस नहीं ले सके: {}
 
+Couldn’t turn off Tailscale: {}.
+Tailscale बंद नहीं कर सके: {}।
+
+Couldn’t turn on Tailscale: {}.
+Tailscale चालू नहीं कर सके: {}।
+
 Couldn’t write the shared copy: {}
 साझा प्रति नहीं लिख सके: {}
+
+Couldn’t {}
+{} नहीं हो सका
+
+Couldn’t {} on {}
+{1} पर {0} नहीं हो सका
 
 Count accounts turned off or signed out
 बंद और लॉगआउट किए गए खाते भी गिनें
@@ -2963,6 +3302,9 @@ Developer Tools
 Device
 डिवाइस
 
+Devices tagged {}, over Tailscale
+Tailscale पर {} टैग वाले डिवाइस
+
 Dew point
 ओसांक
 
@@ -2975,8 +3317,14 @@ Dew point spread {}
 Dew point {}
 ओसांक {}
 
+Diagnostics…
+निदान…
+
 Diff
 Diff
+
+Differs from this computer
+इस कंप्यूटर से अलग है
 
 Dim the built-in display when idle
 निष्क्रिय होने पर बिल्ट-इन डिस्प्ले मंद करें
@@ -3010,6 +3358,15 @@ Google Drive का कनेक्शन हटाएँ
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 Google Drive ({}) से कनेक्शन हटाएँ? DiskBackup वहाँ बैकअप लेना बंद करेगा और इस कंप्यूटर पर उसकी लॉगिन जानकारी मिटा देगा। Drive के बैकअप बने रहेंगे। फिर जुड़कर बैकअप जारी रख सकते हैं या फ़ाइलें बहाल कर सकते हैं।
+
+Disconnected
+डिस्कनेक्ट
+
+Disconnected.
+डिस्कनेक्ट।
+
+Disconnected: {}
+डिस्कनेक्ट: {}
 
 Disconnecting from Google Drive…
 Google Drive से कनेक्शन हट रहा है…
@@ -3174,6 +3531,9 @@ Don’t Trust
 Double-press speed
 दो बार दबाने की गति
 
+Down
+नीचे
+
 Down (received)
 डाउनलोड (प्राप्त)
 
@@ -3188,6 +3548,18 @@ Download at most:
 
 Download, Then Restart to Install
 डाउनलोड करें, फिर रीस्टार्ट करके इंस्टॉल करें
+
+Downloading
+डाउनलोड हो रहा है
+
+Downloading preview from Rex server…
+Rex सर्वर से पूर्वावलोकन डाउनलोड हो रहा है…
+
+Downloading {} from {}…
+{} को {} से डाउनलोड किया जा रहा है…
+
+Downloading {}…
+{} डाउनलोड हो रहा है…
 
 Downloading: {}
 डाउनलोड जारी: {}
@@ -3339,6 +3711,9 @@ Each display is drawn by the graphics it's wired to, so no frame crosses between
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 हर डिस्प्ले के Deskbar में उस पर दिख रहा कार्यक्षेत्र खुला रहता है। बाकी कार्यक्षेत्रों के शीर्षक दिखते हैं। तीर से उसी Deskbar पर उनके ऐप दिखाएँ या छिपाएँ।
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+हर रिपॉज़िटरी {} पर आपके होम के अपने फ़ोल्डर में क्लोन होती है, फिर अपने कमांड से एक बार सेट अप होती है।
+
 Each is judged from several signals together; a finding says how sure it is and why.
 कई संकेतों को साथ देखकर निर्णय होता है। हर नतीजे में वजह और भरोसे का स्तर बताया जाता है।
 
@@ -3359,6 +3734,12 @@ Each new window takes half of the one you were using.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 यहाँ सेट किए सभी तरीके Passwords, Terminal में sudo और प्रशासकीय अनुरोधों में पासवर्ड की जगह काम करते हैं। चेहरा या फ़िंगरप्रिंट लॉक और लॉगिन स्क्रीन पर भी इस्तेमाल कर सकते हैं। जो तरीका पहले इस्तेमाल करेंगे, उससे पुष्टि होगी।
+
+Each person gets their own Rex server, and signs in through this one.
+हर व्यक्ति को अपना Rex सर्वर मिलता है और वह इसके ज़रिए लॉगिन करता है।
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+{} पर हर व्यक्ति को अपना Rex सर्वर मिलता है; वे इसके ज़रिए लॉगिन करते हैं।
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 हर रिपॉज़िटरी का वहाँ अपना फ़ोल्डर होगा: olo की fix-tabs वर्कट्री {}/olo/fix-tabs में जाएगी।
@@ -3389,6 +3770,9 @@ Edit Message
 
 Edit Name
 नाम बदलें
+
+Edit Repository
+रिपॉज़िटरी संपादित करें
 
 Edit Video…
 वीडियो बदलें…
@@ -3456,6 +3840,9 @@ Encrypt it with a passphrase
 End
 समाप्त करें
 
+End Session
+सत्र समाप्त करें
+
 End Test
 परीक्षण समाप्त करें
 
@@ -3492,6 +3879,9 @@ Enrolling your {}
 Enter Full Screen
 पूरी स्क्रीन में जाएँ
 
+Enter secret…
+गोपनीय मान लिखें…
+
 Enter the password for “{}” to unlock it.
 “{}” खोलने का पासवर्ड लिखें।
 
@@ -3518,6 +3908,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Error
+गड़बड़ी
 
 Esc cancels
 Esc रद्द करता है
@@ -3609,6 +4002,15 @@ Every list's to-dos show here.
 Every month
 हर महीने
 
+Every regular account
+हर सामान्य खाता
+
+Every step ran, and it still needs: {}.
+सभी चरण चले, पर अभी यह बाकी है: {}।
+
+Every step ran.
+सभी चरण पूरे हुए।
+
 Every week
 हर हफ़्ते
 
@@ -3642,6 +4044,18 @@ other: हर {n} हफ़्ते
 Every {n} years
 one: हर {n} साल
 other: हर {n} साल
+
+Everyone in the rex group shares one server, run as the rex account.
+rex समूह के सभी लोग एक साझा सर्वर इस्तेमाल करते हैं, जो rex खाते से चलता है।
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+rex समूह के सभी लोग यह सर्वर साझा करते हैं, और इस पर हर टर्मिनल rex खाते से चलता है।
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+{} पर खाते वाला हर व्यक्ति rex समूह में है और साझा सर्वर इस्तेमाल करता है।
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+{} पर खाते वाला हर व्यक्ति लॉगिन कर सकता है। सूची {} में रखी है।
 
 Everything
 सब कुछ
@@ -3745,6 +4159,24 @@ Fade Colors
 Fahrenheit (°F)
 Fahrenheit (°F)
 
+Failed
+विफल
+
+Failed just now
+अभी विफल हुआ
+
+Failed {n} days ago
+one: {n} दिन पहले विफल
+other: {n} दिन पहले विफल
+
+Failed {n} hours ago
+one: {n} घंटे पहले विफल
+other: {n} घंटे पहले विफल
+
+Failed {n} minutes ago
+one: {n} मिनट पहले विफल
+other: {n} मिनट पहले विफल
+
 Fan Out
 पंखे की तरह फैलाएँ
 
@@ -3838,6 +4270,9 @@ File
 File system:
 फ़ाइल सिस्टम:
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+फ़ाइल वॉचर, लिंकर और बड़े प्रोग्राम कर्नेल की सीमाओं से टकराते हैं।
+
 Files
 फ़ाइलें
 
@@ -3849,6 +4284,9 @@ File…
 
 Fill It In
 भरें
+
+Filter
+फ़िल्टर
 
 Find
 खोजें
@@ -3876,6 +4314,9 @@ Find an app
 
 Find in document
 दस्तावेज़ में खोजें
+
+Find in terminal…
+टर्मिनल में खोजें…
 
 Find the selection
 चुने हुए को खोजें
@@ -4033,6 +4474,12 @@ Fog likely · spread {}
 Folder
 फ़ोल्डर
 
+Folder taken
+फ़ोल्डर भरा है
+
+Folder:
+फ़ोल्डर:
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 फ़ोल्डर और फ़ाइलें कॉमा से अलग करें। ~/ आपका होम फ़ोल्डर है, **/ किसी भी स्थान और * किसी भी नाम के लिए है।
 
@@ -4116,6 +4563,9 @@ Format…
 
 Forward
 आगे
+
+Forward Port
+पोर्ट फ़ॉरवर्ड करें
 
 Forwarded from {}
 {} से फ़ॉरवर्ड किया गया
@@ -4228,6 +4678,9 @@ Get Full Access…
 Get Info
 जानकारी देखें
 
+Get items from Passwords
+Passwords से आइटम लें
+
 Getting ready
 तैयारी जारी है
 
@@ -4236,6 +4689,9 @@ Getting the sensor ready…
 
 Git Worktrees
 Git वर्कट्री
+
+Git identity
+Git पहचान
 
 GitHub
 GitHub
@@ -4252,6 +4708,9 @@ GitHub से संपर्क नहीं हुआ ({})।
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHub ने टोकन स्वीकार नहीं किया। शायद उसकी अवधि समाप्त हो गई या उसे रद्द कर दिया गया है।
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+Rex होस्ट को इन्हीं खातों वाला अपना Token Pool दें, ताकि यह कंप्यूटर बंद रहने पर भी वहाँ Claude Code और Codex काम करते रहें।
+
 Give a new key
 नई कुंजी दें
 
@@ -4261,6 +4720,30 @@ Give compilers and linkers only spare memory
 Give it a name.
 इसे नाम दें।
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+अपनी SSH कुंजियाँ और क्लिपबोर्ड केवल उसी होस्ट को दें\nजिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+अपनी SSH कुंजियाँ केवल उसी होस्ट को दें\nजिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+अपना क्लिपबोर्ड केवल उसी होस्ट को दें\nजिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+अपने पासवर्ड और SSH कुंजियाँ केवल उसी होस्ट को दें\nजिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+अपने पासवर्ड और क्लिपबोर्ड केवल उसी होस्ट को दें\nजिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Give your passwords only to a host\nyou trust as much as this computer.
+अपने पासवर्ड केवल उसी होस्ट को दें\nजिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+अपने पासवर्ड, SSH कुंजियाँ और क्लिपबोर्ड\nकेवल उसी होस्ट को दें जिस पर आपको इस कंप्यूटर जितना भरोसा हो।
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+यह कंप्यूटर चालू हो या बंद, वहाँ Claude Code और Codex को आपके खाते देता है।
+
 Glide
 फिसलन
 
@@ -4269,6 +4752,15 @@ Glow new windows for
 
 Go
 जाएँ
+
+Go Back
+वापस जाएँ
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+{0} पर वापस जाएँ?\n\nयह {1} की जगह लेगा। Olo इसे डाउनलोड (लगभग {2} MB) और इंस्टॉल करके यहीं रीस्टार्ट होगा। आपकी सेटिंग सुरक्षित रहेंगी; उसके बाद जुड़ी सुविधाएँ अगले अपग्रेड तक नहीं रहेंगी।
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+{0} पर वापस जाएँ?\n\nयह {1} की जगह लेगा: Olo इसे डाउनलोड (लगभग {2} MB) और इंस्टॉल करके यहीं रीस्टार्ट होता है। आपकी सेटिंग जैसी हैं वैसी रहेंगी; उसके बाद आए बदलाव अगले अपग्रेड तक नहीं रहेंगे।
 
 Go to
 यहाँ जाएँ
@@ -4281,6 +4773,9 @@ Go to File or Folder
 
 Go to File or Folder…
 फ़ाइल या फ़ोल्डर पर जाएँ…
+
+Go to Folder…
+फ़ोल्डर पर जाएँ…
 
 Go to:
 यहाँ जाएँ:
@@ -4317,6 +4812,9 @@ Mail के लिए जुड़े Google और Fastmail खाते (ए�
 
 Google no longer takes its sign-in: sign in again.
 Google अब यह लॉगिन स्वीकार नहीं करता। फिर लॉगिन करें।
+
+Google’s coding agent (agy).
+Google का कोडिंग एजेंट (agy)।
 
 Got it. Touch the key once more: its light is blinking again.
 हो गया। बत्ती फिर झपक रही है, कुंजी एक बार और छुएँ।
@@ -4417,8 +4915,23 @@ Hardware Address: {}
 Hardware address:
 हार्डवेयर पता:
 
+Has failed
+विफल हुआ हो
+
+Has finished
+काम पूरा कर चुका हो
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+एक मिनट से अधिक समय से जवाब नहीं दिया
+
+Hasn’t answered for over {} minutes
+{} मिनट से अधिक समय से जवाब नहीं दिया
+
+Hasn’t answered for {} seconds
+{} सेकंड से जवाब नहीं दिया
 
 Header & Footer…
 शीर्षलेख और पादलेख…
@@ -4570,8 +5083,17 @@ Home
 Home Page
 होम पेज
 
+Host
+होस्ट
+
+Host “{}”
+होस्ट “{}”
+
 Hosts
 होस्ट
+
+Hosts and Ports…
+होस्ट और पोर्ट…
 
 Hotspot
 हॉटस्पॉट
@@ -4723,6 +5245,9 @@ In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 ऐप जब तक कोई अपठित या लंबित आइटम बताए, तब तक यह उसकी सूचनाओं के नीले बिंदु की जगह दिखेगा।
 
+In step
+सिंक में
+
 In the Scratchpad
 स्क्रैचपैड में
 
@@ -4837,8 +5362,17 @@ Inspect Parent
 Inspect Process
 प्रक्रिया का निरीक्षण करें
 
+Install
+इंस्टॉल करें
+
 Install Now
 अभी इंस्टॉल करें
+
+Install Olo’s Bridge
+Olo का ब्रिज इंस्टॉल करें
+
+Install Olo’s Skill for Agents
+एजेंट के लिए Olo कौशल इंस्टॉल करें
 
 Install When Restarting
 रीस्टार्ट पर इंस्टॉल करें
@@ -4852,8 +5386,29 @@ Install just
 Install the Helper…
 सहायक इंस्टॉल करें…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+{0} इंस्टॉल करें?\n\nOlo इसे डाउनलोड (लगभग {1} MB) और इंस्टॉल करके यहीं रीस्टार्ट होता है।
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+{0} इंस्टॉल करें?\n\nOlo इसे डाउनलोड (लगभग {1} MB) और इंस्टॉल करके यहीं रीस्टार्ट होगा।
+
 Installed
 इंस्टॉल है
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+हर निर्माता के अपने इंस्टॉलर से वहाँ आपके होम फ़ोल्डर में आपके खाते से इंस्टॉल होता है। कुछ भी root के रूप में नहीं चलता।
+
+Installing
+इंस्टॉल हो रहा है
+
+Installing {}: {} ({}%)…
+{} इंस्टॉल हो रहा है: {} ({}%)…
+
+Installing {}…
+{} इंस्टॉल हो रहा है…
+
+Installing…
+इंस्टॉल हो रहा है…
 
 Install…
 इंस्टॉल करें…
@@ -4885,6 +5440,9 @@ Invert Selection
 Invite:
 आमंत्रित करें:
 
+Is waiting for me
+मेरी प्रतीक्षा कर रहा हो
+
 It Matches
 मेल खाता है
 
@@ -4894,8 +5452,17 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 बिजली जुड़ने पर बैकअप लिया जाएगा। {}। {}।
 
+It can’t be stopped once it has started.
+शुरू होने के बाद इसे रोका नहीं जा सकता।
+
 It couldn’t be fetched: {}
 ला नहीं सके: {}
+
+It couldn’t be reached ({}). Olo keeps trying.
+उस तक नहीं पहुँच सके ({})। Olo कोशिश करता रहेगा।
+
+It couldn’t be reached: {}. Olo keeps trying.
+उस तक नहीं पहुँच सके: {}। Olo कोशिश करता रहेगा।
 
 It couldn’t be read: {}
 पढ़ नहीं सके: {}
@@ -4905,6 +5472,9 @@ It didn't work.
 
 It didn’t open: {}.
 खुल नहीं सका: {}।
+
+It didn’t say why.
+कारण नहीं बताया गया।
 
 It downloads {}
 {} डाउनलोड होगा
@@ -4933,6 +5503,9 @@ It needs at least three palms and three fingers among the touches it learns from
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 मौजूदा स्तर चाहे जो हो, ध्वनि पूरी आवाज़ की एक चौथाई पर बजेगी। म्यूट होने पर नहीं बजेगी।
 
+It starts when {} starts.
+यह {} के शुरू होने पर चलता है।
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 सिर्फ़ वही प्रोसेसर समय और डिस्क इस्तेमाल होंगे जो किसी और को नहीं चाहिए। आपके काम में बाधा नहीं आएगी, हालाँकि उस दौरान बैकअप धीमा चलेगा।
 
@@ -4947,6 +5520,9 @@ It wasn't forgotten ({}).
 
 It wasn't set up ({}).
 सेटअप नहीं हुआ ({})।
+
+It won’t start again when {} restarts.
+{} के रीस्टार्ट होने पर यह फिर से नहीं चलेगा।
 
 It's in use now, in place of Olo's own.
 अब Olo के अपने मॉडल की जगह यही इस्तेमाल हो रहा है।
@@ -5016,6 +5592,12 @@ Passwords में “गोपनीय मान का संदर्भ �
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 इसकी सेवा सत्र के साथ शुरू होती है। लॉगआउट करके फिर लॉगिन करें या Olo Doctor से सेवा शुरू करें।
+
+Its services, accounts and log, managed as root in their own window.
+इसकी सेवाएँ, खाते और लॉग, अपनी अलग विंडो में root के रूप में प्रबंधित।
+
+Its sessions may:
+इसके सत्र ये कर सकते हैं:
 
 Its sign-in isn’t in the keyring: sign in again.
 इसकी लॉगिन जानकारी कीरिंग में नहीं है। फिर लॉगिन करें।
@@ -5103,6 +5685,9 @@ Keep HDR on for {}?
 Keep It Going
 काम जारी रखें
 
+Keep It Going in “{}”
+“{}” में काम जारी रखें
+
 Keep It Going says
 काम जारी रखने का संदेश
 
@@ -5181,6 +5766,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 पूरा हुआ काम सहेज रहे हैं…
 
+Keeps a build’s files in memory and running programs out of swap.
+बिल्ड की फ़ाइलें मेमोरी में और चल रहे प्रोग्राम स्वैप से बाहर रखता है।
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 जब भारी सिंक्रोनस राइट या डिस्कार्ड NVMe ड्राइव पर दबाव डालते हैं, तब रीड लेटेंसी सीमित रखता है; Linux का डिफ़ॉल्ट "none" केवल बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
 
@@ -5205,6 +5793,9 @@ Kept on this computer; made in 1Password once you sync an account.
 Kernel
 कर्नेल
 
+Kernel limits
+कर्नेल सीमाएँ
+
 Kernel:
 कर्नेल:
 
@@ -5219,6 +5810,9 @@ Key password:
 
 Key {} trusted.
 {} कुंजी पर भरोसा किया गया।
+
+Key:
+कुंजी:
 
 Keyboard
 कीबोर्ड
@@ -5295,6 +5889,12 @@ Larger Pointer
 Last
 पिछली बार
 
+Last 30 days
+पिछले 30 दिन
+
+Last 7 days
+पिछले 7 दिन
+
 Last Page
 अंतिम पेज
 
@@ -5306,6 +5906,9 @@ Last backed up {}
 
 Last clean-up
 पिछली सफ़ाई
+
+Last day
+पिछला दिन
 
 Last used
 पिछला उपयोग
@@ -5403,6 +6006,15 @@ Less space between windows
 Let coding agents keep their tab’s title current
 कोडिंग एजेंट को अपने टैब का शीर्षक बदलने दें
 
+Let your other devices reach this computer’s sessions over Tailscale
+अपने दूसरे डिवाइस को Tailscale पर इस कंप्यूटर के सत्रों तक पहुँचने दें
+
+Lets a build’s many small writes reach the disk together.
+बिल्ड के कई छोटे लेखन कार्य एक साथ डिस्क तक पहुँचाता है।
+
+Lets agents there use your accounts, even with this computer off.
+यह कंप्यूटर बंद होने पर भी वहाँ के एजेंट आपके खाते इस्तेमाल कर सकते हैं।
+
 Letting go of backups past keeping
 पुराने बैकअप हट रहे हैं
 
@@ -5466,6 +6078,9 @@ Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 लिखने की प्रतीक्षा में डेटा सीमित रखें
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+लंबे बिल्ड और कई सत्रों के लिए Linux मशीन की डिफ़ॉल्ट सीमाएँ बढ़ाई जाती हैं।
+
 Line
 पंक्ति
 
@@ -5513,6 +6128,9 @@ Lists
 
 Live
 लाइव
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+पूरे Rex में रुके हुए, गड़बड़ी वाले व कार्यरत कोडिंग एजेंट और खुले सत्र।
 
 Load
 भार
@@ -5598,6 +6216,12 @@ Look for codes in:
 Look:
 रूप:
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+सर्वर की देखरेख के लिए root चाहिए। ऐसी कुंजी चुनें जिसे वहाँ root स्वीकार करे। कोई न चले, तो उस मशीन पर अपनी सार्वजनिक कुंजी /root/.ssh/authorized_keys में जोड़ें और फिर कोशिश करें।
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+सर्वर की देखरेख के लिए root चाहिए। Olo Passwords खोलें, या उसमें ऐसी कुंजी जोड़ें जिसे {} पर root स्वीकार करे।
+
 Looking at Bluetooth…
 Bluetooth देख रहे हैं…
 
@@ -5612,6 +6236,9 @@ Looking at what’s there…
 
 Looking at which processes use it…
 इसे इस्तेमाल करने वाली प्रक्रियाएँ खोज रहे हैं…
+
+Looking at {}…
+{} की जाँच हो रही है…
 
 Looking for Bluetooth…
 Bluetooth खोजा जा रहा है…
@@ -5808,6 +6435,12 @@ Making it again, empty
 Making it…
 बन रहा है…
 
+Manage Host…
+होस्ट प्रबंधित करें…
+
+Manage Rex Server…
+Rex सर्वर प्रबंधित करें…
+
 Manually
 मैन्युअल
 
@@ -5874,6 +6507,9 @@ Media errors
 Medium
 मध्यम
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+rex समूह के सदस्य साझा सर्वर इस्तेमाल करते हैं, जहाँ हर टर्मिनल rex खाते से चलता है। बदलाव उनके अगले लॉगिन से लागू होंगे।
+
 Membership
 सदस्यता
 
@@ -5882,6 +6518,9 @@ Memory
 
 Memory Pressure
 मेमोरी दबाव
+
+Memory for builds
+बिल्ड के लिए मेमोरी
 
 Memory free
 खाली मेमोरी
@@ -6147,6 +6786,12 @@ Move Group to Window
 Move Here
 यहाँ ले जाएँ
 
+Move Tab Left
+टैब बाएँ ले जाएँ
+
+Move Tab Right
+टैब दाएँ ले जाएँ
+
 Move Tab to New Window
 टैब नई विंडो में ले जाएँ
 
@@ -6231,6 +6876,9 @@ Moving {} to the Trash
 Moving {} to the Trash…
 {} रद्दी में जा रहा है…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+Ghostty VT, विभाजन, फ़्लोटिंग परत और लाइव AI एजेंट निगरानी के साथ स्थानीय व दूरस्थ SSH/Tailscale कार्यस्थान चलाएँ।
+
 Music
 संगीत
 
@@ -6303,8 +6951,17 @@ Nearby
 Needed by another package
 दूसरे पैकेज को इसकी ज़रूरत है
 
+Needs curl there
+वहाँ curl चाहिए
+
 Needs full access
 पूरी पहुँच चाहिए
+
+Needs git there
+वहाँ git चाहिए
+
+Neither kind of Rex server is in use on {}. Start one of them:
+{} पर किसी भी प्रकार का Rex सर्वर उपयोग में नहीं है। इनमें से एक शुरू करें:
 
 Network
 नेटवर्क
@@ -6338,6 +6995,9 @@ New Conversation
 
 New Event…
 नया कार्यक्रम…
+
+New Floating Terminal
+नया फ़्लोटिंग टर्मिनल
 
 New Folder
 नया फ़ोल्डर
@@ -6378,6 +7038,9 @@ New Sections
 New Section…
 नया खंड…
 
+New Session
+नया सत्र
+
 New Signature…
 नया हस्ताक्षर…
 
@@ -6416,6 +7079,9 @@ New description
 
 New event
 नया इवेंट
+
+New host
+नया होस्ट
 
 New message
 नया संदेश
@@ -6476,6 +7142,9 @@ Next Page
 
 Next Tab
 अगला टैब
+
+Next Waiting Agent
+अगला प्रतीक्षारत एजेंट
 
 Next Week
 अगला हफ़्ता
@@ -6558,6 +7227,9 @@ No Pull Request
 No Receivers Paired
 कोई रिसीवर पेयर नहीं है
 
+No SSH hosts yet
+अभी कोई SSH होस्ट नहीं
+
 No Saved Groups
 कोई सहेजा समूह नहीं
 
@@ -6569,6 +7241,12 @@ No To-Do Chosen
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 कोई VPN नहीं है। WireGuard कॉन्फ़िगरेशन आयात करें या प्रदाता के ऐप से जोड़ें।
+
+No account is listed: nobody can sign in through the login server.
+कोई खाता सूची में नहीं है: लॉगिन सर्वर से कोई लॉगिन नहीं कर सकता।
+
+No active SSH authentication request.
+कोई सक्रिय SSH प्रमाणीकरण अनुरोध नहीं।
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 कोई भी ऐप बिना पूछे आइटम नहीं ले सकता। अनुरोध आने पर “हमेशा मंज़ूर करें” चुनें तो उसे स्थायी अनुमति मिलेगी। यहाँ से अनुमति वापस ले सकते हैं।
@@ -6636,6 +7314,9 @@ No keyboards are plugged in.
 No limit
 कोई सीमा नहीं
 
+No matching entries
+कोई मिलती प्रविष्टि नहीं
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 {} के साथ अभी कोई संदेश नहीं है। नीचे लिखा संदेश आपके फ़ोन से SMS के रूप में जाएगा।
 
@@ -6663,6 +7344,9 @@ No phone or mail account is set up: a phone in Phone, a Google or Fastmail accou
 No phone paired
 कोई फ़ोन पेयर नहीं है
 
+No pool
+कोई पूल नहीं
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 पावर प्रोफ़ाइल सेवा नहीं चल रही (power-profiles-daemon या Fedora पर tuned-ppd)। Olo इसी से पावर मोड तय करता है।
 
@@ -6680,6 +7364,12 @@ No process uses much of it now
 
 No processes match.
 कोई प्रक्रिया मेल नहीं खाती।
+
+No programs in the panes are listening on ports, and none is forwarded here.
+पैनल का कोई भी प्रोग्राम किसी पोर्ट पर सुन नहीं रहा, और यहाँ कोई पोर्ट फ़ॉरवर्ड नहीं है।
+
+No repositories yet.
+अभी कोई रिपॉज़िटरी नहीं।
 
 No screen recordings yet. Record one with ⌘⇧6.
 अभी कोई स्क्रीन रिकॉर्डिंग नहीं है। ⌘⇧6 से रिकॉर्ड करें।
@@ -6707,6 +7397,9 @@ No {} for this account.
 
 No: it did no better ({}), so the weights before stay
 नहीं: सुधार नहीं हुआ ({}), इसलिए पुराने वज़न रखे गए
+
+Nobody is in the rex group.
+rex समूह में कोई नहीं है।
 
 Noise
 शोर
@@ -6738,8 +7431,17 @@ None (flat)
 None asked for yet: type in brush
 अभी कोई सुझाव नहीं माँगा गया। brush में टाइप करें
 
+None chosen
+कोई चुना नहीं गया
+
 None connected to Olo yet.
 अभी Olo से कोई नहीं जुड़ा।
+
+None found
+कुछ नहीं मिला
+
+None in that time
+उस अवधि में कोई नहीं
 
 None in the last minute
 पिछले मिनट में कोई नहीं
@@ -6837,6 +7539,9 @@ Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 अभी जाँच नहीं हुई। “सत्यापित करें” डेटा वापस पढ़कर उसकी अखंडता जाँचता है।
 
+Not cloned
+क्लोन नहीं हुआ
+
 Not connected
 कनेक्ट नहीं है
 
@@ -6848,6 +7553,9 @@ Not connected: {}.
 
 Not enough touches to learn from
 सीखने के लिए पर्याप्त स्पर्श नहीं हैं
+
+Not fixed with the others: it has its own button.
+दूसरों के साथ ठीक नहीं होता: इसका अपना बटन है।
 
 Not found
 नहीं मिला
@@ -6867,6 +7575,15 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 पिछले मिनट में नहीं; विंडो खुलने के बाद {}
 
+Not installed
+इंस्टॉल नहीं है
+
+Not known
+अज्ञात
+
+Not on the path
+PATH में नहीं
+
 Not paired
 पेयर नहीं है
 
@@ -6884,6 +7601,9 @@ Not saved: {}
 
 Not sent: {}
 भेजा नहीं गया: {}
+
+Not set
+तय नहीं
 
 Not set up
 सेटअप नहीं हुआ
@@ -6942,6 +7662,9 @@ Nothing backed up yet.
 Nothing came from the microphone.
 माइक्रोफ़ोन से आवाज़ नहीं मिली।
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+यहाँ से {} पर कुछ इंस्टॉल नहीं हो सकता: इस तक SSH से पहुँच नहीं है।
+
 Nothing changed: Olo's own model is still in use.
 कुछ नहीं बदला। Olo का अपना मॉडल अब भी चालू है।
 
@@ -6957,6 +7680,9 @@ Nothing done yet
 Nothing due today
 आज किसी कार्य की अंतिम तारीख नहीं है
 
+Nothing else was changed.
+और कुछ नहीं बदला गया।
+
 Nothing found
 कुछ नहीं मिला
 
@@ -6969,6 +7695,9 @@ Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 फिर शुरू करने तक न बैकअप होगा, न डेटा भेजा जाएगा। {}। {}।
 
+Nothing is changed until you choose something to do.
+जब तक आप कोई कार्रवाई नहीं चुनते, कुछ नहीं बदलता।
+
 Nothing more today
 आज और कुछ नहीं
 
@@ -6977,6 +7706,18 @@ Nothing new
 
 Nothing new to learn
 सीखने के लिए कुछ नया नहीं
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+इस कंप्यूटर की कोई अनुमति “{}” को नहीं दी गई। अनुमति देने के लिए वरीयताएँ ▸ Rex देखें।
+
+Nothing on {} is changed yet.
+{} पर अभी कुछ नहीं बदला गया।
+
+Nothing on {} is known until it connects.
+जुड़ने तक {} की जानकारी उपलब्ध नहीं।
+
+Nothing on {} is known until it’s connected.
+जुड़ने तक {} की जानकारी उपलब्ध नहीं।
 
 Nothing read yet
 अभी कुछ नहीं पढ़ा गया
@@ -6996,11 +7737,17 @@ Nothing to do here
 Nothing to do.
 कुछ करने को नहीं है।
 
+Nothing to rename.
+नाम बदलने के लिए कुछ नहीं।
+
 Nothing to show yet
 अभी दिखाने के लिए कुछ नहीं
 
 Nothing to tune for its driver ({}) yet.
 इसके ड्राइवर ({}) के लिए अभी कोई समायोजन नहीं है।
+
+Nothing was changed on {}.
+{} पर कुछ नहीं बदला गया।
 
 Notification
 सूचना
@@ -7131,8 +7878,29 @@ Olo इंस्टॉलर
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 इस कंप्यूटर पर {} का Olo ऐप नहीं है। Google Cloud ▸ इसका Olo प्रोजेक्ट ▸ Clients से क्लाइंट ID और सीक्रेट दें, या रद्द करके “Google खाता जोड़ें…” चुनें ताकि एजेंट सेट करे।
 
+Olo has no releases yet.
+Olo का अभी कोई संस्करण नहीं है।
+
+Olo has no typing helper for {}.
+{} के लिए Olo का कोई टाइपिंग सहायक नहीं है।
+
+Olo is up to date (looked {}).
+Olo अप टू डेट है ({} जाँचा गया)।
+
+Olo is up to date.
+Olo अप टू डेट है।
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo {}{} की लॉगिन जानकारी, कुंजियाँ और Wi-Fi पासवर्ड रखता है। ये आपके लॉगिन पासवर्ड से खुलते हैं।
+
+Olo looks for a newer release every hour.
+Olo हर घंटे नया संस्करण खोजता है।
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo शुरू होने के दो मिनट बाद और फिर हर घंटे नया संस्करण खोजता है।
+
+Olo restarts once it's installed.
+इंस्टॉल होते ही Olo रीस्टार्ट होता है।
 
 Olo saying its name
 Olo के नाम की आवाज़
@@ -7158,14 +7926,59 @@ Olo का अपना मॉडल अब भी चालू है।
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 असली हाथों के {} स्पर्श से बना Olo का हथेली मॉडल। वरीयताएँ ▸ टचपैड और माउस ▸ स्पर्श में अपना मॉडल तैयार कर सकते हैं
 
+Olo's releases couldn't be listed: {}
+Olo के संस्करणों की सूची नहीं मिल सकी: {}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+Olo का ब्रिज “{}” पर है, पर उसे कोई अनुमति नहीं दी गई। अनुमति देने के लिए वरीयताएँ ▸ Rex देखें।
+
+Olo’s bridge is on “{}”.
+Olo का ब्रिज “{}” पर है।
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+Olo का ब्रिज “{}” पर नहीं है। इसे इंस्टॉल करने के लिए एजेंट ▸ Olo का ब्रिज इंस्टॉल करें चुनें।
+
 Olo’s keyring isn’t running here; it starts with your session.
 Olo की कीरिंग यहाँ नहीं चल रही। यह आपके सत्र के साथ शुरू होती है।
 
 Olo’s language:
 Olo की भाषा:
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+इसके बाद Olo के अपने ऐप उनसे लॉगिन कर सकते हैं—Passwords लॉक होने तक या आखिरी उपयोग के 10 मिनट बाद तक। कुंजियाँ यहीं रहती हैं।
+
 Olo’s phone service isn’t running.
 Olo की फ़ोन सेवा नहीं चल रही।
+
+Olo’s skill for agents is on “{}”.
+एजेंट के लिए Olo कौशल “{}” पर है।
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+एजेंट के लिए Olo कौशल “{}” पर नहीं है। इसे इंस्टॉल करने के लिए एजेंट ▸ एजेंट के लिए Olo कौशल इंस्टॉल करें चुनें।
+
+Olo’s typing helper is being added to “{}”…
+“{}” में Olo का टाइपिंग सहायक जोड़ा जा रहा है…
+
+Olo’s typing helper is on “{}”.
+Olo का टाइपिंग सहायक “{}” पर है।
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo का टाइपिंग सहायक बंद है। इसका उपयोग करने के लिए सेटिंग ▸ होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें चुनें।
+
+Olo’s typing helper isn’t on “{}”.
+Olo का टाइपिंग सहायक “{}” पर नहीं है।
+
+Olo’s typing helper isn’t on “{}”: {}
+Olo का टाइपिंग सहायक “{}” पर नहीं है: {}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+“{}” पर आपके खाते में Olo का टाइपिंग सहायक जुड़ गया है और अगली बार जुड़ने पर इस्तेमाल होगा।
+
+Olo’s typing helper was added to your account on “{}”.
+“{}” पर आपके खाते में Olo का टाइपिंग सहायक जुड़ गया है।
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+“{}” में Olo का टाइपिंग सहायक जुड़ गया है। यह अगली बार जुड़ने पर इस्तेमाल होगा।
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Olo की विंडो तुरंत बदलेंगी। दूसरे प्रोग्राम अगली शुरुआत पर, यदि वे इस भाषा में उपलब्ध हैं, तो इसे अपनाएँगे।
@@ -7212,14 +8025,29 @@ On it now
 On the day, at 9 AM
 उसी दिन सुबह 9 बजे
 
+On the host
+होस्ट पर
+
 On the network
 नेटवर्क पर
+
+On the path
+PATH में है
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 फ़ोन पर सेटिंग ▸ Bluetooth खोलकर वहीं रहें। फ़ोन थोड़ी देर में यहाँ दिखाई देगा।
 
+On the tailnet as {}.
+{} के रूप में tailnet पर है।
+
+On this computer
+इस कंप्यूटर पर
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 फ़ोन पर Telegram ▸ सेटिंग ▸ डिवाइस ▸ डेस्कटॉप डिवाइस जोड़ें खोलें और इस कोड को स्कैन करें।
+
+On {}
+{} पर
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 अभी {0}: {1}। किसी सेटिंग को बदलने पर कस्टम {2} लागू होगा। हर मोड की सेटिंग “पावर मोड” में देखें।
@@ -7281,6 +8109,9 @@ Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 एक जैसी सूचनाओं में केवल नवीनतम रखें
 
+Only this computer can reach these sessions.
+इन सत्रों तक सिर्फ़ यही कंप्यूटर पहुँच सकता है।
+
 Only when I choose Sync Now
 सिर्फ़ “अभी सिंक करें” चुनने पर
 
@@ -7338,6 +8169,9 @@ Open Power
 Open Pull Request #{}
 पुल अनुरोध #{} खोलें
 
+Open Rex Preferences
+Rex वरीयताएँ खोलें
+
 Open Saved Group
 सहेजा समूह खोलें
 
@@ -7362,11 +8196,20 @@ Open With
 Open With Offers
 “इससे खोलें” के विकल्प
 
+Open a host’s Account window to see how each stands there, and to clone.
+वहाँ हर रिपॉज़िटरी की स्थिति देखने और क्लोन करने के लिए होस्ट की खाता विंडो खोलें।
+
 Open files
 खुली फ़ाइलें
 
+Open files and tasks
+खुली फ़ाइलें और कार्य
+
 Open in Google Drive
 Google Drive में खोलें
+
+Open in Rex
+Rex में खोलें
 
 Open in Terminal
 Terminal में खोलें
@@ -7376,6 +8219,9 @@ Tracker में खोलें
 
 Open kache's Log
 kache का लॉग खोलें
+
+Open links on this computer
+इस कंप्यूटर पर लिंक खोलें
 
 Open my.telegram.org
 my.telegram.org खोलें
@@ -7392,11 +8238,17 @@ Open {} to see it.
 Open {} to see them.
 इन्हें देखने के लिए {} खोलें।
 
+OpenAI’s coding agent.
+OpenAI का कोडिंग एजेंट।
+
 OpenDocument Text…
 OpenDocument टेक्स्ट…
 
 Opening programs’ secrets…
 प्रोग्राम की गोपनीय जानकारी खोली जा रही है…
+
+Opening session…
+सत्र खुल रहा है…
 
 Opening the backup in {}
 {} में रखा बैकअप खुल रहा है
@@ -7445,6 +8297,9 @@ Other Mice
 
 Other Updates
 अन्य अपडेट
+
+Other releases:
+अन्य संस्करण:
 
 Other workspaces’ applications start collapsed
 दूसरे कार्यक्षेत्रों की ऐप सूची शुरू में बंद रखें
@@ -7541,6 +8396,9 @@ Palms caught
 
 Palms while typing
 टाइप करते समय हथेलियाँ
+
+Pane
+पैनल
 
 Panel
 पैनल
@@ -7644,6 +8502,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 पासवर्ड और लॉगिन: यहाँ इन्हें रखने के लिए लॉगिन कीरिंग नहीं है, इसलिए आयात नहीं हुए।
 
+Passwords answered something else
+Passwords ने कुछ और जवाब दिया
+
 Passwords answered something else.
 Passwords से अलग जवाब मिला।
 
@@ -7668,17 +8529,26 @@ Passwords ने कुंजी नहीं रखी।
 Passwords for Every Screen…
 हर स्क्रीन के लिए पासवर्ड…
 
+Passwords has no SSH keys to offer.
+Passwords के पास देने के लिए कोई SSH कुंजी नहीं है।
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords में किसी Google खाते का लॉगिन नहीं है। पहले वहाँ खाते का लॉगिन जोड़ें या ऐप मैन्युअल रूप से सेट करें।
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 Passwords में “{}” आइटम नहीं है। फ़ाइल ▸ डेटा प्रदाता… में फिर कुंजी दें
 
+Passwords is locked
+Passwords लॉक है
+
 Passwords is locked.
 Passwords लॉक है।
 
 Passwords isn’t running.
 Passwords नहीं चल रहा।
+
+Passwords isn’t set up
+Passwords सेट अप नहीं है
 
 Passwords isn’t set up yet.
 Passwords अभी सेट नहीं है।
@@ -7712,6 +8582,9 @@ Passwords’ password is used now: try again.
 
 Paste
 पेस्ट करें
+
+Paste Password…
+पासवर्ड पेस्ट करें…
 
 Paste as Attachment
 अटैचमेंट के रूप में पेस्ट करें
@@ -7876,6 +8749,15 @@ Polish
 
 Pool
 Pool
+
+Port
+पोर्ट
+
+Port:
+पोर्ट:
+
+Ports
+पोर्ट
 
 Portuguese
 पुर्तगाली
@@ -8069,14 +8951,26 @@ Profile:
 Program
 प्रोग्राम
 
+Program folder
+प्रोग्राम फ़ोल्डर
+
 Program names, comma separated
 प्रोग्राम के नाम, कॉमा से अलग करें
+
+Programs
+प्रोग्राम
 
 Programs Using the Network
 नेटवर्क इस्तेमाल कर रहे प्रोग्राम
 
 Programs Using the {}
 {} इस्तेमाल कर रहे प्रोग्राम
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+इसके बाद उस होस्ट के प्रोग्राम उनका इस्तेमाल कर सकते हैं—Passwords लॉक होने तक या आखिरी उपयोग के 10 मिनट बाद तक। कुंजियाँ यहीं रहती हैं।
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+“{}” के प्रोग्राम अपनी अनुमतियों (वरीयताएँ ▸ Rex) के अनुसार Rex के ज़रिए इस कंप्यूटर का उपयोग कर सकते हैं।
 
 Programs’ Secrets
 प्रोग्राम की गोपनीय जानकारी
@@ -8119,6 +9013,9 @@ Put the computer to sleep after:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 बैकअप से चुने आइटम यहाँ मौजूद आइटम की जगह रखे जाएँगे। बाकी जैसा है वैसा रहेगा। पहले मौजूदा सामग्री सहेजी जाएगी।
+
+Putting it in place
+जगह पर रखा जा रहा है
 
 Putting {} back
 {} को वापस रख रहे हैं
@@ -8201,6 +9098,12 @@ Ran for
 Range
 दायरा
 
+Reach its local servers
+उसके स्थानीय सर्वर तक पहुँचें
+
+Reach their local servers
+उनके स्थानीय सर्वर तक पहुँचें
+
 Reaches:
 पहुँच:
 
@@ -8213,14 +9116,26 @@ Read
 Read Quota Now
 अभी कोटा पढ़ें
 
+Read and set the clipboard
+क्लिपबोर्ड पढ़ें और बदलें
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 चुने बैकअप के लिए ज़रूरी हर बाइट को भंडार से वापस पढ़कर हर हिस्से की जाँच करें, जैसे बहाली में होता है
+
+Read just now
+अभी पढ़ा गया
 
 Read ones fade, then move to Cleared; unread ones stay.
 पढ़ी सूचनाएँ फीकी होकर “हटाई गईं” में जाती हैं। अपठित बनी रहती हैं।
 
 Read only
 केवल पढ़ने के लिए
+
+Read {} h ago
+{} घंटे पहले पढ़ा गया
+
+Read {} min ago
+{} मिनट पहले पढ़ा गया
 
 Reading /etc/hosts…
 /etc/hosts पढ़ रहे हैं…
@@ -8252,6 +9167,9 @@ Reading the index again
 Reading the journal…
 जर्नल पढ़ रहे हैं…
 
+Reading the log…
+लॉग पढ़ा जा रहा है…
+
 Reading the packages…
 पैकेज पढ़ रहे हैं…
 
@@ -8266,6 +9184,12 @@ Reading…
 
 Reads
 पढ़ने की संख्या
+
+Ready
+तैयार
+
+Ready: it starts when somebody signs in
+तैयार: किसी के लॉगिन करने पर शुरू होता है
 
 Real-time priority
 रीयल-टाइम प्राथमिकता
@@ -8290,6 +9214,12 @@ Recommended by another package
 
 Recommended for it
 इसके लिए सुझाव
+
+Reconnecting (try {})…
+फिर जुड़ रहे हैं (कोशिश {})…
+
+Reconnecting. {}
+फिर जुड़ रहे हैं। {}
 
 Record
 रिकॉर्ड करें
@@ -8399,8 +9329,14 @@ Reinstall Selected…
 Reject
 अस्वीकार करें
 
+Release:
+संस्करण:
+
 Reload
 फिर लोड करें
+
+Reload Server Configuration
+सर्वर कॉन्फ़िगरेशन फिर लोड करें
 
 Reload Without the Cache
 कैश के बिना फिर लोड करें
@@ -8417,6 +9353,9 @@ Reminder:
 Remote
 रिमोट
 
+Remote Access…
+दूरस्थ पहुँच…
+
 Removable Disks
 निकाली जा सकने वाली डिस्क
 
@@ -8429,8 +9368,14 @@ Remove Account
 Remove Graph
 ग्राफ़ हटाएँ
 
+Remove Host
+होस्ट हटाएँ
+
 Remove Place
 स्थान हटाएँ
+
+Remove Pool
+पूल हटाएँ
 
 Remove Repository
 सॉफ़्टवेयर स्रोत हटाएँ
@@ -8456,8 +9401,17 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 पूल से हटाएँ? यहाँ की लॉगिन जानकारी मिट जाएगी, खाता बना रहेगा।
 
+Remove the Token Pool from {}?
+{} से Token Pool हटाएँ?
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+{} से Token Pool हटाएँ? वहाँ Claude Code और Codex अपने निजी लॉगिन पर लौट जाएँगे। पहले इसके खातों के लॉगिन वापस इस कंप्यूटर पर लिए जाते हैं।
+
 Remove the VPN “{}”? Its settings and keys go with it.
 “{}” VPN हटाएँ? इसकी सेटिंग और कुंजियाँ भी हटेंगी।
+
+Remove the bridge, skill and typing helper?
+ब्रिज, कौशल और टाइपिंग सहायक हटाएँ?
 
 Remove the {}? It will no longer unlock anything.
 {} हटाएँ? फिर इससे ताला नहीं खोल सकेंगे।
@@ -8473,6 +9427,9 @@ Remove “{}” from Favorites
 
 Remove…
 हटाएँ…
+
+Removing
+हटाया जा रहा है
 
 Removing…
 हटाया जा रहा है…
@@ -8494,6 +9451,12 @@ Rename Place…
 
 Rename Section
 खंड का नाम बदलें
+
+Rename Session…
+सत्र का नाम बदलें…
+
+Rename Tab…
+टैब का नाम बदलें…
 
 Rename Worktree…
 वर्कट्री का नाम बदलें…
@@ -8576,6 +9539,9 @@ Passwords रीसेट करें
 Reset Passwords…
 Passwords रीसेट करें…
 
+Reset Terminal
+टर्मिनल रीसेट करें
+
 Reset Thresholds
 सीमा मान रीसेट करें
 
@@ -8632,6 +9598,12 @@ kache रीस्टार्ट करें
 
 Restart, Asking First
 पहले पूछकर रीस्टार्ट करें
+
+Restarting or stopping it ends every session.
+इसे रीस्टार्ट करने या रोकने से सभी सत्र समाप्त हो जाते हैं।
+
+Restarting or stopping it leaves open sessions running.
+इसे रीस्टार्ट करने या रोकने पर खुले सत्र चलते रहते हैं।
 
 Restart…
 रीस्टार्ट करें…
@@ -8714,6 +9686,54 @@ Reverting in {} seconds.
 Rewriting index.db…
 index.db दोबारा लिखा जा रहा है…
 
+Rex
+Rex
+
+Rex Server
+Rex सर्वर
+
+Rex Server on {}
+{} पर Rex सर्वर
+
+Rex adds these entries to {} as {}:
+Rex {1} के रूप में {0} में ये प्रविष्टियाँ जोड़ता है:
+
+Rex changes {} as {}:
+Rex {1} के रूप में {0} बदलता है:
+
+Rex isn’t installed
+Rex इंस्टॉल नहीं है
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+Rex को SSH से जुड़ने वाला कोई होस्ट नहीं पता। Rex में या वरीयताएँ ▸ Rex में जोड़ें।
+
+Rex needs an address to connect.
+जुड़ने के लिए Rex को पता चाहिए।
+
+Rex picks a free port on this computer; the Ports list shows it.
+Rex इस कंप्यूटर पर कोई खाली पोर्ट चुनता है; यह पोर्ट सूची में दिखता है।
+
+Rex removes these as {}:
+Rex इन्हें {} के रूप में हटाता है:
+
+Rex runs this as {}:
+Rex इसे {} के रूप में चलाता है:
+
+Rex sets these as {}:
+Rex इन्हें {} के रूप में तय करता है:
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex Olo Passwords की SSH कुंजी से {} के रूप में लॉगिन करता है, और इसके सफल हुए बिना कुछ नहीं बदलता।
+
+Rex signs in as {}@{}, as it will to connect.
+Rex {}@{} के रूप में लॉगिन करता है, जैसा वह जुड़ते समय करेगा।
+
+Rex: Agents & Sessions
+Rex: एजेंट और सत्र
+
+Rex’s own server. It can’t be disconnected or removed.
+Rex का अपना सर्वर। इसे डिस्कनेक्ट या हटाया नहीं जा सकता।
+
 Rich Text (RTF)…
 रिच टेक्स्ट (RTF)…
 
@@ -8747,6 +9767,9 @@ Roll up or down
 Room:
 जगह:
 
+Root on {} didn’t accept your keys
+{} पर root ने आपकी कुंजियाँ स्वीकार नहीं कीं
+
 Rotate Left
 बाएँ घुमाएँ
 
@@ -8771,6 +9794,9 @@ Router:
 Rows
 पंक्तियाँ
 
+Rows:
+पंक्तियाँ:
+
 Ruby
 Ruby
 
@@ -8785,6 +9811,15 @@ Run on it with “olo-screen run”
 
 Running
 चल रहा है
+
+Running Rex’s installer as {}
+{} के रूप में Rex का इंस्टॉलर चल रहा है
+
+Running for {}
+{} से चल रहा है
+
+Running systemctl as {}
+{} के रूप में systemctl चल रहा है
 
 Runs on
 इस पर चलता है
@@ -8815,6 +9850,18 @@ SSD का तापमान
 
 SSE
 दक्षिण-दक्षिणपूर्व
+
+SSH Authentication
+SSH प्रमाणीकरण
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSH डिफ़ॉल्ट रूप से एक कनेक्शन पर दस सत्रों की अनुमति देता है; हर पैनल एक इस्तेमाल करता है।
+
+SSH keys
+SSH कुंजियाँ
+
+SSH sessions
+SSH सत्र
 
 SSW
 दक्षिण-दक्षिणपश्चिम
@@ -9047,6 +10094,9 @@ Select All Conversations
 Select All Screens
 सभी स्क्रीन चुनें
 
+Select Last Output
+पिछला आउटपुट चुनें
+
 Select None
 चयन हटाएँ
 
@@ -9156,11 +10206,29 @@ Service Order
 Session:
 सत्र:
 
+Sessions
+सत्र
+
+Sessions on this computer may:
+इस कंप्यूटर के सत्र ये कर सकते हैं:
+
+Sessions on {} may:
+{} के सत्र ये कर सकते हैं:
+
+Sessions there keep running.
+वहाँ के सत्र चलते रहते हैं।
+
+Sessions used in
+सत्र इनमें उपयोग हुए
+
 Set
 तय करें
 
 Set Background
 पृष्ठभूमि बनाएँ
+
+Set Rex up there if it needs it
+ज़रूरत हो तो वहाँ Rex सेट अप करें
 
 Set Time Zone
 समय क्षेत्र तय करें
@@ -9171,8 +10239,14 @@ Set Up
 Set Up Again…
 फिर सेट अप करें…
 
+Set Up This Host’s Account…
+इस होस्ट का खाता सेट अप करें…
+
 Set Up by Hand…
 खुद सेट अप करें…
+
+Set Up {}
+{} सेट अप करें
 
 Set Up…
 सेट अप करें…
@@ -9186,6 +10260,21 @@ Set for the whole computer by {}{}.
 Set up ({} looks).
 सेटअप पूरा (चेहरे के {} रूप)।
 
+Set up with
+सेटअप कमांड
+
+Set up with:
+सेटअप कमांड:
+
+Set up your own Rex server on {}
+{} पर अपना Rex सर्वर सेट अप करें
+
+Set up {} as a Rex login server
+{} को Rex लॉगिन सर्वर के रूप में सेट अप करें
+
+Set up {} as a shared Rex server
+{} को साझा Rex सर्वर के रूप में सेट अप करें
+
 Setting
 सेटिंग
 
@@ -9194,6 +10283,9 @@ Setting it: an administrator's password is asked…
 
 Setting up backups to {}…
 {} पर बैकअप सेट हो रहा है…
+
+Setting up needs root. Nothing on {} is changed yet.
+सेटअप के लिए root चाहिए। {} पर अभी कुछ नहीं बदला गया।
 
 Setting up the backups in {}’s Google Drive…
 {} के Google Drive पर बैकअप सेट हो रहा है…
@@ -9204,11 +10296,26 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 अपनी {} सेट करने के लिए पासवर्ड और कुंजी का PIN दें, फिर कुंजी को दो बार छुएँ:
 
+Setting up {} of {}…
+{1} में से {0} सेट अप हो रहा है…
+
+Setting up {}…
+{} सेट अप हो रहा है…
+
+Setting up…
+सेट अप हो रहा है…
+
 Settings
 सेटिंग
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+सेटिंग, निर्देश, कौशल और कमांड। कभी कोई लॉगिन या कुंजी नहीं।
+
 Settings:
 सेटिंग:
+
+Setting…
+तय हो रहा है…
 
 Seventh folder
 सातवाँ फ़ोल्डर
@@ -9312,11 +10419,17 @@ Tracker में फ़ाइल दिखाएँ
 Show Hidden Files
 छिपी फ़ाइलें दिखाएँ
 
+Show Idle Panes in Activity
+गतिविधि में निष्क्रिय पैनल दिखाएँ
+
 Show Notifications
 सूचनाएँ दिखाएँ
 
 Show Only {}
 सिर्फ़ {} दिखाएँ
+
+Show Pane Headers
+पैनल शीर्षक दिखाएँ
 
 Show Places
 स्थान दिखाएँ
@@ -9341,6 +10454,9 @@ Show Source
 
 Show Toolbars
 टूलबार दिखाएँ
+
+Show Typing Immediately
+टाइपिंग तुरंत दिखाएँ
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 विंडो का शीर्षक राइट-क्लिक करें या Deskbar में उसकी पंक्ति खोलें और “AirPlay पर दिखाएँ” चुनें। Viewer या Tracker से फ़िल्म चलाने के लिए “यहाँ चलाएँ” चुनें।
@@ -9444,6 +10560,9 @@ Terminal में फिर लॉगिन करें…
 Sign In Again…
 फिर लॉगिन करें…
 
+Sign In to Tailscale…
+Tailscale में लॉगिन करें…
+
 Sign In with Google
 Google से लॉगिन करें
 
@@ -9455,6 +10574,12 @@ Sign Out
 
 Sign Out…
 लॉगआउट करें…
+
+Sign in to connect this server to Tailscale.
+इस सर्वर को Tailscale से जोड़ने के लिए लॉगिन करें।
+
+Sign in to other hosts with your SSH keys
+अपनी SSH कुंजियों से दूसरे होस्ट में लॉगिन करें
 
 Sign in to {} as “{}” with your passkey?
 अपनी पासकी से {0} में “{1}” बनकर लॉगिन करें?
@@ -9477,6 +10602,12 @@ Signed in as {} ({}).
 Signed in as {}.
 {} के रूप में लॉगिन है।
 
+Signing in as {} with a key from Olo Passwords
+Olo Passwords की कुंजी से {} के रूप में लॉगिन हो रहा है
+
+Signing in as {}…
+{} के रूप में लॉगिन हो रहा है…
+
 Signing in to Fastmail…
 Fastmail में लॉगिन हो रहा है…
 
@@ -9494,6 +10625,9 @@ Size
 
 Size:
 आकार:
+
+Skill for agents
+एजेंट के लिए कौशल
 
 Skip syncing the index to disk
 इंडेक्स को डिस्क पर सिंक करना छोड़ें
@@ -9572,6 +10706,9 @@ Soft
 
 Software License
 सॉफ़्टवेयर लाइसेंस
+
+Software Update
+सॉफ़्टवेयर अपडेट
 
 Sol 6.1
 Sol 6.1
@@ -9654,6 +10791,15 @@ Speed:
 Spiral
 सर्पिल
 
+Split Down
+नीचे विभाजित करें
+
+Split Right
+दाएँ विभाजित करें
+
+Split to Fit
+जगह के अनुसार विभाजित करें
+
 Standard
 मानक
 
@@ -9671,6 +10817,9 @@ Start Over
 
 Start Over…
 नए सिरे से शुरू करें…
+
+Start Terminal Here
+यहाँ टर्मिनल शुरू करें
 
 Start Test
 परीक्षण शुरू करें
@@ -9703,6 +10852,9 @@ other: {n} घंटे पहले शुरू हुआ
 Started {n} minutes ago
 one: {n} मिनट पहले शुरू हुआ
 other: {n} मिनट पहले शुरू हुआ
+
+Starting Tailscale…
+Tailscale शुरू हो रहा है…
 
 Starting Up
 प्रारंभ हो रहा है
@@ -9764,8 +10916,14 @@ Steady sleet
 Steady snow
 लगातार बर्फ़बारी
 
+Step 1 is done. Try Again carries on from step 2.
+चरण 1 पूरा हुआ। “फिर कोशिश करें” चरण 2 से आगे बढ़ेगा।
+
 Step {} of {}
 चरण {} / {}
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+चरण 1 से {0} पूरे हुए। “फिर कोशिश करें” चरण {1} से आगे बढ़ेगा।
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 {} के बाद भी जारी है। बाकी सुधार इसके पूरा होने तक रुके हैं। अगर यह कभी पूरा न हो, तो कंप्यूटर रीस्टार्ट करने पर रुक जाएगा।
@@ -9806,6 +10964,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 {} से सिंक बंद करें? इन खातों के आइटम और यहाँ के वे बदलाव जो अभी भेजे नहीं गए हैं, इस कंप्यूटर से हट जाएँगे। 1Password में कुछ नहीं बदलेगा।
 
+Stopped before step {} of {}
+{1} में से चरण {0} से पहले रोका गया
+
 Stopped part way, {}
 बीच में रुक गया, {}
 
@@ -9817,6 +10978,9 @@ Stopped.
 
 Stopped: what was restored so far is there.
 बहाली रुक गई। अब तक बहाल हो चुके आइटम वहीं हैं।
+
+Stopping after this step…
+इस चरण के बाद रुक रहा है…
 
 Stopping the backup
 बैकअप रोका जा रहा है
@@ -10019,6 +11183,9 @@ Tab 8
 Tab 9
 टैब 9
 
+Tab {}
+टैब {}
+
 Table
 तालिका
 
@@ -10033,6 +11200,12 @@ Tabs on Agent Screens are never given a code.
 
 Tags:
 टैग:
+
+Tailscale status is unavailable.
+Tailscale की स्थिति उपलब्ध नहीं है।
+
+Tailscale: {}.
+Tailscale: {}।
 
 Take Back
 अनुमति वापस लें
@@ -10100,6 +11273,9 @@ Tell coding agents to use Olo’s Agent Screens
 Tell me of:
 इनकी सूचना दें:
 
+Tell me when an agent whose pane isn’t in front:
+मुझे बताएँ जब कोई एजेंट जिसका पैनल सामने नहीं है:
+
 Tell me when it runs out, and when it's back
 कोटा खत्म होने और फिर मिलने पर बताएँ
 
@@ -10108,6 +11284,12 @@ Tell palms apart with a palm model
 
 Tell palms apart with a palm model too
 हथेली पहचानने के लिए मॉडल भी इस्तेमाल करें
+
+Telling Codex there of them
+वहाँ Codex को उनकी जानकारी दी जा रही है
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+वहाँ Claude Code और दूसरे एजेंट को ब्रिज और Rex इस्तेमाल करने का तरीका बताता है।
 
 Temperature
 तापमान
@@ -10244,8 +11426,14 @@ MTU बाइट की संख्या है।
 The New Build
 नया बिल्ड
 
+The Rex server isn’t connected.
+Rex सर्वर जुड़ा नहीं है।
+
 The Theme’s Own
 थीम का अपना
+
+The Token Pool running on this computer is older: upgrade it first.
+इस कंप्यूटर पर चल रहा Token Pool पुराना है: पहले उसे अपग्रेड करें।
 
 The VPN couldn't be saved.
 VPN सहेज नहीं सके।
@@ -10255,6 +11443,15 @@ The account answering now
 
 The account couldn’t be saved ({}).
 खाता सहेज नहीं सके ({})।
+
+The accounts file couldn’t be read.
+खातों की फ़ाइल नहीं पढ़ सके।
+
+The accounts’ latest sign-ins are copied back here first.
+पहले खातों के ताज़ा लॉगिन वापस यहाँ कॉपी किए जाते हैं।
+
+The address has no repository’s name in it.
+इस पते में रिपॉज़िटरी का नाम नहीं है।
 
 The address search answered {}.
 पते की खोज का जवाब: {}।
@@ -10310,6 +11507,9 @@ The code from {}, at {}.
 The coming days, each its sky, low and high.
 आने वाले दिनों का मौसम, न्यूनतम और अधिकतम तापमान।
 
+The command runs once, in the new clone. Leave it empty for none.
+कमांड नए क्लोन में एक बार चलता है। कुछ न चलाने के लिए खाली छोड़ें।
+
 The computer couldn't be restarted: {}
 कंप्यूटर रीस्टार्ट नहीं हो सका: {}
 
@@ -10355,8 +11555,17 @@ The first backup starts in a moment.
 The first fine-tune failed: {}
 पहला अतिरिक्त प्रशिक्षण विफल: {}
 
+The first look is two minutes after it starts.
+पहली जाँच शुरू होने के दो मिनट बाद होती है।
+
+The folder is a place under your home there (src/name).
+यह फ़ोल्डर वहाँ आपके होम के भीतर एक जगह है (src/name)।
+
 The hand-written ones: not fine-tuned yet
 हाथ से लिखे नियम: अभी अतिरिक्त प्रशिक्षण नहीं हुआ
+
+The host didn’t say what it has.
+होस्ट ने नहीं बताया कि उस पर क्या है।
 
 The icons {} is drawn with, everywhere.
 हर जगह {} दिखाने के लिए इस्तेमाल होने वाले आइकन।
@@ -10421,6 +11630,12 @@ The last backup was {}
 The last hour of use
 पिछले घंटे का उपयोग
 
+The last install didn't go through.
+पिछला इंस्टॉल पूरा नहीं हुआ।
+
+The last install didn't go through: {}
+पिछला इंस्टॉल पूरा नहीं हुआ: {}
+
 The last whole one was {}
 पिछला पूरा बैकअप: {}
 
@@ -10432,6 +11647,9 @@ The log can't be opened: {}
 
 The login keyring couldn't be read: {}
 लॉगिन कीरिंग नहीं पढ़ सके: {}
+
+The login server isn’t running.
+लॉगिन सर्वर नहीं चल रहा।
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 सभी ऐप के आइकन, विंडो और कंट्रोल का रूप, और उनसे मेल खाता वॉलपेपर।
@@ -10483,6 +11701,12 @@ The next hours, each its sky and temperature, with the chance of rain or the clo
 
 The one it started on
 जहाँ शुरू हुआ था
+
+The ones you choose, cloned in your home folder there and set up once.
+जो आप चुनें, वे वहाँ आपके होम फ़ोल्डर में क्लोन होकर एक बार सेट अप होते हैं।
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+खुली फ़ाइलों की सीमा अगले लॉगिन से लागू होगी (खुले पैनल के लिए डिस्कनेक्ट कर फिर जुड़ने पर), और सेवाओं के लिए उनके अगले प्रारंभ से।
 
 The package service reads what’s installed and what each repository has.
 पैकेज सेवा इंस्टॉल किए पैकेज और सभी सॉफ़्टवेयर स्रोतों की सामग्री पढ़ रही है।
@@ -10565,6 +11789,9 @@ The processor
 The processor (OpenH264)
 प्रोसेसर (OpenH264)
 
+The program in this pane is asking for a password.
+इस पैनल का प्रोग्राम पासवर्ड पूछ रहा है।
+
 The repository has a worktree called {} already.
 रिपॉज़िटरी में {} नाम की वर्कट्री पहले से है।
 
@@ -10582,6 +11809,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 सर्वर का CalDAV पता, लॉगिन नाम और पासवर्ड दें। पासवर्ड आपकी लॉगिन कीरिंग में सुरक्षित रहेगा।
+
+The shared server isn’t running.
+साझा सर्वर नहीं चल रहा।
 
 The shell has ended.
 शेल समाप्त हो गया।
@@ -10697,6 +11927,9 @@ There is no limit “{}”.
 There is nothing to share.
 साझा करने के लिए कुछ नहीं है।
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+{} पर उनके लिए पर्याप्त जगह नहीं है। कम अवधि चुनें या वहाँ जगह बनाएँ।
+
 There's no Bluetooth adapter.
 कोई Bluetooth अडैप्टर नहीं है।
 
@@ -10711,6 +11944,9 @@ There's no fingerprint sensor, or fprintd isn't running.
 
 There's no infrared camera.
 इन्फ़्रारेड कैमरा नहीं है।
+
+There: {} <{}>  ·  Here: {} <{}>
+वहाँ: {} <{}>  ·  यहाँ: {} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 ये ऐप जब चाहें इन आइटम की पहुँच पा सकते हैं। अनुमति वापस लेने पर अगली बार फिर पूछा जाएगा।
@@ -10742,6 +11978,15 @@ This Computer
 This Computer's Microphones
 इस कंप्यूटर के माइक्रोफ़ोन
 
+This Olo upgrades from the build it came from, not from releases.
+यह Olo अपने स्रोत बिल्ड से अपग्रेड होता है, जारी संस्करणों से नहीं।
+
+This Olo was built from source: it upgrades from its build, not from releases.
+यह Olo स्रोत से बना है: यह अपने बिल्ड से अपग्रेड होता है, जारी संस्करणों से नहीं।
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+यह Olo होस्ट के लिए Token Pool के बिना बना है, इसलिए इसे इंस्टॉल नहीं किया जा सकता।
+
 This PDF can't be edited, so it can't be saved.
 यह PDF संपादित नहीं हो सकता, इसलिए इसे सहेजा नहीं जा सकता।
 
@@ -10766,6 +12011,9 @@ This account has a two-step password.
 This backup was made by a newer Olo.
 यह बैकअप Olo के नए संस्करण में बनाया गया था।
 
+This computer
+यह कंप्यूटर
+
 This computer has no Bluetooth.
 इस कंप्यूटर में Bluetooth नहीं है।
 
@@ -10787,6 +12035,9 @@ This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and l
 This computer's sensor sees when someone is in front of it.
 कंप्यूटर का सेंसर पहचानता है कि कोई इसके सामने है या नहीं।
 
+This computer’s git doesn’t say who you are.
+इस कंप्यूटर के git में आपकी पहचान दर्ज नहीं है।
+
 This display reports no modes.
 डिस्प्ले ने कोई मोड नहीं बताया।
 
@@ -10796,6 +12047,12 @@ This event
 This folder was moved or deleted.
 यह फ़ोल्डर हटा दिया गया है या कहीं और चला गया है।
 
+This host isn’t reached over SSH.
+इस होस्ट तक SSH से पहुँच नहीं है।
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+इस होस्ट तक SSH से पहुँच नहीं है: यहाँ से इसके खाते की स्थिति नहीं पूछी जा सकती और न ही बदली जा सकती है।
+
 This is the recommended profile for this touchpad.
 इस टचपैड के लिए यही प्रोफ़ाइल सुझाई गई है।
 
@@ -10804,6 +12061,9 @@ This isn't an Olo backup.
 
 This isn't the session at the computer, so the computer isn't restarted.
 यह कंप्यूटर का स्थानीय सत्र नहीं है, इसलिए कंप्यूटर रीस्टार्ट नहीं हुआ।
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+यह रिपॉज़िटरी का पता नहीं है (git@host:owner/name.git, या https://…)।
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 यह कर्नेल अलग-अलग डिस्क की अलग सीमा तय नहीं कर सकता (Linux 6.2 और बाद के संस्करणों में संभव है)।
@@ -10952,6 +12212,9 @@ To the next display
 To the previous display
 पिछले डिस्प्ले पर
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+इसका उपयोग करने के लिए सेटिंग ▸ होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें चुनें।
+
 To {}
 {} को
 
@@ -10997,17 +12260,29 @@ Today {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Pool ने कुछ और जवाब दिया।
+
 Token Pool asks {} to wait until one resets.
 एक कोटा रीसेट होने तक Token Pool ने {} को रुकने को कहा है।
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool नहीं चल रहा। शुरू होने पर उसके कोटा दिखेंगे।
 
+Token Pool isn’t running on this computer
+इस कंप्यूटर पर Token Pool नहीं चल रहा
+
+Token Pool isn’t running on this computer.
+इस कंप्यूटर पर Token Pool नहीं चल रहा।
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool: आयात किए खाते अभी रुके हैं। जब दूसरे कंप्यूटर का पूल उन्हें इस्तेमाल करना बंद कर दे, तब यहाँ चालू करें। हर लॉगिन अपने आप नवीनीकृत होता है। दो कंप्यूटर एक ही लॉगिन नवीनीकृत करें तो एक-दूसरे को लॉगआउट कर देते हैं।
+
+Token Pool…
+Token Pool…
 
 Token:
 टोकन:
@@ -11135,6 +12410,9 @@ Trim…
 Trust
 भरोसा करें
 
+Trust & Connect
+भरोसा करें और जुड़ें
+
 Trust this repository’s key?
 इस सॉफ़्टवेयर स्रोत की कुंजी पर भरोसा करें?
 
@@ -11198,6 +12476,12 @@ Turn off displays
 Turn off screen
 स्क्रीन बंद करें
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+“{}” के लिए अपने आप मंज़ूर करें चालू करें?\n\nयह किसी और प्रोग्राम ने माँगा है, आपने नहीं। जब इस पैन का कोडिंग एजेंट आगे बढ़ने की अनुमति माँगेगा (“Do you want to proceed?”), तो Rex {} सेकंड बाद हाँ कह देगा, जब तक आप पैन में टाइप न करें या रोकें न दबाएँ।
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+“{}” के लिए अपने आप मंज़ूर करें चालू करें?\n\nयह किसी और प्रोग्राम ने माँगा है, आपने नहीं। जब इस टैब का कोडिंग एजेंट आगे बढ़ने की अनुमति माँगेगा (“Do you want to proceed?”), तो Terminal {} सेकंड बाद हाँ कह देगा, जब तक आप टैब में टाइप न करें या रोकें न दबाएँ।
+
 Turn on for a laptop usually plugged in.
 अक्सर बिजली से जुड़े रहने वाले लैपटॉप पर इसे चालू करें।
 
@@ -11240,6 +12524,9 @@ Type a to-do above, and press Return.
 Type here to try the settings
 सेटिंग आज़माने के लिए यहाँ टाइप करें
 
+Type in All Panes
+सभी पैनल में टाइप करें
+
 Type the PIN for “{}” (often 0000).
 “{}” का PIN लिखें (अक्सर 0000 होता है)।
 
@@ -11261,8 +12548,14 @@ Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 इसे खोलने का पासवर्ड लिखें।
 
+Type the repository’s address.
+रिपॉज़िटरी का पता लिखें।
+
 Type this
 यह लिखें
+
+Type to filter…
+फ़िल्टर करने के लिए टाइप करें…
 
 Type with your palms down
 हथेलियाँ टिकाकर टाइप करें
@@ -11372,6 +12665,9 @@ Unknown caller
 Unless the app says; kept while the pointer is over it.
 ऐप की अवधि को प्राथमिकता मिलेगी। पॉइंटर रखने तक सूचना बनी रहेगी।
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Olo Passwords खोलें, या उसमें ऐसी कुंजी जोड़ें जिसे {} पर root स्वीकार करे।
+
 Unlock…
 अनलॉक करें…
 
@@ -11383,6 +12679,9 @@ Unmute
 
 Unmute All
 सभी अनम्यूट करें
+
+Unpacking
+अनपैक हो रहा है
 
 Unread notifications put a blue dot beside their app.
 अपठित सूचनाओं वाले ऐप के बगल में नीला बिंदु दिखता है।
@@ -11411,6 +12710,9 @@ Up a level
 Up for
 चालू हुए
 
+Up to date
+अप टू डेट
+
 Upcoming
 आगामी
 
@@ -11423,14 +12725,23 @@ Update Interval
 Update Only This…
 सिर्फ़ इसे अपडेट करें…
 
+Update Rex on {} to {}?
+{0} पर Rex को {1} में अपडेट करें?
+
 Update Selected Only…
 सिर्फ़ चुने हुए अपडेट करें…
 
 Update These {}…
 ये {} अपडेट करें…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+“अपडेट” Rex की रिपॉज़िटरी से नया संस्करण पूछता है और उपलब्ध होने पर उसे इंस्टॉल करता है।
+
 Update every:
 अपडेट का अंतराल:
+
+Update installs it, with Rex’s installer.
+“अपडेट” इसे Rex के इंस्टॉलर से इंस्टॉल करता है।
 
 Update the power service in Olo Doctor to use these policies.
 इन नीतियों के लिए Olo Doctor में पावर सेवा अपडेट करें।
@@ -11450,6 +12761,9 @@ Updates are downloaded and wait for the computer to restart: they’re installed
 Updating…
 अपडेट हो रहा है…
 
+Upgrade
+अपग्रेड करें
+
 Upgrade Fedora
 Fedora अपग्रेड करें
 
@@ -11458,6 +12772,9 @@ Olo अपग्रेड करें
 
 Upgrade to Fedora {}
 Fedora {} पर अपग्रेड करें
+
+Upgrading
+अपग्रेड हो रहा है
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 काम करते समय Fedora {} के सभी पैकेज डाउनलोड होंगे। रीस्टार्ट होने पर वे इंस्टॉल होंगे। इसमें समय लगेगा और उस दौरान कंप्यूटर इस्तेमाल नहीं कर सकेंगे। आपकी फ़ाइलें, सेटिंग और ऐप बने रहेंगे। पहले इस संस्करण के सभी अपडेट लगाएँ और बैकअप लें।
@@ -11470,6 +12787,9 @@ Upload at most:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 बैकअप लेते समय अपलोड होता है। बहाली और सफ़ाई में डाउनलोड होता है। सीमा तुरंत लागू होती है, जारी बैकअप पर भी।
+
+Uploading {}…
+{} अपलोड हो रहा है…
 
 Uploading: {}
 अपलोड हो रहा है: {}
@@ -11486,6 +12806,9 @@ Urgent at
 Use
 उपयोग
 
+Use Agent Screens
+एजेंट स्क्रीन इस्तेमाल करें
+
 Use Battery Saver automatically
 बैटरी बचत अपने आप चालू करें
 
@@ -11501,8 +12824,14 @@ F1, F2 आदि को सामान्य फ़ंक्शन कुंज
 Use Google Drive Instead…
 इसकी जगह Google Drive इस्तेमाल करें…
 
+Use Mine
+मेरा लगाएँ
+
 Use Music Quality
 संगीत की गुणवत्ता इस्तेमाल करें
+
+Use Olo’s Typing Helper on Hosts
+होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें
 
 Use Passwords for ssh
 SSH के लिए Passwords इस्तेमाल करें
@@ -11545,6 +12874,9 @@ Use:
 
 User
 उपयोगकर्ता
+
+User {}, over SSH
+SSH पर, उपयोगकर्ता {}
 
 Username or Site
 उपयोगकर्ता नाम या साइट
@@ -11726,11 +13058,20 @@ Waiting
 Waiting for Ethernet
 ईथरनेट की प्रतीक्षा
 
+Waiting for a key from Olo Passwords
+Olo Passwords से कुंजी की प्रतीक्षा
+
 Waiting for another fix to finish…
 दूसरे सुधार के पूरा होने की प्रतीक्षा…
 
 Waiting for app_server…
 app_server की प्रतीक्षा…
+
+Waiting for approval
+मंज़ूरी का इंतज़ार
+
+Waiting for host
+होस्ट की प्रतीक्षा
 
 Waiting for it…
 जवाब की प्रतीक्षा…
@@ -11752,6 +13093,15 @@ Waiting for the touchpad…
 
 Waiting for you to sign in to Google in the browser…
 ब्राउज़र में आपके Google लॉगिन की प्रतीक्षा…
+
+Waiting for you to sign in…
+आपके लॉगिन करने की प्रतीक्षा…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+“{}” में लॉगिन के लिए आपके कुंजी एजेंट की प्रतीक्षा है। अगर आपकी कुंजियाँ Passwords में हैं, तो वह लॉक हो सकता है।
+
+Waiting for your key agent…
+आपके कुंजी एजेंट की प्रतीक्षा…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 “{}” की अनुमति की प्रतीक्षा। उसकी Bluetooth सेटिंग में इस कंप्यूटर के लिए विकल्प देखें।
@@ -11822,6 +13172,9 @@ Week Starts On
 Weights
 वज़न
 
+Welcome to Olo Rex
+Olo Rex में स्वागत है
+
 What
 क्या
 
@@ -11867,6 +13220,9 @@ What should I wear today?
 What should I wear tomorrow?
 कल क्या पहनना ठीक रहेगा?
 
+What was done stays done. Setting it up again carries on from there.
+जो हो चुका है वह बना रहता है। फिर सेट अप करने पर वहीं से आगे बढ़ेगा।
+
 What you change applies when you leave Rescue.
 बचाव मोड से निकलने पर बदलाव लागू होंगे।
 
@@ -11905,6 +13261,12 @@ What’s coming up next week?
 
 What’s in the Trash
 रद्दी में क्या है
+
+What’s installed on {} isn’t known until it connects.
+जुड़ने तक यह नहीं पता कि {} पर क्या इंस्टॉल है।
+
+What’s installed on {} isn’t known until it’s connected.
+जुड़ने तक यह नहीं पता कि {} पर क्या इंस्टॉल है।
 
 What’s next?
 अगला कार्यक्रम क्या है?
@@ -12137,6 +13499,9 @@ Withdrawn by {}
 Word Document…
 Word दस्तावेज़…
 
+Working
+काम चल रहा है
+
 Working out what it comes to: every package it needs, and what it replaces…
 ज़रूरी पैकेज और उनकी जगह हटने वाले पैकेज गिने जा रहे हैं…
 
@@ -12197,6 +13562,9 @@ Writes
 Writing the backup’s lists…
 बैकअप की सूचियाँ लिखी जा रही हैं…
 
+Writing to disk
+डिस्क पर लिख रहा है
+
 Written
 लिखा गया
 
@@ -12211,6 +13579,9 @@ Yellow
 
 Yes
 हाँ
+
+Yes in {} s
+{} सेकंड बाद हाँ
 
 Yesterday
 बीता कल
@@ -12269,8 +13640,14 @@ Your home folder is backed up every hour, leaving out what can be downloaded or 
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 इस कंप्यूटर पर सीधे Bluetooth से अपने संदेश, संपर्क और SMS से आए एकबारगी कोड पाएँ। न कोई बिचौलिया, न कुछ और इंस्टॉल करना होगा।
 
+Your name and address on commits made there, as on this computer.
+वहाँ किए जाने वाले कमिट पर आपका नाम और पता, इस कंप्यूटर जैसा ही।
+
 Your notes, files and forwarded messages
 आपके नोट, फ़ाइलें और फ़ॉरवर्ड किए संदेश
+
+Your other devices on Tailscale can reach these sessions.
+Tailscale पर आपके दूसरे डिवाइस इन सत्रों तक पहुँच सकते हैं।
 
 Your own files and folders
 आपकी अपनी फ़ाइलें और फ़ोल्डर
@@ -12298,6 +13675,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 आपका पासवर्ड जाँच नहीं सके ({})।
+
+Your repositories
+आपकी रिपॉज़िटरी
 
 Your settings as they were are in “{}”.
 आपकी पुरानी सेटिंग “{}” में हैं।
@@ -12353,6 +13733,9 @@ Zoom In
 Zoom Out
 ज़ूम आउट करें
 
+Zoom Pane
+पैनल ज़ूम करें
+
 Zoom horizontally
 क्षैतिज ज़ूम करें
 
@@ -12407,6 +13790,20 @@ a window ({})
 a {} W power limit
 {} W की पावर सीमा
 
+about a minute left
+लगभग एक मिनट शेष
+
+about an hour left
+लगभग एक घंटा शेष
+
+about {n} hours left
+one: लगभग {n} घंटा शेष
+other: लगभग {n} घंटे शेष
+
+about {n} minutes left
+one: लगभग {n} मिनट शेष
+other: लगभग {n} मिनट शेष
+
 about {}
 लगभग {}
 
@@ -12441,11 +13838,20 @@ and {} more
 app_server's main thread: nice {}{}, {}
 app_server का मुख्य थ्रेड: nice {}{}, {}
 
+applied
+लागू
+
 as in 1Password's sidebar, or its UUID
 1Password की साइडबार वाला नाम या उसका UUID
 
 as it goes
 काम के साथ-साथ
+
+as of {}
+{} की स्थिति
+
+as the machine has it
+मशीन के अनुसार
 
 at most {}
 अधिकतम {}
@@ -12453,11 +13859,17 @@ at most {}
 at {}
 {} पर
 
+auto approving
+अपने आप मंज़ूर हो रहा है
+
 auto approving (Yes after {} s; {} answered)
 अपने आप मंज़ूरी ({} सेकंड बाद हाँ; {} जवाब दिए)
 
 backing up
 बैकअप जारी
+
+behind
+पीछे
 
 bell rang
 घंटी बजी
@@ -12473,6 +13885,9 @@ brush’s grey hints, from a tiny model of your own commands
 
 built most, the last 24 hours
 पिछले 24 घंटे में सबसे अधिक बिल्ड
+
+busy
+व्यस्त
 
 ceiling {}%
 ऊपरी सीमा {}%
@@ -12501,6 +13916,9 @@ deleting
 downgrade {n} packages
 one: {n} पैकेज का पुराना संस्करण लगाएँ
 other: {n} पैकेजों के पुराने संस्करण लगाएँ
+
+downloading
+डाउनलोड हो रहा है
 
 driving {}
 {} चला रहा है
@@ -12617,14 +14035,23 @@ install {n} packages
 one: {n} पैकेज इंस्टॉल करें
 other: {n} पैकेज इंस्टॉल करें
 
+installing
+इंस्टॉल हो रहा है
+
 it couldn't be ended: {}
 इसे समाप्त नहीं कर सके: {}
+
+it didn’t say why
+कारण नहीं बताया गया
 
 it is on a different volume from the Trash, so it can only be deleted
 यह रद्दी से अलग वॉल्यूम पर है, इसलिए इसे केवल मिटाया जा सकता है
 
 it took too long
 बहुत देर लगी
+
+its accounts are behind
+इसके खाते पीछे हैं
 
 its address can’t be found (is the computer online?)
 पता नहीं मिला (क्या कंप्यूटर ऑनलाइन है?)
@@ -12640,6 +14067,9 @@ its disk has {}
 
 its ports: {}
 इसके पोर्ट: {}
+
+its session has ended.
+इसका सत्र समाप्त हो गया है।
 
 its shells have all ended
 इसके सभी शेल बंद हो गए हैं
@@ -12695,11 +14125,20 @@ kache{} चल रहा है
 kbit/s
 kbit/s
 
+kept going
+काम जारी रखवाया जा रहा है
+
 last seen recently
 हाल में ऑनलाइन थे
 
 left to the firmware for now
 फ़िलहाल फ़र्मवेयर के हवाले
+
+less than a minute
+एक मिनट से कम
+
+less than a minute left
+एक मिनट से कम शेष
 
 level {} of 7
 7 में से स्तर {}
@@ -12728,6 +14167,9 @@ ms
 no
 नहीं
 
+no SSH keys
+कोई SSH कुंजी नहीं
+
 no display ports
 कोई डिस्प्ले पोर्ट नहीं
 
@@ -12739,6 +14181,9 @@ no limit to its space
 
 no network: it goes on once there’s one
 नेटवर्क नहीं है: जुड़ते ही जारी होगा
+
+no sessions open
+कोई सत्र खुला नहीं
 
 no wired network: it waits for one
 तार वाला नेटवर्क जुड़ने की प्रतीक्षा
@@ -12948,6 +14393,9 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh, git और दूसरे प्रोग्राम Passwords की SSH कुंजियों से लॉगिन करते हैं। हर प्रोग्राम के पहले अनुरोध पर अनुमति पूछी जाती है।
 
+ssh://you@host or host.ts.net
+ssh://you@host या host.ts.net
+
 sudo needs your password to run this{}:
 sudo को यह{} चलाने के लिए आपका पासवर्ड चाहिए:
 
@@ -13044,6 +14492,9 @@ the secret at {}
 the server answered {}
 सर्वर का जवाब: {}
 
+the server couldn’t complete the request
+सर्वर अनुरोध पूरा नहीं कर सका
+
 the service answered {}
 सेवा का जवाब: {}
 
@@ -13064,6 +14515,9 @@ the window server
 
 the {} didn't get going: {}
 {} शुरू नहीं हुआ: {}
+
+there isn’t one for {}
+{} के लिए कोई उपलब्ध नहीं
 
 these {n} backups need
 one: इस {n} बैकअप के लिए ज़रूरी
@@ -13126,8 +14580,14 @@ under a minute
 under a second
 एक सेकंड से कम
 
+unpacking
+अनपैक हो रहा है
+
 up to
 अधिकतम
+
+up to date
+अप टू डेट
 
 up to {} dpi
 अधिकतम {} dpi
@@ -13157,6 +14617,12 @@ where the scheduler puts it
 with the {n} files changed in it and not committed
 one: इसमें बदली और कमिट न हुई {n} फ़ाइल सहित
 other: इसमें बदली और कमिट न हुई {n} फ़ाइलों सहित
+
+without {}
+{} के बिना
+
+without {}, {} and {} more
+{}, {} और {} अन्य के बिना
 
 yes
 हाँ
@@ -13191,6 +14657,10 @@ other: {n} कार्यक्रम मिले
 one: कैलेंडर में {n} और देखें…
 other: कैलेंडर में {n} और देखें…
 
+{n} SSH keys
+one: {n} SSH कुंजी
+other: {n} SSH कुंजियाँ
+
 {n} agent screens are running. Click to watch them.
 one: {n} एजेंट स्क्रीन चल रही है। देखने के लिए क्लिक करें।
 other: {n} एजेंट स्क्रीन चल रही हैं। देखने के लिए क्लिक करें।
@@ -13207,6 +14677,10 @@ other: {n} बैकअप
 one: {n} बैकअप चुना गया।
 other: {n} बैकअप चुने गए।
 
+{n} cloned
+one: {n} क्लोन हुआ
+other: {n} क्लोन हुए
+
 {n} coming up
 one: {n} आगामी कार्य
 other: {n} आगामी कार्य
@@ -13214,6 +14688,10 @@ other: {n} आगामी कार्य
 {n} conversations
 one: {n} बातचीत
 other: {n} बातचीत
+
+{n} couldn’t be done
+one: {n} नहीं हो सका
+other: {n} नहीं हो सके
 
 {n} days
 one: {n} दिन
@@ -13239,6 +14717,10 @@ other: {n} फ़ाइलें
 one: {n} फ़ाइल पढ़ी नहीं जा सकी।
 other: {n} फ़ाइलें पढ़ी नहीं जा सकीं।
 
+{n} files to copy
+one: {n} फ़ाइल कॉपी करनी है
+other: {n} फ़ाइलें कॉपी करनी हैं
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 one: AirPlay रिसीवर पर {n} फ़िल्म चल रही है। थामने या बंद करने के लिए क्लिक करें।
 other: AirPlay रिसीवर पर {n} फ़िल्में चल रही हैं। थामने या बंद करने के लिए क्लिक करें।
@@ -13246,6 +14728,14 @@ other: AirPlay रिसीवर पर {n} फ़िल्में चल र
 {n} folders couldn't be read
 one: {n} फ़ोल्डर नहीं पढ़ सके
 other: {n} फ़ोल्डर नहीं पढ़ सके
+
+{n} folders taken
+one: {n} फ़ोल्डर भरा है
+other: {n} फ़ोल्डर भरे हैं
+
+{n} forwarded ports are waiting.
+one: {n} फ़ॉरवर्ड पोर्ट प्रतीक्षारत है।
+other: {n} फ़ॉरवर्ड पोर्ट प्रतीक्षारत हैं।
 
 {n} hours
 one: {n} घंटा
@@ -13303,6 +14793,10 @@ other: {n} पैक के चेकसम भेजे गए डेटा स
 one: AirPlay रिसीवर पर {n} आइटम चल या दिख रहा है। थामने या बंद करने के लिए क्लिक करें।
 other: AirPlay रिसीवर पर {n} आइटम चल या दिख रहे हैं। थामने या बंद करने के लिए क्लिक करें।
 
+{n} ports forwarded here.
+one: {n} पोर्ट यहाँ फ़ॉरवर्ड है।
+other: {n} पोर्ट यहाँ फ़ॉरवर्ड हैं।
+
 {n} problems reading 1Password…
 one: 1Password पढ़ने में {n} समस्या…
 other: 1Password पढ़ने में {n} समस्याएँ…
@@ -13330,6 +14824,18 @@ other: {n} सेकंड
 {n} secrets
 one: {n} गोपनीय मान
 other: {n} गोपनीय मान
+
+{n} sessions
+one: {n} सत्र
+other: {n} सत्र
+
+{n} sessions open
+one: {n} सत्र खुला है
+other: {n} सत्र खुले हैं
+
+{n} sessions there.
+one: वहाँ {n} सत्र है।
+other: वहाँ {n} सत्र हैं।
 
 {n} shares, control among them. Click to stop them.
 one: {n} साझाकरण चालू है, नियंत्रण सहित। रोकने के लिए क्लिक करें।
@@ -13371,6 +14877,12 @@ other: {n} आइटम ऐप में लंबित हैं
 one: {n} हफ़्ता
 other: {n} हफ़्ते
 
+{}  ·  Set up with nothing
+{}  ·  कोई सेटअप कमांड नहीं
+
+{}  ·  Set up with {}
+{}  ·  सेटअप: {}
+
 {} (AV1 and VP9)
 {} (AV1 और VP9)
 
@@ -13379,6 +14891,9 @@ other: {n} हफ़्ते
 
 {} (in use)
 {} (इस्तेमाल में)
+
+{} (installed)
+{} (इंस्टॉल है)
 
 {} (lower wins)
 {} (कम मान को प्राथमिकता)
@@ -13449,6 +14964,9 @@ other: {n} हफ़्ते
 {} a second
 {} प्रति सेकंड
 
+{} accounts
+{} खाते
+
 {} ago · click a graph for another moment
 {} पहले · दूसरे क्षण के लिए ग्राफ़ पर क्लिक करें
 
@@ -13463,6 +14981,9 @@ other: {n} हफ़्ते
 
 {} answered {} (not a speed test server?)
 {} का जवाब {} था (शायद यह गति परीक्षण सर्वर नहीं है?)
+
+{} answering now
+अभी जवाब: {}
 
 {} applications are keeping the display awake.
 {} ऐप डिस्प्ले को जागता रख रहे हैं।
@@ -13491,11 +15012,17 @@ other: {n} हफ़्ते
 {} cleared · kept for {} days, the last {}
 {} हटाई गईं · {} दिन तक नवीनतम {} रखें
 
+{} continued there
+{} वहाँ जारी रहे
+
 {} copied: 1Password doesn’t let other apps read its archive.
 {} कॉपी हुए। 1Password दूसरे ऐप को अपना संग्रह पढ़ने नहीं देता।
 
 {} couldn't be found: {}
 {} नहीं मिला: {}
+
+{} couldn’t be cloned: {}
+{} क्लोन नहीं हो सका: {}
 
 {} couldn’t be unpacked.
 {} खोला नहीं जा सका।
@@ -13518,8 +15045,17 @@ other: {n} हफ़्ते
 {} didn't start pairing: {}.
 {} ने पेयरिंग शुरू नहीं की: {}।
 
+{} didn’t accept your keys for root
+{} ने root के लिए आपकी कुंजियाँ स्वीकार नहीं कीं
+
+{} didn’t accept your keys for {}
+{0} ने {1} के लिए आपकी कुंजियाँ स्वीकार नहीं कीं
+
 {} didn’t download: {}
 {} डाउनलोड नहीं हुआ: {}
+
+{} didn’t say how its limits stand.
+{} ने अपनी सीमाओं की स्थिति नहीं बताई।
 
 {} different commands, of {} run
 {1} बार चलाई गई कमांड में {0} अलग कमांड
@@ -13569,8 +15105,20 @@ other: {n} हफ़्ते
 {} h {} min
 {} घंटे {} मिनट
 
+{} hasn’t answered for over a minute
+{} ने एक मिनट से अधिक समय से जवाब नहीं दिया
+
+{} hasn’t answered for over {} minutes
+{} ने {} मिनट से अधिक समय से जवाब नहीं दिया
+
+{} hasn’t answered for {} seconds
+{} ने {} सेकंड से जवाब नहीं दिया
+
 {} hours ago
 {} घंटे पहले
+
+{} in
+{} इनपुट
 
 {} in all
 कुल {}
@@ -13605,6 +15153,9 @@ other: {n} हफ़्ते
 {} is Fedora’s own: it can be turned off, not removed.
 {} Fedora का अपना स्रोत है। इसे बंद कर सकते हैं, हटा नहीं सकते।
 
+{} is available.
+{} उपलब्ध है।
+
 {} is back
 {} फिर उपलब्ध है
 
@@ -13619,6 +15170,15 @@ other: {n} हफ़्ते
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {} ने इनपुट डिवाइस अपने नियंत्रण में ले रखे हैं। इससे नियंत्रित माउस इसके वर्चुअल पॉइंटर से चलता है और यहाँ की सेटिंग उस पर लागू नहीं होती।
+
+{} is installed
+{} इंस्टॉल है
+
+{} is installed  ·  up to date
+{} इंस्टॉल है  ·  अप टू डेट
+
+{} is installed  ·  {} is available
+{} इंस्टॉल है  ·  {} उपलब्ध है
 
 {} is protected by a password.
 {} पासवर्ड से सुरक्षित है।
@@ -13674,6 +15234,9 @@ other: {n} हफ़्ते
 {} keys
 {} कुंजियाँ
 
+{} keys, at {}
+{} कुंजियाँ, {} पर
+
 {} knows this computer.
 {} इस कंप्यूटर को पहचानता है।
 
@@ -13725,6 +15288,9 @@ other: {n} हफ़्ते
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 बैकअप में नया डेटा {} · संपीड़ित और एन्क्रिप्ट करके {} भेजा ({}/सेकंड{})
 
+{} now, {} suggested
+अभी {}, सुझाया गया {}
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 Olo के {1} संदेशों में से {0} अभी {2} में हैं। बाकी अंग्रेज़ी में दिखेंगे।
 
@@ -13758,6 +15324,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} of {} Events Found
 {1} में से {0} कार्यक्रम मिले
 
+{} of {} cloned
+{1} में से {0} क्लोन हुए
+
 {} of {} connected.
 {1} में से {0} जुड़े हैं।
 
@@ -13779,6 +15348,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} of {} read back
 {1} में से {0} वापस पढ़ा
 
+{} of {} ready
+{1} में से {0} तैयार
+
 {} of {} selected
 {1} में से {0} चुने गए
 
@@ -13788,11 +15360,26 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} of {} slots
 स्लॉट {} / {}
 
+{} of {} to change
+{1} में से {0} बदलने हैं
+
 {} on Workspace {}
 कार्यक्षेत्र {1} पर {0}
 
 {} on this computer
 इस कंप्यूटर पर {}
+
+{} on {}?
+{1} पर {0}?
+
+{} on {}…
+{1} पर {0}…
+
+{} open
+{} खुले
+
+{} out
+{} आउटपुट
 
 {} over 5 ms in the last minute, the longest {}
 पिछले मिनट में {} बार 5 ms से अधिक, सबसे लंबा {}
@@ -13821,6 +15408,12 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} repositories, {} on. Packages come from those that are on.
 {} सॉफ़्टवेयर स्रोतों में {} चालू हैं। पैकेज चालू स्रोतों से आते हैं।
 
+{} requests running
+{} अनुरोध चल रहे हैं
+
+{} requests today
+आज {} अनुरोध
+
 {} right first
 पहला सुझाव {} सही
 
@@ -13829,6 +15422,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 
 {} s ago
 {} सेकंड पहले
+
+{} said:
+{} ने कहा:
 
 {} shared with this screen
 इस स्क्रीन से {} साझा
@@ -13841,6 +15437,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 पिछले मिनट में {} कदम (पहिए के खटके या टचपैड की हरकतें)
+
+{} still isn’t set up
+{} अभी तक सेट अप नहीं हुआ
 
 {} stopped answering: {}
 {} ने जवाब देना बंद किया: {}
@@ -13856,6 +15455,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 चैट के {} बदलाव (संग्रह, पढ़ा हुआ, म्यूट या पिन) भेजने बाकी हैं। अभी न भेजे जा सकने वाले बदलाव अगली बार Telegram खोलने पर जाएँगे।
+
+{} to copy
+{} कॉपी करने हैं
 
 {} to deal with, {}
 {} पर कार्रवाई बाकी, {}
@@ -13950,6 +15552,12 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} — {} ({}% of this folder){}{}
 {} — {} (इस फ़ोल्डर का {}%){}{}
 
+{}%  ·  {}
+{}%  ·  {}
+
+{}%  ·  {}  ·  {}
+{}%  ·  {}  ·  {}
+
 {}% chance this hour
 इस घंटे वर्षण की {}% संभावना
 
@@ -14004,6 +15612,12 @@ RAM का {}%
 {}, on set days
 {}, तय दिनों पर
 
+{}, over SSH
+SSH पर, {}
+
+{}, over Tailscale
+Tailscale पर, {}
+
 {}, until {}
 {}, {} तक
 
@@ -14015,6 +15629,9 @@ RAM का {}%
 
 {}, {} shown in this Terminal.
 {}, इस Terminal में {} दिख रहे हैं।
+
+{}, {}%
+{}, {}%
 
 {}, {}% of its life used
 {}, आयु का {}% इस्तेमाल हुआ
@@ -14058,6 +15675,9 @@ RAM का {}%
 {}: a whole number, please
 {}: एक पूर्णांक लिखें
 
+{}: expected auto, conservative, or off
+{}: auto, conservative या off अपेक्षित था
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: हर बार PIN माँगता है, इसलिए छूना पासवर्ड की जगह काम नहीं करेगा
 
@@ -14072,6 +15692,12 @@ RAM का {}%
 
 {}: not here yet
 {}: अभी यहाँ नहीं है
+
+{}: off
+{}: बंद
+
+{}: on
+{}: चालू
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}: इस कंप्यूटर पर फिर लॉगिन करें (हर कंप्यूटर अलग लॉगिन करता है)।
@@ -14124,6 +15750,9 @@ RAM का {}%
 {}’s data centre
 {} का डेटा सेंटर
 
+{}’s package manager checked Rex’s repository when this window opened.
+यह विंडो खुलते समय {} के पैकेज प्रबंधक ने Rex की रिपॉज़िटरी जाँची।
+
 {}″ ({} × {} mm), {} pixels per inch
 {} इंच ({} × {} mm), {} पिक्सेल प्रति इंच
 
@@ -14133,6 +15762,9 @@ RAM का {}%
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle, ~/.m2/repository, प्रोजेक्ट का .gradle
 
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin: जहाँ एजेंट और Rex रखे जाते हैं, ताकि वहाँ के आपके शेल उन्हें पा सकें।
+
 ~/.local/share/Trash
 ~/.local/share/Trash
 
@@ -14147,6 +15779,18 @@ RAM का {}%
 
 ~/worktrees
 ~/worktrees
+
+~/{} already holds another repository on {}: {}
+{1} पर ~/{0} में पहले से दूसरी रिपॉज़िटरी है: {2}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+{1} पर ~/{0} में पहले से कुछ और है। उसे हटाएँ, या फ़ोल्डर “संपादित करें…” से बदलें।
+
+~/{} already holds something else. Choose… to see it.
+~/{} में पहले से कुछ और है। इसे देखने के लिए “चुनें…” दबाएँ।
+
+~/{} is already {}’s folder. Type another one.
+~/{} पहले से {} का फ़ोल्डर है। कोई दूसरा नाम लिखें।
 
 ·
 ·
@@ -14162,6 +15806,9 @@ RAM का {}%
 
 ½ second
 आधा सेकंड
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 “[{}]” सॉफ़्टवेयर स्रोत की ID नहीं है।
@@ -14213,6 +15860,12 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 “{}” में पैकेज का पता नहीं दिया है (baseurl, metalink या mirrorlist नहीं है)।
 
+“{}” has no sessions.
+“{}” में कोई सत्र नहीं है।
+
+“{}” has no terminals.
+“{}” में कोई टर्मिनल नहीं है।
+
 “{}” has no {}.
 “{}” में {} नहीं है।
 
@@ -14233,6 +15886,9 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 “{}” कनेक्ट है, पर उसके संदेश जवाब नहीं दे रहे। Olo कोशिश जारी रखे हुए है।
+
+“{}” is disconnected.
+“{}” डिस्कनेक्ट है।
 
 “{}” is imported.
 “{}” आयात हो गया।
@@ -14332,39 +15988,3 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 ⌘ Command (the Super key)
 ⌘ Command (Super कुंजी)
-
-Auto Approve answers Yes in {} s
-अपने आप मंज़ूरी {} सेकंड बाद हाँ कहेगी
-
-kept going
-काम जारी रखवाया जा रहा है
-
-auto approving
-अपने आप मंज़ूर हो रहा है
-
-Waiting for approval
-मंज़ूरी का इंतज़ार
-
-Working
-काम चल रहा है
-
-Error
-गड़बड़ी
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-“{}” के लिए अपने आप मंज़ूर करें चालू करें?\n\nयह किसी और प्रोग्राम ने माँगा है, आपने नहीं। जब इस पैन का कोडिंग एजेंट आगे बढ़ने की अनुमति माँगेगा (“Do you want to proceed?”), तो Rex {} सेकंड बाद हाँ कह देगा, जब तक आप पैन में टाइप न करें या रोकें न दबाएँ।
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-“{}” के लिए अपने आप मंज़ूर करें चालू करें?\n\nयह किसी और प्रोग्राम ने माँगा है, आपने नहीं। जब इस टैब का कोडिंग एजेंट आगे बढ़ने की अनुमति माँगेगा (“Do you want to proceed?”), तो Terminal {} सेकंड बाद हाँ कह देगा, जब तक आप टैब में टाइप न करें या रोकें न दबाएँ।
-
-Yes in {} s
-{} सेकंड बाद हाँ
-
-Keep It Going in “{}”
-“{}” में काम जारी रखें
-
-Auto Approve in “{}”
-“{}” में अपने आप मंज़ूर करें
-
-An agent is at rest here
-यहाँ एक एजेंट रुका हुआ है

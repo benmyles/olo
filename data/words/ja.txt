@@ -64,8 +64,17 @@ other: ほか{n}件
 1 Minute
 1分
 
+1 SSH key
+SSH鍵 1個
+
 1 Second
 1秒
+
+1 account
+1アカウント
+
+1 couldn’t be cloned
+1件クローンできませんでした
 
 1 day before
 1日前
@@ -82,8 +91,17 @@ other: ほか{n}件
 1 minute
 1分
 
+1 request running
+実行中のリクエスト 1件
+
+1 request today
+今日のリクエスト 1件
+
 1 second
 1秒
+
+1 session
+1セッション
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. アカウントのパスワードを入力し、「設定する」を選びます。このキーでしか解除できないようにパスワードを保護します。
@@ -163,6 +181,9 @@ other: ほか{n}件
 2 hours before
 2時間前
 
+2 items
+2件
+
 2 minutes
 2分
 
@@ -232,6 +253,9 @@ other: ほか{n}件
 4 hours
 4時間
 
+4 items
+4件
+
 4 weeks
 4週間
 
@@ -274,6 +298,9 @@ other: ほか{n}件
 52 weeks
 52週間
 
+6 items
+6件
+
 6 months
 6か月
 
@@ -312,6 +339,9 @@ A Disk or Folder
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 4K画面を録画するとき、GPUのエンコーダーは1フレームに約15 ms、CPUは約110 msかかります。動きが激しくてもGPUなら全フレームを記録できます。CPUでは毎秒約9フレームです。
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+Rexホストにもこれらのアカウントを持つ専用のToken Poolを置けます。このコンピューターの電源が切れていても、そのホストのClaude CodeとCodexが動き続けます。
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 サーバーまたはwg-quickのWireGuard設定ファイルを鍵と一緒に保存します。接続中はその設定のDNSサーバーだけを使います。
@@ -358,6 +388,9 @@ A finger on the fingerprint sensor can stand for your password. Fingers enrolled
 A frame dropped in the last minute
 直近1分にフレーム落ちあり
 
+A key with no name
+名前のない鍵
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 コントロール、メニュー項目、ウィンドウ、Deskbarに文字が付きます。文字を入力すると対象を選ぶか、中の項目に文字を表示します。Backspaceで戻り、Escで非表示にします。
 
@@ -393,6 +426,12 @@ A new build of Olo is ready ({}). Install it now? Your windows stay open.
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 新しいOloビルド（{}）をインストールするとウィンドウサーバーが再起動します。Oloのウィンドウは開いたままですが、{}は閉じます。
+
+A new name for the session “{}”:
+セッション「{}」の新しい名前：
+
+A new name for the tab “{}”:
+タブ「{}」の新しい名前：
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 ホイール1目盛りでスクロールする距離を、ChromeなどでもOloのアプリと同じにします。
@@ -499,6 +538,9 @@ APIキー:
 About 
 アプリ情報: 
 
+About Olo
+Oloについて
+
 About Olo Desktop
 Olo Desktopについて
 
@@ -520,14 +562,23 @@ Access
 Account
 アカウント
 
+Account on “{}”
+「{}」のアカウント
+
 Account:
 アカウント:
 
 Accounts
 アカウント
 
+Accounts that may sign in through the login server, kept in {}.
+ログインサーバー経由でサインインを許可するアカウント（{}に保存）。
+
 Accounts:
 アカウント:
+
+Account…
+アカウント…
 
 Action
 アクション
@@ -580,6 +631,12 @@ Add Fingerprint
 Add Graph
 グラフを追加
 
+Add Host
+ホストを追加
+
+Add Host…
+ホストを追加…
+
 Add Kind
 種類を追加
 
@@ -591,6 +648,9 @@ Add Place…
 
 Add RPM Fusion
 RPM Fusionを追加
+
+Add Repository
+リポジトリを追加
 
 Add Repository…
 リポジトリを追加…
@@ -649,6 +709,9 @@ Add an account in Preferences
 Add lunch tomorrow at noon
 明日の正午に昼食の予定を追加
 
+Add one in Rex or in Preferences ▸ Rex.
+Rexまたは環境設定 ▸ Rexで追加してください。
+
 Add the one-time code this page shows to your login {}?
 このページのワンタイムコードをログイン項目「{}」に追加しますか？
 
@@ -675,6 +738,9 @@ Address:
 
 Addresses can’t be looked up: {}
 アドレスを検索できません：{}
+
+Add…
+追加…
 
 Adjust Size
 サイズを調整
@@ -732,6 +798,18 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 エージェント画面
+
+Agent sessions
+エージェントセッション
+
+Agent settings
+エージェント設定
+
+Agents
+エージェント
+
+Agents and settings in your account there.
+リモートアカウント上のエージェントと設定。
 
 Agree
 同意する
@@ -793,8 +871,14 @@ All Metric
 All Preferences
 すべての環境設定
 
+All Set
+設定完了
+
 All accounts together
 全アカウントをまとめる
+
+All agents and shells are quiet.
+動作中のエージェントやシェルはありません。
 
 All day
 終日
@@ -807,6 +891,9 @@ Oloの全{0}項目を{1}で利用できます。
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 これらの設定はすべてコンピューター全体のものなので、変更には管理者のパスワードが必要です。
+
+All time
+すべての期間
 
 All waiting
 すべて待機中
@@ -832,6 +919,12 @@ Allow Sleep (awake until {})
 Allow it on the phone
 電話で許可
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+「{}」上のプログラムにSSH鍵でのサインインを許可しますか？ リモートの端末がRex経由で要求しています。
+
+Allow {} to sign in to your hosts with your SSH keys?
+{}がSSH鍵を使ってホストにサインインするのを許可しますか？
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 「{}」に{}{}の使用を許可しますか？「常に許可」を選ぶと、「ファイル」▸「許可したアプリ…」で取り消すまでアクセスできます。
 
@@ -846,6 +939,9 @@ Deskbarのカップをクリックしても操作できます。
 
 Also leave out:
 追加の除外項目:
+
+Also used by
+他の利用先
 
 Also when running on battery
 バッテリー駆動時も実行
@@ -891,6 +987,9 @@ An account can answer again.
 
 An administrator's password is needed.
 管理者のパスワードが必要です。
+
+An agent is at rest here
+ここでエージェントが待機中です
 
 An app
 アプリ
@@ -952,17 +1051,35 @@ Answering now
 Answering now · {}
 応答中 · {}
 
+Anthropic’s coding agent.
+Anthropicのコーディングエージェント。
+
+Antigravity
+Antigravity
+
 Any of the {}
 {}のいずれか
 
 Any storms on the way?
 雷雨が近づいていますか？
 
+Any tagged device on the tailnet
+tailnet上のタグ付きデバイスすべて
+
 Any time
 時刻指定なし
 
 Any touch
 すべてのタッチ
+
+Anyone at all
+誰でも
+
+Anyone on the tailnet
+tailnet上の全員
+
+Anyone who is identified
+認証済みの全員
 
 App
 アプリ
@@ -1081,6 +1198,12 @@ As in Themes ({})
 As it goes
 制限なし
 
+As on this computer
+このコンピューターと同じ
+
+As root, over SSH
+SSH経由でrootとして
+
 As set now
 現在の設定
 
@@ -1093,8 +1216,14 @@ As the other mice
 As wide as the widgets
 ウィジェットの幅に合わせる
 
+As {}, over SSH
+SSH経由で{}として
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 {}として調整：nice {} → {}、スケジューリング {}、I/O優先度 {}{}。使用中のアプリとOloの応答性を保ちます。
+
+As {}’s package manager last heard from Rex’s repository.
+{}のパッケージマネージャーがRexのリポジトリから最後に取得した情報です。
 
 Ask
 確認する
@@ -1138,11 +1267,20 @@ Ask what to do about urgent ones
 Asked now:
 使用中のサーバー:
 
+Asking
+確認中
+
+Asking GitHub for Olo's releases…
+GitHubでOloのリリースを確認中…
+
 Asking Passwords…
 Passwordsに問い合わせ中…
 
 Asking Telegram…
 Telegramに問い合わせ中…
+
+Asking how Rex is set up there
+リモートのRex設定を確認中
 
 Asking it…
 問い合わせ中…
@@ -1219,6 +1357,9 @@ Attach a file or a link
 Attach what's on the clipboard
 クリップボードの内容を添付
 
+Attaching terminal stream…
+端末ストリームに接続中…
+
 Attachments
 添付項目
 
@@ -1233,6 +1374,12 @@ Auto
 
 Auto Approve
 自動承認
+
+Auto Approve answers Yes in {} s
+自動承認が{}秒後に「はい」と答えます
+
+Auto Approve in “{}”
+「{}」で自動承認
 
 Auto Approve: Yes in {} s
 自動承認：{}秒後に「はい」
@@ -1447,6 +1594,18 @@ Before import {}.{}
 Begin
 開始
 
+Behind
+未同期
+
+Behind since {}
+{}から未同期
+
+Being installed…
+インストール中…
+
+Being updated…
+アップデート中…
+
 Benchmark…
 ベンチマーク…
 
@@ -1570,17 +1729,26 @@ Oloに取り込む…
 Brown
 茶色
 
+Browse Folders…
+フォルダーを参照…
+
 Bug Fixes
 不具合の修正
 
 Builds
 ビルド
 
+Builds and agents open many files and start many tasks at once.
+ビルドやエージェントは多数のファイルを同時に開き、多くのタスクを起動します。
+
 Builds by the hour
 時間帯別ビルド数
 
 Builds go on without the cache until it starts.
 キャッシュが起動するまではキャッシュなしでビルドします。
+
+Built from source
+ソースからビルド
 
 Built incrementally
 差分ビルド
@@ -1774,6 +1942,9 @@ Capture debug information whenever a frame drops
 Cards
 カード
 
+Carrying the accounts
+アカウントを同期中
+
 Cascade All
 すべて重ねて表示
 
@@ -1855,8 +2026,17 @@ CPUの周波数制御を変更中
 Changing the cores process {} may use
 プロセス{}に割り当てるコアを変更中
 
+Changing the machine’s settings as {}
+{}としてマシンの設定を変更中
+
 Changing the priority of process {}
 プロセス{}の優先度を変更中
+
+Changing the rex group as {}
+{}としてrexグループを変更中
+
+Changing {} as {}
+{1}として{0}を変更中
 
 Changing…
 変更中…
@@ -1879,6 +2059,9 @@ Check Again
 Check Health
 整合性を確認
 
+Check Now
+今すぐ確認
+
 Check Spelling While Typing
 入力中にスペルを確認
 
@@ -1888,11 +2071,17 @@ Check everything
 Check for Updates
 アップデートを確認
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+アカウント名と、いずれかの公開鍵がリモートの~{}/.ssh/authorized_keysに登録されていることを確認してください。
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 選択したバックアップを簡易検証します。必要なデータが揃っているか調べ、保存先と送信時のチェックサムを比較します。各バックアップの直後と同じように、一部を読み戻して確認し、破損があれば可能な範囲で修復します。
 
 Checked
 確認済み
+
+Checked {}
+確認：{}
 
 Checking for updates…
 アップデートを確認中…
@@ -1945,6 +2134,12 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 一覧からチャットを選ぶとメッセージを送れます。
 
+Choose a host to connect it, disconnect it or manage it.
+接続、切断、または管理するホストを選んでください。
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+リモートのrootが受け入れる鍵を選んでください。使える鍵がない場合は、公開鍵をそのマシンの/root/.ssh/authorized_keysに追加してから再試行してください。
+
 Choose a network to join it.
 接続するネットワークを選んでください。
 
@@ -1959,6 +2154,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 すべてのアップデートを選択
+
+Choose how they look and sound in Notifications.
+見た目とサウンドは「通知」で設定できます。
 
 Choose what to scan:
 スキャン対象を選択:
@@ -2019,6 +2217,15 @@ Claude CodeとCodexに、作業内容をタブ名に付け、作業が変わっ�
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 タブグループが複数のリポジトリにまたがる場合、Claude CodeとCodexにグループ名とリポジトリ・ワークツリーの一覧を渡し、自分の作業場所を示します。Codexは初回のみTerminalのフックを信頼するか確認します（/hooks）。
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+リモートで再開するためのClaude Code、Codex、Antigravityのセッション。
+
+Claude Code and Codex there go back to their own sign-ins.
+リモートのClaude CodeとCodexは各自のサインインに戻ります。
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+リモートのClaude CodeとCodexは各自のサインインに戻ります。先に最新のサインイン情報をこのコンピューターへコピーします。
 
 Clean Up
 整理
@@ -2122,6 +2329,21 @@ Clients
 Clock
 時計
 
+Clone
+クローン
+
+Clone {}
+{}件をクローン
+
+Cloned
+クローン済み
+
+Cloning {}…
+{}をクローン中…
+
+Cloning…
+クローン中…
+
 Close
 閉じる
 
@@ -2139,6 +2361,9 @@ Close Other Tabs
 
 Close Others
 ほかを閉じる
+
+Close Pane
+ペインを閉じる
 
 Close Tab
 タブを閉じる
@@ -2314,8 +2539,14 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 Google Driveを接続…
 
+Connect Remote Host…
+リモートホストに接続…
+
 Connect automatically when you put them in near this computer
 このコンピューターの近くで装着したら自動接続
+
+Connect when Rex starts
+Rexの起動時に接続する
 
 Connect with a Token…
 トークンで接続…
@@ -2328,6 +2559,9 @@ Connected
 
 Connected as {}, through {}.
 {}として{}経由で接続しました。
+
+Connected to Tailscale.
+Tailscaleに接続しました。
 
 Connected to “{}”
 「{}」に接続済み
@@ -2347,14 +2581,32 @@ Connected.
 Connecting to Telegram…
 Telegramに接続中…
 
+Connecting to {}…
+{}に接続中…
+
 Connecting to “{}”…
 「{}」に接続中…
 
 Connecting…
 接続中…
 
+Connecting… Your key agent is asking you about this sign-in.
+接続中… 鍵エージェントがこのサインインの確認を求めています。
+
 Connection
 接続
+
+Connection lost just now.
+たった今接続が切れました。
+
+Connection lost {n} days ago.
+other: {n}日前に接続が切れました。
+
+Connection lost {n} hours ago.
+other: {n}時間前に接続が切れました。
+
+Connection lost {n} minutes ago.
+other: {n}分前に接続が切れました。
 
 Connection:
 接続:
@@ -2419,11 +2671,17 @@ Coprプロジェクト
 Copy
 コピー
 
+Copy Address
+アドレスをコピー
+
 Copy Code
 コードをコピー
 
 Copy Conversation
 会話をコピー
+
+Copy Debug Info
+デバッグ情報をコピー
 
 Copy Here
 ここにコピー
@@ -2433,6 +2691,9 @@ Copy Latest Code
 
 Copy Link
 リンクをコピー
+
+Copy Mode
+コピーモード
 
 Copy Name
 名前をコピー
@@ -2452,6 +2713,12 @@ Copy Path
 Copy Reference
 参照をコピー
 
+Copy Screen as HTML
+画面をHTMLとしてコピー
+
+Copy Screen as Text
+画面をテキストとしてコピー
+
 Copy Text
 テキストをコピー
 
@@ -2460,6 +2727,9 @@ Copy Username
 
 Copy Value
 値をコピー
+
+Copy Version Info
+バージョン情報をコピー
 
 Copy a code no tab is waiting for
 どのタブも待っていないコードはコピーする
@@ -2476,8 +2746,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Btrfs の断片化を防ぐため index.db のコピーオンライトはオフです。ストアは reflink のためオンのままです。戻すと kache が一時的に再起動します。
 
+Copying sessions…
+セッションをコピー中…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 1Passwordの{}にある項目をコピーしています。1PasswordがPasswordsの許可を求めたら「許可」を選んでください。必要ならロックを解除します。
+
+Copying…
+コピー中…
 
 Core
 コア
@@ -2488,11 +2764,17 @@ Cores
 Couldn't be cached
 キャッシュ不可
 
+Couldn't check for a newer release.
+新しいリリースを確認できませんでした。
+
 Couldn't create a folder: {}
 フォルダーを作成できません：{}
 
 Couldn't create a link: {}
 リンクを作成できません：{}
+
+Couldn't look for a newer release: {}
+新しいリリースを確認できませんでした：{}
 
 Couldn't paste: {}
 貼り付けできません：{}
@@ -2530,14 +2812,38 @@ Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
 {}の検証に失敗しました：{}。
 
+Couldn’t be cloned
+クローンできませんでした
+
+Couldn’t be copied
+コピーできませんでした
+
+Couldn’t be installed
+インストールできませんでした
+
+Couldn’t be set
+設定できませんでした
+
 Couldn’t change this vault in 1Password. {}
 1Passwordで保管庫を変更できませんでした。{}
+
+Couldn’t clone
+クローン失敗
+
+Couldn’t copy the file from the host.
+ホストからファイルをコピーできませんでした。
 
 Couldn’t delete it in 1Password. {}
 1Passwordで項目を削除できませんでした。{}
 
 Couldn’t delete this vault from 1Password. {}
 1Passwordから保管庫を削除できませんでした。{}
+
+Couldn’t get a sign-in link: {}.
+サインイン用リンクを取得できませんでした：{}。
+
+Couldn’t install
+インストール失敗
 
 Couldn’t keep the approval: {}
 承認内容を保存できません：{}
@@ -2551,14 +2857,32 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 項目一覧を取得できませんでした。{}
 
+Couldn’t look at {}
+{}を確認できませんでした
+
+Couldn’t look at {} again
+{}を再確認できませんでした
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 1Passwordで保管庫を作成できず、中の項目も送信できませんでした。{}
+
+Couldn’t open the file.
+ファイルを開けませんでした。
+
+Couldn’t open the sign-in page: {}.
+サインインページを開けませんでした：{}。
 
 Couldn’t open this item: {}
 この項目を開けません：{}
 
+Couldn’t paste the picture.
+画像をペーストできませんでした。
+
 Couldn’t reach the login keyring: {}
 ログインキーリングに接続できません：{}
+
+Couldn’t reach {}
+{}に接続できませんでした
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 1Password側のコピーを読み取って比較できなかったため、手元の変更は送信していません。{}
@@ -2602,8 +2926,20 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 許可を取り消せません：{}
 
+Couldn’t turn off Tailscale: {}.
+Tailscaleをオフにできませんでした：{}。
+
+Couldn’t turn on Tailscale: {}.
+Tailscaleをオンにできませんでした：{}。
+
 Couldn’t write the shared copy: {}
 共有コピーを書き込めません：{}
+
+Couldn’t {}
+「{}」を実行できませんでした
+
+Couldn’t {} on {}
+{1}で「{0}」を実行できませんでした
 
 Count accounts turned off or signed out
 無効またはサインアウト済みのアカウントも含める
@@ -2953,6 +3289,9 @@ Developer Tools
 Device
 デバイス
 
+Devices tagged {}, over Tailscale
+Tailscale経由で{}タグ付きデバイス
+
 Dew point
 露点
 
@@ -2965,8 +3304,14 @@ Dew point spread {}
 Dew point {}
 露点 {}
 
+Diagnostics…
+診断…
+
 Diff
 Diff
+
+Differs from this computer
+このコンピューターと異なります
 
 Dim the built-in display when idle
 アイドル時に内蔵ディスプレイを暗くする
@@ -3000,6 +3345,15 @@ Google Driveを切断
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 Google Drive（{}）を切断しますか？ DiskBackupはここへのバックアップを停止し、このコンピューターの認証情報を削除します。Driveにあるバックアップは残るので、再接続すれば続きから保存したり復元したりできます。
+
+Disconnected
+切断済み
+
+Disconnected.
+切断されました。
+
+Disconnected: {}
+切断：{}
 
 Disconnecting from Google Drive…
 Google Driveを切断中…
@@ -3163,6 +3517,9 @@ Don’t Trust
 Double-press speed
 2回押す間隔
 
+Down
+下
+
 Down (received)
 下り（受信）
 
@@ -3177,6 +3534,18 @@ Download at most:
 
 Download, Then Restart to Install
 ダウンロード後に再起動してインストール
+
+Downloading
+ダウンロード中
+
+Downloading preview from Rex server…
+Rexサーバーからプレビューをダウンロード中…
+
+Downloading {} from {}…
+{}を{}からダウンロード中…
+
+Downloading {}…
+{}をダウンロード中…
 
 Downloading: {}
 ダウンロード中：{}
@@ -3328,6 +3697,9 @@ Each display is drawn by the graphics it's wired to, so no frame crosses between
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 各Deskbarには、その画面で表示中のワークスペースを展開します。ほかは見出しだけを表示し、矢印でそのDeskbar内のアプリ一覧を開閉できます。
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+各リポジトリを{}のホーム内の指定フォルダーにクローンし、初期設定コマンドを1回だけ実行します。
+
 Each is judged from several signals together; a finding says how sure it is and why.
 複数の兆候を組み合わせて判断します。検出結果には確度と理由を表示します。
 
@@ -3348,6 +3720,12 @@ Each new window takes half of the one you were using.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 設定した方法はいずれも、Passwords、Terminalのsudo、管理者の承認でパスワードの代わりに使えます。顔と指紋はサインインと画面ロックの解除にも使えます。使いたい方法をそのままお使いください。
+
+Each person gets their own Rex server, and signs in through this one.
+各ユーザーが専用のRexサーバーを持ち、このサーバー経由でサインインします。
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+{}上の各ユーザーが専用のRexサーバーを持ち、このサーバー経由でサインインします。
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 リポジトリごとにフォルダーを作ります。例：oloのワークツリーfix-tabsは{}/olo/fix-tabsに置きます。
@@ -3378,6 +3756,9 @@ Edit Message
 
 Edit Name
 名前を編集
+
+Edit Repository
+リポジトリを編集
 
 Edit Video…
 動画を編集…
@@ -3445,6 +3826,9 @@ Encrypt it with a passphrase
 End
 終了
 
+End Session
+セッションを終了
+
 End Test
 テストを終了
 
@@ -3481,6 +3865,9 @@ Enrolling your {}
 Enter Full Screen
 全画面表示
 
+Enter secret…
+シークレットを入力…
+
 Enter the password for “{}” to unlock it.
 「{}」のパスワードを入力してロックを解除してください。
 
@@ -3507,6 +3894,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Error
+エラー
 
 Esc cancels
 Escでキャンセル
@@ -3598,6 +3988,15 @@ Every list's to-dos show here.
 Every month
 毎月
 
+Every regular account
+すべての通常アカウント
+
+Every step ran, and it still needs: {}.
+すべての手順を実行しましたが、次が未完了です：{}。
+
+Every step ran.
+すべての手順を実行しました。
+
 Every week
 毎週
 
@@ -3627,6 +4026,18 @@ other: {n}週間ごと
 
 Every {n} years
 other: {n}年ごと
+
+Everyone in the rex group shares one server, run as the rex account.
+rexグループの全員が、rexアカウントで動作する1つのサーバーを共有します。
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+rexグループの全員がこのサーバーを共有し、上の端末はすべてrexアカウントで動作します。
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+{}にアカウントがある全員がrexグループに所属しており、共有サーバーを使います。
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+{}にアカウントがある全員がサインインできます。一覧は{}に保存されています。
 
 Everything
 すべて
@@ -3730,6 +4141,21 @@ Fade Colors
 Fahrenheit (°F)
 Fahrenheit (°F)
 
+Failed
+失敗
+
+Failed just now
+たった今失敗
+
+Failed {n} days ago
+other: {n}日前に失敗
+
+Failed {n} hours ago
+other: {n}時間前に失敗
+
+Failed {n} minutes ago
+other: {n}分前に失敗
+
 Fan Out
 扇状に並べる
 
@@ -3823,6 +4249,9 @@ File
 File system:
 ファイルシステム:
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+ファイル監視、リンカー、大規模なプログラムはカーネルの上限に達することがあります。
+
 Files
 ファイル
 
@@ -3834,6 +4263,9 @@ File…
 
 Fill It In
 入力する
+
+Filter
+フィルター
 
 Find
 検索
@@ -3861,6 +4293,9 @@ Find an app
 
 Find in document
 文書内を検索
+
+Find in terminal…
+端末内を検索…
 
 Find the selection
 選択部分を検索
@@ -4018,6 +4453,12 @@ Fog likely · spread {}
 Folder
 フォルダー
 
+Folder taken
+フォルダー使用中
+
+Folder:
+フォルダー：
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 フォルダーやファイルをカンマで区切ります。~/はホームフォルダー、**/は任意の場所、*は任意の名前です。
 
@@ -4101,6 +4542,9 @@ Format…
 
 Forward
 進む
+
+Forward Port
+ポートを転送
 
 Forwarded from {}
 {}からの転送
@@ -4213,6 +4657,9 @@ Get Full Access…
 Get Info
 情報を見る
 
+Get items from Passwords
+Passwordsから項目を取得
+
 Getting ready
 準備中
 
@@ -4221,6 +4668,9 @@ Getting the sensor ready…
 
 Git Worktrees
 Gitワークツリー
+
+Git identity
+Gitユーザー情報
 
 GitHub
 GitHub
@@ -4237,6 +4687,9 @@ GitHubに接続できませんでした（{}）。
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHubがトークンを拒否しました。有効期限が切れたか、取り消された可能性があります。
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+Rexホストにも同じアカウントを持つ専用のToken Poolを置きます。このコンピューターの電源が切れていても、そのホストのClaude CodeとCodexが動き続けます。
+
 Give a new key
 新しいキーを割り当てる
 
@@ -4246,6 +4699,30 @@ Give compilers and linkers only spare memory
 Give it a name.
 名前を付けてください。
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+SSH鍵とクリップボードは、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+SSH鍵は、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+クリップボードは、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+パスワードとSSH鍵は、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+パスワードとクリップボードは、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Give your passwords only to a host\nyou trust as much as this computer.
+パスワードは、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+パスワード、SSH鍵、クリップボードは、このコンピューターと\n同じくらい信頼できるホストにのみ許可してください。
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+このコンピューターの電源にかかわらず、リモートのClaude CodeとCodexにアカウントを提供します。
+
 Glide
 滑らかに移動
 
@@ -4254,6 +4731,15 @@ Glow new windows for
 
 Go
 移動
+
+Go Back
+戻す
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+{}に戻しますか？\n\n{}を置き換えます。Oloがダウンロード（約{} MB）してインストールし、その場で再起動します。設定は維持されますが、これ以降のバージョンで追加された機能は再度アップグレードするまで利用できなくなります。
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+{}に戻しますか？\n\n{}を置き換えます。Oloがダウンロード（約{} MB）してインストールし、その場で再起動します。設定はそのまま維持されますが、これ以降のバージョンで追加された機能は再度アップグレードするまで利用できなくなります。
 
 Go to
 移動先
@@ -4266,6 +4752,9 @@ Go to File or Folder
 
 Go to File or Folder…
 ファイルまたはフォルダーに移動…
+
+Go to Folder…
+フォルダーへ移動…
 
 Go to:
 移動先:
@@ -4302,6 +4791,9 @@ Google and Fastmail accounts for Mail (Integrations) are looked in too.
 
 Google no longer takes its sign-in: sign in again.
 Googleの認証が無効になりました。もう一度サインインしてください。
+
+Google’s coding agent (agy).
+Googleのコーディングエージェント（agy）。
 
 Got it. Touch the key once more: its light is blinking again.
 読み取れました。ランプが再び点滅しているので、もう一度キーに触れてください。
@@ -4402,8 +4894,23 @@ Hardware Address: {}
 Hardware address:
 ハードウェアアドレス:
 
+Has failed
+失敗したとき
+
+Has finished
+完了したとき
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+1分以上応答がありません
+
+Hasn’t answered for over {} minutes
+{}分以上応答がありません
+
+Hasn’t answered for {} seconds
+{}秒間応答がありません
 
 Header & Footer…
 ヘッダーとフッター…
@@ -4555,8 +5062,17 @@ Home
 Home Page
 ホームページ
 
+Host
+ホスト
+
+Host “{}”
+ホスト「{}」
+
 Hosts
 ホスト
+
+Hosts and Ports…
+ホストとポート…
 
 Hotspot
 ホットスポット
@@ -4708,6 +5224,9 @@ In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 アプリに未読または保留中の項目がある間、通知の青い点に代わって表示されます。
 
+In step
+同期済み
+
 In the Scratchpad
 スクラッチパッド内
 
@@ -4819,8 +5338,17 @@ Inspect Parent
 Inspect Process
 プロセスを詳しく見る
 
+Install
+インストール
+
 Install Now
 すぐにインストール
+
+Install Olo’s Bridge
+Oloブリッジをインストール
+
+Install Olo’s Skill for Agents
+エージェント用Oloスキルをインストール
 
 Install When Restarting
 再起動時にインストール
@@ -4834,8 +5362,29 @@ Install just
 Install the Helper…
 補助プログラムをインストール…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+{}をインストールしますか？\n\nOloがダウンロード（約{} MB）してインストールし、その場で再起動します。
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+{}をインストールしますか？\n\nOloがダウンロード（約{} MB）してインストールし、その場で再起動します。
+
 Installed
 インストール済み
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+各提供元の公式インストーラーを使い、一般ユーザーとしてリモートのホームフォルダーにインストールします。root権限は使いません。
+
+Installing
+インストール中
+
+Installing {}: {} ({}%)…
+{}をインストール中：{}（{}%）…
+
+Installing {}…
+{}をインストール中…
+
+Installing…
+インストール中…
 
 Install…
 インストール…
@@ -4867,6 +5416,9 @@ Invert Selection
 Invite:
 招待先:
 
+Is waiting for me
+確認を待っているとき
+
 It Matches
 一致する
 
@@ -4876,8 +5428,17 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 コンピューターを電源につなぐとバックアップします。{}。{}。
 
+It can’t be stopped once it has started.
+一度開始すると途中で停止できません。
+
 It couldn’t be fetched: {}
 取得できませんでした：{}
+
+It couldn’t be reached ({}). Olo keeps trying.
+接続できませんでした（{}）。Oloが再試行を続けます。
+
+It couldn’t be reached: {}. Olo keeps trying.
+接続できませんでした：{}。Oloが再試行を続けます。
 
 It couldn’t be read: {}
 読み込めませんでした：{}
@@ -4887,6 +5448,9 @@ It didn't work.
 
 It didn’t open: {}.
 開けませんでした：{}。
+
+It didn’t say why.
+理由は返されませんでした。
 
 It downloads {}
 ダウンロード量は{}です
@@ -4915,6 +5479,9 @@ It needs at least three palms and three fingers among the touches it learns from
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 設定音量に関係なく最大音量の25%で鳴ります。消音中は鳴りません。
 
+It starts when {} starts.
+{}の起動時に自動で開始します。
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 余っているCPU時間とディスク帯域だけを使います。作業中は遅くなりますが、操作を妨げません。
 
@@ -4929,6 +5496,9 @@ It wasn't forgotten ({}).
 
 It wasn't set up ({}).
 設定できませんでした（{}）。
+
+It won’t start again when {} restarts.
+{}の再起動時には自動で開始しません。
 
 It's in use now, in place of Olo's own.
 Oloの標準モデルに代わって使用中です。
@@ -4998,6 +5568,12 @@ Passwordsの「シークレット参照をコピー」で取得した参照を�
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 ログイン時にサービスが起動します。ログインし直すか、Olo Doctorで起動してください。
+
+Its services, accounts and log, managed as root in their own window.
+サービス、アカウント、ログを専用ウィンドウでrootとして管理します。
+
+Its sessions may:
+セッションに許可する操作：
 
 Its sign-in isn’t in the keyring: sign in again.
 ログイン情報がキーリングにありません。再サインインしてください。
@@ -5083,6 +5659,9 @@ Keep HDR on for {}?
 Keep It Going
 作業を続けさせる
 
+Keep It Going in “{}”
+「{}」で作業を続けさせる
+
 Keep It Going says
 作業を続けるときの指示
 
@@ -5161,6 +5740,9 @@ Passwordsに鍵を保存中（求められたらロックを解除してくだ�
 Keeping what’s done…
 進捗を保存中…
 
+Keeps a build’s files in memory and running programs out of swap.
+ビルド用ファイルをメモリ上に保ち、実行中のプログラムがスワップに出るのを防ぎます。
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 大量の同期書き込みや discard が NVMe ドライブに集中しても読み込み遅延を抑えます。Linux 標準の "none" はバックグラウンドの書き出ししか抑えません (queue/scheduler)。
 
@@ -5185,6 +5767,9 @@ Kept on this computer; made in 1Password once you sync an account.
 Kernel
 カーネル
 
+Kernel limits
+カーネル上限
+
 Kernel:
 カーネル:
 
@@ -5199,6 +5784,9 @@ Key password:
 
 Key {} trusted.
 鍵{}を信頼済みにしました。
+
+Key:
+鍵：
 
 Keyboard
 キーボード
@@ -5275,6 +5863,12 @@ Larger Pointer
 Last
 最後
 
+Last 30 days
+過去30日
+
+Last 7 days
+過去7日
+
 Last Page
 最後のページ
 
@@ -5286,6 +5880,9 @@ Last backed up {}
 
 Last clean-up
 前回の整理
+
+Last day
+過去24時間
 
 Last used
 最後の利用
@@ -5383,6 +5980,15 @@ Less space between windows
 Let coding agents keep their tab’s title current
 エージェントがタブ名を更新できるようにする
 
+Let your other devices reach this computer’s sessions over Tailscale
+Tailscale経由で他のデバイスからこのコンピューターのセッションに接続できるようにする
+
+Lets a build’s many small writes reach the disk together.
+ビルド時の細かい書き込みをまとめてディスクへ反映します。
+
+Lets agents there use your accounts, even with this computer off.
+このコンピューターの電源が切れていても、リモートのエージェントがアカウントを使えます。
+
 Letting go of backups past keeping
 期限切れのバックアップを削除中
 
@@ -5446,6 +6052,9 @@ Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 書き込み待ちのデータ量を制限
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+長時間のビルドや多数のセッション向けに引き上げたLinuxの既定上限。
+
 Line
 行
 
@@ -5493,6 +6102,9 @@ Lists
 
 Live
 ライブ
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+Rex全体で入力待ち・エラー・作業中のコーディングエージェントと開いているセッションをリアルタイム表示します。
 
 Load
 負荷
@@ -5578,6 +6190,12 @@ Look for codes in:
 Look:
 外観:
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+サーバーの管理にはroot権限が必要です。リモートのrootが受け入れる鍵を選んでください。該当する鍵がない場合は、公開鍵をそのマシンの/root/.ssh/authorized_keysに追加してから再試行してください。
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+サーバーの管理にはroot権限が必要です。Olo Passwordsのロックを解除するか、{}のrootが受け入れる鍵を追加してください。
+
 Looking at Bluetooth…
 Bluetoothを確認中…
 
@@ -5592,6 +6210,9 @@ Looking at what’s there…
 
 Looking at which processes use it…
 使用中のプロセスを確認中…
+
+Looking at {}…
+{}を確認中…
 
 Looking for Bluetooth…
 Bluetoothを探しています…
@@ -5788,6 +6409,12 @@ Making it again, empty
 Making it…
 作成中…
 
+Manage Host…
+ホストを管理…
+
+Manage Rex Server…
+Rexサーバーを管理…
+
 Manually
 手動
 
@@ -5854,6 +6481,9 @@ Media errors
 Medium
 中
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+rexグループのメンバーは共有サーバーを使い、端末はすべてrexアカウントで動作します。変更は次回のサインイン時に反映されます。
+
 Membership
 所属
 
@@ -5862,6 +6492,9 @@ Memory
 
 Memory Pressure
 メモリプレッシャー
+
+Memory for builds
+ビルド用メモリ
 
 Memory free
 空きメモリ
@@ -6127,6 +6760,12 @@ Move Group to Window
 Move Here
 ここに移動
 
+Move Tab Left
+タブを左へ移動
+
+Move Tab Right
+タブを右へ移動
+
 Move Tab to New Window
 タブを新しいウィンドウに移動
 
@@ -6211,6 +6850,9 @@ Moving {} to the Trash
 Moving {} to the Trash…
 {}をゴミ箱に移動中…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+Ghostty VT、画面分割、フローティングレイヤー、AIエージェントのリアルタイム監視を備えた、ローカルおよびリモートSSH/Tailscaleワークスペースのマルチプレクサー。
+
 Music
 音楽
 
@@ -6283,8 +6925,17 @@ Nearby
 Needed by another package
 ほかのパッケージに必要
 
+Needs curl there
+リモートにcurlが必要
+
 Needs full access
 フルアクセスが必要
+
+Needs git there
+リモートにgitが必要
+
+Neither kind of Rex server is in use on {}. Start one of them:
+{}ではどちらのRexサーバーも動いていません。いずれかを起動してください：
 
 Network
 ネットワーク
@@ -6318,6 +6969,9 @@ New Conversation
 
 New Event…
 新規予定…
+
+New Floating Terminal
+新しいフローティング端末
 
 New Folder
 新しいフォルダー
@@ -6358,6 +7012,9 @@ New Sections
 New Section…
 新規セクション…
 
+New Session
+新しいセッション
+
 New Signature…
 新しい署名…
 
@@ -6396,6 +7053,9 @@ New description
 
 New event
 新規イベント
+
+New host
+新しいホスト
 
 New message
 新規メッセージ
@@ -6456,6 +7116,9 @@ Next Page
 
 Next Tab
 次のタブ
+
+Next Waiting Agent
+次の待機中エージェント
 
 Next Week
 来週
@@ -6538,6 +7201,9 @@ No Pull Request
 No Receivers Paired
 ペアリング済みの受信機はありません
 
+No SSH hosts yet
+SSHホストはまだありません
+
 No Saved Groups
 保存したグループはありません
 
@@ -6549,6 +7215,12 @@ No To-Do Chosen
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 VPNはありません。WireGuardの設定をインポートするか、提供元のアプリで追加してください。
+
+No account is listed: nobody can sign in through the login server.
+アカウントが登録されていないため、ログインサーバー経由でサインインできる人はいません。
+
+No active SSH authentication request.
+処理待ちのSSH認証要求はありません。
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 アプリが項目を使うには許可が必要です。要求時に「常に許可」を選ぶと、次回から確認せずに使えます。許可はここで取り消せます。
@@ -6616,6 +7288,9 @@ No keyboards are plugged in.
 No limit
 制限なし
 
+No matching entries
+一致する項目がありません
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 {}とのメッセージはまだありません。下の欄に入力すると、電話からSMSで送信します。
 
@@ -6643,6 +7318,9 @@ No phone or mail account is set up: a phone in Phone, a Google or Fastmail accou
 No phone paired
 ペアリングされた電話がありません
 
+No pool
+プールなし
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 電源プロファイルサービス（power-profiles-daemon、Fedoraではtuned-ppdも可）が停止しています。Oloはこのサービス経由で電源モードを設定します。
 
@@ -6660,6 +7338,12 @@ No process uses much of it now
 
 No processes match.
 一致するプロセスはありません。
+
+No programs in the panes are listening on ports, and none is forwarded here.
+ペイン内でポートを待ち受けているプログラムはなく、ここに転送中のポートもありません。
+
+No repositories yet.
+リポジトリはまだありません。
 
 No screen recordings yet. Record one with ⌘⇧6.
 画面収録はまだありません。⌘⇧6で収録できます。
@@ -6687,6 +7371,9 @@ No {} for this account.
 
 No: it did no better ({}), so the weights before stay
 改善がなかったため（{}）、以前の重みを使います
+
+Nobody is in the rex group.
+rexグループにメンバーはいません。
 
 Noise
 ノイズ
@@ -6718,8 +7405,17 @@ None (flat)
 None asked for yet: type in brush
 まだ要求がありません。brushで入力してください
 
+None chosen
+未選択
+
 None connected to Olo yet.
 Oloに接続済みのものはありません。
+
+None found
+見つかりません
+
+None in that time
+この期間にはありません
 
 None in the last minute
 直近1分はなし
@@ -6817,6 +7513,9 @@ Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 未検証です。「検証」でデータを読み戻し、破損がないか確認できます。
 
+Not cloned
+未クローン
+
 Not connected
 接続していません
 
@@ -6828,6 +7527,9 @@ Not connected: {}.
 
 Not enough touches to learn from
 学習に必要なタッチ数が足りません
+
+Not fixed with the others: it has its own button.
+ほかとは一括設定されません。専用のボタンから設定します。
 
 Not found
 見つかりません
@@ -6847,6 +7549,15 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 直近1分はなし。このウィンドウを開いてから{}回
 
+Not installed
+未インストール
+
+Not known
+不明
+
+Not on the path
+PATHに入っていません
+
 Not paired
 未ペアリング
 
@@ -6864,6 +7575,9 @@ Not saved: {}
 
 Not sent: {}
 送信していません：{}
+
+Not set
+未設定
 
 Not set up
 未設定
@@ -6922,6 +7636,9 @@ Nothing backed up yet.
 Nothing came from the microphone.
 マイクから音声を取得できませんでした。
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+SSH経由で接続していないため、ここから{}へインストールすることはできません。
+
 Nothing changed: Olo's own model is still in use.
 変更はありません。引き続きOloの標準モデルを使います。
 
@@ -6937,6 +7654,9 @@ Nothing done yet
 Nothing due today
 今日が期限のタスクはありません
 
+Nothing else was changed.
+ほかは何も変更していません。
+
 Nothing found
 見つかりませんでした
 
@@ -6949,6 +7669,9 @@ Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 再開するまでバックアップも送信も行いません。{}。{}。
 
+Nothing is changed until you choose something to do.
+操作を選ぶまで何も変更されません。
+
 Nothing more today
 今日の予定は以上です
 
@@ -6957,6 +7680,18 @@ Nothing new
 
 Nothing new to learn
 新しく学習する内容はありません
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+「{}」にはこのコンピューターへの権限が付与されていません。許可するには「環境設定 ▸ Rex」を開いてください。
+
+Nothing on {} is changed yet.
+{}上ではまだ何も変更していません。
+
+Nothing on {} is known until it connects.
+接続するまで{}の状態は分かりません。
+
+Nothing on {} is known until it’s connected.
+接続するまで{}の状態は分かりません。
 
 Nothing read yet
 まだ読み込んでいません
@@ -6976,11 +7711,17 @@ Nothing to do here
 Nothing to do.
 必要な操作はありません。
 
+Nothing to rename.
+名前を変更する対象がありません。
+
 Nothing to show yet
 まだ表示する内容がありません
 
 Nothing to tune for its driver ({}) yet.
 このドライバー（{}）で調整できる項目はまだありません。
+
+Nothing was changed on {}.
+{}上では何も変更していません。
 
 Notification
 通知
@@ -7111,8 +7852,29 @@ Oloインストーラー
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 このコンピューターには{}用のアプリがありません。Google Cloud ▸ Oloのプロジェクト ▸ クライアントでIDとシークレットを確認して入力してください。エージェントに任せるには「キャンセル」の後に「Googleアカウントを追加…」を選びます。
 
+Olo has no releases yet.
+Oloのリリースはまだありません。
+
+Olo has no typing helper for {}.
+{}向けのOlo入力ヘルパーはありません。
+
+Olo is up to date (looked {}).
+Oloは最新です（確認：{}）。
+
+Olo is up to date.
+Oloは最新です。
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Oloは{}{}のログイン情報、鍵、Wi-Fiパスワードを保存します。ログインパスワードでロックを解除できます。
+
+Olo looks for a newer release every hour.
+Oloは1時間ごとに新しいリリースを確認します。
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Oloは起動の2分後、その後は1時間ごとに新しいリリースを確認します。
+
+Olo restarts once it's installed.
+インストール完了後、Oloが再起動します。
 
 Olo saying its name
 Oloが名前を読み上げる音
@@ -7138,14 +7900,59 @@ Oloの標準モデルを引き続き使用しています。
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 実際のタッチ{}回から学習したOlo標準の手のひらモデルです。自分のモデルは「環境設定」▸「タッチパッドとマウス」▸「タッチ」で作成できます
 
+Olo's releases couldn't be listed: {}
+Oloのリリース一覧を取得できませんでした：{}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+「{}」にOloブリッジはありますが、権限が付与されていません。許可するには「環境設定 ▸ Rex」を開いてください。
+
+Olo’s bridge is on “{}”.
+「{}」にOloブリッジがインストールされています。
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+「{}」にOloブリッジがありません。インストールするには「エージェント ▸ Oloブリッジをインストール」を選びます。
+
 Olo’s keyring isn’t running here; it starts with your session.
 Oloのキーリングが起動していません。自分のセッションへのログイン時に起動します。
 
 Olo’s language:
 Oloの言語:
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Passwordsがロックされるか、最後の使用から10分経つまで、Oloのアプリがこれらの鍵でサインインできます。鍵自体はこのコンピューターに残ります。
+
 Olo’s phone service isn’t running.
 Oloの電話サービスは停止中です。
+
+Olo’s skill for agents is on “{}”.
+「{}」にエージェント用Oloスキルがインストールされています。
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+「{}」にエージェント用Oloスキルがありません。インストールするには「エージェント ▸ エージェント用Oloスキルをインストール」を選びます。
+
+Olo’s typing helper is being added to “{}”…
+「{}」にOlo入力ヘルパーを追加中…
+
+Olo’s typing helper is on “{}”.
+「{}」にOlo入力ヘルパーがインストールされています。
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo入力ヘルパーはオフです。使うには「設定 ▸ ホストでOlo入力ヘルパーを使用」を選びます。
+
+Olo’s typing helper isn’t on “{}”.
+「{}」にOlo入力ヘルパーはありません。
+
+Olo’s typing helper isn’t on “{}”: {}
+「{}」にOlo入力ヘルパーはありません：{}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+「{}」のアカウントにOlo入力ヘルパーを追加しました。次回の接続から使われます。
+
+Olo’s typing helper was added to your account on “{}”.
+「{}」のアカウントにOlo入力ヘルパーを追加しました。
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+「{}」にOlo入力ヘルパーを追加しました。次回の接続から使われます。
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Oloのウィンドウにはすぐに反映されます。他のプログラムは対応していれば次回起動時に切り替わります。
@@ -7192,14 +7999,29 @@ On it now
 On the day, at 9 AM
 当日の午前9時
 
+On the host
+ホスト上
+
 On the network
 ネットワーク上
+
+On the path
+PATHに設定済み
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 電話で「設定」▸「Bluetooth」を開いたままにしてください。まもなくここに表示されます。
 
+On the tailnet as {}.
+tailnetに{}として接続中。
+
+On this computer
+このコンピューター上
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 電話のTelegramで「設定」▸「デバイス」▸「デスクトップ端末をリンク」を開き、このコードを読み取ってください。
+
+On {}
+{}上
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 現在のモードは{}：{}。設定を変えるとカスタム{}になります。モード別の設定は「電源モード」で確認できます。
@@ -7261,6 +8083,9 @@ Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 同じ通知は最新のものだけを表示
 
+Only this computer can reach these sessions.
+これらのセッションにはこのコンピューターからのみ接続できます。
+
 Only when I choose Sync Now
 「今すぐ同期」を選んだときのみ
 
@@ -7318,6 +8143,9 @@ Open Power
 Open Pull Request #{}
 プルリクエスト#{}を開く
 
+Open Rex Preferences
+Rexの環境設定を開く
+
 Open Saved Group
 保存したグループを開く
 
@@ -7342,11 +8170,20 @@ Open With
 Open With Offers
 「このアプリで開く」の候補
 
+Open a host’s Account window to see how each stands there, and to clone.
+各ホストでの状態確認やクローンは、ホストのアカウントウィンドウで行えます。
+
 Open files
 開いているファイル
 
+Open files and tasks
+オープンファイル数とタスク数
+
 Open in Google Drive
 Google Driveで開く
+
+Open in Rex
+Rexで開く
 
 Open in Terminal
 Terminalで開く
@@ -7356,6 +8193,9 @@ Trackerで開く
 
 Open kache's Log
 kacheのログを開く
+
+Open links on this computer
+このコンピューターでリンクを開く
 
 Open my.telegram.org
 my.telegram.orgを開く
@@ -7372,11 +8212,17 @@ Open {} to see it.
 Open {} to see them.
 {}を開いて一覧を確認してください。
 
+OpenAI’s coding agent.
+OpenAIのコーディングエージェント。
+
 OpenDocument Text…
 OpenDocumentテキスト…
 
 Opening programs’ secrets…
 プログラムの秘密情報を開いています…
+
+Opening session…
+セッションを開いています…
 
 Opening the backup in {}
 {}にあるバックアップを開いています
@@ -7425,6 +8271,9 @@ Other Mice
 
 Other Updates
 その他の更新
+
+Other releases:
+その他のリリース：
 
 Other workspaces’ applications start collapsed
 ほかのワークスペースのアプリは折りたたんで表示
@@ -7521,6 +8370,9 @@ Palms caught
 
 Palms while typing
 入力中の手のひら
+
+Pane
+ペイン
 
 Panel
 パネル
@@ -7624,6 +8476,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 保存先のログインキーリングがないため、パスワードとログイン情報は取り込まれませんでした。
 
+Passwords answered something else
+Passwordsから想定外の応答がありました
+
 Passwords answered something else.
 Passwordsから予期しない応答がありました。
 
@@ -7648,17 +8503,26 @@ Passwordsが鍵を保存しませんでした。
 Passwords for Every Screen…
 すべての画面で使うパスワード…
 
+Passwords has no SSH keys to offer.
+Passwordsに提供できるSSH鍵がありません。
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 PasswordsにGoogleアカウントのログイン情報がありません。先にPasswordsに登録するか、アプリを手動で設定してください。
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 Passwordsに「{}」がありません。「ファイル」▸「データ提供元…」でキーを入力し直してください
 
+Passwords is locked
+Passwordsがロックされています
+
 Passwords is locked.
 Passwordsはロックされています。
 
 Passwords isn’t running.
 Passwordsは起動していません。
+
+Passwords isn’t set up
+Passwordsが未設定です
 
 Passwords isn’t set up yet.
 Passwordsはまだ設定されていません。
@@ -7692,6 +8556,9 @@ Passwordsのパスワードで、もう一度お試しください。
 
 Paste
 貼り付け
+
+Paste Password…
+パスワードをペースト…
 
 Paste as Attachment
 添付項目として貼り付け
@@ -7854,6 +8721,15 @@ Polish
 
 Pool
 Pool
+
+Port
+ポート
+
+Port:
+ポート：
+
+Ports
+ポート
 
 Portuguese
 ポルトガル語
@@ -8047,14 +8923,26 @@ Profile:
 Program
 プログラム
 
+Program folder
+プログラムフォルダー
+
 Program names, comma separated
 プログラム名をカンマで区切って入力
+
+Programs
+プログラム
 
 Programs Using the Network
 ネットワークを使用中のプログラム
 
 Programs Using the {}
 {}を使用中のプログラム
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+Passwordsがロックされるか、最後の使用から10分経つまで、そのホストのプログラムがこれらの鍵を使えます。鍵自体はこのコンピューターに残ります。
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+「{}」上のプログラムは、許可された範囲内でRex経由でこのコンピューターを利用できます（環境設定 ▸ Rex）。
 
 Programs’ Secrets
 プログラムの秘密情報
@@ -8097,6 +8985,9 @@ Put the computer to sleep after:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 選んだ項目だけをバックアップの内容に置き換えます。現在の内容は先に保存します。
+
+Putting it in place
+配置中
 
 Putting {} back
 {}を元に戻しています
@@ -8179,6 +9070,12 @@ Ran for
 Range
 範囲
 
+Reach its local servers
+ローカルサーバーに接続する
+
+Reach their local servers
+ローカルサーバーに接続する
+
 Reaches:
 範囲:
 
@@ -8191,14 +9088,26 @@ Read
 Read Quota Now
 利用枠を今すぐ取得
 
+Read and set the clipboard
+クリップボードの読み書き
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 選択したバックアップに必要なデータを保存先からすべて読み戻し、復元時と同じ手順で個別に検証します
+
+Read just now
+たった今読み込み
 
 Read ones fade, then move to Cleared; unread ones stay.
 既読は徐々に「消去済み」へ移り、未読は残ります。
 
 Read only
 読み取り専用
+
+Read {} h ago
+{}時間前に読み込み
+
+Read {} min ago
+{}分前に読み込み
 
 Reading /etc/hosts…
 /etc/hostsを読み込み中…
@@ -8230,6 +9139,9 @@ Reading the index again
 Reading the journal…
 ジャーナルを読み込み中…
 
+Reading the log…
+ログを読み込み中…
+
 Reading the packages…
 パッケージを読み込み中…
 
@@ -8244,6 +9156,12 @@ Reading…
 
 Reads
 読み取り
+
+Ready
+準備完了
+
+Ready: it starts when somebody signs in
+準備完了：誰かがサインインすると起動します
 
 Real-time priority
 リアルタイム優先度
@@ -8268,6 +9186,12 @@ Recommended by another package
 
 Recommended for it
 この機器の推奨値
+
+Reconnecting (try {})…
+再接続中（{}回目）…
+
+Reconnecting. {}
+再接続中。{}
 
 Record
 録音
@@ -8377,8 +9301,14 @@ Reinstall Selected…
 Reject
 拒否
 
+Release:
+リリース：
+
 Reload
 再読み込み
+
+Reload Server Configuration
+サーバー設定を再読み込み
 
 Reload Without the Cache
 キャッシュを使わずに再読み込み
@@ -8395,6 +9325,9 @@ Reminder:
 Remote
 リモート
 
+Remote Access…
+リモートアクセス…
+
 Removable Disks
 リムーバブルディスク
 
@@ -8407,8 +9340,14 @@ Remove Account
 Remove Graph
 グラフを削除
 
+Remove Host
+ホストを削除
+
 Remove Place
 場所を削除
+
+Remove Pool
+プールを削除
 
 Remove Repository
 リポジトリを削除
@@ -8434,8 +9373,17 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 プールから削除しますか？ このコンピューターのログイン情報を削除します。アカウント自体は残ります。
 
+Remove the Token Pool from {}?
+{}からToken Poolを削除しますか？
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+{}からToken Poolを削除しますか？ リモートのClaude CodeとCodexは各自のサインインに戻ります。アカウントのサインイン情報は先にこのコンピューターへ回収します。
+
 Remove the VPN “{}”? Its settings and keys go with it.
 VPN「{}」を削除しますか？ 設定と鍵も削除します。
+
+Remove the bridge, skill and typing helper?
+ブリッジ、スキル、入力ヘルパーを削除しますか？
 
 Remove the {}? It will no longer unlock anything.
 {}を削除しますか？ 以後はロック解除に使えません。
@@ -8451,6 +9399,9 @@ Remove “{}” from Favorites
 
 Remove…
 削除…
+
+Removing
+削除中
 
 Removing…
 削除中…
@@ -8472,6 +9423,12 @@ Rename Place…
 
 Rename Section
 セクション名を変更
+
+Rename Session…
+セッション名を変更…
+
+Rename Tab…
+タブ名を変更…
 
 Rename Worktree…
 ワークツリー名を変更…
@@ -8554,6 +9511,9 @@ Passwordsをリセット
 Reset Passwords…
 Passwordsをリセット…
 
+Reset Terminal
+端末をリセット
+
 Reset Thresholds
 しきい値をリセット
 
@@ -8610,6 +9570,12 @@ kacheを再起動
 
 Restart, Asking First
 確認してから再起動
+
+Restarting or stopping it ends every session.
+再起動または停止すると、すべてのセッションが終了します。
+
+Restarting or stopping it leaves open sessions running.
+再起動または停止しても、開いているセッションは動作し続けます。
 
 Restart…
 再起動…
@@ -8692,6 +9658,54 @@ Reverting in {} seconds.
 Rewriting index.db…
 index.db を書き直しています…
 
+Rex
+Rex
+
+Rex Server
+Rexサーバー
+
+Rex Server on {}
+{}のRexサーバー
+
+Rex adds these entries to {} as {}:
+Rexは{1}として{0}に次の項目を追加します：
+
+Rex changes {} as {}:
+Rexは{1}として{0}を変更します：
+
+Rex isn’t installed
+Rexがインストールされていません
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+SSH経由で接続するホストが登録されていません。Rexまたは環境設定 ▸ Rexで追加してください。
+
+Rex needs an address to connect.
+接続するにはアドレスが必要です。
+
+Rex picks a free port on this computer; the Ports list shows it.
+このコンピューターの空きポートをRexが自動で選び、ポート一覧に表示します。
+
+Rex removes these as {}:
+Rexは{}として次を削除します：
+
+Rex runs this as {}:
+Rexは{}として次を実行します：
+
+Rex sets these as {}:
+Rexは{}として次を設定します：
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+RexはOlo PasswordsのSSH鍵で{}としてサインインします。サインインできるまで何も変更しません。
+
+Rex signs in as {}@{}, as it will to connect.
+接続時と同じように、Rexは{}@{}としてサインインします。
+
+Rex: Agents & Sessions
+Rex：エージェントとセッション
+
+Rex’s own server. It can’t be disconnected or removed.
+Rex自身のサーバーです。切断や削除はできません。
+
 Rich Text (RTF)…
 リッチテキスト（RTF）…
 
@@ -8725,6 +9739,9 @@ Roll up or down
 Room:
 幅:
 
+Root on {} didn’t accept your keys
+{}のrootが鍵を受け入れませんでした
+
 Rotate Left
 左に回転
 
@@ -8749,6 +9766,9 @@ Router:
 Rows
 行
 
+Rows:
+行数：
+
 Ruby
 Ruby
 
@@ -8763,6 +9783,15 @@ Run on it with “olo-screen run”
 
 Running
 実行中
+
+Running Rex’s installer as {}
+{}としてRexのインストーラーを実行中
+
+Running for {}
+稼働時間：{}
+
+Running systemctl as {}
+{}としてsystemctlを実行中
 
 Runs on
 実行先
@@ -8793,6 +9822,18 @@ SSD温度
 
 SSE
 南南東
+
+SSH Authentication
+SSH認証
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSHは既定で1接続あたり10セッションまで許可し、各ペインが1つ使います。
+
+SSH keys
+SSH鍵
+
+SSH sessions
+SSHセッション
 
 SSW
 南南西
@@ -9025,6 +10066,9 @@ Select All Conversations
 Select All Screens
 すべての画面を選択
 
+Select Last Output
+直前の出力を選択
+
 Select None
 選択を解除
 
@@ -9133,11 +10177,29 @@ Service Order
 Session:
 セッション:
 
+Sessions
+セッション
+
+Sessions on this computer may:
+このコンピューターのセッションに許可する操作：
+
+Sessions on {} may:
+{}のセッションに許可する操作：
+
+Sessions there keep running.
+リモートのセッションはそのまま動き続けます。
+
+Sessions used in
+セッションの対象期間
+
 Set
 設定
 
 Set Background
 背景を設定
+
+Set Rex up there if it needs it
+必要に応じてリモートにRexを設定する
 
 Set Time Zone
 タイムゾーンを設定
@@ -9148,8 +10210,14 @@ Set Up
 Set Up Again…
 設定し直す…
 
+Set Up This Host’s Account…
+このホストのアカウントを設定…
+
 Set Up by Hand…
 手動で設定…
+
+Set Up {}
+{}件を設定
 
 Set Up…
 設定する…
@@ -9163,6 +10231,21 @@ Set for the whole computer by {}{}.
 Set up ({} looks).
 設定済み（{}回読み取り）。
 
+Set up with
+初期設定
+
+Set up with:
+初期設定：
+
+Set up your own Rex server on {}
+{}に自分専用のRexサーバーを設定する
+
+Set up {} as a Rex login server
+{}をRexログインサーバーとして設定する
+
+Set up {} as a shared Rex server
+{}を共有Rexサーバーとして設定する
+
 Setting
 設定
 
@@ -9171,6 +10254,9 @@ Setting it: an administrator's password is asked…
 
 Setting up backups to {}…
 {}へのバックアップを設定中…
+
+Setting up needs root. Nothing on {} is changed yet.
+設定にはroot権限が必要です。{}上ではまだ何も変更していません。
 
 Setting up the backups in {}’s Google Drive…
 {}のGoogle Driveにバックアップを設定中…
@@ -9181,11 +10267,26 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 {}の設定には、パスワードとPINの入力、キーへの2回のタッチが必要です：
 
+Setting up {} of {}…
+{1}件中{0}件目を設定中…
+
+Setting up {}…
+{}を設定中…
+
+Setting up…
+設定中…
+
 Settings
 設定
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+設定、指示、スキル、コマンド。サインイン情報や鍵は含めません。
+
 Settings:
 設定:
+
+Setting…
+設定中…
 
 Seventh folder
 7番目のフォルダー
@@ -9289,11 +10390,17 @@ Trackerでファイルを表示
 Show Hidden Files
 隠しファイルを表示する
 
+Show Idle Panes in Activity
+待機中のペインをアクティビティに表示
+
 Show Notifications
 通知を表示
 
 Show Only {}
 {}のみ表示
+
+Show Pane Headers
+ペインヘッダーを表示
 
 Show Places
 場所を表示
@@ -9318,6 +10425,9 @@ Show Source
 
 Show Toolbars
 ツールバーを表示
+
+Show Typing Immediately
+入力を即座に表示
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 ウィンドウのタイトルを右クリックするかDeskbarの項目から「AirPlayで表示」を選びます。動画はViewerまたはTrackerの「再生先」で再生できます。
@@ -9421,6 +10531,9 @@ Terminalで再サインイン…
 Sign In Again…
 再サインイン…
 
+Sign In to Tailscale…
+Tailscaleにサインイン…
+
 Sign In with Google
 Googleでサインイン
 
@@ -9432,6 +10545,12 @@ Sign Out
 
 Sign Out…
 サインアウト…
+
+Sign in to connect this server to Tailscale.
+このサーバーをTailscaleに接続するにはサインインしてください。
+
+Sign in to other hosts with your SSH keys
+SSH鍵で他のホストにサインインする
 
 Sign in to {} as “{}” with your passkey?
 パスキーを使って{}に「{}」としてサインインしますか？
@@ -9454,6 +10573,12 @@ Signed in as {} ({}).
 Signed in as {}.
 {}としてサインイン済み。
 
+Signing in as {} with a key from Olo Passwords
+Olo Passwordsの鍵を使って{}としてサインイン中
+
+Signing in as {}…
+{}としてサインイン中…
+
 Signing in to Fastmail…
 Fastmailにサインイン中…
 
@@ -9471,6 +10596,9 @@ Size
 
 Size:
 サイズ:
+
+Skill for agents
+エージェント用スキル
 
 Skip syncing the index to disk
 インデックスのディスク同期を省く
@@ -9549,6 +10677,9 @@ Soft
 
 Software License
 ソフトウェアライセンス
+
+Software Update
+ソフトウェアアップデート
 
 Sol 6.1
 Sol 6.1
@@ -9631,6 +10762,15 @@ Speed:
 Spiral
 らせん
 
+Split Down
+下に分割
+
+Split Right
+右に分割
+
+Split to Fit
+自動分割
+
 Standard
 標準
 
@@ -9648,6 +10788,9 @@ Start Over
 
 Start Over…
 やり直し…
+
+Start Terminal Here
+ここで端末を起動
 
 Start Test
 テストを開始
@@ -9678,6 +10821,9 @@ other: {n}時間前に開始
 
 Started {n} minutes ago
 other: {n}分前に開始
+
+Starting Tailscale…
+Tailscaleを起動中…
 
 Starting Up
 起動時
@@ -9739,8 +10885,14 @@ Steady sleet
 Steady snow
 降り続く雪
 
+Step 1 is done. Try Again carries on from step 2.
+ステップ1は完了しています。「再試行」でステップ2から続行します。
+
 Step {} of {}
 手順 {} / {}
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+ステップ1〜{}は完了しています。「再試行」でステップ{}から続行します。
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 {}経過しても続いています。ほかの修正は完了を待っています。終わらない場合は、コンピュータを再起動すると止まります。
@@ -9781,6 +10933,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 {}との同期を停止しますか？ 対象アカウントの項目と未送信の変更をこのコンピューターから削除します。1Passwordの内容はそのままです。
 
+Stopped before step {} of {}
+ステップ{}/{}の前で停止しました
+
 Stopped part way, {}
 途中で停止（{}）
 
@@ -9792,6 +10947,9 @@ Stopped.
 
 Stopped: what was restored so far is there.
 停止しました。復元済みのデータは保存先に残っています。
+
+Stopping after this step…
+この手順の後に停止します…
 
 Stopping the backup
 バックアップを停止中
@@ -9994,6 +11152,9 @@ Tab 8
 Tab 9
 タブ9
 
+Tab {}
+タブ{}
+
 Table
 表
 
@@ -10008,6 +11169,12 @@ Tabs on Agent Screens are never given a code.
 
 Tags:
 タグ:
+
+Tailscale status is unavailable.
+Tailscaleの状態を取得できません。
+
+Tailscale: {}.
+Tailscale：{}。
 
 Take Back
 許可を取り消す
@@ -10075,6 +11242,9 @@ Tell coding agents to use Olo’s Agent Screens
 Tell me of:
 通知する内容:
 
+Tell me when an agent whose pane isn’t in front:
+前面にないペインのエージェントが次の状態になったら通知：
+
 Tell me when it runs out, and when it's back
 利用枠を使い切ったときと回復時に通知
 
@@ -10083,6 +11253,12 @@ Tell palms apart with a palm model
 
 Tell palms apart with a palm model too
 モデルも使って手のひらを判定する
+
+Telling Codex there of them
+リモートのCodexに通知中
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+リモートのClaude Codeなどのエージェントに、ブリッジとRexの使い方を伝えます。
 
 Temperature
 温度
@@ -10219,8 +11395,14 @@ MTUはバイト数で指定します。
 The New Build
 新しいビルド
 
+The Rex server isn’t connected.
+Rexサーバーに接続していません。
+
 The Theme’s Own
 テーマの標準
+
+The Token Pool running on this computer is older: upgrade it first.
+このコンピューターで動いているToken Poolが古いため、先にアップグレードしてください。
 
 The VPN couldn't be saved.
 VPNを保存できませんでした。
@@ -10230,6 +11412,15 @@ The account answering now
 
 The account couldn’t be saved ({}).
 アカウントを保存できませんでした（{}）。
+
+The accounts file couldn’t be read.
+アカウントファイルを読み込めませんでした。
+
+The accounts’ latest sign-ins are copied back here first.
+先に最新のサインイン情報をこのコンピューターへコピーします。
+
+The address has no repository’s name in it.
+アドレスにリポジトリ名が含まれていません。
 
 The address search answered {}.
 アドレス検索の応答：{}。
@@ -10285,6 +11476,9 @@ The code from {}, at {}.
 The coming days, each its sky, low and high.
 今後数日間の空模様と最低・最高気温。
 
+The command runs once, in the new clone. Leave it empty for none.
+新しくクローンしたフォルダー内で1回だけ実行します。不要な場合は空欄にしてください。
+
 The computer couldn't be restarted: {}
 コンピューターを再起動できませんでした：{}
 
@@ -10330,8 +11524,17 @@ The first backup starts in a moment.
 The first fine-tune failed: {}
 最初の追加学習に失敗しました：{}
 
+The first look is two minutes after it starts.
+最初の確認は起動の2分後に行います。
+
+The folder is a place under your home there (src/name).
+リモートのホームフォルダー内の場所を指定します（例：src/name）。
+
 The hand-written ones: not fine-tuned yet
 手書きの初期設定（未調整）
+
+The host didn’t say what it has.
+ホストから構成情報が返されませんでした。
 
 The icons {} is drawn with, everywhere.
 {}の表示に使うアイコンを全体に適用します。
@@ -10396,6 +11599,12 @@ The last backup was {}
 The last hour of use
 直近1時間の使用状況
 
+The last install didn't go through.
+前回のインストールは失敗しました。
+
+The last install didn't go through: {}
+前回のインストールは失敗しました：{}
+
 The last whole one was {}
 前回の正常なバックアップ：{}
 
@@ -10407,6 +11616,9 @@ The log can't be opened: {}
 
 The login keyring couldn't be read: {}
 ログインキーリングを読み込めません：{}
+
+The login server isn’t running.
+ログインサーバーは停止しています。
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 すべてのアプリのアイコン、ウィンドウ、コントロールの外観と、それに合う壁紙。
@@ -10458,6 +11670,12 @@ The next hours, each its sky and temperature, with the chance of rain or the clo
 
 The one it started on
 起動時のもの
+
+The ones you choose, cloned in your home folder there and set up once.
+選択したリポジトリをリモートのホームフォルダーにクローンし、初期設定を1回実行します。
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+オープンファイル数の上限は次回のサインイン時（開いているペインは切断後に再接続したとき）、サービスは次回の起動時から反映されます。
 
 The package service reads what’s installed and what each repository has.
 パッケージサービスがインストール済みの内容と各リポジトリのパッケージを調べます。
@@ -10540,6 +11758,9 @@ CPU
 The processor (OpenH264)
 CPU（OpenH264）
 
+The program in this pane is asking for a password.
+このペインのプログラムがパスワードを求めています。
+
 The repository has a worktree called {} already.
 このリポジトリには「{}」というワークツリーがすでにあります。
 
@@ -10557,6 +11778,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 サーバーのCalDAVアドレスと、サインイン用の名前とパスワードを指定します。パスワードはログインキーリングに保存します。
+
+The shared server isn’t running.
+共有サーバーは停止しています。
 
 The shell has ended.
 シェルは終了しました。
@@ -10672,6 +11896,9 @@ There is no limit “{}”.
 There is nothing to share.
 共有するものがありません。
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+{}の空き容量が足りません。期間を短くするか、空き容量を確保してください。
+
 There's no Bluetooth adapter.
 Bluetoothアダプタがありません。
 
@@ -10686,6 +11913,9 @@ There's no fingerprint sensor, or fprintd isn't running.
 
 There's no infrared camera.
 赤外線カメラがありません。
+
+There: {} <{}>  ·  Here: {} <{}>
+ホスト側：{} <{}>  ·  こちら：{} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 これらのアプリは一覧の項目にいつでもアクセスできます。許可を取り消すと、次回の要求時に再び確認します。
@@ -10717,6 +11947,15 @@ This Computer
 This Computer's Microphones
 このコンピューターのマイク
 
+This Olo upgrades from the build it came from, not from releases.
+このOloはリリースではなく、ビルド元から更新します。
+
+This Olo was built from source: it upgrades from its build, not from releases.
+このOloはソースからビルドされているため、リリースではなくビルドから更新します。
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+このOloにはホスト用Token Poolが含まれていないため、インストールできません。
+
 This PDF can't be edited, so it can't be saved.
 このPDFは編集できないため保存できません。
 
@@ -10741,6 +11980,9 @@ This account has a two-step password.
 This backup was made by a newer Olo.
 このバックアップは新しいバージョンのOloで作成されています。
 
+This computer
+このコンピューター
+
 This computer has no Bluetooth.
 このコンピューターにBluetoothはありません。
 
@@ -10762,6 +12004,9 @@ This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and l
 This computer's sensor sees when someone is in front of it.
 このコンピューターのセンサーは、正面に人がいるかを検知します。
 
+This computer’s git doesn’t say who you are.
+このコンピューターのGitにユーザー情報が設定されていません。
+
 This display reports no modes.
 このディスプレイから表示モードの情報を取得できません。
 
@@ -10771,6 +12016,12 @@ This event
 This folder was moved or deleted.
 このフォルダーは移動または削除されました。
 
+This host isn’t reached over SSH.
+このホストにはSSHで接続していません。
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+このホストにはSSHで接続していないため、ここからアカウントの状態確認や変更はできません。
+
 This is the recommended profile for this touchpad.
 このタッチパッドに推奨されるプロファイルです。
 
@@ -10779,6 +12030,9 @@ Oloのバックアップではありません。
 
 This isn't the session at the computer, so the computer isn't restarted.
 再起動はコンピューター本体のセッションでのみ実行できます。
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+リポジトリのアドレスではありません（git@host:owner/name.git または https://…）。
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 このカーネルはディスク別の制限に対応していません。Linux 6.2以降が必要です。
@@ -10927,6 +12181,9 @@ To the next display
 To the previous display
 前のディスプレイへ
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+使うには「設定 ▸ ホストでOlo入力ヘルパーを使用」を選びます。
+
 To {}
 {}へ
 
@@ -10972,17 +12229,29 @@ Today {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Poolから想定外の応答がありました。
+
 Token Pool asks {} to wait until one resets.
 利用枠のいずれかが回復するまで、Token Poolは{}に待機を求めます。
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Poolは停止しています。起動すると利用枠が表示されます。
 
+Token Pool isn’t running on this computer
+このコンピューターでToken Poolが動いていません
+
+Token Pool isn’t running on this computer.
+このコンピューターでToken Poolが動いていません。
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool：アカウントは一時停止状態で取り込みました。もう一方のコンピューターで使わなくなったら、こちらで有効にしてください。2台で同じログイン情報を自動更新すると、互いにサインアウトしてしまいます。
+
+Token Pool…
+Token Pool…
 
 Token:
 トークン:
@@ -11110,6 +12379,9 @@ Trim…
 Trust
 信頼する
 
+Trust & Connect
+信頼して接続
+
 Trust this repository’s key?
 このリポジトリの鍵を信頼しますか？
 
@@ -11173,6 +12445,12 @@ Turn off displays
 Turn off screen
 画面を消灯
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+「{}」の自動承認をオンにしますか？\n\nこれはあなたではなく、別のプログラムからの依頼です。このペインのコーディングエージェントが続行の許可を求めると（「Do you want to proceed?」）、ペインに入力するか停止を押さない限り、Rex が{}秒後に「はい」と答えます。
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+「{}」の自動承認をオンにしますか？\n\nこれはあなたではなく、別のプログラムからの依頼です。このタブのコーディングエージェントが続行の許可を求めると（「Do you want to proceed?」）、タブに入力するか停止を押さない限り、Terminal が{}秒後に「はい」と答えます。
+
 Turn on for a laptop usually plugged in.
 普段は電源につないで使うノートPCで有効にしてください。
 
@@ -11215,6 +12493,9 @@ Type a to-do above, and press Return.
 Type here to try the settings
 ここに入力して設定を試す
 
+Type in All Panes
+すべてのペインに入力
+
 Type the PIN for “{}” (often 0000).
 「{}」のPINを入力してください（多くの場合は0000）。
 
@@ -11236,8 +12517,14 @@ Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 開くときに使うパスワードを入力してください。
 
+Type the repository’s address.
+リポジトリのアドレスを入力してください。
+
 Type this
 この文字列を入力
+
+Type to filter…
+入力して絞り込み…
 
 Type with your palms down
 手のひらを置いて入力
@@ -11347,6 +12634,9 @@ Unknown caller
 Unless the app says; kept while the pointer is over it.
 アプリ指定を優先。ポインターを重ねると消えません。
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+Olo Passwordsのロックを解除するか、{}のrootが受け入れる鍵を追加してください。
+
 Unlock…
 ロック解除…
 
@@ -11358,6 +12648,9 @@ Unmute
 
 Unmute All
 すべてミュート解除
+
+Unpacking
+展開中
 
 Unread notifications put a blue dot beside their app.
 未読通知のあるアプリには青い点が付きます。
@@ -11386,6 +12679,9 @@ Up a level
 Up for
 稼働時間
 
+Up to date
+最新
+
 Upcoming
 今後の予定
 
@@ -11398,14 +12694,23 @@ Update Interval
 Update Only This…
 この項目だけ更新…
 
+Update Rex on {} to {}?
+{}のRexを{}にアップデートしますか？
+
 Update Selected Only…
 選択した項目だけ更新…
 
 Update These {}…
 この{}件を更新…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+「アップデート」を実行すると、Rexのリポジトリで新しいバージョンを確認し、あればインストールします。
+
 Update every:
 更新間隔:
+
+Update installs it, with Rex’s installer.
+「アップデート」を実行すると、Rexのインストーラーでインストールします。
 
 Update the power service in Olo Doctor to use these policies.
 この制御を使うには、Olo Doctorで電源サービスを更新してください。
@@ -11425,6 +12730,9 @@ Updates are downloaded and wait for the computer to restart: they’re installed
 Updating…
 更新中…
 
+Upgrade
+アップグレード
+
 Upgrade Fedora
 Fedoraをアップグレード
 
@@ -11433,6 +12741,9 @@ Oloを更新
 
 Upgrade to Fedora {}
 Fedora {}にアップグレード
+
+Upgrading
+アップグレード中
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 作業中にFedora {}の全パッケージをダウンロードし、再起動時にインストールします。インストールには時間がかかり、その間はコンピューターを使えません。ファイル、設定、アプリは引き継がれます。先に現在のリリースを最新の状態にし、バックアップを取ってください。
@@ -11445,6 +12756,9 @@ Upload at most:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 バックアップではアップロード、復元と整理ではダウンロードを使います。速度制限は実行中のバックアップにもすぐに適用されます。
+
+Uploading {}…
+{}をアップロード中…
 
 Uploading: {}
 アップロード中：{}
@@ -11461,6 +12775,9 @@ Urgent at
 Use
 使用
 
+Use Agent Screens
+エージェント画面を使用
+
 Use Battery Saver automatically
 バッテリー節約を自動で有効にする
 
@@ -11476,8 +12793,14 @@ F1、F2などを標準のファンクションキーとして使う
 Use Google Drive Instead…
 Google Driveに切り替える…
 
+Use Mine
+自分のを使う
+
 Use Music Quality
 音楽用の音質を使う
+
+Use Olo’s Typing Helper on Hosts
+ホストでOlo入力ヘルパーを使用
 
 Use Passwords for ssh
 SSHにPasswordsを使う
@@ -11520,6 +12843,9 @@ Use:
 
 User
 ユーザー
+
+User {}, over SSH
+SSH経由でユーザー{}として
 
 Username or Site
 ユーザー名またはサイト
@@ -11701,11 +13027,20 @@ Waiting
 Waiting for Ethernet
 有線LAN接続待ち
 
+Waiting for a key from Olo Passwords
+Olo Passwordsからの鍵を待機中
+
 Waiting for another fix to finish…
 ほかの修正の完了を待っています…
 
 Waiting for app_server…
 app_serverを待機中…
+
+Waiting for approval
+承認待ち
+
+Waiting for host
+ホストを待機中
 
 Waiting for it…
 応答待ち…
@@ -11727,6 +13062,15 @@ Waiting for the touchpad…
 
 Waiting for you to sign in to Google in the browser…
 ブラウザーでGoogleにサインインするのを待っています…
+
+Waiting for you to sign in…
+サインインを待機中…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+「{}」へのサインインで鍵エージェントを待っています。鍵がPasswordsにある場合は、ロックされている可能性があります。
+
+Waiting for your key agent…
+鍵エージェントを待機中…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 「{}」の許可を待っています。端末のBluetooth設定で、このコンピューターへのアクセスを許可してください。
@@ -11797,6 +13141,9 @@ Week Starts On
 Weights
 重み
 
+Welcome to Olo Rex
+Olo Rexへようこそ
+
 What
 対象
 
@@ -11842,6 +13189,9 @@ What should I wear today?
 What should I wear tomorrow?
 明日はどんな服装がいいですか？
 
+What was done stays done. Setting it up again carries on from there.
+完了した手順はそのまま残ります。もう一度設定すると、その続きから再開します。
+
 What you change applies when you leave Rescue.
 変更は復旧モードの終了時に反映されます。
 
@@ -11880,6 +13230,12 @@ What’s coming up next week?
 
 What’s in the Trash
 ゴミ箱の中身
+
+What’s installed on {} isn’t known until it connects.
+接続するまで{}に何がインストールされているか分かりません。
+
+What’s installed on {} isn’t known until it’s connected.
+接続するまで{}に何がインストールされているか分かりません。
 
 What’s next?
 次の予定は？
@@ -12112,6 +13468,9 @@ Withdrawn by {}
 Word Document…
 Word文書…
 
+Working
+作業中
+
 Working out what it comes to: every package it needs, and what it replaces…
 必要なパッケージと置き換えるパッケージを確認中…
 
@@ -12172,6 +13531,9 @@ Writes
 Writing the backup’s lists…
 バックアップの一覧を書き込み中…
 
+Writing to disk
+ディスクへの書き込み
+
 Written
 書き込み済み
 
@@ -12186,6 +13548,9 @@ Yellow
 
 Yes
 はい
+
+Yes in {} s
+{}秒後に「はい」
 
 Yesterday
 昨日
@@ -12244,8 +13609,14 @@ Your home folder is backed up every hour, leaving out what can be downloaded or 
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 電話のメッセージ、連絡先、SMSで届くワンタイムコードをこのコンピューターで使えます。Bluetoothで直接接続し、追加のインストールは不要です。
 
+Your name and address on commits made there, as on this computer.
+リモートのコミットに使う名前とメールアドレスを、このコンピューターと同じにします。
+
 Your notes, files and forwarded messages
 自分のメモ、ファイル、転送したメッセージ
+
+Your other devices on Tailscale can reach these sessions.
+Tailscale上の他のデバイスからこれらのセッションに接続できます。
 
 Your own files and folders
 自分のファイルとフォルダー
@@ -12273,6 +13644,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 パスワードを確認できませんでした（{}）。
+
+Your repositories
+リポジトリ
 
 Your settings as they were are in “{}”.
 以前の設定は「{}」に保存しました。
@@ -12328,6 +13702,9 @@ Zoom In
 Zoom Out
 縮小
 
+Zoom Pane
+ペインをズーム
+
 Zoom horizontally
 横方向にズーム
 
@@ -12382,6 +13759,18 @@ a window ({})
 a {} W power limit
 電力上限 {} W
 
+about a minute left
+残り約1分
+
+about an hour left
+残り約1時間
+
+about {n} hours left
+other: 残り約{n}時間
+
+about {n} minutes left
+other: 残り約{n}分
+
 about {}
 約{}
 
@@ -12415,11 +13804,20 @@ and {} more
 app_server's main thread: nice {}{}, {}
 app_serverのメインスレッド：nice {}{}、{}
 
+applied
+適用済み
+
 as in 1Password's sidebar, or its UUID
 1Passwordのサイドバーの名前またはUUID
 
 as it goes
 制限なし
+
+as of {}
+{}時点
+
+as the machine has it
+マシンの既定値のまま
 
 at most {}
 最大{}
@@ -12427,11 +13825,17 @@ at most {}
 at {}
 {}時点
 
+auto approving
+自動承認中
+
 auto approving (Yes after {} s; {} answered)
 自動承認中（{}秒後に「はい」、{}件回答済み）
 
 backing up
 バックアップ中
+
+behind
+未同期
 
 bell rang
 ベルが鳴りました
@@ -12447,6 +13851,9 @@ brush’s grey hints, from a tiny model of your own commands
 
 built most, the last 24 hours
 過去24時間のビルド回数順
+
+busy
+ビジー
 
 ceiling {}%
 上限{}%
@@ -12474,6 +13881,9 @@ deleting
 
 downgrade {n} packages
 other: {n}個のパッケージをダウングレード
+
+downloading
+ダウンロード中
 
 driving {}
 {}を駆動
@@ -12586,14 +13996,23 @@ in {}
 install {n} packages
 other: {n}個のパッケージをインストール
 
+installing
+インストール中
+
 it couldn't be ended: {}
 終了できませんでした：{}
+
+it didn’t say why
+理由不明
 
 it is on a different volume from the Trash, so it can only be deleted
 ゴミ箱とは別のボリュームにあるため、完全に削除することしかできません
 
 it took too long
 時間切れ
+
+its accounts are behind
+アカウントが未同期
 
 its address can’t be found (is the computer online?)
 アドレスを解決できません（ネットワークに接続していますか？）
@@ -12609,6 +14028,9 @@ its disk has {}
 
 its ports: {}
 ポート：{}
+
+its session has ended.
+セッションが終了しました。
 
 its shells have all ended
 すべてのシェルが終了しました
@@ -12664,11 +14086,20 @@ kache{}が動作中
 kbit/s
 kbit/s
 
+kept going
+作業を続けさせています
+
 last seen recently
 最近オンライン
 
 left to the firmware for now
 現在はファームウェアに任せています
+
+less than a minute
+1分未満
+
+less than a minute left
+残り1分未満
 
 level {} of 7
 レベル{} / 7
@@ -12697,6 +14128,9 @@ ms
 no
 いいえ
 
+no SSH keys
+SSH鍵なし
+
 no display ports
 映像出力ポートなし
 
@@ -12708,6 +14142,9 @@ no limit to its space
 
 no network: it goes on once there’s one
 ネットワークなし：接続時に再開します
+
+no sessions open
+開いているセッションなし
 
 no wired network: it waits for one
 有線接続なし：接続を待っています
@@ -12910,6 +14347,9 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 sshやgitなどがPasswordsのSSH鍵で認証します。各プログラムの初回要求時に許可を確認します。
 
+ssh://you@host or host.ts.net
+ssh://you@host または host.ts.net
+
 sudo needs your password to run this{}:
 sudoが次の操作{}を実行するにはパスワードが必要です：
 
@@ -13003,6 +14443,9 @@ the secret at {}
 the server answered {}
 サーバーの応答：{}
 
+the server couldn’t complete the request
+サーバーが要求を完了できませんでした
+
 the service answered {}
 サービスの応答：{}
 
@@ -13023,6 +14466,9 @@ the window server
 
 the {} didn't get going: {}
 {}が起動しませんでした：{}
+
+there isn’t one for {}
+{}向けはありません
 
 these {n} backups need
 other: 選択した{n}件のバックアップ
@@ -13084,8 +14530,14 @@ under a minute
 under a second
 1秒未満
 
+unpacking
+展開中
+
 up to
 最大
+
+up to date
+最新
 
 up to {} dpi
 最大{} dpi
@@ -13113,6 +14565,12 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 未コミットの変更があるファイル{n}個を含む
+
+without {}
+{}なし
+
+without {}, {} and {} more
+{}、{}、ほか{}件なし
 
 yes
 はい
@@ -13144,6 +14602,9 @@ other: {n}件の予定が見つかりました
 {n} More in Calendar…
 other: ほか{n}件をカレンダーで表示…
 
+{n} SSH keys
+other: SSH鍵 {n}個
+
 {n} agent screens are running. Click to watch them.
 other: エージェント画面が{n}個動作中です。クリックすると様子を見られます。
 
@@ -13156,11 +14617,17 @@ other: {n}件のバックアップ
 {n} backups chosen.
 other: {n}件のバックアップを選択しました。
 
+{n} cloned
+other: {n}件クローン済み
+
 {n} coming up
 other: 今後の予定 {n} 件
 
 {n} conversations
 other: {n}件の会話
+
+{n} couldn’t be done
+other: {n}件失敗
 
 {n} days
 other: {n}日
@@ -13180,11 +14647,20 @@ other: {n}個のファイル
 {n} files couldn’t be read.
 other: {n}個のファイルを読み取れませんでした。
 
+{n} files to copy
+other: コピー対象 {n}ファイル
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlayで{n}本の動画を再生中です。クリックで一時停止または停止。
 
 {n} folders couldn't be read
 other: {n}個のフォルダーを読み取れませんでした
+
+{n} folders taken
+other: {n}個のフォルダーが使用中
+
+{n} forwarded ports are waiting.
+other: {n}個の転送ポートが待機中です。
 
 {n} hours
 other: {n}時間
@@ -13228,6 +14704,9 @@ other: {n}個のパックが送信時のチェックサムと一致
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 other: AirPlayで{n}件再生・表示中です。クリックで一時停止または停止。
 
+{n} ports forwarded here.
+other: {n}個のポートをここに転送中。
+
 {n} problems reading 1Password…
 other: 1Passwordの読み込み時に{n}件の問題…
 
@@ -13248,6 +14727,15 @@ other: {n}秒
 
 {n} secrets
 other: {n}件のシークレット
+
+{n} sessions
+other: {n}セッション
+
+{n} sessions open
+other: {n}個のセッションが開いています
+
+{n} sessions there.
+other: リモートに{n}セッションあります。
 
 {n} shares, control among them. Click to stop them.
 other: 操作を許可した共有を含め{n}件の共有中です。クリックで停止。
@@ -13279,6 +14767,12 @@ other: アプリ内で{n}件待機中
 {n} weeks
 other: {n}週間
 
+{}  ·  Set up with nothing
+{}  ·  初期設定なし
+
+{}  ·  Set up with {}
+{}  ·  初期設定：{}
+
 {} (AV1 and VP9)
 {}（AV1とVP9）
 
@@ -13287,6 +14781,9 @@ other: {n}週間
 
 {} (in use)
 {}（使用中）
+
+{} (installed)
+{}（インストール済み）
 
 {} (lower wins)
 {}（小さい値を優先）
@@ -13357,6 +14854,9 @@ other: {n}週間
 {} a second
 毎秒{}
 
+{} accounts
+{}アカウント
+
 {} ago · click a graph for another moment
 {}前 · グラフをクリックして時点を選択
 
@@ -13371,6 +14871,9 @@ other: {n}週間
 
 {} answered {} (not a speed test server?)
 {}の応答：{}（速度測定サーバーか確認してください）
+
+{} answering now
+{}件応答中
 
 {} applications are keeping the display awake.
 {}個のアプリがディスプレイのスリープを妨げています。
@@ -13399,11 +14902,17 @@ other: {n}週間
 {} cleared · kept for {} days, the last {}
 消去済み{}件 · {}日間、直近{}件まで保存
 
+{} continued there
+{}件はリモートで続行済み
+
 {} copied: 1Password doesn’t let other apps read its archive.
 {}。1Passwordはほかのアプリがアーカイブ済みの項目を読むことを許可していません。
 
 {} couldn't be found: {}
 {}が見つかりません：{}
+
+{} couldn’t be cloned: {}
+{}をクローンできませんでした：{}
 
 {} couldn’t be unpacked.
 {}を展開できませんでした。
@@ -13426,8 +14935,17 @@ other: {n}週間
 {} didn't start pairing: {}.
 {}がペアリングを開始しませんでした：{}。
 
+{} didn’t accept your keys for root
+{}はroot用の鍵を受け入れませんでした
+
+{} didn’t accept your keys for {}
+{}は{}用の鍵を受け入れませんでした
+
 {} didn’t download: {}
 {}をダウンロードできませんでした：{}
+
+{} didn’t say how its limits stand.
+{}から上限の設定状況が返されませんでした。
 
 {} different commands, of {} run
 {1}回実行したうち、異なるコマンドは{0}個
@@ -13477,8 +14995,20 @@ other: {n}週間
 {} h {} min
 {}時間{}分
 
+{} hasn’t answered for over a minute
+{}が1分以上応答していません
+
+{} hasn’t answered for over {} minutes
+{}が{}分以上応答していません
+
+{} hasn’t answered for {} seconds
+{}が{}秒間応答していません
+
 {} hours ago
 {}時間前
+
+{} in
+入力 {}
 
 {} in all
 合計{}
@@ -13513,6 +15043,9 @@ other: {n}週間
 {} is Fedora’s own: it can be turned off, not removed.
 {}はFedora標準のリポジトリです。無効にはできますが削除はできません。
 
+{} is available.
+{}が利用できます。
+
 {} is back
 {}が再び利用できます
 
@@ -13527,6 +15060,15 @@ other: {n}週間
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {}が入力機器を直接制御しています。対象のマウスは仮想ポインターを経由するため、ここでの設定は反映されません。
+
+{} is installed
+{}をインストール済み
+
+{} is installed  ·  up to date
+{}をインストール済み  ·  最新
+
+{} is installed  ·  {} is available
+{}をインストール済み  ·  {}が利用できます
 
 {} is protected by a password.
 {}はパスワードで保護されています。
@@ -13582,6 +15124,9 @@ other: {n}週間
 {} keys
 {}のキー
 
+{} keys, at {}
+{}個の鍵（{}）
+
 {} knows this computer.
 {}にはこのコンピューターが登録されています。
 
@@ -13633,6 +15178,9 @@ other: {n}週間
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 バックアップの新規データ{} · 圧縮・暗号化して{}送信済み（{}/秒{}）
 
+{} now, {} suggested
+現在：{}、推奨：{}
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英語で表示されます。
 
@@ -13666,6 +15214,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} of {} Events Found
 {1}件中{0}件の予定が見つかりました
 
+{} of {} cloned
+{1}件中{0}件クローン済み
+
 {} of {} connected.
 {1}件中{0}件接続済み。
 
@@ -13687,6 +15238,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} of {} read back
 読み戻し {} / {}
 
+{} of {} ready
+{1}件中{0}件準備完了
+
 {} of {} selected
 選択 {} / {}
 
@@ -13696,11 +15250,26 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} of {} slots
 使用枠 {} / {}
 
+{} of {} to change
+{1}件中{0}件を変更
+
 {} on Workspace {}
 {}（ワークスペース{}）
 
 {} on this computer
 このコンピューターに{}件
+
+{} on {}?
+{1}で「{0}」を実行しますか？
+
+{} on {}…
+{1}で{0}…
+
+{} open
+{}件開いています
+
+{} out
+出力 {}
 
 {} over 5 ms in the last minute, the longest {}
 直近1分に5 ms超が{}回、最長{}
@@ -13729,6 +15298,12 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} repositories, {} on. Packages come from those that are on.
 リポジトリ{}件のうち{}件が有効です。有効なものからパッケージを取得します。
 
+{} requests running
+実行中のリクエスト {}件
+
+{} requests today
+今日のリクエスト {}件
+
 {} right first
 先頭候補が正解：{}
 
@@ -13737,6 +15312,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 
 {} s ago
 {}秒前
+
+{} said:
+{}の応答：
 
 {} shared with this screen
 この画面と{}件共有中
@@ -13749,6 +15327,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 直近1分に{}ステップ（ホイールの目盛り・タッチパッドの移動）
+
+{} still isn’t set up
+{}の設定がまだ完了していません
 
 {} stopped answering: {}
 {}が応答しなくなりました：{}
@@ -13764,6 +15345,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 チャットの変更（アーカイブ、既読、ミュート、固定）で未送信のものが{}あります。今送信しない分は、次にTelegramを開いたときに送ります。
+
+{} to copy
+コピー対象 {}
 
 {} to deal with, {}
 要対応{}件、{}
@@ -13858,6 +15442,12 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} — {} ({}% of this folder){}{}
 {} — {}（このフォルダーの{}%）{}{}
 
+{}%  ·  {}
+{}%  ·  {}
+
+{}%  ·  {}  ·  {}
+{}%  ·  {}  ·  {}
+
 {}% chance this hour
 この時間帯の確率 {}%
 
@@ -13912,6 +15502,12 @@ RAMの{}%
 {}, on set days
 {}、指定した曜日
 
+{}, over SSH
+SSH経由で{}
+
+{}, over Tailscale
+Tailscale経由で{}
+
 {}, until {}
 {}、{}まで
 
@@ -13923,6 +15519,9 @@ RAMの{}%
 
 {}, {} shown in this Terminal.
 {}、このTerminalに{}件表示。
+
+{}, {}%
+{}、{}%
 
 {}, {}% of its life used
 {}、寿命の{}%を消費
@@ -13966,6 +15565,9 @@ RAMの{}%
 {}: a whole number, please
 {}：整数を入力してください
 
+{}: expected auto, conservative, or off
+{}：auto、conservative、offのいずれかを指定してください
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}：使用のたびにPINが必要なため、タッチだけでパスワードの代わりにはできません
 
@@ -13980,6 +15582,12 @@ RAMの{}%
 
 {}: not here yet
 {}：このコンピューターにはまだありません
+
+{}: off
+{}：オフ
+
+{}: on
+{}：オン
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}：このコンピューターで再サインインしてください。認証はコンピューターごとに行います。
@@ -14032,6 +15640,9 @@ RAMの{}%
 {}’s data centre
 {}のデータセンター
 
+{}’s package manager checked Rex’s repository when this window opened.
+このウィンドウを開いたときに、{}のパッケージマネージャーがRexのリポジトリを確認しました。
+
 {}″ ({} × {} mm), {} pixels per inch
 {}インチ（{} × {} mm）、{} ppi
 
@@ -14041,6 +15652,9 @@ RAMの{}%
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle、~/.m2/repository、プロジェクトの.gradle
 
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin：エージェントとRexを置く場所です。リモートのシェルから見つかるようになります。
+
 ~/.local/share/Trash
 ~/.local/share/Trash
 
@@ -14055,6 +15669,18 @@ RAMの{}%
 
 ~/worktrees
 ~/worktrees
+
+~/{} already holds another repository on {}: {}
+{1}の~/{0}にはすでに別のリポジトリがあります：{2}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+{1}の~/{0}にはすでに別のファイルやフォルダーがあります。移動するか、「編集…」でフォルダーを変更してください。
+
+~/{} already holds something else. Choose… to see it.
+~/{}にはすでに別のファイルやフォルダーがあります。「選択…」で確認できます。
+
+~/{} is already {}’s folder. Type another one.
+~/{}はすでに{}のフォルダーです。別の場所を入力してください。
 
 ·
 ·
@@ -14070,6 +15696,9 @@ RAMの{}%
 
 ½ second
 0.5秒
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 「[{}]」は有効なリポジトリIDではありません。
@@ -14119,6 +15748,12 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 「{}」にパッケージの場所が指定されていません（baseurl、metalink、mirrorlistのいずれもありません）。
 
+“{}” has no sessions.
+「{}」にセッションはありません。
+
+“{}” has no terminals.
+「{}」に端末はありません。
+
 “{}” has no {}.
 「{}」に{}はありません。
 
@@ -14139,6 +15774,9 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 「{}」は接続されていますが、メッセージが応答しません。Olo は試行を続けます。
+
+“{}” is disconnected.
+「{}」は切断されています。
 
 “{}” is imported.
 「{}」をインポートしました。
@@ -14238,39 +15876,3 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 ⌘ Command (the Super key)
 ⌘ Command（Superキー）
-
-Auto Approve answers Yes in {} s
-自動承認が{}秒後に「はい」と答えます
-
-kept going
-作業を続けさせています
-
-auto approving
-自動承認中
-
-Waiting for approval
-承認待ち
-
-Working
-作業中
-
-Error
-エラー
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-「{}」の自動承認をオンにしますか？\n\nこれはあなたではなく、別のプログラムからの依頼です。このペインのコーディングエージェントが続行の許可を求めると（「Do you want to proceed?」）、ペインに入力するか停止を押さない限り、Rex が{}秒後に「はい」と答えます。
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-「{}」の自動承認をオンにしますか？\n\nこれはあなたではなく、別のプログラムからの依頼です。このタブのコーディングエージェントが続行の許可を求めると（「Do you want to proceed?」）、タブに入力するか停止を押さない限り、Terminal が{}秒後に「はい」と答えます。
-
-Yes in {} s
-{}秒後に「はい」
-
-Keep It Going in “{}”
-「{}」で作業を続けさせる
-
-Auto Approve in “{}”
-「{}」で自動承認
-
-An agent is at rest here
-ここでエージェントが待機中です

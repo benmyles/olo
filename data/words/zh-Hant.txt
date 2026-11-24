@@ -64,8 +64,17 @@ other: 另有 {n} 項
 1 Minute
 1 分鐘
 
+1 SSH key
+1 把 SSH 金鑰
+
 1 Second
 1 秒
+
+1 account
+1 個帳號
+
+1 couldn’t be cloned
+有 1 個無法複製
 
 1 day before
 1 天前
@@ -82,8 +91,17 @@ other: 另有 {n} 項
 1 minute
 1 分鐘
 
+1 request running
+1 個請求執行中
+
+1 request today
+今日 1 個請求
+
 1 second
 1 秒
+
+1 session
+1 個工作階段
 
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. 輸入帳號密碼，然後選擇「設定」。Olo 會加密儲存密碼，只有這把金鑰才能解鎖。
@@ -163,6 +181,9 @@ other: 另有 {n} 項
 2 hours before
 2 小時前
 
+2 items
+2 項
+
 2 minutes
 2 分鐘
 
@@ -232,6 +253,9 @@ other: 另有 {n} 項
 4 hours
 4 小時
 
+4 items
+4 項
+
 4 weeks
 4 週
 
@@ -274,6 +298,9 @@ other: 另有 {n} 項
 52 weeks
 52 週
 
+6 items
+6 項
+
 6 months
 6 個月
 
@@ -312,6 +339,9 @@ A Disk or Folder
 
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 編碼一影格 4K 畫面，GPU 約需 15 毫秒，CPU 約需 110 毫秒。錄製快速運動的畫面時，GPU 能保留每一影格，CPU 每秒約能錄下 9 影格。
+
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
+Rex 主機可擁有自己的 Token Pool（包含這些帳號）：即使這台電腦關機，該主機上的 Claude Code 和 Codex 仍可繼續運作。
 
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 WireGuard 設定檔（來自伺服器或 wg-quick）會與金鑰一起儲存。連線期間只使用其中指定的 DNS 伺服器。
@@ -358,6 +388,9 @@ A finger on the fingerprint sensor can stand for your password. Fingers enrolled
 A frame dropped in the last minute
 過去一分鐘掉了 1 格
 
+A key with no name
+未命名的金鑰
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 控制項、選單項目、視窗和 Deskbar 都會標上字母。按字母可選取項目或顯示下一層提示。按 Backspace 返回，按 Esc 隱藏提示。
 
@@ -393,6 +426,12 @@ Olo 新建置版本已準備就緒（{}）。現在安裝嗎？開啟的視窗�
 
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 Olo 新建置版本已準備就緒（{}）。安裝時會重新啟動視窗伺服器。Olo 的視窗會保留，但 {} 將關閉。
+
+A new name for the session “{}”:
+工作階段「{}」的新名稱：
+
+A new name for the tab “{}”:
+分頁「{}」的新名稱：
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 在 Chrome 和其他程式中，滾輪每捲動一格的距離與 Olo 應用程式一致。
@@ -499,6 +538,9 @@ API 金鑰：
 About 
 關於 
 
+About Olo
+關於 Olo
+
 About Olo Desktop
 關於 Olo Desktop
 
@@ -520,14 +562,23 @@ Access
 Account
 帳號
 
+Account on “{}”
+「{}」上的帳號
+
 Account:
 帳號：
 
 Accounts
 帳號
 
+Accounts that may sign in through the login server, kept in {}.
+可透過登入伺服器登入的帳號，儲存在 {}。
+
 Accounts:
 帳號：
+
+Account…
+帳號…
 
 Action
 操作
@@ -580,6 +631,12 @@ Add Fingerprint
 Add Graph
 新增圖表
 
+Add Host
+新增主機
+
+Add Host…
+新增主機…
+
 Add Kind
 新增類型
 
@@ -591,6 +648,9 @@ Add Place…
 
 Add RPM Fusion
 新增 RPM Fusion
+
+Add Repository
+新增版本庫
 
 Add Repository…
 新增套件來源…
@@ -649,6 +709,9 @@ Add an account in Preferences
 Add lunch tomorrow at noon
 新增明天中午的午餐行程
 
+Add one in Rex or in Preferences ▸ Rex.
+請在 Rex 或「偏好設定 ▸ Rex」中新增。
+
 Add the one-time code this page shows to your login {}?
 將此頁面顯示的一次性驗證碼新增到登入項目「{}」嗎？
 
@@ -675,6 +738,9 @@ Address:
 
 Addresses can’t be looked up: {}
 無法查詢位址：{}
+
+Add…
+新增…
 
 Adjust Size
 調整大小
@@ -732,6 +798,18 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 代理螢幕
+
+Agent sessions
+代理程式工作階段
+
+Agent settings
+代理程式設定
+
+Agents
+代理程式
+
+Agents and settings in your account there.
+該主機帳號中的代理程式與設定。
 
 Agree
 同意
@@ -793,8 +871,14 @@ All Metric
 All Preferences
 所有偏好設定
 
+All Set
+全部就緒
+
 All accounts together
 合併顯示所有帳號
+
+All agents and shells are quiet.
+所有代理程式與 Shell 目前都沒有活動。
 
 All day
 全天
@@ -807,6 +891,9 @@ Olo 的 {0} 條文案均已譯為{1}。
 
 All these settings are for the whole computer, so changing one asks for an administrator's password.
 這些設定全都作用於整部電腦，因此更改時需要管理員密碼。
+
+All time
+所有時間
 
 All waiting
 全部等待中
@@ -832,6 +919,12 @@ Allow Sleep (awake until {})
 Allow it on the phone
 在手機上允許
 
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+要允許「{}」上的程式使用您的 SSH 金鑰登入嗎？該主機上的終端機透過 Rex 提出此要求。
+
+Allow {} to sign in to your hosts with your SSH keys?
+要允許 {} 使用您的 SSH 金鑰登入您的主機嗎？
+
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 允許「{0}」使用{1}{2}嗎？選擇「始終允許」後，此應用程式每次要求時都可使用。可在「檔案 ▸ 已獲准的應用程式…」中復原。
 
@@ -846,6 +939,9 @@ Also from the Deskbar: click the cup.
 
 Also leave out:
 同時排除：
+
+Also used by
+同時用於
 
 Also when running on battery
 使用電池時也啟用
@@ -891,6 +987,9 @@ An account can answer again.
 
 An administrator's password is needed.
 需要管理員密碼。
+
+An agent is at rest here
+此處有代理程式在待命
 
 An app
 應用程式
@@ -952,17 +1051,35 @@ Answering now
 Answering now · {}
 正在回應 · {}
 
+Anthropic’s coding agent.
+Anthropic 的程式設計代理程式。
+
+Antigravity
+Antigravity
+
 Any of the {}
 {} 中的任一個
 
 Any storms on the way?
 會有暴風雨嗎？
 
+Any tagged device on the tailnet
+tailnet 上任何已加標籤的裝置
+
 Any time
 不限時間
 
 Any touch
 任意觸碰
+
+Anyone at all
+任何人
+
+Anyone on the tailnet
+tailnet 上的任何人
+
+Anyone who is identified
+任何已驗證身分的人
 
 App
 應用程式
@@ -1081,6 +1198,12 @@ As in Themes ({})
 As it goes
 隨進度調整
 
+As on this computer
+與這台電腦相同
+
+As root, over SSH
+以 root 身分透過 SSH
+
 As set now
 按目前設定
 
@@ -1093,8 +1216,14 @@ As the other mice
 As wide as the widgets
 與小工具等寬
 
+As {}, over SSH
+以 {} 身分透過 SSH
+
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
 按{0}處理：nice 從 {1} 調為 {2}，排程為{3}，I/O 優先順序為{4}{5}，以保持作用中視窗和 Olo 反應靈敏。
+
+As {}’s package manager last heard from Rex’s repository.
+依據 {} 的套件管理員上次從 Rex 套件來源取得的資訊。
 
 Ask
 詢問
@@ -1138,11 +1267,20 @@ Ask what to do about urgent ones
 Asked now:
 目前要求值：
 
+Asking
+正在詢問
+
+Asking GitHub for Olo's releases…
+正在向 GitHub 查詢 Olo 發行版本…
+
 Asking Passwords…
 正在詢問 Passwords…
 
 Asking Telegram…
 正在詢問 Telegram…
+
+Asking how Rex is set up there
+正在查詢該主機的 Rex 設定
 
 Asking it…
 正在要求…
@@ -1219,6 +1357,9 @@ Attach a file or a link
 Attach what's on the clipboard
 附加剪貼簿中的內容
 
+Attaching terminal stream…
+正在連接終端機串流…
+
 Attachments
 附件
 
@@ -1233,6 +1374,12 @@ Auto
 
 Auto Approve
 自動核准
+
+Auto Approve answers Yes in {} s
+自動核准將在 {} 秒後回答「是」
+
+Auto Approve in “{}”
+在「{}」中自動核准
 
 Auto Approve: Yes in {} s
 自動核准：{} 秒後同意
@@ -1447,6 +1594,18 @@ Before import {}.{}
 Begin
 開始
 
+Behind
+落後
+
+Behind since {}
+自 {} 起落後
+
+Being installed…
+正在安裝…
+
+Being updated…
+正在更新…
+
 Benchmark…
 性能測試…
 
@@ -1570,17 +1729,26 @@ Bring It Into Olo…
 Brown
 棕色
 
+Browse Folders…
+瀏覽資料夾…
+
 Bug Fixes
 問題修復
 
 Builds
 建置
 
+Builds and agents open many files and start many tasks at once.
+建置作業與代理程式會同時開啟大量檔案並啟動許多工作。
+
 Builds by the hour
 每小時建置次數
 
 Builds go on without the cache until it starts.
 快取啟動前，建置會繼續，但不使用快取。
+
+Built from source
+從原始碼建置
 
 Built incrementally
 增量建置
@@ -1774,6 +1942,9 @@ Capture debug information whenever a frame drops
 Cards
 卡片
 
+Carrying the accounts
+正在同步帳號
+
 Cascade All
 層疊所有視窗
 
@@ -1855,8 +2026,17 @@ Changing the CPU governor
 Changing the cores process {} may use
 正在更改行程 {} 可使用的核心
 
+Changing the machine’s settings as {}
+正在以 {} 身分變更機器設定
+
 Changing the priority of process {}
 正在更改行程 {} 的優先順序
+
+Changing the rex group as {}
+正在以 {} 身分變更 rex 群組
+
+Changing {} as {}
+正在以 {1} 身分變更 {0}
 
 Changing…
 正在更改…
@@ -1879,6 +2059,9 @@ Check Again
 Check Health
 檢查健康狀況
 
+Check Now
+立即檢查
+
 Check Spelling While Typing
 鍵入時檢查拼字
 
@@ -1888,11 +2071,17 @@ Check everything
 Check for Updates
 檢查更新
 
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
+請檢查帳號名稱，並確認該主機的 ~{}/.ssh/authorized_keys 中包含您的其中一把金鑰。
+
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 快速檢查所選備份是否完整：確認資料齊全、核對儲存中的總和檢查碼與傳送時是否一致，再抽樣讀回檢查，步驟與每次備份完成後的檢查相同。發現損壞時會盡量修復。
 
 Checked
 已檢查
+
+Checked {}
+上次檢查：{}
 
 Checking for updates…
 正在檢查更新…
@@ -1945,6 +2134,12 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 選擇清單中的聊天即可傳送訊息。
 
+Choose a host to connect it, disconnect it or manage it.
+選擇主機以連線、中斷連線或進行管理。
+
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+請選擇該主機的 root 接受的金鑰。若都無法使用，請將您的公開金鑰加入該機器的 /root/.ssh/authorized_keys，然後再試一次。
+
 Choose a network to join it.
 選擇要加入的網路。
 
@@ -1959,6 +2154,9 @@ Choose a widget to change it, or add one.
 
 Choose every update
 選取所有更新項目
+
+Choose how they look and sound in Notifications.
+可在「通知」中選擇外觀與提示音。
 
 Choose what to scan:
 選擇掃描範圍：
@@ -2019,6 +2217,15 @@ Claude Code and Codex get a tool to title their tab with what they’re working 
 
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 如果分頁群組涉及多個版本庫，群組內啟動的 Claude Code 和 Codex 會收到群組名稱、各版本庫和工作樹的資訊，以及目前位置標記。Codex 會詢問一次是否信任 Terminal 的掛鉤（/hooks）。
+
+Claude Code’s, Codex’s and Antigravity’s sessions, to resume them there.
+Claude Code、Codex 與 Antigravity 的工作階段，方便在該主機上繼續。
+
+Claude Code and Codex there go back to their own sign-ins.
+該主機上的 Claude Code 和 Codex 會改回使用各自的登入狀態。
+
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
+該主機上的 Claude Code 和 Codex 會改回使用各自的登入狀態，並會先將各帳號最新的登入資料複製回這台電腦。
 
 Clean Up
 清理
@@ -2122,6 +2329,21 @@ Clients
 Clock
 時鐘
 
+Clone
+複製
+
+Clone {}
+複製 {}
+
+Cloned
+已複製
+
+Cloning {}…
+正在複製 {}…
+
+Cloning…
+正在複製…
+
 Close
 關閉
 
@@ -2139,6 +2361,9 @@ Close Other Tabs
 
 Close Others
 關閉其他項目
+
+Close Pane
+關閉窗格
 
 Close Tab
 關閉分頁
@@ -2314,8 +2539,14 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 連線 Google Drive…
 
+Connect Remote Host…
+連線到遠端主機…
+
 Connect automatically when you put them in near this computer
 在此電腦附近戴上時自動連線
+
+Connect when Rex starts
+啟動 Rex 時自動連線
 
 Connect with a Token…
 使用權杖連線…
@@ -2328,6 +2559,9 @@ Connected
 
 Connected as {}, through {}.
 已透過 {1} 以 {0} 身分連線。
+
+Connected to Tailscale.
+已連線到 Tailscale。
 
 Connected to “{}”
 已連線到「{}」
@@ -2347,14 +2581,32 @@ Connected.
 Connecting to Telegram…
 正在連線 Telegram…
 
+Connecting to {}…
+正在連線到 {}…
+
 Connecting to “{}”…
 正在連線「{}」…
 
 Connecting…
 正在連線…
 
+Connecting… Your key agent is asking you about this sign-in.
+正在連線… 您的金鑰代理程式正在詢問此次登入授權。
+
 Connection
 連線
+
+Connection lost just now.
+剛剛中斷連線。
+
+Connection lost {n} days ago.
+other: {n} 天前中斷連線。
+
+Connection lost {n} hours ago.
+other: {n} 小時前中斷連線。
+
+Connection lost {n} minutes ago.
+other: {n} 分鐘前中斷連線。
 
 Connection:
 連線：
@@ -2419,11 +2671,17 @@ Copr 專案
 Copy
 複製
 
+Copy Address
+複製位址
+
 Copy Code
 複製驗證碼
 
 Copy Conversation
 複製對話
+
+Copy Debug Info
+複製除錯資訊
 
 Copy Here
 複製到這裡
@@ -2433,6 +2691,9 @@ Copy Latest Code
 
 Copy Link
 複製連結
+
+Copy Mode
+複製模式
 
 Copy Name
 複製名稱
@@ -2452,6 +2713,12 @@ Copy Path
 Copy Reference
 複製參照
 
+Copy Screen as HTML
+將畫面複製為 HTML
+
+Copy Screen as Text
+將畫面複製為純文字
+
 Copy Text
 複製文字
 
@@ -2460,6 +2727,9 @@ Copy Username
 
 Copy Value
 複製值
+
+Copy Version Info
+複製版本資訊
 
 Copy a code no tab is waiting for
 複製沒有分頁在等待的驗證碼
@@ -2476,8 +2746,14 @@ Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 已對 index.db 關閉寫入時複製以防止 Btrfs 碎片化；儲存區仍保留寫入時複製以支援 reflink。還原時會短暫重新啟動 kache。
 
+Copying sessions…
+正在複製工作階段…
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 正在從 1Password 複製 {} 中的項目。如果 1Password 詢問是否允許 Passwords 存取，請選擇「允許」。如已鎖定，請先解鎖。
+
+Copying…
+正在複製…
 
 Core
 核心
@@ -2488,11 +2764,17 @@ Cores
 Couldn't be cached
 無法快取
 
+Couldn't check for a newer release.
+無法檢查是否有新版本。
+
 Couldn't create a folder: {}
 無法建立資料夾：{}
 
 Couldn't create a link: {}
 無法建立連結：{}
+
+Couldn't look for a newer release: {}
+無法查詢新版本：{}
 
 Couldn't paste: {}
 無法貼上：{}
@@ -2530,14 +2812,38 @@ Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
 {}檢查失敗：{}。
 
+Couldn’t be cloned
+無法複製
+
+Couldn’t be copied
+無法複製
+
+Couldn’t be installed
+無法安裝
+
+Couldn’t be set
+無法設定
+
 Couldn’t change this vault in 1Password. {}
 無法在 1Password 中更改此保險庫。{}
+
+Couldn’t clone
+無法複製
+
+Couldn’t copy the file from the host.
+無法從主機複製檔案。
 
 Couldn’t delete it in 1Password. {}
 無法在 1Password 中刪除此項。{}
 
 Couldn’t delete this vault from 1Password. {}
 無法從 1Password 刪除此保險庫。{}
+
+Couldn’t get a sign-in link: {}.
+無法取得登入連結：{}。
+
+Couldn’t install
+無法安裝
 
 Couldn’t keep the approval: {}
 無法儲存授權：{}
@@ -2551,14 +2857,32 @@ Couldn’t keep the key: {}
 Couldn’t list its items. {}
 無法列出其中的項目。{}
 
+Couldn’t look at {}
+無法查看 {}
+
+Couldn’t look at {} again
+無法重新查看 {}
+
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
 無法在 1Password 中建立此保險庫，因此其中的項目也未傳送。{}
+
+Couldn’t open the file.
+無法開啟檔案。
+
+Couldn’t open the sign-in page: {}.
+無法開啟登入頁面：{}。
 
 Couldn’t open this item: {}
 無法開啟此項：{}
 
+Couldn’t paste the picture.
+無法貼上圖片。
+
 Couldn’t reach the login keyring: {}
 無法存取登入鑰匙圈：{}
+
+Couldn’t reach {}
+無法連線到 {}
 
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 無法讀取 1Password 中的副本進行比較，因此沒有傳送您的版本。{}
@@ -2602,8 +2926,20 @@ Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
 無法撤銷授權：{}
 
+Couldn’t turn off Tailscale: {}.
+無法關閉 Tailscale：{}。
+
+Couldn’t turn on Tailscale: {}.
+無法開啟 Tailscale：{}。
+
 Couldn’t write the shared copy: {}
 無法寫入共享副本：{}
+
+Couldn’t {}
+無法{}
+
+Couldn’t {} on {}
+無法在 {1} 上{0}
 
 Count accounts turned off or signed out
 計入已停用或已登出的帳號
@@ -2953,6 +3289,9 @@ Developer Tools
 Device
 裝置
 
+Devices tagged {}, over Tailscale
+透過 Tailscale 連線且帶有 {} 標籤的裝置
+
 Dew point
 露點
 
@@ -2965,8 +3304,14 @@ Dew point spread {}
 Dew point {}
 露點 {}
 
+Diagnostics…
+診斷…
+
 Diff
 Diff
+
+Differs from this computer
+與這台電腦不同
 
 Dim the built-in display when idle
 閒置時調暗內建顯示器
@@ -3000,6 +3345,15 @@ Disconnect Google Drive
 
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 中斷 Google Drive（{}）嗎？DiskBackup 將停止向此帳號備份並移除本機的登入資料。Drive 中的備份會保留，重新連線即可繼續備份或從中還原。
+
+Disconnected
+已中斷連線
+
+Disconnected.
+已中斷連線。
+
+Disconnected: {}
+已中斷連線：{}
 
 Disconnecting from Google Drive…
 正在中斷 Google Drive…
@@ -3163,6 +3517,9 @@ Don’t Trust
 Double-press speed
 連按兩下的速度
 
+Down
+下
+
 Down (received)
 下行（接收）
 
@@ -3177,6 +3534,18 @@ Download at most:
 
 Download, Then Restart to Install
 下載後重新啟動安裝
+
+Downloading
+正在下載
+
+Downloading preview from Rex server…
+正在從 Rex 伺服器下載預覽…
+
+Downloading {} from {}…
+正在從 {1} 下載 {0}…
+
+Downloading {}…
+正在下載 {}…
 
 Downloading: {}
 正在下載：{}
@@ -3328,6 +3697,9 @@ Each display is drawn by the graphics it's wired to, so no frame crosses between
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 各顯示器的 Deskbar 會展開此螢幕的目前工作區，其他工作區只顯示標題。點按箭頭可以在該 Deskbar 中展開或收起其應用程式清單。
 
+Each is cloned into its folder in your home on {}, then set up once with its command.
+每個版本庫都會複製到 {} 家目錄中的指定資料夾，然後執行一次設定指令。
+
 Each is judged from several signals together; a finding says how sure it is and why.
 綜合多種訊號判斷。每項結果都會說明把握有多大，以及這樣判斷的原因。
 
@@ -3348,6 +3720,12 @@ Each new window takes half of the one you were using.
 
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 設定後，各種驗證方式可同時代替密碼，用於 Passwords、Terminal 中的 sudo 和管理員權限要求。人臉和指紋還可用於鎖屏和登入。先使用哪一種，就用哪一種驗證。
+
+Each person gets their own Rex server, and signs in through this one.
+每個人都有各自的 Rex 伺服器，並透過這台伺服器登入。
+
+Each person on {} gets a Rex server of their own; they sign in through this one.
+{} 上的每個人都有各自的 Rex 伺服器，並透過這台伺服器登入。
 
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 每個版本庫在此各有一個資料夾，例如 olo 的 fix-tabs 工作樹位於 {}/olo/fix-tabs。
@@ -3378,6 +3756,9 @@ Edit Message
 
 Edit Name
 編輯名稱
+
+Edit Repository
+編輯版本庫
 
 Edit Video…
 編輯影片…
@@ -3445,6 +3826,9 @@ Encrypt it with a passphrase
 End
 結束
 
+End Session
+結束工作階段
+
 End Test
 結束測試
 
@@ -3481,6 +3865,9 @@ Enrolling your {}
 Enter Full Screen
 進入全螢幕
 
+Enter secret…
+輸入機密資料…
+
 Enter the password for “{}” to unlock it.
 輸入「{}」的密碼以解鎖。
 
@@ -3507,6 +3894,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Error
+錯誤
 
 Esc cancels
 按 Esc 取消
@@ -3598,6 +3988,15 @@ Every list's to-dos show here.
 Every month
 每月
 
+Every regular account
+所有一般帳號
+
+Every step ran, and it still needs: {}.
+所有步驟均已執行，但仍需要：{}。
+
+Every step ran.
+所有步驟均已執行。
+
 Every week
 每週
 
@@ -3627,6 +4026,18 @@ other: 每 {n} 週
 
 Every {n} years
 other: 每 {n} 年
+
+Everyone in the rex group shares one server, run as the rex account.
+rex 群組中的所有成員共用同一台伺服器，並以 rex 帳號執行。
+
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+rex 群組中的所有成員共用這台伺服器，上面的每個終端機都以 rex 帳號執行。
+
+Everyone with an account on {} is in the rex group, and uses the shared server.
+{} 上所有擁有帳號的使用者都在 rex 群組中，並使用共用伺服器。
+
+Everyone with an account on {} may sign in. The list is kept in {}.
+{} 上所有擁有帳號的使用者皆可登入。清單儲存在 {}。
 
 Everything
 全部
@@ -3730,6 +4141,21 @@ Fade Colors
 Fahrenheit (°F)
 Fahrenheit (°F)
 
+Failed
+失敗
+
+Failed just now
+剛剛失敗
+
+Failed {n} days ago
+other: {n} 天前失敗
+
+Failed {n} hours ago
+other: {n} 小時前失敗
+
+Failed {n} minutes ago
+other: {n} 分鐘前失敗
+
 Fan Out
 扇形排列
 
@@ -3823,6 +4249,9 @@ File
 File system:
 檔案系統：
 
+File watchers, linkers and large programs run into the kernel’s own ceilings.
+檔案監控程式、連結器與大型程式容易觸及核心本身的上限。
+
 Files
 檔案
 
@@ -3834,6 +4263,9 @@ File…
 
 Fill It In
 填入
+
+Filter
+篩選
 
 Find
 尋找
@@ -3861,6 +4293,9 @@ Find an app
 
 Find in document
 在文稿中尋找
+
+Find in terminal…
+在終端機中尋找…
 
 Find the selection
 尋找所選內容
@@ -4018,6 +4453,12 @@ Fog likely · spread {}
 Folder
 資料夾
 
+Folder taken
+資料夾已被佔用
+
+Folder:
+資料夾：
+
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 檔案和資料夾用逗號分隔。~/ 表示個人資料夾，**/ 表示任意位置，* 符合任意名稱。
 
@@ -4101,6 +4542,9 @@ Format…
 
 Forward
 前進
+
+Forward Port
+轉送連接埠
 
 Forwarded from {}
 轉傳自 {}
@@ -4213,6 +4657,9 @@ Get Full Access…
 Get Info
 顯示資訊
 
+Get items from Passwords
+從 Passwords 取得項目
+
 Getting ready
 正在準備
 
@@ -4221,6 +4668,9 @@ Getting the sensor ready…
 
 Git Worktrees
 Git 工作樹
+
+Git identity
+Git 身分
 
 GitHub
 GitHub
@@ -4237,6 +4687,9 @@ GitHub couldn’t be reached ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 GitHub 拒絕了權杖。權杖可能已過期或被復原。
 
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
+為 Rex 主機建立包含相同帳號的獨立 Token Pool，讓該主機上的 Claude Code 和 Codex 在這台電腦關機時也能繼續運作。
+
 Give a new key
 提供新金鑰
 
@@ -4246,6 +4699,30 @@ Give compilers and linkers only spare memory
 Give it a name.
 請為其命名。
 
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+只將您的 SSH 金鑰與剪貼簿權限授予\n與這台電腦同等信任的主機。
+
+Give your SSH keys only to a host\nyou trust as much as this computer.
+只將您的 SSH 金鑰權限授予\n與這台電腦同等信任的主機。
+
+Give your clipboard only to a host\nyou trust as much as this computer.
+只將您的剪貼簿權限授予\n與這台電腦同等信任的主機。
+
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+只將您的密碼與 SSH 金鑰權限授予\n與這台電腦同等信任的主機。
+
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+只將您的密碼與剪貼簿權限授予\n與這台電腦同等信任的主機。
+
+Give your passwords only to a host\nyou trust as much as this computer.
+只將您的密碼權限授予\n與這台電腦同等信任的主機。
+
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+只將您的密碼、SSH 金鑰與剪貼簿權限\n授予與這台電腦同等信任的主機。
+
+Gives Claude Code and Codex there your accounts, this computer on or off.
+無論這台電腦是否開機，都讓該主機上的 Claude Code 和 Codex 使用您的帳號。
+
 Glide
 滑行距離
 
@@ -4254,6 +4731,15 @@ Glow new windows for
 
 Go
 跳轉
+
+Go Back
+退回
+
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+要退回 {} 嗎？\n\n這將取代 {}。Olo 會下載該版本（約 {} MB）、安裝並就地重新啟動。您的設定會保留，但在那之後新增的功能會在下次升級前消失。
+
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
+要退回 {} 嗎？\n\n這將取代 {}：Olo 會下載該版本（約 {} MB）、安裝並就地重新啟動。您的設定會維持原樣，但在那之後新增的功能會在下次升級前消失。
 
 Go to
 轉到
@@ -4266,6 +4752,9 @@ Go to File or Folder
 
 Go to File or Folder…
 前往檔案或資料夾…
+
+Go to Folder…
+前往資料夾…
 
 Go to:
 前往：
@@ -4302,6 +4791,9 @@ Google and Fastmail accounts for Mail (Integrations) are looked in too.
 
 Google no longer takes its sign-in: sign in again.
 Google 不再接受現有的登入憑證，請重新登入。
+
+Google’s coding agent (agy).
+Google 的程式設計代理程式（agy）。
 
 Got it. Touch the key once more: its light is blinking again.
 已確認。金鑰指示燈又開始閃爍了，請再觸碰一次。
@@ -4402,8 +4894,23 @@ Hardware Address: {}
 Hardware address:
 硬體位址：
 
+Has failed
+發生失敗時
+
+Has finished
+完成時
+
 Haskell
 Haskell
+
+Hasn’t answered for over a minute
+超過一分鐘未回應
+
+Hasn’t answered for over {} minutes
+超過 {} 分鐘未回應
+
+Hasn’t answered for {} seconds
+已 {} 秒未回應
 
 Header & Footer…
 頁首與頁尾…
@@ -4555,8 +5062,17 @@ Home
 Home Page
 首頁
 
+Host
+主機
+
+Host “{}”
+主機「{}」
+
 Hosts
 主機
+
+Hosts and Ports…
+主機與連接埠…
 
 Hotspot
 熱點
@@ -4708,6 +5224,9 @@ In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 只要應用程式報告有未讀或待辦事項，就以此替代通知的藍點。
 
+In step
+已同步
+
 In the Scratchpad
 在暫存區
 
@@ -4819,8 +5338,17 @@ Inspect Parent
 Inspect Process
 檢查行程
 
+Install
+安裝
+
 Install Now
 現在安裝
+
+Install Olo’s Bridge
+安裝 Olo 橋接工具
+
+Install Olo’s Skill for Agents
+安裝 Olo 代理程式技能
 
 Install When Restarting
 重新啟動時安裝
@@ -4834,8 +5362,29 @@ Install just
 Install the Helper…
 安裝輔助程式…
 
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+要安裝 {} 嗎？\n\nOlo 會下載該版本（約 {} MB）、安裝並就地重新啟動。
+
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+要安裝 {} 嗎？\n\nOlo 會下載該版本（約 {} MB）、安裝並就地重新啟動。
+
 Installed
 已安裝
+
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+由各開發商自己的安裝程式以您的身分安裝在該主機的家目錄中，不會以 root 執行。
+
+Installing
+正在安裝
+
+Installing {}: {} ({}%)…
+正在安裝 {}：{}（{}%）…
+
+Installing {}…
+正在安裝 {}…
+
+Installing…
+正在安裝…
 
 Install…
 安裝…
@@ -4867,6 +5416,9 @@ Invert Selection
 Invite:
 邀請：
 
+Is waiting for me
+等候我回應時
+
 It Matches
 號碼一致
 
@@ -4876,8 +5428,17 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 電腦接通電源後會開始備份。{}。{}。
 
+It can’t be stopped once it has started.
+一旦開始便無法停止。
+
 It couldn’t be fetched: {}
 無法取得：{}
+
+It couldn’t be reached ({}). Olo keeps trying.
+無法連線（{}）。Olo 會繼續重試。
+
+It couldn’t be reached: {}. Olo keeps trying.
+無法連線：{}。Olo 會繼續重試。
 
 It couldn’t be read: {}
 無法讀取：{}
@@ -4887,6 +5448,9 @@ It didn't work.
 
 It didn’t open: {}.
 未能開啟：{}。
+
+It didn’t say why.
+未說明原因。
 
 It downloads {}
 需下載 {}
@@ -4915,6 +5479,9 @@ It needs at least three palms and three fingers among the touches it learns from
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 無論目前音量如何，都會以最大音量的四分之一播放。靜音時不會播放。
 
+It starts when {} starts.
+會在 {} 啟動時自動啟動。
+
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 只使用閒置的 CPU 時間和磁碟資源。您工作時它會慢一些，但不會妨礙其他工作。
 
@@ -4929,6 +5496,9 @@ It wasn't forgotten ({}).
 
 It wasn't set up ({}).
 未能完成設定（{}）。
+
+It won’t start again when {} restarts.
+{} 重新啟動時不會再次啟動。
 
 It's in use now, in place of Olo's own.
 現已使用此模型代替 Olo 內建的模型。
@@ -4998,6 +5568,12 @@ Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords 
 
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 此服務隨工作階段啟動。請退出後重新登入，或在 Olo Doctor 中啟動它。
+
+Its services, accounts and log, managed as root in their own window.
+在獨立視窗中以 root 身分管理其服務、帳號與日誌。
+
+Its sessions may:
+其工作階段可：
 
 Its sign-in isn’t in the keyring: sign in again.
 鑰匙圈中沒有登入資料，請重新登入。
@@ -5083,6 +5659,9 @@ Keep HDR on for {}?
 Keep It Going
 繼續工作
 
+Keep It Going in “{}”
+在「{}」中繼續工作
+
 Keep It Going says
 繼續工作提示語
 
@@ -5161,6 +5740,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 正在儲存已完成的部分…
 
+Keeps a build’s files in memory and running programs out of swap.
+將建置檔案保留在記憶體中，避免執行中的程式被移至交換空間。
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 在大量同步寫入或捨棄操作湧向 NVMe 硬碟時仍可限制讀取延遲，而 Linux 預設的 "none" 僅限制背景寫回 (queue/scheduler)。
 
@@ -5185,6 +5767,9 @@ Kept on this computer; made in 1Password once you sync an account.
 Kernel
 核心
 
+Kernel limits
+核心上限
+
 Kernel:
 核心：
 
@@ -5199,6 +5784,9 @@ Key password:
 
 Key {} trusted.
 已信任金鑰 {}。
+
+Key:
+金鑰：
 
 Keyboard
 鍵盤
@@ -5275,6 +5863,12 @@ Larger Pointer
 Last
 上次
 
+Last 30 days
+最近 30 天
+
+Last 7 days
+最近 7 天
+
 Last Page
 最後一頁
 
@@ -5286,6 +5880,9 @@ Last backed up {}
 
 Last clean-up
 上次清理
+
+Last day
+最近 1 天
 
 Last used
 上次使用
@@ -5383,6 +5980,15 @@ Less space between windows
 Let coding agents keep their tab’s title current
 允許程式設計代理更新分頁標題
 
+Let your other devices reach this computer’s sessions over Tailscale
+讓您的其他裝置透過 Tailscale 連線至這台電腦的工作階段
+
+Lets a build’s many small writes reach the disk together.
+讓建置產生的大量小型寫入集中送至磁碟。
+
+Lets agents there use your accounts, even with this computer off.
+即使這台電腦關機，該主機上的代理程式也能使用您的帳號。
+
 Letting go of backups past keeping
 正在清理已過期的備份
 
@@ -5446,6 +6052,9 @@ Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 限制等待寫入的資料量
 
+Limits a Linux machine comes with, raised for long builds and many sessions.
+調高 Linux 機器的預設上限，以應付長時間建置與大量工作階段。
+
 Line
 行
 
@@ -5493,6 +6102,9 @@ Lists
 
 Live
 即時
+
+Live blocked, error, and working coding agents and open sessions across Rex.
+即時顯示 Rex 中待命、出錯與運作中的程式設計代理程式，以及開啟的工作階段。
 
 Load
 負載
@@ -5578,6 +6190,12 @@ Look for codes in:
 Look:
 外觀：
 
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+管理伺服器需要 root 權限。請選擇該主機的 root 接受的金鑰；若都無法使用，請將您的公開金鑰加入該機器的 /root/.ssh/authorized_keys，然後再試一次。
+
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
+管理伺服器需要 root 權限。請解鎖 Olo Passwords，或在其中加入 {} 的 root 所接受的金鑰。
+
 Looking at Bluetooth…
 正在檢查藍牙…
 
@@ -5592,6 +6210,9 @@ Looking at what’s there…
 
 Looking at which processes use it…
 正在尋找使用它的行程…
+
+Looking at {}…
+正在查看 {}…
 
 Looking for Bluetooth…
 正在尋找藍牙…
@@ -5788,6 +6409,12 @@ Making it again, empty
 Making it…
 正在建立…
 
+Manage Host…
+管理主機…
+
+Manage Rex Server…
+管理 Rex 伺服器…
+
 Manually
 手動
 
@@ -5854,6 +6481,9 @@ Media errors
 Medium
 中
 
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
+rex 群組的成員使用共用伺服器，所有終端機皆以 rex 帳號執行。變更將於下次登入時生效。
+
 Membership
 成員身分
 
@@ -5862,6 +6492,9 @@ Memory
 
 Memory Pressure
 記憶體壓力
+
+Memory for builds
+建置用記憶體
 
 Memory free
 可用記憶體
@@ -6127,6 +6760,12 @@ Move Group to Window
 Move Here
 移動到這裡
 
+Move Tab Left
+將分頁左移
+
+Move Tab Right
+將分頁右移
+
 Move Tab to New Window
 將分頁移動到新視窗
 
@@ -6211,6 +6850,9 @@ Moving {} to the Trash
 Moving {} to the Trash…
 正在將 {} 移到垃圾桶…
 
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
+整合本機與遠端 SSH/Tailscale 工作區的多工終端機，支援 Ghostty VT、分割窗格、浮動層與即時 AI 代理程式監控。
+
 Music
 音樂
 
@@ -6283,8 +6925,17 @@ Nearby
 Needed by another package
 其他套件所需
 
+Needs curl there
+該主機需要安裝 curl
+
 Needs full access
 需要完全存取權限
+
+Needs git there
+該主機需要安裝 git
+
+Neither kind of Rex server is in use on {}. Start one of them:
+{} 尚未啟用任何一種 Rex 伺服器。請啟動其中一種：
 
 Network
 網路
@@ -6318,6 +6969,9 @@ New Conversation
 
 New Event…
 新增行程…
+
+New Floating Terminal
+新增浮動終端機
 
 New Folder
 新增資料夾
@@ -6358,6 +7012,9 @@ New Sections
 New Section…
 新增區段…
 
+New Session
+新增工作階段
+
 New Signature…
 新增簽名…
 
@@ -6396,6 +7053,9 @@ New description
 
 New event
 新增行程
+
+New host
+新增主機
 
 New message
 新訊息
@@ -6456,6 +7116,9 @@ Next Page
 
 Next Tab
 下一個分頁
+
+Next Waiting Agent
+下一個等候中的代理程式
 
 Next Week
 下週
@@ -6538,6 +7201,9 @@ No Pull Request
 No Receivers Paired
 沒有已配對的接收器
 
+No SSH hosts yet
+尚無 SSH 主機
+
 No Saved Groups
 沒有已儲存的群組
 
@@ -6549,6 +7215,12 @@ No To-Do Chosen
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 沒有 VPN。請匯入 WireGuard 設定，或使用提供方的應用程式新增 VPN。
+
+No account is listed: nobody can sign in through the login server.
+清單中沒有帳號：沒有人能透過登入伺服器登入。
+
+No active SSH authentication request.
+目前沒有作用中的 SSH 驗證要求。
 
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 應用程式必須先要求授權才能存取項目。要求出現時，選擇「始終核准」即可長期授權，之後可在這裡復原。
@@ -6616,6 +7288,9 @@ No keyboards are plugged in.
 No limit
 沒有限制
 
+No matching entries
+沒有符合的項目
+
 No messages with {} yet. What you write below goes as a text message from your phone.
 尚未與 {} 互發訊息。下方輸入的內容將由您的手機作為簡訊傳送。
 
@@ -6643,6 +7318,9 @@ No phone or mail account is set up: a phone in Phone, a Google or Fastmail accou
 No phone paired
 未配對手機
 
+No pool
+無 Token Pool
+
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 電源設定服務未執行（power-profiles-daemon，Fedora 也可用 tuned-ppd）。Olo 需要透過此服務設定電源模式。
 
@@ -6660,6 +7338,12 @@ No process uses much of it now
 
 No processes match.
 沒有符合的行程。
+
+No programs in the panes are listening on ports, and none is forwarded here.
+窗格中沒有程式在監聽連接埠，也沒有轉送到此處的連接埠。
+
+No repositories yet.
+尚無版本庫。
 
 No screen recordings yet. Record one with ⌘⇧6.
 尚無螢幕錄影。按 ⌘⇧6 開始錄製。
@@ -6687,6 +7371,9 @@ No {} for this account.
 
 No: it did no better ({}), so the weights before stay
 否：效果未改善（{}），保留原權重
+
+Nobody is in the rex group.
+rex 群組中沒有成員。
 
 Noise
 噪聲
@@ -6718,8 +7405,17 @@ None (flat)
 None asked for yet: type in brush
 尚未要求建議，請在 brush 中輸入
 
+None chosen
+未選擇
+
 None connected to Olo yet.
 尚無裝置連線到 Olo。
+
+None found
+找不到項目
+
+None in that time
+該時段內沒有項目
 
 None in the last minute
 過去一分鐘沒有
@@ -6817,6 +7513,9 @@ Not checked ({}).
 Not checked yet: Validate reads it back and checks it’s whole.
 尚未檢查。選擇「驗證」可讀回資料並檢查完整性。
 
+Not cloned
+未複製
+
 Not connected
 未連線
 
@@ -6828,6 +7527,9 @@ Not connected: {}.
 
 Not enough touches to learn from
 觸碰樣本不足
+
+Not fixed with the others: it has its own button.
+不會隨其他項目一併修正：請使用它自己的按鈕。
 
 Not found
 找不到
@@ -6847,6 +7549,15 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 過去一分鐘沒有，自此視窗開啟以來有 {}
 
+Not installed
+未安裝
+
+Not known
+未知
+
+Not on the path
+不在 PATH 中
+
 Not paired
 未配對
 
@@ -6864,6 +7575,9 @@ Not saved: {}
 
 Not sent: {}
 未傳送：{}
+
+Not set
+未設定
 
 Not set up
 未設定
@@ -6922,6 +7636,9 @@ Nothing backed up yet.
 Nothing came from the microphone.
 未收到麥克風輸入。
 
+Nothing can be installed on {} from here: it isn’t reached over SSH.
+無法從這裡安裝任何項目到 {}：此主機並非透過 SSH 連線。
+
 Nothing changed: Olo's own model is still in use.
 未作更改，仍在使用 Olo 內建的模型。
 
@@ -6937,6 +7654,9 @@ Nothing done yet
 Nothing due today
 今天沒有到期的事項
 
+Nothing else was changed.
+其他項目均未變更。
+
 Nothing found
 找不到
 
@@ -6949,6 +7669,9 @@ Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 恢復前不會備份或傳送任何內容。{}。{}。
 
+Nothing is changed until you choose something to do.
+在您選擇執行操作前，不會進行任何變更。
+
 Nothing more today
 今天沒有其他行程
 
@@ -6957,6 +7680,18 @@ Nothing new
 
 Nothing new to learn
 沒有新的學習內容
+
+Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
+這台電腦沒有授予「{}」任何權限。若要授權，請前往「偏好設定 ▸ Rex」。
+
+Nothing on {} is changed yet.
+{} 上尚未變更任何內容。
+
+Nothing on {} is known until it connects.
+連線前無法得知 {} 上的狀態。
+
+Nothing on {} is known until it’s connected.
+連線前無法得知 {} 上的狀態。
 
 Nothing read yet
 尚未讀取
@@ -6976,11 +7711,17 @@ Nothing to do here
 Nothing to do.
 不必操作。
 
+Nothing to rename.
+沒有可重新命名的項目。
+
 Nothing to show yet
 目前沒有可顯示的內容
 
 Nothing to tune for its driver ({}) yet.
 暫時無法調整這個驅動程式（{}）。
+
+Nothing was changed on {}.
+{} 上未進行任何變更。
 
 Notification
 通知
@@ -7111,8 +7852,29 @@ Olo 安裝程式
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 這台電腦上沒有 {} 的專屬應用程式。請填入用戶端 ID 和金鑰（Google Cloud ▸ 對應的 Olo 專案 ▸ 用戶端），或取消並選擇「新增 Google 帳號…」，讓代理程式代為設定。
 
+Olo has no releases yet.
+Olo 尚未有發行版本。
+
+Olo has no typing helper for {}.
+Olo 沒有適用於 {} 的輸入輔助程式。
+
+Olo is up to date (looked {}).
+Olo 已是最新版本（上次檢查：{}）。
+
+Olo is up to date.
+Olo 已是最新版本。
+
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo 儲存著{}{}的登入憑證、金鑰和 Wi-Fi 密碼，可用登入密碼解鎖。
+
+Olo looks for a newer release every hour.
+Olo 每小時會檢查一次新版本。
+
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo 會在啟動兩分鐘後檢查新版本，之後每小時檢查一次。
+
+Olo restarts once it's installed.
+安裝完成後 Olo 會重新啟動。
 
 Olo saying its name
 Olo 讀出自己的名字
@@ -7138,14 +7900,59 @@ Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
 Olo 內建的手掌模型，由 {} 次真實手部觸碰訓練而成。可在「偏好設定 ▸ 觸控板與滑鼠 ▸ 觸碰」中訓練自己的模型
 
+Olo's releases couldn't be listed: {}
+無法列出 Olo 發行版本：{}
+
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+「{}」已安裝 Olo 橋接工具，但未授予任何權限。若要授權，請前往「偏好設定 ▸ Rex」。
+
+Olo’s bridge is on “{}”.
+「{}」已安裝 Olo 橋接工具。
+
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
+「{}」尚未安裝 Olo 橋接工具。若要安裝，請選擇「代理程式 ▸ 安裝 Olo 橋接工具」。
+
 Olo’s keyring isn’t running here; it starts with your session.
 Olo 鑰匙圈未在這裡執行，它會隨您的工作階段啟動。
 
 Olo’s language:
 Olo 語言：
 
+Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+之後 Olo 自己的應用程式就能使用這些金鑰登入，直到 Passwords 鎖定或最後一次使用滿 10 分鐘為止。金鑰本身仍保留在此處。
+
 Olo’s phone service isn’t running.
 Olo 電話服務未執行。
+
+Olo’s skill for agents is on “{}”.
+「{}」已安裝 Olo 代理程式技能。
+
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+「{}」尚未安裝 Olo 代理程式技能。若要安裝，請選擇「代理程式 ▸ 安裝 Olo 代理程式技能」。
+
+Olo’s typing helper is being added to “{}”…
+正在將 Olo 輸入輔助程式加入「{}」…
+
+Olo’s typing helper is on “{}”.
+「{}」已安裝 Olo 輸入輔助程式。
+
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo 輸入輔助程式已關閉。若要使用，請選擇「設定 ▸ 在主機上使用 Olo 輸入輔助程式」。
+
+Olo’s typing helper isn’t on “{}”.
+「{}」尚未安裝 Olo 輸入輔助程式。
+
+Olo’s typing helper isn’t on “{}”: {}
+「{}」未安裝 Olo 輸入輔助程式：{}
+
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+已將 Olo 輸入輔助程式加入您在「{}」上的帳號，將於下次連線時啟用。
+
+Olo’s typing helper was added to your account on “{}”.
+已將 Olo 輸入輔助程式加入您在「{}」上的帳號。
+
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
+已將 Olo 輸入輔助程式加入「{}」，將於下次連線時啟用。
 
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Olo 視窗會立即切換語言。其他程式會在下次啟動時切換到各自支援的語言。
@@ -7192,14 +7999,29 @@ On it now
 On the day, at 9 AM
 當天上午 9 點
 
+On the host
+在主機上
+
 On the network
 網路上
+
+On the path
+已加入 PATH
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 在手機上開啟「設定 ▸ 藍牙」並停留在該頁面。片刻後，手機就會出現在這裡。
 
+On the tailnet as {}.
+在 tailnet 上的名稱為 {}。
+
+On this computer
+在這台電腦上
+
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 在手機的 Telegram 中開啟「設定 ▸ 裝置 ▸ 連線桌面裝置」，然後掃描此碼。
+
+On {}
+在 {} 上
 
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 目前使用{0}：{1}。改動設定後會切換到自訂{2}。各模式的具體設定見「電源模式」。
@@ -7261,6 +8083,9 @@ Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 相同通知僅保留最新一條
 
+Only this computer can reach these sessions.
+只有這台電腦能存取這些工作階段。
+
 Only when I choose Sync Now
 僅在選擇「立即同步」時
 
@@ -7318,6 +8143,9 @@ Open Power
 Open Pull Request #{}
 開啟合併請求 #{}
 
+Open Rex Preferences
+開啟 Rex 偏好設定
+
 Open Saved Group
 開啟已儲存的群組
 
@@ -7342,11 +8170,20 @@ Open With
 Open With Offers
 「開啟方式」選項
 
+Open a host’s Account window to see how each stands there, and to clone.
+開啟主機的「帳號」視窗以查看各項狀態並進行複製。
+
 Open files
 開啟中的檔案
 
+Open files and tasks
+開啟檔案與工作數
+
 Open in Google Drive
 在 Google Drive 中開啟
+
+Open in Rex
+在 Rex 中開啟
 
 Open in Terminal
 在 Terminal 中開啟
@@ -7356,6 +8193,9 @@ Open in Tracker
 
 Open kache's Log
 開啟 kache 日誌
+
+Open links on this computer
+在這台電腦上開啟連結
 
 Open my.telegram.org
 開啟 my.telegram.org
@@ -7372,11 +8212,17 @@ Open {} to see it.
 Open {} to see them.
 開啟 {} 即可查看這些項目。
 
+OpenAI’s coding agent.
+OpenAI 的程式設計代理程式。
+
 OpenDocument Text…
 OpenDocument 文字…
 
 Opening programs’ secrets…
 正在開啟程式的機密資料…
+
+Opening session…
+正在開啟工作階段…
 
 Opening the backup in {}
 正在開啟 {} 中的備份
@@ -7425,6 +8271,9 @@ Other Mice
 
 Other Updates
 其他更新
+
+Other releases:
+其他發行版本：
 
 Other workspaces’ applications start collapsed
 預設收合其他工作區的應用程式
@@ -7521,6 +8370,9 @@ Palms caught
 
 Palms while typing
 打字時的手掌
+
+Pane
+窗格
 
 Panel
 面板
@@ -7624,6 +8476,9 @@ Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
 密碼和登入資料：這裡沒有可用於儲存的登入鑰匙圈，因此未匯入。
 
+Passwords answered something else
+Passwords 回傳了非預期的回應
+
 Passwords answered something else.
 Passwords 返回了意外的回應。
 
@@ -7648,17 +8503,26 @@ Passwords 未儲存金鑰。
 Passwords for Every Screen…
 所有螢幕的密碼…
 
+Passwords has no SSH keys to offer.
+Passwords 中沒有可用的 SSH 金鑰。
+
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords 中沒有 Google 帳號的登入項目。請先新增登入項目，或手動設定應用程式。
 
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
 Passwords 中沒有「{}」項目。請在「檔案 ▸ 資料提供方…」中重新輸入金鑰。
 
+Passwords is locked
+Passwords 已鎖定
+
 Passwords is locked.
 Passwords 已鎖定。
 
 Passwords isn’t running.
 Passwords 未執行。
+
+Passwords isn’t set up
+Passwords 尚未設定
 
 Passwords isn’t set up yet.
 尚未設定 Passwords。
@@ -7692,6 +8556,9 @@ Passwords’ password is used now: try again.
 
 Paste
 貼上
+
+Paste Password…
+貼上密碼…
 
 Paste as Attachment
 貼上為附件
@@ -7854,6 +8721,15 @@ Polish
 
 Pool
 Pool
+
+Port
+連接埠
+
+Port:
+連接埠：
+
+Ports
+連接埠
 
 Portuguese
 葡萄牙語
@@ -8047,14 +8923,26 @@ Profile:
 Program
 程式
 
+Program folder
+程式資料夾
+
 Program names, comma separated
 程式名稱，以逗號分隔
+
+Programs
+程式
 
 Programs Using the Network
 使用網路的程式
 
 Programs Using the {}
 使用{}的程式
+
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
+之後該主機上的程式就能使用這些金鑰，直到 Passwords 鎖定或最後一次使用滿 10 分鐘為止。金鑰本身仍保留在此處。
+
+Programs on “{}” may use this computer through Rex, as its permissions say (Preferences ▸ Rex).
+「{}」上的程式可依其權限設定透過 Rex 使用這台電腦（偏好設定 ▸ Rex）。
 
 Programs’ Secrets
 程式的機密資料
@@ -8097,6 +8985,9 @@ Put the computer to sleep after:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 將備份中的所選項目恢復到目前位置，其他內容會保留。操作前會先儲存現有內容。
+
+Putting it in place
+正在部署安裝
 
 Putting {} back
 正在將 {} 放回原處
@@ -8179,6 +9070,12 @@ Ran for
 Range
 範圍
 
+Reach its local servers
+存取其本機伺服器
+
+Reach their local servers
+存取其本機伺服器
+
 Reaches:
 範圍：
 
@@ -8191,14 +9088,26 @@ Read
 Read Quota Now
 立即讀取額度
 
+Read and set the clipboard
+讀取與設定剪貼簿
+
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 從儲存位置讀回所選備份所需的每個位元組，並像實際還原時一樣逐塊驗證
+
+Read just now
+剛剛讀取
 
 Read ones fade, then move to Cleared; unread ones stay.
 已讀通知會淡出並移至「已清除」，未讀通知會保留。
 
 Read only
 唯讀
+
+Read {} h ago
+{} 小時前讀取
+
+Read {} min ago
+{} 分鐘前讀取
 
 Reading /etc/hosts…
 正在讀取 /etc/hosts…
@@ -8230,6 +9139,9 @@ Reading the index again
 Reading the journal…
 正在讀取日誌…
 
+Reading the log…
+正在讀取日誌…
+
 Reading the packages…
 正在讀取套件…
 
@@ -8244,6 +9156,12 @@ Reading…
 
 Reads
 讀取次數
+
+Ready
+已就緒
+
+Ready: it starts when somebody signs in
+已就緒：有人登入時自動啟動
 
 Real-time priority
 即時優先順序
@@ -8268,6 +9186,12 @@ Recommended by another package
 
 Recommended for it
 此裝置的建議值
+
+Reconnecting (try {})…
+正在重新連線（第 {} 次嘗試）…
+
+Reconnecting. {}
+正在重新連線。{}
 
 Record
 錄製
@@ -8377,8 +9301,14 @@ Reinstall Selected…
 Reject
 拒絕
 
+Release:
+發行版本：
+
 Reload
 重新載入
+
+Reload Server Configuration
+重新載入伺服器設定
 
 Reload Without the Cache
 忽略快取重新載入
@@ -8395,6 +9325,9 @@ Reminder:
 Remote
 遠程
 
+Remote Access…
+遠端存取…
+
 Removable Disks
 可移除磁碟
 
@@ -8407,8 +9340,14 @@ Remove Account
 Remove Graph
 移除圖表
 
+Remove Host
+移除主機
+
 Remove Place
 移除地點
+
+Remove Pool
+移除 Token Pool
 
 Remove Repository
 移除套件來源
@@ -8434,8 +9373,17 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 從池中移除此帳號嗎？本機的登入資料會被刪除，帳號本身會保留。
 
+Remove the Token Pool from {}?
+要從 {} 移除 Token Pool 嗎？
+
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
+要從 {} 移除 Token Pool 嗎？該主機上的 Claude Code 和 Codex 會改回使用各自的登入狀態，並會先將各帳號的登入資料取回這台電腦。
+
 Remove the VPN “{}”? Its settings and keys go with it.
 移除 VPN「{}」嗎？其設定和金鑰也將移除。
+
+Remove the bridge, skill and typing helper?
+要移除橋接工具、代理程式技能與輸入輔助程式嗎？
 
 Remove the {}? It will no longer unlock anything.
 移除{}嗎？此後將無法再用它解鎖。
@@ -8451,6 +9399,9 @@ Remove “{}” from Favorites
 
 Remove…
 移除…
+
+Removing
+正在移除
 
 Removing…
 正在移除…
@@ -8472,6 +9423,12 @@ Rename Place…
 
 Rename Section
 重新命名區段
+
+Rename Session…
+重新命名工作階段…
+
+Rename Tab…
+重新命名分頁…
 
 Rename Worktree…
 重新命名工作樹…
@@ -8554,6 +9511,9 @@ Reset Passwords
 Reset Passwords…
 重設 Passwords…
 
+Reset Terminal
+重設終端機
+
 Reset Thresholds
 重設門檻值
 
@@ -8610,6 +9570,12 @@ Restart kache
 
 Restart, Asking First
 先詢問再重新啟動
+
+Restarting or stopping it ends every session.
+重新啟動或停止此伺服器會結束所有工作階段。
+
+Restarting or stopping it leaves open sessions running.
+重新啟動或停止此伺服器不會中斷已開啟的工作階段。
 
 Restart…
 重新啟動…
@@ -8692,6 +9658,54 @@ Reverting in {} seconds.
 Rewriting index.db…
 正在重寫 index.db…
 
+Rex
+Rex
+
+Rex Server
+Rex 伺服器
+
+Rex Server on {}
+{} 上的 Rex 伺服器
+
+Rex adds these entries to {} as {}:
+Rex 會以 {1} 身分將下列項目加入 {0}：
+
+Rex changes {} as {}:
+Rex 會以 {1} 身分變更 {0}：
+
+Rex isn’t installed
+尚未安裝 Rex
+
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
+Rex 沒有可透過 SSH 連線的主機。請在 Rex 或「偏好設定 ▸ Rex」中新增。
+
+Rex needs an address to connect.
+Rex 需要位址才能連線。
+
+Rex picks a free port on this computer; the Ports list shows it.
+Rex 會在這台電腦上自動選擇空閒連接埠，並在「連接埠」清單中顯示。
+
+Rex removes these as {}:
+Rex 會以 {} 身分移除下列項目：
+
+Rex runs this as {}:
+Rex 會以 {} 身分執行此指令：
+
+Rex sets these as {}:
+Rex 會以 {} 身分設定下列項目：
+
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex 會使用 Olo Passwords 中的 SSH 金鑰以 {} 身分登入，成功前不會變更任何內容。
+
+Rex signs in as {}@{}, as it will to connect.
+Rex 會以 {}@{} 身分登入，如同一般連線方式。
+
+Rex: Agents & Sessions
+Rex：代理程式與工作階段
+
+Rex’s own server. It can’t be disconnected or removed.
+Rex 內建伺服器，無法中斷連線或移除。
+
 Rich Text (RTF)…
 富文字（RTF）…
 
@@ -8725,6 +9739,9 @@ Roll up or down
 Room:
 空間：
 
+Root on {} didn’t accept your keys
+{} 的 root 未接受您的金鑰
+
 Rotate Left
 向左旋轉
 
@@ -8749,6 +9766,9 @@ Router:
 Rows
 列
 
+Rows:
+列數：
+
 Ruby
 Ruby
 
@@ -8763,6 +9783,15 @@ Run on it with “olo-screen run”
 
 Running
 執行中
+
+Running Rex’s installer as {}
+正在以 {} 身分執行 Rex 安裝程式
+
+Running for {}
+已執行 {}
+
+Running systemctl as {}
+正在以 {} 身分執行 systemctl
 
 Runs on
 執行裝置
@@ -8793,6 +9822,18 @@ SSD 溫度
 
 SSE
 東南偏南
+
+SSH Authentication
+SSH 驗證
+
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSH 預設每條連線允許十個工作階段，每個窗格使用一個。
+
+SSH keys
+SSH 金鑰
+
+SSH sessions
+SSH 工作階段
 
 SSW
 西南偏南
@@ -9025,6 +10066,9 @@ Select All Conversations
 Select All Screens
 選擇所有螢幕
 
+Select Last Output
+選取上次輸出
+
 Select None
 取消全選
 
@@ -9133,11 +10177,29 @@ Service Order
 Session:
 工作階段：
 
+Sessions
+工作階段
+
+Sessions on this computer may:
+這台電腦上的工作階段可：
+
+Sessions on {} may:
+{} 上的工作階段可：
+
+Sessions there keep running.
+該主機上的工作階段會繼續執行。
+
+Sessions used in
+工作階段時間範圍
+
 Set
 設定
 
 Set Background
 設定背景
+
+Set Rex up there if it needs it
+若有需要，在該主機上設定 Rex
 
 Set Time Zone
 設定時區
@@ -9148,8 +10210,14 @@ Set Up
 Set Up Again…
 重新設定…
 
+Set Up This Host’s Account…
+設定此主機的帳號…
+
 Set Up by Hand…
 手動設定…
+
+Set Up {}
+設定 {}
 
 Set Up…
 設定…
@@ -9163,6 +10231,21 @@ Set for the whole computer by {}{}.
 Set up ({} looks).
 已設定（已登錄 {} 種臉部）。
 
+Set up with
+設定指令
+
+Set up with:
+設定指令：
+
+Set up your own Rex server on {}
+在 {} 上設定您自己的 Rex 伺服器
+
+Set up {} as a Rex login server
+將 {} 設定為 Rex 登入伺服器
+
+Set up {} as a shared Rex server
+將 {} 設定為共用 Rex 伺服器
+
 Setting
 設定
 
@@ -9171,6 +10254,9 @@ Setting it: an administrator's password is asked…
 
 Setting up backups to {}…
 正在設定到 {} 的備份…
+
+Setting up needs root. Nothing on {} is changed yet.
+設定需要 root 權限。{} 上尚未變更任何內容。
 
 Setting up the backups in {}’s Google Drive…
 正在 {} 的 Google Drive 中設定備份…
@@ -9181,11 +10267,26 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 設定{}需要輸入密碼和金鑰 PIN，並觸碰金鑰兩次：
 
+Setting up {} of {}…
+正在設定第 {0}/{1} 項…
+
+Setting up {}…
+正在設定 {}…
+
+Setting up…
+正在設定…
+
 Settings
 設定
 
+Settings, instructions, skills and commands. Never a sign-in or a key.
+設定、指令說明、技能與命令，絕不包含登入資料或金鑰。
+
 Settings:
 設定：
+
+Setting…
+正在設定…
 
 Seventh folder
 第 7 個資料夾
@@ -9289,11 +10390,17 @@ Show File in Tracker
 Show Hidden Files
 顯示隱藏檔案
 
+Show Idle Panes in Activity
+在活動中顯示閒置窗格
+
 Show Notifications
 顯示通知
 
 Show Only {}
 僅顯示{}
+
+Show Pane Headers
+顯示窗格標題列
 
 Show Places
 顯示地點
@@ -9318,6 +10425,9 @@ Show Source
 
 Show Toolbars
 顯示工具列
+
+Show Typing Immediately
+立即顯示輸入內容
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 右鍵點按視窗標題或開啟其 Deskbar 選單，選擇「透過 AirPlay 顯示」即可投送視窗。在 Viewer 或 Tracker 中選擇「播放到」可投送影片。
@@ -9421,6 +10531,9 @@ Sign In Again in Terminal…
 Sign In Again…
 重新登入…
 
+Sign In to Tailscale…
+登入 Tailscale…
+
 Sign In with Google
 使用 Google 登入
 
@@ -9432,6 +10545,12 @@ Sign Out
 
 Sign Out…
 登出…
+
+Sign in to connect this server to Tailscale.
+登入以將此伺服器連線到 Tailscale。
+
+Sign in to other hosts with your SSH keys
+使用您的 SSH 金鑰登入其他主機
 
 Sign in to {} as “{}” with your passkey?
 使用通行密鑰以「{1}」的身分登入 {0} 嗎？
@@ -9454,6 +10573,12 @@ Signed in as {} ({}).
 Signed in as {}.
 已以 {} 的身分登入。
 
+Signing in as {} with a key from Olo Passwords
+正在使用 Olo Passwords 中的金鑰以 {} 身分登入
+
+Signing in as {}…
+正在以 {} 身分登入…
+
 Signing in to Fastmail…
 正在登入 Fastmail…
 
@@ -9471,6 +10596,9 @@ Size
 
 Size:
 大小：
+
+Skill for agents
+代理程式技能
 
 Skip syncing the index to disk
 略過將索引同步到磁碟
@@ -9549,6 +10677,9 @@ Soft
 
 Software License
 軟體授權條款
+
+Software Update
+軟體更新
 
 Sol 6.1
 Sol 6.1
@@ -9631,6 +10762,15 @@ Speed:
 Spiral
 螺旋
 
+Split Down
+向下分割
+
+Split Right
+向右分割
+
+Split to Fit
+自動分割
+
 Standard
 標準
 
@@ -9648,6 +10788,9 @@ Start Over
 
 Start Over…
 重新開始…
+
+Start Terminal Here
+在此啟動終端機
 
 Start Test
 開始測試
@@ -9678,6 +10821,9 @@ other: 開始於 {n} 小時前
 
 Started {n} minutes ago
 other: 開始於 {n} 分鐘前
+
+Starting Tailscale…
+正在啟動 Tailscale…
 
 Starting Up
 正在啟動
@@ -9739,8 +10885,14 @@ Steady sleet
 Steady snow
 持續降雪
 
+Step 1 is done. Try Again carries on from step 2.
+步驟 1 已完成。點按「再試一次」會從步驟 2 繼續。
+
 Step {} of {}
 第 {} 步，共 {} 步
+
+Steps 1 to {} are done. Try Again carries on from step {}.
+步驟 1 至 {} 已完成。點按「再試一次」會從步驟 {} 繼續。
 
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 已過 {} 仍在進行。其他修復會等待它完成；如果一直無法完成，重新啟動電腦即可停止。
@@ -9781,6 +10933,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 停止與 {} 同步嗎？這些帳號的項目以及本機尚未傳送的更改都將從本機移除。1Password 中的內容不受影響。
 
+Stopped before step {} of {}
+已在第 {0}/{1} 步前停止
+
 Stopped part way, {}
 中途停止，{}
 
@@ -9792,6 +10947,9 @@ Stopped.
 
 Stopped: what was restored so far is there.
 已停止。已經還原的內容仍會保留。
+
+Stopping after this step…
+將在此步驟完成後停止…
 
 Stopping the backup
 正在停止備份
@@ -9994,6 +11152,9 @@ Tab 8
 Tab 9
 分頁 9
 
+Tab {}
+分頁 {}
+
 Table
 表格
 
@@ -10008,6 +11169,12 @@ Tabs on Agent Screens are never given a code.
 
 Tags:
 標籤：
+
+Tailscale status is unavailable.
+無法取得 Tailscale 狀態。
+
+Tailscale: {}.
+Tailscale：{}。
 
 Take Back
 撤銷授權
@@ -10075,6 +11242,9 @@ Tell coding agents to use Olo’s Agent Screens
 Tell me of:
 通知我：
 
+Tell me when an agent whose pane isn’t in front:
+當非前景窗格中的代理程式有以下情況時通知我：
+
 Tell me when it runs out, and when it's back
 額度耗盡或恢復時通知我
 
@@ -10083,6 +11253,12 @@ Tell palms apart with a palm model
 
 Tell palms apart with a palm model too
 同時使用手掌模型輔助辨識
+
+Telling Codex there of them
+正在通知該主機上的 Codex
+
+Tells Claude Code and other agents there how to use the bridge and Rex.
+告知該主機上的 Claude Code 與其他代理程式如何使用橋接工具和 Rex。
 
 Temperature
 溫度
@@ -10219,8 +11395,14 @@ MTU 必須是以位元組為單位的數值。
 The New Build
 新建置版本
 
+The Rex server isn’t connected.
+尚未連線到 Rex 伺服器。
+
 The Theme’s Own
 主題預設值
+
+The Token Pool running on this computer is older: upgrade it first.
+這台電腦上執行的 Token Pool 版本較舊：請先升級。
 
 The VPN couldn't be saved.
 無法儲存 VPN。
@@ -10230,6 +11412,15 @@ The account answering now
 
 The account couldn’t be saved ({}).
 無法儲存帳號（{}）。
+
+The accounts file couldn’t be read.
+無法讀取帳號檔案。
+
+The accounts’ latest sign-ins are copied back here first.
+會先將各帳號最新的登入資料複製回這台電腦。
+
+The address has no repository’s name in it.
+此位址不包含版本庫名稱。
 
 The address search answered {}.
 地址搜尋服務回傳了 {}。
@@ -10285,6 +11476,9 @@ The code from {}, at {}.
 The coming days, each its sky, low and high.
 未來幾天的天氣，以及每天的最低和最高氣溫。
 
+The command runs once, in the new clone. Leave it empty for none.
+此指令會在新複製的版本庫中執行一次；若不需要請留空。
+
 The computer couldn't be restarted: {}
 無法重新啟動電腦：{}
 
@@ -10330,8 +11524,17 @@ The first backup starts in a moment.
 The first fine-tune failed: {}
 首次微調失敗：{}
 
+The first look is two minutes after it starts.
+啟動兩分鐘後會進行首次檢查。
+
+The folder is a place under your home there (src/name).
+資料夾位於該主機家目錄下（例如 src/name）。
+
 The hand-written ones: not fine-tuned yet
 手寫規則：尚未微調
+
+The host didn’t say what it has.
+該主機未回報其已安裝項目。
 
 The icons {} is drawn with, everywhere.
 {} 在各處使用的圖示。
@@ -10396,6 +11599,12 @@ The last backup was {}
 The last hour of use
 最近一小時的使用情況
 
+The last install didn't go through.
+上次安裝未成功。
+
+The last install didn't go through: {}
+上次安裝未成功：{}
+
 The last whole one was {}
 上次完整備份：{}
 
@@ -10407,6 +11616,9 @@ The log can't be opened: {}
 
 The login keyring couldn't be read: {}
 無法讀取登入鑰匙圈：{}
+
+The login server isn’t running.
+登入伺服器未執行。
 
 The look of every icon, window and control, in every app, and a wallpaper to match.
 所有應用程式的圖示、視窗和控制項外觀，以及相配的桌布。
@@ -10458,6 +11670,12 @@ The next hours, each its sky and temperature, with the chance of rain or the clo
 
 The one it started on
 最初所在的位置
+
+The ones you choose, cloned in your home folder there and set up once.
+您選擇的版本庫會複製到該主機的家目錄，並執行一次設定。
+
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
+開啟檔案上限將於下次登入時生效（目前開啟的窗格需先中斷連線再重新連線），系統服務則於下次啟動時生效。
 
 The package service reads what’s installed and what each repository has.
 套件服務正在讀取已安裝的套件和各套件來源的內容。
@@ -10540,6 +11758,9 @@ CPU
 The processor (OpenH264)
 CPU（OpenH264）
 
+The program in this pane is asking for a password.
+此窗格中的程式正在要求輸入密碼。
+
 The repository has a worktree called {} already.
 此版本庫已有名為 {} 的工作樹。
 
@@ -10557,6 +11778,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 輸入伺服器的 CalDAV 位址、登入名和密碼。密碼將儲存在登入鑰匙圈中。
+
+The shared server isn’t running.
+共用伺服器未執行。
 
 The shell has ended.
 Shell 已結束。
@@ -10672,6 +11896,9 @@ There is no limit “{}”.
 There is nothing to share.
 沒有可共享的內容。
 
+There isn’t room for them on {}. Choose a shorter time, or make room there.
+{} 上沒有足夠空間。請選擇較短的時間範圍，或在該主機上清出空間。
+
 There's no Bluetooth adapter.
 沒有藍牙介面卡。
 
@@ -10686,6 +11913,9 @@ There's no fingerprint sensor, or fprintd isn't running.
 
 There's no infrared camera.
 沒有紅外線攝影機。
+
+There: {} <{}>  ·  Here: {} <{}>
+遠端：{} <{}>  ·  本機：{} <{}>
 
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 這些應用程式每次要求時都可以存取列出的項目。撤銷授權後，下次要求時會重新詢問。
@@ -10717,6 +11947,15 @@ This Computer
 This Computer's Microphones
 本機麥克風
 
+This Olo upgrades from the build it came from, not from releases.
+此 Olo 從原建置來源升級，而非從發行版本升級。
+
+This Olo was built from source: it upgrades from its build, not from releases.
+此 Olo 從原始碼建置，會從其建置來源升級，而非從發行版本升級。
+
+This Olo was built without the Token Pool for hosts, so none can be installed.
+此 Olo 建置時未包含主機用 Token Pool，因此無法安裝。
+
 This PDF can't be edited, so it can't be saved.
 此 PDF 無法編輯，因此無法儲存。
 
@@ -10741,6 +11980,9 @@ This account has a two-step password.
 This backup was made by a newer Olo.
 此備份由更新版本的 Olo 建立。
 
+This computer
+這台電腦
+
 This computer has no Bluetooth.
 這台電腦沒有藍牙。
 
@@ -10762,6 +12004,9 @@ This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and l
 This computer's sensor sees when someone is in front of it.
 本機的感測器可以偵測電腦前是否有人。
 
+This computer’s git doesn’t say who you are.
+這台電腦的 git 未設定您的身分資訊。
+
 This display reports no modes.
 此顯示器未報告任何顯示模式。
 
@@ -10771,6 +12016,12 @@ This event
 This folder was moved or deleted.
 此資料夾已被移動或刪除。
 
+This host isn’t reached over SSH.
+此主機並非透過 SSH 連線。
+
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
+此主機並非透過 SSH 連線，因此無法從這裡查詢或變更其帳號狀態。
+
 This is the recommended profile for this touchpad.
 這是此觸控板的建議設定。
 
@@ -10779,6 +12030,9 @@ This isn't an Olo backup.
 
 This isn't the session at the computer, so the computer isn't restarted.
 這不是電腦本機工作階段，因此未重新啟動電腦。
+
+This isn’t a repository’s address (git@host:owner/name.git, or https://…).
+這不是有效的版本庫位址（git@host:owner/name.git 或 https://…）。
 
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 此核心不支援按磁碟分別設定限制（Linux 6.2 及以上版本支援）。
@@ -10927,6 +12181,9 @@ To the next display
 To the previous display
 移到上一個顯示器
 
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+若要使用，請選擇「設定 ▸ 在主機上使用 Olo 輸入輔助程式」。
+
 To {}
 到 {}
 
@@ -10972,17 +12229,29 @@ Today {}
 Token Pool
 Token Pool
 
+Token Pool answered something else.
+Token Pool 回傳了非預期的回應。
+
 Token Pool asks {} to wait until one resets.
 Token Pool 已請 {} 等待，直至有額度重設。
 
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool 未執行，啟動後即可查看額度。
 
+Token Pool isn’t running on this computer
+Token Pool 未在這台電腦上執行
+
+Token Pool isn’t running on this computer.
+Token Pool 未在這台電腦上執行。
+
 Token Pool · {} · {}
 Token Pool · {} · {}
 
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token Pool：匯入的帳號已暫停使用。請在另一台電腦的池不再使用它們後，再在這裡啟用。登入憑證會自動續期；兩台電腦若同時續期同一份憑證，會導致彼此登出。
+
+Token Pool…
+Token Pool…
 
 Token:
 權杖：
@@ -11110,6 +12379,9 @@ Trim…
 Trust
 信任
 
+Trust & Connect
+信任並連線
+
 Trust this repository’s key?
 信任此套件來源的金鑰嗎？
 
@@ -11173,6 +12445,12 @@ Turn off displays
 Turn off screen
 關閉螢幕
 
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+要為「{}」開啟自動核准嗎？\n\n這是另一個程式要求的，不是你。當此窗格中的程式設計代理程式要求繼續（「Do you want to proceed?」）時，除非你在窗格中輸入或按下停止，Rex 會在 {} 秒後回答「是」。
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+要為「{}」開啟自動核准嗎？\n\n這是另一個程式要求的，不是你。當此分頁中的程式設計代理程式要求繼續（「Do you want to proceed?」）時，除非你在分頁中輸入或按下停止，Terminal 會在 {} 秒後回答「是」。
+
 Turn on for a laptop usually plugged in.
 經常接電使用的筆記型電腦建議開啟。
 
@@ -11215,6 +12493,9 @@ Type a to-do above, and press Return.
 Type here to try the settings
 在這裡輸入以試用設定
 
+Type in All Panes
+在所有窗格中輸入
+
 Type the PIN for “{}” (often 0000).
 請輸入「{}」的 PIN（通常為 0000）。
 
@@ -11236,8 +12517,14 @@ Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 輸入用於解鎖的密碼。
 
+Type the repository’s address.
+請輸入版本庫位址。
+
 Type this
 輸入以下內容
+
+Type to filter…
+輸入以篩選…
 
 Type with your palms down
 放下手掌打字
@@ -11347,6 +12634,9 @@ Unknown caller
 Unless the app says; kept while the pointer is over it.
 應用程式另有設定時優先；指標懸停時保留。
 
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
+請解鎖 Olo Passwords，或在其中加入 {} 的 root 所接受的金鑰。
+
 Unlock…
 解鎖…
 
@@ -11358,6 +12648,9 @@ Unmute
 
 Unmute All
 全部取消靜音
+
+Unpacking
+正在解壓縮
 
 Unread notifications put a blue dot beside their app.
 有未讀通知時，在應用程式旁顯示藍點。
@@ -11386,6 +12679,9 @@ Up a level
 Up for
 運作時間
 
+Up to date
+已是最新
+
 Upcoming
 即將到期
 
@@ -11398,14 +12694,23 @@ Update Interval
 Update Only This…
 僅更新此項…
 
+Update Rex on {} to {}?
+要將 {} 上的 Rex 更新至 {} 嗎？
+
 Update Selected Only…
 僅更新所選項目…
 
 Update These {}…
 更新這 {} 項…
 
+Update asks Rex’s repository for a newer version, and installs it if there is one.
+更新會向 Rex 套件來源查詢新版本，若有則進行安裝。
+
 Update every:
 更新間隔：
+
+Update installs it, with Rex’s installer.
+更新會透過 Rex 安裝程式進行安裝。
 
 Update the power service in Olo Doctor to use these policies.
 請在 Olo Doctor 中更新電源服務以使用這些策略。
@@ -11425,6 +12730,9 @@ Updates are downloaded and wait for the computer to restart: they’re installed
 Updating…
 正在更新…
 
+Upgrade
+升級
+
 Upgrade Fedora
 升級 Fedora
 
@@ -11433,6 +12741,9 @@ Upgrade Olo
 
 Upgrade to Fedora {}
 升級到 Fedora {}
+
+Upgrading
+正在升級
 
 Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
 升級會先在背景下載 Fedora {} 的所有套件，再在重新啟動時安裝。安裝需要一段時間，其間無法使用電腦。檔案、設定和應用程式都會保留。請先將目前發行版更新到最新狀態，並做好備份。
@@ -11445,6 +12756,9 @@ Upload at most:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 備份時上傳，還原和清理時下載。限速立即生效，正在進行的備份也會受到限制。
+
+Uploading {}…
+正在上傳 {}…
 
 Uploading: {}
 正在上傳：{}
@@ -11461,6 +12775,9 @@ Urgent at
 Use
 使用
 
+Use Agent Screens
+使用代理螢幕
+
 Use Battery Saver automatically
 自動啟用省電模式
 
@@ -11476,8 +12793,14 @@ Use F1, F2, etc. as standard function keys
 Use Google Drive Instead…
 改用 Google Drive…
 
+Use Mine
+使用我的
+
 Use Music Quality
 使用音樂音質
+
+Use Olo’s Typing Helper on Hosts
+在主機上使用 Olo 輸入輔助程式
 
 Use Passwords for ssh
 讓 SSH 使用 Passwords
@@ -11520,6 +12843,9 @@ Use:
 
 User
 使用者
+
+User {}, over SSH
+使用者 {}，透過 SSH
 
 Username or Site
 使用者名稱或網站
@@ -11701,11 +13027,20 @@ Waiting
 Waiting for Ethernet
 正在等待乙太網路連線
 
+Waiting for a key from Olo Passwords
+正在等候 Olo Passwords 提供金鑰
+
 Waiting for another fix to finish…
 正在等待另一項修復完成…
 
 Waiting for app_server…
 正在等待 app_server…
+
+Waiting for approval
+等待核准
+
+Waiting for host
+正在等候主機
 
 Waiting for it…
 正在等待回應…
@@ -11727,6 +13062,15 @@ Waiting for the touchpad…
 
 Waiting for you to sign in to Google in the browser…
 正在等待您在瀏覽器中登入 Google…
+
+Waiting for you to sign in…
+正在等候您登入…
+
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+正在等候金鑰代理程式登入「{}」。若金鑰儲存在 Passwords 中，它可能已鎖定。
+
+Waiting for your key agent…
+正在等候金鑰代理程式…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 正在等待「{}」授權。請檢查其藍牙設定中此電腦對應的開關。
@@ -11797,6 +13141,9 @@ Week Starts On
 Weights
 權重
 
+Welcome to Olo Rex
+歡迎使用 Olo Rex
+
 What
 類型
 
@@ -11842,6 +13189,9 @@ What should I wear today?
 What should I wear tomorrow?
 明天穿什麼合適？
 
+What was done stays done. Setting it up again carries on from there.
+已完成的步驟會保留，再次設定會從該處繼續。
+
 What you change applies when you leave Rescue.
 所做更改在離開救援模式時生效。
 
@@ -11880,6 +13230,12 @@ What’s coming up next week?
 
 What’s in the Trash
 垃圾桶中的內容
+
+What’s installed on {} isn’t known until it connects.
+連線前無法得知 {} 上已安裝的項目。
+
+What’s installed on {} isn’t known until it’s connected.
+連線前無法得知 {} 上已安裝的項目。
 
 What’s next?
 接下來有什麼安排？
@@ -12112,6 +13468,9 @@ Withdrawn by {}
 Word Document…
 Word 文件…
 
+Working
+工作中
+
 Working out what it comes to: every package it needs, and what it replaces…
 正在計算所需的套件及其替換的內容…
 
@@ -12172,6 +13531,9 @@ Writes
 Writing the backup’s lists…
 正在寫入備份清單…
 
+Writing to disk
+寫入磁碟
+
 Written
 已寫入
 
@@ -12186,6 +13548,9 @@ Yellow
 
 Yes
 是
+
+Yes in {} s
+{} 秒後同意
 
 Yesterday
 昨天
@@ -12244,8 +13609,14 @@ Your home folder is backed up every hour, leaving out what can be downloaded or 
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 在這台電腦上查看手機資訊、聯絡人和簡訊驗證碼。透過藍牙直接連線，不必中轉或另裝軟體。
 
+Your name and address on commits made there, as on this computer.
+在該主機提交記錄時使用的姓名與電子郵件，與這台電腦相同。
+
 Your notes, files and forwarded messages
 您的筆記、檔案和轉傳的訊息
+
+Your other devices on Tailscale can reach these sessions.
+您在 Tailscale 上的其他裝置可以存取這些工作階段。
 
 Your own files and folders
 您的檔案和資料夾
@@ -12273,6 +13644,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 無法驗證您的密碼（{}）。
+
+Your repositories
+您的版本庫
 
 Your settings as they were are in “{}”.
 您原有的設定儲存在「{}」中。
@@ -12328,6 +13702,9 @@ Zoom In
 Zoom Out
 縮小
 
+Zoom Pane
+縮放窗格
+
 Zoom horizontally
 水平縮放
 
@@ -12382,6 +13759,18 @@ a window ({})
 a {} W power limit
 {} W 耗電量上限
 
+about a minute left
+剩餘約一分鐘
+
+about an hour left
+剩餘約一小時
+
+about {n} hours left
+other: 剩餘約 {n} 小時
+
+about {n} minutes left
+other: 剩餘約 {n} 分鐘
+
 about {}
 約 {}
 
@@ -12415,11 +13804,20 @@ and {} more
 app_server's main thread: nice {}{}, {}
 app_server 主執行緒：nice {}{}，{}
 
+applied
+已套用
+
 as in 1Password's sidebar, or its UUID
 與 1Password 邊欄中的名稱一致，也可用 UUID
 
 as it goes
 隨進度調整
+
+as of {}
+截至 {}
+
+as the machine has it
+維持機器原設定
 
 at most {}
 最多 {}
@@ -12427,11 +13825,17 @@ at most {}
 at {}
 在 {}
 
+auto approving
+自動核准中
+
 auto approving (Yes after {} s; {} answered)
 自動核准中（{} 秒後同意，已答復 {} 次）
 
 backing up
 正在備份
+
+behind
+落後
 
 bell rang
 鈴聲已響
@@ -12447,6 +13851,9 @@ brush 的灰色提示，來自用您自己的指令訓練的小模型
 
 built most, the last 24 hours
 過去 24 小時建置次數最多
+
+busy
+忙碌中
 
 ceiling {}%
 上限 {}%
@@ -12474,6 +13881,9 @@ deleting
 
 downgrade {n} packages
 other: 降級 {n} 個套件
+
+downloading
+正在下載
 
 driving {}
 驅動{}
@@ -12586,14 +13996,23 @@ in {}
 install {n} packages
 other: 安裝 {n} 個套件
 
+installing
+正在安裝
+
 it couldn't be ended: {}
 無法結束：{}
+
+it didn’t say why
+未說明原因
 
 it is on a different volume from the Trash, so it can only be deleted
 它和垃圾桶位於不同的磁碟區，只能直接刪除
 
 it took too long
 等待逾時
+
+its accounts are behind
+其帳號已落後
 
 its address can’t be found (is the computer online?)
 找不到位址（電腦已聯網嗎？）
@@ -12609,6 +14028,9 @@ its disk has {}
 
 its ports: {}
 其連接埠：{}
+
+its session has ended.
+其工作階段已結束。
 
 its shells have all ended
 其所有 shell 均已結束
@@ -12664,11 +14086,20 @@ kache{} 正在執行
 kbit/s
 kbit/s
 
+kept going
+繼續工作中
+
 last seen recently
 最近上線過
 
 left to the firmware for now
 暫由韌體控制
+
+less than a minute
+不到一分鐘
+
+less than a minute left
+剩餘不到一分鐘
 
 level {} of 7
 第 {} 檔，共 7 檔
@@ -12697,6 +14128,9 @@ ms
 no
 否
 
+no SSH keys
+沒有 SSH 金鑰
+
 no display ports
 無顯示介面
 
@@ -12708,6 +14142,9 @@ no limit to its space
 
 no network: it goes on once there’s one
 無網路，重新連網後繼續
+
+no sessions open
+沒有開啟的工作階段
 
 no wired network: it waits for one
 無有線網路，正在等待連線
@@ -12910,6 +14347,9 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh、git 等程式可使用 Passwords 中的 SSH 金鑰登入。每個程式在首次要求使用時需獲得授權。
 
+ssh://you@host or host.ts.net
+ssh://you@host 或 host.ts.net
+
 sudo needs your password to run this{}:
 sudo 需要您的密碼以執行以下指令{}：
 
@@ -13003,6 +14443,9 @@ the secret at {}
 the server answered {}
 伺服器回應：{}
 
+the server couldn’t complete the request
+伺服器無法完成該請求
+
 the service answered {}
 服務回應：{}
 
@@ -13023,6 +14466,9 @@ the window server
 
 the {} didn't get going: {}
 {} 未能啟動：{}
+
+there isn’t one for {}
+沒有適用於 {} 的版本
 
 these {n} backups need
 other: 這 {n} 份備份所需的
@@ -13084,8 +14530,14 @@ under a minute
 under a second
 不到一秒
 
+unpacking
+正在解壓縮
+
 up to
 最高
+
+up to date
+已是最新
 
 up to {} dpi
 最高 {} dpi
@@ -13113,6 +14565,12 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 包含 {n} 個已修改但未提交的檔案
+
+without {}
+缺少 {}
+
+without {}, {} and {} more
+缺少 {}、{} 及另外 {} 項
 
 yes
 是
@@ -13144,6 +14602,9 @@ other: 找到 {n} 個行程
 {n} More in Calendar…
 other: 在行事曆中查看更多（{n} 個）…
 
+{n} SSH keys
+other: {n} 把 SSH 金鑰
+
 {n} agent screens are running. Click to watch them.
 other: 有 {n} 個代理螢幕正在執行。點按查看。
 
@@ -13156,11 +14617,17 @@ other: {n} 份備份
 {n} backups chosen.
 other: 已選擇 {n} 份備份。
 
+{n} cloned
+other: 已複製 {n} 個
+
 {n} coming up
 other: {n} 項即將到期
 
 {n} conversations
 other: {n} 個對話
+
+{n} couldn’t be done
+other: 有 {n} 項未能完成
 
 {n} days
 other: {n} 天
@@ -13180,11 +14647,20 @@ other: {n} 個檔案
 {n} files couldn’t be read.
 other: 有 {n} 個檔案無法讀取。
 
+{n} files to copy
+other: 有 {n} 個檔案待複製
+
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 接收器正在播放 {n} 部影片。點按暫停或停止。
 
 {n} folders couldn't be read
 other: 有 {n} 個資料夾無法讀取
+
+{n} folders taken
+other: 有 {n} 個資料夾已被佔用
+
+{n} forwarded ports are waiting.
+other: 有 {n} 個轉送的連接埠正在等候。
 
 {n} hours
 other: {n} 小時
@@ -13228,6 +14704,9 @@ other: {n} 個資料封包的總和檢查碼與傳送時一致
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 other: AirPlay 接收器上有 {n} 項正在播放或顯示。點按暫停或停止。
 
+{n} ports forwarded here.
+other: 已將 {n} 個連接埠轉送到此處。
+
 {n} problems reading 1Password…
 other: 讀取 1Password 時遇到 {n} 個問題…
 
@@ -13248,6 +14727,15 @@ other: {n} 秒
 
 {n} secrets
 other: {n} 項機密資料
+
+{n} sessions
+other: {n} 個工作階段
+
+{n} sessions open
+other: {n} 個工作階段已開啟
+
+{n} sessions there.
+other: 該主機上有 {n} 個工作階段。
 
 {n} shares, control among them. Click to stop them.
 other: 有 {n} 項共享，其中包括遠程控制。點按停止。
@@ -13279,6 +14767,12 @@ other: 有 {n} 項等待在應用程式中處理
 {n} weeks
 other: {n} 週
 
+{}  ·  Set up with nothing
+{}  ·  無設定指令
+
+{}  ·  Set up with {}
+{}  ·  設定指令：{}
+
 {} (AV1 and VP9)
 {}（AV1 和 VP9）
 
@@ -13287,6 +14781,9 @@ other: {n} 週
 
 {} (in use)
 {}（使用中）
+
+{} (installed)
+{}（已安裝）
 
 {} (lower wins)
 {}（越低越優先）
@@ -13357,6 +14854,9 @@ other: {n} 週
 {} a second
 每秒 {}
 
+{} accounts
+{} 個帳號
+
 {} ago · click a graph for another moment
 {}前 · 點按圖表查看其他時刻
 
@@ -13371,6 +14871,9 @@ other: {n} 週
 
 {} answered {} (not a speed test server?)
 {} 回應：{}（可能不是測速伺服器）
+
+{} answering now
+{} 回應中
 
 {} applications are keeping the display awake.
 有 {} 個應用程式正在讓顯示器保持開啟。
@@ -13399,11 +14902,17 @@ other: {n} 週
 {} cleared · kept for {} days, the last {}
 已清除 {} 條 · 儲存 {} 天，最多保留最近 {} 條
 
+{} continued there
+有 {} 個在遠端繼續
+
 {} copied: 1Password doesn’t let other apps read its archive.
 未能複製 {}，因為 1Password 不允許其他應用程式讀取封存內容。
 
 {} couldn't be found: {}
 找不到 {}：{}
+
+{} couldn’t be cloned: {}
+無法複製 {}：{}
 
 {} couldn’t be unpacked.
 無法解壓 {}。
@@ -13426,8 +14935,17 @@ other: {n} 週
 {} didn't start pairing: {}.
 {} 未開始配對：{}。
 
+{} didn’t accept your keys for root
+{} 未接受您用於 root 的金鑰
+
+{} didn’t accept your keys for {}
+{0} 未接受您用於 {1} 的金鑰
+
 {} didn’t download: {}
 {} 下載失敗：{}
+
+{} didn’t say how its limits stand.
+{} 未回報其上限狀態。
 
 {} different commands, of {} run
 共執行 {1} 次，涉及 {0} 條不同的指令
@@ -13477,8 +14995,20 @@ other: {n} 週
 {} h {} min
 {} 小時 {} 分鐘
 
+{} hasn’t answered for over a minute
+{} 超過一分鐘未回應
+
+{} hasn’t answered for over {} minutes
+{} 超過 {} 分鐘未回應
+
+{} hasn’t answered for {} seconds
+{} 已 {} 秒未回應
+
 {} hours ago
 {} 小時前
+
+{} in
+{} 輸入
 
 {} in all
 共 {}
@@ -13513,6 +15043,9 @@ other: {n} 週
 {} is Fedora’s own: it can be turned off, not removed.
 {} 是 Fedora 內建的套件來源，可以停用，但不能移除。
 
+{} is available.
+{} 已推出。
+
 {} is back
 {} 已恢復可用
 
@@ -13527,6 +15060,15 @@ other: {n} 週
 
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
 {} 正在獨占輸入裝置。它接管的滑鼠透過虛擬指標移動，這裡的設定對其無效。
+
+{} is installed
+已安裝 {}
+
+{} is installed  ·  up to date
+已安裝 {}  ·  已是最新
+
+{} is installed  ·  {} is available
+已安裝 {}  ·  {} 已推出
 
 {} is protected by a password.
 {} 受密碼保護。
@@ -13582,6 +15124,9 @@ other: {n} 週
 {} keys
 {} 按鍵
 
+{} keys, at {}
+{} 把金鑰，位於 {}
+
 {} knows this computer.
 {} 已辨識此電腦。
 
@@ -13633,6 +15178,9 @@ other: {n} 週
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 本次新增 {} · 已壓縮並加密傳送 {}（{}/秒{}）
 
+{} now, {} suggested
+目前 {}，建議 {}
+
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
@@ -13666,6 +15214,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {} of {} Events Found
 找到 {} 個行程，共 {} 個
 
+{} of {} cloned
+已複製 {0}/{1} 個
+
 {} of {} connected.
 已連線 {} 個，共 {} 個。
 
@@ -13687,6 +15238,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {} of {} read back
 已讀回 {}，共 {}
 
+{} of {} ready
+已就緒 {0}/{1} 項
+
 {} of {} selected
 已選擇 {} 項，共 {} 項
 
@@ -13696,11 +15250,26 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {} of {} slots
 插槽 {} / {}
 
+{} of {} to change
+待變更 {0}/{1} 項
+
 {} on Workspace {}
 {1} 號工作區中的 {0}
 
 {} on this computer
 本機上有 {}
+
+{} on {}?
+要在 {1} 上{0}嗎？
+
+{} on {}…
+{1}：{0}…
+
+{} open
+{} 個開啟中
+
+{} out
+{} 輸出
 
 {} over 5 ms in the last minute, the longest {}
 過去一分鐘超過 5 毫秒的有 {} 次，最長 {}
@@ -13729,6 +15298,12 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {} repositories, {} on. Packages come from those that are on.
 共 {} 個套件來源，已啟用 {} 個。套件來自已啟用的套件來源。
 
+{} requests running
+{} 個請求執行中
+
+{} requests today
+今日 {} 個請求
+
 {} right first
 首選建議準確率 {}
 
@@ -13737,6 +15312,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {} s ago
 {} 秒前
+
+{} said:
+{} 回報：
 
 {} shared with this screen
 與此螢幕共享的有 {}
@@ -13749,6 +15327,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
 過去一分鐘捲動 {} 格（滾輪刻度或觸控板移動）
+
+{} still isn’t set up
+{} 仍未設定完成
 
 {} stopped answering: {}
 {} 已停止回應：{}
@@ -13764,6 +15345,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
 還有 {} 項聊天更改（封存、已讀、靜音或置頂）尚未傳送。未傳送的更改將保留，等下次開啟 Telegram 時傳送。
+
+{} to copy
+{} 待複製
 
 {} to deal with, {}
 有 {} 項待處理，{}
@@ -13858,6 +15442,12 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {} — {} ({}% of this folder){}{}
 {} — {}（佔此資料夾的 {}%）{}{}
 
+{}%  ·  {}
+{}%  ·  {}
+
+{}%  ·  {}  ·  {}
+{}%  ·  {}  ·  {}
+
 {}% chance this hour
 本小時降水機率 {}%
 
@@ -13912,6 +15502,12 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {}, on set days
 {}，在指定日期
 
+{}, over SSH
+{}，透過 SSH
+
+{}, over Tailscale
+{}，透過 Tailscale
+
 {}, until {}
 {}，直至 {}
 
@@ -13923,6 +15519,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {}, {} shown in this Terminal.
 {}，此 Terminal 中顯示 {} 個。
+
+{}, {}%
+{}，{}%
 
 {}, {}% of its life used
 {}，已用壽命 {}%
@@ -13966,6 +15565,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {}: a whole number, please
 {}：請輸入整數
 
+{}: expected auto, conservative, or off
+{}：應為 auto、conservative 或 off
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}：每次使用都需要輸入 PIN，無法透過觸碰來代替密碼
 
@@ -13980,6 +15582,12 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {}: not here yet
 {}：這裡尚無
+
+{}: off
+{}：關
+
+{}: on
+{}：開
 
 {}: sign in again on this computer (each computer signs in as itself).
 {}：請在此電腦上重新登入（每台電腦均須單獨登入）。
@@ -14032,6 +15640,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {}’s data centre
 {} 的資料中心
 
+{}’s package manager checked Rex’s repository when this window opened.
+此視窗開啟時，{} 的套件管理員已檢查 Rex 套件來源。
+
 {}″ ({} × {} mm), {} pixels per inch
 {} 英吋（{} × {} 公釐），每英吋 {} 像素
 
@@ -14041,6 +15652,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.gradle、~/.m2/repository 和專案中的 .gradle
 
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
+~/.local/bin：代理程式與 Rex 的安裝位置，方便該主機上的 Shell 找到它們。
+
 ~/.local/share/Trash
 ~/.local/share/Trash
 
@@ -14055,6 +15669,18 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 ~/worktrees
 ~/worktrees
+
+~/{} already holds another repository on {}: {}
+{1} 上的 ~/{0} 已有其他版本庫：{2}
+
+~/{} already holds something else on {}. Move it away, or Edit… the folder.
+{1} 上的 ~/{0} 已有其他內容。請移走該內容，或點按「編輯…」變更資料夾。
+
+~/{} already holds something else. Choose… to see it.
+~/{} 已有其他內容。點按「選擇…」查看。
+
+~/{} is already {}’s folder. Type another one.
+~/{0} 已是 {1} 的資料夾。請輸入另一個名稱。
 
 ·
 ·
@@ -14070,6 +15696,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 ½ second
 0.5 秒
+
+—
+—
 
 “[{}]” isn’t a repository’s id.
 「[{}]」不是有效的套件來源 ID。
@@ -14119,6 +15748,12 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 「{}」未指明套件位置（缺少 baseurl、metalink 或 mirrorlist）。
 
+“{}” has no sessions.
+「{}」沒有工作階段。
+
+“{}” has no terminals.
+「{}」沒有終端機。
+
 “{}” has no {}.
 「{}」沒有{}。
 
@@ -14139,6 +15774,9 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 「{}」已連線，但其訊息沒有回應。Olo 會繼續嘗試。
+
+“{}” is disconnected.
+「{}」已中斷連線。
 
 “{}” is imported.
 已匯入「{}」。
@@ -14238,39 +15876,3 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 
 ⌘ Command (the Super key)
 ⌘ Command（Super 鍵）
-
-Auto Approve answers Yes in {} s
-自動核准將在 {} 秒後回答「是」
-
-kept going
-繼續工作中
-
-auto approving
-自動核准中
-
-Waiting for approval
-等待核准
-
-Working
-工作中
-
-Error
-錯誤
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
-要為「{}」開啟自動核准嗎？\n\n這是另一個程式要求的，不是你。當此窗格中的程式設計代理程式要求繼續（「Do you want to proceed?」）時，除非你在窗格中輸入或按下停止，Rex 會在 {} 秒後回答「是」。
-
-Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
-要為「{}」開啟自動核准嗎？\n\n這是另一個程式要求的，不是你。當此分頁中的程式設計代理程式要求繼續（「Do you want to proceed?」）時，除非你在分頁中輸入或按下停止，Terminal 會在 {} 秒後回答「是」。
-
-Yes in {} s
-{} 秒後同意
-
-Keep It Going in “{}”
-在「{}」中繼續工作
-
-Auto Approve in “{}”
-在「{}」中自動核准
-
-An agent is at rest here
-此處有代理程式在待命
