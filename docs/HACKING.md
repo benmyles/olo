@@ -29854,7 +29854,16 @@ Idle Panes in Activity, shells too. Rows keep their sessions' order
 ⌘J, finds the waiting). Auto Approve and Keep It Going are drawn at a
 row's right end on its name's line (Auto Approve's disc last: a
 triangle at a row's very end read as a disclosure arrow), not on its
-icon; under the name, what the program says of itself, else its
+icon; the name is its tab's, as the strip shows it (`hub::
+session_tab_names`: the name the tab was given, else what its program
+calls itself), each also by its pane's own title where a tab holds two
+agents (`activity_title`); by the pane's title alone it went by what
+its program calls itself, Claude Code's version, agy's name (Ben,
+2026-11-24: "it's showing some weird "2.1.331" title"). A program in
+any title is an agent by its own name (`BlockRuntime::program_title`:
+Claude Code's executable is named by its version, in
+`~/.local/share/claude/versions`). Under the name, what the program
+says of itself, else its
 folder's own name ("Home" for home: `folder_name`; a path cut at its
 end lost what tells two apart), then the host, apart by "·"; and at
 that line's end the state in a word ("Waiting" and "Failed" in their

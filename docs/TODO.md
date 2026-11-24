@@ -2877,6 +2877,12 @@ something nobody here has is in "Blocked", with what it waits for.
   title. Find where Activity's row gets its title, make it the tab's (as
   the tab strip shows it), and test it with stand-ins for Claude Code
   and agy on the rig.
+  **Done** 2026-11-24 (HACKING, Rex, "Activity is a list to choose
+  from"): each row named by its tab as the strip names it, two agents in
+  a tab each by its pane too; and a program in any title an agent by its
+  own name ("Claude Code", not its executable's "2.1.331"). Tested by
+  the rows' naming and a pane's program title (unit tests), not on the
+  rig: its stand-ins run no agent named by a version.
 
 - **Rex: root's work done by any account that can sudo without a
   password, not only root@** (Ben, 2026-11-24, first of the work: "when

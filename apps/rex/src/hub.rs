@@ -533,9 +533,9 @@ impl BlockRuntime {
     /// its own server (a far one's is the server's word, if it gave it).
     pub fn said(&self, local_home: Option<&str>) -> String {
         let process = self.process.as_ref();
-        let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+        let program = self.program_title();
         let home = process.and_then(|p| p.home.as_deref()).or(local_home);
-        pane_title(&self.title, &self.label, program, &folder_said(&self.pwd, home))
+        pane_title(&self.title, &self.label, program.as_deref(), &folder_said(&self.pwd, home))
     }
 
     /// The screen changed: what an agent is doing there, guessed from
@@ -676,6 +676,20 @@ impl BlockRuntime {
         let fg = self.process.as_ref().and_then(|p| p.foreground.as_ref());
         let args = fg.map_or(Vec::new(), |p| [p.argv0.clone(), p.script.clone(), p.invoked_path.clone()].into_iter().flatten().collect());
         (fg.map(|p| p.name.clone()), fg.and_then(|p| p.path.clone()).unwrap_or_default(), args)
+    }
+
+    /// What the pane's program goes by in a title (its head, its tab's,
+    /// Activity's row): a coding agent by its own name, else the program's
+    /// name (the foreground one, else the shell's child). Claude Code's
+    /// program is named by its version ("2.1.331", in
+    /// `~/.local/share/claude/versions`), which titled Activity's rows
+    /// (Ben, 2026-11-24).
+    pub fn program_title(&self) -> Option<String> {
+        let (name, exe, args) = self.agent_program();
+        if let Some(agent) = name.as_deref().and_then(|n| crate::agent::which_agent(Some(n), &exe, &args, "")) {
+            return Some(agent.name().to_owned());
+        }
+        self.process.as_ref().and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.clone())
     }
 
     pub fn memory_usage(&self) -> TerminalMemoryUsage {
@@ -975,8 +989,8 @@ pub fn tab_names(tabs: &[(Option<&str>, &str, &str)]) -> Vec<String> {
 pub fn name_of_pane(st: &HubState, bk: &BlockKey) -> Option<String> {
     let br = st.blocks.get(bk)?;
     let g = br.lock().unwrap_or_else(|e| e.into_inner());
-    let program = g.process.as_ref().and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
-    Some(pane_title(&g.title, &g.label, program, ""))
+    let program = g.program_title();
+    Some(pane_title(&g.title, &g.label, program.as_deref(), ""))
 }
 
 pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::SessionView) -> Vec<String> {
@@ -992,9 +1006,9 @@ pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::S
                 if let Some(br) = st.blocks.get(&bk) {
                     let g = br.lock().unwrap_or_else(|e| e.into_inner());
                     let process = g.process.as_ref();
-                    let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+                    let program = g.program_title();
                     let home = process.and_then(|p| p.home.as_deref()).or(local.as_deref());
-                    title = tab_title(&g.title, &g.label, program, &g.pwd, home);
+                    title = tab_title(&g.title, &g.label, program.as_deref(), &g.pwd, home);
                     pwd = g.pwd.clone();
                     break;
                 }
@@ -6935,6 +6949,27 @@ mod tests {
     /// A program that asked for the mouse is told of presses, drags and
     /// releases where they are, and of the wheel; one that hasn't, of
     /// nothing.
+    /// A pane's program in a title: a coding agent by its own name, Claude
+    /// Code's program being named by its version; any other by its name.
+    #[test]
+    fn an_agent_program_is_titled_by_the_agent() {
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        assert_eq!(b.program_title(), None);
+        let running = |name: &str, path: &str| TerminalProcessSnapshot {
+            foreground: Some(olo_rex_client::ProcessInfo { pid: 4210, name: name.to_owned(), path: Some(path.to_owned()), ..Default::default() }),
+            ..Default::default()
+        };
+        b.process = Some(running("2.1.331", "/home/u/.local/share/claude/versions/2.1.331"));
+        assert_eq!(b.program_title().as_deref(), Some("Claude Code"));
+        b.process = Some(running("agy", "/home/u/.local/bin/agy"));
+        assert_eq!(b.program_title().as_deref(), Some("Antigravity"));
+        b.process = Some(running("htop", "/usr/bin/htop"));
+        assert_eq!(b.program_title().as_deref(), Some("htop"));
+        // (What the pane's head says by it, a folder after.)
+        b.process = Some(running("2.1.331", "/home/u/.local/share/claude/versions/2.1.331"));
+        assert_eq!(b.said(None), "Claude Code");
+    }
+
     #[test]
     fn the_mouse_is_reported_to_a_program_that_asked() {
         use olo_rex_vt::input::{KeyMods, MouseAction, MouseButton};

@@ -3198,7 +3198,26 @@ impl RexWindow {
                     let mut sess_help = crate::agent::Help::default();
                     let mut unread_count = 0usize;
                     if let Some(v) = view {
-                        for w in &v.windows {
+                        // (Each agent named by its tab, as the tab strip names
+                        // it: the name it was given, else its program's title.
+                        // By its pane's own title it went by what its program
+                        // calls itself, Claude Code's version, agy's name: Ben,
+                        // 2026-11-24, "it isn't showing the terminal tab title
+                        // it's showing some weird "2.1.331" title".)
+                        let tab_names = crate::hub::session_tab_names(&st, &h.key, v);
+                        for (tab, w) in v.windows.iter().enumerate() {
+                            // (A tab of more than one agent: each also by its own
+                            // pane's title, where that says something more.)
+                            let agents_here = w
+                                .all_blocks()
+                                .filter(|b| {
+                                    let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
+                                    st.blocks.get(&bk).is_some_and(|br| {
+                                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                        g.agent_activity != AgentActivity::Idle || g.runs_agent() || st.settings.activity_include_idle
+                                    })
+                                })
+                                .count();
                             for b in w.all_blocks() {
                                 let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
                                 if let Some(br) = st.blocks.get(&bk) {
@@ -3218,11 +3237,12 @@ impl RexWindow {
                                     if g.agent_activity != AgentActivity::Idle || running || st.settings.activity_include_idle {
                                         // (What it goes by: its title, else its program.)
                                         let process = g.process.as_ref();
-                                        let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+                                        let program = g.program_title();
                                         let home = process.and_then(|p| p.home.clone()).or_else(|| h.is_local.then(crate::hub::local_home).flatten());
                                         // (Its folder is the line under it: `tab_title` leaves a
                                         // pane outside home unnamed, its tab to be named by it.)
-                                        let label = crate::hub::pane_title(&g.title, &g.label, program, "");
+                                        let pane = crate::hub::pane_title(&g.title, &g.label, program.as_deref(), "");
+                                        let label = activity_title(tab_names.get(tab).map(String::as_str), agents_here, pane);
                                         // (What it says of itself, else its folder by its own
                                         // name: a path cut at its end lost the part that
                                         // tells two apart.)
@@ -5914,6 +5934,18 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(),
 /// An Activity row: a pane an agent runs in (or a shell, where idle panes
 /// are shown), its host and what it says of itself, its agent's state,
 /// what it has on, and whether an agent runs there now.
+/// What an Activity row is called: its tab's name, as the tab strip
+/// names it (`hub::session_tab_names`), and where the tab holds more than
+/// one agent, each also by its own pane's title where that says more;
+/// with no name for its tab, its pane's.
+fn activity_title(tab: Option<&str>, agents_in_tab: usize, pane: String) -> String {
+    match tab.filter(|n| !n.trim().is_empty()) {
+        Some(name) if agents_in_tab > 1 && pane != name => format!("{name} · {pane}"),
+        Some(name) => name.to_owned(),
+        None => pane,
+    }
+}
+
 struct ActivityRow {
     bk: BlockKey,
     host: String,
@@ -6160,6 +6192,24 @@ mod workspace_tests {
         assert_eq!(selected_session_index(&rows, Some("gone"), 0), Some(0));
         assert_eq!(selected_session_index(&rows, Some("fourth"), 3), Some(2));
         assert_eq!(selected_session_index(&[], Some("gone"), 0), None);
+    }
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::*;
+
+    /// An Activity row goes by its tab's name, as the strip shows it: the
+    /// name the tab was given over what its program calls itself (Ben,
+    /// 2026-11-24: "it's showing some weird "2.1.331" title"); two agents
+    /// in one tab, each by its pane too; a tab with no name, its pane's.
+    #[test]
+    fn an_agent_is_named_by_its_tab() {
+        assert_eq!(activity_title(Some("Release notes"), 1, "Claude Code".into()), "Release notes");
+        assert_eq!(activity_title(Some("Review"), 2, "Antigravity".into()), "Review · Antigravity");
+        assert_eq!(activity_title(Some("Claude Code"), 2, "Claude Code".into()), "Claude Code");
+        assert_eq!(activity_title(None, 1, "Claude Code".into()), "Claude Code");
+        assert_eq!(activity_title(Some("  "), 1, "Codex".into()), "Codex");
     }
 }
 
