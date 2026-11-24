@@ -825,27 +825,6 @@ something nobody here has is in "Blocked", with what it waits for.
      0011's switch; (c) the write-up and the first three patches
      sent to NVIDIA (Ben's to send).
 
-- **Left from the reviews of the Kernel tab** (2026-11-20; five
-  rounds with both; what was about the new box and the tab's layout
-  is done). From the last round, real and not this tab's alone: in
-  dark looks the tabs not chosen are lighter than the panel, so they
-  read as in front of the chosen one (the kit's tab view, every
-  app's: to be judged before and after across apps); and smaller:
-  the left column's values could start nearer their labels (a label
-  width for each column, not one for the tab), and with Processor
-  Turns off its first two rows say the same. Of the older boxes, real and not done: "where"
-  for "whereas" in Preemption's and Network's sentences reads as a
-  place; Network's check box is the only one named in jargon ("Send
-  with BBRv3") and its facts make the reader decode ("Their round
-  trip: 68 ms, the middle of them", "Checked: on this kernel's
-  series", "segments"); "Windows' buffers" in Graphics reads as
-  Microsoft's; Removable Disks' "Here" and "May wait"; only some
-  boxes say "At every start"; a lock beside the note. And the tab's
-  facts in other languages: labels are looked up now where they're
-  in the list, most of the older ones and every value built with
-  `format!` aren't ("May wait", "Next start", "in the running
-  kernel", "limited").
-
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:
   - **The phone connects over low energy and answers no classic
@@ -1760,17 +1739,16 @@ something nobody here has is in "Blocked", with what it waits for.
   follow from its state, in Terminal; its states in Rex. Left:
   - *The tab-title tool and the context hook set up for it*
     (`agent_title.rs`, `agent_context.rs`: Claude Code's and Codex's
-    configurations are written; Antigravity's aren't). Its MCP servers
-    are said to be in `~/.gemini/config/mcp_config.json` and its hooks
-    in `~/.gemini/config/hooks.json`: read its documentation and try
-    with the real program before writing either.
-  - *Rex's Keep It Going with a real agy on a host* (it goes by the
-    same reading of the screen, tested with recorded screens only),
-    and Rex's Auto Approve, which Rex has for no agent yet
-    (Terminal's is the one to share).
-  - *The list*: each feature against each of the three agents in
-    each of the two apps, written down in HACKING with how each was
-    tried.
+    configurations are written; Antigravity's aren't). Found
+    2026-11-24 (HACKING, the list after "Antigravity, as Claude Code
+    and Codex"): its MCP servers are in `~/.gemini/mcp_config.json`,
+    its hooks in `~/.gemini/config/hooks.json`, a plugin can bring
+    both; to be designed and tried with a signed-in session whose
+    configuration may be changed (not the one the helpers run on).
+  (Done 2026-11-24: Rex's Auto Approve, and Keep It Going, end to end
+  with all three stand-ins; the real 1.5.16's and Claude Code
+  2.1.331's screens read as the stand-ins' are; Olo's skills put where
+  Antigravity alone reads them; the list, in HACKING.)
 
 - **Preferences, from Opus's look at the Kernel tab** (2026-11-24),
   there before the change, in its words:
@@ -2618,6 +2596,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Left from the reviews of the Kernel tab** (2026-11-20). Done
+  2026-11-24 (30309407b and the review batch after it): a dark look's
+  tabs not chosen a step darker than the panel, in every app's tab view;
+  a label width for each column; "whereas" and the jargon gone from
+  Preemption's and Network's sentences ("Send at the pace the network
+  can carry", "Usual round trip", "Tried with this kernel: not yet
+  (7.0)"); "Window Buffers"; Removable Disks' "Unwritten at most" and
+  "Disks plugged in"; "Kept after restart" in every box; every label and
+  value word in the twelve catalogs. Kept: Processor Turns shows the same
+  rows on and off (nothing moves as it is switched), and no lock beside
+  the note, which says it in words as every pane that asks for a
+  password does.
 - **Rex's Host window, from Opus's look at its Bridge row** (2026-11-23).
   Pictured (2026-11-24): a host named half as long again as
   "build-farm-eu-west-production-01" ends in "…" a gap before Check Again,

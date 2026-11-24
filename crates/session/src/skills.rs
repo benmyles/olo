@@ -3,7 +3,9 @@
 //! Screens, `apps/screen/SKILL.md`) and how to add a computer's hardware
 //! to it (`docs/skills/olo-hardware/SKILL.md`). Claude Code reads
 //! `~/.claude/skills` (or `$CLAUDE_CONFIG_DIR/skills`); Codex reads
-//! `~/.agents/skills`. A skill goes only to agents the person has (their
+//! `~/.agents/skills`, and so does Antigravity (agy 1.5.16: "user-global
+//! skills in `~/.agents/skills`, so cross-tool Agent Skills appear …").
+//! A skill goes only to agents the person has (their
 //! folder exists), and replaces only a skill Olo wrote: one whose
 //! marker line the person deleted is theirs and left alone. Kept up to
 //! date at each start and after each upgrade.
@@ -59,7 +61,9 @@ fn skill_dirs(home: &Path, claude_config: Option<PathBuf>) -> Vec<PathBuf> {
     if claude.is_dir() {
         dirs.push(claude.join("skills"));
     }
-    if home.join(".codex").is_dir() || home.join(".agents").is_dir() {
+    // (Antigravity's folder is `~/.gemini`: with it alone, the skills were
+    // nowhere it looks.)
+    if home.join(".codex").is_dir() || home.join(".agents").is_dir() || home.join(".gemini").is_dir() {
         dirs.push(home.join(".agents/skills"));
     }
     dirs
@@ -116,6 +120,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         assert_eq!(skill_dirs(&home, None), [home.join(".claude/skills")]);
+        // Antigravity alone reads `~/.agents/skills` too.
+        std::fs::create_dir_all(home.join(".gemini")).unwrap();
+        assert_eq!(skill_dirs(&home, None), [home.join(".claude/skills"), home.join(".agents/skills")]);
+        std::fs::remove_dir_all(home.join(".gemini")).unwrap();
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         assert_eq!(skill_dirs(&home, None), [home.join(".claude/skills"), home.join(".agents/skills")]);
         assert_eq!(skill_dirs(&home, Some(home.join("elsewhere"))), [home.join(".agents/skills")]);

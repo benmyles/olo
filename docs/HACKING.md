@@ -19173,6 +19173,32 @@ was turned on (`OLO_TERMINAL_AUTO_APPROVE_SECS=3`), and told "Please
 continue" at its prompt by Keep It Going. Not yet: the tab-title tool
 and the context hook set up in Antigravity's own configuration (TODO).
 
+*Each agent feature, by agent and app, and how it was tried*
+(2026-11-24; "stand-in": `tools/dev/stand-ins/AGENT`, end to end in a
+headless Terminal, or in Rex by `try.py agents`; "screens": the real
+program's, read by `olo_agent_screen`'s `read_screens`, below):
+
+| Feature | Claude Code | Codex | Antigravity |
+|---|---|---|---|
+| Told apart, by its program | Terminal, Rex | Terminal, Rex (its shared server too) | Terminal, Rex |
+| Its state read (at work, asking, at rest) | both; 2.1.322's and 2.1.331's screens | both; 0.167's screens | both; 1.5.15's and 1.5.16's screens |
+| Auto Approve (Return on "1. Yes") | Terminal: the real program; Rex: stand-in | Terminal: the real program; Rex: stand-in | Terminal: the real program (the command ran, nothing written to its settings); Rex: stand-in |
+| Keep It Going (at its prompt, quiet two minutes) | Terminal, Rex: stand-in; 2.1.331's prompt read | Terminal, Rex: stand-in | Terminal, Rex: stand-in; 1.5.16's prompt read |
+| Marks, Next Waiting Agent, notices | both, from the state | both | both |
+| The tab-title tool (`agent_title.rs`) | Terminal | Terminal | not yet |
+| The tab group's repositories (`agent_context.rs`) | Terminal | Terminal | not yet |
+| Olo's skills (`olo-session`'s `skills.rs`) | `~/.claude/skills` | `~/.agents/skills` | `~/.agents/skills` (1.5.16 reads it) |
+
+Rex gives agents neither the title tool nor the context hook: they are
+Terminal's. For Antigravity's (agy 1.5.16): its MCP servers are in
+`~/.gemini/mcp_config.json` (`agy mcp add NAME COMMAND`, which has no
+scope but the account's), its hooks in `~/.gemini/config/hooks.json`
+(SessionStart, PreToolUse, PostToolUse, Stop: a hook's input names its
+event and `cwd`; a Stop hook can ask for a continuation, which Keep It
+Going could become), and a plugin (`agy plugin install`) can bring both;
+trying them needs a session signed in to the account, whose agy the
+helpers run on.
+
 **Agents** (`src/agent.rs`). A thread looks at every tab (shown or not)
 when a shell has printed (`session::on_output`, a `Nudge` every output
 chunk pokes, coalesced), at most every 600 ms, and while a reading
