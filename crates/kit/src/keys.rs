@@ -159,6 +159,33 @@ fn own_shift_in(terminal_app: bool, k: &Keystroke) -> bool {
     m.shift && !(terminal_app && commands_text)
 }
 
+/// What a window with no Close or Quit of its own does with a key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leave {
+    Close,
+    Quit,
+}
+
+/// Whether `k` is the profile's Close or Quit, pressed in a window of
+/// this app (`raw`: a terminal app's, whose every window gets the
+/// command key's chords with a Shift app_server adds), as a menu
+/// bar's items are matched ([`olo_kit_base::keys::known`]).
+pub fn closes_or_quits(k: &Keystroke, raw: bool) -> Option<Leave> {
+    // (Every key a window takes comes here: one without the command key
+    // is none, and costs nothing to say so.)
+    if !k.modifiers.control {
+        return None;
+    }
+    let is = |command: &str| olo_kit_base::keys::known(command, raw).and_then(|known| known.keys).and_then(|(s, _)| s).is_some_and(|s| pressed(&s, k));
+    if is("close") {
+        Some(Leave::Close)
+    } else if is("quit") {
+        Some(Leave::Quit)
+    } else {
+        None
+    }
+}
+
 pub fn pressed(s: &Shortcut, k: &Keystroke) -> bool {
     let Some(name) = key_name(s.key) else { return false };
     let key = k.key.to_ascii_lowercase();
@@ -239,6 +266,23 @@ mod tests {
         assert!(own_shift_in(true, &key("shift-v")));
         assert!(own_shift_in(true, &key("ctrl-alt-shift-v")));
         assert!(!own_shift_in(true, &key("v")));
+    }
+
+    /// A window with no Close or Quit in its menus closes on ⌘W and has
+    /// its app quit on ⌘Q, as the profile has them; in a terminal app's
+    /// window, with the Shift app_server adds (⌘W reaches Rex's dialogs
+    /// as Ctrl+Shift+W: matched as a plain ⌘W, it did nothing there).
+    #[test]
+    fn close_and_quit_are_found_as_each_app_gets_them() {
+        let key = |text: &str| Keystroke::parse(text).unwrap();
+        assert_eq!(closes_or_quits(&key("ctrl-w"), false), Some(Leave::Close));
+        assert_eq!(closes_or_quits(&key("ctrl-q"), false), Some(Leave::Quit));
+        assert_eq!(closes_or_quits(&key("ctrl-shift-w"), true), Some(Leave::Close));
+        assert_eq!(closes_or_quits(&key("ctrl-shift-q"), true), Some(Leave::Quit));
+        // Nothing else: a letter, another chord.
+        assert_eq!(closes_or_quits(&key("w"), false), None);
+        assert_eq!(closes_or_quits(&key("ctrl-e"), true), None);
+        assert_eq!(closes_or_quits(&key("ctrl-alt-w"), false), None);
     }
 
     #[test]

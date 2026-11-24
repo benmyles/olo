@@ -658,12 +658,30 @@ impl Frame {
                     cx.stop_propagation();
                     return;
                 }
-                // ⌘W (the profile's Close) on a window whose app has no
-                // Close of its own: closed as its tab's close button does,
-                // the app's confirmations first.
-                if crate::keys::pressed(&olo_kit_base::keys::Shortcut::command(crate::keys::evdev("w")), &e.keystroke) {
-                    cx.request_close();
-                    cx.stop_propagation();
+                // ⌘W and ⌘Q (the profile's Close and Quit) in a window
+                // whose menus have neither (a dialog, an alert, a form):
+                // closed as its tab's close button does, or the app quit,
+                // the app's confirmations first, as BeOS's Alt+Q quits from
+                // any of an app's windows. As its menus would match them,
+                // by the profile (`known`): in a terminal app every window
+                // gets the command key's chords with a Shift app_server
+                // adds, and matched as a plain ⌘W neither did anything in
+                // Rex's Edit Repository (Ben, 2026-11-23: "in a floating
+                // window like the edit repository one i don't seem to be
+                // able to press cmd+q or cmd+w but i can right click and
+                // choose close").
+                match crate::keys::closes_or_quits(&e.keystroke, olo_kit_base::keys::terminal_app()) {
+                    Some(crate::keys::Leave::Close) => {
+                        cx.request_close();
+                        cx.stop_propagation();
+                    }
+                    // (Only where the app can be quit from its menus:
+                    // `menu::app_quits`.)
+                    Some(crate::keys::Leave::Quit) if crate::menu::app_quits() => {
+                        olo_interface::quit();
+                        cx.stop_propagation();
+                    }
+                    _ => {}
                 }
             })
             .font_family(style::UI_FONT)

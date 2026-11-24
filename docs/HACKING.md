@@ -3912,7 +3912,19 @@ it.
   Mac, Windows or BeOS keys and labels, followed live from app_server's
   settings). The window's `Frame` has the keyboard when
   nothing in it does and takes the bar's keys that nothing else took
-  (a text field's ⌘C stays its own). With no `agent::set_menus`, the
+  (a text field's ⌘C stays its own). A window whose menus have no Close
+  or Quit (a dialog, an alert, a form: most have no bar) closes on the
+  profile's Close, as its tab's close button does, and has its app quit
+  on the profile's Quit where some window of the app has Quit in its
+  bar (`menu::app_quits`: so never Deskbar, the login screen, an
+  agent-only Passwords), as BeOS's Alt+Q went to the app from any of
+  its windows (`keys::closes_or_quits`). Both matched as the bar's keys
+  are, by the profile and with a terminal app's added Shift: matched as
+  a plain ⌘W, neither did anything in Rex's dialogs (Ben, 2026-11-23,
+  "in a floating window like the edit repository one i don't seem to
+  be able to press cmd+q or cmd+w"). A key without the command key
+  returns at once (1 ns; 167 ns a chord, opt-level 1). With no
+  `agent::set_menus`, the
   command palette reads and invokes the front window's bar. Titles
   that don't fit the window (tiled at its least width, a side of Main
   and Stack) go in a » title at the bar's end, its menu ("More Menus",

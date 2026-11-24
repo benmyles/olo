@@ -1327,6 +1327,9 @@ impl MenuBar {
     /// window.
     pub fn with(cx: &mut WindowCx, mut menus: Vec<Menu>, on_command: impl Fn(&str, &mut WindowCx) + 'static, raw: bool) -> MenuBar {
         resolve(&mut menus, raw);
+        if menus.iter().any(|m| m.find_action("quit").is_some()) {
+            QUITS.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         let font = style::ui_font(FontWeight::NORMAL);
         let titles = menus.iter().map(|m| (SharedString::from(m.title.clone()), f32::from(style::text_width(m.title.clone(), style::PLAIN_SIZE, font.clone())) + 2.0 * BAR_PAD)).collect();
         let bar = cx.window_state::<Bar>();
@@ -1440,6 +1443,19 @@ pub(crate) fn bar_shortcut(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> O
     }
     let command = find_shortcut(&cx.window_state::<Offered>().0, k)?;
     Some((command, Rc::new(on_command)))
+}
+
+/// Some window of this app has Quit in its menu bar: the app can be quit
+/// from its menus, so ⌘Q quits it from a window with none of its own
+/// too (a dialog, a form), as BeOS's Alt+Q went to the app from any of
+/// its windows. Not an app with no bar that quits (Deskbar, the login
+/// screen, an agent-only Passwords): ⌘Q in one of its windows is
+/// nothing, as before.
+static QUITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether this app can be quit from its menus ([`QUITS`]).
+pub fn app_quits() -> bool {
+    QUITS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The command of the window's menu bar that keystroke `k` chooses, if
