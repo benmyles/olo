@@ -27596,7 +27596,20 @@ the pane's head and its Activity row carry the marks
 "auto approving". `tools/dev/rex-slow/try.py agents` tries all three
 agents' stand-ins (`tools/dev/stand-ins/{claude,codex,agy}`, each under
 a copy of bash named for its agent) end to end, the three at once
-(`at_once.py`), in 25 seconds.
+(`at_once.py`), in 25 seconds. The stand-ins draw what the agents
+themselves draw, checked against them: a real one in the agents' tmux
+on a specimen task (a command it needs leave for: `cp` in a scratch
+folder), its screens kept as it asks and as it waits
+(`tools/dev/agents peek NAME 40 > claude-asking.txt`), and read as Olo
+reads them by `olo_agent_screen`'s `read_screens` (`OLO_SCREENS=FILE:…
+cargo test -p olo-agent-screen read_screens -- --ignored --nocapture`).
+Claude Code 2.1.331 and Antigravity 1.5.16 so, 2026-11-24: Claude
+Code's question has a third answer now, "Yes, and switch to auto mode",
+never Return's; at work and at rest it shows its field and its mode
+("⏸ manual mode on") under what it does, so its field is no sign of
+rest (Keep It Going asks the state first); a folder it hasn't trusted
+is asked about first, which neither Auto Approve nor Keep It Going
+answers. Codex waits until it is signed in on the dev server.
 
 **Questions an SSH connection asks** (panels.rs `OloAskpass`, the
 client's `SshAskpass`) are asked one at a time, each answered for

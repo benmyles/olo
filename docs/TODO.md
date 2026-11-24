@@ -13,17 +13,16 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Agents' screens, checked against the real three** (left of Rex's
-  Auto Approve and Keep It Going, done 2026-11-24 with stand-ins of all
-  three): what `olo_agent_screen` reads (a question Auto Approve may
-  answer, the prompt Keep It Going speaks into) checked against today's
-  Claude Code, Codex and Antigravity, each in a helper's own tmux
-  session on a specimen task touching nothing, the stand-ins brought up
-  to date with what they draw. Blocked for Codex until it is signed in
-  on the dev server (the person's: `codex login --device-auth`), as is
-  Astra's look at that change's pictures (`/var/tmp/claude-olo/aa/
-  review2`, to be taken again then): Opus 5.5's two rounds alone were
-  had.
+- **Agents' screens, checked against Codex** (left of Rex's Auto Approve
+  and Keep It Going, done 2026-11-24 with stand-ins of all three): Claude
+  Code 2.1.331 and Antigravity 1.5.16 were checked on 2026-11-24 (a real
+  one each, on a specimen task in the agents' tmux, read by
+  `olo_agent_screen`'s `read_screens`; Claude Code's stand-in brought up
+  to what it draws, its screens a test, `claude_code_2_1_331`). Codex is
+  left, blocked until it is signed in on the dev server (the person's:
+  `codex login --device-auth`), as is Astra's look at that change's
+  pictures (`/var/tmp/claude-olo/aa/review2`, to be taken again then):
+  Opus 5.5's two rounds alone were had.
 - **Alerts in BeOS's modal look, with no tab; and set over their window
   on a seam of it** (Opus 5.5's looks at About's Software Update,
   2026-11-24). An alert opens a quarter of the way down its window less a

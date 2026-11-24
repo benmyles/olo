@@ -328,6 +328,61 @@ mod tests {
         assert_eq!(classify(Agent::Codex, codex_ask), State::Blocked);
     }
 
+    /// Claude Code 2.1.331's screens (2026-11-24, from a run of it on a
+    /// specimen task, its rules shortened; nothing of the account in them):
+    /// asking leave for a command, its third answer one that would switch
+    /// the person's mode (never Auto Approve's: Return is the first); at its
+    /// prompt, its mode in the footer; at work, its field shown under what
+    /// it does; and asking whether to trust a folder (the person's alone).
+    #[test]
+    fn claude_code_2_1_331() {
+        let rule = "────────────────────────────────────────";
+        let dashed = "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌";
+        let asking = format!(
+            "❯ Run exactly this one command and nothing else: cp /var/tmp/s/a.txt /var/tmp/s/b.txt\n  Copying a.txt to b.txt\n  ⎿  $ cp /var/tmp/s/a.txt /var/tmp/s/b.txt\n{rule}\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n Copy a.txt to b.txt\n{dashed}\n │ cp /var/tmp/s/a.txt /var/tmp/s/b.txt\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /var/tmp/s from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n Esc to cancel · Tab to amend\n"
+        );
+        assert_eq!(classify(Agent::Claude, &asking), State::Blocked);
+        assert_eq!(approvable(&asking).map(|a| a.question), Some("Do you want to proceed?".into()));
+        let idle = format!("  Ran 1 shell command\n● DONE\n✻ Crunched for 2s · done 1:47 PM\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · ? for shortcuts\n");
+        assert_eq!(classify(Agent::Claude, &idle), State::Idle);
+        assert!(at_prompt(Agent::Claude, &idle));
+        assert_eq!(approvable(&idle), None);
+        let working = format!("❯ Run exactly this one command\n  Copying a.txt to b.txt\n✻ Copying… (3s)\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on · esc to interrupt · ← for agents\n");
+        assert_eq!(classify(Agent::Claude, &working), State::Working);
+        let trust = format!(
+            "{rule}\n Accessing workspace:\n /var/tmp/s\n Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team).\n Claude Code'll be able to read, edit, and execute files here.\n Security guide\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel\n"
+        );
+        assert_eq!(classify(Agent::Claude, &trust), State::Blocked);
+        assert_eq!(approvable(&trust), None, "the person's");
+        assert!(!at_prompt(Agent::Claude, &trust));
+    }
+
+    /// Screens captured from the agents themselves, read as Olo reads them:
+    /// each file in `OLO_SCREENS` (`:` between), named for its agent
+    /// (`agy-…`, `claude-…`, `codex-…`), its state, whether Keep It Going
+    /// would type there and what Auto Approve would answer. For checking
+    /// what an agent's update draws against this (`tools/dev/agents peek
+    /// NAME 40 > agy-asking.txt` of a specimen asked to run a command it
+    /// needs leave for): `OLO_SCREENS=… cargo test -p olo-agent-screen
+    /// read_screens -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn read_screens() {
+        let Some(files) = std::env::var_os("OLO_SCREENS") else { return };
+        for file in std::env::split_paths(&files) {
+            let name = file.file_name().unwrap().to_string_lossy().into_owned();
+            let agent = if name.starts_with("agy") {
+                Agent::Antigravity
+            } else if name.starts_with("codex") {
+                Agent::Codex
+            } else {
+                Agent::Claude
+            };
+            let screen = std::fs::read_to_string(&file).unwrap();
+            println!("{name}: {:?}; Keep It Going would type: {}; Auto Approve would answer: {:?}", classify(agent, &screen), at_prompt(agent, &screen), approvable(&screen).map(|a| a.question));
+        }
+    }
+
     /// Antigravity's screens (agy 1.5.15, recorded from one run of it;
     /// its banner, which names an account, left out): at its prompt,
     /// working, and asking leave to run a command.

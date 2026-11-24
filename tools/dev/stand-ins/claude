@@ -8,9 +8,12 @@
 out=$1
 RULE=$(printf '─%.0s' $(seq 70))
 pad() { for _ in $(seq 70); do echo; done; }
-working() { pad; printf '> Do what the brief says.\n● Read(brief.md)\n✻ Thinking… (12s · esc to interrupt)\n'; }
-asking() { pad; printf "● Bash(touch one.txt)\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again for this command\n   3. No, and tell Claude what to do differently (esc)\n"; }
-idle() { pad; printf '● Done with this part.\n\n%s\n❯ \n%s\n  ? for shortcuts\n' "$RULE" "$RULE"; }
+# (As Claude Code 2.1.331 draws them, 2026-11-24: its field and its mode under what it does at work and at
+# rest; its question with a third answer that would switch the person's mode, never Return's.)
+DASHED=$(printf '╌%.0s' $(seq 70))
+working() { pad; printf '❯ Do what the brief says.\n● Read(brief.md)\n✻ Thinking… (12s)\n%s\n❯ \n%s\n  ⏸ manual mode on · esc to interrupt · ← for agents\n' "$RULE" "$RULE"; }
+asking() { pad; printf "● Bash(touch one.txt)\n%s\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n Make one.txt\n%s\n │ touch one.txt\n%s\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to this folder from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n Esc to cancel · Tab to amend\n" "$RULE" "$DASHED" "$DASHED"; }
+idle() { pad; printf '● Done with this part.\n✻ Crunched for 2s\n%s\n❯ \n%s\n  ⏸ manual mode on · ? for shortcuts\n' "$RULE" "$RULE"; }
 working; sleep 3
 asking; IFS= read -rsn1 key; printf 'answer:[%s]\n' "$key" >> "$out"
 working; sleep 2
