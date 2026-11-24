@@ -7,9 +7,14 @@
 //! olo-release latest --prefix PREFIX
 //!     the newest release, and whether it's newer than what PREFIX (~/.local)
 //!     has, as JSON
-//! olo-release install --prefix PREFIX [--retire NAME]… [--from ARCHIVE]
-//!     the newest release (or ARCHIVE, a file or a URL, its .sha256 beside
-//!     it) downloaded, checked, unpacked and put in place under PREFIX: one
+//! olo-release list --prefix PREFIX
+//!     Olo's releases, the newest first, and which is installed, as JSON
+//!     ({"releases": [{"tag", "title", "version", "published", "installed"}],
+//!     "installed": VERSION})
+//! olo-release install --prefix PREFIX [--retire NAME]… [--from ARCHIVE | --tag TAG]
+//!     the newest release (or the one tagged TAG, an older one too; or
+//!     ARCHIVE, a file or a URL, its .sha256 beside it) downloaded,
+//!     checked, unpacked and put in place under PREFIX: one
 //!     JSON object a line as it goes ({"doing": "downloading", "fraction":
 //!     0.42}), then what it installed ({"installed": [programs], "version"})
 //!     or why not ({"error"})
@@ -28,7 +33,8 @@ use std::{
 use serde_json::json;
 
 const USAGE: &str = "olo-release latest --prefix PREFIX
-olo-release install --prefix PREFIX [--retire NAME]... [--from ARCHIVE]";
+olo-release list --prefix PREFIX
+olo-release install --prefix PREFIX [--retire NAME]... [--from ARCHIVE | --tag TAG]";
 
 fn option(args: &[String], flag: &str) -> Option<String> {
     args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
@@ -50,6 +56,7 @@ fn main() {
     };
     let result = match args.first().map(String::as_str) {
         Some("latest") => latest(&prefix),
+        Some("list") => list(&prefix),
         Some("install") => install(&prefix, &args),
         _ => {
             eprintln!("{USAGE}");
@@ -76,6 +83,17 @@ fn latest(prefix: &std::path::Path) -> Result<(), String> {
         "newer": olo_release::is_newer(&r, &installed),
         "download_bytes": r.download_bytes(&installed),
     }));
+    Ok(())
+}
+
+/// `list`: the releases, and which is installed (About Olo's other
+/// releases).
+fn list(prefix: &std::path::Path) -> Result<(), String> {
+    let all = olo_release::list()?;
+    let installed = olo_release::installed_in(prefix);
+    let releases: Vec<serde_json::Value> =
+        all.iter().map(|r| json!({ "tag": r.tag, "title": r.title, "version": r.version, "published": r.published, "installed": installed.version.as_deref() == Some(r.version.as_str()) })).collect();
+    say(json!({ "releases": releases, "installed": installed.version }));
     Ok(())
 }
 
@@ -106,9 +124,13 @@ fn install(prefix: &std::path::Path, args: &[String]) -> Result<(), String> {
     let installed = olo_release::installed_in(prefix);
     // The newest release (its checksum file and commit known: recorded
     // as it's installed), or the archive given.
-    let (source, release) = match option(args, "--from") {
-        Some(given) => (olo_release::find(Some(&given))?, None),
-        None => {
+    let (source, release) = match (option(args, "--from"), option(args, "--tag")) {
+        (Some(given), _) => (olo_release::find(Some(&given))?, None),
+        (None, Some(tag)) => {
+            let r = olo_release::by_tag(&tag)?;
+            (r.source.clone(), Some(r))
+        }
+        (None, None) => {
             let r = olo_release::latest()?;
             (r.source.clone(), Some(r))
         }

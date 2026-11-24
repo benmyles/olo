@@ -24,16 +24,17 @@ something nobody here has is in "Blocked", with what it waits for.
   Astra's look at that change's pictures (`/var/tmp/claude-olo/aa/
   review2`, to be taken again then): Opus 5.5's two rounds alone were
   had.
-- **About Olo: Check for Updates, and an older release** (Ben,
-  2026-11-24: "add something in about olo desktop like a button to
-  check for new releases and also the ability to install an older
-  release too when available"). The session asks GitHub two minutes
-  after it starts and every six hours (`crates/session/src/upgrade.rs`,
-  `olo-release latest`); now releases come from the dev server after
-  each feature, six hours is long. A Check Now in About Olo (and the
-  tray's offer at once), and the releases listed there with Install for
-  an older one (`olo-release install TAG`, what it would download said
-  first, and what going back means for settings made since).
+- **Pre-existing, from the look at About's Software Update** (Opus 5.5,
+  2026-11-24): an alert's question and its explanation are one size
+  ("make the question bold … and cut the gap below it to 8 pt"); an
+  alert opens over its window's top, its tab over About's wordmark
+  ("move the alert down until its tab clears the header"); dimmed
+  buttons in dark lose their frame ("keep the dimmed button's 1 px
+  frame … so a dimmed button still reads as a button"); a build from
+  source could name its commit under the wordmark. And the helpers'
+  tool: an approval prompt folds a long command ("⋯ 28 lines hidden")
+  and nothing shows the rest, so a minder can't judge it (the
+  translators were told to write scripts to files instead).
 - **Pre-existing, from the looks at Rex's Activity and Auto Approve**
   (Opus 5.5, 2026-11-24): the kit's context menus open at the pointer
   over the tab they belong to ("open the menu with its top edge 2 pt

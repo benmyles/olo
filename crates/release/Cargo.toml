@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 olo-crash.workspace = true
 olo-net = { workspace = true, features = ["ureq"] }
+serde.workspace = true
 serde_json.workspace = true
 # GitHub over HTTPS, the SHA-256 checked, the .tar.zst opened.
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier", "json"] }

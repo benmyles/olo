@@ -50,9 +50,10 @@ use serde::{Deserialize, Serialize};
 
 const USAGE: &str = "usage: olo-session [--tty-udev | --winit | --headless WxH] [--no-shell | --greeter]
        olo-session reload     restart app_server in place (picks up upgrades)
-       olo-session upgrade [build|release]
+       olo-session upgrade [build|release|release:TAG|check]
                               install newer programs (from the build tree, or Olo's
-                              newest release), then reload
+                              newest release, or the release tagged TAG), then
+                              reload; `check`: ask GitHub for releases now
        olo-session quit       end the session";
 
 const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
@@ -163,9 +164,11 @@ pub fn run() {
         Some("reload") => signal_session(libc::SIGHUP),
         Some("upgrade") => {
             // Which, where both are on offer: `upgrade build` or
-            // `upgrade release` (Deskbar's choice, as the person made it).
-            if let Some(which) = args.get(1).filter(|w| matches!(w.as_str(), "build" | "release")) {
-                let _ = std::fs::write(upgrade::choice_path(&olo_xdg::display_name()), which);
+            // `upgrade release` (Deskbar's choice, as the person made it);
+            // or About Olo's: `upgrade check` (ask GitHub now), `upgrade
+            // release:TAG` (that release, an older one too).
+            if let Some(which) = args.get(1).and_then(|w| upgrade::Choice::read(w)) {
+                let _ = std::fs::write(upgrade::choice_path(&olo_xdg::display_name()), which.said());
             }
             signal_session(libc::SIGUSR2)
         }
@@ -1677,8 +1680,14 @@ mod retire_tests {
     /// which agent screens ran before their portals were Olo's alone.
     #[test]
     fn this_versions_services() {
-        for p in ["olo-deskbar", "olo-tracker", "olo-doctor", "/home/me/.local/bin/olo-portal", "olo-notifications", "/usr/libexec/xdg-desktop-portal", "olo-bus", "olo-greeter"] {
+        for p in ["olo-deskbar", "olo-tracker", "olo-doctor", "/home/me/.local/bin/olo-portal", "olo-notifications", "olo-bus", "olo-greeter"] {
             assert!(super::runs(p), "{p}");
+        }
+        // (The portal's frontend is run where it is installed, as the
+        // session finds it: not on every computer the tests run on, a dev
+        // server among them.)
+        if ["/usr/libexec", "/usr/lib"].iter().any(|d| std::path::Path::new(d).join("xdg-desktop-portal").exists()) {
+            assert!(super::runs("/usr/libexec/xdg-desktop-portal"));
         }
         for p in ["/usr/libexec/xdg-desktop-portal-gtk", "xdg-desktop-portal-gnome", "tabula-deskbar"] {
             assert!(!super::runs(p), "{p}");

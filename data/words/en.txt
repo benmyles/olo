@@ -177,6 +177,7 @@ API hash:
 API key
 API key:
 About 
+About Olo
 About Olo Desktop
 About…
 Acceleration:
@@ -420,6 +421,7 @@ Ask the assistant
 Ask what to do about urgent ones
 Asked now:
 Asking
+Asking GitHub for Olo's releases…
 Asking Passwords…
 Asking Telegram…
 Asking how Rex is set up there
@@ -578,6 +580,7 @@ Builds
 Builds and agents open many files and start many tasks at once.
 Builds by the hour
 Builds go on without the cache until it starts.
+Built from source
 Built incrementally
 Built into the keyboard
 Built-in Keyboard
@@ -681,12 +684,14 @@ Chat Info
 Check
 Check Again
 Check Health
+Check Now
 Check Spelling While Typing
 Check everything
 Check for Updates
 Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Checked
+Checked {}
 Checking for updates…
 Checking out {} of {} files
 Checking the backup
@@ -914,8 +919,10 @@ Copying…
 Core
 Cores
 Couldn't be cached
+Couldn't check for a newer release.
 Couldn't create a folder: {}
 Couldn't create a link: {}
+Couldn't look for a newer release: {}
 Couldn't paste: {}
 Couldn't rename “{}”: {}
 Couldn't restart: {}
@@ -1166,6 +1173,7 @@ Down the Side
 Download
 Download at most:
 Download, Then Restart to Install
+Downloading
 Downloading preview from Rex server…
 Downloading: {}
 Downloading…
@@ -1562,6 +1570,9 @@ Gives Claude Code and Codex there your accounts, this computer on or off.
 Glide
 Glow new windows for
 Go
+Go Back
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
 Go to
 Go to End
 Go to File or Folder
@@ -1769,9 +1780,13 @@ Install When Restarting
 Install from:
 Install just
 Install the Helper…
+Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
 Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Installing
+Installing {}: {} ({}%)…
+Installing {}…
 Installing…
 Install…
 Integrated GPU (VA-API)
@@ -2595,8 +2610,14 @@ Olo Doctor found {} things to fix: {}, and more. Click to see them.
 Olo Doctor: {}. Click to see it.
 Olo Installer
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
+Olo has no releases yet.
 Olo has no typing helper for {}.
+Olo is up to date (looked {}).
+Olo is up to date.
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
+Olo looks for a newer release every hour.
+Olo looks for a newer release two minutes after it starts, then every hour.
+Olo restarts once it's installed.
 Olo saying its name
 Olo's Choice
 Olo's boot splash
@@ -2605,6 +2626,7 @@ Olo's module checks the kernel as it loads, and it stayed out of this one. Olo D
 Olo's own
 Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
+Olo's releases couldn't be listed: {}
 Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
 Olo’s bridge is on “{}”.
 Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
@@ -2728,6 +2750,7 @@ Other
 Other Applications
 Other Mice
 Other Updates
+Other releases:
 Other workspaces’ applications start collapsed
 Other…
 Out of memory:
@@ -2965,6 +2988,7 @@ Put Back
 Put a device in pairing mode to see it here.
 Put the computer to sleep after:
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
+Putting it in place
 Putting {} back
 Putting {} back…
 Python
@@ -3069,6 +3093,7 @@ Refresh:
 Regenerate
 Reinstall Selected…
 Reject
+Release:
 Reload
 Reload Server Configuration
 Reload Without the Cache
@@ -3527,6 +3552,7 @@ So the next backup goes on from there.
 Socket
 Soft
 Software License
+Software Update
 Sol 6.1
 Some accounts connected weren’t allowed Google Drive: sign in again there, and allow it.
 Some items are left out…
@@ -3808,6 +3834,7 @@ The fingerprint sensor isn't answering.
 The first backup reads everything; later ones read only what changed, in a fraction of the time.
 The first backup starts in a moment.
 The first fine-tune failed: {}
+The first look is two minutes after it starts.
 The folder is a place under your home there (src/name).
 The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
@@ -3832,6 +3859,8 @@ The last 6 hours
 The last backup isn’t whole: {}. The next backup sends again what it can.
 The last backup was {}
 The last hour of use
+The last install didn't go through.
+The last install didn't go through: {}
 The last whole one was {}
 The list of Google accounts couldn’t be saved ({}).
 The log can't be opened: {}
@@ -3946,6 +3975,8 @@ Thinking…
 Third folder
 This Computer
 This Computer's Microphones
+This Olo upgrades from the build it came from, not from releases.
+This Olo was built from source: it upgrades from its build, not from releases.
 This Olo was built without the Token Pool for hosts, so none can be installed.
 This PDF can't be edited, so it can't be saved.
 This PDF can't be edited.
@@ -4178,6 +4209,7 @@ Unlock…
 Unmount
 Unmute
 Unmute All
+Unpacking
 Unread notifications put a blue dot beside their app.
 Unreaped for
 Unsafe shutdowns
@@ -4204,6 +4236,7 @@ Updated {} · {}
 Updates
 Updates are downloaded and wait for the computer to restart: they’re installed then.
 Updating…
+Upgrade
 Upgrade Fedora
 Upgrade Olo
 Upgrade to Fedora {}
@@ -4586,6 +4619,7 @@ couldn't save the setting: {}
 day
 deleting
 downgrade {n} packages
+downloading
 driving {}
 due {}
 ending one gives its slots back to the pool
@@ -4623,6 +4657,7 @@ in {n} days
 in {n} minutes
 in {}
 install {n} packages
+installing
 it couldn't be ended: {}
 it didn’t say why
 it is on a different volume from the Trash, so it can only be deleted
@@ -4800,6 +4835,7 @@ tomorrow.io’s limit for your key is reached for now{}
 turned off
 under a minute
 under a second
+unpacking
 up to
 up to date
 up to {} dpi
@@ -4883,6 +4919,7 @@ your own picture
 {} (AV1 and VP9)
 {} (every video)
 {} (in use)
+{} (installed)
 {} (lower wins)
 {} (not connected)
 {} (of the last {})
@@ -4969,6 +5006,7 @@ your own picture
 {} in {}, by the last backup.
 {} in {}.
 {} is Fedora’s own: it can be turned off, not removed.
+{} is available.
 {} is back
 {} is being installed ({}, {}%). Olo switches to it when it's done: your windows stay open.
 {} is connected but plays no sound: {}.
@@ -5127,6 +5165,7 @@ your own picture
 {}, {}
 {}, {} new to the backup, {} sent so far.
 {}, {} shown in this Terminal.
+{}, {}%
 {}, {}% of its life used
 {}. Click to pause or stop.
 {}. Click to put its applications away.

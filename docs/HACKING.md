@@ -1195,7 +1195,7 @@ long after a way out comes back.
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). Nothing in it draws. |
 | `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`; Olo's icons are drawings rendered for the size and kept, `svg`, a theme's colours over the classic set's, `svg::recolour`: docs/ICONS.md), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). Olo's own icons are drawings (`icons/svg/NAME.svg`), rendered for the size asked and kept once rendered (`svg`: the classes a drawing is drawn for its size by, `own`'s cache in `~/.cache/olo/icons`; docs/ICONS.md, "Drawings"); an icon not yet drawn uses its pre-scaled pictures. |
-| `crates/release` | `olo-release`: Olo's releases on GitHub (the newest, with its checksum file and commit's time; downloaded, checked, unpacked, put in place): Setup's install, and the program an installed Olo's session asks for upgrades (`olo-release latest`, `install`). |
+| `crates/release` | `olo-release`: Olo's releases on GitHub (the newest, with its checksum file and commit's time; their list, `list`, and one by its tag, `install --tag`, for About Olo; downloaded, checked, unpacked, put in place): Setup's install, and the program an installed Olo's session asks for upgrades (`olo-release latest`, `install`). |
 | `crates/mail` | `olo-mail`: mail accounts read for one-time codes (see "Codes sent by mail"): Gmail and Fastmail over IMAP with an app password kept in the login keyring, natively (rustls with the system's certificates; IMAP: LOGIN, SELECT, SEARCH, FETCH, IDLE; MIME: encoded words, multipart, quoted-printable, base64, charsets, HTML made words); `Watch` an account's mail for a while on a thread of its own (the inbox told at once, IDLE; where else mail lands, a rule's folder or the junk, every five seconds); `standin`, a stand-in IMAP server for tests (an inbox and mailboxes beside it). |
 | `crates/calendar` | `olo-calendar`: Calendar's engine (see "Calendar's engine"): iCalendar read and written back whole (`ical`), repeating events worked out (`rrule`), events with their zones, exceptions and occurrences (`event`), CalDAV for every account (`dav`), the accounts and their sign-ins (`account`), calendars kept on disk in step with their servers (`store`), and a stand-in server (`standin`). |
 | `crates/google` | `olo-google`: signing in to Google with a person's own "Desktop app" OAuth client (the consent page in the browser, the answer to a loopback port, PKCE): `SignIn::start(client, endpoints, scopes, app)`, `access_token`, `agent(name)`. DiskBackup's Drive (`olo_diskbackup::oauth` is its scopes over this) and Calendar. |
@@ -5449,7 +5449,8 @@ when offering an upgrade and if more than one option is found when
 clicking upgrade ask the user which one they want to upgrade to"). The
 person's own session (not a screen's, not one run from the tree)
 asks `olo-release latest --prefix ~/.local` two minutes after it
-starts and every six hours (half an hour after a failed question):
+starts and every hour (half an hour after a failed question; it was
+every six hours, long once releases came after each feature):
 a program of its own beside the session (`crates/release`, which Setup's
 code moved into: `olo_release`), run at nice 10, its answer read on a
 thread and picked up by the session's loop (`check_releases`: two
@@ -5487,6 +5488,44 @@ installs one that has. Tested: `olo_release`'s
 own as GitHub), the session's `a_release_offered_then_installed` (a
 stand-in `olo-release`), and the real API read (`olo-release latest
 --prefix` an empty folder).
+
+**About Olo's Software Update** (Ben, 2026-11-24: "add something in
+about olo desktop like a button to check for new releases and also the
+ability to install an older release too when available"). The line
+under About's wordmark names the release installed (its title from
+the list below, else "Olo" and its version's date), or "Built from
+source". The Software Update box says what the session last heard from
+GitHub, which the session now writes for it (`upgrade::Heard`,
+`upgrade-releases-<display>.json`: when, the newest release's title,
+tag and version, whether it's newer, an error, whether it's asking:
+kept apart from Deskbar's file, which offers what it holds) and what it
+is installing (Deskbar's `upgrade-<display>.json`), both followed by
+inotify (`olo_kit::watch` on the state folder, its two files' changes
+taken). The status is two lines in every state (what, and its detail in the
+secondary colour: "Olo is up to date." / "Checked 3 minutes ago"), so
+nothing below moves as it changes; while a release installs, the kit's
+status bar in their place ("Installing Olo … (update 3)…",
+"Downloading, 42%"), and the release pop-up, Install… and Restart Olo
+dimmed. A button at the first line's end, the box's buttons one column
+88 points wide: Upgrade for a newer release (the choice "release", as
+Deskbar's; not the window's default button, so Return in About starts
+nothing), else Check Now ("check": the session asks at its next look,
+`Watcher::install`); none while it looks or installs. Under it,
+Release:, Olo's releases in a pop-up (`olo_release::list`, on a thread:
+GitHub's last 30, drafts and pre-releases and those with nothing for
+this architecture left out, the newest first, the installed one marked)
+and Install…, which asks first (going back, under a warning: "Your
+settings are kept; what Olo gained since then is gone until you
+upgrade again", its button Go Back, Cancel the default; Opus's review)
+and then chooses "release:TAG":
+the session runs `olo-release install --tag TAG` (`by_tag`) and reloads
+in place as for any release. A choice is written to
+`upgrade-choice-<display>` and the session signalled (SIGUSR2), as
+Deskbar does; `olo-session upgrade check` and `upgrade release:TAG`
+the same from a shell (`Choice::read`: a tag of letters, digits, ".",
+"_" and "-" only, since it's passed on). A build from source shows only
+why it has none of this. Pictured from a scratch install folder (a
+version file), the session's files written as each state leaves them.
 
 **Agent Screens follow the person's upgrade.** A screen is a headless
 olo-session of the installed programs; it installs nothing (that's the

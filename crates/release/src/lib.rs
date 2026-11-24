@@ -132,12 +132,86 @@ pub fn latest() -> Result<Release, String> {
 /// [`latest`], asking the API at `api`.
 pub fn latest_from(api: &str) -> Result<Release, String> {
     let v = api_json(&format!("{api}/releases/latest"), "release of Olo yet")?;
+    release_of(api, &v)
+}
+
+/// The release of Olo tagged `tag` ("v2026.11.17"), with its checksum
+/// file: one to install that isn't the newest (About Olo's other
+/// releases).
+pub fn by_tag(tag: &str) -> Result<Release, String> {
+    by_tag_from(&api(), tag)
+}
+
+/// [`by_tag`], asking the API at `api`.
+pub fn by_tag_from(api: &str, tag: &str) -> Result<Release, String> {
+    if tag.is_empty() || !tag.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)) {
+        return Err(format!("“{tag}” isn't a release's tag"));
+    }
+    let v = api_json(&format!("{api}/releases/tags/{tag}"), "such release")?;
+    release_of(api, &v)
+}
+
+/// A release as a list of them says it: no more than its names and when
+/// it was published (what installing it needs is asked for then).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Listed {
+    pub tag: String,
+    pub title: String,
+    /// As its archive is named ("2026.11.17-4e8d72a5"); empty where it has
+    /// none for this architecture.
+    pub version: String,
+    pub published: u64,
+    /// Its archive's size, in bytes (the wallpapers' is fetched only
+    /// where they changed).
+    #[serde(default)]
+    pub size: u64,
+}
+
+/// Olo's releases, the newest first (GitHub's last 30; drafts and
+/// pre-releases left out, and those with nothing for this architecture).
+pub fn list() -> Result<Vec<Listed>, String> {
+    list_from(&api())
+}
+
+/// [`list`], asking the API at `api`.
+pub fn list_from(api: &str) -> Result<Vec<Listed>, String> {
+    let v = api_json(&format!("{api}/releases?per_page=30"), "releases of Olo yet")?;
+    let ending = format!("-{}.tar.zst", arch());
+    let mut out: Vec<Listed> = v
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|r| !r["draft"].as_bool().unwrap_or(false) && !r["prerelease"].as_bool().unwrap_or(false))
+        .filter_map(|r| {
+            let asset = r["assets"].as_array()?.iter().find(|a| a["name"].as_str().is_some_and(|n| n.starts_with("olo-") && n.ends_with(&ending) && !n.contains("wallpapers")))?;
+            let archive = asset["name"].as_str()?;
+            Some(Listed {
+                size: asset["size"].as_u64().unwrap_or(0),
+                tag: r["tag_name"].as_str()?.to_owned(),
+                title: r["name"].as_str().filter(|t| !t.is_empty()).or(r["tag_name"].as_str())?.to_owned(),
+                version: version_in(archive).to_owned(),
+                published: r["published_at"].as_str().and_then(parse_time).unwrap_or_default(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.published.cmp(&a.published));
+    Ok(out)
+}
+
+/// A release from GitHub's description of it (`v`), its checksum file
+/// and its commit's time asked for from the API at `api`.
+fn release_of(api: &str, v: &serde_json::Value) -> Result<Release, String> {
     let assets = v["assets"].as_array().cloned().unwrap_or_default();
     let ending = format!("-{}.tar.zst", arch());
-    let archive =
-        assets.iter().find(|a| a["name"].as_str().is_some_and(|n| n.starts_with("olo-") && n.ends_with(&ending))).ok_or_else(|| format!("Olo's latest release has nothing for {}", arch()))?;
+    let archive = assets
+        .iter()
+        .find(|a| a["name"].as_str().is_some_and(|n| n.starts_with("olo-") && n.ends_with(&ending)))
+        .ok_or_else(|| format!("{} has nothing for {}", v["name"].as_str().or(v["tag_name"].as_str()).unwrap_or("This release of Olo"), arch()))?;
     let name = archive["name"].as_str().unwrap_or_default().to_owned();
-    let sums = assets.iter().find(|a| a["name"].as_str() == Some(&format!("{name}.sha256"))).ok_or("Olo's latest release has no checksum for its archive")?;
+    let sums = assets
+        .iter()
+        .find(|a| a["name"].as_str() == Some(&format!("{name}.sha256")))
+        .ok_or_else(|| format!("{} has no checksum for its archive", v["name"].as_str().or(v["tag_name"].as_str()).unwrap_or("This release of Olo")))?;
     let source = Source {
         archive: Origin::Url(archive["browser_download_url"].as_str().unwrap_or_default().to_owned()),
         sums: Origin::Url(sums["browser_download_url"].as_str().unwrap_or_default().to_owned()),

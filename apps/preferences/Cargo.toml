@@ -13,6 +13,7 @@ olo-crash.workspace = true
 olo-net.workspace = true
 olo-kit.workspace = true
 olo-xdg.workspace = true
+olo-release.workspace = true
 # (The ssh configuration's agent, for Security's SSH agent setting.)
 olo-keychain.workspace = true
 olo-google.workspace = true

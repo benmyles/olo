@@ -7,7 +7,8 @@
 //! (`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`), which shows a tray
 //! icon. And the person's session (Setup's install too, which has no
 //! tree) asks GitHub, through `olo-release` beside it, two minutes after
-//! it starts and every six hours, whether there's a release newer than
+//! it starts and every hour (and at once when About Olo's Check Now asks),
+//! whether there's a release newer than
 //! what's installed, and offers that in the same file (`release`).
 //!
 //! Choosing to upgrade there signals us (SIGUSR2, or `olo-session
@@ -89,11 +90,73 @@ pub struct Installing {
     pub fraction: f32,
 }
 
-/// Which upgrade the person chose, where both are on offer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Which upgrade the person chose, where both are on offer; or, from
+/// About Olo, to ask GitHub now, or to install a release by its tag (an
+/// older one too).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Choice {
     Build,
     Release,
+    Check,
+    Tag(String),
+}
+
+impl Choice {
+    /// As it is written for us to read (`choice_path`): "build",
+    /// "release", "check", "release:TAG".
+    pub fn said(&self) -> String {
+        match self {
+            Choice::Build => "build".into(),
+            Choice::Release => "release".into(),
+            Choice::Check => "check".into(),
+            Choice::Tag(t) => format!("release:{t}"),
+        }
+    }
+
+    pub fn read(said: &str) -> Option<Choice> {
+        match said.trim() {
+            "build" => Some(Choice::Build),
+            "release" => Some(Choice::Release),
+            "check" => Some(Choice::Check),
+            s => s.strip_prefix("release:").filter(|t| is_tag(t)).map(|t| Choice::Tag(t.to_owned())),
+        }
+    }
+}
+
+/// Whether `t` could be a release's tag ("v2026.11.24.2"): what is passed
+/// on to `olo-release install --tag`.
+pub fn is_tag(t: &str) -> bool {
+    !t.is_empty() && t.len() <= 64 && t.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+}
+
+/// What GitHub last said of Olo's releases, as the session heard it, for
+/// About Olo ("up to date", or what is newer): kept apart from Deskbar's
+/// file, which offers what it holds.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Heard {
+    /// When (seconds since the epoch).
+    pub at: u64,
+    /// The newest release: its title, tag and version.
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
+    pub version: String,
+    /// Newer than what's installed.
+    #[serde(default)]
+    pub newer: bool,
+    /// Why GitHub couldn't be asked, where it couldn't.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Asking now.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub asking: bool,
+}
+
+/// Where the session says what it last heard (`Heard`).
+pub fn heard_path(display: &str) -> PathBuf {
+    olo_xdg::state_runtime_dir().join(format!("upgrade-releases-{display}.json"))
 }
 
 pub fn state_path(display: &str) -> PathBuf {
@@ -111,16 +174,14 @@ pub fn chosen(display: &str) -> Option<Choice> {
     let path = choice_path(display);
     let said = std::fs::read_to_string(&path).ok()?;
     let _ = std::fs::remove_file(&path);
-    match said.trim() {
-        "build" => Some(Choice::Build),
-        "release" => Some(Choice::Release),
-        _ => None,
-    }
+    Choice::read(&said)
 }
 
 /// When the session first asks GitHub, and then how often.
 const RELEASES_FIRST: Duration = Duration::from_secs(120);
-const RELEASES_EVERY: Duration = Duration::from_secs(6 * 3600);
+// (Every hour: releases come after each feature now, and GitHub lets an
+// address ask 60 times an hour. It was every six.)
+const RELEASES_EVERY: Duration = Duration::from_secs(3600);
 /// After a question that went unanswered (offline, GitHub down).
 const RELEASES_AGAIN: Duration = Duration::from_secs(1800);
 
@@ -151,6 +212,8 @@ pub struct Watcher {
     wanted: bool,
     /// Olo's releases, for the person's session.
     releases: Option<Releases>,
+    /// Where what GitHub last said goes (`heard_path`).
+    heard: PathBuf,
 }
 
 impl Watcher {
@@ -176,10 +239,10 @@ impl Watcher {
             crate::log(format!("watching {} for upgrades", from.display()));
         }
         if releases {
-            crate::log("asking GitHub for Olo's releases (two minutes after starting, then every six hours)");
+            crate::log("asking GitHub for Olo's releases (two minutes after starting, then every hour)");
         }
         let releases = releases.then(|| Releases { next: Instant::now() + RELEASES_FIRST, asking: None, offer: None, installing: None, failed: None, installed: None });
-        Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), build_made: None, last: None, wanted: false, releases })
+        Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), build_made: None, last: None, wanted: false, releases, heard: heard_path(display) })
     }
 
     /// Look again (now and then), and tell Deskbar if what's on offer
@@ -218,6 +281,18 @@ impl Watcher {
             match rx.try_recv() {
                 Ok(v) => {
                     r.asking = None;
+                    let at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                    let text = |k: &str| v[k].as_str().unwrap_or_default().to_owned();
+                    let heard = Heard {
+                        at,
+                        title: text("title"),
+                        tag: text("tag"),
+                        version: text("version"),
+                        newer: v["newer"].as_bool().unwrap_or(false),
+                        error: v["error"].as_str().map(str::to_owned),
+                        asking: false,
+                    };
+                    write_heard(&self.heard, &heard);
                     if let Some(e) = v["error"].as_str() {
                         crate::log(format!("couldn't ask GitHub for Olo's releases: {e}"));
                         r.next = Instant::now() + RELEASES_AGAIN;
@@ -241,6 +316,8 @@ impl Watcher {
                 Err(mpsc::TryRecvError::Disconnected) => {
                     r.asking = None;
                     r.next = Instant::now() + RELEASES_AGAIN;
+                    let at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                    write_heard(&self.heard, &Heard { at, error: Some("olo-release stopped before it had answered".into()), ..Heard::default() });
                 }
                 Err(mpsc::TryRecvError::Empty) => {}
             }
@@ -289,6 +366,10 @@ impl Watcher {
         if r.asking.is_none() && r.installing.is_none() && Instant::now() >= r.next {
             r.next = Instant::now() + RELEASES_EVERY;
             r.asking = run_release(&to, &["latest"]);
+            // (Said, so About Olo shows it's asking.)
+            let mut was: Heard = std::fs::read(&self.heard).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+            was.asking = r.asking.is_some();
+            write_heard(&self.heard, &was);
         }
         changed
     }
@@ -336,6 +417,21 @@ impl Watcher {
         let release = match choice {
             Some(Choice::Release) => true,
             Some(Choice::Build) => false,
+            // About Olo's Check Now: GitHub asked at the next look.
+            Some(Choice::Check) => {
+                match self.releases.as_mut() {
+                    Some(r) => {
+                        crate::log("asked to look for a newer release now");
+                        r.next = Instant::now();
+                    }
+                    None => crate::log("not looking at releases here"),
+                }
+                return Vec::new();
+            }
+            Some(Choice::Tag(tag)) => {
+                self.install_release_tagged(&tag);
+                return Vec::new();
+            }
             None => self.pending.is_empty() && !self.wanted && offered.is_some(),
         };
         if release {
@@ -347,6 +443,33 @@ impl Watcher {
             return Vec::new();
         };
         self.install_build(&from)
+    }
+
+    /// `olo-release install --tag TAG`: a release chosen in About Olo,
+    /// an older one too.
+    fn install_release_tagged(&mut self, tag: &str) {
+        let to = self.to.clone();
+        let Some(r) = self.releases.as_mut() else {
+            crate::log("not looking at releases here");
+            return;
+        };
+        if r.installing.is_some() {
+            crate::log("a release is being installed already");
+            return;
+        }
+        let mut args = vec!["install", "--tag", tag];
+        for name in RETIRED {
+            args.extend(["--retire", name]);
+        }
+        match run_release(&to, &args) {
+            Some(rx) => {
+                crate::log(format!("installing release {tag}, as chosen"));
+                r.failed = None;
+                r.installing = Some((rx, Installing { version: tag.to_owned(), doing: "downloading".into(), fraction: 0.0 }));
+            }
+            None => r.failed = Some("olo-release isn't installed beside the session".into()),
+        }
+        self.publish();
     }
 
     /// `olo-release install` started for the release on offer.
@@ -616,6 +739,14 @@ fn building(from: &Path) -> bool {
         }
         false
     })
+}
+
+/// What was heard, written whole (a reader never sees half of it).
+fn write_heard(path: &Path, heard: &Heard) {
+    let tmp = path.with_extension("new");
+    if serde_json::to_vec(heard).is_ok_and(|b| std::fs::write(&tmp, b).is_ok()) {
+        let _ = std::fs::rename(&tmp, path);
+    }
 }
 
 /// `olo-release` (beside the session in `to`) run with `args` and the
@@ -1087,6 +1218,13 @@ mod tests {
         std::fs::create_dir_all(olo_xdg::state_runtime_dir()).unwrap();
         std::fs::write(choice_path(&display), "release\n").unwrap();
         assert_eq!(chosen(&display), Some(Choice::Release));
+        for c in [Choice::Check, Choice::Tag("v2026.11.24.2".into()), Choice::Build] {
+            std::fs::write(choice_path(&display), c.said()).unwrap();
+            assert_eq!(chosen(&display), Some(c));
+        }
+        // (A tag that isn't one is no choice: it would be passed on.)
+        std::fs::write(choice_path(&display), "release:v1; rm -rf ~").unwrap();
+        assert_eq!(chosen(&display), None);
         assert_eq!(chosen(&display), None);
         std::fs::write(choice_path(&display), "nonsense").unwrap();
         assert_eq!(chosen(&display), None);
@@ -1137,7 +1275,17 @@ mod tests {
         std::fs::copy("/usr/bin/bash", &session).unwrap();
         let run = |backend: &str| spawn_just_copied(std::process::Command::new(&session).args(["-c", "sleep 5; :", backend]));
         let (mut screen, mut real) = (run("--headless"), run("--tty-udev"));
-        let w = Watcher { from: Some(dir.join("build")), to: dir.clone(), state: dir.join("state.json"), pending: Vec::new(), build_made: None, last: None, wanted: false, releases: None };
+        let w = Watcher {
+            from: Some(dir.join("build")),
+            to: dir.clone(),
+            state: dir.join("state.json"),
+            pending: Vec::new(),
+            build_made: None,
+            last: None,
+            wanted: false,
+            releases: None,
+            heard: PathBuf::from("/nonexistent/heard.json"),
+        };
         std::thread::sleep(std::time::Duration::from_millis(100));
         // Not replaced yet: nothing old.
         assert!(!w.old_screens().contains(&(screen.id() as i32)));
@@ -1187,7 +1335,17 @@ mod tests {
         program(&from, RETIRED[0], 60);
         program(&to, RETIRED[0], 600);
         assert_eq!(newer(&from, &to).unwrap(), ["olo-deskbar"]);
-        let mut w = Watcher { from: Some(from), to: to.clone(), state: base.join("olo-upgrade-test.json"), pending: Vec::new(), build_made: None, last: None, wanted: false, releases: None };
+        let mut w = Watcher {
+            from: Some(from),
+            to: to.clone(),
+            state: base.join("olo-upgrade-test.json"),
+            pending: Vec::new(),
+            build_made: None,
+            last: None,
+            wanted: false,
+            releases: None,
+            heard: PathBuf::from("/nonexistent/heard.json"),
+        };
         assert_eq!(w.install(None), ["olo-deskbar"]);
         assert!(to.join("olo-deskbar").exists() && !to.join(RETIRED[0]).exists());
         let _ = std::fs::remove_dir_all(&base);
@@ -1202,7 +1360,17 @@ mod tests {
         std::fs::create_dir_all(&to).unwrap();
         program(&from, "olo-deskbar", 60);
         let state = base.join("olo-upgrade-test.json");
-        let mut w = Watcher { from: Some(from.clone()), to, state: state.clone(), pending: Vec::new(), build_made: None, last: None, wanted: false, releases: None };
+        let mut w = Watcher {
+            from: Some(from.clone()),
+            to,
+            state: state.clone(),
+            pending: Vec::new(),
+            build_made: None,
+            last: None,
+            wanted: false,
+            releases: None,
+            heard: PathBuf::from("/nonexistent/heard.json"),
+        };
         // Cargo holds its lock while it builds.
         let lock = std::fs::File::create(from.join(".cargo-lock")).unwrap();
         // SAFETY: flock on a file we own.
