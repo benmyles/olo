@@ -259,6 +259,7 @@ Agent Screen
 Agent Screen Logs
 Agent Screen “{}” is waiting for a code
 Agent Screens
+Agent settings
 Agents
 Agents and settings in your account there.
 Agree
@@ -387,6 +388,7 @@ As a list
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 As in Themes ({})
 As it goes
+As on this computer
 As root, over SSH
 As set now
 As the Mode
@@ -891,6 +893,7 @@ Copy to clipboard
 Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
+Copying…
 Core
 Cores
 Couldn't be cached
@@ -908,6 +911,7 @@ Couldn’t archive it. {}
 Couldn’t ask for emoji
 Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
+Couldn’t be copied
 Couldn’t be installed
 Couldn’t be set
 Couldn’t change this vault in 1Password. {}
@@ -3345,6 +3349,7 @@ Setting up your {} takes your password, its PIN and two touches of the key:
 Setting up {} of {}…
 Setting up {}…
 Settings
+Settings, instructions, skills and commands. Never a sign-in or a key.
 Settings:
 Setting…
 Seventh folder
@@ -3756,6 +3761,7 @@ The first backup reads everything; later ones read only what changed, in a fract
 The first backup starts in a moment.
 The first fine-tune failed: {}
 The hand-written ones: not fine-tuned yet
+The host didn’t say what it has.
 The icons {} is drawn with, everywhere.
 The infrared camera couldn't be opened (its shutter, or another program).
 The journal couldn't be read: {}
@@ -4761,6 +4767,7 @@ your own picture
 {n} events
 {n} files
 {n} files couldn’t be read.
+{n} files to copy
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 {n} folders couldn't be read
 {n} forwarded ports are waiting.

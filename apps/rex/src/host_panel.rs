@@ -465,6 +465,7 @@ mod tests {
             pool: None,
             version: Some("0.19.2".into()),
             account: None,
+            carried: None,
         }
     }
 
@@ -477,12 +478,14 @@ mod tests {
         let mut h = host();
         let s = account_stands(&h);
         assert_eq!((said(&s), s.busy), ((Light::Waiting, "Asking…", None), true));
+        h.carried = Some((9, 0, false));
         h.account = Some(Account { has_curl: true, has_git: true, ..Account::default() });
         assert_eq!(said(&account_stands(&h)), (Light::Off, "Not set up", None));
         h.account = Some(Account { path: true, claude: Some("2.1.331".into()), git: Some(("You".into(), "you@example.org".into())), has_curl: true, has_git: true, ..Account::default() });
-        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "3 of 6 ready", Some("without Codex, Antigravity and 1 more")));
+        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "3 of 7 ready", Some("without Codex, Antigravity and 2 more")));
         h.skill = Some(true);
-        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "4 of 6 ready", Some("without Codex, Antigravity")));
+        h.carried = Some((0, 9, false));
+        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "5 of 7 ready", Some("without Codex, Antigravity")));
         h.account = Some(Account { codex: Some("0.172.0".into()), antigravity: Some("1.5.15".into()), ..h.account.clone().unwrap() });
         h.skill = Some(true);
         assert_eq!(said(&account_stands(&h)), (Light::On, "Ready", None));

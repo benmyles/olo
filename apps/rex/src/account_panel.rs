@@ -89,6 +89,7 @@ fn verb(item: Item) -> &'static str {
     match item {
         Item::Step(Step::Path) => "Add",
         Item::Step(Step::Git) => "Set",
+        Item::Carry => "Copy",
         _ => "Install",
     }
 }
@@ -103,6 +104,8 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
     if let Some(doing) = shown.doing(item) {
         let said = if doing.removing {
             "Removing…"
+        } else if item == Item::Carry {
+            "Copying…"
         } else if set {
             "Setting…"
         } else {
@@ -114,7 +117,12 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         return plain(Lamp::Queued, "Waiting", None);
     }
     if let Some(said) = shown.failed(item) {
-        return Row { host_said: Some(said.to_owned()), ..plain(Lamp::Light(Light::Down), if set { "Couldn’t be set" } else { "Couldn’t be installed" }, Some(("Try Again", Press::Run, can))) };
+        let what = match item {
+            Item::Carry => "Couldn’t be copied",
+            _ if set => "Couldn’t be set",
+            _ => "Couldn’t be installed",
+        };
+        return Row { host_said: Some(said.to_owned()), ..plain(Lamp::Light(Light::Down), what, Some(("Try Again", Press::Run, can))) };
     }
     let off = |said: &'static str, can_be: bool| plain(Lamp::Light(Light::Off), said, Some((verb(item), Press::Run, can && can_be)));
     match (item, item.done(host, shown.who.as_ref())) {
@@ -125,6 +133,11 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         // button. Six greyed Installs said nothing was there.)
         (_, None) => plain(Lamp::Light(Light::Off), "—", None),
         (Item::Skill, Some(true)) => plain(Lamp::Light(Light::On), "Installed", Some(("Remove", Press::RemoveSkill, can))),
+        (Item::Carry, Some(true)) => plain(Lamp::Light(Light::On), "As on this computer", None),
+        (Item::Carry, Some(false)) => {
+            let to_copy = host.carried.map_or(0, |(to_copy, ..)| to_copy);
+            Row { said: olo_kit::words::count(to_copy as u64, "1 file to copy", "{n} files to copy"), ..off("", true) }
+        }
         (Item::Step(Step::Path), Some(true)) => plain(Lamp::Light(Light::On), "On the path", None),
         (Item::Step(Step::Git), Some(true)) => {
             let there = host.account.as_ref().and_then(|a| a.git.clone());
@@ -205,7 +218,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
     let on_do: Rc<dyn Fn(&AccountDo, &mut WindowCx)> = Rc::new(on_do);
     // (One width for the window's buttons: one column down its right,
     // and the foot's two at its two edges.)
-    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Use Mine", "Set Up 9"]
+    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Use Mine", "Set Up 9"]
         .iter()
         .map(|l| button_width(l, false))
         .fold(m::BUTTON_MIN_WIDTH, f32::max);
@@ -365,6 +378,8 @@ mod tests {
             pool: None,
             version: None,
             account,
+            // (The settings carried: as here, but where a test says.)
+            carried: Some((0, 3, false)),
         }
     }
 
@@ -386,7 +401,12 @@ mod tests {
         assert_eq!(row(&h, &shown, CODEX), Row { lamp: Lamp::Light(Light::Off), said: "Not installed".into(), host_said: None, note: None, button: Some(("Install", Press::Run, true)) });
         assert_eq!(row(&h, &shown, Item::Skill).button, Some(("Install", Press::Run, true)));
         assert_eq!(left(&h, &shown), [CODEX, AGY, Item::Skill]);
-        assert_eq!(head_state(&h, &shown), (Lamp::Light(Light::Waiting), "3 of 6 ready".into()));
+        assert_eq!(head_state(&h, &shown), (Lamp::Light(Light::Waiting), "4 of 7 ready".into()));
+        // (The person's settings: how many would be copied; as here, nothing to press.)
+        let lacking = HostStands { carried: Some((12, 2, false)), ..h.clone() };
+        assert_eq!(row(&lacking, &shown, Item::Carry), Row { lamp: Lamp::Light(Light::Off), said: "12 files to copy".into(), host_said: None, note: None, button: Some(("Copy", Press::Run, true)) });
+        assert_eq!(row(&h, &shown, Item::Carry), Row { lamp: Lamp::Light(Light::On), said: "As on this computer".into(), host_said: None, note: None, button: None });
+        assert_eq!(left(&lacking, &shown), [CODEX, AGY, Item::Carry, Item::Skill]);
         assert_eq!(account_name(&h), "you");
 
         // One being done, others waiting: no buttons, nothing else begun meanwhile.
@@ -409,7 +429,7 @@ mod tests {
                 button: Some(("Try Again", Press::Run, true))
             }
         );
-        assert_eq!(head_state(&h, &failed).1, "3 of 6 ready  ·  1 couldn’t be done");
+        assert_eq!(head_state(&h, &failed).1, "4 of 7 ready  ·  1 couldn’t be done");
         assert_eq!(left(&h, &failed), [CODEX, AGY, Item::Skill]);
 
         // What an item needs that isn't there: said, and its button has nothing to do.
@@ -419,7 +439,7 @@ mod tests {
         assert_eq!(left(&bare, &shown), [PATH]);
         // (The skill that is there can be taken off: the one thing here that is.)
         assert_eq!(row(&bare, &shown, Item::Skill), Row { lamp: Lamp::Light(Light::On), said: "Installed".into(), host_said: None, note: None, button: Some(("Remove", Press::RemoveSkill, true)) });
-        let fresh = host(Some(Account { has_curl: true, has_git: true, ..Account::default() }), Some(false), HostConnState::Connected);
+        let fresh = HostStands { carried: Some((5, 0, false)), ..host(Some(Account { has_curl: true, has_git: true, ..Account::default() }), Some(false), HostConnState::Connected) };
         assert_eq!(row(&fresh, &Shown { who: None, ..shown.clone() }, GIT).button, Some(("Set", Press::Run, false)));
         assert_eq!(head_state(&fresh, &shown), (Lamp::Light(Light::Off), "Not set up".into()));
 
@@ -443,7 +463,7 @@ mod tests {
         assert_eq!(head_state(&ready, &shown), (Lamp::Light(Light::On), "Ready".into()));
 
         // Not answered yet: asking. Not connected: nothing is known, nothing to press.
-        let asking = host(None, None, HostConnState::Connected);
+        let asking = HostStands { carried: None, ..host(None, None, HostConnState::Connected) };
         assert!(Item::all().all(|i| row(&asking, &shown, i) == Row { lamp: Lamp::Queued, said: "Checking…".into(), host_said: None, note: None, button: None }));
         assert_eq!(head_state(&asking, &shown), (Lamp::Queued, "Checking…".into()));
         let away = host(Some(some), Some(true), HostConnState::Disconnected);

@@ -27955,6 +27955,32 @@ to set them up").
   account's too and was a section of the Host window. Nothing is done
   as root, nothing outside the account's home. The host's own Token
   Pool, where there is one, points Claude Code and Codex at itself.
+- *The person's settings for their agents, carried*
+  (`crates/rex/src/carry.rs`; Ben: "copy my local settings"): the
+  window's "Agent settings" row. `carry::gather` reads from this
+  computer's home what is the person's to copy of Claude Code's,
+  Codex's and the Antigravity CLI's: each one's settings file, its
+  instructions (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`), key bindings,
+  and its folders of skills, agents, commands, output styles and
+  prompts (not Olo's own skill; not a repository's `.git`; a file over
+  1 MB isn't a setting; 2,000 files and 32 MB at most). Never a
+  sign-in, history, sessions or a cache (none is on the list); in a
+  settings file, never an entry of the environment whose name looks
+  like a key or a token, nor what this computer's Token Pool put
+  there; in Codex's, not the folders trusted here nor the pool's old
+  provider. A path under this computer's home in a settings file is
+  written as the host's home (`for_host`). The host is asked what it
+  has (`carry::look`: a SHA-256 of each, by a script given on a
+  shell's input, a line a file; `Stands::read`), the row says how many
+  files would be copied, and Copy puts those in one tar archive
+  (`carry::PUT`): each in its place, what was there and differs kept
+  beside it as `NAME.before-olo` the first time. Claude Code's
+  settings are put together with the host's (`carry::merged`): what
+  only the host has stays (its own pool's way out, the hook Rex's
+  skill set-up writes), ours is said where both say something, a list
+  is ours and what the host's has besides. Asked with the account
+  (`RexHub::ask_account`), and again when a run ends. Agents:
+  `host.ready:KEY:settings`.
 - *A step is a small thing to add*: a variant of `Step`, its title and
   its line, a line of `ready::LOOK` (the script that asks the host how
   the account stands; `Account::read` reads its answer) and the script

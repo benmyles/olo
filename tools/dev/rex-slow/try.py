@@ -452,12 +452,20 @@ echo "Installed {name} {version}"
         for f in (".local/bin/claude", ".local/bin/codex", ".local/bin/agy", ".gitconfig"):
             with contextlib.suppress(FileNotFoundError): os.remove(f"{home}/{f}")
         shutil.rmtree(f"{home}/.claude/skills/olo-rex-bridge", ignore_errors=True)
+        for f in ("CLAUDE.md", "CLAUDE.md.before-olo", "settings.json", "settings.json.before-olo", "commands/ship.md"):
+            with contextlib.suppress(FileNotFoundError): os.remove(f"{home}/.claude/{f}")
         for f in (".profile", ".bash_profile", ".bashrc", ".zshrc", ".zprofile"):
             try: text = open(f"{home}/{f}").read()
             except OSError: continue
             open(f"{home}/{f}", "w").write("\n".join(l for l in text.split("\n") if "Olo: programs in ~/.local/bin" not in l))
     clean()
     open(f"{app_home}/.gitconfig", "w").write("[user]\n\tname = Rig Person\n\temail = rig@example.org\n")
+    # (The app's home has a little of an agent's settings, and what is never carried; the host has instructions of its own.)
+    os.makedirs(f"{app_home}/.claude/commands", exist_ok=True); os.makedirs(f"{home}/.claude", exist_ok=True)
+    open(f"{app_home}/.claude/CLAUDE.md", "w").write("Be brief.\n"); open(f"{app_home}/.claude/commands/ship.md", "w").write("Ship it.\n")
+    open(f"{app_home}/.claude/settings.json", "w").write('{"model":"opus","env":{"HTTPS_PROXY":"http://127.0.0.1:17892","NO_PROXY":"localhost","EDITOR":"vi","GITHUB_TOKEN":"made-up"}}')
+    open(f"{app_home}/.claude/.credentials.json", "w").write('{"made":"up"}')
+    open(f"{home}/.claude/CLAUDE.md", "w").write("The host's own.\n")
     server = subprocess.Popen(["/usr/bin/python3", "-m", "http.server", "27881", "--bind", "127.0.0.1", "--directory", served], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     ok = True
     def check(what, passed, shown):
@@ -465,7 +473,7 @@ echo "Installed {name} {version}"
         ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
     try:
         with Rig("shell", delay=0, far=True, env=["OLO_REX_READY_FROM=http://127.0.0.1:27881"]) as r:
-            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Skill for agents")
+            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Agent settings", "Skill for agents")
             def rows(under=False):
                 """Each item's row as the window says it: {title: what is said after it}; `under`: the line under it."""
                 said = [str(n.get("name") or "") for n in r.nodes("Account") if n.get("role") in ("Label", "Text", "StaticText")]
@@ -479,7 +487,7 @@ echo "Installed {name} {version}"
             skill = lambda: os.path.exists(f"{home}/.claude/skills/olo-rex-bridge/SKILL.md")
             r.invoke("host.account:far")
             first = r.wait(lambda: (lambda w: w if w.get("Claude Code") == "Not installed" else None)(rows()), 25)
-            check("the window, asked of a new account", first and first.get("Codex") == "Not installed" and first.get("Git identity") == "Not set" and first.get("Program folder") == "Not on the path", first or rows())
+            check("the window, asked of a new account", first and first.get("Codex") == "Not installed" and first.get("Git identity") == "Not set" and first.get("Program folder") == "Not on the path" and first.get("Agent settings") == "3 files to copy", first or rows())
             r.invoke("host.ready:far:claude")
             got = r.wait(lambda: (lambda w: w if w.get("Claude Code") == "9.9.1" else None)(rows()), 30)
             check("Claude Code installed by its installer, and its version said", got and there("claude"), (got or rows()).get("Claude Code"))
@@ -491,15 +499,22 @@ echo "Installed {name} {version}"
             time.sleep(7)
             check("stopped half way: nothing of it there, then or later", back and not there("codex"), {"row": rows().get("Codex"), "there": there("codex")})
             r.invoke("host.ready:far:all")
-            want = {"Program folder": "On the path", "Claude Code": "9.9.1", "Codex": "8.8.2", "Antigravity": "7.7.3", "Git identity": "Rig Person <rig@example.org>", "Skill for agents": "Installed"}
+            want = {"Program folder": "On the path", "Claude Code": "9.9.1", "Codex": "8.8.2", "Antigravity": "7.7.3", "Git identity": "Rig Person <rig@example.org>", "Agent settings": "As on this computer", "Skill for agents": "Installed"}
             done = r.wait(lambda: (lambda w: w if w == want else None)(rows()), 60, every=0.5)
             check("all that was left, one after another", done, done or rows())
             git = subprocess.run(["git", "config", "--file", f"{home}/.gitconfig", "user.email"], capture_output=True, text=True).stdout.strip()
             check("on the host: the three programs, git's identity, the skill", there("claude") and there("codex") and there("agy") and git == "rig@example.org" and skill(), {"git": git, "skill": skill(), "bin": sorted(os.listdir(f"{home}/.local/bin")) if os.path.isdir(f"{home}/.local/bin") else None})
+            # The person's settings (a made-up home's): there as here, less what is never carried; what the host had kept beside.
+            read = lambda f: open(f"{home}/{f}").read() if os.path.exists(f"{home}/{f}") else None
+            settings = json.loads(read(".claude/settings.json") or "{}")
+            check("the settings carried: instructions, a command, the settings without the key or this computer's pool", read(".claude/CLAUDE.md") == "Be brief.\n" and read(".claude/commands/ship.md") == "Ship it.\n" and settings.get("model") == "opus" and settings.get("env") == {"EDITOR": "vi"} and not os.path.exists(f"{home}/.claude/.credentials.json"),
+                  {"CLAUDE.md": read(".claude/CLAUDE.md"), "settings": settings, "credentials there": os.path.exists(f"{home}/.claude/.credentials.json")})
+            check("what the host had is kept beside ours", read(".claude/CLAUDE.md.before-olo") == "The host's own.\n", read(".claude/CLAUDE.md.before-olo"))
     finally:
         server.terminate(); clean()
         shutil.rmtree(served, ignore_errors=True)
         with contextlib.suppress(FileNotFoundError): os.remove(f"{app_home}/.gitconfig")
+        shutil.rmtree(f"{app_home}/.claude", ignore_errors=True)
     print("PASS" if ok else "FAIL")
 elif what == "disconnect":
     # A host let go of and connected again (Hosts and Ports' Disconnect, by its command): its SSH connection is

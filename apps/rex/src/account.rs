@@ -29,6 +29,9 @@ use crate::hub::{HostConnState, HostStands, HostThing, RexHub};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Item {
     Step(Step),
+    /// The person's settings for their agents, as on this computer
+    /// (`olo_rex_client::carry`).
+    Carry,
     /// Olo's skill for agents (`bridge::SKILL`), in the account's
     /// `~/.claude`.
     Skill,
@@ -40,7 +43,7 @@ pub enum Item {
 /// their repositories cloned) is a row here that opens a window of
 /// its own, never a list inside this one.
 pub const GROUPS: [(&str, &[Item]); 2] =
-    [("Programs", &[Item::Step(Step::Path), Item::Step(Step::Claude), Item::Step(Step::Codex), Item::Step(Step::Antigravity)]), ("Settings", &[Item::Step(Step::Git), Item::Skill])];
+    [("Programs", &[Item::Step(Step::Path), Item::Step(Step::Claude), Item::Step(Step::Codex), Item::Step(Step::Antigravity)]), ("Settings", &[Item::Step(Step::Git), Item::Carry, Item::Skill])];
 
 impl Item {
     pub fn all() -> impl Iterator<Item = Item> {
@@ -50,6 +53,7 @@ impl Item {
     pub fn id(self) -> &'static str {
         match self {
             Item::Step(step) => step.id(),
+            Item::Carry => "settings",
             Item::Skill => "skill",
         }
     }
@@ -62,6 +66,7 @@ impl Item {
     pub fn title(self) -> &'static str {
         match self {
             Item::Step(step) => step.title(),
+            Item::Carry => "Agent settings",
             Item::Skill => "Skill for agents",
         }
     }
@@ -70,6 +75,7 @@ impl Item {
     pub fn why(self) -> &'static str {
         match self {
             Item::Step(step) => step.why(),
+            Item::Carry => "Settings, instructions, skills and commands. Never a sign-in or a key.",
             Item::Skill => "Tells Claude Code and other agents there how to use the bridge and Rex.",
         }
     }
@@ -83,6 +89,7 @@ impl Item {
         }
         match self {
             Item::Step(step) => host.account.as_ref().map(|account| account.done(step, who)),
+            Item::Carry => host.carried.map(|(to_copy, ..)| to_copy == 0),
             Item::Skill => host.skill,
         }
     }
@@ -208,7 +215,7 @@ fn demo() -> Shown {
     match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
         Some("doing") => Shown {
             doing: Some(Doing { item: Item::Step(Step::Codex), line: "Downloading Codex 0.172.0 for x86_64-unknown-linux-musl…  62%".into(), removing: false }),
-            queue: vec![Item::Step(Step::Antigravity), Item::Skill],
+            queue: vec![Item::Step(Step::Antigravity), Item::Carry, Item::Skill],
             who,
             ..Shown::default()
         },
@@ -299,6 +306,12 @@ fn ended(hub: &Arc<RexHub>, key: &str, item: Item, result: Result<(), String>) {
         }
     }
     RUNNING.lock().unwrap_or_else(|e| e.into_inner()).0 = None;
+    // (The last of a run: the host asked how all of it stands now. One
+    // item's doing changes another's standing: the skill's set-up
+    // writes into the settings that were just copied.)
+    if live().as_ref().is_some_and(|shown| shown.key == key && shown.queue.is_empty()) {
+        check(hub);
+    }
     next(hub);
 }
 
@@ -319,6 +332,10 @@ fn next(hub: &Arc<RexHub>) {
     let (of_line, of_done, again) = (key.clone(), key.clone(), hub.clone());
     let step = match item {
         Item::Step(step) => step,
+        Item::Carry => {
+            hub.carry_settings(&key, move |result| ended(&again, &of_done, item, result));
+            return;
+        }
         Item::Skill => {
             hub.change_host(&key, HostThing::Skill, true, move |result| ended(&again, &of_done, item, result));
             return;
@@ -358,7 +375,7 @@ pub fn stop(hub: &Arc<RexHub>) {
     if let Some(shown) = live().as_mut() {
         // (The skill's file is a moment's work with no stop of its
         // own: it ends by itself.)
-        if shown.doing.as_ref().is_some_and(|doing| doing.item != Item::Skill) {
+        if shown.doing.as_ref().is_some_and(|doing| matches!(doing.item, Item::Step(_))) {
             shown.doing = None;
         }
         shown.queue.clear();
@@ -392,7 +409,7 @@ mod tests {
     #[test]
     fn every_item_has_a_name_of_its_own_and_is_in_a_group() {
         let all: Vec<Item> = Item::all().collect();
-        assert_eq!(all.len(), 6);
+        assert_eq!(all.len(), 7);
         for item in &all {
             assert_eq!(Item::of(item.id()), Some(*item));
         }

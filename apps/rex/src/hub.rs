@@ -1104,6 +1104,9 @@ pub struct HostStands {
     pub version: Option<String>,
     /// How the account there stands; none: not asked yet.
     pub account: Option<olo_rex_client::ready::Account>,
+    /// The person's agent settings there: files to copy, files the
+    /// same, and whether this computer's weren't all gathered.
+    pub carried: Option<(usize, usize, bool)>,
 }
 
 /// One of the things of Olo's a far host may have, as the status bar
@@ -1152,6 +1155,11 @@ pub struct HostRuntime {
     /// identity: `olo_rex_client::ready`), as last asked; none until
     /// it has been (the Account window asks).
     pub account: Option<olo_rex_client::ready::Account>,
+    /// What of the person's settings for their agents the host has
+    /// (`olo_rex_client::carry`), asked with the account: how many
+    /// files would be copied now, how many are there as here, and
+    /// whether this computer's weren't all gathered.
+    pub carried: Option<(usize, usize, bool)>,
     pub tailscale: Option<TailscaleStatus>,
     tailscale_seq: u64,
     pub synced_hosts: Vec<HostRecord>,
@@ -1305,6 +1313,11 @@ impl HubState {
                 pool: Some(crate::pool::PoolStands { wanted: there, in_step: there, accounts: there.then_some(3), ..Default::default() }),
                 version: there.then(|| "0.19.2".to_owned()),
                 account: there.then(demo_account).flatten(),
+                carried: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
+                    Some("asking") => None,
+                    Some("ready") => there.then_some((0, 14, false)),
+                    _ => there.then_some((14, 0, false)),
+                },
             });
         }
         Some(HostStands {
@@ -1321,6 +1334,7 @@ impl HubState {
             pool: self.pools.as_ref().map(|pools| pools.get(host_key).cloned().unwrap_or_default()),
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
             account: host.account.clone(),
+            carried: host.carried,
         })
     }
 
@@ -1390,6 +1404,19 @@ async fn open_terminal_stream(ep: &RexEndpoint) -> Option<olo_rex_client::Termin
 /// under it to `~` (the demo's own, in the demo).
 pub fn local_home() -> Option<String> {
     if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") { Some("/home/you".into()) } else { std::env::var("HOME").ok() }
+}
+
+/// What a host has of the person's settings for their agents, against
+/// what this computer carries (`olo_rex_client::carry`): this
+/// computer's files gathered off the async threads, the host asked by
+/// a script given on a shell's input (a line a file: too long for a
+/// command's own words). None: it couldn't be asked.
+async fn carried_stands(pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) -> Option<olo_rex_client::carry::Stands> {
+    use olo_rex_client::carry;
+    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+    let (files, short) = tokio::task::spawn_blocking(move || carry::gather(&home)).await.ok()?;
+    let ran = pool.put(target, askpass, "sh", carry::look(&files).as_bytes()).await.ok()?;
+    carry::Stands::read(&ran.output, &files, short)
 }
 
 /// The demo's account on its connected host, for the Account window's
@@ -1468,6 +1495,7 @@ impl RexHub {
                 bridge_there: None,
                 skill_there: None,
                 account: None,
+                carried: None,
                 tailscale: None,
                 tailscale_seq: 0,
                 synced_hosts: Vec::new(),
@@ -1504,6 +1532,7 @@ impl RexHub {
                         bridge_there: None,
                         skill_there: None,
                         account: None,
+                        carried: None,
                         tailscale: None,
                         tailscale_seq: 0,
                         synced_hosts: Vec::new(),
@@ -1800,6 +1829,7 @@ impl RexHub {
             bridge_there: None,
             skill_there: None,
             account: None,
+            carried: None,
             tailscale: None,
             tailscale_seq: 0,
             synced_hosts: Vec::new(),
@@ -1950,6 +1980,7 @@ impl RexHub {
                     bridge_there: None,
                     skill_there: None,
                     account: None,
+                    carried: None,
                     tailscale: None,
                     tailscale_seq: 0,
                     synced_hosts: Vec::new(),
@@ -3011,6 +3042,34 @@ impl RexHub {
         Some(task.abort_handle())
     }
 
+    /// Puts on a host what it lacks of the person's settings for their
+    /// agents (`olo_rex_client::carry`): asked what it has, given the
+    /// files that are missing or differ in one archive, what was there
+    /// kept beside each; then asked again how the account stands.
+    pub fn carry_settings(&self, host_key: &str, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+        use olo_rex_client::carry;
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            let result = match carried_stands(&pool, &target, askpass.clone()).await {
+                None => Err(olo_kit::words::tr("The host didn’t say what it has.").into()),
+                Some(stands) if stands.to_copy.is_empty() => Ok(()),
+                Some(stands) => match pool.put(&target, askpass.clone(), &format!("sh -c {}", shell_quote(carry::PUT)), &carry::archive(&stands.to_copy)).await {
+                    Ok(ran) if ran.ok() => Ok(()),
+                    Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty() && !l.starts_with("put ")).unwrap_or("it didn’t say why").trim().to_owned()),
+                    Err(e) => Err(e.to_string()),
+                },
+            };
+            inner.ask_the_account(&host_key, &pool, &target, askpass).await;
+            (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+    }
+
     pub fn install_remote_skill_in_pane(&self, key: &BlockKey) {
         let script = bridge::generate_remote_skill_install_script();
         let cmd = format!("sh -c {}\n", shell_quote(&script));
@@ -3329,12 +3388,16 @@ impl RexHubInner {
     /// (`RexHub::ask_account`).
     async fn ask_the_account(&self, host_key: &str, pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) {
         use olo_rex_client::ready;
-        let Ok(ran) = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(ready::LOOK)), &mut |_| {}).await else { return };
+        let Ok(ran) = pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(ready::LOOK)), &mut |_| {}).await else { return };
         if !ran.ok() {
             return;
         }
+        let account = ready::Account::read(&ran.output);
+        // (And what of the person's settings for their agents it has.)
+        let carried = carried_stands(pool, target, askpass).await.map(|stands| (stands.to_copy.len(), stands.same, stands.short));
         if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
-            host.account = Some(ready::Account::read(&ran.output));
+            host.account = Some(account);
+            host.carried = carried;
         }
     }
 

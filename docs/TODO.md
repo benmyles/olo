@@ -1461,13 +1461,22 @@ something nobody here has is in "Blocked", with what it waits for.
     by name, Claude Code, Codex and Antigravity by their makers'
     installers, git's identity, Olo's skill; one after another, shown
     as they go, stopped on Stop. Left, in this order:
-    - *The person's settings for their agents copied* (Ben: "copy my
-      local settings"): what is theirs to copy of Claude Code's
-      (`settings.json` less what the pool put in it, `CLAUDE.md`,
-      skills, agents, commands), Codex's (`config.toml`, `AGENTS.md`,
-      prompts) and Antigravity's; never a sign-in. A row in the
-      window's Settings that opens a window of its own (which, and
-      over what is there or beside it).
+    - *The person's settings for their agents copied*: built
+      (2026-11-23; HACKING, "The person's settings for their agents,
+      carried"): a row of the window, all three agents', everything
+      that is the person's. Left: a window to choose which agents'
+      and which parts, and to see what would be copied and what is
+      left out, before it is; what was removed here taken off there
+      too (now nothing is ever removed there); tried with a real
+      person's settings on a real host (hooks and status lines that
+      name programs the host hasn't). From Opus's review of the row:
+      say before copying how many of the host's own differ ("14 files
+      to copy · 2 differ there") and after it how many were kept
+      ("As on this computer · 2 of theirs kept"); how far a copy is,
+      under the row, while it runs; its line could begin "Yours from
+      this computer: …", since "skills" over the row "Skill for
+      agents" makes a careful reader wonder whether Olo's is copied
+      too.
     - *Repositories cloned and set up* (Ben: "choosing what repos to
       clone and how to set them up"): a list the person keeps, a row
       here ("4 of 6 cloned", Choose…) and a window of its own.
@@ -1614,6 +1623,25 @@ something nobody here has is in "Blocked", with what it waits for.
     short is cut at its end, where a folder's last part is what tells
     it ("bash — ~/src/olo/crates/re…": the middle, as Tracker's names);
     a lone "~" is slight as a whole folder's name.
+- **Every agent feature, with Antigravity's TUI too** (Ben,
+  2026-11-23: "make sure that keep it going and auto approve and any
+  and all other agent features for both terminal and olo rex work
+  with antigravity tui (agy)"). In Terminal and in Rex alike, each
+  thing that is done for Claude Code and Codex, tried with `agy` and
+  made to work where it doesn't: an agent told apart by what runs in
+  the pane (its name, its state: working, waiting for an answer,
+  done); Keep It Going (what `agy` shows when a turn ends, and what
+  it takes to go on); Auto Approve (the questions it asks leave with,
+  each of its forms, and their answers; what is never approved);
+  attention (the tab's and the sidebar's marks, Next Waiting Agent,
+  the notice when one waits); the tab's title it sets; the status its
+  hooks report, if it has hooks; typing ahead and the caret in Rex.
+  A list first, of each feature against each of the three agents in
+  each of the two apps, from the code and from a real `agy` on an
+  Agent Screen (never the person's own session); then what is
+  missing, built; tests with recorded screens of `agy`, as the other
+  two have.
+
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize
   ssh sessions and traffic on olo desktop, like maybe under prefs ->
