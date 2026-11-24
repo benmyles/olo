@@ -41,15 +41,6 @@ something nobody here has is in "Blocked", with what it waits for.
   tray's offer at once), and the releases listed there with Install for
   an older one (`olo-release install TAG`, what it would download said
   first, and what going back means for settings made since).
-- **Skills for the dev server** (Ben, 2026-11-24: "with the way you're
-  using the vm and everything to build releases and headless testing
-  and all that -- just make sure it's all documented in skills so that
-  if you move to another server you've got all that knowledge still"):
-  a project skill for setting up and working on a new server (what to
-  install, Jato, test desktops in software, the release container and
-  `tools/publish-release.sh`, Codex's and Claude Code's first-time
-  questions, the person's desktop through Rex), from AGENT-NOTES' "The
-  dev server" and HACKING, kept current with them.
 - **Rex: Activity as a list to choose from** (Ben, 2026-11-24, with a
   picture of Activity: "rex activity doesn't have a selected state like
   i'd expect Activity shows each agent that is running and lets me

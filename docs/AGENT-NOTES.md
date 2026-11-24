@@ -2972,7 +2972,9 @@ an argument it doesn't know starts the lint (read its first lines).
 
 Work moved from the person's Olo computer to a dev server they reach
 through Rex (Ben: "you are now running on my remote dev server with
-rex"). What it is, and what differs:
+rex"). How to set one up and work on it is the `olo-dev-server` skill
+(`.claude/skills/olo-dev-server`), kept current with this section. What
+this one is, and what differs:
 
 - **Ubuntu 26.04 in a VM** (32 processors, 125 GB): `setup.sh` is
   Fedora's (dnf), so what Olo needs came from apt: Mesa's software
