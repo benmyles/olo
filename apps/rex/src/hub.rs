@@ -155,6 +155,10 @@ pub struct BlockRuntime {
     /// the timer for the next thing either waits for, and the one that
     /// redraws a countdown each second while a question waits.
     pub watch: Watch,
+    /// The mouse as its program asked for it (`mouse_report`): Ghostty's
+    /// encoder, made the first time, and the button held down, reported.
+    mouse: Option<olo_rex_vt::input::MouseEncoder>,
+    pub mouse_held: Option<olo_rex_vt::input::MouseButton>,
     watch_timer: Option<tokio::task::AbortHandle>,
     watch_ticker: Option<tokio::task::AbortHandle>,
     pub unread: bool,
@@ -280,6 +284,8 @@ impl BlockRuntime {
             guess_wanted: false,
             last_output: Instant::now(),
             watch: Watch::new(Instant::now()),
+            mouse: None,
+            mouse_held: None,
             watch_timer: None,
             watch_ticker: None,
             unread: false,
@@ -603,6 +609,58 @@ impl BlockRuntime {
     pub fn runs_agent(&self) -> bool {
         let (name, exe, args) = self.agent_program();
         !self.program_statuses.is_empty() || name.is_some_and(|n| which_agent(Some(&n), &exe, &args, "").is_some())
+    }
+
+    /// A press, a release or a move of the mouse over cell `(col, row)`,
+    /// as its program asked to be told of them (its terminal's modes: which
+    /// events, and how written): the bytes to send it, or None where it
+    /// hasn't asked for the mouse, or for this (a move with no button held
+    /// under plain tracking). A wheel's step is a press of button four or
+    /// five, never held.
+    pub fn mouse_report(
+        &mut self,
+        action: olo_rex_vt::input::MouseAction,
+        button: Option<olo_rex_vt::input::MouseButton>,
+        mods: olo_rex_vt::input::KeyMods,
+        (col, row): (u16, u16),
+    ) -> Option<Vec<u8>> {
+        use olo_rex_vt::input::{MouseAction, MouseButton, MouseEncoder, MouseGeometry};
+        if !self.terminal.mouse_tracking() {
+            return None;
+        }
+        if self.mouse.is_none() {
+            self.mouse = MouseEncoder::new().ok();
+        }
+        let encoder = self.mouse.as_mut()?;
+        encoder.sync_from_terminal(&self.terminal).ok()?;
+        // (Cells of a size of their own: the cell under the pointer is the
+        // drawing's to say, by its own measure; a program asking for
+        // pixels, rare, gets them in proportion.)
+        let (cols, rows) = self.terminal.size();
+        let (w, h) = MOUSE_CELL;
+        encoder
+            .set_geometry(MouseGeometry {
+                screen_width: u32::from(cols.max(1)) * w,
+                screen_height: u32::from(rows.max(1)) * h,
+                cell_width: w,
+                cell_height: h,
+                padding_top: 0,
+                padding_bottom: 0,
+                padding_right: 0,
+                padding_left: 0,
+            })
+            .ok()?;
+        let wheel = matches!(button, Some(MouseButton::Four | MouseButton::Five));
+        if action == MouseAction::Press && !wheel {
+            self.mouse_held = button;
+        }
+        encoder.set_any_button_pressed(self.mouse_held.is_some()).ok()?;
+        let at = (f32::from(col) * w as f32 + w as f32 / 2.0, f32::from(row) * h as f32 + h as f32 / 2.0);
+        let bytes = encoder.encode(action, button, mods, at.0, at.1).ok();
+        if action == MouseAction::Release {
+            self.mouse_held = None;
+        }
+        bytes.filter(|b| !b.is_empty())
     }
 
     /// Its program in the foreground: its name, its program file, and
@@ -1679,6 +1737,45 @@ pub fn let_go() -> Vec<String> {
 /// (As Rex comes back from an upgrade, before its hub starts.)
 pub fn set_let_go(hosts: Vec<String>) {
     *LET_GO.lock().unwrap_or_else(|e| e.into_inner()) = hosts;
+}
+
+/// The size, in its own units, of a cell as the mouse encoder is told it.
+const MOUSE_CELL: (u32, u32) = (10, 20);
+
+/// Where a turn of the wheel over a pane goes, as in a local terminal
+/// (Terminal's rules: `apps/terminal/src/view.rs`, `Mouse::wheel`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wheel {
+    /// Its history scrolls.
+    Scrollback,
+    /// Its program asked for the mouse: told of each step (Shift keeps it).
+    Report,
+    /// The alternate screen (a pager, an editor), the program asked for
+    /// arrows for the wheel (mode 1007): an arrow key a line.
+    Arrows,
+    /// The alternate screen, no history to scroll and nothing asked for.
+    Nothing,
+}
+
+pub fn wheel_goes(tracking: bool, shift: bool, alternate: bool, alternate_scroll: bool) -> Wheel {
+    let reporting = tracking && !shift;
+    if !reporting && !alternate {
+        Wheel::Scrollback
+    } else if reporting {
+        Wheel::Report
+    } else if alternate_scroll {
+        Wheel::Arrows
+    } else {
+        Wheel::Nothing
+    }
+}
+
+/// `n` presses of the up or down arrow, as the program reads them (its
+/// application cursor keys, mode 1, or not).
+pub fn arrows(up: bool, n: u32, app_cursor: bool) -> Vec<u8> {
+    let key = if up { "A" } else { "B" };
+    let one = if app_cursor { format!("\x1bO{key}") } else { format!("\x1b[{key}") };
+    one.repeat(n as usize).into_bytes()
 }
 
 /// How many of a pane's bottom rows Keep It Going and Auto Approve read.
@@ -5751,6 +5848,41 @@ mod tests {
     }
 
     use super::*;
+
+    /// The wheel over a pane goes where a local terminal sends it.
+    #[test]
+    fn the_wheel_goes_as_in_a_local_terminal() {
+        assert_eq!(wheel_goes(false, false, false, true), Wheel::Scrollback, "a shell: its history");
+        assert_eq!(wheel_goes(true, false, false, false), Wheel::Report, "a program with the mouse");
+        assert_eq!(wheel_goes(true, true, false, false), Wheel::Scrollback, "Shift keeps it from the program");
+        assert_eq!(wheel_goes(false, false, true, true), Wheel::Arrows, "a pager: arrows");
+        assert_eq!(wheel_goes(false, false, true, false), Wheel::Nothing, "the alternate screen has no history");
+        assert_eq!(wheel_goes(true, false, true, true), Wheel::Report, "an editor with the mouse");
+        assert_eq!(arrows(true, 2, false), b"\x1b[A\x1b[A");
+        assert_eq!(arrows(false, 1, true), b"\x1bOB");
+    }
+
+    /// A program that asked for the mouse is told of presses, drags and
+    /// releases where they are, and of the wheel; one that hasn't, of
+    /// nothing.
+    #[test]
+    fn the_mouse_is_reported_to_a_program_that_asked() {
+        use olo_rex_vt::input::{KeyMods, MouseAction, MouseButton};
+        let mut b = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        assert_eq!(b.mouse_report(MouseAction::Press, Some(MouseButton::Left), KeyMods::NONE, (2, 3)), None, "not asked");
+        // Button events and SGR's encoding, as vim and tmux ask.
+        b.terminal.vt_write(b"\x1b[?1002h\x1b[?1006h");
+        assert_eq!(b.mouse_report(MouseAction::Press, Some(MouseButton::Left), KeyMods::NONE, (2, 3)).as_deref(), Some(&b"\x1b[<0;3;4M"[..]));
+        assert_eq!(b.mouse_held, Some(MouseButton::Left));
+        assert_eq!(b.mouse_report(MouseAction::Motion, Some(MouseButton::Left), KeyMods::NONE, (4, 3)).as_deref(), Some(&b"\x1b[<32;5;4M"[..]), "dragged");
+        assert_eq!(b.mouse_report(MouseAction::Release, Some(MouseButton::Left), KeyMods::NONE, (4, 3)).as_deref(), Some(&b"\x1b[<0;5;4m"[..]));
+        assert_eq!(b.mouse_held, None);
+        assert_eq!(b.mouse_report(MouseAction::Press, Some(MouseButton::Four), KeyMods::NONE, (0, 0)).as_deref(), Some(&b"\x1b[<64;1;1M"[..]), "the wheel up");
+        assert_eq!(b.mouse_held, None, "a wheel's step isn't held");
+        // Plain tracking: a move with no button isn't wanted.
+        b.terminal.vt_write(b"\x1b[?1002l\x1b[?1000h");
+        assert_eq!(b.mouse_report(MouseAction::Motion, None, KeyMods::NONE, (1, 1)), None);
+    }
     use olo_rex_vt::try_decode_snapshot_prefix;
 
     /// Tabs are told apart: by the name given, the program's title, the

@@ -28881,6 +28881,29 @@ icon's corner (`widgets::agent_marks`, as Terminal's tabs: the turning
 ring, "!", the green and grey dots, the red cross), said in words by
 the row's tip and to agents as its value (`activity_words`).
 
+**The mouse as in a local terminal** (Ben, 2026-11-24: "in olo rex we
+need to get mouse scrolling / mouse interactions working properly like
+a local terminal"), by Terminal's rules (`apps/terminal/src/view.rs`,
+`Mouse`): a program that has asked for the mouse (vim, tmux, an agent's
+interface; `GhosttyTerminal::mouse_tracking`) is told of presses,
+releases (over the screen or anywhere after a press on it), drags a
+cell at a time and the wheel, written as its modes ask by Ghostty's own
+encoder (`BlockRuntime::mouse_report`, `olo_rex_vt::input::
+MouseEncoder`, synced from the terminal before each, the cell the
+drawing's to say); every move only while it asked for every one (mode
+1003: only then is the window sent moves with no button held,
+`hears_motion`). Shift keeps the mouse for selecting, and brings the
+right button's menu. Otherwise the wheel scrolls the history, or on the
+alternate screen sends an arrow a line where the program asked for that
+(mode 1007, application cursor keys followed; `hub::wheel_goes`,
+`hub::arrows`); the middle button pastes. The wheel comes as pixels (a
+notch 15.3 points, a line 14.5 here): lines are counted with what is
+left of one kept for the next turn the same way
+(`PaneVisualState::wheel_lines`; kept across a change of way, a notch
+down after two up sent nothing). Tried headless with a program that
+writes down what it's sent (a click, a drag, a notch each way, the
+right button), as vim and as a pager.
+
 **Activity is a list to choose from** (Ben, 2026-11-24, with a picture:
 "rex activity doesn't have a selected state like i'd expect Activity
 shows each agent that is running and lets me select the one i want to

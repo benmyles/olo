@@ -147,9 +147,29 @@ pub struct PaneVisualState {
     pub hover: RefCell<Option<Hover>>,
     /// The letters a link's underline has gone round, as drawn.
     inks: RefCell<olo_kit::underline::Inks>,
+    /// A wheel's turn short of a whole line, kept for the next (what a
+    /// program told of the wheel, or sent arrows, is told of in lines).
+    pub wheel_rest: StdCell<f32>,
+    /// The cell the pointer was last reported over, so a move within a
+    /// cell tells the program nothing.
+    pub reported_at: StdCell<Option<(u16, u16)>>,
 }
 
 impl PaneVisualState {
+    /// Whole lines of a turn of the wheel (`delta_px`, up positive; a
+    /// line `ch` points), what is short of one kept for the next turn the
+    /// same way. (Kept across a change of way, a notch, 15.3 points to a
+    /// line of 14.5, only took back what was left of the last: one down
+    /// after two up sent nothing.)
+    pub fn wheel_lines(&self, delta_px: f32, ch: f32) -> i32 {
+        let rest = self.wheel_rest.get();
+        let rest = if rest * delta_px < 0.0 { 0.0 } else { rest };
+        let total = rest + delta_px / ch.max(1.0);
+        let lines = total.trunc() as i32;
+        self.wheel_rest.set(total - lines as f32);
+        lines
+    }
+
     pub fn scroll_smooth(&self, delta_px: f32, ch: f32, term: &mut GhosttyTerminal) {
         let sb = term.scrollbar();
         let history = sb.history_rows();
@@ -1042,5 +1062,23 @@ mod image_tests {
         assert!(rgba_to_render_image(&[0; 5], 1, 1).is_none());
         assert!(rgba_to_render_image(&[], u32::MAX, u32::MAX).is_none());
         assert_eq!(rgba_to_render_image(&[1, 2, 3, 255], 1, 1).unwrap().as_bytes(0).unwrap(), &[3, 2, 1, 255]);
+    }
+}
+
+#[cfg(test)]
+mod wheel_tests {
+    use super::*;
+
+    /// A notch is a line whichever way it turns, what is left of one kept
+    /// only for the same way.
+    #[test]
+    fn each_notch_is_a_line_either_way() {
+        let v = PaneVisualState::default();
+        let (notch, line) = (15.3, 14.5);
+        assert_eq!(v.wheel_lines(2.0 * notch, line), 2);
+        assert_eq!(v.wheel_lines(-notch, line), -1, "down after up");
+        assert_eq!(v.wheel_lines(notch, line), 1, "up after down");
+        assert_eq!(v.wheel_lines(line / 2.0, line), 0, "half a line kept");
+        assert_eq!(v.wheel_lines(line / 2.0, line), 1, "and made whole");
     }
 }

@@ -24,13 +24,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Astra's look at that change's pictures (`/var/tmp/claude-olo/aa/
   review2`, to be taken again then): Opus 5.5's two rounds alone were
   had.
-- **Rex: the mouse as in a local terminal** (Ben, 2026-11-24: "in olo
-  rex we need to get mouse scrolling / mouse interactions working
-  properly like a local terminal"): scrolling the history, and the
-  mouse given to a program that asks for it (vim, tmux, an agent's
-  TUI: the terminal's mouse modes, wheel as arrows in the alternate
-  screen), selection and clicks as Terminal does them. Find first what
-  Terminal does that Rex doesn't, and share it rather than copy it.
 - **About Olo: Check for Updates, and an older release** (Ben,
   2026-11-24: "add something in about olo desktop like a button to
   check for new releases and also the ability to install an older

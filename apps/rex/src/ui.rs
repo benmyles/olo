@@ -13,7 +13,7 @@ use std::{
 
 use olo_kit::{
     Bounds, Child, CursorStyle, DragAction, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, Painter, ParentElement as _, Pixels, Point, ScrollWheelEvent, Styled as _, TextInput, View, WindowCx, WindowHandle, WindowOptions, agent, canvas, div, icons,
+    MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, Pixels, Point, ScrollWheelEvent, Styled as _, TextInput, View, WindowCx, WindowHandle, WindowOptions, agent, canvas, div, icons,
     menu::{self, Menu, MenuBar},
     metrics as m, point, px, size, style, theme,
     widgets::{
@@ -22,7 +22,11 @@ use olo_kit::{
     },
 };
 use olo_rex_client::{LayerKind, LayerState, LayoutNode, WindowView};
-use olo_rex_vt::{FormatKind, TerminalTheme, encode_paste, paste_is_safe};
+use olo_rex_vt::{
+    FormatKind, TerminalTheme, encode_paste,
+    input::{MouseAction, MouseButton as VtButton},
+    paste_is_safe,
+};
 use olo_sync::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -138,6 +142,12 @@ fn tab_agent_panes(hub: &RexHub, host_key: &str, session_id: &str, w: &olo_rex_c
         return with_agent;
     }
     w.focused_block_id.as_deref().or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(key).into_iter().collect()
+}
+
+/// The modifiers held, as a terminal's mouse report says them.
+fn key_mods(m: &olo_kit::Modifiers) -> olo_rex_vt::input::KeyMods {
+    use olo_rex_vt::input::KeyMods;
+    KeyMods((if m.shift { KeyMods::SHIFT } else { 0 }) | (if m.control { KeyMods::CTRL } else { 0 }) | (if m.alt { KeyMods::ALT } else { 0 }) | (if m.platform { KeyMods::SUPER } else { 0 }))
 }
 
 /// What a pane is called, as its tab would show it.
@@ -5157,6 +5167,18 @@ fn render_single_pane(
     let metrics_drag = metrics.clone();
     let br_drag = br.clone();
     let vis_drag = visual.clone();
+    // (The mouse given to a program that asked for it, as in a local
+    // terminal: `BlockRuntime::mouse_report`, Ghostty's encoder; Shift
+    // keeps it for selecting. Ben, 2026-11-24: "in olo rex we need to get
+    // mouse scrolling / mouse interactions working properly like a local
+    // terminal".)
+    let bk_drag = bk.clone();
+    let (br_right, vis_right, metrics_right) = (br.clone(), visual.clone(), metrics.clone());
+    let (br_middle, vis_middle, metrics_middle, bk_middle) = (br.clone(), visual.clone(), metrics.clone(), bk.clone());
+    let (bk_scroll, metrics_scroll) = (bk.clone(), metrics.clone());
+    // (Every move of the pointer told to the window only while the
+    // program asked for every move, mode 1003: else none, as before.)
+    let wants_motion = br.lock().unwrap_or_else(|e| e.into_inner()).terminal.dec_mode(1003);
 
     let pane_m1 = cx.messenger();
     let pane_m2 = cx.messenger();
@@ -5285,6 +5307,16 @@ fn render_single_pane(
             }
         }
 
+        if !e.modifiers.shift {
+            let sent = br_mouse.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Press, Some(VtButton::Left), key_mods(&e.modifiers), (col, row));
+            if let Some(bytes) = sent {
+                vis_mouse.drag_anchor.set(None);
+                vis_mouse.reported_at.set(Some((col, row)));
+                hub.send_input(&bk_mouse, bytes);
+                cx.stop_propagation();
+                return;
+            }
+        }
         let mut g = br_mouse.lock().unwrap_or_else(|e| e.into_inner());
         if e.click_count == 2 {
             let _ = g.terminal.select_word_at_viewport(col, row as u32);
@@ -5299,6 +5331,23 @@ fn render_single_pane(
         pane_m1.send(());
     })
     .on_drag_move(move |e: &MouseMoveEvent, _| {
+        // A program that has the mouse: told of the move, once a cell, the
+        // button held with it (none where it asked for every move).
+        let held = br_drag.lock().unwrap_or_else(|e| e.into_inner()).mouse_held;
+        if held.is_some() || (e.pressed_button.is_none() && !e.modifiers.shift) {
+            let rect = vis_drag.bounds.get();
+            let cell = metrics_drag.cell_at(rect, pad, e.position, vis_drag.shift.get());
+            if vis_drag.reported_at.get() != Some(cell) {
+                let sent = br_drag.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Motion, held, key_mods(&e.modifiers), cell);
+                if let Some(bytes) = sent {
+                    vis_drag.reported_at.set(Some(cell));
+                    app().hub.send_input(&bk_drag, bytes);
+                }
+            }
+            if held.is_some() || e.pressed_button.is_none() {
+                return;
+            }
+        }
         if e.pressed_button != Some(MouseButton::Left) {
             return;
         }
@@ -5310,6 +5359,18 @@ fn render_single_pane(
         pane_m2.send(());
     })
     .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, cx| {
+        // (A program that has the mouse is told of the right button too;
+        // Shift brings the menu, as in a local terminal.)
+        if !e.modifiers.shift {
+            let cell = metrics_right.cell_at(vis_right.bounds.get(), pad, e.position, vis_right.shift.get());
+            let sent = br_right.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Press, Some(VtButton::Right), key_mods(&e.modifiers), cell);
+            if let Some(bytes) = sent {
+                vis_right.reported_at.set(Some(cell));
+                app().hub.send_input(&bk_rclick, bytes);
+                cx.stop_propagation();
+                return;
+            }
+        }
         // The menu bar's commands for this pane, by the names and with
         // the checks and keys they have there: the clipboard; its text;
         // the pane itself; closing it, alone and last.
@@ -5355,10 +5416,78 @@ fn render_single_pane(
     .on_scroll_wheel(move |e: &ScrollWheelEvent, cx| {
         let delta_y = f32::from(e.delta.pixel_delta(px(ch_scroll)).y);
         let mut g = br_scroll.lock().unwrap_or_else(|e| e.into_inner());
-        vis_scroll.scroll_smooth(delta_y, ch_scroll, &mut g.terminal);
-        pane_m3.send(());
+        // Where a local terminal sends it (`hub::wheel_goes`): the
+        // history; the program that has the mouse; arrows for a pager or
+        // an editor on the alternate screen that asked for them.
+        let alternate = g.terminal.active_screen() == olo_rex_vt::ScreenKind::Alternate;
+        let goes = crate::hub::wheel_goes(g.terminal.mouse_tracking(), e.modifiers.shift, alternate, g.terminal.dec_mode(1007));
+        if goes == crate::hub::Wheel::Scrollback {
+            vis_scroll.scroll_smooth(delta_y, ch_scroll, &mut g.terminal);
+            pane_m3.send(());
+            cx.stop_propagation();
+            return;
+        }
+        let lines = vis_scroll.wheel_lines(delta_y, ch_scroll);
+        let bytes = match goes {
+            _ if lines == 0 => Vec::new(),
+            crate::hub::Wheel::Report => {
+                let cell = metrics_scroll.cell_at(vis_scroll.bounds.get(), pad, e.position, vis_scroll.shift.get());
+                let button = if lines > 0 { VtButton::Four } else { VtButton::Five };
+                (0..lines.unsigned_abs()).filter_map(|_| g.mouse_report(MouseAction::Press, Some(button), key_mods(&e.modifiers), cell)).flatten().collect()
+            }
+            crate::hub::Wheel::Arrows => crate::hub::arrows(lines > 0, lines.unsigned_abs(), g.terminal.dec_mode(1)),
+            _ => Vec::new(),
+        };
+        drop(g);
+        if !bytes.is_empty() {
+            app().hub.send_input(&bk_scroll, bytes);
+        }
+        cx.stop_propagation();
+    })
+    // The middle button: the program's where it has the mouse, else a
+    // paste, as in a local terminal.
+    .on_mouse_down(MouseButton::Middle, move |e: &MouseDownEvent, cx| {
+        let cell = metrics_middle.cell_at(vis_middle.bounds.get(), pad, e.position, vis_middle.shift.get());
+        let sent = if e.modifiers.shift { None } else { br_middle.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Press, Some(VtButton::Middle), key_mods(&e.modifiers), cell) };
+        match sent {
+            Some(bytes) => {
+                vis_middle.reported_at.set(Some(cell));
+                app().hub.send_input(&bk_middle, bytes);
+            }
+            None => {
+                if let Some(slot) = wins().map.get(&win_id) {
+                    slot.handle.messenger().send(WinMsg::PaneCommand(bk_middle.clone(), "terminal.paste".into()));
+                }
+            }
+        }
         cx.stop_propagation();
     });
+    // A button let go of, over the screen or anywhere after a press on it:
+    // the program that was told of the press is told of its release.
+    let mut screen_canvas = screen_canvas;
+    for (button, vt) in [(MouseButton::Left, VtButton::Left), (MouseButton::Right, VtButton::Right), (MouseButton::Middle, VtButton::Middle)] {
+        for out in [false, true] {
+            let (br_up, vis_up, metrics_up, bk_up) = (br.clone(), visual.clone(), metrics.clone(), bk.clone());
+            let release = move |e: &MouseUpEvent, _: &mut WindowCx| {
+                let cell = metrics_up.cell_at(vis_up.bounds.get(), pad, e.position, vis_up.shift.get());
+                let sent = {
+                    let mut g = br_up.lock().unwrap_or_else(|e| e.into_inner());
+                    if g.mouse_held != Some(vt) {
+                        return;
+                    }
+                    g.mouse_report(MouseAction::Release, Some(vt), key_mods(&e.modifiers), cell)
+                };
+                vis_up.reported_at.set(None);
+                if let Some(bytes) = sent {
+                    app().hub.send_input(&bk_up, bytes);
+                }
+            };
+            screen_canvas = if out { screen_canvas.on_mouse_up_out(button, release) } else { screen_canvas.on_mouse_up(button, release) };
+        }
+    }
+    if wants_motion {
+        screen_canvas = screen_canvas.hears_motion();
+    }
 
     let mut pane_col = div().relative().size_full().flex().flex_col();
     if let Some(h) = header_el {
