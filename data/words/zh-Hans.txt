@@ -451,12 +451,6 @@ A picture of your own
 A process needs at least one core.
 进程至少需要一个核心。
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-即使处理器繁忙，刚唤醒的程序也能立即运行，无需等待内核的下一个时钟节拍（完全抢占）。当前由 {} 自行调度，此项仅用于内核自带的调度器。
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-即使处理器繁忙，刚唤醒的程序也能立即运行，无需等待最长一毫秒的下一个内核时钟节拍（完全抢占）。
-
 A red dot for an app with something unread in it
 应用有未读内容时显示红点
 
@@ -1326,9 +1320,6 @@ At 20%
 
 At a time of its own
 在自定时间
-
-At every start
-每次启动时
 
 At full speed
 全速
@@ -3465,6 +3456,9 @@ DiskUsage
 
 Disks
 磁盘
+
+Disks plugged in
+已插入的磁盘
 
 Display
 显示器
@@ -5794,8 +5788,8 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 保存其他应用的密码，在登录时自动解锁。
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-在大量同步写入或丢弃操作涌向 NVMe 硬盘时仍可限制读取延迟，而 Linux 默认的 "none" 仅限制后台回写 (queue/scheduler)。
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+大量同步写入或丢弃操作涌入 NVMe 硬盘时，可控制读取延迟上限；而 Linux 默认的“none”仅限制后台回写（queue/scheduler）。
 
 Keeps typing quick over a slow link.
 在慢速连接上也能保持键入流畅。
@@ -5805,6 +5799,9 @@ Kept
 
 Kept Core
 预留核心
+
+Kept after restart
+重启后保留
 
 Kept for this computer and set again at every start.
 已为本机保存，每次启动时都会重新应用。
@@ -6147,6 +6144,9 @@ Linux 默认
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 自带的调度器（EEVDF）公平对待各类程序。无论选择哪种调度器，其他任务正在等待的 Olo 线程都以实时优先级运行，高于普通程序。构建等重负载下，使用此调度器时桌面响应最快。
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux 的常规方式（cubic）会一直发送直到沿途队列填满，从而增加延迟；此方式会测量路径并保持在其承载能力以下（Olo 的模块 tcp_bbr3）。
 
 List
 列表
@@ -6537,9 +6537,6 @@ Match:
 
 Max
 最大值
-
-May wait
-可等待
 
 Maybe
 可能
@@ -8635,6 +8632,9 @@ Passwords 会在本机加密保存项目，也可以与 1Password 账户双向�
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords 会在本机加密保存项目，也可以与 1Password 账户双向同步。要启用同步，请在 1Password 的“设置 ▸ 开发者”中开启“与其他应用集成”，然后输入账户名称。
 
+Passwords on this screen has no SSH keys shared with it.
+此屏幕上的 Passwords 没有与其共享的 SSH 密钥。
+
 Passwords: Clipboard
 Passwords：剪贴板
 
@@ -9967,6 +9967,9 @@ SSH 默认允许单条连接开启 10 个会话，每个窗格占用 1 个。
 SSH keys
 SSH 密钥
 
+SSH keys offered: {}.
+已提供的 SSH 密钥：{}。
+
 SSH sessions
 SSH 会话
 
@@ -10243,14 +10246,14 @@ Send Signal…
 Send Voice Message
 发送语音消息
 
+Send at the pace the network can carry
+按网络可承载的速率发送
+
 Send to Back
 置于底层
 
 Send to back
 置于底层
-
-Send with BBRv3
-使用 BBRv3 发送
 
 Sending your changes to Telegram
 正在向 Telegram 发送更改
@@ -11251,9 +11254,6 @@ System Font
 TCP opened in
 TCP 建连用时
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP 按路径所能承载的速度发送，而 Linux 自带的方式会把沿途的队列填满（Olo 的模块 tcp_bbr3）。
-
 TCP/IP
 TCP/IP
 
@@ -12025,9 +12025,6 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 这些应用的新窗口会出现在对应显示器的指定工作区。取消勾选后，新窗口会重新在当前工作区打开。
 
-Their round trip
-往返时间
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 这些应用的窗口会浮在平铺窗口及专注模式的窗口之上。取消勾选即可恢复平铺。
 
@@ -12541,6 +12538,9 @@ Trash
 Tree
 树
 
+Tried with this kernel
+已在此内核上试过
+
 Trim
 修剪
 
@@ -12850,6 +12850,9 @@ Until Turned Off
 Until:
 截止：
 
+Unwritten at most
+未写数据上限
+
 Up
 上
 
@@ -13047,6 +13050,9 @@ Using the most
 
 Using too much memory
 内存占用过高
+
+Usual round trip
+常规往返时间
 
 VPN
 VPN
@@ -13378,6 +13384,9 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 已完成的步骤会保留，再次设置将从断点继续。
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+窗口绘制所用的缓冲区不会被换出到交换空间，桌面因此不会为此等待（Olo 对 Intel 驱动的热补丁）。
+
 What you change applies when you leave Rescue.
 所做更改在退出救援模式时生效。
 
@@ -13633,9 +13642,6 @@ Windows
 Windows stay where you put them.
 窗口停留在您放置的位置。
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-窗口的缓冲区不会进入交换空间，因此桌面不必等待它们换回（Olo 针对 Intel 驱动的实时补丁）。
-
 Wireless Router
 无线路由器
 
@@ -13650,6 +13656,12 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 开启后，繁忙的程序会在 0.7 毫秒（而非 {}）后让位给等待中的程序，负载高时窗口和输入也不会卡顿（base slice）。
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+开启后，处理器繁忙时刚唤醒的程序会立即运行，不必等待内核的下一次时钟节拍（full preemption）。{} 正在调度，并会自行决定这一点：此设置用于内核自己的调度器。
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+开启后，处理器繁忙时刚唤醒的程序会立即运行，不必为内核的下一次时钟节拍等待最多 1 毫秒（full preemption）。
 
 Withdrawn by {}
 已由 {} 撤回
@@ -14053,6 +14065,9 @@ built most, the last 24 hours
 busy
 繁忙
 
+can’t be offered to SSH: {}
+无法提供给 SSH：{}
+
 ceiling {}%
 上限 {}%
 
@@ -14314,6 +14329,9 @@ libinput 默认值
 libinput's own: Olo's touch filter is off
 由 libinput 处理：Olo 触摸过滤已关闭
 
+limited
+已限制
+
 low
 低
 
@@ -14356,8 +14374,14 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+无
+
 not in the running kernel
 不在运行中的内核里
+
+not limited
+未限制
 
 not parts of it: {}; its parts are {}
 以下不是其组成部分：{}；其组成部分为 {}
@@ -14368,11 +14392,11 @@ not set up yet
 not understood: {}
 无法识别：{}
 
+not yet ({})
+尚未（{}）
+
 not yet on this kernel's build, {}
 当前内核版本 {} 尚未检查
-
-not yet on this kernel's series, {}
-尚不适用于当前内核系列 {}
 
 nothing backed up for {n} days
 other: 已有 {n} 天未备份
@@ -14439,9 +14463,6 @@ on battery: it waits for power
 
 on this kernel's build, {}
 适用于当前内核版本 {}
-
-on this kernel's series, {}
-适用于当前内核系列 {}
 
 on {}
 在 {} 上
@@ -14778,6 +14799,9 @@ without {}, {} and {} more
 
 yes
 是
+
+yes ({})
+是（{}）
 
 yesterday
 昨天
@@ -15367,9 +15391,6 @@ other: {n} 周
 {} ms
 {} 毫秒
 
-{} ms, the middle of them
-中位数 {} 毫秒
-
 {} needs full access.
 {} 需要完全访问权限。
 
@@ -15682,8 +15703,8 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {}% of the time, waking in {} µs
 占总时间的 {}%，唤醒耗时 {} 微秒
 
-{}% of their {} segments
-在 {1} 个分段中占 {0}%
+{}% of {} packets
+{}%（共 {} 个包）
 
 {}'s quota
 {} 的额度

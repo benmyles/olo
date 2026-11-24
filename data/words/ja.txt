@@ -451,12 +451,6 @@ A picture of your own
 A process needs at least one core.
 プロセスには少なくとも1つのコアが必要です。
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-すべてのCPUが使用中でも、起床したプログラムが次のカーネルティックを待たずに実行されます（完全プリエンプション）。現在は{}が独自に判断しています。この設定はカーネル標準のスケジューラー用です。
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-すべてのCPUが使用中でも、起床したプログラムがすぐに実行されます。次のカーネルティックまで最大1ミリ秒待つ必要がありません（完全プリエンプション）。
-
 A red dot for an app with something unread in it
 未読項目があるアプリに赤い点を表示
 
@@ -1326,9 +1320,6 @@ At 20%
 
 At a time of its own
 指定した日時
-
-At every start
-起動のたびに
 
 At full speed
 最高速度
@@ -3465,6 +3456,9 @@ DiskUsage
 
 Disks
 ディスク
+
+Disks plugged in
+接続中のディスク
 
 Display
 ディスプレイ
@@ -5794,8 +5788,8 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 他のアプリのパスワードを保存し、ログイン時にロックを解除します。
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-大量の同期書き込みや discard が NVMe ドライブに集中しても読み込み遅延を抑えます。Linux 標準の "none" はバックグラウンドの書き出ししか抑えません (queue/scheduler)。
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+大量の同期書き込みやdiscardがNVMeドライブに集中しても読み込み遅延を抑えます。Linux標準の「none」はバックグラウンドの書き出ししか制限しません（queue/scheduler）。
 
 Keeps typing quick over a slow link.
 遅い回線でも入力を素早く保ちます。
@@ -5805,6 +5799,9 @@ Kept
 
 Kept Core
 予約したコア
+
+Kept after restart
+再起動後も維持
 
 Kept for this computer and set again at every start.
 このコンピューターに保存し、起動するたびに適用します。
@@ -6147,6 +6144,9 @@ Linux標準
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux標準のスケジューラー（EEVDF）は、すべてのプログラムにCPU時間を公平に割り当てます。どちらのスケジューラーでも、ほかの処理が待っているOloのスレッドはリアルタイム優先度で動きます。ビルドなどで高負荷のときは、こちらの方がデスクトップの応答が速くなります。
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linuxの通常の方式（cubic）は途中のキューが埋まるまで送信するため遅延が増えます。この方式は経路を測ってその範囲内で送信します（Oloのtcp_bbr3モジュール）。
 
 List
 リスト
@@ -6537,9 +6537,6 @@ Match:
 
 Max
 最大
-
-May wait
-待機可能
 
 Maybe
 未定
@@ -8635,6 +8632,9 @@ Passwordsは項目を暗号化してこのコンピューターに保存しま�
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwordsは項目を暗号化してこのコンピューターに保存します。1Passwordとの双方向同期も可能です。1Passwordの「設定」▸「開発者」で他のアプリとの連携を有効にしてから、同期するアカウント名を指定してください。
 
+Passwords on this screen has no SSH keys shared with it.
+この画面のPasswordsには、共有されたSSH鍵がありません。
+
 Passwords: Clipboard
 Passwords：クリップボード
 
@@ -9967,6 +9967,9 @@ SSHは既定で1接続あたり10セッションまで許可し、各ペイン�
 SSH keys
 SSH鍵
 
+SSH keys offered: {}.
+提供されたSSH鍵: {}。
+
 SSH sessions
 SSHセッション
 
@@ -10243,14 +10246,14 @@ Send Signal…
 Send Voice Message
 音声メッセージを送信
 
+Send at the pace the network can carry
+ネットワークが流せる速度で送信
+
 Send to Back
 最背面に移動
 
 Send to back
 最背面に移動
-
-Send with BBRv3
-BBRv3で送信
 
 Sending your changes to Telegram
 変更をTelegramに送信中
@@ -11251,9 +11254,6 @@ System Font
 TCP opened in
 TCP接続時間
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-経路が流せる速度でTCPを送信します。Linux標準の方式では途中のキューが埋まります（Oloのtcp_bbr3モジュール）。
-
 TCP/IP
 TCP/IP
 
@@ -12025,9 +12025,6 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 これらのアプリの新しいウィンドウは、起動した画面の指定ワークスペースに開きます。チェックを外すと現在のワークスペースに開くようになります。
 
-Their round trip
-往復時間
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 これらのアプリはタイルの手前に表示され、フォーカスモードでも前面に残ります。チェックを外すと再びタイル表示になります。
 
@@ -12541,6 +12538,9 @@ Trash
 Tree
 ツリー
 
+Tried with this kernel
+このカーネルでの検証
+
 Trim
 トリム
 
@@ -12850,6 +12850,9 @@ Until Turned Off
 Until:
 終了:
 
+Unwritten at most
+未書き込み上限
+
 Up
 上へ
 
@@ -13047,6 +13050,9 @@ Using the most
 
 Using too much memory
 メモリを過剰に使用
+
+Usual round trip
+通常の往復時間
 
 VPN
 VPN
@@ -13378,6 +13384,9 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 完了した手順はそのまま残ります。もう一度設定すると、その続きから再開します。
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+ウィンドウの描画用メモリをスワップさせないため、デスクトップが読み戻しを待つことはありません（Intelドライバー用のOloのライブパッチ）。
+
 What you change applies when you leave Rescue.
 変更は復旧モードの終了時に反映されます。
 
@@ -13633,9 +13642,6 @@ Windows
 Windows stay where you put them.
 ウィンドウは置いた場所にとどまります。
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-ウィンドウのバッファーをスワップさせないので、デスクトップが読み戻しを待つことはありません（Intelドライバー用のOloのライブパッチ）。
-
 Wireless Router
 無線ルーター
 
@@ -13650,6 +13656,12 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、負荷が高くてもウィンドウや入力が遅れません（base slice）。
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+オンにすると、すべてのCPUが使用中でも、起床したプログラムがカーネルの次のティックを待たずにすぐに実行されます（full preemption）。現在は{}がスケジューリングしており、これを自ら決めます。この設定はカーネル自身のスケジューラ用です。
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+オンにすると、すべてのCPUが使用中でも、起床したプログラムがカーネルの次のティックまで最大1ミリ秒待たずにすぐに実行されます（full preemption）。
 
 Withdrawn by {}
 {}が取り消しました
@@ -14053,6 +14065,9 @@ built most, the last 24 hours
 busy
 ビジー
 
+can’t be offered to SSH: {}
+SSHに提供できません: {}
+
 ceiling {}%
 上限{}%
 
@@ -14314,6 +14329,9 @@ libinputの標準
 libinput's own: Olo's touch filter is off
 libinputに任せる：Oloのタッチフィルターはオフ
 
+limited
+制限あり
+
 low
 低
 
@@ -14356,8 +14374,14 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+なし
+
 not in the running kernel
 実行中のカーネルになし
+
+not limited
+制限なし
 
 not parts of it: {}; its parts are {}
 対象外：{}。対象は{}です
@@ -14368,11 +14392,11 @@ not set up yet
 not understood: {}
 認識できません：{}
 
+not yet ({})
+未検証（{}）
+
 not yet on this kernel's build, {}
 このビルド（{}）は未確認
-
-not yet on this kernel's series, {}
-このカーネル系列（{}）にはまだありません
 
 nothing backed up for {n} days
 other: {n}日間バックアップされていません
@@ -14439,9 +14463,6 @@ on battery: it waits for power
 
 on this kernel's build, {}
 このカーネルのビルド（{}）
-
-on this kernel's series, {}
-このカーネル系列（{}）に対応
 
 on {}
 {}上
@@ -14778,6 +14799,9 @@ without {}, {} and {} more
 
 yes
 はい
+
+yes ({})
+済み（{}）
 
 yesterday
 昨日
@@ -15367,9 +15391,6 @@ other: {n}週間
 {} ms
 {} ms
 
-{} ms, the middle of them
-中央値 {} ms
-
 {} needs full access.
 {}にはフルアクセスが必要です。
 
@@ -15682,8 +15703,8 @@ RAMの{}%
 {}% of the time, waking in {} µs
 滞在率{}%、復帰に{} µs
 
-{}% of their {} segments
-全{1}セグメントの{0}%
+{}% of {} packets
+{1}パケット中{0}%
 
 {}'s quota
 {}の利用枠

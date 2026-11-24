@@ -1732,17 +1732,6 @@ something nobody here has is in "Blocked", with what it waits for.
     short is cut at its end, where a folder's last part is what tells
     it ("bash — ~/src/olo/crates/re…": the middle, as Tracker's names);
     a lone "~" is slight as a whole folder's name.
-- **Which SSH keys there are, said where they are used** (from Ben's
-  three reports of 2026-11-23 that git on a host was refused: the
-  forwarding worked, and two of their three keys were never offered).
-  Passwords: on an SSH Key item it can't offer, why (now only its
-  log says: "an SSH key in Passwords can't be offered"), and a key
-  under a passphrase asked for it once. Rex: beside the grant of SSH
-  keys to a host (Preferences ▸ Rex, and the Host window's Bridge
-  line, which now names "SSH keys"), how many keys go and their
-  names. The Token Pool's Clients window floating too, as its Hosts
-  window now is?
-
 - **Every agent feature, with Antigravity's TUI too** (Ben,
   2026-11-23: "make sure that keep it going and auto approve and any
   and all other agent features for both terminal and olo rex work
@@ -1764,24 +1753,34 @@ something nobody here has is in "Blocked", with what it waits for.
     each of the two apps, written down in HACKING with how each was
     tried.
 
-- **Rex says when the keys it forwards can't be had** (2026-11-23,
-  seen on the person's host: Rex moved to an agent screen reconnected
-  from there, and its forwarded agent offered no keys without a word:
-  a program on an agent screen asks that screen's Passwords, which has
-  only what was shared with the screen). The relay answers an empty
-  list where the keychain can't be reached or has none
-  (`give_the_agent`: `olo_keychain::call(..).ok()`): Rex should say in
-  the Host window's SSH keys line how many keys the host is offered
-  and why none ("Passwords on this screen has no SSH keys shared with
-  it", "Passwords isn't running", "locked"), and log it.
-
-- **Rex's Host window, from Opus's look at its Bridge row**
-  (2026-11-23), there before: "Typing helper's bare, destructive
-  'Remove' sits in the same column as the buttons that open windows
-  (Manage…, Account…, Permissions…, Token Pool…), and it looks exactly
-  like them"; and the heading of a host with a name half as long again
-  as "build-farm-eu-west-production-01" would run into Check Again
-  (it should end in "…" a column's gap before it): to picture.
+- **Preferences, from Opus's look at the Kernel tab** (2026-11-24),
+  there before the change, in its words:
+  - Performance: "this window has no Defaults/Revert row, but Rex,
+    Security and Touchpad & Mouse all do. If changes apply at once
+    (after the password), say so in the closing note"; "'lazy' (Now /
+    Next start) is a raw kernel word on a tab that's otherwise plain.
+    Use 'after a tick' / 'at once', with '(lazy)' / '(full)' in the
+    description only"; the Kernel tab "is bottom-heavy with empty
+    space" (the note ends about 95 pt above the page's foot, the
+    Network box about 160 pt above Processor Turns'): shorten the
+    window if no tab needs the height, or fill the right column. Mine:
+    the Disks tab's sentences run a whole box wide, over a hundred
+    letters a line. Window Buffers (Intel graphics only) wasn't
+    pictured: no such GPU on the dev server.
+  - Security: the intro "is broken: 'Each of these set up stands
+    for…' and 'a face or fingerprint the lock and login screens
+    too'" (theirs: "Once set up, each of these stands for your
+    password wherever it's asked (Passwords, sudo in Terminal,
+    administrator requests, and for a face or fingerprint the lock
+    and login screens too), whichever you use first."); it "runs about
+    1190px wide at 1.5x"; apostrophes mixed, straight and curly; "Touch
+    ID" is Apple's name ("Fingerprint").
+  - Touchpad & Mouse: "with 'No touchpad found.', the Profile pop-up
+    and its description still look live" (dim them), and "about 130pt
+    of empty page below both boxes".
+  - The Token Pool isn't in the live lint (`tools/dev/ui-lint`): its
+    windows (Clients, Hosts) are linted by no one, and would need a
+    stand-in pool, never the person's.
 
 - **The kit's pop-up and status bar, from the looks at Rex's Agent
   sessions row** (2026-11-23), the kit's everywhere: the open menu
@@ -2600,6 +2599,25 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Rex's Host window, from Opus's look at its Bridge row** (2026-11-23).
+  Pictured (2026-11-24): a host named half as long again as
+  "build-farm-eu-west-production-01" ends in "…" a gap before Check Again,
+  light and dark. The typing helper's Remove left as it is: the buttons
+  that open windows end in "…" (Manage…, Account…, Permissions…), as the
+  desktop's always do, and Remove acts at once and Install undoes it.
+- **Which SSH keys there are, said where they are used; and why none
+  where none can be had** (from Ben's three reports of 2026-11-23 that
+  git on a host was refused). Done (2026-11-24): Passwords says on an
+  SSH Key item that its agent can't offer, beside the field's name, why
+  ("can’t be offered to SSH: the key has a passphrase"); Rex's Host
+  window counts the keys a host is offered and names them under its
+  Bridge line ("SSH keys offered: GitHub, Work laptop.") or says why none (Passwords locked, not running, not set up;
+  on an agent screen, "Passwords on this screen has no SSH keys shared
+  with it"), and logs it; the Token Pool's Clients window floats, as its
+  Hosts window does. Left: a key under a passphrase asked for it once
+  (Passwords asking the person as a host first signs with it); the same
+  beside the grant in Preferences ▸ Rex (it would ask Passwords, which
+  may ask the person: only once Passwords can answer a listing quietly).
 - **Elevated permissions approved by themselves are approved at once,
   with nothing started** (Ben, 2026-11-20: "when auto-approve
   sudo/elevated permissions is enabled, it still starts the ir camera

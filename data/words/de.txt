@@ -453,12 +453,6 @@ Ein eigenes Bild
 A process needs at least one core.
 Ein Prozess braucht mindestens einen Kern.
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-Ein Programm, das geweckt wird, während die Prozessoren beschäftigt sind, läuft sofort, statt auf den nächsten Takt des Kernels zu warten (volle Präemption). {} plant gerade und entscheidet das selbst: Dies gilt für den eigenen Scheduler des Kernels.
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-Ein Programm, das geweckt wird, während die Prozessoren beschäftigt sind, läuft sofort, statt bis zu einer Millisekunde auf den nächsten Takt des Kernels zu warten (volle Präemption).
-
 A red dot for an app with something unread in it
 Ein roter Punkt für eine App mit Ungelesenem
 
@@ -1332,9 +1326,6 @@ Bei 20 %
 
 At a time of its own
 Zur gewählten Uhrzeit
-
-At every start
-Bei jedem Start
 
 At full speed
 Mit voller Geschwindigkeit
@@ -3478,6 +3469,9 @@ DiskUsage
 
 Disks
 Laufwerke
+
+Disks plugged in
+Angeschlossene Laufwerke
 
 Display
 Bildschirm
@@ -5820,8 +5814,8 @@ Verhindert, dass Hintergrundarbeit bremst, was Sie gerade nutzen.
 Keeps other apps’ passwords, unlocked as you log in.
 Bewahrt Passwörter anderer Apps auf, entsperrt bei der Anmeldung.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-Hält die Leselatenz niedrig, wenn starke synchrone Schreibvorgänge oder Discards ein NVMe-Laufwerk fluten, während Linux' Standard "none" nur Hintergrund-Zurückschreiben bremst (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Hält die Leselatenz begrenzt, wenn starke synchrone Schreibvorgänge oder Discards ein NVMe-Laufwerk fluten, während Linux’ Standard „none“ nur das Hintergrund-Zurückschreiben drosselt (queue/scheduler).
 
 Keeps typing quick over a slow link.
 Hält das Tippen über eine langsame Verbindung flott.
@@ -5831,6 +5825,9 @@ Behalten
 
 Kept Core
 Reservierter Kern
+
+Kept after restart
+Nach Neustart behalten
 
 Kept for this computer and set again at every start.
 Für diesen Computer gespeichert und bei jedem Start erneut gesetzt.
@@ -6173,6 +6170,9 @@ Linux’ eigene
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Der Scheduler von Linux, wie er kommt (EEVDF): fair zu jedem Programm, was immer es tut. Olos eigene Threads, auf die jemand wartet, laufen in Echtzeit, über jedem Programm unter beiden Schedulern, und bei Builds und anderer schwerer Arbeit bleibt der Desktop mit diesem am schnellsten.
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux’ übliche Art (cubic) sendet, bis die Warteschlangen unterwegs voll sind, was Verzögerung bringt; diese misst den Weg und bleibt darunter (Olos Modul, tcp_bbr3).
 
 List
 Liste
@@ -6563,9 +6563,6 @@ Treffer:
 
 Max
 Max
-
-May wait
-Darf warten
 
 Maybe
 Vielleicht
@@ -8661,6 +8658,9 @@ Passwords bewahrt Ihre Einträge verschlüsselt auf diesem Computer auf und kann
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords bewahrt Ihre Einträge verschlüsselt auf diesem Computer auf und kann sie in beide Richtungen mit Ihren 1Password-Konten abgleichen. Zum Synchronisieren aktivieren Sie in 1Password „Einstellungen ▸ Entwickler ▸ Mit anderen Apps integrieren“ und nennen dann die Konten.
 
+Passwords on this screen has no SSH keys shared with it.
+Passwords auf diesem Bildschirm hat keine SSH-Schlüssel, die mit ihm geteilt sind.
+
 Passwords: Clipboard
 Passwords: Zwischenablage
 
@@ -9996,6 +9996,9 @@ SSH erlaubt standardmäßig zehn Sitzungen pro Verbindung; jeder Bereich nutzt e
 SSH keys
 SSH-Schlüssel
 
+SSH keys offered: {}.
+Angebotene SSH-Schlüssel: {}.
+
 SSH sessions
 SSH-Sitzungen
 
@@ -10272,14 +10275,14 @@ Signal senden …
 Send Voice Message
 Sprachnachricht senden
 
+Send at the pace the network can carry
+Im Tempo senden, das das Netz tragen kann
+
 Send to Back
 Nach hinten stellen
 
 Send to back
 Nach hinten stellen
-
-Send with BBRv3
-Mit BBRv3 senden
 
 Sending your changes to Telegram
 Ihre Änderungen werden an Telegram gesendet
@@ -11283,9 +11286,6 @@ Systemschrift
 TCP opened in
 TCP geöffnet in
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP sendet im Tempo, das sein Weg tragen kann, wo Linux' eigenes die Warteschlangen unterwegs füllt (Olos Modul, tcp_bbr3).
-
 TCP/IP
 TCP/IP
 
@@ -12057,9 +12057,6 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Ihre neuen Fenster öffnen sich dort, auf dem Bildschirm, auf dem sie aufgehen. Deaktivieren Sie eine App, damit ihre Fenster wieder dort aufgehen, wo Sie sind.
 
-Their round trip
-Ihre Umlaufzeit
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Ihre Fenster schweben über den Kacheln und über dem Fenster, das „Fokus“ zeigt. Deaktivieren Sie eine App, um ihre Fenster wieder zu kacheln.
 
@@ -12573,6 +12570,9 @@ Papierkorb
 Tree
 Baum
 
+Tried with this kernel
+Mit diesem Kernel getestet
+
 Trim
 Kürzen
 
@@ -12882,6 +12882,9 @@ Bis zum Ausschalten
 Until:
 Bis:
 
+Unwritten at most
+Höchstens ungeschrieben
+
 Up
 Nach oben
 
@@ -13079,6 +13082,9 @@ Größte Nutzer
 
 Using too much memory
 Zu viel Speicher belegt
+
+Usual round trip
+Übliche Paketlaufzeit
 
 VPN
 VPN
@@ -13410,6 +13416,9 @@ Was soll ich morgen anziehen?
 What was done stays done. Setting it up again carries on from there.
 Erledigtes bleibt bestehen. Ein erneutes Einrichten macht ab dort weiter.
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+Worin Fenster zeichnen, wird nicht ausgelagert, sodass der Schreibtisch nie darauf wartet (Olos Live-Patch für den Intel-Treiber).
+
 What you change applies when you leave Rescue.
 Ihre Änderungen gelten, wenn Sie Rescue verlassen.
 
@@ -13665,9 +13674,6 @@ Fenster
 Windows stay where you put them.
 Fenster bleiben dort, wo Sie sie ablegen.
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-Die Puffer der Fenster werden nie ausgelagert, sodass der Schreibtisch nie auf einen wartet (Olos Live-Patch für den Intel-Treiber).
-
 Wireless Router
 WLAN-Router
 
@@ -13682,6 +13688,12 @@ Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt nach {} Platz, sodass Fenster und Eingaben auch unter Last mithalten (base slice).
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+Ist dies an, läuft ein Programm, das geweckt wird, während die Prozessoren beschäftigt sind, sofort, statt auf den nächsten Takt des Kernels zu warten (full preemption). {} plant gerade und entscheidet das selbst: Dies gilt für den eigenen Scheduler des Kernels.
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+Ist dies an, läuft ein Programm, das geweckt wird, während die Prozessoren beschäftigt sind, sofort, statt bis zu einer Millisekunde auf den nächsten Takt des Kernels zu warten (full preemption).
 
 Withdrawn by {}
 Zurückgezogen von {}
@@ -14088,6 +14100,9 @@ am meisten gebaut, die letzten 24 Stunden
 busy
 beschäftigt
 
+can’t be offered to SSH: {}
+kann SSH nicht angeboten werden: {}
+
 ceiling {}%
 Obergrenze {} %
 
@@ -14354,6 +14369,9 @@ Standard von libinput
 libinput's own: Olo's touch filter is off
 libinputs eigener: Olos Berührungsfilter ist aus
 
+limited
+begrenzt
+
 low
 niedrig
 
@@ -14396,8 +14414,14 @@ kein kabelgebundenes Netzwerk: es wartet darauf
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+keine
+
 not in the running kernel
 nicht im laufenden Kernel
+
+not limited
+nicht begrenzt
 
 not parts of it: {}; its parts are {}
 nicht Teile davon: {}; seine Teile sind {}
@@ -14408,11 +14432,11 @@ noch nicht eingerichtet
 not understood: {}
 nicht verstanden: {}
 
+not yet ({})
+noch nicht ({})
+
 not yet on this kernel's build, {}
 noch nicht auf diesem Build, {}
-
-not yet on this kernel's series, {}
-noch nicht in der Reihe dieses Kernels, {}
 
 nothing backed up for {n} days
 one: seit einem Tag nichts gesichert
@@ -14480,9 +14504,6 @@ im Akkubetrieb: es wartet auf Strom
 
 on this kernel's build, {}
 auf diesem Kernel-Build, {}
-
-on this kernel's series, {}
-in der Reihe dieses Kernels, {}
 
 on {}
 am {}
@@ -14831,6 +14852,9 @@ ohne {}, {} und {} weitere
 
 yes
 ja
+
+yes ({})
+ja ({})
 
 yesterday
 gestern
@@ -15478,9 +15502,6 @@ vor {} Minuten
 {} ms
 {} ms
 
-{} ms, the middle of them
-{} ms, der Median
-
 {} needs full access.
 {} braucht Vollzugriff.
 
@@ -15793,8 +15814,8 @@ vor {} s
 {}% of the time, waking in {} µs
 {} % der Zeit, Aufwachen in {} µs
 
-{}% of their {} segments
-{} % ihrer {} Segmente
+{}% of {} packets
+{} % von {} Paketen
 
 {}'s quota
 Kontingent von {}

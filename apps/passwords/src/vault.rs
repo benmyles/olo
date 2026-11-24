@@ -1155,6 +1155,14 @@ mod tests {
         p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, private.to_openssh(ssh_key::LineEnding::LF).unwrap().as_str())];
         v.create(&p).unwrap();
         println!("{}", private.public_key().to_openssh().unwrap());
+        // (And with OLO_FIXTURE_UNOFFERED, one the agent can't offer: a key
+        // under a passphrase, its item saying so.)
+        if std::env::var_os("OLO_FIXTURE_UNOFFERED").is_some() {
+            let mut p = ItemCreateParams::new(ItemCategory::SshKey, v.data.vaults[0].id.clone(), "Old deploy key");
+            let locked = "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00000000000000000000000000000000\n\nAAAA\n-----END RSA PRIVATE KEY-----\n";
+            p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, locked)];
+            v.create(&p).unwrap();
+        }
     }
 
     #[test]

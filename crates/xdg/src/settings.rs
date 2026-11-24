@@ -221,7 +221,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "performance", tab: "Scheduler", group: "Pointer", name: "Move the pointer on a thread of its own", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Preemption", name: "Switch to a woken program at once", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Processor Turns", name: "Keep a busy program's turn short", role: "CheckBox" },
-    Setting { panel: "performance", tab: "Kernel", group: "Network", name: "Send with BBRv3", role: "CheckBox" },
+    Setting { panel: "performance", tab: "Kernel", group: "Network", name: "Send at the pace the network can carry", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Window Buffers", name: "Keep windows' graphics memory out of swap", role: "CheckBox" },
     Setting { panel: "performance", tab: "Disks", group: "Writeback", name: "Cap unwritten data in memory", role: "CheckBox" },
     Setting { panel: "performance", tab: "Disks", group: "NVMe Scheduler", name: "Use the kyber I/O scheduler on NVMe drives", role: "CheckBox" },

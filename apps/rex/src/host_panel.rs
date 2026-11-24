@@ -99,6 +99,10 @@ pub struct Stands {
     /// Olo's own word on what isn't right, in the window's face under
     /// the line (not the host's output, which is set in its well).
     pub why: Option<String>,
+    /// Which, in a sentence under the line, dim (the SSH keys a host
+    /// was offered, by name): what the line counts, where a line that
+    /// named them was cut short of the rest.
+    pub which: Option<String>,
     /// It is being done now (its light a ring, not a light at rest).
     pub busy: bool,
     /// Whether it is on the host, to be taken off.
@@ -109,7 +113,7 @@ pub struct Stands {
 }
 
 fn stands(light: Light, said: &'static str) -> Stands {
-    Stands { light, said: olo_kit::words::tr(said).into(), more: None, host_said: None, why: None, busy: false, there: false, can: None }
+    Stands { light, said: olo_kit::words::tr(said).into(), more: None, host_said: None, why: None, which: None, busy: false, there: false, can: None }
 }
 
 /// How `thing` stands on `host`, `reached` whether anything can be
@@ -136,16 +140,25 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
         // (None offered: "no SSH keys", as "2 SSH keys" says how many;
         // left "SSH keys", the line said they were there while the
         // sentence under it said they weren't: Opus's look.)
+        // (And which, by their items' names, in a sentence under it, so
+        // a key a host was refused for is seen missing: in the line, "2
+        // SSH keys (GitHub, Work laptop)" was cut at the third name, and
+        // what was granted after the keys went with it.)
         let keys = |name: &&'static str| match (*name, &host.agent_keys) {
-            ("SSH keys", Some(Ok(0) | Err(_))) => olo_kit::words::tr("no SSH keys").to_string(),
-            ("SSH keys", Some(Ok(n))) => olo_kit::words::count(*n as u64, "1 SSH key", "{n} SSH keys").to_string(),
+            ("SSH keys", Some(Err(_))) => olo_kit::words::tr("no SSH keys").to_string(),
+            ("SSH keys", Some(Ok(names))) if names.is_empty() => olo_kit::words::tr("no SSH keys").to_string(),
+            ("SSH keys", Some(Ok(names))) => olo_kit::words::count(names.len() as u64, "1 SSH key", "{n} SSH keys").to_string(),
             _ => olo_kit::words::tr(name).to_string(),
         };
         let granted = host.granted.iter().map(keys).collect::<Vec<_>>().join(", ");
         let connected = host.conn == HostConnState::Connected;
         // (Under it, the reason alone, as a sentence.)
         let none = match &host.agent_keys {
-            Some(Ok(0)) => Some(olo_kit::words::tr("Passwords has no SSH keys to offer.").to_string()),
+            // (On an agent screen its Passwords has only what was shared
+            // with the screen: said so, or it reads as the person's own
+            // having none. 2026-11-23, Rex moved to an agent screen.)
+            Some(Ok(names)) if names.is_empty() && olo_xdg::screen().is_some() => Some(olo_kit::words::tr("Passwords on this screen has no SSH keys shared with it.").to_string()),
+            Some(Ok(names)) if names.is_empty() => Some(olo_kit::words::tr("Passwords has no SSH keys to offer.").to_string()),
             Some(Err(why)) => Some(format!("{}.", why.trim_end_matches('.'))),
             _ => None,
         }
@@ -155,7 +168,12 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
             (true, Some(_)) => Light::Waiting,
             (true, None) => Light::On,
         };
-        return Stands { more: Some(granted), why: none, ..stands(light, "On") };
+        let which = match &host.agent_keys {
+            Some(Ok(names)) if !names.is_empty() => Some(olo_kit::tr!("SSH keys offered: {}.", names.join(", ")).to_string()),
+            _ => None,
+        }
+        .filter(|_| connected && host.granted.contains(&"SSH keys"));
+        return Stands { more: Some(granted), why: none, which, ..stands(light, "On") };
     }
     if let Some(add) = shown.doing(thing) {
         return Stands { busy: true, ..stands(Light::Waiting, if add { "Being installed…" } else { "Being removed…" }) };
@@ -309,6 +327,10 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         // changed colour halfway, both looks said.)
         if let Some(why) = &s.why {
             notes = notes.child(StringView::new(why.clone()).size(style::SMALL_SIZE).wrap(true)).child(div().h(px(4.0)).flex_shrink_0());
+        }
+        // (Which, as apart: dim, as it is no trouble.)
+        if let Some(which) = &s.which {
+            notes = notes.child(small(which.clone())).child(div().h(px(4.0)).flex_shrink_0());
         }
         notes = notes.child(small(note));
         if let Some(path) = path {
@@ -590,15 +612,20 @@ mod tests {
         // The SSH keys: by how many the host was offered; where none,
         // why, under the line, and the light amber. (Not asked yet:
         // said as granted.)
-        let keys = |offered: Option<Result<usize, String>>| {
+        let keys = |offered: Option<Result<Vec<String>, String>>| {
             let s = of(&HostStands { granted: vec!["links", "SSH keys"], agent_keys: offered, ..h.clone() }, &shown, HostThing::Bridge);
-            (said(&s).0, s.more.clone(), s.why.clone())
+            (said(&s).0, s.more.clone(), s.why.clone(), s.which.clone())
         };
-        assert_eq!(keys(None), (Light::On, Some("links, SSH keys".into()), None));
-        assert_eq!(keys(Some(Ok(2))), (Light::On, Some("links, 2 SSH keys".into()), None));
-        assert_eq!(keys(Some(Ok(1))).1.as_deref(), Some("links, 1 SSH key"));
-        assert_eq!(keys(Some(Ok(0))), (Light::Waiting, Some("links, no SSH keys".into()), Some("Passwords has no SSH keys to offer.".into())));
-        assert_eq!(keys(Some(Err("Passwords isn’t running".into()))), (Light::Waiting, Some("links, no SSH keys".into()), Some("Passwords isn’t running.".into())));
+        assert_eq!(keys(None), (Light::On, Some("links, SSH keys".into()), None, None));
+        // (Which, by name, under the line.)
+        let named = |names: &[&str]| Some(Ok(names.iter().map(|n| n.to_string()).collect()));
+        assert_eq!(keys(named(&["GitHub", "Work laptop"])), (Light::On, Some("links, 2 SSH keys".into()), None, Some("SSH keys offered: GitHub, Work laptop.".into())));
+        assert_eq!(keys(named(&["GitHub"])).1.as_deref(), Some("links, 1 SSH key"));
+        assert_eq!(keys(named(&[])), (Light::Waiting, Some("links, no SSH keys".into()), Some("Passwords has no SSH keys to offer.".into()), None));
+        assert_eq!(keys(Some(Err("Passwords isn’t running".into()))), (Light::Waiting, Some("links, no SSH keys".into()), Some("Passwords isn’t running.".into()), None));
+        // (A host not connected: nothing under the line.)
+        let away = HostStands { conn: HostConnState::Disconnected, granted: vec!["links", "SSH keys"], agent_keys: named(&["GitHub"]), ..h.clone() };
+        assert_eq!(of(&away, &shown, HostThing::Bridge).which, None);
 
         // The skill: asked, not there, there.
         h.skill = None;

@@ -1161,6 +1161,19 @@ fn section_heading(title: String, mark: Option<Rc<Query>>, searched: &str) -> El
     .flex_shrink_0()
 }
 
+/// Why Passwords' SSH agent can't offer the key `value` (none: it can),
+/// worked out once a key: an RSA key read at every hover took its time.
+fn why_not_offered(value: &str) -> Option<String> {
+    use std::{cell::RefCell, collections::HashMap, hash::Hasher as _};
+    thread_local! {
+        static SEEN: RefCell<HashMap<u64, Option<String>>> = RefCell::new(HashMap::new());
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    h.write(value.as_bytes());
+    let id = h.finish();
+    SEEN.with(|seen| seen.borrow_mut().entry(id).or_insert_with(|| crate::agent::private_key(value).err()).clone())
+}
+
 /// How a field's value reads.
 fn shown(f: &ItemField, revealed: bool) -> (String, bool) {
     let masked = || "•".repeat(10);
@@ -1302,6 +1315,10 @@ impl Detail {
     #[allow(clippy::too_many_arguments)]
     fn field_row(&self, cx: &mut Cx<Self>, item: &str, f: &ItemField, key: String, revealed: bool, mark: Option<Rc<Query>>, searched: &str) -> Element {
         let hovered = self.hover.as_deref() == Some(key.as_str());
+        // (An SSH key the agent can't offer says why where it is, beside
+        // its name: it was said in the log alone, and two of a person's
+        // three keys were simply never offered to a host. 2026-11-23.)
+        let unoffered: Option<SharedString> = (f.field_type == ItemFieldType::SshKey).then(|| why_not_offered(&f.value)).flatten().map(|why| olo_kit::tr!("can’t be offered to SSH: {}", why).into());
         let label: SharedString = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() }.into();
         let (value, mono) = shown(f, revealed);
         let value: SharedString = value.replace('\n', " ⏎ ").into();
@@ -1312,7 +1329,7 @@ impl Detail {
         let totp = (f.field_type == ItemFieldType::Totp).then(|| onepassword::totp::Totp::parse(&f.value).ok()).flatten();
         let value_font = move || if mono { style::mono_font(FontWeight::NORMAL) } else { style::ui_font(FontWeight::NORMAL) };
         // (A code's pie turns each second: its row is drawn each time.)
-        let face_key = totp.is_none().then(|| style::key((&label, &value, hovered, link, secret, mono, buttons_w.to_bits(), mark.is_some().then_some(searched))));
+        let face_key = totp.is_none().then(|| style::key((&label, &value, hovered, link, secret, mono, buttons_w.to_bits(), mark.is_some().then_some(searched), &unoffered)));
         let (face_label, face_value) = (label.clone(), value.clone());
         let mut face = canvas(move |g, b| {
             let p = theme::palette();
@@ -1326,6 +1343,12 @@ impl Detail {
             // it doesn't look in).
             let runs = marked(label, mark.as_deref(), style::ui_font(FontWeight::NORMAL), dim(&p), &p);
             let l = style::label_runs(g, x, b.top() + px(FIELD_LABEL_Y), style::Align::Left, label.clone(), style::SMALL_SIZE, &runs);
+            if let Some(why) = &unoffered {
+                let at = l.right() + px(m::TIGHT);
+                let room = (b.right() - at - px(m::WINDOW_INSET)).max(px(0.0));
+                let ink = c(olo_theme::readable(p.warning, p.document_background, 4.5));
+                style::label_fit(g, at, b.top() + px(FIELD_LABEL_Y), style::Align::Left, format!("·  {why}"), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
+            }
             let color = if link { c(p.keyboard_navigation) } else { c(p.document_text) };
             let room = (b.right() - x - px(m::WINDOW_INSET + buttons_w)).max(px(0.0));
             let runs = marked(value, mark.as_deref().filter(|_| !secret), value_font(), color, &p);
@@ -1898,4 +1921,31 @@ fn problem_row(problem: &crate::sync::Problem, p: &olo_theme::Palette) -> Elemen
     .h(px(LINE))
     .flex_shrink_0();
     div().w_full().flex().flex_row().items_start().py(px(5.0)).pl(px(m::SPACING)).pr(px(m::SPACING)).gap(px(x - m::SPACING - 16.0)).child(mark).child(text)
+}
+
+#[cfg(test)]
+mod cost {
+    /// What saying why an SSH key can't be offered costs a field row: the
+    /// first time (the key read) and each time after (looked up), for the
+    /// keys in `OLO_KEY_COST` (files, `:` between). `OLO_KEY_COST=KEY:KEY
+    /// cargo test --release -p olo-passwords why_not_offered_cost --
+    /// --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn why_not_offered_cost() {
+        let Some(files) = std::env::var_os("OLO_KEY_COST") else { return };
+        for file in std::env::split_paths(&files) {
+            let text = std::fs::read_to_string(&file).unwrap();
+            let t = std::time::Instant::now();
+            let why = super::why_not_offered(&text);
+            let first = t.elapsed();
+            let n = 10_000;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(super::why_not_offered(std::hint::black_box(&text)));
+            }
+            let after = t.elapsed() / n;
+            println!("{}: first {first:?}, after {after:?} ({why:?})", file.display());
+        }
+    }
 }

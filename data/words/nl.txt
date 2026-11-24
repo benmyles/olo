@@ -453,12 +453,6 @@ Een eigen afbeelding
 A process needs at least one core.
 Een proces heeft minstens één kern nodig.
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-Een programma dat wakker wordt terwijl de processors bezig zijn, draait meteen in plaats van te wachten op de volgende tik van de kernel (volledige preëmptie). Momenteel beslist scheduler {} daar zelf over. Deze optie geldt voor de scheduler van de kernel.
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-Een programma dat wakker wordt terwijl de processors bezig zijn, draait meteen. Het hoeft niet tot een milliseconde te wachten op de volgende tik van de kernel (volledige preëmptie).
-
 A red dot for an app with something unread in it
 Rode stip bij apps met ongelezen onderdelen
 
@@ -1332,9 +1326,6 @@ Bij 20%
 
 At a time of its own
 Op een zelfgekozen tijdstip
-
-At every start
-Bij elke start
 
 At full speed
 Op volle snelheid
@@ -3478,6 +3469,9 @@ DiskUsage
 
 Disks
 Schijven
+
+Disks plugged in
+Aangesloten schijven
 
 Display
 Scherm
@@ -5820,8 +5814,8 @@ Voorkomt dat achtergrondwerk vertraagt wat u gebruikt.
 Keeps other apps’ passwords, unlocked as you log in.
 Bewaart wachtwoorden van andere apps en wordt bij het aanmelden ontgrendeld.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-Houdt de leeslatentie laag wanneer zware synchrone schrijfacties of discards een NVMe-schijf overspoelen, waar Linux' standaard "none" alleen terugschrijven op de achtergrond afremt (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Houdt de leeslatentie begrensd als zware synchrone schrijfacties of discards een NVMe-schijf overspoelen, terwijl de Linux-standaard ‘none’ alleen terugschrijven op de achtergrond afremt (queue/scheduler).
 
 Keeps typing quick over a slow link.
 Houdt typen vlot over een trage verbinding.
@@ -5831,6 +5825,9 @@ Bewaard
 
 Kept Core
 Gereserveerde kern
+
+Kept after restart
+Behouden na herstart
 
 Kept for this computer and set again at every start.
 Opgeslagen op deze computer en bij elke start opnieuw ingesteld.
@@ -6173,6 +6170,9 @@ Van Linux zelf
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 De standaardscheduler van Linux (EEVDF) verdeelt tijd eerlijk over alle programma’s. Olo-threads waarop iets wacht, draaien bij beide schedulers met realtimeprioriteit. Bij builds en ander zwaar werk reageert het bureaublad met deze scheduler het snelst.
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+De gewone manier van Linux (cubic) verzendt tot de wachtrijen onderweg vol zijn, wat vertraging geeft; deze meet het pad en blijft eronder (Olo’s module, tcp_bbr3).
 
 List
 Lijst
@@ -6563,9 +6563,6 @@ Overeenkomst:
 
 Max
 Maximaal
-
-May wait
-Mag wachten
 
 Maybe
 Misschien
@@ -8661,6 +8658,9 @@ Passwords bewaart uw onderdelen versleuteld op deze computer en kan wijzigingen 
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords bewaart uw onderdelen versleuteld op deze computer en kan wijzigingen in beide richtingen synchroniseren met uw 1Password-accounts. Zet in 1Password Instellingen ▸ Ontwikkelaar ▸ Integratie met andere apps aan en geef daarna de accounts op.
 
+Passwords on this screen has no SSH keys shared with it.
+Passwords op dit scherm heeft geen SSH-sleutels die ermee gedeeld zijn.
+
 Passwords: Clipboard
 Passwords: klembord
 
@@ -9996,6 +9996,9 @@ SSH staat standaard tien sessies per verbinding toe; elk paneel gebruikt er éé
 SSH keys
 SSH-sleutels
 
+SSH keys offered: {}.
+Aangeboden SSH-sleutels: {}.
+
 SSH sessions
 SSH-sessies
 
@@ -10272,14 +10275,14 @@ Signaal verzenden…
 Send Voice Message
 Spraakbericht verzenden
 
+Send at the pace the network can carry
+Verzenden in het tempo dat het netwerk aankan
+
 Send to Back
 Naar achteren
 
 Send to back
 Naar achteren
-
-Send with BBRv3
-Verzenden met BBRv3
 
 Sending your changes to Telegram
 Uw wijzigingen naar Telegram verzenden
@@ -11283,9 +11286,6 @@ Systeemlettertype
 TCP opened in
 TCP-verbinding geopend in
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP verstuurt in het tempo dat zijn pad aankan, waar dat van Linux zelf de wachtrijen onderweg vult (Olo’s module, tcp_bbr3).
-
 TCP/IP
 TCP/IP
 
@@ -12057,9 +12057,6 @@ Om {} te wijzigen is een beheerderswachtwoord nodig.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Nieuwe vensters van deze apps openen op dat werkblad, op het scherm waar ze worden geopend. Deselecteer een app om de vensters weer op het huidige werkblad te openen.
 
-Their round trip
-Hun retourtijd
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 De vensters van deze apps zweven boven tegels en boven het venster in de focusmodus. Deselecteer een app om de vensters weer te tegelen.
 
@@ -12573,6 +12570,9 @@ Prullenbak
 Tree
 Boom
 
+Tried with this kernel
+Geprobeerd met deze kernel
+
 Trim
 Bijsnijden
 
@@ -12882,6 +12882,9 @@ Tot uitschakelen
 Until:
 Tot:
 
+Unwritten at most
+Maximaal ongeschreven
+
 Up
 Omhoog
 
@@ -13079,6 +13082,9 @@ Grootste verbruikers
 
 Using too much memory
 Gebruikt te veel geheugen
+
+Usual round trip
+Gebruikelijke retourtijd
 
 VPN
 VPN
@@ -13410,6 +13416,9 @@ Wat kan ik morgen het beste aantrekken?
 What was done stays done. Setting it up again carries on from there.
 Wat al klaar is, blijft staan. Opnieuw instellen gaat vanaf daar verder.
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+De buffers waarin vensters tekenen blijven buiten het wisselgeheugen, zodat het bureaublad er nooit op wacht (Olo’s livepatch voor Intels stuurprogramma).
+
 What you change applies when you leave Rescue.
 Wijzigingen gaan in zodra u de herstelmodus verlaat.
 
@@ -13665,9 +13674,6 @@ Vensters
 Windows stay where you put them.
 Vensters blijven waar u ze neerzet.
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-De buffers van vensters blijven buiten swap, zodat het bureaublad er nooit op wacht (Olo’s livepatch voor Intels stuurprogramma).
-
 Wireless Router
 Draadloze router
 
@@ -13682,6 +13688,12 @@ Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats v
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen ook onder belasting bijblijven (base slice).
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+Staat dit aan, dan draait een gewekt programma meteen als de processors bezet zijn, in plaats van te wachten op de volgende tick van de kernel (full preemption). {} plant nu en beslist dat zelf: dit is voor de eigen planner van de kernel.
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+Staat dit aan, dan draait een gewekt programma meteen als de processors bezet zijn, in plaats van tot een milliseconde te wachten op de volgende tick van de kernel (full preemption).
 
 Withdrawn by {}
 Ingetrokken door {}
@@ -14088,6 +14100,9 @@ meest gebouwd in de afgelopen 24 uur
 busy
 bezig
 
+can’t be offered to SSH: {}
+kan niet aan SSH worden aangeboden: {}
+
 ceiling {}%
 bovengrens {}%
 
@@ -14354,6 +14369,9 @@ standaard van libinput
 libinput's own: Olo's touch filter is off
 afhandeling door libinput: het aanraakfilter van Olo staat uit
 
+limited
+begrensd
+
 low
 laag
 
@@ -14396,8 +14414,14 @@ geen bekabeld netwerk: wacht op verbinding
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+geen
+
 not in the running kernel
 niet in de draaiende kernel
+
+not limited
+niet begrensd
 
 not parts of it: {}; its parts are {}
 horen er niet bij: {}. De onderdelen zijn {}
@@ -14408,11 +14432,11 @@ nog niet ingesteld
 not understood: {}
 niet herkend: {}
 
+not yet ({})
+nog niet ({})
+
 not yet on this kernel's build, {}
 nog niet op deze kernelbuild, {}
-
-not yet on this kernel's series, {}
-nog niet voor deze kernelserie, {}
 
 nothing backed up for {n} days
 one: al {n} dag geen back-up
@@ -14480,9 +14504,6 @@ op accuvoeding: wacht op netvoeding
 
 on this kernel's build, {}
 op deze kernelbuild, {}
-
-on this kernel's series, {}
-voor deze kernelserie, {}
 
 on {}
 op {}
@@ -14831,6 +14852,9 @@ zonder {}, {} en nog {}
 
 yes
 ja
+
+yes ({})
+ja ({})
 
 yesterday
 gisteren
@@ -15478,9 +15502,6 @@ minimaal {}, nu {}
 {} ms
 {} ms
 
-{} ms, the middle of them
-{} ms, de mediaan
-
 {} needs full access.
 {} vereist volledige toegang.
 
@@ -15793,8 +15814,8 @@ doorgaans {} µs per meting, langste {} µs
 {}% of the time, waking in {} µs
 {}% van de tijd, ontwaakt in {} µs
 
-{}% of their {} segments
-{}% van hun {} segmenten
+{}% of {} packets
+{}% van {} pakketten
 
 {}'s quota
 quotum van {}

@@ -4600,7 +4600,10 @@ it.
   tabs, so there is one tab look, over a raised panel: outlined, lit
   along its top and left and shaded along its bottom and right; the
   chosen tab in the panel's colour and open into it, its name in bold,
-  the others a shade off it; the content inside `WINDOW_INSET`; `Tab`s
+  the others a shade off it, darker in both looks (in a dark one a
+  quarter of the way to black, about ten levels: lighter, they read as
+  in front of the chosen one, and an eighth read as no change); the
+  content inside `WINDOW_INSET`; `Tab`s
   to agents). Each tab is as wide as its name in bold and its room;
   where they don't all fit the room either side shrinks first, then the
   widest are cut back (`strip::fit_widths`), short names keeping their
@@ -25474,7 +25477,12 @@ read as sixteen fixed bytes, a key 1Password made was "a PKCS#8 key of
 a kind Passwords can't sign with", the third of those three keys. A
 key that can't be offered (one under a passphrase, a DSA key) is
 logged by its item's name with why, naming its kind by the algorithm
-the key itself says (`unread`). Tests: the curves' older forms
+the key itself says (`unread`), and said where the key is: beside its
+field's name in the item, in the warning's ink ("private key ·
+can’t be offered to SSH: the key has a passphrase"; `why_not_offered`,
+worked out once a key, as an RSA key read at each hover took its
+time). Two of Ben's three keys were never offered, and only the log
+said so (2026-11-23). Tests: the curves' older forms
 from fixed numbers; and `OLO_KEYS_PROBE`, a folder of ssh-keygen's
 keys of every kind in the three forms (21 of 21).
 
@@ -26122,7 +26130,8 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     changes. No path of this computer is in them (`--remap-path-
     prefix`, `-ffile-prefix-map`).
 - **The Clients window** (Pool ▸ Clients, ⌘L, or the Clients button;
-  `apps/pool/src/clients_window.rs`): the pool's activity over time, a
+  `apps/pool/src/clients_window.rs`; floating, as the Hosts window
+  is: a panel beside what it's about): the pool's activity over time, a
   line each for Claude Code and Codex in requests a minute over the last
   hour, six hours or day (the kit's `Graph`, stepped a minute or a few
   at a time, hovering says each one's rate; totals, failures and tokens
@@ -28678,15 +28687,22 @@ forwarded to it, natively, over the SSH connection Rex keeps:
   with it, and nothing answers on the host.
 - *What the host is offered is said.* What Passwords answers when the
   host asks for the keys is kept on the host for that connection
-  (`HostRuntime::agent_keys`, `keys_offered`: how many, or why none)
-  and logged when it changes; the Host window's Bridge line counts
-  them ("links, Passwords, 2 SSH keys, Agent Screens"), and where none
+  (`HostRuntime::agent_keys`, `keys_offered`: which, by their items'
+  names, or why none) and logged when it changes; the Host window's
+  Bridge line counts them ("links, Passwords, 2 SSH keys, Agent
+  Screens") and names them under it, dim ("SSH keys offered: GitHub,
+  Work laptop.": named in the line, they were cut at the third name,
+  and what was granted after them with them; `Stands::which`), so a
+  key the host was refused for is seen missing; and where none
   reach the host says "no SSH keys", its light amber, with the reason
   under it in the window's face ("Passwords has no SSH keys to
-  offer.", "Passwords isn’t running.", "Passwords is locked."). Unsaid,
-  a host was offered none and the line still read "SSH keys": Rex
-  moved to an agent screen asks that screen's Passwords (2026-11-23).
-  `OLO_REX_DEMO_KEYS=2`, `0` or a reason, for its pictures.
+  offer.", "Passwords isn’t running.", "Passwords is locked."; on an
+  agent screen, `olo_xdg::screen()`, "Passwords on this screen has no
+  SSH keys shared with it."). Unsaid, a host was offered none and the
+  line still read "SSH keys": Rex moved to an agent screen asks that
+  screen's Passwords (2026-11-23). `OLO_REX_DEMO_KEYS=2` (names made
+  up), `0` or a reason, for its pictures; `OLO_SCREEN=NAME` beside
+  `0` for the agent screen's.
 - *What finds it there*: `ssh` itself, in whatever shell. As the
   agent is forwarded, a file of Olo's own is put beside the account's
   SSH config on the host (`~/.ssh/olo-rex.conf`, read first by one

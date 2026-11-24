@@ -388,8 +388,8 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             // (A scheduler loaded over the kernel's asks for its switches
             // itself: the setting changes nothing while it schedules.)
             about: match scheduled_by {
-                Some(name) => olo_kit::tr!("A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.", name),
-                None => olo_kit::words::tr("A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).").into(),
+                Some(name) => olo_kit::tr!("With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.", name),
+                None => olo_kit::words::tr("With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).").into(),
             },
             facts: vec![("Now", p.now().to_owned()), ("Next start", p.next().to_owned())],
         },
@@ -424,32 +424,38 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                 None => olo_kit::tr!("With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).", ms(t.built_ns)),
             },
             // (The same rows on and off: off, both say Linux's own.)
-            facts: vec![("Turn now", ms(t.now_ns())), ("Linux's own", ms(t.built_ns)), ("At every start", olo_kit::words::tr(if t.kept { "yes" } else { "no" }).to_owned())],
+            facts: vec![("Turn now", ms(t.now_ns())), ("Linux's own", ms(t.built_ns)), ("Kept after restart", olo_kit::words::tr(if t.kept { "yes" } else { "no" }).to_owned())],
         });
     }
     let d = &s.slow_disks;
     let may_wait = if d.kept {
         olo_kit::tr!("{} for each", size(tuning::SLOW_DISK_BYTES))
     } else if d.may_wait > 0 {
-        format!("up to {}", size(d.may_wait))
+        // (The size alone: "at most" says it's a limit.)
+        size(d.may_wait)
     } else {
         olo_kit::words::tr("no limit").to_owned()
     };
-    let mut slow_facts = vec![("May wait", may_wait)];
+    // (What may wait in memory to be written: "May wait" read as the disk
+    // being let wait. Both reviews.)
+    let mut slow_facts = vec![("Unwritten at most", may_wait)];
     // (When Writeback is shown above on the same Disks tab, it already
     // reports "Waiting now" for all disks; avoid repeating the same line.)
     if s.dirty_writeback.is_none() {
         slow_facts.push(("Waiting now", olo_kit::tr!("{}, all disks", size(d.waiting))));
     }
     slow_facts.push((
-        "Here",
+        "Disks plugged in",
         match d.disks.as_slice() {
-            [] => "none".to_owned(),
-            disks => {
-                disks.iter().map(|k| format!("{}, {}", if k.model.is_empty() { &k.name } else { &k.model }, if k.limit.is_some() { "limited" } else { "not limited" })).collect::<Vec<_>>().join("; ")
-            }
+            [] => olo_kit::words::tr("none").to_owned(),
+            disks => disks
+                .iter()
+                .map(|k| format!("{}, {}", if k.model.is_empty() { &k.name } else { &k.model }, olo_kit::words::tr(if k.limit.is_some() { "limited" } else { "not limited" })))
+                .collect::<Vec<_>>()
+                .join("; "),
         },
     ));
+    slow_facts.push(("Kept after restart", olo_kit::words::tr(if d.kept { "yes" } else { "no" }).to_owned()));
     boxes.push(if d.can {
         KernelBox {
             title: "Removable Disks",
@@ -486,7 +492,12 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             locked: false,
             doctor: false,
             about: olo_kit::words::tr("Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).").into(),
-            facts: vec![("Starts flushing", starts), ("Limit", limit), ("Waiting now", size(w.waiting_bytes)), ("At every start", olo_kit::words::tr(if w.kept { "yes" } else { "no" }).to_owned())],
+            facts: vec![
+                ("Starts flushing", starts),
+                ("Limit", limit),
+                ("Waiting now", size(w.waiting_bytes)),
+                ("Kept after restart", olo_kit::words::tr(if w.kept { "yes" } else { "no" }).to_owned()),
+            ],
         });
     }
     if let Some(n) = &s.nvme_scheduler {
@@ -512,7 +523,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                 nvme_facts.push(("Drives", names));
             }
         }
-        nvme_facts.push(("At every start", olo_kit::words::tr(if n.kept { "yes" } else { "no" }).to_owned()));
+        nvme_facts.push(("Kept after restart", olo_kit::words::tr(if n.kept { "yes" } else { "no" }).to_owned()));
         boxes.push(if n.can() {
             KernelBox {
                 title: "NVMe Scheduler",
@@ -522,7 +533,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                 locked: false,
                 doctor: false,
                 about: olo_kit::words::tr(
-                    "Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default \"none\" only throttles background writeback (queue/scheduler).",
+                    "Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default \"none\" only throttles background writeback (queue/scheduler).",
                 )
                 .into(),
                 facts: nvme_facts,
@@ -545,38 +556,45 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
         boxes.push(KernelBox {
             title: "Network",
             setting: Setting::Bbr3,
-            label: "Send with BBRv3",
+            // (Named for what it does: "Send with BBRv3" was the only
+            // switch named in jargon. Both reviews.)
+            label: "Send at the pace the network can carry",
             on: Some(b.on()),
 
             locked: false,
             doctor: false,
-            about: olo_kit::words::tr("TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).").into(),
-            facts: vec![
-                ("New connections", b.control.clone()),
-                ("On it now", o.as_ref().map_or("—".to_owned(), |o| olo_kit::tr!("{} of {} connections", count(o.connections as u64), count(o.of as u64)))),
-                (
-                    "Their round trip",
-                    o.as_ref().and_then(|o| o.round_trip_ms).map_or("—".to_owned(), |ms| olo_kit::tr!("{} ms, the middle of them", if ms < 10.0 { format!("{ms:.1}") } else { format!("{ms:.0}") })),
-                ),
-                (
-                    "Sent again",
-                    o.as_ref()
-                        .filter(|o| o.sent > 0)
-                        .map_or("—".to_owned(), |o| olo_kit::tr!("{}% of their {} segments", format!("{:.2}", o.sent_again as f64 * 100.0 / o.sent as f64), count(o.sent))),
-                ),
+            about: olo_kit::words::tr(
+                "Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).",
+            )
+            .into(),
+            facts: {
+                let mut facts = vec![
+                    ("New connections", b.control.clone()),
+                    ("On it now", o.as_ref().map_or("—".to_owned(), |o| olo_kit::tr!("{} of {} connections", count(o.connections as u64), count(o.of as u64)).to_string())),
+                ];
+                // (How they go, while some go this way: none, two rows of
+                // bare dashes read as broken. Opus's look.)
+                if let Some(o) = o.as_ref().filter(|o| o.connections > 0) {
+                    facts.push(("Usual round trip", o.round_trip_ms.map_or("—".to_owned(), |ms| olo_kit::tr!("{} ms", if ms < 10.0 { format!("{ms:.1}") } else { format!("{ms:.0}") }).to_string())));
+                    facts.push((
+                        "Sent again",
+                        if o.sent > 0 { olo_kit::tr!("{}% of {} packets", format!("{:.2}", o.sent_again as f64 * 100.0 / o.sent as f64), count(o.sent)).to_string() } else { "—".to_owned() },
+                    ));
+                }
                 // (Built for whatever kernel an update brings; whether it
                 // has passed its self-check on that kernel's series.)
-                (
-                    "Checked",
+                facts.push((
+                    "Tried with this kernel",
                     if b.series.is_empty() {
                         "—".to_owned()
                     } else if b.checked {
-                        olo_kit::tr!("on this kernel's series, {}", b.series)
+                        olo_kit::tr!("yes ({})", b.series).to_string()
                     } else {
-                        olo_kit::tr!("not yet on this kernel's series, {}", b.series)
+                        olo_kit::tr!("not yet ({})", b.series).to_string()
                     },
-                ),
-            ],
+                ));
+                facts
+            },
         });
     }
     if let Some(g) = &s.graphics_memory {
@@ -592,10 +610,11 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
 
             locked: false,
             doctor: false,
-            about: olo_kit::words::tr("Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).").into(),
+            // ("Windows' buffers" read as Microsoft's: both reviews.)
+            about: olo_kit::words::tr("What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).").into(),
             facts: vec![
                 ("The patch", olo_kit::words::tr(if g.patched { "in the running kernel" } else { "not in the running kernel" }).to_owned()),
-                ("At every start", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()),
+                ("Kept after restart", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()),
             ],
         });
     }
@@ -643,7 +662,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             None if g.checked => facts.push(("Checked", olo_kit::tr!("on this kernel's build, {}", kernel))),
             None => facts.push(("Checked", olo_kit::tr!("not yet on this kernel's build, {}", kernel))),
         }
-        facts.push(("At every start", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()));
+        facts.push(("Kept after restart", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()));
         boxes.push(KernelBox {
             title: "Drawing",
             setting: Setting::GraphicsPages,
@@ -756,15 +775,19 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
     // to say in its place.
     let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) =
         all.into_iter().filter(|b| !is_disk(b.setting)).partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory | Setting::GraphicsPages));
-    // (One width for every box's labels, the tab's widest as it's shown,
-    // each a literal looked up: the values in one line down each
-    // column, and the two columns' alike.)
-    let shown: Vec<SharedString> = settings.iter().chain(&pieces).flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
-    let labels = olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()));
+    // (A width for each column's labels, its widest as it's shown, each a
+    // literal looked up: the values in one line down the column. One for
+    // the whole tab set the left column's values far from their short
+    // labels: the last review.)
+    let width = |boxes: &[KernelBox]| {
+        let shown: Vec<SharedString> = boxes.iter().flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
+        olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()))
+    };
+    let (left_labels, right_labels) = (width(&settings), width(&pieces));
     let equalize = settings.len() == pieces.len();
     let (settings_last, pieces_last) = (settings.len().saturating_sub(1), pieces.len().saturating_sub(1));
-    let left = ui.collect(|ui| settings.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, equalize && i == settings_last)));
-    let right = ui.collect(|ui| pieces.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, equalize && i == pieces_last)));
+    let left = ui.collect(|ui| settings.into_iter().enumerate().for_each(|(i, b)| one(ui, b, left_labels, equalize && i == settings_last)));
+    let right = ui.collect(|ui| pieces.into_iter().enumerate().for_each(|(i, b)| one(ui, b, right_labels, equalize && i == pieces_last)));
     // (The columns as far apart as boxes stand over one another, their
     // titles' room included: at `SPACING` the two read as one wall of
     // boxes. Opus's look.)

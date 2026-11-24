@@ -457,12 +457,6 @@ A picture of your own
 A process needs at least one core.
 Процессу нужно хотя бы одно ядро.
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-Даже когда процессоры заняты, пробуждённая программа выполняется сразу, не дожидаясь следующего такта ядра (полное вытеснение). Сейчас это определяет планировщик {}. Настройка действует для штатного планировщика ядра.
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-Даже когда процессоры заняты, пробуждённая программа выполняется сразу, не дожидаясь следующего такта ядра, на что может уйти до миллисекунды (полное вытеснение).
-
 A red dot for an app with something unread in it
 Красная точка у приложений с непрочитанным
 
@@ -1344,9 +1338,6 @@ At 20%
 
 At a time of its own
 В указанное время
-
-At every start
-При каждом запуске
 
 At full speed
 На полной скорости
@@ -3504,6 +3495,9 @@ DiskUsage
 
 Disks
 Диски
+
+Disks plugged in
+Подключённые диски
 
 Display
 Дисплей
@@ -5872,8 +5866,8 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 Хранит пароли других приложений и разблокируется при входе.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux "none" ограничивает лишь фоновый сброс (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux «none» ограничивает лишь фоновый сброс (queue/scheduler).
 
 Keeps typing quick over a slow link.
 Ускоряет ввод по медленному каналу.
@@ -5883,6 +5877,9 @@ Kept
 
 Kept Core
 Выделенное ядро
+
+Kept after restart
+Сохраняется после перезапуска
 
 Kept for this computer and set again at every start.
 Сохранено для этого компьютера и применяется при каждом запуске.
@@ -6225,6 +6222,9 @@ Linux's own
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Штатный планировщик Linux (EEVDF) справедливо распределяет время между всеми программами. В обоих планировщиках потоки Olo, от которых зависит отклик, работают с приоритетом реального времени. Под нагрузкой, например во время сборки, рабочий стол быстрее всего реагирует со штатным планировщиком.
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Обычный способ Linux (cubic) отправляет, пока не заполнятся очереди по пути, что добавляет задержку; этот измеряет путь и держится ниже его пропускной способности (модуль Olo, tcp_bbr3).
 
 List
 Список
@@ -6615,9 +6615,6 @@ Match:
 
 Max
 Макс
-
-May wait
-Может ждать
 
 Maybe
 Возможно
@@ -8713,6 +8710,9 @@ Passwords хранит записи на этом компьютере в заш
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords хранит записи на этом компьютере в зашифрованном виде и может синхронизировать их с аккаунтами 1Password в обе стороны. Включите в 1Password «Настройки ▸ Разработчик ▸ Интеграция с другими приложениями», затем укажите имена аккаунтов.
 
+Passwords on this screen has no SSH keys shared with it.
+У Passwords на этом экране нет общих с ним ключей SSH.
+
 Passwords: Clipboard
 Passwords: буфер обмена
 
@@ -10054,6 +10054,9 @@ SSH allows ten sessions on a connection by default; each pane uses one.
 SSH keys
 Ключи SSH
 
+SSH keys offered: {}.
+Предложенные ключи SSH: {}.
+
 SSH sessions
 Сеансы SSH
 
@@ -10330,14 +10333,14 @@ Send Signal…
 Send Voice Message
 Отправить голосовое сообщение
 
+Send at the pace the network can carry
+Отправлять со скоростью, которую выдерживает сеть
+
 Send to Back
 На задний план
 
 Send to back
 На задний план
-
-Send with BBRv3
-Отправлять через BBRv3
 
 Sending your changes to Telegram
 Отправка изменений в Telegram
@@ -11347,9 +11350,6 @@ System Font
 TCP opened in
 Время подключения TCP
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP отправляет с той скоростью, которую выдерживает путь, тогда как собственный алгоритм Linux заполняет очереди по дороге (модуль Olo, tcp_bbr3).
-
 TCP/IP
 TCP/IP
 
@@ -12121,9 +12121,6 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Новые окна этих приложений открываются в назначенном пространстве на своём экране. Снимите отметку, чтобы окна снова открывались там, где вы работаете.
 
-Their round trip
-Их время туда и обратно
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Окна этих приложений располагаются поверх мозаики и окна в режиме фокуса. Снимите отметку, чтобы снова укладывать окна приложения в мозаику.
 
@@ -12637,6 +12634,9 @@ Trash
 Tree
 Дерево
 
+Tried with this kernel
+Проверено с этим ядром
+
 Trim
 Обрезать
 
@@ -12946,6 +12946,9 @@ Until Turned Off
 Until:
 До:
 
+Unwritten at most
+Максимум на запись
+
 Up
 Вверх
 
@@ -13143,6 +13146,9 @@ Using the most
 
 Using too much memory
 Расходует слишком много памяти
+
+Usual round trip
+Обычный отклик
 
 VPN
 VPN
@@ -13474,6 +13480,9 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 Выполненные шаги сохранятся. Повторная настройка продолжится с места остановки.
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+Буферы, в которые рисуют окна, не уходят в подкачку, поэтому рабочий стол никогда их не ждёт (живой патч Olo для драйвера Intel).
+
 What you change applies when you leave Rescue.
 Изменения применятся при выходе из режима восстановления.
 
@@ -13729,9 +13738,6 @@ Windows
 Windows stay where you put them.
 Окна остаются там, где вы их оставили.
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-Буферы окон не уходят в подкачку, поэтому рабочий стол никогда не ждёт их возврата (живой патч Olo для драйвера Intel).
-
 Wireless Router
 Беспроводной маршрутизатор
 
@@ -13746,6 +13752,12 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {}, так что окна и ввод не отстают и под нагрузкой (base slice).
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+Если включено, пробуждённая программа выполняется сразу, даже когда процессоры заняты, не дожидаясь следующего такта ядра (full preemption). Сейчас планирует {} и решает это сам: настройка относится к собственному планировщику ядра.
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+Если включено, пробуждённая программа выполняется сразу, даже когда процессоры заняты, не дожидаясь до миллисекунды следующего такта ядра (full preemption).
 
 Withdrawn by {}
 Отозвано приложением {}
@@ -14158,6 +14170,9 @@ built most, the last 24 hours
 busy
 занято
 
+can’t be offered to SSH: {}
+нельзя предложить SSH: {}
+
 ceiling {}%
 верхний предел {}%
 
@@ -14434,6 +14449,9 @@ libinput's default
 libinput's own: Olo's touch filter is off
 обрабатывает libinput: фильтр касаний Olo отключён
 
+limited
+с ограничением
+
 low
 низкий
 
@@ -14476,8 +14494,14 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+нет
+
 not in the running kernel
 нет в работающем ядре
+
+not limited
+без ограничения
 
 not parts of it: {}; its parts are {}
 не входят в состав: {}; состав: {}
@@ -14488,11 +14512,11 @@ not set up yet
 not understood: {}
 не удалось распознать: {}
 
+not yet ({})
+ещё нет ({})
+
 not yet on this kernel's build, {}
 ещё нет на этой сборке ({})
-
-not yet on this kernel's series, {}
-пока нет для этой серии ядер ({})
 
 nothing backed up for {n} days
 one: резервных копий не было {n} день
@@ -14562,9 +14586,6 @@ on battery: it waits for power
 
 on this kernel's build, {}
 на этой сборке ядра ({})
-
-on this kernel's series, {}
-для этой серии ядер ({})
 
 on {}
 на {}
@@ -14937,6 +14958,9 @@ without {}, {} and {} more
 
 yes
 да
+
+yes ({})
+да ({})
 
 yesterday
 вчера
@@ -15700,9 +15724,6 @@ other: {n} недели
 {} ms
 {} мс
 
-{} ms, the middle of them
-Медиана: {} мс
-
 {} needs full access.
 Для {} нужен полный доступ.
 
@@ -16015,8 +16036,8 @@ other: {n} недели
 {}% of the time, waking in {} µs
 {}% времени, пробуждение за {} мкс
 
-{}% of their {} segments
-{}% от общего числа сегментов ({})
+{}% of {} packets
+{}% (всего пакетов: {})
 
 {}'s quota
 Квота {}

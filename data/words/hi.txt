@@ -453,12 +453,6 @@ A picture of your own
 A process needs at least one core.
 प्रक्रिया के लिए कम से कम एक कोर चाहिए।
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-प्रोसेसर व्यस्त होने पर भी जागा हुआ प्रोग्राम अगले कर्नेल टिक की प्रतीक्षा किए बिना चल पड़ता है (पूर्ण प्रीएम्प्शन)। अभी {} शेड्यूलिंग करता है और यह फ़ैसला खुद लेता है। यह सेटिंग कर्नेल के अपने शेड्यूलर के लिए है।
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-प्रोसेसर व्यस्त होने पर भी जागा हुआ प्रोग्राम तुरंत चल पड़ता है। उसे अगले कर्नेल टिक के लिए एक मिलीसेकंड तक नहीं रुकना पड़ता (पूर्ण प्रीएम्प्शन)।
-
 A red dot for an app with something unread in it
 अपठित सामग्री वाले ऐप पर लाल बिंदु
 
@@ -1332,9 +1326,6 @@ At 20%
 
 At a time of its own
 अपने चुने समय पर
-
-At every start
-हर शुरुआत पर
 
 At full speed
 पूरी गति पर
@@ -3478,6 +3469,9 @@ DiskUsage
 
 Disks
 डिस्क
+
+Disks plugged in
+जुड़ी हुई डिस्क
 
 Display
 डिस्प्ले
@@ -5820,8 +5814,8 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 दूसरे ऐप के पासवर्ड रखता है, जो लॉगिन करते ही खुल जाते हैं।
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-जब भारी सिंक्रोनस राइट या डिस्कार्ड NVMe ड्राइव पर दबाव डालते हैं, तब रीड लेटेंसी सीमित रखता है; Linux का डिफ़ॉल्ट "none" केवल बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+भारी सिंक्रोनस राइट या डिस्कार्ड से NVMe ड्राइव भर जाने पर रीड विलंब को सीमित रखता है, जबकि Linux का डिफ़ॉल्ट "none" सिर्फ़ बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
 
 Keeps typing quick over a slow link.
 धीमे कनेक्शन पर भी टाइपिंग तेज़ रखता है।
@@ -5831,6 +5825,9 @@ Kept
 
 Kept Core
 आरक्षित कोर
+
+Kept after restart
+रीस्टार्ट के बाद भी रहता है
 
 Kept for this computer and set again at every start.
 इस कंप्यूटर के लिए सहेजा गया। हर शुरुआत पर फिर लागू होता है।
@@ -6173,6 +6170,9 @@ Linux की अपनी
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux का अपना शेड्यूलर (EEVDF) हर प्रोग्राम को निष्पक्ष समय देता है। दोनों शेड्यूलर में Olo के वे थ्रेड रीयल-टाइम प्राथमिकता पर चलते हैं जिनका कोई इंतज़ार कर रहा है। बिल्ड जैसे भारी काम के बीच डेस्कटॉप इस शेड्यूलर पर सबसे तेज़ रहता है।
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux का सामान्य तरीका (cubic) तब तक भेजता है जब तक रास्ते की कतारें भर न जाएँ, जिससे देरी बढ़ती है; यह तरीका रास्ते को मापकर उसके नीचे रहता है (Olo का मॉड्यूल, tcp_bbr3)।
 
 List
 सूची
@@ -6563,9 +6563,6 @@ Match:
 
 Max
 अधिकतम
-
-May wait
-प्रतीक्षा कर सकता है
 
 Maybe
 शायद
@@ -8661,6 +8658,9 @@ Passwords आपके आइटम इस कंप्यूटर पर ए�
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords आपके आइटम इस कंप्यूटर पर एन्क्रिप्ट करके रखता है और उन्हें आपके 1Password खातों से दोनों दिशाओं में सिंक कर सकता है। इसके लिए 1Password में सेटिंग ▸ डेवलपर ▸ दूसरे ऐप से एकीकरण चालू करें, फिर खातों के नाम दें।
 
+Passwords on this screen has no SSH keys shared with it.
+इस स्क्रीन के Passwords में इसके साथ साझा की गई कोई SSH कुंजी नहीं है।
+
 Passwords: Clipboard
 Passwords: क्लिपबोर्ड
 
@@ -9996,6 +9996,9 @@ SSH डिफ़ॉल्ट रूप से एक कनेक्शन प�
 SSH keys
 SSH कुंजियाँ
 
+SSH keys offered: {}.
+दी गई SSH कुंजियाँ: {}।
+
 SSH sessions
 SSH सत्र
 
@@ -10272,14 +10275,14 @@ Send Signal…
 Send Voice Message
 वॉइस संदेश भेजें
 
+Send at the pace the network can carry
+उतनी गति से भेजें जितना नेटवर्क संभाल सके
+
 Send to Back
 सबसे पीछे भेजें
 
 Send to back
 सबसे पीछे भेजें
-
-Send with BBRv3
-BBRv3 से भेजें
 
 Sending your changes to Telegram
 बदलाव Telegram को भेजे जा रहे हैं
@@ -11283,9 +11286,6 @@ System Font
 TCP opened in
 TCP कनेक्शन का समय
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP उसी गति से भेजता है जो उसका रास्ता सँभाल सके, जबकि Linux का अपना तरीका रास्ते की कतारें भर देता है (Olo का मॉड्यूल, tcp_bbr3)।
-
 TCP/IP
 TCP/IP
 
@@ -12057,9 +12057,6 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 इन ऐप की नई विंडो अपने डिस्प्ले के उसी कार्यक्षेत्र में खुलेंगी। वर्तमान कार्यक्षेत्र में फिर खोलने के लिए ऐप का चयन हटाएँ।
 
-Their round trip
-उनका आने-जाने का समय
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 इनकी विंडो टाइलों और फ़ोकस की विंडो के ऊपर तैरती हैं। फिर टाइल करने के लिए ऐप का चयन हटाएँ।
 
@@ -12573,6 +12570,9 @@ Trash
 Tree
 ट्री
 
+Tried with this kernel
+इस कर्नेल के साथ आज़माया गया
+
 Trim
 काट-छाँट
 
@@ -12882,6 +12882,9 @@ Until Turned Off
 Until:
 तब तक:
 
+Unwritten at most
+अधिकतम बिना लिखा डेटा
+
 Up
 ऊपर
 
@@ -13079,6 +13082,9 @@ Using the most
 
 Using too much memory
 बहुत अधिक मेमोरी इस्तेमाल हो रही है
+
+Usual round trip
+सामान्य आवागमन समय
 
 VPN
 VPN
@@ -13410,6 +13416,9 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 जो हो चुका है वह बना रहता है। फिर सेट अप करने पर वहीं से आगे बढ़ेगा।
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+विंडो जहाँ ड्रॉ करती हैं वह स्वैप से बाहर रहता है, ताकि डेस्कटॉप को कभी उसका इंतज़ार न करना पड़े (Intel के ड्राइवर के लिए Olo का लाइव पैच)।
+
 What you change applies when you leave Rescue.
 बचाव मोड से निकलने पर बदलाव लागू होंगे।
 
@@ -13665,9 +13674,6 @@ Windows
 Windows stay where you put them.
 विंडो वहीं रहती हैं जहाँ आप उन्हें रखते हैं।
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-विंडो के बफ़र स्वैप से बाहर रहते हैं, इसलिए डेस्कटॉप को किसी के लौटने का इंतज़ार नहीं करना पड़ता (Intel के ड्राइवर के लिए Olo का लाइव पैच)।
-
 Wireless Router
 वायरलेस राउटर
 
@@ -13682,6 +13688,12 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि भारी लोड में भी विंडो और टाइपिंग साथ चलें (base slice)।
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+इसे चालू करने पर, प्रोसेसर व्यस्त होने पर जागा हुआ प्रोग्राम कर्नेल के अगले टिक का इंतज़ार किए बिना तुरंत चलता है (full preemption)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है: यह कर्नेल के अपने शेड्यूलर के लिए है।
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+इसे चालू करने पर, प्रोसेसर व्यस्त होने पर जागा हुआ प्रोग्राम कर्नेल के अगले टिक के लिए एक मिलीसेकंड तक इंतज़ार किए बिना तुरंत चलता है (full preemption)।
 
 Withdrawn by {}
 {} ने वापस लिया
@@ -14088,6 +14100,9 @@ built most, the last 24 hours
 busy
 व्यस्त
 
+can’t be offered to SSH: {}
+SSH को नहीं दी जा सकती: {}
+
 ceiling {}%
 ऊपरी सीमा {}%
 
@@ -14354,6 +14369,9 @@ libinput का डिफ़ॉल्ट
 libinput's own: Olo's touch filter is off
 libinput का अपना: Olo का स्पर्श फ़िल्टर बंद है
 
+limited
+सीमित
+
 low
 निम्न
 
@@ -14396,8 +14414,14 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+कोई नहीं
+
 not in the running kernel
 चल रहे कर्नेल में नहीं
+
+not limited
+सीमित नहीं
 
 not parts of it: {}; its parts are {}
 इसके भाग नहीं हैं: {}। इसके भाग हैं {}
@@ -14408,11 +14432,11 @@ not set up yet
 not understood: {}
 समझ नहीं आया: {}
 
+not yet ({})
+अभी नहीं ({})
+
 not yet on this kernel's build, {}
 इस कर्नेल बिल्ड ({}) पर अभी नहीं
-
-not yet on this kernel's series, {}
-इस कर्नेल श्रृंखला ({}) के लिए अभी नहीं है
 
 nothing backed up for {n} days
 one: {n} दिन से बैकअप नहीं हुआ
@@ -14480,9 +14504,6 @@ on battery: it waits for power
 
 on this kernel's build, {}
 इस कर्नेल बिल्ड ({}) पर
-
-on this kernel's series, {}
-इस कर्नेल श्रृंखला ({}) पर
 
 on {}
 {} पर
@@ -14831,6 +14852,9 @@ without {}, {} and {} more
 
 yes
 हाँ
+
+yes ({})
+हाँ ({})
 
 yesterday
 बीता कल
@@ -15478,9 +15502,6 @@ other: {n} हफ़्ते
 {} ms
 {} ms
 
-{} ms, the middle of them
-मध्य मान {} ms
-
 {} needs full access.
 {} को पूरी पहुँच चाहिए।
 
@@ -15793,8 +15814,8 @@ RAM का {}%
 {}% of the time, waking in {} µs
 कुल समय का {}%, जागने में {} µs
 
-{}% of their {} segments
-कुल {1} सेगमेंट का {0}%
+{}% of {} packets
+{1} पैकेट का {0}%
 
 {}'s quota
 {} का कोटा

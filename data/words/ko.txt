@@ -451,12 +451,6 @@ A picture of your own
 A process needs at least one core.
 프로세스에는 코어가 하나 이상 필요합니다.
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-프로세서가 바빠도 깨어난 프로그램은 다음 커널 틱을 기다리지 않고 바로 실행됩니다(완전 선점). 현재는 {} 스케줄러가 직접 결정합니다. 이 설정은 커널 기본 스케줄러에 적용됩니다.
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-프로세서가 바빠도 깨어난 프로그램은 다음 커널 틱까지 최대 1ms를 기다리지 않고 바로 실행됩니다(완전 선점).
-
 A red dot for an app with something unread in it
 읽지 않은 항목이 있는 앱에 빨간 점 표시
 
@@ -1326,9 +1320,6 @@ At 20%
 
 At a time of its own
 직접 지정한 시간에
-
-At every start
-시작할 때마다
 
 At full speed
 최고 속도로
@@ -3465,6 +3456,9 @@ DiskUsage
 
 Disks
 디스크
+
+Disks plugged in
+연결된 디스크
 
 Display
 디스플레이
@@ -5794,8 +5788,8 @@ Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
 다른 앱의 암호를 보관하며 로그인할 때 잠금이 해제됩니다.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연을 억제합니다. Linux 기본값 "none"은 백그라운드 라이트백만 조절합니다 (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연 시간을 일정 수준 이내로 유지합니다. Linux 기본값인 "none"은 백그라운드 라이트백만 조절합니다(queue/scheduler).
 
 Keeps typing quick over a slow link.
 느린 연결에서도 입력을 빠르게 유지합니다.
@@ -5805,6 +5799,9 @@ Kept
 
 Kept Core
 예약 코어
+
+Kept after restart
+재시작 후에도 유지
 
 Kept for this computer and set again at every start.
 이 컴퓨터에 저장하고 시작할 때마다 다시 적용합니다.
@@ -6147,6 +6144,9 @@ Linux 기본값
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 기본 스케줄러(EEVDF)는 작업 종류와 관계없이 모든 프로그램에 공평하게 시간을 배분합니다. 어느 스케줄러를 쓰든 다른 작업이 기다리는 Olo 스레드는 실시간 우선순위로 실행됩니다. 빌드 등 부하가 클 때는 이 설정에서 데스크톱이 가장 빠르게 반응합니다.
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+Linux의 일반 방식(cubic)은 경로상의 대기열이 찰 때까지 전송해 지연이 늘어납니다. 이 방식은 경로를 측정해 그 아래로 유지합니다(Olo 모듈, tcp_bbr3).
 
 List
 목록
@@ -6537,9 +6537,6 @@ Match:
 
 Max
 최대
-
-May wait
-대기 가능
 
 Maybe
 미정
@@ -8635,6 +8632,9 @@ Passwords는 이 컴퓨터에 항목을 암호화해 보관하며 1Password 계�
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords는 이 컴퓨터에 항목을 암호화해 보관하며 1Password 계정과 양방향으로 동기화할 수 있습니다. 1Password에서 설정 ▸ 개발자 ▸ 다른 앱과 통합을 켠 뒤 계정 이름을 지정하세요.
 
+Passwords on this screen has no SSH keys shared with it.
+이 화면의 Passwords에는 공유된 SSH 키가 없습니다.
+
 Passwords: Clipboard
 Passwords: 클립보드
 
@@ -9967,6 +9967,9 @@ SSH는 기본적으로 연결당 세션을 10개까지 허용하며 각 패널�
 SSH keys
 SSH 키
 
+SSH keys offered: {}.
+제공된 SSH 키: {}.
+
 SSH sessions
 SSH 세션
 
@@ -10243,14 +10246,14 @@ Send Signal…
 Send Voice Message
 음성 메시지 보내기
 
+Send at the pace the network can carry
+네트워크가 감당할 수 있는 속도로 전송
+
 Send to Back
 맨 뒤로 보내기
 
 Send to back
 맨 뒤로 보내기
-
-Send with BBRv3
-BBRv3로 전송
 
 Sending your changes to Telegram
 Telegram에 변경 사항 보내는 중
@@ -11251,9 +11254,6 @@ System Font
 TCP opened in
 TCP 연결 시간
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP는 경로가 감당할 수 있는 속도로 전송합니다. Linux 기본 방식은 도중의 대기열을 채웁니다(Olo 모듈, tcp_bbr3).
-
 TCP/IP
 TCP/IP
 
@@ -12025,9 +12025,6 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 새 창은 창이 열리는 디스플레이의 지정한 작업 공간에 표시됩니다. 선택을 해제하면 현재 작업 공간에 다시 열립니다.
 
-Their round trip
-왕복 시간
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 해당 앱의 창은 타일 창과 집중 모드의 창 위에 떠 있습니다. 선택을 해제하면 다시 타일로 배치합니다.
 
@@ -12541,6 +12538,9 @@ Trash
 Tree
 트리
 
+Tried with this kernel
+이 커널에서 확인
+
 Trim
 다듬기
 
@@ -12850,6 +12850,9 @@ Until Turned Off
 Until:
 종료 시각:
 
+Unwritten at most
+최대 미기록량
+
 Up
 위로
 
@@ -13047,6 +13050,9 @@ Using the most
 
 Using too much memory
 메모리 과다 사용
+
+Usual round trip
+일반 왕복 시간
 
 VPN
 VPN
@@ -13378,6 +13384,9 @@ What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
 이미 완료된 단계는 유지됩니다. 다시 설정하면 그다음부터 이어서 진행합니다.
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+창이 그려지는 메모리가 스왑으로 내려가지 않아 데스크톱이 이를 기다리지 않습니다(Intel 드라이버용 Olo 라이브 패치).
+
 What you change applies when you leave Rescue.
 변경 사항은 복구 모드에서 나갈 때 적용됩니다.
 
@@ -13633,9 +13642,6 @@ Windows
 Windows stay where you put them.
 창은 놓은 자리에 그대로 있습니다.
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-윈도우의 버퍼는 스왑으로 가지 않으므로 데스크탑이 버퍼를 기다리는 일이 없습니다(Intel 드라이버용 Olo 라이브 패치).
-
 Wireless Router
 무선 라우터
 
@@ -13650,6 +13656,12 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 부하가 걸려도 윈도우와 입력이 밀리지 않습니다(base slice).
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+켜면 프로세서가 바쁠 때 깨어난 프로그램이 커널의 다음 틱을 기다리지 않고 즉시 실행됩니다(full preemption). 지금은 {}이(가) 스케줄링하며 이를 스스로 결정합니다. 이 설정은 커널 자체의 스케줄러용입니다.
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+켜면 프로세서가 바쁠 때 깨어난 프로그램이 커널의 다음 틱까지 최대 1ms를 기다리지 않고 즉시 실행됩니다(full preemption).
 
 Withdrawn by {}
 {}에서 철회함
@@ -14053,6 +14065,9 @@ built most, the last 24 hours
 busy
 사용 중
 
+can’t be offered to SSH: {}
+SSH에 제공할 수 없음: {}
+
 ceiling {}%
 상한 {}%
 
@@ -14314,6 +14329,9 @@ libinput 기본값
 libinput's own: Olo's touch filter is off
 libinput 기본값: Olo 터치 필터 꺼짐
 
+limited
+제한됨
+
 low
 낮음
 
@@ -14356,8 +14374,14 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+없음
+
 not in the running kernel
 실행 중인 커널에 없음
+
+not limited
+제한 없음
 
 not parts of it: {}; its parts are {}
 구성 요소가 아닙니다: {}. 구성 요소는 {}입니다
@@ -14368,11 +14392,11 @@ not set up yet
 not understood: {}
 해석할 수 없음: {}
 
+not yet ({})
+아직 아님({})
+
 not yet on this kernel's build, {}
 이 커널 빌드({})는 아직 아님
-
-not yet on this kernel's series, {}
-아직 이 커널 계열({})용이 아님
 
 nothing backed up for {n} days
 other: {n}일 동안 백업 없음
@@ -14439,9 +14463,6 @@ on battery: it waits for power
 
 on this kernel's build, {}
 이 커널 빌드({})
-
-on this kernel's series, {}
-이 커널 계열({})용
 
 on {}
 {}에서
@@ -14778,6 +14799,9 @@ without {}, {} and {} more
 
 yes
 예
+
+yes ({})
+예({})
 
 yesterday
 어제
@@ -15367,9 +15391,6 @@ other: {n}주
 {} ms
 {}ms
 
-{} ms, the middle of them
-중앙값 {}ms
-
 {} needs full access.
 {} 앱에 전체 접근 권한이 필요합니다.
 
@@ -15682,8 +15703,8 @@ RAM의 {}%
 {}% of the time, waking in {} µs
 전체 시간의 {}%, 복귀 시간 {}µs
 
-{}% of their {} segments
-전체 {1}개 세그먼트의 {0}%
+{}% of {} packets
+패킷 {1}개 중 {0}%
 
 {}'s quota
 {} 사용 한도

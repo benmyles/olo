@@ -178,7 +178,9 @@ impl Hub {
     /// Opens the Clients window (or brings it to the front).
     pub fn open_clients(&mut self) {
         let (shared, port, uses) = (self.shared.clone(), self.proxy_port, self.clients);
-        let options = WindowOptions::new("Clients", 480.0, 600.0).min_size(400.0, 420.0);
+        // (A panel beside what it is about, as the Hosts window is: tiled, a
+        // short list sat at the head of a whole screen.)
+        let options = WindowOptions::new("Clients", 480.0, 600.0).min_size(400.0, 420.0).floating();
         olo_kit::open_or_raise(&mut self.clients_win, options, move |cx| ClientsWindow::new(shared, port, uses, cx));
         self.open.clients.store(true, Ordering::Relaxed);
         if self.clients.is_none() {

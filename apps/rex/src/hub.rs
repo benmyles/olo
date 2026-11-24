@@ -1226,8 +1226,8 @@ pub struct HostStands {
     /// Rex), each in a word or two; none: nothing.
     pub granted: Vec<&'static str>,
     /// Where the SSH keys are granted: what the host was last offered
-    /// of them ([`HostRuntime::agent_keys`]).
-    pub agent_keys: Option<Result<usize, String>>,
+    /// of them, by their items' names ([`HostRuntime::agent_keys`]).
+    pub agent_keys: Option<Result<Vec<String>, String>>,
     pub skill: Option<bool>,
     /// The desktop commands there (`bridge::COMMANDS`): none until asked.
     pub commands: Option<bool>,
@@ -1299,7 +1299,7 @@ pub struct HostRuntime {
     /// had; none: not asked on this connection. (Unsaid, a host was
     /// offered none and nothing showed it: Rex moved to an agent screen
     /// asked that screen's Passwords, 2026-11-23.)
-    pub agent_keys: Option<Result<usize, String>>,
+    pub agent_keys: Option<Result<Vec<String>, String>>,
     /// How the account there stands (its agents, its path, git's
     /// identity: `olo_rex_client::ready`), as last asked; none until
     /// it has been (the Account window asks).
@@ -1489,7 +1489,10 @@ impl HubState {
                     (true, false) => vec!["links", "Passwords", "Agent Screens"],
                     (true, true) => vec!["links", "Passwords", "SSH keys", "Agent Screens"],
                 },
-                agent_keys: std::env::var("OLO_REX_DEMO_KEYS").ok().filter(|_| there).map(|keys| keys.parse::<usize>().map_err(|_| keys)),
+                agent_keys: std::env::var("OLO_REX_DEMO_KEYS")
+                    .ok()
+                    .filter(|_| there)
+                    .map(|keys| keys.parse::<usize>().map(|n| ["GitHub", "Work laptop", "Deploy"].iter().cycle().take(n).map(|k| k.to_string()).collect()).map_err(|_| keys)),
                 // (`OLO_REX_DEMO_ACCOUNT=ready`: the skill there too;
                 // `asking`: not answered.)
                 skill: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
@@ -4197,7 +4200,7 @@ impl RexHubInner {
         // (What Passwords answers the host's asking for the keys is kept
         // on the host and said: how many it was offered, or why none.)
         let (state, notify, key) = (Arc::downgrade(&self.state), self.notify.clone(), host_key.to_owned());
-        let offered = move |answer: Result<usize, String>| {
+        let offered = move |answer: Result<Vec<String>, String>| {
             let Some(state) = state.upgrade() else { return };
             let changed = {
                 let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
@@ -4208,7 +4211,7 @@ impl RexHubInner {
             };
             if changed {
                 match &answer {
-                    Ok(n) => tracing::info!("Rex: {key} was offered {n} SSH keys"),
+                    Ok(names) => tracing::info!("Rex: {key} was offered {} SSH keys", names.len()),
                     Err(why) => tracing::warn!("Rex: {key} was offered no SSH keys: {why}"),
                 }
                 notify(HubNotice::StateChanged);
@@ -6042,13 +6045,13 @@ mod tests {
     }
 
     /// What Passwords answers a host's asking for the keys is said as
-    /// how many, or why none.
+    /// which (by their items' names), or why none.
     #[test]
     fn what_a_host_is_offered_of_the_keys_is_said() {
         use olo_keychain::{CallError, Response, SshKey};
-        let key = SshKey { key: "AAAA".into(), comment: "work".into() };
-        assert_eq!(super::keys_offered(&Ok(Response::SshKeys { keys: vec![key.clone(), key] })), Ok(2));
-        assert_eq!(super::keys_offered(&Ok(Response::SshKeys { keys: Vec::new() })), Ok(0));
+        let key = |name: &str| SshKey { key: "AAAA".into(), comment: name.into() };
+        assert_eq!(super::keys_offered(&Ok(Response::SshKeys { keys: vec![key("work"), key("github")] })), Ok(vec!["work".to_owned(), "github".to_owned()]));
+        assert_eq!(super::keys_offered(&Ok(Response::SshKeys { keys: Vec::new() })), Ok(Vec::new()));
         assert_eq!(super::keys_offered(&Ok(Response::Locked)), Err("Passwords is locked".into()));
         assert_eq!(super::keys_offered(&Err(CallError::NotRunning)), Err("Passwords isn’t running".into()));
         assert_eq!(super::keys_offered(&Ok(Response::Error { message: "only Rex asks for a host".into() })), Err("only Rex asks for a host".into()));
@@ -6523,10 +6526,11 @@ mod reconnect_tests;
 
 /// What Passwords' answer to a host's asking for the SSH keys offered
 /// it: how many, or why none could be had, as a person reads it.
-fn keys_offered(answer: &Result<olo_keychain::Response, olo_keychain::CallError>) -> Result<usize, String> {
+fn keys_offered(answer: &Result<olo_keychain::Response, olo_keychain::CallError>) -> Result<Vec<String>, String> {
     use olo_keychain::Response;
     match answer {
-        Ok(Response::SshKeys { keys }) => Ok(keys.len()),
+        // (By their items' names, as Passwords offers them.)
+        Ok(Response::SshKeys { keys }) => Ok(keys.iter().map(|k| k.comment.clone()).collect()),
         Ok(Response::Locked) => Err(olo_kit::words::tr("Passwords is locked").into()),
         Ok(Response::NotSetUp) => Err(olo_kit::words::tr("Passwords isn’t set up").into()),
         Ok(Response::Error { message }) => Err(message.clone()),

@@ -453,12 +453,6 @@ Uma imagem sua
 A process needs at least one core.
 O processo precisa de pelo menos um núcleo.
 
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-Um programa que desperta enquanto os processadores estão ocupados roda de imediato, sem esperar o próximo pulso do kernel (preempção total). O escalonador atual, {}, decide isso por conta própria. Esta opção vale para o escalonador do kernel.
-
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
-Um programa que desperta enquanto os processadores estão ocupados roda de imediato, sem esperar até um milissegundo pelo próximo pulso do kernel (preempção total).
-
 A red dot for an app with something unread in it
 Ponto vermelho em apps com itens não lidos
 
@@ -1332,9 +1326,6 @@ Em 20%
 
 At a time of its own
 Em um horário personalizado
-
-At every start
-A cada inicialização
 
 At full speed
 Na velocidade máxima
@@ -3478,6 +3469,9 @@ DiskUsage
 
 Disks
 Discos
+
+Disks plugged in
+Discos conectados
 
 Display
 Tela
@@ -5820,8 +5814,8 @@ Evita que tarefas em segundo plano deixem lento o que você usa.
 Keeps other apps’ passwords, unlocked as you log in.
 Guarda as senhas de outros apps, desbloqueado ao fazer login.
 
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
-Mantém a latência de leitura controlada quando gravações síncronas ou discards pesados saturam uma unidade NVMe, onde o padrão "none" do Linux limita apenas a gravação em segundo plano (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
+Mantém a latência de leitura controlada quando gravações síncronas ou descartes pesados sobrecarregam uma unidade NVMe, enquanto o padrão "none" do Linux só limita a gravação diferida em segundo plano (queue/scheduler).
 
 Keeps typing quick over a slow link.
 Mantém a digitação rápida em uma conexão lenta.
@@ -5831,6 +5825,9 @@ Mantidos
 
 Kept Core
 Núcleo reservado
+
+Kept after restart
+Mantido após reiniciar
 
 Kept for this computer and set again at every start.
 Salvo neste computador e reaplicado a cada inicialização.
@@ -6173,6 +6170,9 @@ O do Linux
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 O escalonador padrão do Linux (EEVDF) divide o tempo de forma justa entre os programas. As threads do Olo das quais alguém depende rodam em tempo real, com prioridade nos dois escalonadores. Em compilações e outras tarefas pesadas, este mantém a área de trabalho mais rápida.
+
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
+O jeito usual do Linux (cubic) envia até encher as filas no percurso, o que aumenta o atraso; este mede o caminho e fica abaixo dele (módulo do Olo, tcp_bbr3).
 
 List
 Lista
@@ -6563,9 +6563,6 @@ Corresponder a:
 
 Max
 Máx.
-
-May wait
-Pode esperar
 
 Maybe
 Talvez
@@ -8661,6 +8658,9 @@ O Passwords guarda seus itens criptografados neste computador e pode sincronizá
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 O Passwords guarda seus itens criptografados neste computador e pode sincronizá-los nos dois sentidos com suas contas do 1Password. No 1Password, ative Configurações ▸ Desenvolvedor ▸ Integrar com outros apps e depois informe as contas.
 
+Passwords on this screen has no SSH keys shared with it.
+O Passwords nesta tela não tem chaves SSH compartilhadas com ela.
+
 Passwords: Clipboard
 Passwords: área de transferência
 
@@ -9996,6 +9996,9 @@ Por padrão, o SSH permite dez sessões por conexão; cada painel usa uma.
 SSH keys
 Chaves SSH
 
+SSH keys offered: {}.
+Chaves SSH oferecidas: {}.
+
 SSH sessions
 Sessões SSH
 
@@ -10272,14 +10275,14 @@ Enviar sinal…
 Send Voice Message
 Enviar mensagem de voz
 
+Send at the pace the network can carry
+Enviar no ritmo que a rede suporta
+
 Send to Back
 Enviar para trás
 
 Send to back
 Enviar para trás
-
-Send with BBRv3
-Enviar com BBRv3
 
 Sending your changes to Telegram
 Enviando suas alterações ao Telegram
@@ -11283,9 +11286,6 @@ Fonte do sistema
 TCP opened in
 TCP conectado em
 
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-O TCP envia no ritmo que seu caminho comporta, enquanto o do próprio Linux enche as filas pelo caminho (módulo do Olo, tcp_bbr3).
-
 TCP/IP
 TCP/IP
 
@@ -12057,9 +12057,6 @@ Para alterar {}, é preciso informar a senha de administrador.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 As novas janelas desses apps abrem no espaço indicado, na tela em que forem abertas. Desmarque um app para voltar a abrir as janelas no espaço atual.
 
-Their round trip
-Ida e volta delas
-
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 As janelas desses apps flutuam sobre o mosaico e sobre a janela em foco. Desmarque um app para voltar a organizar suas janelas no mosaico.
 
@@ -12573,6 +12570,9 @@ Lixeira
 Tree
 Árvore
 
+Tried with this kernel
+Testado com este kernel
+
 Trim
 Cortar
 
@@ -12882,6 +12882,9 @@ Até desativar
 Until:
 Até:
 
+Unwritten at most
+Máximo não gravado
+
 Up
 Acima
 
@@ -13079,6 +13082,9 @@ Maior uso
 
 Using too much memory
 Uso excessivo de memória
+
+Usual round trip
+Ida e volta típica
 
 VPN
 VPN
@@ -13410,6 +13416,9 @@ Que roupa devo usar amanhã?
 What was done stays done. Setting it up again carries on from there.
 O que já foi feito continua pronto. Configurar de novo continua daí.
 
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
+A memória onde as janelas desenham fica fora da swap, para que a área de trabalho nunca espere por ela (patch ao vivo do Olo no driver da Intel).
+
 What you change applies when you leave Rescue.
 As alterações entram em vigor ao sair do modo de recuperação.
 
@@ -13665,9 +13674,6 @@ Janelas
 Windows stay where you put them.
 As janelas ficam onde você as coloca.
 
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
-Os buffers das janelas ficam fora da troca, então a mesa nunca espera por um (patch ao vivo do Olo para o driver da Intel).
-
 Wireless Router
 Roteador sem fio
 
@@ -13682,6 +13688,12 @@ Com isto ativado, um programa ocupado dá a vez a outro que espera após 0,7 ms 
 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Com isto ativado, um programa ocupado dá a vez a outro que espera após 0,7 ms em vez de {}, para que janelas e digitação acompanhem mesmo sob carga (base slice).
+
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+Com isto ativado, um programa acordado enquanto os processadores estão ocupados roda na hora em vez de esperar o próximo tick do kernel (full preemption). {} está escalonando agora e decide isso por conta própria: isto é para o escalonador próprio do kernel.
+
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
+Com isto ativado, um programa acordado enquanto os processadores estão ocupados roda na hora em vez de esperar até um milissegundo pelo próximo tick do kernel (full preemption).
 
 Withdrawn by {}
 Retirado por {}
@@ -14088,6 +14100,9 @@ mais compilados nas últimas 24 horas
 busy
 ocupado
 
+can’t be offered to SSH: {}
+não pode ser oferecida ao SSH: {}
+
 ceiling {}%
 limite de {}%
 
@@ -14354,6 +14369,9 @@ padrão do libinput
 libinput's own: Olo's touch filter is off
 do próprio libinput: filtro de toque do Olo desativado
 
+limited
+limitado
+
 low
 baixo
 
@@ -14396,8 +14414,14 @@ sem rede com fio: aguardando conexão
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+none
+nenhum
+
 not in the running kernel
 fora do kernel em execução
+
+not limited
+sem limite
 
 not parts of it: {}; its parts are {}
 não fazem parte: {}. As partes são {}
@@ -14408,11 +14432,11 @@ ainda não configurado
 not understood: {}
 não reconhecido: {}
 
+not yet ({})
+ainda não ({})
+
 not yet on this kernel's build, {}
 ainda não nesta compilação, {}
-
-not yet on this kernel's series, {}
-ainda indisponível para a série deste kernel, {}
 
 nothing backed up for {n} days
 one: sem backup há {n} dia
@@ -14480,9 +14504,6 @@ na bateria: aguardando alimentação
 
 on this kernel's build, {}
 nesta compilação do kernel, {}
-
-on this kernel's series, {}
-na série deste kernel, {}
 
 on {}
 em {}
@@ -14831,6 +14852,9 @@ sem {}, {} e mais {}
 
 yes
 sim
+
+yes ({})
+sim ({})
 
 yesterday
 ontem
@@ -15478,9 +15502,6 @@ há {} minutos
 {} ms
 {} ms
 
-{} ms, the middle of them
-{} ms de mediana
-
 {} needs full access.
 {} precisa de acesso total.
 
@@ -15793,8 +15814,8 @@ normalmente {} µs por leitura, máximo de {} µs
 {}% of the time, waking in {} µs
 {}% do tempo, desperta em {} µs
 
-{}% of their {} segments
-{}% dos seus {} segmentos
+{}% of {} packets
+{}% de {} pacotes
 
 {}'s quota
 cota de {}

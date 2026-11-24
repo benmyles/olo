@@ -148,8 +148,6 @@ A palm, ignored ({} so far)
 A path: /…, ~/… or a name here
 A picture of your own
 A process needs at least one core.
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
-A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
 A red dot for an app with something unread in it
 A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
 A repository’s key needs to be trusted
@@ -440,7 +438,6 @@ At 10%
 At 15%
 At 20%
 At a time of its own
-At every start
 At full speed
 At least
 At the Bottom
@@ -1153,6 +1150,7 @@ DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the 
 DiskBackup…
 DiskUsage
 Disks
+Disks plugged in
 Display
 Display {}: {}. Click to go to another display.
 Displays
@@ -1929,10 +1927,11 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 Keeps background work from slowing what you use.
 Keeps other apps’ passwords, unlocked as you log in.
-Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, whereas Linux's default "none" only throttles background writeback (queue/scheduler).
 Keeps typing quick over a slow link.
 Kept
 Kept Core
+Kept after restart
 Kept for this computer and set again at every start.
 Kept in step with network time servers.
 Kept on this computer.
@@ -2047,6 +2046,7 @@ Link’s rate
 Link…
 Linux's own
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
+Linux's usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo's module, tcp_bbr3).
 List
 List View
 List:
@@ -2177,7 +2177,6 @@ Match
 Match Appearance
 Match:
 Max
-May wait
 Maybe
 Measuring the round trip…
 Media errors
@@ -2876,6 +2875,7 @@ Passwords isn’t set up yet: open it to set it up, then try again.
 Passwords keeps no password for it (an item “{}”).
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then choose the accounts.
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
+Passwords on this screen has no SSH keys shared with it.
 Passwords: Clipboard
 Passwords: Command line
 Passwords: Locking
@@ -3320,6 +3320,7 @@ SSH Agent
 SSH Authentication
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH keys
+SSH keys offered: {}.
 SSH sessions
 SSW
 SW
@@ -3412,9 +3413,9 @@ Send Code
 Send Signal
 Send Signal…
 Send Voice Message
+Send at the pace the network can carry
 Send to Back
 Send to back
-Send with BBRv3
 Sending your changes to Telegram
 Sending {n} changes to Telegram…
 Sending {} to process {}
@@ -3748,7 +3749,6 @@ Syncing with {} makes {}. Nothing changes on either side until you apply them.
 System
 System Font
 TCP opened in
-TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
 TCP/IP
 TCP’s own, idle
 TCP’s round trip
@@ -4006,7 +4006,6 @@ The {} couldn't be changed.
 The {} is a whole number.
 The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
-Their round trip
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Theme
 Themes
@@ -4178,6 +4177,7 @@ Trained on {} of your touches, it did worse than Olo's untrained model on the {}
 Transparency
 Trash
 Tree
+Tried with this kernel
 Trim
 Trim to Selection
 Trim…
@@ -4281,6 +4281,7 @@ Unreaped for
 Unsafe shutdowns
 Until Turned Off
 Until:
+Unwritten at most
 Up
 Up (sent)
 Up a level
@@ -4347,6 +4348,7 @@ Using
 Using DHCP
 Using the most
 Using too much memory
+Usual round trip
 VPN
 Validate Fully…
 Validate fully? Every byte {}{} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.
@@ -4457,6 +4459,7 @@ What it’s for (optional)
 What should I wear today?
 What should I wear tomorrow?
 What was done stays done. Setting it up again carries on from there.
+What windows draw into stays out of swap, so the desktop never waits for it (Olo's live patch of Intel's driver).
 What you change applies when you leave Rescue.
 What's checked off shows here, the newest first.
 What's due after today, the soonest first, each by its day.
@@ -4542,12 +4545,13 @@ Window to workspace 9
 Windowing Mode
 Windows
 Windows stay where you put them.
-Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
 Wireless Router
 With AirPods:
 With Another Window
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+With this on, a program woken while the processors are busy runs at once instead of waiting for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+With this on, a program woken while the processors are busy runs at once instead of waiting up to a millisecond for the kernel's next tick (full preemption).
 Withdrawn by {}
 Word Document…
 Working
@@ -4682,6 +4686,7 @@ brush’s grey hint after what you type, from a tiny model of your own commands 
 brush’s grey hints, from a tiny model of your own commands
 built most, the last 24 hours
 busy
+can’t be offered to SSH: {}
 ceiling {}%
 charging, full in {}
 compile going on
@@ -4769,6 +4774,7 @@ less than a minute left
 level {} of 7
 libinput's default
 libinput's own: Olo's touch filter is off
+limited
 low
 medium
 minimum and maximum both {}%
@@ -4783,12 +4789,14 @@ no network: it goes on once there’s one
 no sessions open
 no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+none
 not in the running kernel
+not limited
 not parts of it: {}; its parts are {}
 not set up yet
 not understood: {}
+not yet ({})
 not yet on this kernel's build, {}
-not yet on this kernel's series, {}
 nothing backed up for {n} days
 nothing freed
 nothing moved
@@ -4811,7 +4819,6 @@ on a fast core at a high clock
 on battery
 on battery: it waits for power
 on this kernel's build, {}
-on this kernel's series, {}
 on {}
 on {} at {}
 one a day for ever
@@ -4924,6 +4931,7 @@ with the {n} files changed in it and not committed
 without {}
 without {}, {} and {} more
 yes
+yes ({})
 yesterday
 yesterday at {}
 you
@@ -5120,7 +5128,6 @@ your own picture
 {} minutes ago
 {} minutes before
 {} ms
-{} ms, the middle of them
 {} needs full access.
 {} needs signing in again
 {} needs your answer
@@ -5225,7 +5232,7 @@ your own picture
 {}% of palms caught, {}% of fingers taken for palms, on touches kept back
 {}% of the time
 {}% of the time, waking in {} µs
-{}% of their {} segments
+{}% of {} packets
 {}'s quota
 {}'s {} quota
 {}, all day

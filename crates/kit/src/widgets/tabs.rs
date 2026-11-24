@@ -201,8 +201,17 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
     let (l, rr, b) = (strip::dev(g, outer.left()), strip::dev(g, outer.right()), strip::dev(g, outer.bottom()));
     // (A tab's foot: a folder over it ends at `y`.)
     let foot = |r: &Bounds<Pixels>, y: f32| Bounds::from_corners(r.origin, point(r.right(), at(y)));
+    // (The tabs not chosen, behind the chosen one: a shade darker than the
+    // panel in a dark look, as they are in a light one. A strip's folder
+    // tabs are a shade lighter there, under a chosen tab in the content's
+    // dark colours; over the panel's own, here, lighter read as in front
+    // of the chosen one: the Kernel tab's reviews, 2026-11-20.)
+    // (A quarter of the way to black: about ten levels under a dark
+    // panel, the step a light look's tabs take. An eighth was three to
+    // six, and read as no change: Opus's look, measured.)
+    let behind = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.25)) } else { f.behind };
     for (_, r) in rects.iter().enumerate().filter(|&(i, _)| i != selected) {
-        strip::folder(g, foot(r, y0 + hair), f.behind, f.light, f.shadow, f.soft, sh);
+        strip::folder(g, foot(r, y0 + hair), behind, f.light, f.shadow, f.soft, sh);
     }
     rect(g, (l, y0, rr, b), f.outline);
     rect(g, (l + hair, y0 + hair, rr - hair, b - hair), f.front_shadow);
