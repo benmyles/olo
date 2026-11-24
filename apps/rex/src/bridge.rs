@@ -435,8 +435,14 @@ pub async fn handle_bridge_request(
             // or a name looked for: an agent's page address typed into a
             // field became the forward's (an agent's report, 2026-11-24).
             let opens = screen_opens_addresses(&req.args);
-            let mut rewritten_args = Vec::with_capacity(req.args.len());
-            for a in &req.args {
+            // (`look NAME PATH` from a host: PATH is the host's, where the
+            // picture is to go. The desktop makes it where it makes its
+            // own, and the host's `olo` saves it at PATH: given to the
+            // desktop, it failed for want of the host's folder there, an
+            // agent's report, 2026-11-24.)
+            let (args, look_to) = screen_look_to(&req.args);
+            let mut rewritten_args = Vec::with_capacity(args.len());
+            for a in &args {
                 if opens
                     && policy.allow_localhost_autoforward
                     && let Some((h, p, tmpl)) = parse_localhost_url(a)
@@ -453,7 +459,7 @@ pub async fn handle_bridge_request(
                     let stdout = String::from_utf8_lossy(&o.stdout).into_owned();
                     // (Its pictures, named in what it printed: Agent
                     // Screens' own, and the only files carried so.)
-                    let carried = pictures_named(&stdout).into_iter().filter_map(|path| picture(&path).map(|bytes| Carried { path, to: None, stdout: false, bytes })).collect();
+                    let carried = pictures_named(&stdout).into_iter().filter_map(|path| picture(&path).map(|bytes| Carried { path, to: look_to.clone(), stdout: false, bytes })).collect();
                     BridgeResponse {
                         ok: o.status.success(),
                         stdout: Some(stdout),
@@ -470,6 +476,35 @@ pub async fn handle_bridge_request(
             BridgeResponse { ok: true, stdout: None, stderr: None, data: None, carried: Vec::new() }
         }
         other => BridgeResponse::err(format!("unknown Olo Bridge command '{other}'")),
+    }
+}
+
+/// An `olo-screen look NAME [PATH]` from a host: its arguments without
+/// PATH, and PATH, the host's, where the host's `olo` is to save the
+/// picture. Any other command, as given. (`look`'s options that take a
+/// value: `--window` and `--crop`.)
+pub fn screen_look_to(args: &[String]) -> (Vec<String>, Option<String>) {
+    let Some(at) = args.iter().position(|a| !a.starts_with('-')) else { return (args.to_vec(), None) };
+    if args[at] != "look" {
+        return (args.to_vec(), None);
+    }
+    let mut positionals = Vec::new();
+    let mut i = at + 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--window" | "--crop" => i += 1,
+            a if a.starts_with('-') => {}
+            _ => positionals.push(i),
+        }
+        i += 1;
+    }
+    match positionals.get(1) {
+        Some(&out) => {
+            let mut kept = args.to_vec();
+            let to = kept.remove(out);
+            (kept, Some(to))
+        }
+        None => (args.to_vec(), None),
     }
 }
 
@@ -692,6 +727,21 @@ mod tests {
         assert!(!screen_opens_addresses(&args(&["set", "qa", "--name", "URL", "http://localhost:5176/"])));
         assert!(!screen_opens_addresses(&args(&["wait", "qa", "--text", "http://localhost:5176"])));
         assert!(!screen_opens_addresses(&args(&[])));
+    }
+
+    /// A host's `look NAME PATH`: PATH taken out of what the desktop runs,
+    /// and kept for the host's `olo` to save the picture at; any other
+    /// command as given.
+    #[test]
+    fn a_hosts_look_keeps_its_own_path() {
+        let args = |a: &[&str]| a.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(screen_look_to(&args(&["look", "qa", "/var/tmp/qa/01.png"])), (args(&["look", "qa"]), Some("/var/tmp/qa/01.png".to_owned())));
+        assert_eq!(
+            screen_look_to(&args(&["look", "qa", "--crop", "1,2,3,4", "shots/02.png", "--no-pointer"])),
+            (args(&["look", "qa", "--crop", "1,2,3,4", "--no-pointer"]), Some("shots/02.png".to_owned()))
+        );
+        assert_eq!(screen_look_to(&args(&["look", "qa", "--window", "3"])), (args(&["look", "qa", "--window", "3"]), None));
+        assert_eq!(screen_look_to(&args(&["tree", "qa", "x.png"])), (args(&["tree", "qa", "x.png"]), None));
     }
 
     #[tokio::test]

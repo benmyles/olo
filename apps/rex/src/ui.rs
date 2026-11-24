@@ -1737,7 +1737,20 @@ impl RexWindow {
             // Hosts, at that host; as its window's Permissions… does.)
             "host.permissions" => olo_kit::app_menu::open_settings(&format!("rex/host:{}", self.active_host)),
             // (A host named by its key: for agents, and the window's pictures.)
-            c if c.starts_with("host.manage:") => open_host(&hub, c.trim_start_matches("host.manage:")),
+            // (`host.manage:KEY`, or `host.manage:KEY:TAB` on a tab of it by
+            // name, `rex`, `olo` or `files`: agents reach each tab as the
+            // person does, its page being hidden to them until chosen.)
+            c if c.starts_with("host.manage:") => {
+                let rest = c.trim_start_matches("host.manage:");
+                let (key, tab) = match rest.rsplit_once(':').and_then(|(k, t)| crate::host::tab_named(t).map(|i| (k, i))) {
+                    Some((key, tab)) => (key, Some(tab)),
+                    None => (rest, None),
+                };
+                open_host(&hub, key);
+                if let Some(tab) = tab {
+                    crate::host::show_tab(tab);
+                }
+            }
             // (A host's account made ready: its window; and, for
             // agents, one of its items done there by its name, or all
             // that is left: `host.ready:KEY:path|claude|codex|agy|git|

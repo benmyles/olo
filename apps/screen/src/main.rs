@@ -800,7 +800,14 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     crop_picture(&s, &out, window, pointer, (x, y, w, h))?;
                 }
             }
-            println!("{}", out.display());
+            // (The path alone, or with --json as JSON, `{"path": …}`, as
+            // the commands that answer JSON have it: an agent took one for
+            // the other, 2026-11-24.)
+            if has(rest, "--json") {
+                println!("{}", json!({ "path": out.display().to_string() }));
+            } else {
+                println!("{}", out.display());
+            }
             Ok(())
         }),
         "windows" => screen().and_then(|s| {

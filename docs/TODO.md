@@ -3039,9 +3039,13 @@ something nobody here has is in "Blocked", with what it waits for.
     bridge writes the fetched picture there, as it writes its own
     folder), or say plainly in the error, in `look --help` and in the
     skill that the path is the desktop's and how to bring it to the host.
+    **Done** 2026-11-24: PATH is the host's, saved there
+    (`bridge::screen_look_to`); tried on the rig.
   - *One shape for `olo-screen`'s answers*: `look` prints a bare path
     where the rest print JSON; JSON with a `path` field, or the skill
     says which prints what.
+    **Done** 2026-11-24: `look --json` answers `{"path": …}`; the
+    skill already says which prints what.
   - *Chrome's tabs on a screen*: the tree shows its tabs only as windows,
     and switching needs a shortcut (⌘1 worked, Ctrl+1 not): its tabs in
     the tree, or a `tab` command.

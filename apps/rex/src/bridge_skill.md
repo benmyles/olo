@@ -73,8 +73,10 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   - `olo screen click NAME --role Button --name OK`, `type`, `key`,
     `wait`. Each answers with the screen as it is after it, in brief
     (text cut short): `tree` has the whole.
-  - `olo screen look NAME`: a picture, saved on this host; the answer
-    names the file here (under `/var/tmp/olo-rex-bridge`).
+  - `olo screen look NAME [PATH]`: a picture, saved on this host, at
+    PATH where you give one (beside your report), else under
+    `/var/tmp/olo-rex-bridge`; the answer names the file here (`--json`:
+    `{"path": …}`).
   - `olo screen stop NAME` when done; `olo screen --help` for the rest.
   In `olo screen run` (and `start`), a `http://localhost:PORT` of this
   host among the program's arguments (a browser's address) is reached

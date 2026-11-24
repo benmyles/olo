@@ -27844,7 +27844,10 @@ remote Rex workspaces (Rex API rev 19), alongside Terminal.
   of the addresses it opens (`run`'s and `start`'s programs' arguments,
   `bridge::screen_opens_addresses`: never what is typed or set into a
   page, which once turned an agent's page address in a field into the
-  forward's, 2026-11-24);
+  forward's, 2026-11-24), and `look NAME PATH`'s PATH the host's: left
+  out of what the desktop runs and given back with the picture, which
+  the host's `olo` saves there (`bridge::screen_look_to`; given to the
+  desktop it failed for want of the host's folder);
   what a host may use is Preferences ▸ Rex), Tracker `"Open in Rex"`,
   global Command Palette session search, and in-place upgrade state
   restoration.
@@ -28070,7 +28073,9 @@ scripts and the question in a scratch home).
 where we can manage all the services and things installed on a host in
 one place instead of only through random menus and stuff"). Opened by
 Hosts and Ports ▸ Manage Host…, Hosts ▸ Manage Host…, a click on a mark
-in the status bar, and for agents `host.manage:KEY` (`WinRole::Host`,
+in the status bar, and for agents `host.manage:KEY`, or
+`host.manage:KEY:TAB` on a tab by its name (`rex`, `olo`, `files`:
+`host::tab_named`; a page not chosen is hidden to agents) (`WinRole::Host`,
 "Host “NAME”"; one host at a time; `host` is its state, `host_panel`
 its drawing, `HubState::host_stands` what it shows).
 - *What it shows.* At its head the host: its icon, its name, how its

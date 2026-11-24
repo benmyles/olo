@@ -377,7 +377,8 @@ exit 0
         def check(what, passed, shown):
             global ok
             ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:230], flush=True)
-        r.invoke("host.manage")
+        # (The bridge is on the Host window's Olo Integration tab, hidden to agents until chosen.)
+        r.invoke("host.manage:far:olo")
         line = r.wait(lambda: bridge(), 20)
         check("the Host window, nothing granted", line and line.startswith("Off") and "nothing granted" in line, line)
         for c in clients:
@@ -419,6 +420,12 @@ exit 0
         except ValueError: here = ""
         saved = open(here, "rb").read() if here.startswith(f"{D}/tmp/olo-rex-bridge/") and os.path.exists(here) else b""
         check("the skill's command: a picture saved on the host in one step", saved == picture, {"said": looked[:120], "bytes": len(saved)})
+        # (A path of the host's given: the picture saved there, the answer naming it; the desktop never sees it.)
+        lookpath = f"{D}/far-look.png"
+        if os.path.exists(lookpath): os.remove(lookpath)
+        said = ran(f"{olo} screen look agent {lookpath}")
+        saved = open(lookpath, "rb").read() if os.path.exists(lookpath) else b""
+        check("the skill's command: a picture saved at the host's own path", saved == picture and lookpath in said, {"said": said[:160], "bytes": len(saved)})
         t0 = time.monotonic(); slow = ran(f"{olo} screen slow")
         check("the skill's command: a command of 12 s waited for", slow == "slow done", {"said": slow[:80], "took": round(time.monotonic() - t0, 1)})
         # `op` through the bridge (the stand-in above, saying what it was given): nothing of this computer's
@@ -622,7 +629,8 @@ elif what == "poolrex":
                 try:
                     if urllib.request.urlopen("http://127.0.0.1:27991/pool/hosts", timeout=1).status == 200: break
                 except OSError: time.sleep(0.3)
-            r.invoke("host.manage")
+            # (The Token Pool is on the Host window's Olo Integration tab.)
+            r.invoke("host.manage:far:olo")
             first = r.wait(lambda: (lambda l: l if l and "Not installed" in l else None)(line()), 25)
             check("the Host window, no pool there", first, first or line())
             # From the Token Pool itself, as its own Hosts window does it: Rex's window, open and asked nothing,

@@ -121,6 +121,9 @@ local printed = {}
 -- (`op`'s: whether it may replace a file with something in it, and the
 -- mode it gives one, as `op` itself would here.)
 local force, mode = false, "600"
+-- (A screen's picture given a path here, `olo screen look NAME PATH`:
+-- saved there, over one there before, readable as a picture.)
+if cmd == "screen" then force, mode = true, "644" end
 if cmd == "op" then
   for i, x in ipairs(args) do
     if x == "--" then break end
@@ -165,9 +168,12 @@ for _, f in ipairs(r.files or {}) do
     os.remove(part)
     if ok and f.to then
       rex.exec({ "chmod", mode, here })
-    elseif ok and f.stdout then
+    end
+    if ok and f.stdout then
       printed[#printed + 1] = here
     elseif ok then
+      -- (Where it is here, in what the command said in place of the
+      -- desktop's.)
       local at, to = out:find(f.path, 1, true)
       while at do
         out = out:sub(1, at - 1) .. here .. out:sub(to + 1)

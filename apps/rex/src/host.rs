@@ -125,6 +125,17 @@ pub fn check(hub: &Arc<RexHub>) {
 
 /// Remove All… was pressed (`true`), or its question answered no.
 /// The window's tab `tab` shown.
+/// The Host window's tab called `name` (`rex`, `olo`, `files`, or its
+/// words, any case): `host.manage:KEY:TAB`.
+pub fn tab_named(name: &str) -> Option<usize> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "rex" => Some(0),
+        "olo" | "olo integration" | "integration" => Some(1),
+        "files" => Some(2),
+        _ => None,
+    }
+}
+
 pub fn show_tab(tab: usize) {
     if let Some(shown) = live().as_mut() {
         shown.tab = tab;
@@ -153,6 +164,13 @@ pub fn remove_all(hub: &Arc<RexHub>, things: &[HostThing]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tab by its name, as `host.manage:KEY:TAB` gives it.
+    #[test]
+    fn a_tab_by_its_name() {
+        assert_eq!((tab_named("rex"), tab_named("Olo"), tab_named("Olo Integration"), tab_named("FILES")), (Some(0), Some(1), Some(1), Some(2)));
+        assert_eq!(tab_named("ports"), None);
+    }
 
     /// The window is of one host at a time: opened on another, what
     /// was shown of the first (a thing that failed there) is gone;

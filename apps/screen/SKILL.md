@@ -237,7 +237,7 @@ same roles and names (a GTK button is a `Button`), so `click --name`,
 (its open menus are still in `windows` as `popups`).
 
 ```sh
-olo-screen look agent                             # the whole screen; prints the file's path
+olo-screen look agent                             # the whole screen; prints the file's path (--json: {"path": …})
 olo-screen look agent /tmp/win.png --window 3     # one window
 olo-screen look agent --crop 100,80,400,300 --no-pointer
 ```
