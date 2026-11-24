@@ -28366,6 +28366,17 @@ forwarded to it, natively, over the SSH connection Rex keeps:
 - *Given at each connection and when the permission changes*
   (`follow_shared`): taken back, the relay goes, the kept channel
   with it, and nothing answers on the host.
+- *What the host is offered is said.* What Passwords answers when the
+  host asks for the keys is kept on the host for that connection
+  (`HostRuntime::agent_keys`, `keys_offered`: how many, or why none)
+  and logged when it changes; the Host window's Bridge line counts
+  them ("links, Passwords, 2 SSH keys, Agent Screens"), and where none
+  reach the host says "no SSH keys", its light amber, with the reason
+  under it in the window's face ("Passwords has no SSH keys to
+  offer.", "Passwords isn’t running.", "Passwords is locked."). Unsaid,
+  a host was offered none and the line still read "SSH keys": Rex
+  moved to an agent screen asks that screen's Passwords (2026-11-23).
+  `OLO_REX_DEMO_KEYS=2`, `0` or a reason, for its pictures.
 - *What finds it there*: `ssh` itself, in whatever shell. As the
   agent is forwarded, a file of Olo's own is put beside the account's
   SSH config on the host (`~/.ssh/olo-rex.conf`, read first by one

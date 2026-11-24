@@ -58,6 +58,35 @@ something nobody here has is in "Blocked", with what it waits for.
   barely stood off its empty track: now a lighter, raised block, 3:1 at
   least on the panel. **Left**: more apps in each theme, closer up.
 
+- **Agent Sessions in a host's Account window: the agents' sessions
+  copied there** (Ben, 2026-11-23: "in the host account setup under
+  agent settings let's add an Agent Sessions item that copies over the
+  transcripts/session logs for all the agents. also have a dropdown to
+  choose the time window and by default have it be last 7 days so that
+  it would just copy sessions that have been used/modified in the last
+  7 days (not only created but also any used)"). What there is, read
+  on this computer (names and sizes only): Claude Code's
+  `~/.claude/projects/PROJECT/UUID.jsonl` with `UUID/` beside it
+  (`subagents/`, `tool-results/`), PROJECT being the project's path
+  with `/` as `-` (414 sessions used in the last 7 days, 10 GB);
+  Codex's `~/.codex/sessions/YYYY/MM/DD/rollout-….jsonl` (557, 2.3 GB)
+  with `session_index.jsonl` (id, name, last update) and its SQLite
+  state beside; Antigravity's `~/.gemini/antigravity-cli/conversations/
+  ID.db` (152, 1.1 GB) with `conversation_summaries.db`. Plan: a row
+  after Agent settings, "Agent sessions", with a pop-up for the time
+  window (the last day, 7 days by default, 30 days, all), by when
+  each was last written to (used, not created); it says how many and
+  how large ("38 sessions · 1.2 GB to copy", "As on this computer");
+  Copy sends what is missing or changed there (by size and time:
+  hashing gigabytes on each look would cost too much), compressed and
+  streamed, with how far it is and Cancel; each path and what the
+  files say of this computer's home said as the host's (so a session
+  is resumed there in the same project: Claude Code finds a project's
+  by its folder's name); what each agent needs besides its files for
+  `resume` to list them (Codex's index and state, Antigravity's
+  summaries) found with the real programs first, in a scratch home.
+  Never a sign-in, and nothing of another kind (history, caches).
+
 ## Not started (highest priority first)
 
 - **Nothing may hold the desktop up, whatever the load: the GPU's
@@ -1692,6 +1721,14 @@ something nobody here has is in "Blocked", with what it waits for.
   the Host window's SSH keys line how many keys the host is offered
   and why none ("Passwords on this screen has no SSH keys shared with
   it", "Passwords isn't running", "locked"), and log it.
+
+- **Rex's Host window, from Opus's look at its Bridge row**
+  (2026-11-23), there before: "Typing helper's bare, destructive
+  'Remove' sits in the same column as the buttons that open windows
+  (Manage…, Account…, Permissions…, Token Pool…), and it looks exactly
+  like them"; and the heading of a host with a name half as long again
+  as "build-farm-eu-west-production-01" would run into Check Again
+  (it should end in "…" a column's gap before it): to picture.
 
 - **Desktop commands on a host, as on this desktop: shims Rex puts
   there** (Ben, 2026-11-23: "have the rex client support installing

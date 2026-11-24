@@ -470,6 +470,7 @@ mod tests {
             helper_setting: true,
             bridge: None,
             granted: Vec::new(),
+            agent_keys: None,
             skill,
             pool: None,
             version: None,

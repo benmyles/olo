@@ -19,6 +19,7 @@
 1 Hour
 1 Hour Before
 1 Minute
+1 SSH key
 1 Second
 1 account
 1 couldn’t be cloned
@@ -2780,6 +2781,7 @@ Password lock
 Password:
 Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
+Passwords answered something else
 Passwords answered something else.
 Passwords answered {}
 Passwords can’t be reached ({}).
@@ -2788,10 +2790,13 @@ Passwords couldn’t give its logins: {}
 Passwords didn’t keep it.
 Passwords didn’t keep the key.
 Passwords for Every Screen…
+Passwords has no SSH keys to offer.
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords has no “{}” item: give the key again in File ▸ Data Provider…
+Passwords is locked
 Passwords is locked.
 Passwords isn’t running.
+Passwords isn’t set up
 Passwords isn’t set up yet.
 Passwords isn’t set up yet: open it to set it up, then try again.
 Passwords keeps no password for it (an item “{}”).
@@ -4632,6 +4637,7 @@ minimum and maximum both {}%
 misses, the last 24 hours
 ms
 no
+no SSH keys
 no display ports
 no limit
 no limit to its space
@@ -4788,6 +4794,7 @@ your own picture
 {n} Background Processes Lowered
 {n} Events Found
 {n} More in Calendar…
+{n} SSH keys
 {n} agent screens are running. Click to watch them.
 {n} archived items aren’t
 {n} backups

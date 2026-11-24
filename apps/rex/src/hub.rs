@@ -1096,6 +1096,9 @@ pub struct HostStands {
     /// What of the bridge's is granted to the host here (Preferences ▸
     /// Rex), each in a word or two; none: nothing.
     pub granted: Vec<&'static str>,
+    /// Where the SSH keys are granted: what the host was last offered
+    /// of them ([`HostRuntime::agent_keys`]).
+    pub agent_keys: Option<Result<usize, String>>,
     pub skill: Option<bool>,
     /// How its Token Pool stands, as this computer's Token Pool says;
     /// none: that isn't running here (or wasn't asked yet).
@@ -1155,6 +1158,12 @@ pub struct HostRuntime {
     /// has been asked, and for a host that can't be (not over SSH).
     pub bridge_there: Option<bool>,
     pub skill_there: Option<bool>,
+    /// What Passwords last answered when the host's programs asked the
+    /// forwarded agent for the SSH keys: how many, or why none could be
+    /// had; none: not asked on this connection. (Unsaid, a host was
+    /// offered none and nothing showed it: Rex moved to an agent screen
+    /// asked that screen's Passwords, 2026-11-23.)
+    pub agent_keys: Option<Result<usize, String>>,
     /// How the account there stands (its agents, its path, git's
     /// identity: `olo_rex_client::ready`), as last asked; none until
     /// it has been (the Account window asks).
@@ -1313,7 +1322,14 @@ impl HubState {
                 helper_kept_off: false,
                 helper_setting: true,
                 bridge: there.then_some(true),
-                granted: if there { vec!["links", "Agent Screens", "Passwords"] } else { Vec::new() },
+                // (`OLO_REX_DEMO_KEYS=2`, `0`, or a reason: the SSH keys
+                // granted too, and what the host was offered of them.)
+                granted: match (there, std::env::var("OLO_REX_DEMO_KEYS").is_ok()) {
+                    (false, _) => Vec::new(),
+                    (true, false) => vec!["links", "Passwords", "Agent Screens"],
+                    (true, true) => vec!["links", "Passwords", "SSH keys", "Agent Screens"],
+                },
+                agent_keys: std::env::var("OLO_REX_DEMO_KEYS").ok().filter(|_| there).map(|keys| keys.parse::<usize>().map_err(|_| keys)),
                 // (`OLO_REX_DEMO_ACCOUNT=ready`: the skill there too;
                 // `asking`: not answered.)
                 skill: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
@@ -1343,6 +1359,7 @@ impl HubState {
             helper_setting: self.settings.host_helper,
             bridge: host.bridge_there,
             granted: self.settings.policy_for_host(host_key, false).granted(),
+            agent_keys: host.agent_keys.clone().filter(|_| self.settings.policy_for_host(host_key, false).allow_ssh_agent),
             skill: host.skill_there,
             pool: self.pools.as_ref().map(|pools| pools.get(host_key).cloned().unwrap_or_default()),
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
@@ -1542,6 +1559,7 @@ impl RexHub {
                 helper: HostHelper::None,
                 bridge_there: None,
                 skill_there: None,
+                agent_keys: None,
                 account: None,
                 carried: None,
                 repos_there: None,
@@ -1580,6 +1598,7 @@ impl RexHub {
                         helper: HostHelper::None,
                         bridge_there: None,
                         skill_there: None,
+                        agent_keys: None,
                         account: None,
                         carried: None,
                         repos_there: None,
@@ -1879,6 +1898,7 @@ impl RexHub {
             helper: HostHelper::None,
             bridge_there: None,
             skill_there: None,
+            agent_keys: None,
             account: None,
             carried: None,
             repos_there: None,
@@ -2052,6 +2072,7 @@ impl RexHub {
                     helper: HostHelper::None,
                     bridge_there: None,
                     skill_there: None,
+                    agent_keys: None,
                     account: None,
                     carried: None,
                     repos_there: None,
@@ -3501,6 +3522,10 @@ impl RexHubInner {
             let is_local = st.hosts.get(host_key).is_some_and(|h| h.is_local);
             (st.settings.policy_for_host(host_key, is_local).allow_ssh_agent, st.hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default())
         };
+        // (What it is offered is said anew for each connection.)
+        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
+            host.agent_keys = None;
+        }
         if !allowed {
             pool.set_agent(target, None);
             if self.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).remove(host_key).is_some() {
@@ -3517,7 +3542,39 @@ impl RexHubInner {
             target.port.filter(|port| *port != 22).map(|port| format!(":{port}")).unwrap_or_default()
         );
         let origin = olo_keychain::SshOrigin { host: label, address };
-        pool.set_agent(target, Some(Arc::new(move |message: &[u8]| olo_keychain::agent::answer(message, Some(&origin), &|request| olo_keychain::call(&request).ok()))));
+        // (What Passwords answers the host's asking for the keys is kept
+        // on the host and said: how many it was offered, or why none.)
+        let (state, notify, key) = (Arc::downgrade(&self.state), self.notify.clone(), host_key.to_owned());
+        let offered = move |answer: Result<usize, String>| {
+            let Some(state) = state.upgrade() else { return };
+            let changed = {
+                let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(host) = st.hosts.get_mut(&key) else { return };
+                let changed = host.agent_keys.as_ref() != Some(&answer);
+                host.agent_keys = Some(answer.clone());
+                changed
+            };
+            if changed {
+                match &answer {
+                    Ok(n) => tracing::info!("Rex: {key} was offered {n} SSH keys"),
+                    Err(why) => tracing::warn!("Rex: {key} was offered no SSH keys: {why}"),
+                }
+                notify(HubNotice::StateChanged);
+            }
+        };
+        pool.set_agent(
+            target,
+            Some(Arc::new(move |message: &[u8]| {
+                olo_keychain::agent::answer(message, Some(&origin), &|request| {
+                    let listing = matches!(request, olo_keychain::Request::SshKeysFor { .. });
+                    let answer = olo_keychain::call(&request);
+                    if listing {
+                        offered(keys_offered(&answer));
+                    }
+                    answer.ok()
+                })
+            })),
+        );
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
         tokio::spawn(async move {
@@ -5160,6 +5217,19 @@ pub fn shell_quote(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// What Passwords answers a host's asking for the keys is said as
+    /// how many, or why none.
+    #[test]
+    fn what_a_host_is_offered_of_the_keys_is_said() {
+        use olo_keychain::{CallError, Response, SshKey};
+        let key = SshKey { key: "AAAA".into(), comment: "work".into() };
+        assert_eq!(super::keys_offered(&Ok(Response::SshKeys { keys: vec![key.clone(), key] })), Ok(2));
+        assert_eq!(super::keys_offered(&Ok(Response::SshKeys { keys: Vec::new() })), Ok(0));
+        assert_eq!(super::keys_offered(&Ok(Response::Locked)), Err("Passwords is locked".into()));
+        assert_eq!(super::keys_offered(&Err(CallError::NotRunning)), Err("Passwords isn’t running".into()));
+        assert_eq!(super::keys_offered(&Ok(Response::Error { message: "only Rex asks for a host".into() })), Err("only Rex asks for a host".into()));
+    }
+
     use super::*;
     use olo_rex_vt::try_decode_snapshot_prefix;
 
@@ -5591,3 +5661,17 @@ mod tests {
 
 #[cfg(test)]
 mod reconnect_tests;
+
+/// What Passwords' answer to a host's asking for the SSH keys offered
+/// it: how many, or why none could be had, as a person reads it.
+fn keys_offered(answer: &Result<olo_keychain::Response, olo_keychain::CallError>) -> Result<usize, String> {
+    use olo_keychain::Response;
+    match answer {
+        Ok(Response::SshKeys { keys }) => Ok(keys.len()),
+        Ok(Response::Locked) => Err(olo_kit::words::tr("Passwords is locked").into()),
+        Ok(Response::NotSetUp) => Err(olo_kit::words::tr("Passwords isn’t set up").into()),
+        Ok(Response::Error { message }) => Err(message.clone()),
+        Ok(_) => Err(olo_kit::words::tr("Passwords answered something else").into()),
+        Err(e) => Err(e.to_string()),
+    }
+}
