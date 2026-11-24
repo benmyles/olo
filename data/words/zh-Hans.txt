@@ -5479,14 +5479,14 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 无法读取：{}
 
-It didn’t work.
-未成功。
-
 It didn’t open: {}.
 未能打开：{}。
 
 It didn’t say why.
 未说明原因。
+
+It didn’t work.
+未成功。
 
 It downloads {}
 需下载 {}
@@ -6136,11 +6136,11 @@ Link’s rate
 Link…
 链接…
 
-Linux’s own
-Linux 默认
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 自带的调度器（EEVDF）公平对待各类程序。无论选择哪种调度器，其他任务正在等待的 Olo 线程都以实时优先级运行，高于普通程序。构建等重负载下，使用此调度器时桌面响应最快。
+
+Linux’s own
+Linux 默认
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux 的常规方式（cubic）会一直发送直到沿途队列填满，从而增加延迟；此方式会测量路径并保持在其承载能力以下（Olo 的模块 tcp_bbr3）。
@@ -7963,9 +7963,6 @@ Olo 启动画面
 Olo's login screen
 Olo 登录界面
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Olo 的模块在载入时会检查内核，这次它没有进入此内核。Olo Doctor 会说明原因。
-
 Olo's own
 Olo 自带
 
@@ -7992,6 +7989,9 @@ Olo 密钥环未在此处运行，它会随您的会话启动。
 
 Olo’s language:
 Olo 语言：
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo 的模块在载入时会检查内核，这次它没有进入此内核。Olo Doctor 会说明原因。
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 之后 Olo 自带应用即可用这些密钥登录，直到 Passwords 锁定或最后一次使用后 10 分钟。密钥本身仍留在本机。
@@ -12160,14 +12160,14 @@ This computer is “{}”.
 This computer runs Fedora {}.
 这台电脑运行 Fedora {}。
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-此内核不能加载其他调度器，因此使用内核自带的调度器。Linux 6.12 及以上版本支持 sched_ext。
-
 This computer's sensor sees when someone is in front of it.
 本机的传感器可以检测电脑前是否有人。
 
 This computer’s git doesn’t say who you are.
 本机的 git 未配置用户信息。
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+此内核不能加载其他调度器，因此使用内核自带的调度器。Linux 6.12 及以上版本支持 sched_ext。
 
 This display reports no modes.
 此显示器未报告任何显示模式。
@@ -13798,11 +13798,11 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 备份离开本机前会先加密。密钥保存在 Passwords 的“DiskBackup Key”项中，可用它在任意电脑上恢复备份。
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-未能看清您的脸。请坐在离摄像头约一臂远的地方，面向镜头重试。
-
 Your face wasn’t recognised. Type your password.
 未能识别您的脸，请输入密码。
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+未能看清您的脸。请坐在离摄像头约一臂远的地方，面向镜头重试。
 
 Your home folder
 您的主文件夹
@@ -14070,6 +14070,12 @@ busy
 
 can’t be offered to SSH: {}
 无法提供给 SSH：{}
+
+can’t be read
+无法读取
+
+can’t be read: {}
+无法读取：{}
 
 ceiling {}%
 上限 {}%

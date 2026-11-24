@@ -1162,6 +1162,15 @@ mod tests {
             let locked = "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00000000000000000000000000000000\n\nAAAA\n-----END RSA PRIVATE KEY-----\n";
             p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, locked)];
             v.create(&p).unwrap();
+            // (And one under a passphrase in OpenSSH's format, whose
+            // public key, fingerprint and type show all the same.)
+            let mut p = ItemCreateParams::new(ItemCategory::SshKey, v.data.vaults[0].id.clone(), "Locked key");
+            p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, crate::agent::LOCKED_KEY)];
+            v.create(&p).unwrap();
+            // (And an RSA key, whose public key is longer than two lines.)
+            let mut p = ItemCreateParams::new(ItemCategory::SshKey, v.data.vaults[0].id.clone(), "Server key");
+            p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, crate::agent::RSA_KEY)];
+            v.create(&p).unwrap();
         }
     }
 

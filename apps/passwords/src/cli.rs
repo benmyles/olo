@@ -302,6 +302,12 @@ pub fn main_field(i: &Item) -> Option<&ItemField> {
         .or_else(|| i.fields.iter().find(|f| !f.value.is_empty()))
 }
 
+/// SSH key `value` as OpenSSH's own text.
+fn openssh(value: &str) -> Result<String, String> {
+    let key = crate::agent::private_key(value)?;
+    key.to_openssh(ssh_key::LineEnding::LF).map(|t| t.to_string()).map_err(|e| e.to_string())
+}
+
 /// An item as `op item get --format json` prints it, values included.
 pub fn full(data: &Data, e: &Entry) -> Value {
     let i = &e.item;
@@ -309,7 +315,18 @@ pub fn full(data: &Data, e: &Entry) -> Value {
     let vault_title = vault_name(data, &i.vault_id);
     let sections: Vec<Value> = i.sections.iter().map(|s| json!({ "id": s.id, "label": s.title })).collect();
     let mut fields: Vec<Value> = Vec::new();
-    for f in &i.fields {
+    // (An SSH key's public key and fingerprint before it and its type
+    // after it, worked out from it, as 1Password lists them.)
+    let shown: Vec<ItemField> = i
+        .fields
+        .iter()
+        .flat_map(|f| {
+            let derived = (f.field_type == ItemFieldType::SshKey).then(|| crate::agent::derived(&f.value)).flatten().map(|d| crate::agent::derived_fields(i, f, &d)).unwrap_or_default();
+            let (over, under): (Vec<ItemField>, Vec<ItemField>) = derived.into_iter().partition(|x| x.id != crate::agent::KEY_TYPE);
+            over.into_iter().chain([f.clone()]).chain(under)
+        })
+        .collect();
+    for f in &shown {
         let section = f.section_id.as_ref().and_then(|s| i.sections.iter().find(|x| &x.id == s));
         let label = if f.title.is_empty() { f.id.clone() } else { f.title.clone() };
         let path = reference(&vault_title, i, f);
@@ -328,6 +345,11 @@ pub fn full(data: &Data, e: &Entry) -> Value {
             && let Ok(t) = Totp::parse(&f.value)
         {
             x["totp"] = json!(t.now().0);
+        }
+        if f.field_type == ItemFieldType::SshKey
+            && let Ok(text) = openssh(&f.value)
+        {
+            x["ssh_formats"] = json!({ "openssh": { "reference": format!("{path}?ssh-format=openssh"), "value": text } });
         }
         fields.push(x);
     }
@@ -366,7 +388,24 @@ pub fn resolve(data: &Data, text: &str) -> Result<String, String> {
         None => None,
     };
     let candidates = || i.fields.iter().filter(|f| sections.as_ref().is_none_or(|ids| f.section_id.as_deref().is_some_and(|id| ids.contains(&id))));
-    let field = candidates().find(|f| f.id == r.field).or_else(|| candidates().find(|f| f.title.eq_ignore_ascii_case(&r.field))).ok_or_else(not_found)?;
+    // (Else one 1Password works out from an SSH key: `public key`,
+    // `fingerprint`, `key type`.)
+    let derived;
+    let field = match candidates().find(|f| f.id == r.field).or_else(|| candidates().find(|f| f.title.eq_ignore_ascii_case(&r.field))) {
+        Some(f) => f,
+        None => {
+            derived = crate::agent::derived_field(i, &r.field).filter(|f| sections.as_ref().is_none_or(|ids| f.section_id.as_deref().is_some_and(|id| ids.contains(&id)))).ok_or_else(not_found)?;
+            &derived
+        }
+    };
+    // An SSH key in OpenSSH's own format, as `ssh` and `ssh-add` read it
+    // (1Password keeps keys as PKCS#8, which OpenSSH reads for RSA alone).
+    if r.openssh {
+        if field.field_type != ItemFieldType::SshKey {
+            return Err(format!("{text}: ssh-format is only for an SSH key's private key"));
+        }
+        return openssh(&field.value).map_err(|e| format!("{text}: {e}"));
+    }
     Ok(match r.attribute {
         Some(reference::Attribute::Otp) => Totp::parse(&field.value).map_err(|e| format!("{text}: {e}"))?.now().0,
         Some(reference::Attribute::Type) => field_type(field.field_type).to_string(),
@@ -449,6 +488,47 @@ mod tests {
         data.vaults.push(vault);
         data.entries.push(Entry { item, state: ItemState::Active, remote: None, dirty: false, rev: 1 });
         data
+    }
+
+    /// An SSH key as 1Password's `op` gives it: its public key, fingerprint
+    /// and type read by their labels and listed around it, and its
+    /// private key in OpenSSH's format when asked (1Password keeps PKCS#8).
+    #[test]
+    fn an_ssh_keys_fields_as_op_gives_them() {
+        use ssh_key::private::{Ed25519Keypair, KeypairData};
+        let mut d = data();
+        let key = ssh_key::PrivateKey::new(KeypairData::Ed25519(Ed25519Keypair::from_seed(&[7u8; 32])), "").unwrap();
+        // (As 1Password keeps it: PKCS#8, the seed after a fixed head.)
+        let pkcs8 = {
+            use base64::Engine as _;
+            let mut der = vec![0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20];
+            der.extend_from_slice(&[7u8; 32]);
+            format!("-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n", base64::engine::general_purpose::STANDARD.encode(&der))
+        };
+        let mut item = d.entries[0].item.clone();
+        item.id = "i2".into();
+        item.title = "Deploy".into();
+        item.category = ItemCategory::SshKey;
+        item.sections = vec![];
+        item.notes = String::new();
+        item.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, pkcs8.as_str())];
+        d.entries.push(Entry { item, state: ItemState::Active, remote: None, dirty: false, rev: 1 });
+        let public = key.public_key().to_openssh().unwrap();
+        let public = public.trim_end();
+        assert_eq!(resolve(&d, "op://Developers/Deploy/public key").unwrap(), public);
+        assert_eq!(resolve(&d, "op://Developers/Deploy/fingerprint").unwrap(), key.public_key().fingerprint(ssh_key::HashAlg::Sha256).to_string());
+        assert_eq!(resolve(&d, "op://Developers/Deploy/key type").unwrap(), "Ed25519");
+        assert_eq!(resolve(&d, "op://Developers/Deploy/private key").unwrap(), pkcs8);
+        let openssh = resolve(&d, "op://Developers/Deploy/private key?ssh-format=openssh").unwrap();
+        assert!(openssh.starts_with("-----BEGIN OPENSSH PRIVATE KEY-----"), "{openssh}");
+        assert_eq!(ssh_key::PrivateKey::from_openssh(&openssh).unwrap().public_key().key_data(), key.public_key().key_data());
+        assert!(resolve(&d, "op://Developers/Deploy/fingerprint?ssh-format=openssh").is_err());
+        let json = full(&d, &d.entries[1]);
+        let labels: Vec<&str> = json["fields"].as_array().unwrap().iter().map(|f| f["label"].as_str().unwrap()).collect();
+        assert_eq!(labels, ["public key", "fingerprint", "private key", "key type"]);
+        assert_eq!(json["fields"][0]["reference"], "op://Developers/Deploy/public key");
+        assert_eq!(json["fields"][2]["ssh_formats"]["openssh"]["reference"], "op://Developers/Deploy/private key?ssh-format=openssh");
+        assert_eq!(json["fields"][2]["ssh_formats"]["openssh"]["value"], openssh);
     }
 
     #[test]

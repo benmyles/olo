@@ -5479,14 +5479,14 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 읽을 수 없습니다: {}
 
-It didn’t work.
-작동하지 않았습니다.
-
 It didn’t open: {}.
 열리지 않았습니다: {}.
 
 It didn’t say why.
 원인이 보고되지 않았습니다.
+
+It didn’t work.
+작동하지 않았습니다.
 
 It downloads {}
 {} 다운로드
@@ -6136,11 +6136,11 @@ Link’s rate
 Link…
 링크…
 
-Linux’s own
-Linux 기본값
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 기본 스케줄러(EEVDF)는 작업 종류와 관계없이 모든 프로그램에 공평하게 시간을 배분합니다. 어느 스케줄러를 쓰든 다른 작업이 기다리는 Olo 스레드는 실시간 우선순위로 실행됩니다. 빌드 등 부하가 클 때는 이 설정에서 데스크톱이 가장 빠르게 반응합니다.
+
+Linux’s own
+Linux 기본값
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux의 일반 방식(cubic)은 경로상의 대기열이 찰 때까지 전송해 지연이 늘어납니다. 이 방식은 경로를 측정해 그 아래로 유지합니다(Olo 모듈, tcp_bbr3).
@@ -7963,9 +7963,6 @@ Olo 부팅 화면
 Olo's login screen
 Olo 로그인 화면
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Olo 모듈은 로드될 때 커널을 확인하며, 이 커널에는 들어가지 않았습니다. 이유는 Olo Doctor가 알려 줍니다.
-
 Olo's own
 Olo 기본값
 
@@ -7992,6 +7989,9 @@ Olo’s keyring isn’t running here; it starts with your session.
 
 Olo’s language:
 Olo 언어:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo 모듈은 로드될 때 커널을 확인하며, 이 커널에는 들어가지 않았습니다. 이유는 Olo Doctor가 알려 줍니다.
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 그러면 Passwords가 잠기거나 마지막 사용 후 10분이 지날 때까지 Olo 앱이 이 키로 로그인할 수 있습니다. 키 자체는 이 컴퓨터에 남습니다.
@@ -12160,14 +12160,14 @@ This computer is “{}”.
 This computer runs Fedora {}.
 이 컴퓨터는 Fedora {} 버전을 사용합니다.
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-이 커널은 다른 스케줄러를 불러올 수 없어 커널 기본 스케줄러를 사용합니다. sched_ext는 Linux 6.12 이상에서 지원합니다.
-
 This computer's sensor sees when someone is in front of it.
 이 컴퓨터의 센서는 앞에 사람이 있는지 감지합니다.
 
 This computer’s git doesn’t say who you are.
 이 컴퓨터의 git에 사용자 정보가 설정되어 있지 않습니다.
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+이 커널은 다른 스케줄러를 불러올 수 없어 커널 기본 스케줄러를 사용합니다. sched_ext는 Linux 6.12 이상에서 지원합니다.
 
 This display reports no modes.
 이 디스플레이는 지원 모드를 알려 주지 않습니다.
@@ -13798,11 +13798,11 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 백업은 전송 전에 이 컴퓨터에서 암호화합니다. 키는 Passwords의 ‘DiskBackup Key’에 보관하며, 이 키로 어느 컴퓨터에서나 복원할 수 있습니다.
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-얼굴이 잘 보이지 않았습니다. 카메라에서 팔 길이만큼 떨어져 정면을 보고 다시 시도하세요.
-
 Your face wasn’t recognised. Type your password.
 얼굴을 인식하지 못했습니다. 암호를 입력하세요.
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+얼굴이 잘 보이지 않았습니다. 카메라에서 팔 길이만큼 떨어져 정면을 보고 다시 시도하세요.
 
 Your home folder
 내 홈 폴더
@@ -14070,6 +14070,12 @@ busy
 
 can’t be offered to SSH: {}
 SSH에 제공할 수 없음: {}
+
+can’t be read
+읽을 수 없음
+
+can’t be read: {}
+읽을 수 없음: {}
 
 ceiling {}%
 상한 {}%

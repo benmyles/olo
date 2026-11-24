@@ -5503,14 +5503,14 @@ Es war nicht erreichbar: {}. Olo versucht es weiter.
 It couldn’t be read: {}
 Es konnte nicht gelesen werden: {}
 
-It didn’t work.
-Es hat nicht geklappt.
-
 It didn’t open: {}.
 Es hat sich nicht geöffnet: {}.
 
 It didn’t say why.
 Es hat keinen Grund genannt.
+
+It didn’t work.
+Es hat nicht geklappt.
 
 It downloads {}
 Es lädt {} herunter
@@ -6162,11 +6162,11 @@ Rate der Verbindung
 Link…
 Link…
 
-Linux’s own
-Linux’ eigene
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Der Scheduler von Linux, wie er kommt (EEVDF): fair zu jedem Programm, was immer es tut. Olos eigene Threads, auf die jemand wartet, laufen in Echtzeit, über jedem Programm unter beiden Schedulern, und bei Builds und anderer schwerer Arbeit bleibt der Desktop mit diesem am schnellsten.
+
+Linux’s own
+Linux’ eigene
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux’ übliche Art (cubic) sendet, bis die Warteschlangen unterwegs voll sind, was Verzögerung bringt; diese misst den Weg und bleibt darunter (Olos Modul, tcp_bbr3).
@@ -7989,9 +7989,6 @@ Olos Startbild
 Olo's login screen
 Olos Anmeldebildschirm
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Olos Modul prüft den Kernel beim Laden und ist aus diesem draußen geblieben. Olo Doctor sagt, warum.
-
 Olo's own
 Olos eigenes
 
@@ -8018,6 +8015,9 @@ Olos Schlüsselbund läuft hier nicht; er startet mit Ihrer Sitzung.
 
 Olo’s language:
 Sprache von Olo:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olos Modul prüft den Kernel beim Laden und ist aus diesem draußen geblieben. Olo Doctor sagt, warum.
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Olos eigene Apps können sich dann damit anmelden, bis Passwords sich sperrt oder 10 Minuten nach der letzten Nutzung. Die Schlüssel selbst bleiben hier.
@@ -12192,14 +12192,14 @@ Dieser Computer ist „{}“.
 This computer runs Fedora {}.
 Dieser Computer läuft mit Fedora {}.
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-Der Kernel dieses Computers kann keinen anderen Scheduler laden (sched_ext: ab Linux 6.12), also plant der des Kernels selbst.
-
 This computer's sensor sees when someone is in front of it.
 Der Sensor dieses Computers erkennt, wenn jemand davor sitzt.
 
 This computer’s git doesn’t say who you are.
 Das Git dieses Computers kennt Ihren Namen nicht.
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+Der Kernel dieses Computers kann keinen anderen Scheduler laden (sched_ext: ab Linux 6.12), also plant der des Kernels selbst.
 
 This display reports no modes.
 Dieser Bildschirm meldet keine Modi.
@@ -13830,11 +13830,11 @@ Ihre Backups werden verschlüsselt, bevor sie diesen Computer verlassen, mit ein
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Ihre Backups werden verschlüsselt, bevor sie diesen Computer verlassen. Ihr Schlüssel liegt in Passwords („DiskBackup Key“): Damit lassen sie sich auf jedem Computer wiederherstellen.
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-Ihr Gesicht war nicht gut genug zu sehen: Setzen Sie sich mit Armlänge Abstand vor die Kamera und versuchen Sie es erneut.
-
 Your face wasn’t recognised. Type your password.
 Ihr Gesicht wurde nicht erkannt. Geben Sie Ihr Passwort ein.
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+Ihr Gesicht war nicht gut genug zu sehen: Setzen Sie sich mit Armlänge Abstand vor die Kamera und versuchen Sie es erneut.
 
 Your home folder
 Ihr Benutzerordner
@@ -14105,6 +14105,12 @@ beschäftigt
 
 can’t be offered to SSH: {}
 kann SSH nicht angeboten werden: {}
+
+can’t be read
+kann nicht gelesen werden
+
+can’t be read: {}
+kann nicht gelesen werden: {}
 
 ceiling {}%
 Obergrenze {} %

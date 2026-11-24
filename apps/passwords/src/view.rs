@@ -143,17 +143,28 @@ fn detail_width(width: f32, height: f32, e: f32) -> f32 {
 }
 const ITEM_ROW: f32 = 42.0;
 const STATUS_HEIGHT: f32 = 22.0;
-const FIELD_ROW: f32 = 44.0;
+const FIELD_ROW: f32 = 48.0;
 /// An item's title.
 const TITLE_SIZE: f32 = 18.0;
 /// Where the middle of an item's title is, down from the top of its
 /// header's room.
 const TITLE_MIDDLE: f32 = 16.0;
-/// The Copy and Show buttons on a field the pointer is over.
-const FIELD_BUTTON: f32 = 56.0;
-/// Where a field's label and its value are, down its row.
-const FIELD_LABEL_Y: f32 = 13.0;
-const FIELD_VALUE_Y: f32 = 31.0;
+/// The Copy and Show buttons on a field the pointer is over: small, on its
+/// label's line, so its value keeps its room and never moves.
+const FIELD_BUTTON: f32 = 48.0;
+/// A wrapped value's second line, under its first.
+const FIELD_LINE: f32 = 16.0;
+/// A field's note (why an SSH key can't be offered), on a line of its own
+/// under its value: down from the value's last line.
+const FIELD_NOTE: f32 = 14.0;
+/// How far the pointer's band reaches past a field's text, its buttons'
+/// tops and ends: the same all round (Opus's look, 2026-11-24).
+const BAND_PAD: f32 = 6.0;
+/// Where a field's label and its value are, down its row: the label's
+/// line as tall as its small buttons, `BAND_PAD` under the band's top,
+/// and the value a few points under them.
+const FIELD_LABEL_Y: f32 = 17.0;
+const FIELD_VALUE_Y: f32 = 35.0;
 
 fn dim(p: &olo_theme::Palette) -> Hsla {
     style::disabled_text(p)
@@ -313,7 +324,9 @@ pub struct MainView {
     /// What the list's cells are drawn from: the items listed, what's
     /// under each title, and what the search marks.
     rows: Arc<Vec<ItemOverview>>,
-    subtitles: Rc<Vec<String>>,
+    /// Each row's second line, and whether it's set in the monospaced
+    /// face (an SSH key's fingerprint, as its detail shows it).
+    subtitles: Rc<Vec<(String, bool)>>,
     query: Rc<Query>,
     searched: String,
     /// What those were worked out for: the items (the app's `rev`), the
@@ -868,7 +881,16 @@ impl MainView {
             // Under each title, where the search found it when that's
             // inside it (a section, a field), else its username or site.
             let found = a.found();
-            self.subtitles = Rc::new(visible.iter().zip(found.iter()).map(|(i, f)| f.clone().unwrap_or_else(|| a.subtitle(i))).collect());
+            self.subtitles = Rc::new(
+                visible
+                    .iter()
+                    .zip(found.iter())
+                    .map(|(i, f)| match f {
+                        Some(found) => (found.clone(), false),
+                        None => (a.subtitle(i), a.fingerprint_of(i).is_some()),
+                    })
+                    .collect(),
+            );
             self.rows = visible.clone();
         }
         let empty = if a.loading {
@@ -886,9 +908,12 @@ impl MainView {
             let width = (b.right() - x - px(m::SPACING)).max(px(0.0));
             let p = theme::palette();
             let mark = search::mark_color(&p);
-            let sub = v.subtitles.get(cell.row).cloned().unwrap_or_default();
-            let font = style::ui_font(FontWeight::NORMAL);
-            for (text, size, color, dy) in [(item.title.clone(), style::PLAIN_SIZE, cell.text_color, -8.0), (sub, style::SMALL_SIZE, if cell.selected { cell.text_color } else { dim(&p) }, 8.0)] {
+            let (sub, mono) = v.subtitles.get(cell.row).cloned().unwrap_or_default();
+            let ui = style::ui_font(FontWeight::NORMAL);
+            let sub_font = if mono { style::mono_font(FontWeight::NORMAL) } else { ui.clone() };
+            for (text, size, color, dy, font) in
+                [(item.title.clone(), style::PLAIN_SIZE, cell.text_color, -8.0, ui), (sub, style::SMALL_SIZE, if cell.selected { cell.text_color } else { dim(&p) }, 8.0, sub_font)]
+            {
                 // What the search found, marked (not on the selection's own
                 // colour, which it would fight).
                 let runs = if cell.selected || v.query.is_empty() { plain_run(&text, font.clone(), color) } else { search::highlight(&text, &v.query, &font, color, mark) };
@@ -1174,6 +1199,56 @@ fn why_not_offered(value: &str) -> Option<String> {
     SEEN.with(|seen| seen.borrow_mut().entry(id).or_insert_with(|| crate::agent::private_key(value).err()).clone())
 }
 
+/// What follows from the SSH key `value` (its public key, fingerprint and
+/// kind), worked out once a key, as [`why_not_offered`] is.
+fn derived_of(value: &str) -> Option<crate::agent::Derived> {
+    use std::{cell::RefCell, collections::HashMap, hash::Hasher as _};
+    thread_local! {
+        static SEEN: RefCell<HashMap<u64, Option<crate::agent::Derived>>> = RefCell::new(HashMap::new());
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    h.write(value.as_bytes());
+    let id = h.finish();
+    SEEN.with(|seen| seen.borrow_mut().entry(id).or_insert_with(|| crate::agent::derived(value)).clone())
+}
+
+/// Where an SSH key's public key would be, for a key that can't be read (a
+/// key under a passphrase in an older form, which keeps its public part
+/// sealed too; not a key at all): said, so that the rows a readable key
+/// has aren't simply missing (Opus's look, 2026-11-24: "the empty one looks
+/// like a bug").
+fn unread_public_key(why: String) -> Element {
+    let text: SharedString = olo_kit::tr!("can’t be read: {}", why).into();
+    let key = style::key(&text);
+    let face = canvas(move |g, b| {
+        let p = theme::palette();
+        let x = b.left() + px(m::WINDOW_INSET);
+        let room = (b.right() - x - px(m::WINDOW_INSET)).max(px(0.0));
+        let label: SharedString = "public key".into();
+        let l = style::label_fit(g, x, b.top() + px(FIELD_LABEL_Y), style::Align::Left, label.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p), room);
+        let v = style::label_fit(g, x, b.top() + px(FIELD_VALUE_Y), style::Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p), room);
+        agent::record(g, agent::Node { role: "Label", name: Some(label), value: Some(text.clone()), bounds: l.union(&v), enabled: true, ..Default::default() });
+    })
+    .paint_key(key)
+    .absolute()
+    .inset_0();
+    div().relative().w_full().h(px(FIELD_ROW)).flex_shrink_0().child(face).into_any_element()
+}
+
+/// Value `value` in lines of at most `per` characters, two at most: when
+/// it's longer still, the second ends with the value's own end, after
+/// "…" (an RSA key's public key: its start and its end).
+fn wrapped(value: &str, per: usize) -> Vec<String> {
+    let chars: Vec<char> = value.chars().collect();
+    let per = per.max(8);
+    if chars.len() <= per {
+        return vec![value.to_owned()];
+    }
+    let rest = &chars[per..];
+    let second: String = if rest.len() <= per { rest.iter().collect() } else { std::iter::once('…').chain(chars[chars.len() - (per - 1)..].iter().copied()).collect() };
+    vec![chars[..per].iter().collect(), second]
+}
+
 /// How a field's value reads.
 fn shown(f: &ItemField, revealed: bool) -> (String, bool) {
     let masked = || "•".repeat(10);
@@ -1204,7 +1279,13 @@ fn shown(f: &ItemField, revealed: bool) -> (String, bool) {
             Err(_) => (f.value.clone(), false),
         },
         ItemFieldType::Address => (onepassword::fields::address_text(&onepassword::fields::address(f)), false),
-        _ => (f.value.clone(), matches!(f.field_type, ItemFieldType::Concealed | ItemFieldType::SshKey)),
+        // (An SSH key's public key and fingerprint too, compared by eye
+        // character by character: l, I and 1, O and 0.)
+        _ => (
+            f.value.clone(),
+            matches!(f.field_type, ItemFieldType::Concealed | ItemFieldType::SshKey)
+                || (f.field_type == ItemFieldType::Text && (f.id == crate::agent::PUBLIC_KEY || f.id == crate::agent::FINGERPRINT)),
+        ),
     }
 }
 
@@ -1232,11 +1313,14 @@ pub struct Detail {
     editor_scroll: ScrollHandle,
     /// The next second, while a one-time code counts down.
     wake: Due,
+    /// How wide the item's pane's content is (`detail_width`), as its
+    /// rows are made: where a long value wraps.
+    width: f32,
 }
 
 impl Detail {
     pub fn new(_: &mut Cx<Detail>) -> Detail {
-        Detail { form: None, form_rev: 0, reveals: Vec::new(), hover: None, press: None, scroll: ScrollHandle::new(), editor_scroll: ScrollHandle::new(), wake: Due::default() }
+        Detail { form: None, form_rev: 0, reveals: Vec::new(), hover: None, press: None, scroll: ScrollHandle::new(), editor_scroll: ScrollHandle::new(), wake: Due::default(), width: 0.0 }
     }
 
     /// Something was typed in the editor's field `slot`: into the editor.
@@ -1322,37 +1406,68 @@ impl Detail {
         let label: SharedString = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() }.into();
         let (value, mono) = shown(f, revealed);
         let value: SharedString = value.replace('\n', " ⏎ ").into();
+        // (A long value read whole, an SSH key's public key or its
+        // fingerprint, wraps to a second line rather than being cut where
+        // keys differ; a longer one's, an RSA key's, ends with the value's
+        // own end, after "…". Opus's look, 2026-11-24: "the row hides the
+        // useful part of it".)
+        let lines: Vec<SharedString> = if mono && f.field_type == ItemFieldType::Text {
+            // (A cell of the monospaced face: one glyph's advance, looked up.)
+            let cell = style::text_width_app("0", style::PLAIN_SIZE, &style::mono_font(FontWeight::NORMAL));
+            let per = ((self.width - 2.0 * m::WINDOW_INSET) / cell.max(1.0)).floor().max(8.0) as usize;
+            wrapped(&value, per).into_iter().map(SharedString::from).collect()
+        } else {
+            vec![value.clone()]
+        };
+        let height = FIELD_ROW + (lines.len() - 1) as f32 * FIELD_LINE + if unoffered.is_some() { FIELD_NOTE } else { 0.0 };
         let link = f.field_type == ItemFieldType::Url || (f.field_type == ItemFieldType::Text && f.value.starts_with("http"));
         let url = link.then(|| if f.value.contains("://") { f.value.clone() } else { format!("https://{}", f.value) });
         let secret = matches!(f.field_type, ItemFieldType::Concealed | ItemFieldType::SshKey | ItemFieldType::CreditCardNumber);
-        let buttons_w = if hovered { (if secret { 2.0 } else { 1.0 }) * FIELD_BUTTON + if secret { m::TIGHT } else { 0.0 } } else { 0.0 };
+        let buttons_w = if hovered { (if secret { 2.0 } else { 1.0 }) * FIELD_BUTTON + if secret { m::STACK } else { 0.0 } } else { 0.0 };
         let totp = (f.field_type == ItemFieldType::Totp).then(|| onepassword::totp::Totp::parse(&f.value).ok()).flatten();
         let value_font = move || if mono { style::mono_font(FontWeight::NORMAL) } else { style::ui_font(FontWeight::NORMAL) };
         // (A code's pie turns each second: its row is drawn each time.)
-        let face_key = totp.is_none().then(|| style::key((&label, &value, hovered, link, secret, mono, buttons_w.to_bits(), mark.is_some().then_some(searched), &unoffered)));
-        let (face_label, face_value) = (label.clone(), value.clone());
+        let face_key = totp.is_none().then(|| style::key((&label, &value, &lines, hovered, link, secret, mono, buttons_w.to_bits(), mark.is_some().then_some(searched), &unoffered)));
+        let (face_label, face_value, face_lines) = (label.clone(), value.clone(), lines.clone());
         let mut face = canvas(move |g, b| {
             let p = theme::palette();
             let (label, value) = (&face_label, &face_value);
             if hovered {
-                let lit = style::snap(g, Bounds::from_corners(b.origin + point(px(m::TIGHT), px(1.0)), b.bottom_right() - point(px(m::TIGHT), px(1.0))));
-                g.paint_quad(fill(lit, style::shade(&p, p.document_background, 1.04)).corner_radii(px(2.0)));
+                // (Square, as a list's selection is; `BAND_PAD` past the
+                // text and the buttons all round.)
+                let side = m::WINDOW_INSET - BAND_PAD;
+                let top = FIELD_LABEL_Y - olo_kit::widgets::SMALL_BUTTON_HEIGHT / 2.0 - BAND_PAD;
+                let lit = style::snap(g, Bounds::from_corners(b.origin + point(px(side), px(top)), b.bottom_right() - point(px(side), px(1.0))));
+                // (Towards the text in dark: a shade of a dark ground was
+                // all but unseen there.)
+                let ground = if p.mode == olo_theme::ThemeMode::Dark { c(olo_theme::mix(p.document_background, p.document_text, 0.07)) } else { style::shade(&p, p.document_background, 1.04) };
+                g.paint_quad(fill(lit, ground));
             }
             let x = b.left() + px(m::WINDOW_INSET);
             // What the search looks for, marked (not in a secret, which
             // it doesn't look in).
             let runs = marked(label, mark.as_deref(), style::ui_font(FontWeight::NORMAL), dim(&p), &p);
             let l = style::label_runs(g, x, b.top() + px(FIELD_LABEL_Y), style::Align::Left, label.clone(), style::SMALL_SIZE, &runs);
+            // (Why an SSH key can't be offered, on a line of its own under
+            // its value, whole, whether the pointer is there or not: on its
+            // label's line it was cut short, mid-word, as Show and Copy
+            // came. Opus's look, 2026-11-24.)
             if let Some(why) = &unoffered {
-                let at = l.right() + px(m::TIGHT);
-                let room = (b.right() - at - px(m::WINDOW_INSET)).max(px(0.0));
+                let room = (b.right() - x - px(m::WINDOW_INSET)).max(px(0.0));
                 let ink = c(olo_theme::readable(p.warning, p.document_background, 4.5));
-                style::label_fit(g, at, b.top() + px(FIELD_LABEL_Y), style::Align::Left, format!("·  {why}"), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
+                let y = FIELD_VALUE_Y + (face_lines.len() - 1) as f32 * FIELD_LINE + FIELD_NOTE;
+                style::label_fit(g, x, b.top() + px(y), style::Align::Left, why.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink, room);
             }
             let color = if link { c(p.keyboard_navigation) } else { c(p.document_text) };
-            let room = (b.right() - x - px(m::WINDOW_INSET + buttons_w)).max(px(0.0));
-            let runs = marked(value, mark.as_deref().filter(|_| !secret), value_font(), color, &p);
-            let v = style::label_runs_fit(g, x, b.top() + px(FIELD_VALUE_Y), style::Align::Left, value.clone(), style::PLAIN_SIZE, &runs, room);
+            // (The whole width: its buttons are on the label's line.)
+            let room = (b.right() - x - px(m::WINDOW_INSET)).max(px(0.0));
+            let mut v: Option<Bounds<Pixels>> = None;
+            for (i, line) in face_lines.iter().enumerate() {
+                let runs = marked(line, mark.as_deref().filter(|_| !secret), value_font(), color, &p);
+                let r = style::label_runs_fit(g, x, b.top() + px(FIELD_VALUE_Y + i as f32 * FIELD_LINE), style::Align::Left, line.clone(), style::PLAIN_SIZE, &runs, room);
+                v = Some(v.map_or(r, |v| v.union(&r)));
+            }
+            let v = v.unwrap_or(l);
             agent::record(g, agent::Node { role: "Label", name: Some(label.clone()), value: Some(value.clone()), bounds: l.union(&v), enabled: true, clickable: true, ..Default::default() });
             // A little pie of the code's time left, a ring round it.
             if let Some(t) = &totp {
@@ -1377,7 +1492,7 @@ impl Detail {
             .id(SharedString::from(format!("field-{key}")))
             .relative()
             .w_full()
-            .h(px(FIELD_ROW))
+            .h(px(height))
             .flex_shrink_0()
             .child(face)
             // The pointer onto it, or off it: its buttons come and go.
@@ -1417,14 +1532,17 @@ impl Detail {
                     }
                     // (Not on its buttons, which do their own.)
                     let b = cx.listener_bounds();
-                    if buttons_w > 0.0 && e.position.x >= b.right() - px(m::WINDOW_INSET + buttons_w + m::TIGHT) {
+                    if buttons_w > 0.0
+                        && e.position.x >= b.right() - px(m::WINDOW_INSET + buttons_w + m::TIGHT)
+                        && e.position.y <= b.top() + px(FIELD_LABEL_Y + olo_kit::widgets::SMALL_BUTTON_HEIGHT / 2.0 + m::TIGHT)
+                    {
                         return;
                     }
                     // On a link's value (where it was drawn: its text, on
                     // its line): opened.
                     let on_value = || {
                         let x = b.left() + px(m::WINDOW_INSET);
-                        let room = (b.right() - x - px(m::WINDOW_INSET + buttons_w)).max(px(0.0));
+                        let room = (b.right() - x - px(m::WINDOW_INSET)).max(px(0.0));
                         let wide = style::text_width(click_value.clone(), style::PLAIN_SIZE, value_font()).min(room);
                         let half = px(style::PLAIN_SIZE * style::LINE_HEIGHT / 2.0);
                         let line = b.top() + px(FIELD_VALUE_Y);
@@ -1437,14 +1555,19 @@ impl Detail {
                 }),
             );
         if hovered {
-            let mut buttons = div().absolute().right(px(m::WINDOW_INSET)).top(px((FIELD_ROW - m::CONTROL_HEIGHT) / 2.0)).flex().flex_row().gap(px(m::TIGHT));
+            // (Small, on the label's line, as a second thought beside the
+            // value rather than a main action, and leaving the value its
+            // room: full-size beside it, they cut it again as the pointer
+            // came, and the text under it moved. Opus's look, 2026-11-24.)
+            let mut buttons = div().absolute().right(px(m::WINDOW_INSET)).top(px(FIELD_LABEL_Y - olo_kit::widgets::SMALL_BUTTON_HEIGHT / 2.0)).flex().flex_row().gap(px(m::STACK));
             if secret {
                 let k = key.clone();
-                buttons = buttons
-                    .child(Button::new(if revealed { "Hide" } else { "Show" }).id(format!("show-{key}")).min_width(FIELD_BUTTON).on_click(move |_: &ClickEvent, _| app().toggle_revealed(k.clone())));
+                buttons = buttons.child(
+                    Button::new(if revealed { "Hide" } else { "Show" }).id(format!("show-{key}")).small().min_width(FIELD_BUTTON).on_click(move |_: &ClickEvent, _| app().toggle_revealed(k.clone())),
+                );
             }
             let (k, it) = (key.clone(), item.to_owned());
-            buttons = buttons.child(Button::new("Copy").id(format!("copy-{key}")).min_width(FIELD_BUTTON).on_click(move |_: &ClickEvent, _| app().copy_field(&it, &k)));
+            buttons = buttons.child(Button::new("Copy").id(format!("copy-{key}")).small().min_width(FIELD_BUTTON).on_click(move |_: &ClickEvent, _| app().copy_field(&it, &k)));
             row = row.child(buttons);
         }
         // Right-click: the value copied, or its `op://` reference (for the
@@ -1483,6 +1606,7 @@ impl View for Detail {
         // How wide the pane's content is, as the main view shares the
         // window (`panes_for`).
         let pane = detail_width(f32::from(cx.viewport_size().width), f32::from(cx.viewport_size().height), e);
+        self.width = pane;
         if a.editor.is_some() && self.form.is_some() {
             let focus_title = std::mem::take(&mut a.focus_title);
             let focus_field = a.focus_field.take();
@@ -1537,7 +1661,9 @@ impl View for Detail {
 
         let archived = overview.state == ItemState::Archived;
         let edit_button = (!archived && !crate::on_screen()).then(|| Button::new("Edit").min_width(64.0).on_click(|_: &ClickEvent, _| app().edit_selected()));
-        let mut col = div().w_full().flex().flex_col().child(header(&item.title, item.category, &vault, edit_button, pane < HEADER_NARROW));
+        // (Some room under the header's rule: the first field was set
+        // nearer it than the last is to the dates' rule. Opus's look.)
+        let mut col = div().w_full().flex().flex_col().child(header(&item.title, item.category, &vault, edit_button, pane < HEADER_NARROW)).child(div().h(px(m::TIGHT)).flex_shrink_0());
         if archived {
             col = col.child(italic_note("This item is in the Archive."));
         }
@@ -1575,7 +1701,24 @@ impl View for Detail {
                     continue;
                 }
                 counting |= f.field_type == ItemFieldType::Totp;
+                // (An SSH key's public key and fingerprint over it and its
+                // kind under it, worked out from it, as 1Password shows
+                // them: only its private key showed, and only the log said
+                // which key it was. Ben, 2026-11-22: "olo passwords should
+                // show/have/sync all the same stuff as 1p for ssh keys".)
+                let read = (f.field_type == ItemFieldType::SshKey && !f.value.is_empty()).then(|| derived_of(&f.value));
+                let derived = read.clone().flatten().map(|d| crate::agent::derived_fields(&item, f, &d)).unwrap_or_default();
+                if let Some(None) = read {
+                    col = col.child(unread_public_key(why_not_offered(&f.value).unwrap_or_default()));
+                }
+                let (over, under): (Vec<&ItemField>, Vec<&ItemField>) = derived.iter().partition(|x| x.id != crate::agent::KEY_TYPE);
+                for x in over {
+                    col = col.child(self.field_row(cx, &id, x, x.id.clone(), true, mark.clone(), &searched));
+                }
                 col = col.child(self.field_row(cx, &id, f, f.id.clone(), revealed.contains(&f.id), mark.clone(), &searched));
+                for x in under {
+                    col = col.child(self.field_row(cx, &id, x, x.id.clone(), true, mark.clone(), &searched));
+                }
             }
         }
         if !item.websites.is_empty() && !ask.narrows() {
@@ -1946,6 +2089,44 @@ mod cost {
             }
             let after = t.elapsed() / n;
             println!("{}: first {first:?}, after {after:?} ({why:?})", file.display());
+            // And its public key, fingerprint and type, shown over and
+            // under it (and its fingerprint in the list, worked out once
+            // as the index is made: `crate::agent::derived` once).
+            let t = std::time::Instant::now();
+            let derived = super::derived_of(&text);
+            let first = t.elapsed();
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(super::derived_of(std::hint::black_box(&text)));
+            }
+            let after = t.elapsed() / n;
+            println!("  derived: first {first:?}, after {after:?} ({:?})", derived.map(|d| d.kind));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrapped;
+
+    /// A value wraps at the characters a line holds, two lines at most: a
+    /// longer one keeps its start and, after "…", its end.
+    #[test]
+    fn a_long_value_wraps_and_keeps_its_end() {
+        assert_eq!(wrapped("SHA256:abc", 40), ["SHA256:abc"]);
+        let ed = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPF/l1l1Yjf1ZDo7S9YRDQzknw0RUiTw94W3wGF8Pv31";
+        let two = wrapped(ed, 50);
+        assert_eq!(two.len(), 2);
+        assert_eq!(two.concat(), ed);
+        assert_eq!(two[0].chars().count(), 50);
+        let rsa: String = std::iter::repeat_n("AbCd", 180).collect::<String>() + "Tail";
+        let cut = wrapped(&rsa, 50);
+        assert_eq!(cut.len(), 2);
+        assert_eq!(cut[0].chars().count(), 50);
+        assert_eq!(cut[1].chars().count(), 50);
+        assert!(cut[1].starts_with('…') && cut[1].ends_with("Tail"), "{cut:?}");
+        assert!(rsa.ends_with(cut[1].trim_start_matches('…')));
+        // (Never fewer than eight a line, however narrow the pane.)
+        assert_eq!(wrapped("0123456789abcdef", 2), ["01234567", "89abcdef"]);
     }
 }

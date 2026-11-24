@@ -797,9 +797,17 @@ impl Passwords {
         facets
     }
 
-    /// The second line under an item's title: its username, else its
-    /// site, else its kind.
+    /// The second line under an item's title: an SSH key's fingerprint
+    /// (1Password's way: its hash, without the `SHA256:` every one
+    /// starts with), else its username, else its site, else its kind.
     pub fn subtitle(&self, item: &ItemOverview) -> String {
+        if let Some(print) = self.fingerprint_of(item) {
+            return print.trim_start_matches("SHA256:").to_owned();
+        }
+        // (One that can't be read says so, as its item does.)
+        if self.index.get(&item.id).is_some_and(|s| s.key_unread) {
+            return olo_kit::words::tr("can’t be read").to_owned();
+        }
         let user = self.username_of(item);
         if !user.is_empty() {
             return user.to_owned();
@@ -808,6 +816,11 @@ impl Passwords {
             return h;
         }
         item.category.label().to_string()
+    }
+
+    /// Item `item`'s SSH key's fingerprint, when it has one that reads.
+    pub fn fingerprint_of(&self, item: &ItemOverview) -> Option<&str> {
+        self.index.get(&item.id).and_then(|s| s.fingerprint.as_deref())
     }
 
     pub fn select(&mut self, id: Option<String>) {
@@ -1664,7 +1677,7 @@ impl Passwords {
         match field.strip_prefix("url:") {
             Some(url) => Some((url.to_owned(), "website".to_owned())),
             None => {
-                let f = self.details.get(item).and_then(|i| i.field(field))?;
+                let f = self.details.get(item).and_then(|i| i.field(field).cloned().or_else(|| agent::derived_field(i, field)))?;
                 let label = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() };
                 let value = match f.field_type {
                     ItemFieldType::Totp => otp_code(&f.value).or_else(|| f.otp().and_then(|o| o.code.clone()))?,
@@ -1682,7 +1695,9 @@ impl Passwords {
             self.changed();
             return;
         }
-        let Some(f) = self.details.get(item).and_then(|i| i.field(field)).cloned() else { return };
+        // (Or one worked out from its SSH key: its public key, fingerprint
+        // or type.)
+        let Some(f) = self.details.get(item).and_then(|i| i.field(field).cloned().or_else(|| agent::derived_field(i, field))) else { return };
         let label = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() };
         match f.field_type {
             ItemFieldType::Totp => {
@@ -1721,7 +1736,11 @@ impl Passwords {
         let vault = self.vaults.iter().find(|v| v.id == i.vault_id).map_or_else(|| i.vault_id.clone(), |v| v.title.clone());
         let found = match field {
             Some("notesPlain") => Some((cli::notes_reference(&vault, &i), "notes".to_owned())),
-            Some(f) => i.field(f).map(|f| (cli::reference(&vault, &i, f), if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() })),
+            Some(f) => i
+                .field(f)
+                .cloned()
+                .or_else(|| agent::derived_field(&i, f))
+                .map(|f| (cli::reference(&vault, &i, &f), if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() })),
             None => cli::main_field(&i).map(|f| (cli::reference(&vault, &i, f), if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() })),
         };
         match found {

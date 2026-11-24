@@ -330,6 +330,12 @@ pub struct Searchable {
     pub weak: bool,
     /// Its passkey's public parts.
     pub passkey: Option<PasskeyInfo>,
+    /// Its SSH key's fingerprint ("SHA256:…"), for the list's second line
+    /// as 1Password has it there: worked out once, as the index is made.
+    pub fingerprint: Option<String>,
+    /// It has an SSH key that can't be read (under a passphrase in an
+    /// older form, or not a key): its list line says so.
+    pub key_unread: bool,
 }
 
 /// One of an item's fields as search sees it: its section's title (none
@@ -397,6 +403,7 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
             }
             text.push_str(&item.notes);
             let pw = item.password();
+            let key = item.fields.iter().find(|f| f.field_type == ItemFieldType::SshKey && !f.value.is_empty());
             let s = Searchable {
                 username: item.username().unwrap_or_default().to_owned(),
                 text,
@@ -407,7 +414,10 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
                 reused: pw.is_some_and(|p| uses.get(p).copied().unwrap_or(0) > 1),
                 weak: pw.is_some_and(weak),
                 passkey: passkey::stored(item).map(|p| PasskeyInfo { rp_id: p.rp_id.clone(), user_name: p.user_name.clone(), credential_id: p.credential_id.clone() }),
+                fingerprint: key.and_then(|f| crate::agent::derived(&f.value)).map(|d| d.fingerprint),
+                key_unread: false,
             };
+            let s = Searchable { key_unread: key.is_some() && s.fingerprint.is_none(), ..s };
             (item.id.clone(), s)
         })
         .collect()

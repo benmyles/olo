@@ -94,6 +94,123 @@ fn client(mut stream: UnixStream, deliver: &(impl Fn(Incoming) + ?Sized)) {
     }
 }
 
+/// What follows from an SSH key, as 1Password shows it beside the private
+/// key: its public key (OpenSSH's line), its fingerprint ("SHA256:…") and
+/// its kind, in 1Password's words ("Ed25519", "RSA, 4096-bit"; and
+/// "ECDSA P-256", which 1Password doesn't make).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Derived {
+    pub public: String,
+    pub fingerprint: String,
+    pub kind: String,
+}
+
+/// [`Derived`] of a key kept in a field's value, if it can be read: one
+/// under a passphrase too, in OpenSSH's own format, whose public part is
+/// kept in the clear.
+pub fn derived(text: &str) -> Option<Derived> {
+    let public = match private_key(text) {
+        Ok(key) => key.public_key().clone(),
+        Err(_) => PrivateKey::from_openssh(text.trim()).ok()?.public_key().clone(),
+    };
+    let line = public.to_openssh().ok()?;
+    // (Without its comment: a field's key has the item's name for that.)
+    let line = line.split(' ').take(2).collect::<Vec<_>>().join(" ");
+    let fingerprint = public.fingerprint(HashAlg::Sha256).to_string();
+    let kind = match public.key_data() {
+        ssh_key::public::KeyData::Ed25519(_) => "Ed25519".to_owned(),
+        ssh_key::public::KeyData::Rsa(rsa) => format!("RSA, {}-bit", rsa.key_size()),
+        ssh_key::public::KeyData::Ecdsa(e) => match e.curve() {
+            ssh_key::EcdsaCurve::NistP256 => "ECDSA P-256".to_owned(),
+            ssh_key::EcdsaCurve::NistP384 => "ECDSA P-384".to_owned(),
+            ssh_key::EcdsaCurve::NistP521 => "ECDSA P-521".to_owned(),
+        },
+        other => other.algorithm().to_string(),
+    };
+    Some(Derived { public: line, fingerprint, kind })
+}
+
+/// The fields 1Password lists beside SSH key field `f`, from [`Derived`]
+/// `d`: "public key" and "fingerprint" (shown over it) and "key type"
+/// (under it), by the ids and labels 1Password gives them (`op item get`
+/// lists them; `op://vault/item/public key` reads one), in its section.
+pub fn derived_fields_from(f: &onepassword::ItemField, d: &Derived) -> [onepassword::ItemField; 3] {
+    let field = |id: &str, label: &str, value: &str| {
+        let mut x = onepassword::ItemField::new(id, label, ItemFieldType::Text, value);
+        x.section_id = f.section_id.clone();
+        x
+    };
+    [field(PUBLIC_KEY, "public key", &d.public), field(FINGERPRINT, "fingerprint", &d.fingerprint), field(KEY_TYPE, "key type", &d.kind)]
+}
+
+/// The ids of [`derived_fields_from`]'s fields.
+pub const PUBLIC_KEY: &str = "public_key";
+pub const FINGERPRINT: &str = "fingerprint";
+pub const KEY_TYPE: &str = "key_type";
+
+/// Item `i`'s fields worked out from SSH key field `f` that it has none
+/// of its own for (by id or label: one brought in with them keeps its
+/// own).
+pub fn derived_fields(i: &onepassword::Item, f: &onepassword::ItemField, d: &Derived) -> Vec<onepassword::ItemField> {
+    derived_fields_from(f, d).into_iter().filter(|x| !i.fields.iter().any(|o| o.id == x.id || o.title.eq_ignore_ascii_case(&x.title))).collect()
+}
+
+/// Item `i`'s field `key` (an id, else a label) among those worked out
+/// from its SSH key, for copying it and its reference and for `op read`.
+pub fn derived_field(i: &onepassword::Item, key: &str) -> Option<onepassword::ItemField> {
+    i.fields
+        .iter()
+        .filter(|f| f.field_type == ItemFieldType::SshKey && !f.value.is_empty())
+        .filter_map(|f| derived(&f.value).map(|d| derived_fields(i, f, &d)))
+        .flatten()
+        .find(|x| x.id == key || x.title.eq_ignore_ascii_case(key))
+}
+
+/// An Ed25519 key under a passphrase ("secret"), in OpenSSH's format: a
+/// throwaway made for tests and fixtures, used nowhere.
+#[cfg(test)]
+pub(crate) const LOCKED_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABCD5l7k+3
+0HzSOfi0dB9dlOAAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPF/l1l1Yjf1ZDo7
+S9YRDQzknw0RUiTw94W3wGF8Pv31AAAAkAiPC/Gu4ajQTe7uMHuv4XDHy5w6DIdzbLhEMJ
+3IqmJgLWnX3361/5TP3moMxF9W/3MSGgqNzsGiZF8Mk/c7lsJmRqv4VOsgoFTnFh8+QQ/X
+lhxxC0UkUFGlN3MHwkfNf7Mpb1/aTFQbDSUUpX3mEwq6jV3uYEAJ68z6+TpOCge6AQoH32
+hcZz1SEtYqv+wsSw==
+-----END OPENSSH PRIVATE KEY-----
+";
+
+/// An RSA key of 2048 bits, in OpenSSH's format: a throwaway made for
+/// tests and fixtures, used nowhere.
+#[cfg(test)]
+pub(crate) const RSA_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn
+NhAAAAAwEAAQAAAQEA22TgGXPNdjBnXlkIc31Jvy7b8FhSLov7wrpDtj/3msqFfgkgG+91
+Y5RF0ll26PsPaxGXIeUjrhb4C5mdBrxroLJOutVZgV5wzOCFD5xXDo08xTSAuJM8/jd8W/
+fi7EaY3/E2muc2IcKx2Ue27zGKOwu9Jjr/0/csm6RfJ1FaYTmETh+o14+0JzcEUn4YczsA
+RWlF/b5//i9Wr2OG+62HOyjtsQirzG+/+61Ya4BoJiRiMHG6nRX+oU67o8GlX3NyL9JcBp
++iP3U+iqAQtbXXfrQzaLTJQNYlLKDH2xVusoSjCH1SToJOtYO5OqX/WuZeHNVF9AphBTR2
+DatnCQCIEwAAA7hxlTAWcZUwFgAAAAdzc2gtcnNhAAABAQDbZOAZc812MGdeWQhzfUm/Lt
+vwWFIui/vCukO2P/eayoV+CSAb73VjlEXSWXbo+w9rEZch5SOuFvgLmZ0GvGugsk661VmB
+XnDM4IUPnFcOjTzFNIC4kzz+N3xb9+LsRpjf8Taa5zYhwrHZR7bvMYo7C70mOv/T9yybpF
+8nUVphOYROH6jXj7QnNwRSfhhzOwBFaUX9vn/+L1avY4b7rYc7KO2xCKvMb7/7rVhrgGgm
+JGIwcbqdFf6hTrujwaVfc3Iv0lwGn6I/dT6KoBC1tdd+tDNotMlA1iUsoMfbFW6yhKMIfV
+JOgk61g7k6pf9a5l4c1UX0CmEFNHYNq2cJAIgTAAAAAwEAAQAAAQAG6x9wrgjZ+Udz34ri
+BB7B5fsO5o9w4v6FctTqd7SZ2lkV/bkC0yz4fux/aE1/pgB5Ioze3ML18nN6qirG05pGma
+4x5hh0eUNFXVnU1tvynDGWZm7IuJvryFl7l6LoSzGhnjxX64KhfepDLSfE/eLwtGYP6+cK
+tXi1T8b7Dm2zMyDW7cM4TQds83WBmAcwvYTbdo7KlqdRQPHeBkWeq4UEk1w7in3QeZTdTJ
+pGTbIO2kRzowM27ungjsRP1A+TeuuOIcGS57Oob9ouRudUxDT6olJb7HbdWORWE/foUXbW
+be3APXW4cS6HBziGbyWPbsB7hIvPTgsg90fSCuenEIzBAAAAgENtyfxem12vRJ6H3c9e5G
+BlEbzr6dQWcMY92gUUKOa1JFqr/M5/Uju5S50+NnnijS8kap+qsw+djRiqV4LdXi0eUN84
+ZH+sxwVUGVioj4IRM55Q4SWlwZXNrnd3UAveSXTwfCJwhErXZDSB9i5M3a6YFzHk+V1ugm
+OvUriH2AGQAAAAgQD1TteFrkA6nA853GK/V/AF/8eI+bH9ddd4+SMO+b4IK7bUKhyy/hYL
+QUkIOgKwaPtGA3xmzdStggmBdJ+siLLifsgj0E9fcTfQLdA0sBd1oH4scqhKpwMt+rUQjm
+w1BmZ8by3Y/O3wlE7khbsPPiCVGinTXWk23RA9pWoJKD/XxwAAAIEA5PTidk/tZyFs2q6R
+LRQaYzFjsFJSTVy1SoQGio3Z5hvzfG35rXST14z0t438L75GwpZlx4MEb+hbapXRHeRRCC
+EFoasW9nvimTS1Zk2FZFLmyrq8ipkxj0VfP4WjDcCrAtIO+7nEZGE80F9noqmd06FDJiMe
+DjO8EkGZruSxBVUAAAAAAQID
+-----END OPENSSH PRIVATE KEY-----
+";
+
 /// An SSH key as kept in a field's value: OpenSSH's own format, or PKCS#8
 /// (what 1Password makes: Ed25519, RSA, ECDSA P-256).
 pub fn private_key(text: &str) -> Result<PrivateKey, String> {
@@ -269,6 +386,41 @@ mod tests {
     use super::*;
 
     /// Keys made from fixed numbers (no random generator in tests).
+    /// What follows from a key, as 1Password shows it: the public key's
+    /// line without the comment, the SHA-256 fingerprint, the kind; for
+    /// a key 1Password made (PKCS#8) as for OpenSSH's; nothing for what
+    /// isn't a key.
+    #[test]
+    fn a_keys_public_key_fingerprint_and_kind() {
+        let key = ed25519();
+        let text = key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let d = derived(&text).expect("a key");
+        assert_eq!(d.kind, "Ed25519");
+        assert_eq!(d.public, key.public_key().to_openssh().unwrap().rsplit_once(' ').unwrap().0);
+        assert!(d.public.starts_with("ssh-ed25519 AAAA") && !d.public.contains("test"), "{}", d.public);
+        assert_eq!(d.fingerprint, key.public_key().fingerprint(HashAlg::Sha256).to_string());
+        assert!(d.fingerprint.starts_with("SHA256:"));
+        let p256 = derived(&p256_key().to_openssh(ssh_key::LineEnding::LF).unwrap()).expect("a P-256 key");
+        assert_eq!(p256.kind, "ECDSA P-256");
+        assert_eq!(derived("not a key"), None);
+        // A key under a passphrase: its public part all the same, as
+        // `ssh-keygen -lf` gives it.
+        let locked = LOCKED_KEY;
+        assert!(private_key(locked).is_err());
+        let d = derived(locked).expect("its public part");
+        assert_eq!(d.public, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPF/l1l1Yjf1ZDo7S9YRDQzknw0RUiTw94W3wGF8Pv31");
+        assert_eq!(d.fingerprint, "SHA256:D28AeCdq4A9yMQ6UOvCrgZn7Hrtebl3lcaYCA8y4m7s");
+        assert_eq!(d.kind, "Ed25519");
+        // An RSA key, its size in 1Password's words.
+        let rsa = derived(RSA_KEY).expect("an RSA key");
+        assert_eq!(rsa.kind, "RSA, 2048-bit");
+        assert_eq!(rsa.fingerprint, "SHA256:RX2UHRZIZPCaDQvRiYlrJot8Vl4bML51sAJBn9IRYRg");
+        assert_eq!(
+            rsa.public,
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDbZOAZc812MGdeWQhzfUm/LtvwWFIui/vCukO2P/eayoV+CSAb73VjlEXSWXbo+w9rEZch5SOuFvgLmZ0GvGugsk661VmBXnDM4IUPnFcOjTzFNIC4kzz+N3xb9+LsRpjf8Taa5zYhwrHZR7bvMYo7C70mOv/T9yybpF8nUVphOYROH6jXj7QnNwRSfhhzOwBFaUX9vn/+L1avY4b7rYc7KO2xCKvMb7/7rVhrgGgmJGIwcbqdFf6hTrujwaVfc3Iv0lwGn6I/dT6KoBC1tdd+tDNotMlA1iUsoMfbFW6yhKMIfVJOgk61g7k6pf9a5l4c1UX0CmEFNHYNq2cJAIgT"
+        );
+    }
+
     fn ed25519() -> PrivateKey {
         PrivateKey::new(KeypairData::Ed25519(Ed25519Keypair::from_seed(&[3u8; 32])), "test").unwrap()
     }

@@ -5503,14 +5503,14 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 पढ़ नहीं सके: {}
 
-It didn’t work.
-काम नहीं हुआ।
-
 It didn’t open: {}.
 खुल नहीं सका: {}।
 
 It didn’t say why.
 कारण नहीं बताया गया।
+
+It didn’t work.
+काम नहीं हुआ।
 
 It downloads {}
 {} डाउनलोड होगा
@@ -6162,11 +6162,11 @@ Link’s rate
 Link…
 लिंक…
 
-Linux’s own
-Linux की अपनी
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux का अपना शेड्यूलर (EEVDF) हर प्रोग्राम को निष्पक्ष समय देता है। दोनों शेड्यूलर में Olo के वे थ्रेड रीयल-टाइम प्राथमिकता पर चलते हैं जिनका कोई इंतज़ार कर रहा है। बिल्ड जैसे भारी काम के बीच डेस्कटॉप इस शेड्यूलर पर सबसे तेज़ रहता है।
+
+Linux’s own
+Linux की अपनी
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linux का सामान्य तरीका (cubic) तब तक भेजता है जब तक रास्ते की कतारें भर न जाएँ, जिससे देरी बढ़ती है; यह तरीका रास्ते को मापकर उसके नीचे रहता है (Olo का मॉड्यूल, tcp_bbr3)।
@@ -7989,9 +7989,6 @@ Olo की बूट स्क्रीन
 Olo's login screen
 Olo की लॉगिन स्क्रीन
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Olo का मॉड्यूल लोड होते समय कर्नेल को जाँचता है, और वह इस कर्नेल से बाहर रहा। कारण Olo Doctor बताता है।
-
 Olo's own
 Olo का अपना
 
@@ -8018,6 +8015,9 @@ Olo की कीरिंग यहाँ नहीं चल रही। य�
 
 Olo’s language:
 Olo की भाषा:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo का मॉड्यूल लोड होते समय कर्नेल को जाँचता है, और वह इस कर्नेल से बाहर रहा। कारण Olo Doctor बताता है।
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 इसके बाद Olo के अपने ऐप उनसे लॉगिन कर सकते हैं—Passwords लॉक होने तक या आखिरी उपयोग के 10 मिनट बाद तक। कुंजियाँ यहीं रहती हैं।
@@ -12192,14 +12192,14 @@ This computer is “{}”.
 This computer runs Fedora {}.
 इस कंप्यूटर पर Fedora {} चल रहा है।
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-यह कर्नेल दूसरा शेड्यूलर लोड नहीं कर सकता, इसलिए अपना शेड्यूलर इस्तेमाल करता है। sched_ext Linux 6.12 और उसके बाद के संस्करणों में है।
-
 This computer's sensor sees when someone is in front of it.
 कंप्यूटर का सेंसर पहचानता है कि कोई इसके सामने है या नहीं।
 
 This computer’s git doesn’t say who you are.
 इस कंप्यूटर के git में आपकी पहचान दर्ज नहीं है।
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+यह कर्नेल दूसरा शेड्यूलर लोड नहीं कर सकता, इसलिए अपना शेड्यूलर इस्तेमाल करता है। sched_ext Linux 6.12 और उसके बाद के संस्करणों में है।
 
 This display reports no modes.
 डिस्प्ले ने कोई मोड नहीं बताया।
@@ -13830,11 +13830,11 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 बैकअप इस कंप्यूटर से बाहर जाने से पहले एन्क्रिप्ट होते हैं। कुंजी Passwords में “DiskBackup Key” के नाम से रखी है। इसके साथ किसी भी कंप्यूटर पर बहाली कर सकते हैं।
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-चेहरा साफ़ नहीं दिखा। कैमरे की तरफ़ मुँह करके एक हाथ की दूरी पर बैठें और फिर कोशिश करें।
-
 Your face wasn’t recognised. Type your password.
 चेहरा पहचाना नहीं गया। अपना पासवर्ड लिखें।
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+चेहरा साफ़ नहीं दिखा। कैमरे की तरफ़ मुँह करके एक हाथ की दूरी पर बैठें और फिर कोशिश करें।
 
 Your home folder
 आपका होम फ़ोल्डर
@@ -14105,6 +14105,12 @@ busy
 
 can’t be offered to SSH: {}
 SSH को नहीं दी जा सकती: {}
+
+can’t be read
+पढ़ा नहीं जा सकता
+
+can’t be read: {}
+पढ़ा नहीं जा सकता: {}
 
 ceiling {}%
 ऊपरी सीमा {}%

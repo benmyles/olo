@@ -1857,6 +1857,21 @@ something nobody here has is in "Blocked", with what it waits for.
   copied with a click; the fingerprint in the list's second line;
   attached files listed, saved and added, synced both ways; a key made
   or imported here written so that 1Password shows the same.
+  Done 2026-11-24 (HACKING, Passwords' SSH keys): the public key,
+  fingerprint and type, worked out from the private key (one under a
+  passphrase in OpenSSH's format too), shown in 1Password's order by
+  its ids and labels, copied, dragged, referred to and read with `op
+  read` as 1Password's are; `op item get` lists them and the private
+  key's `ssh_formats`; `?ssh-format=openssh` answered; the fingerprint's
+  hash as the list's second line. Left: a key made (Ed25519, RSA 2048 to
+  4096) or imported here (a key file, under a passphrase too), kept as
+  1Password keeps it (PKCS#8) so 1Password shows the same, through New
+  Item, which doesn't offer SSH Key yet; and attached files (1Password's
+  `items.files`: listed with their sizes, saved, added, synced both
+  ways; the crate has the calls, the store keeps no file's contents
+  yet). Not checked against a real 1Password item's JSON (no test
+  vault here): the ids, labels and key type's words are from 1Password's
+  documentation.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

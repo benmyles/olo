@@ -5503,14 +5503,14 @@ Niet bereikbaar: {}. Olo blijft het proberen.
 It couldn’t be read: {}
 Lezen mislukt: {}
 
-It didn’t work.
-Dat is niet gelukt.
-
 It didn’t open: {}.
 Openen mislukt: {}.
 
 It didn’t say why.
 Er is geen reden opgegeven.
+
+It didn’t work.
+Dat is niet gelukt.
 
 It downloads {}
 Te downloaden: {}
@@ -6162,11 +6162,11 @@ Verbindingssnelheid
 Link…
 Link…
 
-Linux’s own
-Van Linux zelf
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 De standaardscheduler van Linux (EEVDF) verdeelt tijd eerlijk over alle programma’s. Olo-threads waarop iets wacht, draaien bij beide schedulers met realtimeprioriteit. Bij builds en ander zwaar werk reageert het bureaublad met deze scheduler het snelst.
+
+Linux’s own
+Van Linux zelf
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 De gewone manier van Linux (cubic) verzendt tot de wachtrijen onderweg vol zijn, wat vertraging geeft; deze meet het pad en blijft eronder (Olo’s module, tcp_bbr3).
@@ -7989,9 +7989,6 @@ Opstartscherm van Olo
 Olo's login screen
 Aanmeldscherm van Olo
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Olo’s module controleert de kernel bij het laden en is buiten deze gebleven. Olo Doctor zegt waarom.
-
 Olo's own
 Van Olo
 
@@ -8018,6 +8015,9 @@ De sleutelbos van Olo is hier niet actief. Deze start bij het aanmelden.
 
 Olo’s language:
 Taal van Olo:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module controleert de kernel bij het laden en is buiten deze gebleven. Olo Doctor zegt waarom.
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Olo’s eigen apps kunnen er dan mee aanmelden, totdat Passwords vergrendelt of tot 10 minuten na het laatste gebruik. De sleutels zelf blijven hier.
@@ -12192,14 +12192,14 @@ Deze computer heet ‘{}’.
 This computer runs Fedora {}.
 Deze computer draait Fedora {}.
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-De kernel gebruikt zijn eigen scheduler omdat hij geen andere kan laden. Hiervoor is sched_ext nodig, beschikbaar vanaf Linux 6.12.
-
 This computer's sensor sees when someone is in front of it.
 De sensor van deze computer detecteert of er iemand voor het scherm zit.
 
 This computer’s git doesn’t say who you are.
 Git op deze computer weet niet wie u bent.
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+De kernel gebruikt zijn eigen scheduler omdat hij geen andere kan laden. Hiervoor is sched_ext nodig, beschikbaar vanaf Linux 6.12.
 
 This display reports no modes.
 Dit scherm meldt geen beschikbare weergavemodi.
@@ -13830,11 +13830,11 @@ Uw back-ups worden vóór verzending versleuteld met een sleutel die alleen op d
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Uw back-ups worden versleuteld voordat ze deze computer verlaten. De sleutel staat in Passwords als ‘DiskBackup Key’. Daarmee kunt u uw back-ups op elke computer herstellen.
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-Uw gezicht was niet goed zichtbaar. Ga recht voor de camera zitten, op een armlengte afstand, en probeer het opnieuw.
-
 Your face wasn’t recognised. Type your password.
 Uw gezicht is niet herkend. Typ uw wachtwoord.
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+Uw gezicht was niet goed zichtbaar. Ga recht voor de camera zitten, op een armlengte afstand, en probeer het opnieuw.
 
 Your home folder
 Uw persoonlijke map
@@ -14105,6 +14105,12 @@ bezig
 
 can’t be offered to SSH: {}
 kan niet aan SSH worden aangeboden: {}
+
+can’t be read
+kan niet worden gelezen
+
+can’t be read: {}
+kan niet worden gelezen: {}
 
 ceiling {}%
 bovengrens {}%

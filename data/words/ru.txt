@@ -5551,14 +5551,14 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 Не удалось прочитать: {}
 
-It didn’t work.
-Не удалось выполнить.
-
 It didn’t open: {}.
 Не удалось открыть: {}.
 
 It didn’t say why.
 Причина не указана.
+
+It didn’t work.
+Не удалось выполнить.
 
 It downloads {}
 Будет загружено {}
@@ -6214,11 +6214,11 @@ Link’s rate
 Link…
 Ссылка…
 
-Linux’s own
-Как в Linux
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Штатный планировщик Linux (EEVDF) справедливо распределяет время между всеми программами. В обоих планировщиках потоки Olo, от которых зависит отклик, работают с приоритетом реального времени. Под нагрузкой, например во время сборки, рабочий стол быстрее всего реагирует со штатным планировщиком.
+
+Linux’s own
+Как в Linux
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Обычный способ Linux (cubic) отправляет, пока не заполнятся очереди по пути, что добавляет задержку; этот измеряет путь и держится ниже его пропускной способности (модуль Olo, tcp_bbr3).
@@ -8041,9 +8041,6 @@ Olo's boot splash
 Olo's login screen
 Экран входа в Olo
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Модуль Olo проверяет ядро при загрузке и в это ядро не вошёл. Olo Doctor объясняет почему.
-
 Olo's own
 Встроенный в Olo
 
@@ -8070,6 +8067,9 @@ Olo’s keyring isn’t running here; it starts with your session.
 
 Olo’s language:
 Язык Olo:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Модуль Olo проверяет ядро при загрузке и в это ядро не вошёл. Olo Doctor объясняет почему.
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Собственные приложения Olo смогут входить с их помощью, пока Passwords не заблокируется или в течение 10 минут после последнего использования. Сами ключи остаются здесь.
@@ -12256,14 +12256,14 @@ This computer is “{}”.
 This computer runs Fedora {}.
 На этом компьютере установлена Fedora {}.
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-Ядро не поддерживает загрузку других планировщиков, поэтому работает штатный. Для sched_ext нужен Linux 6.12 или новее.
-
 This computer's sensor sees when someone is in front of it.
 Датчик компьютера определяет, есть ли перед ним человек.
 
 This computer’s git doesn’t say who you are.
 В настройках git на этом компьютере не указано ваше имя.
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+Ядро не поддерживает загрузку других планировщиков, поэтому работает штатный. Для sched_ext нужен Linux 6.12 или новее.
 
 This display reports no modes.
 Экран не сообщил ни одного режима.
@@ -13894,11 +13894,11 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Данные шифруются до отправки с компьютера. Ключ хранится в Passwords под именем «DiskBackup Key». С ним копии можно восстановить на любом компьютере.
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-Не удалось хорошо рассмотреть лицо. Сядьте на расстоянии вытянутой руки лицом к камере и попробуйте снова.
-
 Your face wasn’t recognised. Type your password.
 Лицо не распознано. Введите пароль.
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+Не удалось хорошо рассмотреть лицо. Сядьте на расстоянии вытянутой руки лицом к камере и попробуйте снова.
 
 Your home folder
 Ваша домашняя папка
@@ -14175,6 +14175,12 @@ busy
 
 can’t be offered to SSH: {}
 нельзя предложить SSH: {}
+
+can’t be read
+не читается
+
+can’t be read: {}
+не читается: {}
 
 ceiling {}%
 верхний предел {}%

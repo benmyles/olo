@@ -5479,14 +5479,14 @@ It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 読み込めませんでした：{}
 
-It didn’t work.
-うまくいきませんでした。
-
 It didn’t open: {}.
 開けませんでした：{}。
 
 It didn’t say why.
 理由は返されませんでした。
+
+It didn’t work.
+うまくいきませんでした。
 
 It downloads {}
 ダウンロード量は{}です
@@ -6136,11 +6136,11 @@ Link’s rate
 Link…
 リンク…
 
-Linux’s own
-Linux標準
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux標準のスケジューラー（EEVDF）は、すべてのプログラムにCPU時間を公平に割り当てます。どちらのスケジューラーでも、ほかの処理が待っているOloのスレッドはリアルタイム優先度で動きます。ビルドなどで高負荷のときは、こちらの方がデスクトップの応答が速くなります。
+
+Linux’s own
+Linux標準
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Linuxの通常の方式（cubic）は途中のキューが埋まるまで送信するため遅延が増えます。この方式は経路を測ってその範囲内で送信します（Oloのtcp_bbr3モジュール）。
@@ -7963,9 +7963,6 @@ Oloの起動画面
 Olo's login screen
 Oloのログイン画面
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Oloのモジュールは読み込み時にカーネルを確認し、このカーネルには入りませんでした。理由はOlo Doctorでわかります。
-
 Olo's own
 Olo標準
 
@@ -7992,6 +7989,9 @@ Oloのキーリングが起動していません。自分のセッションへ�
 
 Olo’s language:
 Oloの言語:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Oloのモジュールは読み込み時にカーネルを確認し、このカーネルには入りませんでした。理由はOlo Doctorでわかります。
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Passwordsがロックされるか、最後の使用から10分経つまで、Oloのアプリがこれらの鍵でサインインできます。鍵自体はこのコンピューターに残ります。
@@ -12160,14 +12160,14 @@ This computer is “{}”.
 This computer runs Fedora {}.
 このコンピューターはFedora {}を使用しています。
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-このカーネルは別のスケジューラーを読み込めないため、標準のものを使用します。切り替えに必要なsched_extはLinux 6.12以降で利用できます。
-
 This computer's sensor sees when someone is in front of it.
 このコンピューターのセンサーは、正面に人がいるかを検知します。
 
 This computer’s git doesn’t say who you are.
 このコンピューターのGitにユーザー情報が設定されていません。
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+このカーネルは別のスケジューラーを読み込めないため、標準のものを使用します。切り替えに必要なsched_extはLinux 6.12以降で利用できます。
 
 This display reports no modes.
 このディスプレイから表示モードの情報を取得できません。
@@ -13798,11 +13798,11 @@ Your backups are encrypted before they leave this computer, with a key only this
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 バックアップは送信前に暗号化します。鍵はPasswordsに「DiskBackup Key」として保存されており、どのコンピューターでも復元できます。
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-顔を十分に読み取れませんでした。腕一本分ほど離れてカメラの正面に座り、もう一度お試しください。
-
 Your face wasn’t recognised. Type your password.
 顔を認識できませんでした。パスワードを入力してください。
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+顔を十分に読み取れませんでした。腕一本分ほど離れてカメラの正面に座り、もう一度お試しください。
 
 Your home folder
 ホームフォルダー
@@ -14070,6 +14070,12 @@ busy
 
 can’t be offered to SSH: {}
 SSHに提供できません: {}
+
+can’t be read
+読み取れません
+
+can’t be read: {}
+読み取れません: {}
 
 ceiling {}%
 上限{}%

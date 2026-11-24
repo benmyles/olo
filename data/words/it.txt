@@ -5503,14 +5503,14 @@ Impossibile raggiungerlo: {}. Olo continua a riprovare.
 It couldn’t be read: {}
 Impossibile leggere: {}
 
-It didn’t work.
-Operazione non riuscita.
-
 It didn’t open: {}.
 Apertura non riuscita: {}.
 
 It didn’t say why.
 Non ha indicato il motivo.
+
+It didn’t work.
+Operazione non riuscita.
 
 It downloads {}
 Scarica {}
@@ -6162,11 +6162,11 @@ Velocità del collegamento
 Link…
 Link…
 
-Linux’s own
-Quello di Linux
-
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Lo scheduler standard di Linux (EEVDF) ripartisce equamente il tempo tra i programmi. I thread di Olo da cui dipendono altre attività lavorano in tempo reale con entrambi gli scheduler. Durante build e altri lavori pesanti, questo mantiene la scrivania più reattiva.
+
+Linux’s own
+Quello di Linux
 
 Linux’s usual way (cubic) sends until the queues along the path fill, which adds delay; this one measures the path and stays under it (Olo’s module, tcp_bbr3).
 Il modo usuale di Linux (cubic) invia finché le code lungo il percorso si riempiono, il che aggiunge ritardo; questo misura il percorso e resta al di sotto (modulo di Olo, tcp_bbr3).
@@ -7989,9 +7989,6 @@ Schermata di avvio di Olo
 Olo's login screen
 Schermata di accesso di Olo
 
-Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
-Il modulo di Olo verifica il kernel mentre si carica, ed è rimasto fuori da questo. Olo Doctor dice perché.
-
 Olo's own
 Di Olo
 
@@ -8018,6 +8015,9 @@ Il portachiavi di Olo non è attivo qui. Si avvia con la sessione.
 
 Olo’s language:
 Lingua di Olo:
+
+Olo’s module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Il modulo di Olo verifica il kernel mentre si carica, ed è rimasto fuori da questo. Olo Doctor dice perché.
 
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Le app di Olo possono usarle per accedere finché Passwords non si blocca o per 10 minuti dall’ultimo uso. Le chiavi restano qui.
@@ -12192,14 +12192,14 @@ Il computer si chiama “{}”.
 This computer runs Fedora {}.
 Sul computer è installato Fedora {}.
 
-This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
-Il kernel usa il proprio scheduler perché non può caricarne un altro. La funzione sched_ext è disponibile da Linux 6.12.
-
 This computer's sensor sees when someone is in front of it.
 Il sensore del computer rileva la presenza di una persona davanti allo schermo.
 
 This computer’s git doesn’t say who you are.
 Git su questo computer non indica chi sei.
+
+This computer’s kernel can’t load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel’s own schedules.
+Il kernel usa il proprio scheduler perché non può caricarne un altro. La funzione sched_ext è disponibile da Linux 6.12.
 
 This display reports no modes.
 Lo schermo non segnala modalità disponibili.
@@ -13830,11 +13830,11 @@ I backup vengono cifrati prima di lasciare questo computer con una chiave presen
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 I backup vengono cifrati prima di lasciare questo computer. La chiave è in Passwords come “DiskBackup Key” e permette di ripristinarli su qualsiasi computer.
 
-Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
-Il volto non era ben visibile. Siediti di fronte alla fotocamera a circa un braccio di distanza e riprova.
-
 Your face wasn’t recognised. Type your password.
 Volto non riconosciuto. Digita la password.
+
+Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
+Il volto non era ben visibile. Siediti di fronte alla fotocamera a circa un braccio di distanza e riprova.
 
 Your home folder
 La tua cartella Inizio
@@ -14105,6 +14105,12 @@ occupato
 
 can’t be offered to SSH: {}
 non può essere offerta a SSH: {}
+
+can’t be read
+non si può leggere
+
+can’t be read: {}
+non si può leggere: {}
 
 ceiling {}%
 limite {}%

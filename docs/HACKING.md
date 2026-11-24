@@ -25586,6 +25586,45 @@ said so (2026-11-23). Tests: the curves' older forms
 from fixed numbers; and `OLO_KEYS_PROBE`, a folder of ssh-keygen's
 keys of every kind in the three forms (21 of 21).
 
+An SSH key shows what 1Password shows for one (Ben, 2026-11-22: "olo
+passwords should show/have/sync all the same stuff as 1p for ssh
+keys"), worked out from its private key (`agent::derived`, from its
+public part, so a key under a passphrase in OpenSSH's own format, whose
+public part is kept in the clear, has them too): its public key and
+fingerprint over it and its type under it ("Ed25519", "RSA, 4096-bit":
+1Password's words), by 1Password's own ids and labels (`public_key`
+"public key", `fingerprint`, `key_type` "key type";
+`agent::derived_fields`, none where the item has a field of its own by
+that id or label). They are copied, dragged and referred to as its
+other fields are (`agent::derived_field` behind `copy_field`,
+`dragged_field` and `copy_reference`), `op read op://VAULT/ITEM/public
+key` reads one, and `op item get` lists them around the private key in
+1Password's order, the private key with `ssh_formats.openssh`; and
+`?ssh-format=openssh` gives the private key in OpenSSH's format (it gave
+it as kept, PKCS#8 for a key 1Password made), refused on any other
+field, as 1Password refuses it. The public key and fingerprint are set
+in the monospaced face (compared by eye: l, I and 1, O and 0) and wrap
+rather than being cut (`wrapped`, two lines at most: a longer one, an
+RSA key's, keeps its start and, after "…", its end; Opus's look: "the
+row hides the useful part of it"); a key that can't be read says so
+where its public key would be, in the warning's voice ("can’t be read:
+the key has a passphrase"), and the warning that it can't be offered is
+on a line of its own under the key, whole (on the label's line it was
+cut, mid-word, as the buttons came). In the list, its second line is
+its fingerprint's hash (without the `SHA256:` every one starts with) in
+the monospaced face, worked out once as the index is made
+(`Searchable`'s `fingerprint`), or "can’t be read". Each field row's
+Copy and Show are small, on its label's line (as tall as they are),
+right-aligned with Edit: full-size beside the value, they cut it again
+as the pointer came, and the text under it moved. The pointer's band is
+square (as a list's selection) and reaches `BAND_PAD` past the text and
+the buttons all round; the rows are 48 points, and the first is a
+little way under the header's rule (it was nearer it than the last
+value is to the dates' rule). Cost,
+release build: the rows worked out once a key and looked up after
+(0.11 µs a draw for an Ed25519 key, 0.57 µs for RSA 4096, the key's
+text hashed; 35 and 14 µs the first time).
+
 Passwords is the session's SSH agent (`agent.rs`; Preferences ▸ Security
 ▸ "Be the SSH agent", on by default): the agent protocol
 (draft-miller-ssh-agent: identities and signatures; adding, removing

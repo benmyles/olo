@@ -4688,6 +4688,8 @@ brush’s grey hints, from a tiny model of your own commands
 built most, the last 24 hours
 busy
 can’t be offered to SSH: {}
+can’t be read
+can’t be read: {}
 ceiling {}%
 charging, full in {}
 compile going on
