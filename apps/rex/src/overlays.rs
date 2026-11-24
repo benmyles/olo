@@ -7,62 +7,27 @@
 //! - Quick Look (`⌘Y`) image & text preview
 //! - Auto-Approve 30 s Countdown Pill & Password Prompt Autofill Banner
 
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use olo_kit::{
-    Bounds, Child, CursorStyle, Element, FontWeight, InteractiveElement as _, MouseButton, ParentElement as _, RenderImage, SharedString, Styled as _, WindowCx, agent, canvas, div, icons,
-    metrics as m, point, px, size, style, theme,
+    Child, CursorStyle, Element, FontWeight, InteractiveElement as _, MouseButton, ParentElement as _, SharedString, Styled as _, WindowCx, agent, canvas, div, icons, metrics as m, point, px, style,
+    theme,
     widgets::{Button, KeyHint, StringView, TextControl, TextField},
 };
 use olo_rex_client::{ClientPromptRequested, DirEntry};
 
-use crate::{hub::BlockKey, keymap::SequenceHint, terminal_pane::rgba_to_render_image};
+use crate::{hub::BlockKey, keymap::SequenceHint};
 
 /// Active modal/floating overlay open inside a Rex workspace window.
 pub enum ActiveOverlay {
     RexPrompt { host_key: String, req: ClientPromptRequested, query: String, selected_idx: usize, checked_ids: HashSet<String> },
     PathBrowser { mode: PathBrowserMode, block: BlockKey, dir: String, query: String, entries: Vec<DirEntry>, selected: usize },
-    QuickLook { path: String, content: QuickLookContent },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathBrowserMode {
     InsertPath,
     GoToDir,
-}
-
-#[derive(Clone)]
-pub enum QuickLookContent {
-    Loading,
-    Image { image: Arc<RenderImage>, width: u32, height: u32 },
-    Text { lines: Arc<[String]>, scroll: usize },
-    Binary { size: usize, content_type: Option<String> },
-}
-
-impl QuickLookContent {
-    pub fn from_bytes(path: &str, bytes: &[u8], content_type: Option<String>) -> Self {
-        let lower = path.to_ascii_lowercase();
-        let looks_image = content_type.as_deref().is_some_and(|ct| ct.starts_with("image/"))
-            || lower.ends_with(".png")
-            || lower.ends_with(".jpg")
-            || lower.ends_with(".jpeg")
-            || lower.ends_with(".gif")
-            || lower.ends_with(".webp")
-            || lower.ends_with(".bmp");
-
-        if looks_image && let Ok(img) = image::load_from_memory(bytes) {
-            let rgba = img.to_rgba8();
-            let (w, h) = rgba.dimensions();
-            if let Some(ri) = rgba_to_render_image(rgba.as_raw(), w, h) {
-                return Self::Image { image: ri, width: w, height: h };
-            }
-        }
-        if let Ok(text) = std::str::from_utf8(bytes) {
-            let lines = text.lines().take(2000).map(str::to_owned).collect();
-            return Self::Text { lines, scroll: 0 };
-        }
-        Self::Binary { size: bytes.len(), content_type }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -282,88 +247,6 @@ pub fn render_active_overlay(
                     .child(TextControl::new(cx, field))
                     .child(list)
                     .child(div().flex().flex_row().gap(px(m::SECTION)).pt(px(m::TIGHT)).child(KeyHint::new("↩", action_lbl)).child(KeyHint::new("Esc", "Close"))),
-            )
-        }
-        ActiveOverlay::QuickLook { path, content } => {
-            let dismiss = on_dismiss.clone();
-            let body_el: Element = match content {
-                QuickLookContent::Loading => div().h(px(220.0)).flex().items_center().justify_center().child(StringView::new("Downloading preview from Rex server…").dim(true)),
-                QuickLookContent::Image { image, width, height } => {
-                    let img = image.clone();
-                    let (iw, ih) = (*width as f32, *height as f32);
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(m::TIGHT))
-                        .w_full()
-                        .child(
-                            canvas(move |g, b| {
-                                let p = theme::palette();
-                                style::fill_rect(g, b, style::c(p.document_background));
-                                style::sunken(g, b, &p, false);
-                                let inner = style::inset(g, b, 2.0);
-                                let scale = (f32::from(inner.size.width) / iw.max(1.0)).min(f32::from(inner.size.height) / ih.max(1.0)).min(1.0);
-                                let dw = iw * scale;
-                                let dh = ih * scale;
-                                let x = f32::from(inner.left()) + (f32::from(inner.size.width) - dw) / 2.0;
-                                let y = f32::from(inner.top()) + (f32::from(inner.size.height) - dh) / 2.0;
-                                let target = Bounds::new(point(px(x), px(y)), size(px(dw), px(dh)));
-                                let _ = g.paint_image(target, olo_kit::Corners::default(), img.clone(), 0, false);
-                            })
-                            .paint_key(style::key((path.as_str(), *width, *height)))
-                            .w_full()
-                            .h(px(340.0)),
-                        )
-                        .child(StringView::new(format!("{width} × {height} px")).dim(true))
-                }
-                QuickLookContent::Text { lines, scroll } => {
-                    let shown: Vec<String> = lines.iter().skip(*scroll).take(22).cloned().collect();
-                    let key = style::key((path.as_str(), *scroll, shown.len()));
-                    canvas(move |g, b| {
-                        let p = theme::palette();
-                        style::fill_rect(g, b, style::c(p.document_background));
-                        style::sunken(g, b, &p, false);
-                        let font = style::mono_font(FontWeight::NORMAL);
-                        let ink = style::c(p.document_text);
-                        let mut y = f32::from(b.top()) + 12.0;
-                        for line in &shown {
-                            style::label_fit(g, b.left() + px(8.0), px(y), style::Align::Left, line.clone(), 11.0, font.clone(), ink, b.size.width - px(16.0));
-                            y += 15.0;
-                        }
-                    })
-                    .paint_key(key)
-                    .w_full()
-                    .h(px(340.0))
-                }
-                QuickLookContent::Binary { size: sz, content_type } => div()
-                    .h(px(140.0))
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(m::TIGHT))
-                    .child(StringView::new(format!("Binary file ({sz} bytes)")).bold(true))
-                    .child(StringView::new(content_type.clone().unwrap_or_else(|| "application/octet-stream".into())).dim(true)),
-            };
-            modal_shell(
-                "Quick Look",
-                640.0,
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::SPACING))
-                    .w_full()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .gap(px(m::SPACING))
-                            .child(div().flex_1().min_w_0().child(StringView::new(path.clone()).bold(true).cut(true)))
-                            .child(Button::new("Close").small().on_click(move |_, cx| dismiss(&(), cx))),
-                    )
-                    .child(body_el),
             )
         }
     };

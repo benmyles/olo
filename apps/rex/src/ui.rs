@@ -17,8 +17,8 @@ use olo_kit::{
     menu::{self, Menu, MenuBar},
     metrics as m, point, px, size, style, theme,
     widgets::{
-        self, Banner, Button, Front, Glyph, GlyphButton, Panes as SidePanes, SidePane, StatusBar, StringView, StripAction, StripTab, TabStrip, TextControl, TextField, TextFieldEvent, Tone, find_bar,
-        find_said, side_divider_within,
+        self, Banner, Button, Front, Glyph, GlyphButton, Panes as SidePanes, SidePane, StringView, StripAction, StripTab, TabStrip, TextControl, TextField, TextFieldEvent, Tone, find_bar, find_said,
+        side_divider_within,
     },
 };
 use olo_rex_client::{LayerKind, LayerState, LayoutNode, WindowView};
@@ -39,7 +39,7 @@ use crate::{
     hub::{BlockKey, HostConnState, HubNotice, RexHub},
     keymap::{self, KeyMatch, KeymapEngine},
     links::{self, LinkTarget},
-    overlays::{self, ActiveOverlay, JumpTarget, PathBrowserMode, QuickLookContent},
+    overlays::{self, ActiveOverlay, JumpTarget, PathBrowserMode},
     panels::{self, AskpassReply, AskpassRequest, OloAskpass},
     settings::{BarBehavior, SchemeChoice, Settings, SidebarMode, ToolbarLayout},
     terminal_pane::{self, Metrics, PanePaintArgs, PaneVisualState},
@@ -142,6 +142,49 @@ fn tab_agent_panes(hub: &RexHub, host_key: &str, session_id: &str, w: &olo_rex_c
         return with_agent;
     }
     w.focused_block_id.as_deref().or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(key).into_iter().collect()
+}
+
+/// A file going to or from a pane's host, at the status bar's end: what,
+/// a bar, how much of how much, and Stop where it can be stopped.
+fn transfer_said(t: crate::hub::Transfer, win_id: WinId) -> Element {
+    let fraction = if t.total > 0 { t.done as f32 / t.total as f32 } else { 0.0 };
+    let bar = canvas(move |g, b| {
+        let p = theme::palette();
+        let bar = style::snap_centred(g, b.center(), 120.0, 8.0);
+        widgets::level_bar(g, bar, fraction, None, &p);
+    })
+    .paint_key(style::key((t.done * 1000 / t.total.max(1), t.total)))
+    .w(px(120.0))
+    .h(px(m::LABEL_ROW))
+    .flex_shrink_0();
+    // (The news while it lasts: it keeps its room, the status line gives
+    // way; a long name is cut, at most 260 points.)
+    let mut row = div()
+        .flex_shrink_0()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::TIGHT))
+        .child({
+            // (Its own width, measured: a cut line has none of its own.)
+            let wide = f32::from(style::text_width(t.said.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil().min(260.0);
+            div().w(px(wide)).child(StringView::new(t.said).size(style::SMALL_SIZE).height(m::LABEL_ROW).cut(true))
+        })
+        .child(bar)
+        .child(StringView::new(olo_kit::tr!("{} of {}", megabytes(t.done), megabytes(t.total))).size(style::SMALL_SIZE).height(m::LABEL_ROW).dim(true));
+    if t.stoppable {
+        row = row.child(Button::new("Stop").small().id("rex-transfer-stop").on_click(move |_, _| {
+            if let Some(slot) = wins().map.get(&win_id) {
+                slot.handle.messenger().send(WinMsg::StopTransfer);
+            }
+        }));
+    }
+    row.into_element()
+}
+
+/// Bytes as a person reads them: "2.1 MB", "640 KB".
+fn megabytes(bytes: u64) -> String {
+    if bytes >= 1_000_000 { format!("{:.1}\u{a0}MB", bytes as f64 / 1_000_000.0) } else { format!("{}\u{a0}KB", bytes.div_ceil(1000)) }
 }
 
 /// A picture pasted into a pane, as a file to put on its host: in Rex's
@@ -581,10 +624,6 @@ impl Feedback {
         self.send(WinMsg::Created(self.serial, host, sid));
     }
 
-    pub fn preview(self, path: String, preview: QuickLookContent) {
-        self.send(WinMsg::QuickLookReady(self.serial, path, preview));
-    }
-
     pub fn say(self, text: &str) {
         self.send(WinMsg::Confirmation(self.serial, text.to_owned()));
     }
@@ -699,7 +738,8 @@ pub enum WinMsg {
         action: String,
         args: Option<Value>,
     },
-    QuickLookReady(u64, String, QuickLookContent),
+    /// The pane's file transfer stopped (a Quick Look's download).
+    StopTransfer,
     QrReady(String, Option<Arc<qrcode::QrCode>>),
     OpenPreview(BlockKey, String),
     DirListingReady {
@@ -932,7 +972,6 @@ impl RexWindow {
                             *query = txt;
                             *selected = 0;
                         }
-                        ActiveOverlay::QuickLook { .. } => {}
                     }
                 }
                 cx.invalidate();
@@ -1333,15 +1372,12 @@ impl RexWindow {
         if let Some(job) = self.preview_job.take() {
             job.abort();
         }
-        if matches!(self.overlay, Some(ActiveOverlay::QuickLook { .. })) {
-            self.overlay = None;
-            self.clear_feedback();
-        }
     }
 
+    /// Quick Look: the file opened in Olo's app for it, copied from its
+    /// host first (`RexHub::quick_look_path`).
     fn open_preview(&mut self, bk: BlockKey, path: String) {
         self.cancel_preview();
-        self.overlay = Some(ActiveOverlay::QuickLook { path: path.clone(), content: QuickLookContent::Loading });
         self.preview_job = app().hub.quick_look_path(&bk, path, Feedback::start(self.id));
     }
 
@@ -1403,7 +1439,7 @@ impl RexWindow {
                     }
                 }
             }
-            Some(ActiveOverlay::QuickLook { .. }) | None => {}
+            None => {}
         }
         self.focus.focus(cx);
         cx.invalidate();
@@ -2212,10 +2248,6 @@ impl RexWindow {
                         match ov {
                             ActiveOverlay::PathBrowser { selected, .. } => *selected = selected.saturating_sub(1),
                             ActiveOverlay::RexPrompt { selected_idx, .. } => *selected_idx = selected_idx.saturating_sub(1),
-                            ActiveOverlay::QuickLook { content: QuickLookContent::Text { scroll, .. }, .. } => {
-                                *scroll = scroll.saturating_sub(3);
-                            }
-                            _ => {}
                         }
                     }
                     cx.invalidate();
@@ -2227,10 +2259,6 @@ impl RexWindow {
                         match ov {
                             ActiveOverlay::PathBrowser { selected, .. } => *selected += 1,
                             ActiveOverlay::RexPrompt { selected_idx, .. } => *selected_idx += 1,
-                            ActiveOverlay::QuickLook { content: QuickLookContent::Text { scroll, lines }, .. } => {
-                                *scroll = (*scroll + 3).min(lines.len().saturating_sub(1));
-                            }
-                            _ => {}
                         }
                     }
                     cx.invalidate();
@@ -3012,6 +3040,11 @@ impl RexWindow {
         };
         let silent = self.silent_host();
         let has = self.host_has();
+        // (A file going to or from the focused pane's host.)
+        let transfer = self
+            .focused_block_key()
+            .and_then(|bk| hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned())
+            .and_then(|b| b.lock().unwrap_or_else(|e| e.into_inner()).upload_progress.clone());
         let marks_host = self.focused_block_key().map_or_else(|| self.active_host.clone(), |focused| focused.host_key);
         let open_host_window: Rc<dyn Fn(&String, &mut WindowCx)> = Rc::new(cx.msg_with(|host: &String| WinMsg::HostOpen(host.clone())));
         let open_account_window: Rc<dyn Fn(&String, &mut WindowCx)> = Rc::new(cx.msg_with(|host: &String| WinMsg::AccountOpen(host.clone())));
@@ -3045,6 +3078,7 @@ impl RexWindow {
                             .items_center()
                             .gap(px(m::SPACING))
                             .child(div().flex_1().min_w_0().child(line))
+                            .children(transfer.map(|t| transfer_said(t, self.id)))
                             .children(silent.map(|said| {
                                 div()
                                     .flex_shrink_0()
@@ -3983,12 +4017,8 @@ impl View for RexWindow {
                 self.open_preview(bk, path);
                 cx.invalidate();
             }
-            WinMsg::QuickLookReady(serial, path, content) => {
-                if serial != self.feedback_serial {
-                    return;
-                }
-                self.preview_job = None;
-                self.overlay = Some(ActiveOverlay::QuickLook { path, content });
+            WinMsg::StopTransfer => {
+                self.cancel_preview();
                 cx.invalidate();
             }
             WinMsg::DirListingReady { key, listing } => {
@@ -5029,7 +5059,7 @@ fn render_single_pane(
         return div().size_full().child(StringView::new("Attaching terminal stream…").dim(true));
     };
 
-    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt, scrolled, counting) = {
+    let (creator_name, title, pwd, activity, ports_list, password_prompt, scrolled, counting) = {
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
         (
             g.creator_name.clone(),
@@ -5037,7 +5067,6 @@ fn render_single_pane(
             g.pwd.clone(),
             g.agent_activity,
             g.ports.ports.iter().map(|p| p.port).collect::<Vec<u16>>(),
-            g.upload_progress.clone(),
             g.password_prompt,
             g.terminal.scrollbar(),
             // (Auto Approve's question, and how long till it's answered:
@@ -5622,10 +5651,6 @@ fn render_single_pane(
         )));
     }
     pane_col = pane_col.child(screen_box);
-
-    if let Some((fname, frac)) = upload_prog {
-        pane_col = pane_col.child(div().w_full().px(px(m::SPACING)).py(px(4.0)).child(StatusBar::new(frac).label(format!("Uploading {fname}…"))));
-    }
 
     pane_col
 }

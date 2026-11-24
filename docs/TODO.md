@@ -24,6 +24,14 @@ something nobody here has is in "Blocked", with what it waits for.
   Astra's look at that change's pictures (`/var/tmp/claude-olo/aa/
   review2`, to be taken again then): Opus 5.5's two rounds alone were
   had.
+- **From the look at Rex's Quick Look** (Opus 5.5, 2026-11-24), not
+  Rex's to fix: Viewer opens at the window server's stagger, its tab over
+  the window it was opened from ("centre the Viewer window over Rex's
+  terminal pane … never put another window's tab over a menu bar"), and
+  at a size far larger than a small picture; its title doesn't say a
+  copy came from a host ("quick-look-me.png — far"); the kit's level
+  bar's well, in light, is a white field with a rule along its top only
+  ("draw it like every other well on the desktop").
 - **Pre-existing, from the look at About's Software Update** (Opus 5.5,
   2026-11-24): an alert's question and its explanation are one size
   ("make the question bold … and cut the gap below it to 8 pt"); an
@@ -67,14 +75,6 @@ something nobody here has is in "Blocked", with what it waits for.
   went in as blocks of their own meanwhile. Translate them, a language
   at a time (a subagent's work: one catalog each), then merge so each
   catalog is whole and in order again.
-- **Rex: Quick Look of a remote file** (Ben, 2026-11-24: "the quick
-  look feature for rex to view a remote file needs to work better and
-  save it somewhere locally and load it in the viewer right now it is
-  some weird crippled viewer type thing"): the file copied to a local
-  folder of Rex's (download_begin, with progress, cancellable), then
-  opened in Olo's own app for its kind (Viewer for a picture, Styled
-  Edit for text, …) as Tracker opens a file, not Rex's own preview.
-
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

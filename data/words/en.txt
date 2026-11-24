@@ -941,6 +941,7 @@ Couldn’t be installed
 Couldn’t be set
 Couldn’t change this vault in 1Password. {}
 Couldn’t clone
+Couldn’t copy the file from the host.
 Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 Couldn’t get a sign-in link: {}.
@@ -952,8 +953,10 @@ Couldn’t list its items. {}
 Couldn’t look at {}
 Couldn’t look at {} again
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
+Couldn’t open the file.
 Couldn’t open the sign-in page: {}.
 Couldn’t open this item: {}
+Couldn’t paste the picture.
 Couldn’t reach the login keyring: {}
 Couldn’t reach {}
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
@@ -1175,6 +1178,8 @@ Download at most:
 Download, Then Restart to Install
 Downloading
 Downloading preview from Rex server…
+Downloading {} from {}…
+Downloading {}…
 Downloading: {}
 Downloading…
 Downloads
@@ -4245,6 +4250,7 @@ Upgrading downloads every package of Fedora {} now, while you work, then install
 Upload
 Upload at most:
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
+Uploading {}…
 Uploading: {}
 Uploading…
 Uptime:

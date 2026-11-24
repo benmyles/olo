@@ -28922,6 +28922,29 @@ icon's corner (`widgets::agent_marks`, as Terminal's tabs: the turning
 ring, "!", the green and grey dots, the red cross), said in words by
 the row's tip and to agents as its value (`activity_words`).
 
+**Quick Look of a file on a host** (Ben, 2026-11-24: "the quick look
+feature for rex to view a remote file needs to work better and save it
+somewhere locally and load it in the viewer right now it is some weird
+crippled viewer type thing"). Quick Look (the pane's menu, Files ▸
+Quick Look Path…, ⌘-click on a path) opens the file in Olo's own app
+for its kind, as Tracker opens one (`olo_xdg::open::open`: Viewer for a
+picture, Styled Edit for text, …). On this computer, where it is (a
+relative path from the pane's folder); on a host, copied first into
+Rex's folder of them (`<cache>/rex-quicklook/HOST/HASH/NAME`, a folder
+for each path so the file keeps its name), streamed to disk (`.rex-part`,
+renamed when whole), its progress at the end of the window's status bar
+("Downloading NAME from HOST…", the kit's level bar, "1.8 MB of 20.0 MB",
+and Stop, which aborts the job; gone however it ends: `Transfer`, an
+upload's the same without Stop; it was a strip on the pane, which took
+three rows from the terminal, a resize to its program, for a passing
+download: Opus's review), and kept: asked again, the server is asked with the copy's
+version and only a changed file is fetched. Rex's own preview, the whole
+file in memory and shown in an overlay of its own, is gone.
+`OLO_REX_TRANSFER_PAUSE_MS` pauses after each chunk, for a test to see
+the progress. Tried headless: a far host's picture opened in Viewer, the
+copy the same file; a 20 MB file's line pictured midway and Stop
+pressed (nothing opened, the line gone).
+
 **A picture pasted into a pane** (Ben, 2026-11-24: "make it so that
 copy and paste of images works properly in a rex session e.g. when i
 paste an image for you in here that was on my clipboard it should make

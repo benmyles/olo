@@ -32,7 +32,6 @@ use crate::{
     copy_mode::CopyMode,
     git::{GitCache, GitInfo},
     keymap,
-    overlays::QuickLookContent,
     settings::{SavedHost, Settings},
     themes,
     ui::Feedback,
@@ -187,7 +186,10 @@ pub struct BlockRuntime {
     /// goes on showing the frame from before it.
     updating_since: Option<Instant>,
     pub received_bytes: u64,
-    pub upload_progress: Option<(String, f32)>,
+    /// A file going to or from its host, said in the window's status bar
+    /// (a strip on the pane took rows from its terminal, which a program
+    /// there is told is a resize; Opus's review, 2026-11-24).
+    pub upload_progress: Option<Transfer>,
     pub password_prompt: bool,
     pub data_cancel: Option<tokio::sync::oneshot::Sender<()>>,
 }
@@ -1331,12 +1333,31 @@ fn install_view(rows: &mut [SessionSummary], sessions: &mut HashMap<String, Sess
 
 #[derive(Clone)]
 struct QuickLookCacheEntry {
+    /// The server's word for the copy kept (asked again, the file is
+    /// fetched only where it has changed since).
     version: Option<String>,
-    preview: QuickLookContent,
+    /// Where the copy is, on this computer.
+    local: PathBuf,
 }
 
 // A normal end-of-stream and the advertised size are both needed. In particular,
 // even an error after the last byte isn't a completed transfer.
+/// Where a file of a host's is kept for Quick Look: in Rex's folder of
+/// them, a folder of its own for each host and each of its paths (by a
+/// hash: a path's own folders could clash), keeping its name for the app
+/// that opens it.
+fn quick_look_file(host: &str, path: &str) -> PathBuf {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (host, path).hash(&mut h);
+    let host_dir: String = host.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' }).collect();
+    let name = path.rsplit('/').find(|s| !s.is_empty() && *s != "." && *s != "..").unwrap_or("file");
+    olo_xdg::cache_dir().join("rex-quicklook").join(host_dir).join(format!("{:016x}", h.finish())).join(name)
+}
+
+/// (The tests' reading of a whole download into memory; Quick Look
+/// streams it to a file.)
+#[cfg(test)]
 fn preview_complete(bytes: &mut Vec<u8>, expected: u64, next: Result<Option<Vec<u8>>, olo_rex_client::RexError>) -> Result<bool, olo_rex_client::RexError> {
     use olo_rex_client::RexError;
     match next? {
@@ -1737,6 +1758,17 @@ pub fn let_go() -> Vec<String> {
 /// (As Rex comes back from an upgrade, before its hub starts.)
 pub fn set_let_go(hosts: Vec<String>) {
     *LET_GO.lock().unwrap_or_else(|e| e.into_inner()) = hosts;
+}
+
+/// A file going to or from a pane's host, as its window's status bar says
+/// it: what ("Downloading shot.png from far…"), how much of how much, and
+/// whether it can be stopped (a Quick Look's download can).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Transfer {
+    pub said: String,
+    pub done: u64,
+    pub total: u64,
+    pub stoppable: bool,
 }
 
 /// The size, in its own units, of a cell as the mouse encoder is told it.
@@ -3136,35 +3168,115 @@ impl RexHub {
     }
     /// Download a file via `com.superlogical.terminal.download_begin` + `rex.data.bytes.v1`
     /// with `if_none_match` ETag caching for instant Quick Look (`⌘Y`).
+    /// Quick Look: the file at `path` (as the pane names it) opened in
+    /// Olo's own app for its kind (Viewer for a picture, Styled Edit for
+    /// text, …), as Tracker opens one. On this computer, where it is; on a
+    /// host, copied first into Rex's folder of them
+    /// (`<cache>/rex-quicklook/HOST/…/NAME`), streamed to disk with its
+    /// progress on the pane, stoppable, and kept: asked again, it is
+    /// fetched only where it has changed (the server's version). (Rex's
+    /// own preview, whole in memory and shown in an overlay of its own, was
+    /// "some weird crippled viewer type thing", Ben, 2026-11-24.)
     pub fn quick_look_path(&self, key: &BlockKey, path: String, feedback: Feedback) -> Option<tokio::task::AbortHandle> {
+        let (is_local, pwd) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let pwd = st.blocks.get(key).map(|b| b.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).unwrap_or_default();
+            (st.hosts.get(&key.host_key).is_some_and(|h| h.is_local), pwd)
+        };
+        if is_local {
+            let p = PathBuf::from(&path);
+            let p = if p.is_absolute() || pwd.is_empty() { p } else { PathBuf::from(&pwd).join(p) };
+            if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Path(p)) {
+                feedback.problem("Couldn’t open the file.", e);
+            }
+            return None;
+        }
         let cache_key = (key.host_key.clone(), key.block_id.clone(), path.clone());
         let (sid, bid) = (key.session_id.clone(), key.block_id.clone());
         let cached = self.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.get(&cache_key).cloned();
+        let bk = key.clone();
         let job = self.with_control(&key.host_key, move |ctrl, ep, inner| async move {
+            // (Its progress taken off the pane however it ends: done,
+            // failed, or stopped.)
+            struct Clear(Arc<RexHubInner>, BlockKey);
+            impl Drop for Clear {
+                fn drop(&mut self) {
+                    if let Some(br) = self.0.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&self.1).cloned() {
+                        br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress = None;
+                    }
+                    (self.0.notify)(HubNotice::StateChanged);
+                }
+            }
+            let _clear = Clear(inner.clone(), bk.clone());
+            let name = path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("file").to_owned();
+            let host = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&bk.host_key).map(|h| h.label.clone()).unwrap_or_default();
             let received = async {
                 let data_ref = transfer_reference("download");
-                let version = cached.as_ref().and_then(|e| e.version.as_deref());
+                let version = cached.as_ref().filter(|e| e.local.exists()).and_then(|e| e.version.as_deref());
                 let resp = ctrl.terminal_download_begin(&sid, &bid, &data_ref, &path, version).await?.payload;
-                if resp.not_modified {
-                    return cached.map(|e| e.preview).ok_or_else(|| olo_rex_client::RexError::Protocol("No cached preview for this file.".into()));
+                if resp.not_modified
+                    && let Some(e) = cached.as_ref().filter(|e| e.local.exists())
+                {
+                    return Ok(e.local.clone());
                 }
                 let ticket = resp.ticket.ok_or_else(|| olo_rex_client::RexError::Protocol("The server didn’t provide a download ticket.".into()))?;
+                let local = quick_look_file(&bk.host_key, &path);
+                if let Some(dir) = local.parent() {
+                    tokio::fs::create_dir_all(dir).await?;
+                }
+                let part = local.with_extension("rex-part");
                 let (stream, header) = ep.connect_stream().await?;
                 let mut stream = BytesDataStream::connect_hello(stream, &header, &ticket).await?;
-                let mut bytes = Vec::new();
-                while !preview_complete(&mut bytes, resp.size, stream.read_chunk().await)? {}
-                let preview = QuickLookContent::from_bytes(&path, &bytes, None);
-                inner.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.insert(cache_key, QuickLookCacheEntry { version: resp.version, preview: preview.clone() });
-                Ok(preview)
+                let mut file = tokio::fs::File::create(&part).await?;
+                let (mut got, mut said) = (0u64, None::<Instant>);
+                // (A test's own slow link: a pause after each chunk, so its
+                // progress and Stop can be seen. Never set otherwise.)
+                let pause = std::env::var("OLO_REX_TRANSFER_PAUSE_MS").ok().and_then(|v| v.parse().ok()).map(Duration::from_millis);
+                loop {
+                    use tokio::io::AsyncWriteExt;
+                    if let Some(p) = pause {
+                        tokio::time::sleep(p).await;
+                    }
+                    match stream.read_chunk().await? {
+                        Some(chunk) => {
+                            got += chunk.len() as u64;
+                            if got > resp.size {
+                                return Err(olo_rex_client::RexError::Protocol("The file is larger than the server reported.".into()));
+                            }
+                            file.write_all(&chunk).await?;
+                            if said.is_none_or(|t| t.elapsed() >= Duration::from_millis(100)) {
+                                if let Some(br) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
+                                    br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress =
+                                        Some(Transfer { said: olo_kit::tr!("Downloading {} from {}…", name, host), done: got, total: resp.size, stoppable: true });
+                                }
+                                (inner.notify)(HubNotice::StateChanged);
+                                said = Some(Instant::now());
+                            }
+                        }
+                        None if got == resp.size => break,
+                        None => return Err(olo_rex_client::RexError::Protocol(format!("Received {got} of {} bytes.", resp.size))),
+                    }
+                }
+                {
+                    use tokio::io::AsyncWriteExt;
+                    file.flush().await?;
+                }
+                tokio::fs::rename(&part, &local).await?;
+                inner.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.insert(cache_key, QuickLookCacheEntry { version: resp.version, local: local.clone() });
+                Ok::<PathBuf, olo_rex_client::RexError>(local)
             }
             .await;
             match received {
-                Ok(preview) => feedback.preview(path, preview),
-                Err(e) => feedback.problem("Couldn’t preview the file.", e),
+                Ok(local) => {
+                    if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Path(local)) {
+                        feedback.problem("Couldn’t open the file.", e);
+                    }
+                }
+                Err(e) => feedback.problem("Couldn’t copy the file from the host.", e),
             }
         });
         if job.is_none() {
-            feedback.problem("Couldn’t preview the file.", "The Rex server is disconnected.");
+            feedback.problem("Couldn’t copy the file from the host.", "The Rex server is disconnected.");
         }
         job
     }
@@ -3215,7 +3327,8 @@ impl RexHub {
                         ds.write_all(&buf[..count]).await?;
                         if last.is_none_or(|t: Instant| t.elapsed() >= Duration::from_millis(100)) {
                             if let Some(br) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
-                                br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress = Some((filename.clone(), sent as f32 / size as f32));
+                                br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress =
+                                    Some(Transfer { said: olo_kit::tr!("Uploading {}…", filename), done: sent, total: size, stoppable: false });
                             }
                             (inner.notify)(HubNotice::StateChanged);
                             last = Some(Instant::now());
