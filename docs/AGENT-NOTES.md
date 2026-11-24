@@ -1330,6 +1330,11 @@ waits for the machine to have room; with whole test suites building in
 a worktree beside it (and the person's other work), one app's session
 timed out after forty minutes and the push failed: "DiskBackup: the
 lint failed: timed out". Read and plan during a push; build after it.
+Again 2026-11-23, in its rest check: a build beside it slowed the
+Inbox's provider to half the check's changes ("the check itself is
+off"). The check now waits for room as the lint does and says the load
+when it fails; a push with a build beside it is still slower: wait for
+its completion notice.
 
 ### A soak counts threads and descriptors, not only memory (2026-11-21)
 
@@ -2946,4 +2951,3 @@ an argument it doesn't know starts the lint (read its first lines).
   (`SSH_AUTH_SOCK=/run/user/UID/openssh_agent`, the openssh user
   service): "has the shell an agent?" isn't "has it keys?"; ask
   `ssh-add -l`.
-

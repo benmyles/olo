@@ -182,6 +182,38 @@ def say(case, m):
     print("    files replaced a second:", {k: round(v, 1) for k, v in m["replaced"].items()} or "none")
 
 
+def processors_short():
+    """How short the machine's processors are (the kernel's own count,
+    /proc/pressure/cpu: the share of the last ten seconds in which
+    something waited for one), in percent; none where it doesn't say."""
+    try:
+        return float(open("/proc/pressure/cpu").readline().split("avg10=")[1].split()[0])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+WAITED = [0.0]
+
+
+def wait_for_room(what):
+    """Waits to measure until the machine has room (as tools/dev/ui-lint
+    waits to begin a session): while for a quarter of the last ten
+    seconds something waited for a processor, a quarter of an hour at
+    most in all. Measured on a busy machine (a build beside a push's
+    hook, 2026-11-23), the Inbox's provider kept up with half its
+    changes, and the check failed saying it was off."""
+    said = False
+    while WAITED[0] < 900:
+        short = processors_short()
+        if short is None or short < 25.0:
+            return
+        if not said:
+            print(f"rest-check: waiting for the machine to have room before {what} (processors short {short:.0f}% of the last 10 s)", file=sys.stderr, flush=True)
+            said = True
+        time.sleep(5)
+        WAITED[0] += 5
+
+
 def main():
     d = Desktop()
     wrong = []
@@ -195,6 +227,7 @@ def main():
         if not until(lambda: d.title() is not None):
             sys.exit("rest-check: Terminal never came")
         time.sleep(4)
+        wait_for_room("a spinner in a tab's title")
         m = d.measure()
         say("a spinner in a tab's title", m)
         if m["title"] != TITLE:
@@ -211,10 +244,12 @@ def main():
             f"    open({d.state!r} + '.new', 'w').write(json.dumps({{'unread': 0, 'quiet': False, 'apps': [], 'cards': [card], 'fade_minutes': None}}))\n"
             f"    os.rename({d.state!r} + '.new', {d.state!r})\n    time.sleep(0.1)\n"
         )
+        wait_for_room("what waits in an app changing")
         writer = subprocess.Popen(["/usr/bin/python3", "-c", code])
         try:
             time.sleep(3)
             m = d.measure()
+            short = processors_short()
         finally:
             writer.kill()
             writer.wait()
@@ -228,7 +263,8 @@ def main():
         if m["replaced"].get("13.json", 0) > 0:
             wrong.append(f"Calendar's widget was written {m['replaced']['13.json']:.1f} times a second with nothing of its own changed")
         if m["replaced"].get("12.json", 0) < 5:
-            wrong.append("the Inbox's widget wasn't made again as its state changed (the check itself is off)")
+            busy = f"; the machine was busy, processors short {short:.0f}% of the last 10 s" if short and short >= 25.0 else ""
+            wrong.append(f"the Inbox's widget wasn't made again as its state changed (the check itself is off{busy})")
     finally:
         d.stop()
     for w in wrong:
