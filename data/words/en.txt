@@ -142,6 +142,7 @@ A new build of Olo is ready ({}). Install it now? Your windows stay open.
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 A new name for the session “{}”:
 A new name for the tab “{}”:
+A newer version was installed after {} started. Restart it to use the new one.
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 A palm, ignored ({} so far)
 A path: /…, ~/… or a name here
@@ -265,6 +266,7 @@ Agent Screen
 Agent Screen Logs
 Agent Screen “{}” is waiting for a code
 Agent Screens
+Agent Tab Titles
 Agent sessions
 Agent settings
 Agents
@@ -429,6 +431,8 @@ Asking Telegram…
 Asking how Rex is set up there
 Asking it…
 Asking…
+Asks for your password when a program needs more rights.
+Asks who is logging in.
 Ask…
 Assistant
 Astra 6
@@ -455,6 +459,7 @@ Attach what's on the clipboard
 Attaching terminal stream…
 Attachments
 Authenticate
+Authentication
 Authentication:
 Auto
 Auto Approve
@@ -510,6 +515,7 @@ Backing up your home folder
 Backing up {n} folders
 Backing up {}
 Backlight
+Backs up this computer’s disk when one is due.
 Backup
 Backup didn’t finish
 Backup stopped
@@ -614,6 +620,7 @@ Caffeinated until {}
 Caffeinated: staying awake
 CalDAV
 Calendar
+Calendar Reminders
 Calendar for {}
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendar:
@@ -1102,6 +1109,7 @@ Dew point spread
 Dew point spread {}
 Dew point {}
 Diagnostics…
+Dictation and the voice assistant.
 Diff
 Differs from this computer
 Dim the built-in display when idle
@@ -1157,6 +1165,7 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 Do the result's other action
 Dockerfile
+Doctor
 Document
 Documentation
 Documents
@@ -1192,6 +1201,7 @@ Draw
 Draw tool
 Drawing
 Drawn into each frame
+Draws every window and takes the keyboard and pointer.
 Drive
 Drive Setup
 Drive {}:
@@ -1917,6 +1927,8 @@ Keeping it in Passwords…
 Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
+Keeps background work from slowing what you use.
+Keeps other apps’ passwords, unlocked as you log in.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Keeps typing quick over a slow link.
 Kept
@@ -2000,6 +2012,7 @@ Let coding agents keep their tab’s title current
 Let your other devices reach this computer’s sessions over Tailscale
 Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
+Lets coding agents title their Terminal tab.
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Letting go of backups past keeping
 Level
@@ -2060,6 +2073,8 @@ Lock when you walk away:
 Log Out
 Log Out…
 Login
+Login Keyring
+Login Window
 Logs
 Long
 Longest window title
@@ -2175,6 +2190,7 @@ Memory free
 Memory stalls
 Memory:
 Message
+Message Bus
 Message queues
 Messages
 Messages ({})
@@ -2649,11 +2665,12 @@ Olo’s keyring isn’t running here; it starts with your session.
 Olo’s language:
 Olo’s own apps can then sign in with them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Olo’s phone service isn’t running.
+Olo’s session isn’t answering.
 Olo’s skill for agents is on “{}”.
 Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
 Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
 Olo’s typing helper isn’t on “{}”.
 Olo’s typing helper isn’t on “{}”: {}
 Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
@@ -2733,6 +2750,7 @@ Open Website
 Open With
 Open With Offers
 Open a host’s Account window to see how each stands there, and to clone.
+Open and save panels, and screen sharing, for other apps.
 Open files
 Open files and tasks
 Open in Google Drive
@@ -2922,6 +2940,7 @@ Polish
 Pool
 Port
 Port:
+Portal
 Ports
 Portuguese
 Portuguese (Brazil)
@@ -2977,6 +2996,7 @@ Problem
 Problems
 Process
 Process {} has quit
+Process {} · {}
 Processed
 Processed: the setting chosen below
 Processes
@@ -3121,6 +3141,8 @@ Reload Without the Cache
 Remind:
 Reminder
 Reminder:
+Reminds you of your events.
+Reminds you of your to-dos.
 Remote
 Remote Access…
 Removable Disks
@@ -3204,6 +3226,8 @@ Restart Olo
 Restart Recording
 Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
 Restart kache
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+Restart to update
 Restart, Asking First
 Restarting or stopping it ends every session.
 Restarting or stopping it leaves open sessions running.
@@ -3279,6 +3303,8 @@ Running
 Running Rex’s installer as {}
 Running for {}
 Running systemctl as {}
+Running, started again once
+Running, started again {n} times
 Runs on
 Russian
 Rust
@@ -3289,6 +3315,7 @@ SQL
 SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
 SSD temperature
 SSE
+SSH Agent
 SSH Authentication
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH keys
@@ -3449,6 +3476,7 @@ Shaping
 Share
 Shared
 Shared with this screen: change it in your own Passwords.
+Shares the coding agents’ accounts between them.
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Sharing
 Sharing this computer's connection as “{}”.
@@ -3479,6 +3507,7 @@ Show Done
 Show File in Tracker
 Show Hidden Files
 Show Idle Panes in Activity
+Show Log
 Show Notifications
 Show Only {}
 Show Pane Headers
@@ -3490,7 +3519,6 @@ Show Shortcuts
 Show Sidebar
 Show Source
 Show Toolbars
-Show Typing Immediately
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Show banners for:
 Show icons in the Deskbar menu
@@ -3518,6 +3546,7 @@ Show:
 Showing its code
 Showing the forecast from {}.
 Shown
+Shows notifications and keeps them for later.
 Shows:
 Shut Down
 Shut Down Immediately
@@ -3660,6 +3689,8 @@ Stop Sharing
 Stop charging at {}% (and start again below {}%)
 Stop syncing with {}? Its items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+Stopped
+Stopped after ending too often
 Stopped before step {} of {}
 Stopped part way, {}
 Stopped · {}
@@ -3769,6 +3800,7 @@ Tell palms apart with a palm model
 Tell palms apart with a palm model too
 Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
+Tells of problems it finds, at login and as they happen.
 Temperature
 Temperature ({})
 Terminal
@@ -3818,6 +3850,7 @@ The Rex server isn’t connected.
 The Theme’s Own
 The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
+The Window Server can’t be stopped, only restarted.
 The account answering now
 The account couldn’t be saved ({}).
 The accounts file couldn’t be read.
@@ -3861,6 +3894,7 @@ The first look is two minutes after it starts.
 The folder is a place under your home there (src/name).
 The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
+The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 The infrared camera couldn't be opened (its shutter, or another program).
 The journal couldn't be read: {}
@@ -3893,6 +3927,7 @@ The look of every icon, window and control, in every app, and a wallpaper to mat
 The look's own
 The loss is a number, in percent.
 The main window in its place; the others stack around it.
+The menu, the running apps, the tray and the clock.
 The microphone can’t be recorded ({}).
 The model
 The model wasn't good enough to keep
@@ -3942,6 +3977,7 @@ The screen
 The server answered {}{}.
 The server didn’t take the name and password.
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
+The session didn’t answer: {}
 The shared server isn’t running.
 The shell has ended.
 The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
@@ -4034,6 +4070,7 @@ This kernel has one way of preempting only: it wasn't built to be told another.
 This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
 This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
+This screen’s own bus, for the programs on it.
 This step is done
 This touchpad doesn't report pressure, so it is left to libinput.
 This will {} and {}.
@@ -4077,10 +4114,11 @@ To Do
 To allow it, you can also {}.
 To the next display
 To the previous display
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
 To {}
 To {}.
 To-Do
+To-Do Reminders
 To-Do: Today
 To-Do: Upcoming
 To-Do: nothing due after today.
@@ -4171,6 +4209,7 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 Turn the tile's split
 Turn the touchpad off while a mouse is plugged in
+Turned off
 Turned off by the hardware switch.
 Turned on
 Twelve exercises, then a try
@@ -4285,7 +4324,6 @@ Use F1, F2, etc. as standard function keys
 Use Google Drive Instead…
 Use Mine
 Use Music Quality
-Use Olo’s Typing Helper on Hosts
 Use Olo’s typing helper on hosts
 Use Passwords for ssh
 Use Saved Password
@@ -4348,6 +4386,7 @@ Virtual machines’ disk images
 Visibility
 Visibility ({})
 Visibility · fog
+Voice
 Voice Only
 Voice Processing
 Voice message {}.ogg
@@ -4484,6 +4523,7 @@ Wind {}{}, gusts {}
 Window
 Window Arrangement
 Window Buffers
+Window Server
 Window Size
 Window on a Background
 Window title size
@@ -4544,11 +4584,13 @@ You don’t have permission to read it in 1Password.
 You stopped it {}. {}. {}
 You stopped the backup {}
 You: {}
+Your AirPods’ battery, modes and ear detection.
 Your Display
 Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
 Your Kinds
 Your Own
 Your Own Kinds
+Your SSH keys from Passwords, for ssh and git.
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
@@ -4568,6 +4610,7 @@ Your palm model, trained {} on {} touches
 Your palm over the left edge
 Your palm over the right edge
 Your password couldn’t be checked ({}).
+Your phone’s calls, messages and one-time codes.
 Your repositories
 Your settings as they were are in “{}”.
 Your shirt against the touchpad
@@ -4966,6 +5009,7 @@ your own picture
 {} Choose Set Up… to try again.
 {} Choose a workspace's own from Deskbar's tray.
 {} Hz, {} ms a frame
+{} MB
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Type your password.
 {} Wh of {} Wh new ({}%)

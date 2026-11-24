@@ -435,6 +435,9 @@ Novo nome para a sessão “{}”:
 A new name for the tab “{}”:
 Novo nome para a aba “{}”:
 
+A newer version was installed after {} started. Restart it to use the new one.
+Uma versão mais nova foi instalada depois que {} foi iniciado. Reinicie-o para usá-la.
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Cada passo da roda rola a mesma distância no Chrome, nos outros programas e nos apps do Olo.
 
@@ -805,6 +808,9 @@ A tela de agente “{}” aguarda um código
 
 Agent Screens
 Telas de agente
+
+Agent Tab Titles
+Títulos de aba de agentes
 
 Agent sessions
 Sessões de agentes
@@ -1300,6 +1306,12 @@ Consultando…
 Asking…
 Perguntando…
 
+Asks for your password when a program needs more rights.
+Pede sua senha quando um programa precisa de mais permissões.
+
+Asks who is logging in.
+Pergunta quem está fazendo login.
+
 Ask…
 Perguntar…
 
@@ -1377,6 +1389,9 @@ Anexos
 
 Authenticate
 Autenticar
+
+Authentication
+Autenticação
 
 Authentication:
 Autenticação:
@@ -1543,6 +1558,9 @@ Fazendo backup de {}
 
 Backlight
 Iluminação
+
+Backs up this computer’s disk when one is due.
+Faz backup do disco deste computador quando está na hora.
 
 Backup
 Backup
@@ -1855,6 +1873,9 @@ CalDAV
 
 Calendar
 Calendário
+
+Calendar Reminders
+Lembretes do Calendário
 
 Calendar for {}
 Calendário de {}
@@ -3326,6 +3347,9 @@ Ponto de orvalho: {}
 Diagnostics…
 Diagnóstico…
 
+Dictation and the voice assistant.
+Ditado e assistente de voz.
+
 Diff
 Diff
 
@@ -3492,6 +3516,9 @@ Fazer a outra ação do resultado
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 Documento
 
@@ -3596,6 +3623,9 @@ Desenho
 
 Drawn into each frame
 Desenhado em cada quadro
+
+Draws every window and takes the keyboard and pointer.
+Desenha todas as janelas e gerencia o teclado e o ponteiro.
 
 Drive
 Unidade
@@ -5784,6 +5814,12 @@ Salvando o progresso…
 Keeps a build’s files in memory and running programs out of swap.
 Mantém os arquivos de compilação na memória e evita que programas em execução vão para o swap.
 
+Keeps background work from slowing what you use.
+Evita que tarefas em segundo plano deixem lento o que você usa.
+
+Keeps other apps’ passwords, unlocked as you log in.
+Guarda as senhas de outros apps, desbloqueado ao fazer login.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Mantém a latência de leitura controlada quando gravações síncronas ou discards pesados saturam uma unidade NVMe, onde o padrão "none" do Linux limita apenas a gravação em segundo plano (queue/scheduler).
 
@@ -6033,6 +6069,9 @@ Agrupa várias gravações pequenas de compilação antes de enviá-las ao disco
 Lets agents there use your accounts, even with this computer off.
 Permite que os agentes lá usem suas contas, mesmo com este computador desligado.
 
+Lets coding agents title their Terminal tab.
+Permite que agentes de programação definam o título da aba no Terminal.
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Permite que os programas de lá usem aqui links, Passwords, chaves SSH e Telas de agente.
 
@@ -6212,6 +6251,12 @@ Encerrar sessão…
 
 Login
 Login
+
+Login Keyring
+Chaveiro de sessão
+
+Login Window
+Janela de login
 
 Logs
 Logs
@@ -6557,6 +6602,9 @@ Memória:
 
 Message
 Mensagem
+
+Message Bus
+Barramento de mensagens
 
 Message queues
 Filas de mensagens
@@ -7980,6 +8028,9 @@ Os apps do Olo poderão usá-las para entrar até o Passwords ser bloqueado ou p
 Olo’s phone service isn’t running.
 O serviço de telefone do Olo está parado.
 
+Olo’s session isn’t answering.
+A sessão do Olo não está respondendo.
+
 Olo’s skill for agents is on “{}”.
 A habilidade do Olo para agentes está em “{}”.
 
@@ -7992,8 +8043,8 @@ Adicionando o auxiliar de digitação do Olo em “{}”…
 Olo’s typing helper is on “{}”.
 O auxiliar de digitação do Olo está em “{}”.
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-O auxiliar de digitação do Olo está desativado. Para usá-lo, escolha Configurações ▸ Usar auxiliar de digitação do Olo nos hosts.
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+O auxiliar de digitação do Olo está desativado. Para usá-lo, ative-o em Preferências ▸ Rex.
 
 Olo’s typing helper isn’t on “{}”.
 O auxiliar de digitação do Olo não está em “{}”.
@@ -8231,6 +8282,9 @@ Opções de Abrir com
 
 Open a host’s Account window to see how each stands there, and to clone.
 Abra a janela Conta de um host para ver a situação de cada um lá e clonar.
+
+Open and save panels, and screen sharing, for other apps.
+Painéis de abrir e salvar, e compartilhamento de tela, para outros apps.
 
 Open files
 Arquivos abertos
@@ -8801,6 +8855,9 @@ Porta
 Port:
 Porta:
 
+Portal
+Portal
+
 Ports
 Portas
 
@@ -8965,6 +9022,9 @@ Processo
 
 Process {} has quit
 O processo {} foi encerrado
+
+Process {} · {}
+Processo {} · {}
 
 Processed
 Processado
@@ -9398,6 +9458,12 @@ Lembrete
 Reminder:
 Lembrete:
 
+Reminds you of your events.
+Lembra você dos seus eventos.
+
+Reminds you of your to-dos.
+Lembra você das suas tarefas.
+
 Remote
 Remoto
 
@@ -9647,6 +9713,12 @@ Reiniciar e Desligar encerram os programas e o sistema em ordem, como no menu da
 Restart kache
 Reiniciar kache
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+Reiniciar o servidor de janelas?\n\nA tela fica em branco por um momento enquanto cada janela é redesenhada; nada do que você tem aberto é fechado.
+
+Restart to update
+Reinicie para atualizar
+
 Restart, Asking First
 Confirmar antes de reiniciar
 
@@ -9872,6 +9944,13 @@ Em execução há {}
 Running systemctl as {}
 Executando systemctl como {}
 
+Running, started again once
+Em execução, reiniciado uma vez
+
+Running, started again {n} times
+one: Em execução, reiniciado {n} vez
+other: Em execução, reiniciado {n} vezes
+
 Runs on
 Executa em
 
@@ -9901,6 +9980,9 @@ Temperatura do SSD
 
 SSE
 SSE
+
+SSH Agent
+Agente SSH
 
 SSH Authentication
 Autenticação SSH
@@ -10383,6 +10465,9 @@ Compartilhado
 Shared with this screen: change it in your own Passwords.
 Compartilhado com esta tela. Para alterar, abra seu próprio Passwords.
 
+Shares the coding agents’ accounts between them.
+Compartilha as contas dos agentes de programação entre eles.
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Compartilha a conexão deste computador por uma rede Wi-Fi própria. Enquanto isso, o adaptador se desconecta da rede atual.
 
@@ -10473,6 +10558,9 @@ Mostrar arquivos ocultos
 Show Idle Panes in Activity
 Mostrar painéis ociosos em Atividade
 
+Show Log
+Mostrar registro
+
 Show Notifications
 Mostrar notificações
 
@@ -10505,9 +10593,6 @@ Mostrar código-fonte
 
 Show Toolbars
 Mostrar barras de ferramentas
-
-Show Typing Immediately
-Mostrar digitação imediatamente
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Para exibir uma janela, clique com o botão direito no título ou use sua linha na Deskbar e escolha Mostrar no AirPlay. Para reproduzir um filme pelo Viewer ou Tracker, escolha Reproduzir em.
@@ -10589,6 +10674,9 @@ Mostrando a previsão de {}.
 
 Shown
 Visíveis
+
+Shows notifications and keeps them for later.
+Mostra notificações e as guarda para depois.
 
 Shows:
 Mostra:
@@ -11018,6 +11106,12 @@ Parar de sincronizar com {}? Os itens e as alterações locais ainda não enviad
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 Parar de sincronizar com {}? Os itens dessas contas e as alterações locais ainda não enviadas serão removidos deste computador. Os dados do 1Password serão preservados.
 
+Stopped
+Parado
+
+Stopped after ending too often
+Parado após encerrar muitas vezes
+
 Stopped before step {} of {}
 Interrompido antes da etapa {} de {}
 
@@ -11345,6 +11439,9 @@ Informando o Codex lá sobre elas
 Tells Claude Code and other agents there how to use the bridge and Rex.
 Ensina o Claude Code e outros agentes lá a usar a ponte e o Rex.
 
+Tells of problems it finds, at login and as they happen.
+Avisa sobre problemas encontrados ao fazer login e quando ocorrem.
+
 Temperature
 Temperatura
 
@@ -11492,6 +11589,9 @@ O Token Pool em execução neste computador é mais antigo: atualize-o primeiro.
 The VPN couldn't be saved.
 Não foi possível salvar a VPN.
 
+The Window Server can’t be stopped, only restarted.
+O servidor de janelas não pode ser parado, apenas reiniciado.
+
 The account answering now
 A conta que está respondendo
 
@@ -11621,6 +11721,9 @@ Os definidos à mão, ainda sem ajuste fino
 The host didn’t say what it has.
 O host não informou o que tem.
 
+The icons on the desktop (Tracker).
+Os ícones na área de trabalho (Tracker).
+
 The icons {} is drawn with, everywhere.
 Ícones usados para exibir {} em todo o sistema.
 
@@ -11716,6 +11819,9 @@ Informe a perda como porcentagem.
 
 The main window in its place; the others stack around it.
 A janela principal no seu lugar; as outras se empilham ao redor.
+
+The menu, the running apps, the tray and the clock.
+O menu, os apps em execução, a bandeja e o relógio.
 
 The microphone can’t be recorded ({}).
 Não foi possível gravar o microfone ({}).
@@ -11863,6 +11969,9 @@ O servidor recusou o nome e a senha.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 Informe o endereço CalDAV do servidor e o nome e a senha da conta. A senha ficará no chaveiro de sessão.
+
+The session didn’t answer: {}
+A sessão não respondeu: {}
 
 The shared server isn’t running.
 O servidor compartilhado não está em execução.
@@ -12140,6 +12249,9 @@ Este teclado não tem iluminação.
 This page shows a one-time code for {}. Add it to which login?
 Esta página mostra um código de uso único para {}. A qual login quer adicioná-lo?
 
+This screen’s own bus, for the programs on it.
+O barramento próprio desta tela, para os programas nela.
+
 This step is done
 Etapa concluída
 
@@ -12269,8 +12381,8 @@ Para a próxima tela
 To the previous display
 Para a tela anterior
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Para usá-lo, escolha Configurações ▸ Usar auxiliar de digitação do Olo nos hosts.
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+Para usá-lo, ative o auxiliar de digitação do Olo em Preferências ▸ Rex.
 
 To {}
 Para {}
@@ -12280,6 +12392,9 @@ Para {}.
 
 To-Do
 Tarefas
+
+To-Do Reminders
+Lembretes de tarefas
 
 To-Do: Today
 Tarefas: Hoje
@@ -12550,6 +12665,9 @@ Girar a divisão do bloco
 
 Turn the touchpad off while a mouse is plugged in
 Desativar o touchpad ao conectar um mouse
+
+Turned off
+Desativado
 
 Turned off by the hardware switch.
 Desligado pelo interruptor físico.
@@ -12893,9 +13011,6 @@ Usar a minha
 Use Music Quality
 Usar qualidade de música
 
-Use Olo’s Typing Helper on Hosts
-Usar auxiliar de digitação do Olo nos hosts
-
 Use Olo’s typing helper on hosts
 Usar auxiliar de digitação do Olo nos hosts
 
@@ -13081,6 +13196,9 @@ Visibilidade ({})
 
 Visibility · fog
 Visibilidade · nevoeiro
+
+Voice
+Voz
 
 Voice Only
 Só voz
@@ -13490,6 +13608,9 @@ Organização das janelas
 Window Buffers
 Buffers das janelas
 
+Window Server
+Servidor de janelas
+
 Window Size
 Tamanho da janela
 
@@ -13670,6 +13791,9 @@ Você interrompeu o backup {}
 You: {}
 Você: {}
 
+Your AirPods’ battery, modes and ear detection.
+Bateria, modos e detecção de uso dos seus AirPods.
+
 Your Display
 Sua tela
 
@@ -13684,6 +13808,9 @@ Personalizado
 
 Your Own Kinds
 Seus próprios tipos
+
+Your SSH keys from Passwords, for ssh and git.
+Suas chaves SSH do Passwords, para ssh e git.
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Os backups são criptografados antes de sair deste computador. A chave existe só aqui. Guarde uma cópia no Passwords para poder ler os backups em outro computador.
@@ -13741,6 +13868,9 @@ Apoie a palma sobre a borda direita
 
 Your password couldn’t be checked ({}).
 Não foi possível verificar sua senha ({}).
+
+Your phone’s calls, messages and one-time codes.
+Chamadas, mensagens e códigos de uso único do seu telefone.
 
 Your repositories
 Seus repositórios
@@ -15014,6 +15144,9 @@ other: {n} semanas
 
 {} Hz, {} ms a frame
 {} Hz, {} ms por quadro
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Substituir pela versão do backup de {} ou manter as duas? O nome da versão restaurada incluirá o horário.

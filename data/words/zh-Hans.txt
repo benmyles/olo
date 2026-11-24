@@ -433,6 +433,9 @@ A new name for the session “{}”:
 A new name for the tab “{}”:
 标签页“{}”的新名称：
 
+A newer version was installed after {} started. Restart it to use the new one.
+{} 启动后安装了更新的版本。重启它即可使用新版本。
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 在 Chrome 和其他程序中，滚轮每滚动一格的距离与 Olo 应用一致。
 
@@ -801,6 +804,9 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 智能体屏幕
+
+Agent Tab Titles
+智能体标签页标题
 
 Agent sessions
 智能体会话
@@ -1294,6 +1300,12 @@ Asking it…
 Asking…
 正在询问…
 
+Asks for your password when a program needs more rights.
+在程序需要更高权限时请求输入密码。
+
+Asks who is logging in.
+询问正在登录的用户。
+
 Ask…
 询问…
 
@@ -1371,6 +1383,9 @@ Attachments
 
 Authenticate
 认证
+
+Authentication
+身份验证
 
 Authentication:
 身份验证：
@@ -1536,6 +1551,9 @@ Backing up {}
 
 Backlight
 背光
+
+Backs up this computer’s disk when one is due.
+按计划备份此电脑的磁盘。
 
 Backup
 备份
@@ -1848,6 +1866,9 @@ CalDAV
 
 Calendar
 日历
+
+Calendar Reminders
+日历提醒
 
 Calendar for {}
 {} 的日历
@@ -3313,6 +3334,9 @@ Dew point {}
 Diagnostics…
 诊断…
 
+Dictation and the voice assistant.
+听写与语音助手。
+
 Diff
 Diff
 
@@ -3478,6 +3502,9 @@ Do the result's other action
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 文档
 
@@ -3582,6 +3609,9 @@ Drawing
 
 Drawn into each frame
 每帧重新绘制
+
+Draws every window and takes the keyboard and pointer.
+绘制所有窗口，并处理键盘和指针输入。
 
 Drive
 硬盘
@@ -5758,6 +5788,12 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 将构建文件留在内存中，避免运行中的程序被换出到交换空间。
 
+Keeps background work from slowing what you use.
+防止后台任务拖慢当前正在使用的程序。
+
+Keeps other apps’ passwords, unlocked as you log in.
+保存其他应用的密码，在登录时自动解锁。
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 在大量同步写入或丢弃操作涌向 NVMe 硬盘时仍可限制读取延迟，而 Linux 默认的 "none" 仅限制后台回写 (queue/scheduler)。
 
@@ -6007,6 +6043,9 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 即使本机关机，远程智能体也能使用您的账户。
 
+Lets coding agents title their Terminal tab.
+允许编程智能体设置其 Terminal 标签页的标题。
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 允许那里的程序在这里使用链接、Passwords、SSH 密钥和智能体屏幕。
 
@@ -6186,6 +6225,12 @@ Log Out…
 
 Login
 登录
+
+Login Keyring
+登录密钥环
+
+Login Window
+登录窗口
 
 Logs
 Logs
@@ -6531,6 +6576,9 @@ Memory:
 
 Message
 消息
+
+Message Bus
+消息总线
 
 Message queues
 消息队列
@@ -7954,6 +8002,9 @@ Olo’s own apps can then sign in with them, until Passwords locks or for 10 min
 Olo’s phone service isn’t running.
 Olo 电话服务未运行。
 
+Olo’s session isn’t answering.
+Olo 会话未响应。
+
 Olo’s skill for agents is on “{}”.
 “{}”已安装 Olo 智能体技能。
 
@@ -7966,8 +8017,8 @@ Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
 “{}”已安装 Olo 输入助手。
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Olo 输入助手已关闭。如需使用，请选择“设置 ▸ 在主机上使用 Olo 输入助手”。
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Olo 输入助手已关闭。要使用它，请在偏好设置 ▸ Rex中将其打开。
 
 Olo’s typing helper isn’t on “{}”.
 “{}”未安装 Olo 输入助手。
@@ -8205,6 +8256,9 @@ Open With Offers
 
 Open a host’s Account window to see how each stands there, and to clone.
 打开主机的“账户”窗口即可查看各仓库状态并进行克隆。
+
+Open and save panels, and screen sharing, for other apps.
+为其他应用提供打开和保存面板以及屏幕共享。
 
 Open files
 打开文件
@@ -8773,6 +8827,9 @@ Port
 Port:
 端口：
 
+Portal
+桌面门户
+
 Ports
 端口
 
@@ -8937,6 +8994,9 @@ Process
 
 Process {} has quit
 进程 {} 已退出
+
+Process {} · {}
+进程 {} · {}
 
 Processed
 处理后
@@ -9370,6 +9430,12 @@ Reminder
 Reminder:
 提醒：
 
+Reminds you of your events.
+提醒您的日程。
+
+Reminds you of your to-dos.
+提醒您的待办事项。
+
 Remote
 远程
 
@@ -9619,6 +9685,12 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart kache
 重启 kache
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+重启窗口服务器？\n\n重新绘制每个窗口时屏幕会短暂变暗；您打开的内容都不会关闭。
+
+Restart to update
+重启以更新
+
 Restart, Asking First
 先询问再重启
 
@@ -9844,6 +9916,12 @@ Running for {}
 Running systemctl as {}
 正在以 {} 身份运行 systemctl
 
+Running, started again once
+运行中，已重启 1 次
+
+Running, started again {n} times
+other: 运行中，已重启 {n} 次
+
 Runs on
 运行设备
 
@@ -9873,6 +9951,9 @@ SSD 温度
 
 SSE
 东南偏南
+
+SSH Agent
+SSH 代理
 
 SSH Authentication
 SSH 身份验证
@@ -10354,6 +10435,9 @@ Shared
 Shared with this screen: change it in your own Passwords.
 已与此屏幕共享。请在您自己的 Passwords 中更改。
 
+Shares the coding agents’ accounts between them.
+在各编程智能体之间共享账户。
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 将本机连接共享为独立的 Wi-Fi 网络。共享期间，适配器会断开原先连接的网络。
 
@@ -10444,6 +10528,9 @@ Show Hidden Files
 Show Idle Panes in Activity
 在活动中显示空闲窗格
 
+Show Log
+显示日志
+
 Show Notifications
 显示通知
 
@@ -10476,9 +10563,6 @@ Show Source
 
 Show Toolbars
 显示工具栏
-
-Show Typing Immediately
-立即显示键入内容
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 右键点击窗口标题或打开其 Deskbar 菜单，选择“通过 AirPlay 显示”即可投送窗口。在 Viewer 或 Tracker 中选择“播放到”可投送影片。
@@ -10560,6 +10644,9 @@ Showing the forecast from {}.
 
 Shown
 已显示
+
+Shows notifications and keeps them for later.
+显示通知并保留以供稍后查看。
 
 Shows:
 显示内容：
@@ -10987,6 +11074,12 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 停止与 {} 同步吗？这些账户的项目以及本机尚未发送的更改都将从本机移除。1Password 中的内容不受影响。
 
+Stopped
+已停止
+
+Stopped after ending too often
+因频繁退出而停止
+
 Stopped before step {} of {}
 已在第 {} 步（共 {} 步）前停止
 
@@ -11314,6 +11407,9 @@ Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 告知远程主机上的 Claude Code 和其他智能体如何使用桥接和 Rex。
 
+Tells of problems it finds, at login and as they happen.
+登录时和问题发生时报告发现的问题。
+
 Temperature
 温度
 
@@ -11461,6 +11557,9 @@ The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 无法保存 VPN。
 
+The Window Server can’t be stopped, only restarted.
+窗口服务器无法停止，只能重启。
+
 The account answering now
 当前响应的账户
 
@@ -11590,6 +11689,9 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 主机未报告已安装内容。
 
+The icons on the desktop (Tracker).
+桌面上的图标（Tracker）。
+
 The icons {} is drawn with, everywhere.
 {} 在各处使用的图标。
 
@@ -11685,6 +11787,9 @@ The loss is a number, in percent.
 
 The main window in its place; the others stack around it.
 主窗口保持原位，其他窗口堆叠在它周围。
+
+The menu, the running apps, the tray and the clock.
+菜单、运行中的应用、托盘和时钟。
 
 The microphone can’t be recorded ({}).
 无法从麦克风录音（{}）。
@@ -11832,6 +11937,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 输入服务器的 CalDAV 地址、登录名和密码。密码将保存在登录密钥环中。
+
+The session didn’t answer: {}
+会话未响应：{}
 
 The shared server isn’t running.
 共享服务器未运行。
@@ -12109,6 +12217,9 @@ This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 此页显示了 {} 的一次性验证码。要将它添加到哪个登录项？
 
+This screen’s own bus, for the programs on it.
+此屏幕专用的消息总线，供其上的程序使用。
+
 This step is done
 此步骤已完成
 
@@ -12238,8 +12349,8 @@ To the next display
 To the previous display
 移到上一个显示器
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-如需使用，请选择“设置 ▸ 在主机上使用 Olo 输入助手”。
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+要使用它，请在偏好设置 ▸ Rex中打开 Olo 输入助手。
 
 To {}
 到 {}
@@ -12249,6 +12360,9 @@ To {}.
 
 To-Do
 待办事项
+
+To-Do Reminders
+待办提醒
 
 To-Do: Today
 待办事项：今天
@@ -12519,6 +12633,9 @@ Turn the tile's split
 
 Turn the touchpad off while a mouse is plugged in
 连接鼠标时停用触控板
+
+Turned off
+已关闭
 
 Turned off by the hardware switch.
 已由硬件开关关闭。
@@ -12862,9 +12979,6 @@ Use Mine
 Use Music Quality
 使用音乐音质
 
-Use Olo’s Typing Helper on Hosts
-在主机上使用 Olo 输入助手
-
 Use Olo’s typing helper on hosts
 在主机上使用 Olo 输入助手
 
@@ -13050,6 +13164,9 @@ Visibility ({})
 
 Visibility · fog
 能见度 · 雾
+
+Voice
+语音
 
 Voice Only
 仅语音
@@ -13459,6 +13576,9 @@ Window Arrangement
 Window Buffers
 窗口缓冲区
 
+Window Server
+窗口服务器
+
 Window Size
 窗口大小
 
@@ -13639,6 +13759,9 @@ You stopped the backup {}
 You: {}
 您：{}
 
+Your AirPods’ battery, modes and ear detection.
+AirPods 的电量、模式和入耳检测。
+
 Your Display
 您的显示器
 
@@ -13653,6 +13776,9 @@ Your Own
 
 Your Own Kinds
 自定义文件类型
+
+Your SSH keys from Passwords, for ssh and git.
+来自 Passwords 的 SSH 密钥，供 ssh 和 git 使用。
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 备份离开本机前已用本机独有的密钥加密。请也将密钥存入 Passwords，否则在其他电脑上无法读取备份。
@@ -13710,6 +13836,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 无法验证您的密码（{}）。
+
+Your phone’s calls, messages and one-time codes.
+手机的通话、消息和一次性验证码。
 
 Your repositories
 您的仓库
@@ -14904,6 +15033,9 @@ other: {n} 周
 
 {} Hz, {} ms a frame
 {} Hz，每帧 {} 毫秒
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} 用 {} 备份的版本替换，还是两者都保留？两者都保留时，会在恢复的文件名中加上时间。

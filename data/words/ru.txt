@@ -439,6 +439,9 @@ A new name for the session “{}”:
 A new name for the tab “{}”:
 Новое имя для вкладки «{}»:
 
+A newer version was installed after {} started. Restart it to use the new one.
+После запуска {} была установлена более новая версия. Перезапустите, чтобы использовать её.
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Один шаг колеса прокручивает страницу в Chrome и других программах на то же расстояние, что и в приложениях Olo.
 
@@ -813,6 +816,9 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 Экраны агентов
+
+Agent Tab Titles
+Заголовки вкладок агентов
 
 Agent sessions
 Сеансы агентов
@@ -1312,6 +1318,12 @@ Asking it…
 Asking…
 Запрос…
 
+Asks for your password when a program needs more rights.
+Запрашивает пароль, когда программе нужны расширенные права.
+
+Asks who is logging in.
+Спрашивает, кто входит в систему.
+
 Ask…
 Спросить…
 
@@ -1389,6 +1401,9 @@ Attachments
 
 Authenticate
 Подтвердить личность
+
+Authentication
+Аутентификация
 
 Authentication:
 Аутентификация:
@@ -1557,6 +1572,9 @@ Backing up {}
 
 Backlight
 Подсветка
+
+Backs up this computer’s disk when one is due.
+Создаёт резервную копию диска компьютера, когда подходит срок.
 
 Backup
 Резервное копирование
@@ -1869,6 +1887,9 @@ CalDAV
 
 Calendar
 Календарь
+
+Calendar Reminders
+Напоминания Календаря
 
 Calendar for {}
 Календарь для {}
@@ -3352,6 +3373,9 @@ Dew point {}
 Diagnostics…
 Диагностика…
 
+Dictation and the voice assistant.
+Диктовка и голосовой помощник.
+
 Diff
 Diff
 
@@ -3520,6 +3544,9 @@ Do the result's other action
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 Документ
 
@@ -3624,6 +3651,9 @@ Drawing
 
 Drawn into each frame
 Рисуется в каждом кадре
+
+Draws every window and takes the keyboard and pointer.
+Отрисовывает все окна и обрабатывает ввод с клавиатуры и указателя.
 
 Drive
 Накопитель
@@ -5836,6 +5866,12 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 Держит файлы сборки в памяти и не выгружает работающие программы в подкачку.
 
+Keeps background work from slowing what you use.
+Не даёт фоновым задачам замедлять то, чем вы пользуетесь.
+
+Keeps other apps’ passwords, unlocked as you log in.
+Хранит пароли других приложений и разблокируется при входе.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux "none" ограничивает лишь фоновый сброс (queue/scheduler).
 
@@ -6085,6 +6121,9 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 Позволяет агентам там использовать ваши учётные записи, даже когда этот компьютер выключен.
 
+Lets coding agents title their Terminal tab.
+Позволяет агентам для разработки задавать заголовок своей вкладки Terminal.
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Разрешает программам там пользоваться здесь ссылками, Passwords, ключами SSH и экранами агентов.
 
@@ -6264,6 +6303,12 @@ Log Out…
 
 Login
 Вход
+
+Login Keyring
+Связка ключей для входа
+
+Login Window
+Окно входа
 
 Logs
 Logs
@@ -6609,6 +6654,9 @@ Memory:
 
 Message
 Сообщение
+
+Message Bus
+Шина сообщений
 
 Message queues
 Очереди сообщений
@@ -8032,6 +8080,9 @@ Olo’s own apps can then sign in with them, until Passwords locks or for 10 min
 Olo’s phone service isn’t running.
 Служба телефона Olo не запущена.
 
+Olo’s session isn’t answering.
+Сеанс Olo не отвечает.
+
 Olo’s skill for agents is on “{}”.
 Навык Olo для агентов установлен на «{}».
 
@@ -8044,8 +8095,8 @@ Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
 Помощник ввода Olo установлен на «{}».
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Помощник ввода Olo выключен. Чтобы включить его, выберите «Настройки ▸ Использовать помощник ввода Olo на узлах».
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Помощник ввода Olo выключен. Чтобы пользоваться им, включите его в разделе Настройки ▸ Rex.
 
 Olo’s typing helper isn’t on “{}”.
 Помощник ввода Olo не установлен на «{}».
@@ -8283,6 +8334,9 @@ Open With Offers
 
 Open a host’s Account window to see how each stands there, and to clone.
 Откройте окно «Учётная запись» узла, чтобы проверить состояние каждого репозитория и клонировать их.
+
+Open and save panels, and screen sharing, for other apps.
+Диалоги открытия и сохранения и демонстрация экрана для других приложений.
 
 Open files
 Открытые файлы
@@ -8857,6 +8911,9 @@ Port
 Port:
 Порт:
 
+Portal
+Портал
+
 Ports
 Порты
 
@@ -9021,6 +9078,9 @@ Process
 
 Process {} has quit
 Процесс {} завершён
+
+Process {} · {}
+Процесс {} · {}
 
 Processed
 После обработки
@@ -9454,6 +9514,12 @@ Reminder
 Reminder:
 Напоминание:
 
+Reminds you of your events.
+Напоминает о ваших событиях.
+
+Reminds you of your to-dos.
+Напоминает о ваших задачах.
+
 Remote
 Удалённый
 
@@ -9703,6 +9769,12 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart kache
 Перезапустить kache
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+Перезапустить оконный сервер?\n\nЭкран на мгновение погаснет, пока каждое окно рисуется заново; ничего открытого не закроется.
+
+Restart to update
+Перезапустите для обновления
+
 Restart, Asking First
 Спросить и перезапустить
 
@@ -9928,6 +10000,15 @@ Running for {}
 Running systemctl as {}
 Запуск systemctl от имени {}
 
+Running, started again once
+Работает (1 перезапуск)
+
+Running, started again {n} times
+one: Работает ({n} перезапуск)
+few: Работает ({n} перезапуска)
+many: Работает ({n} перезапусков)
+other: Работает (перезапусков: {n})
+
 Runs on
 Выполняется на
 
@@ -9957,6 +10038,9 @@ SSD temperature
 
 SSE
 ЮЮВ
+
+SSH Agent
+Агент SSH
 
 SSH Authentication
 Аутентификация SSH
@@ -10441,6 +10525,9 @@ Shared
 Shared with this screen: change it in your own Passwords.
 Доступно этому экрану. Измените в своём приложении Passwords.
 
+Shares the coding agents’ accounts between them.
+Распределяет учётные записи между агентами для разработки.
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Раздаёт интернет с компьютера по Wi-Fi. Пока точка доступа работает, адаптер отключается от прежней сети.
 
@@ -10531,6 +10618,9 @@ Show Hidden Files
 Show Idle Panes in Activity
 Показывать неактивные панели в «Активности»
 
+Show Log
+Показать журнал
+
 Show Notifications
 Показать уведомления
 
@@ -10563,9 +10653,6 @@ Show Source
 
 Show Toolbars
 Показать панели инструментов
-
-Show Typing Immediately
-Показывать ввод сразу
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 В меню заголовка окна (правая кнопка мыши) или в его строке в Deskbar выберите «Показать по AirPlay». Для показа фильма выберите «Воспроизвести на» в Viewer или Tracker.
@@ -10647,6 +10734,9 @@ Showing the forecast from {}.
 
 Shown
 Показано
+
+Shows notifications and keeps them for later.
+Показывает уведомления и сохраняет их на потом.
 
 Shows:
 Показывает:
@@ -11080,6 +11170,12 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 Отключить синхронизацию с {}? Записи этих аккаунтов и ещё не отправленные изменения будут удалены с этого компьютера. Данные в 1Password сохранятся.
 
+Stopped
+Остановлено
+
+Stopped after ending too often
+Остановлено из-за частых сбоев
+
 Stopped before step {} of {}
 Остановлено перед шагом {} из {}
 
@@ -11407,6 +11503,9 @@ Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 Объясняет Claude Code и другим агентам там, как пользоваться мостом и Rex.
 
+Tells of problems it finds, at login and as they happen.
+Сообщает о найденных проблемах при входе и по мере их появления.
+
 Temperature
 Температура
 
@@ -11554,6 +11653,9 @@ The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 Не удалось сохранить VPN.
 
+The Window Server can’t be stopped, only restarted.
+Оконный сервер нельзя остановить, только перезапустить.
+
 The account answering now
 Учётная запись, которая сейчас отвечает
 
@@ -11683,6 +11785,9 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 Узел не сообщил, что на нём установлено.
 
+The icons on the desktop (Tracker).
+Значки на рабочем столе (Tracker).
+
 The icons {} is drawn with, everywhere.
 Значки, которые используются для {} во всей системе.
 
@@ -11778,6 +11883,9 @@ The loss is a number, in percent.
 
 The main window in its place; the others stack around it.
 Главное окно на своём месте; остальные складываются в стопку рядом.
+
+The menu, the running apps, the tray and the clock.
+Меню, открытые приложения, трей и часы.
 
 The microphone can’t be recorded ({}).
 Не удалось записать звук с микрофона ({}).
@@ -11925,6 +12033,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 Введите адрес сервера CalDAV, имя и пароль для входа. Пароль будет сохранён в связке ключей для входа.
+
+The session didn’t answer: {}
+Сеанс не ответил: {}
 
 The shared server isn’t running.
 Общий сервер не запущен.
@@ -12202,6 +12313,9 @@ This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 На странице показан одноразовый код для {}. К какому логину его добавить?
 
+This screen’s own bus, for the programs on it.
+Собственная шина этого экрана для запущенных на нём программ.
+
 This step is done
 Шаг завершён
 
@@ -12331,8 +12445,8 @@ To the next display
 To the previous display
 На предыдущий экран
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Чтобы включить его, выберите «Настройки ▸ Использовать помощник ввода Olo на узлах».
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+Чтобы пользоваться им, включите помощник ввода Olo в разделе Настройки ▸ Rex.
 
 To {}
 В {}
@@ -12342,6 +12456,9 @@ To {}.
 
 To-Do
 Задачи
+
+To-Do Reminders
+Напоминания о задачах
 
 To-Do: Today
 Задачи: Сегодня
@@ -12612,6 +12729,9 @@ Turn the tile's split
 
 Turn the touchpad off while a mouse is plugged in
 Отключать панель при подключении мыши
+
+Turned off
+Отключено
 
 Turned off by the hardware switch.
 Выключено аппаратным переключателем.
@@ -12955,9 +13075,6 @@ Use Mine
 Use Music Quality
 Для музыки
 
-Use Olo’s Typing Helper on Hosts
-Использовать помощник ввода Olo на узлах
-
 Use Olo’s typing helper on hosts
 Использовать помощник ввода Olo на узлах
 
@@ -13143,6 +13260,9 @@ Visibility ({})
 
 Visibility · fog
 Видимость · туман
+
+Voice
+Голос
 
 Voice Only
 Только голос
@@ -13552,6 +13672,9 @@ Window Arrangement
 Window Buffers
 Буферы окон
 
+Window Server
+Оконный сервер
+
 Window Size
 Размер окна
 
@@ -13732,6 +13855,9 @@ You stopped the backup {}
 You: {}
 Вы: {}
 
+Your AirPods’ battery, modes and ear detection.
+Заряд, режимы и распознавание уха ваших AirPods.
+
 Your Display
 Ваш экран
 
@@ -13746,6 +13872,9 @@ Your Own
 
 Your Own Kinds
 Свои типы файлов
+
+Your SSH keys from Passwords, for ssh and git.
+Ваши ключи SSH из Passwords для ssh и git.
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Данные шифруются до отправки с компьютера. Ключ есть только на нём. Сохраните ключ и в Passwords, иначе на другом компьютере прочитать копии не удастся.
@@ -13803,6 +13932,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 Не удалось проверить пароль ({}).
+
+Your phone’s calls, messages and one-time codes.
+Звонки, сообщения и одноразовые коды с вашего телефона.
 
 Your repositories
 Ваши репозитории
@@ -15234,6 +15366,9 @@ other: {n} недели
 
 {} Hz, {} ms a frame
 {} Гц, {} мс на кадр
+
+{} MB
+{} МБ
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Заменить версией из резервной копии от {} или сохранить обе? Ко второй будет добавлено время восстановления.

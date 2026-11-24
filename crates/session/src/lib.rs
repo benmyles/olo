@@ -5,6 +5,9 @@
 //! olo-session reload     restart app_server in place (picks up upgrades)
 //! olo-session upgrade    install newer programs from the build tree, then reload
 //! olo-session quit       end the session
+//! olo-session services [--json]
+//!                        its services, how each stands (Preferences ▸ Services)
+//! olo-session restart|stop|start PROGRAM
 //! ```
 //!
 //! The session owns the Wayland and IPC listening sockets and hands them to
@@ -30,6 +33,7 @@ mod autostart;
 mod graphical;
 mod keyd;
 mod own_bus;
+mod services;
 mod skills;
 mod upgrade;
 mod watchdog;
@@ -54,7 +58,12 @@ const USAGE: &str = "usage: olo-session [--tty-udev | --winit | --headless WxH] 
                               install newer programs (from the build tree, or Olo's
                               newest release, or the release tagged TAG), then
                               reload; `check`: ask GitHub for releases now
-       olo-session quit       end the session";
+       olo-session quit       end the session
+       olo-session services [--json]
+                              the session's services and how each stands
+       olo-session restart|stop|start PROGRAM
+                              one of them restarted, stopped (until started
+                              again, or the next login) or started (`olo-pool`)";
 
 const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// Services only the real (logged-in) session runs: the polkit agent
@@ -173,6 +182,9 @@ pub fn run() {
             signal_session(libc::SIGUSR2)
         }
         Some("quit") => signal_session(libc::SIGTERM),
+        // Its services (Preferences ▸ Services, for people and agents
+        // alike): the list, and one restarted, stopped or started.
+        Some("services" | "restart" | "stop" | "start") => std::process::exit(services::command(&args)),
         Some("-h" | "--help") => println!("{USAGE}"),
         _ => {
             take_tmpdir();
@@ -250,6 +262,50 @@ struct Child {
     pid: i32,
     #[serde(skip)]
     crashes: VecDeque<Option<Instant>>,
+    /// When it was started last (seconds since the epoch; 0: never).
+    #[serde(default)]
+    since: u64,
+    /// How often it ended and was started again this login, not counting
+    /// a restart asked for (Preferences ▸ Services).
+    #[serde(default)]
+    restarts: u32,
+    /// Why it isn't running, when it isn't and isn't to be started again.
+    #[serde(default)]
+    held: Option<Held>,
+    /// It was asked to restart: started again as soon as it ends.
+    #[serde(default)]
+    restart_asked: bool,
+}
+
+/// Why a service is left stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum Held {
+    /// As the person asked (Preferences ▸ Services, `olo-session stop`).
+    Stopped,
+    /// It ended saying it isn't wanted (`olo_xdg::SERVICE_NOT_WANTED`).
+    NotWanted,
+    /// It ended too often (`CRASH_LIMIT`).
+    GaveUp,
+}
+
+impl Child {
+    /// `argv` started as `pid` (0: it couldn't be), now.
+    fn started(argv: Vec<String>, pid: i32) -> Child {
+        Child { argv, pid, crashes: VecDeque::new(), since: if pid > 0 { now_secs() } else { 0 }, restarts: 0, held: None, restart_asked: false }
+    }
+
+    /// The service as others are told of it.
+    fn service(&self, window_server: bool) -> olo_protocol::services::Service {
+        use olo_protocol::services::State;
+        let program = self.argv.first().map(|p| Path::new(p).file_name().map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned())).unwrap_or_default();
+        let state = match (self.pid > 0, self.held) {
+            (true, _) => State::Running,
+            (false, Some(Held::Stopped)) => State::Stopped,
+            (false, Some(Held::NotWanted)) => State::NotWanted,
+            (false, _) => State::GaveUp,
+        };
+        olo_protocol::services::Service { program, args: self.argv.iter().skip(1).cloned().collect(), pid: self.pid, since: self.since, restarts: self.restarts, state, window_server }
+    }
 }
 
 /// Everything needed to carry on after re-executing ourselves.
@@ -358,6 +414,8 @@ struct Session {
     starting: bool,
     /// The login screen's session (`--greeter`).
     greeter: bool,
+    /// Where it is asked about its services (`services::Control`).
+    control: Option<services::Control>,
 }
 
 const RESUME_ENV: &str = "OLO_SESSION_RESUME";
@@ -417,7 +475,7 @@ impl Session {
             ipc_path,
             lock,
             backend,
-            server: Child { argv: Vec::new(), pid: 0, crashes: VecDeque::new() },
+            server: Child::started(Vec::new(), 0),
             rescue_next: false,
             shell: Vec::new(),
             stale_check: None,
@@ -437,8 +495,10 @@ impl Session {
             // (A real session's start; a test's when asked.)
             starting: (real_start && !greeter) || std::env::var_os("OLO_STARTUP_VEIL").is_some(),
             greeter,
+            control: None,
         };
         s.own_files();
+        s.control = services::Control::bind(&olo_protocol::services::socket_path(&runtime_dir(), &s.display));
         // Olo's dconf named for the bus before app_server can write the
         // toolkits' look (it did, and the bus started GNOME's, which
         // started gvfs: a fresh Fedora 45, 2026-11-07).
@@ -482,12 +542,12 @@ impl Session {
         // The screen's bus, looked after with the shell (started again if
         // it ends, ended with the session).
         if let Some((argv, pid)) = bus.as_ref().map(|b| (b.argv.clone(), b.pid)) {
-            s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+            s.shell.push(Child::started(argv, pid));
         }
         if greeter {
             let argv = vec!["olo-greeter".to_string()];
             let pid = spawn(&argv, &[]).unwrap_or(0);
-            s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+            s.shell.push(Child::started(argv, pid));
         } else if !no_shell {
             let extra: &[&[&str]] = if real { REAL_SHELL } else { &[] };
             let mut argvs: Vec<Vec<String>> = SHELL.iter().chain(extra).map(|argv| argv.iter().map(|a| a.to_string()).collect()).collect();
@@ -499,7 +559,7 @@ impl Session {
             }
             for argv in argvs {
                 let pid = spawn(&argv, &[]).unwrap_or(0);
-                s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+                s.shell.push(Child::started(argv, pid));
             }
         }
         s
@@ -574,8 +634,10 @@ impl Session {
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
             starting: false,
             greeter,
+            control: None,
         };
         s.own_files();
+        s.control = services::Control::bind(&olo_protocol::services::socket_path(&runtime_dir(), &s.display));
         // (A session from before the mark says so from this upgrade on:
         // programs it started without the variable are at the computer
         // from now.)
@@ -629,7 +691,7 @@ impl Session {
                 if !s.shell.iter().any(|c| c.argv == argv) {
                     log(format!("starting {} (new in this version)", argv[0]));
                     let pid = spawn(&argv, &[]).unwrap_or(0);
-                    s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+                    s.shell.push(Child::started(argv, pid));
                 }
             }
         }
@@ -699,6 +761,7 @@ impl Session {
         }
         self.server.argv = argv.clone();
         self.server.pid = spawn_child(&argv, &env, self.real && FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(0);
+        self.server.since = now_secs();
         for &fd in &fds {
             set_cloexec(fd, true);
         }
@@ -763,7 +826,7 @@ impl Session {
             };
             match (bind(&self.direct_path()), bind(&self.proxied_path())) {
                 (Ok(direct), Ok(proxied)) => {
-                    self.proxy = Some((direct, proxied, Child { argv: vec!["olo-wlproxy".into()], pid: 0, crashes: VecDeque::new() }));
+                    self.proxy = Some((direct, proxied, Child::started(vec!["olo-wlproxy".into()], 0)));
                     self.own_files();
                 }
                 (Err(e), _) | (_, Err(e)) => {
@@ -865,7 +928,106 @@ impl Session {
                 self.keyd_at = Instant::now();
                 keyd::pass_through();
             }
+            if !self.stopping {
+                self.serve_services();
+            }
         }
+    }
+
+    /// The services as others are told of them: the window server, then
+    /// the shell's, in the order they were started.
+    fn services(&self) -> Vec<olo_protocol::services::Service> {
+        std::iter::once(self.server.service(true)).chain(self.shell.iter().map(|c| c.service(false))).collect()
+    }
+
+    /// What's been asked about the services, answered; and the list, to
+    /// those watching it, if it changed.
+    fn serve_services(&mut self) {
+        use olo_protocol::services::{Ask, Said};
+        let Some(mut control) = self.control.take() else { return };
+        for (i, asked) in control.take() {
+            let done = match &asked {
+                Err(message) => Err(message.clone()),
+                Ok(Ask::List | Ask::Watch) => Ok(()),
+                Ok(Ask::Restart { program }) => self.restart_service(program),
+                Ok(Ask::Stop { program }) => self.stop_service(program),
+                Ok(Ask::Start { program }) => self.start_service(program),
+            };
+            let said = match done {
+                Ok(()) => Said::Services { services: self.services() },
+                Err(message) => Said::Error { message },
+            };
+            control.answer(i, &said, matches!(asked, Ok(Ask::Watch)));
+        }
+        control.done_with_askers();
+        let now = control.watched().then(|| self.services());
+        control.changed(now.as_deref());
+        self.control = Some(control);
+    }
+
+    /// The shell service run by `program`.
+    fn service_index(&self, program: &str) -> Result<usize, String> {
+        let name = |p: &str| Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        self.shell.iter().position(|c| c.argv.first().is_some_and(|p| name(p) == program)).ok_or_else(|| format!("the session runs no service {program}"))
+    }
+
+    /// End it and start it again as soon as it has ended (one not
+    /// running is started); the window server's is the session's reload.
+    fn restart_service(&mut self, program: &str) -> Result<(), String> {
+        if program == "olo-app-server" {
+            log("restarting app_server, as asked (a reload)");
+            self.reload();
+            return Ok(());
+        }
+        let i = self.service_index(program)?;
+        let c = &mut self.shell[i];
+        if c.pid <= 0 {
+            return self.start_service(program);
+        }
+        log(format!("restarting {} (pid {}), as asked", c.argv[0], c.pid));
+        c.restart_asked = true;
+        c.held = None;
+        // SAFETY: signalling our own child.
+        unsafe { libc::kill(c.pid, libc::SIGTERM) };
+        Ok(())
+    }
+
+    /// End it, and don't start it again until asked (or the next login).
+    fn stop_service(&mut self, program: &str) -> Result<(), String> {
+        if program == "olo-app-server" {
+            return Err("the window server can't be stopped: it draws everything (Restart reloads it)".into());
+        }
+        let i = self.service_index(program)?;
+        let c = &mut self.shell[i];
+        c.held = Some(Held::Stopped);
+        c.restart_asked = false;
+        if c.pid > 0 {
+            log(format!("stopping {} (pid {}), as asked", c.argv[0], c.pid));
+            // SAFETY: signalling our own child.
+            unsafe { libc::kill(c.pid, libc::SIGTERM) };
+        }
+        Ok(())
+    }
+
+    /// Start one that isn't running (stopped, not wanted or given up on),
+    /// its count of crashes begun again.
+    fn start_service(&mut self, program: &str) -> Result<(), String> {
+        let i = self.service_index(program)?;
+        let c = &mut self.shell[i];
+        if c.pid > 0 {
+            c.held = None;
+            return Ok(());
+        }
+        log(format!("starting {}, as asked", c.argv[0]));
+        c.crashes.clear();
+        c.held = None;
+        c.pid = spawn(&c.argv, &[]).unwrap_or(0);
+        c.since = now_secs();
+        if c.pid <= 0 {
+            c.held = Some(Held::GaveUp);
+            return Err(format!("{program} couldn't be started"));
+        }
+        Ok(())
     }
 
     /// Install what's newer in the build tree and switch to it. Only a new
@@ -1284,6 +1446,7 @@ impl Session {
                     log("app_server keeps crashing; starting it in Olo Rescue");
                     self.rescue_next = true;
                 }
+                self.server.restarts += 1;
                 self.start_server();
             } else if let Some(i) = self.retired.iter().position(|&p| p == pid) {
                 self.retired.remove(i);
@@ -1312,18 +1475,32 @@ impl Session {
                     self.shutdown(0);
                 }
                 let c = &mut self.shell[i];
-                if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == olo_xdg::SERVICE_NOT_WANTED {
-                    log(format!("{} isn't wanted (turned off); not started again", c.argv[0]));
+                let bus = Path::new(&c.argv[0]).file_name().is_some_and(|n| n == "olo-bus");
+                if c.held == Some(Held::Stopped) {
+                    log(format!("{} stopped, as asked", c.argv[0]));
                     c.pid = 0;
                     continue;
                 }
-                log(format!("{} exited ({}); restarting it", c.argv[0], describe(status)));
-                let bus = Path::new(&c.argv[0]).file_name().is_some_and(|n| n == "olo-bus");
-                if note_crash(c) {
+                if std::mem::take(&mut c.restart_asked) {
+                    log(format!("{} ended; starting it again, as asked", c.argv[0]));
                     c.pid = spawn(&c.argv, &[]).unwrap_or(0);
-                } else {
-                    log(format!("{} keeps exiting; leaving it stopped", c.argv[0]));
+                    c.since = now_secs();
+                } else if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == olo_xdg::SERVICE_NOT_WANTED {
+                    log(format!("{} isn't wanted (turned off); not started again", c.argv[0]));
                     c.pid = 0;
+                    c.held = Some(Held::NotWanted);
+                    continue;
+                } else {
+                    log(format!("{} exited ({}); restarting it", c.argv[0], describe(status)));
+                    if note_crash(c) {
+                        c.pid = spawn(&c.argv, &[]).unwrap_or(0);
+                        c.since = now_secs();
+                        c.restarts += 1;
+                    } else {
+                        log(format!("{} keeps exiting; leaving it stopped", c.argv[0]));
+                        c.pid = 0;
+                        c.held = Some(Held::GaveUp);
+                    }
                 }
                 // A new bus: the services on the old one (its portal and
                 // notification centre, which outlive their bus) start again
@@ -1361,6 +1538,9 @@ impl Session {
     fn shutdown(&mut self, code: i32) -> ! {
         self.stopping = true;
         log("ending the session");
+        if let Some(control) = self.control.take() {
+            control.remove();
+        }
         let proxy = self.proxy.as_ref().map_or(0, |p| p.2.pid);
         let pids: Vec<i32> = self.shell.iter().map(|c| c.pid).chain([self.server.pid, proxy]).chain(self.retired.iter().copied()).filter(|&p| p > 0).collect();
         for &p in &pids {
@@ -1512,7 +1692,8 @@ fn own_binary() -> Option<(u64, SystemTime)> {
 
 // ---- signals ----------------------------------------------------------------
 
-const SIGNALS: [i32; 6] = [libc::SIGCHLD, libc::SIGHUP, libc::SIGUSR1, libc::SIGUSR2, libc::SIGTERM, libc::SIGINT];
+// (SIGIO: a request for the services, `services::Control`.)
+const SIGNALS: [i32; 7] = [libc::SIGCHLD, libc::SIGHUP, libc::SIGUSR1, libc::SIGUSR2, libc::SIGTERM, libc::SIGINT, libc::SIGIO];
 
 fn signal_set() -> libc::sigset_t {
     // SAFETY: building a sigset.

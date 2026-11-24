@@ -1851,31 +1851,6 @@ something nobody here has is in "Blocked", with what it waits for.
   read`, `notify-send`, a copy and a paste), and said in the skill
   for agents.
 
-- **Preferences ▸ Services: every Olo service, how it stands, and a
-  way to manage it** (Ben, 2026-11-23, on asking whether Passwords'
-  SSH agent had to be restarted by hand to get a fix: "a Preferences
-  -> Services app that shows all of the olo services and their status
-  and lets me manage/restart them"). To find out first: what the
-  services are and who starts each (olo-session's `SHELL` and
-  `REAL_SHELL`, its bus's own services, an agent screen's, Terminal's
-  and Rex's keepers, the Token Pool, the pools on hosts) and what the
-  session already knows of each (running since when, its pid, started
-  again how often, left stopped after crashing, turned off in
-  Preferences: `SERVICE_NOT_WANTED`, still on the version before an
-  upgrade: `Session::check_stale`); how BeOS and Haiku showed theirs
-  (the roster, `launch_daemon` and `launch_roster`). Then: the
-  session answers a request for the list and for Restart, Stop and
-  Start of one (documented, so agents have it as people do: `olo
-  services`, JSON); a kit app in Preferences with a list (its name
-  as a person knows it and what it is for in a line, a light, since
-  when, its memory and CPU at rest from what `tools/dev/cost` reads,
-  its version against the installed one) and Restart, Stop, Start
-  and Show Log for the chosen one, live without polling (the session
-  says when one changes); what restarting one costs said before it
-  is done where it costs something (Terminal's keeper holds the
-  shells; app_server is the session's reload). Never a service
-  restarted to cure what a fix should: Root-cause rule.
-
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize
   ssh sessions and traffic on olo desktop, like maybe under prefs ->
@@ -2669,6 +2644,27 @@ something nobody here has is in "Blocked", with what it waits for.
   " | olo" is the agent's own title, not Terminal's.)
 
 ## Done, waiting for Ben to try or confirm
+
+- **Preferences ▸ Services** (Ben, 2026-11-23: "a Preferences ->
+  Services app that shows all of the olo services and their status and
+  lets me manage/restart them"). Done (2026-11-24; HACKING, "The
+  session's services"): the session answers over a socket of its own
+  (the list, Restart, Stop, Start, a watch of the list), `olo-session
+  services [--json]` and `restart|stop|start PROGRAM` for a terminal or
+  an agent, and the pane: each service by its name, a light and its
+  standing, when it started, its memory; the chosen one's purpose,
+  command and process, Show Log, Stop or Start, Restart (the window
+  server's asked first); "Running an older version" for one an upgrade
+  has replaced. Left: its CPU at rest (needs a sample over time: shown
+  only while the pane is open); the services the session doesn't start
+  (Terminal's and Rex's keepers, the Token Pool on hosts); an icon of
+  its own (Activity's `process` meanwhile); the live lint's Preferences
+  panes are listed by hand (`tools/dev/ui-lint`'s PANELS) and lack
+  AirPlay, Bluetooth, Language and Phone. From Opus's look at it, the
+  desktop's: an alert has a full tab with a zoom box ("BeOS alerts are
+  tab-less"); dimmed buttons in dark lose their outline; a list isn't
+  given the keyboard as its pane opens; in dark the unfocused selection
+  is almost the focused one's navy.
 
 - **Power: each mode's settings can be changed, beside the modes**
   (Ben, 2026-11-20: "at some point recently we simplified the power

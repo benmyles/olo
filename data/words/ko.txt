@@ -433,6 +433,9 @@ A new name for the session “{}”:
 A new name for the tab “{}”:
 탭 ‘{}’의 새 이름:
 
+A newer version was installed after {} started. Restart it to use the new one.
+{}이(가) 시작된 후 새 버전이 설치되었습니다. 새 버전을 쓰려면 재시작하세요.
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 휠 한 칸으로 Chrome과 다른 프로그램에서도 Olo 앱과 같은 거리만큼 스크롤합니다.
 
@@ -801,6 +804,9 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 에이전트 화면
+
+Agent Tab Titles
+에이전트 탭 제목
 
 Agent sessions
 에이전트 세션
@@ -1294,6 +1300,12 @@ Asking it…
 Asking…
 요청 중…
 
+Asks for your password when a program needs more rights.
+프로그램에 추가 권한이 필요할 때 암호를 묻습니다.
+
+Asks who is logging in.
+로그인할 사용자를 묻습니다.
+
 Ask…
 묻기…
 
@@ -1370,6 +1382,9 @@ Attachments
 첨부 항목
 
 Authenticate
+인증
+
+Authentication
 인증
 
 Authentication:
@@ -1536,6 +1551,9 @@ Backing up {}
 
 Backlight
 백라이트
+
+Backs up this computer’s disk when one is due.
+백업할 때가 되면 이 컴퓨터의 디스크를 백업합니다.
 
 Backup
 백업
@@ -1848,6 +1866,9 @@ CalDAV
 
 Calendar
 캘린더
+
+Calendar Reminders
+캘린더 미리 알림
 
 Calendar for {}
 {}의 캘린더
@@ -3313,6 +3334,9 @@ Dew point {}
 Diagnostics…
 진단…
 
+Dictation and the voice assistant.
+받아쓰기와 음성 도우미를 제공합니다.
+
 Diff
 Diff
 
@@ -3478,6 +3502,9 @@ Do the result's other action
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 문서
 
@@ -3582,6 +3609,9 @@ Drawing
 
 Drawn into each frame
 프레임마다 다시 그림
+
+Draws every window and takes the keyboard and pointer.
+모든 창을 그리고 키보드와 포인터 입력을 처리합니다.
 
 Drive
 드라이브
@@ -5758,6 +5788,12 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 빌드 파일을 메모리에 유지하고 실행 중인 프로그램이 스왑으로 내려가지 않게 합니다.
 
+Keeps background work from slowing what you use.
+백그라운드 작업으로 사용 중인 앱이 느려지지 않도록 합니다.
+
+Keeps other apps’ passwords, unlocked as you log in.
+다른 앱의 암호를 보관하며 로그인할 때 잠금이 해제됩니다.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연을 억제합니다. Linux 기본값 "none"은 백그라운드 라이트백만 조절합니다 (queue/scheduler).
 
@@ -6007,6 +6043,9 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 이 컴퓨터가 꺼져 있어도 호스트의 에이전트가 내 계정을 사용할 수 있습니다.
 
+Lets coding agents title their Terminal tab.
+코딩 에이전트가 Terminal 탭 제목을 설정할 수 있게 합니다.
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 그 호스트의 프로그램이 여기서 링크, Passwords, SSH 키, 에이전트 화면을 쓸 수 있게 합니다.
 
@@ -6186,6 +6225,12 @@ Log Out…
 
 Login
 로그인
+
+Login Keyring
+로그인 키 모음
+
+Login Window
+로그인 창
 
 Logs
 Logs
@@ -6531,6 +6576,9 @@ Memory:
 
 Message
 메시지
+
+Message Bus
+메시지 버스
 
 Message queues
 메시지 대기열
@@ -7954,6 +8002,9 @@ Olo’s own apps can then sign in with them, until Passwords locks or for 10 min
 Olo’s phone service isn’t running.
 Olo 전화 서비스가 실행 중이지 않습니다.
 
+Olo’s session isn’t answering.
+Olo 세션이 응답하지 않습니다.
+
 Olo’s skill for agents is on “{}”.
 ‘{}’에 Olo 에이전트 스킬이 설치되어 있습니다.
 
@@ -7966,8 +8017,8 @@ Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
 ‘{}’에 Olo 입력 도우미가 설치되어 있습니다.
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Olo 입력 도우미가 꺼져 있습니다. 사용하려면 설정 ▸ 호스트에서 Olo 입력 도우미 사용을 선택하세요.
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Olo 입력 도우미가 꺼져 있습니다. 사용하려면 환경설정 ▸ Rex에서 켜세요.
 
 Olo’s typing helper isn’t on “{}”.
 ‘{}’에 Olo 입력 도우미가 설치되어 있지 않습니다.
@@ -8205,6 +8256,9 @@ Open With Offers
 
 Open a host’s Account window to see how each stands there, and to clone.
 각 호스트의 상태를 확인하고 저장소를 복제하려면 호스트의 계정 창을 여세요.
+
+Open and save panels, and screen sharing, for other apps.
+다른 앱에 열기·저장 패널과 화면 공유 기능을 제공합니다.
 
 Open files
 파일 열기
@@ -8773,6 +8827,9 @@ Port
 Port:
 포트:
 
+Portal
+포털
+
 Ports
 포트
 
@@ -8937,6 +8994,9 @@ Process
 
 Process {} has quit
 프로세스 {} 종료됨
+
+Process {} · {}
+프로세스 {} · {}
 
 Processed
 처리된 소리
@@ -9370,6 +9430,12 @@ Reminder
 Reminder:
 미리 알림:
 
+Reminds you of your events.
+일정을 미리 알려 줍니다.
+
+Reminds you of your to-dos.
+할 일을 미리 알려 줍니다.
+
 Remote
 원격
 
@@ -9619,6 +9685,12 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart kache
 kache 재시작
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+창 서버를 재시작할까요?\n\n모든 창을 다시 그리는 동안 잠시 화면이 비며, 열려 있는 것은 닫히지 않습니다.
+
+Restart to update
+재시작하여 업데이트
+
 Restart, Asking First
 먼저 묻고 재시작
 
@@ -9844,6 +9916,12 @@ Running for {}
 Running systemctl as {}
 {} 권한으로 systemctl 실행 중
 
+Running, started again once
+실행 중, 1회 다시 시작됨
+
+Running, started again {n} times
+other: 실행 중, {n}회 다시 시작됨
+
 Runs on
 실행 장치
 
@@ -9873,6 +9951,9 @@ SSD 온도
 
 SSE
 남남동
+
+SSH Agent
+SSH 에이전트
 
 SSH Authentication
 SSH 인증
@@ -10354,6 +10435,9 @@ Shared
 Shared with this screen: change it in your own Passwords.
 이 화면과 공유됩니다. 내 Passwords에서 변경하세요.
 
+Shares the coding agents’ accounts between them.
+코딩 에이전트 간에 계정을 공유합니다.
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 이 컴퓨터의 연결을 별도 Wi-Fi 네트워크로 공유합니다. 공유하는 동안 어댑터는 기존 네트워크에서 연결을 끊습니다.
 
@@ -10444,6 +10528,9 @@ Show Hidden Files
 Show Idle Panes in Activity
 활동에 유휴 패널 표시
 
+Show Log
+로그 보기
+
 Show Notifications
 알림 표시
 
@@ -10476,9 +10563,6 @@ Show Source
 
 Show Toolbars
 도구 막대 표시
-
-Show Typing Immediately
-입력 즉시 표시
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 창 제목을 오른쪽 클릭하거나 Deskbar에서 해당 창의 메뉴를 열어 ‘AirPlay로 표시’를 선택하세요. Viewer나 Tracker에서 영화를 보내려면 ‘재생 기기’를 선택하세요.
@@ -10560,6 +10644,9 @@ Showing the forecast from {}.
 
 Shown
 표시됨
+
+Shows notifications and keeps them for later.
+알림을 표시하고 나중에 볼 수 있도록 보관합니다.
 
 Shows:
 표시 항목:
@@ -10987,6 +11074,12 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 {} 계정과의 동기화를 중지할까요? 이 컴퓨터에서 해당 계정의 항목과 아직 전송하지 않은 변경 사항이 지워집니다. 1Password의 내용은 그대로 유지됩니다.
 
+Stopped
+중지됨
+
+Stopped after ending too often
+너무 자주 종료되어 중지됨
+
 Stopped before step {} of {}
 {1}단계 중 {0}단계 전에서 중지됨
 
@@ -11314,6 +11407,9 @@ Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 호스트의 Claude Code와 다른 에이전트에 브리지와 Rex 사용법을 알려 줍니다.
 
+Tells of problems it finds, at login and as they happen.
+로그인할 때나 실행 중에 발견한 문제를 알려 줍니다.
+
 Temperature
 온도
 
@@ -11461,6 +11557,9 @@ The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 VPN을 저장할 수 없습니다.
 
+The Window Server can’t be stopped, only restarted.
+창 서버는 중지할 수 없고 재시작만 할 수 있습니다.
+
 The account answering now
 현재 응답 중인 계정
 
@@ -11590,6 +11689,9 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 호스트가 설치 상태를 응답하지 않았습니다.
 
+The icons on the desktop (Tracker).
+데스크톱 아이콘을 표시합니다(Tracker).
+
 The icons {} is drawn with, everywhere.
 모든 곳에서 {} 표시 시 사용할 아이콘입니다.
 
@@ -11685,6 +11787,9 @@ The loss is a number, in percent.
 
 The main window in its place; the others stack around it.
 기본 창은 제자리에 있고, 다른 창들은 그 주위에 쌓입니다.
+
+The menu, the running apps, the tray and the clock.
+메뉴, 실행 중인 앱, 트레이, 시계를 표시합니다.
 
 The microphone can’t be recorded ({}).
 마이크로 녹음할 수 없습니다({}).
@@ -11832,6 +11937,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 서버의 CalDAV 주소와 로그인 이름, 암호를 입력하세요. 암호는 로그인 키 모음에 보관합니다.
+
+The session didn’t answer: {}
+세션이 응답하지 않았습니다: {}
 
 The shared server isn’t running.
 공유 서버가 실행 중이 아닙니다.
@@ -12109,6 +12217,9 @@ This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 이 페이지에 {}의 일회용 코드가 표시되어 있습니다. 어느 로그인 항목에 추가할까요?
 
+This screen’s own bus, for the programs on it.
+이 화면의 프로그램이 사용하는 전용 버스입니다.
+
 This step is done
 이 단계를 마쳤습니다
 
@@ -12238,8 +12349,8 @@ To the next display
 To the previous display
 이전 디스플레이로
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-사용하려면 설정 ▸ 호스트에서 Olo 입력 도우미 사용을 선택하세요.
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+사용하려면 환경설정 ▸ Rex에서 Olo 입력 도우미를 켜세요.
 
 To {}
 {}에게
@@ -12249,6 +12360,9 @@ To {}.
 
 To-Do
 할 일
+
+To-Do Reminders
+할 일 미리 알림
 
 To-Do: Today
 할 일: 오늘
@@ -12519,6 +12633,9 @@ Turn the tile's split
 
 Turn the touchpad off while a mouse is plugged in
 마우스 연결 시 터치패드 끄기
+
+Turned off
+꺼짐
 
 Turned off by the hardware switch.
 하드웨어 스위치로 꺼졌습니다.
@@ -12862,9 +12979,6 @@ Use Mine
 Use Music Quality
 음악 음질 사용
 
-Use Olo’s Typing Helper on Hosts
-호스트에서 Olo 입력 도우미 사용
-
 Use Olo’s typing helper on hosts
 호스트에서 Olo 입력 도우미 사용
 
@@ -13050,6 +13164,9 @@ Visibility ({})
 
 Visibility · fog
 가시거리 · 안개
+
+Voice
+음성
 
 Voice Only
 음성만
@@ -13459,6 +13576,9 @@ Window Arrangement
 Window Buffers
 창 버퍼
 
+Window Server
+창 서버
+
 Window Size
 창 크기
 
@@ -13639,6 +13759,9 @@ You stopped the backup {}
 You: {}
 나: {}
 
+Your AirPods’ battery, modes and ear detection.
+AirPods의 배터리, 모드, 착용 감지를 관리합니다.
+
 Your Display
 내 디스플레이
 
@@ -13653,6 +13776,9 @@ Your Own
 
 Your Own Kinds
 사용자 지정 종류
+
+Your SSH keys from Passwords, for ssh and git.
+ssh와 git에서 사용할 Passwords의 SSH 키를 제공합니다.
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 백업은 이 컴퓨터를 떠나기 전에 여기에서만 가진 키로 암호화합니다. 다른 곳에서도 읽으려면 키를 Passwords에도 보관하세요.
@@ -13710,6 +13836,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 암호를 확인할 수 없습니다({}).
+
+Your phone’s calls, messages and one-time codes.
+휴대전화의 통화, 메시지, 일회용 코드를 연동합니다.
 
 Your repositories
 내 저장소
@@ -14904,6 +15033,9 @@ other: {n}주
 
 {} Hz, {} ms a frame
 {}Hz, 프레임당 {}ms
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} {}에 백업한 버전으로 교체할까요, 아니면 둘 다 보관할까요? 둘 다 보관하면 복원한 파일 이름에 시각을 붙입니다.

@@ -78,7 +78,7 @@ TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
 # Preferences' panels (Bluetooth stays out of test runs; AirPods needs
 # its fake device).
 PANELS = ["ai", "appearance", "backgrounds", "backup", "datetime", "default-apps", "deskbar", "display", "gpus", "integrations", "keyboard", "network", "notifications",
-          "performance", "power", "rex", "screensaver", "security", "sound", "terminal", "themes", "touchid", "touchpad", "tracker", "windows", "workspaces", "about"]
+          "performance", "power", "rex", "screensaver", "security", "services", "sound", "terminal", "themes", "touchid", "touchpad", "tracker", "windows", "workspaces", "about"]
 
 
 def apps(home):

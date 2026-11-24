@@ -435,6 +435,9 @@ Een nieuwe naam voor de sessie ‘{}’:
 A new name for the tab “{}”:
 Een nieuwe naam voor het tabblad ‘{}’:
 
+A newer version was installed after {} started. Restart it to use the new one.
+Er is een nieuwere versie geïnstalleerd nadat {} was gestart. Herstart het om die te gebruiken.
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Eén stap van het muiswiel scrolt in Chrome en andere programma’s even ver als in Olo-apps.
 
@@ -805,6 +808,9 @@ Agentscherm ‘{}’ wacht op een code
 
 Agent Screens
 Agentschermen
+
+Agent Tab Titles
+Tabbladtitels voor agents
 
 Agent sessions
 Agentsessies
@@ -1300,6 +1306,12 @@ Opvragen…
 Asking…
 Vraag stellen…
 
+Asks for your password when a program needs more rights.
+Vraagt om uw wachtwoord wanneer een programma meer rechten nodig heeft.
+
+Asks who is logging in.
+Vraagt wie zich aanmeldt.
+
 Ask…
 Vragen…
 
@@ -1377,6 +1389,9 @@ Bijlagen
 
 Authenticate
 Authenticeren
+
+Authentication
+Authenticatie
 
 Authentication:
 Authenticatie:
@@ -1543,6 +1558,9 @@ Back-up van {}
 
 Backlight
 Achtergrondverlichting
+
+Backs up this computer’s disk when one is due.
+Maakt een back-up van de schijf van deze computer wanneer het tijd is.
 
 Backup
 Back-up
@@ -1855,6 +1873,9 @@ CalDAV
 
 Calendar
 Agenda
+
+Calendar Reminders
+Agendaherinneringen
 
 Calendar for {}
 Agenda voor {}
@@ -3326,6 +3347,9 @@ Dauwpunt: {}
 Diagnostics…
 Diagnostiek…
 
+Dictation and the voice assistant.
+Dicteren en de spraakassistent.
+
 Diff
 Diff
 
@@ -3492,6 +3516,9 @@ De andere actie van het resultaat uitvoeren
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 Document
 
@@ -3596,6 +3623,9 @@ Tekenen
 
 Drawn into each frame
 Getekend in elk frame
+
+Draws every window and takes the keyboard and pointer.
+Tekent elk venster en verwerkt toetsenbord en aanwijzer.
 
 Drive
 Schijf
@@ -5784,6 +5814,12 @@ Voortgang bewaren…
 Keeps a build’s files in memory and running programs out of swap.
 Houdt buildbestanden in het geheugen en actieve programma’s buiten het wisselgeheugen.
 
+Keeps background work from slowing what you use.
+Voorkomt dat achtergrondwerk vertraagt wat u gebruikt.
+
+Keeps other apps’ passwords, unlocked as you log in.
+Bewaart wachtwoorden van andere apps en wordt bij het aanmelden ontgrendeld.
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Houdt de leeslatentie laag wanneer zware synchrone schrijfacties of discards een NVMe-schijf overspoelen, waar Linux' standaard "none" alleen terugschrijven op de achtergrond afremt (queue/scheduler).
 
@@ -6033,6 +6069,9 @@ Bundelt veel kleine schrijfbewerkingen van builds richting de schijf.
 Lets agents there use your accounts, even with this computer off.
 Laat agents daar uw accounts gebruiken, ook als deze computer uit staat.
 
+Lets coding agents title their Terminal tab.
+Laat programmeeragents hun Terminal-tabblad een titel geven.
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Laat programma’s daar hier links, Passwords, SSH-sleutels en Agentschermen gebruiken.
 
@@ -6212,6 +6251,12 @@ Afmelden…
 
 Login
 Login
+
+Login Keyring
+Aanmeldsleutelbos
+
+Login Window
+Aanmeldvenster
 
 Logs
 Logs
@@ -6557,6 +6602,9 @@ Geheugen:
 
 Message
 Bericht
+
+Message Bus
+Berichtenbus
 
 Message queues
 Berichtwachtrijen
@@ -7980,6 +8028,9 @@ Olo’s eigen apps kunnen er dan mee aanmelden, totdat Passwords vergrendelt of 
 Olo’s phone service isn’t running.
 De telefoondienst van Olo is niet actief.
 
+Olo’s session isn’t answering.
+De Olo-sessie reageert niet.
+
 Olo’s skill for agents is on “{}”.
 Olo’s skill voor agents staat op ‘{}’.
 
@@ -7992,8 +8043,8 @@ Olo’s typhulp wordt toegevoegd aan ‘{}’…
 Olo’s typing helper is on “{}”.
 Olo’s typhulp staat op ‘{}’.
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Olo’s typhulp staat uit. Kies Instellingen ▸ Olo’s typhulp op hosts gebruiken om deze in te schakelen.
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Olo’s typhulp staat uit. Zet die aan in Voorkeuren ▸ Rex om hem te gebruiken.
 
 Olo’s typing helper isn’t on “{}”.
 Olo’s typhulp staat niet op ‘{}’.
@@ -8231,6 +8282,9 @@ Apps in ‘Openen met’
 
 Open a host’s Account window to see how each stands there, and to clone.
 Open het venster Account van een host om de status daar te bekijken en te klonen.
+
+Open and save panels, and screen sharing, for other apps.
+Open- en opslagvensters en schermdelen voor andere apps.
 
 Open files
 Geopende bestanden
@@ -8801,6 +8855,9 @@ Poort
 Port:
 Poort:
 
+Portal
+Portaal
+
 Ports
 Poorten
 
@@ -8965,6 +9022,9 @@ Proces
 
 Process {} has quit
 Proces {} is afgesloten
+
+Process {} · {}
+Proces {} · {}
 
 Processed
 Bewerkt
@@ -9398,6 +9458,12 @@ Herinnering
 Reminder:
 Herinnering:
 
+Reminds you of your events.
+Herinnert u aan uw afspraken.
+
+Reminds you of your to-dos.
+Herinnert u aan uw taken.
+
 Remote
 Extern
 
@@ -9647,6 +9713,12 @@ Herstarten en Uitschakelen sluiten alle programma’s en daarna het systeem netj
 Restart kache
 kache herstarten
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+De vensterserver herstarten?\n\nHet scherm is even leeg terwijl elk venster opnieuw wordt getekend; niets wat u open hebt wordt gesloten.
+
+Restart to update
+Herstarten om bij te werken
+
 Restart, Asking First
 Herstarten na bevestiging
 
@@ -9872,6 +9944,13 @@ Draait al {}
 Running systemctl as {}
 systemctl uitvoeren als {}
 
+Running, started again once
+Actief, eenmaal herstart
+
+Running, started again {n} times
+one: Actief, {n} keer herstart
+other: Actief, {n} keer herstart
+
 Runs on
 Draait op
 
@@ -9901,6 +9980,9 @@ SSD-temperatuur
 
 SSE
 ZZO
+
+SSH Agent
+SSH-agent
 
 SSH Authentication
 SSH-authenticatie
@@ -10383,6 +10465,9 @@ Gedeeld
 Shared with this screen: change it in your own Passwords.
 Gedeeld met dit scherm. Wijzig dit in uw eigen Passwords.
 
+Shares the coding agents’ accounts between them.
+Deelt de accounts van programmeeragents onderling.
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Deelt de verbinding van deze computer als eigen wifinetwerk. De adapter verbreekt hiervoor de huidige netwerkverbinding.
 
@@ -10473,6 +10558,9 @@ Verborgen bestanden tonen
 Show Idle Panes in Activity
 Inactieve panelen in Activiteit tonen
 
+Show Log
+Logboek tonen
+
 Show Notifications
 Meldingen tonen
 
@@ -10505,9 +10593,6 @@ Broncode tonen
 
 Show Toolbars
 Werkbalken tonen
-
-Show Typing Immediately
-Typen direct tonen
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Klik met rechts op de venstertitel of open de vermelding in de Deskbar en kies Tonen op AirPlay. Kies voor een film in Viewer of Tracker Afspelen op.
@@ -10589,6 +10674,9 @@ Weersverwachting van {}.
 
 Shown
 Getoond
+
+Shows notifications and keeps them for later.
+Toont meldingen en bewaart ze voor later.
 
 Shows:
 Toont:
@@ -11018,6 +11106,12 @@ Synchronisatie met {} stoppen? De onderdelen van dit account en nog niet verzond
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 Synchronisatie met {} stoppen? De onderdelen van deze accounts en nog niet verzonden lokale wijzigingen worden van deze computer verwijderd. In 1Password blijven de gegevens bewaard.
 
+Stopped
+Gestopt
+
+Stopped after ending too often
+Gestopt: te vaak afgesloten
+
 Stopped before step {} of {}
 Gestopt vóór stap {} van {}
 
@@ -11345,6 +11439,9 @@ Codex daar op de hoogte brengen
 Tells Claude Code and other agents there how to use the bridge and Rex.
 Vertelt Claude Code en andere agents daar hoe ze de bridge en Rex gebruiken.
 
+Tells of problems it finds, at login and as they happen.
+Meldt gevonden problemen, bij aanmelding en zodra ze optreden.
+
 Temperature
 Temperatuur
 
@@ -11492,6 +11589,9 @@ De Token Pool op deze computer is ouder: upgrade deze eerst.
 The VPN couldn't be saved.
 VPN opslaan is mislukt.
 
+The Window Server can’t be stopped, only restarted.
+De vensterserver kan niet worden gestopt, alleen herstart.
+
 The account answering now
 Het account dat nu antwoordt
 
@@ -11621,6 +11721,9 @@ Handgeschreven regels, nog niet bijgetraind
 The host didn’t say what it has.
 De host heeft niet doorgegeven wat er aanwezig is.
 
+The icons on the desktop (Tracker).
+De pictogrammen op het bureaublad (Tracker).
+
 The icons {} is drawn with, everywhere.
 De pictogrammen waarmee {} overal wordt weergegeven.
 
@@ -11716,6 +11819,9 @@ Geef het verlies op als percentage.
 
 The main window in its place; the others stack around it.
 Het hoofdvenster op zijn plaats; de andere stapelen zich eromheen.
+
+The menu, the running apps, the tray and the clock.
+Het menu, de actieve apps, het systeemvak en de klok.
 
 The microphone can’t be recorded ({}).
 Opnemen van de microfoon is mislukt ({}).
@@ -11863,6 +11969,9 @@ De server heeft de naam en het wachtwoord geweigerd.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 Het CalDAV-adres van de server en de naam en het wachtwoord voor aanmelding. Het wachtwoord wordt in de aanmeldsleutelbos bewaard.
+
+The session didn’t answer: {}
+De sessie reageerde niet: {}
 
 The shared server isn’t running.
 De gedeelde server draait niet.
@@ -12140,6 +12249,9 @@ Dit toetsenbord heeft geen achtergrondverlichting.
 This page shows a one-time code for {}. Add it to which login?
 Deze pagina toont een eenmalige code voor {}. Aan welke login wilt u die toevoegen?
 
+This screen’s own bus, for the programs on it.
+De eigen bus van dit scherm, voor de programma’s erop.
+
 This step is done
 Deze stap is voltooid
 
@@ -12269,8 +12381,8 @@ Naar het volgende scherm
 To the previous display
 Naar het vorige scherm
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Kies Instellingen ▸ Olo’s typhulp op hosts gebruiken om deze te gebruiken.
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+Zet Olo’s typhulp aan in Voorkeuren ▸ Rex om die te gebruiken.
 
 To {}
 Naar {}
@@ -12280,6 +12392,9 @@ Naar {}.
 
 To-Do
 Taken
+
+To-Do Reminders
+Taakherinneringen
 
 To-Do: Today
 Taken: Vandaag
@@ -12550,6 +12665,9 @@ Splitsing van de tegel draaien
 
 Turn the touchpad off while a mouse is plugged in
 Touchpad uitschakelen als een muis is aangesloten
+
+Turned off
+Uitgeschakeld
 
 Turned off by the hardware switch.
 Uitgeschakeld met de fysieke schakelaar.
@@ -12893,9 +13011,6 @@ Mijne gebruiken
 Use Music Quality
 Muziekkwaliteit gebruiken
 
-Use Olo’s Typing Helper on Hosts
-Olo’s typhulp op hosts gebruiken
-
 Use Olo’s typing helper on hosts
 Olo’s typhulp op hosts gebruiken
 
@@ -13081,6 +13196,9 @@ Zicht ({})
 
 Visibility · fog
 Zicht · mist
+
+Voice
+Spraak
 
 Voice Only
 Alleen stem
@@ -13490,6 +13608,9 @@ Vensterindeling
 Window Buffers
 Vensterbuffers
 
+Window Server
+Vensterserver
+
 Window Size
 Venstergrootte
 
@@ -13670,6 +13791,9 @@ U hebt de back-up {} gestopt
 You: {}
 U: {}
 
+Your AirPods’ battery, modes and ear detection.
+Accu, modi en oordetectie van uw AirPods.
+
 Your Display
 Uw scherm
 
@@ -13684,6 +13808,9 @@ Eigen
 
 Your Own Kinds
 Uw eigen typen
+
+Your SSH keys from Passwords, for ssh and git.
+Uw SSH-sleutels uit Passwords, voor ssh en git.
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Uw back-ups worden vóór verzending versleuteld met een sleutel die alleen op deze computer staat. Bewaar de sleutel ook in Passwords om de back-ups elders te kunnen lezen.
@@ -13741,6 +13868,9 @@ Uw handpalm over de rechterrand
 
 Your password couldn’t be checked ({}).
 Uw wachtwoord controleren is mislukt ({}).
+
+Your phone’s calls, messages and one-time codes.
+Oproepen, berichten en eenmalige codes van uw telefoon.
 
 Your repositories
 Uw repositories
@@ -15014,6 +15144,9 @@ other: {n} weken
 
 {} Hz, {} ms a frame
 {} Hz, {} ms per frame
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Vervangen door de versie uit de back-up van {} of beide bewaren? De herstelde versie krijgt het tijdstip in de naam.

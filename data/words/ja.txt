@@ -433,6 +433,9 @@ A new name for the session “{}”:
 A new name for the tab “{}”:
 タブ「{}」の新しい名前：
 
+A newer version was installed after {} started. Restart it to use the new one.
+{}の起動後に新しいバージョンがインストールされました。再起動すると新しいバージョンを使えます。
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 ホイール1目盛りでスクロールする距離を、ChromeなどでもOloのアプリと同じにします。
 
@@ -801,6 +804,9 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 エージェント画面
+
+Agent Tab Titles
+エージェントのタブ名
 
 Agent sessions
 エージェントセッション
@@ -1294,6 +1300,12 @@ Asking it…
 Asking…
 問い合わせ中…
 
+Asks for your password when a program needs more rights.
+プログラムがより高い権限を必要とするときにパスワードを求めます。
+
+Asks who is logging in.
+ログインするユーザーを確認します。
+
 Ask…
 質問…
 
@@ -1370,6 +1382,9 @@ Attachments
 添付項目
 
 Authenticate
+認証
+
+Authentication
 認証
 
 Authentication:
@@ -1536,6 +1551,9 @@ Backing up {}
 
 Backlight
 バックライト
+
+Backs up this computer’s disk when one is due.
+予定の時刻になるとこのコンピューターのディスクをバックアップします。
 
 Backup
 バックアップ
@@ -1848,6 +1866,9 @@ CalDAV
 
 Calendar
 カレンダー
+
+Calendar Reminders
+カレンダーリマインダー
 
 Calendar for {}
 {}のカレンダー
@@ -3313,6 +3334,9 @@ Dew point {}
 Diagnostics…
 診断…
 
+Dictation and the voice assistant.
+音声入力と音声アシスタント。
+
 Diff
 Diff
 
@@ -3478,6 +3502,9 @@ Do the result's other action
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 ドキュメント
 
@@ -3582,6 +3609,9 @@ Drawing
 
 Drawn into each frame
 各フレームで描画
+
+Draws every window and takes the keyboard and pointer.
+すべてのウィンドウを描画し、キーボードとポインターの入力を受け取ります。
 
 Drive
 ドライブ
@@ -5758,6 +5788,12 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 ビルド用ファイルをメモリ上に保ち、実行中のプログラムがスワップに出るのを防ぎます。
 
+Keeps background work from slowing what you use.
+バックグラウンド作業で使用中のアプリが遅くならないようにします。
+
+Keeps other apps’ passwords, unlocked as you log in.
+他のアプリのパスワードを保存し、ログイン時にロックを解除します。
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 大量の同期書き込みや discard が NVMe ドライブに集中しても読み込み遅延を抑えます。Linux 標準の "none" はバックグラウンドの書き出ししか抑えません (queue/scheduler)。
 
@@ -6007,6 +6043,9 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 このコンピューターの電源が切れていても、リモートのエージェントがアカウントを使えます。
 
+Lets coding agents title their Terminal tab.
+コーディングエージェントがTerminalのタブ名を設定できるようにします。
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 そのホストのプログラムが、ここでリンク、Passwords、SSH鍵、エージェント画面を使えるようにします。
 
@@ -6186,6 +6225,12 @@ Log Out…
 
 Login
 ログイン
+
+Login Keyring
+ログインキーリング
+
+Login Window
+ログインウィンドウ
 
 Logs
 Logs
@@ -6531,6 +6576,9 @@ Memory:
 
 Message
 メッセージ
+
+Message Bus
+メッセージバス
 
 Message queues
 メッセージキュー
@@ -7954,6 +8002,9 @@ Passwordsがロックされるか、最後の使用から10分経つまで、Olo
 Olo’s phone service isn’t running.
 Oloの電話サービスは停止中です。
 
+Olo’s session isn’t answering.
+Oloのセッションが応答しません。
+
 Olo’s skill for agents is on “{}”.
 「{}」にエージェント用Oloスキルがインストールされています。
 
@@ -7966,8 +8017,8 @@ Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
 「{}」にOlo入力ヘルパーがインストールされています。
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Olo入力ヘルパーはオフです。使うには「設定 ▸ ホストでOlo入力ヘルパーを使用」を選びます。
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Olo入力ヘルパーはオフです。使うには、環境設定 ▸ Rexでオンにしてください。
 
 Olo’s typing helper isn’t on “{}”.
 「{}」にOlo入力ヘルパーはありません。
@@ -8205,6 +8256,9 @@ Open With Offers
 
 Open a host’s Account window to see how each stands there, and to clone.
 各ホストでの状態確認やクローンは、ホストのアカウントウィンドウで行えます。
+
+Open and save panels, and screen sharing, for other apps.
+他のアプリに開く・保存パネルと画面共有を提供します。
 
 Open files
 開いているファイル
@@ -8773,6 +8827,9 @@ Port
 Port:
 ポート：
 
+Portal
+ポータル
+
 Ports
 ポート
 
@@ -8937,6 +8994,9 @@ Process
 
 Process {} has quit
 プロセス{}は終了しました
+
+Process {} · {}
+プロセス {} · {}
 
 Processed
 処理済み
@@ -9370,6 +9430,12 @@ Reminder
 Reminder:
 リマインダー:
 
+Reminds you of your events.
+予定をお知らせします。
+
+Reminds you of your to-dos.
+タスクをお知らせします。
+
 Remote
 リモート
 
@@ -9619,6 +9685,12 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart kache
 kacheを再起動
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+ウィンドウサーバーを再起動しますか？\n\nすべてのウィンドウが描き直される間、画面が一瞬暗くなります。開いているものは閉じません。
+
+Restart to update
+再起動して更新
+
 Restart, Asking First
 確認してから再起動
 
@@ -9844,6 +9916,12 @@ Running for {}
 Running systemctl as {}
 {}としてsystemctlを実行中
 
+Running, started again once
+実行中（1回再起動）
+
+Running, started again {n} times
+other: 実行中（{n}回再起動）
+
 Runs on
 実行先
 
@@ -9873,6 +9951,9 @@ SSD温度
 
 SSE
 南南東
+
+SSH Agent
+SSHエージェント
 
 SSH Authentication
 SSH認証
@@ -10354,6 +10435,9 @@ Shared
 Shared with this screen: change it in your own Passwords.
 この画面と共有しています。変更するには自分のPasswordsを開いてください。
 
+Shares the coding agents’ accounts between them.
+コーディングエージェント間でアカウントを共有します。
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 このコンピューターの接続を専用のWi-Fiネットワークとして共有します。共有中はアダプターが現在のネットワークから切断されます。
 
@@ -10444,6 +10528,9 @@ Show Hidden Files
 Show Idle Panes in Activity
 待機中のペインをアクティビティに表示
 
+Show Log
+ログを表示
+
 Show Notifications
 通知を表示
 
@@ -10476,9 +10563,6 @@ Show Source
 
 Show Toolbars
 ツールバーを表示
-
-Show Typing Immediately
-入力を即座に表示
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 ウィンドウのタイトルを右クリックするかDeskbarの項目から「AirPlayで表示」を選びます。動画はViewerまたはTrackerの「再生先」で再生できます。
@@ -10560,6 +10644,9 @@ Showing the forecast from {}.
 
 Shown
 表示中
+
+Shows notifications and keeps them for later.
+通知を表示し、後から確認できるように保存します。
 
 Shows:
 表示内容:
@@ -10987,6 +11074,12 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 {}との同期を停止しますか？ 対象アカウントの項目と未送信の変更をこのコンピューターから削除します。1Passwordの内容はそのままです。
 
+Stopped
+停止中
+
+Stopped after ending too often
+頻繁に終了したため停止
+
 Stopped before step {} of {}
 ステップ{}/{}の前で停止しました
 
@@ -11314,6 +11407,9 @@ Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 リモートのClaude Codeなどのエージェントに、ブリッジとRexの使い方を伝えます。
 
+Tells of problems it finds, at login and as they happen.
+ログイン時や発生時に見つけた問題を知らせます。
+
 Temperature
 温度
 
@@ -11461,6 +11557,9 @@ The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 VPNを保存できませんでした。
 
+The Window Server can’t be stopped, only restarted.
+ウィンドウサーバーは停止できません。再起動のみ可能です。
+
 The account answering now
 現在応答中のアカウント
 
@@ -11590,6 +11689,9 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 ホストから構成情報が返されませんでした。
 
+The icons on the desktop (Tracker).
+デスクトップ上のアイコン（Tracker）。
+
 The icons {} is drawn with, everywhere.
 {}の表示に使うアイコンを全体に適用します。
 
@@ -11685,6 +11787,9 @@ The loss is a number, in percent.
 
 The main window in its place; the others stack around it.
 メインウィンドウは定位置に、ほかのウィンドウはその周りに重なります。
+
+The menu, the running apps, the tray and the clock.
+メニュー、実行中のアプリ、トレイ、時計。
 
 The microphone can’t be recorded ({}).
 マイクの音を録音できません（{}）。
@@ -11832,6 +11937,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 サーバーのCalDAVアドレスと、サインイン用の名前とパスワードを指定します。パスワードはログインキーリングに保存します。
+
+The session didn’t answer: {}
+セッションから応答がありませんでした：{}
 
 The shared server isn’t running.
 共有サーバーは停止しています。
@@ -12109,6 +12217,9 @@ This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 このページには{}のワンタイムコードがあります。どのログイン項目に追加しますか？
 
+This screen’s own bus, for the programs on it.
+この画面上のプログラム専用のバス。
+
 This step is done
 この手順は完了しました
 
@@ -12238,8 +12349,8 @@ To the next display
 To the previous display
 前のディスプレイへ
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-使うには「設定 ▸ ホストでOlo入力ヘルパーを使用」を選びます。
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+使うには、環境設定 ▸ RexでOlo入力ヘルパーをオンにしてください。
 
 To {}
 {}へ
@@ -12249,6 +12360,9 @@ To {}.
 
 To-Do
 タスク
+
+To-Do Reminders
+タスクリマインダー
 
 To-Do: Today
 タスク：今日
@@ -12519,6 +12633,9 @@ Turn the tile's split
 
 Turn the touchpad off while a mouse is plugged in
 マウスの接続中はタッチパッドを無効にする
+
+Turned off
+オフ
 
 Turned off by the hardware switch.
 本体のスイッチでオフになっています。
@@ -12862,9 +12979,6 @@ Use Mine
 Use Music Quality
 音楽用の音質を使う
 
-Use Olo’s Typing Helper on Hosts
-ホストでOlo入力ヘルパーを使用
-
 Use Olo’s typing helper on hosts
 ホストでOlo入力ヘルパーを使用
 
@@ -13050,6 +13164,9 @@ Visibility ({})
 
 Visibility · fog
 視程・霧
+
+Voice
+音声
 
 Voice Only
 音声のみ
@@ -13459,6 +13576,9 @@ Window Arrangement
 Window Buffers
 ウィンドウのバッファー
 
+Window Server
+ウィンドウサーバー
+
 Window Size
 ウィンドウサイズ
 
@@ -13639,6 +13759,9 @@ You stopped the backup {}
 You: {}
 自分：{}
 
+Your AirPods’ battery, modes and ear detection.
+AirPodsのバッテリー、モード、耳検出。
+
 Your Display
 お使いのディスプレイ
 
@@ -13653,6 +13776,9 @@ Your Own
 
 Your Own Kinds
 独自のファイル形式
+
+Your SSH keys from Passwords, for ssh and git.
+PasswordsのSSH鍵（ssh、git用）。
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 バックアップは送信前に、このコンピューターだけが持つ鍵で暗号化します。ほかのコンピューターでも読めるよう、鍵をPasswordsにも保存してください。
@@ -13710,6 +13836,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 パスワードを確認できませんでした（{}）。
+
+Your phone’s calls, messages and one-time codes.
+電話の通話、メッセージ、ワンタイムコード。
 
 Your repositories
 リポジトリ
@@ -14904,6 +15033,9 @@ other: {n}週間
 
 {} Hz, {} ms a frame
 {} Hz、1フレーム{} ms
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} {}にバックアップした版に置き換えますか？ 両方残す場合、復元する方の名前に時刻を付けます。

@@ -5634,6 +5634,48 @@ places below.
   then point `OLO_UPGRADE_FROM` (`TABULA_UPGRADE_FROM` for the old
   session) at this tree and `kill -USR2` the session.
 
+### The session's services (crates/session/src/services.rs, `olo_protocol::services`; Preferences ▸ Services)
+
+Ben, 2026-11-23, asking whether Passwords' SSH agent had to be restarted
+by hand to take a fix: "a Preferences -> Services app that shows all of
+the olo services and their status and lets me manage/restart them".
+
+- **What they are**: what the session starts and looks after, as it
+  always did: app_server (the window server), the shell (`SHELL`:
+  Deskbar, the desktop), the real session's services (`REAL_SHELL`:
+  authentication, notifications, the portal, Token Pool, the
+  supervisor, Doctor, AirPods, the phone, voice, DiskBackup, Calendar's
+  and To-Do's reminders, the SSH agent, the login keyring, the agents'
+  tab titles) and an agent screen's bus and its services. Each one
+  (`Child`) keeps when it was started last, how often it ended and was
+  started again by the session, and why it is left stopped (`Held`:
+  stopped as asked, ended saying it isn't wanted, ended too often).
+- **Asked of the session** over a socket of its own
+  (`$XDG_RUNTIME_DIR/olo-session-DISPLAY.sock`), one JSON line a request
+  and one an answer (`olo_protocol::services::{Ask, Said}`): the list;
+  Restart (ended, then started at once, not counted as a crash; the
+  window server's is the session's reload); Stop (until started again
+  or the next login); Start (its crash count begun again); Watch (the
+  list now and again each time it changes, on that connection). No
+  thread: the socket and its connections raise SIGIO (O_ASYNC), which
+  the session waits for with its other signals, and what's waiting is
+  taken without blocking; the list is made only while someone watches.
+  Measured at rest, release builds, 10 s: 14,050 instructions before,
+  16,560 after (one non-blocking accept a turn of a loop that already
+  wakes every two seconds).
+- **For people and agents alike**: `olo-session services [--json]`,
+  `olo-session restart|stop|start PROGRAM` (`olo-pool`, `olo-passwords`),
+  and Preferences ▸ Services: the list (each service by the name a
+  person knows it by, `olo_protocol::services::about`, a light and its
+  standing in words, when it started, its memory), and for the chosen
+  one what it is for, its command and process, Show Log (Logs at its
+  program), Stop or Start, Restart (the window server's asked first).
+  One running a program an upgrade has since replaced (the kernel names
+  its `/proc/PID/exe` "(deleted)") says "Running an older version", and
+  Restart is the cure. The pane follows the session's watch; when the
+  session re-executes (an upgrade), it connects again as the socket is
+  made again, its folder watched, never asked over and over.
+
 ## The login screen and boot splash (apps/login, apps/greeter, crates/greet; app_server plymouth.rs)
 
 Olo's own login screen, in GDM's place, and its boot splash, in
@@ -27734,7 +27776,7 @@ once over a slow or laggy link").
   proves nothing; the host's word that the terminal reads a secret
   (`input_mode`) forbids it too. And only where the echo is slow enough
   to see (45 ms): on this computer the host's echo is the picture.
-  Settings ▸ Show Typing Immediately (`type_ahead`, on) turns it off.
+  Preferences ▸ Rex ▸ Show typing immediately (`type_ahead`, on) turns it off.
 - *How it is checked*: what was sent waits in a queue of keys and
   *gaps* (what isn't predicted). The keys at its head are placed: each
   frame is one of the screens they make on the way, or it isn't, and
@@ -28071,8 +28113,8 @@ what it does today:
   connect.": `HubNotice::Said`, never in place of a problem or another
   word); the status bar's keyboard mark is on while this connection
   goes through it, with how it stands for its tip ("What a far host
-  has of Olo's", below); Settings ▸ Use Olo’s Typing Helper on Hosts
-  (`host_helper`, on) turns it off, and then nothing is put on hosts
+  has of Olo's", below); Preferences ▸ Rex ▸ Use Olo’s typing helper on
+  hosts (`host_helper`, on) turns it off, and then nothing is put on hosts
   or run there. (Both design reviews of the menu: "Use
   Olo’s Helper on Hosts" didn't say what the helper is for, and was
   easy to take for the Agents menu's bridge.)

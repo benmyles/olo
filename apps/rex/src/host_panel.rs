@@ -447,7 +447,7 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             continue;
         }
         let note: String = if thing == HostThing::Helper && !host.helper_setting {
-            olo_kit::words::tr("To use it, choose Settings\u{a0}▸\u{a0}Use\u{a0}Olo’s\u{a0}Typing\u{a0}Helper\u{a0}on\u{a0}Hosts.").into()
+            olo_kit::words::tr("To use it, turn on Olo’s typing helper in Preferences\u{a0}▸\u{a0}Rex.").into()
         } else {
             olo_kit::words::tr(note).into()
         };

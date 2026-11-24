@@ -1210,7 +1210,7 @@ pub struct HostStands {
     /// The helper was taken off this host here, and isn't put back by
     /// itself (`Settings::helper_hosts`: "off").
     pub helper_kept_off: bool,
-    /// Settings ▸ Use Olo’s Typing Helper on Hosts.
+    /// Olo's typing helper on hosts (Preferences ▸ Rex ▸ General).
     pub helper_setting: bool,
     /// Whether the bridge's shims are there; none: not asked, or not
     /// answered.
@@ -1419,10 +1419,9 @@ impl HubState {
             HostHelper::Installing => Has { on: false, said: olo_kit::tr!("Olo’s typing helper is being added to “{}”…", name).to_string() },
             HostHelper::Ready => Has { on: false, said: olo_kit::tr!("Olo’s typing helper was added to “{}”. It will be used the next time you connect.", name).to_string() },
             HostHelper::Without(why) => Has { on: false, said: olo_kit::tr!("Olo’s typing helper isn’t on “{}”: {}", name, why).to_string() },
-            HostHelper::None if !self.settings.host_helper => Has {
-                on: false,
-                said: olo_kit::words::tr("Olo’s typing helper is turned off. To use it, choose Settings\u{a0}▸\u{a0}Use\u{a0}Olo’s\u{a0}Typing\u{a0}Helper\u{a0}on\u{a0}Hosts.").to_string(),
-            },
+            HostHelper::None if !self.settings.host_helper => {
+                Has { on: false, said: olo_kit::words::tr("Olo’s typing helper is turned off. To use it, turn it on in Preferences\u{a0}▸\u{a0}Rex.").to_string() }
+            }
             HostHelper::None => Has { on: false, said: olo_kit::tr!("Olo’s typing helper isn’t on “{}”.", name).to_string() },
         };
         // (What is granted is what the settings say now, not whether the
@@ -2592,9 +2591,9 @@ impl RexHub {
     }
 
     /// Whether what is typed is drawn ahead of a slow host's echo, in
-    /// every terminal (the Settings menu's choice).
-    /// Olo's helper on the hosts, used or not (Settings ▸ Use Olo’s
-    /// Typing Helper on Hosts). From each host's next connection: one that
+    /// every terminal (Preferences ▸ Rex ▸ General).
+    /// Olo's helper on the hosts, used or not (Preferences ▸ Rex ▸
+    /// General). From each host's next connection: one that
     /// stands isn't remade for it.
     pub fn set_host_helper(&self, on: bool) {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());

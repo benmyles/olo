@@ -9,7 +9,7 @@ use olo_protocol::Settings;
 
 use crate::{
     PanelView, about, ai, airplay, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, phone,
-    power, prefs, rex, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
+    power, prefs, rex, screensaver, security, services, sound, terminal, themes, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +42,8 @@ pub enum Panel {
     Rex,
     ScreenSaver,
     Security,
+    /// The session's services: how each stands, restarted, stopped.
+    Services,
     Sound,
     Terminal,
     Themes,
@@ -75,6 +77,7 @@ impl Panel {
         Panel::Rex,
         Panel::ScreenSaver,
         Panel::Security,
+        Panel::Services,
         Panel::Sound,
         Panel::Terminal,
         Panel::Themes,
@@ -111,7 +114,8 @@ impl Panel {
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
-            "github" | "telegram" | "fastmail" | "caldav" | "accounts" | "services" | "integration" => Some(Panel::Integrations),
+            "github" | "telegram" | "fastmail" | "caldav" | "accounts" | "integration" => Some(Panel::Integrations),
+            "service" | "daemons" | "processes" => Some(Panel::Services),
             "theme" | "icons" | "icon-theme" => Some(Panel::Themes),
             "window" | "tiling" | "margins" | "gaps" | "windowing" | "windowing-mode" | "focus-mode" => Some(Panel::Windows),
             _ => None,
@@ -142,6 +146,7 @@ impl Panel {
             Panel::Rex => "rex",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
+            Panel::Services => "services",
             Panel::Sound => "sound",
             Panel::Terminal => "terminal",
             Panel::Themes => "themes",
@@ -177,6 +182,7 @@ impl Panel {
             Panel::Rex => "Rex",
             Panel::ScreenSaver => "Screen Saver",
             Panel::Security => "Security",
+            Panel::Services => "Services",
             Panel::Sound => "Sound",
             Panel::Terminal => "Terminal",
             Panel::Themes => "Themes",
@@ -214,6 +220,7 @@ impl Panel {
             Panel::Rex => "rex",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
+            Panel::Services => "process",
             Panel::Sound => "sound",
             Panel::Terminal => "terminal",
             Panel::Themes => "themes",
@@ -269,6 +276,9 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
+            // The list, as tall as a session's services want, and the
+            // chosen one's words and buttons under it.
+            Panel::Services => (760, 520),
             // As tall as its devices need, which is a machine's own (no
             // list in it shrinks): the height is only its least. The
             // lint's test devices, the most a machine shows, need 466; a
@@ -311,6 +321,7 @@ impl Panel {
         !matches!(
             self,
             Panel::About
+                | Panel::Services
                 | Panel::AirPlay
                 | Panel::AirPods
                 | Panel::Display
@@ -403,6 +414,7 @@ impl Panel {
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Security => settings.security = from.security.clone(),
+            Panel::Services => {}
             Panel::Ai => settings.ai = from.ai.clone(),
             Panel::Themes => {
                 settings.appearance.look = from.appearance.look.clone();
@@ -451,6 +463,7 @@ pub enum State {
     About(about::State),
     Integrations(Box<integrations::State>),
     Security(Box<security::State>),
+    Services(Box<services::State>),
     Themes(Box<themes::State>),
 }
 
@@ -480,6 +493,7 @@ impl State {
             Panel::About => State::About(about::State::new(cx)),
             Panel::Integrations => State::Integrations(Box::new(integrations::State::new(cx))),
             Panel::Security => State::Security(Box::new(security::State::new(cx))),
+            Panel::Services => State::Services(Box::new(services::State::new())),
             _ => State::None,
         }
     }
@@ -544,6 +558,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::AirPlay, State::AirPlay(st)) => airplay::ui(&mut ui, st),
             (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
             (Panel::Rex, State::Rex(st)) => rex::ui(&mut ui, st),
+            (Panel::Services, State::Services(st)) => services::ui(&mut ui, st),
             (Panel::Tracker, _) => tracker::ui(&mut ui),
             (Panel::Terminal, _) => terminal::ui(&mut ui),
             (Panel::Windows, _) => windows::ui(&mut ui, &outputs),

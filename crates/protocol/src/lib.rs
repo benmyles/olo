@@ -34,6 +34,7 @@ pub mod power_button;
 pub mod power_mode;
 pub mod recording;
 pub mod rescue;
+pub mod services;
 pub mod sharing;
 pub mod shortcuts;
 pub mod sound;

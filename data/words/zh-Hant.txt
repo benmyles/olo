@@ -433,6 +433,9 @@ A new name for the session “{}”:
 A new name for the tab “{}”:
 分頁「{}」的新名稱：
 
+A newer version was installed after {} started. Restart it to use the new one.
+{} 啟動後安裝了更新的版本。重新啟動它即可使用新版本。
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 在 Chrome 和其他程式中，滾輪每捲動一格的距離與 Olo 應用程式一致。
 
@@ -801,6 +804,9 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 代理螢幕
+
+Agent Tab Titles
+代理程式分頁標題
 
 Agent sessions
 代理程式工作階段
@@ -1294,6 +1300,12 @@ Asking it…
 Asking…
 正在詢問…
 
+Asks for your password when a program needs more rights.
+程式需要更高權限時要求輸入密碼。
+
+Asks who is logging in.
+詢問要登入的使用者。
+
 Ask…
 詢問…
 
@@ -1371,6 +1383,9 @@ Attachments
 
 Authenticate
 驗證
+
+Authentication
+身分驗證
 
 Authentication:
 身分驗證：
@@ -1536,6 +1551,9 @@ Backing up {}
 
 Backlight
 背光
+
+Backs up this computer’s disk when one is due.
+在排程到期時備份這台電腦的磁碟。
 
 Backup
 備份
@@ -1848,6 +1866,9 @@ CalDAV
 
 Calendar
 行事曆
+
+Calendar Reminders
+行事曆提醒
 
 Calendar for {}
 {} 的行事曆
@@ -3313,6 +3334,9 @@ Dew point {}
 Diagnostics…
 診斷…
 
+Dictation and the voice assistant.
+聽寫與語音助理。
+
 Diff
 Diff
 
@@ -3478,6 +3502,9 @@ Do the result's other action
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 文件
 
@@ -3582,6 +3609,9 @@ Drawing
 
 Drawn into each frame
 每影格重新繪製
+
+Draws every window and takes the keyboard and pointer.
+繪製所有視窗，並接收鍵盤與指標輸入。
 
 Drive
 硬碟
@@ -5758,6 +5788,12 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 將建置檔案保留在記憶體中，避免執行中的程式被移至交換空間。
 
+Keeps background work from slowing what you use.
+防止背景工作拖慢您正在使用的程式。
+
+Keeps other apps’ passwords, unlocked as you log in.
+儲存其他應用程式的密碼，登入時自動解鎖。
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 在大量同步寫入或捨棄操作湧向 NVMe 硬碟時仍可限制讀取延遲，而 Linux 預設的 "none" 僅限制背景寫回 (queue/scheduler)。
 
@@ -6007,6 +6043,9 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 即使這台電腦關機，該主機上的代理程式也能使用您的帳號。
 
+Lets coding agents title their Terminal tab.
+允許程式設計代理設定其 Terminal 分頁標題。
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 允許那裡的程式在這裡使用連結、Passwords、SSH 金鑰和代理螢幕。
 
@@ -6186,6 +6225,12 @@ Log Out…
 
 Login
 登入
+
+Login Keyring
+登入鑰匙圈
+
+Login Window
+登入視窗
 
 Logs
 Logs
@@ -6531,6 +6576,9 @@ Memory:
 
 Message
 訊息
+
+Message Bus
+訊息匯流排
 
 Message queues
 訊息佇列
@@ -7954,6 +8002,9 @@ Olo’s own apps can then sign in with them, until Passwords locks or for 10 min
 Olo’s phone service isn’t running.
 Olo 電話服務未執行。
 
+Olo’s session isn’t answering.
+Olo 工作階段未回應。
+
 Olo’s skill for agents is on “{}”.
 「{}」已安裝 Olo 代理程式技能。
 
@@ -7966,8 +8017,8 @@ Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
 「{}」已安裝 Olo 輸入輔助程式。
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Olo 輸入輔助程式已關閉。若要使用，請選擇「設定 ▸ 在主機上使用 Olo 輸入輔助程式」。
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Olo 輸入輔助程式已關閉。若要使用，請在偏好設定 ▸ Rex中將其開啟。
 
 Olo’s typing helper isn’t on “{}”.
 「{}」尚未安裝 Olo 輸入輔助程式。
@@ -8205,6 +8256,9 @@ Open With Offers
 
 Open a host’s Account window to see how each stands there, and to clone.
 開啟主機的「帳號」視窗以查看各項狀態並進行複製。
+
+Open and save panels, and screen sharing, for other apps.
+為其他應用程式提供開啟與儲存面板，以及螢幕共享。
 
 Open files
 開啟中的檔案
@@ -8773,6 +8827,9 @@ Port
 Port:
 連接埠：
 
+Portal
+桌面入口
+
 Ports
 連接埠
 
@@ -8937,6 +8994,9 @@ Process
 
 Process {} has quit
 行程 {} 已退出
+
+Process {} · {}
+程序 {} · {}
 
 Processed
 處理後
@@ -9370,6 +9430,12 @@ Reminder
 Reminder:
 提醒：
 
+Reminds you of your events.
+提醒您的行程。
+
+Reminds you of your to-dos.
+提醒您的待辦事項。
+
 Remote
 遠程
 
@@ -9619,6 +9685,12 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart kache
 重新啟動 kache
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+重新啟動視窗伺服器？\n\n重新繪製每個視窗時螢幕會短暫變暗；您開啟的內容都不會關閉。
+
+Restart to update
+重新啟動以更新
+
 Restart, Asking First
 先詢問再重新啟動
 
@@ -9844,6 +9916,12 @@ Running for {}
 Running systemctl as {}
 正在以 {} 身分執行 systemctl
 
+Running, started again once
+執行中，已重新啟動 1 次
+
+Running, started again {n} times
+other: 執行中，已重新啟動 {n} 次
+
 Runs on
 執行裝置
 
@@ -9873,6 +9951,9 @@ SSD 溫度
 
 SSE
 東南偏南
+
+SSH Agent
+SSH 代理程式
 
 SSH Authentication
 SSH 驗證
@@ -10354,6 +10435,9 @@ Shared
 Shared with this screen: change it in your own Passwords.
 已與此螢幕共享。請在您自己的 Passwords 中更改。
 
+Shares the coding agents’ accounts between them.
+在各程式設計代理之間共用帳號。
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 將本機連線共享為獨立的 Wi-Fi 網路。共享期間，轉接器會中斷原先連線的網路。
 
@@ -10444,6 +10528,9 @@ Show Hidden Files
 Show Idle Panes in Activity
 在活動中顯示閒置窗格
 
+Show Log
+顯示日誌
+
 Show Notifications
 顯示通知
 
@@ -10476,9 +10563,6 @@ Show Source
 
 Show Toolbars
 顯示工具列
-
-Show Typing Immediately
-立即顯示輸入內容
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 右鍵點按視窗標題或開啟其 Deskbar 選單，選擇「透過 AirPlay 顯示」即可投送視窗。在 Viewer 或 Tracker 中選擇「播放到」可投送影片。
@@ -10560,6 +10644,9 @@ Showing the forecast from {}.
 
 Shown
 已顯示
+
+Shows notifications and keeps them for later.
+顯示通知並保留供日後查看。
 
 Shows:
 顯示內容：
@@ -10987,6 +11074,12 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 停止與 {} 同步嗎？這些帳號的項目以及本機尚未傳送的更改都將從本機移除。1Password 中的內容不受影響。
 
+Stopped
+已停止
+
+Stopped after ending too often
+因頻繁結束而停止
+
 Stopped before step {} of {}
 已在第 {0}/{1} 步前停止
 
@@ -11314,6 +11407,9 @@ Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 告知該主機上的 Claude Code 與其他代理程式如何使用橋接工具和 Rex。
 
+Tells of problems it finds, at login and as they happen.
+在登入時及問題發生時，回報發現的問題。
+
 Temperature
 溫度
 
@@ -11461,6 +11557,9 @@ The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 無法儲存 VPN。
 
+The Window Server can’t be stopped, only restarted.
+視窗伺服器無法停止，只能重新啟動。
+
 The account answering now
 目前回應的帳號
 
@@ -11590,6 +11689,9 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 該主機未回報其已安裝項目。
 
+The icons on the desktop (Tracker).
+桌面上的圖示（Tracker）。
+
 The icons {} is drawn with, everywhere.
 {} 在各處使用的圖示。
 
@@ -11685,6 +11787,9 @@ The loss is a number, in percent.
 
 The main window in its place; the others stack around it.
 主視窗保持原位，其他視窗堆疊在它周圍。
+
+The menu, the running apps, the tray and the clock.
+選單、執行中的應用程式、系統匣與時鐘。
 
 The microphone can’t be recorded ({}).
 無法從麥克風錄音（{}）。
@@ -11832,6 +11937,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 輸入伺服器的 CalDAV 位址、登入名和密碼。密碼將儲存在登入鑰匙圈中。
+
+The session didn’t answer: {}
+工作階段未回應：{}
 
 The shared server isn’t running.
 共用伺服器未執行。
@@ -12109,6 +12217,9 @@ This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 此頁顯示了 {} 的一次性驗證碼。要將它新增到哪個登入項目？
 
+This screen’s own bus, for the programs on it.
+此螢幕專屬的匯流排，供其上的程式使用。
+
 This step is done
 此步驟已完成
 
@@ -12238,8 +12349,8 @@ To the next display
 To the previous display
 移到上一個顯示器
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-若要使用，請選擇「設定 ▸ 在主機上使用 Olo 輸入輔助程式」。
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+若要使用，請在偏好設定 ▸ Rex中開啟 Olo 輸入輔助程式。
 
 To {}
 到 {}
@@ -12249,6 +12360,9 @@ To {}.
 
 To-Do
 待辦事項
+
+To-Do Reminders
+待辦事項提醒
 
 To-Do: Today
 待辦事項：今天
@@ -12519,6 +12633,9 @@ Turn the tile's split
 
 Turn the touchpad off while a mouse is plugged in
 連線滑鼠時停用觸控板
+
+Turned off
+已關閉
 
 Turned off by the hardware switch.
 已由硬體開關關閉。
@@ -12862,9 +12979,6 @@ Use Mine
 Use Music Quality
 使用音樂音質
 
-Use Olo’s Typing Helper on Hosts
-在主機上使用 Olo 輸入輔助程式
-
 Use Olo’s typing helper on hosts
 在主機上使用 Olo 輸入輔助程式
 
@@ -13050,6 +13164,9 @@ Visibility ({})
 
 Visibility · fog
 能見度 · 霧
+
+Voice
+語音
 
 Voice Only
 僅語音
@@ -13459,6 +13576,9 @@ Window Arrangement
 Window Buffers
 視窗緩衝區
 
+Window Server
+視窗伺服器
+
 Window Size
 視窗大小
 
@@ -13639,6 +13759,9 @@ You stopped the backup {}
 You: {}
 您：{}
 
+Your AirPods’ battery, modes and ear detection.
+AirPods 的電量、模式與入耳偵測。
+
 Your Display
 您的顯示器
 
@@ -13653,6 +13776,9 @@ Your Own
 
 Your Own Kinds
 自訂檔案類型
+
+Your SSH keys from Passwords, for ssh and git.
+從 Passwords 提供您的 SSH 金鑰，供 ssh 與 git 使用。
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 備份離開本機前已用本機獨有的金鑰加密。請也將金鑰存入 Passwords，否則在其他電腦上無法讀取備份。
@@ -13710,6 +13836,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 無法驗證您的密碼（{}）。
+
+Your phone’s calls, messages and one-time codes.
+手機的通話、訊息與一次性驗證碼。
 
 Your repositories
 您的版本庫
@@ -14904,6 +15033,9 @@ other: {n} 週
 
 {} Hz, {} ms a frame
 {} Hz，每影格 {} 毫秒
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} 用 {} 備份的版本替換，還是兩者都保留？兩者都保留時，會在還原的檔名中加上時間。

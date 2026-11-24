@@ -48,6 +48,7 @@ mod screensaver;
 mod security;
 mod security_keys;
 mod server;
+mod services;
 mod shortcuts;
 mod sound;
 mod telegram;

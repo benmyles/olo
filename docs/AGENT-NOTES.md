@@ -2987,7 +2987,12 @@ this one is, and what differs:
   driver packages are installed with no card for them. Test desktops
   draw in software anyway (HACKING, "Test desktops draw in software"),
   and work here: `tsession` and its pictures, the lints.
-- **`/tmp` is memory here too**: scratch in `/var/tmp`.
+- **`/tmp` is memory here too**: scratch in `/var/tmp`. It is ext4,
+  so `cp --reflink=always` fails ("Operation not supported"): run a
+  build where it is (`TSESSION_SESSION_EXE` takes any path; the
+  pre-push hook's release build of the last pushed commit is at
+  `/var/tmp/olo-prepush/tree/target/release`, a ready "before") or copy
+  it plainly, and remove the copy after.
 - **Docker needs `sudo`** (the account isn't in its group):
   `tools/publish-release.sh` says `sudo docker` by itself where it must.
   Releases are built in its Fedora 44 container, never on this system.

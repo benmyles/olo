@@ -435,6 +435,9 @@ A new name for the session “{}”:
 A new name for the tab “{}”:
 टैब “{}” का नया नाम:
 
+A newer version was installed after {} started. Restart it to use the new one.
+{} के शुरू होने के बाद एक नया संस्करण इंस्टॉल हुआ। उसे इस्तेमाल करने के लिए इसे रीस्टार्ट करें।
+
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 पहिए का एक खटका Chrome और दूसरे प्रोग्राम में उतना ही स्क्रॉल करता है जितना Olo के ऐप में।
 
@@ -805,6 +808,9 @@ Agent Screen “{}” is waiting for a code
 
 Agent Screens
 एजेंट स्क्रीन
+
+Agent Tab Titles
+एजेंट टैब शीर्षक
 
 Agent sessions
 एजेंट सत्र
@@ -1300,6 +1306,12 @@ Asking it…
 Asking…
 पूछ रहे हैं…
 
+Asks for your password when a program needs more rights.
+जब किसी प्रोग्राम को अधिक अधिकार चाहिए हों, तो आपका पासवर्ड पूछता है।
+
+Asks who is logging in.
+पूछता है कि कौन लॉगिन कर रहा है।
+
 Ask…
 पूछें…
 
@@ -1377,6 +1389,9 @@ Attachments
 
 Authenticate
 प्रमाणित करें
+
+Authentication
+प्रमाणीकरण
 
 Authentication:
 प्रमाणीकरण:
@@ -1543,6 +1558,9 @@ Backing up {}
 
 Backlight
 बैकलाइट
+
+Backs up this computer’s disk when one is due.
+समय होने पर इस कंप्यूटर की डिस्क का बैकअप लेता है।
 
 Backup
 बैकअप
@@ -1855,6 +1873,9 @@ CalDAV
 
 Calendar
 कैलेंडर
+
+Calendar Reminders
+कैलेंडर अनुस्मारक
 
 Calendar for {}
 {} का कैलेंडर
@@ -3326,6 +3347,9 @@ Dew point {}
 Diagnostics…
 निदान…
 
+Dictation and the voice assistant.
+डिक्टेशन और वॉइस सहायक।
+
 Diff
 Diff
 
@@ -3492,6 +3516,9 @@ Do the result's other action
 Dockerfile
 Dockerfile
 
+Doctor
+Doctor
+
 Document
 दस्तावेज़
 
@@ -3596,6 +3623,9 @@ Drawing
 
 Drawn into each frame
 हर फ़्रेम में बनाया जाता है
+
+Draws every window and takes the keyboard and pointer.
+हर विंडो बनाता है और कीबोर्ड व पॉइंटर संभालता है।
 
 Drive
 ड्राइव
@@ -5784,6 +5814,12 @@ Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 बिल्ड की फ़ाइलें मेमोरी में और चल रहे प्रोग्राम स्वैप से बाहर रखता है।
 
+Keeps background work from slowing what you use.
+पृष्ठभूमि के काम से आपका चालू काम धीमा नहीं होने देता।
+
+Keeps other apps’ passwords, unlocked as you log in.
+दूसरे ऐप के पासवर्ड रखता है, जो लॉगिन करते ही खुल जाते हैं।
+
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 जब भारी सिंक्रोनस राइट या डिस्कार्ड NVMe ड्राइव पर दबाव डालते हैं, तब रीड लेटेंसी सीमित रखता है; Linux का डिफ़ॉल्ट "none" केवल बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
 
@@ -6033,6 +6069,9 @@ Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
 यह कंप्यूटर बंद होने पर भी वहाँ के एजेंट आपके खाते इस्तेमाल कर सकते हैं।
 
+Lets coding agents title their Terminal tab.
+कोडिंग एजेंट को अपने Terminal टैब का शीर्षक तय करने देता है।
+
 Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 वहाँ के प्रोग्राम को यहाँ लिंक, Passwords, SSH कुंजियाँ और एजेंट स्क्रीन इस्तेमाल करने देता है।
 
@@ -6212,6 +6251,12 @@ Log Out…
 
 Login
 लॉगिन
+
+Login Keyring
+लॉगिन कीरिंग
+
+Login Window
+लॉगिन विंडो
 
 Logs
 Logs
@@ -6557,6 +6602,9 @@ Memory:
 
 Message
 संदेश
+
+Message Bus
+संदेश बस
 
 Message queues
 संदेश कतारें
@@ -7980,6 +8028,9 @@ Olo’s own apps can then sign in with them, until Passwords locks or for 10 min
 Olo’s phone service isn’t running.
 Olo की फ़ोन सेवा नहीं चल रही।
 
+Olo’s session isn’t answering.
+Olo का सत्र जवाब नहीं दे रहा।
+
 Olo’s skill for agents is on “{}”.
 एजेंट के लिए Olo कौशल “{}” पर है।
 
@@ -7992,8 +8043,8 @@ Olo’s typing helper is being added to “{}”…
 Olo’s typing helper is on “{}”.
 Olo का टाइपिंग सहायक “{}” पर है।
 
-Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-Olo का टाइपिंग सहायक बंद है। इसका उपयोग करने के लिए सेटिंग ▸ होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें चुनें।
+Olo’s typing helper is turned off. To use it, turn it on in Preferences ▸ Rex.
+Olo का टाइपिंग सहायक बंद है। इसे इस्तेमाल करने के लिए वरीयताएँ ▸ Rex में इसे चालू करें।
 
 Olo’s typing helper isn’t on “{}”.
 Olo का टाइपिंग सहायक “{}” पर नहीं है।
@@ -8231,6 +8282,9 @@ Open With Offers
 
 Open a host’s Account window to see how each stands there, and to clone.
 वहाँ हर रिपॉज़िटरी की स्थिति देखने और क्लोन करने के लिए होस्ट की खाता विंडो खोलें।
+
+Open and save panels, and screen sharing, for other apps.
+दूसरे ऐप के लिए खोलने-सहेजने के पैनल और स्क्रीन साझा करना।
 
 Open files
 खुली फ़ाइलें
@@ -8801,6 +8855,9 @@ Port
 Port:
 पोर्ट:
 
+Portal
+पोर्टल
+
 Ports
 पोर्ट
 
@@ -8965,6 +9022,9 @@ Process
 
 Process {} has quit
 प्रक्रिया {} बंद हो गई है
+
+Process {} · {}
+प्रोसेस {} · {}
 
 Processed
 प्रसंस्कृत
@@ -9398,6 +9458,12 @@ Reminder
 Reminder:
 रिमाइंडर:
 
+Reminds you of your events.
+आपके कार्यक्रमों की याद दिलाता है।
+
+Reminds you of your to-dos.
+आपके कार्यों की याद दिलाता है।
+
 Remote
 रिमोट
 
@@ -9647,6 +9713,12 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart kache
 kache रीस्टार्ट करें
 
+Restart the Window Server?\n\nThe screen goes blank for a moment while every window is drawn again; nothing you have open closes.
+विंडो सर्वर रीस्टार्ट करें?\n\nहर विंडो दोबारा बनने तक स्क्रीन एक पल के लिए खाली हो जाती है; आपका खुला हुआ कुछ भी बंद नहीं होता।
+
+Restart to update
+अपडेट के लिए रीस्टार्ट करें
+
 Restart, Asking First
 पहले पूछकर रीस्टार्ट करें
 
@@ -9872,6 +9944,13 @@ Running for {}
 Running systemctl as {}
 {} के रूप में systemctl चल रहा है
 
+Running, started again once
+चल रहा है, एक बार फिर शुरू हुआ
+
+Running, started again {n} times
+one: चल रहा है, {n} बार फिर शुरू हुआ
+other: चल रहा है, {n} बार फिर शुरू हुआ
+
 Runs on
 इस पर चलता है
 
@@ -9901,6 +9980,9 @@ SSD का तापमान
 
 SSE
 दक्षिण-दक्षिणपूर्व
+
+SSH Agent
+SSH एजेंट
 
 SSH Authentication
 SSH प्रमाणीकरण
@@ -10383,6 +10465,9 @@ Shared
 Shared with this screen: change it in your own Passwords.
 इस स्क्रीन से साझा है। इसे अपने Passwords में बदलें।
 
+Shares the coding agents’ accounts between them.
+कोडिंग एजेंट के खाते आपस में साझा करता है।
+
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 इस कंप्यूटर के कनेक्शन को अलग Wi-Fi नेटवर्क बनाकर साझा करता है। इस दौरान अडैप्टर अपने मौजूदा नेटवर्क से हटता है।
 
@@ -10473,6 +10558,9 @@ Show Hidden Files
 Show Idle Panes in Activity
 गतिविधि में निष्क्रिय पैनल दिखाएँ
 
+Show Log
+लॉग दिखाएँ
+
 Show Notifications
 सूचनाएँ दिखाएँ
 
@@ -10505,9 +10593,6 @@ Show Source
 
 Show Toolbars
 टूलबार दिखाएँ
-
-Show Typing Immediately
-टाइपिंग तुरंत दिखाएँ
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 विंडो का शीर्षक राइट-क्लिक करें या Deskbar में उसकी पंक्ति खोलें और “AirPlay पर दिखाएँ” चुनें। Viewer या Tracker से फ़िल्म चलाने के लिए “यहाँ चलाएँ” चुनें।
@@ -10589,6 +10674,9 @@ Showing the forecast from {}.
 
 Shown
 दिखाया गया
+
+Shows notifications and keeps them for later.
+सूचनाएँ दिखाता है और बाद के लिए सहेजकर रखता है।
 
 Shows:
 दिखाता है:
@@ -11018,6 +11106,12 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 {} से सिंक बंद करें? इन खातों के आइटम और यहाँ के वे बदलाव जो अभी भेजे नहीं गए हैं, इस कंप्यूटर से हट जाएँगे। 1Password में कुछ नहीं बदलेगा।
 
+Stopped
+रुका हुआ
+
+Stopped after ending too often
+बार-बार बंद होने से रुका
+
 Stopped before step {} of {}
 {1} में से चरण {0} से पहले रोका गया
 
@@ -11345,6 +11439,9 @@ Telling Codex there of them
 Tells Claude Code and other agents there how to use the bridge and Rex.
 वहाँ Claude Code और दूसरे एजेंट को ब्रिज और Rex इस्तेमाल करने का तरीका बताता है।
 
+Tells of problems it finds, at login and as they happen.
+लॉगिन के समय और चलते हुए मिलने वाली समस्याएँ बताता है।
+
 Temperature
 तापमान
 
@@ -11492,6 +11589,9 @@ The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 VPN सहेज नहीं सके।
 
+The Window Server can’t be stopped, only restarted.
+विंडो सर्वर रोका नहीं जा सकता, सिर्फ़ रीस्टार्ट किया जा सकता है।
+
 The account answering now
 अभी जवाब दे रहा खाता
 
@@ -11621,6 +11721,9 @@ The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
 होस्ट ने नहीं बताया कि उस पर क्या है।
 
+The icons on the desktop (Tracker).
+डेस्कटॉप के आइकन (Tracker)।
+
 The icons {} is drawn with, everywhere.
 हर जगह {} दिखाने के लिए इस्तेमाल होने वाले आइकन।
 
@@ -11716,6 +11819,9 @@ The loss is a number, in percent.
 
 The main window in its place; the others stack around it.
 मुख्य विंडो अपनी जगह रहती है; बाकी उसके आसपास स्टैक होती हैं।
+
+The menu, the running apps, the tray and the clock.
+मेनू, चल रहे ऐप, ट्रे और घड़ी।
 
 The microphone can’t be recorded ({}).
 माइक्रोफ़ोन रिकॉर्ड नहीं हो सका ({})।
@@ -11863,6 +11969,9 @@ The server didn’t take the name and password.
 
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 सर्वर का CalDAV पता, लॉगिन नाम और पासवर्ड दें। पासवर्ड आपकी लॉगिन कीरिंग में सुरक्षित रहेगा।
+
+The session didn’t answer: {}
+सत्र ने जवाब नहीं दिया: {}
 
 The shared server isn’t running.
 साझा सर्वर नहीं चल रहा।
@@ -12140,6 +12249,9 @@ This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 इस पेज पर {} का एकबारगी कोड है। किस लॉगिन में जोड़ें?
 
+This screen’s own bus, for the programs on it.
+इस स्क्रीन की अपनी बस, इस पर चल रहे प्रोग्राम के लिए।
+
 This step is done
 यह चरण पूरा हुआ
 
@@ -12269,8 +12381,8 @@ To the next display
 To the previous display
 पिछले डिस्प्ले पर
 
-To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
-इसका उपयोग करने के लिए सेटिंग ▸ होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें चुनें।
+To use it, turn on Olo’s typing helper in Preferences ▸ Rex.
+इसे इस्तेमाल करने के लिए वरीयताएँ ▸ Rex में Olo का टाइपिंग सहायक चालू करें।
 
 To {}
 {} को
@@ -12280,6 +12392,9 @@ To {}.
 
 To-Do
 कार्य
+
+To-Do Reminders
+कार्य अनुस्मारक
 
 To-Do: Today
 कार्य: आज
@@ -12550,6 +12665,9 @@ Turn the tile's split
 
 Turn the touchpad off while a mouse is plugged in
 माउस जुड़ा हो तो टचपैड बंद रखें
+
+Turned off
+बंद है
 
 Turned off by the hardware switch.
 हार्डवेयर स्विच से बंद है।
@@ -12893,9 +13011,6 @@ Use Mine
 Use Music Quality
 संगीत की गुणवत्ता इस्तेमाल करें
 
-Use Olo’s Typing Helper on Hosts
-होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें
-
 Use Olo’s typing helper on hosts
 होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें
 
@@ -13081,6 +13196,9 @@ Visibility ({})
 
 Visibility · fog
 दृश्यता · कोहरा
+
+Voice
+वॉइस
 
 Voice Only
 सिर्फ़ आवाज़
@@ -13490,6 +13608,9 @@ Window Arrangement
 Window Buffers
 विंडो के बफ़र
 
+Window Server
+विंडो सर्वर
+
 Window Size
 विंडो का आकार
 
@@ -13670,6 +13791,9 @@ You stopped the backup {}
 You: {}
 आप: {}
 
+Your AirPods’ battery, modes and ear detection.
+आपके AirPods की बैटरी, मोड और कान की पहचान।
+
 Your Display
 आपका डिस्प्ले
 
@@ -13684,6 +13808,9 @@ Your Own
 
 Your Own Kinds
 आपके अपने फ़ाइल प्रकार
+
+Your SSH keys from Passwords, for ssh and git.
+ssh और git के लिए Passwords से आपकी SSH कुंजियाँ।
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 बैकअप इस कंप्यूटर से बाहर जाने से पहले एन्क्रिप्ट होते हैं। कुंजी अभी सिर्फ़ इसी कंप्यूटर पर है। दूसरे कंप्यूटर पर पढ़ने के लिए इसे Passwords में भी रखें।
@@ -13741,6 +13868,9 @@ Your palm over the right edge
 
 Your password couldn’t be checked ({}).
 आपका पासवर्ड जाँच नहीं सके ({})।
+
+Your phone’s calls, messages and one-time codes.
+आपके फ़ोन के कॉल, संदेश और एकबारगी कोड।
 
 Your repositories
 आपकी रिपॉज़िटरी
@@ -15014,6 +15144,9 @@ other: {n} हफ़्ते
 
 {} Hz, {} ms a frame
 {} Hz, प्रति फ़्रेम {} ms
+
+{} MB
+{} MB
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} इसे {} के बैकअप वाले संस्करण से बदलें या दोनों रखें? दोनों रखने पर बहाल प्रति के नाम में समय जुड़ेगा।

@@ -86,6 +86,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("rex", "Rex", "rex"),
     ("screensaver", "Screen Saver", "screensaver"),
     ("security", "Security", "security"),
+    ("services", "Services", "process"),
     ("sound", "Sound", "sound"),
     ("terminal", "Terminal", "terminal"),
     ("themes", "Themes", "themes"),
