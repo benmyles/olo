@@ -546,6 +546,9 @@ Olo का परिचय
 About Olo Desktop
 Olo Desktop का परिचय
 
+About {}
+{} का परिचय
+
 About…
 परिचय…
 
@@ -10384,6 +10387,9 @@ Service
 Service Order
 सेवाओं का क्रम
 
+Services
+सेवाएँ
+
 Session:
 सत्र:
 
@@ -15252,6 +15258,9 @@ other: {n} हफ़्ते
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} इसे {} के बैकअप वाले संस्करण से बदलें या दोनों रखें? दोनों रखने पर बहाल प्रति के नाम में समय जुड़ेगा।
+
+{} Settings…
+{} सेटिंग…
 
 {} Type your password.
 {} अपना पासवर्ड लिखें।

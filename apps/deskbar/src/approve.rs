@@ -49,7 +49,7 @@ pub fn menu(until: Option<u64>, clock: &ClockSettings) -> Menu {
         Some(t) => olo_kit::tr!("Ask Again ({} left, until {})", left(t), status::time_of_day(t, clock)),
         None => olo_kit::words::tr("Ask Again").into(),
     };
-    menu.separator().item(label, "approve:off").enabled(until.is_some()).separator().item(olo_kit::app_menu::settings_label("security"), "pref:security")
+    menu.separator().item(label, "approve:off").enabled(until.is_some()).separator().settings_item("security", "pref:security")
 }
 
 /// app_server's answer to turning it on.

@@ -14961,6 +14961,19 @@ that other programs take it as they next start: `LANGUAGE` (gettext's,
 `locale::give` hands every program Olo starts, over what the starter
 had. Formats (dates, numbers) follow the system's region for now.
 
+**An app's first menu** (`app_menu`): About and each "… Settings…" item
+are in the person's language: "About {}" with the app's name as its
+catalog has it, and a settings item the whole item where a catalog has
+one ("Toneinstellungen …") else "{} Settings…" with the panel's name
+translated (`settings_label`); each keeps its English for the menus'
+check (`Menu::english`; `Menu::settings_item` for one anywhere else, as
+Deskbar's are). Made with `format!` and handed on, they had never been
+looked up: English in every language until 2026-11-24 (`words::of`
+looks up literals alone; a string made at run time is shown as it is).
+A label measured to size buttons is measured as it shows: Rex sized
+its count's buttons by "Clone 9" and "Set Up 9" in English, which no
+catalog had, so they're `tr!("Clone {}", 9)` there now.
+
 **The lint in a language**: `OLO_LANGUAGE=de cargo ui-lint` draws every
 window in German (`lint::program` starts the words layer; before, a run
 "in German" checked English), so a translation is held to the same

@@ -179,6 +179,7 @@ API key:
 About 
 About Olo
 About Olo Desktop
+About {}
 About…
 Acceleration:
 Accent
@@ -3449,6 +3450,7 @@ Server’s round trip
 Server’s window
 Service
 Service Order
+Services
 Session:
 Sessions
 Sessions on this computer may:
@@ -5045,6 +5047,7 @@ your own picture
 {} MB
 {} Preferences
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
+{} Settings…
 {} Type your password.
 {} Wh of {} Wh new ({}%)
 {} What’s looked in for codes, and where they go: Security ▸ Passwords.

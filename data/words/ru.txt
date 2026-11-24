@@ -550,6 +550,9 @@ About Olo
 About Olo Desktop
 Об Olo Desktop
 
+About {}
+О приложении «{}»
+
 About…
 О программе…
 
@@ -10444,6 +10447,9 @@ Service
 Service Order
 Порядок служб
 
+Services
+Службы
+
 Session:
 Сеанс:
 
@@ -15474,6 +15480,9 @@ other: {n} недели
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Заменить версией из резервной копии от {} или сохранить обе? Ко второй будет добавлено время восстановления.
+
+{} Settings…
+Настройки: {}…
 
 {} Type your password.
 {} Введите пароль.

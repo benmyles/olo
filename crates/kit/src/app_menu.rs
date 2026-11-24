@@ -50,11 +50,29 @@ fn app_icon() -> String {
 }
 
 /// What a settings item says: "Sound Settings…" for `sound`, the panel's
-/// name as Preferences shows it.
+/// name as Preferences shows it; in the person's language, the whole
+/// item where a catalog has it ("Ton-Einstellungen…"), else the panel's
+/// name in "{} Settings…". (Made with `format!` and handed on, it was
+/// never looked up: English in every language, 2026-11-24.)
 pub fn settings_label(target: &str) -> String {
+    let whole = settings_english(target);
+    match crate::words::lookup(&whole) {
+        Some(said) => said.to_owned(),
+        None => crate::tr!("{} Settings…", crate::words::of_text(panel_name(target))).to_string(),
+    }
+}
+
+/// [`settings_label`] as the app wrote it, in English (the menus' check
+/// reads it).
+pub fn settings_english(target: &str) -> String {
+    format!("{} Settings…", panel_name(target))
+}
+
+/// The name Preferences gives the panel of `target` ("sound",
+/// "security/Passwords").
+fn panel_name(target: &str) -> &str {
     let panel = target.split_once('/').map_or(target, |(p, _)| p);
-    let name = olo_xdg::apps::PREFERENCE_PANELS.iter().find(|(arg, ..)| *arg == panel).map_or(panel, |(_, name, _)| name);
-    format!("{name} Settings…")
+    olo_xdg::apps::PREFERENCE_PANELS.iter().find(|(arg, ..)| *arg == panel).map_or(panel, |(_, name, _)| name)
 }
 
 /// The shortcuts sheet's keys, as the profile writes them (app_server's:
@@ -65,16 +83,28 @@ fn shortcuts_keys() -> Option<String> {
 }
 
 impl Menu {
+    /// An item opening Preferences' panel `target` ("sound",
+    /// "security/Passwords") with `command`: "Sound Settings…" in the
+    /// person's language ([`settings_label`]), its English kept for the
+    /// menus' check.
+    pub fn settings_item(self, target: &str, command: impl Into<crate::SharedString>) -> Menu {
+        self.item(settings_label(target), command).english(settings_english(target))
+    }
+
     /// The first menu's start: About, Keyboard Shortcuts, then the app's
     /// `settings`, each a Preferences panel ("sound", or with a tab,
     /// "security/Passwords"), and a separator.
     pub fn app_items(self, settings: &[&str]) -> Menu {
-        let mut m = self.item(format!("About {}", app_name()), ABOUT).item("Keyboard Shortcuts", SHORTCUTS);
+        // (In the person's language, the app's name as its catalog has
+        // it; the English kept for the menus' check.)
+        let name = app_name();
+        let about = crate::tr!("About {}", crate::words::of_text(&name)).to_string();
+        let mut m = self.item(about, ABOUT).english(format!("About {name}")).item("Keyboard Shortcuts", SHORTCUTS);
         if let Some(keys) = shortcuts_keys() {
             m = m.keys(keys);
         }
         for s in settings {
-            m = m.item(settings_label(s), format!("{PREF}{s}"));
+            m = m.item(settings_label(s), format!("{PREF}{s}")).english(settings_english(s));
         }
         m.separator()
     }
@@ -216,7 +246,8 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
                 if a.command.starts_with(PREF) && i != 0 {
                     say(format!("{} ▸ {}: settings go in the first menu", menu.title, a.label));
                 }
-                if a.command.starts_with(PREF) && !a.label.ends_with(" Settings…") {
+                let english = if a.english.is_empty() { &a.label } else { &a.english };
+                if a.command.starts_with(PREF) && !english.ends_with(" Settings…") {
                     say(format!("{} ▸ {}: a settings item says “… Settings…”", menu.title, a.label));
                 }
                 continue;

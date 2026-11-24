@@ -544,6 +544,9 @@ About Olo
 About Olo Desktop
 關於 Olo Desktop
 
+About {}
+關於 {}
+
 About…
 關於…
 
@@ -10354,6 +10357,9 @@ Service
 Service Order
 服務順序
 
+Services
+服務
+
 Session:
 工作階段：
 
@@ -15141,6 +15147,9 @@ other: {n} 週
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} 用 {} 備份的版本替換，還是兩者都保留？兩者都保留時，會在還原的檔名中加上時間。
+
+{} Settings…
+{}設定…
 
 {} Type your password.
 {} 請輸入密碼。

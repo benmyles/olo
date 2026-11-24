@@ -795,7 +795,7 @@ impl Deskbar {
             let here = o.name == own;
             m = m.item(format!("{n}{}", o.display_name()), format!("display:{}", o.name)).checked(here).enabled(!here);
         }
-        m.separator().item(olo_kit::app_menu::settings_label("display"), "pref:display")
+        m.separator().settings_item("display", "pref:display")
     }
 
     /// The displays whose workspaces a Deskbar on `own` lists: its own
@@ -1054,7 +1054,7 @@ impl Deskbar {
             .item(self.arrangement.1.as_ref().map_or(olo_kit::words::tr("Redo Window Arrangement").into(), |n| format!("Redo {n}")), "arrange:redo-arrangement")
             .enabled(self.arrangement.1.is_some())
             .separator()
-            .item(olo_kit::app_menu::settings_label("windows"), "pref:windows")
+            .settings_item("windows", "pref:windows")
     }
 
     /// The windowing modes (`mode:` and its id), `mode` checked, and
@@ -1143,7 +1143,7 @@ impl Deskbar {
             }
             m = m.separator().submenu(to);
         }
-        m.separator().item(olo_kit::app_menu::settings_label("workspaces"), "pref:workspaces")
+        m.separator().settings_item("workspaces", "pref:workspaces")
     }
 
     /// A workspace heading's menu, for `display`'s workspace `ws`: all its
@@ -1175,7 +1175,7 @@ impl Deskbar {
         // workspace").
         m = m.submenu(Menu::airplay("Show on AirPlay", &self.status.airplay_paired, &format!("ws-airplay:{ws}:")));
         m = m.separator().item("Close All", format!("ws-close:{ws}")).enabled(any);
-        m.separator().item(olo_kit::app_menu::settings_label("workspaces"), "pref:workspaces")
+        m.separator().settings_item("workspaces", "pref:workspaces")
     }
 
     /// A command from `display`'s workspace heading's menu
@@ -1320,7 +1320,7 @@ impl Deskbar {
             }
             m = m.separator();
         }
-        m.item(olo_kit::app_menu::settings_label("power"), "pref:power")
+        m.settings_item("power", "pref:power")
     }
 
     /// Caffeinated mode: indefinitely or for a while, with the lid too.
@@ -1334,14 +1334,7 @@ impl Deskbar {
             Some(t) if on => olo_kit::tr!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
             _ => olo_kit::words::tr("Allow Sleep").into(),
         };
-        m.separator()
-            .item("Even With the Lid Closed", "caff:lid")
-            .checked(self.caffeinated_lid)
-            .separator()
-            .item(label, "caff:off")
-            .enabled(on)
-            .separator()
-            .item(olo_kit::app_menu::settings_label("power"), "pref:power")
+        m.separator().item("Even With the Lid Closed", "caff:lid").checked(self.caffeinated_lid).separator().item(label, "caff:off").enabled(on).separator().settings_item("power", "pref:power")
     }
 
     /// A caffeinated-menu command (after `caff:`).
@@ -2371,7 +2364,7 @@ fn airplay_menu(plays: &[olo_protocol::airplay::Playing]) -> Menu {
     if plays.len() > 1 {
         m = m.separator().item("Stop All", "airplay:stop:all");
     }
-    m.separator().item(olo_kit::app_menu::settings_label("airplay"), "pref:airplay")
+    m.separator().settings_item("airplay", "pref:airplay")
 }
 
 /// The agent screens' menu (right click): watch them, or show one on an
@@ -2650,7 +2643,7 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
         }
     }
     // (On the link's own tab.)
-    m.separator().item(olo_kit::app_menu::settings_label("network"), if kind == Kind::Wifi { "pref:network/Wi-Fi" } else { "pref:network/Ethernet" })
+    m.separator().settings_item("network", if kind == Kind::Wifi { "pref:network/Wi-Fi" } else { "pref:network/Ethernet" })
 }
 
 /// The bell's menu.
@@ -4446,7 +4439,7 @@ impl Deskbar {
             MouseButton::Left if divider => {}
             MouseButton::Left => run(&m, &opens, cx),
             MouseButton::Right if divider => {
-                let menu = Menu::new("Widget").item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
+                let menu = Menu::new("Widget").settings_item("deskbar", "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }
@@ -4458,7 +4451,7 @@ impl Deskbar {
                     }
                     menu = menu.item("Open Notifications", "run:olo-notifications --history");
                 }
-                let menu = menu.separator().item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
+                let menu = menu.separator().settings_item("deskbar", "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }

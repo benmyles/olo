@@ -379,7 +379,10 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
     let on_do: Rc<dyn Fn(&AccountDo, &mut WindowCx)> = Rc::new(on_do);
     // (One width for the window's buttons: one column down its right,
     // and the foot's two at its two edges.)
-    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Use Mine", "Set Up 9"]
+    // (Its count's button measured as it says itself, in the person's
+    // language: "Set Up 9" was measured in English, which no catalog had.)
+    let set_up = olo_kit::tr!("Set Up {}", 9).to_string();
+    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Use Mine", set_up.as_str()]
         .iter()
         .map(|l| button_width(l, false))
         .fold(m::BUTTON_MIN_WIDTH, f32::max);

@@ -546,6 +546,9 @@ About Olo
 About Olo Desktop
 Über Olo Desktop
 
+About {}
+Über {}
+
 About…
 Über …
 
@@ -10384,6 +10387,9 @@ Dienst
 Service Order
 Reihenfolge
 
+Services
+Dienste
+
 Session:
 Sitzung:
 
@@ -15252,6 +15258,9 @@ other: {n} Wochen
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Durch die {} gesicherte Version ersetzen oder beide behalten (die wiederhergestellte mit ihrer Zeit benannt)?
+
+{} Settings…
+Einstellungen für {} …
 
 {} Type your password.
 {} Geben Sie Ihr Passwort ein.

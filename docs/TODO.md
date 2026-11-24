@@ -2092,6 +2092,11 @@ something nobody here has is in "Blocked", with what it waits for.
   every state at 1×, 1.5× and 2× in light and dark, both reviewers,
   the docs (HACKING's snapping and Zoom sections, the report), then
   commit on the branch and bring it to main.
+  **Blocked** (2026-11-24): that worktree, its uncommitted work and the
+  agent's folder are on the laptop the work moved from, not on the dev
+  server, and the branch was never pushed. To go on: on the laptop, in
+  that worktree, commit and push the branch `snap-tiles`; then the
+  review above, here.
 
 - **Token Pool sends exactly what Claude Code and Codex send, and counts
   and spends every reset credit** (Ben, 2026-11-19, with pictures of the
@@ -2428,6 +2433,15 @@ something nobody here has is in "Blocked", with what it waits for.
   a word for each place); Windows' note names the window menu's
   "Always Open on Workspace" in English, as that menu still says it
   (the window menu is the palette's, not yet swept).
+  **Then** (2026-11-24): every app's About and "… Settings…" items
+  (the kit's app menu, Deskbar's settings items), English in every
+  language till then; Rex's counted buttons sized in the person's
+  language; "Services". `words gather`: nothing missing from the list.
+  `words unasked` now (the live lint over every app, English): 1,073
+  strings in 21 programs, most of them data (names, demo items, speeds)
+  and the rest the pieces above: StyledEdit 261, Preferences 218, Rex
+  93, Calendar 68, Terminal 65, Updates 60, Telegram 59, Doctor 58,
+  Logs 38, Activity 36, Weather 32, then fewer than 20 each.
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
   native email app. use/extend the email integration support in prefs ->

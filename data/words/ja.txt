@@ -544,6 +544,9 @@ Oloについて
 About Olo Desktop
 Olo Desktopについて
 
+About {}
+{}について
+
 About…
 このアプリについて…
 
@@ -10354,6 +10357,9 @@ Service
 Service Order
 サービスの順序
 
+Services
+サービス
+
 Session:
 セッション:
 
@@ -15141,6 +15147,9 @@ other: {n}週間
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} {}にバックアップした版に置き換えますか？ 両方残す場合、復元する方の名前に時刻を付けます。
+
+{} Settings…
+{}の設定…
 
 {} Type your password.
 {} パスワードを入力してください。

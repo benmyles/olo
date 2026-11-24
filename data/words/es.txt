@@ -546,6 +546,9 @@ Acerca de Olo
 About Olo Desktop
 Acerca de Olo Desktop
 
+About {}
+Acerca de {}
+
 About…
 Acerca de…
 
@@ -10384,6 +10387,9 @@ Servicio
 Service Order
 Prioridad
 
+Services
+Servicios
+
 Session:
 Sesión:
 
@@ -15252,6 +15258,9 @@ Preferencias de {}
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} ¿Sustituirlo por la versión copiada {} o conservar ambas (la restaurada con su hora en el nombre)?
+
+{} Settings…
+Ajustes de {}…
 
 {} Type your password.
 {} Escribe tu contraseña.

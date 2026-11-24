@@ -192,7 +192,9 @@ pub fn render_panel(
     .on_select(on_chosen);
     let view = div().w_full().h(tall(panels::list_rows(rows.len(), 5))).child(view);
 
-    let wide = ["Add…", "Edit…", "Remove", "Clone 9"].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
+    // (Clone's count measured as it says itself, in the person's language.)
+    let clone = olo_kit::tr!("Clone {}", 9).to_string();
+    let wide = ["Add…", "Edit…", "Remove", clone.as_str()].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
     let button = |label: String, id: &'static str, what: Option<ReposDo>| {
         let on_do = on_do.clone();
         let enabled = what.is_some();

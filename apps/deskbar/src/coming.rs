@@ -93,7 +93,7 @@ pub fn menu(coming: Option<&Coming>, c: &Clock) -> Menu {
             menu = list(menu.separator().item((c.date)(first.start, false), "").enabled(false), &on(day), LATER);
         }
     }
-    menu.separator().item("Open Calendar", "run:olo-calendar").separator().item(olo_kit::app_menu::settings_label("datetime"), "pref:datetime")
+    menu.separator().item("Open Calendar", "run:olo-calendar").separator().settings_item("datetime", "pref:datetime")
 }
 
 #[cfg(test)]

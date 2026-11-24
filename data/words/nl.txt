@@ -546,6 +546,9 @@ Over Olo
 About Olo Desktop
 Over Olo Desktop
 
+About {}
+Over {}
+
 About…
 Over…
 
@@ -10384,6 +10387,9 @@ Dienst
 Service Order
 Volgorde van diensten
 
+Services
+Diensten
+
 Session:
 Sessie:
 
@@ -15252,6 +15258,9 @@ other: {n} weken
 
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Vervangen door de versie uit de back-up van {} of beide bewaren? De herstelde versie krijgt het tijdstip in de naam.
+
+{} Settings…
+Instellingen voor {}…
 
 {} Type your password.
 {} Typ uw wachtwoord.
