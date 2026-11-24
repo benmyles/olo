@@ -8965,6 +8965,9 @@ Pool
 Port
 端口
 
+Port {} isn’t forwarded from {} any more
+端口 {} 不再从 {} 转发
+
 Port:
 端口：
 
@@ -10419,6 +10422,9 @@ Send to Back
 
 Send to back
 置于底层
+
+Sending what changed  ·  {}
+正在发送更改的内容  ·  {}
 
 Sending your changes to Telegram
 正在向 Telegram 发送更改

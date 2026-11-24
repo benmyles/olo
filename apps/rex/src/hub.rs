@@ -1747,6 +1747,72 @@ async fn tell_codex(pool: &olo_rex_client::SshSessionPool, target: &olo_rex_clie
     let _ = to.shutdown().await;
 }
 
+/// The agents' sessions copied by the engine (`olo_rex_client::sync`, the
+/// host's helper receiving into the home, looking at those files alone and
+/// leaving one newer there): each made as the archive made it
+/// (`sessions::Copied`), what it was made into kept between copies, so a
+/// file unchanged since is neither read nor sent and a transcript a turn
+/// longer sends that turn. How far it is said as the archive said it while
+/// the files are looked at, then what has gone. None where the helper
+/// never answered (not there, or built without it): made as an archive
+/// then.
+#[allow(clippy::too_many_arguments)]
+async fn copy_by_engine(
+    pool: &olo_rex_client::SshSessionPool,
+    target: &olo_rex_client::SshTarget,
+    askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>,
+    parts: Vec<olo_rex_client::sessions::Part>,
+    here: &str,
+    there: &str,
+    total: u64,
+    said: Arc<impl Fn(&str) + Send + Sync + 'static>,
+) -> Option<Result<(), String>> {
+    use olo_rex_client::{sessions, sync};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    let looked = Arc::new(AtomicU64::new(0));
+    let stop = sync::Stop::default();
+    let counted = looked.clone();
+    let source = sessions::Copied::new(parts, here, there, Some(sessions::Copied::cache_for(here, there)), move |n| {
+        counted.fetch_add(n, Ordering::Relaxed);
+    });
+    // (The host's home by its whole path, as it said it: what a command
+    // there is run in isn't always its home.)
+    let folder = sync::HostFolder { path: there.to_owned(), keep_newer: true, scoped: true, ..Default::default() };
+    let (seen, sent, tell) = (looked.clone(), stop.sent.clone(), said.clone());
+    let telling = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let seen = seen.load(Ordering::Relaxed);
+            tell(&if seen < total {
+                olo_kit::tr!("{}%  ·  {}", (seen * 100 / total.max(1)).min(100), olo_kit::files::format_progress(seen, total)).to_string()
+            } else {
+                olo_kit::tr!("Sending what changed  ·  {}", olo_kit::files::format_size(sent.load(Ordering::Relaxed))).to_string()
+            });
+        }
+    });
+    let ran = sync::send_to(pool, target, askpass.clone(), crate::link::ID, Box::new(source), &folder, stop.clone()).await;
+    telling.abort();
+    match ran {
+        Ok(report) => {
+            if let Some(e) = report.errors.first() {
+                return Some(Err(format!("{}: {}", e.path, e.reason)));
+            }
+            tracing::info!(sent = report.bytes_sent, appended = report.appended, new = report.new, same = report.same, "Rex: sessions copied by the engine");
+            // (Codex's names of those copied, sent beside them, put
+            // beside the host's own.)
+            let merge = format!("sh -c {}", shell_quote(&format!("cd && {}", sessions::merge_codex())));
+            match pool.exec(target, askpass, &merge, &mut |_| {}).await {
+                Ok(ran) if ran.ok() => Some(Ok(())),
+                Ok(ran) => Some(Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().to_owned())),
+                Err(e) => Some(Err(e.to_string())),
+            }
+        }
+        // (Nothing ever came back: the helper isn't there to do it.)
+        Err(_) if stop.received.load(Ordering::Relaxed) == 0 => None,
+        Err(e) => Some(Err(e.to_string())),
+    }
+}
+
 /// How a host stands against the agents' sessions of this computer used
 /// in `window` (`olo_rex_client::sessions`): this computer's gathered
 /// off the async threads, the host asked its home, then each file's size
@@ -3891,6 +3957,24 @@ impl RexHub {
                 }
                 let parts: Vec<sessions::Part> = stands.to_copy.iter().map(|i| gathered.parts[*i].clone()).collect();
                 let (total, here, there) = (stands.bytes, gathered.home.clone(), stands.home.clone());
+                // Through the engine where the host's helper keeps files in
+                // step: only what changed of each goes (a turn added to a
+                // transcript: its new lines). Else one archive, as before.
+                let helper = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).is_some_and(|h| matches!(h.helper, HostHelper::Used | HostHelper::Ready));
+                if helper && crate::link::syncs() {
+                    let codex = sessions::codex_ids(&parts);
+                    match copy_by_engine(&pool, &target, askpass.clone(), parts.clone(), &here, &there, total, said.clone()).await {
+                        Some(Ok(())) => {
+                            if !codex.is_empty() {
+                                said(&olo_kit::words::tr("Telling Codex there of them"));
+                                tell_codex(&pool, &target, askpass.clone(), &codex).await;
+                            }
+                            return Ok(());
+                        }
+                        Some(Err(e)) => return Err(e),
+                        None => tracing::info!("Rex: the host's helper didn't keep the sessions in step; copied as an archive"),
+                    }
+                }
                 let (chunks, from) = sessions::Chunks::new();
                 let tell = said.clone();
                 let tell_after = said.clone();

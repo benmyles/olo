@@ -8993,6 +8993,9 @@ Pool
 Port
 Port
 
+Port {} isn’t forwarded from {} any more
+Port {} wird nicht mehr von {} weitergeleitet
+
 Port:
 Port:
 
@@ -10448,6 +10451,9 @@ Nach hinten stellen
 
 Send to back
 Nach hinten stellen
+
+Sending what changed  ·  {}
+Senden, was sich geändert hat  ·  {}
 
 Sending your changes to Telegram
 Ihre Änderungen werden an Telegram gesendet

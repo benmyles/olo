@@ -42,6 +42,8 @@ fn main() {
         println!("cargo:warning=zig isn't installed (`dnf install zig`): Olo's helper for hosts is built without its link over UDP");
     }
     let mut id = 0xcbf29ce484222325u64;
+    // (Whether every helper carried keeps files in step: built with zig.)
+    let mut syncs = true;
     for (triple, name) in HOSTS {
         let built = target.join(triple).join("release/olo-rex-link");
         let carried = out.join(format!("olo-rex-link-{name}"));
@@ -49,7 +51,9 @@ fn main() {
         // that only checks the app.)
         // (With the link where zig can compile its C for the host; and
         // without it where that build fails, rather than no helper.)
-        let ok = !skip && ((zig && build(&root, &target, &out, triple, true)) || build(&root, &target, &out, triple, false));
+        let full = !skip && zig && build(&root, &target, &out, triple, true);
+        let ok = full || (!skip && build(&root, &target, &out, triple, false));
+        syncs &= full;
         let bytes = if ok { std::fs::read(&built).unwrap_or_default() } else { Vec::new() };
         if bytes.is_empty() {
             println!("cargo:warning=Olo's helper for {name} hosts wasn't built ({triple}: is the target installed? `rustup target add {triple}`); Rex is built without it");
@@ -63,6 +67,7 @@ fn main() {
     // The build's name: what the app looks for on a host is exactly
     // what it carries.
     println!("cargo:rustc-env=OLO_REX_LINK_ID={id:016x}");
+    println!("cargo:rustc-env=OLO_REX_LINK_SYNC={}", u8::from(syncs));
 }
 
 /// zig as the C compiler and the archiver for the host's machine: cc's

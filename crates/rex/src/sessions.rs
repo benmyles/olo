@@ -421,7 +421,8 @@ fn count(stands: &mut Stands, copies: bool, newer: bool) {
 
 /// Run on the host with the archive on its input: each file in its
 /// place under the home, with its time here, readable by the account
-/// alone.
+/// alone; then Codex's names of those copied put beside the host's own
+/// ([`MERGE_CODEX`]).
 pub const PUT: &str = r#"umask 077; cd && gzip -dc | tar -xf - --no-same-owner || exit 1
 f=.codex/session_index.olo-new.jsonl
 if [ -f "$f" ]; then
@@ -433,6 +434,13 @@ if [ -f "$f" ]; then
   rm -f "$f"
 fi
 exit 0"#;
+
+/// Run on the host after a copy by the engine ([`Copied`]): Codex's names
+/// of the sessions copied (which it sent beside them, [`INDEX_NEW`]) put
+/// beside the host's own, none twice; [`PUT`]'s second half.
+pub fn merge_codex() -> &'static str {
+    PUT.split_once('\n').map_or("", |(_, rest)| rest)
+}
 
 /// The archive of `parts` for a host whose home is `there`, made as it
 /// is written to `out` (a gzip'd tar), `sent` told how many bytes of the
@@ -498,6 +506,190 @@ pub fn stream(parts: &[Part], here: &str, there: &str, out: impl Write, sent: &m
         }
     }
     tar.into_inner()?.finish()?.flush()
+}
+
+/// The parts to copy as the engine sends them (`olo_rex_client::sync`,
+/// HACKING, Rex, "The agents' sessions"): each at its place under the
+/// host's home ([`there_path`]), a transcript up to its last whole line,
+/// its text said as the host's ([`rewritten`]), a database as a snapshot
+/// ([`snapshot`]), and Codex's names of those copied beside them
+/// ([`INDEX_NEW`], for [`merge_codex`]). What each was made into is kept
+/// between copies (`cache`: the engine's index of them, for this
+/// computer's home and the host's), so one unchanged since (its inode,
+/// its times) is neither read nor rewritten again: a copy after a turn
+/// added to a transcript reads that one and sends its new lines. One file
+/// is made at a time (as the archive did), the last kept for the pieces
+/// read from it next.
+pub struct Copied {
+    parts: Vec<Part>,
+    by_path: std::collections::HashMap<String, usize>,
+    here: String,
+    there: String,
+    cache: Option<PathBuf>,
+    index_new: Vec<u8>,
+    /// How much of each file was read as it was looked at: its pieces are
+    /// made from the same bytes (a transcript written to meanwhile has
+    /// more, after them).
+    read: std::sync::Mutex<std::collections::HashMap<String, u64>>,
+    last: std::sync::Mutex<Option<(String, std::sync::Arc<Vec<u8>>)>>,
+    looked: Box<dyn Fn(u64) + Send + Sync>,
+    /// How many parts were read and made as they were looked at (the
+    /// rest unchanged since the last copy).
+    made: std::sync::atomic::AtomicUsize,
+}
+
+impl Copied {
+    /// `looked` is told how many bytes of the parts have been looked at
+    /// (made, or found unchanged), for how far the copy is.
+    pub fn new(parts: Vec<Part>, here: &str, there: &str, cache: Option<PathBuf>, looked: impl Fn(u64) + Send + Sync + 'static) -> Copied {
+        let by_path = parts.iter().enumerate().map(|(i, p)| (there_path(&p.path, here, there), i)).collect();
+        // (Codex's: the names of those copied, from this computer's index.)
+        let ids = codex_ids(&parts);
+        let index_new = if ids.is_empty() {
+            Vec::new()
+        } else {
+            let index = std::fs::read_to_string(Path::new(here).join(".codex/session_index.jsonl")).unwrap_or_default();
+            index.lines().filter(|l| ids.iter().any(|id| l.contains(&format!("\"id\":\"{id}\"")))).map(|l| format!("{l}\n")).collect::<String>().into_bytes()
+        };
+        Copied {
+            parts,
+            by_path,
+            here: here.to_owned(),
+            there: there.to_owned(),
+            cache,
+            index_new,
+            read: Default::default(),
+            last: Default::default(),
+            looked: Box::new(looked),
+            made: Default::default(),
+        }
+    }
+
+    /// How many parts the last look read (the rest were unchanged since
+    /// the copy before).
+    pub fn made(&self) -> usize {
+        self.made.load(Ordering::Relaxed)
+    }
+
+    /// Where the index of what the parts were made into is kept for a
+    /// host whose home is `there` (named by both homes: made for another,
+    /// they would be other bytes).
+    pub fn cache_for(here: &str, there: &str) -> PathBuf {
+        let name: String = olo_rex_sync::chunk::chunk_id(format!("{here}\0{there}").as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+        scratch().join(format!("copied-{name}.idx"))
+    }
+
+    /// A part made as it goes there, from `limit` bytes of it (all of it
+    /// where none is said); and how much of it was read.
+    fn make(&self, part: &Part, limit: Option<u64>) -> std::io::Result<(Vec<u8>, u64)> {
+        if part.snapshot {
+            let bytes = snapshot(&part.from, &scratch())?;
+            let n = bytes.len() as u64;
+            return Ok((bytes, n));
+        }
+        let file = std::fs::File::open(&part.from)?;
+        let mut bytes = Vec::with_capacity(part.size as usize);
+        match limit {
+            Some(n) => file.take(n).read_to_end(&mut bytes)?,
+            None => (&file).read_to_end(&mut bytes)?,
+        };
+        let read = bytes.len() as u64;
+        if part.path.ends_with(".jsonl")
+            && let Some(last) = bytes.iter().rposition(|b| *b == b'\n')
+        {
+            bytes.truncate(last + 1);
+        }
+        Ok((if part.rewrite { rewritten(bytes, &self.here, &self.there) } else { bytes }, read))
+    }
+
+    fn entry(path: &str, bytes: &[u8], meta: &std::fs::Metadata) -> std::io::Result<olo_rex_sync::index::Entry> {
+        use std::os::unix::fs::MetadataExt;
+        let d = olo_rex_sync::chunk::hash_and_chunk(bytes)?;
+        Ok(olo_rex_sync::index::Entry {
+            path: path.to_owned(),
+            kind: olo_rex_sync::index::EntryKind::File,
+            size: d.size,
+            mtime_ns: meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec()),
+            ctime_ns: meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec()),
+            ino: meta.ino(),
+            mode: 0o600,
+            hash: d.hash,
+            chunks: d.chunks,
+        })
+    }
+}
+
+impl olo_rex_sync::wire::Source for Copied {
+    fn index(&self) -> std::io::Result<olo_rex_sync::index::Index> {
+        use std::os::unix::fs::MetadataExt;
+        let before = self.cache.as_deref().and_then(|p| olo_rex_sync::index::Index::load(p).ok()).unwrap_or_default();
+        let mut index = olo_rex_sync::index::Index::default();
+        for part in &self.parts {
+            let path = there_path(&part.path, &self.here, &self.there);
+            let Ok(meta) = std::fs::metadata(&part.from) else { continue };
+            let mtime_ns = meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec());
+            let ctime_ns = meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec());
+            // (A database isn't known unchanged by its own times: its
+            // write-ahead log beside it may hold more. Made each time.)
+            if !part.snapshot
+                && let Some(was) = before.entries.get(&path).filter(|e| (e.ino, e.ctime_ns, e.mtime_ns) == (meta.ino(), ctime_ns, mtime_ns))
+            {
+                index.entries.insert(path.clone(), was.clone());
+                self.read.lock().unwrap_or_else(|e| e.into_inner()).insert(path, meta.len());
+                (self.looked)(part.size);
+                continue;
+            }
+            let Ok((bytes, read)) = self.make(part, None) else { continue };
+            self.made.fetch_add(1, Ordering::Relaxed);
+            index.entries.insert(path.clone(), Copied::entry(&path, &bytes, &meta)?);
+            self.read.lock().unwrap_or_else(|e| e.into_inner()).insert(path.clone(), read);
+            *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some((path, std::sync::Arc::new(bytes)));
+            (self.looked)(part.size);
+        }
+        if let Some(cache) = &self.cache {
+            let _ = index.save(cache);
+        }
+        if !self.index_new.is_empty() {
+            let d = olo_rex_sync::chunk::hash_and_chunk(&self.index_new[..])?;
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as i64);
+            index.entries.insert(
+                INDEX_NEW.to_owned(),
+                olo_rex_sync::index::Entry {
+                    path: INDEX_NEW.to_owned(),
+                    kind: olo_rex_sync::index::EntryKind::File,
+                    size: d.size,
+                    mtime_ns: now,
+                    ctime_ns: 0,
+                    ino: 0,
+                    mode: 0o600,
+                    hash: d.hash,
+                    chunks: d.chunks,
+                },
+            );
+        }
+        Ok(index)
+    }
+
+    fn read(&self, path: &str, offset: u64, len: usize) -> std::io::Result<Vec<u8>> {
+        let slice = |bytes: &[u8]| {
+            let start = (offset as usize).min(bytes.len());
+            bytes[start..start.saturating_add(len).min(bytes.len())].to_vec()
+        };
+        if path == INDEX_NEW {
+            return Ok(slice(&self.index_new));
+        }
+        if let Some((at, bytes)) = self.last.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
+            && at == path
+        {
+            return Ok(slice(bytes));
+        }
+        let part = self.by_path.get(path).map(|i| &self.parts[*i]).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{path} isn't being copied")))?;
+        let limit = self.read.lock().unwrap_or_else(|e| e.into_inner()).get(path).copied();
+        let (bytes, _) = self.make(part, limit)?;
+        let out = slice(&bytes);
+        *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some((path.to_owned(), std::sync::Arc::new(bytes)));
+        Ok(out)
+    }
 }
 
 /// A file's bytes as the archive reads them, `sent` told of each read
@@ -854,5 +1046,46 @@ mod tests {
         // Stopped: an error, nothing more made.
         assert!(stream(&gathered.parts, &h, "/home/far", &mut Vec::new(), &mut |_| {}, &AtomicBool::new(true)).is_err());
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// The engine's source of a copy: each part at its place there, its
+    /// text said as the host's, read back as it was looked at; one not
+    /// changed since the last copy not read again (its index kept); a
+    /// transcript written to after it was looked at sent as it was then.
+    #[test]
+    fn a_copy_for_the_engine_is_made_as_the_archive_was() {
+        use olo_rex_sync::wire::Source;
+        let home = scratch("copied-home");
+        let here = home.to_string_lossy().into_owned();
+        let line = format!("{{\"cwd\":\"{here}/src/app\"}}\n");
+        write(&home, ".claude/projects/p/one.jsonl", &format!("{line}{line}partial"), 0);
+        write(&home, ".claude/projects/p/one/notes.md", "no home here", 0);
+        let gathered = gather(&home, Window::Week, SystemTime::now());
+        let cache = home.join("copied.idx");
+        let looked = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let counted = looked.clone();
+        let copied = Copied::new(gathered.parts.clone(), &here, "/home/there", Some(cache.clone()), move |n| {
+            counted.fetch_add(n, Ordering::Relaxed);
+        });
+        let index = copied.index().unwrap();
+        let path = there_path(".claude/projects/p/one.jsonl", &here, "/home/there");
+        let want = "{\"cwd\":\"/home/there/src/app\"}\n".repeat(2);
+        assert_eq!(copied.read(&path, 0, 1 << 20).unwrap(), want.as_bytes(), "rewritten, up to its last whole line");
+        assert_eq!(index.entries[&path].hash, olo_rex_sync::chunk::hash_and_chunk(want.as_bytes()).unwrap().hash);
+        assert_eq!(looked.load(Ordering::Relaxed), gathered.parts.iter().map(|p| p.size).sum::<u64>());
+        // Written to after it was looked at: its pieces are what was looked at.
+        let full = home.join(".claude/projects/p/one.jsonl");
+        std::fs::OpenOptions::new().append(true).open(&full).unwrap().write_all(b" now whole\n").unwrap();
+        let other = there_path(".claude/projects/p/one/notes.md", &here, "/home/there");
+        copied.read(&other, 0, 10).unwrap();
+        assert_eq!(copied.read(&path, 0, 1 << 20).unwrap(), want.as_bytes());
+        assert_eq!(copied.made(), 2);
+        // Looked at again: the notes unchanged since, not read; the
+        // transcript written to, read.
+        let again = Copied::new(gather(&home, Window::Week, SystemTime::now()).parts, &here, "/home/there", Some(cache), |_| {});
+        let index = again.index().unwrap();
+        assert_eq!(again.made(), 1, "only what changed is read");
+        assert!(index.entries.contains_key(&other));
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

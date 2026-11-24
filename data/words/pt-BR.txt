@@ -8993,6 +8993,9 @@ Pool
 Port
 Porta
 
+Port {} isn’t forwarded from {} any more
+A porta {} não é mais encaminhada de {}
+
 Port:
 Porta:
 
@@ -10448,6 +10451,9 @@ Enviar para trás
 
 Send to back
 Enviar para trás
+
+Sending what changed  ·  {}
+Enviando o que mudou  ·  {}
 
 Sending your changes to Telegram
 Enviando suas alterações ao Telegram

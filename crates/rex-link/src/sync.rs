@@ -4,11 +4,16 @@
 //! app the other side over SSH (`olo_rex_client::sync`). Nothing else is
 //! written on its output: it is the session's.
 //!
-//! ROOT is the folder on this host, relative to where it runs (the home,
-//! for a command over SSH). Options: `--delete` (receiving: what the
+//! ROOT is the folder on this host, under the home (`$HOME`) unless whole:
+//! not where it runs, which over SSH is the account's home as the system
+//! keeps it, not always `$HOME` (the rig's far host: a session copied
+//! there into `.` went into the real home, 2026-11-24). Options:
+//! `--delete` (receiving: what the
 //! sender hasn't is taken away, a mirror), `--keep-newer` (receiving: a
 //! file newer here is left), `--exclude PATTERN` (again for more),
-//! `--shallow` (the folder's own files alone), `--no-cache` (no index
+//! `--shallow` (the folder's own files alone), `--scoped` (receiving:
+//! only the files the sender names are looked at, nothing taken away: a
+//! root that is the whole home), `--no-cache` (no index
 //! kept between sessions: by default one is, under
 //! `~/.cache/olo/rex-sync/`, so an unchanged tree is read for nothing).
 //! Status 0 when the session ended (what failed of its files the other
@@ -21,7 +26,7 @@ use std::path::{Path, PathBuf};
 use olo_rex_sync::index::Filter;
 use olo_rex_sync::wire::{FolderSource, Options, receive, send};
 
-const USAGE: &str = "usage: olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--shallow] [--no-cache]";
+const USAGE: &str = "usage: olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--shallow] [--scoped] [--no-cache]";
 
 /// The helper's input and output, as the session's one stream.
 struct Stdio {
@@ -61,12 +66,17 @@ pub fn run(args: Vec<String>) -> ! {
     let mut it = args.into_iter();
     let (Some(side), Some(root)) = (it.next(), it.next()) else { fail("say which side and its folder") };
     let root = PathBuf::from(root);
+    let root = match std::env::var_os("HOME") {
+        Some(home) if root.is_relative() => PathBuf::from(home).join(root),
+        _ => root,
+    };
     let (mut options, mut filter, mut cached) = (Options::default(), Filter::default(), true);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--delete" => options.delete_extra = true,
             "--keep-newer" => options.keep_newer = true,
             "--shallow" => filter.recursive = false,
+            "--scoped" => options.scoped = true,
             "--no-cache" => cached = false,
             "--exclude" => filter.exclude.push(it.next().unwrap_or_else(|| fail("--exclude takes a pattern"))),
             other => fail(&format!("{other} isn't one of its options")),

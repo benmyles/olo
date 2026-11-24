@@ -2986,6 +2986,7 @@ Pointer
 Polish
 Pool
 Port
+Port {} isn’t forwarded from {} any more
 Port:
 Portal
 Ports
@@ -3471,6 +3472,7 @@ Send Voice Message
 Send at the pace the network can carry
 Send to Back
 Send to back
+Sending what changed  ·  {}
 Sending your changes to Telegram
 Sending {n} changes to Telegram…
 Sending {} to process {}

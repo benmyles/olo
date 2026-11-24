@@ -8993,6 +8993,9 @@ Pool
 Port
 Porta
 
+Port {} isn’t forwarded from {} any more
+La porta {} non è più inoltrata da {}
+
 Port:
 Porta:
 
@@ -10448,6 +10451,9 @@ Porta in secondo piano
 
 Send to back
 Porta in secondo piano
+
+Sending what changed  ·  {}
+Invio di ciò che è cambiato  ·  {}
 
 Sending your changes to Telegram
 Invio delle modifiche a Telegram

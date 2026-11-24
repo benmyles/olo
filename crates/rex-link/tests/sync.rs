@@ -105,6 +105,32 @@ fn a_folder_goes_to_the_helper_and_comes_from_it() {
     }
 }
 
+/// A folder named by a relative path is under the home (`$HOME`), not
+/// where the helper runs: over SSH that is the account's home as the
+/// system keeps it, which isn't always `$HOME` (the rig's far host).
+#[test]
+fn a_relative_folder_is_under_the_home() {
+    let (src, home, elsewhere, cache) = (scratch("rel-src"), scratch("rel-home"), scratch("rel-elsewhere"), scratch("rel-cache"));
+    fs::write(src.join("a.txt"), b"here").unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_olo-rex-link"))
+        .args(["sync", "receive", "inside/it"])
+        .env("HOME", &home)
+        .env("XDG_CACHE_HOME", &cache)
+        .current_dir(&elsewhere)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let pipes = Pipes { to: child.stdin.take().unwrap(), from: child.stdout.take().unwrap() };
+    send(pipes, &FolderSource::new(&src), Options::default()).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert_eq!(fs::read(home.join("inside/it/a.txt")).unwrap(), b"here");
+    assert!(!elsewhere.join("inside").exists());
+    for d in [src, home, elsewhere, cache] {
+        fs::remove_dir_all(d).unwrap();
+    }
+}
+
 /// A mistake in what it is asked is said, never a session begun.
 #[test]
 fn what_it_isnt_asked_right_it_says() {

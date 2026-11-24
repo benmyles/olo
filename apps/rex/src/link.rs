@@ -20,6 +20,12 @@ pub fn carried() -> bool {
     BUILDS.iter().any(|b| !b.bytes.is_empty())
 }
 
+/// Whether the helpers carried keep files in step (`olo-rex-link sync`:
+/// built where zig compiles the engine's C, `build.rs`).
+pub fn syncs() -> bool {
+    env!("OLO_REX_LINK_SYNC") == "1"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

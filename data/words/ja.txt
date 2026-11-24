@@ -8965,6 +8965,9 @@ Pool
 Port
 ポート
 
+Port {} isn’t forwarded from {} any more
+ポート {} は {} から転送されなくなりました
+
 Port:
 ポート：
 
@@ -10419,6 +10422,9 @@ Send to Back
 
 Send to back
 最背面に移動
+
+Sending what changed  ·  {}
+変更分を送信中  ·  {}
 
 Sending your changes to Telegram
 変更をTelegramに送信中

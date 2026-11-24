@@ -2991,6 +2991,15 @@ the command takes it: an agent's shell may leave a pipe open, and
   person's own `PATH`, so their agents were "installed" there before
   any test put one (farhost.py keeps the person's folders off it
   now). What a test looks for by name on the "host" may be yours.
+  And a command its SSH server runs starts in the account's home as
+  the system keeps it (`/home/…`, this computer's real one), while
+  `$HOME` is the rig's scratch home: anything run there that goes by
+  its working directory, not `$HOME` (`cd` first, as the app's scripts
+  do), writes into the real home (2026-11-24: a sessions copy into
+  `.` put a test's transcripts in the real `~/.claude/projects`, found
+  and taken away). The helper takes a relative folder from `$HOME` now.
+  Run what the rig tests with `RUST_LOG=…,olo_rex=info` in its `env`
+  to see the app's own lines: `tsession run` gives programs `warn`.
 - **A command run with `SshSessionPool::exec` went on after its
   caller had gone**, until 2026-11-23: russh closes a channel only
   when told to. `exec` closes it now when dropped; a script that must

@@ -8993,6 +8993,9 @@ Pool
 Port
 Port
 
+Port {} isn’t forwarded from {} any more
+Le port {} n’est plus redirigé depuis {}
+
 Port:
 Port :
 
@@ -10448,6 +10451,9 @@ Mettre à l’arrière-plan
 
 Send to back
 Mettre à l’arrière-plan
+
+Sending what changed  ·  {}
+Envoi de ce qui a changé  ·  {}
 
 Sending your changes to Telegram
 Envoi de vos modifications à Telegram

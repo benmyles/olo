@@ -8965,6 +8965,9 @@ Pool
 Port
 포트
 
+Port {} isn’t forwarded from {} any more
+포트 {}은(는) 더 이상 {}에서 전달되지 않습니다
+
 Port:
 포트:
 
@@ -10419,6 +10422,9 @@ Send to Back
 
 Send to back
 맨 뒤로 보내기
+
+Sending what changed  ·  {}
+변경된 내용을 보내는 중  ·  {}
 
 Sending your changes to Telegram
 Telegram에 변경 사항 보내는 중

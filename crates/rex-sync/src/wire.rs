@@ -45,6 +45,8 @@ const MAX_TAIL_CHUNKS: usize = 256 << 10;
 
 const FLAG_DELETE_EXTRA: u8 = 1 << 0;
 const FLAG_KEEP_NEWER: u8 = 1 << 1;
+/// The receiver looks only at what the sender names (`Options::scoped`).
+const FLAG_SCOPED: u8 = 1 << 2;
 
 // Frame tags.
 const TAG_HELLO: u8 = 1;
@@ -54,6 +56,8 @@ const TAG_NEED_CHUNKS: u8 = 4;
 const TAG_CHUNK_INFO: u8 = 5;
 const TAG_NEED_LEAF_CHUNKS: u8 = 6;
 const TAG_LEAF_CHUNKS: u8 = 7;
+/// The sender's paths, to a scoped receiver.
+const TAG_SCOPE: u8 = 8;
 const TAG_MKDIR: u8 = 10;
 const TAG_SYMLINK: u8 = 11;
 const TAG_SET_META: u8 = 12;
@@ -202,6 +206,11 @@ pub struct Options {
     /// Optional cache file path used by [`receive`] to persist its [`Index`]
     /// across sessions so unchanged trees are scanned with zero file reads.
     pub cache_path: Option<PathBuf>,
+    /// The receiver looks only at the paths the sender names, nothing else
+    /// of its root (a root that is a whole home: Agent Sessions' copy puts
+    /// a set of files under it), and takes nothing away. Told to the
+    /// sender in the receiver's hello; the sender's own is unused.
+    pub scoped: bool,
 }
 
 /// Per-path failure recorded in a [`Report`] without aborting the session.
@@ -254,22 +263,26 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     }
 
     let effective_keep_newer = options.keep_newer || (hello.flags & FLAG_KEEP_NEWER != 0);
-    let effective_delete_extra = hello.flags & FLAG_DELETE_EXTRA != 0;
+    let scoped = hello.flags & FLAG_SCOPED != 0;
+    let effective_delete_extra = hello.flags & FLAG_DELETE_EXTRA != 0 && !scoped;
 
-    if hello.tree_hash == sender_tree_hash {
+    if scoped {
+        send_scope(&mut wire, &sender_index)?;
+        wire.flush()?;
+    } else if hello.tree_hash == sender_tree_hash {
         let mut ack = Vec::with_capacity(5);
         ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
         ack.push(1); // in_sync = true
         wire.write_frame(TAG_HELLO_ACK, &ack)?;
         wire.flush()?;
         return Ok(Report { same: sender_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, ..Report::default() });
+    } else {
+        let mut ack = Vec::with_capacity(5);
+        ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+        ack.push(0); // in_sync = false
+        wire.write_frame(TAG_HELLO_ACK, &ack)?;
+        wire.flush()?;
     }
-
-    let mut ack = Vec::with_capacity(5);
-    ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
-    ack.push(0); // in_sync = false
-    wire.write_frame(TAG_HELLO_ACK, &ack)?;
-    wire.flush()?;
 
     // 2. Receive receiver's manifest (no chunk lists).
     let mut recv_manifest: BTreeMap<String, ManifestEntry> = BTreeMap::new();
@@ -520,13 +533,12 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
 /// `..`, or would traverse a symlink are refused and recorded in
 /// [`Report::errors`].
 pub fn receive<S: Read + Write>(conn: S, root: &Path, options: Options) -> io::Result<Report> {
+    // (Scoped, nothing is taken away: what else the root holds isn't the
+    // session's.)
+    let options = Options { delete_extra: options.delete_extra && !options.scoped, ..options };
     fs::create_dir_all(root)?;
     let prev = options.cache_path.as_deref().and_then(|p| Index::load(p).ok());
-    let mut recv_index = Index::scan(root, &options.filter, prev.as_ref())?;
-    let recv_tree_hash = recv_index.tree_hash();
     let mut wire = Wire::new(conn);
-
-    // 1. Handshake: send Hello, read HelloAck.
     let mut flags = 0u8;
     if options.delete_extra {
         flags |= FLAG_DELETE_EXTRA;
@@ -534,6 +546,40 @@ pub fn receive<S: Read + Write>(conn: S, root: &Path, options: Options) -> io::R
     if options.keep_newer {
         flags |= FLAG_KEEP_NEWER;
     }
+    let recv_index = if options.scoped {
+        // Scoped: the hello says so, the sender names its paths, and only
+        // those are looked at here.
+        let mut hello = Vec::with_capacity(45);
+        hello.extend_from_slice(&WIRE_VERSION.to_le_bytes());
+        hello.push(flags | FLAG_SCOPED);
+        hello.extend_from_slice(&[0u8; 32]);
+        hello.extend_from_slice(&0u64.to_le_bytes());
+        wire.write_frame(TAG_HELLO, &hello)?;
+        wire.flush()?;
+        let mut paths = Vec::new();
+        loop {
+            let (tag, payload) = wire.read_frame()?;
+            if tag != TAG_SCOPE {
+                return Err(invalid_data(format!("expected Scope, got tag {tag}")));
+            }
+            let more = decode_scope_frame(&payload, &mut paths)?;
+            if paths.len() > MAX_ITEMS {
+                return Err(invalid_data("the sender names too many paths"));
+            }
+            if !more {
+                break;
+            }
+        }
+        Index::scan_paths(root, &paths, prev.as_ref())?
+    } else {
+        Index::scan(root, &options.filter, prev.as_ref())?
+    };
+    if options.scoped {
+        return receive_after_hello(wire, root, options, recv_index);
+    }
+    let recv_tree_hash = recv_index.tree_hash();
+
+    // 1. Handshake: send Hello, read HelloAck.
     let mut hello = Vec::with_capacity(45);
     hello.extend_from_slice(&WIRE_VERSION.to_le_bytes());
     hello.push(flags);
@@ -564,6 +610,12 @@ pub fn receive<S: Read + Write>(conn: S, root: &Path, options: Options) -> io::R
         return Ok(Report { same: recv_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, ..Report::default() });
     }
 
+    receive_after_hello(wire, root, options, recv_index)
+}
+
+/// The receiver's session once the hellos are done: its manifest, then
+/// what the sender asks and sends, until it is done.
+fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options: Options, mut recv_index: Index) -> io::Result<Report> {
     // 2. Send manifest (no chunk lists).
     send_manifest(&mut wire, &recv_index)?;
     wire.flush()?;
@@ -1578,6 +1630,44 @@ fn send_manifest<S: Read + Write>(wire: &mut Wire<S>, index: &Index) -> io::Resu
     }
     // Empty index still sends one empty manifest frame with `more = 0`.
     write_manifest_batch(wire, &[], false)
+}
+
+/// The sender's paths, to a scoped receiver: its files and links (folders
+/// are made where they are wanted), in compressed batches.
+fn send_scope<S: Read + Write>(wire: &mut Wire<S>, index: &Index) -> io::Result<()> {
+    let paths: Vec<&String> = index.entries.values().filter(|e| e.kind != EntryKind::Dir).map(|e| &e.path).collect();
+    let mut start = 0;
+    loop {
+        let (mut raw, mut end, mut size) = (Vec::new(), start, 4usize);
+        while end < paths.len() && (end == start || size + 4 + paths[end].len() <= MAX_MANIFEST_CHUNK_RAW) {
+            size += 4 + paths[end].len();
+            end += 1;
+        }
+        raw.extend_from_slice(&((end - start) as u32).to_le_bytes());
+        for p in &paths[start..end] {
+            write_str(&mut raw, p);
+        }
+        let more = end < paths.len();
+        write_compressed_batch(wire, TAG_SCOPE, more, &raw)?;
+        if !more {
+            return Ok(());
+        }
+        start = end;
+    }
+}
+
+fn decode_scope_frame(payload: &[u8], out: &mut Vec<String>) -> io::Result<bool> {
+    let (more, raw) = read_compressed_batch(payload, MAX_MANIFEST_CHUNK_RAW + (256 << 10))?;
+    let mut cur = Cursor::new(&raw);
+    let count = cur.read_u32()? as usize;
+    if count > MAX_ITEMS_PER_FRAME {
+        return Err(invalid_data("too many paths in a scope frame"));
+    }
+    for _ in 0..count {
+        out.push(cur.read_str(MAX_PATH_LEN)?);
+    }
+    cur.expect_eof()?;
+    Ok(more)
 }
 
 fn write_manifest_batch<S: Read + Write>(wire: &mut Wire<S>, entries: &[&Entry], more: bool) -> io::Result<()> {
@@ -2865,5 +2955,62 @@ mod tests {
         assert!(report.errors.iter().any(|e| e.reason.contains("aren't the sender's")), "{:?}", report.errors);
         assert_eq!(fs::read(root.join("log")).unwrap(), old);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A scoped session: the receiver looks only at what the sender names
+    /// (its root a whole home, say), takes nothing away even asked to,
+    /// and is in step after with a small manifest; an append still goes
+    /// in place.
+    #[test]
+    fn a_scoped_receiver_looks_at_what_it_is_named_alone() {
+        use std::os::unix::fs::MetadataExt;
+        let (src, home, caches) = (scratch_dir("scoped-src"), scratch_dir("scoped-home"), scratch_dir("scoped-cache"));
+        fs::create_dir_all(src.join(".claude/projects/p")).unwrap();
+        let (mut log, next) = jsonl_data(1 << 20, 0);
+        fs::write(src.join(".claude/projects/p/s.jsonl"), &log).unwrap();
+        fs::create_dir_all(home.join("own/deep")).unwrap();
+        fs::write(home.join("own/deep/kept"), b"the host's own").unwrap();
+        fs::write(home.join("unrelated"), b"also").unwrap();
+        let scoped = || Options { scoped: true, delete_extra: true, ..Options::default() };
+        let (_, got) = sync_folders(&src, &home, Some(caches.join("s")), Some(caches.join("r")), scoped());
+        assert!(got.errors.is_empty() && got.removed == 0, "{got:?}");
+        assert_eq!(fs::read(home.join(".claude/projects/p/s.jsonl")).unwrap(), log);
+        assert_eq!(fs::read(home.join("own/deep/kept")).unwrap(), b"the host's own");
+        assert!(home.join("unrelated").exists());
+        // Nothing changed: the manifest of what was named, no more.
+        let (again, _) = sync_folders(&src, &home, Some(caches.join("s")), Some(caches.join("r")), scoped());
+        assert!(again.wire_bytes() < 1024, "{} bytes", again.wire_bytes());
+        // A turn added: appended in place, a few KiB.
+        let ino = fs::metadata(home.join(".claude/projects/p/s.jsonl")).unwrap().ino();
+        let (more, _) = jsonl_data(3000, next);
+        log.extend_from_slice(&more);
+        fs::write(src.join(".claude/projects/p/s.jsonl"), &log).unwrap();
+        let (sent, got) = sync_folders(&src, &home, Some(caches.join("s")), Some(caches.join("r")), scoped());
+        assert_eq!((got.appended, got.errors.len()), (1, 0), "{:?}", got.errors);
+        assert_eq!(fs::read(home.join(".claude/projects/p/s.jsonl")).unwrap(), log);
+        assert_eq!(fs::metadata(home.join(".claude/projects/p/s.jsonl")).unwrap().ino(), ino);
+        assert!(sent.wire_bytes() < 4096, "{} bytes", sent.wire_bytes());
+        for d in [src, home, caches] {
+            fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    /// What a scoped receiver indexes: the named files alone, not what is
+    /// missing, nor what is reached through a link.
+    #[test]
+    fn a_scoped_index_is_of_the_named_files() {
+        let root = scratch_dir("scoped-index");
+        let elsewhere = scratch_dir("scoped-elsewhere");
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::write(root.join("a/one"), b"1").unwrap();
+        fs::write(root.join("a/two"), b"2").unwrap();
+        fs::write(elsewhere.join("three"), b"3").unwrap();
+        symlink(&elsewhere, root.join("link")).unwrap();
+        let named = ["a/one", "a/missing", "link/three", "../x"].map(String::from);
+        let index = Index::scan_paths(&root, &named, None).unwrap();
+        assert_eq!(index.entries.keys().collect::<Vec<_>>(), ["a/one"]);
+        for d in [root, elsewhere] {
+            fs::remove_dir_all(d).unwrap();
+        }
     }
 }

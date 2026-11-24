@@ -8993,6 +8993,9 @@ Pool
 Port
 Poort
 
+Port {} isn’t forwarded from {} any more
+Poort {} wordt niet meer doorgestuurd vanaf {}
+
 Port:
 Poort:
 
@@ -10448,6 +10451,9 @@ Naar achteren
 
 Send to back
 Naar achteren
+
+Sending what changed  ·  {}
+Wat veranderd is wordt verzonden  ·  {}
 
 Sending your changes to Telegram
 Uw wijzigingen naar Telegram verzenden

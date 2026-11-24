@@ -8965,6 +8965,9 @@ Pool
 Port
 連接埠
 
+Port {} isn’t forwarded from {} any more
+連接埠 {} 不再從 {} 轉送
+
 Port:
 連接埠：
 
@@ -10419,6 +10422,9 @@ Send to Back
 
 Send to back
 置於底層
+
+Sending what changed  ·  {}
+正在傳送變更的內容  ·  {}
 
 Sending your changes to Telegram
 正在向 Telegram 傳送更改

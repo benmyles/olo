@@ -9049,6 +9049,9 @@ Pool
 Port
 Порт
 
+Port {} isn’t forwarded from {} any more
+Порт {} больше не перенаправляется с {}
+
 Port:
 Порт:
 
@@ -10506,6 +10509,9 @@ Send to Back
 
 Send to back
 На задний план
+
+Sending what changed  ·  {}
+Отправка изменений  ·  {}
 
 Sending your changes to Telegram
 Отправка изменений в Telegram

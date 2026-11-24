@@ -8993,6 +8993,9 @@ Pool
 Port
 पोर्ट
 
+Port {} isn’t forwarded from {} any more
+पोर्ट {} अब {} से फ़ॉरवर्ड नहीं होता
+
 Port:
 पोर्ट:
 
@@ -10448,6 +10451,9 @@ Send to Back
 
 Send to back
 सबसे पीछे भेजें
+
+Sending what changed  ·  {}
+जो बदला वह भेजा जा रहा है  ·  {}
 
 Sending your changes to Telegram
 बदलाव Telegram को भेजे जा रहे हैं

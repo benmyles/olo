@@ -1694,11 +1694,12 @@ something nobody here has is in "Blocked", with what it waits for.
     for 4 KiB appended to 200 MB (written in place there), 7.1 KiB for
     a byte changed in 50 MB, 380 B for a rename. And the helper's side,
     `olo-rex-link sync` (HACKING, "A helper on the host"), driven by the
-    app over SSH (`olo_rex_client::sync`). Next: a receiver that looks
-    only at the paths a sender names (the copy's root is the host's
-    home), and Agent Sessions' copy through it (its home paths rewritten
-    as it sends, the files' index kept, so only a transcript's new lines
-    are read, rewritten and sent).
+    app over SSH (`olo_rex_client::sync`). And Agent Sessions' copy
+    through it (HACKING, Rex, "The agents' sessions": a scoped receiver
+    looking at the copied files alone, what each was made into kept
+    here): a turn added to a 30 MB transcript sends its line, 566 bytes
+    (the archive sent the whole, 438 KB compressed, at each change).
+    Next, step (2): one file or folder down or up.
   - *Agent Sessions' copy sends only what changed in a file* (Ben,
     2026-11-24: "improve the agent sessions copy in rex so that it is
     smart enough to e.g. copy new lines only when a file has only had
@@ -1714,6 +1715,12 @@ something nobody here has is in "Blocked", with what it waits for.
     known by their content, so an edit in the middle costs that piece);
     both compressed; with the bytes on the wire for a session's few new
     lines, an unchanged one and a new one measured.
+    **Done** 2026-11-24 (HACKING, Rex, "The agents' sessions"): through
+    the engine where the host's helper keeps files in step; a session
+    a turn longer sends that turn (566 bytes for a line added to a 30 MB
+    transcript, written in place there; the archive sent 438 KB), an
+    unchanged one nothing, a new one compressed (30 MB in 219 KB). Tried
+    on the rig (`try.py sessions`, and `account`).
   - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
     has no heading with a light and an action, nor a mark on a row's
     icon): either the kit's grows them or the rows stay Rex's.
@@ -2809,6 +2816,86 @@ something nobody here has is in "Blocked", with what it waits for.
     segmented control keeps the keyboard there, so Space presses the
     segment instead of typing a space in the pane (`apps/rex/src/ui.rs`,
     the control by the session's panes).
+
+- **A host's folders in Tracker, Rex's own browser gone** (Ben,
+  2026-11-24: "i want the file browser / go to folder stuff in the rex
+  client to be redone. they should integrate natively with olo's
+  tracker so that it should be like terminal app where i can right
+  click on a rex terminal tab and choose \"Open in Tracker\" and it
+  opens a tracker window to that remote location. tracker should show
+  that it's a remote location too. it should be r+w. we probably don't
+  need Go to Folder in the rex client just the Open in Tracker and you
+  can go to a folder from there. it should get a canonical path with a
+  special scheme so that if rex is running then just from any tracker
+  window i could choose go to path and go to a remote one too").
+  - *An address for a host's file*, one scheme everywhere (`rex://HOST/
+    PATH`, HOST the name Rex knows it by): what Open in Tracker opens,
+    what Tracker's Go to Folder (⇧⌘G) takes, what a pane's path menu
+    and an agent's `olo open` say, kept in Tracker's history and its
+    window's title.
+  - *Tracker reads and writes it through Rex* (the app is the one
+    connection to a host: a socket of Rex's for Tracker, listing,
+    reading, writing, renaming, moving and taking away files there; the
+    engine for what is copied, `olo-rex-sync`, so a file dragged in or
+    out sends only what it must, with progress and Stop), never its own
+    SSH. Rex not running, or the host away: said in the window, as a
+    volume gone is.
+  - *Shown as a host's*: its window's tab and path bar marked as the
+    host's (its name, the host's light), what can't be done there (an
+    icon's thumbnail made here, Trash) left out or said.
+  - *In Rex*: a tab's and a pane's menu has Open in Tracker (the pane's
+    folder, as Terminal's has), and Rex's own Go to Folder and path
+    browser go; Quick Look of a host's file stays.
+  - Tried on the rig: opened from a pane, listed, a file read and
+    written, a folder made, renamed, moved and taken away, a path typed
+    in Go to Folder, Rex quit while it was open.
+
+- **Rex's Activity: the agents an agent starts, under it; any agent's
+  transcript as well as its terminal** (Ben, 2026-11-24: "in activity i
+  want to be able to also see subagents that have been launched by the
+  top-level agents, and they should be nested under those top agents in
+  the sidebar. it needs to support both when claude/codex/agy launch a
+  native subagent and also when they launch another agent through a
+  shell command (and that should still be nested). e.g. a common case
+  is where a claude agent will launch an agy agent in a shell or via
+  tmux … to collaborate with it. i want olo rex terminal to discover
+  all this automatically and show it so i can see and access all those
+  agents too. if it's not possible to show the interactive tui for one
+  b/c it doesn't have a tui or we can't connect to it without causing
+  problems for the parent agent then still show it but show it read
+  only like stream the logs for it when clicking on it and show them
+  nicely styled with search etc. too. and that reminds me, we also
+  should add the ability to view the log stream for any running agent
+  like this too. maybe make it an option by right clicking the agent
+  tab and you can toggle between log/transcript view and tui. then a
+  logs only subagent would be the same but tui would be unavailable").
+  - *Found by itself, on the host* (the helper there: `olo-rex-link`,
+    which can read `/proc` and watch files): an agent's own subagents
+    (Claude Code's Task agents, their transcripts beside the session's;
+    Codex's and agy's, from their own records: read each program's
+    files before building on them), and agents started through a shell
+    (`agy`, `codex`, `claude` run by an agent's tool, in its pty or in
+    tmux: a program of the agent's descendants, or a tmux pane whose
+    server was started from the agent's pane, `REX_BLOCK` in its
+    environment, the agent's own markers beside it). Told as they come
+    and go (process events, files appearing: inotify), never polled
+    while nothing changes; nothing looked for while Activity isn't
+    shown.
+  - *Nested in Activity*: each under the agent that started it, with
+    its own mark and state, a disclosure to fold them.
+  - *Its terminal where that is safe*: a tmux pane's agent attached
+    read only and without its size counting (`tmux attach -r -f
+    ignore-size`: the parent agent reads that screen, and must see it
+    as it was); none for one in another program's pty.
+  - *Its transcript otherwise, and for any agent* (the pane's tab's
+    menu, or the row's: Show Transcript / Show Terminal, the second
+    dimmed where there is none): the agent's own record (Claude Code's
+    and Codex's `.jsonl`, agy's) streamed as it grows, styled as a
+    conversation (who spoke, tool calls folded, code set as code), with
+    Find, read only.
+  - Tried on the rig with stand-ins: an agent that starts one in its pty
+    and one in tmux, both nested, the tmux one's terminal attached
+    without resizing it, the other's transcript streaming.
 
 - **Rex: a tab switched to opens with text selected** (Ben, 2026-11-24:
   "in rex terminal sometimes when switching between tabs a tab will

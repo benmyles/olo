@@ -28824,7 +28824,25 @@ to set them up").
   cache and read back: one in use keeps much of itself in its log),
   never rewritten, with its title (`annotations/UUID.pbtxt`) and what
   it made (`brain/UUID/`, less its own logs); Antigravity finds them
-  by itself as it starts.
+  by itself as it starts. *Through the engine* where the host's helper
+  keeps files in step (2026-11-24; Ben: "copy new lines only when a file
+  has only had appends like a log"; the helper there, built with it,
+  `link::syncs`): the same files, made the same way
+  (`sessions::Copied`, a source of the engine's: each at its place
+  there, a transcript up to its last whole line, its text said as the
+  host's, a database as a snapshot, Codex's names beside them), sent by
+  `olo_rex_client::sync::send_to` into the home, the helper looking at
+  those files alone (`--scoped`) and leaving one newer there
+  (`--keep-newer`); then Codex's names merged there
+  (`sessions::merge_codex`, `PUT`'s second half). What each was made
+  into is kept between copies here (`Copied::cache_for`, by both
+  homes), so one unchanged since is neither read nor rewritten, and the
+  helper keeps its index of what it has: a turn added to a transcript
+  of 30 MB reads that one here, finds it a prefix there, and sends the
+  new line, written in place on the host. How far it is says what has
+  been looked at, as the archive said it, then "Sending what changed"
+  and what has gone. Where the helper never answers (not there, built
+  without it) the archive goes, as before.
 - *The person's repositories* (`crates/rex/src/repos.rs`; Ben:
   "choosing what repos to clone and how to set them up"): a `Repo` is
   an address, a folder under the home (empty: `src/NAME`) and a

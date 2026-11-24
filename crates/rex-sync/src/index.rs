@@ -197,6 +197,59 @@ impl Index {
         Ok(index)
     }
 
+    /// What `root` has at `paths` alone (a scoped session's receiver: the
+    /// files a sender names, nothing else of a root that may be a whole
+    /// home looked at), each as `scan` would have it: a file unchanged
+    /// since `previous` not read again, one that isn't there or is reached
+    /// through a symlink left out (the receiver refuses to write there
+    /// anyway), one that can't be read in `unread`.
+    pub fn scan_paths(root: &Path, paths: &[String], previous: Option<&Index>) -> io::Result<Self> {
+        if !fs::symlink_metadata(root)?.is_dir() {
+            return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
+        }
+        let mut index = Self::default();
+        let mut chunk_buf = Vec::new();
+        'paths: for rel in paths {
+            if validate_rel_path(rel).is_err() {
+                continue;
+            }
+            let mut at = root.to_path_buf();
+            let parts: Vec<&str> = rel.split('/').collect();
+            for part in &parts[..parts.len() - 1] {
+                at.push(part);
+                match fs::symlink_metadata(&at) {
+                    Ok(m) if m.is_dir() => {}
+                    _ => continue 'paths,
+                }
+            }
+            at.push(parts[parts.len() - 1]);
+            let meta = match fs::symlink_metadata(&at) {
+                Ok(meta) if meta.is_file() => meta,
+                _ => continue,
+            };
+            let mtime_ns = meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec());
+            let ctime_ns = meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec());
+            let (ino, mode, size) = (meta.ino(), meta.permissions().mode() & 0o777, meta.len());
+            if let Some(prev) = previous.and_then(|idx| idx.entries.get(rel))
+                && prev.kind == EntryKind::File
+                && (prev.size, prev.mtime_ns, prev.ctime_ns, prev.ino) == (size, mtime_ns, ctime_ns, ino)
+            {
+                index.entries.insert(rel.clone(), Entry { mode, ..prev.clone() });
+                continue;
+            }
+            match fs::File::open(&at).and_then(|f| chunk::hash_and_chunk_in(&mut chunk_buf, f)) {
+                Ok(d) => {
+                    index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::File, size: d.size, mtime_ns, ctime_ns, ino, mode, hash: d.hash, chunks: d.chunks });
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    index.unread.insert(rel.clone(), e.to_string());
+                }
+            }
+        }
+        Ok(index)
+    }
+
     /// Deterministic 32-byte digest of the whole tree's synced state (paths,
     /// kinds, sizes, modes, and content hashes). Two indexes with the same
     /// `tree_hash` have identical trees, so a sync can finish in one round

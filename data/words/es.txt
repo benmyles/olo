@@ -8993,6 +8993,9 @@ Pool
 Port
 Puerto
 
+Port {} isn’t forwarded from {} any more
+El puerto {} ya no se reenvía desde {}
+
 Port:
 Puerto:
 
@@ -10448,6 +10451,9 @@ Enviar al fondo
 
 Send to back
 Enviar al fondo
+
+Sending what changed  ·  {}
+Enviando lo que cambió  ·  {}
 
 Sending your changes to Telegram
 Enviando tus cambios a Telegram

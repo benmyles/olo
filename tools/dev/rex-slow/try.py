@@ -647,7 +647,9 @@ echo "Installed {name} {version}"
         global ok
         ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
     try:
-        with Rig("shell", delay=0, far=True, env=["OLO_REX_READY_FROM=http://127.0.0.1:27881"]) as r:
+        # (far_delay 0: the far host's link in place, no slower, counting what passes: a second copy's bytes.)
+        # (RUST_LOG: the app's own lines in its log, where the copy says it went by the engine.)
+        with Rig("shell", delay=0, far=True, far_delay=0, env=["OLO_REX_READY_FROM=http://127.0.0.1:27881", "RUST_LOG=warn,olo_rex=info"]) as r:
             TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Agent settings", "Agent sessions", "Skill for agents", "Your repositories")
             def rows(under=False):
                 """Each item's row as the window says it: {title: what is said after it}; `under`: the line under it."""
@@ -698,6 +700,21 @@ echo "Installed {name} {version}"
             same_time = os.path.exists(f"{project_there}/s2.jsonl") and int(os.stat(f"{project_there}/s2.jsonl").st_mtime) == int(os.stat(f"{project_here}/s2.jsonl").st_mtime)
             check("copied: in the host's project folder, said as the host's, each with its time", copied and s1 and json.loads(s1)["cwd"] == f"{home}/src/app" and read(f".claude/projects/{name(home)}-src-app/s1/tool-results/t.txt") == "out" and same_time and not os.path.exists(f"{project_there}/s3.jsonl"),
                   {"row": rows().get("Agent sessions"), "s1": (s1 or "")[:120], "same time": same_time, "old one there": os.path.exists(f"{project_there}/s3.jsonl")})
+            # A turn added to the 30 MB transcript here: copied again, the host's helper keeping it in step, only the
+            # new line goes (written in place there: the same file), not the transcript again.
+            engine = "Rex: sessions copied by the engine" in open(f"/var/tmp/olo-dev/{r.name}/olo-rex.log", errors="replace").read()
+            inode = os.stat(f"{project_there}/s2.jsonl").st_ino
+            with open(f"{project_here}/s2.jsonl", "a") as f: f.write(json.dumps({"n": "one more", "text": "y" * 200}) + "\n")
+            r.invoke("host.sessions.days:7")
+            listed = r.wait(lambda: (lambda w: w if str(w.get("Agent sessions")).startswith("1 session") else None)(rows()), 30, every=0.5)
+            before = r.far.bytes()
+            r.invoke("host.ready:far:sessions")
+            again = r.wait(lambda: (lambda w: w if w.get("Agent sessions") == "As on this computer" else None)(rows()), 60, every=0.5)
+            after = r.far.bytes()
+            moved = (after["up"] - before["up"]) + (after["down"] - before["down"])
+            whole = os.path.exists(f"{project_there}/s2.jsonl") and open(f"{project_there}/s2.jsonl", "rb").read() == open(f"{project_here}/s2.jsonl", "rb").read()
+            check("a turn added: copied by the host's helper, the new line alone, in place", engine and listed and again and whole and os.stat(f"{project_there}/s2.jsonl").st_ino == inode and moved < 200_000,
+                  {"by the engine": engine, "listed": bool(listed), "copied": bool(again), "same there": whole, "bytes over the link": moved})
             r.invoke("host.sessions.days:0")
             older = r.wait(lambda: (lambda w: w if str(w.get("Agent sessions")).startswith("1 session") else None)(rows()), 30, every=0.5)
             check("all of them: the one used forty days ago to copy", older, rows().get("Agent sessions"))
@@ -723,6 +740,59 @@ echo "Installed {name} {version}"
         with contextlib.suppress(FileNotFoundError): os.remove(f"{app_home}/.gitconfig")
         shutil.rmtree(f"{app_home}/.claude", ignore_errors=True); shutil.rmtree(f"{home}/.claude/projects", ignore_errors=True)
         shutil.rmtree(origin, ignore_errors=True); shutil.rmtree(f"{home}/src/origin", ignore_errors=True)
+    print("PASS" if ok else "FAIL")
+elif what == "sessions":
+    # The agents' sessions copied to the far host by the host's helper (the engine: olo-rex-link sync), then a turn
+    # added to a transcript of 30 MB here and copied again: only the new line goes, written in place there. (The
+    # account case copies them among all the account's things; this is the copy alone, with what it says.)
+    import shutil
+    home, app_home = f"{D}/home", f"{D}/home-app"
+    name = lambda path: "".join(c if c.isalnum() else "-" for c in path)
+    project_here, project_there = f"{app_home}/.claude/projects/{name(app_home)}-src-app", f"{home}/.claude/projects/{name(home)}-src-app"
+    shutil.rmtree(f"{app_home}/.claude/projects", ignore_errors=True); shutil.rmtree(f"{home}/.claude/projects", ignore_errors=True)
+    shutil.rmtree(f"{home}/.cache/olo/rex-sync", ignore_errors=True); shutil.rmtree(f"{app_home}/.cache/olo-rex", ignore_errors=True)
+    os.makedirs(f"{project_here}/s1/tool-results")
+    open(f"{project_here}/s1.jsonl", "w").write(json.dumps({"cwd": f"{app_home}/src/app", "sessionId": "s1"}) + "\n")
+    open(f"{project_here}/s1/tool-results/t.txt", "w").write("out")
+    open(f"{project_here}/s2.jsonl", "w").write("".join(json.dumps({"n": i, "text": "x" * 200}) + "\n" for i in range(140_000)))
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:300], flush=True)
+    try:
+        # (RUST_LOG: the app's own lines in its log, where the copy says how it went; `tsession run` gives warn.)
+        with Rig("shell", delay=0, far=True, far_delay=0, env=["RUST_LOG=warn,olo_rex=info,olo_rex_client=info"]) as r:
+            def rows(under=False):
+                said = [str(n.get("name") or "") for n in r.nodes("Account") if n.get("role") in ("Label", "Text", "StaticText")]
+                if "Agent sessions" not in said: return {}
+                at = said.index("Agent sessions")
+                return {"row": said[at + 2] if at + 2 < len(said) else "", "under": said[at + 3] if at + 3 < len(said) else ""}
+            r.invoke("host.account:far")
+            listed = r.wait(lambda: (lambda w: w if str(w.get("row")).startswith("2 sessions") else None)(rows()), 60, every=0.5)
+            check("two sessions to copy", listed, rows())
+            before = r.far.bytes()
+            r.invoke("host.ready:far:sessions")
+            copied = r.wait(lambda: (lambda w: w if w.get("row") == "As on this computer" else None)(rows()), 90, every=0.5)
+            after = r.far.bytes()
+            there = f"{project_there}/s2.jsonl"
+            whole = os.path.exists(there) and open(there, "rb").read() == open(f"{project_here}/s2.jsonl", "rb").read()
+            s1 = open(f"{project_there}/s1.jsonl").read() if os.path.exists(f"{project_there}/s1.jsonl") else ""
+            check("copied by the helper: each in its place, said as the host's", copied and whole and f"{home}/src/app" in s1,
+                  {"rows": rows(), "s2 there": whole, "s1": s1[:100], "bytes": (after["up"] - before["up"], after["down"] - before["down"])})
+            inode = os.stat(there).st_ino if os.path.exists(there) else None
+            with open(f"{project_here}/s2.jsonl", "a") as f: f.write(json.dumps({"n": "one more", "text": "y" * 200}) + "\n")
+            r.invoke("host.sessions.days:7")
+            r.wait(lambda: (lambda w: w if str(w.get("row")).startswith("1 session") else None)(rows()), 30, every=0.5)
+            before = r.far.bytes()
+            r.invoke("host.ready:far:sessions")
+            again = r.wait(lambda: (lambda w: w if w.get("row") == "As on this computer" else None)(rows()), 60, every=0.5)
+            after = r.far.bytes()
+            moved = (after["up"] - before["up"]) + (after["down"] - before["down"])
+            whole = os.path.exists(there) and open(there, "rb").read() == open(f"{project_here}/s2.jsonl", "rb").read()
+            check("a turn added: the new line alone, in place there", again and whole and os.stat(there).st_ino == inode and moved < 200_000,
+                  {"rows": rows(), "same there": whole, "bytes over the link": moved, "same file": os.path.exists(there) and os.stat(there).st_ino == inode})
+    finally:
+        shutil.rmtree(f"{app_home}/.claude/projects", ignore_errors=True); shutil.rmtree(f"{home}/.claude/projects", ignore_errors=True)
     print("PASS" if ok else "FAIL")
 elif what == "disconnect":
     # A host let go of and connected again (Hosts and Ports' Disconnect, by its command): its SSH connection is

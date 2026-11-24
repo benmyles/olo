@@ -21,8 +21,10 @@ use crate::ssh::{SshAskpass, SshSessionPool, SshTarget};
 use crate::transport::AsyncReadWrite;
 
 /// A folder on the host, and how what goes into it is kept: its path
-/// (under the home unless whole), what is taken away (`delete`: a mirror),
-/// what is left (`keep_newer`), what is passed over.
+/// (under the home, `$HOME`, unless whole), what is taken away (`delete`: a mirror),
+/// what is left (`keep_newer`), what is passed over; `scoped`: only the
+/// files sent are looked at there (the home itself, say), nothing taken
+/// away.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HostFolder {
     pub path: String,
@@ -30,6 +32,7 @@ pub struct HostFolder {
     pub keep_newer: bool,
     pub exclude: Vec<String>,
     pub shallow: bool,
+    pub scoped: bool,
 }
 
 impl HostFolder {
@@ -45,6 +48,9 @@ impl HostFolder {
         if self.shallow {
             c.push_str(" --shallow");
         }
+        if self.scoped {
+            c.push_str(" --scoped");
+        }
         for p in &self.exclude {
             c.push_str(" --exclude ");
             c.push_str(&shell_word(p));
@@ -59,6 +65,7 @@ impl HostFolder {
             keep_newer: self.keep_newer,
             filter: olo_rex_sync::index::Filter { recursive: !self.shallow, exclude: self.exclude.clone(), include: Vec::new() },
             cache_path: None,
+            scoped: self.scoped,
         }
     }
 }
@@ -165,7 +172,7 @@ mod tests {
     /// host's shell, its options as the folder says.
     #[test]
     fn the_helpers_command_is_the_folders() {
-        let f = HostFolder { path: "src/my app".into(), delete: true, keep_newer: true, exclude: vec!["target".into(), "*.o".into()], shallow: false };
+        let f = HostFolder { path: "src/my app".into(), delete: true, keep_newer: true, exclude: vec!["target".into(), "*.o".into()], shallow: false, scoped: false };
         let c = f.command("abc", "receive");
         assert!(c.starts_with("\"$HOME\"/.local/share/olo/rex-link/olo-rex-link-abc-$(uname -m) sync receive "), "{c}");
         assert!(c.ends_with(" --delete --keep-newer --exclude target --exclude '*.o'"), "{c}");
