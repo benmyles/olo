@@ -247,6 +247,87 @@ enum Effect {
     /// `Some("release")`; None: the session's own choice, the one there
     /// is) or nothing (an alert that only says: OK).
     Upgrade { message: String, buttons: Vec<String>, choices: Vec<Option<Option<&'static str>>> },
+    /// An application chosen from the menu whose program is on an agent
+    /// screen (`on_a_screen`): its windows there, `ids`.
+    OnScreen { what: Box<Chosen>, app: String, screen: String, label: String, ids: Vec<u64> },
+}
+
+/// An application chosen from Deskbar's menu: an installed one, or one of
+/// Olo's own (its program's command).
+#[derive(Clone)]
+enum Chosen {
+    Entry(desktop_entry::DesktopEntry),
+    Ours { bin: String, name: String },
+}
+
+impl Chosen {
+    fn name(&self) -> String {
+        match self {
+            Chosen::Entry(e) => e.name.clone(),
+            Chosen::Ours { name, .. } => name.clone(),
+        }
+    }
+
+    /// Its icon among Olo's, for an alert about it (one of Olo's own:
+    /// its own; another: the system's).
+    fn icon(&self) -> &'static str {
+        match self {
+            Chosen::Ours { bin, .. } => OUR_APPS.iter().find(|(b, _, _)| bin.split_whitespace().next() == Some(*b)).map_or("system", |(_, _, icon)| *icon),
+            Chosen::Entry(_) => "system",
+        }
+    }
+
+    /// Whether a window of app id `app` is its.
+    fn is(&self, app: &str) -> bool {
+        match self {
+            Chosen::Entry(e) => desktop_entry::find_among(std::slice::from_ref(e), app).is_some(),
+            Chosen::Ours { bin, .. } => bin.split_whitespace().next().and_then(|b| b.strip_prefix("olo-")).is_some_and(|b| app == format!("olo.{b}")),
+        }
+    }
+
+    /// Started as the menu starts it.
+    fn launch(&self) {
+        match self {
+            Chosen::Entry(e) => {
+                if let Err(err) = e.launch() {
+                    tracing::warn!("launch {}: {err}", e.id);
+                }
+            }
+            Chosen::Ours { bin, .. } => spawn(bin),
+        }
+    }
+
+    /// Another window of it, its program running (`app`: its windows').
+    fn another(&self, app: &str) {
+        let r = match self {
+            Chosen::Entry(e) => another_window(e, app),
+            Chosen::Ours { bin, .. } => {
+                if new_window_app(app) {
+                    let app = app.to_owned();
+                    std::thread::spawn(move || olo_kit::instance::forward(&app, &["--new-window".to_owned()]));
+                } else {
+                    spawn(bin);
+                }
+                Ok(())
+            }
+        };
+        if let Err(err) = r {
+            tracing::warn!("another window of {app}: {err}");
+        }
+    }
+}
+
+/// Before an application chosen from the menu with no window on the
+/// person's displays starts: whether its program is on an agent screen,
+/// taken there, where every window it opens opens, whoever asks (until a
+/// program can be on two compositors at once: TODO, "the other half of
+/// the rule"). Then the person is asked (`Effect::OnScreen`), else it
+/// starts. Off the UI thread: each screen's app_server is asked.
+fn launch_unless_on_a_screen(what: Chosen) {
+    let _ = std::thread::Builder::new().name("on-a-screen".into()).spawn(move || match on_a_screen(&what) {
+        Some((screen, app, ids)) => tell(Msg::Effect(Effect::OnScreen { what: Box::new(what), app, screen: screen.name, label: screen.label, ids })),
+        None => what.launch(),
+    });
 }
 
 /// Tells the app (its looper, from any thread).
@@ -620,6 +701,17 @@ impl Deskbar {
             self.rescan();
         }
         found
+    }
+
+    /// Whether `command` is one of the menu's applications or Preferences
+    /// panels (`BarView::command`).
+    fn offers(&self, command: &str) -> bool {
+        match command.split_once(':') {
+            Some(("run", bin)) => self.installed.ours.iter().any(|b| *b == bin),
+            Some(("desktop", id)) => self.installed.entries.iter().any(|e| e.id == id),
+            Some(("pref", arg)) => self.installed.preferences && PREFERENCE_PANELS.iter().any(|(a, _, _)| *a == arg),
+            _ => false,
+        }
     }
 
     /// Look for what is installed again, on a worker.
@@ -1134,6 +1226,15 @@ impl Deskbar {
         if team.windows.first().is_some_and(|w| new_window_app(&w.app_id)) {
             m = m.separator().item("New Window", "new-window");
         }
+        // And one of Olo's own, a copy of its own beside it (what choosing
+        // it from the menu with ⌘ held does, which nothing said was there).
+        // Not Chrome's: one program to a profile.
+        if team.windows.first().is_some_and(|w| w.app_id.starts_with("olo.")) {
+            if !team.windows.first().is_some_and(|w| new_window_app(&w.app_id)) {
+                m = m.separator();
+            }
+            m = m.item("New Instance", "new-instance");
+        }
         let app = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
         // In the order every menu of Olo's has (HACKING, "Menus in
         // groups"): what's done to them where they are, where they go
@@ -1339,7 +1440,16 @@ impl Deskbar {
                     tracing::warn!("launch {bin} again: {e}");
                 }
             }
-            Some(("run", bin)) => spawn(bin),
+            // (Not on the person's displays: on an agent screen, maybe.)
+            Some(("run", bin)) => {
+                let app = bin.split_whitespace().next().and_then(|b| b.strip_prefix("olo-")).map(|b| format!("olo.{b}")).unwrap_or_default();
+                if app.is_empty() || self.windows.iter().any(|w| w.app_id == app) {
+                    spawn(bin);
+                } else {
+                    let name = OUR_APPS.iter().find(|(b, _, _)| bin.split_whitespace().next() == Some(*b)).map_or_else(|| app.clone(), |(_, n, _)| (*n).to_owned());
+                    launch_unless_on_a_screen(Chosen::Ours { bin: bin.to_owned(), name });
+                }
+            }
             Some(("pref", target)) => olo_kit::app_menu::open_settings(target),
             Some(("portal", _)) => {
                 if let Some(p) = &self.status.portal {
@@ -1506,7 +1616,8 @@ impl Deskbar {
                     } else if let Some(app) = running {
                         another_window(&e, &app)
                     } else {
-                        e.launch()
+                        launch_unless_on_a_screen(Chosen::Entry(e));
+                        Ok(())
                     };
                 }
             }
@@ -1709,6 +1820,15 @@ impl Deskbar {
         if cmd == "new-window" {
             if let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
                 std::thread::spawn(move || olo_kit::instance::forward(&app, &["--new-window".to_owned()]));
+            }
+            return;
+        }
+        if cmd == "new-instance" {
+            if let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone())
+                && let Some(bin) = app.strip_prefix("olo.").map(|b| format!("olo-{b}"))
+                && let Err(e) = olo_xdg::spawn_detached_app_with(&bin, &app, &[(olo_xdg::NEW_INSTANCE, "1")])
+            {
+                tracing::warn!("launch {bin} again: {e}");
             }
             return;
         }
@@ -2017,6 +2137,24 @@ fn another_window(entry: &olo_xdg::desktop_entry::DesktopEntry, app: &str) -> st
         return olo_xdg::spawn_detached_app_with(&format!("{cmd} --new-window"), &entry.id, &[]);
     }
     entry.launch()
+}
+
+/// The agent screen where application `entry` has windows (its program
+/// taken there), the app id they have, and their ids: each screen's
+/// app_server asked, a second at most each.
+fn on_a_screen(what: &Chosen) -> Option<(olo_kit::moving::RunningScreen, String, Vec<u64>)> {
+    for s in olo_kit::moving::screens() {
+        let Ok(c) = olo_protocol::Client::connect_to(&s.olo_socket) else { continue };
+        let mut c = c.answers_within(std::time::Duration::from_secs(1));
+        let Ok(olo_protocol::Reply::Windows { windows }) = c.request(&olo_protocol::Request::ListWindows) else { continue };
+        let theirs: Vec<&olo_protocol::WindowInfo> = windows.iter().filter(|w| what.is(&w.app_id)).collect();
+        if let Some(first) = theirs.first() {
+            let app = first.app_id.clone();
+            let ids = theirs.iter().map(|w| w.id).collect();
+            return Some((s, app, ids));
+        }
+    }
+    None
 }
 
 fn new_window_app(app_id: &str) -> bool {
@@ -2698,6 +2836,38 @@ impl BarView {
     fn ask(&mut self, effect: Effect, cx: &mut Cx<Self>) {
         match effect {
             // Ask before restarting or shutting down, as BeOS did.
+            Effect::OnScreen { what, app, screen, label, ids } => {
+                if let Some(w) = self.confirm.take() {
+                    w.close(cx);
+                }
+                // (What each choice does, the agent's windows going too:
+                // Opus's look, 2026-11-24. Deskbar's alert, not the app's.)
+                let name = what.name();
+                let message = olo_kit::tr!(
+                    "“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.",
+                    name,
+                    label
+                );
+                self.confirm = olo_kit::widgets::open_alert(cx, "Deskbar", what.icon(), &message, &["Cancel", "Open There", "Bring Here"], move |choice, _| {
+                    let (what, app, screen, ids) = (what.clone(), app.clone(), screen.clone(), ids.clone());
+                    match choice {
+                        Some(1) => what.launch(),
+                        // Its windows given back to the person's display
+                        // (`olo-screen give`), then another window here.
+                        Some(2) => {
+                            let _ = std::thread::Builder::new().name("bring-here".into()).spawn(move || {
+                                let mut args = vec!["give".to_owned(), screen.clone()];
+                                args.extend(ids.iter().map(u64::to_string));
+                                match std::process::Command::new("olo-screen").args(&args).stdout(std::process::Stdio::null()).status() {
+                                    Ok(s) if s.success() => what.another(&app),
+                                    other => tracing::warn!("couldn't bring {app} from screen {screen}: {other:?}"),
+                                }
+                            });
+                        }
+                        _ => {}
+                    }
+                });
+            }
             Effect::ConfirmPower(action) => {
                 if let Some(w) = self.confirm.take() {
                     w.close(cx);
@@ -2917,6 +3087,20 @@ fn open_menu(cx: &mut WindowCx, view: &ViewRef<BarView>, key: &str, r: Bounds<Pi
 
 impl View for BarView {
     type Message = BarMsg;
+
+    /// A command given through the app's socket (an agent's `invoke`, the
+    /// command palette): one of its menu's applications or Preferences
+    /// panels, run as choosing it from the menu runs it (an application
+    /// running opens another window; one whose program is on an agent
+    /// screen asks first). Only what its menu offers (Agent-first: what
+    /// the person can choose from Deskbar, an agent can ask it for).
+    fn command(&mut self, command: &str, _: &mut Cx<Self>) -> bool {
+        if !self.model.read().offers(command) {
+            return false;
+        }
+        self.model.update(|d| d.run_command(command));
+        true
+    }
 
     fn message(&mut self, msg: BarMsg, cx: &mut Cx<Self>) {
         match msg {

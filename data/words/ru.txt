@@ -1762,6 +1762,9 @@ Bright
 Brightness
 Яркость
 
+Bring Here
+Перенести сюда
+
 Bring It Into Olo…
 Перенести в Olo…
 
@@ -7150,6 +7153,9 @@ New Group…
 New Incognito Window
 Новое окно в режиме инкогнито
 
+New Instance
+Новый экземпляр
+
 New Item
 Новая запись
 
@@ -8340,6 +8346,9 @@ Open Sign-In Page
 
 Open Telegram
 Открыть Telegram
+
+Open There
+Открыть там
 
 Open Weather to set up its data provider
 Откройте Weather, чтобы настроить поставщика данных
@@ -16416,6 +16425,9 @@ other: В этом окне работают «{}» и ещё {n} програм
 
 “{}” is imported.
 Импортировано: «{}».
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+«{}» находится на экране агента «{}».\n\nОкно, которое оно откроет сейчас, откроется там. «Перенести сюда» переносит все его окна на ваш экран, в том числе те, с которыми работает агент.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 «{}» вне зоны действия или Bluetooth выключен. Подключение повторится автоматически.

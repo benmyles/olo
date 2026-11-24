@@ -1748,6 +1748,9 @@ Brilhante
 Brightness
 Brilho
 
+Bring Here
+Trazer para cá
+
 Bring It Into Olo…
 Importar para o Olo…
 
@@ -7098,6 +7101,9 @@ Novo grupo…
 New Incognito Window
 Nova janela anônima
 
+New Instance
+Nova instância
+
 New Item
 Novo item
 
@@ -8288,6 +8294,9 @@ Abrir página de login
 
 Open Telegram
 Abrir Telegram
+
+Open There
+Abrir lá
 
 Open Weather to set up its data provider
 Abra o Weather para configurar o provedor de dados
@@ -16190,6 +16199,9 @@ Não foi possível gravar “{}”: {}
 
 “{}” is imported.
 “{}” foi importado.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+“{}” está na tela de agente “{}”.\n\nUma janela que ele abrir agora abre lá. Trazer para cá move todas as janelas dele para a sua tela, inclusive as que o agente está usando.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 “{}” está fora de alcance ou com o Bluetooth desligado. O Olo tentará novamente.

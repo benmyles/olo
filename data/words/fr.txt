@@ -1748,6 +1748,9 @@ Lumineux
 Brightness
 Luminosité
 
+Bring Here
+Ramener ici
+
 Bring It Into Olo…
 L’intégrer à Olo…
 
@@ -7098,6 +7101,9 @@ Nouveau groupe…
 New Incognito Window
 Nouvelle fenêtre de navigation privée
 
+New Instance
+Nouvelle instance
+
 New Item
 Nouvel élément
 
@@ -8288,6 +8294,9 @@ Ouvrir la page de connexion
 
 Open Telegram
 Ouvrir Telegram
+
+Open There
+Ouvrir là-bas
 
 Open Weather to set up its data provider
 Ouvrez Weather pour configurer son fournisseur de données
@@ -16190,6 +16199,9 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 
 “{}” is imported.
 « {} » est importé.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+« {} » est sur l’écran d’agent « {} ».\n\nUne fenêtre qu’il ouvre maintenant s’ouvre là-bas. Ramener ici déplace toutes ses fenêtres sur votre écran, y compris celles que l’agent utilise.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 « {} » est hors de portée ou son Bluetooth est éteint. Nouvel essai automatique.

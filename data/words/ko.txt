@@ -1741,6 +1741,9 @@ Bright
 Brightness
 밝기
 
+Bring Here
+여기로 가져오기
+
 Bring It Into Olo…
 Olo로 가져오기…
 
@@ -7072,6 +7075,9 @@ New Group…
 New Incognito Window
 새 시크릿 창
 
+New Instance
+새 인스턴스
+
 New Item
 새 항목
 
@@ -8262,6 +8268,9 @@ Open Sign-In Page
 
 Open Telegram
 Telegram 열기
+
+Open There
+그곳에서 열기
 
 Open Weather to set up its data provider
 Weather에서 데이터 제공자 설정
@@ -16077,6 +16086,9 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 “{}” is imported.
 ‘{}’ 항목을 가져왔습니다.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+‘{}’은(는) 에이전트 화면 ‘{}’에 있습니다.\n\n지금 여는 창은 그곳에 열립니다. ‘여기로 가져오기’는 에이전트가 쓰는 창까지 모든 창을 내 화면으로 옮깁니다.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 ‘{}’ 기기가 범위 밖에 있거나 Bluetooth가 꺼져 있습니다. 자동으로 다시 시도합니다.

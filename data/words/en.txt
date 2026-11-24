@@ -578,6 +578,7 @@ Bottom two thirds
 Branch {} is checked out in {} already.
 Bright
 Brightness
+Bring Here
 Bring It Into Olo…
 Brown
 Browse Folders…
@@ -2355,6 +2356,7 @@ New Floating Terminal
 New Folder
 New Group…
 New Incognito Window
+New Instance
 New Item
 New Key
 New List
@@ -2752,6 +2754,7 @@ Open Saved Group
 Open Screenshot
 Open Sign-In Page
 Open Telegram
+Open There
 Open Weather to set up its data provider
 Open Website
 Open With
@@ -5357,6 +5360,7 @@ your own picture
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
 “{}” is disconnected.
 “{}” is imported.
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 “{}” is out of reach. It’s tried again by itself.
 “{}” is protected by a password.

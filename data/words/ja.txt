@@ -1741,6 +1741,9 @@ Bright
 Brightness
 明るさ
 
+Bring Here
+ここに持ってくる
+
 Bring It Into Olo…
 Oloに取り込む…
 
@@ -7072,6 +7075,9 @@ New Group…
 New Incognito Window
 新しいシークレットウィンドウ
 
+New Instance
+新しいインスタンス
+
 New Item
 新規項目
 
@@ -8262,6 +8268,9 @@ Open Sign-In Page
 
 Open Telegram
 Telegramを開く
+
+Open There
+そこで開く
 
 Open Weather to set up its data provider
 Weatherを開いてデータ提供元を設定
@@ -16077,6 +16086,9 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 “{}” is imported.
 「{}」をインポートしました。
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+「{}」はエージェント画面「{}」にあります。\n\n今開くウインドウはそこに開きます。「ここに持ってくる」は、エージェントが使っているものも含めて、すべてのウインドウをあなたの画面に移します。
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 「{}」は通信範囲外か、Bluetoothがオフです。自動的に再接続を試みます。

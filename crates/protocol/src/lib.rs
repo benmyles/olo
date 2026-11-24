@@ -3451,6 +3451,14 @@ impl Client {
         Ok(Client { reader: BufReader::new(stream.try_clone()?), writer: stream })
     }
 
+    /// Its answers waited for `limit` at most (one app_server asked among
+    /// several, an agent screen's that may be stuck: the asking goes on).
+    pub fn answers_within(self, limit: std::time::Duration) -> Self {
+        let _ = self.writer.set_read_timeout(Some(limit));
+        let _ = self.writer.set_write_timeout(Some(limit));
+        self
+    }
+
     pub fn request(&mut self, req: &Request) -> Result<Reply, ClientError> {
         self.send(req)?;
         loop {

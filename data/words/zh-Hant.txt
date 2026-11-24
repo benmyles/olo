@@ -1741,6 +1741,9 @@ Bright
 Brightness
 亮度
 
+Bring Here
+帶到這裡
+
 Bring It Into Olo…
 匯入 Olo…
 
@@ -7072,6 +7075,9 @@ New Group…
 New Incognito Window
 新增無痕視窗
 
+New Instance
+新執行個體
+
 New Item
 新增項目
 
@@ -8262,6 +8268,9 @@ Open Sign-In Page
 
 Open Telegram
 開啟 Telegram
+
+Open There
+在那裡開啟
 
 Open Weather to set up its data provider
 開啟 Weather 設定資料提供方
@@ -16077,6 +16086,9 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 
 “{}” is imported.
 已匯入「{}」。
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+「{}」在代理螢幕「{}」上。\n\n它現在開啟的視窗會開在那裡。「帶到這裡」會把它所有的視窗移到你的螢幕上，包括代理正在用的那些。
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 「{}」不在通訊範圍內或藍牙已關閉。稍後會自動再試一次。

@@ -23145,7 +23145,27 @@ Wayland doesn't say what's held: it asks app_server at the click
 (`Request::HeldModifiers`, the seat's keys as pressed). Tried headless:
 ⌘-clicking Terminal's row, and ⌘-choosing Terminal in Applications,
 each started a second olo-terminal with its own window; plain, a
-window in the one running. Bars
+window in the one running. Its row's menu says so too: New Instance,
+under New Window, for one of Olo's own (not Chrome's: one program to a
+profile). An application chosen in the menu with no window on the
+person's displays is first looked for on the agent screens
+(`launch_unless_on_a_screen`, off the UI thread: each screen's
+app_server asked for its windows, a second at most each,
+`Client::answers_within`): its program taken to one opens every window
+there, whoever asks, until a program can be on two compositors at once
+(TODO). Found there, Deskbar says so in an alert of its own, "“Tracker”
+is on the agent screen “Research”.", with what each choice does (a
+window opened now opens there; Bring Here moves all of its windows to
+the person's screen, the agent's too): Cancel, Open There and Bring
+Here (`olo-screen give`, then another window here); else it starts as
+before. And its menu's applications and Preferences panels can be
+asked for through its socket, as any app's menu commands are
+(`{"invoke":"run:olo-tracker"}`, `desktop:ID`, `pref:PANEL`;
+`BarView::command`, only what its menu offers): an agent opens an
+application as the person does. Tried headless: Tracker run on an agent
+screen inside a test desktop, then asked of that desktop's Deskbar: the
+question; Bring Here, Tracker's window back and a second beside it,
+none left on the screen. Bars
 for displays that come are opened once the model's update is over (a
 window draws as it opens, and its bar reads the model), before those
 going are closed, so the app always has one. Approve Without Asking's

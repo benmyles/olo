@@ -1748,6 +1748,9 @@ Brillante
 Brightness
 Brillo
 
+Bring Here
+Traer aquí
+
 Bring It Into Olo…
 Traerla a Olo…
 
@@ -7098,6 +7101,9 @@ Nuevo grupo…
 New Incognito Window
 Nueva ventana de incógnito
 
+New Instance
+Nueva instancia
+
 New Item
 Nuevo elemento
 
@@ -8288,6 +8294,9 @@ Abrir la página de inicio de sesión
 
 Open Telegram
 Abrir Telegram
+
+Open There
+Abrir allí
 
 Open Weather to set up its data provider
 Abre Weather para configurar su proveedor de datos
@@ -16190,6 +16199,9 @@ No se pudo escribir «{}»: {}
 
 “{}” is imported.
 «{}» importado.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+«{}» está en la pantalla de agente «{}».\n\nUna ventana que abra ahora se abre allí. Traer aquí mueve todas sus ventanas a tu pantalla, también las que usa el agente.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 «{}» está fuera de alcance o tiene el Bluetooth apagado. Se vuelve a intentar solo.

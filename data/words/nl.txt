@@ -1748,6 +1748,9 @@ Helder
 Brightness
 Helderheid
 
+Bring Here
+Hierheen halen
+
 Bring It Into Olo…
 In Olo importeren…
 
@@ -7098,6 +7101,9 @@ Nieuwe groep…
 New Incognito Window
 Nieuw incognitovenster
 
+New Instance
+Nieuwe instantie
+
 New Item
 Nieuw onderdeel
 
@@ -8288,6 +8294,9 @@ Aanmeldpagina openen
 
 Open Telegram
 Telegram openen
+
+Open There
+Daar openen
 
 Open Weather to set up its data provider
 Open Weather om de gegevensaanbieder in te stellen
@@ -16190,6 +16199,9 @@ Verbinding met ‘{}’ is verbroken.
 
 “{}” is imported.
 ‘{}’ is geïmporteerd.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+‘{}’ staat op het agentscherm ‘{}’.\n\nEen venster dat het nu opent, opent daar. Hierheen halen zet al zijn vensters op je scherm, ook die de agent gebruikt.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 ‘{}’ is buiten bereik of Bluetooth staat uit. Olo probeert het automatisch opnieuw.

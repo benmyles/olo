@@ -1748,6 +1748,9 @@ Luminoso
 Brightness
 Luminosità
 
+Bring Here
+Porta qui
+
 Bring It Into Olo…
 Importa in Olo…
 
@@ -7098,6 +7101,9 @@ Nuovo gruppo…
 New Incognito Window
 Nuova finestra di navigazione in incognito
 
+New Instance
+Nuova istanza
+
 New Item
 Nuovo elemento
 
@@ -8288,6 +8294,9 @@ Apri pagina di accesso
 
 Open Telegram
 Apri Telegram
+
+Open There
+Apri lì
 
 Open Weather to set up its data provider
 Apri Weather per configurare il fornitore dei dati
@@ -16190,6 +16199,9 @@ Impossibile scrivere “{}”: {}
 
 “{}” is imported.
 “{}” importato.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+“{}” è sullo schermo agente “{}”.\n\nUna finestra che apre ora si apre lì. Porta qui sposta tutte le sue finestre sul tuo schermo, anche quelle che usa l’agente.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 “{}” è fuori portata o ha Bluetooth disattivato. Olo riproverà automaticamente.

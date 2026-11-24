@@ -1748,6 +1748,9 @@ Bright
 Brightness
 चमक
 
+Bring Here
+यहाँ लाएँ
+
 Bring It Into Olo…
 Olo में लाएँ…
 
@@ -7098,6 +7101,9 @@ New Group…
 New Incognito Window
 नई गुप्त विंडो
 
+New Instance
+नया इंस्टेंस
+
 New Item
 नया आइटम
 
@@ -8288,6 +8294,9 @@ Open Sign-In Page
 
 Open Telegram
 Telegram खोलें
+
+Open There
+वहीं खोलें
 
 Open Weather to set up its data provider
 डेटा प्रदाता सेट करने के लिए Weather खोलें
@@ -16190,6 +16199,9 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 “{}” is imported.
 “{}” आयात हो गया।
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+“{}” एजेंट स्क्रीन “{}” पर है।\n\nअब जो विंडो यह खोलेगा, वह वहीं खुलेगी। “यहाँ लाएँ” इसकी सारी विंडो आपकी स्क्रीन पर ले आता है, एजेंट जिनका इस्तेमाल कर रहा है वे भी।
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 “{}” पहुँच से बाहर है या उसका Bluetooth बंद है। फिर अपने आप कोशिश होगी।

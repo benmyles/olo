@@ -1999,6 +1999,16 @@ something nobody here has is in "Blocked", with what it waits for.
   NAME: its windows open there", with Bring It Here). And "New
   Instance" in the row's menu for what ⌘-click does (a second process
   of Olo's own apps), since nothing says it's there; not for Chrome.
+  **Done** 2026-11-24 (HACKING, Deskbar: "Its row's menu says so too"):
+  the stopgap (Deskbar says “NAME” is on the agent screen “SCREEN”, with
+  Bring Here and Open There), New Instance, and Deskbar's menu
+  applications asked for through its socket. Left: the proxy's half
+  above. From Opus's look at it, older: an alert's default ring "nearly
+  disappears" in dark ("draw the default ring … in the light-edge
+  (highlight) role in dark, so it is the highest-contrast edge in the
+  button row in both looks"); and a row menu's windows of one title
+  can't be told apart ("Home" and "✓ Home": "add the workspace or
+  screen, or a number").
 
 - **Back and Forward in Passwords, and in every app** (Ben,
   2026-11-20: "navigate forward and back should work in passwords app

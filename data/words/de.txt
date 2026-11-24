@@ -1748,6 +1748,9 @@ Hell
 Brightness
 Helligkeit
 
+Bring Here
+Hierherholen
+
 Bring It Into Olo…
 In Olo übernehmen …
 
@@ -7098,6 +7101,9 @@ Neue Gruppe …
 New Incognito Window
 Neues Inkognitofenster
 
+New Instance
+Neue Instanz
+
 New Item
 Neues Objekt
 
@@ -8288,6 +8294,9 @@ Anmeldeseite öffnen
 
 Open Telegram
 Telegram öffnen
+
+Open There
+Dort öffnen
 
 Open Weather to set up its data provider
 Öffnen Sie Weather, um den Datenanbieter einzurichten
@@ -16190,6 +16199,9 @@ other: „{}“ und {n} weitere Programme laufen noch in diesem Fenster. Trotzde
 
 “{}” is imported.
 „{}“ ist importiert.
+
+“{}” is on the agent screen “{}”.\n\nA window it opens now opens there. Bring Here moves all of its windows to your screen, the ones the agent is using too.
+„{}“ ist auf dem Agenten-Bildschirm „{}“.\n\nEin Fenster, das es jetzt öffnet, öffnet sich dort. „Hierherholen“ holt alle seine Fenster auf Ihren Bildschirm, auch die, die der Agent benutzt.
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 „{}“ ist außer Reichweite, oder sein Bluetooth ist aus. Es wird von selbst erneut versucht.
