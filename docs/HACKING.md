@@ -3599,6 +3599,30 @@ it.
   draws a quiet box of the same shape for what stands in its place
   until it comes, so nothing moves when it does: the palm trainer's
   finished step and its summary),
+  `widgets::countdown_box(lead, text, id, on_stop)` (something about
+  to be done by itself, with Stop: a small panel of one line, edged as
+  a button is, 6 points of padding all round, `lead` (a mark) before
+  its words and a small Stop button after them, set by its app over
+  the top right of what it is about; a Status to agents, its Stop a
+  button, redrawn by the app as it counts), and
+  `widgets::agent_marks::auto_approve_countdown(left, short, id,
+  on_stop)`, Auto Approve's over a Terminal tab's screen and a Rex
+  pane's: the tab's check, "Auto Approve answers Yes in N s" (the count
+  two figures wide, so it doesn't move), "Yes in N s" over a screen
+  under 480 points wide,
+  `widgets::agent_marks::{icon, paint}(name, Marks { agent, keep_going,
+  auto_approve })` (a terminal's icon with its marks, all inside its
+  16-point box and drawn in whole device pixels, no smoothing: what
+  the coding agent in it is doing at its top right, `AgentMark::Working`
+  a turning ring drawn again ten times a second, `Asking` an orange
+  "!", `Failed` a red "×" (7-point discs), `Done` a green dot,
+  `AtRest` a grey dot, `Rang` a blue dot for a bell; along its bottom,
+  quieter (they stay on for hours), Auto Approve's 5-point green disc,
+  its check from 7 device pixels up (a plain disc at 1× and 1.25×,
+  where a check was a smudge), and Keep It Going's solid blue triangle,
+  a shape of its own at every size; each rimmed in what it is drawn
+  on: Terminal's tabs, and Rex's tabs, pane heads, Sessions and
+  Activity rows),
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
 - `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
@@ -19315,9 +19339,12 @@ logs each look's key). Output held back for a synchronized update and
 shown when it times out pokes the watcher too, as any output does. When it's
 due the screen is read again (a coding agent in the foreground, the same
 question, Yes chosen; a few looks 200 ms apart) before the Return goes.
-Typing in the tab, or Stop in the countdown at the pane's bottom right
-("Auto Approve: Yes in N s", a Status to agents, redrawn each second
-only while a question waits), makes the question the person's; one
+Typing in the tab, or Stop in the countdown at the screen's top right
+(`agent_marks::auto_approve_countdown`, "Auto Approve answers Yes in N
+s", a Status to agents, redrawn each second only while a question
+waits; at the bottom right it covered, in a narrow pane, the question
+it was about),
+makes the question the person's; one
 stopped stays theirs across a restart (kept with the window: Some(key)).
 The tab's icon carries a green disc with a check at its other bottom
 corner; its name says so ("auto approving: Yes to … in N s"); a
@@ -27339,8 +27366,50 @@ differ, "shell · rex", else by their place, "shell 2"). **A pane's
 context menu** is the menu bar's commands for that pane, by the names
 and with the keys and checks they have there (`menu::resolve` gives
 them the profile's keys): the clipboard; its text; the pane; closing
-it, alone and last. Keep It Going is there for a pane an agent runs
-in.
+it, alone and last. Keep It Going and Auto Approve are there for a
+pane an agent runs in.
+
+**Keep It Going and Auto Approve** (Ben, 2026-11-24: "did we already add
+the support for auto approve + keep it going for all the coding
+harnesses in our olo rex?"; "make sure those options show when right
+clicking the rex tab too"): Terminal's, for Claude Code, Codex and
+Antigravity in a Rex pane, on this computer or a far host, reading the
+screen as Terminal does (`olo_agent_screen`, the crate both share:
+which program is an agent, what it is doing, the question Auto Approve
+may answer, the prompt Keep It Going may speak into, and the times).
+Each is on or off per pane (`agent::Help`, kept by the pane's key in
+the hub and over an upgrade in `SavedAppState::help`), from the Agents
+menu (the pane with the keyboard), the pane's context menu and the
+tab's (`tab_agent_panes`: each of its panes that runs an agent or has
+either on, named in a tab of several panes, "Auto Approve in
+“claude”", else the pane with the keyboard: the pair of a shell pane
+beside an agent's countdown read as Auto Approve off);
+`agent.keep_going_toggle` and `agent.auto_approve_toggle` for agents, where Auto Approve asked for through the commands socket
+asks the person first in an alert whose Return is Cancel. Nothing of
+it runs for a pane with neither on. With either on, the hub looks at
+the pane's bottom 30 rows when its output pauses (the guess at what an
+agent is doing, `guess_now`) and when its program's status or process
+changes (`RexHubInner::agent_look`): which agent its foreground program
+is (by its name, its file, Claude Code's own build under
+`…/claude/versions/`, or its arguments; Rex's server names a script by
+its interpreter, so a shell never is one), what it is doing, and a
+question it asks. `agent::Watch` decides, and one timer per pane waits
+for the next thing (`next`): the question's answer
+(`AUTO_APPROVE_AFTER`, `OLO_REX_AUTO_APPROVE_SECS` in a test), or the
+end of Keep It Going's quiet (two minutes, `OLO_REX_KEEP_GOING_SECS`;
+at most once an hour). When it goes the screen is read again (`due`):
+Return for the same question still asked with "1. Yes" chosen, or the
+message (Settings ▸ Keep It Going's) then Return 150 ms later into the
+agent's own prompt, its turn over, never into a chooser. Typing in the
+pane, or Stop in the countdown over its screen's top right, makes the
+question the person's (`Help::theirs`, kept). While a question counts
+down the window is redrawn once a second, and not otherwise. The tab,
+the pane's head and its Activity row carry the marks
+(`widgets::agent_marks`), and the tab's words say "kept going" and
+"auto approving". `tools/dev/rex-slow/try.py agents` tries all three
+agents' stand-ins (`tools/dev/stand-ins/{claude,codex,agy}`, each under
+a copy of bash named for its agent) end to end, the three at once
+(`at_once.py`), in 25 seconds.
 
 **Questions an SSH connection asks** (panels.rs `OloAskpass`, the
 client's `SshAskpass`) are asked one at a time, each answered for

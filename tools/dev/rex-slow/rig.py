@@ -8,7 +8,8 @@ once"; docs/AGENT-NOTES.md, "Rex over a slow link, tried here").
         r.type("echo hi"); print(r.shot("typed"))
 
 Its files are under REX_SLOW_DIR (/var/tmp/olo-rex-slow unless set), a scratch home, runtime and Rex server of its
-own among them; the app is this tree's build (dev unless `release=True`), in a `tsession`. Nothing is on the
+own among them, and its session is REX_SLOW_NAME ("rexslow" unless set): with both its own, any number of rigs run at
+once (at_once.py runs a script for several jobs so); the app is this tree's build (dev unless `release=True`), in a `tsession`. Nothing is on the
 person's screen or session, and the only processes ended are the ones started here, by their pids. It needs the
 `rex` command (the server it starts is a scratch one, at a socket of its own)."""
 import contextlib, json, os, shutil, signal, socket, subprocess, sys, time
@@ -25,9 +26,12 @@ PROGRAMS = {
 }
 
 class Rig:
-    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False, far=False, grants=None, settings=None, far_delay=None, far_rate=None, env=None):
+    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name=None, size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False, far=False, grants=None, settings=None, far_delay=None, far_rate=None, env=None):
         self.program, self.delay, self.jitter, self.stall, self.name, self.size, self.scale = program, delay, jitter, stall, name, size, scale
         self.type_ahead, self.look = type_ahead, look
+        # (Its headless session's name: REX_SLOW_NAME, else "rexslow". With REX_SLOW_DIR it is what keeps rigs
+        # apart, so several run at once: at_once.py.)
+        self.name = self.name or os.environ.get("REX_SLOW_NAME", "rexslow")
         self.bin = bin or f"{R3}/target/{'release' if release else 'debug'}/olo-rex"
         # Olo's helper on the host (olo-rex-link), behind the link as it is behind SSH: True for this tree's
         # build of it, or a path.

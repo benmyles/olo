@@ -453,6 +453,8 @@ Authenticate
 Authentication:
 Auto
 Auto Approve
+Auto Approve answers Yes in {} s
+Auto Approve in “{}”
 Auto Approve: Yes in {} s
 Auto profile · the firmware's own curve
 Auto-Tiling
@@ -1280,6 +1282,7 @@ Erasing every backup
 Erasing every backup, to start fresh
 Erasing goes on by itself once it’s back, from where it got to.
 Erlang
+Error
 Esc cancels
 Esc closes
 Ethernet
@@ -1860,6 +1863,7 @@ Kache
 Kache: Build Cache
 Keep HDR on for {}?
 Keep It Going
+Keep It Going in “{}”
 Keep It Going says
 Keep It Going says:
 Keep It Going, in a tab’s menu, types this to the coding agent in the tab when it has stopped: after two quiet minutes, at most once an hour. Left empty, it says “Please continue”.
@@ -4105,6 +4109,8 @@ Turn now
 Turn off after
 Turn off displays
 Turn off screen
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
 Turn on for a laptop usually plugged in.
 Turn the display off after:
 Turn the tile's split
@@ -4297,6 +4303,7 @@ Waiting for Ethernet
 Waiting for a key from Olo Passwords
 Waiting for another fix to finish…
 Waiting for app_server…
+Waiting for approval
 Waiting for host
 Waiting for it…
 Waiting for power
@@ -4440,6 +4447,7 @@ With this on, a busy program gives way to a waiting one after 0.7 ms instead of 
 With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Withdrawn by {}
 Word Document…
+Working
 Working out what it comes to: every package it needs, and what it replaces…
 Working…
 Works on a picture of the desktop.
@@ -4466,6 +4474,7 @@ XML
 YAML
 Yellow
 Yes
+Yes in {} s
 Yesterday
 Yesterday {}
 You don't have permission to see inside this folder.
@@ -4557,6 +4566,7 @@ as of {}
 as the machine has it
 at most {}
 at {}
+auto approving
 auto approving (Yes after {} s; {} answered)
 backing up
 behind
@@ -4641,6 +4651,7 @@ kache's service: {}
 kache's settings file can't be read: {}
 kache{} is running
 kbit/s
+kept going
 last seen recently
 left to the firmware for now
 less than a minute

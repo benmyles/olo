@@ -2509,6 +2509,13 @@ an argument it doesn't know starts the lint (read its first lines).
   under `REX_SLOW_DIR` (`/var/tmp/olo-rex-slow`). To freeze the link,
   stop the proxy it started (`os.killpg(r.procs[1].pid, SIGSTOP)`,
   then `SIGCONT`): its pid, never a name.
+- **Rigs run at once**: each with its own `REX_SLOW_DIR` and
+  `REX_SLOW_NAME` (its session) never meets another, and
+  `tools/dev/rex-slow/at_once.py SCRIPT JOB… [-- ARG…]` runs a script
+  for several jobs so, each job's output after it. A picture script
+  written as one job per look and scale (`script.py win-dark-1.75`)
+  takes all its pictures in the time of one: fourteen in 13 s, seven
+  minutes one after another (2026-11-24, on the dev server).
 - **A test session's apps read their settings from the session's own
   folder**, `/var/tmp/olo-dev/NAME/config/olo/…`, not from the `--home`
   given: a `rex.json` written under the home was never read, and two
@@ -2987,4 +2994,30 @@ rex"). What it is, and what differs:
   one's own there, a secret from their Passwords once they allow it.
 - **Builds go through Jato** (CLAUDE.md); the hooks use it where it is
   installed (`tools/hooks/install` switched them on in this clone).
+- **Use its 32 processors** (Ben, 2026-11-24: "try to reduce the dev
+  loop time as much as possible and take advantage of the hardware"):
+  headless sessions are cheap here, so pictures are taken one session
+  per look and scale, all at once (`at_once.py` for the Rex rig; any
+  `tsession` likewise, each its own name), and their crops and sheets
+  made in a process pool; `try.py agents` runs its three agents at
+  once (25 s, from about 90).
+- **Codex isn't signed in here**, so Astra's looks can't run until the
+  person signs in (`codex login --device-auth`); `astra-look` says so at
+  once (it started at Codex's sign-in screen and waited there). Never
+  sign in for them.
+- **Claude Code asks once per computer whether to trust a folder**: the
+  Opus look's own folder (`/var/tmp/olo-agents/opus-review`) was asked
+  about the first time here, and the look waited. `agents watch`
+  answers Yes by itself for an agent's own folder now.
+- **Rex's server names a script's program by its interpreter**: a bash
+  script is "bash", with no script path (`argv0` "/bin/bash"), so a
+  stand-in agent run as a script is never told apart there; run it
+  under a copy of bash named for its agent (`try.py agents` does).
+  Real agents run under their own names (Claude Code's own build sits
+  under `…/claude/versions/`, its name its version).
+- **Terminal never counts a tab's own shell as an agent**, and `bash -c`
+  has no job control (what it runs stays in its process group, the
+  foreground the shell's): to try an agent's stand-in in Terminal, run
+  it from an interactive shell (`olo-terminal -e bash -i -c "STAND-IN
+  RECORD; exec bash"`), not as `-e STAND-IN`.
 

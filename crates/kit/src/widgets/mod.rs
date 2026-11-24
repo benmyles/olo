@@ -1,5 +1,6 @@
 //! The BeOS controls and what else every app shows the same way.
 
+pub mod agent_marks;
 pub mod alert;
 pub mod banner;
 pub mod buttons;
@@ -38,7 +39,7 @@ pub use alert::{
     ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, Alert, AlertFrame, Conversation, ConversationField, Timeout, Unsaved, WAYS_IN, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert,
     open_app_alert, open_timed_alert, paragraph, paragraph_height, ways_in,
 };
-pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
+pub use banner::{Banner, Tone, banner_back, banner_height, countdown_box, verdict_mark};
 pub use buttons::{ArrowButton, Button, CheckBox, GLYPH_BUTTON, Glyph, GlyphButton, LinkButton, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};

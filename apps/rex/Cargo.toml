@@ -10,6 +10,7 @@ name = "olo-rex"
 path = "src/main.rs"
 
 [dependencies]
+olo-agent-screen.workspace = true
 olo-crash.workspace = true
 olo-keychain.workspace = true
 olo-kit.workspace = true

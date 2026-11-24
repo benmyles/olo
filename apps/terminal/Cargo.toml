@@ -29,6 +29,7 @@ olo-crash.workspace = true
 olo-net.workspace = true
 olo-kit.workspace = true
 olo-kit-base.workspace = true
+olo-agent-screen.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-protocol.workspace = true

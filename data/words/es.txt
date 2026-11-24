@@ -14332,3 +14332,36 @@ No se reconoce la hora «{}». Prueba con 14:30 o 2:30 PM.
 
 ⌘ Command (the Super key)
 ⌘ Comando (la tecla Super)
+
+Auto Approve answers Yes in {} s
+Aprobación automática responde Sí en {} s
+
+kept going
+sigue trabajando
+
+auto approving
+aprobando solo
+
+Waiting for approval
+Esperando aprobación
+
+Working
+Trabajando
+
+Error
+Error
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+¿Activar Aprobar solo para «{}»?\n\nLo pidió otro programa, no usted. Cuando el agente de código de este panel pida permiso para seguir («Do you want to proceed?»), Rex responderá Sí al cabo de {} segundos, salvo que escriba en el panel o pulse Detener.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+¿Activar Aprobar solo para «{}»?\n\nLo pidió otro programa, no usted. Cuando el agente de código de esta pestaña pida permiso para seguir («Do you want to proceed?»), Terminal responderá Sí al cabo de {} segundos, salvo que escriba en la pestaña o pulse Detener.
+
+Yes in {} s
+Sí en {} s
+
+Keep It Going in “{}”
+Que siga en «{}»
+
+Auto Approve in “{}”
+Aprobar solo en «{}»

@@ -14520,3 +14520,36 @@ StyledEdit не может прочитать изображение «{}».
 
 ⌘ Command (the Super key)
 ⌘ Command (клавиша Super)
+
+Auto Approve answers Yes in {} s
+Автоодобрение ответит «Да» через {} с
+
+kept going
+работа продолжается
+
+auto approving
+автоодобрение
+
+Waiting for approval
+Ждёт одобрения
+
+Working
+Работает
+
+Error
+Ошибка
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Включить автоодобрение для «{}»?\n\nОб этом попросила другая программа, а не вы. Когда агент для программирования в этой панели спросит, можно ли продолжать («Do you want to proceed?»), Rex ответит «Да» через {} с, если вы не начнёте печатать в панели и не нажмёте «Остановить».
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+Включить автоодобрение для «{}»?\n\nОб этом попросила другая программа, а не вы. Когда агент для программирования в этой вкладке спросит, можно ли продолжать («Do you want to proceed?»), Terminal ответит «Да» через {} с, если вы не начнёте печатать во вкладке и не нажмёте «Остановить».
+
+Yes in {} s
+«Да» через {} с
+
+Keep It Going in “{}”
+Продолжать работу в «{}»
+
+Auto Approve in “{}”
+Автоодобрение в «{}»

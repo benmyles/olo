@@ -26,7 +26,7 @@ use olo_sync::Mutex;
 use serde_json::{Value, json};
 
 use crate::{
-    agent::{AgentActivity, KeepGoingState, detect_agent_from_screen},
+    agent::{AgentActivity, Do, Help, Watch, detect_agent_from_screen, which_agent},
     attention::Target,
     bridge,
     copy_mode::CopyMode,
@@ -150,7 +150,13 @@ pub struct BlockRuntime {
     guess_wanted: bool,
     /// When its last chunk of output came.
     last_output: Instant,
-    pub keep_going: Option<KeepGoingState>,
+    /// What its agent is doing as Keep It Going and Auto Approve see it
+    /// (the person's choice of them is `help`, by the pane's key), and
+    /// the timer for the next thing either waits for, and the one that
+    /// redraws a countdown each second while a question waits.
+    pub watch: Watch,
+    watch_timer: Option<tokio::task::AbortHandle>,
+    watch_ticker: Option<tokio::task::AbortHandle>,
     pub unread: bool,
     pub unread_cleared_at: Option<Instant>,
     pub muted: bool,
@@ -273,7 +279,9 @@ impl BlockRuntime {
             agent_activity: AgentActivity::Idle,
             guess_wanted: false,
             last_output: Instant::now(),
-            keep_going: None,
+            watch: Watch::new(Instant::now()),
+            watch_timer: None,
+            watch_ticker: None,
             unread: false,
             unread_cleared_at: None,
             muted: false,
@@ -559,6 +567,30 @@ impl BlockRuntime {
         let fg = self.process.as_ref().and_then(|p| p.foreground.as_ref()).map(|p| p.name.as_str());
         self.agent_activity = detect_agent_from_screen(fg, &tail).unwrap_or(AgentActivity::Idle);
         self.agent_activity
+    }
+
+    /// The bottom of its screen, as text: where an agent's prompt, its
+    /// questions and its status line are (as Terminal reads its tabs').
+    pub fn agent_screen(&self) -> String {
+        let (_, rows) = self.terminal.size();
+        let start = rows.saturating_sub(AGENT_LOOK as u16);
+        (start..rows).map(|r| self.terminal.viewport_row_text(r as u32)).collect::<Vec<_>>().join("\n")
+    }
+
+    /// Whether a coding agent runs in it: its foreground program is one,
+    /// or a program has told its state (OSC 7501).
+    pub fn runs_agent(&self) -> bool {
+        let (name, exe, args) = self.agent_program();
+        !self.program_statuses.is_empty() || name.is_some_and(|n| which_agent(Some(&n), &exe, &args, "").is_some())
+    }
+
+    /// Its program in the foreground: its name, its program file, and
+    /// what it was run as (its first argument, the script an interpreter
+    /// runs, the path it was run by).
+    pub fn agent_program(&self) -> (Option<String>, String, Vec<String>) {
+        let fg = self.process.as_ref().and_then(|p| p.foreground.as_ref());
+        let args = fg.map_or(Vec::new(), |p| [p.argv0.clone(), p.script.clone(), p.invoked_path.clone()].into_iter().flatten().collect());
+        (fg.map(|p| p.name.clone()), fg.and_then(|p| p.path.clone()).unwrap_or_default(), args)
     }
 
     pub fn memory_usage(&self) -> TerminalMemoryUsage {
@@ -853,6 +885,18 @@ pub fn tab_names(tabs: &[(Option<&str>, &str, &str)]) -> Vec<String> {
 
 /// [`tab_names`] for a session as the hub holds it: each tab's first
 /// pane with a title, and that pane's folder.
+/// What a pane goes by, as its tab would show it alone: its title, else
+/// its program, else its folder (`tab_title`).
+pub fn name_of_pane(st: &HubState, bk: &BlockKey) -> Option<String> {
+    let local = if st.hosts.get(&bk.host_key).is_some_and(|h| h.is_local) { local_home() } else { None };
+    let br = st.blocks.get(bk)?;
+    let g = br.lock().unwrap_or_else(|e| e.into_inner());
+    let process = g.process.as_ref();
+    let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+    let home = process.and_then(|p| p.home.as_deref()).or(local.as_deref());
+    Some(tab_title(&g.title, &g.label, program, &g.pwd, home))
+}
+
 pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::SessionView) -> Vec<String> {
     let local = if st.hosts.get(host_key).is_some_and(|h| h.is_local) { local_home() } else { None };
     let known: Vec<(Option<String>, String, String)> = sess
@@ -1617,6 +1661,45 @@ pub fn let_go() -> Vec<String> {
 /// (As Rex comes back from an upgrade, before its hub starts.)
 pub fn set_let_go(hosts: Vec<String>) {
     *LET_GO.lock().unwrap_or_else(|e| e.into_inner()) = hosts;
+}
+
+/// How many of a pane's bottom rows Keep It Going and Auto Approve read.
+const AGENT_LOOK: usize = 30;
+
+/// What the person turned on for each pane (Keep It Going, Auto Approve),
+/// by its key: the same for a pane reattached, and kept over an upgrade
+/// in place, as the hosts let go of are.
+static HELP: std::sync::LazyLock<std::sync::Mutex<HashMap<BlockKey, Help>>> = std::sync::LazyLock::new(Default::default);
+
+/// What the panes have on, as kept over an upgrade.
+pub fn helps() -> Vec<(String, String, String, Help)> {
+    HELP.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(k, h)| (k.host_key.clone(), k.session_id.clone(), k.block_id.clone(), h.clone())).collect()
+}
+
+/// (As Rex comes back from an upgrade, before its hub starts.)
+pub fn set_helps(kept: Vec<(String, String, String, Help)>) {
+    *HELP.lock().unwrap_or_else(|e| e.into_inner()) = kept.into_iter().map(|(host_key, session_id, block_id, h)| (BlockKey { host_key, session_id, block_id }, h)).collect();
+}
+
+/// What a pane has on.
+pub fn help_of(key: &BlockKey) -> Help {
+    HELP.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned().unwrap_or_default()
+}
+
+/// How long a question waits before Auto Approve answers it:
+/// `AUTO_APPROVE_AFTER`, or in a test `OLO_REX_AUTO_APPROVE_SECS`.
+fn auto_approve_after() -> Duration {
+    std::env::var("OLO_REX_AUTO_APPROVE_SECS").ok().and_then(|v| v.parse().ok()).map_or(crate::agent::AUTO_APPROVE_AFTER, Duration::from_secs)
+}
+
+/// The quiet Keep It Going waits for: `KEEP_GOING_QUIET`, or in a test
+/// `OLO_REX_KEEP_GOING_SECS`.
+fn keep_going_quiet() -> Duration {
+    std::env::var("OLO_REX_KEEP_GOING_SECS").ok().and_then(|v| v.parse().ok()).map_or(crate::agent::KEEP_GOING_QUIET, Duration::from_secs)
+}
+
+fn epoch_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 /// Whether a host is one Rex was connecting to and isn't connected to:
@@ -2735,7 +2818,65 @@ impl RexHub {
         self.write_input(key, data, None);
     }
 
+    /// What a pane has on: Keep It Going, Auto Approve.
+    pub fn help(&self, key: &BlockKey) -> Help {
+        help_of(key)
+    }
+
+    /// Keep It Going or Auto Approve turned on or off for a pane (`change`
+    /// says how). On, the pane is looked at now: a question already
+    /// showing waits its time as one that has just come; off, nothing of
+    /// it waits.
+    pub fn set_help(&self, key: &BlockKey, change: impl FnOnce(&mut Help)) {
+        let help = {
+            let mut all = HELP.lock().unwrap_or_else(|e| e.into_inner());
+            let h = all.entry(key.clone()).or_default();
+            change(h);
+            if !h.auto_approve {
+                h.theirs = None;
+            }
+            let help = h.clone();
+            if !help.any() {
+                all.remove(key);
+            }
+            help
+        };
+        tracing::info!(pane = key.block_id, keep_going = help.keep_going, auto_approve = help.auto_approve, "agent help");
+        if let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned() {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            if !help.auto_approve {
+                g.watch.pending = None;
+            }
+            if !help.any() {
+                for t in [g.watch_timer.take(), g.watch_ticker.take()].into_iter().flatten() {
+                    t.abort();
+                }
+            }
+        }
+        let _in = self.rt.enter();
+        self.inner.agent_look(key);
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// Stop in Auto Approve's countdown: the question is the person's.
+    pub fn stop_auto_approve(&self, key: &BlockKey) {
+        let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned() else { return };
+        if let Some(theirs) = br.lock().unwrap_or_else(|e| e.into_inner()).watch.stop()
+            && let Some(h) = HELP.lock().unwrap_or_else(|e| e.into_inner()).get_mut(key)
+        {
+            h.theirs = Some(theirs);
+        }
+        let _in = self.rt.enter();
+        self.inner.agent_schedule(key, &br, &help_of(key));
+        (self.notify)(HubNotice::StateChanged);
+    }
+
     pub fn write_input(&self, key: &BlockKey, data: Vec<u8>, connection: Option<&ControlClient>) {
+        // (Typed by the person: a question waiting is theirs.)
+        {
+            let _in = self.rt.enter();
+            self.inner.agent_typed(key);
+        }
         if let Some(tx) = self.writer_for_key(key, connection) {
             let seq = self.input_typed(key, &data);
             let text = String::from_utf8_lossy(&data).into_owned();
@@ -3954,6 +4095,128 @@ impl RexHubInner {
         }
     }
 
+    /// Keep It Going's and Auto Approve's look at a pane whose screen or
+    /// program changed, where the person has either on: what its agent
+    /// is doing, the question it asks, and the timer set for the next
+    /// thing to do. Nothing for a pane with neither on.
+    pub fn agent_look(self: &Arc<Self>, bk: &BlockKey) {
+        let help = help_of(bk);
+        if !help.any() {
+            return;
+        }
+        let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(bk).cloned() else { return };
+        let changed = {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            let screen = g.agent_screen();
+            let (name, exe, args) = g.agent_program();
+            let agent = which_agent(name.as_deref(), &exe, &args, &screen);
+            if agent != g.watch.agent {
+                tracing::info!(pane = bk.block_id, ?name, exe, ?args, agent = agent.map(|a| a.name()), "agent in the pane");
+            }
+            g.watch.looked(agent, &screen, &help, auto_approve_after(), Instant::now())
+        };
+        self.agent_schedule(bk, &br, &help);
+        if changed {
+            (self.notify)(HubNotice::StateChanged);
+        }
+    }
+
+    /// The timer for a pane's next thing to do (a question's answer, the
+    /// end of Keep It Going's quiet), and while a question counts down,
+    /// a redraw each second (nothing otherwise).
+    fn agent_schedule(self: &Arc<Self>, bk: &BlockKey, br: &Arc<Mutex<BlockRuntime>>, help: &Help) {
+        let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(t) = g.watch_timer.take() {
+            t.abort();
+        }
+        if let Some(at) = g.watch.next(help, keep_going_quiet(), Instant::now(), epoch_secs()) {
+            let (inner, key) = (self.clone(), bk.clone());
+            let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
+            g.watch_timer = Some(
+                rt.spawn(async move {
+                    tokio::time::sleep_until(tokio::time::Instant::from_std(at)).await;
+                    inner.agent_due(&key).await;
+                })
+                .abort_handle(),
+            );
+        }
+        if g.watch.counting(Instant::now()).is_some() && g.watch_ticker.is_none() {
+            let (notify, block) = (self.notify.clone(), br.clone());
+            let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
+            g.watch_ticker = Some(
+                rt.spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        let mut g = block.lock().unwrap_or_else(|e| e.into_inner());
+                        if g.watch.counting(Instant::now()).is_none() {
+                            g.watch_ticker = None;
+                            break;
+                        }
+                        drop(g);
+                        notify(HubNotice::StateChanged);
+                    }
+                })
+                .abort_handle(),
+            );
+        }
+    }
+
+    /// A pane's timer went: what is due, read from its screen as it is
+    /// now, sent as the person would type it (Keep It Going's message,
+    /// then its Return a moment after: all at once, a program may take
+    /// it as pasted text, the Return a new line in it).
+    async fn agent_due(self: &Arc<Self>, bk: &BlockKey) {
+        let help = help_of(bk);
+        let (br, message, ctrl) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            (st.blocks.get(bk).cloned(), st.settings.keep_going_message.clone(), st.hosts.get(&bk.host_key).and_then(|h| h.control.clone()))
+        };
+        let Some(br) = br else { return };
+        let todo = {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            g.watch_timer = None;
+            let screen = g.agent_screen();
+            let question = g.watch.pending.as_ref().map(|p| p.question.clone());
+            g.watch.due(&help, &screen, keep_going_quiet(), &message, Instant::now(), epoch_secs()).map(|todo| (todo, question))
+        };
+        if let (Some((todo, question)), Some(ctrl)) = (todo, ctrl) {
+            self.input_by_itself(bk);
+            match todo {
+                Do::Return => {
+                    tracing::info!(pane = bk.block_id, question = question.unwrap_or_default(), "auto approve: answered Yes");
+                    let _ = ctrl.terminal_write(&bk.session_id, &bk.block_id, "\r").await;
+                }
+                Do::Say(message) => {
+                    tracing::info!(pane = bk.block_id, "keep it going: said \"{message}\"");
+                    let _ = ctrl.terminal_write(&bk.session_id, &bk.block_id, &message).await;
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    let _ = ctrl.terminal_write(&bk.session_id, &bk.block_id, "\r").await;
+                }
+            }
+        }
+        (self.notify)(HubNotice::StateChanged);
+        self.agent_schedule(bk, &br, &help);
+    }
+
+    /// The person typed in a pane: a question waiting there is theirs
+    /// (kept as theirs where Auto Approve is on), and Keep It Going's
+    /// quiet begins again.
+    fn agent_typed(self: &Arc<Self>, bk: &BlockKey) {
+        let help = help_of(bk);
+        if !help.any() {
+            return;
+        }
+        let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(bk).cloned() else { return };
+        let stopped = br.lock().unwrap_or_else(|e| e.into_inner()).watch.typed(Instant::now());
+        if let Some(key) = stopped.filter(|_| help.auto_approve) {
+            if let Some(h) = HELP.lock().unwrap_or_else(|e| e.into_inner()).get_mut(bk) {
+                h.theirs = Some(key);
+            }
+            (self.notify)(HubNotice::StateChanged);
+        }
+        self.agent_schedule(bk, &br, &help_of(bk));
+    }
+
     /// Something the app itself writes into a terminal (a nudge to an
     /// agent to keep going): not typed, and not predicted, but the
     /// terminal's predictions are told that the screen will change by
@@ -4783,7 +5046,7 @@ impl RexHubInner {
                     // program that asks has printed its question by
                     // then. One request for each pause in a pane's
                     // output; none while it streams or rests.
-                    let (br, notify, ctrl, bk) = (br.clone(), inner.notify.clone(), ctrl.clone(), bk.clone());
+                    let (br, notify, ctrl, bk, helper) = (br.clone(), inner.notify.clone(), ctrl.clone(), bk.clone(), inner.clone());
                     tokio::spawn(async move {
                         loop {
                             tokio::time::sleep(GUESS_AFTER).await;
@@ -4791,6 +5054,9 @@ impl RexHubInner {
                             if changed {
                                 notify(HubNotice::StateChanged);
                             }
+                            // (Keep It Going's and Auto Approve's look,
+                            // where the pane has either on.)
+                            helper.agent_look(&bk);
                             if quiet {
                                 break;
                             }
@@ -5062,7 +5328,6 @@ impl RexHubInner {
                 };
                 if let Some(br) = br_opt {
                     let mut activity_note = None;
-                    let mut keep_going_nudge: Option<String> = None;
                     {
                         let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
                         match name.as_str() {
@@ -5121,11 +5386,6 @@ impl RexHubInner {
                                         }
                                         g.unread |= unread;
                                     }
-                                    if let Some(kg) = &mut g.keep_going
-                                        && let Some(nudge) = kg.observe(now)
-                                    {
-                                        keep_going_nudge = Some(format!("{nudge}\r"));
-                                    }
                                 }
                             }
                             "ports_changed" => {
@@ -5155,10 +5415,9 @@ impl RexHubInner {
                     if let Some((title, body, kind)) = activity_note {
                         self.pane_attention(&bk, title, body, kind);
                     }
-                    if let Some(nudge) = keep_going_nudge {
-                        self.input_by_itself(&bk);
-                        let _ = ctrl.terminal_write(&session_id, &block_id, &nudge).await;
-                    }
+                    // (What the agent is doing may have changed: Keep It
+                    // Going's and Auto Approve's look.)
+                    self.agent_look(&bk);
                     (self.notify)(HubNotice::StateChanged);
                 }
             }
@@ -5637,7 +5896,7 @@ mod tests {
         // (What Rex kept before there was a Disconnect has no such list.)
         let before: crate::ui::SavedAppState = serde_json::from_str(r#"{"workspaces":[]}"#).unwrap();
         assert!(before.let_go.is_empty());
-        let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()] }).unwrap();
+        let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()], help: Vec::new() }).unwrap();
         assert_eq!(serde_json::from_str::<crate::ui::SavedAppState>(&kept).unwrap().let_go, ["host-1"]);
     }
 

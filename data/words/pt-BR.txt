@@ -14332,3 +14332,36 @@ Entre em “{}” para poder navegar. Clique para abrir a página de login da re
 
 ⌘ Command (the Super key)
 ⌘ Command (tecla Super)
+
+Auto Approve answers Yes in {} s
+Aprovação automática responde sim em {} s
+
+kept going
+continuando a tarefa
+
+auto approving
+aprovando automaticamente
+
+Waiting for approval
+Aguardando aprovação
+
+Working
+Trabalhando
+
+Error
+Erro
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Ativar a aprovação automática para “{}”?\n\nOutro programa pediu isso, não você. Quando o agente de código deste painel pedir para continuar (“Do you want to proceed?”), o Rex responderá sim depois de {} segundos, a menos que você digite no painel ou clique em Parar.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+Ativar a aprovação automática para “{}”?\n\nOutro programa pediu isso, não você. Quando o agente de código desta aba pedir para continuar (“Do you want to proceed?”), o Terminal responderá sim depois de {} segundos, a menos que você digite na aba ou clique em Parar.
+
+Yes in {} s
+Sim em {} s
+
+Keep It Going in “{}”
+Continuar tarefa em “{}”
+
+Auto Approve in “{}”
+Aprovação automática em “{}”

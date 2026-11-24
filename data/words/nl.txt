@@ -14332,3 +14332,36 @@ Kies een app met ↑↓.
 
 ⌘ Command (the Super key)
 ⌘ Command (de Super-toets)
+
+Auto Approve answers Yes in {} s
+Automatische goedkeuring antwoordt Ja over {} s
+
+kept going
+gaat door
+
+auto approving
+keurt automatisch goed
+
+Waiting for approval
+Wacht op goedkeuring
+
+Working
+Bezig
+
+Error
+Fout
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Automatisch goedkeuren aanzetten voor ‘{}’?\n\nEen ander programma vroeg erom, niet u. Als de codeeragent in dit paneel vraagt of hij verder mag (‘Do you want to proceed?’), antwoordt Rex na {} seconden Ja, tenzij u in het paneel typt of op Stoppen drukt.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+Automatisch goedkeuren aanzetten voor ‘{}’?\n\nEen ander programma vroeg erom, niet u. Als de codeeragent in dit tabblad vraagt of hij verder mag (‘Do you want to proceed?’), antwoordt Terminal na {} seconden Ja, tenzij u in het tabblad typt of op Stoppen drukt.
+
+Yes in {} s
+Ja over {} s
+
+Keep It Going in “{}”
+Door laten gaan in ‘{}’
+
+Auto Approve in “{}”
+Automatisch goedkeuren in ‘{}’

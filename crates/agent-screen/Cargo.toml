@@ -1,0 +1,8 @@
+[package]
+name = "olo-agent-screen"
+description = "Coding agents in a terminal, read from their screen: which, what they're doing, their prompt, a question Auto Approve may answer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

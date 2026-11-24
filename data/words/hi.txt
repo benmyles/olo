@@ -14332,3 +14332,36 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 ⌘ Command (the Super key)
 ⌘ Command (Super कुंजी)
+
+Auto Approve answers Yes in {} s
+अपने आप मंज़ूरी {} सेकंड बाद हाँ कहेगी
+
+kept going
+काम जारी रखवाया जा रहा है
+
+auto approving
+अपने आप मंज़ूर हो रहा है
+
+Waiting for approval
+मंज़ूरी का इंतज़ार
+
+Working
+काम चल रहा है
+
+Error
+गड़बड़ी
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+“{}” के लिए अपने आप मंज़ूर करें चालू करें?\n\nयह किसी और प्रोग्राम ने माँगा है, आपने नहीं। जब इस पैन का कोडिंग एजेंट आगे बढ़ने की अनुमति माँगेगा (“Do you want to proceed?”), तो Rex {} सेकंड बाद हाँ कह देगा, जब तक आप पैन में टाइप न करें या रोकें न दबाएँ।
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+“{}” के लिए अपने आप मंज़ूर करें चालू करें?\n\nयह किसी और प्रोग्राम ने माँगा है, आपने नहीं। जब इस टैब का कोडिंग एजेंट आगे बढ़ने की अनुमति माँगेगा (“Do you want to proceed?”), तो Terminal {} सेकंड बाद हाँ कह देगा, जब तक आप टैब में टाइप न करें या रोकें न दबाएँ।
+
+Yes in {} s
+{} सेकंड बाद हाँ
+
+Keep It Going in “{}”
+“{}” में काम जारी रखें
+
+Auto Approve in “{}”
+“{}” में अपने आप मंज़ूर करें

@@ -7226,6 +7226,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-agent-screen"
+version = "0.1.0"
+
+[[package]]
 name = "olo-ai"
 version = "0.1.0"
 dependencies = [
@@ -8561,6 +8565,7 @@ dependencies = [
  "image",
  "jiff",
  "libc",
+ "olo-agent-screen",
  "olo-crash",
  "olo-keychain",
  "olo-kit",
@@ -8964,6 +8969,7 @@ dependencies = [
  "git2",
  "image",
  "libc",
+ "olo-agent-screen",
  "olo-complete",
  "olo-crash",
  "olo-fido",

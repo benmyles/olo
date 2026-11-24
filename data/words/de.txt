@@ -14332,3 +14332,36 @@ other: „{}“ und {n} weitere Programme laufen noch in diesem Fenster. Trotzde
 
 ⌘ Command (the Super key)
 ⌘ Befehl (Super-Taste)
+
+Auto Approve answers Yes in {} s
+Automatisch genehmigen antwortet in {} s mit Ja
+
+kept going
+wird weitergeführt
+
+auto approving
+genehmigt automatisch
+
+Waiting for approval
+Wartet auf Genehmigung
+
+Working
+Arbeitet
+
+Error
+Fehler
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Automatisch genehmigen für „{}“ einschalten?\n\nEin anderes Programm hat darum gebeten, nicht Sie. Wenn der Coding-Agent in diesem Bereich fragt, ob er weitermachen darf („Do you want to proceed?“), antwortet Rex nach {} Sekunden mit Ja, sofern Sie nicht in den Bereich tippen oder „Stoppen“ drücken.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+Automatisch genehmigen für „{}“ einschalten?\n\nEin anderes Programm hat darum gebeten, nicht Sie. Wenn der Coding-Agent in diesem Tab fragt, ob er weitermachen darf („Do you want to proceed?“), antwortet Terminal nach {} Sekunden mit Ja, sofern Sie nicht in den Tab tippen oder „Stoppen“ drücken.
+
+Yes in {} s
+Ja in {} s
+
+Keep It Going in “{}”
+Weitermachen lassen in „{}“
+
+Auto Approve in “{}”
+Automatisch genehmigen in „{}“

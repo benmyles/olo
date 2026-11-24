@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    agent::{AgentActivity, KeepGoingState},
+    agent::AgentActivity,
     attention::{Attention, Target},
     bridge,
     copy_mode::{CopyMode, CopyModeAction},
@@ -90,6 +90,59 @@ pub struct SavedAppState {
     /// The hosts let go of (Hosts and Ports' Disconnect): they stay so.
     #[serde(default)]
     pub let_go: Vec<String>,
+    /// What each pane has on (Keep It Going, Auto Approve), by its host,
+    /// session and pane.
+    #[serde(default)]
+    pub help: Vec<(String, String, String, crate::agent::Help)>,
+}
+
+/// Under this width (points) a pane's Auto Approve countdown says only
+/// "Yes in N s" (at full length it took two thirds of a half pane).
+const COUNTDOWN_SHORT: f32 = 480.0;
+
+/// Auto Approve on or off for a pane (`said`: its name, for the
+/// question). Turning it on is the person's (Terminal's rule): asked for
+/// through the commands socket (an agent, the palette), they are asked
+/// first in an alert whose Return is Cancel, so an agent can't answer its
+/// own questions; turning it off needs no asking.
+pub fn toggle_auto_approve(hub: &Arc<RexHub>, key: &BlockKey, said: &str) {
+    let on = !hub.help(key).auto_approve;
+    if !on || !olo_kit::agent::invoking() {
+        hub.set_help(key, |h| h.auto_approve = on);
+        return;
+    }
+    tracing::info!(pane = key.block_id, "auto approve: asked for through the commands socket; asking the person");
+    let secs = std::env::var("OLO_REX_AUTO_APPROVE_SECS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(crate::agent::AUTO_APPROVE_AFTER.as_secs());
+    let message = olo_kit::tr!(
+        "Turn on Auto Approve for \u{201c}{}\u{201d}?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (\u{201c}Do you want to proceed?\u{201d}), Rex will answer Yes after {}\u{a0}seconds, unless you type in the pane or press Stop.",
+        said,
+        secs
+    );
+    let (hub, key) = (hub.clone(), key.clone());
+    olo_kit::widgets::open_app_alert("Rex", "warning", &message, &["Turn On", "Cancel"], move |chosen| {
+        if chosen == Some(0) {
+            hub.set_help(&key, |h| h.auto_approve = true);
+        }
+    });
+}
+
+/// The panes of a tab Keep It Going and Auto Approve are offered for in
+/// its menu: those an agent runs in or with either on, else the one with
+/// the keyboard.
+fn tab_agent_panes(hub: &RexHub, host_key: &str, session_id: &str, w: &olo_rex_client::WindowView) -> Vec<BlockKey> {
+    let key = |block_id: &str| BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: block_id.to_owned() };
+    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+    let with_agent: Vec<BlockKey> =
+        w.all_blocks().map(|b| key(&b.block_id)).filter(|k| crate::hub::help_of(k).any() || st.blocks.get(k).is_some_and(|b| b.lock().unwrap_or_else(|e| e.into_inner()).runs_agent())).collect();
+    if !with_agent.is_empty() {
+        return with_agent;
+    }
+    w.focused_block_id.as_deref().or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(key).into_iter().collect()
+}
+
+/// What a pane is called, as its tab would show it.
+fn pane_name(hub: &RexHub, key: &BlockKey) -> String {
+    crate::hub::name_of_pane(&hub.state.lock().unwrap_or_else(|e| e.into_inner()), key).unwrap_or_default()
 }
 
 /// Global Rex application controller (shared safely across windows via `olo_sync::Mutex`).
@@ -1982,16 +2035,19 @@ impl RexWindow {
             }
             "agent.keep_going_toggle" => {
                 if let Some(bk) = self.focused_block_key() {
-                    let msg = hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.keep_going_message.clone();
-                    if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
-                        let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                        if g.keep_going.is_some() {
-                            g.keep_going = None;
-                        } else {
-                            g.keep_going = Some(KeepGoingState::new(msg));
-                        }
-                    }
+                    hub.set_help(&bk, |h| h.keep_going = !h.keep_going);
                     cx.invalidate();
+                }
+            }
+            "agent.auto_approve_toggle" => {
+                if let Some(bk) = self.focused_block_key() {
+                    toggle_auto_approve(&hub, &bk, &pane_name(&hub, &bk));
+                    cx.invalidate();
+                }
+            }
+            "agent.auto_approve_stop" => {
+                if let Some(bk) = self.focused_block_key() {
+                    hub.stop_auto_approve(&bk);
                 }
             }
             "agent.jump_next_blocked" => {
@@ -2337,9 +2393,10 @@ impl RexWindow {
         let focused = self.focused_block_key();
         let pane = focused.is_some();
         let block = focused.as_ref().and_then(|key| hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned());
+        let help = self.focused_block_key().map(|bk| hub.help(&bk)).unwrap_or_default();
         let (keep_going, selected, copying, found) = block.as_ref().map_or((false, false, false, false), |block| {
             let g = block.lock().unwrap_or_else(|e| e.into_inner());
-            (g.keep_going.is_some(), g.terminal.has_selection(), g.copy_mode.is_some(), g.search.total_matches() > 0)
+            (help.keep_going, g.terminal.has_selection(), g.copy_mode.is_some(), g.search.total_matches() > 0)
         });
         let session = self.resolve_active_session().map(|(_, s)| s);
         let window = session.as_ref().and_then(|s| s.active_window().or_else(|| s.windows.first()).map(|w| (w.zoomed_block_id.is_some(), w.all_blocks().count())));
@@ -2489,6 +2546,8 @@ impl RexWindow {
                 .separator()
                 .item("Keep It Going", "agent.keep_going_toggle")
                 .checked(keep_going)
+                .item("Auto Approve", "agent.auto_approve_toggle")
+                .checked(help.auto_approve)
                 .enabled(pane)
                 .separator()
                 .item("Install Olo’s Skill for Agents", "olo.install_remote_skill")
@@ -2647,8 +2706,12 @@ impl RexWindow {
                 }
                 let mut tab_act = AgentActivity::Idle;
                 let mut tab_unread: Option<Option<Instant>> = None;
+                let mut tab_help = crate::agent::Help::default();
                 for b in w.all_blocks() {
                     let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
+                    let h = crate::hub::help_of(&bk);
+                    tab_help.keep_going |= h.keep_going;
+                    tab_help.auto_approve |= h.auto_approve;
                     if let Some(br) = st.blocks.get(&bk) {
                         let g = br.lock().unwrap_or_else(|e| e.into_inner());
                         if g.unread {
@@ -2662,23 +2725,16 @@ impl RexWindow {
                     }
                 }
                 let label = names.get(idx).cloned().unwrap_or_default();
-                let act = tab_act;
-                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(Rc::new(move |g: &mut Painter, b: Bounds<Pixels>| {
-                    paint_activity_icon(g, b, act);
-                }));
-                strip_tabs.push(StripTab {
-                    label: label.into(),
-                    icon: icon_fn,
-                    status: match tab_act {
-                        AgentActivity::Blocked => Some("Waiting for approval".into()),
-                        AgentActivity::Working => Some("Working".into()),
-                        AgentActivity::Error => Some("Error".into()),
-                        AgentActivity::Done => Some("Done".into()),
-                        AgentActivity::Idle => None,
-                    },
-                    unread: tab_unread,
-                    ..Default::default()
-                });
+                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(widgets::agent_marks::icon("terminal", marks_of(tab_act, &tab_help)));
+                let what = match tab_act {
+                    AgentActivity::Blocked => Some(olo_kit::words::tr("Waiting for approval").to_string()),
+                    AgentActivity::Working => Some(olo_kit::words::tr("Working").to_string()),
+                    AgentActivity::Error => Some(olo_kit::words::tr("Error").to_string()),
+                    AgentActivity::Done => Some(olo_kit::words::tr("Done").to_string()),
+                    AgentActivity::Idle => None,
+                };
+                let words: Vec<String> = [what, help_words(&tab_help)].into_iter().flatten().collect();
+                strip_tabs.push(StripTab { label: label.into(), icon: icon_fn, status: (!words.is_empty()).then(|| words.join("; ").into()), unread: tab_unread, ..Default::default() });
             }
         }
 
@@ -3014,6 +3070,7 @@ impl RexWindow {
                 for s in &h.session_summaries {
                     let view = h.sessions.get(&s.session_id);
                     let mut sess_act = AgentActivity::Idle;
+                    let mut sess_help = crate::agent::Help::default();
                     let mut unread_count = 0usize;
                     if let Some(v) = view {
                         for w in &v.windows {
@@ -3022,27 +3079,36 @@ impl RexWindow {
                                 if let Some(br) = st.blocks.get(&bk) {
                                     let g = br.lock().unwrap_or_else(|e| e.into_inner());
                                     sess_act = higher_activity(sess_act, g.agent_activity);
+                                    let pane_help = crate::hub::help_of(&bk);
+                                    sess_help.keep_going |= pane_help.keep_going;
+                                    sess_help.auto_approve |= pane_help.auto_approve;
                                     if g.unread {
                                         unread_count += 1;
                                     }
                                     if g.agent_activity != AgentActivity::Idle || st.settings.activity_include_idle {
-                                        let label = if !g.title.is_empty() { g.title.clone() } else { crate::hub::tab_label(w).map_or_else(|| olo_kit::words::tr("Shell").into(), str::to_owned) };
+                                        // (What it goes by, as its tab would show it: its title,
+                                        // else its program, else its folder.)
+                                        let process = g.process.as_ref();
+                                        let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+                                        let home = process.and_then(|p| p.home.clone()).or_else(|| h.is_local.then(crate::hub::local_home).flatten());
+                                        let label = crate::hub::tab_title(&g.title, &g.label, program, &g.pwd, home.as_deref());
                                         let detail = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| g.pwd.clone());
-                                        activity_rows.push((bk, h.label.clone(), label, detail, g.agent_activity));
+                                        let help = crate::hub::help_of(&bk);
+                                        activity_rows.push((bk, h.label.clone(), label, detail, g.agent_activity, help));
                                     }
                                 }
                             }
                         }
                     }
                     let label = if !s.label.is_empty() { s.label.clone() } else { s.session_id.clone() };
-                    sessions.push((s.session_id.clone(), label, sess_act, unread_count));
+                    sessions.push((s.session_id.clone(), label, sess_act, sess_help, unread_count));
                 }
                 // (And whether it is silent about something typed: its
                 // light and its words then say so, as the status bar does.)
                 let silent = st.host_silent(&h.key).map(crate::hub::silent_tip);
                 hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
             }
-            activity_rows.sort_by_key(|(_, _, _, _, a)| activity_sort_rank(*a));
+            activity_rows.sort_by_key(|(_, _, _, _, a, _)| activity_sort_rank(*a));
             (mode, hosts_snap, activity_rows)
         };
 
@@ -3054,7 +3120,7 @@ impl RexWindow {
         .absolute()
         .inset_0();
 
-        let blocked_n = activity_rows.iter().filter(|(_, _, _, _, a)| matches!(a, AgentActivity::Blocked | AgentActivity::Error)).count();
+        let blocked_n = activity_rows.iter().filter(|(_, _, _, _, a, _)| matches!(a, AgentActivity::Blocked | AgentActivity::Error)).count();
 
         let hub_s1 = hub.clone();
         // Match TabStrip exactly (`STRIP_HEIGHT = 34`, tabs `y = 8..34`, label center `y = 21`)
@@ -3178,7 +3244,7 @@ impl RexWindow {
                 let new_session = cx.msg(WinMsg::CreateSession(hk_new, None));
                 row = row.child(row_label).child(GlyphButton::new("New Session", Glyph::Plus).id(format!("rex-new-session-{hk}")).enabled(connected).on_click(move |_, cx| new_session(&(), cx)));
                 let mut group = div().w_full().flex_shrink_0().flex().flex_col().child(olo_kit::tip::on(row, tip_key, tip));
-                for (sid, slabel, sact, unread) in sessions {
+                for (sid, slabel, sact, shelp, unread) in sessions {
                     let is_active = self.active_host == hk && self.active_session.as_deref() == Some(sid.as_str());
                     let hk_sel = hk.clone();
                     let sid_sel = sid.clone();
@@ -3195,7 +3261,7 @@ impl RexWindow {
                         Some(words) => olo_kit::tip::on(row, tip_key, words),
                         None => row,
                     };
-                    group = group.child(tipped(sidebar_row(slabel, badge, sact, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))).on_mouse_down(
+                    group = group.child(tipped(sidebar_row(slabel, badge, sact, shelp, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))).on_mouse_down(
                         MouseButton::Right,
                         move |e, cx| {
                             let hub = hub_end.clone();
@@ -3221,10 +3287,10 @@ impl RexWindow {
             if activity_rows.is_empty() {
                 list = list.child(div().py(px(m::SECTION)).child(StringView::new("All agents and shells are quiet.").dim(true)));
             }
-            for (bk, host_lbl, title, detail, act) in activity_rows {
+            for (bk, host_lbl, title, detail, act, help) in activity_rows {
                 let bk_jump = bk.clone();
                 let sub = if detail.is_empty() { host_lbl } else { format!("{host_lbl} • {detail}") };
-                list = list.child(sidebar_activity_row(title, sub, act, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
+                list = list.child(sidebar_activity_row(title, sub, act, help, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
             }
         }
 
@@ -4184,15 +4250,31 @@ impl View for RexWindow {
                 let Some((hk, sess)) = self.resolve_active_session() else { return };
                 let Some(tab) = sess.windows.get(i).map(|w| w.window_id.clone()) else { return };
                 let count = sess.windows.len();
-                let mut menu = Menu::new("")
-                    .item("Rename Tab…", "window.rename")
-                    .separator()
-                    .item("Move Tab Left", "window.move_left")
-                    .enabled(i > 0)
-                    .item("Move Tab Right", "window.move_right")
-                    .enabled(i + 1 < count)
-                    .separator()
-                    .item("Close Tab", "window.close");
+                // Keep It Going and Auto Approve of the tab's panes that run
+                // an agent (or have either on), else of its pane with the
+                // keyboard (Ben, 2026-11-24: "make sure those options show
+                // when right clicking the rex tab too"). In a tab of
+                // several panes each pair names its pane: the pair of the
+                // pane with the keyboard, unchecked, beside another's
+                // countdown read as Auto Approve off (Opus's review).
+                let panes = sess.windows.get(i).map(|w| tab_agent_panes(&app().hub, &hk, &sess.session_id, w)).unwrap_or_default();
+                let several = sess.windows.get(i).is_some_and(|w| w.all_blocks().count() > 1);
+                let mut menu = Menu::new("").item("Rename Tab…", "window.rename").separator();
+                for (n, p) in panes.iter().enumerate() {
+                    let help = app().hub.help(p);
+                    let (keep, approve) = if several {
+                        let name = pane_name(&app().hub, p);
+                        (olo_kit::tr!("Keep It Going in \u{201c}{}\u{201d}", name), olo_kit::tr!("Auto Approve in \u{201c}{}\u{201d}", name))
+                    } else {
+                        ("Keep It Going".to_owned(), "Auto Approve".to_owned())
+                    };
+                    menu = menu.item(keep, format!("agent.keep_going_toggle#{n}")).checked(help.keep_going).item(approve, format!("agent.auto_approve_toggle#{n}")).checked(help.auto_approve);
+                }
+                if !panes.is_empty() {
+                    menu = menu.separator();
+                }
+                let mut menu =
+                    menu.item("Move Tab Left", "window.move_left").enabled(i > 0).item("Move Tab Right", "window.move_right").enabled(i + 1 < count).separator().item("Close Tab", "window.close");
                 menu::resolve(std::slice::from_mut(&mut menu), true);
                 let hub = app().hub.clone();
                 let window = self.id;
@@ -4202,6 +4284,16 @@ impl View for RexWindow {
                         "window.rename" => {
                             if let Some(slot) = wins().map.get(&window) {
                                 slot.handle.messenger().send(WinMsg::RenameTab(hk.clone(), sess.session_id.clone(), tab.clone()));
+                            }
+                        }
+                        _ if cmd.starts_with("agent.keep_going_toggle#") => {
+                            if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
+                                hub.set_help(p, |h| h.keep_going = !h.keep_going);
+                            }
+                        }
+                        _ if cmd.starts_with("agent.auto_approve_toggle#") => {
+                            if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
+                                toggle_auto_approve(&hub, p, &pane_name(&hub, p));
                             }
                         }
                         "window.move_left" | "window.move_right" => {
@@ -4841,7 +4933,7 @@ fn render_single_pane(
         return div().size_full().child(StringView::new("Attaching terminal stream…").dim(true));
     };
 
-    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt, scrolled) = {
+    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt, scrolled, counting) = {
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
         (
             g.creator_name.clone(),
@@ -4852,6 +4944,9 @@ fn render_single_pane(
             g.upload_progress.clone(),
             g.password_prompt,
             g.terminal.scrollbar(),
+            // (Auto Approve's question, and how long till it's answered:
+            // what the countdown says.)
+            g.watch.counting(Instant::now()).map(|(_, left)| left.as_secs_f32().ceil() as u64),
         )
     };
 
@@ -4922,7 +5017,8 @@ fn render_single_pane(
         let bk_zoom = bk.clone();
         let bk_close = bk.clone();
         let title_paint = header_title.clone();
-        let key = style::key((&header_title, &git_pill, &ports_pill, &host_pill, focused, zoomed, activity as u8, pane_w as i32));
+        let pane_help = crate::hub::help_of(&bk);
+        let key = style::key((&header_title, &git_pill, &ports_pill, &host_pill, focused, zoomed, activity as u8, &pane_help, pane_w as i32));
 
         let head_bg = canvas(move |g, b| {
             let p = theme::palette();
@@ -4949,7 +5045,7 @@ fn render_single_pane(
             // Terminal's panes have theirs.
             let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
             let icon_b = style::snap_centred(g, point(b.left() + px(pad.0 + ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
-            paint_activity_icon(g, icon_b, activity);
+            paint_activity_icon(g, icon_b, activity, &pane_help);
             let left = pad.0 + ROW_ICON + m::MARK_GAP;
             let title_max_w = (f32::from(b.size.width) - left - right_controls_w - m::TIGHT).max(24.0);
             let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
@@ -5203,9 +5299,10 @@ fn render_single_pane(
         // The menu bar's commands for this pane, by the names and with
         // the checks and keys they have there: the clipboard; its text;
         // the pane itself; closing it, alone and last.
-        let (selected, copying, keep_going, agent) = {
+        let help = app().hub.help(&bk_rclick);
+        let (selected, copying, agent) = {
             let g = br_menu.lock().unwrap_or_else(|e| e.into_inner());
-            (g.terminal.has_selection(), g.copy_mode.is_some(), g.keep_going.is_some(), !g.program_statuses.is_empty())
+            (g.terminal.has_selection(), g.copy_mode.is_some(), g.runs_agent() || g.agent_activity != AgentActivity::Idle)
         };
         let mut menu = Menu::new("")
             .item("Copy", "terminal.copy")
@@ -5224,9 +5321,9 @@ fn render_single_pane(
             .item("Zoom Pane", "pane.zoom_toggle")
             .checked(zoomed)
             .enabled(zoomed || has_splits);
-        // (For a pane an agent runs in, or where it is already on.)
-        if agent || keep_going {
-            menu = menu.item("Keep It Going", "agent.keep_going_toggle").checked(keep_going);
+        // (For a pane an agent runs in, or where either is already on.)
+        if agent || help.any() {
+            menu = menu.item("Keep It Going", "agent.keep_going_toggle").checked(help.keep_going).item("Auto Approve", "agent.auto_approve_toggle").checked(help.auto_approve);
         }
         menu = menu.separator().item("Close Pane", "pane.close");
         menu::resolve(std::slice::from_mut(&mut menu), true);
@@ -5290,7 +5387,26 @@ fn render_single_pane(
             }
         },
     );
-    pane_col = pane_col.child(div().relative().flex_1().min_h_0().size_full().child(screen_canvas).child(bar));
+    let mut screen_box = div().relative().flex_1().min_h_0().size_full().child(screen_canvas).child(bar);
+    // Auto Approve counting down to its Yes, with Stop (the question is
+    // then the person's), as Terminal has it: at the screen's top right,
+    // over older output (at its foot it covered, in a narrow pane, the
+    // question it was about: an agent asks at the bottom).
+    if let Some(left) = counting {
+        let hub_stop = app().hub.clone();
+        let key_stop = bk.clone();
+        // (Its screen's width as last drawn: `pane_w` is the window's
+        // share, the sidebar's width in it.)
+        let drawn = f32::from(visual.bounds.get().size.width);
+        let narrow = if drawn > 0.0 { drawn } else { pane_w } < COUNTDOWN_SHORT;
+        screen_box = screen_box.child(div().absolute().right(px(m::SPACING)).top(px(m::SPACING)).child(widgets::agent_marks::auto_approve_countdown(
+            left,
+            narrow,
+            format!("rex-auto-approve-stop-{}", bk.block_id),
+            move |_, _| hub_stop.stop_auto_approve(&key_stop),
+        )));
+    }
+    pane_col = pane_col.child(screen_box);
 
     if let Some((fname, frac)) = upload_prog {
         pane_col = pane_col.child(div().w_full().px(px(m::SPACING)).py(px(4.0)).child(StatusBar::new(frac).label(format!("Uploading {fname}…"))));
@@ -5314,8 +5430,8 @@ const ACTIVITY_TEXT: f32 = m::TIGHT + ROW_ICON + m::TIGHT;
 /// window's).
 const HEADER_END: f32 = crate::settings::PADDING.0;
 
-fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selected: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let key = style::key((&label, &badge, act as u8, selected));
+fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, help: crate::agent::Help, selected: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    let key = style::key((&label, &badge, act as u8, &help, selected));
     let l_paint = label.clone();
     let b_paint = badge.clone();
     canvas(move |g, b| {
@@ -5330,7 +5446,7 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
         // are: at 12 points it was the 16-point one made smaller, and
         // soft at 1×. Its left edge is the host's name's.)
         let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
-        paint_activity_icon(g, icon_b, act);
+        paint_activity_icon(g, icon_b, act, &help);
         let mut right = b.right() - px(8.0);
         if let Some(bg) = &b_paint {
             let r = style::label(g, right, b.center().y, style::Align::Right, bg.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), style::c([216, 56, 56, 255]));
@@ -5418,8 +5534,8 @@ fn bevel_colors(p: &olo_theme::Palette) -> (olo_kit::Hsla, olo_kit::Hsla) {
     }
 }
 
-fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let key = style::key((&title, &subtitle, act as u8));
+fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, help: crate::agent::Help, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    let key = style::key((&title, &subtitle, act as u8, &help));
     let t_paint = title.clone();
     let s_paint = subtitle.clone();
     canvas(move |g, b| {
@@ -5427,7 +5543,7 @@ fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, on_
         style::fill_rect(g, b, style::c(p.control_background));
         style::raised(g, b, &p);
         let icon_b = style::snap_centred(g, point(b.left() + px(m::TIGHT + ROW_ICON / 2.0), b.center().y), ROW_ICON, ROW_ICON);
-        paint_activity_icon(g, icon_b, act);
+        paint_activity_icon(g, icon_b, act, &help);
         style::label_fit(
             g,
             b.left() + px(ACTIVITY_TEXT),
@@ -5461,26 +5577,32 @@ fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, on_
     })
 }
 
-fn paint_activity_icon(g: &mut Painter, b: Bounds<Pixels>, act: AgentActivity) {
-    // The terminal's icon, and on its corner what the agent in it is
-    // doing, in the look's own colours: at work, waiting to be
-    // answered, failed, done. (At rest: the icon alone.)
-    let p = theme::palette();
-    if !icons::paint(g, b, "terminal") {
-        style::dot(g, b.center(), 6.0, style::disabled_text(&p));
-    }
-    let color = match act {
-        AgentActivity::Idle => return,
-        AgentActivity::Working => p.hue(olo_theme::Hue::Blue),
-        AgentActivity::Blocked => p.warning,
-        AgentActivity::Error => p.failure,
-        AgentActivity::Done => p.success,
+/// A terminal's icon with the kit's marks (`widgets::agent_marks`, as
+/// Terminal's tabs have them): what the agent in it is doing at its top
+/// corner, and at its bottom ones Keep It Going and Auto Approve where
+/// they are on.
+fn paint_activity_icon(g: &mut Painter, b: Bounds<Pixels>, act: AgentActivity, help: &crate::agent::Help) {
+    widgets::agent_marks::paint(g, b, "terminal", marks_of(act, help));
+}
+
+fn marks_of(act: AgentActivity, help: &crate::agent::Help) -> widgets::agent_marks::Marks {
+    use widgets::agent_marks::AgentMark;
+    let agent = match act {
+        AgentActivity::Idle => AgentMark::None,
+        AgentActivity::Working => AgentMark::Working,
+        AgentActivity::Blocked => AgentMark::Asking,
+        AgentActivity::Error => AgentMark::Failed,
+        AgentActivity::Done => AgentMark::Done,
     };
-    // (A ring of the ground round it, so it reads as on the icon, not
-    // of it.)
-    let center = point(b.right() - px(3.0), b.bottom() - px(3.0));
-    style::dot(g, center, 8.0, style::c(p.panel_background));
-    style::dot(g, center, 6.0, style::c(color));
+    widgets::agent_marks::Marks { agent, keep_going: help.keep_going, auto_approve: help.auto_approve }
+}
+
+/// What a pane has on, in words, for its tab's and its row's words
+/// (Terminal's).
+fn help_words(help: &crate::agent::Help) -> Option<String> {
+    let parts: Vec<String> =
+        [help.keep_going.then(|| olo_kit::words::tr("kept going").to_string()), help.auto_approve.then(|| olo_kit::words::tr("auto approving").to_string())].into_iter().flatten().collect();
+    (!parts.is_empty()).then(|| parts.join("; "))
 }
 
 /// What the mark on a terminal's icon says, in words (a row's tip, and

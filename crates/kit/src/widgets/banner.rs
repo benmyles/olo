@@ -131,3 +131,34 @@ impl IntoElement for Banner {
         div().relative().w_full().h(px(banner_height())).child(back).child(row)
     }
 }
+
+/// A countdown to something about to be done by itself, with Stop: a
+/// small raised panel of one line (`lead`, a mark saying what will be
+/// done, then `text`, "Auto Approve answers Yes in 12 s") and a small
+/// Stop button (`id`), for an app to set over the corner of what it is
+/// about (Terminal's tab, Rex's pane). Agents read it as a Status, its
+/// Stop a button. Redrawn by its app as the count goes; nothing of it
+/// runs by itself. (Its padding even all round, its edge the raised
+/// bevel in light and dark alike: it had a flat box with an outline in
+/// light and no edge in dark, Opus's review, 2026-11-24.)
+pub fn countdown_box(lead: Option<Element>, text: SharedString, id: SharedString, on_stop: impl Fn(&olo_interface::ClickEvent, &mut olo_interface::WindowCx) + 'static) -> Element {
+    let name = text.clone();
+    let back = canvas(move |g, b| {
+        let p = theme::palette();
+        // (Edged as a button is, a line round it and a bevel inside: the
+        // bevel alone hardly showed in dark.)
+        style::fill_rect(g, b, style::c(p.panel_background));
+        style::frame_rect(g, b, style::shade(&p, p.panel_background, 1.6));
+        style::bevel(g, style::inset(g, b, 1.0), style::c(p.shine), style::shade(&p, p.panel_background, 1.2));
+        g.agent(agent::Node { role: "Status", name: Some(name.clone()), bounds: b, enabled: true, ..Default::default() });
+    })
+    .paint_key(style::key(&text))
+    .absolute()
+    .inset_0();
+    let stop = crate::widgets::Button::new("Stop").small().id(id).on_click(on_stop);
+    let mut words = div().flex().flex_row().items_center().gap(px(m::MARK_GAP));
+    if let Some(lead) = lead {
+        words = words.child(lead);
+    }
+    div().relative().flex().flex_row().items_center().gap(px(m::LABEL_GAP)).p(px(m::TIGHT)).child(back).child(words.child(StringView::new(text))).child(stop).into_element()
+}

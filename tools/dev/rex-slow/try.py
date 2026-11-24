@@ -66,7 +66,7 @@
                                               nothing answers there
 
 PROGRAM: shell, box, box-nosync, line (tui.py's stand-ins), or a command line."""
-import glob, os, signal, sys, time
+import contextlib, glob, os, shutil, signal, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rig
 from rig import *
@@ -264,6 +264,52 @@ elif what in ("bytes", "flood"):
                     b1, at = settled(r, quiet=1.0); p.send_signal(signal.SIGINT); err = p.communicate()[1]
                     own = sum(int(f[1]) for f in (l.split(",") for l in err.splitlines()) if len(f) > 3 and f[1].isdigit() and not f[0].startswith("llvmpipe"))
                     print(f"compression {packed}: seq {lines}: {b1['down'] - b0['down']:,} bytes down, the last of them {at - t:.1f} s after the command; the app's own threads {own / 1e6:,.0f} million instructions", flush=True)
+elif what == "agents":
+    # Keep It Going and Auto Approve in a pane, for each of the three coding agents at once (`agents-one AGENT`,
+    # each in a rig of its own: at_once.py).
+    sys.exit(subprocess.run(["/usr/bin/python3", f"{HERE}/at_once.py", os.path.abspath(__file__), "claude", "codex", "agy", "--", "agents-one"]).returncode)
+elif what in ("claude", "codex", "agy") and args[:1] == ["agents-one"]:
+    # One coding agent's stand-in (tools/dev/stand-ins: it works, asks leave to run a command with "1. Yes" chosen,
+    # waits at its own prompt, works again and waits again, writing what it is answered and told), as at_once.py runs
+    # it (`try.py AGENT agents-one`). Keep It Going and Auto Approve turned on by the app's commands, as an agent
+    # would ask: Auto Approve then asks the person, who presses Turn On. The question is answered with Return once
+    # its time has come (shortened: OLO_REX_AUTO_APPROVE_SECS), the countdown showing meanwhile; the agent at its
+    # prompt, quiet long enough (OLO_REX_KEEP_GOING_SECS), is told to keep going; and not again within the hour.
+    agent = what
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:220], flush=True)
+    said = "Please keep going until everything is complete and verified."
+    record = f"{D}/agent-{agent}.txt"
+    with contextlib.suppress(FileNotFoundError): os.remove(record)
+    read = lambda: open(record).read() if os.path.exists(record) else ""
+    # (Under a copy of bash named for the agent: Rex's server names a script's program by its interpreter,
+    # "bash", where an agent runs under its own name.)
+    named = f"{D}/agents/{agent}"
+    os.makedirs(os.path.dirname(named), exist_ok=True)
+    shutil.copy("/usr/bin/bash", named)
+    with Rig(f"exec {named} {R3}/tools/dev/stand-ins/{agent} {record}", delay=0, env=["OLO_REX_AUTO_APPROVE_SECS=4", "OLO_REX_KEEP_GOING_SECS=3"]) as r:
+        time.sleep(1.0)
+        r.invoke("agent.keep_going_toggle")
+        r.invoke("agent.auto_approve_toggle")
+        # (Asked for through the commands socket: the person is asked, and says Turn On.)
+        button = r.wait(lambda: next((n for n in r.nodes() if n.get("role") == "Button" and n.get("name") == "Turn On"), None), 10)
+        alert = next((w for w in r.windows() if w.get("title") == "Rex" and w.get("id") != r.win.get("id")), None)
+        check(f"{agent}: Auto Approve asked of the person first", button and alert, {"alert": bool(alert), "button": bool(button)})
+        if button and alert:
+            c = alert["content"]
+            r.ts("click", r.name, str(int(c["x"] + button["x"] + button["width"] / 2)), str(int(c["y"] + button["y"] + button["height"] / 2)))
+        counting = r.wait(lambda: next((n for n in r.nodes() if n.get("role") == "Status" and "Yes in" in str(n.get("name") or "")), None), 12)
+        check(f"{agent}: the question counts down", counting, (counting or {}).get("name"))
+        answered = r.wait(lambda: "answer:[]" in read(), 15)
+        check(f"{agent}: answered Yes (Return) once its time came", answered, read())
+        told = r.wait(lambda: f"said:[{said}]" in read(), 20)
+        check(f"{agent}: told to keep going at its prompt, once quiet", told, read())
+        time.sleep(9)
+        check(f"{agent}: not told again within the hour", told and "said again" not in read(), read())
+    if not ok:
+        sys.exit(1)
 elif what == "agent":
     import getpass
     with Rig("shell", delay=0, far=True) as r:

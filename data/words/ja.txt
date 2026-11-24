@@ -14238,3 +14238,36 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 ⌘ Command (the Super key)
 ⌘ Command（Superキー）
+
+Auto Approve answers Yes in {} s
+自動承認が{}秒後に「はい」と答えます
+
+kept going
+作業を続けさせています
+
+auto approving
+自動承認中
+
+Waiting for approval
+承認待ち
+
+Working
+作業中
+
+Error
+エラー
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+「{}」の自動承認をオンにしますか？\n\nこれはあなたではなく、別のプログラムからの依頼です。このペインのコーディングエージェントが続行の許可を求めると（「Do you want to proceed?」）、ペインに入力するか停止を押さない限り、Rex が{}秒後に「はい」と答えます。
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+「{}」の自動承認をオンにしますか？\n\nこれはあなたではなく、別のプログラムからの依頼です。このタブのコーディングエージェントが続行の許可を求めると（「Do you want to proceed?」）、タブに入力するか停止を押さない限り、Terminal が{}秒後に「はい」と答えます。
+
+Yes in {} s
+{}秒後に「はい」
+
+Keep It Going in “{}”
+「{}」で作業を続けさせる
+
+Auto Approve in “{}”
+「{}」で自動承認

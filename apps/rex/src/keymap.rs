@@ -340,6 +340,7 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "files.open_in_tracker", title: "Open Working Directory in Tracker", category: "Files", keywords: &["finder", "folder", "tracker"], args_schema: None },
         // ---- Coding Agents & Automation ----
         ActionSpec { id: "agent.keep_going_toggle", title: "Toggle Keep It Going", category: "Agents", keywords: &["nudge", "continue", "autonomous"], args_schema: None },
+        ActionSpec { id: "agent.auto_approve_toggle", title: "Toggle Auto Approve", category: "Agents", keywords: &["approve", "yes", "permission", "agent", "proceed"], args_schema: None },
         ActionSpec { id: "agent.jump_next_blocked", title: "Jump to Next Blocked Agent", category: "Agents", keywords: &["attention", "prompt", "waiting"], args_schema: None },
         ActionSpec { id: "agent.mark_all_read", title: "Mark All Read", category: "Agents", keywords: &["clear", "unread", "badge"], args_schema: None },
         // ---- Key Modes ----

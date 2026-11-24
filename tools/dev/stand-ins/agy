@@ -2,6 +2,8 @@
 # A stand-in for the Antigravity CLI, for Olo's tests (run it as `bash tools/dev/stand-ins/agy RECORD`: its name is what
 # tells it apart): it draws the screens recorded from agy 1.5.15 (working, asking leave to run a command, at its
 # prompt), and writes into RECORD what it is answered ("answer:[]" is Return) and told. No agent, no account.
+# In Rex, whose server names a script's program by its interpreter, run it under a copy of bash named for the
+# agent (`cp /usr/bin/bash DIR/agy; DIR/agy tools/dev/stand-ins/agy RECORD`, as try.py agents does).
 out=$1
 RULE=$(printf '─%.0s' $(seq 70))
 pad() { for _ in $(seq 70); do echo; done; }

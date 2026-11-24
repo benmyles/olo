@@ -357,7 +357,7 @@ pub(crate) struct Pending {
 }
 
 /// How long a question shows before it's answered ("after 30s").
-const AUTO_APPROVE_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+const AUTO_APPROVE_AFTER: std::time::Duration = olo_agent_screen::AUTO_APPROVE_AFTER;
 
 /// `AUTO_APPROVE_AFTER`, or in a test `OLO_TERMINAL_AUTO_APPROVE_SECS`.
 fn auto_approve_after() -> std::time::Duration {
@@ -382,10 +382,10 @@ pub(crate) struct KeepGoing {
 
 /// How long it waits with nothing happening (Ben: "change it from 60s to
 /// 120s without activity").
-const KEEP_GOING_QUIET: std::time::Duration = std::time::Duration::from_secs(120);
+const KEEP_GOING_QUIET: std::time::Duration = olo_agent_screen::KEEP_GOING_QUIET;
 /// At most once in this long ("limit it to sending up to one "please
 /// continue" per hour").
-const KEEP_GOING_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+const KEEP_GOING_EVERY: std::time::Duration = olo_agent_screen::KEEP_GOING_EVERY;
 /// What it says, as Preferences ▸ Terminal ▸ Coding Agents has it now
 /// (followed live; kept on Terminal's state, `keep_going_says`).
 struct KeepGoingSays(String);
@@ -1859,8 +1859,8 @@ impl Terminal {
                     let on = t.tabs[i].auto_approve.is_none();
                     if on && olo_kit::agent::invoking() {
                         // Not a hand on this display: the person says.
-                        let message = format!(
-                            "Turn on Auto Approve for \u{201c}{}\u{201d}?\n\nIts coding agent\u{2019}s questions asking leave to go on (\u{201c}Do you want to proceed?\u{201d}) will be answered Yes after {} seconds, unless you type in the tab or press Stop.",
+                        let message = olo_kit::tr!(
+                            "Turn on Auto Approve for \u{201c}{}\u{201d}?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (\u{201c}Do you want to proceed?\u{201d}), Terminal will answer Yes after {}\u{a0}seconds, unless you type in the tab or press Stop.",
                             t.tabs[i].title,
                             auto_approve_after().as_secs()
                         );

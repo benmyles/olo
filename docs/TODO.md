@@ -13,21 +13,17 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Rex: Auto Approve and Keep It Going for every coding agent** (Ben,
-  2026-11-24: "did we already add the support for auto approve + keep
-  it going for all the coding harnesses in our olo rex? if not
-  prioritize that as the first item"). Rex has Keep It Going (a pane's
-  toggle in Agents and the pane's menu; a stopped agent found by
-  reading its screen: Claude Code, Codex, Antigravity), but Antigravity's
-  part was tried with recorded screens only; Auto Approve isn't in Rex
-  at all (a note in `apps/rex/src/agent.rs`, nothing behind it).
-  Terminal has both (`apps/terminal/src/agent.rs`: `classify`,
-  `approvable`, its countdown). To do: Auto Approve in Rex for Claude
-  Code, Codex and Antigravity, Terminal's reading of the question shared
-  (in a crate both use, not copied), its countdown and what the person
-  may stop, for panes on any host; Keep It Going and Auto Approve each
-  tried against the real three in a helper's own session on a specimen
-  task, on this host and a far one.
+- **Agents' screens, checked against the real three** (left of Rex's
+  Auto Approve and Keep It Going, done 2026-11-24 with stand-ins of all
+  three): what `olo_agent_screen` reads (a question Auto Approve may
+  answer, the prompt Keep It Going speaks into) checked against today's
+  Claude Code, Codex and Antigravity, each in a helper's own tmux
+  session on a specimen task touching nothing, the stand-ins brought up
+  to date with what they draw. Blocked for Codex until it is signed in
+  on the dev server (the person's: `codex login --device-auth`), as is
+  Astra's look at that change's pictures (`/var/tmp/claude-olo/aa/
+  review2`, to be taken again then): Opus 5.5's two rounds alone were
+  had.
 - **Rex: the mouse as in a local terminal** (Ben, 2026-11-24: "in olo
   rex we need to get mouse scrolling / mouse interactions working
   properly like a local terminal"): scrolling the history, and the
@@ -45,6 +41,59 @@ something nobody here has is in "Blocked", with what it waits for.
   tray's offer at once), and the releases listed there with Install for
   an older one (`olo-release install TAG`, what it would download said
   first, and what going back means for settings made since).
+- **Skills for the dev server** (Ben, 2026-11-24: "with the way you're
+  using the vm and everything to build releases and headless testing
+  and all that -- just make sure it's all documented in skills so that
+  if you move to another server you've got all that knowledge still"):
+  a project skill for setting up and working on a new server (what to
+  install, Jato, test desktops in software, the release container and
+  `tools/publish-release.sh`, Codex's and Claude Code's first-time
+  questions, the person's desktop through Rex), from AGENT-NOTES' "The
+  dev server" and HACKING, kept current with them.
+- **Rex: Activity as a list to choose from** (Ben, 2026-11-24, with a
+  picture of Activity: "rex activity doesn't have a selected state like
+  i'd expect Activity shows each agent that is running and lets me
+  select the one i want to see"; "the agent shouldn't disappear if it
+  just stops working but the harness is still open -- it should still
+  be in that list as long as it is still running"; "make sure we show
+  different status indicators to indicate all the different states
+  properly"): the row of the pane shown is selected, as Sessions'
+  is; an agent stays while its program runs, at rest too
+  (`AgentMark::AtRest`); each state its own mark (working, waiting,
+  done, failed, at rest).
+- **Rex: images pasted into a remote agent** (Ben, 2026-11-24: "make it
+  so that copy and paste of images works properly in a rex session e.g.
+  when i paste an image for you in here that was on my clipboard it
+  should make it available to you properly"): an image on the
+  clipboard pasted into a pane is put on the pane's host (its upload,
+  `upload_begin`) and its path typed, as Claude Code, Codex and
+  Antigravity take a pasted image's path; find first what each agent
+  does with a paste locally (Terminal's paste of an image) and do the
+  same over Rex.
+- **Rex: its preferences and settings, put in order** (Ben, 2026-11-24:
+  "all the different rex prefs and settings and stuff has got really
+  confusing and disorganized. please do a pass through all that and
+  improve the ux to make it all better organized and usable"): every
+  place a setting of Rex's lives (Preferences ▸ Rex, Rex's Settings
+  menu and windows, the Host window, the Account window, per-host
+  grants) gathered and read as a whole first; then one plan of what
+  goes where (desktop-wide in Preferences, this window's in Rex, a
+  host's in its Host window), the same words for the same thing, each
+  setting found once, and pictures of before and after.
+- **489 words untranslated in every language** (found 2026-11-24:
+  `tools/dev/words missing de` lists them, the same in each; Rex's
+  menus and windows, the Account window, Agent Sessions among them).
+  `words merge` refuses a catalog that isn't whole, so new sentences
+  went in as blocks of their own meanwhile. Translate them, a language
+  at a time (a subagent's work: one catalog each), then merge so each
+  catalog is whole and in order again.
+- **Rex: Quick Look of a remote file** (Ben, 2026-11-24: "the quick
+  look feature for rex to view a remote file needs to work better and
+  save it somewhere locally and load it in the viewer right now it is
+  some weird crippled viewer type thing"): the file copied to a local
+  folder of Rex's (download_begin, with progress, cancellable), then
+  opened in Olo's own app for its kind (Viewer for a picture, Styled
+  Edit for text, …) as Tracker opens a file, not Rex's own preview.
 
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its

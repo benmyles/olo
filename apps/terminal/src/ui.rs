@@ -23,7 +23,6 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
-    rc::Rc,
     sync::{
         Arc, Mutex, MutexGuard, OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -33,8 +32,7 @@ use std::{
 
 use olo_kit::{
     Bounds, Child, CursorStyle, DragAction, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, Rgba, ScrollWheelEvent, SharedString, Styled as _, TextInput, View, WindowCx, WindowHandle, canvas, div,
-    fill, icons,
+    MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, Pixels, Point, Rgba, ScrollWheelEvent, SharedString, Styled as _, TextInput, View, WindowCx, WindowHandle, canvas, div, fill,
     menu::{self, Menu, MenuBar},
     metrics as m, outline, point, px, quad, size, style, theme,
     widgets::{self, Button, CheckBox, ListModel, StripAction, StripGroup, StripTab, TabStrip, TextControl, TextField, TextFieldEvent},
@@ -809,196 +807,37 @@ fn lerp(a: Hsla, b: Hsla, t: f32) -> Hsla {
     Hsla::from(Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t })
 }
 
-/// Auto Approve's countdown over `screen`'s bottom right corner: "Yes in
-/// N s" and Stop (the question is then the person's). Agents read it as a
-/// Status, its Stop a button.
+/// Auto Approve's countdown over `screen`'s top right corner: "Yes in N
+/// s" and Stop (the question is then the person's). Agents read it as a
+/// Status, its Stop a button. (At the bottom it covered, in a narrow
+/// pane, the question it was about: an agent asks at its screen's foot.)
 fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32) -> Element {
-    let text: SharedString = olo_kit::tr!("Auto Approve: Yes in {} s", left).into();
-    let name = text.clone();
-    let back = canvas(move |g, b| {
-        let p = theme::palette();
-        widgets::banner::banner_back(g, b, None, &p);
-        g.agent(olo_kit::agent::Node { role: "Status", name: Some(name.clone()), bounds: b, enabled: true, ..Default::default() });
-    })
-    .paint_key(style::key(&text))
-    .absolute()
-    .inset_0();
-    let stop = Button::new("Stop").small().id(SharedString::from(format!("auto-approve-stop-{shell}"))).on_click(on(move |t, _: &olo_kit::ClickEvent, _| t.auto_approve_stop(&mut Cx, shell)));
+    let stop = on(move |t, _: &olo_kit::ClickEvent, _| t.auto_approve_stop(&mut Cx, shell));
     let inset = px(m::SPACING);
     div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(
-        div()
-            .absolute()
-            .right(inset)
-            .bottom(inset)
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::SPACING))
-            .pl(px(m::SPACING))
-            .pr(px(m::TIGHT))
-            .py(px(m::TIGHT))
-            .child(back)
-            .child(widgets::StringView::new(text))
-            .child(stop),
+        div().absolute().right(inset).top(inset).child(widgets::agent_marks::auto_approve_countdown(
+            left as u64,
+            f32::from(screen.size.width) < 480.0,
+            SharedString::from(format!("auto-approve-stop-{shell}")),
+            stop,
+        )),
     )
 }
 
-/// `a` with `t` of `b` in it.
-fn blend(a: Hsla, b: Hsla, t: f32) -> Hsla {
-    let (a, b) = (Rgba::from(a), Rgba::from(b));
-    let l = |x: f32, y: f32| x + (y - x) * t;
-    Rgba { r: l(a.r, b.r), g: l(a.g, b.g), b: l(a.b, b.b), a: l(a.a, b.a) }.into()
-}
-
-/// The mark of an agent at work, centred near `centre`: a ring, faint all
-/// the way round, with a strong head and a tail fading behind it, turned
-/// to `turn` (radians, clockwise). Busy at whatever moment it is seen,
-/// and which way it goes, in a still picture too: a three-quarter arc
-/// read as a letter there, and a strong third with no tail as a cap
-/// sitting on top (the reviewers' looks, 2026-11-21).
-///
-/// Drawn as the icons are: whole device pixels, each one colour, no
-/// smoothed edge (a smoothed ring 7.5 pixels across was a blur beside a
-/// drawn icon at 1×, and soft at 1.5×). Its width is even and its centre
-/// on a pixel's corner, its stroke a quarter of its width: at 1× eight
-/// across with a hole of four, the same shape at every scale. The faint ring is the strong colour in
-/// the rim's (`rim`: what the tab is filled with), more of it in dark,
-/// where less of it was lost in the tab.
-fn working_ring(g: &mut Painter, centre: Point<Pixels>, turn: f32, rim: Hsla, strong: Hsla, dark: bool) {
-    use std::f32::consts::{PI, TAU};
-    let s = g.scale_factor();
-    let outer = ((3.75 * s).round() * 2.0).max(8.0);
-    let stroke = (outer / 4.0).round();
-    let (cx, cy) = ((f32::from(centre.x) * s).round(), (f32::from(centre.y) * s).round());
-    let (r1, r0) = (outer / 2.0, outer / 2.0 - stroke);
-    // The faint ring: the accent in the rim's colour, less of it in dark
-    // (a strong ring there shaded like a raised knob lit from above, and
-    // outweighed the title of a tab behind). The head: the accent, in
-    // dark lightened and as blue as it was (near white, it ran into the
-    // icon's bezel). The tail's two steps: the larger drop right behind
-    // the head, so the leading edge is crisp and the trailing one fades.
-    let faint = blend(rim, strong, if dark { 0.33 } else { 0.38 });
-    let head = if dark { Hsla { l: strong.l.max(0.76), ..strong } } else { strong };
-    let shades = [head, blend(faint, head, if dark { 0.6 } else { 0.72 }), blend(faint, head, if dark { 0.3 } else { 0.36 }), faint];
-    // Which shade a pixel has, by how far behind the head it is.
-    let shade = |x: f32, y: f32| -> Option<usize> {
-        let d = x * x + y * y;
-        if d > r1 * r1 || d < r0 * r0 {
-            return None;
-        }
-        // (A sixth of a turn of head, then two steps of tail of a ninth
-        // each: at 1× six pixels and four and four of the ring's 36.
-        // Shorter, the tail was a pixel or two and the head read as "a
-        // quarter done".)
-        let behind = (turn - y.atan2(x)).rem_euclid(TAU);
-        Some(if behind < PI / 3.0 {
-            0
-        } else if behind < PI / 3.0 + TAU / 9.0 {
-            1
-        } else if behind < PI / 3.0 + 2.0 * TAU / 9.0 {
-            2
-        } else {
-            3
-        })
-    };
-    let n = outer as i32;
-    for row in 0..n {
-        let y = row as f32 - r1 + 0.5;
-        // (A row's pixels of one shade side by side are one piece.)
-        let mut run: Option<(i32, usize)> = None;
-        for col in 0..=n {
-            let here = if col < n { shade(col as f32 - r1 + 0.5, y) } else { None };
-            if let Some((from, of)) = run
-                && here != Some(of)
-            {
-                let piece = Bounds { origin: point(px((cx - r1 + from as f32) / s), px((cy - r1 + row as f32) / s)), size: size(px((col - from) as f32 / s), px(1.0 / s)) };
-                g.paint_quad(fill(piece, shades[of]));
-                run = None;
-            }
-            if run.is_none() {
-                run = here.map(|of| (col, of));
-            }
-        }
-    }
-}
-
-/// A tab's icon: Terminal's, with a badge at its corner: a turning ring
-/// while an agent works, an orange "!" when it needs an answer, a green
-/// dot when it's done and no one has looked, a blue dot for an unseen
-/// bell; and at its bottom corner, while Keep It Going is on, a blue
-/// disc with a "go on" triangle; at its other bottom corner, while Auto
-/// Approve is on, a green one with a check.
+/// A tab's icon: Terminal's, with the kit's marks of what its agent is
+/// doing and what it has on (`widgets::agent_marks`): at work, needing an
+/// answer, done and not yet looked at, or a bell not yet seen; Keep It
+/// Going and Auto Approve.
 pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: bool, auto_approve: bool) -> widgets::strip::PaintFn {
-    Rc::new(move |g: &mut Painter, r: Bounds<Pixels>| {
-        icons::paint(g, r, "terminal");
-        let p = theme::palette();
-        // (Each mark is set off from the icon by a rim of what the tab is
-        // filled with: the content's colour on the chosen tab, the
-        // panel's shade behind.)
-        let rim = widgets::strip::drawn_over().unwrap_or_else(|| style::c(p.panel_background));
-        let disc_at = |g: &mut Painter, c: Point<Pixels>, radius: f32, color: Hsla| {
-            let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
-            g.paint_quad(fill(b, color).corner_radii(px(radius)));
-        };
-        if auto_approve {
-            let c = point(r.left() + px(1.5), r.bottom() - px(3.5));
-            disc_at(g, c, 5.5, rim);
-            disc_at(g, c, 4.5, style::c(p.success));
-            let mut path = PathBuilder::stroke(px(1.25));
-            path.move_to(point(c.x - px(2.0), c.y));
-            path.line_to(point(c.x - px(0.5), c.y + px(1.5)));
-            path.line_to(point(c.x + px(2.0), c.y - px(1.5)));
-            if let Ok(path) = path.build() {
-                g.paint_path(path, style::ink_on(p.success));
-            }
-        }
-        if keep_going {
-            // A disc in the accent colour with a "go on" triangle, as the
-            // question's is orange with a "!".
-            let c = point(r.right() - px(1.5), r.bottom() - px(3.5));
-            disc_at(g, c, 5.5, rim);
-            let accent = p.keyboard_navigation;
-            disc_at(g, c, 4.5, style::c(accent));
-            let mut path = PathBuilder::fill();
-            path.move_to(point(c.x - px(1.25), c.y - px(2.25)));
-            path.line_to(point(c.x + px(2.25), c.y));
-            path.line_to(point(c.x - px(1.25), c.y + px(2.25)));
-            path.close();
-            if let Ok(path) = path.build() {
-                g.paint_path(path, style::ink_on(accent));
-            }
-        }
-        let at = point(r.right() - px(1.5), r.top() + px(3.5));
-        let back = rim;
-        match agent {
-            Some(State::Working) => {
-                disc_at(g, at, 5.0, back);
-                // By the clock, so each time it's drawn shows where it is
-                // now; and drawn again ten times a second while it turns
-                // (it alone: what it's drawn in).
-                let turn = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f32() % 1000.0) * 5.0;
-                working_ring(g, at, turn, back, style::c(p.keyboard_navigation), p.mode == olo_theme::ThemeMode::Dark);
-                g.paint_again_within(0.1);
-            }
-            Some(State::Blocked) => {
-                disc_at(g, at, 5.5, back);
-                let orange = p.hue(olo_theme::Hue::Orange);
-                disc_at(g, at, 4.5, style::c(orange));
-                let white = style::ink_on(orange);
-                g.paint_quad(fill(Bounds::centered_at(point(at.x, at.y - px(1.0)), size(px(1.5), px(4.0))), white));
-                g.paint_quad(fill(Bounds::centered_at(point(at.x, at.y + px(2.25)), size(px(1.5), px(1.5))), white));
-            }
-            Some(State::Idle) if attention => {
-                disc_at(g, at, 4.0, back);
-                disc_at(g, at, 3.0, style::c(p.success));
-            }
-            _ if rang => {
-                disc_at(g, at, 3.5, back);
-                disc_at(g, at, 2.5, style::c(p.keyboard_navigation));
-            }
-            _ => {}
-        }
-    })
+    use widgets::agent_marks::{AgentMark, Marks};
+    let mark = match agent {
+        Some(State::Working) => AgentMark::Working,
+        Some(State::Blocked) => AgentMark::Asking,
+        Some(State::Idle) if attention => AgentMark::Done,
+        _ if rang => AgentMark::Rang,
+        _ => AgentMark::None,
+    };
+    widgets::agent_marks::icon("terminal", Marks { agent: mark, keep_going, auto_approve })
 }
 
 /// A pane's head in Tile All Tabs: its tab's icon and title (cut short

@@ -14238,3 +14238,36 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 
 ⌘ Command (the Super key)
 ⌘ Command（Super 鍵）
+
+Auto Approve answers Yes in {} s
+自動核准將在 {} 秒後回答「是」
+
+kept going
+繼續工作中
+
+auto approving
+自動核准中
+
+Waiting for approval
+等待核准
+
+Working
+工作中
+
+Error
+錯誤
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+要為「{}」開啟自動核准嗎？\n\n這是另一個程式要求的，不是你。當此窗格中的程式設計代理程式要求繼續（「Do you want to proceed?」）時，除非你在窗格中輸入或按下停止，Rex 會在 {} 秒後回答「是」。
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+要為「{}」開啟自動核准嗎？\n\n這是另一個程式要求的，不是你。當此分頁中的程式設計代理程式要求繼續（「Do you want to proceed?」）時，除非你在分頁中輸入或按下停止，Terminal 會在 {} 秒後回答「是」。
+
+Yes in {} s
+{} 秒後同意
+
+Keep It Going in “{}”
+在「{}」中繼續工作
+
+Auto Approve in “{}”
+在「{}」中自動核准

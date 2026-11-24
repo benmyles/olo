@@ -1,11 +1,13 @@
-//! Coding agent status detection (OSC 7501 primary + screen-reading fallback),
-//! Keep It Going, and Auto Approve (with 30 s countdown & human-only confirmation).
+//! Coding agents in a pane: what they are doing (the server's word, OSC
+//! 7501, else read from the screen), and Keep It Going and Auto Approve as
+//! Terminal has them, reading the screen as Terminal does
+//! (`olo_agent_screen`).
 
 use std::time::{Duration, Instant};
 
+pub use olo_agent_screen::{AUTO_APPROVE_AFTER, Agent, KEEP_GOING_EVERY, KEEP_GOING_QUIET, State};
+use olo_agent_screen::{approvable, at_prompt, classify, fingerprint};
 use olo_rex_client::{ProgramPriority, ProgramStatusRecord};
-
-/// Delay before Auto Approve sends confirmation to a blocked agent prompt.
 
 /// High-level agent state shown on tab icons, pane headers, Activity sidebar,
 /// and Deskbar notifications.
@@ -84,48 +86,318 @@ pub fn detect_agent_from_screen(foreground_name: Option<&str>, last_lines: &[Str
     Some(AgentActivity::Idle)
 }
 
-/// Per-pane Keep It Going state: when an agent finishes (`Done`/`Idle` after
-/// working), nudges it with a custom message until paused or stopped.
-#[derive(Debug, Clone)]
-pub struct KeepGoingState {
-    pub enabled: bool,
-    pub message: String,
-    pub last_nudged: Option<Instant>,
-    pub saw_working: bool,
+/// What the person turned on for a pane: Keep It Going (Terminal's: a
+/// coding agent told to go on, in its own prompt, once its turn has been
+/// over and its screen quiet `KEEP_GOING_QUIET`, at most once an hour)
+/// and Auto Approve (a question asking leave to go on, "1. Yes" chosen,
+/// answered Yes `AUTO_APPROVE_AFTER` after it shows). Kept by the hub by
+/// the pane's key, so a pane reattached has them still, and saved with
+/// the app for an upgrade.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Help {
+    #[serde(default)]
+    pub keep_going: bool,
+    #[serde(default)]
+    pub auto_approve: bool,
+    /// The question the person stopped (its key): still theirs when
+    /// seen again.
+    #[serde(default)]
+    pub theirs: Option<u64>,
 }
 
-impl KeepGoingState {
-    pub fn new(message: String) -> Self {
-        Self { enabled: true, message, last_nudged: None, saw_working: false }
+impl Help {
+    pub fn any(&self) -> bool {
+        self.keep_going || self.auto_approve
+    }
+}
+
+/// Which coding agent a pane's program is: by its program (its name, its
+/// file, or its arguments: an npm build runs under node, Claude Code's
+/// own build is named by its version), else by the words its screen
+/// shows.
+pub fn which_agent(program: Option<&str>, exe: &str, args: &[String], screen: &str) -> Option<Agent> {
+    if let Some(agent) = program.and_then(|name| olo_agent_screen::identify(name, exe, args)) {
+        return Some(agent);
+    }
+    // (Only where the program could be one: a shell printing these words is none.)
+    let shell = program.is_some_and(|p| matches!(p, "bash" | "zsh" | "sh" | "fish" | "dash" | "tmux" | "screen" | "vim" | "nvim" | "less" | "cat"));
+    match () {
+        _ if shell => None,
+        _ if screen.contains("Claude Code") => Some(Agent::Claude),
+        _ if screen.contains("OpenAI Codex") => Some(Agent::Codex),
+        _ => None,
+    }
+}
+
+/// The question Auto Approve will answer, while it waits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pending {
+    /// Which question (`olo_agent_screen::Ask::key`).
+    pub key: u64,
+    pub question: String,
+    /// When it answers.
+    pub due: Instant,
+    /// The person typed in the pane, or pressed Stop: it's theirs.
+    pub stopped: bool,
+    /// Looks once due that didn't find it (a screen read as it's drawn).
+    misses: u32,
+}
+
+/// What a pane's agent is doing, as Keep It Going and Auto Approve see
+/// it between one look at its screen and the next.
+#[derive(Debug, Clone)]
+pub struct Watch {
+    pub agent: Option<Agent>,
+    pub state: Option<State>,
+    /// The screen, as `olo_agent_screen::fingerprint` tells a change.
+    print: u64,
+    /// When something last happened: the screen changed, or someone typed.
+    since: Instant,
+    /// When Keep It Going last looked and found nothing to do.
+    looked: Option<Instant>,
+    /// When Keep It Going last said its message (seconds since the epoch).
+    said: Option<u64>,
+    pub pending: Option<Pending>,
+    /// How many questions it has answered.
+    pub approved: u32,
+}
+
+/// What a pane is to be sent, by itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Do {
+    /// Return: Yes, the answer chosen.
+    Return,
+    /// Keep It Going's message, then Return a moment after.
+    Say(String),
+}
+
+impl Watch {
+    pub fn new(now: Instant) -> Watch {
+        Watch { agent: None, state: None, print: 0, since: now, looked: None, said: None, pending: None, approved: 0 }
     }
 
-    /// Observe current activity; returns `Some(&str)` to write into the pane when
-    /// a nudge is due (debounced by at least 8 seconds).
-    pub fn observe(&mut self, activity: AgentActivity) -> Option<&str> {
-        if !self.enabled {
+    /// Its screen read again (`agent`: which agent runs there): what it
+    /// is doing, whether anything changed on it, and the question to
+    /// answer, if it asks one Auto Approve may answer. Whether the
+    /// question waiting changed (for the countdown).
+    pub fn looked(&mut self, agent: Option<Agent>, screen: &str, help: &Help, after: Duration, now: Instant) -> bool {
+        self.agent = agent;
+        self.state = agent.map(|a| classify(a, screen));
+        let print = fingerprint(screen);
+        if print != self.print {
+            self.print = print;
+            self.since = now;
+        }
+        let before = self.pending.as_ref().map(|p| (p.key, p.stopped));
+        match (help.auto_approve, self.state, agent.and_then(|_| approvable(screen))) {
+            (true, Some(State::Blocked), Some(ask)) => {
+                if self.pending.as_ref().is_none_or(|p| p.key != ask.key) {
+                    self.pending = Some(Pending { key: ask.key, question: ask.question, due: now + after, stopped: help.theirs == Some(ask.key), misses: 0 });
+                }
+            }
+            // (Asking, but not yet read whole: the one waiting stays.)
+            (true, Some(State::Blocked), None) => {}
+            _ => self.pending = None,
+        }
+        before != self.pending.as_ref().map(|p| (p.key, p.stopped))
+    }
+
+    /// The person typed in the pane: what is on it is theirs (a question
+    /// waiting, its key), and Keep It Going waits from now.
+    pub fn typed(&mut self, now: Instant) -> Option<u64> {
+        self.since = now;
+        self.stop()
+    }
+
+    /// Stop pressed: the question waiting is the person's (its key).
+    pub fn stop(&mut self) -> Option<u64> {
+        let p = self.pending.as_mut().filter(|p| !p.stopped)?;
+        p.stopped = true;
+        Some(p.key)
+    }
+
+    /// The question it will answer and how long till it does, while it
+    /// waits on its own.
+    pub fn counting(&self, now: Instant) -> Option<(&str, Duration)> {
+        self.pending.as_ref().filter(|p| !p.stopped).map(|p| (p.question.as_str(), p.due.saturating_duration_since(now)))
+    }
+
+    /// When it is next to look on its own: the question's answer, or the
+    /// end of Keep It Going's quiet (and of its hour). None: nothing to
+    /// wait for.
+    pub fn next(&self, help: &Help, quiet: Duration, now: Instant, epoch: u64) -> Option<Instant> {
+        let approve = self.pending.as_ref().filter(|p| help.auto_approve && !p.stopped).map(|p| p.due);
+        let keep = help.keep_going.then(|| {
+            let mut at = self.since + quiet;
+            if let Some(looked) = self.looked {
+                at = at.max(looked + quiet);
+            }
+            if let Some(said) = self.said {
+                at = at.max(now + Duration::from_secs((said + KEEP_GOING_EVERY.as_secs()).saturating_sub(epoch)));
+            }
+            at
+        });
+        [approve, keep].into_iter().flatten().min()
+    }
+
+    /// Its time has come (`next`): what to send the pane, read from its
+    /// screen as it is now. Auto Approve answers only the same question,
+    /// still asked, "1. Yes" chosen; Keep It Going speaks only into the
+    /// agent's own prompt (a chooser would take its Return as a choice),
+    /// its turn over and the screen quiet `quiet`, at most once an hour.
+    pub fn due(&mut self, help: &Help, screen: &str, quiet: Duration, message: &str, now: Instant, epoch: u64) -> Option<Do> {
+        if let Some(p) = self.pending.as_mut().filter(|p| help.auto_approve && !p.stopped && now >= p.due) {
+            let same = self.agent.is_some() && approvable(screen).is_some_and(|a| a.key == p.key);
+            if same {
+                self.pending = None;
+                self.approved += 1;
+                return Some(Do::Return);
+            }
+            p.misses += 1;
+            if p.misses >= 3 {
+                self.pending = None;
+            } else {
+                p.due = now + Duration::from_millis(200);
+            }
             return None;
         }
-        match activity {
-            AgentActivity::Working => {
-                self.saw_working = true;
-                None
+        let quiet_enough = now.saturating_duration_since(self.since) >= quiet;
+        let hour_over = self.said.is_none_or(|said| epoch.saturating_sub(said) >= KEEP_GOING_EVERY.as_secs());
+        if help.keep_going && quiet_enough && hour_over {
+            let at_prompt = self.agent.is_some_and(|a| classify(a, screen) == State::Idle && at_prompt(a, screen));
+            if at_prompt && !message.trim().is_empty() {
+                self.said = Some(epoch);
+                self.since = now;
+                self.looked = None;
+                return Some(Do::Say(message.to_owned()));
             }
-            AgentActivity::Done | AgentActivity::Idle if self.saw_working => {
-                if self.last_nudged.is_some_and(|t| t.elapsed() < Duration::from_secs(8)) {
-                    return None;
-                }
-                self.saw_working = false;
-                self.last_nudged = Some(Instant::now());
-                Some(&self.message)
-            }
-            _ => None,
+            self.looked = Some(now);
         }
+        None
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const RULE: &str = "────────────────────────────────────────";
+
+    /// Claude Code asking leave to run a command, "1. Yes" chosen.
+    fn claude_asks(what: &str) -> String {
+        format!("● Bash({what})\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again for this command\n   3. No, and tell Claude what to do differently (esc)\n")
+    }
+
+    /// Claude Code at its own prompt, its turn over.
+    fn claude_at_rest(said: &str) -> String {
+        format!("● {said}\n\n{RULE}\n❯ \n{RULE}\n  ? for shortcuts\n")
+    }
+
+    /// A question Auto Approve may answer is answered Yes once its time
+    /// has come, if it is still the one asked; not before.
+    #[test]
+    fn a_question_is_answered_when_its_time_comes() {
+        let t0 = Instant::now();
+        let help = Help { auto_approve: true, ..Help::default() };
+        let after = Duration::from_secs(30);
+        let mut w = Watch::new(t0);
+        assert!(w.looked(Some(Agent::Claude), &claude_asks("touch x"), &help, after, t0));
+        assert_eq!(w.next(&help, KEEP_GOING_QUIET, t0, 1_000), Some(t0 + after));
+        assert_eq!(w.counting(t0 + Duration::from_secs(10)).map(|(q, left)| (q.to_owned(), left.as_secs())), Some(("Do you want to proceed?".into(), 20)));
+        assert_eq!(w.due(&help, &claude_asks("touch x"), KEEP_GOING_QUIET, "go on", t0 + Duration::from_secs(10), 1_000), None, "not before");
+        assert_eq!(w.due(&help, &claude_asks("touch x"), KEEP_GOING_QUIET, "go on", t0 + after, 1_000), Some(Do::Return));
+        assert_eq!((w.approved, w.pending.is_none()), (1, true));
+        // Another question, then another in its place before its time: the later one waits its whole time.
+        w.looked(Some(Agent::Claude), &claude_asks("touch y"), &help, after, t0 + after);
+        w.looked(Some(Agent::Claude), &claude_asks("rm -rf build"), &help, after, t0 + after + Duration::from_secs(5));
+        assert_eq!(w.due(&help, &claude_asks("touch y"), KEEP_GOING_QUIET, "", t0 + after * 2, 1_000), None, "a question that went isn't answered");
+        assert_eq!(w.due(&help, &claude_asks("rm -rf build"), KEEP_GOING_QUIET, "", t0 + after * 2 + Duration::from_secs(5), 1_000), Some(Do::Return));
+        // Off: nothing waits.
+        let off = Help::default();
+        let mut w = Watch::new(t0);
+        assert!(!w.looked(Some(Agent::Claude), &claude_asks("touch x"), &off, after, t0));
+        assert_eq!(w.next(&off, KEEP_GOING_QUIET, t0, 1_000), None);
+    }
+
+    /// Typed into, or stopped, a question is the person's, and stays
+    /// theirs when it shows again; one that goes isn't waited on.
+    #[test]
+    fn a_question_typed_into_or_stopped_is_the_persons() {
+        let t0 = Instant::now();
+        let mut help = Help { auto_approve: true, ..Help::default() };
+        let after = Duration::from_secs(30);
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks("touch x"), &help, after, t0);
+        let key = w.typed(t0 + Duration::from_secs(3)).expect("its key");
+        assert_eq!(w.counting(t0), None);
+        assert_eq!(w.due(&help, &claude_asks("touch x"), KEEP_GOING_QUIET, "", t0 + after, 1_000), None);
+        // (Kept as theirs: seen again after a restart, still theirs.)
+        help.theirs = Some(key);
+        let mut again = Watch::new(t0);
+        again.looked(Some(Agent::Claude), &claude_asks("touch x"), &help, after, t0);
+        assert_eq!(again.counting(t0), None);
+        // Stop, the same.
+        help.theirs = None;
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks("touch z"), &help, after, t0);
+        assert!(w.stop().is_some());
+        assert_eq!(w.next(&help, KEEP_GOING_QUIET, t0, 1_000), None);
+        // The question answered by the person: nothing waits.
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks("touch q"), &help, after, t0);
+        assert!(w.looked(Some(Agent::Claude), &claude_at_rest("Done."), &help, after, t0 + Duration::from_secs(2)));
+        assert_eq!(w.pending, None);
+    }
+
+    /// Keep It Going speaks into the agent's own prompt once its screen
+    /// has been quiet long enough, at most once an hour; never into a
+    /// question (its Return would choose an answer).
+    #[test]
+    fn keep_it_going_speaks_only_into_its_prompt_when_quiet() {
+        let t0 = Instant::now();
+        let help = Help { keep_going: true, ..Help::default() };
+        let quiet = Duration::from_secs(120);
+        let rest = claude_at_rest("Done with the first part.");
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &rest, &help, AUTO_APPROVE_AFTER, t0);
+        assert_eq!(w.next(&help, quiet, t0, 1_000), Some(t0 + quiet));
+        assert_eq!(w.due(&help, &rest, quiet, "keep going", t0 + Duration::from_secs(60), 1_000), None, "not quiet long enough");
+        assert_eq!(w.due(&help, &rest, quiet, "keep going", t0 + quiet, 1_000), Some(Do::Say("keep going".into())));
+        // Within the hour: not again, however quiet.
+        let later = t0 + quiet * 3;
+        assert_eq!(w.due(&help, &rest, quiet, "keep going", later, 1_000 + 600), None);
+        assert!(w.next(&help, quiet, later, 1_000 + 600).is_some_and(|at| at >= later + Duration::from_secs(3_000)));
+        // Asking a question: not into it; looked again a quiet later, not at once.
+        let mut w = Watch::new(t0);
+        let asks = claude_asks("touch x");
+        w.looked(Some(Agent::Claude), &asks, &help, AUTO_APPROVE_AFTER, t0);
+        assert_eq!(w.due(&help, &asks, quiet, "keep going", t0 + quiet, 1_000), None);
+        assert_eq!(w.next(&help, quiet, t0 + quiet, 1_000), Some(t0 + quiet * 2), "no looking again at once");
+        // A change on the screen begins the quiet again.
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &rest, &help, AUTO_APPROVE_AFTER, t0);
+        w.looked(Some(Agent::Claude), &claude_at_rest("Another line."), &help, AUTO_APPROVE_AFTER, t0 + Duration::from_secs(100));
+        assert_eq!(w.due(&help, &claude_at_rest("Another line."), quiet, "go", t0 + quiet, 1_000), None);
+        // No agent: nothing said.
+        let mut w = Watch::new(t0);
+        w.looked(None, &rest, &help, AUTO_APPROVE_AFTER, t0);
+        assert_eq!(w.due(&help, &rest, quiet, "go", t0 + quiet, 1_000), None);
+    }
+
+    /// Which agent a pane's program is: by its name or its arguments,
+    /// else by the words on its screen, but never a shell's.
+    #[test]
+    fn which_agent_a_program_is() {
+        let none: &[String] = &[];
+        assert_eq!(which_agent(Some("claude"), "", none, ""), Some(Agent::Claude));
+        assert_eq!(which_agent(Some("2.1.4"), "/home/u/.local/share/claude/versions/2.1.4", none, ""), Some(Agent::Claude));
+        assert_eq!(which_agent(Some("codex"), "", none, ""), Some(Agent::Codex));
+        assert_eq!(which_agent(Some("agy"), "", none, ""), Some(Agent::Antigravity));
+        assert_eq!(which_agent(Some("node"), "", &["node".into(), "/usr/lib/node_modules/@openai/codex/bin/codex.js".into()], ""), Some(Agent::Codex));
+        assert_eq!(which_agent(Some("node"), "", none, "╭ Claude Code v2 ╮"), Some(Agent::Claude));
+        assert_eq!(which_agent(Some("bash"), "", none, "$ echo Claude Code"), None);
+        assert_eq!(which_agent(Some("vim"), "", none, "OpenAI Codex"), None);
+    }
 
     /// Antigravity's screens (agy 1.5.15: Terminal's `agent` has the
     /// same, recorded from one run): at rest, working, asking.

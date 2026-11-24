@@ -764,6 +764,13 @@ def look(args):
     if by not in ("astra", "gemini", "opus"):
         sys.exit("agents: look --by astra, or --by opus")
     front = {"astra": "astra-look", "gemini": "agy-look", "opus": "opus-look"}[by]
+    # (Codex not signed in on this computer: it would start at its sign-in
+    # screen and wait there. Signing in is the person's: said at once.
+    # The dev server, 2026-11-24.)
+    if by == "astra":
+        status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True)
+        if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
+            sys.exit("agents: Codex isn't signed in on this computer, so Astra can't look: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
     if not args or args[0].startswith("--"):
         sys.exit(f'usage: tools/dev/{front} [--about "WHAT IT IS, WHAT CHANGED"] PICTURE.png…')
     pictures = []
@@ -862,6 +869,25 @@ def shown(text, most=3000):
     return "\n".join(l for l in (text or "").splitlines() if l.strip())[-most:]
 
 
+def trusts_own_folder(name):
+    """Claude Code asking whether to trust the folder it was started in,
+    where that is the agent's own here (the first time on a computer:
+    once trusted, a folder is remembered): answered Yes by the tool, so a
+    look started on a new computer doesn't wait on it (Opus's look,
+    2026-11-24, on the dev server). Whether it answered."""
+    if cli(name) != "claude":
+        return False
+    text = screen(name) or ""
+    if "Yes, I trust this folder" not in text or folder(name) not in text:
+        return False
+    # (Its choices are "❯ No, exit" then "Yes, I trust this folder", unnumbered.)
+    for k in ("Down", "C-m"):
+        tmux("send-keys", "-t", f"={name}:0.0", k, check=True)
+        time.sleep(0.3)
+    print(f"agents: {name}: its own folder trusted ({folder(name)})")
+    return True
+
+
 def watch(stuck_min, only=None, at_most=None):
     """Return once an agent needs you; print who and why. With `only`,
     that one alone, and how to go on; 0 if it has answered. With
@@ -881,6 +907,8 @@ def watch(stuck_min, only=None, at_most=None):
         for n in rows:
             st = state(n)
             m = meta(n) or {}
+            if st == "asking" and trusts_own_folder(n):
+                continue
             if st == "asking":
                 alerts.append((n, f"asks you (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)", "\n".join(asked(n)[0])))
             elif st == "exited" and m.get("seen_state") != "exited":

@@ -14238,3 +14238,36 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 ⌘ Command (the Super key)
 ⌘ Command (Super 키)
+
+Auto Approve answers Yes in {} s
+자동 승인이 {}초 후 예라고 답합니다
+
+kept going
+계속 진행 중
+
+auto approving
+자동 승인 중
+
+Waiting for approval
+승인 대기 중
+
+Working
+작업 중
+
+Error
+오류
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+“{}”에 자동 승인을 켤까요?\n\n사용자가 아니라 다른 프로그램이 요청했습니다. 이 창의 코딩 에이전트가 계속해도 되는지 물으면(“Do you want to proceed?”), 창에 입력하거나 중지를 누르지 않는 한 Rex가 {}초 후 예라고 답합니다.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+“{}”에 자동 승인을 켤까요?\n\n사용자가 아니라 다른 프로그램이 요청했습니다. 이 탭의 코딩 에이전트가 계속해도 되는지 물으면(“Do you want to proceed?”), 탭에 입력하거나 중지를 누르지 않는 한 Terminal이 {}초 후 예라고 답합니다.
+
+Yes in {} s
+{}초 후 예
+
+Keep It Going in “{}”
+“{}”에서 계속 진행
+
+Auto Approve in “{}”
+“{}”에서 자동 승인

@@ -14332,3 +14332,36 @@ Indirizzo di invito “{}” non valido. Usa nome@example.org e separa più indi
 
 ⌘ Command (the Super key)
 ⌘ Comando (tasto Super)
+
+Auto Approve answers Yes in {} s
+Approvazione automatica risponde Sì tra {} s
+
+kept going
+fatto continuare
+
+auto approving
+approva da solo
+
+Waiting for approval
+In attesa di approvazione
+
+Working
+Al lavoro
+
+Error
+Errore
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this pane asks to go on (“Do you want to proceed?”), Rex will answer Yes after {} seconds, unless you type in the pane or press Stop.
+Attivare l’approvazione automatica per «{}»?\n\nL’ha chiesto un altro programma, non tu. Quando l’agente di programmazione in questo riquadro chiederà di proseguire («Do you want to proceed?»), Rex risponderà Sì dopo {} secondi, a meno che tu non scriva nel riquadro o prema Interrompi.
+
+Turn on Auto Approve for “{}”?\n\nAnother program asked for it, not you. When the coding agent in this tab asks to go on (“Do you want to proceed?”), Terminal will answer Yes after {} seconds, unless you type in the tab or press Stop.
+Attivare l’approvazione automatica per «{}»?\n\nL’ha chiesto un altro programma, non tu. Quando l’agente di programmazione in questa scheda chiederà di proseguire («Do you want to proceed?»), Terminal risponderà Sì dopo {} secondi, a meno che tu non scriva nella scheda o prema Interrompi.
+
+Yes in {} s
+Sì tra {} s
+
+Keep It Going in “{}”
+Continua il lavoro in «{}»
+
+Auto Approve in “{}”
+Approvazione automatica in «{}»
