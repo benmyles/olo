@@ -394,6 +394,9 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             args_schema: command(),
         },
         ActionSpec {
+            id: "olo.send", title: "Save Files of the Host’s on the Olo Desktop", category: "Olo Bridge", keywords: &["send", "download", "files", "folder", "copy"], args_schema: command()
+        },
+        ActionSpec {
             id: "olo.forward",
             title: "Reach a Server of the Host’s from the Olo Desktop",
             category: "Olo Bridge",

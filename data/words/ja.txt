@@ -5362,6 +5362,9 @@ Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 インポート…
 
+In Downloads ▸ Rex ▸ {}.
+ダウンロード ▸ Rex ▸ {} にあります。
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 対象のアカウントでGoogle Cloudにログインし、専用アプリ「Olo（アカウントのアドレス）」を作成してください：
 
@@ -10417,6 +10420,9 @@ Send Voice Message
 Send at the pace the network can carry
 ネットワークが流せる速度で送信
 
+Send files to Downloads on this computer
+このコンピュータのダウンロードにファイルを送る
+
 Send to Back
 最背面に移動
 
@@ -14341,6 +14347,9 @@ other: {n}分ごと
 fields
 フィールド
 
+files
+ファイル
+
 for {}
 {}の間
 
@@ -15807,6 +15816,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 
 {} said:
 {}の応答：
+
+{} sent “{}”
+{} が「{}」を送りました
 
 {} shared with this screen
 この画面と{}件共有中

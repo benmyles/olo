@@ -5383,6 +5383,9 @@ Geïmporteerd: {}{}{}. Sommige instellingen worden pas bij de volgende start van
 Import…
 Importeren…
 
+In Downloads ▸ Rex ▸ {}.
+In Downloads ▸ Rex ▸ {}.
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 Meld u in Google Cloud aan met het account en maak de app ‘Olo (het accountadres)’:
 
@@ -10446,6 +10449,9 @@ Spraakbericht verzenden
 Send at the pace the network can carry
 Verzenden in het tempo dat het netwerk aankan
 
+Send files to Downloads on this computer
+Bestanden naar Downloads op deze computer sturen
+
 Send to Back
 Naar achteren
 
@@ -14378,6 +14384,9 @@ other: elke {n} minuten
 fields
 velden
 
+files
+bestanden
+
 for {}
 voor {}
 
@@ -15918,6 +15927,9 @@ Profiel {} · niet actief: {}
 
 {} said:
 {} zei:
+
+{} sent “{}”
+{} heeft ‘{}’ gestuurd
 
 {} shared with this screen
 {} gedeeld met dit scherm

@@ -4794,6 +4794,84 @@ impl RexHubInner {
         }
     }
 
+    /// What a host's `olo send PATH… [--mirror]` asks, done: each file or
+    /// folder there saved here, in Downloads ▸ Rex ▸ HOST (a file by its
+    /// name, a folder as a folder of that name), by the engine through
+    /// the host's helper, so a file sent again sends what changed and a
+    /// folder sent again is brought in step (`--mirror`: what the host
+    /// no longer has taken away from it here, within that folder alone).
+    /// A host never names a path here: where it goes is this side's.
+    async fn bridge_send(self: &Arc<Self>, host_key: &str, args: Vec<String>) -> bridge::BridgeResponse {
+        use olo_rex_client::sync::{HostFolder, Stop, receive_from};
+        let mirror = args.iter().any(|a| a == "--mirror");
+        if let Some(other) = args.iter().find(|a| a.starts_with('-') && *a != "--mirror") {
+            return bridge::BridgeResponse::err(format!("olo send: {other} isn't one of its options (--mirror)\nusage: olo send PATH… [--mirror]"));
+        }
+        let paths: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
+        if paths.is_empty() {
+            return bridge::BridgeResponse::err("usage: olo send PATH… [--mirror]  (files and folders of this host, saved on the Olo desktop in Downloads ▸ Rex ▸ HOST)");
+        }
+        let (endpoint, label, helper) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(h) = st.hosts.get(host_key) else { return bridge::BridgeResponse::err("this host isn't Rex's on the Olo desktop") };
+            (h.endpoint.clone(), h.label.clone(), matches!(h.helper, HostHelper::Used | HostHelper::Ready))
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            return bridge::BridgeResponse::err("olo send: this host isn't reached over SSH from the Olo desktop");
+        };
+        if !(helper && crate::link::syncs()) {
+            return bridge::BridgeResponse::err("olo send: Olo's helper isn't on this host, built to send files (Rex's Typing helper on the desktop puts it here)");
+        }
+        let name: String = label.chars().map(|c| if c == '/' || c == '\0' { '-' } else { c }).collect();
+        let downloads = olo_xdg::user_dir("DOWNLOAD").or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Downloads")));
+        let Some(base) = downloads.map(|d| d.join("Rex").join(if name.is_empty() { "host".into() } else { name.clone() })) else {
+            return bridge::BridgeResponse::err("olo send: the Olo desktop has no home to save files in");
+        };
+        // (What each path is there: a file, a folder, or nothing.)
+        let ask: String = paths.iter().map(|p| format!("if [ -d {q} ]; then echo d; elif [ -f {q} ]; then echo f; else echo -; fi; ", q = olo_rex_client::provision::shell_word(p))).collect();
+        let kinds = match pool.exec(&target, askpass.clone(), &format!("sh -c {}", shell_quote(&ask)), &mut |_| {}).await {
+            Ok(ran) => ran.output.lines().map(str::trim).map(str::to_owned).collect::<Vec<_>>(),
+            Err(e) => return bridge::BridgeResponse::err(format!("olo send: {e}")),
+        };
+        let (mut said, mut failed) = (String::new(), String::new());
+        for (path, kind) in paths.iter().zip(kinds.iter().map(String::as_str).chain(std::iter::repeat("-"))) {
+            let leaf = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path).to_owned();
+            let (folder, here, shown) = match kind {
+                "f" => (HostFolder { path: (*path).clone(), scoped: true, ..Default::default() }, base.clone(), format!("Downloads/Rex/{name}/{leaf}")),
+                "d" => (HostFolder { path: (*path).clone(), delete: mirror, ..Default::default() }, base.join(&leaf), format!("Downloads/Rex/{name}/{leaf}")),
+                _ => {
+                    failed.push_str(&format!("olo send: {path}: no such file or folder here\n"));
+                    continue;
+                }
+            };
+            if let Err(e) = std::fs::create_dir_all(&here) {
+                failed.push_str(&format!("olo send: {shown}: {e}\n"));
+                continue;
+            }
+            match receive_from(&pool, &target, askpass.clone(), crate::link::ID, &folder, here, None, Stop::default()).await {
+                Ok(report) => {
+                    for e in &report.errors {
+                        failed.push_str(&format!("olo send: {leaf}/{}: {}\n", e.path, e.reason));
+                    }
+                    let files = report.new + report.appended + report.patched + report.copied + report.same;
+                    said.push_str(&format!(
+                        "{path} → {shown} on the Olo desktop: {files} file{}, {} sent\n",
+                        if files == 1 { "" } else { "s" },
+                        olo_kit::files::format_size(report.bytes_sent + report.bytes_received)
+                    ));
+                    (self.notify)(HubNotice::Attention {
+                        target: Target::Host(host_key.to_owned()),
+                        title: olo_kit::tr!("{} sent “{}”", label, leaf).to_string(),
+                        body: olo_kit::tr!("In Downloads ▸ Rex ▸ {}.", name).to_string(),
+                        kind: olo_kit::notify::NoteKind::Information,
+                    });
+                }
+                Err(e) => failed.push_str(&format!("olo send: {path}: {e}\n")),
+            }
+        }
+        bridge::BridgeResponse { ok: failed.is_empty(), stdout: Some(said), stderr: (!failed.is_empty()).then_some(failed), ..Default::default() }
+    }
+
     /// The forward a host's page opened here goes through (`olo open
     /// http://localhost:…`, a link clicked in a pane): one of the host's
     /// to that address already, whoever made it (an agent's `olo forward
@@ -6177,6 +6255,25 @@ impl RexHubInner {
                     // (This computer's own sessions reach it directly: no forward.)
                     let policy = if is_local { crate::settings::HostBridgePolicy { allow_localhost_autoforward: false, ..policy } } else { policy };
                     return Some(self.bridge_calls.answer(async move { bridge::handle_bridge_request(&label, &policy, req, &forward, &|_| {}).await }).await);
+                }
+                // A host's `olo send PATH…`: its files and folders saved
+                // here, in Downloads ▸ Rex ▸ HOST, by the engine through
+                // its helper (`bridge_send`).
+                "olo.send" => {
+                    let given: Vec<String> = args
+                        .as_ref()
+                        .and_then(|a| a.get("args"))
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
+                        .unwrap_or_default();
+                    if !policy.allow_send_files {
+                        return Some(json!({ "ok": false, "stderr": "olo: this host may not send files to the Olo desktop (Preferences ▸ Rex: Send files to Downloads on this computer)\n" }));
+                    }
+                    if is_local {
+                        return Some(json!({ "ok": true, "stdout": "These are the Olo desktop's own files: nothing to send.\n" }));
+                    }
+                    let (inner, hk) = (self.clone(), host_key.to_owned());
+                    return Some(self.bridge_calls.answer(async move { inner.bridge_send(&hk, given).await }).await);
                 }
                 // A host's `olo forward`: a server it reaches, reached
                 // from here at the port it names (`forwards`).

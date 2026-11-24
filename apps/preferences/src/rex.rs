@@ -427,6 +427,9 @@ fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGran
             });
         };
         check("Open links on this computer", grants.open_links, |g| &mut g.open_links);
+        // (Into Downloads ▸ Rex ▸ the host's name, and nowhere else:
+        // `olo send` there.)
+        check("Send files to Downloads on this computer", grants.send_files, |g| &mut g.send_files);
         check(if local { "Reach their local servers" } else { "Reach its local servers" }, grants.forward_ports, |g| &mut g.forward_ports);
         check("Use Agent Screens", grants.agent_screens, |g| &mut g.agent_screens);
         check("Get items from Passwords", grants.passwords, |g| &mut g.passwords);

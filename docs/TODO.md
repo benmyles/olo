@@ -1699,7 +1699,12 @@ something nobody here has is in "Blocked", with what it waits for.
     looking at the copied files alone, what each was made into kept
     here): a turn added to a 30 MB transcript sends its line, 566 bytes
     (the archive sent the whole, 438 KB compressed, at each change).
-    Next, step (2): one file or folder down or up.
+    And step (2) for agents: `olo send PATH…` on a host saves files and
+    folders here in Downloads ▸ Rex ▸ HOST, under a permission of its
+    own (HACKING, the bridge, "Files a host sends"); a rebuilt archive
+    sent again sends its change. The person's way in is Tracker's (the
+    item "A host's folders in Tracker"). Next: step (3), folders kept in
+    step one way.
   - *Agent Sessions' copy sends only what changed in a file* (Ben,
     2026-11-24: "improve the agent sessions copy in rex so that it is
     smart enough to e.g. copy new lines only when a file has only had
@@ -3169,6 +3174,31 @@ something nobody here has is in "Blocked", with what it waits for.
   rows on and off (nothing moves as it is switched), and no lock beside
   the note, which says it in words as every pane that asks for a
   password does.
+- **Preferences ▸ Rex ▸ Hosts, from Opus's look** (2026-11-24, at the
+  "Send files to Downloads on this computer" box; there before it):
+  - The warning "is now stranded, three rows away from what it warns
+    about": "Give your passwords only to a host you trust as much as
+    this computer" is about Get items from Passwords, with two rows
+    between. "Move Get items from Passwords to the last row of the list,
+    so the note sits directly under the item it's about … the list then
+    runs from least to most dangerous"; the note 8 pt under that row, at
+    the labels' x, on one line.
+  - "The three groups in the right column don't separate": Connect when
+    Rex starts reads as one more permission. "Set 'Sessions on build
+    may:' in bold … Put 44 pt between the Connect row and the header";
+    perhaps the items 26 pt apart, not 30.
+  - "You can barely see which host is selected" in light: the selected
+    row's fill hardly darker than the well; "use the same selection role
+    as list selections elsewhere on the desktop".
+  - In dark, "the warning is the loudest thing in the window": its amber
+    brighter than any text, against the yellow tab; "use the dark
+    theme's warning-text role at about the lightness of the primary
+    text".
+  - The frame's bottom margin, 28 under Add and Remove, against 42 on
+    its other sides: "shorten the list by 14 pt".
+  - "'Reach its local servers' is ambiguous": "its" could be either
+    computer's; "Reach servers running on build", or whichever is true.
+
 - **Rex's Host window, from Opus's look at its Bridge row** (2026-11-23).
   Pictured (2026-11-24): a host named half as long again as
   "build-farm-eu-west-production-01" ends in "…" a gap before Check Again,

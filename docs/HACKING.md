@@ -29151,6 +29151,26 @@ Rex server, as every Rex client offers its own
   its one block, nothing orphaned; closed. And the client's own test
   (`remote_forwards`): a block left by one client taken up by another
   at the same port, one stopped not.
+- *Files a host sends* (`olo send PATH… [--mirror]`, `rex do olo.send`,
+  `hub::bridge_send`; Ben: "an easy way to e.g. download/sync the
+  release artifacts locally … and also of course the coding agents
+  should be able to do it themselves too"): each file or folder there
+  saved here in Downloads ▸ Rex ▸ HOST (the person's Downloads, by
+  `user-dirs.dirs`; a folder as a folder of its name), by the engine
+  through the host's helper (`olo_rex_client::sync::receive_from`; a
+  file sent by its own path is its folder with it alone,
+  `Filter::only`, and looked at alone here, scoped). Sent again, only
+  what changed goes (a rebuilt archive of 3 MB, seven bytes changed:
+  22 KB, the first time 2.9 MB); `--mirror` takes away, within that
+  folder here, what the host no longer has. A host never names a path
+  here: where it goes is this side's. Under a permission of its own,
+  off until given (Preferences ▸ Rex: "Send files to Downloads on this computer",
+  `RexGrants::send_files`; the Host window's line says "files"); the
+  answer says where each went and how much was sent; a notice says
+  "build sent “dist”". Needs the helper there, built with it (as
+  Agent Sessions' copy does); said where it isn't. Tried on the rig
+  (`try.py bridge`): refused ungranted; a file and a folder saved; the
+  rebuilt file sent again, its change alone; a path not there said.
 - *Olo's own tests name themselves "Olo Rex test"*, kind `test`
   (`ClientIdentity::a_test`): as the app, each left a client the
   server listed as lost on the host it ran against.

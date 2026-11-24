@@ -5383,6 +5383,9 @@ Importazione completata: {}{}{}. Alcune impostazioni verranno applicate al pross
 Import…
 Importa…
 
+In Downloads ▸ Rex ▸ {}.
+In Download ▸ Rex ▸ {}.
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 Accedi a Google Cloud con l’account e crea la relativa app, “Olo (indirizzo dell’account)”:
 
@@ -10446,6 +10449,9 @@ Invia messaggio vocale
 Send at the pace the network can carry
 Invia al ritmo che la rete può reggere
 
+Send files to Downloads on this computer
+Inviare file in Download su questo computer
+
 Send to Back
 Porta in secondo piano
 
@@ -14378,6 +14384,9 @@ other: ogni {n} minuti
 fields
 campi
 
+files
+file
+
 for {}
 per {}
 
@@ -15918,6 +15927,9 @@ Profilo {} · non in vigore: {}
 
 {} said:
 {} ha risposto:
+
+{} sent “{}”
+{} ha inviato «{}»
 
 {} shared with this screen
 {} condivisi con questo schermo

@@ -72,7 +72,7 @@ pub struct BridgeRequest {
     pub payload: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BridgeResponse {
     pub ok: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -5425,6 +5425,9 @@ Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 Импортировать…
 
+In Downloads ▸ Rex ▸ {}.
+В «Загрузках» ▸ Rex ▸ {}.
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 Войдите в Google Cloud под нужной учётной записью и создайте для неё приложение «Olo (адрес почты)»:
 
@@ -10504,6 +10507,9 @@ Send Voice Message
 Send at the pace the network can carry
 Отправлять со скоростью, которую выдерживает сеть
 
+Send files to Downloads on this computer
+Отправлять файлы в «Загрузки» на этом компьютере
+
 Send to Back
 На задний план
 
@@ -14452,6 +14458,9 @@ other: раз в {n} минуты
 fields
 поля
 
+files
+файлы
+
 for {}
 в течение {}
 
@@ -16140,6 +16149,9 @@ other: {n} недели
 
 {} said:
 {} ответил:
+
+{} sent “{}”
+{} отправил «{}»
 
 {} shared with this screen
 Этому экрану доступно: {}

@@ -5362,6 +5362,9 @@ Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 匯入…
 
+In Downloads ▸ Rex ▸ {}.
+在「下載 ▸ Rex ▸ {}」中。
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 用此帳號登入 Google Cloud，為它建立名為「Olo（帳號位址）」的應用程式：
 
@@ -10417,6 +10420,9 @@ Send Voice Message
 Send at the pace the network can carry
 依網路可承載的速率傳送
 
+Send files to Downloads on this computer
+傳送檔案到這部電腦的「下載」
+
 Send to Back
 置於底層
 
@@ -14341,6 +14347,9 @@ other: 每 {n} 分鐘
 fields
 欄位
 
+files
+檔案
+
 for {}
 持續 {}
 
@@ -15807,6 +15816,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {} said:
 {} 回報：
+
+{} sent “{}”
+{} 傳送了「{}」
 
 {} shared with this screen
 與此螢幕共享的有 {}

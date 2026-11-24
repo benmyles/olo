@@ -60,11 +60,15 @@ pub struct Filter {
     /// are included (directories are still traversed when `recursive` is true,
     /// unless excluded).
     pub include: Vec<String>,
+    /// If non-empty, these files alone, by their whole relative path, and
+    /// the folders on their way: no patterns (a name with `*` in it is
+    /// itself). A single file sent: its folder, and it.
+    pub only: Vec<String>,
 }
 
 impl Default for Filter {
     fn default() -> Self {
-        Self { recursive: true, exclude: Vec::new(), include: Vec::new() }
+        Self { recursive: true, exclude: Vec::new(), include: Vec::new(), only: Vec::new() }
     }
 }
 
@@ -79,6 +83,9 @@ impl Filter {
 
     /// Whether a directory at `rel_path` should be entered (and kept).
     pub fn allow_dir(&self, rel_path: &str) -> bool {
+        if !self.only.is_empty() {
+            return self.only.iter().any(|p| p.strip_prefix(rel_path).is_some_and(|rest| rest.starts_with('/')));
+        }
         if !self.recursive {
             return false;
         }
@@ -87,6 +94,9 @@ impl Filter {
 
     /// Whether a file or symlink at `rel_path` passes the filter.
     pub fn matches_entry(&self, rel_path: &str) -> bool {
+        if !self.only.is_empty() {
+            return self.only.iter().any(|p| p == rel_path);
+        }
         if self.is_excluded(rel_path) {
             return false;
         }
@@ -618,6 +628,15 @@ mod tests {
         dir
     }
 
+    /// Exact names: those files and the folders on their way, nothing a
+    /// pattern would have taken with them.
+    #[test]
+    fn only_takes_the_named_files() {
+        let f = Filter { only: vec!["a*b".into(), "deep/in/it.txt".into()], ..Filter::default() };
+        assert!(f.matches_entry("a*b") && !f.matches_entry("axb") && f.matches_entry("deep/in/it.txt") && !f.matches_entry("deep/in/other.txt"));
+        assert!(f.allow_dir("deep") && f.allow_dir("deep/in") && !f.allow_dir("de") && !f.allow_dir("other"));
+    }
+
     #[test]
     fn unchanged_tree_reads_zero_files() {
         let root = scratch_dir("zero-reads");
@@ -706,7 +725,7 @@ mod tests {
 
     #[test]
     fn filter_exclude_include_and_shallow() {
-        let f = Filter { recursive: true, exclude: vec![".git".into(), "*.tmp".into(), "sub/skip.txt".into()], include: vec!["*.rs".into(), "*.txt".into()] };
+        let f = Filter { recursive: true, exclude: vec![".git".into(), "*.tmp".into(), "sub/skip.txt".into()], include: vec!["*.rs".into(), "*.txt".into()], only: vec![] };
         assert!(!f.allow_dir(".git"));
         assert!(!f.allow_dir("a/.git"));
         assert!(f.allow_dir("src"));

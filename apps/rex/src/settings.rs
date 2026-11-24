@@ -80,11 +80,14 @@ pub struct HostBridgePolicy {
     /// Passwords' SSH agent in the host's terminals (`hub`, "The SSH
     /// agent on a host").
     pub allow_ssh_agent: bool,
+    /// Files a program there sends (`olo send`) saved here, in Downloads
+    /// ▸ Rex ▸ HOST.
+    pub allow_send_files: bool,
 }
 
 impl HostBridgePolicy {
     pub fn local_default() -> Self {
-        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_remote_control: true, allow_ssh_agent: true }
+        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_remote_control: true, allow_ssh_agent: true, allow_send_files: true }
     }
 
     pub fn remote_default() -> Self {
@@ -100,6 +103,7 @@ impl HostBridgePolicy {
     pub fn granted(&self) -> Vec<&'static str> {
         [
             (self.allow_open_url, "links"),
+            (self.allow_send_files, "files"),
             (self.allow_localhost_autoforward, "local servers"),
             (self.allow_passwords_op, "Passwords"),
             // (Its keys, where the host has been given them: with them
@@ -116,7 +120,7 @@ impl HostBridgePolicy {
     }
 
     pub fn any_enabled(&self) -> bool {
-        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control
+        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control || self.allow_send_files
     }
 }
 

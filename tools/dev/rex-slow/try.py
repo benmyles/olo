@@ -504,6 +504,40 @@ exit 0
         closed = fwd("close", str(here))
         check("forward: closed", closed == f"closed {here}\n" and r.wait(lambda: reached(here) is None, 5, every=0.1), closed)
         server.close()
+        # `olo send`: files and folders of the host's saved here, in the app's Downloads ▸ Rex ▸ far, by the engine
+        # through the host's helper; sent again, only what changed goes.
+        import shutil, random
+        sent_dir, downloads = f"{D}/send-src", f"{D}/home-app/Downloads/Rex/far"
+        shutil.rmtree(sent_dir, ignore_errors=True); shutil.rmtree(f"{D}/home-app/Downloads", ignore_errors=True)
+        os.makedirs(f"{sent_dir}/dist/bin")
+        # (Incompressible, as a release's archive is: what is sent again must be the change, not the compression.)
+        artifact = random.Random(7).randbytes(3_000_000)
+        open(f"{sent_dir}/app.tar", "wb").write(artifact)
+        open(f"{sent_dir}/dist/bin/tool", "wb").write(b"#!/bin/sh\necho tool\n")
+        open(f"{sent_dir}/dist/notes.txt", "w").write("built\n")
+        sending = lambda *a: do("olo.send", {"args": list(a)})
+        refused = sending(f"{sent_dir}/app.tar")
+        check("send: not granted, refused", refused.get("ok") is False and "Send files to Downloads on this computer" in str(refused.get("stderr")), refused)
+        r.grant("far", send_files=True)
+        # (Asked once the grant holds; an answer longer than Rex waits says `pending`, waited for, never asked again.)
+        r.wait(lambda: "may not send files" not in str(sending(f"{sent_dir}/not-there").get("stderr")), 15)
+        got = sending(f"{sent_dir}/app.tar", f"{sent_dir}/dist")
+        while got and got.get("pending"): got = do("olo.wait", None, pairs=f"id={got['pending']}")
+        saved = os.path.exists(f"{downloads}/app.tar") and open(f"{downloads}/app.tar", "rb").read() == artifact
+        tree = os.path.exists(f"{downloads}/dist/bin/tool") and open(f"{downloads}/dist/notes.txt").read() == "built\n"
+        check("send: a file and a folder, in Downloads ▸ Rex ▸ far", got and saved and tree and "Downloads/Rex/far/app.tar" in str(got.get("stdout")), got)
+        # Rebuilt: a few bytes changed in the middle; sent again, the changed part alone.
+        changed = artifact[:1_500_000] + b"CHANGED" + artifact[1_500_007:]
+        open(f"{sent_dir}/app.tar", "wb").write(changed)
+        again = sending(f"{sent_dir}/app.tar")
+        while again.get("pending"): again = do("olo.wait", None, pairs=f"id={again['pending']}")
+        same = os.path.exists(f"{downloads}/app.tar") and open(f"{downloads}/app.tar", "rb").read() == changed
+        said = str(again.get("stdout"))
+        first_sent = str(got.get("stdout")).splitlines()[0] if got else ""
+        check("send: rebuilt and sent again, what changed alone", again.get("ok") and same and "MB sent" in first_sent and "KB sent" in said, {"first": first_sent, "again": said})
+        missing = sending(f"{sent_dir}/not-there")
+        check("send: a path not there, said", missing.get("ok") is False and "no such file or folder" in str(missing.get("stderr")), missing)
+        shutil.rmtree(sent_dir, ignore_errors=True); shutil.rmtree(f"{D}/home-app/Downloads", ignore_errors=True)
         print("PASS" if ok else "FAIL")
 elif what == "pool":
     # The Token Pool put on the far host over SSH by the desktop pool's own code, kept in step, borrowed from and

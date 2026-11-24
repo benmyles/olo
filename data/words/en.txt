@@ -1785,6 +1785,7 @@ Import WireGuard…
 Imported the key.
 Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
+In Downloads ▸ Rex ▸ {}.
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 In HDR on a display whose HDR is on: its lights shine brighter than the rest.
 In Use for Internet Traffic
@@ -3470,6 +3471,7 @@ Send Signal
 Send Signal…
 Send Voice Message
 Send at the pace the network can carry
+Send files to Downloads on this computer
 Send to Back
 Send to back
 Sending what changed  ·  {}
@@ -4778,6 +4780,7 @@ every day
 every hour
 every {n} minutes
 fields
+files
 for {}
 from {}
 full size, with a numeric keypad
@@ -5267,6 +5270,7 @@ your own picture
 {} s
 {} s ago
 {} said:
+{} sent “{}”
 {} shared with this screen
 {} since the computer started{}
 {} starting in about {} minutes

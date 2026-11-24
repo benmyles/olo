@@ -262,6 +262,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Address", role: "TextInput" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Connect when Rex starts", role: "CheckBox" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Open links on this computer", role: "CheckBox" },
+    Setting { panel: "rex", tab: "Hosts", group: "", name: "Send files to Downloads on this computer", role: "CheckBox" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Reach their local servers", role: "CheckBox" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Use Agent Screens", role: "CheckBox" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Get items from Passwords", role: "CheckBox" },

@@ -4,7 +4,8 @@
 //! app the other side over SSH (`olo_rex_client::sync`). Nothing else is
 //! written on its output: it is the session's.
 //!
-//! ROOT is the folder on this host, under the home (`$HOME`) unless whole:
+//! ROOT is the folder on this host, under the home (`$HOME`) unless whole
+//! (sending, it may be a file: then its folder, and it alone):
 //! not where it runs, which over SSH is the account's home as the system
 //! keeps it, not always `$HOME` (the rig's far host: a session copied
 //! there into `.` went into the real home, 2026-11-24). Options:
@@ -82,6 +83,14 @@ pub fn run(args: Vec<String>) -> ! {
             other => fail(&format!("{other} isn't one of its options")),
         }
     }
+    // (A file sent: its folder, and it alone, by its name exactly.)
+    let root = match (side.as_str(), root.file_name().map(|n| n.to_string_lossy().into_owned())) {
+        ("send", Some(name)) if std::fs::symlink_metadata(&root).is_ok_and(|m| m.is_file()) => {
+            filter.only = vec![name];
+            root.parent().map(Path::to_path_buf).unwrap_or(root)
+        }
+        _ => root,
+    };
     options.filter = filter.clone();
     let cache = if cached { cache_for(&root) } else { None };
     let conn = Stdio { input: io::stdin(), output: io::stdout() };

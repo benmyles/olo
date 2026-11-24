@@ -5383,6 +5383,9 @@ Importé {}{}{}. Les apps ouvertes prennent certains réglages à leur prochain 
 Import…
 Importer…
 
+In Downloads ▸ Rex ▸ {}.
+Dans Téléchargements ▸ Rex ▸ {}.
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 Dans Google Cloud, connecté avec ce compte, créez son app, « Olo (son adresse) » :
 
@@ -10446,6 +10449,9 @@ Envoyer un message vocal
 Send at the pace the network can carry
 Envoyer au rythme que le réseau peut porter
 
+Send files to Downloads on this computer
+Envoyer des fichiers dans Téléchargements sur cet ordinateur
+
 Send to Back
 Mettre à l’arrière-plan
 
@@ -14378,6 +14384,9 @@ other: toutes les {n} minutes
 fields
 champs
 
+files
+fichiers
+
 for {}
 depuis {}
 
@@ -15918,6 +15927,9 @@ il y a {} s
 
 {} said:
 {} a dit :
+
+{} sent “{}”
+{} a envoyé « {} »
 
 {} shared with this screen
 {} partagé avec cet écran

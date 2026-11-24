@@ -5383,6 +5383,9 @@ Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 आयात करें…
 
+In Downloads ▸ Rex ▸ {}.
+डाउनलोड ▸ Rex ▸ {} में।
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 Google Cloud में उसी खाते से लॉगिन करके उसका ऐप बनाएँ: “Olo (खाते का पता)”।
 
@@ -10446,6 +10449,9 @@ Send Voice Message
 Send at the pace the network can carry
 उतनी गति से भेजें जितना नेटवर्क संभाल सके
 
+Send files to Downloads on this computer
+इस कंप्यूटर के डाउनलोड में फ़ाइलें भेजना
+
 Send to Back
 सबसे पीछे भेजें
 
@@ -14378,6 +14384,9 @@ other: हर {n} मिनट
 fields
 फ़ील्ड
 
+files
+फ़ाइलें
+
 for {}
 {} से जारी
 
@@ -15918,6 +15927,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 
 {} said:
 {} ने कहा:
+
+{} sent “{}”
+{} ने “{}” भेजा
 
 {} shared with this screen
 इस स्क्रीन से {} साझा

@@ -1485,7 +1485,7 @@ fn ns_to_system_time(ns: i64) -> Option<SystemTime> {
 }
 
 fn filter_index(index: &mut Index, filter: &Filter) {
-    if filter.recursive && filter.exclude.is_empty() && filter.include.is_empty() {
+    if filter.recursive && filter.exclude.is_empty() && filter.include.is_empty() && filter.only.is_empty() {
         return;
     }
     index.entries.retain(|path, entry| {

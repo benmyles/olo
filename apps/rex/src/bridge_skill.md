@@ -35,6 +35,14 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   from here (the person's own are theirs). It lasts until closed or
   this Rex session ends; a port taken there is said, never quietly
   changed.
+- **Files and folders of this host, saved on the desktop**: `olo send
+  dist/app.tar.zst build/` puts each in the person's Downloads ▸ Rex ▸
+  HOST (a folder as a folder of its name), where the person may look at
+  or use it; it says where each went and how much was sent. Sending the
+  same again sends only what changed (a rebuilt archive's changed
+  parts); `--mirror` also takes away, within that folder there, what
+  is no longer here. Where the person hasn't let this host send files
+  (Preferences ▸ Rex), it says so: ask them.
 - **A secret from Olo Passwords** (1Password's command line, answered
   on the desktop after the person approves there; no secret is kept on
   this host): `olo op read op://Vault/Item/field`. Changes too, as
@@ -75,7 +83,8 @@ Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):
 `rex do olo.open target=URL`, `rex do olo.op --args '{"args":[…]}'`,
 `rex do olo.screen --args '{"args":[…]}'`, `rex do olo.forward --args
-'{"args":["5173"]}'`, `rex do olo.notify title=…`,
+'{"args":["5173"]}'`, `rex do olo.send --args '{"args":["/whole/path"]}'`,
+`rex do olo.notify title=…`,
 `rex do olo.clipboard.set text=…`, `rex do olo.clipboard.get --args
 '{}'`; an answer that says `pending` is
 waited for with `rex do olo.wait id=…`, and a picture an answer lists

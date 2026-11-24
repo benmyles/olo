@@ -63,7 +63,7 @@ impl HostFolder {
         Options {
             delete_extra: self.delete,
             keep_newer: self.keep_newer,
-            filter: olo_rex_sync::index::Filter { recursive: !self.shallow, exclude: self.exclude.clone(), include: Vec::new() },
+            filter: olo_rex_sync::index::Filter { recursive: !self.shallow, exclude: self.exclude.clone(), ..Default::default() },
             cache_path: None,
             scoped: self.scoped,
         }

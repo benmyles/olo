@@ -131,6 +131,25 @@ fn a_relative_folder_is_under_the_home() {
     }
 }
 
+/// A file sent by its own path: its folder, and it alone, by its name
+/// exactly (a `*` in it is itself, not a pattern taking its neighbour).
+#[test]
+fn a_single_file_is_sent_by_its_path() {
+    let (src, dst, cache) = (scratch("one-src"), scratch("one-dst"), scratch("one-cache"));
+    fs::write(src.join("a*b.txt"), b"this one").unwrap();
+    fs::write(src.join("axb.txt"), b"not this").unwrap();
+    fs::create_dir_all(src.join("sub")).unwrap();
+    fs::write(src.join("sub/c.txt"), b"nor this").unwrap();
+    let (mut child, pipes) = helper(&["send", src.join("a*b.txt").to_str().unwrap()], &cache);
+    let got = receive(pipes, &dst, Options { scoped: true, ..Default::default() }).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(got.errors.is_empty(), "{:?}", got.errors);
+    assert_eq!(tree(&dst), vec![("a*b.txt".to_owned(), b"this one".to_vec())]);
+    for d in [src, dst, cache] {
+        fs::remove_dir_all(d).unwrap();
+    }
+}
+
 /// A mistake in what it is asked is said, never a session begun.
 #[test]
 fn what_it_isnt_asked_right_it_says() {

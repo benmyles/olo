@@ -5362,6 +5362,9 @@ Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 가져오기…
 
+In Downloads ▸ Rex ▸ {}.
+다운로드 ▸ Rex ▸ {}에 있습니다.
+
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 해당 계정으로 Google Cloud에 로그인해 ‘Olo (계정 주소)’라는 앱을 만드세요.
 
@@ -10417,6 +10420,9 @@ Send Voice Message
 Send at the pace the network can carry
 네트워크가 감당할 수 있는 속도로 전송
 
+Send files to Downloads on this computer
+이 컴퓨터의 다운로드로 파일 보내기
+
 Send to Back
 맨 뒤로 보내기
 
@@ -14341,6 +14347,9 @@ other: {n}분마다
 fields
 필드
 
+files
+파일
+
 for {}
 {} 동안
 
@@ -15807,6 +15816,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 
 {} said:
 {} 응답:
+
+{} sent “{}”
+{}이(가) “{}”을(를) 보냈습니다
 
 {} shared with this screen
 이 화면과 {} 공유 중
