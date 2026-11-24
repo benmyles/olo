@@ -9,8 +9,10 @@
 # desktop at rest is among it (the kits, Terminal, Deskbar, the widgets'
 # providers), tools/dev/rest-check: a desktop with one thing in it that
 # keeps changing must stay at rest but for who shows it. A finding stops
-# the push, as does a working tree that isn't what's pushed (the build
-# reads the tree). OLO_SKIP_UI_LINT=1 skips the lint and the check.
+# the push. All of it reads the pushed commit in a checkout of its own
+# (tools/hooks/checkout-at: $OLO_PREPUSH_TREE, /var/tmp/olo-prepush/tree
+# unless set), so work goes on in the tree while it runs.
+# OLO_SKIP_UI_LINT=1 skips the lint and the check.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # What's pushed, one "LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA" a line
@@ -22,8 +24,20 @@ if command -v git-lfs > /dev/null 2>&1; then
     echo "pre-push: git-lfs took $((SECONDS - began)) s" >&2
 fi
 [ "${OLO_SKIP_UI_LINT:-}" = 1 ] && exit 0
+# The commit pushed (a branch deleted pushes none).
+sha=""
+while read -r _ local _ _; do
+    if [ -n "$local" ] && [ "$local" != 0000000000000000000000000000000000000000 ]; then
+        if [ -n "$sha" ] && [ "$sha" != "$local" ]; then
+            echo "pre-push: pushing two commits ($sha and $local): push one at a time, so each is checked." >&2
+            exit 1
+        fi
+        sha=$local
+    fi
+done <<< "$pushed"
+[ -n "$sha" ] || exit 0
 remote_ref=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo origin/main)
-changed=$(git diff --name-only "$remote_ref"...HEAD 2>/dev/null || true)
+changed=$(git diff --name-only "$remote_ref"..."$sha" 2>/dev/null || true)
 echo "$changed" | grep -qE '^(apps/|crates/(kit|interface|kit-base|theme|preview)/|vendor/)' || exit 0
 # Which apps: all of them when the kits (or what they're built on) changed,
 # else those touched.
@@ -46,21 +60,11 @@ if ! echo "$changed" | grep -qE '^(crates/(kit|interface|kit-base|theme|preview)
     done
     [ $any -eq 0 ] && exit 0
 fi
-# The build and the lint read the working tree: it must be what's pushed,
-# or they check something else (2026-11-15: edits begun after a commit
-# failed the push of that commit, which built; a fix not yet committed
-# would as easily pass a broken one).
-head=$(git rev-parse HEAD)
-while read -r _ sha _ _; do
-    if [ -n "$sha" ] && [ "$sha" != 0000000000000000000000000000000000000000 ] && [ "$sha" != "$head" ]; then
-        echo "pre-push: pushing $sha, but $head is checked out: the build would check that instead. Check out what's pushed, then push." >&2
-        exit 1
-    fi
-done <<< "$pushed"
-if ! git diff --quiet HEAD --; then
-    echo "pre-push: there are changes not committed (git status), and the build would check them, not what's pushed. Commit them or set them aside, then push." >&2
-    exit 1
-fi
+# The build and the lint read the commit pushed, in a checkout of its own
+# (once they read the working tree: it had to be what was pushed, and
+# nothing could be edited while they ran, seven minutes a push).
+tree=$(tools/hooks/checkout-at "$sha" "${OLO_PREPUSH_TREE:-/var/tmp/olo-prepush/tree}")
+cd "$tree"
 echo "pre-push: UI code changed; release build, then the live layout lint…" >&2
 began=$SECONDS
 # (Through Jato where it's there: it keeps the builds it has made.)
@@ -94,10 +98,4 @@ if echo "$changed" | grep -qE '^(crates/(kit|interface|kit-base)/|apps/(terminal
         exit 1
     fi
     echo "pre-push: the rest check took $((SECONDS - rest)) s" >&2
-fi
-# (Changed while it built and looked: what it checked may not be what's
-# pushed. 2026-11-15: edits begun mid-push were half in its build.)
-if ! git diff --quiet HEAD --; then
-    echo "pre-push: the tree changed while it built and looked, so that isn't what's pushed. Push again once the changes are committed or set aside." >&2
-    exit 1
 fi

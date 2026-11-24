@@ -1,0 +1,36 @@
+#!/bin/bash
+# A checkout of one commit of this repository, of its own, for a check or a
+# build that must read exactly that commit while work goes on in the working
+# tree (the pre-push hook's build and lints, tools/publish-release.sh):
+#
+#   tools/hooks/checkout-at COMMIT DIR
+#
+# DIR is a Git worktree of this repository, detached at COMMIT: made the
+# first time, moved to COMMIT after (only what differs is written, and its
+# target/ is kept, so its builds are kept between runs; Jato restores what
+# other checkouts built). Git LFS's files are checked out from the
+# repository's own store. Prints DIR. (Before, both read the working tree:
+# a push or a release could do nothing but wait while it built, or it took
+# in edits made meanwhile. The dev server, 2026-11-24.)
+set -euo pipefail
+commit=${1:?usage: checkout-at COMMIT DIR}
+dir=${2:?usage: checkout-at COMMIT DIR}
+cd "$(git rev-parse --show-toplevel)"
+sha=$(git rev-parse --verify "$commit^{commit}")
+if [ ! -e "$dir/.git" ]; then
+    mkdir -p "$(dirname "$dir")"
+    # (A worktree of a removed folder is still listed: pruned first.)
+    git worktree prune
+    git worktree add --detach --quiet "$dir" "$sha"
+else
+    git -C "$dir" checkout --detach --quiet --force "$sha"
+    # (Nothing of a run before left in it: files it made that Git keeps
+    # are reset, and untracked ones but the build's own removed.)
+    git -C "$dir" reset --quiet --hard "$sha"
+    git -C "$dir" clean -fdq -e target/ -e '/.jato*'
+fi
+if command -v git-lfs > /dev/null 2>&1; then
+    git -C "$dir" lfs checkout > /dev/null 2>&1 || git -C "$dir" lfs pull > /dev/null
+fi
+[ "$(git -C "$dir" rev-parse HEAD)" = "$sha" ] || { echo "checkout-at: $dir isn't at $sha" >&2; exit 1; }
+echo "$dir"

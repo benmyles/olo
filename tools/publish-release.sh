@@ -19,8 +19,9 @@
 # "failed: WHY", and its exit is 0 only when the release is up whole.
 #
 # What it does, each step stopping it where it fails:
-#  1. HEAD is clean and on origin (a release's tag names a commit GitHub
-#     has; a release from a tree with changes in it isn't the commit).
+#  1. HEAD is on origin (a release's tag names a commit GitHub has), and
+#     is checked out on its own (tools/hooks/checkout-at, $WORK/src): the
+#     build reads that, not the working tree, so work goes on meanwhile.
 #  2. Builds the workspace in release in a Fedora 44 container
 #     (tools/release-image: the oldest Fedora a release is for, its
 #     programs linking that Fedora's own libraries and glibc: built on
@@ -36,10 +37,10 @@
 #     latest; a file that didn't go up is sent again (three tries).
 #  8. Checks GitHub has each file whole (its size).
 set -euo pipefail
-cd "$(dirname "$0")/.."
-ROOT=$(pwd)
 NOTES=${1:?usage: tools/publish-release.sh NOTES.md [--dry-run]}
 NOTES=$(realpath "$NOTES")
+cd "$(dirname "$0")/.."
+REPO=$(pwd)
 DRY=0
 [ "${2:-}" = --dry-run ] && DRY=1
 WORK=${OLO_RELEASE_WORK:-/var/tmp/olo-release}
@@ -63,11 +64,13 @@ in_image() {
 
 step "1. the commit"
 [ -f "$NOTES" ] || fail "no notes at $NOTES"
-[ -z "$(git status --porcelain --untracked-files=no)" ] || fail "the tree has changes: commit them first"
 git fetch -q origin
 SHA=$(git rev-parse HEAD)
 git merge-base --is-ancestor "$SHA" origin/main || fail "HEAD ($SHA) isn't on origin/main: push it first"
-say "HEAD $SHA, on origin/main"
+# (Built from a checkout of its own: the working tree may change meanwhile.)
+ROOT=$(tools/hooks/checkout-at "$SHA" "$WORK/src" 2>> "$LOG") || fail "couldn't check out $SHA (see $LOG)"
+cd "$ROOT"
+say "HEAD $SHA, on origin/main, checked out in $ROOT"
 
 step "2. the release build, in Fedora 44"
 $DOCKER build -q --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t "$IMAGE" tools/release-image >> "$LOG" 2>&1 || fail "the build image couldn't be made"
