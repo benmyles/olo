@@ -303,7 +303,7 @@ pub fn tier(name: &str) -> Option<i32> {
     match name {
         "olo-app-server" => Some(CORE_NICE),
         "olo-voice" | "olo-airpods" => Some(AUDIO_NICE),
-        "olo-session" | "olo-deskbar" | "olo-wlproxy" | "olo-termd" => Some(SHELL_NICE),
+        "olo-session" | "olo-deskbar" | "olo-wlproxy" | "olo-termd" | "olo-terminal" | "olo-rex" => Some(SHELL_NICE),
         "olo-rescue" => Some(RESCUE_NICE),
         _ => None,
     }

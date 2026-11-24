@@ -8578,6 +8578,7 @@ dependencies = [
  "olo-rex-client",
  "olo-rex-vt",
  "olo-sync",
+ "olo-system",
  "olo-theme",
  "olo-xdg",
  "qrcode",

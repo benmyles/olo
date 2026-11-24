@@ -292,7 +292,13 @@ impl Supervisor {
         self.raised.retain(|pid, _| alive.contains(pid));
         self.raise_again.retain(|pid, _| alive.contains(pid));
         for p in &procs {
-            let Some(nice) = olo_protocol::performance::tier(&p.name) else { continue };
+            // (And an SSH session being typed into: `ssh` reading a
+            // terminal, the person's own on a far host, at the shell's tier
+            // as Terminal's keys are. Not one reading a pipe, git's or
+            // rsync's, which is work like any other. Ben, 2026-11-22: "under
+            // load … i don't want ssh sessions stalling".)
+            let typed_into = || p.name == "ssh" && std::fs::read_link(format!("/proc/{}/fd/0", p.pid)).is_ok_and(|t| t.starts_with("/dev/pts/") || t.starts_with("/dev/tty"));
+            let Some(nice) = olo_protocol::performance::tier(&p.name).or_else(|| typed_into().then_some(olo_protocol::performance::SHELL_NICE)) else { continue };
             if p.state == 'Z' || self.raise_again.get(&p.pid).is_some_and(|at| t < *at) {
                 continue;
             }
@@ -309,7 +315,8 @@ impl Supervisor {
                     self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: now });
                     self.raise_again.remove(&p.pid);
                     let how = if again { format!("again (it was lowered to nice {before})") } else { format!("to nice {now}") };
-                    self.note(format!("Raised {} ({}) {how}: Olo's own, above everything else", p.name, p.pid));
+                    let why = if p.name == "ssh" { "an SSH session typed into, before work" } else { "Olo's own, above everything else" };
+                    self.note(format!("Raised {} ({}) {how}: {why}", p.name, p.pid));
                 }
                 Err(e) => {
                     // (Asked again a minute later; said once.)

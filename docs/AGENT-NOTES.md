@@ -3069,3 +3069,16 @@ this one is, and what differs:
   `tsession tidy` does it by hand. A widget provider whose lock a
   provider of an ended desktop held never ran, and a check that waited
   for its widget's file found the old one.
+- **What the dev server differs in, that tests assumed** (2026-11-24,
+  `jato test --workspace --no-fail-fast`, which the pre-push hook doesn't
+  run: run it after a change that could reach other crates): `/bin/sh`
+  is dash (no line editor: a terminal reads it a canonical line, 4,096
+  characters at most, and its `kill` takes no `--`); the umask is 0002
+  (folders a test makes are group-writable, which grant and cgroup code
+  rightly refuses: set the mode a test means); the filesystem is ext4
+  (a folder lists in its hash order, not the order files were made);
+  the account's shell is in `~/.local/bin` (out of a sandbox's binds);
+  AppArmor refuses unprivileged user namespaces (bwrap has a profile
+  for them); netem isn't loaded; the GPU is lavapipe, which crashes a
+  process at exit after two Vulkan contexts were made and let go at
+  once in it. Each of these broke a test that passed on Ben's computer.

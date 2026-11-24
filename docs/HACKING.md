@@ -18346,7 +18346,23 @@ the folder's change time, `Owners`; each file in one read) and:
   burners a processor, with 27 of 495 twentieths of a second holding
   over a millisecond of waiting among the three, and 42, 35 and 15 µs
   with 3 at −5 (two runs each of 25 s, a key every 80 ms, release
-  builds, four processors); a raise rtkit refuses is asked for again
+  builds, four processors); Terminal's and Rex's windows' threads (a
+  key's echo is drawn there) and Rex's four `rex-io` threads (every key
+  and its echo pass through them) at −5 too, each asking as it starts,
+  the windows' kept there by the supervisor as the tiers' are (Ben,
+  2026-11-22: "make sure olo terminal and rex has real time priority
+  too (but not all the processes they launch, only the gui app itself
+  and the terminal sessions)"); and an SSH session being typed into,
+  `ssh` reading a terminal (`/proc/PID/fd/0` a `/dev/pts`), raised to
+  −5 by the supervisor, this session's only, while one reading a pipe
+  (git's, rsync's) is left as work (Ben: "under load … i don't want ssh
+  sessions stalling"; measured on the dev server, a key to its echo
+  over SSH to a scratch sshd beside 64 nice-0 burners on 32
+  processors: middle 0.11 ms, 95th 3.1 ms, worst 13.7 ms as it was,
+  and 0.10, 2.8 and 5.2 ms with the client and the far side's session
+  at −5; with OpenSSH's `ObscureKeystrokeTiming`, on by default since
+  9.5, a key waits for its 20 ms beat whatever the load, middle 19 ms
+  at rest: a privacy feature, the person's to keep); a raise rtkit refuses is asked for again
   (`priority::raise_self_patiently`: rtkit gives 25 raises in 20 s for
   all of an account's programs, a session coming back starts more
   threads than that at once, and one refused stayed at 0 for as long

@@ -3624,6 +3624,13 @@ fn main() {
             std::process::exit(1);
         }
     };
+    // (Its window's thread at the shell's tier, as its echo path's are: a
+    // key's echo is drawn there, and under load it waited behind whatever
+    // else was running. Ben, 2026-11-22: "make sure olo terminal and rex
+    // has real time priority too (but not all the processes they launch,
+    // only the gui app itself and the terminal sessions)". Its shells are
+    // termd's, put back at 0.)
+    olo_system::priority::raise_self_patiently(olo_protocol::performance::SHELL_NICE);
     olo_kit::run(APP_ID, move |app| {
         // Launches handed over by another `olo-terminal` (a new window from
         // Deskbar, `--tab`, a coding agent's tab title): without it each

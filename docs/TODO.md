@@ -1823,6 +1823,21 @@ something nobody here has is in "Blocked", with what it waits for.
   that serves them first); and a switch under Preferences ▸
   Performance saying what it does. Nothing that starves the rest: a
   limit on what the raised threads may take.
+  Done 2026-11-24 (HACKING, the tiers): the processor's side, measured
+  (a key to its echo over SSH beside 64 nice-0 burners on 32
+  processors: worst 13.7 ms, 5.2 raised; the middle 0.1 ms either way:
+  the kernel's scheduler wakes a key's few microseconds of work first
+  as it is): Terminal's and Rex's windows' threads and Rex's I/O threads
+  at the shell's tier (−5), and an `ssh` reading a terminal raised there
+  by the supervisor (one reading a pipe left as work). Found: OpenSSH's
+  `ObscureKeystrokeTiming` (on since 9.5) holds every key to a 20 ms
+  beat, whatever the load (middle 19 ms at rest): a privacy feature;
+  whether to offer to turn it off for the person's hosts is theirs to
+  say. Left: the network's side (each packet's class, a queue on the way
+  out that serves a key's first: to be measured on a saturated link, as
+  the Kernel tab's BBR was), and whether a switch under Preferences ▸
+  Performance is wanted for what is now always on.
+
 - **An SSH key in Passwords shows, has and syncs all that 1Password
   does** (Ben, 2026-11-22, with a picture of each: "look at all the stuff
   1password shows for an ssh key and then look at what olo passwords

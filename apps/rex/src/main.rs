@@ -133,6 +133,9 @@ fn main() {
         settings.save();
     }
 
+    // (Its window's thread at the shell's tier, as Terminal's is: a key's
+    // echo is drawn there. Its I/O threads raise themselves: hub.rs.)
+    olo_system::priority::raise_self_patiently(olo_protocol::performance::SHELL_NICE);
     olo_kit::run(APP_ID, move |app_cx| {
         instance::listen(APP_ID, olo_kit::proxy());
 

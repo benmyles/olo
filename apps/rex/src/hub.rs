@@ -1873,7 +1873,15 @@ fn wanted_back(conn: &HostConnState) -> bool {
 
 impl RexHub {
     pub fn start(settings: Settings, active_theme: TerminalTheme, askpass: Option<Arc<dyn SshAskpass>>, notify: impl Fn(HubNotice) + Send + Sync + 'static) -> Arc<Self> {
-        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(4).thread_name("rex-io").enable_all().build().expect("create Rex tokio runtime");
+        // (Every key and its echo pass through these, at the shell's tier as
+        // Terminal's echo path is: they waited behind whatever else ran.)
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("rex-io")
+            .on_thread_start(|| olo_system::priority::raise_self_patiently(olo_protocol::performance::SHELL_NICE))
+            .enable_all()
+            .build()
+            .expect("create Rex tokio runtime");
 
         let local_bin_dir = bridge::ensure_local_bin_dir();
         let ssh_pool = Arc::new(SshSessionPool::default());
