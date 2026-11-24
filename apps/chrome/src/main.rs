@@ -189,7 +189,25 @@ fn chrome_args(args: &[String]) -> Vec<String> {
     if on_screen() && !args.iter().any(|a| a == "--no-default-browser-check") {
         out.push("--no-default-browser-check".to_owned());
     }
-    out.extend(args.iter().cloned());
+    if on_screen() {
+        out.extend(screen_features(args));
+    } else {
+        out.extend(args.iter().cloned());
+    }
+    out
+}
+
+/// On an agent screen, Chrome's What's New page kept away: it opened a tab
+/// in front of the page an agent asked for (an agent's report, 2026-11-24).
+/// Chrome heeds only its last `--disable-features`, so one given is added to.
+fn screen_features(args: &[String]) -> Vec<String> {
+    const OFF: &str = "ChromeWhatsNewUI";
+    let mut out: Vec<String> = args.to_vec();
+    match out.iter().rposition(|a| a.starts_with("--disable-features=")) {
+        Some(i) if out[i].split('=').nth(1).is_some_and(|v| v.split(',').any(|f| f == OFF)) => {}
+        Some(i) => out[i] = format!("{},{OFF}", out[i]),
+        None => out.insert(0, format!("--disable-features={OFF}")),
+    }
     out
 }
 
@@ -360,4 +378,19 @@ fn main() {
             }
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// On a screen, What's New is turned off, added to the features a
+    /// launch turns off already (Chrome heeds only the last such flag).
+    #[test]
+    fn a_screens_chrome_shows_no_whats_new() {
+        let args = |a: &[&str]| a.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(screen_features(&args(&["https://example.com"])), args(&["--disable-features=ChromeWhatsNewUI", "https://example.com"]));
+        assert_eq!(screen_features(&args(&["--disable-features=Translate", "x"])), args(&["--disable-features=Translate,ChromeWhatsNewUI", "x"]));
+        assert_eq!(screen_features(&args(&["--disable-features=ChromeWhatsNewUI"])), args(&["--disable-features=ChromeWhatsNewUI"]));
+    }
 }

@@ -79,6 +79,10 @@ fn with_defaults(mut prefs: Value, ready: bool) -> Value {
     // that hasn't chosen offers "Continue where you left off".)
     if ready {
         set(&mut prefs, &["session", "restore_on_startup"], json!(5));
+        // (A Google sign-in on a page is the page's alone: Chrome's own
+        // "Sign in to Chrome?" took the keys meant for the page, an
+        // agent's report, 2026-11-24. Chrome's "Allow Chrome sign-in".)
+        set(&mut prefs, &["signin", "allowed"], json!(false));
     }
     // A theme from the Chrome Web Store keeps its colours.
     if prefs.pointer("/extensions/theme/id").and_then(Value::as_str).is_none_or(str::is_empty) {
@@ -136,6 +140,14 @@ mod tests {
         let themed = with_defaults(json!({"extensions": {"theme": {"id": "abc"}}}), false);
         assert!(themed["extensions"]["theme"].get("system_theme").is_none());
         assert_eq!(themed["browser"]["custom_chrome_frame"], json!(false));
+    }
+
+    /// An agent screen's profile starts with Chrome's own sign-in off; the
+    /// person's own Chrome keeps it as Chrome has it.
+    #[test]
+    fn a_screens_profile_signs_nothing_in() {
+        assert_eq!(with_defaults(json!({}), true)["signin"]["allowed"], json!(false));
+        assert!(with_defaults(json!({}), false).get("signin").is_none());
     }
 
     #[test]

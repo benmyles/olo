@@ -3028,6 +3028,9 @@ something nobody here has is in "Blocked", with what it waits for.
     "Sign in to Chrome?" sheet, which took the keys meant for the page;
     the skill says it starts with no first-run or welcome window. Turn
     both off for screens' profiles (Chrome's policies or flags).
+    **Done** 2026-11-24: `signin.allowed` off in a screen's profile and
+    What's New turned off at its launch (`olo-chrome`); unit-tested, not
+    tried against a live Chrome (none on the dev server).
   - *`olo-screen look NAME /abs/path.png` from a host*: a path of the
     host's was taken as the desktop's, and failed ("app_server: No such
     file or directory"); a bare name landed in the bridge's shared

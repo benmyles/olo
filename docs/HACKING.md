@@ -22554,7 +22554,12 @@ starts ready for an agent: Chrome's `First Run` mark written in its
 folder, so no terms of service window, first-run or welcome pages (a new
 screen's profile showed Google's terms, which agents couldn't get
 past), `session.restore_on_startup` set to the New Tab page (no
-"Continue where you left off" bar) and `--no-default-browser-check`;
+"Continue where you left off" bar), `signin.allowed` off (a Google
+sign-in on a page is the page's, with no "Sign in to Chrome?" sheet,
+which took the keys meant for the page: an agent's report, 2026-11-24),
+`--no-default-browser-check` and What's New turned off (added to any
+`--disable-features` given: Chrome heeds the last; it opened a tab in
+front of the page asked for);
 the person's own first Chrome still shows them Google's terms. Without it, it offers to
 download it in a window on the kit (an `AlertFrame` with the
 installer icon: the offer, the download's `StatusBar` with Cancel, or

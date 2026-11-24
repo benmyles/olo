@@ -123,8 +123,10 @@ started from your shell it opens on the person's display, not yours.
 
 It opens in the screen's own Chrome profile (kept with the screen's
 history, so cookies and sign-ins last as long as that does), ready to
-use: no terms of service, first-run or welcome window (if one ever
-shows, it isn't Olo's Chrome that's running). Never give it the
+use: no terms of service, first-run or welcome window, no What's New
+tab, and Chrome's own sign-in off, so signing in to Google on a page
+signs in that page alone, with no "Sign in to Chrome?" sheet (if one of
+those ever shows, it isn't Olo's Chrome that's running). Never give it the
 person's profile (a `--user-data-dir` in `~/.config`): Chrome keeps one
 process per profile, and it would hand the window to the person's
 running Chrome, on *their* screen. For a profile that starts empty each
