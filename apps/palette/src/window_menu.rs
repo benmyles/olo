@@ -258,12 +258,15 @@ fn app_keys(f: &Facts, command: &str) -> Option<String> {
     shortcuts::entry(entry.id)?.keys(&f.keys).first().map(|c| c.label(f.keys.platform))
 }
 
-/// "Quit Terminal" (the app's own "Quit", or another program's).
-fn quit_label(f: &Facts, own: Option<&str>) -> String {
+/// "Quit Terminal" (the app's own "Quit", or another program's), in the
+/// person's words (the app's own label is in them already), and in
+/// English where it was made here (`Menu::english`).
+fn quit_label(f: &Facts, own: Option<&str>) -> (olo_kit::SharedString, Option<String>) {
     match own {
-        Some(label) if label != "Quit" => label.to_owned(),
-        _ if f.app.name.is_empty() => "Quit".to_owned(),
-        _ => format!("Quit {}", f.app.name),
+        Some(label) if label != "Quit" && label != olo_kit::words::tr("Quit") => (label.to_owned().into(), None),
+        // (A literal: the menu has it in the person's words.)
+        _ if f.app.name.is_empty() => ("Quit".into(), None),
+        _ => (olo_kit::tr!("Quit {}", f.app.name).into(), Some(format!("Quit {}", f.app.name))),
     }
 }
 
@@ -333,9 +336,11 @@ pub fn build(f: &Facts) -> Menu {
         } else {
             float = keyed(float.item("Float", "float"), "float-window", true);
         }
-        let always = if f.app.name.is_empty() { olo_kit::words::tr("Always Float Its Application").to_owned() } else { olo_kit::tr!("Always Float {}", f.app.name) };
+        // (Its app's, beside "Float This Window" and "Float Its Group": in
+        // the words Preferences ▸ Windows quotes, the same in every
+        // language, as the Pin menu's items name no app.)
         let command = if f.app_floats { "unfloat-always" } else { "float-always" };
-        float = keyed(float.separator().item(always, command), "float-app", true).checked(f.app_floats).enabled(has_app && !f.floats_always);
+        float = keyed(float.separator().item("Always Float Its App", command), "float-app", true).checked(f.app_floats).enabled(has_app && !f.floats_always);
         m = m.submenu(float);
     }
     // Main and Stack: this one the main window, or the one before back
@@ -399,7 +404,12 @@ pub fn build(f: &Facts) -> Menu {
     if has_app && f.workspaces > 1 {
         let here = f.app_workspace == Some(f.workspace);
         let command = if here { "app-workspace:none".to_owned() } else { format!("app-workspace:{}", f.workspace) };
-        pin = pin.separator().item(format!("Always Open {} on Workspace {}", f.app.name, f.workspace + 1), command).checked(here);
+        // (In the person's words, `format!` had left it English in every
+        // language; and as its neighbours, "Always Main", without the
+        // app's name, so it begins with the words Preferences ▸ Windows
+        // quotes, "Always Open on Workspace".)
+        let n = f.workspace + 1;
+        pin = pin.separator().item(olo_kit::tr!("Always Open on Workspace {}", n), command).english(format!("Always Open on Workspace {n}")).checked(here);
     }
     m = m.submenu(pin);
     // Move: to a workspace (every display's, left to right as Deskbar's
@@ -471,16 +481,21 @@ pub fn build(f: &Facts) -> Menu {
         m = m.separator();
     }
     // The app's own Close and Quit, as its keys press them.
-    let item = |m: Menu, label: String, command: &'static str, keys: Option<String>, enabled: bool| {
-        let m = m.item(label, command).enabled(enabled);
+    // (A literal label is shown in the person's words by the menu, a made
+    // one as it is: `english`, then, its English.)
+    let item = |m: Menu, (label, english): (olo_kit::SharedString, Option<String>), command: &'static str, keys: Option<String>, enabled: bool| {
+        let mut m = m.item(label, command).enabled(enabled);
+        if let Some(english) = english {
+            m = m.english(english);
+        }
         match keys {
             Some(k) => m.keys(k),
             None => m,
         }
     };
     let close = |m: Menu| match &f.app.close {
-        Some((label, keys, enabled)) => item(m, label.clone(), "app-close", keys.clone(), *enabled),
-        None => item(m, "Close".into(), "close", app_keys(f, "close"), true),
+        Some((label, keys, enabled)) => item(m, (label.clone().into(), None), "app-close", keys.clone(), *enabled),
+        None => item(m, ("Close".into(), None), "close", app_keys(f, "close"), true),
     };
     m = if f.grouped {
         // Every other window in its group (Ben, 2026-11-09: "we need a
@@ -895,8 +910,8 @@ mod tests {
                 _ => None,
             })
         };
-        assert_eq!(own_space(&facts), Some(("Always Open Gedit on Workspace 2".into(), "app-workspace:1".into(), false)));
-        assert_eq!(own_space(&Facts { app_workspace: Some(1), ..facts.clone() }), Some(("Always Open Gedit on Workspace 2".into(), "app-workspace:none".into(), true)));
+        assert_eq!(own_space(&facts), Some(("Always Open on Workspace 2".into(), "app-workspace:1".into(), false)));
+        assert_eq!(own_space(&Facts { app_workspace: Some(1), ..facts.clone() }), Some(("Always Open on Workspace 2".into(), "app-workspace:none".into(), true)));
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();
@@ -931,7 +946,7 @@ mod tests {
         // In a group: the window alone or its group (each with the keys
         // that begin with Float's chord, ⌃⌥⌘F), and its app always.
         let grouped = floats(&Facts { auto: true, ..facts.clone() });
-        assert_eq!(grouped, [item("Float", "Float This Window", true, true, false), item("Float", "Float Its Group", true, true, false), item("Float", "Always Float Gedit", true, true, false)]);
+        assert_eq!(grouped, [item("Float", "Float This Window", true, true, false), item("Float", "Float Its Group", true, true, false), item("Float", "Always Float Its App", true, true, false)]);
         assert_eq!(floats(&Facts { focus: true, ..facts.clone() }), grouped);
         let keys_in = |f: &Facts, label: &str| {
             within(&build(f), "Float").items.iter().find_map(|i| match i {
@@ -941,31 +956,31 @@ mod tests {
         };
         let auto = Facts { auto: true, ..facts.clone() };
         assert_eq!(
-            (keys_in(&auto, "Float This Window"), keys_in(&auto, "Float Its Group"), keys_in(&auto, "Always Float Gedit")),
+            (keys_in(&auto, "Float This Window"), keys_in(&auto, "Float Its Group"), keys_in(&auto, "Always Float Its App")),
             (Some("⌃⌥⌘F  W".into()), Some("⌃⌥⌘F  F".into()), Some("⌃⌥⌘F  A".into()))
         );
         // On its own: the window; Always checked while its app floats
         // always (a window of it tiled by hand).
         assert_eq!(
             floats(&Facts { auto: true, grouped: false, app_floats: true, ..facts.clone() }),
-            [item("Float", "Float", true, true, false), item("Float", "Always Float Gedit", true, true, true)]
+            [item("Float", "Float", true, true, false), item("Float", "Always Float Its App", true, true, true)]
         );
         // No app id to remember: Always dimmed.
         let nameless = Owner::default();
         assert_eq!(
             floats(&Facts { auto: true, grouped: false, app: nameless, ..facts.clone() }),
-            [item("Float", "Float", true, true, false), item("Float", "Always Float Its Application", false, true, false)]
+            [item("Float", "Float", true, true, false), item("Float", "Always Float Its App", false, true, false)]
         );
         // Floating: Unfloat, and its app always (checked if it does); a
         // dialog or an alert floats whatever is asked: shown, dimmed.
-        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [item("Float", "Unfloat", true, true, false), item("Float", "Always Float Gedit", true, true, false)]);
+        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [item("Float", "Unfloat", true, true, false), item("Float", "Always Float Its App", true, true, false)]);
         assert_eq!(
             floats(&Facts { auto: true, floating: true, app_floats: true, ..facts.clone() }),
-            [item("Float", "Unfloat", true, true, false), item("Float", "Always Float Gedit", true, true, true)]
+            [item("Float", "Unfloat", true, true, false), item("Float", "Always Float Its App", true, true, true)]
         );
         assert_eq!(
             floats(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }),
-            [item("Float", "Unfloat", false, true, false), item("Float", "Always Float Gedit", false, true, false)]
+            [item("Float", "Unfloat", false, true, false), item("Float", "Always Float Its App", false, true, false)]
         );
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.

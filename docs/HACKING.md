@@ -4277,7 +4277,28 @@ it.
   arrow ("Preferences ▸ Keyboard" goes down a line together:
   `LineWrapper::breaks_between`, in both wrapping paths), so a line
   never ends with ▸ nor begins with it, in any language and in text
-  put together as it is shown, without no-break spaces in the words.
+  put together as it is shown, without no-break spaces in the words;
+  only where what is held together is wider than the line does it break
+  there, as a last resort rather than inside a word.
+- **A menu's name in a sentence stays on one line**: a sentence that
+  names an item puts it in with `words::menu_path(&["Float", "Always
+  Float"])`, each part in the person's words as the menu shows it and
+  no-break spaces inside and between them, never written into the
+  sentence's own words (a translator's „Fenster / schweben lassen ▸
+  Immer" broke inside it, and named items the menu didn't have). The
+  wrappers hold what a no-break space (or the word joiner) joins on
+  one line where it fits a line; where it is wider than the line (a
+  third of the screen), its no-break spaces break as spaces do, so it is
+  set as words are rather than moved down whole and broken anyway
+  (`free_glue`); never inside a word („Immer schw / eben lassen") nor
+  beside the arrow while anything else on the line can break. One rule
+  for both wrapping paths (`LineWrapper::opportunity`, its `Break`
+  kinds: here, after a no-break space, a last resort), since an alert is
+  sized by `LineWrapper::wrap_line` and drawn by
+  `LineLayout::compute_wrap_boundaries`; what it finds about no-break
+  spaces is found at the first one the line meets, so text without one
+  pays nothing for it (measured: 15,791 instructions a 158-glyph
+  paragraph before, 16,773 after; 33,966 with no-break spaces in it).
 - **A paragraph's last line is never one word alone** where the word
   before can come down to it (`WrappedLine::keep_last_words_together`:
   both fit the last line, and the line they leave stays the longer, so
@@ -4292,6 +4313,18 @@ it.
   glyphs' places alone (`last_words_break`, tested with a face of ten
   points a letter). To-Do's cards have their own, with their three
   lines (`board::wrap`).
+- **No line ends on a word of one letter** where the next line has room
+  for it (`WrappedLine::keep_lone_letters_down`, after the last-line
+  rule, which leaves the last line two words or more; this only adds to
+  a line): "…stack around it. A / workspace starts…" becomes "…around
+  it. / A workspace starts…". A word of one letter reads with the word
+  after it: an article, "I", and in many languages a conjunction or a
+  preposition (Spanish "y", Russian "в", Czech "v"), one after another
+  too ("…casa y a / la…"). Not a digit ("room 2"), nor the only word of
+  its line; no line added, no other line moved. Where it's set, as the
+  last-line rule; its decision is `lone_letter_breaks`, a function of
+  the text and its glyphs' places, and a paragraph with no line ending
+  on one letter does nothing more than look at each line's last word.
 - `WindowOptions::foreign_parent(handle)` (xdg-foreign): a window over
   another program's (a portal's dialog over the app asking; `wayland:`
   stripped, nothing if empty). `file_panel::window_options(title)` and
@@ -15146,7 +15179,11 @@ says. A sentence spliced from parts moves its leading space or comma
 outside the `tr!` (`format!(", {}", tr!("of {}", …))`): a catalog line
 keeps no leading space. Preferences was swept so on 2026-11-19 (468
 places, 461 new words); its unasked list went from 378 to 258, the
-rest data and what's drawn by name.
+rest data and what's drawn by name. A sentence naming a menu's item
+takes it as a part, `tr!("…choose {} in the window menu…",
+words::menu_path(&["Pin", "Always Open on Workspace"]))`: the item's
+words are the menu's own, translated once, and the name is never
+broken across lines ("The kit", "A menu's name in a sentence").
 **Whose words are they.** A window's words are the person's: through
 the layer. A program's words for another program stay English: a
 service's state another window reads (`why` DiskBackup isn't backing

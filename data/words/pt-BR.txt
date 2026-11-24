@@ -962,26 +962,80 @@ Também ao usar a bateria
 Alt
 Alt
 
+Always Bottom Half
+Sempre na metade inferior
+
+Always Bottom Left Quarter
+Sempre no quarto inferior esquerdo
+
+Always Bottom Right Quarter
+Sempre no quarto inferior direito
+
+Always Bottom Two Thirds
+Sempre nos dois terços inferiores
+
+Always Center Third
+Sempre no terço central
+
+Always Center Two Thirds
+Sempre nos dois terços centrais
+
 Always Dark
 Sempre escuro
 
-Always Float Its Application
-Tornar seu aplicativo sempre flutuante
-
-Always Float {}
-Tornar {} sempre flutuante
+Always Float Its App
+Tornar seu app sempre flutuante
 
 Always Left
 Sempre à esquerda
 
+Always Left Half
+Sempre na metade esquerda
+
+Always Left Third
+Sempre no terço esquerdo
+
+Always Left Two Thirds
+Sempre nos dois terços esquerdos
+
 Always Light
 Sempre claro
+
+Always Main
+Sempre como principal
 
 Always Open With
 Sempre abrir com
 
+Always Open on Workspace
+Sempre abrir no espaço de trabalho
+
+Always Open on Workspace {}
+Sempre abrir no espaço de trabalho {}
+
 Always Right
 Sempre à direita
+
+Always Right Half
+Sempre na metade direita
+
+Always Right Third
+Sempre no terço direito
+
+Always Right Two Thirds
+Sempre nos dois terços direitos
+
+Always Top Half
+Sempre na metade superior
+
+Always Top Left Quarter
+Sempre no quarto superior esquerdo
+
+Always Top Right Quarter
+Sempre no quarto superior direito
+
+Always Top Two Thirds
+Sempre nos dois terços superiores
 
 Always Where It Is
 Sempre no mesmo lugar
@@ -1470,6 +1524,9 @@ Voltar às conversas
 
 Back to Conversations
 Voltar às conversas
+
+Back to Its Own Size
+Voltar ao próprio tamanho
 
 Back to its own size
 Voltar ao próprio tamanho
@@ -3765,8 +3822,8 @@ A avaliação combina vários sinais. Cada ocorrência informa o grau de confian
 Each kind of input in the last minute: how many, never which keys
 Entradas por tipo no último minuto. Só a contagem é registrada, sem identificar as teclas
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Cada tipo de arquivo abre neste app, tanto no Olo quanto em outros programas. Você também pode escolher em Abrir com ▸ Sempre abrir com no Tracker.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Cada tipo de arquivo abre neste app, tanto no Olo quanto em outros programas. Você também pode escolher em {} no Tracker.
 
 Each network's own
 Da própria rede
@@ -7569,11 +7626,11 @@ Nenhum ou corp.example
 None. An alert’s Ignore This Process adds one here.
 Nenhum. Escolha Ignorar este processo em um alerta para adicioná-lo aqui.
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Nenhum. Para adicionar um app, abra o menu de uma das janelas dele e escolha Tornar janela flutuante ▸ Sempre.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+Nenhum. Escolha {0} no menu de janela de um app para adicioná-lo, quando as janelas estão em mosaico ({1} ou {2}).
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-Nenhum. Para atribuir um espaço ao app, escolha Sempre abrir no espaço de trabalho no menu de uma das janelas dele.
+None. Choose {} in an app's window menu to add it.
+Nenhum. Escolha {} no menu de janela de um app para adicioná-lo.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 Proprietário (drivers da NVIDIA, Steam, …)
@@ -9200,6 +9257,9 @@ Sair do Chrome
 Quit Now
 Sair agora
 
+Quit {}
+Sair de {}
+
 Quit {} Processes
 Encerrar {} processos
 
@@ -9919,6 +9979,12 @@ Terço direito
 
 Right two thirds
 Dois terços direitos
+
+Roll Down
+Desenrolar
+
+Roll Up
+Enrolar
 
 Roll up or down
 Enrolar ou desenrolar
@@ -13992,6 +14058,9 @@ Zoom
 Zoom All
 Maximizar todas
 
+Zoom Horizontally
+Zoom horizontal
+
 Zoom In
 Ampliar
 
@@ -14000,6 +14069,9 @@ Reduzir
 
 Zoom Pane
 Ampliar painel
+
+Zoom Vertically
+Zoom vertical
 
 Zoom horizontally
 Zoom horizontal

@@ -317,13 +317,31 @@ Also leave out:
 Also used by
 Also when running on battery
 Alt
+Always Bottom Half
+Always Bottom Left Quarter
+Always Bottom Right Quarter
+Always Bottom Two Thirds
+Always Center Third
+Always Center Two Thirds
 Always Dark
-Always Float Its Application
-Always Float {}
+Always Float Its App
 Always Left
+Always Left Half
+Always Left Third
+Always Left Two Thirds
 Always Light
+Always Main
 Always Open With
+Always Open on Workspace
+Always Open on Workspace {}
 Always Right
+Always Right Half
+Always Right Third
+Always Right Two Thirds
+Always Top Half
+Always Top Left Quarter
+Always Top Right Quarter
+Always Top Two Thirds
 Always Where It Is
 Always a palm when as large as
 Always float the application, or not
@@ -486,6 +504,7 @@ Back Up There
 Back Up These Folders
 Back to Chats
 Back to Conversations
+Back to Its Own Size
 Back to its own size
 Back to its own size, or hide
 Back to the Days
@@ -1248,7 +1267,7 @@ Each display’s Deskbar keeps the workspace that display shows open; each other
 Each is cloned into its folder in your home on {}, then set up once with its command.
 Each is judged from several signals together; a finding says how sure it is and why.
 Each kind of input in the last minute: how many, never which keys
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
 Each network's own
 Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
@@ -2512,8 +2531,8 @@ None run.
 None yet: add one below, named by its extensions.
 None, or corp.example
 None. An alert’s Ignore This Process adds one here.
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+None. Choose {} in an app's window menu to add it.
 Nonfree (NVIDIA’s drivers, Steam, …)
 Norwegian
 Not Answered
@@ -3055,6 +3074,7 @@ Quiet for 1 Hour
 Quit
 Quit Chrome
 Quit Now
+Quit {}
 Quit {} Processes
 Quit, dropping the touches
 Quotas:
@@ -3295,6 +3315,8 @@ Right first
 Right half
 Right third
 Right two thirds
+Roll Down
+Roll Up
 Roll up or down
 Room:
 Root on {} didn’t accept your keys
@@ -4651,9 +4673,11 @@ You’re asked each time a tab on an Agent Screen is the one waiting.
 Zig
 Zoom
 Zoom All
+Zoom Horizontally
 Zoom In
 Zoom Out
 Zoom Pane
+Zoom Vertically
 Zoom horizontally
 Zoom on Clicks
 Zoom or unzoom

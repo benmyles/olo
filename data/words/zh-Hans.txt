@@ -958,26 +958,80 @@ Also when running on battery
 Alt
 Alt
 
+Always Bottom Half
+始终在下半部分
+
+Always Bottom Left Quarter
+始终在左下四分之一区域
+
+Always Bottom Right Quarter
+始终在右下四分之一区域
+
+Always Bottom Two Thirds
+始终在底部三分之二区域
+
+Always Center Third
+始终在中间三分之一区域
+
+Always Center Two Thirds
+始终在中间三分之二区域
+
 Always Dark
 始终深色
 
-Always Float Its Application
-始终浮动其应用程序
-
-Always Float {}
-始终浮动 {}
+Always Float Its App
+始终浮动其应用
 
 Always Left
 始终靠左
 
+Always Left Half
+始终在左半部分
+
+Always Left Third
+始终在左侧三分之一区域
+
+Always Left Two Thirds
+始终在左侧三分之二区域
+
 Always Light
 始终浅色
+
+Always Main
+始终为主窗口
 
 Always Open With
 始终以此方式打开
 
+Always Open on Workspace
+始终在工作区打开
+
+Always Open on Workspace {}
+始终在工作区 {} 打开
+
 Always Right
 始终靠右
+
+Always Right Half
+始终在右半部分
+
+Always Right Third
+始终在右侧三分之一区域
+
+Always Right Two Thirds
+始终在右侧三分之二区域
+
+Always Top Half
+始终在上半部分
+
+Always Top Left Quarter
+始终在左上四分之一区域
+
+Always Top Right Quarter
+始终在右上四分之一区域
+
+Always Top Two Thirds
+始终在顶部三分之二区域
 
 Always Where It Is
 始终在原处
@@ -1464,6 +1518,9 @@ Back to Chats
 
 Back to Conversations
 返回对话列表
+
+Back to Its Own Size
+恢复原来大小
 
 Back to its own size
 恢复自身大小
@@ -3751,8 +3808,8 @@ Each is judged from several signals together; a finding says how sure it is and 
 Each kind of input in the last minute: how many, never which keys
 过去一分钟各类输入的次数，不记录具体按键
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-无论从 Olo 还是其他程序打开，此类文件都会使用指定的应用。也可在 Tracker 的“打开方式 ▸ 始终以此方式打开”中选择。
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+无论从 Olo 还是其他程序打开，此类文件都会使用指定的应用。也可在 Tracker 的“{}”中选择。
 
 Each network's own
 使用各网络的设置
@@ -7543,11 +7600,11 @@ None, or corp.example
 None. An alert’s Ignore This Process adds one here.
 暂无。在警告中选择“忽略此进程”即可添加。
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-暂无。要添加应用，请在其窗口菜单中选择“浮动窗口 ▸ 始终”。
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+暂无。窗口平铺时（{1}或{2}），在应用的窗口菜单中选择“{0}”即可添加。
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-暂无。要为应用指定工作区，请在其窗口菜单中选择“始终在指定工作区打开”。
+None. Choose {} in an app's window menu to add it.
+暂无。在应用的窗口菜单中选择“{}”即可添加。
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 非自由软件（NVIDIA 驱动、Steam 等）
@@ -9172,6 +9229,9 @@ Quit Chrome
 Quit Now
 立即退出
 
+Quit {}
+退出 {}
+
 Quit {} Processes
 退出 {} 个进程
 
@@ -9891,6 +9951,12 @@ Right third
 
 Right two thirds
 右侧三分之二区域
+
+Roll Down
+展开
+
+Roll Up
+卷起
 
 Roll up or down
 卷起或展开
@@ -13960,6 +14026,9 @@ Zoom
 Zoom All
 放大所有窗口
 
+Zoom Horizontally
+水平缩放
+
 Zoom In
 放大
 
@@ -13968,6 +14037,9 @@ Zoom Out
 
 Zoom Pane
 缩放窗格
+
+Zoom Vertically
+垂直缩放
 
 Zoom horizontally
 水平缩放

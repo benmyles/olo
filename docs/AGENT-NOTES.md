@@ -531,7 +531,19 @@ Learned making To-Do (2026-11-19 and 20):
   1280x800` at the default 2× is a screen of 640 × 400 points, on which
   every window is in its narrowest layout (Calendar and Weather showed
   no side panel, and a before-and-after "differed nowhere"). For the
-  smallest screen at 2×: `2560x1600`.
+  smallest screen at 2×: `2560x1600`. A window put in a part of it
+  with app_server's `arrange` (`{"type":"arrange","windows":[{"id",
+  "x","y","w","h"}]}`) is given fractions of the screen's area, in
+  points at the scale it has: a vertical third of the smallest screen
+  on a `2560x1600` session is `w` = s/6 and `h` = s/2 at scale s (at
+  1× a third of the whole session would be 853 points, not 427).
+- **A resident app keeps answering after a rebuild** (2026-11-24): the
+  palette is single-instance and stays resident, so each `olo-palette
+  --window-menu …` run in a session is handed to the first one, which
+  runs the old code and the catalogs it read at its start (a translated
+  menu showed English after the words were added). Stop it, by the pid
+  `tsession run` printed and after checking that pid's environment is
+  the session's, before picturing a change to it.
 - **app_server remembers a window's size for the session.** Change an
   app's first size (`WindowOptions::new`) and its window in a session
   that had it open comes back the old size: stop the session and start
@@ -2357,6 +2369,20 @@ maps, smaps_rollup and io was denied. The reported wchan was 0.
 A same-UID reader could still open the crash JSON written by the
 capable process's own panic and signal handlers.
 
+### Files swapped for a measurement: save in one step, restore from it (2026-11-24)
+
+Measuring a change against the last commit means putting the
+committed files in place for a build and the changed ones back after.
+A command written `build && cp CHANGED SAVED && git show HEAD:F > F &&
+build; cp SAVED CHANGED` ran its restore after the `;` though the chain
+had stopped at its first step (the build's path came back empty), so
+it put back the copies saved by the run before: an hour's changes to
+two files were gone, and the next measurement was of the older code
+(the numbers said so: a function no longer inlined). Save the changed
+files in a command of their own, check the copies are there, and only
+then swap and restore from them; a `diff -q` against the saved copies
+before going on shows the tree is as it was.
+
 ### A crate's whole tests before its commit, not the one you wrote
 
 Doctor's two fixture tests (a well set up machine, everything wrong)
@@ -3082,6 +3108,13 @@ this one is, and what differs:
   for them); netem isn't loaded; the GPU is lavapipe, which crashes a
   process at exit after two Vulkan contexts were made and let go at
   once in it. Each of these broke a test that passed on Ben's computer.
+  Ext4 has no reflinks either: `cp --reflink=always` fails ("Operation
+  not supported") between `target/` and `/var/tmp`; copy plainly (a
+  release test binary is about 100 MB). And `sudo` starts its command
+  with a clean environment: a variable a measured program needs goes in
+  through `env` inside it (`sudo -n perf stat -e instructions:u
+  --no-scale env OLO_WRAP_COST=plain PROGRAM …`), or every case runs
+  alike and the counts agree for the wrong reason.
 
 **A package's name isn't always its program's** (2026-11-24): To-Do's
 app is the package `olo-todo-app` (its program `olo-todo`); `jato build

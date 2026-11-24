@@ -466,6 +466,18 @@ pub fn unasked(text: &str) {
     }
 }
 
+/// A menu's item named in a sentence ("choose {} in the window menu"):
+/// `path`'s parts, the menu's own words as its items say them ("Float
+/// Window", "Always"), each in the language chosen as the menu shows it,
+/// joined by "▸", with no-break spaces inside and between them, so a
+/// sentence's line never breaks inside a menu's name in any language (a
+/// translator writing the path into a sentence wrote names the menu
+/// didn't have, and the wrapper broke inside them: „Fenster / schweben
+/// lassen ▸ Immer"; the reviews of the panels, 2026-11-20).
+pub fn menu_path(path: &[&'static str]) -> String {
+    path.iter().map(|part| tr(part).replace(' ', "\u{a0}")).collect::<Vec<_>>().join("\u{a0}▸\u{a0}")
+}
+
 /// `text` (as the code writes it, in English) in the language chosen:
 /// itself in English, and where the language has no word for it.
 pub fn tr(text: &'static str) -> &'static str {

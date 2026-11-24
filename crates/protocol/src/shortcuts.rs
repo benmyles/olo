@@ -1570,11 +1570,32 @@ pub enum Pin {
 }
 
 impl Pin {
-    /// Its item in the window menu's Pin.
-    pub fn title(self) -> String {
+    /// Its item in the window menu's Pin: words of their own, each, as
+    /// the catalogs have them (made of "Always" and the tile's name, it
+    /// was never translated, nor could be well: „Immer Linke Hälfte").
+    pub fn title(self) -> &'static str {
         match self {
-            Pin::Main => "Always Main".to_owned(),
-            Pin::Part(tile) => format!("Always {}", tile.title()),
+            Pin::Main => "Always Main",
+            Pin::Part(tile) => match tile {
+                Tile::Left => "Always Left Half",
+                Tile::Right => "Always Right Half",
+                Tile::Top => "Always Top Half",
+                Tile::Bottom => "Always Bottom Half",
+                Tile::TopLeft => "Always Top Left Quarter",
+                Tile::TopRight => "Always Top Right Quarter",
+                Tile::BottomLeft => "Always Bottom Left Quarter",
+                Tile::BottomRight => "Always Bottom Right Quarter",
+                Tile::LeftThird => "Always Left Third",
+                Tile::CenterThird => "Always Center Third",
+                Tile::RightThird => "Always Right Third",
+                Tile::LeftTwoThirds => "Always Left Two Thirds",
+                Tile::CenterTwoThirds => "Always Center Two Thirds",
+                Tile::RightTwoThirds => "Always Right Two Thirds",
+                Tile::TopTwoThirds => "Always Top Two Thirds",
+                Tile::BottomTwoThirds => "Always Bottom Two Thirds",
+                // (A cell has no name: where it is.)
+                Tile::Cell => "Always Where It Is",
+            },
         }
     }
 }
@@ -1817,7 +1838,12 @@ mod tests {
         assert_eq!(t.app_pin("olo.phone"), None);
         // (Settings from before there were pins have none.)
         assert_eq!(serde_json::from_str::<TilingSettings>("{}").unwrap().app_pins, []);
-        assert_eq!((Pin::Main.title(), Pin::Part(Tile::TopLeft).title()), ("Always Main".to_owned(), "Always Top Left Quarter".to_owned()));
+        assert_eq!((Pin::Main.title(), Pin::Part(Tile::TopLeft).title()), ("Always Main", "Always Top Left Quarter"));
+        // Each named part's is "Always" and its name, as the menu's other
+        // items read.
+        for tile in Tile::CHOOSABLE {
+            assert_eq!(Pin::Part(tile).title(), format!("Always {}", tile.title()), "{tile:?}");
+        }
         // A tile's part, gaps and all, is the part with that name; one
         // dragged elsewhere is none.
         assert_eq!(Tile::of_part([0.0, 0.0, 0.5, 0.5]), Some(Tile::TopLeft));

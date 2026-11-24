@@ -319,7 +319,10 @@ fn defaults(ui: &mut Ui, st: &State, found: &Found) {
             }
         });
     }
-    ui.note("Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.");
+    ui.note(olo_kit::tr!(
+        "Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.",
+        olo_kit::words::menu_path(&["Open With", "Always Open With"])
+    ));
 }
 
 fn own_kinds(ui: &mut Ui, st: &State, found: &Found) {

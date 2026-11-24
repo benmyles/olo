@@ -988,7 +988,7 @@ fn measure_text(text: &mut TextNode, text_style: &TextStyle, rem_size: Pixels, t
     // (Text set to read never ends on one word alone where the word
     // before can join it; text cut to so many lines ends where it's cut.)
     if text_style.line_clamp.is_none() && wrap_width.is_some() {
-        lines.iter_mut().for_each(WrappedLine::keep_last_words_together);
+        lines.iter_mut().for_each(WrappedLine::set_to_read);
     }
     // Clamped short of the rows it takes (each line's rows counted again
     // unclamped: the line cache keeps a clamped layout under the

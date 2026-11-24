@@ -1657,6 +1657,21 @@ something nobody here has is in "Blocked", with what it waits for.
     nothing), what is sent is compressed, and what a sync cost is
     measured against what the change was (bytes on the wire for a
     build's artifacts changed by one file, by one byte, by nothing).
+  - *Agent Sessions' copy sends only what changed in a file* (Ben,
+    2026-11-24: "improve the agent sessions copy in rex so that it is
+    smart enough to e.g. copy new lines only when a file has only had
+    appends like a log. or even better if there's just a way to do like
+    a delta copy at the byte level or something"). Its Copy (HACKING,
+    "The agents' sessions") sends a whole file again when its size or
+    time changed, and a session's transcript (`.jsonl`) only grows: a
+    session used again sends all of it, megabytes, for its last lines.
+    The way the item above sends what isn't already on the other side
+    serves both: a file that only grew (what the host has is a prefix of
+    it, checked by a hash of that prefix, not trusted from sizes) sends
+    its new bytes alone; any other change, its changed pieces (pieces
+    known by their content, so an edit in the middle costs that piece);
+    both compressed; with the bytes on the wire for a session's few new
+    lines, an unchanged one and a new one measured.
   - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
     has no heading with a light and an action, nor a mark on a row's
     icon): either the kit's grows them or the rows stay Rex's.
@@ -1673,6 +1688,26 @@ something nobody here has is in "Blocked", with what it waits for.
     (Renaming a session or a tab and moving a tab are done, and a
     password asked for is seen: HACKING, Rex, "Names and places",
     "A password asked for".)
+  - *The Host window in tabs, and the account's window reached from it*
+    (Ben, 2026-11-24: "make the rex manage host dialog a window with
+    multiple tabs and group things under logical tabs e.g. Rex / Olo
+    Integration. and just make the account one like a button or link
+    somewhere explaining that manage host is for host-wide management,
+    and a link or button to open the manage your user account one").
+    The Host window (`host_panel.rs`, HACKING "The Host window") shows
+    everything in one column; its rows go under tabs by what they are
+    (the host's Rex: its server, the helper, remote access; Olo's
+    integration there: the bridge, the desktop commands, the skill;
+    whatever else is there falls into one of them or a third), as
+    Preferences' panels group theirs, its size fitting its tallest tab.
+    Where it says what it is for, a line says it is the host's, for
+    every account there, and a button or link beside it opens the
+    account's own window (Set Up This Host's Account…, `account_panel.rs`)
+    for what is this account's alone; the account's window says the
+    other way round and links back. Both reached by agents as they are
+    now (`host.manage:KEY`, `host.account:KEY`), each tab by name too.
+    Pictured in light and dark at 1×, 1.5×, 2×, each tab, before the
+    looks.
   - *Hosts and Ports, what is left* (the window is redone: HACKING,
     Rex, "Hosts and Ports"): a host can't be disconnected (the hub has
     no call for it: Connect is all the window offers); a host's row
@@ -1807,6 +1842,45 @@ something nobody here has is in "Blocked", with what it waits for.
   only the label goes grey: the frame, fill and bevel stay the same as
   an enabled button … Drop the bevel's light and dark edges and draw the
   frame at about half contrast against the panel").
+- **`op` writes too: items made, changed and deleted from the command
+  line** (Ben, 2026-11-24: "we need to add write/update support to the
+  op cli for olo passwords -- right now it's read only"). Olo's `op`
+  (apps/op, answered by Passwords' `cli.rs`) reads only: `whoami`,
+  `vault list|get`, `item list|get`, `read`, `inject` and `run`. Ben,
+  the same day: "if the official 1p cli has this functionality please
+  make our op compatible and follow the same so that clients that know
+  how to use op can use it to talk to olo passwords without learning a
+  new cli. if it doesn't offer that functionality then we should keep
+  op compat with 1p and introduce a new olop cli that supports
+  read+write", and "please prioritize the rw support for op after the
+  in flight work you're already doing", and "the op rw support needs to
+  work via olo bridge in rex too and however we expose it in rex": on a
+  host, `olo op item create …` (the bridge's `rex do olo.op`, the shim
+  agents there have) writes as the desktop's own `op` does, asking the
+  person on the desktop as its reads do, the host's leave in
+  Preferences ▸ Rex covering it. 1Password's `op` has item
+  create, edit and delete and document create, get, edit and delete, so
+  ours takes those as it does; anything it has no command for goes in
+  an `olop` beside it, not into `op`. Wanted, in the shapes and with the
+  flags 1Password's own `op` takes (read its documentation for each
+  before writing it, and keep to it, so a script written for
+  1Password's runs against Olo's): `op item create`
+  (`--category`, `--title`, `--vault`, `--url`, `--generate-password`,
+  assignment statements `[section.]field[type]=value`, `--template` /
+  JSON on stdin, `--tags`), `op item edit` (the same assignments, a
+  field removed with `[delete]`, `--title`, `--tags`), `op item delete`
+  (`--archive`), and what 1Password's has besides that fits (`op item
+  move`, `op document create|get` for a Document item's file, `op vault
+  create`), each answering in its JSON with `--format json`. A change
+  goes through the store as the window's own (`Job`), so it is synced to
+  1Password, undone by Edit ▸ Undo, and seen at once in an open window.
+  Leave as for reads, but a write asks the person each time unless they
+  allow it for that session (the approval says what will change: "Make
+  “GitHub” in Private", "Change the password of “AWS”", "Delete “Old
+  key”"), and a locked Passwords asks to be unlocked first. Tests for
+  each command against the stand-in store (never a real account), and
+  HACKING's `op` section saying what's supported.
+
 - **Passwords' editor: an item's built-in fields as fixed labels**
   (Opus's look at the SSH key editor, 2026-11-24, older than it): "The
   key is what defines an SSH Key item, but its row is built like a
@@ -2568,15 +2642,111 @@ something nobody here has is in "Blocked", with what it waits for.
   (`OLO_CAPS_SHEET=DIR cargo test -p app_server --lib caps_to_look_at
   -- --ignored` writes every cap).
 
-- **Two more rules for a paragraph's breaks** (2026-11-20; Opus's and
-  Astra's looks at the last-line rule, both of what was there before
-  it). A word of one letter doesn't end a line ("…stack around it. A /
-  workspace starts…": it comes down to the word it belongs with, where
-  the next line still has room, so no line is added), beside
-  `keep_last_words_together`. And a menu's name put into a sentence
-  isn't broken across lines („Fenster / schweben lassen ▸ Immer"):
-  no-break spaces inside it where the sentence is made, in every
-  language, not left to translators.
+- ~~**Two more rules for a paragraph's breaks**~~ Done (2026-11-24;
+  HACKING, "The kit": "No line ends on a word of one letter", "A menu's
+  name in a sentence stays on one line"; the words layer's
+  `words::menu_path`). (2026-11-20; Opus's and Astra's looks at the
+  last-line rule, both of what was there before it.) A word of one
+  letter doesn't end a line where the next has room for it, one after
+  another too; a menu's name put into a sentence (Preferences' Windows
+  and Default Apps notes) is held on one line by no-break spaces made
+  with it, in every language, and where it is wider than the line it
+  breaks between its words, never inside one or beside its arrow (both
+  wrapping paths, one rule; a stale neighbour after each break in the
+  wrapper, which could cut a long word after its first letter, fixed
+  on the way). The notes named window-menu items that no longer
+  existed (Float Window ▸ Always; Always Open on Workspace): they name
+  the real ones now, and the window menu's Pin items, Roll Up and Down,
+  the Zoom items, Close and Quit, English in every language, are
+  translated. Left: sentences elsewhere that name a menu's item with
+  the path written into their words (38 in `en.txt` hold a ▸: each to
+  take `menu_path`, its translations rewritten with a `{}`).
+- **A window switched to by Deskbar or ⌘Tab takes typing at once**
+  (Ben, 2026-11-24: "when switching windows by clicking on the app on
+  the deskbar or cmd+tab sometimes it doesn't seem to focus the window
+  for text entry. i'm not sure if it's just in multi-tab apps and maybe
+  it doesn't focus the first tab or what exactly but please debug and
+  fix that"). Find when: each way in (a Deskbar row, an app's team
+  menu, ⌘Tab and ⌘`, a click on a tab), apps with tabs (Terminal,
+  StyledEdit, Tracker) and without, a window on another workspace,
+  hidden or rolled up; what app_server gives keyboard focus to (the
+  surface, the group's front tab), whether the kit's window then has
+  its focused view (a text field, a terminal pane) or only the window,
+  and whether a tab brought to the front of its group is the one given
+  the keyboard. Reproduce headless (`tsession`: a key typed straight
+  after the switch must reach the field), find the cause (a second
+  investigator at once if it isn't plain), fix it there, and a test
+  that types after each way of switching.
+
+- **Rex's terminal: Option+← and → go a word back and on** (Ben,
+  2026-11-24: "in rex terminal using alt+left/right doesn't seem to
+  move back/forward a word properly it is sending some other escape
+  code that screws things up"). Read what Rex sends for them (its key
+  encoding, against Terminal's, which a shell takes as a word's move:
+  ESC b / ESC f, or CSI 1;3D / 1;3C as xterm's modifyCursorKeys, which
+  readline maps to backward-word and forward-word by default only in
+  some setups), and what the host's shell and its `inputrc` expect;
+  send what Terminal sends (one encoding for both apps, in the kit or
+  rex-vt), the person's profile's keys respected (a Mac profile's ⌥,
+  a Windows one's Ctrl+← and →), with a test of the bytes each sends
+  and one through a real shell on the rig.
+
+- **Preferences ▸ Windows in a vertical third** (seen 2026-11-24 while
+  picturing the notes above, in English and German at 1× and 2×; there
+  before): its two columns stay side by side in 427 points, so the
+  right one is cut at the window's edge ("Space Around Arranged
+  Windo…", "No space around an auto-tile…", "Show the places a window
+  ca…"), the left one's pop-ups shrink to "…", "Stan…", "F…", "Left…",
+  "Number of main windows" runs into its pop-up, and in German "Apps
+  mit eigener Arbeitsfläche" crosses its box's edge. It should give way
+  as CLAUDE.md's tiling rule asks: one column under the other where
+  both don't fit, a heading wrapping or cut inside its box. The live
+  lint doesn't see it (`--tiles` skips Preferences' panels: "none, as
+  its windows float"), yet the window's menu offers Tile ▸ for it, so a
+  person can put it there: either its windows don't tile (no Tile ▸,
+  and app_server keeps a floating window's least size), or they adapt
+  and the lint tiles them. The looks (2026-11-24) saw more there: in
+  English "Apps With Their Own Workspace" runs past its frame into the
+  right column and almost touches the "Show the places…" check box; in
+  German „Apps, die immer schweben" ends exactly on its frame line; the
+  number of main windows' pop-up shrinks to a sliver, its arrow drawn
+  over the label's colon ("windows▾:"); Astra: "Put the count control
+  below its label at this width so the number and arrow stay visible
+  together", and let the box headings wrap with room for the frame.
+
+- **From the looks at the paragraph rules, there before them**
+  (2026-11-24, Opus's and Astra's, on Preferences' Windows and Default
+  Apps panels and a window's menu in German):
+  - *The Zoom submenu's two-step keys read as a typo*: "^⌥⌘Z  Z" (the
+    chord's last key and the follow-up letter the same, about 7 pt
+    apart). Opus: "Put a visible separator between the two steps:
+    '^⌥⌘Z, Z'. Keep the comma in the same shortcut-text colour, and
+    leave at least 12 pt between the chord column and the second key."
+    And Back to Its Own Size's follow-up letter B is the English word's
+    ("G for Größe is the natural choice" in German, if follow-up letters
+    are to follow the language at all: decide that for every chord).
+  - *Olo's own names in English inside German*: "Preferences beenden"
+    (the app's name in the window menu's Quit and elsewhere), and a
+    Preferences panel's window title (its tab: "Windows", "Default
+    Apps" over „Standard-Apps"). Opus: "If the app's name is translated
+    anywhere else (Deskbar, Tracker), use that name here and in the
+    window tab … If 'Preferences' is meant to be a fixed proper name in
+    every language, keep it." Decide which names are proper names
+    (Passwords is one), and translate the panels' titles.
+  - *The ▸ in prose is smaller than the menus' own arrow*: about 4 px
+    tall at 1×, sitting like a bullet at mid x-height, where a
+    submenu's arrow is about 7 px. Opus: "draw it about 0.5 em tall
+    (about 6 pt with this text), centred on x-height, with the same
+    spacing either side as now", and optionally the held name in the
+    primary text colour within secondary-coloured prose.
+  - *The tiling note leaves the layout unnamed*: "…A workspace starts
+    with this; choose its own from Deskbar's tray", and in German
+    „wählen Sie ihre eigene" points at *Arbeitsfläche*, not the layout.
+    Astra: "Name the setting directly, for example 'Choose a layout for
+    each workspace in Deskbar's tray' and „Das Layout für jede
+    Arbeitsfläche wählen Sie in der Statusleiste der Deskbar."".
+  - *Default Apps' disabled value is cut in a third*: „Keine App öffnet
+    d…"; Astra: "A shorter value such as „Keine App" would fit."
 
 - **kache: clean-up that isn't starved by a command left running**
   (2026-11-21, from Ben's "check whether there are old debug builds or

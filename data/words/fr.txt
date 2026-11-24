@@ -962,26 +962,80 @@ Aussi sur batterie
 Alt
 Alt
 
+Always Bottom Half
+Toujours dans la moitié inférieure
+
+Always Bottom Left Quarter
+Toujours dans le quart inférieur gauche
+
+Always Bottom Right Quarter
+Toujours dans le quart inférieur droit
+
+Always Bottom Two Thirds
+Toujours dans les deux tiers inférieurs
+
+Always Center Third
+Toujours dans le tiers central
+
+Always Center Two Thirds
+Toujours dans les deux tiers centraux
+
 Always Dark
 Toujours sombre
 
-Always Float Its Application
-Son application toujours flottante
-
-Always Float {}
-{} toujours flottant
+Always Float Its App
+Son app toujours flottante
 
 Always Left
 Toujours à gauche
 
+Always Left Half
+Toujours dans la moitié gauche
+
+Always Left Third
+Toujours dans le tiers gauche
+
+Always Left Two Thirds
+Toujours dans les deux tiers gauches
+
 Always Light
 Toujours clair
+
+Always Main
+Toujours comme principale
 
 Always Open With
 Toujours ouvrir avec
 
+Always Open on Workspace
+Toujours ouvrir dans l’espace de travail
+
+Always Open on Workspace {}
+Toujours ouvrir dans l’espace de travail {}
+
 Always Right
 Toujours à droite
+
+Always Right Half
+Toujours dans la moitié droite
+
+Always Right Third
+Toujours dans le tiers droit
+
+Always Right Two Thirds
+Toujours dans les deux tiers droits
+
+Always Top Half
+Toujours dans la moitié supérieure
+
+Always Top Left Quarter
+Toujours dans le quart supérieur gauche
+
+Always Top Right Quarter
+Toujours dans le quart supérieur droit
+
+Always Top Two Thirds
+Toujours dans les deux tiers supérieurs
 
 Always Where It Is
 Toujours là où il est
@@ -1470,6 +1524,9 @@ Retour aux discussions
 
 Back to Conversations
 Retour aux conversations
+
+Back to Its Own Size
+Revenir à sa taille
 
 Back to its own size
 Revenir à sa taille
@@ -3765,8 +3822,8 @@ Chacun est jugé sur plusieurs signaux à la fois ; un constat dit son degré 
 Each kind of input in the last minute: how many, never which keys
 Chaque type de saisie dans la dernière minute : combien, jamais quelles touches
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Chaque type s’ouvre dans cette app où que vous l’ouvriez, dans Olo et les autres programmes. Ouvrir avec ▸ Toujours ouvrir avec, dans Tracker, le choisit aussi.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Chaque type s’ouvre dans cette app où que vous l’ouvriez, dans Olo et les autres programmes. Vous pouvez aussi la choisir dans Tracker avec {}.
 
 Each network's own
 Ceux de chaque réseau
@@ -7569,11 +7626,11 @@ Aucun, ou corp.example
 None. An alert’s Ignore This Process adds one here.
 Aucun. « Ignorer ce processus » dans une alerte en ajoute un ici.
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Aucune. Pour ajouter une app, choisissez Fenêtre flottante ▸ Toujours dans le menu de fenêtre de l’une de ses fenêtres.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+Aucune. Choisissez {0} dans le menu de fenêtre d’une app pour l’ajouter, quand les fenêtres sont en mosaïque ({1} ou {2}).
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-Aucune. Pour en donner un à une app, choisissez Toujours ouvrir dans l’espace de travail dans le menu de fenêtre de l’une de ses fenêtres.
+None. Choose {} in an app's window menu to add it.
+Aucune. Choisissez {} dans le menu de fenêtre d’une app pour l’ajouter.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 Non libre (pilotes NVIDIA, Steam, …)
@@ -9200,6 +9257,9 @@ Quitter Chrome
 Quit Now
 Quitter maintenant
 
+Quit {}
+Quitter {}
+
 Quit {} Processes
 Quitter {} processus
 
@@ -9919,6 +9979,12 @@ Tiers droit
 
 Right two thirds
 Deux tiers droits
+
+Roll Down
+Dérouler
+
+Roll Up
+Enrouler
 
 Roll up or down
 Enrouler ou dérouler
@@ -13992,6 +14058,9 @@ Zoom
 Zoom All
 Tout agrandir
 
+Zoom Horizontally
+Zoom horizontal
+
 Zoom In
 Zoom avant
 
@@ -14000,6 +14069,9 @@ Zoom arrière
 
 Zoom Pane
 Agrandir le volet
+
+Zoom Vertically
+Zoom vertical
 
 Zoom horizontally
 Zoom horizontal

@@ -962,26 +962,80 @@ También con batería
 Alt
 Alt
 
+Always Bottom Half
+Siempre en la mitad inferior
+
+Always Bottom Left Quarter
+Siempre en el cuarto inferior izquierdo
+
+Always Bottom Right Quarter
+Siempre en el cuarto inferior derecho
+
+Always Bottom Two Thirds
+Siempre en los dos tercios inferiores
+
+Always Center Third
+Siempre en el tercio central
+
+Always Center Two Thirds
+Siempre en los dos tercios centrales
+
 Always Dark
 Siempre oscuro
 
-Always Float Its Application
-Su aplicación siempre flotante
-
-Always Float {}
-{} siempre flotante
+Always Float Its App
+Su app siempre flotante
 
 Always Left
 Siempre a la izquierda
 
+Always Left Half
+Siempre en la mitad izquierda
+
+Always Left Third
+Siempre en el tercio izquierdo
+
+Always Left Two Thirds
+Siempre en los dos tercios izquierdos
+
 Always Light
 Siempre claro
+
+Always Main
+Siempre como principal
 
 Always Open With
 Abrir siempre con
 
+Always Open on Workspace
+Abrir siempre en el espacio de trabajo
+
+Always Open on Workspace {}
+Abrir siempre en el espacio de trabajo {}
+
 Always Right
 Siempre a la derecha
+
+Always Right Half
+Siempre en la mitad derecha
+
+Always Right Third
+Siempre en el tercio derecho
+
+Always Right Two Thirds
+Siempre en los dos tercios derechos
+
+Always Top Half
+Siempre en la mitad superior
+
+Always Top Left Quarter
+Siempre en el cuarto superior izquierdo
+
+Always Top Right Quarter
+Siempre en el cuarto superior derecho
+
+Always Top Two Thirds
+Siempre en los dos tercios superiores
 
 Always Where It Is
 Siempre donde está
@@ -1470,6 +1524,9 @@ Volver a los chats
 
 Back to Conversations
 Volver a las conversaciones
+
+Back to Its Own Size
+Volver a su tamaño
 
 Back to its own size
 Volver a su tamaño
@@ -3765,8 +3822,8 @@ Cada uno se valora a partir de varias señales juntas; un hallazgo dice cuán se
 Each kind of input in the last minute: how many, never which keys
 Cada tipo de entrada en el último minuto: cuántas, nunca qué teclas
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Cada tipo se abre en esta app dondequiera que lo abras, en Olo y en otros programas. Abrir con ▸ Abrir siempre con, de Tracker, también lo elige.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Cada tipo se abre en esta app dondequiera que lo abras, en Olo y en otros programas. También puedes elegirla en Tracker con {}.
 
 Each network's own
 Los de cada red
@@ -7569,11 +7626,11 @@ Ninguno, o corp.example
 None. An alert’s Ignore This Process adds one here.
 Ninguno. «Ignorar este proceso» de una alerta añade uno aquí.
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Ninguna. Para añadir una app, elige Ventana flotante ▸ Siempre en el menú de ventana de una de sus ventanas.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+Ninguna. Elige {0} en el menú de ventana de una app para añadirla, cuando las ventanas se organizan en mosaico ({1} o {2}).
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-Ninguna. Para darle uno a una app, elige Abrir siempre en el espacio de trabajo en el menú de ventana de una de sus ventanas.
+None. Choose {} in an app's window menu to add it.
+Ninguna. Elige {} en el menú de ventana de una app para añadirla.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 No libre (drivers de NVIDIA, Steam, …)
@@ -9200,6 +9257,9 @@ Salir de Chrome
 Quit Now
 Salir ahora
 
+Quit {}
+Salir de {}
+
 Quit {} Processes
 Salir de {} procesos
 
@@ -9919,6 +9979,12 @@ Tercio derecho
 
 Right two thirds
 Dos tercios derechos
+
+Roll Down
+Desenrollar
+
+Roll Up
+Enrollar
 
 Roll up or down
 Enrollar o desenrollar
@@ -13992,6 +14058,9 @@ Zoom
 Zoom All
 Ampliar todo
 
+Zoom Horizontally
+Zoom horizontal
+
 Zoom In
 Ampliar
 
@@ -14000,6 +14069,9 @@ Reducir
 
 Zoom Pane
 Ampliar panel
+
+Zoom Vertically
+Zoom vertical
 
 Zoom horizontally
 Zoom horizontal

@@ -80,11 +80,12 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             });
         });
         // The apps whose windows always float over the tiles (a window's
-        // menu ▸ Float Window ▸ Always), by name; unchecked, one's
-        // windows tile again.
+        // menu ▸ Float ▸ Always Float Its App, there where windows tile),
+        // by name; unchecked, one's windows tile again.
         ui.bbox("Apps That Always Float", |ui| {
             if s.tiling.floating_apps.is_empty() {
-                ui.note("None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.");
+                let (auto, focus) = (olo_kit::words::tr(WindowingMode::AutoTiling.title()), olo_kit::words::tr(WindowingMode::Focus.title()));
+                ui.note(olo_kit::tr!("None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).", olo_kit::words::menu_path(&["Float", "Always Float Its App"]), auto, focus));
             }
             for id in &s.tiling.floating_apps {
                 let name = app_name(id);
@@ -102,11 +103,11 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             }
         });
         // Apps whose new windows open on a workspace of their own (a
-        // window's menu ▸ Always Open on Workspace N); unchecked, as any
-        // app's again.
+        // window's menu ▸ Pin ▸ Always Open on Workspace N); unchecked, as
+        // any app's again.
         ui.bbox("Apps With Their Own Workspace", |ui| {
             if s.tiling.app_workspaces.is_empty() {
-                ui.note("None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.");
+                ui.note(olo_kit::tr!("None. Choose {} in an app's window menu to add it.", olo_kit::words::menu_path(&["Pin", "Always Open on Workspace"])));
             }
             for a in &s.tiling.app_workspaces {
                 let id = a.app_id.clone();

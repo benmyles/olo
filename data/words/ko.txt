@@ -958,26 +958,80 @@ Also when running on battery
 Alt
 Alt
 
+Always Bottom Half
+항상 아래 절반
+
+Always Bottom Left Quarter
+항상 왼쪽 아래 ¼
+
+Always Bottom Right Quarter
+항상 오른쪽 아래 ¼
+
+Always Bottom Two Thirds
+항상 아래쪽 ⅔
+
+Always Center Third
+항상 가운데 ⅓
+
+Always Center Two Thirds
+항상 가운데 ⅔
+
 Always Dark
 항상 어둡게
 
-Always Float Its Application
-이 응용 프로그램을 항상 플로팅으로
-
-Always Float {}
-{}을(를) 항상 플로팅으로
+Always Float Its App
+앱을 항상 플로팅으로 전환
 
 Always Left
 항상 왼쪽
 
+Always Left Half
+항상 왼쪽 절반
+
+Always Left Third
+항상 왼쪽 ⅓
+
+Always Left Two Thirds
+항상 왼쪽 ⅔
+
 Always Light
 항상 밝게
+
+Always Main
+항상 기본 창으로
 
 Always Open With
 항상 다음으로 열기
 
+Always Open on Workspace
+항상 작업 공간에서 열기
+
+Always Open on Workspace {}
+항상 작업 공간 {}에서 열기
+
 Always Right
 항상 오른쪽
+
+Always Right Half
+항상 오른쪽 절반
+
+Always Right Third
+항상 오른쪽 ⅓
+
+Always Right Two Thirds
+항상 오른쪽 ⅔
+
+Always Top Half
+항상 위 절반
+
+Always Top Left Quarter
+항상 왼쪽 위 ¼
+
+Always Top Right Quarter
+항상 오른쪽 위 ¼
+
+Always Top Two Thirds
+항상 위쪽 ⅔
 
 Always Where It Is
 항상 현재 위치
@@ -1464,6 +1518,9 @@ Back to Chats
 
 Back to Conversations
 대화로 돌아가기
+
+Back to Its Own Size
+원래 크기로
 
 Back to its own size
 원래 크기로
@@ -3751,8 +3808,8 @@ Each is judged from several signals together; a finding says how sure it is and 
 Each kind of input in the last minute: how many, never which keys
 지난 1분간 종류별 입력 횟수만 집계하며 누른 키는 기록하지 않습니다
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Olo와 다른 프로그램 어디서든 이 형식의 파일을 해당 앱으로 엽니다. Tracker의 다음으로 열기 ▸ 항상 다음으로 열기에서도 선택할 수 있습니다.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Olo와 다른 프로그램 어디서든 이 형식의 파일을 해당 앱으로 엽니다. Tracker의 {}에서도 선택할 수 있습니다.
 
 Each network's own
 네트워크별 설정
@@ -7543,11 +7600,11 @@ None, or corp.example
 None. An alert’s Ignore This Process adds one here.
 없습니다. 경고에서 ‘이 프로세스 무시’를 선택하면 여기에 추가됩니다.
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-없습니다. 추가하려면 앱의 창 메뉴에서 창을 플로팅으로 전환 ▸ 항상을 선택하세요.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+없습니다. 창을 타일로 배치할 때({1} 또는 {2}) 앱의 창 메뉴에서 {0}을(를) 선택하면 추가됩니다.
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-없습니다. 앱의 창 메뉴에서 ‘항상 이 작업 공간에서 열기’를 선택해 지정하세요.
+None. Choose {} in an app's window menu to add it.
+없습니다. 앱의 창 메뉴에서 {}을(를) 선택하면 추가됩니다.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 비자유 소프트웨어 (NVIDIA 드라이버, Steam 등)
@@ -9172,6 +9229,9 @@ Chrome 종료
 Quit Now
 지금 종료
 
+Quit {}
+{} 종료
+
 Quit {} Processes
 프로세스 {}개 종료
 
@@ -9891,6 +9951,12 @@ Right third
 
 Right two thirds
 오른쪽 ⅔
+
+Roll Down
+펼치기
+
+Roll Up
+말아 올리기
 
 Roll up or down
 말아 올리기 또는 내리기
@@ -13960,6 +14026,9 @@ Zoom
 Zoom All
 모든 창 확대
 
+Zoom Horizontally
+가로로 확대/축소
+
 Zoom In
 확대
 
@@ -13968,6 +14037,9 @@ Zoom Out
 
 Zoom Pane
 패널 확대/축소
+
+Zoom Vertically
+세로로 확대/축소
 
 Zoom horizontally
 가로로 확대

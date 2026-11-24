@@ -77,7 +77,7 @@ impl Para {
         // word before can join it; one cut to so many lines ends where
         // it's cut.)
         if lines_at_most.is_none() {
-            lines.iter_mut().for_each(WrappedLine::keep_last_words_together);
+            lines.iter_mut().for_each(WrappedLine::set_to_read);
         }
         // As wide as its widest line (not the width it was wrapped to).
         let mut w: f32 = 0.0;

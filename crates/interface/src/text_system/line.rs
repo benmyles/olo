@@ -127,7 +127,115 @@ fn last_words_break(text: &str, over: (usize, Pixels), last_at: usize, width: Pi
     (below <= room && space_x - over_x >= below).then_some(space_at + 1)
 }
 
+/// Olo: where a line ends on a word of one letter ("…stack around it. A
+/// / workspace starts…"), the line breaks before that word instead. A
+/// one-letter word reads with the word after it (an article, "I", a
+/// conjunction or a preposition in many languages: Spanish "y", Czech
+/// "v", Polish "z"). Where the next line has room for it, that's all;
+/// where it hasn't, the rest of the paragraph is set again from the word
+/// (`rewrap`: the lines' starts after a line begun at a byte), taken only
+/// if that adds no line (`reflow`: a pass after the last-line rule leaves
+/// the rest as it is, so as not to undo that). `starts`: each line's first
+/// byte; `x_of`: where a byte's glyph is along the unwrapped line; `end`:
+/// its width. The lines' starts as they should be.
+fn lone_letter_breaks(text: &str, starts: &[usize], end: Pixels, room: Pixels, x_of: impl Fn(usize) -> Option<Pixels>, rewrap: impl Fn(usize) -> Option<Vec<usize>>, reflow: bool) -> Vec<usize> {
+    let mut out = starts.to_vec();
+    let mut i = 1;
+    while i < out.len() {
+        // (One after another, as Spanish "…casa y a / la…": each comes
+        // down while it can.)
+        while let Some(at) = lone_letter(text, out[i - 1], out[i]) {
+            // Where the next line ends: its last word's end, not the
+            // space after it, which hangs past the edge as it's wrapped.
+            let next_end = match out.get(i + 1) {
+                Some(&after) => x_of(out[i] + text.get(out[i]..after).map_or(0, |t| t.trim_end().len())),
+                None => Some(end),
+            };
+            match (x_of(at), next_end) {
+                (Some(x), Some(next_end)) if next_end - x <= room => out[i] = at,
+                (Some(_), _) if reflow => match rewrap(at) {
+                    Some(rest) if i + 1 + rest.len() <= out.len() => {
+                        out.truncate(i);
+                        out.push(at);
+                        out.extend(rest);
+                    }
+                    _ => break,
+                },
+                _ => break,
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Where the line of `text` from `start` to `end` ends on a word of one
+/// letter after another word: that word's first byte. (A line of one word
+/// keeps it; a digit, "room 2", isn't one.)
+fn lone_letter(text: &str, start: usize, end: usize) -> Option<usize> {
+    let line = text.get(start..end)?.trim_end();
+    let space = line.rfind(' ')?;
+    let mut word = line[space + 1..].chars();
+    let (Some(letter), None) = (word.next(), word.next()) else { return None };
+    (letter.is_alphabetic() && !line[..space].trim().is_empty()).then_some(start + space + 1)
+}
+
 impl WrappedLine {
+    /// Olo: a paragraph set to read (an element's wrapped text, a note,
+    /// an alert's message, the kit's `Para`: not text being typed, where a
+    /// word would jump as the next is begun, nor text cut to so many
+    /// lines): no line ends on a word of one letter
+    /// ([`Self::keep_lone_letters_down`]), its last line is never one word
+    /// alone ([`Self::keep_last_words_together`]), and no line ends on one
+    /// letter after that either, the rest left as the last-line rule set it.
+    pub fn set_to_read(&mut self) {
+        self.keep_lone_letters_down(true);
+        self.keep_last_words_together();
+        self.keep_lone_letters_down(false);
+    }
+
+    /// Olo: no line ends on a word of one letter where it can go down to
+    /// the next ([`lone_letter_breaks`]; `reflow`: the rest set again
+    /// where the next line has no room, if that adds no line).
+    pub fn keep_lone_letters_down(&mut self, reflow: bool) {
+        let layout = &self.layout;
+        let Some(room) = layout.wrap_width else { return };
+        if layout.wrap_boundaries.is_empty() {
+            return;
+        }
+        // (Nothing more where no line ends on one letter, as nearly none
+        // does: the lines' ends read from the text, no glyph listed.)
+        let text: &str = self.text.as_ref();
+        let glyph = |b: WrapBoundary| &layout.unwrapped_layout.runs[b.run_ix].glyphs[b.glyph_ix];
+        let starts: Vec<usize> = std::iter::once(0).chain(layout.wrap_boundaries.iter().map(|b| glyph(*b).index)).collect();
+        if !(1..starts.len()).any(|i| lone_letter(text, starts[i - 1], starts[i]).is_some()) {
+            return;
+        }
+        let glyphs: Vec<(WrapBoundary, usize, Pixels)> = layout
+            .unwrapped_layout
+            .runs
+            .iter()
+            .enumerate()
+            .flat_map(|(run_ix, run)| run.glyphs.iter().enumerate().map(move |(glyph_ix, g)| (WrapBoundary { run_ix, glyph_ix }, g.index, g.position.x)))
+            .collect();
+        // (Text whose glyphs aren't in its order, as text of two
+        // directions: left as it is.)
+        if glyphs.windows(2).any(|w| w[0].1 > w[1].1) {
+            return;
+        }
+        let find = |at: usize| glyphs.binary_search_by_key(&at, |(_, i, _)| *i).ok().map(|k| glyphs[k]);
+        let rewrap = |at: usize| {
+            let start = find(at)?.0;
+            layout.unwrapped_layout.wrap_boundaries_after(text, room, start).iter().map(|b| Some(glyph(*b).index)).collect::<Option<Vec<usize>>>()
+        };
+        let ruled = lone_letter_breaks(text, &starts, layout.unwrapped_layout.width, room, |at| find(at).map(|g| g.2), rewrap, reflow);
+        if ruled == starts {
+            return;
+        }
+        let Some(wrap_boundaries) = ruled[1..].iter().map(|&at| find(at).map(|g| g.0)).collect::<Option<super::line_layout::WrapBoundaries>>() else { return };
+        self.layout = Arc::new(WrappedLineLayout { unwrapped_layout: layout.unwrapped_layout.clone(), wrap_boundaries, wrap_width: layout.wrap_width });
+    }
+
     /// Olo: a paragraph's last line is never one word alone where the
     /// word before can come down to it. Wrapping fills each line before
     /// the next begins, which leaves "…in Deskbar's / tray." in one
@@ -650,6 +758,269 @@ mod last_words_tests {
         let (was, now) = wrapped("one two three four five six seven", 130.0);
         assert_eq!(was, ["one two three", "four five six", "seven"]);
         assert_eq!(now.unwrap(), ["one two three", "four five", "six seven"]);
+    }
+
+    /// The lines' starts after one begun at byte `from`, each as many
+    /// words as fit, ten points a letter (a space after a word hangs).
+    fn greedy(text: &str, from: usize, room: f32) -> Vec<usize> {
+        let mut starts = Vec::new();
+        let mut line = from;
+        for (at, _) in text[from..].match_indices(' ').map(|(a, s)| (a + from, s)) {
+            let end = text[at + 1..].find(' ').map_or(text.len(), |n| at + 1 + n);
+            if (end - line) as f32 * 10.0 > room {
+                line = at + 1;
+                starts.push(line);
+            }
+        }
+        starts
+    }
+
+    /// Lines (ten points a letter) as `lone_letter_breaks` leaves them.
+    fn lone(text: &str, room: f32) -> Vec<&str> {
+        let x = |at: usize| px(at as f32 * 10.0);
+        let starts: Vec<usize> = std::iter::once(0).chain(greedy(text, 0, room)).collect();
+        let ruled = lone_letter_breaks(text, &starts, x(text.len()), px(room), |at| Some(x(at)), |at| Some(greedy(text, at, room)), true);
+        ruled.iter().enumerate().map(|(i, s)| text[*s..ruled.get(i + 1).copied().unwrap_or(text.len())].trim_end()).collect()
+    }
+
+    #[test]
+    fn a_word_of_one_letter_goes_down_with_the_next() {
+        // "…around it. A / workspace…": "A" comes down where there's room.
+        assert_eq!(lone("stack around it. A workspace starts", 190.0), ["stack around it.", "A workspace starts"]);
+        // No room on the next line for it (full already): it stays.
+        assert_eq!(lone("stack around it. A workspaces started", 180.0), ["stack around it. A", "workspaces started"]);
+        // Spanish "y", one after another, and a line of one word keeps
+        // it; a digit isn't one.
+        assert_eq!(lone("café o leche y pan tostado", 140.0), ["café o leche", "y pan tostado"]);
+        assert_eq!(lone("la casa y a la mesa", 110.0), ["la casa", "y a la mesa"]);
+        // The next line's room is to its last word: the space after it
+        // hangs, so "f gh ij" fits seven letters.
+        assert_eq!(lone("abcde f gh ij kl", 70.0), ["abcde", "f gh ij", "kl"]);
+        // No room on the next line: the rest is set again from the word,
+        // where that adds no line ("…let go in a / place…", Opus's look).
+        assert_eq!(lone("one two a three four five", 100.0), ["one two", "a three", "four five"]);
+        assert_eq!(lone("la casa y a la mesa", 100.0), ["la casa y", "a la mesa"]);
+        assert_eq!(lone("A longword", 50.0), ["A", "longword"]);
+        assert_eq!(lone("room 2 left over", 70.0), ["room 2", "left", "over"]);
+    }
+
+    /// With Olo's own face, shaped and wrapped as a paragraph is: at a
+    /// width where a line ends on "A", the rule takes it down to the
+    /// next, the lines as many as before.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn a_lone_letter_comes_down_in_a_real_paragraph() {
+        use std::borrow::Cow;
+        let system = crate::TextSystem::standalone();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let window = crate::WindowTextSystem::new(system);
+        let text = "The others stack around it. A workspace starts with the main window in its place.";
+        let run = crate::TextRun { len: text.len(), font: crate::font("Noto Sans"), color: crate::Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        let rows = |line: &WrappedLine| {
+            let mut starts = vec![0];
+            starts.extend(line.layout.wrap_boundaries.iter().map(|b| line.layout.unwrapped_layout.runs[b.run_ix].glyphs[b.glyph_ix].index));
+            starts.iter().enumerate().map(|(i, s)| text[*s..starts.get(i + 1).copied().unwrap_or(text.len())].trim_end().to_owned()).collect::<Vec<_>>()
+        };
+        let mut found = false;
+        for width in (100..400).step_by(2) {
+            let mut lines = window.shape_text(text.into(), px(13.0), std::slice::from_ref(&run), Some(px(width as f32)), None).unwrap();
+            let line = &mut lines[0];
+            let before = rows(line);
+            if !before.iter().any(|r| r.ends_with(" A")) {
+                continue;
+            }
+            line.keep_lone_letters_down(true);
+            let after = rows(line);
+            assert_eq!(after.len(), before.len(), "at {width}: {before:?} -> {after:?}");
+            if after != before {
+                assert!(!after.iter().any(|r| r.ends_with(" A")) && after.iter().any(|r| r.starts_with("A workspace")), "at {width}: {after:?}");
+                found = true;
+            }
+        }
+        assert!(found, "no width ended a line on \"A\" with room for it below");
+    }
+
+    /// What the rule adds to a paragraph's layout, where no line ends on one
+    /// letter (nearly every paragraph) and where one does: `cargo test
+    /// --release -p olo-interface lone_letters_cost -- --ignored --nocapture`.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    #[ignore]
+    fn lone_letters_cost() {
+        use std::borrow::Cow;
+        let system = crate::TextSystem::standalone();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let window = crate::WindowTextSystem::new(system);
+        let shaped = |text: &str, width: f32| {
+            let run = crate::TextRun { len: text.len(), font: crate::font("Noto Sans"), color: crate::Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+            window.shape_text(text.to_owned().into(), px(13.0), std::slice::from_ref(&run), Some(px(width)), None).unwrap()
+        };
+        let moved = "The others stack around it. A workspace starts with the main window in its place.";
+        // (A width where the rule moves a line's "A".)
+        let width = (100..400).map(|w| w as f32).find(|&w| {
+            let mut line = shaped(moved, w)[0].clone();
+            let before = line.layout.wrap_boundaries.clone();
+            line.keep_lone_letters_down(true);
+            line.layout.wrap_boundaries != before
+        });
+        for (text, width) in
+            [("Each kind opens in this app wherever you open it, in Olo and in other programs, and Tracker's menu chooses too.", 200.0), (moved, width.expect("a width the rule moves"))]
+        {
+            let lines = shaped(text, width);
+            let n = 100_000;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                let mut line = lines[0].clone();
+                line.keep_lone_letters_down(true);
+                std::hint::black_box(&line);
+            }
+            let alone = t.elapsed() / n;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                let mut line = lines[0].clone();
+                line.set_to_read();
+                std::hint::black_box(&line);
+            }
+            let clone = std::time::Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(lines[0].clone());
+            }
+            println!(
+                "{} lines: the one-letter rule {:?}, set to read (both rules) {:?}, a clone alone {:?}",
+                lines[0].layout.wrap_boundaries.len() + 1,
+                alone,
+                t.elapsed().saturating_sub(clone.elapsed()) / n,
+                clone.elapsed() / n
+            );
+        }
+    }
+
+    /// "…let go in a / place…" (Opus's look at a third of the screen):
+    /// where the next line has no room for the letter, the rest is set
+    /// again from it, where that adds no line. At every width, a paragraph
+    /// set to read has no more lines than it was wrapped to, and lines
+    /// ending on one letter are left only where nothing else would do.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn a_lone_letter_sets_the_rest_again_where_that_adds_no_line() {
+        use std::borrow::Cow;
+        let system = crate::TextSystem::standalone();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let window = crate::WindowTextSystem::new(system);
+        let text = "Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.";
+        let run = crate::TextRun { len: text.len(), font: crate::font("Noto Sans"), color: crate::Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        let rows = |line: &WrappedLine| {
+            let mut starts = vec![0];
+            starts.extend(line.layout.wrap_boundaries.iter().map(|b| line.layout.unwrapped_layout.runs[b.run_ix].glyphs[b.glyph_ix].index));
+            starts.iter().enumerate().map(|(i, s)| text[*s..starts.get(i + 1).copied().unwrap_or(text.len())].trim_end().to_owned()).collect::<Vec<_>>()
+        };
+        let lone = |rows: &[String]| rows.iter().filter(|r| r.contains(' ') && r.rsplit(' ').next().is_some_and(|w| w.chars().count() == 1 && w.chars().all(char::is_alphabetic))).count();
+        let (mut was, mut now) = (0, 0);
+        for width in (110..420).step_by(2) {
+            let mut line = window.shape_text(text.into(), px(13.0), std::slice::from_ref(&run), Some(px(width as f32)), None).unwrap()[0].clone();
+            let before = rows(&line);
+            line.set_to_read();
+            let after = rows(&line);
+            assert!(after.len() <= before.len(), "at {width}: {before:?} -> {after:?}");
+            (was, now) = (was + lone(&before), now + lone(&after));
+        }
+        assert!(was > 10 && now * 5 <= was, "lines ending on one letter: {was} wrapped, {now} set to read");
+    }
+
+    /// As a paragraph is laid out (`shape_text`): words joined by no-break
+    /// spaces (a menu's name, `words::menu_path`) go down to the next line
+    /// together, and where they are wider than a line they break at a
+    /// no-break space, never inside a word; in Chinese never beside one.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn a_menus_name_breaks_only_where_it_must_and_between_its_words() {
+        use std::borrow::Cow;
+        let system = crate::TextSystem::standalone();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let window = crate::WindowTextSystem::new(system);
+        let starts = |text: &str, width: f32| {
+            let run = crate::TextRun { len: text.len(), font: crate::font("Noto Sans"), color: crate::Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+            let line = window.shape_text(text.to_owned().into(), px(13.0), std::slice::from_ref(&run), Some(px(width)), None).unwrap()[0].clone();
+            line.layout.wrap_boundaries.iter().map(|b| line.layout.unwrapped_layout.runs[b.run_ix].glyphs[b.glyph_ix].index).collect::<Vec<_>>()
+        };
+        let unit = "„Anheften\u{a0}▸\u{a0}Immer\u{a0}auf\u{a0}Arbeitsfläche\u{a0}öffnen“";
+        let text = format!("Keine. Um einer App eine zu geben, wählen Sie {unit} im Fenstermenü eines ihrer Fenster.");
+        let (at, end) = (text.find(unit).unwrap(), text.find(unit).unwrap() + unit.len());
+        let (mut whole, mut broken) = (0, 0);
+        // (From a width each word fits.)
+        for width in (110..460).step_by(3) {
+            let inside: Vec<usize> = starts(&text, width as f32).into_iter().filter(|&s| s > at && s < end).collect();
+            if starts(unit, width as f32).is_empty() {
+                assert!(inside.is_empty(), "at {width}: broken at {inside:?} though it fits a line");
+                whole += 1;
+            } else {
+                assert!(!inside.is_empty() && inside.iter().all(|&s| text[..s].ends_with('\u{a0}')), "at {width}: {inside:?}");
+                broken += 1;
+            }
+        }
+        assert!(whole > 0 && broken > 0, "{whole} widths whole, {broken} broken");
+        let text = "要添加应用，请在其窗口菜单中选择“浮动窗口\u{a0}▸\u{a0}始终”。";
+        for width in (40..300).step_by(2) {
+            for s in starts(text, width as f32) {
+                assert!(!text[..s].ends_with(['\u{a0}', '▸']) && !text[s..].starts_with(['\u{a0}', '▸']), "at {width}: {:?} | {:?}", &text[..s], &text[s..]);
+            }
+        }
+        // Wider than a line, it's set as words are: "choose" isn't left
+        // alone over it where "choose Pin ▸ Always" fits (it is where the
+        // name fits a line whole: kept so, as it's meant to be).
+        let unit = "Pin\u{a0}▸\u{a0}Always\u{a0}Open\u{a0}on\u{a0}Workspace";
+        let text = format!("None. To give an app one, choose {unit} in the window menu of one of its windows.");
+        let mut wider = 0;
+        for width in (90..280).step_by(2) {
+            let s = starts(&text, width as f32);
+            let rows: Vec<&str> = std::iter::once(0).chain(s.iter().copied()).zip(s.iter().copied().chain([text.len()])).map(|(a, b)| text[a..b].trim_end()).collect();
+            if !starts(unit, width as f32).is_empty() {
+                wider += 1;
+                if rows.contains(&"choose") {
+                    assert!(!starts("choose Pin\u{a0}▸\u{a0}Always", width as f32).is_empty(), "at {width}: {rows:?}");
+                }
+            }
+            // Never beside the arrow (where a word fits each line).
+            assert!(rows.iter().all(|r| !r.starts_with('▸') && !r.ends_with('▸')), "at {width}: {rows:?}");
+        }
+        assert!(wider > 0);
+    }
+
+    /// What breaking a paragraph's lines costs (`compute_wrap_boundaries`,
+    /// each time a paragraph is laid out at a new width), without no-break
+    /// spaces and with them: `cargo test --release -p olo-interface
+    /// wrap_cost -- --ignored --nocapture`.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    #[ignore]
+    fn wrap_cost() {
+        use std::borrow::Cow;
+        let system = crate::TextSystem::standalone();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let window = crate::WindowTextSystem::new(system);
+        let plain = "Keine. Um eine App hinzuzufügen, wählen Sie „Fenster schweben lassen ▸ Immer“ im Fenstermenü eines ihrer Fenster. Ihre Fenster schweben dann über den Kacheln.";
+        let joined = plain.replace("Fenster schweben lassen ▸ Immer", "Fenster\u{a0}schweben\u{a0}lassen\u{a0}▸\u{a0}Immer");
+        // (`OLO_WRAP_COST=plain` or `joined`: that one alone, for `perf stat`.)
+        let only = std::env::var("OLO_WRAP_COST").ok();
+        for (what, text) in [("plain", plain.to_owned()), ("joined", joined)] {
+            if only.as_deref().is_some_and(|o| o != what) {
+                continue;
+            }
+            let run = crate::TextRun { len: text.len(), font: crate::font("Noto Sans"), color: crate::Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+            let line = window.shape_text(text.clone().into(), px(13.0), std::slice::from_ref(&run), Some(px(100_000.0)), None).unwrap()[0].clone();
+            let layout = line.layout.unwrapped_layout.clone();
+            let n = 200_000;
+            let t = std::time::Instant::now();
+            for i in 0..n {
+                std::hint::black_box(layout.compute_wrap_boundaries(&text, px(160.0 + (i % 8) as f32 * 20.0), None));
+            }
+            println!("{what}: {} glyphs, {:?} a paragraph", text.chars().count(), t.elapsed() / n);
+        }
     }
 
     #[test]

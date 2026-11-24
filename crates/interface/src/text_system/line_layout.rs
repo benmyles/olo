@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use super::LineWrapper;
+use super::{LineWrapper, line_wrapper::Break};
 
 /// A laid out and styled line of text
 #[derive(Default, Debug)]
@@ -141,27 +141,51 @@ impl LineLayout {
     }
 
     pub(crate) fn compute_wrap_boundaries(&self, text: &str, wrap_width: Pixels, max_lines: Option<usize>) -> WrapBoundaries {
+        self.wrap_boundaries_from(text, wrap_width, max_lines, None)
+    }
+
+    /// Olo: the lines from the one that begins at glyph `start` on, as
+    /// [`Self::compute_wrap_boundaries`] would set them were a line to
+    /// begin there (a paragraph's rest set again after a word moved down
+    /// a line, `WrappedLine::keep_lone_letters_down`).
+    pub(crate) fn wrap_boundaries_after(&self, text: &str, wrap_width: Pixels, start: WrapBoundary) -> WrapBoundaries {
+        self.wrap_boundaries_from(text, wrap_width, None, Some(start))
+    }
+
+    fn wrap_boundaries_from(&self, text: &str, wrap_width: Pixels, max_lines: Option<usize>, start: Option<WrapBoundary>) -> WrapBoundaries {
         let mut boundaries = SmallVec::new();
         let mut first_non_whitespace_ix = None;
         let mut last_candidate_ix = None;
         let mut last_candidate_x = px(0.);
+        // Olo: just after a no-break space, a place to break only as a
+        // last resort (`LineWrapper::opportunity`): there rather than
+        // inside a word („Immer schw / eben lassen“ in a third of the
+        // screen), unless what it joins is wider than a line
+        // (`free_glue`): then as at a space. Found at the first one met:
+        // text without one (nearly all) pays nothing for them.
+        let mut free: Option<SmallVec<[WrapBoundary; 4]>> = None;
+        let mut glue: Option<(WrapBoundary, Pixels)> = None;
         let mut last_boundary = WrapBoundary { run_ix: 0, glyph_ix: 0 };
         let mut last_boundary_x = px(0.);
         let mut prev_ch = '\0';
-        // Olo: the last character that wasn't a space
+        // Olo: the last character that wasn't a space nor a joiner
         // (`LineWrapper::breaks_between`).
         let mut word_ch = '\0';
-        let mut glyphs = self
-            .runs
-            .iter()
-            .enumerate()
-            .flat_map(move |(run_ix, run)| {
-                run.glyphs.iter().enumerate().map(move |(glyph_ix, glyph)| {
-                    let character = text[glyph.index..].chars().next().unwrap();
-                    (WrapBoundary { run_ix, glyph_ix }, character, glyph.position.x)
-                })
-            })
-            .peekable();
+        let mut glyphs = self.glyph_chars(text).peekable();
+        // (A line begun at `start`: what's before it was set already, and
+        // what comes next is read as after its own neighbours.)
+        if let Some(start) = start {
+            let index = self.runs.get(start.run_ix).and_then(|r| r.glyphs.get(start.glyph_ix)).map_or(0, |g| g.index);
+            let before = text.get(..index).unwrap_or_default();
+            prev_ch = before.chars().next_back().unwrap_or('\0');
+            word_ch = before.chars().rev().find(|c| *c != ' ' && !LineWrapper::joins(*c)).unwrap_or('\0');
+            while glyphs.peek().is_some_and(|(b, ..)| *b < start) {
+                glyphs.next();
+            }
+            if let Some(&(_, _, x)) = glyphs.peek() {
+                (last_boundary, last_boundary_x, first_non_whitespace_ix) = (start, x, Some(start));
+            }
+        }
 
         while let Some((boundary, ch, x)) = glyphs.next() {
             if ch == '\n' {
@@ -170,16 +194,17 @@ impl LineLayout {
 
             // Here is very similar to `LineWrapper::wrap_line` to determine text wrapping,
             // but there are some differences, so we have to duplicate the code here.
-            if LineWrapper::is_word_char(ch) {
-                if prev_ch == ' ' && ch != ' ' && first_non_whitespace_ix.is_some() && LineWrapper::breaks_between(word_ch, ch) {
+            match LineWrapper::opportunity(prev_ch, word_ch, ch, first_non_whitespace_ix.is_some()) {
+                Some(Break::Here) => {
                     last_candidate_ix = Some(boundary);
                     last_candidate_x = x;
                 }
-            } else {
-                if ch != ' ' && first_non_whitespace_ix.is_some() {
+                Some(Break::Joined) if free.get_or_insert_with(|| self.free_glue(text, wrap_width)).contains(&boundary) => {
                     last_candidate_ix = Some(boundary);
                     last_candidate_x = x;
                 }
+                Some(_) => glue = Some((boundary, x)),
+                None => {}
             }
 
             if ch != ' ' && first_non_whitespace_ix.is_none() {
@@ -203,6 +228,9 @@ impl LineLayout {
                 if let Some(last_candidate_ix) = last_candidate_ix.take() {
                     last_boundary = last_candidate_ix;
                     last_boundary_x = last_candidate_x;
+                } else if let Some((at, at_x)) = glue.filter(|(at, _)| *at > last_boundary) {
+                    last_boundary = at;
+                    last_boundary_x = at_x;
                 } else {
                     last_boundary = boundary;
                     last_boundary_x = x;
@@ -210,12 +238,62 @@ impl LineLayout {
                 boundaries.push(last_boundary);
             }
             prev_ch = ch;
-            if ch != ' ' {
+            if ch != ' ' && !LineWrapper::joins(ch) {
                 word_ch = ch;
             }
         }
 
         boundaries
+    }
+
+    /// Each glyph's place among the runs, its character, and where it is.
+    fn glyph_chars<'a>(&'a self, text: &'a str) -> impl Iterator<Item = (WrapBoundary, char, Pixels)> + 'a {
+        self.runs.iter().enumerate().flat_map(move |(run_ix, run)| {
+            run.glyphs.iter().enumerate().map(move |(glyph_ix, glyph)| {
+                let character = text[glyph.index..].chars().next().unwrap();
+                (WrapBoundary { run_ix, glyph_ix }, character, glyph.position.x)
+            })
+        })
+    }
+
+    /// Olo: the places just after a no-break space where a line may break
+    /// as after a space (`LineWrapper::free_glue`, which this keeps in
+    /// step with): inside words they join that are wider than
+    /// `wrap_width` all together.
+    fn free_glue(&self, text: &str, wrap_width: Pixels) -> SmallVec<[WrapBoundary; 4]> {
+        let (mut free, mut unit) = (SmallVec::new(), SmallVec::<[WrapBoundary; 4]>::new());
+        let (mut start_x, mut end_x) = (px(0.), px(0.));
+        let (mut prev_ch, mut word_ch, mut started) = ('\0', '\0', false);
+        let mut close = |unit: &mut SmallVec<[WrapBoundary; 4]>, start_x: Pixels, end_x: Pixels| {
+            if end_x - start_x > wrap_width {
+                free.extend(unit.iter().copied());
+            }
+            unit.clear();
+        };
+        let mut glyphs = self.glyph_chars(text).peekable();
+        while let Some((boundary, ch, x)) = glyphs.next() {
+            if ch == '\n' {
+                continue;
+            }
+            match LineWrapper::opportunity(prev_ch, word_ch, ch, started) {
+                Some(Break::Joined) => unit.push(boundary),
+                Some(Break::Here) => {
+                    close(&mut unit, start_x, end_x);
+                    start_x = x;
+                }
+                Some(Break::LastResort) | None => {}
+            }
+            started |= ch != ' ';
+            if ch != ' ' {
+                end_x = glyphs.peek().map_or(self.width, |(_, _, x)| *x);
+            }
+            prev_ch = ch;
+            if ch != ' ' && !LineWrapper::joins(ch) {
+                word_ch = ch;
+            }
+        }
+        close(&mut unit, start_x, end_x);
+        free
     }
 }
 

@@ -962,26 +962,80 @@ Ook op accuvoeding
 Alt
 Alt
 
+Always Bottom Half
+Altijd in de onderste helft
+
+Always Bottom Left Quarter
+Altijd in het kwart linksonder
+
+Always Bottom Right Quarter
+Altijd in het kwart rechtsonder
+
+Always Bottom Two Thirds
+Altijd in de onderste twee derde
+
+Always Center Third
+Altijd in het middelste derde
+
+Always Center Two Thirds
+Altijd in de middelste twee derde
+
 Always Dark
 Altijd donker
 
-Always Float Its Application
-Zijn programma altijd laten zweven
-
-Always Float {}
-{} altijd laten zweven
+Always Float Its App
+Zijn app altijd laten zweven
 
 Always Left
 Altijd links
 
+Always Left Half
+Altijd in de linkerhelft
+
+Always Left Third
+Altijd in het linker derde
+
+Always Left Two Thirds
+Altijd in de linker twee derde
+
 Always Light
 Altijd licht
+
+Always Main
+Altijd als hoofdvenster
 
 Always Open With
 Altijd openen met
 
+Always Open on Workspace
+Altijd openen op werkblad
+
+Always Open on Workspace {}
+Altijd openen op werkblad {}
+
 Always Right
 Altijd rechts
+
+Always Right Half
+Altijd in de rechterhelft
+
+Always Right Third
+Altijd in het rechter derde
+
+Always Right Two Thirds
+Altijd in de rechter twee derde
+
+Always Top Half
+Altijd in de bovenste helft
+
+Always Top Left Quarter
+Altijd in het kwart linksboven
+
+Always Top Right Quarter
+Altijd in het kwart rechtsboven
+
+Always Top Two Thirds
+Altijd in de bovenste twee derde
 
 Always Where It Is
 Altijd op de huidige plek
@@ -1470,6 +1524,9 @@ Terug naar chats
 
 Back to Conversations
 Terug naar gesprekken
+
+Back to Its Own Size
+Terug naar eigen grootte
 
 Back to its own size
 Terug naar eigen grootte
@@ -3765,8 +3822,8 @@ Elke beoordeling berust op meerdere signalen. Bij een melding ziet u hoe zeker d
 Each kind of input in the last minute: how many, never which keys
 Invoer per soort in de afgelopen minuut: alleen aantallen, nooit welke toetsen
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Bestanden van dit type openen overal in deze app, zowel in Olo als in andere programma’s. Dit is ook in te stellen in Tracker via Openen met ▸ Altijd openen met.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Bestanden van dit type openen overal in deze app, zowel in Olo als in andere programma’s. Dit is ook in te stellen in Tracker via {}.
 
 Each network's own
 Van elk netwerk zelf
@@ -7569,11 +7626,11 @@ Geen, of corp.example
 None. An alert’s Ignore This Process adds one here.
 Geen. Kies bij een waarschuwing Dit proces negeren om het hier toe te voegen.
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Geen. Kies in het menu van een appvenster Venster laten zweven ▸ Altijd om de app toe te voegen.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+Geen. Kies {0} in het venstermenu van een app om die toe te voegen, wanneer vensters getegeld worden ({1} of {2}).
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-Geen. Kies in het menu van een appvenster Altijd openen op werkblad om er een toe te wijzen.
+None. Choose {} in an app's window menu to add it.
+Geen. Kies {} in het venstermenu van een app om die toe te voegen.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 Niet-vrij (NVIDIA-stuurprogramma’s, Steam, …)
@@ -9200,6 +9257,9 @@ Chrome afsluiten
 Quit Now
 Nu afsluiten
 
+Quit {}
+{} afsluiten
+
 Quit {} Processes
 {} processen afsluiten
 
@@ -9919,6 +9979,12 @@ Rechter derde
 
 Right two thirds
 Rechter twee derde
+
+Roll Down
+Afrollen
+
+Roll Up
+Oprollen
 
 Roll up or down
 Op- of afrollen
@@ -13992,6 +14058,9 @@ Zoomen
 Zoom All
 Alle vensters maximaliseren
 
+Zoom Horizontally
+Horizontaal zoomen
+
 Zoom In
 Inzoomen
 
@@ -14000,6 +14069,9 @@ Uitzoomen
 
 Zoom Pane
 Paneel zoomen
+
+Zoom Vertically
+Verticaal zoomen
 
 Zoom horizontally
 Horizontaal zoomen

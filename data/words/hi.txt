@@ -962,26 +962,80 @@ Also when running on battery
 Alt
 Alt
 
+Always Bottom Half
+हमेशा निचले आधे में
+
+Always Bottom Left Quarter
+हमेशा नीचे बाएँ चौथाई में
+
+Always Bottom Right Quarter
+हमेशा नीचे दाएँ चौथाई में
+
+Always Bottom Two Thirds
+हमेशा नीचे के दो तिहाई में
+
+Always Center Third
+हमेशा बीच के तिहाई में
+
+Always Center Two Thirds
+हमेशा बीच के दो तिहाई में
+
 Always Dark
 हमेशा गहरा
 
-Always Float Its Application
+Always Float Its App
 इसका ऐप हमेशा तैरता रखें
-
-Always Float {}
-{} हमेशा तैरता रखें
 
 Always Left
 हमेशा बाएँ
 
+Always Left Half
+हमेशा बाएँ आधे में
+
+Always Left Third
+हमेशा बाएँ तिहाई में
+
+Always Left Two Thirds
+हमेशा बाएँ दो तिहाई में
+
 Always Light
 हमेशा हल्का
+
+Always Main
+हमेशा मुख्य
 
 Always Open With
 हमेशा इससे खोलें
 
+Always Open on Workspace
+हमेशा कार्यक्षेत्र में खोलें
+
+Always Open on Workspace {}
+हमेशा कार्यक्षेत्र {} में खोलें
+
 Always Right
 हमेशा दाएँ
+
+Always Right Half
+हमेशा दाएँ आधे में
+
+Always Right Third
+हमेशा दाएँ तिहाई में
+
+Always Right Two Thirds
+हमेशा दाएँ दो तिहाई में
+
+Always Top Half
+हमेशा ऊपरी आधे में
+
+Always Top Left Quarter
+हमेशा ऊपर बाएँ चौथाई में
+
+Always Top Right Quarter
+हमेशा ऊपर दाएँ चौथाई में
+
+Always Top Two Thirds
+हमेशा ऊपर के दो तिहाई में
 
 Always Where It Is
 हमेशा इसी जगह
@@ -1470,6 +1524,9 @@ Back to Chats
 
 Back to Conversations
 बातचीत पर लौटें
+
+Back to Its Own Size
+अपने आकार में लौटाएँ
 
 Back to its own size
 अपने आकार में वापस
@@ -3765,8 +3822,8 @@ Each is judged from several signals together; a finding says how sure it is and 
 Each kind of input in the last minute: how many, never which keys
 पिछले मिनट के इनपुट प्रकार और उनकी गिनती। कौन-सी कुंजी दबाई, यह दर्ज नहीं होता
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Olo या दूसरे प्रोग्राम में जहाँ भी खोलें, इस प्रकार की फ़ाइल अपने तय ऐप में खुलेगी। Tracker में “इससे खोलें ▸ हमेशा इससे खोलें” से भी चुन सकते हैं।
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Olo या दूसरे प्रोग्राम में जहाँ भी खोलें, इस प्रकार की फ़ाइल अपने तय ऐप में खुलेगी। Tracker में “{}” से भी चुन सकते हैं।
 
 Each network's own
 हर नेटवर्क की अपनी सेटिंग
@@ -7569,11 +7626,11 @@ None, or corp.example
 None. An alert’s Ignore This Process adds one here.
 कोई नहीं। चेतावनी में “यह प्रक्रिया अनदेखी करें” चुनने से वह यहाँ जुड़ जाएगी।
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-कोई नहीं। ऐप की विंडो के मेनू में “विंडो तैरती रखें ▸ हमेशा” चुनकर जोड़ें।
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+कोई नहीं। जब विंडो टाइल हों ({1} या {2}), किसी ऐप की विंडो के मेनू में “{0}” चुनकर उसे जोड़ें।
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-कोई नहीं। ऐप की विंडो के मेनू में “हमेशा इस कार्यक्षेत्र में खोलें” चुनकर उसे कार्यक्षेत्र दें।
+None. Choose {} in an app's window menu to add it.
+कोई नहीं। किसी ऐप की विंडो के मेनू में “{}” चुनकर उसे जोड़ें।
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 गैर-मुक्त (NVIDIA ड्राइवर, Steam आदि)
@@ -9200,6 +9257,9 @@ Chrome बंद करें
 Quit Now
 अभी बंद करें
 
+Quit {}
+{} बंद करें
+
 Quit {} Processes
 {} प्रक्रियाएँ बंद करें
 
@@ -9919,6 +9979,12 @@ Right third
 
 Right two thirds
 दायाँ दो तिहाई
+
+Roll Down
+नीचे खोलें
+
+Roll Up
+ऊपर समेटें
 
 Roll up or down
 ऊपर समेटें या खोलें
@@ -13992,6 +14058,9 @@ Zoom
 Zoom All
 सभी विंडो ज़ूम करें
 
+Zoom Horizontally
+क्षैतिज ज़ूम
+
 Zoom In
 ज़ूम इन करें
 
@@ -14000,6 +14069,9 @@ Zoom Out
 
 Zoom Pane
 पैनल ज़ूम करें
+
+Zoom Vertically
+लंबवत ज़ूम
 
 Zoom horizontally
 क्षैतिज ज़ूम करें

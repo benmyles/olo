@@ -962,26 +962,80 @@ Anche con alimentazione a batteria
 Alt
 Alt
 
+Always Bottom Half
+Sempre nella metà inferiore
+
+Always Bottom Left Quarter
+Sempre nel quarto in basso a sinistra
+
+Always Bottom Right Quarter
+Sempre nel quarto in basso a destra
+
+Always Bottom Two Thirds
+Sempre nei due terzi inferiori
+
+Always Center Third
+Sempre nel terzo centrale
+
+Always Center Two Thirds
+Sempre nei due terzi centrali
+
 Always Dark
 Sempre scuro
 
-Always Float Its Application
-Rendi sempre mobile la sua applicazione
-
-Always Float {}
-Rendi sempre mobile {}
+Always Float Its App
+Rendi sempre mobile la sua app
 
 Always Left
 Sempre a sinistra
 
+Always Left Half
+Sempre nella metà sinistra
+
+Always Left Third
+Sempre nel terzo sinistro
+
+Always Left Two Thirds
+Sempre nei due terzi a sinistra
+
 Always Light
 Sempre chiaro
+
+Always Main
+Sempre come principale
 
 Always Open With
 Apri sempre con
 
+Always Open on Workspace
+Apri sempre nello spazio di lavoro
+
+Always Open on Workspace {}
+Apri sempre nello spazio di lavoro {}
+
 Always Right
 Sempre a destra
+
+Always Right Half
+Sempre nella metà destra
+
+Always Right Third
+Sempre nel terzo destro
+
+Always Right Two Thirds
+Sempre nei due terzi a destra
+
+Always Top Half
+Sempre nella metà superiore
+
+Always Top Left Quarter
+Sempre nel quarto in alto a sinistra
+
+Always Top Right Quarter
+Sempre nel quarto in alto a destra
+
+Always Top Two Thirds
+Sempre nei due terzi superiori
 
 Always Where It Is
 Sempre dove si trova
@@ -1470,6 +1524,9 @@ Torna alle chat
 
 Back to Conversations
 Torna alle conversazioni
+
+Back to Its Own Size
+Torna alle sue dimensioni
 
 Back to its own size
 Torna alle sue dimensioni
@@ -3765,8 +3822,8 @@ Ogni valutazione combina più segnali. Per ogni problema trovi il grado di certe
 Each kind of input in the last minute: how many, never which keys
 Ingressi dell’ultimo minuto per tipo: solo il conteggio, mai i singoli tasti
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-I file di questo tipo si aprono con questa app sia in Olo sia negli altri programmi. Puoi sceglierla anche in Tracker con Apri con ▸ Apri sempre con.
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+I file di questo tipo si aprono con questa app sia in Olo sia negli altri programmi. Puoi sceglierla anche in Tracker con {}.
 
 Each network's own
 Quelli di ciascuna rete
@@ -7569,11 +7626,11 @@ Nessuno oppure corp.example
 None. An alert’s Ignore This Process adds one here.
 Nessuno. Per aggiungere un processo, scegli Ignora questo processo in un avviso.
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Nessuna app. Per aggiungerne una, scegli Rendi mobile la finestra ▸ Sempre nel menu di una sua finestra.
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+Nessuna app. Scegli {0} nel menu della finestra di un’app per aggiungerla, quando le finestre sono affiancate ({1} o {2}).
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-Nessuna app. Per assegnare uno spazio di lavoro, scegli Apri sempre nello spazio di lavoro nel menu di una sua finestra.
+None. Choose {} in an app's window menu to add it.
+Nessuna app. Scegli {} nel menu della finestra di un’app per aggiungerla.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 Non libero (driver NVIDIA, Steam, …)
@@ -9200,6 +9257,9 @@ Esci da Chrome
 Quit Now
 Esci ora
 
+Quit {}
+Esci da {}
+
 Quit {} Processes
 Termina {} processi
 
@@ -9919,6 +9979,12 @@ Terzo destro
 
 Right two thirds
 Due terzi a destra
+
+Roll Down
+Srotola
+
+Roll Up
+Arrotola
 
 Roll up or down
 Arrotola o srotola
@@ -13992,6 +14058,9 @@ Zoom
 Zoom All
 Massimizza tutte
 
+Zoom Horizontally
+Zoom orizzontale
+
 Zoom In
 Ingrandisci
 
@@ -14000,6 +14069,9 @@ Riduci
 
 Zoom Pane
 Ingrandisci riquadro
+
+Zoom Vertically
+Zoom verticale
 
 Zoom horizontally
 Zoom orizzontale

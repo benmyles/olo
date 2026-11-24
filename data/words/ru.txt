@@ -970,26 +970,80 @@ Also when running on battery
 Alt
 Alt
 
+Always Bottom Half
+Всегда в нижней половине
+
+Always Bottom Left Quarter
+Всегда в нижней левой четверти
+
+Always Bottom Right Quarter
+Всегда в нижней правой четверти
+
+Always Bottom Two Thirds
+Всегда в нижних двух третях
+
+Always Center Third
+Всегда в средней трети
+
+Always Center Two Thirds
+Всегда в средних двух третях
+
 Always Dark
 Всегда тёмная
 
-Always Float Its Application
-Всегда делать его программу плавающей
-
-Always Float {}
-Всегда делать {} плавающим
+Always Float Its App
+Всегда делать его приложение плавающим
 
 Always Left
 Всегда слева
 
+Always Left Half
+Всегда в левой половине
+
+Always Left Third
+Всегда в левой трети
+
+Always Left Two Thirds
+Всегда в левых двух третях
+
 Always Light
 Всегда светлая
+
+Always Main
+Всегда главным
 
 Always Open With
 Всегда открывать в
 
+Always Open on Workspace
+Всегда открывать в рабочем пространстве
+
+Always Open on Workspace {}
+Всегда открывать в рабочем пространстве {}
+
 Always Right
 Всегда справа
+
+Always Right Half
+Всегда в правой половине
+
+Always Right Third
+Всегда в правой трети
+
+Always Right Two Thirds
+Всегда в правых двух третях
+
+Always Top Half
+Всегда в верхней половине
+
+Always Top Left Quarter
+Всегда в верхней левой четверти
+
+Always Top Right Quarter
+Всегда в верхней правой четверти
+
+Always Top Two Thirds
+Всегда в верхних двух третях
 
 Always Where It Is
 Всегда на прежнем месте
@@ -1482,6 +1536,9 @@ Back to Chats
 
 Back to Conversations
 К беседам
+
+Back to Its Own Size
+Вернуть прежний размер
 
 Back to its own size
 Вернуть исходный размер
@@ -3793,8 +3850,8 @@ Each is judged from several signals together; a finding says how sure it is and 
 Each kind of input in the last minute: how many, never which keys
 Сколько вводов каждого вида было за последнюю минуту. Сами нажатые клавиши не записываются
 
-Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
-Файлы этого типа будут открываться в выбранном приложении как в Olo, так и в других программах. Выбрать его можно и в Tracker через «Открыть с помощью ▸ Всегда открывать в».
+Each kind opens in this app wherever you open it, in Olo and in other programs. You can also choose it in Tracker with {}.
+Файлы этого типа будут открываться в выбранном приложении как в Olo, так и в других программах. Выбрать его можно и в Tracker через «{}».
 
 Each network's own
 Настройки каждой сети
@@ -7621,11 +7678,11 @@ None, or corp.example
 None. An alert’s Ignore This Process adds one here.
 Нет. Чтобы добавить процесс, выберите в предупреждении «Игнорировать этот процесс».
 
-None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Нет. Чтобы добавить приложение, в меню одного из его окон выберите «Сделать окно плавающим ▸ Всегда».
+None. Choose {} in an app's window menu to add it, when windows tile ({} or {}).
+Нет. Когда окна расположены мозаикой ({1} или {2}), выберите «{0}» в меню окна приложения, чтобы добавить его.
 
-None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
-Нет. Чтобы закрепить приложение за рабочим пространством, выберите в меню его окна «Всегда открывать в рабочем пространстве».
+None. Choose {} in an app's window menu to add it.
+Нет. Выберите «{}» в меню окна приложения, чтобы добавить его.
 
 Nonfree (NVIDIA’s drivers, Steam, …)
 Несвободное ПО (драйверы NVIDIA, Steam и др.)
@@ -9256,6 +9313,9 @@ Quit Chrome
 Quit Now
 Выйти сейчас
 
+Quit {}
+Завершить {}
+
 Quit {} Processes
 Завершить процессы ({})
 
@@ -9975,6 +10035,12 @@ Right third
 
 Right two thirds
 Правые две трети
+
+Roll Down
+Развернуть из заголовка
+
+Roll Up
+Свернуть в заголовок
 
 Roll up or down
 Свернуть в заголовок или развернуть
@@ -14056,6 +14122,9 @@ Zoom
 Zoom All
 Увеличить все окна
 
+Zoom Horizontally
+Развернуть по горизонтали
+
 Zoom In
 Увеличить
 
@@ -14064,6 +14133,9 @@ Zoom Out
 
 Zoom Pane
 Развернуть панель
+
+Zoom Vertically
+Развернуть по вертикали
 
 Zoom horizontally
 Развернуть по горизонтали
