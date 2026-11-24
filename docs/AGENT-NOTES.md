@@ -1350,8 +1350,12 @@ its completion notice. Again 2026-11-24, with the rig's cases run beside
 it: the lint waited for room ("processors short 44%"), the hook ran
 eleven minutes, and GitHub closed the push's connection meanwhile
 ("Connection to github.com closed by remote host", exit 141, nothing
-pushed though the hook passed). No rig, suite or build while a push's
-hook runs; then push again.
+pushed though the hook passed). And again the same day with nothing of
+ours beside it (others' builds had the load at 50): the cause was the
+hook itself, checking for minutes with the connection open. Push with
+`tools/dev/push` (in the background), which checks before connecting;
+the hook then passes the commit at once (HACKING, "With every commit
+and push"). Building beside the checks only slows them now.
 
 ### A soak counts threads and descriptors, not only memory (2026-11-21)
 

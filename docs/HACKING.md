@@ -7295,10 +7295,19 @@ the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
 (all of them when the kits, or what they're built on, did), after a release build of the
 workspace, then again tiled (`--tiles`) on the smallest screen and the
 person's, and neither when none of them has a window the lint opens.
-The build reads the working tree, so the push stops at once, saying
-why, when that isn't what's pushed: changes not committed, or another
-commit checked out (edits begun after a commit once failed the push of
-that commit, which built). Then, when what keeps a desktop at rest is
+They read the commit pushed, in a checkout of its own
+(`tools/hooks/checkout-at`), so work goes on in the tree meanwhile.
+The checks are `tools/hooks/prepush-checks SHA BASE`, and **push with
+`tools/dev/push`** (in the background), which runs them before git
+connects to the remote and then pushes the commit checked: git runs a
+pre-push hook with the remote's connection open, and checks that take
+minutes on a busy computer (a release build, the lint waiting for
+room) left it idle until GitHub closed it, losing two pushes whose
+checks passed ("Connection to github.com closed by remote host", exit
+141, 2026-11-24). A commit that passes is written down with where it
+parts from the remote's and the checks' own hash
+(`.git/olo-prepush-passed`), and the hook passes it at once; a plain
+`git push` checks in the hook, as before. Then, when what keeps a desktop at rest is
 among what's pushed (the kits, Terminal, Deskbar, the widgets'
 providers), `tools/dev/rest-check` on those release builds: a spinner
 in a tab's title and what waits in an app changing, each ten times a

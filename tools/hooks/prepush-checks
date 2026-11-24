@@ -1,0 +1,107 @@
+#!/bin/bash
+# The checks of a commit before it is pushed: when UI code is among what
+# it changes since BASE, the live layout lint of every Olo app that
+# changed (tools/dev/ui-lint: each app opened in a headless session,
+# every window and tab reviewed at 1, 1.5 and 2×, light and dark), then
+# each of its windows that tiles tiled into every layout (CLAUDE.md,
+# "Every tiling layout") on the smallest screen and on each of the
+# person's, on release builds made first; and, when what keeps a desktop
+# at rest is among it (the kits, Terminal, Deskbar, the widgets'
+# providers), tools/dev/rest-check: a desktop with one thing in it that
+# keeps changing must stay at rest but for who shows it. A finding fails
+# it. All of it reads the commit in a checkout of its own
+# (tools/hooks/checkout-at: $OLO_PREPUSH_TREE, /var/tmp/olo-prepush/tree
+# unless set), so work goes on in the tree while it runs.
+#
+#     tools/hooks/prepush-checks SHA BASE
+#
+# BASE is what the remote has (the upstream). Run by the pre-push hook,
+# and by tools/dev/push before git connects to the remote: the checks
+# take minutes on a busy computer, and a remote that waits that long on
+# an idle connection closes it, losing the push. A commit that passes is
+# written down (`passed` below: with where it parts from BASE, which says
+# what it changes and so what is checked, and this script's own hash),
+# and the hook passes it, pushed over that, without checking it again.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+sha=$(git rev-parse --verify "$1^{commit}")
+since=$(git merge-base "$2" "$sha")
+# Where the commits that passed are written, one "SHA SINCE HASH" a line.
+record="$(git rev-parse --absolute-git-dir)/olo-prepush-passed"
+hash=$(sha256sum tools/hooks/prepush-checks | cut -c1-16)
+passed() {
+    { tail -n 19 "$record" 2> /dev/null || true; echo "$sha $since $hash"; } > "$record.new"
+    mv "$record.new" "$record"
+}
+changed=$(git diff --name-only "$since" "$sha")
+if ! echo "$changed" | grep -qE '^(apps/|crates/(kit|interface|kit-base|theme|preview)/|vendor/)'; then
+    passed
+    exit 0
+fi
+# Which apps: all of them when the kits (or what they're built on) changed,
+# else those touched.
+picked=()
+if ! echo "$changed" | grep -qE '^(crates/(kit|interface|kit-base|theme|preview)/|vendor/)'; then
+    for app in $(echo "$changed" | sed -nE 's#^apps/([^/]+)/.*#\1#p' | sort -u); do
+        # (ui-lint takes apps/' directory names: "disk-usage" is Disk Usage.)
+        case $app in
+            preferences) picked+=($(/usr/bin/python3 tools/dev/ui-lint --list | grep '^prefs:')) ;;
+            *) picked+=("$app") ;;
+        esac
+    done
+    if [ ${#picked[@]} -eq 0 ]; then
+        passed
+        exit 0
+    fi
+    # None of them has a window the lint opens (Token Pool, a daemon):
+    # nothing to build for it.
+    lintable=$(/usr/bin/python3 tools/dev/ui-lint --list | tr -d ' ' | tr 'A-Z' 'a-z')
+    any=0
+    for p in "${picked[@]}"; do
+        echo "$lintable" | grep -qxF "$(echo "$p" | tr -d ' -' | tr 'A-Z' 'a-z')" && any=1
+    done
+    if [ $any -eq 0 ]; then
+        passed
+        exit 0
+    fi
+fi
+# The build and the lint read the commit, in a checkout of its own (once
+# they read the working tree: it had to be what was pushed, and nothing
+# could be edited while they ran, seven minutes a push).
+tree=$(tools/hooks/checkout-at "$sha" "${OLO_PREPUSH_TREE:-/var/tmp/olo-prepush/tree}")
+cd "$tree"
+echo "pre-push: UI code changed; release build, then the live layout lint…" >&2
+began=$SECONDS
+# (Through Jato where it's there: it keeps the builds it has made.)
+build=cargo
+command -v jato > /dev/null 2>&1 && build=jato
+env -u WAYLAND_DISPLAY -u OLO_SOCKET "$build" build --release --workspace >&2
+echo "pre-push: the release build took $((SECONDS - began)) s" >&2
+began=$SECONDS
+if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET /usr/bin/python3 tools/dev/ui-lint "${picked[@]}" >&2; then
+    echo "pre-push: the live layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
+    exit 1
+fi
+# Tiled: zoomed, in halves, a quarter and thirds, on the smallest screen
+# (1280 × 800 points) and each of the person's, their sizes and scales
+# read from their session (only those; the lint runs in its own).
+screens=2560x1600@2
+person=$(/usr/bin/python3 tools/dev/ui-lint --person-screens 2> /dev/null || true)
+[ -n "$person" ] && screens="$screens,$person"
+if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET /usr/bin/python3 tools/dev/ui-lint --tiles --screens "$screens" "${picked[@]}" >&2; then
+    echo "pre-push: the live layout lint, tiled, found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
+    exit 1
+fi
+echo "pre-push: the live layout lint took $((SECONDS - began)) s" >&2
+# At rest: a spinner in a tab's title, and what waits in an app changing,
+# on the release builds just made (2026-11-21: each had kept three
+# displays drawing and five programs busy, with nobody at the computer).
+if echo "$changed" | grep -qE '^(crates/(kit|interface|kit-base)/|apps/(terminal|deskbar|calendar|notifications|todo|weather)/|tools/dev/rest-check$)'; then
+    rest=$SECONDS
+    if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET TSESSION_PROFILE=release /usr/bin/python3 tools/dev/rest-check >&2; then
+        echo "pre-push: the desktop didn't stay at rest (above); fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
+        exit 1
+    fi
+    echo "pre-push: the rest check took $((SECONDS - rest)) s" >&2
+fi
+passed

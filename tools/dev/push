@@ -1,0 +1,34 @@
+#!/bin/bash
+# Push this branch to its upstream, with the pre-push checks
+# (tools/hooks/prepush-checks) run first, before git connects to the
+# remote: the hook then finds the commit checked and does only Git LFS's
+# step. The checks take minutes on a busy computer (a release build, the
+# live lint waiting for room), and run inside the hook they hold the
+# remote's connection idle meanwhile: GitHub closed it twice on
+# 2026-11-24 ("Connection to github.com closed by remote host", exit 141,
+# nothing pushed though the checks passed). Run it in the background and
+# read its last line: "push: pushed SHA" or what stopped it.
+#
+#     tools/dev/push
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+branch=$(git symbolic-ref --short HEAD)
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}')
+remote=${upstream%%/*}
+git fetch -q "$remote"
+sha=$(git rev-parse HEAD)
+if [ "$(git rev-parse "$upstream")" = "$sha" ]; then
+    echo "push: nothing to push ($branch is $upstream)"
+    exit 0
+fi
+if ! git merge-base --is-ancestor "$upstream" "$sha"; then
+    echo "push: $upstream has commits $branch hasn't: bring them in first" >&2
+    exit 1
+fi
+began=$SECONDS
+if [ "${OLO_SKIP_UI_LINT:-}" != 1 ]; then
+    tools/hooks/prepush-checks "$sha" "$upstream"
+    echo "push: ${sha:0:9} passed its checks in $((SECONDS - began)) s; pushing" >&2
+fi
+git push "$remote" "$sha:refs/heads/${upstream#*/}"
+echo "push: pushed ${sha:0:9} to $upstream"
