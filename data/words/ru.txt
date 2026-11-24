@@ -14553,3 +14553,6 @@ Keep It Going in “{}”
 
 Auto Approve in “{}”
 Автоодобрение в «{}»
+
+An agent is at rest here
+Здесь агент в ожидании

@@ -57,6 +57,13 @@ pub fn drawn_over() -> Option<Hsla> {
     OVER.with(std::cell::Cell::get)
 }
 
+/// `paint` called with [`drawn_over`] saying `fill`: for a list that
+/// draws a terminal's marks on a row of its own colour (Rex's selected
+/// Activity row), as the strip does on its tabs.
+pub fn drawn_on(fill: Hsla, paint: impl FnOnce()) {
+    over(fill, paint)
+}
+
 /// `paint` called with [`drawn_over`] saying `fill`.
 fn over(fill: Hsla, paint: impl FnOnce()) {
     let before = OVER.with(|o| o.replace(Some(fill)));

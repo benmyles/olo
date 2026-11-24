@@ -14271,3 +14271,6 @@ Keep It Going in “{}”
 
 Auto Approve in “{}”
 在“{}”中自动批准
+
+An agent is at rest here
+此处有智能体在待命

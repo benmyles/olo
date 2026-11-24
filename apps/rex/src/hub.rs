@@ -558,22 +558,43 @@ impl BlockRuntime {
             self.agent_activity = act;
             return act;
         }
-        let (_, rows) = self.terminal.size();
-        let start = rows.saturating_sub(12);
-        let mut tail = Vec::new();
-        for r in start..rows {
-            tail.push(self.terminal.viewport_row_text(r as u32));
-        }
-        let fg = self.process.as_ref().and_then(|p| p.foreground.as_ref()).map(|p| p.name.as_str());
-        self.agent_activity = detect_agent_from_screen(fg, &tail).unwrap_or(AgentActivity::Idle);
+        // Claude Code, Codex and Antigravity as Terminal reads them (by
+        // their program, Claude Code's own build named by its version, and
+        // their screens' words: `olo_agent_screen`); another agent (aider,
+        // goose, …) by the older, rougher reading. (By the older alone, a
+        // Claude Code installed as its own build went unseen once its
+        // banner had scrolled away.)
+        // (Its bottom 16 rows, where an agent's status line and its
+        // question's last lines are: read after every pause in its output,
+        // and 30, as Auto Approve reads a whole question, cost 20 million
+        // instructions in 10 s more than the 12 read before, with a
+        // spinner turning four times a second.)
+        let screen = self.screen_bottom(ACTIVITY_LOOK);
+        let (name, exe, args) = self.agent_program();
+        self.agent_activity = match which_agent(name.as_deref(), &exe, &args, &screen) {
+            Some(agent) => match olo_agent_screen::classify(agent, &screen) {
+                olo_agent_screen::State::Working => AgentActivity::Working,
+                olo_agent_screen::State::Blocked => AgentActivity::Blocked,
+                olo_agent_screen::State::Idle => AgentActivity::Idle,
+            },
+            None => {
+                let tail: Vec<String> = screen.lines().rev().take(12).collect::<Vec<_>>().into_iter().rev().map(str::to_owned).collect();
+                detect_agent_from_screen(name.as_deref(), &tail).unwrap_or(AgentActivity::Idle)
+            }
+        };
         self.agent_activity
     }
 
     /// The bottom of its screen, as text: where an agent's prompt, its
     /// questions and its status line are (as Terminal reads its tabs').
     pub fn agent_screen(&self) -> String {
+        self.screen_bottom(AGENT_LOOK)
+    }
+
+    /// Its screen's bottom `n` rows, as text.
+    fn screen_bottom(&self, n: usize) -> String {
         let (_, rows) = self.terminal.size();
-        let start = rows.saturating_sub(AGENT_LOOK as u16);
+        let start = rows.saturating_sub(n as u16);
         (start..rows).map(|r| self.terminal.viewport_row_text(r as u32)).collect::<Vec<_>>().join("\n")
     }
 
@@ -885,16 +906,13 @@ pub fn tab_names(tabs: &[(Option<&str>, &str, &str)]) -> Vec<String> {
 
 /// [`tab_names`] for a session as the hub holds it: each tab's first
 /// pane with a title, and that pane's folder.
-/// What a pane goes by, as its tab would show it alone: its title, else
-/// its program, else its folder (`tab_title`).
+/// What a pane goes by, said alone (an alert's question, a menu's item):
+/// its title, else its program (`pane_title`, without its folder).
 pub fn name_of_pane(st: &HubState, bk: &BlockKey) -> Option<String> {
-    let local = if st.hosts.get(&bk.host_key).is_some_and(|h| h.is_local) { local_home() } else { None };
     let br = st.blocks.get(bk)?;
     let g = br.lock().unwrap_or_else(|e| e.into_inner());
-    let process = g.process.as_ref();
-    let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
-    let home = process.and_then(|p| p.home.as_deref()).or(local.as_deref());
-    Some(tab_title(&g.title, &g.label, program, &g.pwd, home))
+    let program = g.process.as_ref().and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+    Some(pane_title(&g.title, &g.label, program, ""))
 }
 
 pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::SessionView) -> Vec<String> {
@@ -1665,6 +1683,8 @@ pub fn set_let_go(hosts: Vec<String>) {
 
 /// How many of a pane's bottom rows Keep It Going and Auto Approve read.
 const AGENT_LOOK: usize = 30;
+/// How many of them what its agent is doing is read from.
+const ACTIVITY_LOOK: usize = 16;
 
 /// What the person turned on for each pane (Keep It Going, Auto Approve),
 /// by its key: the same for a pane reattached, and kept over an upgrade

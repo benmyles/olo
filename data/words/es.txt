@@ -14365,3 +14365,6 @@ Que siga en «{}»
 
 Auto Approve in “{}”
 Aprobar solo en «{}»
+
+An agent is at rest here
+Aquí hay un agente en reposo

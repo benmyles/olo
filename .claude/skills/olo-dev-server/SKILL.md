@@ -52,9 +52,16 @@ Scratch goes in `/var/tmp` (a directory of your own), never `/tmp`:
 
 As anywhere (CLAUDE.md): `jato build -p PKG`, `jato test -p PKG` for
 what you change, in dev; `jato build --release -p PKG` only to
-measure; the workspace's release build is the pre-push hook's. Never
-build while a push's hook runs (its rest-check measures the machine
-at rest).
+measure; the workspace's release build is the pre-push hook's. The
+hook builds and lints the pushed commit in a checkout of its own
+(`/var/tmp/olo-prepush/tree`), so work goes on in the tree meanwhile;
+its release build there is a ready "before" for measuring the next
+change (`target/release` in it).
+
+**Counting instructions**: where `kernel.perf_event_paranoid` is above
+2 (Ubuntu's 4), `perf stat` counts only under sudo: `sudo -n perf stat
+--no-scale -e instructions:u -p PID -- sleep 10`. Leave the setting as
+it is.
 
 ## Use every processor
 

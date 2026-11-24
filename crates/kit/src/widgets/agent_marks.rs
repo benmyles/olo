@@ -1,7 +1,7 @@
 //! The marks on a terminal's icon (a tab's, a pane's, an Activity
 //! row's): what the coding agent in it is doing at its top corner (a
 //! turning ring at work, an orange "!" waiting for an answer, a green
-//! dot done and not yet seen, a red "×" stopped on an error, a grey dot
+//! dot done and not yet seen, a red "×" stopped on an error, a grey ring
 //! at rest), a blue dot for a bell not yet seen, and at its bottom
 //! corners what it has on: Keep It Going (a blue disc with a "go on"
 //! triangle) and Auto Approve (a green disc with a check). Terminal's
@@ -28,7 +28,7 @@ pub enum AgentMark {
     Done,
     /// Stopped on an error: a red disc with "×".
     Failed,
-    /// Running, with nothing to do: a grey dot (where every row is an
+    /// Running, with nothing to do: a grey ring (where every row is an
     /// agent, as in Rex's Activity, so one at rest still reads as there).
     AtRest,
     /// No agent's news, but a bell not yet seen: a blue dot.
@@ -85,10 +85,27 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, name: &str, marks: Marks) {
         AgentMark::Asking => disc(g, at, 3.5, p.hue(olo_theme::Hue::Orange), Glyph::Bang),
         AgentMark::Failed => disc(g, at, 3.5, p.failure, Glyph::Cross),
         AgentMark::Done => disc(g, at, 3.0, p.success, Glyph::None),
-        AgentMark::AtRest => mark(g, at, 3.0, style::disabled_text(&p), rim, Glyph::None, rim),
+        // (A ring, hollow: a grey dot was lost on the grey icon. Opus's
+        // review, 2026-11-24.)
+        AgentMark::AtRest => mark(g, at, 3.0, style::disabled_text(&p), rim, Glyph::Hole, rim),
         AgentMark::Rang => disc(g, at, 2.5, p.keyboard_navigation, Glyph::None),
         AgentMark::None => {}
     }
+}
+
+/// Auto Approve's mark on its own, `size` points across round `centre`
+/// (beside a row's words rather than on its icon, where there is room),
+/// rimmed in what it is drawn on.
+pub fn auto_approve_mark(g: &mut Painter, centre: Point<Pixels>, size: f32, rim: Hsla) {
+    let p = theme::palette();
+    mark(g, centre, size / 2.0, style::c(p.success), rim, Glyph::Check, style::ink_on(p.success));
+}
+
+/// Keep It Going's mark on its own, `size` points tall round `centre`,
+/// rimmed in what it is drawn on.
+pub fn keep_going_mark(g: &mut Painter, centre: Point<Pixels>, size: f32, rim: Hsla) {
+    let p = theme::palette();
+    triangle(g, centre, size, style::c(p.keyboard_navigation), rim);
 }
 
 /// Auto Approve's countdown over a terminal's screen, as Terminal and
@@ -127,6 +144,8 @@ enum Glyph {
     Check,
     /// "×": failed.
     Cross,
+    /// Its middle open, a ring: at rest.
+    Hole,
 }
 
 /// A disc `radius` points round `centre`, of `ground`, with a 1-point rim
@@ -174,6 +193,9 @@ fn mark(g: &mut Painter, centre: Point<Pixels>, radius: f32, ground: Hsla, rim: 
         }
         if small {
             return Some(0);
+        }
+        if glyph == Glyph::Hole {
+            return Some(if d <= inner - s.round().max(1.0) { 1 } else { 0 });
         }
         // (A device pixel of the disc kept round the glyph: where it
         // met the rim, of its colour, the disc read as bitten.)
@@ -269,7 +291,8 @@ fn on_glyph(glyph: Glyph, x: f32, y: f32, r: f32, t: f32) -> bool {
         (qx * qx + qy * qy).sqrt() <= t / 2.0
     };
     match glyph {
-        Glyph::None => false,
+        // (The ring's hole is drawn by `mark` itself.)
+        Glyph::None | Glyph::Hole => false,
         Glyph::Bang => x.abs() <= t / 2.0 && ((-0.62 * r..=0.12 * r).contains(&y) || (0.36 * r..=0.36 * r + t).contains(&y)),
         Glyph::Check => near((-0.4, 0.0), (-0.12, 0.28)) || near((-0.12, 0.28), (0.4, -0.26)),
         Glyph::Cross => near((-0.42, -0.42), (0.42, 0.42)) || near((0.42, -0.42), (-0.42, 0.42)),

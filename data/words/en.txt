@@ -326,6 +326,7 @@ Always float the application, or not
 Always on Top
 An account can answer again.
 An administrator's password is needed.
+An agent is at rest here
 An app
 An application is keeping the display awake.
 An error occurred while {}: {}

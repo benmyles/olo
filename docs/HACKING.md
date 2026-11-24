@@ -28876,9 +28876,44 @@ kit, above): quiet marks, the same on every pane with the room, the
 keyboard in it or not. A session's and a pane's icon is drawn at the
 16 points it is made for (it was that one made 12: nothing is
 resampled), the pane's over the first column of its text, as
-Terminal's. What an agent is doing there is a dot on the icon's corner
-in the look's colours (`paint_activity_icon`), said in words by the
-row's tip and to agents as its value (`activity_words`). Status lights
+Terminal's. What an agent is doing there is the kit's mark on the
+icon's corner (`widgets::agent_marks`, as Terminal's tabs: the turning
+ring, "!", the green and grey dots, the red cross), said in words by
+the row's tip and to agents as its value (`activity_words`).
+
+**Activity is a list to choose from** (Ben, 2026-11-24, with a picture:
+"rex activity doesn't have a selected state like i'd expect Activity
+shows each agent that is running and lets me select the one i want to
+see"; "the agent shouldn't disappear if it just stops working but the
+harness is still open"; "make sure we show different status indicators
+to indicate all the different states properly"). Its rows are list
+rows, touching, as Sessions' are (they were raised cards, none
+chosen): the row of the pane the window shows is selected, and choosing
+one shows its pane (`jump_to`). A pane is listed while an agent runs in
+it (`BlockRuntime::runs_agent`: its foreground program is one, or a
+program has told its state), at rest too, its mark a grey dot
+(`AgentMark::AtRest`), and while anything is going on there; with Show
+Idle Panes in Activity, shells too. Rows keep their sessions' order
+(sorted by state, they moved while one was chosen; Next Waiting Agent,
+⌘J, finds the waiting). Auto Approve and Keep It Going are drawn at a
+row's right end on its name's line (Auto Approve's disc last: a
+triangle at a row's very end read as a disclosure arrow), not on its
+icon; under the name, what the program says of itself, else its
+folder's own name ("Home" for home: `folder_name`; a path cut at its
+end lost what tells two apart), then the host, apart by "·"; and at
+that line's end the state in a word ("Waiting" and "Failed" in their
+colours mixed toward the text's, "Working", "Done", "At rest"): its
+mark alone was a speck at 1× (Opus's review). At rest is a hollow grey
+ring (a grey dot was lost on the grey icon).
+What an agent is doing is read as Terminal reads it, from the pane's
+bottom 16 rows (`ACTIVITY_LOOK`: 30, as Auto Approve reads, cost 20
+million instructions in 10 s more with a spinner turning four times a
+second; 16, 4.5 million, 3%) after each pause in its output
+(`olo_agent_screen::classify`, the program told apart by `which_agent`:
+Claude Code's own build is named by its version, and by the older
+reading alone it went unseen once its banner had scrolled away); an
+agent it doesn't know (aider, goose, …) by the older reading
+(`detect_agent_from_screen`). Status lights
 are one enum (`panels::Light`, coloured by the palette: `success`,
 `warning`, `failure`, the disabled text's); `Light::of(conn)` is a
 host's, and red is an error's alone (a host disconnected, or never

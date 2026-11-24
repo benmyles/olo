@@ -56,10 +56,12 @@ docker info > /dev/null 2>&1 || DOCKER="sudo docker"
 # The container sees the tree at its own path (paths in the programs are
 # the tree's), the release's target folder over its target/, and Jato.
 in_image() {
+    # (The checkout is a worktree: its .git names the repository's own,
+    # which it must see, read-only, to say what commit it is.)
     $DOCKER run --rm --user "$(id -u):$(id -g)" \
-        -v "$ROOT:$ROOT" -v "$WORK/target:$ROOT/target" -v "$HOME/.cargo/registry:/home/builder/.cargo/registry" \
+        -v "$ROOT:$ROOT" -v "$WORK/target:$ROOT/target" -v "$REPO/.git:$REPO/.git:ro" -v "$HOME/.cargo/registry:/home/builder/.cargo/registry" \
         -v "$(command -v jato):/usr/local/bin/jato:ro" -v "$WORK/jato:/jato" -e JATO_CACHE_DIR=/jato -e HOME=/home/builder \
-        "$@" -w "$ROOT" "$IMAGE" sh -c "git config --global --add safe.directory '$ROOT'; $IN"
+        "$@" -w "$ROOT" "$IMAGE" sh -c "git config --global --add safe.directory '$ROOT'; git config --global --add safe.directory '$REPO'; $IN"
 }
 
 step "1. the commit"

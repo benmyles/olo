@@ -14271,3 +14271,6 @@ Keep It Going in “{}”
 
 Auto Approve in “{}”
 “{}”에서 자동 승인
+
+An agent is at rest here
+여기서 에이전트가 쉬고 있습니다

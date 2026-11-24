@@ -14271,3 +14271,6 @@ Keep It Going in “{}”
 
 Auto Approve in “{}”
 「{}」で自動承認
+
+An agent is at rest here
+ここでエージェントが待機中です

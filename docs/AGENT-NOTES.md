@@ -2996,6 +2996,10 @@ this one is, and what differs:
   one's own there, a secret from their Passwords once they allow it.
 - **Builds go through Jato** (CLAUDE.md); the hooks use it where it is
   installed (`tools/hooks/install` switched them on in this clone).
+- **`perf` counts only under sudo here**: `kernel.perf_event_paranoid`
+  is 4 (Ubuntu's), so `perf stat` as the account counts nothing and says
+  so; `sudo -n perf stat --no-scale -e instructions:u -p PID -- sleep 10`
+  counts (the VM has the counters). The setting is left as it is.
 - **Use its 32 processors** (Ben, 2026-11-24: "try to reduce the dev
   loop time as much as possible and take advantage of the hardware"):
   headless sessions are cheap here, so pictures are taken one session

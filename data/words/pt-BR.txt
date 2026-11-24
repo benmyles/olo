@@ -14365,3 +14365,6 @@ Continuar tarefa em “{}”
 
 Auto Approve in “{}”
 Aprovação automática em “{}”
+
+An agent is at rest here
+Há um agente em repouso aqui

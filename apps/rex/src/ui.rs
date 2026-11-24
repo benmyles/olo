@@ -2725,7 +2725,7 @@ impl RexWindow {
                     }
                 }
                 let label = names.get(idx).cloned().unwrap_or_default();
-                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(widgets::agent_marks::icon("terminal", marks_of(tab_act, &tab_help)));
+                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(widgets::agent_marks::icon("terminal", marks_of(tab_act, &tab_help, false)));
                 let what = match tab_act {
                     AgentActivity::Blocked => Some(olo_kit::words::tr("Waiting for approval").to_string()),
                     AgentActivity::Working => Some(olo_kit::words::tr("Working").to_string()),
@@ -3059,6 +3059,8 @@ impl RexWindow {
 
     fn render_sidebar(&mut self, width: f32, cx: &mut olo_kit::Cx<Self>) -> Element {
         let hub = app().hub.clone();
+        // (The pane this window shows: Activity's selected row.)
+        let shown = self.focused_block_key();
         let (mode, hosts_snap, activity_rows) = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let mode = st.settings.sidebar_mode;
@@ -3085,16 +3087,25 @@ impl RexWindow {
                                     if g.unread {
                                         unread_count += 1;
                                     }
-                                    if g.agent_activity != AgentActivity::Idle || st.settings.activity_include_idle {
-                                        // (What it goes by, as its tab would show it: its title,
-                                        // else its program, else its folder.)
+                                    // (An agent stays while its program runs, at rest
+                                    // too: Ben, 2026-11-24, "the agent shouldn't
+                                    // disappear if it just stops working but the
+                                    // harness is still open".)
+                                    let running = g.runs_agent();
+                                    if g.agent_activity != AgentActivity::Idle || running || st.settings.activity_include_idle {
+                                        // (What it goes by: its title, else its program.)
                                         let process = g.process.as_ref();
                                         let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
                                         let home = process.and_then(|p| p.home.clone()).or_else(|| h.is_local.then(crate::hub::local_home).flatten());
-                                        let label = crate::hub::tab_title(&g.title, &g.label, program, &g.pwd, home.as_deref());
-                                        let detail = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| g.pwd.clone());
+                                        // (Its folder is the line under it: `tab_title` leaves a
+                                        // pane outside home unnamed, its tab to be named by it.)
+                                        let label = crate::hub::pane_title(&g.title, &g.label, program, "");
+                                        // (What it says of itself, else its folder by its own
+                                        // name: a path cut at its end lost the part that
+                                        // tells two apart.)
+                                        let detail = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| folder_name(&g.pwd, home.as_deref()));
                                         let help = crate::hub::help_of(&bk);
-                                        activity_rows.push((bk, h.label.clone(), label, detail, g.agent_activity, help));
+                                        activity_rows.push(ActivityRow { bk, host: h.label.clone(), title: label, detail, act: g.agent_activity, help, running });
                                     }
                                 }
                             }
@@ -3108,7 +3119,6 @@ impl RexWindow {
                 let silent = st.host_silent(&h.key).map(crate::hub::silent_tip);
                 hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
             }
-            activity_rows.sort_by_key(|(_, _, _, _, a, _)| activity_sort_rank(*a));
             (mode, hosts_snap, activity_rows)
         };
 
@@ -3120,7 +3130,7 @@ impl RexWindow {
         .absolute()
         .inset_0();
 
-        let blocked_n = activity_rows.iter().filter(|(_, _, _, _, a, _)| matches!(a, AgentActivity::Blocked | AgentActivity::Error)).count();
+        let blocked_n = activity_rows.iter().filter(|r| matches!(r.act, AgentActivity::Blocked | AgentActivity::Error)).count();
 
         let hub_s1 = hub.clone();
         // Match TabStrip exactly (`STRIP_HEIGHT = 34`, tabs `y = 8..34`, label center `y = 21`)
@@ -3287,11 +3297,15 @@ impl RexWindow {
             if activity_rows.is_empty() {
                 list = list.child(div().py(px(m::SECTION)).child(StringView::new("All agents and shells are quiet.").dim(true)));
             }
-            for (bk, host_lbl, title, detail, act, help) in activity_rows {
-                let bk_jump = bk.clone();
-                let sub = if detail.is_empty() { host_lbl } else { format!("{host_lbl} • {detail}") };
-                list = list.child(sidebar_activity_row(title, sub, act, help, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
+            // (One group, its rows touching as Sessions' do: the list's
+            // gap is between hosts.)
+            let mut rows = div().w_full().flex_shrink_0().flex().flex_col();
+            for row in activity_rows {
+                let bk_jump = row.bk.clone();
+                let selected = shown.as_ref() == Some(&row.bk);
+                rows = rows.child(sidebar_activity_row(row, selected, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
             }
+            list = list.child(rows);
         }
 
         // Bottom-anchored sidebar footer (8 pt above bottom, crisp 1 px top rule).
@@ -5423,8 +5437,6 @@ fn render_single_pane(
 /// "Activity" was cut once an agent waited).
 const SIDE_LEAST: f32 = widgets::STRIP_SIDE_WIDTH;
 const ROW_ICON: f32 = 16.0;
-/// Where an Activity row's words begin: past the icon and its gap.
-const ACTIVITY_TEXT: f32 = m::TIGHT + ROW_ICON + m::TIGHT;
 /// What a pane's head has after its last button: as far from the pane's
 /// edge as its icon is from the other (the terminal's own inset, a
 /// window's).
@@ -5534,38 +5546,68 @@ fn bevel_colors(p: &olo_theme::Palette) -> (olo_kit::Hsla, olo_kit::Hsla) {
     }
 }
 
-fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, help: crate::agent::Help, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let key = style::key((&title, &subtitle, act as u8, &help));
-    let t_paint = title.clone();
-    let s_paint = subtitle.clone();
+fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    let ActivityRow { host, title, detail, act, help, running, .. } = row;
+    // (What tells rows apart first, its folder; then its host, apart by
+    // the status bar's "·": Opus's review, 2026-11-24.)
+    let sub = if detail.is_empty() { host } else { format!("{detail} \u{b7} {host}") };
+    let state = activity_state_word(act, running);
+    let key = style::key((&title, &sub, act as u8, &help, running, selected));
+    let words = activity_row_words(act, running, &help);
     canvas(move |g, b| {
         let p = theme::palette();
-        style::fill_rect(g, b, style::c(p.control_background));
-        style::raised(g, b, &p);
-        let icon_b = style::snap_centred(g, point(b.left() + px(m::TIGHT + ROW_ICON / 2.0), b.center().y), ROW_ICON, ROW_ICON);
-        paint_activity_icon(g, icon_b, act, &help);
-        style::label_fit(
-            g,
-            b.left() + px(ACTIVITY_TEXT),
-            b.top() + px(13.0),
-            style::Align::Left,
-            t_paint.clone(),
-            style::PLAIN_SIZE,
-            style::ui_font(FontWeight::BOLD),
-            style::c(p.panel_text),
-            (b.size.width - px(ACTIVITY_TEXT + m::TIGHT)).max(px(24.0)),
-        );
-        style::label_fit(
-            g,
-            b.left() + px(ACTIVITY_TEXT),
-            b.top() + px(28.0),
-            style::Align::Left,
-            s_paint.clone(),
-            style::SMALL_SIZE,
-            style::ui_font(FontWeight::NORMAL),
-            style::secondary_text(&p),
-            (b.size.width - px(ACTIVITY_TEXT + m::TIGHT)).max(px(24.0)),
-        );
+        // A list's row, as Sessions' are: the one this window shows
+        // selected (Ben, 2026-11-24: "rex activity doesn't have a selected
+        // state like i'd expect"). Each was a raised card, none chosen.
+        let ground = if selected { style::c(p.list_selected_background) } else { style::c(p.panel_background) };
+        if selected {
+            style::fill_rect(g, b, ground);
+        }
+        let (ink, quiet) = if selected { (style::c(p.list_selected_item_text), style::c(p.list_selected_item_text)) } else { (style::c(p.panel_text), style::secondary_text(&p)) };
+        // Its icon with what its agent is doing (at rest too, while its
+        // program runs); Auto Approve and Keep It Going at the row's right
+        // end, where there is room, not on the icon (Opus's review: three
+        // marks on 16 points hid the terminal).
+        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), b.center().y), ROW_ICON, ROW_ICON);
+        widgets::strip::drawn_on(ground, || widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(act, &crate::agent::Help::default(), running)));
+        // (Auto Approve's disc last: a triangle at a row's very end read
+        // as a disclosure arrow.)
+        let mut right = b.right() - px(m::TIGHT);
+        let mid = b.top() + px(13.0);
+        if help.auto_approve {
+            widgets::agent_marks::auto_approve_mark(g, point(right - px(4.5), mid), 9.0, ground);
+            right -= px(9.0 + m::MARK_GAP);
+        }
+        if help.keep_going {
+            widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), mid), 9.0, ground);
+            right -= px(8.0 + m::MARK_GAP);
+        }
+        let left = b.left() + px(m::WINDOW_INSET + ROW_ICON + m::TIGHT);
+        style::label_fit(g, left, b.top() + px(13.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, (right - px(m::TIGHT) - left).max(px(24.0)));
+        // What its agent is doing, in words at the line's end (its mark
+        // alone was a speck at 1×): waiting and failed in their colours,
+        // mixed toward the text's to read on the row.
+        let mut sub_right = b.right() - px(m::TIGHT);
+        if let Some((word, urgent)) = state {
+            let color = match (selected, urgent) {
+                (true, _) | (false, None) => quiet,
+                (false, Some(tone)) => style::c(olo_theme::mix(tone, p.panel_text, 0.3)),
+            };
+            let weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
+            let at = style::label(g, sub_right, b.top() + px(28.0), style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(weight), color);
+            sub_right = at.left() - px(m::TIGHT);
+        }
+        style::label_fit(g, left, b.top() + px(28.0), style::Align::Left, sub.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet, (sub_right - left).max(px(24.0)));
+        g.agent(agent::Node {
+            role: "ListItem",
+            name: Some(title.clone().into()),
+            value: words.clone().map(Into::into),
+            bounds: b,
+            selected: Some(selected),
+            enabled: true,
+            clickable: true,
+            ..Default::default()
+        });
     })
     .paint_key(key)
     .w_full()
@@ -5577,17 +5619,62 @@ fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, hel
     })
 }
 
-/// A terminal's icon with the kit's marks (`widgets::agent_marks`, as
-/// Terminal's tabs have them): what the agent in it is doing at its top
-/// corner, and at its bottom ones Keep It Going and Auto Approve where
-/// they are on.
-fn paint_activity_icon(g: &mut Painter, b: Bounds<Pixels>, act: AgentActivity, help: &crate::agent::Help) {
-    widgets::agent_marks::paint(g, b, "terminal", marks_of(act, help));
+/// An Activity row: a pane an agent runs in (or a shell, where idle panes
+/// are shown), its host and what it says of itself, its agent's state,
+/// what it has on, and whether an agent runs there now.
+struct ActivityRow {
+    bk: BlockKey,
+    host: String,
+    title: String,
+    detail: String,
+    act: AgentActivity,
+    help: crate::agent::Help,
+    running: bool,
 }
 
-fn marks_of(act: AgentActivity, help: &crate::agent::Help) -> widgets::agent_marks::Marks {
+/// What an Activity row says its agent is doing, in a word, and the
+/// colour of a state that wants the person (waiting, failed).
+fn activity_state_word(act: AgentActivity, running: bool) -> Option<(&'static str, Option<olo_theme::Rgba>)> {
+    let p = theme::palette();
+    match act {
+        AgentActivity::Blocked => Some(("Waiting", Some(p.hue(olo_theme::Hue::Orange)))),
+        AgentActivity::Error => Some(("Failed", Some(p.failure))),
+        AgentActivity::Working => Some(("Working", None)),
+        AgentActivity::Done => Some(("Done", None)),
+        AgentActivity::Idle if running => Some(("At rest", None)),
+        AgentActivity::Idle => None,
+    }
+}
+
+/// What an Activity row says, in words: its agent's state and what it
+/// has on (its value to agents).
+fn activity_row_words(act: AgentActivity, running: bool, help: &crate::agent::Help) -> Option<String> {
+    let state = activity_words(act).map(|w| olo_kit::words::tr(w).to_string()).or_else(|| running.then(|| olo_kit::words::tr("An agent is at rest here").to_string()));
+    let parts: Vec<String> = [state, help_words(help)].into_iter().flatten().collect();
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
+/// A folder as a row says it: its own name ("Home" for home), the part that
+/// tells two apart.
+fn folder_name(pwd: &str, home: Option<&str>) -> String {
+    if pwd.is_empty() || Some(pwd.trim_end_matches('/')) == home.map(|h| h.trim_end_matches('/')) {
+        // (Home in words: a bare "~" at a line's end read as a stray mark.)
+        return if pwd.is_empty() { String::new() } else { olo_kit::words::tr("Home").to_string() };
+    }
+    pwd.trim_end_matches('/').rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or("/").to_owned()
+}
+
+/// they are on.
+fn paint_activity_icon(g: &mut Painter, b: Bounds<Pixels>, act: AgentActivity, help: &crate::agent::Help) {
+    widgets::agent_marks::paint(g, b, "terminal", marks_of(act, help, false));
+}
+
+fn marks_of(act: AgentActivity, help: &crate::agent::Help, running: bool) -> widgets::agent_marks::Marks {
     use widgets::agent_marks::AgentMark;
     let agent = match act {
+        // (At rest, where an agent runs: Activity's rows, where every row
+        // is one and a quiet one still reads as there.)
+        AgentActivity::Idle if running => AgentMark::AtRest,
         AgentActivity::Idle => AgentMark::None,
         AgentActivity::Working => AgentMark::Working,
         AgentActivity::Blocked => AgentMark::Asking,

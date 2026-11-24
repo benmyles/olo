@@ -41,17 +41,21 @@ something nobody here has is in "Blocked", with what it waits for.
   tray's offer at once), and the releases listed there with Install for
   an older one (`olo-release install TAG`, what it would download said
   first, and what going back means for settings made since).
-- **Rex: Activity as a list to choose from** (Ben, 2026-11-24, with a
-  picture of Activity: "rex activity doesn't have a selected state like
-  i'd expect Activity shows each agent that is running and lets me
-  select the one i want to see"; "the agent shouldn't disappear if it
-  just stops working but the harness is still open -- it should still
-  be in that list as long as it is still running"; "make sure we show
-  different status indicators to indicate all the different states
-  properly"): the row of the pane shown is selected, as Sessions'
-  is; an agent stays while its program runs, at rest too
-  (`AgentMark::AtRest`); each state its own mark (working, waiting,
-  done, failed, at rest).
+- **Pre-existing, from the looks at Rex's Activity and Auto Approve**
+  (Opus 5.5, 2026-11-24): the kit's context menus open at the pointer
+  over the tab they belong to ("open the menu with its top edge 2 pt
+  below the tab's bottom edge"); the segmented control's count is the
+  look's notice blue even where it counts what waits ("make the badge
+  the waiting orange"); a list's selection keeps its full colour when
+  the list doesn't have the keyboard, Rex's Sessions and Activity alike
+  ("use the inactive-selection role"); dark text at 1× "looks heavier
+  and softer than light at 1x" (to measure at true size first); the
+  kit's menus' shortcut column ends at different insets ("⌘J" 23 pt,
+  "⌥⌘W" 15 pt). And in Rex: a split's panes are given the window's whole
+  width to share, the sidebar's in it (`render_layout_node`'s
+  `avail_w`), so a pane head's buttons decide by more width than the
+  pane has; Activity's done and failed states, a far host's rows and a
+  row under the pointer not yet pictured.
 - **Rex: images pasted into a remote agent** (Ben, 2026-11-24: "make it
   so that copy and paste of images works properly in a rex session e.g.
   when i paste an image for you in here that was on my clipboard it
