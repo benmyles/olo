@@ -79,6 +79,8 @@ pub enum HostDo {
     Permissions,
     /// The Token Pool's Hosts window, where a host's pool is managed.
     OpenPool,
+    /// The Account window: the host's account made ready for work.
+    Account,
     /// Remove All… pressed (`true`), or its question answered no.
     AskAll(bool),
     /// Its question answered yes: these taken off.
@@ -181,6 +183,30 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
     }
 }
 
+/// The account's line: how much of what it is given for work with
+/// agents is there (`account::tally`), and what isn't, by name. Its
+/// window (Account…) has each by itself.
+pub fn account_stands(host: &HostStands) -> Stands {
+    let reached = host.conn == HostConnState::Connected && host.ssh;
+    match crate::account::tally(host) {
+        None if reached => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
+        None => stands(Light::Off, "Not known"),
+        Some((0, _, _)) => stands(Light::Off, "Not set up"),
+        Some((done, all, _)) if done == all => stands(Light::On, "Ready"),
+        // (Part of it: amber, not the grey of nothing there. An
+        // account with Claude Code in it isn't a broken one.)
+        Some((done, all, left)) => {
+            // (Two of what is missing by name, and how many more: all
+            // five would run under the line's button.)
+            let named = match left.as_slice() {
+                [a, b, rest @ ..] if !rest.is_empty() => olo_kit::tr!("without {}, {} and {} more", a, b, rest.len()).to_string(),
+                few => olo_kit::tr!("without {}", few.join(", ")).to_string(),
+            };
+            Stands { said: olo_kit::tr!("{} of {} ready", done, all).into(), more: Some(named), ..stands(Light::Waiting, "") }
+        }
+    }
+}
+
 /// The Rex server's line: running, and its version.
 fn server_stands(host: &HostStands) -> Stands {
     if host.conn == HostConnState::Connected { Stands { more: host.version.clone(), ..stands(Light::On, "Running") } } else { stands(Light::Off, "Not known") }
@@ -197,8 +223,10 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
-    let wide =
-        ["Check Again", "Connect", "Manage…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel"].iter().map(|l| button_width(l, false)).fold(0.0, f32::max);
+    let wide = ["Check Again", "Connect", "Manage…", "Account…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel"]
+        .iter()
+        .map(|l| button_width(l, false))
+        .fold(0.0, f32::max);
     let button = |label: &str, id: &str, what: HostDo, enabled: bool| {
         let on_do = on_do.clone();
         Button::new(label.to_owned()).id(id.to_owned()).min_width(wide).enabled(enabled).on_click(move |_, cx| on_do(&what, cx))
@@ -337,6 +365,16 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         None,
     ));
 
+    // The person's own account there, made ready for work in its own
+    // window (the agents, and what they need).
+    page.push(block(
+        "Account",
+        &account_stands(host),
+        vec![button("Account…", "host-account", HostDo::Account, reached)],
+        olo_kit::words::tr("Agents and settings in your account there.").into(),
+        None,
+    ));
+
     let mut there = Vec::new();
     for (thing, title, id, note, path) in [
         (HostThing::Bridge, "Bridge", "bridge", "Lets programs there open links, ask Passwords and use Agent Screens here.", None),
@@ -366,6 +404,11 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                 Some((false, false)) => button("Remove", &format!("host-{id}-remove"), HostDo::Change(thing, false), true),
                 None => button(if s.there { "Remove" } else { "Install" }, &format!("host-{id}-wait"), HostDo::Check, false),
             });
+        }
+        // (The skill is the account's, and has its row in the Account
+        // window: here it is still one of what Remove All… takes off.)
+        if thing == HostThing::Skill {
+            continue;
         }
         let note: String = if thing == HostThing::Helper && !host.helper_setting {
             olo_kit::words::tr("To use it, choose Settings\u{a0}▸\u{a0}Use\u{a0}Olo’s\u{a0}Typing\u{a0}Helper\u{a0}on\u{a0}Hosts.").into()
@@ -421,7 +464,30 @@ mod tests {
             skill: Some(false),
             pool: None,
             version: Some("0.19.2".into()),
+            account: None,
         }
+    }
+
+    /// The account's line: asked, nothing there, part of it (amber,
+    /// with what is missing by name), all of it; not known where the
+    /// host isn't connected.
+    #[test]
+    fn the_accounts_line_says_how_much_of_it_is_ready() {
+        use olo_rex_client::ready::Account;
+        let mut h = host();
+        let s = account_stands(&h);
+        assert_eq!((said(&s), s.busy), ((Light::Waiting, "Asking…", None), true));
+        h.account = Some(Account { has_curl: true, has_git: true, ..Account::default() });
+        assert_eq!(said(&account_stands(&h)), (Light::Off, "Not set up", None));
+        h.account = Some(Account { path: true, claude: Some("2.1.331".into()), git: Some(("You".into(), "you@example.org".into())), has_curl: true, has_git: true, ..Account::default() });
+        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "3 of 6 ready", Some("without Codex, Antigravity and 1 more")));
+        h.skill = Some(true);
+        assert_eq!(said(&account_stands(&h)), (Light::Waiting, "4 of 6 ready", Some("without Codex, Antigravity")));
+        h.account = Some(Account { codex: Some("0.172.0".into()), antigravity: Some("1.5.15".into()), ..h.account.clone().unwrap() });
+        h.skill = Some(true);
+        assert_eq!(said(&account_stands(&h)), (Light::On, "Ready", None));
+        h.conn = HostConnState::Disconnected;
+        assert_eq!(said(&account_stands(&h)), (Light::Off, "Not known", None));
     }
 
     fn said(s: &Stands) -> (Light, &str, Option<&str>) {

@@ -26,7 +26,7 @@ use zeroize::Zeroizing;
 use crate::hub::{HostConnState, RexHub};
 
 // (The status light of every window of Rex's is the kit's.)
-pub use olo_kit::widgets::{LIGHT, Light, busy_of, light, light_of};
+pub use olo_kit::widgets::{LIGHT, Light, busy_of, light, light_of, ring_of};
 
 /// How a host's connection stands, as a light. (One it was never asked
 /// to connect to, or was disconnected from, is off, not down: red is

@@ -537,6 +537,20 @@ pub struct SshSessionPool {
     peers: std::sync::Mutex<HashMap<SshTarget, PeerCell>>,
 }
 
+/// A command's channel, closed if it is let go of before the command
+/// ended ([`SshSessionPool::exec`]).
+struct CloseWhenLetGo(Option<russh::ChannelWriteHalf<client::Msg>>);
+
+impl Drop for CloseWhenLetGo {
+    fn drop(&mut self) {
+        if let (Some(told), Ok(runtime)) = (self.0.take(), tokio::runtime::Handle::try_current()) {
+            runtime.spawn(async move {
+                let _ = told.close().await;
+            });
+        }
+    }
+}
+
 /// Where a host's SSH connection went, and how long it took to open
 /// (its round trip).
 type PeerCell = Arc<std::sync::Mutex<Option<(std::net::IpAddr, Duration)>>>;
@@ -848,8 +862,17 @@ impl SshSessionPool {
     /// setting a host up and looking after it ([`crate::provision`]).
     pub async fn exec(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, RexError> {
         use russh::ChannelMsg;
-        let mut channel = self.session(target, askpass).await?;
+        let channel = self.session(target, askpass).await?;
         channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+        // (Whoever lets go of this before the command has ended, a
+        // step that was cancelled, has its channel closed: a channel
+        // is closed only when told to be, and the command ran on to
+        // its end on the host with nobody listening; one that waits
+        // for its input to end, to stop then, never heard. Found on
+        // the rig: an installer cancelled half way put its program
+        // there six seconds later.)
+        let (mut channel, told) = channel.split();
+        let mut let_go = CloseWhenLetGo(Some(told));
         let mut ran = crate::provision::Ran::default();
         // (Each of its two outputs is cut into lines by itself: a line
         // half written on one isn't finished by the other.)
@@ -873,6 +896,8 @@ impl SshSessionPool {
                 _ => {}
             }
         }
+        // (Ended by itself: nothing to close.)
+        let_go.0 = None;
         // (A last line with no end.)
         for pending in [&mut out, &mut err] {
             if !pending.is_empty() {

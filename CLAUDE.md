@@ -107,6 +107,26 @@ are universal and non-negotiable:
   before it's built out, and again when it's done. Check each thing
   they find against the picture yourself, fix what's real, and say in
   the commit what each found and what you did about it.
+- **Three rounds of looks at most, each a whole batch.** (Ben,
+  2026-11-23, after one button's change took six rounds: "all these
+  reviewer rounds are getting kinda crazy and taking a very long time.
+  i think you need to batch more stuff each time instead of giving
+  them super granular things to review and also we need to cap the
+  number of rounds at maybe 3 or something".) A change gets at most
+  three rounds: an early one where it is new, one when it is built,
+  and a third only to confirm what the second said must be fixed.
+  Each round is everything at once: every state, both looks, every
+  scale (1.25× and 1.75× too where anything is sized in rows or
+  pixels), and several small changes together rather than one each.
+  Before a round, do your own designer's pass and measure the
+  pictures, so the reviewers aren't spent on what you could have
+  seen. The brief says what changed and asks for what is wrong in
+  that, most important first; what they find elsewhere in the window,
+  there before the change, goes to docs/TODO.md with their words, not
+  into this change (but for a real defect that is a line to fix). A
+  fix is confirmed by measuring its picture yourself, not by another
+  round. After the third round what is left goes to the TODO, and
+  the change is committed.
 - **Leave the person's session alone.** Never reload, upgrade or install
   into it unless asked. To get work ready, run
   `cargo build --release --workspace`. The running session watches

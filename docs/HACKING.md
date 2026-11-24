@@ -27933,6 +27933,82 @@ with the overflow turned off it fails with the refusal above. Left
 (TODO): streams over the helper's own link take no session (above),
 once it is up.
 
+**The Account window: a host's account made ready for agents, in one
+go** (`crates/rex/src/ready.rs`, `apps/rex/src/account.rs`,
+`account_panel.rs`; Ben, 2026-11-22: "have a way in the rex app where
+i can have rex auto-setup my user on a remote server like install
+claude code, agy, codex, copy my local settings, configure the remote
+ones to go through token pool, and so on. do it in a way where we can
+extend this over time too, e.g. choosing what repos to clone and how
+to set them up").
+- *What an account is given* is a list of items in groups
+  (`account::GROUPS`: Programs, Settings), most of them steps of the
+  client's (`ready::Step`): `~/.local/bin` on the path of the account's
+  shells; Claude Code, Codex and the Antigravity CLI, each put there by
+  its maker's own installer, fetched on the host as the account
+  (claude.ai/install.sh, chatgpt.com/codex/install.sh,
+  antigravity.google/cli/install.sh: each puts its program in
+  `~/.local/bin`; tried in a container, 2026-11-23: 2.1.331, 0.172.0,
+  1.5.15, sixteen seconds for the three); git's name and address, as
+  this computer's git has them (read from its file, `ready::who_in`,
+  never asked of git); and Olo's skill for agents, which is the
+  account's too and was a section of the Host window. Nothing is done
+  as root, nothing outside the account's home. The host's own Token
+  Pool, where there is one, points Claude Code and Codex at itself.
+- *A step is a small thing to add*: a variant of `Step`, its title and
+  its line, a line of `ready::LOOK` (the script that asks the host how
+  the account stands; `Account::read` reads its answer) and the script
+  that does it (`Step::run`), safe to run again. What will want a
+  choice of the person's (their agents' settings copied, repositories
+  cloned) is to be a row that opens a window of its own, never a list
+  in this one.
+- *One is done at a time*, off the connection's own path
+  (`RexHub::ready_step`), each line its script writes heard as it
+  comes (`ready::plain_line`: a progress bar's last state, without a
+  terminal's colours) and shown under its row; the rest wait their
+  turn; one that fails says what the host said and doesn't keep the
+  rest from being tried. *Stop* ends the script on the host:
+  `ready::cancellable` runs it in a group of its own beside something
+  that reads the command's input, which ends when the channel does,
+  and then ends the group; and `SshSessionPool::exec` closes its
+  channel when its caller lets go before the command ended (a channel
+  is closed only when told to be: an installer stopped half way put
+  its program there six seconds later, found on the rig). What is
+  being done goes on with the window closed.
+- *The window* (`account_panel.rs`; both reviewers saw it early): a
+  head as the Host window's (the account's name, a light and "3 of 6
+  ready", the address), what is promised of all of it in a line, the
+  groups, each row a light (a ring while it is done, a grey ring while
+  it waits), its name, how it stands and its button, with a line under
+  it that is what it is, or what its installer wrote last, or what the
+  host said when it couldn't be done; Check Again at the foot's left,
+  and at its right the one button for all that is left, which says how
+  many they are ("Set Up 3"), is Stop while something is being done
+  and "All Set" when nothing is left. Every row is one height, so
+  nothing moves between states. While the host is asked, grey rings
+  and "Checking…" (the amber ring is a thing being done); of a host
+  that isn't connected, a dash on each row, no buttons, and Connect at
+  the foot. Git's name there differing from this computer's is green
+  (it is set, and counted), says so, has both names under it and
+  offers Use Mine: never put over it unasked. The head says which of a
+  run is being done ("Setting up 2 of 3…") and that something couldn't
+  be ("3 of 6 ready · 1 couldn’t be done"). The Host window has an
+  Account section ("3 of 6 ready · without Codex, Antigravity and 1
+  more", Account…) in place of its Skill section, and is as tall as
+  before; the status bar's skill mark opens the Account window.
+- *For agents*: `host.account:KEY` opens it; `host.ready:KEY:path|
+  claude|codex|agy|git|skill|all` does one, or all that is left;
+  `host.ready.stop`.
+- *Tried*: `ready`'s tests run the scripts on a scratch home here, and
+  in a container with the three real installers
+  (`OLO_READY_EXEC="podman exec -i NAME sh -c" OLO_READY_AGENTS=1`);
+  `tools/dev/rex-slow/try.py account` against the rig's far host with
+  stand-in installers (`OLO_REX_READY_FROM`): asked of a new account,
+  an agent installed, an installer's line shown as it goes, one
+  stopped half way with nothing of it there then or later, then all
+  that was left one after another. Pictures: `OLO_REX_DEMO_ACCOUNT=
+  new|ready|doing|failed|other|asking`.
+
 **A host made ready for heavy work: the Server window's Limits**
 (2026-11-23, `crates/rex/src/tune.rs`; Ben, when a host's SSH server
 refused an eleventh session: "why is there a 10 session limit? that

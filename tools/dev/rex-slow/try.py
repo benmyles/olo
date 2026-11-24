@@ -429,6 +429,78 @@ elif what == "poolrex":
         finally:
             r.far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')
         print("PASS" if ok else "FAIL")
+elif what == "account":
+    # A far host's account made ready from the Account window, by its commands: asked how it stands, an agent
+    # installed with its installer's lines shown as it goes, one stopped half way (its script on the host ends,
+    # and nothing of it comes later), then all that is left at once: the path, the three agents, git's identity.
+    # The installers are stand-ins served from this computer (OLO_REX_READY_FROM), each a script that puts a
+    # program of the agent's name in ~/.local/bin; Codex's takes six seconds and says where it is each second.
+    import subprocess, shutil
+    served, home, app_home = f"{D}/installers", f"{D}/home", f"{D}/home-app"
+    os.makedirs(served, exist_ok=True); os.makedirs(app_home, exist_ok=True)
+    stand_in = lambda name, version, slow: f"""#!/bin/sh
+set -eu
+mkdir -p "$HOME/.local/bin"
+{f'for i in 1 2 3 4 5 6; do echo "Downloading {name}: part $i of 6"; sleep 1; done' if slow else f'echo "Downloading {name}"'}
+printf '#!/bin/sh\\necho "{name} {version}"\\n' > "$HOME/.local/bin/{name}"
+chmod +x "$HOME/.local/bin/{name}"
+echo "Installed {name} {version}"
+"""
+    for file, name, version, slow in (("claude.sh", "claude", "9.9.1", False), ("codex.sh", "codex", "8.8.2", True), ("agy.sh", "agy", "7.7.3", False)):
+        open(f"{served}/{file}", "w").write(stand_in(name, version, slow))
+    def clean():
+        for f in (".local/bin/claude", ".local/bin/codex", ".local/bin/agy", ".gitconfig"):
+            with contextlib.suppress(FileNotFoundError): os.remove(f"{home}/{f}")
+        shutil.rmtree(f"{home}/.claude/skills/olo-rex-bridge", ignore_errors=True)
+        for f in (".profile", ".bash_profile", ".bashrc", ".zshrc", ".zprofile"):
+            try: text = open(f"{home}/{f}").read()
+            except OSError: continue
+            open(f"{home}/{f}", "w").write("\n".join(l for l in text.split("\n") if "Olo: programs in ~/.local/bin" not in l))
+    clean()
+    open(f"{app_home}/.gitconfig", "w").write("[user]\n\tname = Rig Person\n\temail = rig@example.org\n")
+    server = subprocess.Popen(["/usr/bin/python3", "-m", "http.server", "27881", "--bind", "127.0.0.1", "--directory", served], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
+    try:
+        with Rig("shell", delay=0, far=True, env=["OLO_REX_READY_FROM=http://127.0.0.1:27881"]) as r:
+            TITLES = ("Program folder", "Claude Code", "Codex", "Antigravity", "Git identity", "Skill for agents")
+            def rows(under=False):
+                """Each item's row as the window says it: {title: what is said after it}; `under`: the line under it."""
+                said = [str(n.get("name") or "") for n in r.nodes("Account") if n.get("role") in ("Label", "Text", "StaticText")]
+                out = {}
+                for title in TITLES:
+                    if title in said:
+                        at = said.index(title)
+                        if at + 2 < len(said) and said[at + 1] == "·": out[title] = said[at + 3] if under and at + 3 < len(said) else said[at + 2]
+                return out
+            there = lambda name: os.path.exists(f"{home}/.local/bin/{name}")
+            skill = lambda: os.path.exists(f"{home}/.claude/skills/olo-rex-bridge/SKILL.md")
+            r.invoke("host.account:far")
+            first = r.wait(lambda: (lambda w: w if w.get("Claude Code") == "Not installed" else None)(rows()), 25)
+            check("the window, asked of a new account", first and first.get("Codex") == "Not installed" and first.get("Git identity") == "Not set" and first.get("Program folder") == "Not on the path", first or rows())
+            r.invoke("host.ready:far:claude")
+            got = r.wait(lambda: (lambda w: w if w.get("Claude Code") == "9.9.1" else None)(rows()), 30)
+            check("Claude Code installed by its installer, and its version said", got and there("claude"), (got or rows()).get("Claude Code"))
+            r.invoke("host.ready:far:codex")
+            line = r.wait(lambda: (lambda w: w.get("Codex") if str(w.get("Codex")).startswith("Downloading codex: part") else None)(rows(under=True)), 20)
+            check("an installer's line shown under its row as it goes", line and rows().get("Codex") == "Installing…", {"row": rows().get("Codex"), "under": line})
+            r.invoke("host.ready.stop")
+            back = r.wait(lambda: (lambda w: w if w.get("Codex") == "Not installed" else None)(rows()), 15)
+            time.sleep(7)
+            check("stopped half way: nothing of it there, then or later", back and not there("codex"), {"row": rows().get("Codex"), "there": there("codex")})
+            r.invoke("host.ready:far:all")
+            want = {"Program folder": "On the path", "Claude Code": "9.9.1", "Codex": "8.8.2", "Antigravity": "7.7.3", "Git identity": "Rig Person <rig@example.org>", "Skill for agents": "Installed"}
+            done = r.wait(lambda: (lambda w: w if w == want else None)(rows()), 60, every=0.5)
+            check("all that was left, one after another", done, done or rows())
+            git = subprocess.run(["git", "config", "--file", f"{home}/.gitconfig", "user.email"], capture_output=True, text=True).stdout.strip()
+            check("on the host: the three programs, git's identity, the skill", there("claude") and there("codex") and there("agy") and git == "rig@example.org" and skill(), {"git": git, "skill": skill(), "bin": sorted(os.listdir(f"{home}/.local/bin")) if os.path.isdir(f"{home}/.local/bin") else None})
+    finally:
+        server.terminate(); clean()
+        shutil.rmtree(served, ignore_errors=True)
+        with contextlib.suppress(FileNotFoundError): os.remove(f"{app_home}/.gitconfig")
+    print("PASS" if ok else "FAIL")
 elif what == "disconnect":
     # A host let go of and connected again (Hosts and Ports' Disconnect, by its command): its SSH connection is
     # closed and Rex is no client of its server any more, the host stays in the list, saying so, with Connect

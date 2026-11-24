@@ -60,14 +60,23 @@ pub fn light_of(light: Light, across: f32) -> Element {
 /// Host window's "Being installed…" beside its "nothing granted", to
 /// its second design review.)
 pub fn busy_of(across: f32) -> Element {
+    ring_of(Light::Waiting, across)
+}
+
+/// A ring in `light`'s colour, `across` points across: a thing not at
+/// rest in that standing. In the waiting light's it is a thing being
+/// done ([`busy_of`]); in the off light's, one that waits its turn
+/// behind it (a row of steps of which one runs: the same shape as the
+/// one running, in the grey of what hasn't begun).
+pub fn ring_of(light: Light, across: f32) -> Element {
     canvas(move |g, b| {
         let s = g.scale_factor();
         let r = style::snap_centred(g, b.center(), across, across);
         // (A point and a half of line, in whole device pixels.)
         let line = (1.5 * s).round().max(1.0) / s;
-        g.paint_quad(olo_interface::quad(r, r.size.width / 2.0, olo_interface::transparent_black(), px(line), Light::Waiting.color(&theme::palette()), olo_interface::BorderStyle::Solid));
+        g.paint_quad(olo_interface::quad(r, r.size.width / 2.0, olo_interface::transparent_black(), px(line), light.color(&theme::palette()), olo_interface::BorderStyle::Solid));
     })
-    .paint_key(style::key(("busy", across.to_bits())))
+    .paint_key(style::key(("ring", light, across.to_bits())))
     .w(px(across))
     .h(px(across))
     .flex_shrink_0()

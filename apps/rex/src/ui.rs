@@ -66,6 +66,8 @@ pub enum WinRole {
     Server,
     /// Everything of Olo's on a far host, in one place (`host`).
     Host,
+    /// A far host's account made ready for work (`account`).
+    Account,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -324,14 +326,37 @@ fn open_host(hub: &Arc<RexHub>, key: &str) {
     open_or_raise_panel(WinRole::Host);
     host_changed();
     // (How its Token Pool stands is this computer's Token Pool's to
-    // say: asked as the window opens.)
+    // say: asked as the window opens. And its account, of the host.)
     hub.ask_pools();
+    hub.ask_account(key, host_changed);
 }
 
 /// The Host window's title: whose things it shows. (By what `host`
 /// keeps, never through `app()`: the window is opened from handlers
 /// that hold it, and asking for it again there stopped the app for
 /// good at a click on a status mark.)
+/// The Account window shows otherwise (another host, a step begun or
+/// ended, a line its installer wrote).
+pub fn account_changed() {
+    broadcast_to_role(WinRole::Account, || WinMsg::AccountChanged);
+}
+
+/// Opens the Account window on the host `key`: its account made ready
+/// for work. (Not for this computer.)
+fn open_account(hub: &Arc<RexHub>, key: &str) {
+    let Some(name) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| h.label.clone()) else { return };
+    crate::account::open(hub, key, &name);
+    open_or_raise_panel(WinRole::Account);
+    account_changed();
+}
+
+fn account_title() -> String {
+    match crate::account::current() {
+        Some(shown) => olo_kit::tr!("Account on “{}”", shown.name).into(),
+        None => olo_kit::words::tr("Account").into(),
+    }
+}
+
 fn host_title() -> String {
     match crate::host::current() {
         Some(shown) => olo_kit::tr!("Host “{}”", shown.name).into(),
@@ -498,6 +523,7 @@ pub fn open_or_raise_panel(role: WinRole) {
         // (Nor this one, as none of Rex's panels is: it is of a host
         // chosen in another window.)
         WinRole::Host => WindowOptions { fixed: true, ..WindowOptions::new(host_title(), crate::host_panel::HOST_WIDTH, 120.0).dialog() },
+        WinRole::Account => WindowOptions { fixed: true, ..WindowOptions::new(account_title(), crate::account_panel::ACCOUNT_WIDTH, 120.0).dialog() },
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
             WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
@@ -598,8 +624,12 @@ pub enum WinMsg {
     /// The Host window: opened on a host (its key); it shows otherwise;
     /// one of its buttons.
     HostOpen(String),
+    /// The Account window opened on a host (the skill's mark).
+    AccountOpen(String),
     HostChanged,
     HostDo(crate::host_panel::HostDo),
+    AccountChanged,
+    AccountDo(crate::account_panel::AccountDo),
     ServerChanged,
     ServerDo(crate::server_panel::ServerDo),
     ServerKey(usize),
@@ -1480,6 +1510,32 @@ impl RexWindow {
             "host.manage" => open_host(&hub, &self.active_host),
             // (A host named by its key: for agents, and the window's pictures.)
             c if c.starts_with("host.manage:") => open_host(&hub, c.trim_start_matches("host.manage:")),
+            // (A host's account made ready: its window; and, for
+            // agents, one of its items done there by its name, or all
+            // that is left: `host.ready:KEY:path|claude|codex|agy|git|
+            // skill|all`, `host.ready.stop`. In the Account window,
+            // where it shows.)
+            "host.account" => open_account(&hub, &self.active_host),
+            c if c.starts_with("host.account:") => open_account(&hub, c.trim_start_matches("host.account:")),
+            "host.ready.stop" => crate::account::stop(&hub),
+            c if c.starts_with("host.ready:") => {
+                let mut parts = c.trim_start_matches("host.ready:").rsplitn(2, ':');
+                if let (Some(what), Some(key)) = (parts.next(), parts.next()) {
+                    open_account(&hub, key);
+                    let items: Vec<crate::account::Item> = match (what, crate::account::Item::of(what)) {
+                        (_, Some(item)) => vec![item],
+                        // (All: those not there already, as far as is
+                        // known; the rest are asked for by name.)
+                        ("all", _) => {
+                            let stands = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(key);
+                            let who = crate::account::current().and_then(|shown| shown.who);
+                            crate::account::Item::all().filter(|item| stands.as_ref().and_then(|s| item.done(s, who.as_ref())) != Some(true)).collect()
+                        }
+                        _ => Vec::new(),
+                    };
+                    crate::account::run(&hub, &items);
+                }
+            }
             // (One of Olo's things put on a host or taken off, for
             // agents: `host.put:KEY:helper|bridge|skill`, `host.take:…`.
             // In the Host window, where it shows.)
@@ -2342,7 +2398,9 @@ impl RexWindow {
                 .enabled(pane)
                 .separator()
                 .item("Install Olo’s Skill for Agents", "olo.install_remote_skill")
-                .enabled(pane),
+                .enabled(pane)
+                .item("Set Up This Host’s Account…", "host.account")
+                .enabled(far_host(&hub, &self.active_host)),
             Menu::new("Settings")
                 .submenu(
                     Menu::new("Text Size")
@@ -2734,6 +2792,7 @@ impl RexWindow {
         let has = self.host_has();
         let marks_host = self.focused_block_key().map_or_else(|| self.active_host.clone(), |focused| focused.host_key);
         let open_host_window: Rc<dyn Fn(&String, &mut WindowCx)> = Rc::new(cx.msg_with(|host: &String| WinMsg::HostOpen(host.clone())));
+        let open_account_window: Rc<dyn Fn(&String, &mut WindowCx)> = Rc::new(cx.msg_with(|host: &String| WinMsg::AccountOpen(host.clone())));
         root = root.child(
             div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
                 div()
@@ -2782,16 +2841,19 @@ impl RexWindow {
                             // bridge, the skill for agents), with what each
                             // means for its tip.
                             .children(has.map(|has| {
-                                // (A click on one: the host's window, where
-                                // each is put on the host or taken off.)
-                                let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has| {
-                                    let (open, host) = (open_host_window.clone(), marks_host.clone());
+                                // (A click on one: the window where it is
+                                // put on the host or taken off. The host's
+                                // own for its helper and the bridge; the
+                                // account's for the skill, which is a row
+                                // there.)
+                                let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has, open: &Rc<dyn Fn(&String, &mut WindowCx)>| {
+                                    let (open, host) = (open.clone(), marks_host.clone());
                                     widgets::Indicator::new(name, mark).on(has.on).says(has.said).on_click(move |cx| open(&host, cx))
                                 };
                                 let marks = [
-                                    Some(mark("Typing helper", widgets::Mark::Keyboard, has.helper)),
-                                    has.bridge.map(|bridge| mark("Olo’s bridge", widgets::Mark::Bridge, bridge)),
-                                    has.skill.map(|skill| mark("Skill for agents", widgets::Mark::Book, skill)),
+                                    Some(mark("Typing helper", widgets::Mark::Keyboard, has.helper, &open_host_window)),
+                                    has.bridge.map(|bridge| mark("Olo’s bridge", widgets::Mark::Bridge, bridge, &open_host_window)),
+                                    has.skill.map(|skill| mark("Skill for agents", widgets::Mark::Book, skill, &open_account_window)),
                                 ];
                                 // (Their tips clear of the bar's rule and of
                                 // the band over it: the separator the bar
@@ -3311,6 +3373,15 @@ impl RexWindow {
                         cx.msg_with(|_: &()| WinMsg::ServerChosen),
                     ))
             }
+            WinRole::Account => {
+                let Some(shown) = crate::account::current() else {
+                    return div();
+                };
+                let Some(stands) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(&shown.key) else {
+                    return div();
+                };
+                div().w_full().child(crate::account_panel::render_account_panel(&stands, &shown, cx.msg_with(|what: &crate::account_panel::AccountDo| WinMsg::AccountDo(what.clone()))))
+            }
             WinRole::Host => {
                 let Some(shown) = crate::host::current() else {
                     return div();
@@ -3774,6 +3845,7 @@ impl View for RexWindow {
             }
             WinMsg::SetupKey(i) => crate::setup::choose_key(i),
             WinMsg::HostOpen(key) => open_host(&app().hub.clone(), &key),
+            WinMsg::AccountOpen(key) => open_account(&app().hub.clone(), &key),
             WinMsg::HostChanged => {
                 // (Another host's things in the window: its name in the title.)
                 if self.role == WinRole::Host {
@@ -3781,10 +3853,36 @@ impl View for RexWindow {
                 }
                 cx.invalidate();
             }
+            WinMsg::AccountChanged => {
+                if self.role == WinRole::Account {
+                    cx.set_window_title(account_title());
+                }
+                cx.invalidate();
+            }
+            WinMsg::AccountDo(what) => {
+                use crate::account_panel::AccountDo;
+                let hub = app().hub.clone();
+                match what {
+                    AccountDo::Run(items) => crate::account::run(&hub, &items),
+                    AccountDo::RemoveSkill => crate::account::remove_skill(&hub),
+                    AccountDo::Stop => crate::account::stop(&hub),
+                    AccountDo::Check => crate::account::check(&hub),
+                    AccountDo::Connect => {
+                        if let Some(shown) = crate::account::current() {
+                            hub.connect_host(&shown.key);
+                        }
+                    }
+                }
+            }
             WinMsg::HostDo(what) => {
                 use crate::host_panel::HostDo;
                 let hub = app().hub.clone();
                 match what {
+                    HostDo::Account => {
+                        if let Some(shown) = crate::host::current() {
+                            open_account(&hub, &shown.key);
+                        }
+                    }
                     HostDo::Change(thing, add) => crate::host::change(&hub, thing, add),
                     HostDo::Check => crate::host::check(&hub),
                     HostDo::Connect => {
@@ -4046,6 +4144,9 @@ impl Drop for RexWindow {
         }
         if self.role == WinRole::Host {
             crate::host::close();
+        }
+        if self.role == WinRole::Account {
+            crate::account::close();
         }
         self.cancel_preview();
         app().attention.hide(self.id);

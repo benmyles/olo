@@ -1456,13 +1456,48 @@ something nobody here has is in "Blocked", with what it waits for.
       record (it has the last 25 requests an account and a day's
       activity: shown as they are when it is next reached).
     - Tried with a real account on a real host.
-    *A host's account made ready in one go*, in Rex, from a list of
-    steps that can grow: the agents installed, the person's settings
-    for them copied (what is theirs to copy), each pointed at the
-    host's own pool, then repositories cloned and set up as the person
-    chose. Each step shown as it runs (the Server window's way), safe
-    to run again, and written so a step is a small thing to add.
-    After the slow link's host half.
+    *A host's account made ready in one go*: the Account window is
+    built (2026-11-23; HACKING, "The Account window"): programs found
+    by name, Claude Code, Codex and Antigravity by their makers'
+    installers, git's identity, Olo's skill; one after another, shown
+    as they go, stopped on Stop. Left, in this order:
+    - *The person's settings for their agents copied* (Ben: "copy my
+      local settings"): what is theirs to copy of Claude Code's
+      (`settings.json` less what the pool put in it, `CLAUDE.md`,
+      skills, agents, commands), Codex's (`config.toml`, `AGENTS.md`,
+      prompts) and Antigravity's; never a sign-in. A row in the
+      window's Settings that opens a window of its own (which, and
+      over what is there or beside it).
+    - *Repositories cloned and set up* (Ben: "choosing what repos to
+      clone and how to set them up"): a list the person keeps, a row
+      here ("4 of 6 cloned", Choose…) and a window of its own.
+    - What Opus's early review asked for and isn't built: an agent
+      the person doesn't want left out of the count and of Set Up
+      ("Don't Install", on the row's menu); an agent's update said and
+      offered ("2.1.331 · 2.1.340 available", Update); the whole of
+      what an installer said, to open after a failure (now its last
+      line); a ring that turns while a thing is done (the kit's is
+      still).
+    - The Token Pool there as a row of the window too (now its own
+      section of the Host window)?
+    - From Opus's review of the built window, for later: "Windows
+      open with their tab on the parent's menu bar … reads as the new
+      window's own menu" (the desktop's placement of a new window:
+      shift it down until its tab clears the menu bar); the Host
+      window's rows are looser than this window's (27.5 pt from a
+      line to its note against 20.5) and its Check Again is at the
+      head where this one's is at the foot: "pick one"; the head's
+      icon is two people for one account ("a single-figure account
+      icon … if the icon set has one or gets one"); the skill "sits
+      under Settings but behaves like a program": decide the groups
+      when the rows to come arrive. From Gemini's: the default
+      button's ring stands 2.5 pt outside the buttons' column (the
+      kit's default button, everywhere). From Opus's third, of the
+      host that isn't connected: its address with the account before
+      it ("Disconnected · you@nas.ts.net"), no dot before a row's
+      dash, no light (or a faint one) where a row's standing isn't
+      known ("a row never seems to say 'not there' when Rex simply
+      can't tell"), and Connect as the default button there.
   - *Files from a host, and folders kept in step* (Ben, 2026-11-22:
     "thinking about what we'll need to use rex to build olo (as an
     example), once it's built we'd want an easy way to e.g.

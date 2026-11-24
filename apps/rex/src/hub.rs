@@ -1102,6 +1102,8 @@ pub struct HostStands {
     pub pool: Option<crate::pool::PoolStands>,
     /// Its Rex server's version, as it said when it connected.
     pub version: Option<String>,
+    /// How the account there stands; none: not asked yet.
+    pub account: Option<olo_rex_client::ready::Account>,
 }
 
 /// One of the things of Olo's a far host may have, as the status bar
@@ -1146,6 +1148,10 @@ pub struct HostRuntime {
     /// has been asked, and for a host that can't be (not over SSH).
     pub bridge_there: Option<bool>,
     pub skill_there: Option<bool>,
+    /// How the account there stands (its agents, its path, git's
+    /// identity: `olo_rex_client::ready`), as last asked; none until
+    /// it has been (the Account window asks).
+    pub account: Option<olo_rex_client::ready::Account>,
     pub tailscale: Option<TailscaleStatus>,
     tailscale_seq: u64,
     pub synced_hosts: Vec<HostRecord>,
@@ -1289,9 +1295,16 @@ impl HubState {
                 helper_setting: true,
                 bridge: there.then_some(true),
                 granted: if there { vec!["links", "Agent Screens", "Passwords"] } else { Vec::new() },
-                skill: there.then_some(false),
+                // (`OLO_REX_DEMO_ACCOUNT=ready`: the skill there too;
+                // `asking`: not answered.)
+                skill: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
+                    Some("asking") => None,
+                    Some("ready") => there.then_some(true),
+                    _ => there.then_some(false),
+                },
                 pool: Some(crate::pool::PoolStands { wanted: there, in_step: there, accounts: there.then_some(3), ..Default::default() }),
                 version: there.then(|| "0.19.2".to_owned()),
+                account: there.then(demo_account).flatten(),
             });
         }
         Some(HostStands {
@@ -1307,6 +1320,7 @@ impl HubState {
             skill: host.skill_there,
             pool: self.pools.as_ref().map(|pools| pools.get(host_key).cloned().unwrap_or_default()),
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
+            account: host.account.clone(),
         })
     }
 
@@ -1378,6 +1392,23 @@ pub fn local_home() -> Option<String> {
     if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") { Some("/home/you".into()) } else { std::env::var("HOME").ok() }
 }
 
+/// The demo's account on its connected host, for the Account window's
+/// pictures and its lint (`OLO_REX_DEMO_ACCOUNT`: `new`, nothing there
+/// yet; `ready`, all of it; `asking`, not answered yet; `other`,
+/// another name for git there; else some of it).
+fn demo_account() -> Option<olo_rex_client::ready::Account> {
+    use olo_rex_client::ready::Account;
+    let who = Some(("You".to_owned(), "you@example.org".to_owned()));
+    let some = Account { path: true, claude: Some("2.1.331".into()), codex: None, antigravity: None, git: who, has_curl: true, has_git: true };
+    Some(match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
+        Some("asking") => return None,
+        Some("new") => Account { has_curl: true, has_git: true, ..Account::default() },
+        Some("ready") => Account { codex: Some("0.172.0".into()), antigravity: Some("1.5.15".into()), ..some },
+        Some("other") => Account { git: Some(("Somebody Else".to_owned(), "else@example.org".to_owned())), ..some },
+        _ => some,
+    })
+}
+
 /// The hosts the person let go of (Disconnect) in this run of Rex: kept
 /// over an upgrade in place with the windows, so that Rex comes back
 /// with them as they were, not connected again because they are to be
@@ -1436,6 +1467,7 @@ impl RexHub {
                 helper: HostHelper::None,
                 bridge_there: None,
                 skill_there: None,
+                account: None,
                 tailscale: None,
                 tailscale_seq: 0,
                 synced_hosts: Vec::new(),
@@ -1471,6 +1503,7 @@ impl RexHub {
                         helper: HostHelper::None,
                         bridge_there: None,
                         skill_there: None,
+                        account: None,
                         tailscale: None,
                         tailscale_seq: 0,
                         synced_hosts: Vec::new(),
@@ -1766,6 +1799,7 @@ impl RexHub {
             helper: HostHelper::None,
             bridge_there: None,
             skill_there: None,
+            account: None,
             tailscale: None,
             tailscale_seq: 0,
             synced_hosts: Vec::new(),
@@ -1915,6 +1949,7 @@ impl RexHub {
                     helper: HostHelper::None,
                     bridge_there: None,
                     skill_there: None,
+                    account: None,
                     tailscale: None,
                     tailscale_seq: 0,
                     synced_hosts: Vec::new(),
@@ -2910,6 +2945,72 @@ impl RexHub {
         });
     }
 
+    /// Asks a host how its account stands (`olo_rex_client::ready`:
+    /// its agents, its path, git's identity), over SSH, and keeps the
+    /// answer for the Account window (`HostStands::account`).
+    pub fn ask_account(&self, host_key: &str, done: impl FnOnce() + Send + 'static) {
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done();
+            return;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            inner.ask_the_account(&host_key, &pool, &target, askpass).await;
+            (inner.notify)(HubNotice::StateChanged);
+            done();
+        });
+    }
+
+    /// Does one step of making a host's account ready
+    /// (`olo_rex_client::ready::Step`), over SSH, off the connection's
+    /// own path: `said` hears each line the host writes as it goes (an
+    /// installer's progress), `done` how it ended, after the host has
+    /// been asked again how the account stands. `who`: this computer's
+    /// name and address for git. What comes back stops it: the script
+    /// there ends with its channel (`ready::cancellable`), and `done`
+    /// is then never called.
+    pub fn ready_step(
+        &self,
+        host_key: &str,
+        step: olo_rex_client::ready::Step,
+        who: Option<(String, String)>,
+        said: impl Fn(&str) + Send + Sync + 'static,
+        done: impl FnOnce(Result<(), String>) + Send + 'static,
+    ) -> Option<tokio::task::AbortHandle> {
+        use olo_rex_client::ready;
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return None;
+        };
+        // (`OLO_REX_READY_FROM`: a folder of stand-in installers, for
+        // Olo's own tests.)
+        let Some(script) = step.run(who.as_ref(), std::env::var("OLO_REX_READY_FROM").ok().as_deref()) else {
+            done(Err(olo_kit::words::tr("This computer’s git doesn’t say who you are.").into()));
+            return None;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        let task = self.rt.spawn(async move {
+            let command = format!("sh -c {}", shell_quote(&ready::cancellable(&script)));
+            let mut hear = |line: &str| {
+                let line = ready::plain_line(line);
+                if !line.is_empty() {
+                    said(&line);
+                }
+            };
+            let result = match pool.exec(&target, askpass.clone(), &command, &mut hear).await {
+                Ok(ran) if ran.ok() => Ok(()),
+                Ok(ran) => Err(ran.output.lines().rev().map(ready::plain_line).find(|l| !l.is_empty()).unwrap_or_else(|| olo_kit::words::tr("it didn’t say why").into())),
+                Err(e) => Err(e.to_string()),
+            };
+            inner.ask_the_account(&host_key, &pool, &target, askpass).await;
+            (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+        Some(task.abort_handle())
+    }
+
     pub fn install_remote_skill_in_pane(&self, key: &BlockKey) {
         let script = bridge::generate_remote_skill_install_script();
         let cmd = format!("sh -c {}\n", shell_quote(&script));
@@ -3222,6 +3323,19 @@ impl RexHubInner {
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
         tokio::spawn(async move { hub.ask_what_the_host_has(&host_key, &pool, &target, askpass).await });
+    }
+
+    /// The host asked how its account stands, and its answer kept
+    /// (`RexHub::ask_account`).
+    async fn ask_the_account(&self, host_key: &str, pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) {
+        use olo_rex_client::ready;
+        let Ok(ran) = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(ready::LOOK)), &mut |_| {}).await else { return };
+        if !ran.ok() {
+            return;
+        }
+        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
+            host.account = Some(ready::Account::read(&ran.output));
+        }
     }
 
     /// [`Self::look_at_what_the_host_has`], waited for: the host is

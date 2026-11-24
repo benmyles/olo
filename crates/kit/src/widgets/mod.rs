@@ -47,7 +47,7 @@ pub use find_bar::{find_bar, find_said};
 pub use image_view::{ImageView, image_view};
 pub use indicator::{INDICATOR_GAP, Indicator, indicators};
 pub use key_hint::KeyHint;
-pub use light::{LIGHT, Light, busy_of, light, light_of};
+pub use light::{LIGHT, Light, busy_of, light, light_of, ring_of};
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel, list_height};
 pub use menu_field::{MenuField, NONE_CHOSEN, divider_for};
 pub use month::MonthGrid;

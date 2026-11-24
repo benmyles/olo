@@ -587,7 +587,8 @@ fn end_at_a_word(text: &str, end: usize) -> usize {
 /// Notifications' waiting rows, 2026-11-19).
 fn cut_short(text: &str, end: usize) -> String {
     let kept = text[..end].trim_end();
-    let bare = kept.trim_end_matches(['—', '–', '-', ':', ';', ',', '·', '/', '|']).trim_end();
+    // (Nor after an ellipsis of the text's own: "Downloading……" was two.)
+    let bare = kept.trim_end_matches(['—', '–', '-', ':', ';', ',', '·', '/', '|', '…']).trim_end();
     format!("{}…", if bare.is_empty() { kept } else { bare })
 }
 
@@ -1538,6 +1539,7 @@ mod tests {
         assert_eq!(cut_short(t, "Token Pool — ".len()), "Token Pool…");
         assert_eq!(cut_short(t, "Token Po".len()), "Token Po…");
         assert_eq!(cut_short("a, b", 2), "a…");
+        assert_eq!(cut_short("Downloading… 62%", "Downloading… ".len()), "Downloading…");
         assert_eq!(cut_short("— x", "—".len()), "—…");
     }
 }

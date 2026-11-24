@@ -263,6 +263,13 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "app.settings", title: "Rex Settings…", category: "General", keywords: &["preferences", "hosts", "permissions", "notifications"], args_schema: None },
         ActionSpec { id: "app.diagnostics", title: "Rex Diagnostics…", category: "Diagnostics", keywords: &["debug", "server", "status", "version"], args_schema: None },
         ActionSpec { id: "app.hosts", title: "Hosts and Ports…", category: "Network", keywords: &["ssh", "remote", "tailscale", "tunnels", "ports"], args_schema: None },
+        ActionSpec {
+            id: "host.account",
+            title: "Set Up This Host’s Account…",
+            category: "Network",
+            keywords: &["account", "claude", "codex", "antigravity", "agy", "install", "agents", "git"],
+            args_schema: None,
+        },
         ActionSpec { id: "host.manage", title: "Manage Host…", category: "Network", keywords: &["host", "helper", "bridge", "skill", "install", "remove", "server"], args_schema: None },
         ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], args_schema: None },
         ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], args_schema: None },

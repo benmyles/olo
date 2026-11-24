@@ -72,7 +72,10 @@ class FarHost:
                "REX_SERVER_SOCKET": f"{D}/rex/rex.sock", "TMPDIR": f"{D}/tmp",
                # (A Token Pool put there by a test: on ports of the rig's own, the person's pool being on this
                # computer too, and asking a provider that isn't there.)
-               "OLO_POOL_PORT": "27891", "OLO_POOL_PROXY_PORT": "27892", "OLO_POOL_UPSTREAM": os.environ.get("FAR_POOL_UPSTREAM", "http://127.0.0.1:9"), "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+               "OLO_POOL_PORT": "27891", "OLO_POOL_PROXY_PORT": "27892", "OLO_POOL_UPSTREAM": os.environ.get("FAR_POOL_UPSTREAM", "http://127.0.0.1:9"),
+               # (The system's programs, and none of yours: with your own folders on its path, the "host" had your
+               # agents installed before any test put one there, found by name.)
+               "PATH": ":".join(p for p in os.environ.get("PATH", "/usr/bin:/bin").split(":") if p and not (p + "/").startswith(os.path.expanduser("~") + "/")) or "/usr/bin:/bin"}
         with open(f"{self.dir}/sshd_config", "w") as f:
             f.write("\n".join([f"Port {self.port}", "ListenAddress 127.0.0.1", f"HostKey {self.dir}/host_key", f"PidFile {self.dir}/sshd.pid", f"AuthorizedKeysFile {self.dir}/authorized_keys",
                                "PasswordAuthentication no", "KbdInteractiveAuthentication no", "UsePAM no", "StrictModes no", "PermitUserEnvironment no", "AllowAgentForwarding yes",

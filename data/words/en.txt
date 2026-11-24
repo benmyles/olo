@@ -181,10 +181,12 @@ Accent
 Accept
 Access
 Account
+Account on “{}”
 Account:
 Accounts
 Accounts that may sign in through the login server, kept in {}.
 Accounts:
+Account…
 Action
 Activity
 Activity Monitor
@@ -258,6 +260,7 @@ Agent Screen Logs
 Agent Screen “{}” is waiting for a code
 Agent Screens
 Agents
+Agents and settings in your account there.
 Agree
 AirPlay
 AirPlay Settings…
@@ -278,6 +281,7 @@ All Imperial
 All Items
 All Metric
 All Preferences
+All Set
 All accounts together
 All agents and shells are quiet.
 All day
@@ -334,6 +338,8 @@ Answer questions about your calendars
 Answer questions in the command palette
 Answering now
 Answering now · {}
+Anthropic’s coding agent.
+Antigravity
 Any of the {}
 Any storms on the way?
 Any tagged device on the tailnet
@@ -902,6 +908,8 @@ Couldn’t archive it. {}
 Couldn’t ask for emoji
 Couldn’t ask for your keyring to be unlocked: {}
 Couldn’t be checked {}: {}.
+Couldn’t be installed
+Couldn’t be set
 Couldn’t change this vault in 1Password. {}
 Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
@@ -1060,6 +1068,7 @@ Dew point spread {}
 Dew point {}
 Diagnostics…
 Diff
+Differs from this computer
 Dim the built-in display when idle
 Dim the display while you look away
 Disable Copy-on-Write on index.db
@@ -1504,6 +1513,7 @@ Get items from Passwords
 Getting ready
 Getting the sensor ready…
 Git Worktrees
+Git identity
 GitHub
 GitHub answered {}
 GitHub answered {}.
@@ -1541,6 +1551,7 @@ Google Drive
 Google account’s login:
 Google and Fastmail accounts for Mail (Integrations) are looked in too.
 Google no longer takes its sign-in: sign in again.
+Google’s coding agent (agy).
 Got it. Touch the key once more: its light is blinking again.
 Governor:
 Go’s downloaded modules and build cache
@@ -1731,7 +1742,9 @@ Install from:
 Install just
 Install the Helper…
 Installed
+Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Installing
+Installing…
 Install…
 Integrated GPU (VA-API)
 Integrations
@@ -2241,7 +2254,9 @@ Narrower than sRGB ({}% of it)
 Natural scrolling (content follows your fingers)
 Nearby
 Needed by another package
+Needs curl there
 Needs full access
+Needs git there
 Neither kind of Rex server is in use on {}. Start one of them:
 Network
 Network name
@@ -2445,12 +2460,14 @@ Not in force: {}
 Not in the last minute; {} since this window opened
 Not installed
 Not known
+Not on the path
 Not paired
 Not recognised. Try again
 Not running under olo-session.
 Not running: Codex starts it with its first window.
 Not saved: {}
 Not sent: {}
+Not set
 Not set up
 Not set up.
 Not set up: Telegram needs an API ID to sign in with.
@@ -2584,6 +2601,7 @@ On hold
 On it now
 On the day, at 9 AM
 On the network
+On the path
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 On the tailnet as {}.
 On this computer
@@ -2650,6 +2668,7 @@ Open the website
 Open with {}
 Open {} to see it.
 Open {} to see them.
+OpenAI’s coding agent.
 OpenDocument Text…
 Opening programs’ secrets…
 Opening session…
@@ -2881,7 +2900,9 @@ Processors:
 Profile
 Profile:
 Program
+Program folder
 Program names, comma separated
+Programs
 Programs Using the Network
 Programs Using the {}
 Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
@@ -2956,6 +2977,7 @@ Reading the updates…
 Reading your logins in Passwords…
 Reading…
 Reads
+Ready
 Ready: it starts when somebody signs in
 Real-time priority
 Real-time timeout
@@ -3303,7 +3325,9 @@ Set Rex up there if it needs it
 Set Time Zone
 Set Up
 Set Up Again…
+Set Up This Host’s Account…
 Set Up by Hand…
+Set Up {}
 Set Up…
 Set date and time automatically
 Set for the whole computer by {}{}.
@@ -3318,9 +3342,11 @@ Setting up needs root. Nothing on {} is changed yet.
 Setting up the backups in {}’s Google Drive…
 Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
+Setting up {} of {}…
 Setting up {}…
 Settings
 Settings:
+Setting…
 Seventh folder
 Shaping
 Share
@@ -3424,6 +3450,7 @@ Site Settings
 Sixth folder
 Size
 Size:
+Skill for agents
 Skip syncing the index to disk
 Skip this step
 Sleep
@@ -3641,6 +3668,7 @@ Tell me when an agent whose pane isn’t in front:
 Tell me when it runs out, and when it's back
 Tell palms apart with a palm model
 Tell palms apart with a palm model too
+Tells Claude Code and other agents there how to use the bridge and Rex.
 Temperature
 Temperature ({})
 Terminal
@@ -3849,6 +3877,7 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 There's no fingerprint sensor, or fprintd isn't running.
 There's no infrared camera.
+There: {} <{}>  ·  Here: {} <{}>
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 These take effect at once:
@@ -3876,10 +3905,12 @@ This computer is “{}”.
 This computer runs Fedora {}.
 This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
 This computer's sensor sees when someone is in front of it.
+This computer’s git doesn’t say who you are.
 This display reports no modes.
 This event
 This folder was moved or deleted.
 This host isn’t reached over SSH.
+This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.
 This is the recommended profile for this touchpad.
 This isn't an Olo backup.
 This isn't the session at the computer, so the computer isn't restarted.
@@ -4129,6 +4160,7 @@ Use Credit
 Use Default
 Use F1, F2, etc. as standard function keys
 Use Google Drive Instead…
+Use Mine
 Use Music Quality
 Use Olo’s Typing Helper on Hosts
 Use Passwords for ssh
@@ -4397,6 +4429,7 @@ Your face wasn’t recognised. Type your password.
 Your home folder
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
+Your name and address on commits made there, as on this computer.
 Your notes, files and forwarded messages
 Your other devices on Tailscale can reach these sessions.
 Your own files and folders
@@ -4519,6 +4552,7 @@ in {n} minutes
 in {}
 install {n} packages
 it couldn't be ended: {}
+it didn’t say why
 it is on a different volume from the Trash, so it can only be deleted
 it took too long
 its accounts are behind
@@ -4702,6 +4736,8 @@ visibility down to {}
 what holds it back
 where the scheduler puts it
 with the {n} files changed in it and not committed
+without {}
+without {}, {} and {} more
 yes
 yesterday
 yesterday at {}
@@ -4718,6 +4754,7 @@ your own picture
 {n} backups chosen.
 {n} coming up
 {n} conversations
+{n} couldn’t be done
 {n} days
 {n} days ago
 {n} due today
@@ -4911,6 +4948,7 @@ your own picture
 {} of {} pages
 {} of {} processes, {} threads · {} CPU
 {} of {} read back
+{} of {} ready
 {} of {} selected
 {} of {} sent
 {} of {} slots
@@ -5044,6 +5082,7 @@ your own picture
 {}″ ({} × {} mm), {} pixels per inch
 ~/.cache, browsers’ caches, thumbnails
 ~/.gradle, ~/.m2/repository, a project’s .gradle
+~/.local/bin: where the agents and Rex are put, so your shells there find them.
 ~/.local/share/Trash
 ~/.local/share/containers, ~/.local/share/flatpak
 ~/Videos/raw, **/*.iso
@@ -5054,6 +5093,7 @@ your own picture
 ¼ second
 ½ Second
 ½ second
+—
 “[{}]” isn’t a repository’s id.
 “{}” and {n} more are still running in them, and stop.
 “{}” and {n} other programs are still running in this window. Close it anyway?

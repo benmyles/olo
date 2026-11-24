@@ -2859,6 +2859,19 @@ an argument it doesn't know starts the lint (read its first lines).
   changes**: both of Rex's lists had live scroll bars only there (a
   height added up by hand, a fraction of a device pixel short), and
   1×, 1.5× and 2× showed nothing.
+- **podman carries this session's proxy settings into a container**
+  (`HTTPS_PROXY`, set here for the Token Pool's proxy on 127.0.0.1,
+  which inside a container is the container): nothing in it reaches
+  the network, and `dnf -q` says nothing of it. `podman run
+  --http-proxy=false`.
+- **The rig's far host is this computer**: its sessions had the
+  person's own `PATH`, so their agents were "installed" there before
+  any test put one (farhost.py keeps the person's folders off it
+  now). What a test looks for by name on the "host" may be yours.
+- **A command run with `SshSessionPool::exec` went on after its
+  caller had gone**, until 2026-11-23: russh closes a channel only
+  when told to. `exec` closes it now when dropped; a script that must
+  end with its caller is wrapped in `ready::cancellable`.
 - **Rex's Lua** (`rex do SCRIPT`): `io` and `os.getenv`/`os.exit` are
   there, `os.execute` isn't (`rex.exec{ "sh", "-c", … }` returns
   stdout, stderr, code, ok); `rex.call(method, table)` returns the

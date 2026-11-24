@@ -4,6 +4,8 @@
 //! native Rust SSH + tunnels), and `olo-kit` (120 Hz GPU rendering, BeOS/Olo chrome,
 //! in-place upgrade survival, Deskbar Glance, and zero-trust Olo Desktop Bridge).
 
+mod account;
+mod account_panel;
 mod agent;
 mod attach;
 mod attention;
