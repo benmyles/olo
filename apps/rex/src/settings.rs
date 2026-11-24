@@ -177,6 +177,11 @@ pub struct Settings {
     pub helper_hosts: std::collections::BTreeMap<String, String>,
     /// What Keep It Going types to an agent that has stopped.
     pub keep_going_message: String,
+    /// Typing over a slow link and Keep It Going's message were carried
+    /// into the desktop's settings (Preferences ▸ Rex), once: this file's
+    /// copy of them follows those since.
+    #[serde(default)]
+    pub carried_typing_to_preferences: bool,
 
     // ---- Hosts ----
     pub home_server_address: String,
@@ -222,7 +227,8 @@ impl Default for Settings {
             type_ahead: true,
             host_helper: true,
             helper_hosts: std::collections::BTreeMap::new(),
-            keep_going_message: "Please keep going until everything is complete and verified.".to_owned(),
+            keep_going_message: olo_protocol::REX_KEEP_GOING_SAYS.to_owned(),
+            carried_typing_to_preferences: false,
             home_server_address: "local".to_owned(),
             saved_hosts: Vec::new(),
             ssh_agent_socket: None,

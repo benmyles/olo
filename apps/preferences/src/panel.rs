@@ -330,16 +330,18 @@ impl Panel {
     /// back to `from`'s, and what a change of them tells others told
     /// (the language, to the programs Olo starts).
     pub fn reset_pressed(self, what: &'static str, from: &Settings) {
-        prefs().edit_as("", what, |s| self.reset(s, from));
+        let to_defaults = what == "Defaults";
+        prefs().edit_as("", what, |s| self.reset(s, from, to_defaults));
         if self == Panel::Language {
             crate::language::tell_others(&from.language);
         }
     }
 
-    /// Put this panel's part of `settings` back to `from`, and nothing
-    /// else: it's also how the panel asks whether that would change
-    /// anything (at every drawing).
-    pub fn reset(self, settings: &mut Settings, from: &Settings) {
+    /// Put this panel's part of `settings` back to `from` (the defaults,
+    /// `to_defaults`, or as they were when it opened), and nothing else:
+    /// it's also how the panel asks whether that would change anything
+    /// (at every drawing).
+    pub fn reset(self, settings: &mut Settings, from: &Settings, to_defaults: bool) {
         match self {
             Panel::Appearance => {
                 settings.appearance.theme = from.appearance.theme;
@@ -371,7 +373,21 @@ impl Panel {
                 settings.mouse_speed = from.mouse_speed;
                 settings.focus_follows_mouse = from.focus_follows_mouse;
             }
-            Panel::Rex => settings.rex = from.rex.clone(),
+            // What the General tab shows; and on Revert the hosts, as the
+            // pane opened with them. Never the hosts by Defaults: there is
+            // no list of them to go back to, and Defaults emptied the
+            // person's (Opus's review, 2026-11-24). Nor what Rex's Account
+            // window sets (the repositories, how far back sessions go).
+            Panel::Rex => {
+                let (r, f) = (&mut settings.rex, &from.rex);
+                (r.notify_blocked, r.notify_done, r.notify_failed) = (f.notify_blocked, f.notify_done, f.notify_failed);
+                (r.show_typing_at_once, r.typing_helper) = (f.show_typing_at_once, f.typing_helper);
+                r.keep_going_says.clone_from(&f.keep_going_says);
+                if !to_defaults {
+                    r.local = f.local;
+                    r.hosts.clone_from(&f.hosts);
+                }
+            }
             Panel::Tracker => settings.tracker = from.tracker.clone(),
             Panel::Terminal => settings.terminal = from.terminal.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
@@ -549,15 +565,18 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
     }
 
     let defaults = Settings::default();
-    let differs = |from: &Settings| {
+    let differs = |from: &Settings, to_defaults: bool| {
         let mut probe = s.clone();
-        panel.reset(&mut probe, from);
+        panel.reset(&mut probe, from, to_defaults);
         probe != s
     };
     // (While a shortcut's keys are typed, only Esc is the way out: they'd
     // throw the change away under the hand typing it.)
     let typing = matches!(&v.state, State::Keyboard(k) if k.shortcuts.recording());
-    let (to_defaults, to_opened) = (differs(&defaults) && !typing, differs(&v.opened) && !typing);
+    // (Rex's Hosts tab has no defaults: Defaults is for what General shows,
+    // and on Hosts it would change what isn't in sight.)
+    let no_defaults = matches!(&v.state, State::Rex(st) if st.tab == 1);
+    let (to_defaults, to_opened) = (differs(&defaults, true) && !typing && !no_defaults, differs(&v.opened, false) && !typing);
     let opened = v.opened.clone();
     let footer = div()
         .flex()
@@ -573,6 +592,28 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Defaults on Preferences ▸ Rex puts back what General shows and
+    /// never empties the hosts (nor what Rex's Account window sets);
+    /// Revert puts the hosts back as the pane opened with them.
+    #[test]
+    fn rex_defaults_keep_the_hosts() {
+        let mut s = Settings::default();
+        s.rex.hosts.push(olo_protocol::RexHost { id: "a".into(), label: "A".into(), endpoint: "ssh://a".into(), ..Default::default() });
+        s.rex.repos.push(olo_protocol::RexRepo { url: "u".into(), ..Default::default() });
+        s.rex.sessions_days = 30;
+        s.rex.notify_done = false;
+        s.rex.keep_going_says = "Go on.".into();
+        let mut d = s.clone();
+        Panel::Rex.reset(&mut d, &Settings::default(), true);
+        assert_eq!((d.rex.hosts.len(), d.rex.repos.len(), d.rex.sessions_days), (1, 1, 30));
+        assert!(d.rex.notify_done);
+        assert_eq!(d.rex.keep_going_says, olo_protocol::REX_KEEP_GOING_SAYS);
+        let mut r = s.clone();
+        Panel::Rex.reset(&mut r, &Settings::default(), false);
+        assert!(r.rex.hosts.is_empty());
+        assert_eq!((r.rex.repos.len(), r.rex.sessions_days), (1, 30));
+    }
 
     /// Deskbar's menu and our panels agree on arguments, names and icons.
     #[test]

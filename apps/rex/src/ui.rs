@@ -1692,16 +1692,6 @@ impl RexWindow {
             }
             // Where the tabs are, said outright (it was one command that
             // went round the four).
-            "terminal.type_ahead" => {
-                let on = !hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.type_ahead;
-                hub.set_type_ahead(on);
-                cx.invalidate();
-            }
-            "hosts.helper" => {
-                let on = !hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.host_helper;
-                hub.set_host_helper(on);
-                cx.invalidate();
-            }
             "tabs.top" | "tabs.side" => {
                 let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.settings.toolbar_layout = if action == "tabs.side" { ToolbarLayout::Side } else { ToolbarLayout::Above };
@@ -1728,6 +1718,9 @@ impl RexWindow {
             "app.hosts" => open_or_raise_panel(WinRole::Hosts),
             "app.add_host" => open_or_raise_panel(WinRole::AddHost),
             "host.manage" => open_host(&hub, &self.active_host),
+            // (What the pane's host may do here: Preferences ▸ Rex, on
+            // Hosts, at that host; as its window's Permissions… does.)
+            "host.permissions" => olo_kit::app_menu::open_settings(&format!("rex/host:{}", self.active_host)),
             // (A host named by its key: for agents, and the window's pictures.)
             c if c.starts_with("host.manage:") => open_host(&hub, c.trim_start_matches("host.manage:")),
             // (A host's account made ready: its window; and, for
@@ -2454,20 +2447,9 @@ impl RexWindow {
         let hub = app().hub.clone();
         let broadcast_on = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
         let sidebar_shown = self.side_pane.showing();
-        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark, type_ahead, host_helper) = {
+        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark) = {
             let s = &hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings;
-            (
-                s.sidebar_mode,
-                s.toolbar_layout,
-                s.pane_header_behavior,
-                s.font_size,
-                s.activity_include_idle,
-                s.scheme_choice,
-                s.light_theme_id.clone(),
-                s.dark_theme_id.clone(),
-                s.type_ahead,
-                s.host_helper,
-            )
+            (s.sidebar_mode, s.toolbar_layout, s.pane_header_behavior, s.font_size, s.activity_include_idle, s.scheme_choice, s.light_theme_id.clone(), s.dark_theme_id.clone())
         };
         // For each mode: the look's own colours (whatever Preferences ▸
         // Themes has, followed as it changes), or one chosen here, which
@@ -2542,17 +2524,6 @@ impl RexWindow {
                 .item("Rename Session…", "session.rename")
                 .enabled(session.is_some())
                 .separator()
-                .item("Hosts and Ports…", "app.hosts")
-                .item("Add Host…", "app.add_host")
-                .item("Manage Host…", "host.manage")
-                .enabled(far_host(&hub, &self.active_host))
-                .item("Manage Rex Server…", "host.server")
-                .enabled(managed_host(&hub, &self.active_host).is_some())
-                .item("Remote Access…", "app.pair_device")
-                .item("Diagnostics…", "app.diagnostics")
-                .separator()
-                .item("Reload Server Configuration", "app.reload_config")
-                .separator()
                 .item("Close Window", "close")
                 .item("Quit", "quit"),
             Menu::new("Edit")
@@ -2599,16 +2570,31 @@ impl RexWindow {
                 .item("Sessions", "app.view_sessions")
                 .checked(sidebar_mode == SidebarMode::Sessions)
                 .item("Activity", "app.view_activity")
-                .checked(sidebar_mode == SidebarMode::Activity)
+                .checked(sidebar_mode == SidebarMode::Activity),
+            // The hosts: all of them; the one of the pane in front (its
+            // window, its account, what it may do here); its Rex server;
+            // then this computer's own, as others reach it. After View,
+            // before Tabs: a host holds sessions, a session tabs, a tab
+            // panes. (They were in the first menu, and the account in
+            // Agents: Ben, 2026-11-24, "all the different rex prefs and
+            // settings and stuff has got really confusing and
+            // disorganized".)
+            Menu::new("Hosts")
+                .item("Add Host…", "app.add_host")
+                .item("Hosts and Ports…", "app.hosts")
                 .separator()
-                .item("Quick Look", "files.quick_look")
-                .enabled(pane)
-                .item("Browse Folders…", "files.path_browser")
-                .enabled(pane)
-                .item("Go to Folder…", "files.go_to_dir")
-                .enabled(pane)
-                .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
-                .enabled(pane && here),
+                .item("Manage Host…", "host.manage")
+                .enabled(far_host(&hub, &self.active_host))
+                .item("Set Up This Host’s Account…", "host.account")
+                .enabled(far_host(&hub, &self.active_host))
+                .item("This Host’s Permissions…", "host.permissions")
+                .separator()
+                .item("Manage Rex Server…", "host.server")
+                .enabled(managed_host(&hub, &self.active_host).is_some())
+                .item("Reload Server Configuration", "app.reload_config")
+                .separator()
+                .item("Remote Access…", "app.pair_device")
+                .item("Diagnostics…", "app.diagnostics"),
             tabs,
             Menu::new("Pane")
                 .item("Split Right", "pane.split_right")
@@ -2638,6 +2624,17 @@ impl RexWindow {
                 .checked(broadcast_on)
                 .enabled(panes > 1 || broadcast_on)
                 .separator()
+                // (The files of the pane's folder, on its host: they were
+                // in View, which is how the window looks.)
+                .item("Quick Look", "files.quick_look")
+                .enabled(pane)
+                .item("Browse Folders…", "files.path_browser")
+                .enabled(pane)
+                .item("Go to Folder…", "files.go_to_dir")
+                .enabled(pane)
+                .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
+                .enabled(pane && here)
+                .separator()
                 .item("Close Pane", "pane.close")
                 .enabled(pane),
             Menu::new("Agents")
@@ -2651,9 +2648,7 @@ impl RexWindow {
                 .enabled(pane)
                 .separator()
                 .item("Install Olo’s Skill for Agents", "olo.install_remote_skill")
-                .enabled(pane)
-                .item("Set Up This Host’s Account…", "host.account")
-                .enabled(far_host(&hub, &self.active_host)),
+                .enabled(pane),
             Menu::new("Settings")
                 .submenu(
                     Menu::new("Text Size")
@@ -2665,16 +2660,11 @@ impl RexWindow {
                         .enabled(text_size != crate::settings::TEXT_SIZE),
                 )
                 .submenu(colors)
-                .submenu(Menu::new("Tabs").item("Along the Top", "tabs.top").checked(layout == ToolbarLayout::Above).item("Down the Side", "tabs.side").checked(layout == ToolbarLayout::Side))
-                .separator()
-                // (Over a slow link: what is typed, drawn before the
-                // host's echo of it is back. `predict`.)
-                .item("Show Typing Immediately", "terminal.type_ahead")
-                .checked(type_ahead)
-                // (And sent as it is typed, in order, by Olo's helper on
-                // the host, which the app puts there. `link`.)
-                .item("Use Olo’s Typing Helper on Hosts", "hosts.helper")
-                .checked(host_helper),
+                // (How the window looks, as Terminal's Settings menu: typing
+                // over a slow link, set once and left, is Preferences ▸
+                // Rex's alone, General. It was here too: Opus's review,
+                // 2026-11-24, "one more place to find them".)
+                .submenu(Menu::new("Tabs").item("Along the Top", "tabs.top").checked(layout == ToolbarLayout::Above).item("Down the Side", "tabs.side").checked(layout == ToolbarLayout::Side)),
         ]
     }
 
@@ -4277,7 +4267,11 @@ impl View for RexWindow {
                             open_server(&hub, &shown.key);
                         }
                     }
-                    HostDo::Permissions => olo_kit::app_menu::open_settings("rex"),
+                    // (Preferences ▸ Rex, on Hosts, with this host chosen.)
+                    HostDo::Permissions => {
+                        let key = crate::host::current().map(|shown| shown.key).unwrap_or_default();
+                        olo_kit::app_menu::open_settings(&format!("rex/host:{key}"));
+                    }
                     HostDo::OpenPool => {
                         let _ = olo_xdg::spawn_detached("olo-pool --hosts-window");
                     }

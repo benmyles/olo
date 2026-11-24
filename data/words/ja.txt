@@ -478,6 +478,9 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 最初の[repository]より前に設定があります。
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+RexがOloの小さなプログラムを各ホストに置き、入力をその場で順番どおりに送ります。ホストのウィンドウに、そのホストにあるかどうかが表示されます。
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Terminalで1分以上動き続けたジョブも優先度を下げます。オフにするとスケジューリングとI/O優先度は元に戻ります。上げたnice値はプログラムの終了まで維持します。
 
@@ -990,6 +993,9 @@ An administrator's password is needed.
 
 An agent is at rest here
 ここでエージェントが待機中です
+
+An agent is working here
+ここでエージェントが作業中
 
 An app
 アプリ
@@ -4546,6 +4552,9 @@ Forward
 Forward Port
 ポートを転送
 
+Forwarded
+転送中
+
 Forwarded from {}
 {}からの転送
 
@@ -4638,6 +4647,9 @@ Game saves
 
 Gaps
 間隔
+
+General
+一般
 
 Generator
 生成ツール
@@ -5070,6 +5082,9 @@ Host “{}”
 
 Hosts
 ホスト
+
+Hosts and Ports
+ホストとポート
 
 Hosts and Ports…
 ホストとポート…
@@ -5746,6 +5761,9 @@ Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 大量の同期書き込みや discard が NVMe ドライブに集中しても読み込み遅延を抑えます。Linux 標準の "none" はバックグラウンドの書き出ししか抑えません (queue/scheduler)。
 
+Keeps typing quick over a slow link.
+遅い回線でも入力を素早く保ちます。
+
 Kept
 保持
 
@@ -5988,6 +6006,9 @@ Lets a build’s many small writes reach the disk together.
 
 Lets agents there use your accounts, even with this computer off.
 このコンピューターの電源が切れていても、リモートのエージェントがアカウントを使えます。
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+そのホストのプログラムが、ここでリンク、Passwords、SSH鍵、エージェント画面を使えるようにします。
 
 Letting go of backups past keeping
 期限切れのバックアップを削除中
@@ -6414,6 +6435,9 @@ Manage Host…
 
 Manage Rex Server…
 Rexサーバーを管理…
+
+Manage…
+管理…
 
 Manually
 手動
@@ -6943,6 +6967,9 @@ Network
 Network name
 ネットワーク名
 
+NetworkManager isn't running.
+NetworkManagerが実行されていません。
+
 Never
 しない
 
@@ -7287,6 +7314,9 @@ No keyboards are plugged in.
 
 No limit
 制限なし
+
+No lines match.
+一致する行はありません。
 
 No matching entries
 一致する項目がありません
@@ -7984,6 +8014,9 @@ On a call
 On a plane of its own: moving it draws nothing
 専用の表示プレーンを使用：移動時に再描画なし
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+遅い回線では、入力した内容がすぐに表示され、ホストのエコーが戻ってきたときに照合されます。
+
 On battery
 バッテリー駆動時
 
@@ -8374,6 +8407,12 @@ Palms while typing
 Pane
 ペイン
 
+Pane Height
+ペインの高さ
+
+Pane Width
+ペインの幅
+
 Panel
 パネル
 
@@ -8611,6 +8650,9 @@ other: パフォーマンス監視：緊急の問題{n}件
 Permission
 権限
 
+Permissions…
+アクセス権…
+
 Personalized Volume
 パーソナライズされた音量
 
@@ -8700,6 +8742,9 @@ Playing the processed sound at {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 設定するセキュリティキーを接続してください。
@@ -8880,6 +8925,9 @@ Priorities off: background work put back
 
 Priority
 優先度
+
+Problem
+問題
 
 Problems
 問題
@@ -9336,6 +9384,9 @@ Remove
 
 Remove Account
 アカウントを削除
+
+Remove All…
+すべて削除…
 
 Remove Graph
 グラフを削除
@@ -10488,6 +10539,9 @@ Show the phone’s other notifications
 
 Show the places a window can go
 ウィンドウを置ける場所を表示
+
+Show typing immediately
+入力を即座に表示
 
 Show what a message says
 メッセージ本文を表示
@@ -11947,6 +12001,9 @@ This Computer
 This Computer's Microphones
 このコンピューターのマイク
 
+This Host’s Permissions…
+このホストのアクセス権…
+
 This Olo upgrades from the build it came from, not from releases.
 このOloはリリースではなく、ビルド元から更新します。
 
@@ -12538,11 +12595,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+エージェントのターンが終わり、ペインが2分間静かになったときに、ペインのコーディングエージェントに入力されます（最大で1時間に1回）。「エージェント」メニュー、またはペインやタブのメニューでオンにします。
+
 Typically
 通常
 
 Typing
 文字入力
+
+Typing on Hosts
+ホストでの入力
 
 Typing test:
 入力テスト:
@@ -12800,6 +12863,9 @@ Use Music Quality
 音楽用の音質を使う
 
 Use Olo’s Typing Helper on Hosts
+ホストでOlo入力ヘルパーを使用
+
+Use Olo’s typing helper on hosts
 ホストでOlo入力ヘルパーを使用
 
 Use Passwords for ssh
@@ -13983,6 +14049,9 @@ in the running kernel
 
 in the running kernel, switched off
 実行中のカーネルにあり（オフ）
+
+in use
+使用中
 
 in {n} days
 other: {n}日後
@@ -15435,6 +15504,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 
 {} · {} · music quality
 {} · {} · 音楽用の音質
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — カスタマイズ済み

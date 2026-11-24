@@ -27341,6 +27341,26 @@ palettes and an importer of theme files), and with "Auto Approve" and
   way the desktop's settings aren't followed (`shared::settled`: they
   would say the carried hosts are gone, and Rex would drop connections
   it had just made), five seconds at most.
+- *What Rex does* is the desktop's too, as Terminal's is in
+  Preferences ▸ Terminal: Preferences ▸ Rex is in two tabs (Ben,
+  2026-11-24: "all the different rex prefs and settings and stuff has
+  got really confusing and disorganized"): **General**, the
+  notifications, what Keep It Going says (`keep_going_says`, with Use
+  Default, as Terminal's), and typing on hosts (Show typing immediately,
+  `show_typing_at_once`; Olo's typing helper, `typing_helper`), each
+  found there alone (Rex's Settings menu had the two typing items too);
+  **Hosts**, the list and each one's permissions, the tab theirs alone
+  (no box of its own), the list as tall as the tab. What Rex's own file
+  had of the three is carried there once (where the desktop's still say
+  what they come with, `carried_typing_to_preferences`), then followed
+  (`RexHub::follow_shared`). A Host window's Permissions… and Hosts ▸
+  This Host's Permissions… open the pane on Hosts at that host
+  (`olo-preferences rex --tab host:ID`, `rex::show_tab`); the pane keeps
+  its tab and host over a reload. Its Defaults puts back what General
+  shows and is off on Hosts: it copied the whole of `settings.rex` and
+  emptied the person's hosts and repositories (Opus's review); Revert
+  puts the hosts back as the pane opened with them, never what Rex's
+  Account window sets (`Panel::reset`'s `to_defaults`).
 - *A window's quick choices* are Rex's own file (settings.rs) and its
   menus, as Terminal's: Settings ▸ Text Size, Colors (Match Appearance,
   Always Light, Always Dark; for each mode the look's own colours,
@@ -27348,6 +27368,17 @@ palettes and an importer of theme files), and with "Auto Approve" and
   which stays: the same lists as Terminal's menu), Tabs (Along the Top,
   Down the Side); View ▸ Show Sidebar, Show Pane Headers, Sessions or
   Activity, Include Idle Panes in Activity.
+- *The menus* say what each item acts on, largest first: Rex (the app:
+  About, its settings, windows and sessions), Edit, View (how the
+  window looks), Hosts (Add Host…, Hosts and Ports…; the pane's host:
+  Manage Host…, Set Up This Host's Account…, This Host's Permissions…;
+  its Rex server and Reload Server Configuration; this computer's
+  Remote Access… and Diagnostics…), Tabs, Pane (the pane in front, and
+  the files of its folder: Quick Look, Browse Folders…, Go to Folder…,
+  Show in Tracker), Agents (the agents in the panes), Settings (Text
+  Size, Colors, Tabs, as Terminal's). The host items were in the first
+  menu, the account in Agents, the files in View, the typing items in
+  Settings.
 - *The cursor is steady*, as Terminal's: where a program asked for a
   blinking one the window drew twice a second for as long as nothing
   happened (measured: 2.0 frames a second at rest, now 0).
@@ -27491,7 +27522,7 @@ scripts and the question in a scratch home).
 (2026-11-23; Ben: "we also need like a manage host button or something
 where we can manage all the services and things installed on a host in
 one place instead of only through random menus and stuff"). Opened by
-Hosts and Ports ▸ Manage Host…, Rex ▸ Manage Host…, a click on a mark
+Hosts and Ports ▸ Manage Host…, Hosts ▸ Manage Host…, a click on a mark
 in the status bar, and for agents `host.manage:KEY` (`WinRole::Host`,
 "Host “NAME”"; one host at a time; `host` is its state, `host_panel`
 its drawing, `HubState::host_stands` what it shows).
@@ -29231,7 +29262,7 @@ Modes, Shared Server, Login Server and Remote Access).
 "also build in rex server management to our rex client so that i can
 manage the users, services etc. of the running rex server (if i have a
 root@ key)"). The Host window's Rex server ▸ Manage… (Hosts and Ports ▸ Manage
-Host…, for a host reached over SSH as an account), Rex ▸ Manage Rex
+Host…, for a host reached over SSH as an account), Hosts ▸ Manage Rex
 Server… (the window's own host), and, for agents, the command
 `host.server:KEY`, open the Server
 window (`WinRole::Server`, "Rex Server on NAME"; one host at a time:

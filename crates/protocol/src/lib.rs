@@ -2030,7 +2030,9 @@ impl Default for PasswordsSecurity {
 ///
 /// How a Rex window looks (its text size, its colours, where its tabs
 /// are) is not here: those are the window's own quick choices, in Rex's
-/// Settings menu and Rex's own file, as Terminal's are. Nor is the
+/// Settings menu and Rex's own file, as Terminal's are. What Rex does is
+/// (Preferences ▸ Rex, as Terminal's is in Preferences ▸ Terminal):
+/// typing over a slow link, and what Keep It Going says. Nor is the
 /// state of this computer's Rex server (reachable over Tailscale or
 /// not): that is the server's, shown and changed in Rex.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2053,7 +2055,18 @@ pub struct RexSettings {
     /// How many days back the agents' sessions copied to a host go, by
     /// when each was last used (Rex's Account window; 0: all of them).
     pub sessions_days: u32,
+    /// Over a slow link, what is typed drawn at once, before the host's
+    /// echo of it comes back.
+    pub show_typing_at_once: bool,
+    /// What is typed sent by Olo's own helper on a host (put there by
+    /// Rex), in order and at once.
+    pub typing_helper: bool,
+    /// What Keep It Going types to a coding agent that has stopped.
+    pub keep_going_says: String,
 }
+
+/// What Rex's Keep It Going says unless the person says otherwise.
+pub const REX_KEEP_GOING_SAYS: &str = "Please keep going until everything is complete and verified.";
 
 /// A repository of the person's: where it is cloned from, where it
 /// goes under the home on a host (empty: `src/NAME`), and a command
@@ -2068,7 +2081,18 @@ pub struct RexRepo {
 
 impl Default for RexSettings {
     fn default() -> Self {
-        RexSettings { notify_blocked: true, notify_done: true, notify_failed: true, local: RexGrants::all(), hosts: Vec::new(), sessions_days: 7, repos: Vec::new() }
+        RexSettings {
+            notify_blocked: true,
+            notify_done: true,
+            notify_failed: true,
+            local: RexGrants::all(),
+            hosts: Vec::new(),
+            sessions_days: 7,
+            repos: Vec::new(),
+            show_typing_at_once: true,
+            typing_helper: true,
+            keep_going_says: REX_KEEP_GOING_SAYS.to_owned(),
+        }
     }
 }
 

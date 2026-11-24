@@ -58,16 +58,21 @@ something nobody here has is in "Blocked", with what it waits for.
   `avail_w`), so a pane head's buttons decide by more width than the
   pane has; Activity's done and failed states, a far host's rows and a
   row under the pointer not yet pictured.
-- **Rex: its preferences and settings, put in order** (Ben, 2026-11-24:
-  "all the different rex prefs and settings and stuff has got really
-  confusing and disorganized. please do a pass through all that and
-  improve the ux to make it all better organized and usable"): every
-  place a setting of Rex's lives (Preferences ▸ Rex, Rex's Settings
-  menu and windows, the Host window, the Account window, per-host
-  grants) gathered and read as a whole first; then one plan of what
-  goes where (desktop-wide in Preferences, this window's in Rex, a
-  host's in its Host window), the same words for the same thing, each
-  setting found once, and pictures of before and after.
+- **From the look at Rex's settings pass** (Opus 5.5, 2026-11-24), there
+  before it: Preferences' notes under a check box start at the box's
+  own edge, not its label's, and wrap at their own measure rather than
+  the buttons' right edge (the form's way in every pane: "indent them
+  18 pt … so they line up with the label text"; Terminal's pane keeps
+  26 points between a note and the next check box, Rex's now 10); on
+  Rex's Hosts tab the caution under the ticks is set two rows below
+  them ("put it directly under 'Read and set the clipboard', 4 pt
+  below, indented to the label") and the ticks are 30 points apart
+  against General's 24; the menus' shortcuts end at a different right
+  edge in each menu ("24 px (Pane), about 27 px (Rex), 31 px (View) and
+  37 px (Agents)"); a Preferences pane's window is titled as the app
+  is ("Rex" beside Rex's own window: "the two yellow tabs can't be told
+  apart"); Rex's status bar marks at its right end are low in contrast
+  and unlabelled.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

@@ -478,6 +478,9 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 有一項設定出現在第一個 [repository] 區段之前。
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Rex 會在每台主機上放置一個 Olo 小程式，依序立即傳送您輸入的內容。主機自己的視窗會顯示它是否已有該程式。
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 終端中連續繁忙一分鐘以上的工作也會降低優先順序。關閉此項後，批次處理排程和閒置 I/O 會恢復原狀；已調高的 nice 值會保留到程式結束。
 
@@ -990,6 +993,9 @@ An administrator's password is needed.
 
 An agent is at rest here
 此處有代理程式在待命
+
+An agent is working here
+有代理程式正在這裡工作
 
 An app
 應用程式
@@ -4546,6 +4552,9 @@ Forward
 Forward Port
 轉送連接埠
 
+Forwarded
+已轉送
+
 Forwarded from {}
 轉傳自 {}
 
@@ -4638,6 +4647,9 @@ Game saves
 
 Gaps
 間距
+
+General
+一般
 
 Generator
 生成器
@@ -5070,6 +5082,9 @@ Host “{}”
 
 Hosts
 主機
+
+Hosts and Ports
+主機與連接埠
 
 Hosts and Ports…
 主機與連接埠…
@@ -5746,6 +5761,9 @@ Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 在大量同步寫入或捨棄操作湧向 NVMe 硬碟時仍可限制讀取延遲，而 Linux 預設的 "none" 僅限制背景寫回 (queue/scheduler)。
 
+Keeps typing quick over a slow link.
+在慢速連線上也能保持輸入流暢。
+
 Kept
 已保留
 
@@ -5988,6 +6006,9 @@ Lets a build’s many small writes reach the disk together.
 
 Lets agents there use your accounts, even with this computer off.
 即使這台電腦關機，該主機上的代理程式也能使用您的帳號。
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+允許那裡的程式在這裡使用連結、Passwords、SSH 金鑰和代理螢幕。
 
 Letting go of backups past keeping
 正在清理已過期的備份
@@ -6414,6 +6435,9 @@ Manage Host…
 
 Manage Rex Server…
 管理 Rex 伺服器…
+
+Manage…
+管理…
 
 Manually
 手動
@@ -6943,6 +6967,9 @@ Network
 Network name
 網路名稱
 
+NetworkManager isn't running.
+NetworkManager 未執行。
+
 Never
 從不
 
@@ -7287,6 +7314,9 @@ No keyboards are plugged in.
 
 No limit
 沒有限制
+
+No lines match.
+沒有相符的行。
 
 No matching entries
 沒有符合的項目
@@ -7984,6 +8014,9 @@ On a call
 On a plane of its own: moving it draws nothing
 使用獨立顯示平面，移動時不必重繪
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+在慢速連線上，您輸入的內容會立即顯示，並在主機的回音傳回時與之核對。
+
 On battery
 電池供電
 
@@ -8374,6 +8407,12 @@ Palms while typing
 Pane
 窗格
 
+Pane Height
+窗格高度
+
+Pane Width
+窗格寬度
+
 Panel
 面板
 
@@ -8611,6 +8650,9 @@ other: 性能監控：發現 {n} 項緊急問題
 Permission
 權限
 
+Permissions…
+權限…
+
 Personalized Volume
 個人化音量
 
@@ -8700,6 +8742,9 @@ Playing the processed sound at {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 請插入安全金鑰以進行設定。
@@ -8880,6 +8925,9 @@ Priorities off: background work put back
 
 Priority
 優先順序
+
+Problem
+問題
 
 Problems
 問題
@@ -9336,6 +9384,9 @@ Remove
 
 Remove Account
 移除帳號
+
+Remove All…
+全部移除…
 
 Remove Graph
 移除圖表
@@ -10488,6 +10539,9 @@ Show the phone’s other notifications
 
 Show the places a window can go
 顯示視窗可以放置的位置
+
+Show typing immediately
+立即顯示輸入內容
 
 Show what a message says
 顯示訊息內容
@@ -11947,6 +12001,9 @@ This Computer
 This Computer's Microphones
 本機麥克風
 
+This Host’s Permissions…
+此主機的權限…
+
 This Olo upgrades from the build it came from, not from releases.
 此 Olo 從原建置來源升級，而非從發行版本升級。
 
@@ -12538,11 +12595,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+在代理程式的回合結束且窗格安靜兩分鐘後，向窗格中的代理程式輸入這段話，每小時最多一次。可在「代理程式」選單或窗格、標籤頁的選單中開啟。
+
 Typically
 通常
 
 Typing
 打字
+
+Typing on Hosts
+在主機上輸入
 
 Typing test:
 打字測試：
@@ -12800,6 +12863,9 @@ Use Music Quality
 使用音樂音質
 
 Use Olo’s Typing Helper on Hosts
+在主機上使用 Olo 輸入輔助程式
+
+Use Olo’s typing helper on hosts
 在主機上使用 Olo 輸入輔助程式
 
 Use Passwords for ssh
@@ -13983,6 +14049,9 @@ in the running kernel
 
 in the running kernel, switched off
 已在執行中的核心裡，已關閉
+
+in use
+使用中
 
 in {n} days
 other: {n} 天後
@@ -15435,6 +15504,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {} · {} · music quality
 {} · {} · 音樂音質
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — 已自訂

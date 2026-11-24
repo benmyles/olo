@@ -300,11 +300,23 @@ fn ui_lint_rex_host() {
             move |cx: &mut olo_kit::Cx<PanelView>| {
                 let mut view = PanelView::new(Panel::Rex, settings.clone(), cx);
                 if let crate::panel::State::Rex(st) = &mut view.state {
+                    // (The hosts are on the pane's second tab.)
+                    st.tab = 1;
                     st.selected = selection.clone();
                 }
                 view
             }
         };
+        // (Its first tab, General, at the same widths.)
+        let general = {
+            let settings = settings.clone();
+            move |cx: &mut olo_kit::Cx<PanelView>| PanelView::new(Panel::Rex, settings.clone(), cx)
+        };
+        // (Its Hosts tab, at This computer, keeps the room of the caution
+        // a host given passwords, SSH keys or the clipboard shows under
+        // its ticks, so the window keeps its height from one to another.)
+        lint.keeps_room(olo_kit::metrics::STACK + 2.0 * olo_kit::metrics::LABEL_ROW, "the caution under a host's grants, kept at This computer");
+        assert_clean(&format!("Rex’s General tab at {width} points"), &lint.window(&options, general));
         let remote = crate::rex::Selection::Host("host-4".into());
         let found = lint.window(&options, view(remote.clone()));
         assert_clean(&format!("Rex’s remote hosts at {width} points"), &found);

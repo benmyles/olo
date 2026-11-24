@@ -480,6 +480,9 @@ Een script van {} is mislukt (code {}).
 A setting comes before any [repository].
 Er staat een instelling vóór de eerste sectie [repository].
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Een klein programma van Olo, door Rex op elke host gezet, verstuurt daar wat u typt, op volgorde en meteen. Het eigen venster van een host toont of die het heeft.
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Ook een terminaltaak die minstens een minuut onafgebroken draait, krijgt een lagere prioriteit. Bij uitschakelen worden de oorspronkelijke planning en I/O-prioriteit hersteld. Een verhoogde nice-waarde blijft gelden tot het programma stopt.
 
@@ -994,6 +997,9 @@ Hiervoor is een beheerderswachtwoord nodig.
 
 An agent is at rest here
 Hier rust een agent
+
+An agent is working here
+Hier werkt een agent
 
 An app
 Een app
@@ -4567,6 +4573,9 @@ Vooruit
 Forward Port
 Poort doorsturen
 
+Forwarded
+Doorgestuurd
+
 Forwarded from {}
 Doorgestuurd van {}
 
@@ -4659,6 +4668,9 @@ Opgeslagen spellen
 
 Gaps
 Tussenruimte
+
+General
+Algemeen
 
 Generator
 Generator
@@ -5091,6 +5103,9 @@ Host ‘{}’
 
 Hosts
 Hosts
+
+Hosts and Ports
+Hosts en poorten
 
 Hosts and Ports…
 Hosts en poorten…
@@ -5772,6 +5787,9 @@ Houdt buildbestanden in het geheugen en actieve programma’s buiten het wisselg
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Houdt de leeslatentie laag wanneer zware synchrone schrijfacties of discards een NVMe-schijf overspoelen, waar Linux' standaard "none" alleen terugschrijven op de achtergrond afremt (queue/scheduler).
 
+Keeps typing quick over a slow link.
+Houdt typen vlot over een trage verbinding.
+
 Kept
 Bewaard
 
@@ -6014,6 +6032,9 @@ Bundelt veel kleine schrijfbewerkingen van builds richting de schijf.
 
 Lets agents there use your accounts, even with this computer off.
 Laat agents daar uw accounts gebruiken, ook als deze computer uit staat.
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Laat programma’s daar hier links, Passwords, SSH-sleutels en Agentschermen gebruiken.
 
 Letting go of backups past keeping
 Verlopen back-ups verwijderen
@@ -6440,6 +6461,9 @@ Host beheren…
 
 Manage Rex Server…
 Rex-server beheren…
+
+Manage…
+Beheren…
 
 Manually
 Handmatig
@@ -6969,6 +6993,9 @@ Netwerk
 Network name
 Netwerknaam
 
+NetworkManager isn't running.
+NetworkManager draait niet.
+
 Never
 Nooit
 
@@ -7313,6 +7340,9 @@ Geen toetsenborden aangesloten.
 
 No limit
 Geen limiet
+
+No lines match.
+Geen regels gevonden.
 
 No matching entries
 Geen overeenkomsten
@@ -8010,6 +8040,9 @@ In gesprek
 On a plane of its own: moving it draws nothing
 Op een eigen beeldlaag: bewegen vereist geen tekenwerk
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+Over een trage verbinding verschijnt wat u typt meteen en wordt het vergeleken met de echo van de host zodra die terugkomt.
+
 On battery
 Op accuvoeding
 
@@ -8400,6 +8433,12 @@ Handpalmen tijdens typen
 Pane
 Paneel
 
+Pane Height
+Paneelhoogte
+
+Pane Width
+Paneelbreedte
+
 Panel
 Paneel
 
@@ -8639,6 +8678,9 @@ other: Prestatiebewaking: {n} dringende problemen
 Permission
 Toestemming
 
+Permissions…
+Rechten…
+
 Personalized Volume
 Persoonlijk volume
 
@@ -8728,6 +8770,9 @@ Bewerkt geluid afspelen op {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 Sluit een beveiligingssleutel aan om deze in te stellen.
@@ -8908,6 +8953,9 @@ Prioriteiten uit: achtergrondtaken weer op oorspronkelijke prioriteit
 
 Priority
 Prioriteit
+
+Problem
+Probleem
 
 Problems
 Problemen
@@ -9364,6 +9412,9 @@ Verwijderen
 
 Remove Account
 Account verwijderen
+
+Remove All…
+Alles verwijderen…
 
 Remove Graph
 Grafiek verwijderen
@@ -10517,6 +10568,9 @@ Andere meldingen van de telefoon tonen
 
 Show the places a window can go
 Plekken tonen waar een venster heen kan
+
+Show typing immediately
+Typen direct tonen
 
 Show what a message says
 Inhoud van berichten tonen
@@ -11978,6 +12032,9 @@ Deze computer
 This Computer's Microphones
 Microfoons van deze computer
 
+This Host’s Permissions…
+Rechten van deze host…
+
 This Olo upgrades from the build it came from, not from releases.
 Deze Olo werkt bij vanuit de eigen build, niet via releases.
 
@@ -12569,11 +12626,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+Getypt naar de codeeragent in een paneel zodra zijn beurt voorbij is en het paneel twee minuten stil is geweest, hooguit eens per uur. Aan te zetten in het menu Agents, of het menu van een paneel of tab.
+
 Typically
 Doorgaans
 
 Typing
 Typen
+
+Typing on Hosts
+Typen op hosts
 
 Typing test:
 Typtest:
@@ -12831,6 +12894,9 @@ Use Music Quality
 Muziekkwaliteit gebruiken
 
 Use Olo’s Typing Helper on Hosts
+Olo’s typhulp op hosts gebruiken
+
+Use Olo’s typing helper on hosts
 Olo’s typhulp op hosts gebruiken
 
 Use Passwords for ssh
@@ -14019,6 +14085,9 @@ in de draaiende kernel
 
 in the running kernel, switched off
 in de draaiende kernel, uitgeschakeld
+
+in use
+in gebruik
 
 in {n} days
 one: over {n} dag
@@ -15545,6 +15614,9 @@ doorgaans {} µs per meting, langste {} µs
 
 {} · {} · music quality
 {} · {} · muziekkwaliteit
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — Aangepast

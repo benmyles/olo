@@ -478,6 +478,9 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 [repository] 구역 앞에 설정이 있습니다.
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Rex가 각 호스트에 설치하는 Olo의 작은 프로그램이 입력한 내용을 순서대로 즉시 보냅니다. 호스트 창에서 설치 여부를 확인할 수 있습니다.
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 터미널에서 1분 이상 바쁘게 실행된 작업의 우선순위도 낮춥니다. 이 옵션을 끄면 배치 스케줄링과 유휴 I/O는 원래대로 돌아갑니다. 높아진 nice 값은 프로그램이 끝날 때까지 유지됩니다.
 
@@ -990,6 +993,9 @@ An administrator's password is needed.
 
 An agent is at rest here
 여기서 에이전트가 쉬고 있습니다
+
+An agent is working here
+에이전트가 여기서 작업 중
 
 An app
 앱
@@ -4546,6 +4552,9 @@ Forward
 Forward Port
 포트 포워딩
 
+Forwarded
+전달됨
+
 Forwarded from {}
 {}에서 전달됨
 
@@ -4638,6 +4647,9 @@ Game saves
 
 Gaps
 간격
+
+General
+일반
 
 Generator
 생성기
@@ -5070,6 +5082,9 @@ Host “{}”
 
 Hosts
 호스트
+
+Hosts and Ports
+호스트 및 포트
 
 Hosts and Ports…
 호스트 및 포트…
@@ -5746,6 +5761,9 @@ Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연을 억제합니다. Linux 기본값 "none"은 백그라운드 라이트백만 조절합니다 (queue/scheduler).
 
+Keeps typing quick over a slow link.
+느린 연결에서도 입력을 빠르게 유지합니다.
+
 Kept
 보관됨
 
@@ -5988,6 +6006,9 @@ Lets a build’s many small writes reach the disk together.
 
 Lets agents there use your accounts, even with this computer off.
 이 컴퓨터가 꺼져 있어도 호스트의 에이전트가 내 계정을 사용할 수 있습니다.
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+그 호스트의 프로그램이 여기서 링크, Passwords, SSH 키, 에이전트 화면을 쓸 수 있게 합니다.
 
 Letting go of backups past keeping
 보관 기간이 지난 백업 정리 중
@@ -6414,6 +6435,9 @@ Manage Host…
 
 Manage Rex Server…
 Rex 서버 관리…
+
+Manage…
+관리…
 
 Manually
 수동으로
@@ -6943,6 +6967,9 @@ Network
 Network name
 네트워크 이름
 
+NetworkManager isn't running.
+NetworkManager가 실행 중이 아닙니다.
+
 Never
 안 함
 
@@ -7287,6 +7314,9 @@ No keyboards are plugged in.
 
 No limit
 무제한
+
+No lines match.
+일치하는 줄이 없습니다.
 
 No matching entries
 일치하는 항목 없음
@@ -7984,6 +8014,9 @@ On a call
 On a plane of its own: moving it draws nothing
 전용 표시 면에서 이동하므로 다시 그리지 않음
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+느린 연결에서는 입력한 내용이 바로 표시되고, 호스트의 에코가 돌아오면 맞춰 봅니다.
+
 On battery
 배터리 사용 중
 
@@ -8374,6 +8407,12 @@ Palms while typing
 Pane
 패널
 
+Pane Height
+패널 높이
+
+Pane Width
+패널 너비
+
 Panel
 패널
 
@@ -8611,6 +8650,9 @@ other: 성능 감시: 긴급 {n}건
 Permission
 권한
 
+Permissions…
+권한…
+
 Personalized Volume
 개인 맞춤형 음량
 
@@ -8700,6 +8742,9 @@ Playing the processed sound at {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 설정하려면 보안 키를 연결하세요.
@@ -8880,6 +8925,9 @@ Priorities off: background work put back
 
 Priority
 우선순위
+
+Problem
+문제
 
 Problems
 문제
@@ -9336,6 +9384,9 @@ Remove
 
 Remove Account
 계정 제거
+
+Remove All…
+모두 제거…
 
 Remove Graph
 그래프 제거
@@ -10488,6 +10539,9 @@ Show the phone’s other notifications
 
 Show the places a window can go
 창을 놓을 수 있는 자리 보이기
+
+Show typing immediately
+입력 즉시 표시
 
 Show what a message says
 메시지 내용 표시
@@ -11947,6 +12001,9 @@ This Computer
 This Computer's Microphones
 이 컴퓨터의 마이크
 
+This Host’s Permissions…
+이 호스트의 권한…
+
 This Olo upgrades from the build it came from, not from releases.
 이 Olo는 릴리스가 아니라 빌드된 소스에서 업그레이드합니다.
 
@@ -12538,11 +12595,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+에이전트의 차례가 끝나고 패널이 2분 동안 조용하면 패널의 코딩 에이전트에 입력됩니다(최대 한 시간에 한 번). 에이전트 메뉴나 패널 또는 탭의 메뉴에서 켭니다.
+
 Typically
 일반적으로
 
 Typing
 입력
+
+Typing on Hosts
+호스트에서 입력
 
 Typing test:
 입력 테스트:
@@ -12800,6 +12863,9 @@ Use Music Quality
 음악 음질 사용
 
 Use Olo’s Typing Helper on Hosts
+호스트에서 Olo 입력 도우미 사용
+
+Use Olo’s typing helper on hosts
 호스트에서 Olo 입력 도우미 사용
 
 Use Passwords for ssh
@@ -13983,6 +14049,9 @@ in the running kernel
 
 in the running kernel, switched off
 실행 중인 커널에 있음, 꺼짐
+
+in use
+사용 중
 
 in {n} days
 other: {n}일 후
@@ -15435,6 +15504,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 
 {} · {} · music quality
 {} · {} · 음악 음질
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — 사용자 지정됨

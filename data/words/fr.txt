@@ -480,6 +480,9 @@ Un script de {} a échoué (code {}).
 A setting comes before any [repository].
 Un réglage vient avant tout [dépôt].
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Un petit programme d’Olo, placé sur chaque hôte par Rex, y envoie ce que vous tapez, dans l’ordre et sans attendre. La fenêtre de chaque hôte indique s’il l’a.
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Une tâche de terminal occupée une minute ou plus est aussi abaissée. La planification par lots et les E/S au repos sont rétablies quand ceci est désactivé ; un nice relevé reste jusqu’à la fin du programme.
 
@@ -994,6 +997,9 @@ Le mot de passe d’un administrateur est nécessaire.
 
 An agent is at rest here
 Un agent est au repos ici
+
+An agent is working here
+Un agent travaille ici
 
 An app
 Une app
@@ -4567,6 +4573,9 @@ Suivant
 Forward Port
 Rediriger le port
 
+Forwarded
+Redirigé
+
 Forwarded from {}
 Transféré de {}
 
@@ -4659,6 +4668,9 @@ Parties sauvegardées
 
 Gaps
 Écarts
+
+General
+Général
 
 Generator
 Générateur
@@ -5091,6 +5103,9 @@ Hôte « {} »
 
 Hosts
 Hôtes
+
+Hosts and Ports
+Hôtes et ports
 
 Hosts and Ports…
 Hôtes et ports…
@@ -5772,6 +5787,9 @@ Garde les fichiers de compilation en mémoire et les programmes actifs hors du s
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Contient la latence de lecture lorsque de lourdes écritures synchrones ou des discards saturent un disque NVMe, là où "none" par défaut sous Linux ne régule que l'écriture en arrière-plan (queue/scheduler).
 
+Keeps typing quick over a slow link.
+Garde la frappe rapide sur une liaison lente.
+
 Kept
 Gardé
 
@@ -6014,6 +6032,9 @@ Regroupe les nombreuses petites écritures d’une compilation vers le disque.
 
 Lets agents there use your accounts, even with this computer off.
 Permet aux agents là-bas d’utiliser vos comptes, même cet ordinateur éteint.
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Permet aux programmes de là-bas d’utiliser ici les liens, Passwords, les clés SSH et les Écrans d’agents.
 
 Letting go of backups past keeping
 Abandon des sauvegardes qui ne sont plus gardées
@@ -6440,6 +6461,9 @@ Gérer l’hôte…
 
 Manage Rex Server…
 Gérer le serveur Rex…
+
+Manage…
+Gérer…
 
 Manually
 Manuellement
@@ -6969,6 +6993,9 @@ Réseau
 Network name
 Nom du réseau
 
+NetworkManager isn't running.
+NetworkManager n’est pas lancé.
+
 Never
 Jamais
 
@@ -7313,6 +7340,9 @@ Aucun clavier n’est branché.
 
 No limit
 Aucune limite
+
+No lines match.
+Aucune ligne ne correspond.
 
 No matching entries
 Aucune entrée correspondante
@@ -8010,6 +8040,9 @@ En communication
 On a plane of its own: moving it draws nothing
 Sur un plan à lui : le déplacer ne dessine rien
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+Sur une liaison lente, ce que vous tapez s’affiche aussitôt et est comparé à l’écho de l’hôte à son retour.
+
 On battery
 Sur batterie
 
@@ -8400,6 +8433,12 @@ Paumes pendant la frappe
 Pane
 Volet
 
+Pane Height
+Hauteur du volet
+
+Pane Width
+Largeur du volet
+
 Panel
 Panneau
 
@@ -8639,6 +8678,9 @@ other: Superviseur de performances : {n} constats urgents
 Permission
 Autorisation
 
+Permissions…
+Autorisations…
+
 Personalized Volume
 Volume personnalisé
 
@@ -8728,6 +8770,9 @@ Lecture du son traité à {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 Branchez une clé de sécurité pour la configurer.
@@ -8908,6 +8953,9 @@ Priorités désactivées : travail de fond rétabli
 
 Priority
 Priorité
+
+Problem
+Problème
 
 Problems
 Problèmes
@@ -9364,6 +9412,9 @@ Retirer
 
 Remove Account
 Retirer le compte
+
+Remove All…
+Tout retirer…
 
 Remove Graph
 Retirer le graphique
@@ -10517,6 +10568,9 @@ Afficher les autres notifications du téléphone
 
 Show the places a window can go
 Montrer les emplacements possibles d'une fenêtre
+
+Show typing immediately
+Afficher la frappe immédiatement
 
 Show what a message says
 Afficher le contenu d’un message
@@ -11978,6 +12032,9 @@ Cet ordinateur
 This Computer's Microphones
 Micros de cet ordinateur
 
+This Host’s Permissions…
+Autorisations de cet hôte…
+
 This Olo upgrades from the build it came from, not from releases.
 Cet Olo se met à jour depuis la compilation dont il est issu, pas depuis les versions publiées.
 
@@ -12569,11 +12626,17 @@ Type :
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+Tapé à l’agent de code d’un volet une fois son tour terminé et le volet resté calme deux minutes, au plus une fois par heure. S’active dans le menu Agents, ou le menu d’un volet ou d’un onglet.
+
 Typically
 D’ordinaire
 
 Typing
 Saisie
+
+Typing on Hosts
+Frappe sur les hôtes
 
 Typing test:
 Test de frappe :
@@ -12831,6 +12894,9 @@ Use Music Quality
 Utiliser la qualité musique
 
 Use Olo’s Typing Helper on Hosts
+Utiliser l’assistant de frappe d’Olo sur les hôtes
+
+Use Olo’s typing helper on hosts
 Utiliser l’assistant de frappe d’Olo sur les hôtes
 
 Use Passwords for ssh
@@ -14019,6 +14085,9 @@ dans le noyau en cours
 
 in the running kernel, switched off
 dans le noyau en cours, désactivé
+
+in use
+utilisé
 
 in {n} days
 one: dans {n} jour
@@ -15545,6 +15614,9 @@ il y a {} s
 
 {} · {} · music quality
 {} · {} · qualité musique
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — Personnalisé

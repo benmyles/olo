@@ -480,6 +480,9 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 पहले [repository] खंड से पहले एक सेटिंग लिखी है।
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Olo का एक छोटा प्रोग्राम, जिसे Rex हर होस्ट पर रखता है, वहाँ आपकी टाइपिंग को क्रम से और तुरंत भेजता है। होस्ट की अपनी विंडो बताती है कि उसमें यह है या नहीं।
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 टर्मिनल में एक मिनट या अधिक समय से व्यस्त काम की प्राथमिकता भी घटती है। इसे बंद करने पर बैच शेड्यूलिंग और निष्क्रिय I/O सामान्य हो जाते हैं। बढ़ा हुआ nice मान प्रोग्राम बंद होने तक रहता है।
 
@@ -994,6 +997,9 @@ An administrator's password is needed.
 
 An agent is at rest here
 यहाँ एक एजेंट रुका हुआ है
+
+An agent is working here
+यहाँ एक एजेंट काम कर रहा है
 
 An app
 एक ऐप
@@ -4567,6 +4573,9 @@ Forward
 Forward Port
 पोर्ट फ़ॉरवर्ड करें
 
+Forwarded
+फ़ॉरवर्ड किया गया
+
 Forwarded from {}
 {} से फ़ॉरवर्ड किया गया
 
@@ -4659,6 +4668,9 @@ Game saves
 
 Gaps
 अंतराल
+
+General
+सामान्य
 
 Generator
 जनरेटर
@@ -5091,6 +5103,9 @@ Host “{}”
 
 Hosts
 होस्ट
+
+Hosts and Ports
+होस्ट और पोर्ट
 
 Hosts and Ports…
 होस्ट और पोर्ट…
@@ -5772,6 +5787,9 @@ Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 जब भारी सिंक्रोनस राइट या डिस्कार्ड NVMe ड्राइव पर दबाव डालते हैं, तब रीड लेटेंसी सीमित रखता है; Linux का डिफ़ॉल्ट "none" केवल बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
 
+Keeps typing quick over a slow link.
+धीमे कनेक्शन पर भी टाइपिंग तेज़ रखता है।
+
 Kept
 रखा गया
 
@@ -6014,6 +6032,9 @@ Lets a build’s many small writes reach the disk together.
 
 Lets agents there use your accounts, even with this computer off.
 यह कंप्यूटर बंद होने पर भी वहाँ के एजेंट आपके खाते इस्तेमाल कर सकते हैं।
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+वहाँ के प्रोग्राम को यहाँ लिंक, Passwords, SSH कुंजियाँ और एजेंट स्क्रीन इस्तेमाल करने देता है।
 
 Letting go of backups past keeping
 पुराने बैकअप हट रहे हैं
@@ -6440,6 +6461,9 @@ Manage Host…
 
 Manage Rex Server…
 Rex सर्वर प्रबंधित करें…
+
+Manage…
+प्रबंधित करें…
 
 Manually
 मैन्युअल
@@ -6969,6 +6993,9 @@ Network
 Network name
 नेटवर्क नाम
 
+NetworkManager isn't running.
+NetworkManager नहीं चल रहा है।
+
 Never
 कभी नहीं
 
@@ -7313,6 +7340,9 @@ No keyboards are plugged in.
 
 No limit
 कोई सीमा नहीं
+
+No lines match.
+कोई पंक्ति मेल नहीं खाती।
 
 No matching entries
 कोई मिलती प्रविष्टि नहीं
@@ -8010,6 +8040,9 @@ On a call
 On a plane of its own: moving it draws nothing
 अपने अलग प्लेन पर: हिलाने पर फिर से चित्र नहीं बनता
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+धीमे कनेक्शन पर, आप जो टाइप करते हैं वह तुरंत दिखता है और होस्ट की गूँज लौटने पर उससे मिलाया जाता है।
+
 On battery
 बैटरी पर
 
@@ -8400,6 +8433,12 @@ Palms while typing
 Pane
 पैनल
 
+Pane Height
+पैनल की ऊँचाई
+
+Pane Width
+पैनल की चौड़ाई
+
 Panel
 पैनल
 
@@ -8639,6 +8678,9 @@ other: प्रदर्शन निगरानी: {n} गंभीर स�
 Permission
 अनुमति
 
+Permissions…
+अनुमतियाँ…
+
 Personalized Volume
 आपके अनुसार आवाज़
 
@@ -8728,6 +8770,9 @@ Playing the processed sound at {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 सेटअप करने के लिए सुरक्षा कुंजी लगाएँ।
@@ -8908,6 +8953,9 @@ Priorities off: background work put back
 
 Priority
 प्राथमिकता
+
+Problem
+समस्या
 
 Problems
 समस्याएँ
@@ -9364,6 +9412,9 @@ Remove
 
 Remove Account
 खाता हटाएँ
+
+Remove All…
+सब हटाएँ…
 
 Remove Graph
 ग्राफ़ हटाएँ
@@ -10517,6 +10568,9 @@ Show the phone’s other notifications
 
 Show the places a window can go
 वे जगहें दिखाएँ जहाँ विंडो जा सकती है
+
+Show typing immediately
+टाइपिंग तुरंत दिखाएँ
 
 Show what a message says
 संदेश की सामग्री दिखाएँ
@@ -11978,6 +12032,9 @@ This Computer
 This Computer's Microphones
 इस कंप्यूटर के माइक्रोफ़ोन
 
+This Host’s Permissions…
+इस होस्ट की अनुमतियाँ…
+
 This Olo upgrades from the build it came from, not from releases.
 यह Olo अपने स्रोत बिल्ड से अपग्रेड होता है, जारी संस्करणों से नहीं।
 
@@ -12569,11 +12626,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+पैनल के कोडिंग एजेंट को तब टाइप किया जाता है जब उसकी बारी पूरी हो जाए और पैनल दो मिनट शांत रहे, ज़्यादा से ज़्यादा घंटे में एक बार। एजेंट मेनू, या पैनल या टैब के मेनू में चालू करें।
+
 Typically
 आम तौर पर
 
 Typing
 टाइपिंग
+
+Typing on Hosts
+होस्ट पर टाइपिंग
 
 Typing test:
 टाइपिंग परीक्षण:
@@ -12831,6 +12894,9 @@ Use Music Quality
 संगीत की गुणवत्ता इस्तेमाल करें
 
 Use Olo’s Typing Helper on Hosts
+होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें
+
+Use Olo’s typing helper on hosts
 होस्ट पर Olo का टाइपिंग सहायक इस्तेमाल करें
 
 Use Passwords for ssh
@@ -14019,6 +14085,9 @@ in the running kernel
 
 in the running kernel, switched off
 चल रहे कर्नेल में, बंद
+
+in use
+इस्तेमाल में
 
 in {n} days
 one: {n} दिन में
@@ -15545,6 +15614,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 
 {} · {} · music quality
 {} · {} · संगीत की गुणवत्ता
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — अनुकूलित

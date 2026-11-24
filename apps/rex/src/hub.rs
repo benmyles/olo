@@ -2341,6 +2341,45 @@ impl RexHub {
         if !crate::shared::settled(rex) {
             return;
         }
+        // Typing over a slow link and Keep It Going's message are the
+        // desktop's (Preferences ▸ Rex): what Rex's own file had of them,
+        // carried there once (where the desktop's still say what they come
+        // with), then followed.
+        let carry = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let fresh = olo_protocol::RexSettings::default();
+            let ours = (st.settings.type_ahead, st.settings.host_helper, st.settings.keep_going_message.clone());
+            let theirs_fresh = (rex.show_typing_at_once, rex.typing_helper, rex.keep_going_says.as_str()) == (fresh.show_typing_at_once, fresh.typing_helper, fresh.keep_going_says.as_str());
+            let first = !st.settings.carried_typing_to_preferences;
+            if first {
+                st.settings.carried_typing_to_preferences = true;
+                st.settings.save();
+            }
+            (first && theirs_fresh && ours != (fresh.show_typing_at_once, fresh.typing_helper, fresh.keep_going_says.clone())).then_some(ours)
+        };
+        if let Some((type_ahead, helper, says)) = carry {
+            olo_kit::settings::update(move |d| {
+                d.rex.show_typing_at_once = type_ahead;
+                d.rex.typing_helper = helper;
+                d.rex.keep_going_says = says;
+            });
+        } else {
+            let (type_ahead, helper, says) = {
+                let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                (st.settings.type_ahead, st.settings.host_helper, st.settings.keep_going_message.clone())
+            };
+            if type_ahead != rex.show_typing_at_once {
+                self.set_type_ahead(rex.show_typing_at_once);
+            }
+            if helper != rex.typing_helper {
+                self.set_host_helper(rex.typing_helper);
+            }
+            if says != rex.keep_going_says && !rex.keep_going_says.trim().is_empty() {
+                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.settings.keep_going_message = rex.keep_going_says.clone();
+                st.settings.save();
+            }
+        }
         let (changes, agents) = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             // (What Rex's own file held from before, if this start

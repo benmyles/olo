@@ -484,6 +484,9 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 Параметр указан до первого раздела [repository].
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Небольшая программа Olo, которую Rex ставит на каждый узел, отправляет туда то, что вы печатаете, по порядку и сразу. Окно узла показывает, есть ли она на нём.
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Приоритет задачи терминала тоже снижается, если она занята минуту или дольше. При отключении этой настройки планирование и приоритет ввода-вывода восстанавливаются. Повышенное значение nice сохраняется до выхода из программы.
 
@@ -1002,6 +1005,9 @@ An administrator's password is needed.
 
 An agent is at rest here
 Здесь агент в ожидании
+
+An agent is working here
+Здесь работает агент
 
 An app
 Приложение
@@ -4609,6 +4615,9 @@ Forward
 Forward Port
 Перенаправить порт
 
+Forwarded
+Перенаправлен
+
 Forwarded from {}
 Переслано от {}
 
@@ -4701,6 +4710,9 @@ Game saves
 
 Gaps
 Интервалы
+
+General
+Общие
 
 Generator
 Генератор
@@ -5133,6 +5145,9 @@ Host “{}”
 
 Hosts
 Узлы
+
+Hosts and Ports
+Узлы и порты
 
 Hosts and Ports…
 Узлы и порты…
@@ -5824,6 +5839,9 @@ Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux "none" ограничивает лишь фоновый сброс (queue/scheduler).
 
+Keeps typing quick over a slow link.
+Ускоряет ввод по медленному каналу.
+
 Kept
 Сохранено
 
@@ -6066,6 +6084,9 @@ Lets a build’s many small writes reach the disk together.
 
 Lets agents there use your accounts, even with this computer off.
 Позволяет агентам там использовать ваши учётные записи, даже когда этот компьютер выключен.
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+Разрешает программам там пользоваться здесь ссылками, Passwords, ключами SSH и экранами агентов.
 
 Letting go of backups past keeping
 Удаление устаревших копий
@@ -6492,6 +6513,9 @@ Manage Host…
 
 Manage Rex Server…
 Управление сервером Rex…
+
+Manage…
+Управление…
 
 Manually
 Вручную
@@ -7021,6 +7045,9 @@ Network
 Network name
 Имя сети
 
+NetworkManager isn't running.
+NetworkManager не запущен.
+
 Never
 Никогда
 
@@ -7365,6 +7392,9 @@ No keyboards are plugged in.
 
 No limit
 Без ограничений
+
+No lines match.
+Нет подходящих строк.
 
 No matching entries
 Нет подходящих записей
@@ -8062,6 +8092,9 @@ On a call
 On a plane of its own: moving it draws nothing
 На отдельной плоскости: движение не требует перерисовки
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+По медленному каналу то, что вы печатаете, появляется сразу и сверяется с эхом узла, когда оно возвращается.
+
 On battery
 От батареи
 
@@ -8452,6 +8485,12 @@ Palms while typing
 Pane
 Панель
 
+Pane Height
+Высота панели
+
+Pane Width
+Ширина панели
+
 Panel
 Панель
 
@@ -8695,6 +8734,9 @@ other: Мониторинг: {n} срочные проблемы
 Permission
 Разрешение
 
+Permissions…
+Разрешения…
+
 Personalized Volume
 Персональная громкость
 
@@ -8784,6 +8826,9 @@ Playing the processed sound at {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 Вставьте ключ безопасности для настройки.
@@ -8964,6 +9009,9 @@ Priorities off: background work put back
 
 Priority
 Приоритет
+
+Problem
+Проблема
 
 Problems
 Проблемы
@@ -9420,6 +9468,9 @@ Remove
 
 Remove Account
 Удалить учётную запись
+
+Remove All…
+Удалить всё…
 
 Remove Graph
 Убрать график
@@ -10575,6 +10626,9 @@ Show the phone’s other notifications
 
 Show the places a window can go
 Показывать места, куда можно поставить окно
+
+Show typing immediately
+Показывать ввод сразу
 
 Show what a message says
 Показывать текст сообщений
@@ -12040,6 +12094,9 @@ This Computer
 This Computer's Microphones
 Микрофоны компьютера
 
+This Host’s Permissions…
+Разрешения этого узла…
+
 This Olo upgrades from the build it came from, not from releases.
 Эта версия Olo обновляется из своей сборки, а не из выпусков.
 
@@ -12631,11 +12688,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+Вводится агенту в панели, когда его ход закончен и панель молчит две минуты, не чаще раза в час. Включается в меню «Агенты» или в меню панели либо вкладки.
+
 Typically
 Обычно
 
 Typing
 Ввод текста
+
+Typing on Hosts
+Ввод на узлах
 
 Typing test:
 Проверка набора:
@@ -12893,6 +12956,9 @@ Use Music Quality
 Для музыки
 
 Use Olo’s Typing Helper on Hosts
+Использовать помощник ввода Olo на узлах
+
+Use Olo’s typing helper on hosts
 Использовать помощник ввода Olo на узлах
 
 Use Passwords for ssh
@@ -14091,6 +14157,9 @@ in the running kernel
 
 in the running kernel, switched off
 в работающем ядре, выключен
+
+in use
+используется
 
 in {n} days
 one: через {n} день
@@ -15765,6 +15834,9 @@ other: {n} недели
 
 {} · {} · music quality
 {} · {} · качество музыки
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — настроено

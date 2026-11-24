@@ -478,6 +478,9 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 有一项设置出现在第一个 [repository] 段之前。
 
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
+Rex 会在每台主机上放置一个 Olo 小程序，按顺序立即发送您键入的内容。主机自己的窗口会显示它是否已有该程序。
+
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 终端中连续繁忙一分钟以上的任务也会降低优先级。关闭此项后，批处理调度和空闲 I/O 会恢复原状；已调高的 nice 值会保留到程序结束。
 
@@ -990,6 +993,9 @@ An administrator's password is needed.
 
 An agent is at rest here
 此处有智能体在待命
+
+An agent is working here
+有智能体正在这里工作
 
 An app
 应用
@@ -4546,6 +4552,9 @@ Forward
 Forward Port
 转发端口
 
+Forwarded
+已转发
+
 Forwarded from {}
 转发自 {}
 
@@ -4638,6 +4647,9 @@ Game saves
 
 Gaps
 间距
+
+General
+通用
 
 Generator
 生成器
@@ -5070,6 +5082,9 @@ Host “{}”
 
 Hosts
 主机
+
+Hosts and Ports
+主机与端口
 
 Hosts and Ports…
 主机与端口…
@@ -5746,6 +5761,9 @@ Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 在大量同步写入或丢弃操作涌向 NVMe 硬盘时仍可限制读取延迟，而 Linux 默认的 "none" 仅限制后台回写 (queue/scheduler)。
 
+Keeps typing quick over a slow link.
+在慢速连接上也能保持键入流畅。
+
 Kept
 已保留
 
@@ -5988,6 +6006,9 @@ Lets a build’s many small writes reach the disk together.
 
 Lets agents there use your accounts, even with this computer off.
 即使本机关机，远程智能体也能使用您的账户。
+
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
+允许那里的程序在这里使用链接、Passwords、SSH 密钥和智能体屏幕。
 
 Letting go of backups past keeping
 正在清理已过期的备份
@@ -6414,6 +6435,9 @@ Manage Host…
 
 Manage Rex Server…
 管理 Rex 服务器…
+
+Manage…
+管理…
 
 Manually
 手动
@@ -6943,6 +6967,9 @@ Network
 Network name
 网络名称
 
+NetworkManager isn't running.
+NetworkManager 未运行。
+
 Never
 从不
 
@@ -7287,6 +7314,9 @@ No keyboards are plugged in.
 
 No limit
 没有限制
+
+No lines match.
+没有匹配的行。
 
 No matching entries
 无匹配项
@@ -7984,6 +8014,9 @@ On a call
 On a plane of its own: moving it draws nothing
 使用独立显示平面，移动时无需重绘
 
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
+在慢速连接上，您键入的内容会立即显示，并在主机的回显返回时与之核对。
+
 On battery
 电池供电
 
@@ -8374,6 +8407,12 @@ Palms while typing
 Pane
 窗格
 
+Pane Height
+窗格高度
+
+Pane Width
+窗格宽度
+
 Panel
 面板
 
@@ -8611,6 +8650,9 @@ other: 性能监控：发现 {n} 项紧急问题
 Permission
 权限
 
+Permissions…
+权限…
+
 Personalized Volume
 个性化音量
 
@@ -8700,6 +8742,9 @@ Playing the processed sound at {} s.
 
 Please continue
 Please continue
+
+Please keep going until everything is complete and verified.
+Please keep going until everything is complete and verified.
 
 Plug in a security key to set it up.
 请插入安全密钥以进行设置。
@@ -8880,6 +8925,9 @@ Priorities off: background work put back
 
 Priority
 优先级
+
+Problem
+问题
 
 Problems
 问题
@@ -9336,6 +9384,9 @@ Remove
 
 Remove Account
 移除账户
+
+Remove All…
+全部移除…
 
 Remove Graph
 移除图表
@@ -10488,6 +10539,9 @@ Show the phone’s other notifications
 
 Show the places a window can go
 显示窗口可以放置的位置
+
+Show typing immediately
+立即显示键入内容
 
 Show what a message says
 显示消息内容
@@ -11947,6 +12001,9 @@ This Computer
 This Computer's Microphones
 本机麦克风
 
+This Host’s Permissions…
+此主机的权限…
+
 This Olo upgrades from the build it came from, not from releases.
 此 Olo 从其构建来源升级，而不从发布版本升级。
 
@@ -12538,11 +12595,17 @@ Type:
 TypeScript
 TypeScript
 
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+在智能体的回合结束且窗格安静两分钟后，向窗格中的编程智能体键入这段话，每小时最多一次。可在“智能体”菜单或窗格、标签页的菜单中打开。
+
 Typically
 通常
 
 Typing
 打字
+
+Typing on Hosts
+在主机上键入
 
 Typing test:
 打字测试：
@@ -12800,6 +12863,9 @@ Use Music Quality
 使用音乐音质
 
 Use Olo’s Typing Helper on Hosts
+在主机上使用 Olo 输入助手
+
+Use Olo’s typing helper on hosts
 在主机上使用 Olo 输入助手
 
 Use Passwords for ssh
@@ -13983,6 +14049,9 @@ in the running kernel
 
 in the running kernel, switched off
 已在运行中的内核里，已关闭
+
+in use
+使用中
 
 in {n} days
 other: {n} 天后
@@ -15435,6 +15504,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {} · {} · music quality
 {} · {} · 音乐音质
+
+{} × {}
+{} × {}
 
 {} — Customized
 {} — 已自定义

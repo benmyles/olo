@@ -1,17 +1,48 @@
-//! Rex's agent notifications and the hosts whose sessions may ask this
-//! computer to do things. The local server is always the first row.
+//! Rex: all it does that isn't how its window looks (that is its own
+//! Settings menu's, as Terminal's): in two tabs, General (its
+//! notifications, what Keep It Going says, typing over a slow link) and
+//! Hosts (the hosts it knows, and what the sessions of each may ask this
+//! computer to do; the local server always the first row). Rex's Settings
+//! menu's typing items and its "Rex Settings…" lead here (Ben,
+//! 2026-11-24: "all the different rex prefs and settings and stuff has
+//! got really confusing and disorganized").
 
 use std::{collections::HashSet, rc::Rc};
 
 use olo_kit::{
     ParentElement as _, SharedString, Styled as _, div, metrics as m, px, style, theme,
-    widgets::{Button, Column, ColumnListView, ListModel, StringView},
+    widgets::{Button, Column, ColumnListView, ListModel, StringView, TabView},
     words,
 };
 use olo_protocol::{RexGrants, RexHost, RexSettings};
 use serde::{Deserialize, Serialize};
 
 use crate::{PanelView, form::Ui, panel, prefs};
+
+/// What the pane keeps over a reload: its tab, and the row chosen on
+/// Hosts. (Its fields' names are its own, and no others are taken: the
+/// Power pane's kept state, read from the same list, is never this.)
+#[derive(Clone, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Saved {
+    pub rex_tab: usize,
+    pub rex_selected: Selection,
+}
+
+/// The tabs, in order.
+const TABS: [&str; 2] = ["General", "Hosts"];
+
+/// Opens on tab `name` (General, Hosts), or on Hosts with host `ID`
+/// chosen for `host:ID` (a Host window's Permissions…).
+pub fn show_tab(st: &mut State, name: &str) {
+    if let Some(id) = name.strip_prefix("host:") {
+        st.tab = 1;
+        st.selected = if id.is_empty() || id == "local" { Selection::Local } else { Selection::Host(id.to_owned()) };
+        st.editing = None;
+    } else if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
+        st.tab = i;
+    }
+}
 
 #[derive(Clone, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Selection {
@@ -58,6 +89,8 @@ impl Selection {
 }
 
 pub struct State {
+    /// The tab shown: General, Hosts.
+    pub tab: usize,
     list: ListModel,
     pub selected: Selection,
     editing: Option<String>,
@@ -67,7 +100,7 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
-        Self { list: ListModel::new(false), selected: Selection::Local, editing: None, focus_name: false, edited_addresses: HashSet::new() }
+        Self { tab: 0, list: ListModel::new(false), selected: Selection::Local, editing: None, focus_name: false, edited_addresses: HashSet::new() }
     }
 }
 
@@ -85,8 +118,72 @@ fn add_host(hosts: &mut Vec<RexHost>) -> Selection {
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
-    notifications(ui);
-    hosts(ui, st);
+    let items = ui.collect(|ui| match st.tab {
+        // (The agents' two first, what people come here for; typing, set
+        // once and left, last: Opus's review, 2026-11-24.)
+        0 => {
+            notifications(ui);
+            keep_going(ui);
+            typing(ui);
+        }
+        _ => hosts(ui, st),
+    });
+    let pick = ui.on_view(|v, i: &usize, cx| {
+        if let panel::State::Rex(st) = &mut v.state {
+            st.tab = *i;
+        }
+        cx.notify();
+    });
+    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
+    ui.add(
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("rex-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
+}
+
+/// Typing over a slow link (Rex's Settings menu had these two, as items).
+fn typing(ui: &mut Ui) {
+    ui.bbox("Typing on Hosts", |ui| {
+        ui.check("Show typing immediately", ui.s.rex.show_typing_at_once, |s, v| s.rex.show_typing_at_once = v);
+        ui.note("On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.");
+        ui.check("Use Olo’s typing helper on hosts", ui.s.rex.typing_helper, |s, v| s.rex.typing_helper = v);
+        ui.note("A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.");
+    });
+}
+
+/// What Keep It Going types to a coding agent that has stopped, as
+/// Preferences ▸ Terminal has Terminal's.
+fn keep_going(ui: &mut Ui) {
+    ui.bbox("Keep It Going", |ui| {
+        let says = ui.s.rex.keep_going_says.clone();
+        let default = olo_protocol::REX_KEEP_GOING_SAYS;
+        let field = ui.field("rex-keep-going-says", &says, |f| f.hint(default).name("Keep It Going says"), |s, v| s.rex.keep_going_says = v);
+        let changed = says != default;
+        let set_default = ui.edit_click(move |s| s.rex.keep_going_says = default.into());
+        // (The field too: it keeps what's typed while it has the keyboard.)
+        let shown = field;
+        let use_default = move |e: &olo_kit::ClickEvent, cx: &mut olo_kit::WindowCx| {
+            shown.update(cx, |f, cx| f.set_text(default.to_owned(), cx));
+            set_default(e, cx);
+        };
+        let enabled = ui.enabled();
+        // (No label: the box says what it is. "Keep It Going" three times
+        // over, its box, the field's label and its note, pushed the field to
+        // an edge nothing else had: Opus's review, 2026-11-24.)
+        ui.add(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(div().flex_1().min_w_0().child(ui.control_of("rex-keep-going-says")))
+                .child(Button::new("Use Default").id("rex-keep-going-default").enabled(enabled && changed).on_click(use_default)),
+        );
+        ui.note("Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.");
+    });
 }
 
 fn notifications(ui: &mut Ui) {
@@ -130,21 +227,23 @@ fn hosts(ui: &mut Ui, st: &mut State) {
     }
 
     let wide = f32::from(ui.cx.viewport_size().width) >= 720.0;
-    ui.bbox("Hosts", |ui| {
-        let picker = ui.collect(|ui| host_picker(ui, st, host.is_some(), wide));
-        let details = ui.collect(|ui| {
-            fields(ui, host, st, changed_host);
-            grants(ui, &st.selected, host.map(|h| if h.label.is_empty() { h.endpoint.as_str() } else { h.label.as_str() }), host.map_or(rex.local, |h| h.grants));
-        });
-        let picker = div().flex().flex_col().gap(px(m::STACK)).children(picker);
-        let details = div().flex().flex_col().gap(px(m::STACK)).children(details);
-        if wide {
-            ui.add(div().flex().flex_row().items_start().gap(px(m::SECTION)).child(picker.w(px(240.0)).flex_shrink_0()).child(details.flex_1().min_w_0()));
-        } else {
-            ui.add(picker);
-            ui.add(details);
-        }
+    // (No box: the tab is the hosts' alone, and a box named as the tab is
+    // was a third frame round them. Their edges are where General's boxes
+    // have theirs, so nothing moves from one tab to the other; and the
+    // list as tall as the tab, its rows at least: Opus's review,
+    // 2026-11-24.)
+    let picker = ui.collect(|ui| host_picker(ui, st, host.is_some(), wide));
+    let details = ui.collect(|ui| {
+        fields(ui, host, st, changed_host);
+        grants(ui, &st.selected, host.map(|h| if h.label.is_empty() { h.endpoint.as_str() } else { h.label.as_str() }), host.map_or(rex.local, |h| h.grants));
     });
+    let picker = div().flex().flex_col().gap(px(m::STACK)).children(picker);
+    let details = div().flex().flex_col().gap(px(m::STACK)).children(details);
+    if wide {
+        ui.add(div().flex_1().flex().flex_row().gap(px(m::SECTION)).px(px(m::BOX_INSET)).pt(px(m::BOX_INSET)).child(picker.w(px(240.0)).flex_shrink_0()).child(details.flex_1().min_w_0()));
+    } else {
+        ui.add(div().flex().flex_col().gap(px(m::STACK)).px(px(m::BOX_INSET)).pt(px(m::BOX_INSET)).child(picker).child(details));
+    }
 }
 
 fn host_picker(ui: &mut Ui, st: &State, removable: bool, wide: bool) {
@@ -204,9 +303,17 @@ fn host_list(ui: &mut Ui, st: &State, wide: bool) {
             cx.notify();
         }
     }));
-    // Whole rows inside the two-line rim, including at fractional scales.
+    // Whole rows inside the two-line rim, including at fractional scales:
+    // beside the details as tall as the tab lets it, those rows at least;
+    // above them, in a narrow window, those rows (the window there is as
+    // tall as what it shows: nothing for the list to take).
     let lines = if wide { 16.0 } else { 4.0 };
-    ui.add(div().h(px(m::LIST_ROW * lines + 2.0 * list_rim(ui))).child(list));
+    let least = px(m::LIST_ROW * lines + 2.0 * list_rim(ui));
+    if wide {
+        ui.add(div().flex_1().min_h(least).flex().flex_col().child(div().flex_1().min_h_0().child(list)));
+    } else {
+        ui.add(div().h(least).child(list));
+    }
 }
 
 /// The inset from the host list’s outside edge to its first row.
@@ -375,6 +482,35 @@ fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGran
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tab_by_name_or_a_host() {
+        let mut st = State::default();
+        show_tab(&mut st, "hosts");
+        assert_eq!((st.tab, &st.selected), (1, &Selection::Local));
+        show_tab(&mut st, "General");
+        assert_eq!(st.tab, 0);
+        // (A Host window's Permissions…: on Hosts, at that host.)
+        show_tab(&mut st, "host:far");
+        assert_eq!((st.tab, &st.selected), (1, &Selection::Host("far".into())));
+        show_tab(&mut st, "host:local");
+        assert_eq!((st.tab, &st.selected), (1, &Selection::Local));
+        // (A name it doesn't have changes nothing.)
+        show_tab(&mut st, "Agents");
+        assert_eq!(st.tab, 1);
+    }
+
+    #[test]
+    fn kept_state_is_its_own() {
+        let kept = serde_json::to_string(&Saved { rex_tab: 1, rex_selected: Selection::Host("far".into()) }).unwrap();
+        assert_eq!(serde_json::from_str::<Saved>(&kept).unwrap().rex_selected, Selection::Host("far".into()));
+        // Not the pane's kept state from before it had tabs (read as such,
+        // by the app), nor Power's.
+        assert!(serde_json::from_str::<Saved>("\"Local\"").is_err());
+        assert!(serde_json::from_str::<Saved>(r#"{"Host":"far"}"#).is_err());
+        assert!(serde_json::from_str::<Saved>(r#"{"tab":1,"hardware":false,"idle_options":false}"#).is_err());
+        assert!(serde_json::from_str::<crate::power::Saved>(&kept).is_err());
+    }
 
     #[test]
     fn a_new_host_has_its_own_id_even_after_removal() {

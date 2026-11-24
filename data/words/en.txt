@@ -157,6 +157,7 @@ A rising swell
 A row of dots
 A script of {} failed (code {}).
 A setting comes before any [repository].
+A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 A thick line
 A thin line
@@ -328,6 +329,7 @@ Always on Top
 An account can answer again.
 An administrator's password is needed.
 An agent is at rest here
+An agent is working here
 An app
 An application is keeping the display awake.
 An error occurred while {}: {}
@@ -1513,6 +1515,7 @@ Formats
 Format…
 Forward
 Forward Port
+Forwarded
 Forwarded from {}
 Forward…
 Found as {}. Leave it empty for that name.
@@ -1544,6 +1547,7 @@ GPUs are tuned only in the person's own session (polkit asks there).
 Game controller
 Game saves
 Gaps
+General
 Generator
 Gently, below my own work
 German
@@ -1688,6 +1692,7 @@ Home Page
 Host
 Host “{}”
 Hosts
+Hosts and Ports
 Hosts and Ports…
 Hotspot
 Hours:
@@ -1913,6 +1918,7 @@ Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
 Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Keeps typing quick over a slow link.
 Kept
 Kept Core
 Kept for this computer and set again at every start.
@@ -1994,6 +2000,7 @@ Let coding agents keep their tab’s title current
 Let your other devices reach this computer’s sessions over Tailscale
 Lets a build’s many small writes reach the disk together.
 Lets agents there use your accounts, even with this computer off.
+Lets programs there use links, Passwords, SSH keys and Agent Screens here.
 Letting go of backups past keeping
 Level
 Level evened out
@@ -2136,6 +2143,7 @@ Making it again, empty
 Making it…
 Manage Host…
 Manage Rex Server…
+Manage…
 Manually
 Mapped
 Mappings
@@ -2312,6 +2320,7 @@ Needs git there
 Neither kind of Rex server is in use on {}. Start one of them:
 Network
 Network name
+NetworkManager isn't running.
 Never
 Never Warned About
 Never fade
@@ -2427,6 +2436,7 @@ No event from a year back to two years on has “{}” in its title, its place o
 No key yet.
 No keyboards are plugged in.
 No limit
+No lines match.
 No matching entries
 No messages with {} yet. What you write below goes as a text message from your phone.
 No mouse is connected. These settings are for any you connect.
@@ -2659,6 +2669,7 @@ On This Computer
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
 On a call
 On a plane of its own: moving it draws nothing
+On a slow link, what you type appears at once and is checked against the host’s echo when it comes back.
 On battery
 On disk
 On hold
@@ -2789,6 +2800,8 @@ Palms and Hovering Fingers
 Palms caught
 Palms while typing
 Pane
+Pane Height
+Pane Width
 Panel
 Panels
 Paragraph
@@ -2868,6 +2881,7 @@ Performance supervisor: on, nothing found
 Performance supervisor: {n} findings
 Performance supervisor: {n} urgent findings
 Permission
+Permissions…
 Personalized Volume
 Phone
 Phone Settings…
@@ -2898,6 +2912,7 @@ Playback Speed
 Playing the original at {} s.
 Playing the processed sound at {} s.
 Please continue
+Please keep going until everything is complete and verified.
 Plug in a security key to set it up.
 Plugged in
 Point with a palm at the edge
@@ -2958,6 +2973,7 @@ Print…
 Priorities
 Priorities off: background work put back
 Priority
+Problem
 Problems
 Process
 Process {} has quit
@@ -3110,6 +3126,7 @@ Remote Access…
 Removable Disks
 Remove
 Remove Account
+Remove All…
 Remove Graph
 Remove Host
 Remove Place
@@ -3494,6 +3511,7 @@ Show the day of the week
 Show the desktop
 Show the phone’s other notifications
 Show the places a window can go
+Show typing immediately
 Show what a message says
 Show what's used, not what's left
 Show:
@@ -3980,6 +3998,7 @@ Thinking…
 Third folder
 This Computer
 This Computer's Microphones
+This Host’s Permissions…
 This Olo upgrades from the build it came from, not from releases.
 This Olo was built from source: it upgrades from its build, not from releases.
 This Olo was built without the Token Pool for hosts, so none can be installed.
@@ -4177,8 +4196,10 @@ Type with your palms down
 Type {} on “{}”, then press Return.
 Type:
 TypeScript
+Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
 Typically
 Typing
+Typing on Hosts
 Typing test:
 USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
 USB receiver
@@ -4265,6 +4286,7 @@ Use Google Drive Instead…
 Use Mine
 Use Music Quality
 Use Olo’s Typing Helper on Hosts
+Use Olo’s typing helper on hosts
 Use Passwords for ssh
 Use Saved Password
 Use Suggested
@@ -4659,6 +4681,7 @@ in the next week
 in the next {} days
 in the running kernel
 in the running kernel, switched off
+in use
 in {n} days
 in {n} minutes
 in {}
@@ -5143,6 +5166,7 @@ your own picture
 {} · {}
 {} · {} · call quality while the microphone is used
 {} · {} · music quality
+{} × {}
 {} — Customized
 {} — {} ({}% of this folder){}{}
 {}%  ·  {}

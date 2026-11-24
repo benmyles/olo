@@ -271,6 +271,13 @@ pub fn action_catalog() -> Vec<ActionSpec> {
             args_schema: None,
         },
         ActionSpec { id: "host.manage", title: "Manage Host…", category: "Network", keywords: &["host", "helper", "bridge", "skill", "install", "remove", "server"], args_schema: None },
+        ActionSpec {
+            id: "host.permissions",
+            title: "This Host’s Permissions…",
+            category: "Network",
+            keywords: &["permissions", "grants", "links", "passwords", "clipboard", "ssh", "screens"],
+            args_schema: None,
+        },
         ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], args_schema: None },
         ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], args_schema: None },
         ActionSpec { id: "app.close_window", title: "Close Window", category: "Window", keywords: &["window", "close"], args_schema: None },

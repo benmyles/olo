@@ -368,7 +368,7 @@ impl Prefs {
         self.windows.retain(Shown::is_open);
         let open: Vec<&str> = self.windows.iter().map(|w| w.panel().map_or("", Panel::arg)).collect();
         let power = views.iter().find_map(|v| serde_json::from_str::<power::Saved>(v).ok());
-        let rex = views.iter().find_map(|v| serde_json::from_str::<rex::Selection>(v).ok());
+        let rex = views.iter().find_map(|v| serde_json::from_str::<rex::Saved>(v).ok());
         serde_json::to_string(&(open, power, rex)).ok()
     }
 }
@@ -387,7 +387,7 @@ pub enum PanelMsg {
     /// What it shows changed (the settings, what a worker found).
     Redraw,
     RestorePower(power::Saved),
-    RestoreRex(rex::Selection),
+    RestoreRex(rex::Saved),
     /// The settings as app_server first said them: what Revert goes
     /// back to.
     Opened(Box<Settings>),
@@ -428,7 +428,7 @@ impl View for PanelView {
     fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
         match &self.state {
             panel::State::Power(st) => serde_json::to_string(&st.saved()).ok(),
-            panel::State::Rex(st) => serde_json::to_string(&st.selected).ok(),
+            panel::State::Rex(st) => serde_json::to_string(&rex::Saved { rex_tab: st.tab, rex_selected: st.selected.clone() }).ok(),
             _ => None,
         }
     }
@@ -449,9 +449,10 @@ impl View for PanelView {
                     st.restore(saved);
                 }
             }
-            PanelMsg::RestoreRex(selected) => {
+            PanelMsg::RestoreRex(saved) => {
                 if let panel::State::Rex(st) = &mut self.state {
-                    st.selected = selected;
+                    st.tab = saved.rex_tab.min(1);
+                    st.selected = saved.rex_selected;
                 }
             }
             PanelMsg::Opened(s) => self.opened = *s,
@@ -464,6 +465,7 @@ impl View for PanelView {
                         panel::State::Power(st) => power::show_tab(st, tab),
                         panel::State::Performance(st) => performance::show_tab(st, tab),
                         panel::State::Security(st) => security::show_tab(st, tab),
+                        panel::State::Rex(st) => rex::show_tab(st, tab),
                         // (Any other panel's, as a click on it would:
                         // `keyboard --tab Shortcuts` opened on Keyboard.)
                         _ => cx.after(LIGHT_AFTER, PanelMsg::Tab { tab: tab.clone(), tries: 20 }),
@@ -706,8 +708,14 @@ fn main() {
         let _ = PREFS.set(Mutex::new(Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new(), history: Default::default() }));
         let restored = olo_kit::restored_state()
             .and_then(|s| {
-                serde_json::from_str::<(Vec<String>, Option<power::Saved>, Option<rex::Selection>)>(&s)
+                serde_json::from_str::<(Vec<String>, Option<power::Saved>, Option<rex::Saved>)>(&s)
                     .ok()
+                    // (Before the pane had tabs, its host alone: on Hosts.)
+                    .or_else(|| {
+                        serde_json::from_str::<(Vec<String>, Option<power::Saved>, Option<rex::Selection>)>(&s)
+                            .ok()
+                            .map(|(open, saved, rex)| (open, saved, rex.map(|rex_selected| rex::Saved { rex_tab: 1, rex_selected })))
+                    })
                     .or_else(|| serde_json::from_str::<(Vec<String>, Option<power::Saved>)>(&s).ok().map(|(open, saved)| (open, saved, None)))
                     .or_else(|| serde_json::from_str::<Vec<String>>(&s).ok().map(|open| (open, None, None)))
             })
