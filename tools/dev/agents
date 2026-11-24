@@ -746,7 +746,7 @@ def look(args):
         pictures.append(full)
     work = os.path.dirname(pictures[0])
     out = os.path.join(work, front + ".md")
-    name = (("look-" if by == "gemini" else "opus-") + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
+    name = (("agy-" if by == "gemini" else "opus-") + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
     m = meta(name)
     if m and live(name) and (m.get("pictures"), m.get("about")) != (pictures, about):
         sys.exit(f"agents: {name} is looking at other pictures there: wait for it, or `tools/dev/agents stop {name}`")

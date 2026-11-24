@@ -59,9 +59,64 @@ pub struct HostRow {
     /// Whether Connect has something to do: it isn't connected, nor on
     /// its way.
     pub connects: bool,
+    /// Whether the same button is Disconnect: for a host connected, or
+    /// on its way. (This computer's own server too, where it is grey:
+    /// connected, and that isn't to be changed. A grey Connect there
+    /// said the opposite: Opus's review, 2026-11-23.)
+    pub disconnects: bool,
     /// Whether its server can be looked after from here (the Server
     /// window): a host reached over SSH as an account.
     pub managed: bool,
+    /// What the line under the buttons says of it when it is the one
+    /// chosen ([`host_line`]).
+    pub line: String,
+}
+
+/// What the line under the Hosts list's buttons says of the chosen
+/// host, where nothing went wrong with it (then its trouble is said
+/// there, after a red light): something in every state, so the line
+/// whose room is always kept is never an empty band (Opus's review,
+/// 2026-11-23: "as if a control is missing"), and what the greyed
+/// buttons and a waiting port don't say for themselves is said.
+///
+/// One pattern in every state (its third review: five states read as
+/// five voices): the row's own word for how it stands, then what that
+/// means for its sessions and its ports, in short sentences. Not the
+/// address again, which the row has.
+pub fn host_line(conn: &HostConnState, local: bool, waits_for_agent: bool, sessions: usize, forwards: usize) -> String {
+    use olo_kit::words::{count, tr};
+    let sentences = |parts: &[&str]| parts.iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(" ");
+    let waiting = match forwards {
+        0 => String::new(),
+        n => count(n as u64, "1 forwarded port is waiting.", "{n} forwarded ports are waiting."),
+    };
+    match conn {
+        _ if local => tr("Rex’s own server. It can’t be disconnected or removed.").into(),
+        HostConnState::Connected => {
+            let forwarded = match forwards {
+                0 => String::new(),
+                n => count(n as u64, "1 port forwarded here.", "{n} ports forwarded here."),
+            };
+            sentences(&[tr("Connected."), &count(sessions as u64, "1 session there.", "{n} sessions there."), &forwarded])
+        }
+        HostConnState::Connecting if waits_for_agent => tr("Connecting… Your key agent is asking you about this sign-in.").into(),
+        HostConnState::Connecting => sentences(&[tr("Connecting…"), &waiting]),
+        HostConnState::Reconnecting { last_error, .. } => sentences(&[&olo_kit::tr!("Reconnecting. {}", sentence(last_error)), &waiting]),
+        HostConnState::Disconnected => sentences(&[tr("Disconnected."), tr("Sessions there keep running."), &waiting]),
+        // (Said as its trouble.)
+        HostConnState::Error(_) => String::new(),
+    }
+}
+
+/// An error's words as a sentence: begun with a capital, ended with a
+/// stop.
+fn sentence(words: &str) -> String {
+    let words = words.trim();
+    let mut out: String = words.chars().take(1).flat_map(char::to_uppercase).chain(words.chars().skip(1)).collect();
+    if !out.ends_with(['.', '!', '?', '…']) {
+        out.push('.');
+    }
+    out
 }
 
 /// How a host's connection stands, in a word or two (its row's Status:
@@ -86,6 +141,36 @@ pub fn address_said(endpoint: &str) -> &str {
 }
 
 /// The hosts Rex knows, in their order, as the Hosts window lists them.
+/// Whether Connect has something to do for a host standing so.
+fn connects(conn: &HostConnState) -> bool {
+    matches!(conn, HostConnState::Disconnected | HostConnState::Error(_) | HostConnState::Reconnecting { .. })
+}
+
+/// Whether the button is Disconnect: connected, or on its way (to stop
+/// it). (One being connected to again after a failure has Connect,
+/// which tries now.)
+fn disconnects(conn: &HostConnState) -> bool {
+    matches!(conn, HostConnState::Connected | HostConnState::Connecting)
+}
+
+/// How a forward stands, as its row says it. One that isn't up goes by
+/// its host, in the host's own light: "Waiting for host" while the host
+/// isn't connected (grey for one let go of, never connected or failed;
+/// amber for one being connected to), "Reconnecting…" only where the
+/// host's row says so too, or the host is back and the forward is being
+/// made again. Never one word on a host and another on its port (Opus's
+/// fourth review, 2026-11-23: a host Connecting…, its port
+/// Reconnecting…, the line under them "is waiting").
+fn forward_said(state: &crate::hub::ForwardState, host: Option<&HostConnState>) -> (Light, &'static str, Option<String>) {
+    match (state, host) {
+        (crate::hub::ForwardState::Active, _) => (Light::On, "Forwarded", None),
+        (crate::hub::ForwardState::Failed(why), _) => (Light::Down, "Failed", Some(why.clone())),
+        (crate::hub::ForwardState::Waiting, Some(HostConnState::Connecting)) => (Light::Waiting, "Waiting for host", None),
+        (crate::hub::ForwardState::Waiting, Some(HostConnState::Disconnected | HostConnState::Error(_)) | None) => (Light::Off, "Waiting for host", None),
+        (crate::hub::ForwardState::Waiting, Some(HostConnState::Reconnecting { .. } | HostConnState::Connected)) => (Light::Waiting, "Reconnecting…", None),
+    }
+}
+
 pub fn host_rows(hub: &RexHub, waits_for_agent: &dyn Fn(&str) -> bool) -> Vec<HostRow> {
     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
     st.host_order
@@ -93,7 +178,9 @@ pub fn host_rows(hub: &RexHub, waits_for_agent: &dyn Fn(&str) -> bool) -> Vec<Ho
         .filter_map(|k| st.hosts.get(k))
         .map(|h| {
             let named = !h.label.is_empty() && h.label != h.endpoint_raw;
+            let forwards = st.forwards.iter().filter(|f| f.host_key == h.key).count() + demo_forwards().iter().filter(|(.., host, _, _)| *host == h.key).count();
             HostRow {
+                line: host_line(&h.conn_state, h.is_local, waits_for_agent(&h.endpoint_raw), h.session_summaries.len().max(h.sessions.len()), forwards),
                 key: h.key.clone(),
                 name: if h.label.is_empty() { h.endpoint_raw.clone() } else { h.label.clone() },
                 // (This computer's own server has no address a person
@@ -112,7 +199,8 @@ pub fn host_rows(hub: &RexHub, waits_for_agent: &dyn Fn(&str) -> bool) -> Vec<Ho
                     _ => None,
                 },
                 local: h.is_local,
-                connects: matches!(h.conn_state, HostConnState::Disconnected | HostConnState::Error(_) | HostConnState::Reconnecting { .. }),
+                connects: connects(&h.conn_state),
+                disconnects: disconnects(&h.conn_state),
                 managed: !h.is_local && matches!(crate::setup::address(&h.endpoint_raw), crate::setup::Address::Ssh(_)),
             }
         })
@@ -136,9 +224,12 @@ pub enum PortKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PortRow {
     pub kind: PortKind,
-    /// The port; one forwarded here, with the port it is here
-    /// ("5432 → 49152").
+    /// The port, where it is.
     pub port: String,
+    /// The port it is on this computer, which Open opens: a forwarded
+    /// port's port here, this computer's own again; none for another
+    /// host's that isn't forwarded.
+    pub here: String,
     pub program: String,
     pub host: String,
     pub light: Light,
@@ -151,69 +242,93 @@ pub struct PortRow {
 /// The ports as the Hosts window lists them: those forwarded here
 /// first (they are the person's own doing), then those programs in
 /// the panes listen on.
+/// The demo's forwards, which it has no hosts to make
+/// (`OLO_REX_DEMO_HOSTS=states`, for the window's pictures): a forward
+/// that works, one of the host being connected to, one of the host
+/// that isn't connected.
+fn demo_forwards() -> &'static [(&'static str, &'static str, u16, &'static str, Light, &'static str)] {
+    static DEMO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *DEMO.get_or_init(|| std::env::var("OLO_REX_DEMO_HOSTS").ok().as_deref() == Some("states")) {
+        &[
+            ("demo-1", "5432", 49152, "dev-box", Light::On, "Forwarded"),
+            // (On the host that is being connected to, and saying what
+            // a real one says there: `forward_said`.)
+            ("demo-2", "8080", 49153, "build", Light::Waiting, "Waiting for host"),
+            ("demo-3", "9090", 49154, "nas", Light::Off, "Waiting for host"),
+        ]
+    } else {
+        &[]
+    }
+}
+
 pub fn port_rows(hub: &RexHub) -> Vec<PortRow> {
     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
     let label = |key: &str| st.hosts.get(key).map(|h| h.label.clone()).unwrap_or_else(|| key.to_owned());
-    let mut rows: Vec<PortRow> = st
-        .forwards
-        .iter()
-        .map(|f| {
-            let local_port = f.local_addr.port();
-            let (light, state, trouble) = match &f.state {
-                crate::hub::ForwardState::Active => (Light::On, "Forwarded", None),
-                crate::hub::ForwardState::Waiting => (Light::Waiting, "Reconnecting…", None),
-                crate::hub::ForwardState::Failed(why) => (Light::Down, "Failed", Some(why.clone())),
-            };
+    // (Each with where it goes: its host's place in the Hosts list over
+    // it, then its number; a port forwarded before one only listened
+    // on.)
+    let place = |key: &str| st.host_order.iter().position(|k| k == key).unwrap_or(usize::MAX);
+    let mut rows: Vec<((usize, u16, u8), PortRow)> = Vec::new();
+    for f in &st.forwards {
+        let local_port = f.local_addr.port();
+        let (light, state, trouble) = forward_said(&f.state, st.hosts.get(&f.host_key).map(|h| &h.conn_state));
+        rows.push((
+            (place(&f.host_key), f.remote_port, 0),
             PortRow {
                 kind: PortKind::Forwarded { id: f.id.clone(), local_port, failed: trouble.is_some() },
-                port: format!("{} → {local_port}", f.remote_port),
+                port: f.remote_port.to_string(),
+                here: local_port.to_string(),
                 program: String::new(),
                 host: label(&f.host_key),
                 light,
                 state: olo_kit::words::tr(state).into(),
                 trouble,
-            }
-        })
-        .collect();
-    let mut listening = Vec::new();
+            },
+        ));
+    }
     for (bk, br) in &st.blocks {
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
         let program = g.process.as_ref().and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.clone()).unwrap_or_default();
         let here = st.hosts.get(&bk.host_key).is_some_and(|h| h.is_local);
         for pe in &g.ports.ports {
-            listening.push(PortRow {
-                kind: PortKind::Listening { host_key: bk.host_key.clone(), session_id: bk.session_id.clone(), port: pe.port, here },
-                port: pe.port.to_string(),
-                program: program.clone(),
-                host: label(&bk.host_key),
-                // (Working: green, as a connected host. Grey is for off.)
-                light: Light::On,
-                state: olo_kit::words::tr("Listening").into(),
-                trouble: None,
-            });
+            rows.push((
+                (place(&bk.host_key), pe.port, 1),
+                PortRow {
+                    kind: PortKind::Listening { host_key: bk.host_key.clone(), session_id: bk.session_id.clone(), port: pe.port, here },
+                    port: pe.port.to_string(),
+                    here: if here { pe.port.to_string() } else { String::new() },
+                    program: program.clone(),
+                    host: label(&bk.host_key),
+                    // (Working: green, as a connected host. Grey is for off.)
+                    light: Light::On,
+                    state: olo_kit::words::tr("Listening").into(),
+                    trouble: None,
+                },
+            ));
         }
     }
-    // (The demo's pictures of forwards, which it has no hosts to make:
-    // `OLO_REX_DEMO_HOSTS=states`.)
-    static DEMO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if *DEMO.get_or_init(|| std::env::var("OLO_REX_DEMO_HOSTS").ok().as_deref() == Some("states")) {
-        let row = |id: &str, port: &str, local_port: u16, light, state: &'static str| PortRow {
-            kind: PortKind::Forwarded { id: id.to_owned(), local_port, failed: false },
-            port: format!("{port} → {local_port}"),
-            program: String::new(),
-            host: "dev-box".to_owned(),
-            light,
-            state: olo_kit::words::tr(state).into(),
-            trouble: None,
-        };
-        rows.push(row("demo-1", "5432", 49152, Light::On, "Forwarded"));
-        rows.push(row("demo-2", "8080", 49153, Light::Waiting, "Reconnecting…"));
+    for &(id, port, local_port, host, light, state) in demo_forwards() {
+        rows.push((
+            (place(host), port.parse().unwrap_or(0), 0),
+            PortRow {
+                kind: PortKind::Forwarded { id: id.to_owned(), local_port, failed: false },
+                port: port.to_owned(),
+                here: local_port.to_string(),
+                program: String::new(),
+                host: host.to_owned(),
+                light,
+                state: olo_kit::words::tr(state).into(),
+                trouble: None,
+            },
+        ));
     }
-    // (In an order that holds from one look to the next: the panes are
-    // kept in a map.)
-    listening.sort_by(|a, b| (&a.host, a.port.len(), &a.port).cmp(&(&b.host, b.port.len(), &b.port)));
-    rows.extend(listening);
-    rows
+    // (An order that holds from one look to the next, the panes being
+    // kept in a map, and that is the Hosts list's own: this computer's
+    // ports first, then each host's as the hosts stand, by number. They
+    // were those forwarded, then those listened on, and the list read
+    // as unsorted: 5432, 8080, 9090, 3000. Opus's fourth review.)
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    rows.into_iter().map(|(_, row)| row).collect()
 }
 
 /// How many rows a list of the Hosts window has room for: all of a few,
@@ -228,6 +343,10 @@ pub fn list_rows(rows: usize, least: usize) -> usize {
 /// state is a word or two.
 const STATUS_AT: f32 = 384.0;
 const STATUS: f32 = 146.0;
+/// The Ports list's two columns of numbers: a port (five figures at
+/// most), and the port it is here.
+const PORT: f32 = 48.0;
+const HERE: f32 = 56.0;
 
 /// A light and the words beside it, in a list's cell: the light where
 /// the cell's text begins, the words after it.
@@ -259,7 +378,7 @@ pub fn render_hosts_panel(
     can_forward: bool,
     on_host: impl Fn(&(), &mut WindowCx) + 'static,
     on_add_host: impl Fn(&(), &mut WindowCx) + 'static,
-    on_connect_host: impl Fn(&String, &mut WindowCx) + 'static,
+    on_connect_host: impl Fn(&(String, bool), &mut WindowCx) + 'static,
     on_remove_host: impl Fn(&String, &mut WindowCx) + 'static,
     on_manage: impl Fn(&String, &mut WindowCx) + 'static,
     on_port: impl Fn(&(), &mut WindowCx) + 'static,
@@ -267,9 +386,10 @@ pub fn render_hosts_panel(
     on_stop: impl Fn(&String, &mut WindowCx) + 'static,
     on_open: impl Fn(&PortKind, &mut WindowCx) + 'static,
 ) -> Element {
-    let scale = cx.scale_factor();
-    let rim = 2.0 * style::line_pixels(scale) / scale;
-    let tall = |rows: usize| px(olo_kit::widgets::HEADER_HEIGHT + m::LIST_ROW * rows as f32 + 2.0 * rim);
+    // (As tall as so many rows take, to the device pixel: the kit's
+    // own sum. Added up here it came short at 1.25× and 1.75×, and
+    // both lists had a live scroll bar with every row showing.)
+    let tall = |rows: usize| px(olo_kit::widgets::list_height(rows, m::LIST_ROW, true));
 
     // The hosts. (Each cell from the window's own rows, as the list
     // draws them when it wants them.)
@@ -301,10 +421,13 @@ pub fn render_hosts_panel(
     // as "Manage Rex Server…", which was here until that became the
     // Host window's, they were more, and Connect was cut at the
     // window's edge, 2026-11-23.)
-    let wide = ["Add…", "Remove", "Manage Host…", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
+    let wide = ["Add…", "Remove", "Manage Host…", "Connect", "Disconnect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
 
     // Under it: what is done to the one chosen. This computer's own
-    // server isn't removed; Connect is for one that isn't connected.
+    // server isn't removed; Connect is for one that isn't connected,
+    // and is Disconnect for one that is, in the same place (a host that
+    // was connected had a button that only greyed: no way back, Opus's
+    // review of the window, 2026-11-23).
     let picked = chosen_host.and_then(|i| hosts.get(i));
     let (pick_remove, pick_connect, pick_server) = (picked.map(|h| h.key.clone()), picked.map(|h| h.key.clone()), picked.map(|h| h.key.clone()));
     let host_actions = div()
@@ -327,52 +450,79 @@ pub fn render_hosts_panel(
                 on_manage(key, cx);
             }
         }))
-        .child(Button::new("Connect").min_width(wide).enabled(picked.is_some_and(|h| h.connects)).on_click(move |_, cx| {
-            if let Some(key) = &pick_connect {
-                on_connect_host(key, cx);
-            }
-        }));
+        .child({
+            let disconnects = picked.is_some_and(|h| h.disconnects);
+            let enabled = picked.is_some_and(|h| if h.disconnects { !h.local } else { h.connects });
+            Button::new(if disconnects { "Disconnect" } else { "Connect" }).min_width(wide).enabled(enabled).on_click(move |_, cx| {
+                if let Some(key) = &pick_connect {
+                    on_connect_host(&(key.clone(), disconnects), cx);
+                }
+            })
+        });
     // What went wrong with the chosen one, in its own words, under the
     // buttons: a line's room always, so choosing a host moves nothing
     // (its row says "Failed"; the reason here, after its red light,
     // in the window's own ink: a whole line of red was the loudest
     // thing in the window).
     let trouble = picked.and_then(|h| h.trouble.clone());
-    // (As tall empty as with a line in it: the row a line of this text
-    // sits in. A point's difference moved the Ports under it.)
-    let trouble = div().w_full().min_h(px(style::line_row(style::PLAIN_SIZE))).children(trouble.map(|why| {
-        div()
+    // (Where nothing went wrong, how the chosen host stands, quieter:
+    // `host_line`. The line is never empty.)
+    let said: String = match picked {
+        Some(h) => h.line.clone(),
+        None => olo_kit::words::tr("Choose a host to connect it, disconnect it or manage it.").into(),
+    };
+    // One line, always, in a row of its own height: choosing a host
+    // moves nothing under it. A reason too long for the line is cut
+    // with "…", its whole in the line's tip, to agents, and in the Host
+    // window (it wrapped, and the Ports under it moved down a line for
+    // that host alone: Opus's reviews, 2026-11-23). The light and the
+    // words are centred in the same row (the light in a row of its own
+    // beside a paragraph stood a point low against the capitals:
+    // Gemini's fourth look).
+    let row = style::line_row(style::PLAIN_SIZE);
+    let trouble = div().w_full().h(px(row)).child(match trouble {
+        Some(why) => div()
             .w_full()
+            .h(px(row))
             .flex()
             .flex_row()
-            .items_start()
+            .items_center()
             .gap(px(m::TIGHT))
-            .child(div().h(px(style::line_row(style::PLAIN_SIZE))).flex().items_center().child(light(Light::Down)))
-            .child(div().flex_1().min_w_0().child(StringView::new(why).wrap(true)))
-    }));
+            .child(light(Light::Down))
+            .child(div().flex_1().min_w_0().child(StringView::new(why).cut_words(true).height(row))),
+        None => div().w_full().child(StringView::new(said).dim(true).cut_words(true).height(row)),
+    });
 
     // The ports.
     let port_list = ColumnListView::new(
         cx,
         "rex-ports",
         ports_list,
-        vec![Column::new("Port", 104.0), Column::new("Program", 116.0), Column::new("Host", STATUS_AT - 220.0), Column::new("Status", STATUS)],
+        // (The port, and the port it is here: two columns of numbers,
+        // set right. They were one, "5432 → 49152" under "Port", which
+        // didn't say which was which; and "Port → Here" over it was a
+        // title with an arrow in it, over rows that had none. Opus's
+        // reviews, 2026-11-23.)
+        vec![Column::new("Port", PORT).right(), Column::new("Here", HERE).right(), Column::new("Program", 116.0), Column::new("Host", STATUS_AT - 220.0), Column::new("Status", STATUS)],
         ports.len(),
         |v: &crate::ui::RexWindow, cell, g| {
             let Some(p) = v.ports_rows.get(cell.row) else { return };
             match cell.column {
                 0 => cell.text(g, p.port.clone()),
-                // (A forwarded port's program isn't known here: a dash, quiet,
-                // not a blank that reads as something not loaded.)
-                1 if p.program.is_empty() && !cell.selected => cell.text_with(g, "–", style::ui_font(olo_kit::FontWeight::NORMAL), style::secondary_text(&theme::palette())),
-                1 if p.program.is_empty() => cell.text(g, "–"),
-                1 => cell.text(g, p.program.clone()),
-                2 => cell.text(g, p.host.clone()),
+                // (Not here, nor a program known: a dash, quiet, not a
+                // blank that reads as something not loaded.)
+                1 | 2 if (if cell.column == 1 { &p.here } else { &p.program }).is_empty() => {
+                    let ink = if cell.selected { cell.text_color } else { style::secondary_text(&theme::palette()) };
+                    cell.text_with(g, "–", style::ui_font(olo_kit::FontWeight::NORMAL), ink)
+                }
+                1 => cell.text(g, p.here.clone()),
+                2 => cell.text(g, p.program.clone()),
+                3 => cell.text(g, p.host.clone()),
                 _ => lit_cell(g, cell, p.light, &p.state),
             }
         },
     )
-    .row_key(|v: &crate::ui::RexWindow, row| v.ports_rows.get(row).map_or(0, |p| style::key((&p.port, &p.program, &p.host, p.light, &p.state))))
+    .row_key(|v: &crate::ui::RexWindow, row| v.ports_rows.get(row).map_or(0, |p| style::key((&p.port, &p.here, &p.program, &p.host, p.light, &p.state))))
     .empty_text("No programs in the panes are listening on ports, and none is forwarded here.")
     .on_select(on_port);
     let port_list = div().w_full().h(tall(list_rows(ports.len(), 4))).child(port_list);
@@ -1245,6 +1395,57 @@ mod tests {
         assert_eq!(super::address_said("unix:///run/rex.sock"), "unix:///run/rex.sock");
         // All of a few hosts, never fewer rows than its least, eight at most.
         assert_eq!((list_rows(1, 5), list_rows(6, 5), list_rows(20, 5), list_rows(0, 4)), (5, 6, 8, 4));
+    }
+
+    #[test]
+    fn the_one_button_is_connect_or_disconnect_never_both() {
+        use super::{connects, disconnects};
+        use crate::hub::HostConnState;
+        let all = [
+            HostConnState::Connected,
+            HostConnState::Connecting,
+            HostConnState::Disconnected,
+            HostConnState::Error("no route".into()),
+            HostConnState::Reconnecting { attempt: 2, last_error: "closed".into() },
+        ];
+        for conn in &all {
+            assert!(connects(conn) != disconnects(conn), "{conn:?}: one of the two");
+        }
+        assert!(disconnects(&HostConnState::Connected) && disconnects(&HostConnState::Connecting));
+        assert!(connects(&HostConnState::Disconnected) && connects(&all[4]));
+    }
+
+    #[test]
+    fn the_line_under_the_hosts_says_something_of_every_host_but_one_that_failed() {
+        use super::host_line;
+        use crate::hub::HostConnState;
+        let far = |conn: &HostConnState, sessions, forwards| host_line(conn, false, false, sessions, forwards);
+        // (The row's own word first, then its sessions and its ports.)
+        assert_eq!(far(&HostConnState::Connected, 1, 0), "Connected. 1 session there.");
+        assert_eq!(far(&HostConnState::Connected, 3, 2), "Connected. 3 sessions there. 2 ports forwarded here.");
+        assert_eq!(far(&HostConnState::Connecting, 0, 0), "Connecting…");
+        assert_eq!(far(&HostConnState::Connecting, 0, 1), "Connecting… 1 forwarded port is waiting.");
+        assert_eq!(host_line(&HostConnState::Connecting, false, true, 0, 0), "Connecting… Your key agent is asking you about this sign-in.");
+        assert_eq!(far(&HostConnState::Reconnecting { attempt: 2, last_error: "connection closed".into() }, 0, 1), "Reconnecting. Connection closed. 1 forwarded port is waiting.");
+        assert_eq!(far(&HostConnState::Disconnected, 0, 2), "Disconnected. Sessions there keep running. 2 forwarded ports are waiting.");
+        assert_eq!(far(&HostConnState::Disconnected, 0, 0), "Disconnected. Sessions there keep running.");
+        // (This computer's own, however it stands; a failure's own words are said in the line's place.)
+        assert_eq!(host_line(&HostConnState::Connected, true, false, 2, 0), "Rex’s own server. It can’t be disconnected or removed.");
+        assert_eq!(far(&HostConnState::Error("no route".into()), 0, 0), "");
+    }
+
+    #[test]
+    fn a_forward_of_a_host_let_go_of_waits_and_is_not_said_to_reconnect() {
+        use super::{Light, forward_said};
+        use crate::hub::{ForwardState, HostConnState};
+        assert_eq!(forward_said(&ForwardState::Waiting, Some(&HostConnState::Disconnected)), (Light::Off, "Waiting for host", None));
+        assert_eq!(forward_said(&ForwardState::Waiting, Some(&HostConnState::Error("no route".into()))), (Light::Off, "Waiting for host", None));
+        // (Its host's word and light: amber with a host being connected to.)
+        assert_eq!(forward_said(&ForwardState::Waiting, Some(&HostConnState::Connecting)), (Light::Waiting, "Waiting for host", None));
+        let lost = HostConnState::Reconnecting { attempt: 1, last_error: "closed".into() };
+        assert_eq!(forward_said(&ForwardState::Waiting, Some(&lost)), (Light::Waiting, "Reconnecting…", None));
+        assert_eq!(forward_said(&ForwardState::Waiting, Some(&HostConnState::Connected)).1, "Reconnecting…");
+        assert_eq!(forward_said(&ForwardState::Active, Some(&HostConnState::Connected)), (Light::On, "Forwarded", None));
     }
 
     #[test]

@@ -18,6 +18,7 @@ pub struct StringView {
     height: f32,
     wrap: bool,
     cut: bool,
+    cut_words: bool,
     size: f32,
     /// The size of the text it sits beside, whose baseline it's drawn on.
     beside: Option<f32>,
@@ -25,7 +26,19 @@ pub struct StringView {
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: crate::words::of(text), dim: false, bold: false, mono: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, cut: false, size: style::PLAIN_SIZE, beside: None }
+        StringView {
+            text: crate::words::of(text),
+            dim: false,
+            bold: false,
+            mono: false,
+            color: None,
+            height: m::CONTROL_HEIGHT,
+            wrap: false,
+            cut: false,
+            cut_words: false,
+            size: style::PLAIN_SIZE,
+            beside: None,
+        }
     }
 
     /// On the baseline of a line of `size` points centred in the same
@@ -65,6 +78,15 @@ impl StringView {
     /// taller or wider.
     pub fn cut(mut self, on: bool) -> Self {
         self.cut = on;
+        self
+    }
+
+    /// [`Self::cut`] for a sentence (a reason, a status): cut where a
+    /// word ends, never inside one, nor leaving a bracket open
+    /// (`style::fit_words`).
+    pub fn cut_words(mut self, on: bool) -> Self {
+        self.cut = on;
+        self.cut_words = on;
         self
     }
 
@@ -121,8 +143,8 @@ impl IntoElement for StringView {
         }
         let size = self.size;
         if self.cut {
-            let (text, dim, color, beside) = (self.text, self.dim, self.color, self.beside);
-            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, mono, beside.map(f32::to_bits)));
+            let (text, dim, color, beside, words) = (self.text, self.dim, self.color, self.beside, self.cut_words);
+            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, mono, beside.map(f32::to_bits), words));
             return canvas(move |g, b| {
                 let p = theme::palette();
                 let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
@@ -130,6 +152,7 @@ impl IntoElement for StringView {
                 // status beside a title sat half a point off it.)
                 let r = match beside {
                     Some(of) => style::label_on_baseline_fit(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, font.clone(), ink, b.size.width),
+                    None if words => style::label_fit_words(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, font.clone(), ink, b.size.width),
                     None => style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, font.clone(), ink, b.size.width),
                 };
                 g.agent(agent::Node::label(text.clone(), r));

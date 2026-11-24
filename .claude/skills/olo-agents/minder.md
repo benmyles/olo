@@ -52,7 +52,11 @@ alone), its settings, and its report when it is done.
      ends its session and takes it off the list. So a look's end is its
      front door's end (exit 0) and its result file being there; `watch`
      then says "none running" and `list` no longer shows it, and that
-     is as it should be.
+     is as it should be. (Your own `watch` may say of a look "is DONE"
+     or "idle … DONE" in the moment between its review being written
+     and its front door ending it: the same end, nothing to answer.
+     The two looks of a folder are named `agy-FOLDER` and
+     `opus-FOLDER`.)
    - *It finished a turn with a question, or without its result*
      (`list` shows it `idle`): if the answer is plainly in what it was
      given (`/var/tmp/olo-agents/NAME/brief.md`: its rules, then the

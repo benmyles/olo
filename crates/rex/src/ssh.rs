@@ -947,6 +947,31 @@ impl SshSessionPool {
         Ok(Box::pin(tokio::io::join(reader, writer)))
     }
 
+    /// Lets go of a host: its link over UDP, the channel that keeps a
+    /// forwarded agent's socket there, and its SSH connections (the
+    /// first and any further), each told goodbye. Whatever is asked of
+    /// the host afterwards connects afresh. (A connection being made at
+    /// this moment is left to whoever is making it.)
+    pub async fn close(&self, target: &SshTarget) {
+        {
+            let mut links = self.links.lock().await;
+            if matches!(links.get(target), Some(Link::Up(..))) {
+                links.remove(target);
+            }
+        }
+        self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
+        let mut handles = self.further.lock().await.remove(target).unwrap_or_default();
+        if let Some(slot) = self.sessions.lock().await.remove(target)
+            && let Ok(mut session) = slot.try_lock()
+            && let Some(handle) = session.take()
+        {
+            handles.push(handle);
+        }
+        for handle in handles {
+            let _ = handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+        }
+    }
+
     async fn get_or_connect(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Arc<Handle<SshClientHandler>>, RexError> {
         let slot = self.sessions.lock().await.entry(target.clone()).or_default().clone();
         let mut session = slot.lock().await;

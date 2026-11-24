@@ -81,6 +81,9 @@ pub struct SavedWorkspaceState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedAppState {
     pub workspaces: Vec<SavedWorkspaceState>,
+    /// The hosts let go of (Hosts and Ports' Disconnect): they stay so.
+    #[serde(default)]
+    pub let_go: Vec<String>,
 }
 
 /// Global Rex application controller (shared safely across windows via `olo_sync::Mutex`).
@@ -1510,6 +1513,10 @@ impl RexWindow {
             "app.quit" => olo_kit::quit(),
             "app.reload_config" => hub.reload_server_config(&self.active_host, Feedback::start(self.id)),
             "host.reconnect" => hub.connect_host(&self.active_host),
+            // (A host let go of, and connected again, by its key: what
+            // Hosts and Ports' one button does, for agents.)
+            c if c.starts_with("host.disconnect:") => hub.disconnect_host(c.trim_start_matches("host.disconnect:")),
+            c if c.starts_with("host.connect:") => hub.connect_host(c.trim_start_matches("host.connect:")),
             "session.new" => hub.create_session(&self.active_host, None, None, Feedback::start(self.id)),
             "session.close" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
@@ -3179,8 +3186,12 @@ impl RexWindow {
                     can_forward,
                     cx.msg_with(|_: &()| WinMsg::HostsChosen),
                     cx.msg_with(|_: &()| WinMsg::Command("app.add_host".into())),
-                    cx.msg_with(move |hk: &String| {
-                        hub_r.connect_host(hk);
+                    cx.msg_with(move |(hk, disconnect): &(String, bool)| {
+                        if *disconnect {
+                            hub_r.disconnect_host(hk);
+                        } else {
+                            hub_r.connect_host(hk);
+                        }
                         WinMsg::Redraw
                     }),
                     cx.msg_with(move |hk: &String| {

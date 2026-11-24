@@ -3273,7 +3273,11 @@ it.
   device pixels, it left a pixel's seam at 1.75×);
   `ScrollBar::vertical(id, handle)` drives any
   `ScrollHandle` (a list's too): arrows that scroll on while
-  held, a track click pages, the knob drags; agents read it as a
+  held, a track click pages, the knob drags (with nothing to
+  scroll, its arrows are grey in a greyed label's ink,
+  `style::disabled_text`: the panel shaded came out near black on
+  the arrow's face in the dark looks, 2.2:1 where a greyed button's
+  label beside it had 4.2:1); agents read it as a
   `ScrollBar` with its position, 0 to 1. In a frame it places itself
   inside the frame's two lines on device pixels (`in_frame`).
   `auto_hide(true)` shows the vertical bar only while what it holds
@@ -3337,6 +3341,15 @@ it.
   two fingers on an Olo app both come so. `ImageView` (Viewer's
   pictures, Quick Look) and Viewer's PDF view zoom by `step` about the
   fingers.
+- `widgets::list_height(rows, row_height, header)`: how tall a
+  `ColumnListView` is that shows exactly so many rows, at the scale
+  now, as the list places its own parts on device pixels. Give a list
+  that is to fit its rows this height; `HEADER_HEIGHT` + rows + frame
+  added up by hand came a fraction of a pixel short at 1.25× and
+  1.75×, and a list whose rows all showed had a live scroll bar
+  (Rex's Hosts and Ports, 2026-11-23). And its header ends where its
+  scroll bar begins: the dark line after the last title is the bar's
+  own left line carried up (it was a point left of it, in every list).
 - `widgets::ColumnListView::new(id, &model, columns, rows, cell)`:
   BColumnListView, its state in a `ListModel` entity the app keeps
   (`ListModel::new(cx, multiple)`; `state` is the shared
@@ -21775,7 +21788,7 @@ under its paragraph reached them on every Integrations tab: "provide
 all screenshots of changes to a … agent … for a second review / set of
 eyes to identify anything you missed"): `agy-look --about "WHAT
 CHANGED" PICTURE.png…` copies the pictures into a folder of the look's
-own, where an agy named `look-FOLDER` works (no command allowed
+own, where an agy named `agy-FOLDER` works (as Opus's is `opus-FOLDER`; it was `look-FOLDER` until 2026-11-23) (no command allowed
 unasked, nothing of the project loaded) with a designer's brief
 (spacing, alignment, text cut or crowded, what's out of keeping); its
 review is kept as `agy-look.md` beside the first picture (its
@@ -28469,11 +28482,52 @@ one width. *Hosts*: name, address (without `ssh://`; "Local" for this
 computer's own server), status: a light and a state in a word
 (`host_state`: Connected, Connecting…, Waiting for your key agent…,
 Disconnected, Failed); Add…, Remove (not this computer) and Connect (a
-host that isn't connected: there is no way to disconnect one yet). What
-went wrong with the chosen host is said whole in a line under the
-buttons, after its red light, in a line whose room is always kept.
-*Ports*: those forwarded here first ("5432 → 49152", Forwarded,
-Reconnecting…, Failed), then those programs in the panes listen on
+host that isn't connected), which is Disconnect in the same place for
+one that is, or is on its way (for this computer's own server a grey
+Disconnect: connected, and not to be changed; a grey Connect there
+said the opposite).
+*Disconnect* (`RexHub::disconnect_host`; for agents the commands
+`host.disconnect:KEY` and `host.connect:KEY`) lets go of the host and
+keeps it: the loop that kept it connected ends (it is no longer the
+one the host names), the connection to its server is closed, with the
+SSH connection under it and what went with that
+(`SshSessionPool::close`: the link over UDP, the channel that kept the
+forwarded keys' socket there, any further connections), its panes go
+from the windows, its forwards wait: each stays in the Ports list as
+"Waiting for host" with a grey light (`forward_said`; "Reconnecting…"
+is for a host being connected to again). Its sessions go on on its
+server, and Connect brings them back. Nothing says "disconnected" in a
+notice: the person did it. And it stays let go of: a network that
+comes back connects only the hosts that were being connected to
+(`wanted_back`: it connected every host that wasn't, one never
+connected too), and over an upgrade in place the hosts let go of are
+kept with the windows (`SavedAppState::let_go`), so one that is to be
+connected "as Rex starts" isn't by the reload. (`tools/dev/rex-slow/try.py disconnect`: no SSH
+connection to the far host is left, none comes back by itself, and
+Connect brings the session back.) What
+went wrong with the chosen host is said in a line under the buttons,
+after its red light: one row, always, so choosing a host moves
+nothing; a reason longer than the line is cut with "…", its whole in
+the line's tip, to agents, and in the Host window. The line is never
+empty: where nothing went wrong it says how the chosen host stands, in
+the secondary ink, on one pattern (`host_line`): the row's own word,
+then its sessions, then its ports, in short sentences ("Connected. 2
+sessions there. 1 port forwarded here.", "Connecting… 1 forwarded port
+is waiting.", "Disconnected. Sessions there keep running. 1 forwarded
+port is waiting."; for this computer, why three of its buttons are
+grey; with none chosen, to choose one). (Empty, it read as a control
+gone missing; in five voices, as five lines: Opus's reviews,
+2026-11-23.)
+*Ports*: the port, and the port it is here (which Open opens), in two
+columns of numbers set right, "Port" and "Here" (they were one,
+"5432 → 49152"; this computer's own port is in both, another host's
+that isn't forwarded has a quiet dash under Here), the program
+(a dash where it isn't known), the host, and how it stands: Listening;
+Forwarded; Failed; and for a forward that isn't up, its host's own word
+and light (`forward_said`): "Waiting for host", amber while the host is
+being connected to and grey while it isn't connected, "Reconnecting…"
+only where the host's row says so too. In the Hosts list's own order
+(this computer's first, then each host's, by number).
 (Listening); Forward…, Stop (Remove for one that failed) and Open (a
 port here is opened; another host's is forwarded first; a forwarded
 one is opened where it is here). The two Status columns begin at one

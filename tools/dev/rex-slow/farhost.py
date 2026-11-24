@@ -118,6 +118,15 @@ class FarHost:
         for p in self.procs:
             try: os.killpg(p.pid, signal.SIGTERM)
             except OSError: pass
+        # A Rex server of the far host's own: a `rex` there that was told no socket, or found none at the one it
+        # was told, starts one at its default place (under the rig's runtime folder), which outlives the run (one
+        # was found hours later with two test sessions in it, 2026-11-23). Told to stop by its own socket; never
+        # started to be stopped, and never another's (the environment is the far host's, with no socket named).
+        if os.path.exists(f"{D}/runtime/rex/server.sock"):
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "XDG_RUNTIME_DIR": f"{D}/runtime", "XDG_STATE_HOME": f"{D}/state", "XDG_CONFIG_HOME": f"{self.home}/.config",
+                   "XDG_CACHE_HOME": f"{self.home}/.cache"}
+            try: subprocess.run(["rex", "--autostart=false", "--timeout", "5s", "server", "stop"], env=env, capture_output=True, timeout=15)
+            except (OSError, subprocess.TimeoutExpired): pass
     def ran(self, command, timeout=30):
         """A command on the "far host", as Rex would run it (for a test to look at what is there)."""
         out = subprocess.run(["ssh", "-p", str(self.port), "-i", f"{self.dir}/client_key", "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", f"UserKnownHostsFile={self.dir}/known_hosts",

@@ -351,7 +351,12 @@ fn arrow_button(g: &mut Painter, r: Bounds<Pixels>, dir: Arrow, down: bool, enab
     } else {
         style::bevel(g, inner, style::c(p.shine), style::shade(p, base, 1.18));
     }
-    let color = if enabled { style::c(p.control_text) } else { style::shade(p, bg, 1.3) };
+    // (With nothing to scroll: the ink of a greyed button's label. It
+    // was the panel shaded, which in the dark looks came out near black
+    // on the arrow's slate: 2.2:1 where a greyed label beside it had
+    // 4.2:1, and darker than its face where every other ink there is
+    // lighter. Gemini's look at Rex's Hosts and Ports, 2026-11-23.)
+    let color = if enabled { style::c(p.control_text) } else { style::disabled_text(p) };
     let c = r.center() + if down { point(px(0.5), px(0.5)) } else { point(px(0.0), px(0.0)) };
     let (s, h) = (px(3.5), px(2.0));
     let pts = match dir {

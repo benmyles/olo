@@ -686,6 +686,7 @@ Choose a Folder…
 Choose a backup to see how it was last checked.
 Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
+Choose a host to connect it, disconnect it or manage it.
 Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 Choose a network to join it.
 Choose a setting, then play the original or its sound: switching goes on from the same place.
@@ -831,6 +832,7 @@ Connecting to Telegram…
 Connecting to {}…
 Connecting to “{}”…
 Connecting…
+Connecting… Your key agent is asking you about this sign-in.
 Connection
 Connection lost just now.
 Connection lost {n} days ago.
@@ -1070,6 +1072,7 @@ Disconnect
 Disconnect Google Drive
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 Disconnected
+Disconnected.
 Disconnected: {}
 Disconnecting from Google Drive…
 Disconnecting…
@@ -2963,6 +2966,7 @@ Recommended
 Recommended by another package
 Recommended for it
 Reconnecting (try {})…
+Reconnecting. {}
 Record
 Record Active Window
 Record Again
@@ -3132,6 +3136,7 @@ Rex sets these as {}:
 Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
 Rex signs in as {}@{}, as it will to connect.
 Rex: Agents & Sessions
+Rex’s own server. It can’t be disconnected or removed.
 Rich Text (RTF)…
 Right
 Right Half
@@ -3291,6 +3296,7 @@ Session:
 Sessions
 Sessions on this computer may:
 Sessions on {} may:
+Sessions there keep running.
 Set
 Set Background
 Set Rex up there if it needs it
@@ -4203,6 +4209,7 @@ Waiting for Ethernet
 Waiting for a key from Olo Passwords
 Waiting for another fix to finish…
 Waiting for app_server…
+Waiting for host
 Waiting for it…
 Waiting for power
 Waiting for the network
@@ -4719,6 +4726,7 @@ your own picture
 {n} files couldn’t be read.
 {n} films playing on AirPlay receivers. Click to pause or stop them.
 {n} folders couldn't be read
+{n} forwarded ports are waiting.
 {n} hours
 {n} hours ago
 {n} items
@@ -4733,6 +4741,7 @@ your own picture
 {n} overdue
 {n} packs as sent, by their checksums
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
+{n} ports forwarded here.
 {n} problems reading 1Password…
 {n} programs
 {n} samples
@@ -4741,6 +4750,7 @@ your own picture
 {n} seconds
 {n} secrets
 {n} sessions open
+{n} sessions there.
 {n} shares, control among them. Click to stop them.
 {n} slots
 {n} sync changes to review

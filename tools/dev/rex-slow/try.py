@@ -429,6 +429,61 @@ elif what == "poolrex":
         finally:
             r.far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')
         print("PASS" if ok else "FAIL")
+elif what == "disconnect":
+    # A host let go of and connected again (Hosts and Ports' Disconnect, by its command): its SSH connection is
+    # closed and Rex is no client of its server any more, the host stays in the list, saying so, with Connect
+    # in the button's place; Connect brings its session back, typed into as before.
+    import subprocess
+    with Rig("shell", delay=0, far=True) as r:
+        ok = True
+        def check(what, passed, shown):
+            global ok
+            ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:240], flush=True)
+        # (Connections to the far host's SSH server, which is the rig's own port: counted by that port.)
+        ssh = lambda: len(subprocess.run(["ss", "-tnH", "state", "established", f"sport = :{r.far.port}"], capture_output=True, text=True).stdout.split("\n")) - 1
+        def window():
+            nodes = r.nodes("Hosts and Ports")
+            row = next((n for n in nodes if n.get("role") == "Row" and str(n.get("name") or "").startswith("far ")), None)
+            button = next((n for n in nodes if n.get("role") == "Button" and n.get("name") in ("Connect", "Disconnect")), None)
+            return {"row": row, "says": row and str(row["name"]).split()[-1], "button": button and (button["name"], button.get("enabled"))}
+        def choose():
+            # (The far host's row chosen, as a person would: the button under the list is for the one chosen.)
+            w = next((x for x in r.windows() if x.get("title", "").startswith("Hosts and Ports")), None); row = window()["row"]
+            if w and row:
+                c = w["content"]; r.ts("click", r.name, str(int(c["x"] + row["x"] + row["width"] / 2)), str(int(c["y"] + row["y"] + row["height"] / 2))); time.sleep(0.8)
+        def typed(mark):
+            r.type(f"touch {mark}\n")
+            return r.wait(lambda: mark in r.far.ran(f"ls $HOME {D} {D}/home 2>/dev/null"), 15)
+        mark = f"disc{int(time.time()) % 100000}"
+        check("connected: typed into its shell", typed(mark + "a"), mark + "a")
+        check("connected: SSH connections to it", ssh() >= 1, ssh())
+        r.invoke("app.hosts")
+        r.wait(lambda: window()["row"], 15); choose()
+        w = window()
+        check("Hosts and Ports, the host chosen: Connected, and the button is Disconnect", w["says"] == "Connected" and w["button"] == ("Disconnect", True), {k: w[k] for k in ("says", "button")})
+        r.invoke("host.disconnect:far")
+        gone = r.wait(lambda: ssh() == 0, 10)
+        check("let go of: no SSH connection to it is left", gone, ssh())
+        w = r.wait(lambda: (lambda w: w if w["says"] == "Disconnected" else None)(window()), 10) or window()
+        check("the window says Disconnected, and the button is Connect", w["says"] == "Disconnected" and w["button"] == ("Connect", True), {k: w[k] for k in ("says", "button")})
+        time.sleep(3)
+        check("and it stays so (nothing connects by itself)", ssh() == 0 and window()["says"] == "Disconnected", ssh())
+        # (Connect, by the button itself.)
+        w0 = next((x for x in r.windows() if x.get("title", "").startswith("Hosts and Ports")), None)
+        b = next((n for n in r.nodes("Hosts and Ports") if n.get("role") == "Button" and n.get("name") == "Connect"), None)
+        if w0 and b:
+            c = w0["content"]; r.ts("click", r.name, str(int(c["x"] + b["x"] + b["width"] / 2)), str(int(c["y"] + b["y"] + b["height"] / 2)))
+        back = r.wait(lambda: ssh() >= 1 and window()["says"] == "Connected", 25)
+        w = window()
+        check("the Connect button brings it back", back and w["button"] == ("Disconnect", True), {"ssh": ssh(), "says": w["says"], "button": w["button"]})
+        # (And Disconnect by the button, then the command to connect.)
+        b = next((n for n in r.nodes("Hosts and Ports") if n.get("role") == "Button" and n.get("name") == "Disconnect"), None)
+        if w0 and b:
+            c = w0["content"]; r.ts("click", r.name, str(int(c["x"] + b["x"] + b["width"] / 2)), str(int(c["y"] + b["y"] + b["height"] / 2)))
+        check("the Disconnect button lets go of it", r.wait(lambda: ssh() == 0 and window()["says"] == "Disconnected", 10), {"ssh": ssh(), "says": window()["says"]})
+        r.invoke("host.connect:far")
+        check("the command connects it again", r.wait(lambda: ssh() >= 1 and window()["says"] == "Connected", 25), {"ssh": ssh(), "says": window()["says"]})
+        print("PASS" if ok else "FAIL")
 elif what == "quic":
     # The helper's own link over UDP to the far host: the app says its streams go over it, what is typed reaches
     # the host's shell through it, and with it turned off (OLO_REX_QUIC=no) everything is as before. The far

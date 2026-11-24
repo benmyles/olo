@@ -1378,20 +1378,15 @@ something nobody here has is in "Blocked", with what it waits for.
     asking pane's is chosen; what a command reads from its input
     isn't carried; `olo.screen` tried with a real Agent Screen from a
     real far host (the rig uses a stand-in).
-  - *The rig's far host keeps a Rex server of its own after the
-    real-host tests* (found 2026-11-23: one in
-    `/var/tmp/olo-rex-slow/runtime/rex`, started by a `rex` there
-    that found none, with two test sessions in it, hours after the
-    run). `far_time.py`'s tests make sessions on the far host's
-    default server; `FarHost`'s end should stop that server too.
   - *The Host window, further* (the window is built, 2026-11-23: Ben's
     "manage host button … manage all the services and things installed
     on a host in one place"; HACKING, "The Host window"). What the two
     design reviews asked for that isn't in it yet: a version for each
     thing and "Installed · out of date" with Update where the host's
-    copy is older than this Olo's (the bridge's shims and the skill
-    carry no version yet: a stamp file beside each; the helper's build
-    is known); a log of what was done there, to open after a failure;
+    copy is older than this Olo's (the skill carries a stamp since
+    2026-11-23 and another Olo's is replaced by itself as the host is
+    asked; the helper's build is known; the pool's program says its
+    version); a log of what was done there, to open after a failure;
     the Token Pool service as a fifth section, when it is built;
     Rex's lights, everywhere at once (sidebar, Hosts and Ports, the
     Server window, here): a rim and a highlight (flat discs beside
@@ -1399,10 +1394,6 @@ something nobody here has is in "Blocked", with what it waits for.
     has for a thing being done wherever a light now says "Connecting…"
     or "Reconnecting…" (Gemini's fourth); the window, as Rex's other
     panels, brought back after a reload.
-  - *Hosts and Ports: Connect has no way back* (Opus's design review
-    of the window, 2026-11-23): for a host that is connected the
-    button is only disabled; it could be Disconnect there, in the
-    same place.
   - *The status bar's marks, further*: the bridge's and the skill's
     marks for a host not reached over SSH (it can't be asked what it
     has: none are shown). (A click on a mark opens the Host window,

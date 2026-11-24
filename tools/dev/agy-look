@@ -22,7 +22,7 @@
 #
 # The look is an agy in a tmux session, as every agent here is
 # (`tools/dev/agents look`: this is that), so it can be read while it
-# looks (`tools/dev/agents peek look-FOLDER`), answered if it asks
+# looks (`tools/dev/agents peek agy-FOLDER`), answered if it asks
 # anything, and told more (`agents say`). Run this in the background: it
 # prints a line a minute of what the look is doing, and returns when the
 # review is written (0), or as soon as the look needs you (3: answer it,

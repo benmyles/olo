@@ -40,6 +40,23 @@ use crate::{style, theme};
 
 /// The header's height.
 pub const HEADER_HEIGHT: f32 = 18.0;
+
+/// How tall a column list is that shows exactly `rows` rows of
+/// `row_height`, with its header (or without) and its frame, at the
+/// scale things are drawn at now: the height to give a list that is to
+/// fit so many. Worked out as the list places its own parts, on device
+/// pixels. (`HEADER_HEIGHT` + the rows + the frame, added up by an app,
+/// came a fraction of a pixel short at 1.25× and 1.75×, where the
+/// header's foot rounds up: a list whose rows all showed had a knob in
+/// its scroll bar and arrows to press. Both reviewers, of Rex's Hosts
+/// and Ports, 2026-11-23.)
+pub fn list_height(rows: usize, row_height: f32, header: bool) -> f32 {
+    let s = olo_interface::scale_factor();
+    let dev = |v: f32| (v * s).round() / s;
+    let edge = style::line_pixels(s) * 2.0 / s;
+    let head = if header { dev(edge + HEADER_HEIGHT) } else { edge };
+    head + rows as f32 * row_height + edge
+}
 /// A column: its title, width, and which side its text keeps to.
 #[derive(Clone, Debug)]
 pub struct Column {
@@ -1211,9 +1228,13 @@ fn header(id: &SharedString, model: &ListModel, columns: &Rc<[Column]>, handlers
                 if pressed == Some(i) {
                     style::fill_rect(g, r, style::shade(&p, bg, 1.1));
                 }
-                // Light leading edge, dark trailing edge.
+                // Light leading edge, dark trailing edge. (But for the
+                // title that ends at the scroll bar: its trailing edge
+                // is drawn below, in line with the bar's own.)
                 style::vline(g, r.left(), r.top(), r.bottom(), style::c(p.shine));
-                style::vline_left_of(g, r.right(), r.top() + px(2.0), r.bottom() - px(2.0), style::shade(&p, bg, 1.3));
+                if f32::from(r.right() - shown.right()).abs() >= 0.5 {
+                    style::vline_left_of(g, r.right(), r.top() + px(2.0), r.bottom() - px(2.0), style::shade(&p, bg, 1.3));
+                }
                 let sorted = sort.filter(|(c, _)| *c == i);
                 let font = style::ui_font(if sorted.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL });
                 let text = Bounds::from_corners(r.origin, point(r.right() - px(if sorted.is_some() { 12.0 } else { 0.0 }), r.bottom()));
@@ -1234,8 +1255,15 @@ fn header(id: &SharedString, model: &ListModel, columns: &Rc<[Column]>, handlers
                 }
             }
         });
-        // Above the scroll bar: a blank header cell.
-        style::vline(g, shown.right(), b.top(), b.bottom() - px(1.0), style::c(p.shine));
+        // Above the scroll bar: a blank header cell, begun where the
+        // bar begins: the dark line that ends the titles is the bar's
+        // own left line carried up, and the cell's light edge is beside
+        // it. (The last title's dark edge was its own last point, one
+        // left of the bar's line under it: a jog of a point where the
+        // header met the bar, in every list. Gemini's looks at Rex's
+        // Hosts and Ports, 2026-11-23.)
+        style::vline(g, shown.right(), b.top() + px(2.0), b.bottom() - px(3.0), style::shade(&p, bg, 1.3));
+        style::vline(g, shown.right() + style::hairline(g), b.top(), b.bottom() - px(1.0), style::c(p.shine));
     })
     .paint_key(key)
     .size_full()

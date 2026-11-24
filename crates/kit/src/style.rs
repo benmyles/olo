@@ -536,6 +536,51 @@ pub fn fit_with(text_system: &olo_interface::WindowTextSystem, text: SharedStrin
     }
 }
 
+/// [`fit`] for a sentence (a reason, a status: prose, not a name or a
+/// path): cut where a word ends, never inside one, and before a
+/// bracket it would leave open ("…your SSH agent offered…", not
+/// "…offered (ed25519 SHA256:d…", which read as broken, not shortened,
+/// in the one line meant to be read first: Opus's look at Rex's Hosts
+/// and Ports, 2026-11-23). A name is cut where it stops fitting, as
+/// ever: every letter of it that shows tells it apart.
+pub fn fit_words(g: &mut Painter, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    let cut = fit(g, text.clone(), font_size, font, max_width);
+    if cut == text {
+        return text;
+    }
+    // (What `fit` kept is the text's beginning, less a separator it
+    // came to and the "…" it put.)
+    let kept = cut.strip_suffix('…').unwrap_or(&cut).len().min(text.len());
+    cut_short(&text, end_at_a_word(&text, kept)).into()
+}
+
+/// Where a sentence cut at byte `end` is cut instead: at the end of
+/// the last whole word before it, and before a bracket opened and not
+/// closed by then. `end` itself where that would leave nothing (one
+/// long word).
+fn end_at_a_word(text: &str, end: usize) -> usize {
+    let mut at = end;
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    // (Inside a word: what follows the cut is more of it.)
+    let inside = text[at..].chars().next().is_some_and(|c| !c.is_whitespace()) && text[..at].chars().next_back().is_some_and(|c| !c.is_whitespace());
+    if inside {
+        match text[..at].rfind(char::is_whitespace) {
+            Some(space) => at = space,
+            None => return end,
+        }
+    }
+    for (open, close) in [('(', ')'), ('[', ']'), ('“', '”')] {
+        if let Some(opened) = text[..at].rfind(open)
+            && !text[opened..at].contains(close)
+        {
+            at = opened;
+        }
+    }
+    if text[..at].trim().is_empty() { end } else { at }
+}
+
 /// `text` cut at byte `end` with "…": without the space, or the dash or
 /// stop it came to, before it ("Token Pool…", not "Token Pool —…": a
 /// separator with nothing after it looks unfinished; Codex's look at
@@ -723,6 +768,20 @@ pub fn label_fit(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, tex
     let at = label(g, x, center_y, align, shown, font_size, font, color);
     // Its whole, in a tip for the pointer resting on it.
     g.note_cut(text, at);
+    at
+}
+
+/// [`label_fit`] for a sentence: cut where a word ends ([`fit_words`]).
+#[allow(clippy::too_many_arguments)]
+pub fn label_fit_words(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+    let text = text.into();
+    let shown = fit_words(g, text.clone(), font_size, &font, max_width.max(px(0.0)));
+    let cut = shown != text;
+    let at = label(g, x, center_y, align, shown, font_size, font, color);
+    if cut {
+        // Its whole, in a tip for the pointer resting on it.
+        g.note_cut(text, at);
+    }
     at
 }
 
@@ -1450,6 +1509,28 @@ mod tests {
 
     /// Cut short, a text ends at a word, never at the space, dash or stop
     /// before what was cut off.
+    #[test]
+    fn a_sentence_is_cut_where_a_word_ends_and_before_a_bracket_left_open() {
+        let t = "Permission denied: the host rejected all the keys your SSH agent offered (ed25519 SHA256:demo, rsa SHA256:demo), and it takes no passwords.";
+        let cut = |upto: &str| cut_short(t, end_at_a_word(t, upto.len()));
+        // (Inside the fingerprint: back past the bracket it is in.)
+        assert_eq!(cut("Permission denied: the host rejected all the keys your SSH agent offered (ed25519 SHA256:d"), "Permission denied: the host rejected all the keys your SSH agent offered…");
+        // (Inside a word: back to the word before it.)
+        assert_eq!(cut("Permission denied: the host rej"), "Permission denied: the host…");
+        // (At a word's end already: kept; a separator it came to goes, as ever.)
+        assert_eq!(cut("Permission denied: the host"), "Permission denied: the host…");
+        assert_eq!(cut("Permission denied: "), "Permission denied…");
+        // (Past the bracket's close: the bracket is whole.)
+        assert_eq!(
+            cut("Permission denied: the host rejected all the keys your SSH agent offered (ed25519 SHA256:demo, rsa SHA256:demo), and it ta"),
+            "Permission denied: the host rejected all the keys your SSH agent offered (ed25519 SHA256:demo, rsa SHA256:demo), and it…"
+        );
+        // (One long word, or nothing before the bracket: cut where it stops fitting.)
+        assert_eq!(end_at_a_word("/a/very/long/path/of/one/word", 10), 10);
+        assert_eq!(end_at_a_word("(all of it in brackets", 12), 12);
+        assert_eq!(end_at_a_word("née Zoë", "née Zo".len() + 1), "née".len());
+    }
+
     #[test]
     fn cut_short_at_a_word() {
         let t = "Token Pool — capture clients";

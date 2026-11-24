@@ -2850,6 +2850,15 @@ an argument it doesn't know starts the lint (read its first lines).
   (`ClientIdentity::a_test`, since 2026-11-23): as "Olo Rex", an app,
   each left a client the server listed as lost for a while, and `rex
   do` there couldn't choose between apps (the person's agent met it).
+- **`tsession theme` takes `light` or `dark`**, nothing else: "night"
+  is the night light warming the whole screen (app_server), not a look
+  the apps draw, so there is no night picture of a window to take (a
+  picture asked for as "night" came out the dark one, and both
+  reviewers said so).
+- **Picture 1.25× and 1.75× whenever a list or anything sized in rows
+  changes**: both of Rex's lists had live scroll bars only there (a
+  height added up by hand, a fraction of a device pixel short), and
+  1×, 1.5× and 2× showed nothing.
 - **Rex's Lua** (`rex do SCRIPT`): `io` and `os.getenv`/`os.exit` are
   there, `os.execute` isn't (`rex.exec{ "sh", "-c", … }` returns
   stdout, stderr, code, ok); `rex.call(method, table)` returns the

@@ -1378,6 +1378,27 @@ pub fn local_home() -> Option<String> {
     if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") { Some("/home/you".into()) } else { std::env::var("HOME").ok() }
 }
 
+/// The hosts the person let go of (Disconnect) in this run of Rex: kept
+/// over an upgrade in place with the windows, so that Rex comes back
+/// with them as they were, not connected again because they are to be
+/// "as Rex starts".
+static LET_GO: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+pub fn let_go() -> Vec<String> {
+    LET_GO.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// (As Rex comes back from an upgrade, before its hub starts.)
+pub fn set_let_go(hosts: Vec<String>) {
+    *LET_GO.lock().unwrap_or_else(|e| e.into_inner()) = hosts;
+}
+
+/// Whether a host is one Rex was connecting to and isn't connected to:
+/// what a network that came back is a reason to try again.
+fn wanted_back(conn: &HostConnState) -> bool {
+    matches!(conn, HostConnState::Reconnecting { .. } | HostConnState::Error(_))
+}
+
 impl RexHub {
     pub fn start(settings: Settings, active_theme: TerminalTheme, askpass: Option<Arc<dyn SshAskpass>>, notify: impl Fn(HubNotice) + Send + Sync + 'static) -> Arc<Self> {
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(4).thread_name("rex-io").enable_all().build().expect("create Rex tokio runtime");
@@ -1510,7 +1531,10 @@ impl RexHub {
             if let Some(h) = hub_net.upgrade() {
                 let to_reconnect: Vec<String> = {
                     let st = h.state.lock().unwrap_or_else(|e| e.into_inner());
-                    st.hosts.values().filter(|hr| !hr.is_local && !matches!(hr.conn_state, HostConnState::Connected | HostConnState::Connecting)).map(|hr| hr.key.clone()).collect()
+                    // (Those that were being connected to: one the
+                    // person let go of, or never connected, isn't
+                    // connected because the network came back.)
+                    st.hosts.values().filter(|hr| !hr.is_local && wanted_back(&hr.conn_state)).map(|hr| hr.key.clone()).collect()
                 };
                 for hk in to_reconnect {
                     h.connect_host(&hk);
@@ -1521,7 +1545,8 @@ impl RexHub {
         hub.connect_host("local");
         let auto_hosts: Vec<String> = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.settings.saved_hosts.iter().filter(|h| h.auto_connect).map(|h| h.id.clone()).collect()
+            let let_go = let_go();
+            st.settings.saved_hosts.iter().filter(|h| h.auto_connect && !let_go.contains(&h.id)).map(|h| h.id.clone()).collect()
         };
         for hid in auto_hosts {
             hub.connect_host(&hid);
@@ -1762,7 +1787,18 @@ impl RexHub {
             for (key, label, endpoint, state) in [
                 ("build", "build", "ssh://you@build.example", HostConnState::Connecting),
                 ("nas", "nas", "nas.ts.net", HostConnState::Disconnected),
-                ("staging", "staging", "ssh://deploy@staging.example:2222", HostConnState::Error("Permission denied: the host rejected all the keys your SSH agent offered.".to_owned())),
+                (
+                    "staging",
+                    "staging",
+                    "ssh://deploy@staging.example:2222",
+                    // (`OLO_REX_DEMO_REASON=long`: a reason longer than the
+                    // Hosts window's line, for the picture of it cut.)
+                    HostConnState::Error(if std::env::var("OLO_REX_DEMO_REASON").ok().as_deref() == Some("long") {
+                        "Permission denied: the host rejected all the keys your SSH agent offered (ed25519 SHA256:demo, rsa SHA256:demo), and it takes no passwords from this address.".to_owned()
+                    } else {
+                        "Permission denied: the host rejected all the keys your SSH agent offered.".to_owned()
+                    }),
+                ),
             ] {
                 st.hosts.insert(key.to_owned(), demo_host(key, label, endpoint, state, Vec::new()));
                 st.host_order.push(key.to_owned());
@@ -1772,6 +1808,7 @@ impl RexHub {
 
     pub fn connect_host(&self, host_key: &str) {
         let key = host_key.to_owned();
+        LET_GO.lock().unwrap_or_else(|e| e.into_inner()).retain(|k| k != host_key);
         let retry = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(host) = st.hosts.get_mut(host_key) else { return };
@@ -1920,6 +1957,57 @@ impl RexHub {
     /// desktop's settings and in the server's own list.
     pub fn remove_host(&self, host_key: &str) {
         self.remove_host_as(host_key, true, true);
+    }
+
+    /// Lets go of a host that is connected, or on its way (Hosts and
+    /// Ports' Disconnect, where Connect is for one that isn't): its
+    /// connection to the server closed, with the SSH connection under
+    /// it and what went with that (the link over UDP, the forwarded
+    /// keys), its panes gone from the windows and its forwards waiting.
+    /// The host stays saved and its sessions go on on its server:
+    /// Connect brings them back. Not this computer's own server, which
+    /// Rex is nothing without.
+    pub fn disconnect_host(&self, host_key: &str) {
+        if host_key == "local" {
+            return;
+        }
+        let endpoint = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get_mut(host_key) else { return };
+            // (The loop that keeps it connected ends at its next look:
+            // it is no longer the one the host names.)
+            if let Some(retry) = host.retry.take() {
+                retry.notify_one();
+            }
+            if let Some(ctrl) = host.control.take() {
+                ctrl.close();
+            }
+            host.input_tx = None;
+            host.tailscale = None;
+            host.server_status = None;
+            host.sessions.clear();
+            host.pending_focus.clear();
+            host.session_summaries.clear();
+            host.connection_lost = None;
+            host.conn_state = HostConnState::Disconnected;
+            let endpoint = host.endpoint.clone();
+            for f in st.forwards.iter_mut().filter(|f| f.host_key == host_key) {
+                f.state = ForwardState::Waiting;
+            }
+            st.retain_blocks(|k| k.host_key != host_key);
+            endpoint
+        };
+        {
+            let mut let_go = LET_GO.lock().unwrap_or_else(|e| e.into_inner());
+            if !let_go.iter().any(|k| k == host_key) {
+                let_go.push(host_key.to_owned());
+            }
+        }
+        if let Some(RexEndpoint::Ssh { target, pool, .. }) = endpoint {
+            self.rt.spawn(async move { pool.close(&target).await });
+        }
+        self.inner.write_palette_index();
+        (self.notify)(HubNotice::StateChanged);
     }
 
     fn remove_host_as(&self, host_key: &str, tell_server: bool, tell_desktop: bool) {
@@ -4887,6 +4975,24 @@ mod tests {
         block.set_find_query(Some("replacement")).unwrap();
         block.search.run().unwrap();
         assert_eq!(block.search.total_matches(), 1);
+    }
+
+    #[test]
+    fn what_was_let_go_of_is_kept_over_an_upgrade_and_what_was_kept_before_still_reads() {
+        // (What Rex kept before there was a Disconnect has no such list.)
+        let before: crate::ui::SavedAppState = serde_json::from_str(r#"{"workspaces":[]}"#).unwrap();
+        assert!(before.let_go.is_empty());
+        let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()] }).unwrap();
+        assert_eq!(serde_json::from_str::<crate::ui::SavedAppState>(&kept).unwrap().let_go, ["host-1"]);
+    }
+
+    #[test]
+    fn a_network_that_came_back_connects_only_what_was_being_connected() {
+        assert!(wanted_back(&HostConnState::Reconnecting { attempt: 3, last_error: "closed".into() }));
+        assert!(wanted_back(&HostConnState::Error("no route".into())));
+        // (Let go of by the person, or never connected: left so.)
+        assert!(!wanted_back(&HostConnState::Disconnected));
+        assert!(!wanted_back(&HostConnState::Connected) && !wanted_back(&HostConnState::Connecting));
     }
 
     #[test]
