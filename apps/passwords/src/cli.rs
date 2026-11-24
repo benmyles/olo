@@ -98,6 +98,10 @@ pub fn asker(pid: i32) -> Asker {
 #[derive(Default)]
 pub struct Grants {
     allowed: HashMap<Session, (Instant, Instant)>,
+    /// Sessions whose changes (`op item create`, `edit`, `delete`,
+    /// `move`) the person let through until Passwords locks (Allow Until
+    /// Locked), as long as they may read too.
+    writes: std::collections::HashSet<Session>,
 }
 
 impl Grants {
@@ -119,9 +123,22 @@ impl Grants {
         self.allowed.insert(session, (now, now));
     }
 
+    /// Whether `session` may change items now without being asked (and
+    /// it just asked).
+    pub fn check_writes(&mut self, session: Session) -> bool {
+        self.check(session) && self.writes.contains(&session)
+    }
+
+    /// `session` may change items until Passwords locks.
+    pub fn allow_writes(&mut self, session: Session) {
+        self.allow(session);
+        self.writes.insert(session);
+    }
+
     /// Locking ends every session's permission.
     pub fn clear(&mut self) {
         self.allowed.clear();
+        self.writes.clear();
     }
 }
 
@@ -155,7 +172,7 @@ pub fn category(c: ItemCategory) -> &'static str {
     }
 }
 
-fn field_type(t: ItemFieldType) -> &'static str {
+pub(crate) fn field_type(t: ItemFieldType) -> &'static str {
     match t {
         ItemFieldType::Text => "STRING",
         ItemFieldType::Concealed => "CONCEALED",
@@ -190,7 +207,7 @@ where
     }
 }
 
-fn vault<'a>(data: &'a Data, key: &str) -> Result<&'a VaultOverview, String> {
+pub(crate) fn vault<'a>(data: &'a Data, key: &str) -> Result<&'a VaultOverview, String> {
     find(data.vaults.iter(), key, |v| &v.id, |v| &v.title).map_err(|e| format!("\"{key}\" isn't a vault in this account: {e}"))
 }
 
@@ -199,11 +216,18 @@ fn active(data: &Data) -> impl Iterator<Item = &Entry> + Clone {
 }
 
 fn item<'a>(data: &'a Data, vault_key: Option<&str>, key: &str) -> Result<&'a Entry, String> {
+    item_in(data, vault_key, key, false)
+}
+
+/// An item by its ID or name, in a vault or any, the archived too where
+/// asked (`--include-archive`).
+pub(crate) fn item_in<'a>(data: &'a Data, vault_key: Option<&str>, key: &str, include_archive: bool) -> Result<&'a Entry, String> {
     let in_vault = match vault_key {
         Some(v) => Some(vault(data, v)?.id.clone()),
         None => None,
     };
-    let list = active(data).filter(move |e| in_vault.as_ref().is_none_or(|v| &e.item.vault_id == v));
+    let list =
+        data.entries.iter().filter(move |e| e.state == ItemState::Active || include_archive && e.state == ItemState::Archived).filter(move |e| in_vault.as_ref().is_none_or(|v| &e.item.vault_id == v));
     find(list, key, |e| &e.item.id, |e| &e.item.title).map_err(|e| {
         format!(
             "\"{key}\" isn't an item{}: {e}",
@@ -227,7 +251,7 @@ fn part(name: &str, id: &str) -> String {
     if reference::SecretReference::is_valid_name(name) { name.to_string() } else { id.to_string() }
 }
 
-fn overview(data: &Data, e: &Entry) -> Value {
+pub(crate) fn overview(data: &Data, e: &Entry) -> Value {
     let i = &e.item;
     let mut v = json!({
         "id": i.id,
@@ -436,7 +460,13 @@ pub fn answer(data: &Data, query: &CliQuery) -> Response {
         })(),
         CliQuery::Item { vault: v, item: key } => item(data, v.as_deref(), key).map(|e| full(data, e)),
         CliQuery::Resolve { references } => references.iter().map(|r| resolve(data, r).map(Value::String)).collect::<Result<Vec<_>, _>>().map(Value::Array),
-        CliQuery::Accounts | CliQuery::Signin => Err("unexpected".into()),
+        CliQuery::Template { category: Some(c) } => crate::cli_write::category_named(c).map(crate::cli_write::template),
+        CliQuery::Template { category: None } => Ok(crate::cli_write::templates()),
+        CliQuery::Documents { vault, include_archive } => crate::cli_write::documents(data, vault.as_deref(), *include_archive),
+        // (Changes, and a document's file, are the store's: `store::cli`.)
+        CliQuery::Accounts | CliQuery::Signin | CliQuery::Create { .. } | CliQuery::Edit { .. } | CliQuery::Delete { .. } | CliQuery::Move { .. } | CliQuery::DocumentGet { .. } => {
+            Err("unexpected".into())
+        }
     };
     match result {
         Ok(json) => Response::Cli { json },

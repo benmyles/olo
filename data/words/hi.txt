@@ -920,17 +920,44 @@ Allow It on the Phone
 Allow NVIDIA Fallback on Battery
 बैटरी पर NVIDIA का विकल्प भी रखें
 
+Allow Once
+एक बार अनुमति दें
+
 Allow Sleep
 स्लीप की अनुमति दें
 
 Allow Sleep (awake until {})
 स्लीप की अनुमति दें ({} तक जागता रहेगा)
 
+Allow This Terminal
+इस टर्मिनल को अनुमति दें
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+“इस टर्मिनल को अनुमति दें” से यह Passwords लॉक होने तक बिना पूछे आइटम जोड़ और बदल सकता है।
+
 Allow it on the phone
 फ़ोन पर अनुमति दें
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 “{}” के प्रोग्राम को अपनी SSH कुंजियों से लॉगिन की अनुमति दें? वहाँ के एक टर्मिनल ने Rex के ज़रिए यह अनुरोध किया है।
+
+Allow {} to add an item to {}?
+{} को {} में एक आइटम बनाने दें?
+
+Allow {} to add “{}” to {}?
+{0} को “{1}” को {2} में जोड़ने दें?
+
+Allow {} to change “{}” in {}?
+{0} को {2} में “{1}” बदलने दें?
+
+Allow {} to delete “{}” from {}?
+{0} को {2} से “{1}” मिटाने दें?
+
+Allow {} to move “{}” from {} to {}?
+{0} को “{1}” को {2} से {3} में ले जाने दें?
+
+Allow {} to move “{}” to the Archive?
+{} को “{}” संग्रह में भेजने दें?
 
 Allow {} to sign in to your hosts with your SSH keys?
 क्या {} को अपनी SSH कुंजियों से आपके होस्ट में लॉगिन की अनुमति दें?
@@ -1335,6 +1362,15 @@ Ask the assistant
 
 Ask what to do about urgent ones
 ज़रूरी मामलों के लिए पूछें कि क्या करें
+
+Asked by “{}” from {} in {}.
+“{0}” ने {1} से {2} में माँगा।
+
+Asked by “{}” from {}.
+“{0}” ने {1} से माँगा।
+
+Asked by “{}”.
+“{}” ने माँगा।
 
 Asked now:
 अभी अनुरोधित:
@@ -2098,6 +2134,9 @@ Changed both here and in 1Password: 1Password’s version replaces it here, and 
 
 Changed here now, and in 1Password at the next sync.
 यहाँ बदलाव हो गया। 1Password में अगले सिंक पर होगा।
+
+Changes its {}.
+बदलता है: {}।
 
 Changes to “{}”
 “{}” में बदलाव
@@ -3334,6 +3373,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 {} मिटा रहे हैं: {} / {}
+
+Deny
+मना करें
 
 Description
 विवरण
@@ -4608,6 +4650,9 @@ For the mice set to follow the others, and any you connect.
 
 For {} · process {}
 {} से चालू · प्रक्रिया {}
+
+For {}.
+{} के लिए।
 
 For:
 अवधि:
@@ -8751,6 +8796,9 @@ Passwords आपके आइटम इस कंप्यूटर पर ए�
 Passwords on this screen has no SSH keys shared with it.
 इस स्क्रीन के Passwords में इसके साथ साझा की गई कोई SSH कुंजी नहीं है।
 
+Passwords unlocked without asking
+Passwords बिना पूछे अनलॉक हुआ
+
 Passwords: Clipboard
 Passwords: क्लिपबोर्ड
 
@@ -9674,6 +9722,9 @@ Rename Tab…
 Rename Worktree…
 वर्कट्री का नाम बदलें…
 
+Renames it “{}”.
+इसका नाम “{}” रखता है।
+
 Rename…
 नाम बदलें…
 
@@ -10100,6 +10151,9 @@ SSH कुंजियाँ
 
 SSH keys offered: {}.
 दी गई SSH कुंजियाँ: {}।
+
+SSH keys used without asking
+SSH कुंजियाँ बिना पूछे इस्तेमाल की गईं
 
 SSH sessions
 SSH सत्र
@@ -14315,6 +14369,9 @@ every {n} minutes
 one: हर {n} मिनट
 other: हर {n} मिनट
 
+fields
+फ़ील्ड
+
 for {}
 {} से जारी
 
@@ -14683,8 +14740,41 @@ only folder and Find windows move
 only terminal windows move
 सिर्फ़ टर्मिनल विंडो खिसकेंगी
 
+op added “{}” to {}.
+op ने “{}” को {} में जोड़ा।
+
+op allowed without asking
+op को बिना पूछे अनुमति दी गई
+
+op changed Passwords without asking
+op ने बिना पूछे Passwords बदला
+
+op changed “{}”.
+op ने “{}” बदला।
+
+op deleted “{}”.
+op ने “{}” मिटाया।
+
+op moved “{}” to the Archive.
+op ने “{}” को संग्रह में भेजा।
+
+op moved “{}” to {}.
+op ने “{}” को {} में भेजा।
+
+op on {}
+{} पर op
+
 optional
 वैकल्पिक
+
+op’s Changes to “{}”
+op के “{}” में बदलाव
+
+op’s Deletion of “{}”
+op से “{}” मिटाया जाना
+
+op’s New “{}”
+op का नया “{}”
 
 organizer
 आयोजक
@@ -14700,6 +14790,9 @@ part of the screen
 
 passphrase
 पासफ़्रेज़
+
+password
+पासवर्ड
 
 plugged in, charge limit {}%
 बिजली जुड़ी है, चार्ज सीमा {}%
@@ -14765,6 +14858,9 @@ ssh://you@host या host.ts.net
 
 sudo needs your password to run this{}:
 sudo को यह{} चलाने के लिए आपका पासवर्ड चाहिए:
+
+tags
+टैग
 
 taken as at least {}% busy
 कम से कम {}% व्यस्त माना गया
@@ -14975,6 +15071,9 @@ validating
 visibility down to {}
 दृश्यता घटकर {}
 
+website
+वेबसाइट
+
 what holds it back
 क्या रोक रहा है
 
@@ -15017,6 +15116,9 @@ you don't have permission
 
 your cloud storage
 आपका क्लाउड स्टोरेज
+
+your home folder
+आपका होम फ़ोल्डर
 
 your own picture
 आपकी अपनी तस्वीर
@@ -15504,6 +15606,9 @@ other: {n} हफ़्ते
 
 {} in
 {} इनपुट
+
+{} in Passwords brings it back until Passwords locks.
+Passwords में {} से इसे Passwords लॉक होने तक वापस लाया जा सकता है।
 
 {} in all
 कुल {}

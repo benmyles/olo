@@ -1,9 +1,12 @@
 //! `op`, 1Password's command-line tool, answered by Olo's Passwords
 //! (installed as `olo-op`, with an `op` link beside it while
 //! Preferences ▸ Security allows it). Scripts written for 1Password's
-//! `op` work unchanged: `op read`, `op inject`, `op run`, `op item get`
-//! and `list`, `op vault list`, `op whoami`, `op account list` and
-//! `op signin`, in human and JSON formats.
+//! `op` work unchanged: `op read`, `op inject`, `op run`, `op item get`,
+//! `list`, `create`, `edit`, `delete`, `move` and `template`, `op document
+//! get`, `list` and `delete`, `op vault list`, `op whoami`, `op account
+//! list` and `op signin`, in human and JSON formats, with 1Password's
+//! flags and assignment statements. A change is asked about in
+//! Passwords on its own (each, or until it locks).
 //!
 //! Everything comes from the running Passwords app over the keychain
 //! socket. Passwords starts if it isn't running, asks to be unlocked if
@@ -18,7 +21,7 @@ use std::{
     time::Duration,
 };
 
-use olo_keychain::{CallError, CliQuery, Request, Response};
+use olo_keychain::{Assignment, CallError, CliQuery, ItemChange, Request, Response};
 use serde_json::Value;
 
 /// What `op --version` says (the 1Password CLI release we behave like).
@@ -59,8 +62,32 @@ struct Args {
 }
 
 /// Flags that take no value.
-const SWITCHES: &[&str] =
-    &["reveal", "otp", "force", "f", "no-newline", "n", "no-masking", "raw", "help", "h", "version", "v", "debug", "no-color", "iso-timestamps", "cache", "include-archive", "all", "favorite", "long"];
+const SWITCHES: &[&str] = &[
+    "reveal",
+    "otp",
+    "force",
+    "f",
+    "no-newline",
+    "n",
+    "no-masking",
+    "raw",
+    "help",
+    "h",
+    "version",
+    "v",
+    "debug",
+    "no-color",
+    "iso-timestamps",
+    "cache",
+    "include-archive",
+    "all",
+    "favorite",
+    "long",
+    "dry-run",
+    "archive",
+    "generate-password",
+    "ssh-generate-key",
+];
 
 impl Args {
     fn parse(argv: Vec<String>) -> Args {
@@ -109,6 +136,12 @@ impl Args {
 fn run(argv: Vec<String>) -> Result<ExitCode> {
     let a = Args::parse(argv);
     let words: Vec<&str> = a.words.iter().map(String::as_str).collect();
+    // A host's `op`, run here by Rex's bridge (which says so): never a
+    // command run here (`op run`), and no file but those the bridge
+    // wrote for it (`host_file`). The bridge refuses them too.
+    if std::env::var_os("OLO_REX_REMOTE_HOST").is_some() && words.first() == Some(&"run") {
+        return Err(Fail("op run isn’t done on the Olo desktop for a host: its command would run there.".into()));
+    }
     if a.has(&["version", "v"]) && words.is_empty() || words.first() == Some(&"--version") {
         println!("{VERSION}");
         return Ok(ExitCode::SUCCESS);
@@ -133,10 +166,25 @@ fn run(argv: Vec<String>) -> Result<ExitCode> {
         ["vault", "get", vault] => vault_get(&a, vault),
         ["item", "list"] | ["item", "ls"] => item_list(&a),
         ["item", "get", item] => item_get(&a, item),
+        ["item", "create", ..] => item_create(&a, &words[2..]),
+        ["item", "edit", item, ..] => item_edit(&a, item, &words[3..]),
+        ["item", "delete", item] | ["item", "rm", item] => item_delete(&a, item),
+        ["item", "move", item] | ["item", "mv", item] => item_move(&a, item),
+        ["item", "template", "list"] | ["item", "template", "ls"] => template_list(&a),
+        ["item", "template", "get", category] => template_get(&a, category),
+        ["document", "get", item] => document_get(&a, item),
+        ["document", "list"] | ["document", "ls"] => document_list(&a),
+        ["document", "delete", item] | ["document", "rm", item] => item_delete(&a, item),
+        ["document", "create", ..] | ["document", "edit", ..] => {
+            Err(Fail("Olo’s op can’t make or change documents yet: a file made here isn’t sent to 1Password yet. Add it in 1Password; op document get reads it then.".into()))
+        }
         ["read", reference] => read(&a, reference),
         ["inject"] => inject(&a),
         ["run"] => op_run(&a),
-        _ => Err(Fail(format!("Olo’s op doesn’t do “{}” (it reads: read, inject, run, item get/list, vault list/get, whoami, account list, signin). Make changes in Passwords.", words.join(" ")))),
+        _ => Err(Fail(format!(
+            "Olo’s op doesn’t do “{}” (it does: read, inject, run, item get/list/create/edit/delete/move/template, document get/list/delete, vault list/get, whoami, account list, signin). Make other changes in Passwords.",
+            words.join(" ")
+        ))),
     }
 }
 
@@ -372,19 +420,26 @@ fn item_get(a: &Args, key: &str) -> Result<ExitCode> {
         println!("{}", values.join(","));
         return Ok(ExitCode::SUCCESS);
     }
+    print_item(a, &item)
+}
+
+/// An item as `op item get` prints it (`op item create`, `edit` and
+/// `move` print what they made so too).
+fn print_item(a: &Args, item: &Value) -> Result<ExitCode> {
+    let reveal = a.has(&["reveal"]);
     if a.json() {
-        return print_json(&item);
+        return print_json(item);
     }
-    println!("ID:          {}", s(&item, "id"));
-    println!("Title:       {}", s(&item, "title"));
+    println!("ID:          {}", s(item, "id"));
+    println!("Title:       {}", s(item, "title"));
     println!("Vault:       {} ({})", s(&item["vault"], "name"), s(&item["vault"], "id"));
-    println!("Created:     {}", ago(&s(&item, "created_at")));
-    println!("Updated:     {}", ago(&s(&item, "updated_at")));
+    println!("Created:     {}", ago(&s(item, "created_at")));
+    println!("Updated:     {}", ago(&s(item, "updated_at")));
     println!("Favorite:    false");
-    println!("Version:     {}", s(&item, "version"));
-    println!("Category:    {}", s(&item, "category"));
+    println!("Version:     {}", s(item, "version"));
+    println!("Category:    {}", s(item, "category"));
     let fields: Vec<&Value> = item["fields"].as_array().into_iter().flatten().collect();
-    let show = |f: &Value| if concealed(f) && !reveal { format!("[use 'op item get {} --reveal' to reveal]", s(&item, "id")) } else { s(f, "value") };
+    let show = |f: &Value| if concealed(f) && !reveal { format!("[use 'op item get {} --reveal' to reveal]", s(item, "id")) } else { s(f, "value") };
     let loose: Vec<&&Value> = fields.iter().filter(|f| f["section"].is_null() && !s(f, "value").is_empty()).collect();
     if !loose.is_empty() {
         println!("Fields:");
@@ -412,6 +467,179 @@ fn item_get(a: &Args, key: &str) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Whether standard input is a pipe or a file, which `op item edit`
+/// takes a template from without `-` (as 1Password's does): not a
+/// terminal, nor /dev/null, so a script whose input is left open never
+/// waits on it.
+fn piped_in() -> bool {
+    if std::io::stdin().is_terminal() {
+        return false;
+    }
+    // SAFETY: fstat on our own standard input, into a zeroed stat.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    (unsafe { libc::fstat(0, &mut st) }) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFREG)
+}
+
+/// The template `--template FILE` names, or one on standard input
+/// (`piped`); not both, as 1Password's `op` says.
+fn template_given(a: &Args, piped: bool) -> Result<Option<Value>> {
+    let file = a.get(&["template"]);
+    if file.is_some() && piped {
+        return Err(Fail("You can’t use both piping and the --template flag in the same command.".into()));
+    }
+    let text = match file {
+        Some(path) => std::fs::read_to_string(host_file(path)?).map_err(|e| Fail(format!("couldn’t read the template {path}: {e}")))?,
+        None if piped => {
+            let mut t = String::new();
+            std::io::stdin().read_to_string(&mut t)?;
+            t
+        }
+        None => return Ok(None),
+    };
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(&text).map(Some).map_err(|e| Fail(format!("the template isn’t JSON: {e}")))
+}
+
+/// What `op item create` and `edit` were asked: their flags and
+/// assignment statements, over a template.
+fn change(a: &Args, words: &[&str], template: Option<Value>) -> Result<ItemChange> {
+    let assignments = words.iter().map(|w| Assignment::parse(w).map_err(Fail)).collect::<Result<Vec<_>>>()?;
+    let last = |name: &str| a.flags.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+    Ok(ItemChange {
+        template,
+        category: a.get(&["category"]).map(str::to_owned),
+        title: a.get(&["title"]).map(str::to_owned),
+        url: a.get(&["url"]).map(str::to_owned),
+        tags: last("tags").map(|v| v.unwrap_or_default().split(',').map(|t| t.trim().to_owned()).filter(|t| !t.is_empty()).collect()),
+        favorite: last("favorite").map(|v| v.is_none_or(|v| v.eq_ignore_ascii_case("true"))),
+        generate_password: last("generate-password").map(Option::unwrap_or_default),
+        ssh_generate_key: last("ssh-generate-key").map(Option::unwrap_or_default),
+        assignments,
+    })
+}
+
+fn item_create(a: &Args, words: &[&str]) -> Result<ExitCode> {
+    let (piped, words) = match words {
+        ["-", rest @ ..] => (true, rest),
+        _ => (false, words),
+    };
+    let change = change(a, words, template_given(a, piped)?)?;
+    let item = ask(CliQuery::Create { vault: a.get(&["vault"]).map(str::to_string), change, dry_run: a.has(&["dry-run"]) })?;
+    print_item(a, &item)
+}
+
+fn item_edit(a: &Args, key: &str, words: &[&str]) -> Result<ExitCode> {
+    let change = change(a, words, template_given(a, a.get(&["template"]).is_none() && piped_in())?)?;
+    let item = ask(CliQuery::Edit { vault: a.get(&["vault"]).map(str::to_string), item: key.to_string(), change, dry_run: a.has(&["dry-run"]) })?;
+    print_item(a, &item)
+}
+
+/// `op item delete` (and `op document delete`): the item, or (`-`) each
+/// one standard input names.
+fn item_delete(a: &Args, key: &str) -> Result<ExitCode> {
+    let keys = if key == "-" {
+        let mut text = String::new();
+        std::io::stdin().read_to_string(&mut text)?;
+        items_named(&text)
+    } else {
+        vec![key.to_string()]
+    };
+    for item in keys {
+        ask(CliQuery::Delete { vault: a.get(&["vault"]).map(str::to_string), item, archive: a.has(&["archive"]) })?;
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The items standard input names, as 1Password's `op` reads them: JSON
+/// objects with an id (one, a list, or one after another, as `op item
+/// list --format json` gives them), else one name or id a line.
+fn items_named(text: &str) -> Vec<String> {
+    let values: Vec<Value> = serde_json::Deserializer::from_str(text).into_iter::<Value>().collect::<std::result::Result<_, _>>().unwrap_or_default();
+    let ids: Vec<String> = values
+        .iter()
+        .flat_map(|v| match v {
+            Value::Array(list) => list.clone(),
+            v => vec![v.clone()],
+        })
+        .filter_map(|v| v.get("id").and_then(Value::as_str).map(str::to_owned))
+        .collect();
+    if !ids.is_empty() {
+        return ids;
+    }
+    text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
+}
+
+fn item_move(a: &Args, key: &str) -> Result<ExitCode> {
+    let to = a.get(&["destination-vault"]).ok_or_else(|| Fail("Give the vault to move it to: --destination-vault VAULT".into()))?;
+    let item = ask(CliQuery::Move { vault: a.get(&["current-vault", "vault"]).map(str::to_string), item: key.to_string(), to: to.to_string() })?;
+    print_item(a, &item)
+}
+
+fn template_list(a: &Args) -> Result<ExitCode> {
+    let v = ask(CliQuery::Template { category: None })?;
+    if a.json() {
+        return print_json(&v);
+    }
+    let rows: Vec<Vec<String>> = v.as_array().into_iter().flatten().map(|t| vec![s(t, "uuid"), s(t, "name")]).collect();
+    table(&["UUID", "NAME"], &rows);
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `--file-mode`, octal (0600 unless given).
+fn file_mode(a: &Args) -> Result<u32> {
+    match a.get(&["file-mode"]) {
+        Some(m) => u32::from_str_radix(m.trim_start_matches("0o"), 8).map_err(|_| Fail(format!("“{m}” isn’t a file mode (as 0600)"))),
+        None => Ok(0o600),
+    }
+}
+
+fn template_get(a: &Args, category: &str) -> Result<ExitCode> {
+    let v = ask(CliQuery::Template { category: Some(category.to_string()) })?;
+    let text = serde_json::to_string_pretty(&v)? + "\n";
+    match a.get(&["out-file", "o"]) {
+        Some(path) => write_out_mode(path, text.as_bytes(), a.has(&["force", "f"]), file_mode(a)?)?,
+        None => print!("{text}"),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn document_get(a: &Args, key: &str) -> Result<ExitCode> {
+    use base64::Engine;
+    let include_archive = a.has(&["include-archive"]) || env("OP_INCLUDE_ARCHIVE").is_some_and(|v| !v.is_empty() && v != "false");
+    let v = ask(CliQuery::DocumentGet { vault: a.get(&["vault"]).map(str::to_string), item: key.to_string(), include_archive })?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(s(&v, "content")).map_err(|e| Fail(format!("Passwords sent the document oddly: {e}")))?;
+    let force = a.has(&["force", "f"]);
+    match a.get(&["out-file", "o"]) {
+        // (As 1Password's: never over a file with something in it.)
+        Some(path) => {
+            if !force && std::fs::metadata(path).is_ok_and(|m| m.len() > 0) {
+                return Err(Fail(format!("{path} already exists and isn’t empty: the document isn’t saved over it (--force does)")));
+            }
+            write_out_mode(path, &bytes, true, file_mode(a)?)?;
+        }
+        None => {
+            if std::io::stdout().is_terminal() && !force && std::str::from_utf8(&bytes).is_err() {
+                return Err(Fail("The document isn’t text: save it with --out-file FILE, or print it anyway with --force".into()));
+            }
+            std::io::stdout().write_all(&bytes)?;
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn document_list(a: &Args) -> Result<ExitCode> {
+    let include_archive = a.has(&["include-archive"]) || env("OP_INCLUDE_ARCHIVE").is_some_and(|v| !v.is_empty() && v != "false");
+    let v = ask(CliQuery::Documents { vault: a.get(&["vault"]).map(str::to_string), include_archive })?;
+    if a.json() {
+        return print_json(&v);
+    }
+    let rows: Vec<Vec<String>> = v.as_array().into_iter().flatten().map(|x| vec![s(x, "id"), s(x, "title"), s(&x["vault"], "name"), ago(&s(x, "updated_at"))]).collect();
+    table(&["ID", "TITLE", "VAULT", "EDITED"], &rows);
+    Ok(ExitCode::SUCCESS)
+}
+
 /// A field under its heading: "  label:      value".
 fn row(label: &str, value: &str) {
     println!("  {:<11} {value}", format!("{label}:"));
@@ -432,7 +660,27 @@ fn resolve(references: Vec<String>) -> Result<Vec<String>> {
 /// Write `text` to `path` (readable only by us, as `op` does), asking
 /// before replacing a file unless `force`.
 fn write_out(path: &str, text: &[u8], force: bool) -> Result<()> {
+    write_out_mode(path, text, force, 0o600)
+}
+
+/// A file `op` reads or writes, where a host's `op` may: anywhere for
+/// this computer's own; for a host's (run by Rex's bridge) only in the
+/// folder the bridge made for it, `OLO_REX_OP_DIR`.
+fn host_file(path: &str) -> Result<&str> {
+    if std::env::var_os("OLO_REX_REMOTE_HOST").is_none() {
+        return Ok(path);
+    }
+    let dir = std::env::var_os("OLO_REX_OP_DIR").map(std::path::PathBuf::from);
+    let inside = dir.is_some_and(|d| {
+        let p = std::path::Path::new(path);
+        p.is_absolute() && p.starts_with(&d) && !p.components().any(|c| c == std::path::Component::ParentDir)
+    });
+    if inside { Ok(path) } else { Err(Fail(format!("{path} is a file of the Olo desktop, not this host’s: not read or written for a host"))) }
+}
+
+fn write_out_mode(path: &str, text: &[u8], force: bool, mode: u32) -> Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
+    let path = host_file(path)?;
     if !force && std::path::Path::new(path).exists() {
         if !std::io::stdin().is_terminal() {
             return Err(Fail(format!("{path} already exists: use --force to replace it")));
@@ -444,7 +692,7 @@ fn write_out(path: &str, text: &[u8], force: bool) -> Result<()> {
             return Err(Fail("not replaced".into()));
         }
     }
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
+    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(mode).open(path)?;
     f.write_all(text)?;
     Ok(())
 }
@@ -465,7 +713,7 @@ fn read(a: &Args, reference: &str) -> Result<ExitCode> {
 
 fn inject(a: &Args) -> Result<ExitCode> {
     let template = match a.get(&["in-file", "i"]) {
-        Some(path) => std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?,
+        Some(path) => std::fs::read_to_string(host_file(path)?).map_err(|e| format!("{path}: {e}"))?,
         None => {
             let mut t = String::new();
             std::io::stdin().read_to_string(&mut t)?;
@@ -493,7 +741,7 @@ fn op_run(a: &Args) -> Result<ExitCode> {
     };
     let mut vars: Vec<(String, String)> = std::env::vars().collect();
     for path in a.all(&["env-file"]) {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+        let text = std::fs::read_to_string(host_file(path)?).map_err(|e| format!("{path}: {e}"))?;
         for (k, v) in text::env_file(&text) {
             vars.retain(|(x, _)| *x != k);
             vars.push((k, v));
@@ -572,6 +820,24 @@ Commands:
                           filled in (masked in its output; --no-masking)
   item list               List items (--vault, --categories, --tags)
   item get ITEM           Show an item (--vault, --fields, --reveal, --otp)
+  item create [-] [ASSIGNMENT...]
+                          Make an item (--category, --title, --vault, --url,
+                          --tags, --generate-password[=RECIPE], --template F,
+                          - for a template on standard input, --dry-run)
+  item edit ITEM [ASSIGNMENT...]
+                          Change an item (the same flags; field[delete])
+  item delete ITEM|-      Delete an item (--archive: to the Archive)
+  item move ITEM --destination-vault VAULT
+                          Move an item to another vault
+  item template list | get CATEGORY
+                          The categories, or one's template (-o FILE)
+  document get ITEM       Print a document's file (-o FILE to save it)
+  document list | delete ITEM
+                          List documents, or delete one
+
+An assignment is [section.]field[[type]]=value: password (the default
+for a new field), text, email, url, date, monthYear, phone or otp; or
+field[delete] to take a field away. A change asks first in Passwords.
   vault list | get VAULT  List vaults, or show one
   whoami                  Show the account in use
   account list            List the accounts
@@ -588,6 +854,77 @@ whether to allow it. Turn op off in Preferences > Security.
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(line: &[&str]) -> Args {
+        Args::parse(line.iter().map(|x| x.to_string()).collect())
+    }
+
+    /// `op item create` as 1Password's docs write it: the switches that
+    /// take a value only after `=` leave the next word an assignment.
+    #[test]
+    fn an_item_create_reads_as_1passwords() {
+        let a = args(&[
+            "item",
+            "create",
+            "--category=login",
+            "--title",
+            "HBO Max",
+            "--vault",
+            "Tutorial",
+            "--url",
+            "https://www.hbomax.com",
+            "--generate-password",
+            "username=john.doe@acme.org",
+            "--tags",
+            "tutorial,entertainment",
+            "Subscription Info.Renewal Date[date]=2022-12-31",
+            "--dry-run",
+        ]);
+        let words: Vec<&str> = a.words.iter().map(String::as_str).collect();
+        assert_eq!(words, ["item", "create", "username=john.doe@acme.org", "Subscription Info.Renewal Date[date]=2022-12-31"]);
+        let c = change(&a, &words[2..], None).ok().unwrap();
+        assert_eq!((c.category.as_deref(), c.title.as_deref(), c.url.as_deref()), (Some("login"), Some("HBO Max"), Some("https://www.hbomax.com")));
+        assert_eq!(c.generate_password.as_deref(), Some(""));
+        assert_eq!(c.tags, Some(vec!["tutorial".to_string(), "entertainment".to_string()]));
+        assert_eq!(c.assignments.len(), 2);
+        assert_eq!(c.assignments[1].section.as_deref(), Some("Subscription Info"));
+        assert!(a.has(&["dry-run"]) && a.get(&["vault"]) == Some("Tutorial"));
+        // A recipe after `=`; tags emptied; a favourite said false.
+        let a = args(&["item", "edit", "x", "--generate-password=letters,digits,symbols,32", "--tags=", "--favorite=false"]);
+        let c = change(&a, &[], None).ok().unwrap();
+        assert_eq!((c.generate_password.as_deref(), c.tags, c.favorite), (Some("letters,digits,symbols,32"), Some(vec![]), Some(false)));
+        // An assignment that isn't one is said so, not sent.
+        assert!(change(&args(&[]), &["=x"], None).is_err());
+    }
+
+    /// A host's `op` (Rex's bridge says so) runs no command here and
+    /// reads or writes no file but those in the bridge's folder for it.
+    #[test]
+    fn a_hosts_op_stays_in_its_folder() {
+        // SAFETY: this test alone sets these, and puts them back.
+        unsafe {
+            std::env::set_var("OLO_REX_REMOTE_HOST", "build");
+            std::env::set_var("OLO_REX_OP_DIR", "/run/user/1/olo-rex-op-x");
+        }
+        assert!(run(vec!["run".into(), "--".into(), "id".into()]).is_err());
+        assert!(host_file("/etc/passwd").is_err() && host_file("relative.json").is_err());
+        assert!(host_file("/run/user/1/olo-rex-op-x/../../../etc/passwd").is_err());
+        assert!(host_file("/run/user/1/olo-rex-op-x/in-3").is_ok());
+        unsafe {
+            std::env::remove_var("OLO_REX_REMOTE_HOST");
+            std::env::remove_var("OLO_REX_OP_DIR");
+        }
+        assert!(host_file("relative.json").is_ok());
+    }
+
+    /// Items named on standard input: JSON with ids (one, a list, one
+    /// after another), else a line each.
+    #[test]
+    fn items_named_on_standard_input() {
+        assert_eq!(items_named(r#"[{"id":"a1","title":"A"},{"id":"b2"}]"#), ["a1", "b2"]);
+        assert_eq!(items_named("{\"id\":\"a1\"}\n{\"id\":\"b2\"}\n"), ["a1", "b2"]);
+        assert_eq!(items_named("Defunct Login\n\nOld Key\n"), ["Defunct Login", "Old Key"]);
+    }
 
     #[test]
     fn arguments() {

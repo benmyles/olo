@@ -23,7 +23,15 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   desktop and opened in its app there (a picture in Olo's Viewer).
 - **A secret from Olo Passwords** (1Password's command line, answered
   on the desktop after the person approves there; no secret is kept on
-  this host): `olo op read op://Vault/Item/field`.
+  this host): `olo op read op://Vault/Item/field`. Changes too, as
+  1Password's `op` makes them, each approved by the person:
+  `olo op item create --category login --title NAME --vault VAULT
+  username=… 'password=…'` (or a template: `--template FILE`, or `-` and
+  JSON on standard input), `olo op item edit ITEM field=value`,
+  `olo op item delete ITEM`. Files its flags name (`--template`, `-i`,
+  `-o`) are this host's; `olo op run` isn't done (its command would run
+  on the desktop): read the values with `olo op read` or `olo op inject`
+  and run the command here.
 - **A screen of your own on the desktop** (Olo Agent Screens: a
   headless desktop the person can watch), with `olo-screen`'s own
   command line:

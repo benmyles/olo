@@ -920,17 +920,44 @@ Sta het toe op de telefoon
 Allow NVIDIA Fallback on Battery
 NVIDIA zo nodig ook op accuvoeding gebruiken
 
+Allow Once
+Eenmalig toestaan
+
 Allow Sleep
 Slaapstand toestaan
 
 Allow Sleep (awake until {})
 Slaapstand toestaan (wakker tot {})
 
+Allow This Terminal
+Deze terminal toestaan
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+Met ‘Deze terminal toestaan’ voegt het zonder te vragen onderdelen toe en wijzigt het ze, tot Passwords vergrendelt.
+
 Allow it on the phone
 Sta het toe op de telefoon
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 Mogen programma’s op ‘{}’ zich aanmelden met uw SSH-sleutels? Een terminal daar vraagt hierom via Rex.
+
+Allow {} to add an item to {}?
+{} toestaan een onderdeel te maken in {}?
+
+Allow {} to add “{}” to {}?
+{} toestaan ‘{}’ toe te voegen aan {}?
+
+Allow {} to change “{}” in {}?
+{} toestaan ‘{}’ in {} te wijzigen?
+
+Allow {} to delete “{}” from {}?
+{} toestaan ‘{}’ uit {} te verwijderen?
+
+Allow {} to move “{}” from {} to {}?
+{} toestaan ‘{}’ van {} naar {} te verplaatsen?
+
+Allow {} to move “{}” to the Archive?
+{} toestaan ‘{}’ naar het archief te verplaatsen?
 
 Allow {} to sign in to your hosts with your SSH keys?
 Mag {} zich met uw SSH-sleutels aanmelden op uw hosts?
@@ -1335,6 +1362,15 @@ Vraag het de assistent
 
 Ask what to do about urgent ones
 Vragen wat te doen bij dringende problemen
+
+Asked by “{}” from {} in {}.
+Gevraagd door ‘{}’ vanuit {} in {}.
+
+Asked by “{}” from {}.
+Gevraagd door ‘{}’ vanuit {}.
+
+Asked by “{}”.
+Gevraagd door ‘{}’.
 
 Asked now:
 Gebruikte servers:
@@ -2098,6 +2134,9 @@ Zowel hier als in 1Password gewijzigd. De versie van 1Password komt hier te staa
 
 Changed here now, and in 1Password at the next sync.
 Hier gewijzigd. 1Password wordt bij de volgende synchronisatie bijgewerkt.
+
+Changes its {}.
+Wijzigt: {}.
 
 Changes to “{}”
 Wijzigingen in ‘{}’
@@ -3334,6 +3373,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 {} verwijderen: {} van {}
+
+Deny
+Weigeren
 
 Description
 Beschrijving
@@ -4608,6 +4650,9 @@ Voor muizen die de algemene instelling volgen en voor muizen die u later aanslui
 
 For {} · process {}
 Voor {} · proces {}
+
+For {}.
+Voor {}.
 
 For:
 Voor:
@@ -8751,6 +8796,9 @@ Passwords bewaart uw onderdelen versleuteld op deze computer en kan wijzigingen 
 Passwords on this screen has no SSH keys shared with it.
 Passwords op dit scherm heeft geen SSH-sleutels die ermee gedeeld zijn.
 
+Passwords unlocked without asking
+Passwords ontgrendeld zonder te vragen
+
 Passwords: Clipboard
 Passwords: klembord
 
@@ -9674,6 +9722,9 @@ Tabblad hernoemen…
 Rename Worktree…
 Werkboom hernoemen…
 
+Renames it “{}”.
+Geeft het de naam ‘{}’.
+
 Rename…
 Hernoemen…
 
@@ -10100,6 +10151,9 @@ SSH-sleutels
 
 SSH keys offered: {}.
 Aangeboden SSH-sleutels: {}.
+
+SSH keys used without asking
+SSH-sleutels gebruikt zonder te vragen
 
 SSH sessions
 SSH-sessies
@@ -14315,6 +14369,9 @@ every {n} minutes
 one: elke {n} minuut
 other: elke {n} minuten
 
+fields
+velden
+
 for {}
 voor {}
 
@@ -14683,8 +14740,41 @@ alleen map- en zoekvensters verplaatsen
 only terminal windows move
 alleen terminalvensters verplaatsen
 
+op added “{}” to {}.
+op heeft ‘{}’ toegevoegd aan {}.
+
+op allowed without asking
+op toegestaan zonder te vragen
+
+op changed Passwords without asking
+op heeft Passwords gewijzigd zonder te vragen
+
+op changed “{}”.
+op heeft ‘{}’ gewijzigd.
+
+op deleted “{}”.
+op heeft ‘{}’ verwijderd.
+
+op moved “{}” to the Archive.
+op heeft ‘{}’ naar het archief verplaatst.
+
+op moved “{}” to {}.
+op heeft ‘{}’ naar {} verplaatst.
+
+op on {}
+op op {}
+
 optional
 optioneel
+
+op’s Changes to “{}”
+Wijzigingen van op in ‘{}’
+
+op’s Deletion of “{}”
+Verwijdering van ‘{}’ door op
+
+op’s New “{}”
+Nieuw ‘{}’ van op
 
 organizer
 organisator
@@ -14700,6 +14790,9 @@ een deel van het scherm
 
 passphrase
 wachtzin
+
+password
+wachtwoord
 
 plugged in, charge limit {}%
 op netvoeding, laadlimiet {}%
@@ -14765,6 +14858,9 @@ ssh://naam@host of host.ts.net
 
 sudo needs your password to run this{}:
 sudo heeft uw wachtwoord nodig voor deze opdracht{}:
+
+tags
+tags
 
 taken as at least {}% busy
 geldt als minstens {}% bezet
@@ -14975,6 +15071,9 @@ controleren
 visibility down to {}
 zicht beperkt tot {}
 
+website
+website
+
 what holds it back
 wat dit vertraagt
 
@@ -15017,6 +15116,9 @@ u hebt geen toestemming
 
 your cloud storage
 uw cloudopslag
+
+your home folder
+je thuismap
 
 your own picture
 uw eigen afbeelding
@@ -15504,6 +15606,9 @@ standaard {} dpi
 
 {} in
 {} in
+
+{} in Passwords brings it back until Passwords locks.
+{} in Passwords zet het terug tot Passwords vergrendelt.
 
 {} in all
 {} in totaal

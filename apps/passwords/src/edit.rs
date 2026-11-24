@@ -106,6 +106,12 @@ fn template(category: ItemCategory) -> Vec<EditField> {
     }
 }
 
+/// The fields a new item of `category` starts with, as an item has them
+/// (`op item create`'s and its templates').
+pub fn starting_fields(category: ItemCategory) -> Vec<ItemField> {
+    template(category).into_iter().map(|f| ItemField::new(f.id, f.label, f.kind, f.value)).collect()
+}
+
 /// What a field type is called in the Add Field menu.
 pub fn kind_label(kind: ItemFieldType) -> &'static str {
     match kind {

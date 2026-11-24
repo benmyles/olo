@@ -920,17 +920,44 @@ Am Telefon erlauben
 Allow NVIDIA Fallback on Battery
 NVIDIA als Ausweichlösung im Akkubetrieb zulassen
 
+Allow Once
+Einmal erlauben
+
 Allow Sleep
 Ruhezustand erlauben
 
 Allow Sleep (awake until {})
 Ruhezustand erlauben (wach bis {})
 
+Allow This Terminal
+Dieses Terminal erlauben
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+„Dieses Terminal erlauben“ lässt es Objekte ohne Nachfrage anlegen und ändern, bis Passwords gesperrt wird.
+
 Allow it on the phone
 Am Telefon erlauben
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 Programmen auf „{}“ erlauben, sich mit Ihren SSH-Schlüsseln anzumelden? Ein Terminal dort fragt über Rex an.
+
+Allow {} to add an item to {}?
+{} erlauben, ein Objekt in {} anzulegen?
+
+Allow {} to add “{}” to {}?
+{} erlauben, „{}“ in {} anzulegen?
+
+Allow {} to change “{}” in {}?
+{} erlauben, „{}“ in {} zu ändern?
+
+Allow {} to delete “{}” from {}?
+{} erlauben, „{}“ aus {} zu löschen?
+
+Allow {} to move “{}” from {} to {}?
+{} erlauben, „{}“ von {} nach {} zu verschieben?
+
+Allow {} to move “{}” to the Archive?
+{} erlauben, „{}“ ins Archiv zu verschieben?
 
 Allow {} to sign in to your hosts with your SSH keys?
 {} erlauben, sich mit Ihren SSH-Schlüsseln an Ihren Hosts anzumelden?
@@ -1335,6 +1362,15 @@ Assistenten fragen
 
 Ask what to do about urgent ones
 Bei dringenden fragen, was zu tun ist
+
+Asked by “{}” from {} in {}.
+Angefragt von „{}“ aus {} in {}.
+
+Asked by “{}” from {}.
+Angefragt von „{}“ aus {}.
+
+Asked by “{}”.
+Angefragt von „{}“.
 
 Asked now:
 Jetzt gefragt:
@@ -2098,6 +2134,9 @@ Hier und in 1Password geändert: Die Version aus 1Password ersetzt sie hier, Ihr
 
 Changed here now, and in 1Password at the next sync.
 Hier sofort geändert, in 1Password bei der nächsten Synchronisierung.
+
+Changes its {}.
+Ändert: {}.
 
 Changes to “{}”
 Änderungen an „{}“
@@ -3334,6 +3373,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 {} wird gelöscht: {} von {}
+
+Deny
+Ablehnen
 
 Description
 Beschreibung
@@ -4608,6 +4650,9 @@ Für die Mäuse, die den anderen folgen sollen, und alle, die Sie anschließen.
 
 For {} · process {}
 Seit {} · Prozess {}
+
+For {}.
+Für {}.
 
 For:
 Für:
@@ -8751,6 +8796,9 @@ Passwords bewahrt Ihre Einträge verschlüsselt auf diesem Computer auf und kann
 Passwords on this screen has no SSH keys shared with it.
 Passwords auf diesem Bildschirm hat keine SSH-Schlüssel, die mit ihm geteilt sind.
 
+Passwords unlocked without asking
+Passwords ohne Nachfrage entsperrt
+
 Passwords: Clipboard
 Passwords: Zwischenablage
 
@@ -9674,6 +9722,9 @@ Tab umbenennen …
 Rename Worktree…
 Worktree umbenennen …
 
+Renames it “{}”.
+Benennt es in „{}“ um.
+
 Rename…
 Umbenennen …
 
@@ -10100,6 +10151,9 @@ SSH-Schlüssel
 
 SSH keys offered: {}.
 Angebotene SSH-Schlüssel: {}.
+
+SSH keys used without asking
+SSH-Schlüssel ohne Nachfrage verwendet
 
 SSH sessions
 SSH-Sitzungen
@@ -14315,6 +14369,9 @@ every {n} minutes
 one: jede Minute
 other: alle {n} Minuten
 
+fields
+Felder
+
 for {}
 seit {}
 
@@ -14683,8 +14740,41 @@ nur Ordner- und Suchfenster bewegen sich
 only terminal windows move
 nur Terminalfenster bewegen sich
 
+op added “{}” to {}.
+op hat „{}“ in {} angelegt.
+
+op allowed without asking
+op ohne Nachfrage erlaubt
+
+op changed Passwords without asking
+op hat Passwords ohne Nachfrage geändert
+
+op changed “{}”.
+op hat „{}“ geändert.
+
+op deleted “{}”.
+op hat „{}“ gelöscht.
+
+op moved “{}” to the Archive.
+op hat „{}“ ins Archiv verschoben.
+
+op moved “{}” to {}.
+op hat „{}“ nach {} verschoben.
+
+op on {}
+op auf {}
+
 optional
 optional
+
+op’s Changes to “{}”
+Änderungen von op an „{}“
+
+op’s Deletion of “{}”
+Löschen von „{}“ durch op
+
+op’s New “{}”
+Neues Objekt „{}“ von op
 
 organizer
 Organisator
@@ -14700,6 +14790,9 @@ einem Teil des Bildschirms
 
 passphrase
 Passphrase
+
+password
+Passwort
 
 plugged in, charge limit {}%
 am Netz, Ladegrenze {} %
@@ -14765,6 +14858,9 @@ ssh://name@host oder host.ts.net
 
 sudo needs your password to run this{}:
 sudo braucht Ihr Passwort, um dies auszuführen{}:
+
+tags
+Tags
 
 taken as at least {}% busy
 als mindestens zu {} % beschäftigt gezählt
@@ -14975,6 +15071,9 @@ prüft
 visibility down to {}
 Sicht bis hinunter auf {}
 
+website
+Website
+
 what holds it back
 was es bremst
 
@@ -15017,6 +15116,9 @@ Sie haben keine Berechtigung
 
 your cloud storage
 Ihr Cloud-Speicher
+
+your home folder
+Ihrem Benutzerordner
 
 your own picture
 ein eigenes Bild
@@ -15504,6 +15606,9 @@ vor {} Stunden
 
 {} in
 {} ein
+
+{} in Passwords brings it back until Passwords locks.
+{} in Passwords holt es zurück, bis Passwords gesperrt wird.
 
 {} in all
 {} insgesamt

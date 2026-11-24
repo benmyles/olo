@@ -25868,9 +25868,76 @@ the finger's match did (Claim, VerifyStart, VerifyStatus match,
 VerifyStop, Release).
 `op run` passes the values in the environment and masks them in the
 command's output (`<concealed by 1Password>`, `text::Masker`) unless
-`--no-masking`; `inject` writes files 0600. Commands that change items,
-vaults or accounts say Olo's op doesn't do them, and errors look like
-op's (`[ERROR] date time message`, exit 1).
+`--no-masking`; `inject` writes files 0600. Errors look like op's
+(`[ERROR] date time message`, exit 1).
+
+*Changes, as 1Password's own `op` makes them* (Ben, 2026-11-24: "make
+our op compatible and follow the same so that clients that know how to
+use op can use it to talk to olo passwords without learning a new
+cli"): `op item create` (`--category`, `--title`, `--vault`, `--url`,
+`--tags`, `--generate-password[=letters,digits,symbols,32]`,
+`--ssh-generate-key[=ed25519|rsa…]`, `--template FILE` or `-` and a
+template on standard input, `--dry-run`), `op item edit` (the same; a
+template piped in without `-`, read only where standard input is a
+pipe or a file, so a script with its input left open never waits),
+`op item delete` (`--archive`; `-`: the items standard input names,
+JSON with ids or a line each), `op item move --destination-vault`, `op
+item template list|get` (the editor's own fields for each category,
+answered without asking: nothing of the person's is in them), `op
+document get` (`-o`, never over a file with something in it unless
+`--force`; not text to a terminal unless `--force`), `list` and
+`delete`. Assignment statements as 1Password's docs write them
+(`olo_keychain::Assignment::parse`: `[section.]field[[type]]=value`, a
+backslash escaping `.`, `=` and `\` in the names; a new field's type
+password unless given; `field[delete]`, its section with it when it's
+the last; a built-in field set to nothing, not taken away). Passwords
+makes them (`cli_write`) as the window's own edits are made (`Vault::
+create`, `put`, `delete`, `archive`): synced to 1Password, the window's
+list and Edit ▸ Undo ("Undo op’s Changes to “GitHub”") following,
+without its selection or editor being touched (`Reply::OpSaved`; the
+status line says what op did in the alert's words: "op added “HBO Max”
+to Personal."). A change is asked about on its own, never taken from
+leave to read, the change itself the question ("Allow op to add “HBO
+Max” to Personal?", "Allow op to change “AWS” in Work?" with its new
+title and the fields it sets under it), then who asked by the command's
+name, never its line (its assignments are the values being set: "Asked
+by “op item edit” from sh in your home folder."): Deny (everything the
+session has waiting), Allow This Terminal (its additions and changes
+until Passwords locks, said under the question:
+`Grants::allow_writes`), Allow Once. A deletion is asked each time,
+under Allow This Terminal too: the stop icon, Delete and Deny, Deny the
+default for Return and Escape both (`widgets::open_app_alert_escaping`),
+and the way back said (Edit ▸ Undo until Passwords locks). (Opus's and
+Astra's looks: the first approval's default deleted, and its question
+named the command.) Approve Without Asking lets changes through too, with a
+quiet notification. Not on an agent screen (its store is a copy). What
+Olo's can't do yet is refused saying why: a file made here
+(`op document create`, `edit`, a `[file]` assignment) isn't sent to
+1Password yet (TODO, files up), and Olo keeps no favourites
+(`--favorite` is taken and does nothing). Tried end to end in a test
+session (a stand-in socket, the fixture store, `op` from a shell):
+made, two changes from one shell under Allow Until Locked, a deletion
+denied, templates, Undo's name.
+
+*From a host, through Rex's bridge* (`olo op …`, `rex do olo.op`): the
+desktop's `olo-op` answers, asking Passwords, which names the host ("op
+on build", believed only of an `op` this Olo's Rex started). Nothing of
+the desktop's is the host's to name (`bridge::OpCarry`, 2026-11-24:
+before, a host's `op run` ran its command on the desktop, `-i` read the
+desktop's files and `-o` wrote them): `op run` isn't carried (refused
+by the bridge, and by `olo-op` itself when `OLO_REX_REMOTE_HOST` says a
+host asks); the files `-i`, `--template` and `--env-file` read are the
+host's, sent with the request (base64) and written for the run in a
+folder of the desktop's own (`$XDG_RUNTIME_DIR/olo-rex-op-*`, 0700,
+gone after), the only folder `olo-op` reads or writes for a host
+(`OLO_REX_OP_DIR`, `host_file`); what `-o` writes is carried back and
+written on the host where it said (made 0600 first, `--file-mode`
+after; not over a file with something in it unless `--force`), and
+output that isn't text (a document) comes back as bytes. The host's
+`olo` keeps `op`'s standard input (a pipe or a file, at most 1 MiB) for
+`olo.lua` to send. And the files an answer carries are the command's to
+name (`Carried`): Agent Screens' pictures; before, any `….png` path in
+any answer was read and sent, an item's value naming one too.
 
 `cargo test -p olo-op -p olo-passwords` covers templates, env
 files, masking, arguments, references and item JSON. To try it, run

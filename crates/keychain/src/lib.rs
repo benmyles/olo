@@ -238,6 +238,158 @@ pub enum CliQuery {
     Resolve {
         references: Vec<String>,
     },
+    /// `op item create`: an item made in `vault` (else where new items
+    /// go), or what it would be (`dry_run`), answered as `Item` is. Olo's
+    /// `op` reads the template and parses the assignments; Passwords does
+    /// the rest (the category's fields, a password made, the vault).
+    Create {
+        vault: Option<String>,
+        change: ItemChange,
+        dry_run: bool,
+    },
+    /// `op item edit`: item `item` changed as `change` says (or what it
+    /// would be: `dry_run`), answered as `Item` is.
+    Edit {
+        vault: Option<String>,
+        item: String,
+        change: ItemChange,
+        dry_run: bool,
+    },
+    /// `op item delete` and `op document delete`: deleted (Edit ▸ Undo
+    /// makes it again while Passwords is open), or to the Archive.
+    Delete {
+        vault: Option<String>,
+        item: String,
+        archive: bool,
+    },
+    /// `op item move`: to vault `to` (in 1Password a new item there, the
+    /// old one deleted: its ID changes), answered as `Item` is.
+    Move {
+        vault: Option<String>,
+        item: String,
+        to: String,
+    },
+    /// `op item template get CATEGORY`, or (none) `op item template list`.
+    Template {
+        category: Option<String>,
+    },
+    /// `op document get`: the file of a Document item, base64.
+    DocumentGet {
+        vault: Option<String>,
+        item: String,
+        include_archive: bool,
+    },
+    /// `op document list`.
+    Documents {
+        vault: Option<String>,
+        include_archive: bool,
+    },
+}
+
+impl CliQuery {
+    /// Whether it changes anything (asked about on its own, each time
+    /// or for its session: never taken from a session allowed to read).
+    pub fn writes(&self) -> bool {
+        matches!(self, CliQuery::Create { dry_run: false, .. } | CliQuery::Edit { dry_run: false, .. } | CliQuery::Delete { .. } | CliQuery::Move { .. })
+    }
+}
+
+/// What `op item create` and `op item edit` ask for, as 1Password's own
+/// `op` takes it (its flags, assignment statements and template).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemChange {
+    /// 1Password's item JSON (`--template FILE`, or on standard input),
+    /// as `op item get --format json` prints an item or `op item template
+    /// get` a template: assignments are made over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<serde_json::Value>,
+    /// `--category` (a new item's; any case, spaces or none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// `--url`: the website it suggests and fills for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// `--tags`: these and no others (empty: none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    /// `--favorite`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favorite: Option<bool>,
+    /// `--generate-password[=recipe]`: its recipe ("" for 32 letters,
+    /// digits and symbols).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generate_password: Option<String>,
+    /// `--ssh-generate-key[=kind]` (`ed25519`, `rsa`, `rsa2048`…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_generate_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignments: Vec<Assignment>,
+}
+
+/// An assignment statement, `[section.]field[[type]]=value`: a field set,
+/// made, given another type, or (`[delete]`) taken away.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Assignment {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
+    pub field: String,
+    /// Its type as written (`text`, `password`, `monthYear`, `delete`…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// None where no `=` was written (a type changed alone; `[delete]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+impl Assignment {
+    /// As 1Password's `op` reads one: a backslash escapes a period, an
+    /// equals sign or a backslash in the section's and field's names
+    /// (never in the value); the first period not escaped ends the
+    /// section; the type is in brackets at the name's end.
+    pub fn parse(text: &str) -> Result<Assignment, String> {
+        let bad = |why: &str| Err(format!("“{text}” isn’t an assignment statement ([section.]field[[type]]=value): {why}"));
+        // The name, read up to the first `=` not escaped; what's after
+        // it is the value, as it is.
+        let (mut name, mut value) = (Vec::<(char, bool)>::new(), None);
+        let mut chars = text.char_indices();
+        while let Some((at, c)) = chars.next() {
+            match c {
+                '\\' => match chars.next() {
+                    Some((_, e)) => name.push((e, true)),
+                    None => return bad("it ends with a backslash"),
+                },
+                '=' => {
+                    value = Some(text[at + 1..].to_owned());
+                    break;
+                }
+                c => name.push((c, false)),
+            }
+        }
+        // The type: `[…]` at the name's end, not escaped.
+        let mut kind = None;
+        if name.last() == Some(&(']', false))
+            && let Some(open) = name.iter().rposition(|&p| p == ('[', false))
+        {
+            kind = Some(name[open + 1..name.len() - 1].iter().map(|(c, _)| *c).collect::<String>());
+            name.truncate(open);
+        }
+        let (section, field) = match name.iter().position(|&p| p == ('.', false)) {
+            Some(dot) => (Some(name[..dot].iter().map(|(c, _)| *c).collect::<String>()), name[dot + 1..].iter().map(|(c, _)| *c).collect::<String>()),
+            None => (None, name.iter().map(|(c, _)| *c).collect()),
+        };
+        if field.is_empty() {
+            return bad("no field named");
+        }
+        if section.as_deref() == Some("") {
+            return bad("no section before the period");
+        }
+        if kind.as_deref() == Some("") {
+            return bad("no type in the brackets");
+        }
+        Ok(Assignment { section, field, kind, value })
+    }
 }
 
 impl Request {
@@ -797,6 +949,35 @@ pub fn rp_id_fits(rp_id: &str, url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::Assignment;
+
+    /// Assignment statements as 1Password's `op` reads them.
+    #[test]
+    fn assignments_read_as_1passwords_op_reads_them() {
+        let a = |t: &str| Assignment::parse(t).unwrap();
+        let it = |section: Option<&str>, field: &str, kind: Option<&str>, value: Option<&str>| Assignment {
+            section: section.map(str::to_owned),
+            field: field.into(),
+            kind: kind.map(str::to_owned),
+            value: value.map(str::to_owned),
+        };
+        assert_eq!(a("username=jane@acme.com"), it(None, "username", None, Some("jane@acme.com")));
+        assert_eq!(a("Subscription Info.Renewal Date[date]=2022-12-31"), it(Some("Subscription Info"), "Renewal Date", Some("date"), Some("2022-12-31")));
+        assert_eq!(a("DatabaseCredentials.host[text]=33.166.240.221"), it(Some("DatabaseCredentials"), "host", Some("text"), Some("33.166.240.221")));
+        // A value keeps its periods, equals signs and backslashes.
+        assert_eq!(a("note=a=b.c\\d"), it(None, "note", None, Some("a=b.c\\d")));
+        // Escaped in the names: a period, an equals sign, a backslash.
+        assert_eq!(a("my\\.section.key\\=1\\\\x=v"), it(Some("my.section"), "key=1\\x", None, Some("v")));
+        // No value: a type alone, a field taken away; an empty value.
+        assert_eq!(a("field1[password]"), it(None, "field1", Some("password"), None));
+        assert_eq!(a("section2.field5[delete]"), it(Some("section2"), "field5", Some("delete"), None));
+        assert_eq!(a("username="), it(None, "username", None, Some("")));
+        // Not one.
+        for t in ["=value", ".field=x", "field[]=x", "field\\"] {
+            assert!(Assignment::parse(t).is_err(), "{t}");
+        }
+    }
+
     use super::*;
 
     #[test]

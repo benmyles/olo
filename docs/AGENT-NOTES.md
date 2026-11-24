@@ -2406,6 +2406,22 @@ design reviewed is a new design: it gets its own review before it is
 built, or it isn't built. And `tools/dev/ui-lint` has no `--help`:
 an argument it doesn't know starts the lint (read its first lines).
 
+### The bridge's Lua on a host, and what it can and can't see (2026-11-24)
+
+The host side of Rex's bridge is a shell script and a Lua script run by
+`rex do` (`apps/rex/src/bridge_olo.sh`, `bridge_olo.lua`). No `luac` is
+installed here; Rex's own Lua checks a script without running it:
+`rex do -e 'local f, e = loadfile("PATH"); return { loaded = f ~= nil,
+error = tostring(e) }'`. `rex.exec({argv…})` returns `{code, ok,
+stdout, stderr}` and runs on the host, in the server's folder, not the
+caller's: make a path absolute from `PWD` first. A Lua string in single
+quotes takes `\n` as a newline. What a host sends with a request is
+data, never this computer's to name: a host's `rex do olo.op` can carry
+any arguments, so the desktop side (`bridge::OpCarry`) is the boundary,
+not the shell script. And the script reads standard input only where
+the command takes it: an agent's shell may leave a pipe open, and
+`head` on it waits for ever.
+
 ### Testing Olo Rex and Rex rev-19 servers
 
 - **Rex rev-19 `data_ref_id` is `"terminal"`, not `"output"`.** Both

@@ -325,6 +325,9 @@ pub struct Alert {
     /// It answers itself in time, and a wake for its next second is set.
     timeout: Option<Timeout>,
     ticking: bool,
+    /// The button Escape takes (the first, usually Cancel; where the
+    /// default is the safe answer, as Deny beside Delete, that one).
+    escape: usize,
 }
 
 /// What an alert is told.
@@ -414,7 +417,7 @@ impl View for Alert {
             // Cancel).
             .on_key_down(cx.listener(move |alert: &mut Self, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() && n > 1 {
-                    alert.choose(Some(0), cx);
+                    alert.choose(Some(alert.escape.min(n - 1)), cx);
                     cx.stop_propagation();
                 }
             }))
@@ -447,6 +450,7 @@ fn alert(title: &str, icon: &str, message: &str, buttons: &[&str], timeout: Opti
         done: false,
         timeout,
         ticking: false,
+        escape: 0,
     };
     (crate::WindowOptions::alert(title.to_owned(), width, height), alert)
 }
@@ -500,6 +504,26 @@ pub fn open_app_alert(title: &str, icon: &str, message: &str, buttons: &[&str], 
         cx.activate_window();
         let labels: Vec<&str> = buttons.iter().map(String::as_str).collect();
         let alert = alert(&title, &icon, &message, &labels, None, Chosen::App(on_choose)).1;
+        alert.focus.focus(cx);
+        alert
+    })
+}
+
+/// [`open_app_alert`] whose Escape takes button `escape` rather than the
+/// first: an alert whose default (the last, Return) is the safe answer
+/// to something that can't be taken back ("Delete", then "Deny": both
+/// keys deny, the click deletes).
+pub fn open_app_alert_escaping(title: &str, icon: &str, message: &str, buttons: &[&str], escape: usize, on_choose: impl Fn(Option<usize>) + Send + Sync + 'static) -> WindowHandle<Alert> {
+    let (title, icon, message) = (title.to_owned(), icon.to_owned(), message.to_owned());
+    let buttons: Vec<String> = buttons.iter().map(|b| b.to_string()).collect();
+    let on_choose: Arc<dyn Fn(Option<usize>) + Send + Sync> = Arc::new(on_choose);
+    let labels: Vec<&str> = buttons.iter().map(String::as_str).collect();
+    let (options, _) = alert(&title, &icon, &message, &labels, None, Chosen::App(on_choose.clone()));
+    crate::open_window(options, move |cx| {
+        cx.activate_window();
+        let labels: Vec<&str> = buttons.iter().map(String::as_str).collect();
+        let mut alert = alert(&title, &icon, &message, &labels, None, Chosen::App(on_choose)).1;
+        alert.escape = escape;
         alert.focus.focus(cx);
         alert
     })

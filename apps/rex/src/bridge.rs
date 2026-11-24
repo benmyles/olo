@@ -81,11 +81,101 @@ pub struct BridgeResponse {
     pub stderr: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
+    /// Files for the host, named by the command that made them (never
+    /// found in what it printed: an item's value naming a file of this
+    /// computer isn't one): fetched in pieces ([`Calls::piece`]).
+    #[serde(skip)]
+    pub carried: Vec<Carried>,
+}
+
+/// A file of an answer's, for the host.
+#[derive(Debug, Clone, Default)]
+pub struct Carried {
+    /// What the answer calls it (an Agent Screen's picture: its path
+    /// here, which the host writes in its own place).
+    pub path: String,
+    /// Where on the host it goes, as the command there named it (`op
+    /// read -o FILE`); none: the host's own place for it.
+    pub to: Option<String>,
+    /// It is what the command printed (not text: a document's bytes).
+    pub stdout: bool,
+    pub bytes: Vec<u8>,
 }
 
 impl BridgeResponse {
     pub fn err(msg: impl Into<String>) -> Self {
-        Self { ok: false, stdout: None, stderr: Some(msg.into()), data: None }
+        Self { ok: false, stdout: None, stderr: Some(msg.into()), data: None, carried: Vec::new() }
+    }
+}
+
+/// What a host's `op` is given here, so that nothing of this computer's
+/// is its to name: the files its flags read are the host's, sent with
+/// the request (`payload.files`, base64 by the path the host gave), and
+/// written for the run in a folder of its own here; those it writes
+/// (`-o`) are written there and carried back; what it reads on standard
+/// input is the host's (`payload.stdin`). `op run`, which runs its
+/// command where `op` runs, isn't carried: here it would run on this
+/// computer. (Before 2026-11-24 a host's `op run` ran here, `-i` read
+/// this computer's files and `-o` wrote them.)
+pub struct OpCarry {
+    pub args: Vec<String>,
+    pub stdin: Option<Vec<u8>>,
+    /// The host's path for each file the command writes, and where it
+    /// is written here.
+    pub outputs: Vec<(String, PathBuf)>,
+    pub dir: PathBuf,
+}
+
+/// `op`'s flags that read a file, and those that write one.
+const OP_READS: [&str; 4] = ["i", "in-file", "template", "env-file"];
+const OP_WRITES: [&str; 2] = ["o", "out-file"];
+
+impl OpCarry {
+    pub fn of(args: &[String], payload: &Value, dir: PathBuf) -> Result<OpCarry, String> {
+        use base64::Engine as _;
+        let decode = |b64: &str| base64::engine::general_purpose::STANDARD.decode(b64.as_bytes()).map_err(|e| format!("a file sent oddly: {e}"));
+        // (Any `run` before `--`, which flags' values may stand before:
+        // `olo-op` refuses it exactly too, knowing its own flags.)
+        if args.iter().take_while(|a| *a != "--").any(|a| a == "run") {
+            return Err("`op run` isn't carried to the Olo desktop: its command would run there. Run the command here with the values from `olo op read` or `olo op inject`.".into());
+        }
+        let stdin = match payload.get("stdin").and_then(Value::as_str) {
+            Some(b64) => Some(decode(b64)?),
+            None => None,
+        };
+        let files = payload.get("files").and_then(Value::as_object);
+        let (mut out, mut outputs, mut made) = (Vec::with_capacity(args.len()), Vec::new(), false);
+        let mut it = args.iter().peekable();
+        while let Some(a) = it.next() {
+            let flag = a.strip_prefix("--").or_else(|| a.strip_prefix('-').filter(|f| !f.is_empty()));
+            let (name, attached) = match flag.map(|f| f.split_once('=').map_or((f, None), |(k, v)| (k, Some(v)))) {
+                Some((name, attached)) if OP_READS.contains(&name) || OP_WRITES.contains(&name) => (name, attached),
+                _ => {
+                    out.push(a.clone());
+                    continue;
+                }
+            };
+            let Some(value) = attached.map(str::to_owned).or_else(|| it.next().cloned()) else {
+                return Err(format!("{a} needs a file"));
+            };
+            if !made {
+                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+                made = true;
+            }
+            let here = dir.join(format!("{}-{}", if OP_READS.contains(&name) { "in" } else { "out" }, out.len()));
+            if OP_READS.contains(&name) {
+                let b64 = files.and_then(|f| f.get(&value)).and_then(Value::as_str).ok_or_else(|| format!("the host's file {value} wasn't sent with the request"))?;
+                use std::os::unix::fs::OpenOptionsExt;
+                let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&here).map_err(|e| e.to_string())?;
+                std::io::Write::write_all(&mut f, &decode(b64)?).map_err(|e| e.to_string())?;
+            } else {
+                outputs.push((value, here.clone()));
+            }
+            out.push(format!("--{name}={}", here.display()));
+        }
+        Ok(OpCarry { args: out, stdin, outputs, dir })
     }
 }
 
@@ -161,26 +251,29 @@ impl Calls {
         }
     }
 
-    /// The answer with the pictures it names made fetchable: a file of
-    /// this computer is no use to a program on the host, so each
-    /// picture file the command's output names (as Agent Screens name
-    /// theirs: a path ending `.png`) is read now and listed under
-    /// `files` with a name to fetch it by ([`Self::piece`]: `rex do
-    /// olo.file id=…`, whose answer holds it in base64).
-    fn with_files(&self, response: BridgeResponse) -> Value {
+    /// The answer with the files it carries made fetchable (a file of
+    /// this computer is no use to a program on the host): each listed
+    /// under `files` with a name to fetch it by ([`Self::piece`]: `rex do
+    /// olo.file id=…`, whose answer holds it in base64), and where on the
+    /// host it goes (`to`) or that it is what the command printed
+    /// (`stdout`).
+    fn with_files(&self, mut response: BridgeResponse) -> Value {
         let mut files = Vec::new();
-        if let Some(out) = response.stdout.as_deref() {
+        let carried = std::mem::take(&mut response.carried);
+        if !carried.is_empty() {
             let mut kept = self.files.lock().unwrap_or_else(|e| e.into_inner());
             kept.retain(|_, (since, _)| since.elapsed() < KEPT_FOR);
-            for path in pictures_named(out) {
-                let Ok(meta) = std::fs::metadata(&path) else { continue };
-                if !meta.is_file() || meta.len() > FILE_MOST {
-                    continue;
-                }
-                let Ok(bytes) = std::fs::read(&path) else { continue };
+            for c in carried {
                 let id = uuid::Uuid::new_v4().simple().to_string();
-                files.push(json!({ "path": path, "id": id, "size": bytes.len() }));
-                kept.insert(id, (Instant::now(), Arc::new(bytes)));
+                let mut listed = json!({ "path": c.path, "id": id, "size": c.bytes.len() });
+                if let Some(to) = c.to {
+                    listed["to"] = json!(to);
+                }
+                if c.stdout {
+                    listed["stdout"] = json!(true);
+                }
+                files.push(listed);
+                kept.insert(id, (Instant::now(), Arc::new(c.bytes)));
             }
         }
         let mut answer = json!(response);
@@ -206,6 +299,49 @@ impl Calls {
         }
         json!({ "ok": true, "base64": base64::engine::general_purpose::STANDARD.encode(&bytes[from..to]), "count": to - from, "done": done })
     }
+}
+
+/// A picture file of this computer's, to carry (none past the most).
+fn picture(path: &str) -> Option<Vec<u8>> {
+    let meta = std::fs::metadata(path).ok()?;
+    (meta.is_file() && meta.len() <= FILE_MOST).then(|| std::fs::read(path).ok()).flatten()
+}
+
+/// A host's `op` run here as [`OpCarry`] has it: what it wrote to its
+/// `-o` files and, where it isn't text, what it printed, carried back.
+async fn run_op(op: &Path, carry: &OpCarry, host_label: &str) -> BridgeResponse {
+    use tokio::io::AsyncWriteExt;
+    let mut command = tokio::process::Command::new(op);
+    // (`OLO_REX_OP_DIR`: the only folder it may read or write a file in.)
+    command.args(&carry.args).env("OLO_REX_REMOTE_HOST", host_label).env("OLO_REX_OP_DIR", &carry.dir).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    // (Its folder, so no path it is given means one of this computer's.)
+    if carry.dir.is_dir() {
+        command.current_dir(&carry.dir);
+    }
+    command.stdin(if carry.stdin.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() });
+    let mut child = match command.spawn() {
+        Ok(c) => c,
+        Err(e) => return BridgeResponse::err(format!("failed to invoke olo-op: {e}")),
+    };
+    if let (Some(input), Some(mut pipe)) = (&carry.stdin, child.stdin.take()) {
+        let input = input.clone();
+        tokio::spawn(async move {
+            let _ = pipe.write_all(&input).await;
+        });
+    }
+    let o = match child.wait_with_output().await {
+        Ok(o) => o,
+        Err(e) => return BridgeResponse::err(format!("failed to invoke olo-op: {e}")),
+    };
+    let mut carried: Vec<Carried> = carry.outputs.iter().filter_map(|(to, here)| Some(Carried { path: to.clone(), to: Some(to.clone()), stdout: false, bytes: std::fs::read(here).ok()? })).collect();
+    let stdout = match String::from_utf8(o.stdout) {
+        Ok(text) => Some(text),
+        Err(e) => {
+            carried.push(Carried { path: "stdout".into(), to: None, stdout: true, bytes: e.into_bytes() });
+            None
+        }
+    };
+    BridgeResponse { ok: o.status.success(), stdout, stderr: Some(String::from_utf8_lossy(&o.stderr).into_owned()), data: Some(json!({ "code": o.status.code() })), carried }
 }
 
 /// The picture files a command's output names: every `"…/x.png"` in
@@ -261,7 +397,7 @@ pub async fn handle_bridge_request(
                 return BridgeResponse::err("missing URL/path argument");
             };
             match open_url_with_autoforward(&target, policy.allow_localhost_autoforward, Some(forward_localhost)).await {
-                Ok(opened) => BridgeResponse { ok: true, stdout: Some(format!("Opened {opened}\n")), stderr: None, data: Some(json!({ "opened": opened })) },
+                Ok(opened) => BridgeResponse { ok: true, stdout: Some(format!("Opened {opened}\n")), stderr: None, data: Some(json!({ "opened": opened })), carried: Vec::new() },
                 Err(e) => BridgeResponse::err(e),
             }
         }
@@ -269,22 +405,22 @@ pub async fn handle_bridge_request(
             if !policy.allow_passwords_op {
                 return BridgeResponse::err(format!("Olo Bridge: Passwords (`op`) forwarding is disabled for host '{host_label}'"));
             }
-            // Forward `op` arguments to Olo's native `olo-op` binary on the local desktop,
-            // which talks directly to Olo Passwords' keychain socket and shows Olo's native
-            // approval / biometric sheet!
+            // Olo's `olo-op` answers it here, asking Passwords (which asks
+            // the person, naming the host), with nothing of this
+            // computer's for the host to name: `OpCarry`.
             let Some(op_bin) = program("olo-op") else {
                 return BridgeResponse::err("olo-op is not installed on this Olo desktop");
             };
-            let out = tokio::process::Command::new(op_bin).args(&req.args).env("OLO_REX_REMOTE_HOST", host_label).stdin(std::process::Stdio::null()).output().await;
-            match out {
-                Ok(o) => BridgeResponse {
-                    ok: o.status.success(),
-                    stdout: Some(String::from_utf8_lossy(&o.stdout).into_owned()),
-                    stderr: Some(String::from_utf8_lossy(&o.stderr).into_owned()),
-                    data: Some(json!({ "code": o.status.code() })),
-                },
-                Err(e) => BridgeResponse::err(format!("failed to invoke olo-op: {e}")),
-            }
+            let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+            let dir = runtime.join(format!("olo-rex-op-{}", uuid::Uuid::new_v4().simple()));
+            let carry = match OpCarry::of(&req.args, &req.payload, dir) {
+                Ok(c) => c,
+                Err(e) => return BridgeResponse::err(format!("Olo Bridge: {e}")),
+            };
+            let answer = run_op(&op_bin, &carry, host_label).await;
+            // (Its folder, with what the host sent, gone with the run.)
+            let _ = std::fs::remove_dir_all(&carry.dir);
+            answer
         }
         "screen" => {
             if !policy.allow_agent_screens {
@@ -307,18 +443,25 @@ pub async fn handle_bridge_request(
             }
             let out = tokio::process::Command::new(screen_bin).args(&rewritten_args).stdin(std::process::Stdio::null()).output().await;
             match out {
-                Ok(o) => BridgeResponse {
-                    ok: o.status.success(),
-                    stdout: Some(String::from_utf8_lossy(&o.stdout).into_owned()),
-                    stderr: Some(String::from_utf8_lossy(&o.stderr).into_owned()),
-                    data: Some(json!({ "code": o.status.code() })),
-                },
+                Ok(o) => {
+                    let stdout = String::from_utf8_lossy(&o.stdout).into_owned();
+                    // (Its pictures, named in what it printed: Agent
+                    // Screens' own, and the only files carried so.)
+                    let carried = pictures_named(&stdout).into_iter().filter_map(|path| picture(&path).map(|bytes| Carried { path, to: None, stdout: false, bytes })).collect();
+                    BridgeResponse {
+                        ok: o.status.success(),
+                        stdout: Some(stdout),
+                        stderr: Some(String::from_utf8_lossy(&o.stderr).into_owned()),
+                        data: Some(json!({ "code": o.status.code() })),
+                        carried,
+                    }
+                }
                 Err(e) => BridgeResponse::err(format!("failed to invoke olo-screen: {e}")),
             }
         }
         "notify" => {
             notify(&req);
-            BridgeResponse { ok: true, stdout: None, stderr: None, data: None }
+            BridgeResponse { ok: true, stdout: None, stderr: None, data: None, carried: Vec::new() }
         }
         other => BridgeResponse::err(format!("unknown Olo Bridge command '{other}'")),
     }
@@ -552,12 +695,12 @@ mod tests {
     async fn a_long_command_is_waited_for_by_name() {
         let within = Duration::from_millis(80);
         let calls = Calls::answering_within(within);
-        let quick = calls.answer(async { BridgeResponse { ok: true, stdout: Some("done\n".into()), stderr: None, data: None } }).await;
+        let quick = calls.answer(async { BridgeResponse { ok: true, stdout: Some("done\n".into()), stderr: None, data: None, carried: Vec::new() } }).await;
         assert_eq!((quick["ok"].as_bool(), quick["stdout"].as_str()), (Some(true), Some("done\n")));
         let slow = calls
             .answer(async move {
                 tokio::time::sleep(within * 2 + within / 2).await;
-                BridgeResponse { ok: true, stdout: Some("at last\n".into()), stderr: None, data: None }
+                BridgeResponse { ok: true, stdout: Some("at last\n".into()), stderr: None, data: None, carried: Vec::new() }
             })
             .await;
         let id = slow["pending"].as_str().expect("a name to wait by").to_owned();
@@ -579,7 +722,10 @@ mod tests {
         std::fs::write(&picture, &bytes).unwrap();
         let calls = Calls::default();
         let out = json!({"after": {"picture": picture, "windows": []}, "note": "/not/there.png"}).to_string();
-        let answer = calls.answer(async move { BridgeResponse { ok: true, stdout: Some(out), stderr: None, data: None } }).await;
+        // (As the screen's answer carries them: the pictures it names
+        // that are there.)
+        let carried = pictures_named(&out).into_iter().filter_map(|path| super::picture(&path).map(|bytes| Carried { path, to: None, stdout: false, bytes })).collect();
+        let answer = calls.answer(async move { BridgeResponse { ok: true, stdout: Some(out), stderr: None, data: None, carried } }).await;
         let files = answer["files"].as_array().expect("the picture listed");
         assert_eq!(files.len(), 1, "only a file that is there");
         assert_eq!((files[0]["path"].as_str(), files[0]["size"].as_u64()), (picture.to_str(), Some(bytes.len() as u64)));
@@ -596,6 +742,46 @@ mod tests {
         assert_eq!((got == bytes, pieces), (true, 3));
         assert_eq!(calls.piece(id, 0)["ok"].as_bool(), Some(false), "fetched once");
         assert_eq!(pictures_named("/var/tmp/a.png\nnot a path.png\n/var/tmp/b.txt\n"), vec!["/var/tmp/a.png".to_owned()]);
+        // An answer that only names a picture (an item's value, `op`'s
+        // output) carries nothing: only what its command carries.
+        let named = json!({ "value": picture }).to_string();
+        let answer = calls.answer(async move { BridgeResponse { ok: true, stdout: Some(named), stderr: None, data: None, carried: Vec::new() } }).await;
+        assert!(answer.get("files").is_none(), "{answer}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A host's `op` names nothing of this computer's: `op run` isn't
+    /// carried; a file its flags read is the host's, sent with the
+    /// request (else refused), written here in a folder of its own; one
+    /// it writes is written there and carried back to the host's path.
+    #[test]
+    fn a_hosts_op_reaches_no_file_of_this_computer() {
+        use base64::Engine as _;
+        let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+        let dir = PathBuf::from(format!("/var/tmp/olo-rex-op-carry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let args = |a: &[&str]| a.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // `op run`: refused, whatever comes after.
+        assert!(OpCarry::of(&args(&["run", "--", "sh", "-c", "id"]), &Value::Null, dir.clone()).is_err());
+        assert!(OpCarry::of(&args(&["--account", "x", "run", "--", "id"]), &Value::Null, dir.clone()).is_err());
+        // A file it reads that wasn't sent: refused, never this
+        // computer's file of that name.
+        let e = OpCarry::of(&args(&["inject", "-i", "/etc/passwd"]), &Value::Null, dir.clone()).err().unwrap();
+        assert!(e.contains("wasn't sent"), "{e}");
+        assert!(OpCarry::of(&args(&["item", "create", "--template=/home/me/t.json"]), &json!({}), dir.clone()).is_err());
+        // Sent: written here, the argument this copy's path.
+        let payload = json!({ "files": { "tpl.json": b64(br#"{"title":"T"}"#) }, "stdin": b64(b"from the host") });
+        let c = OpCarry::of(&args(&["item", "create", "--template", "tpl.json", "--vault", "V", "-o", "out.json", "username=x"]), &payload, dir.clone()).unwrap();
+        assert_eq!(c.stdin.as_deref(), Some(&b"from the host"[..]));
+        let template = c.args.iter().find_map(|a| a.strip_prefix("--template=")).unwrap();
+        assert!(template.starts_with(dir.to_str().unwrap()), "{template}");
+        assert_eq!(std::fs::read_to_string(template).unwrap(), r#"{"title":"T"}"#);
+        // (Its other arguments as they were.)
+        assert!(c.args.contains(&"--vault".to_string()) && c.args.contains(&"V".to_string()) && c.args.contains(&"username=x".to_string()));
+        // Written: there, and carried back to where the host said.
+        let (to, here) = &c.outputs[0];
+        assert_eq!(to, "out.json");
+        assert!(here.starts_with(&dir) && c.args.contains(&format!("--o={}", here.display())));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

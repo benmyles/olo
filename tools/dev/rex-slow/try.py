@@ -337,6 +337,23 @@ elif what == "bridge":
     open(f"{fake}/look.png", "wb").write(picture)
     open(f"{fake}/olo-screen", "w").write(f"#!/bin/sh\ncase \"$1\" in\n  look) printf '{{\"picture\":\"{fake}/look.png\"}}\\n' ;;\n  slow) sleep 12; echo slow done ;;\n  *) echo \"screen: $*\" ;;\nesac\n")
     os.chmod(f"{fake}/olo-screen", 0o755)
+    # (And for `op`: one that says what it was given, reads the files its flags name and writes its -o.)
+    open(f"{fake}/olo-op", "w").write(f"""#!/bin/sh
+case "$1" in
+  whoami) echo '{{}}'; exit 0 ;;
+  item) if [ "$2" = get ]; then printf '{{"value":"{fake}/look.png"}}\\n'; exit 0; fi ;;
+esac
+echo "op: $*"
+for a in "$@"; do
+  case "$a" in
+    --template=*|--i=*|--in-file=*|--env-file=*) echo "read: $(cat "${{a#*=}}")" ;;
+    --o=*|--out-file=*) printf 'written by op' > "${{a#*=}}" ;;
+  esac
+done
+[ -p /dev/stdin ] && echo "stdin: $(cat)"
+exit 0
+""")
+    os.chmod(f"{fake}/olo-op", 0o755)
     with Rig("shell", delay=0, far=True, env=[f"OLO_REX_BRIDGE_BIN={fake}"], bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
         # (The rig's far host is this computer, and its Rex server the rig's one: the app is connected to it
         # twice, as this computer and as "far". A program there names the client it means, as it would where
@@ -403,6 +420,29 @@ elif what == "bridge":
         check("the skill's command: a picture saved on the host in one step", saved == picture, {"said": looked[:120], "bytes": len(saved)})
         t0 = time.monotonic(); slow = ran(f"{olo} screen slow")
         check("the skill's command: a command of 12 s waited for", slow == "slow done", {"said": slow[:80], "took": round(time.monotonic() - t0, 1)})
+        # `op` through the bridge (the stand-in above, saying what it was given): nothing of this computer's
+        # is the host's to name. `op run` refused; the host's template and standard input sent; a file it
+        # writes written on the host, its owner's alone, and not over one with something in it.
+        r.grant("far", passwords=True)
+        r.wait(lambda: do("olo.op", {"args": ["whoami"]}).get("ok"), 10)
+        refused = ran(f"{olo} op run -- id; echo status=$?")
+        check("op run, refused", "isn't carried" in refused and "ran a command" not in refused, refused)
+        open(f"{D}/far-template.json", "w").write('{"title":"From the host"}')
+        sent = ran(f"cd {D} && {olo} op item create --template far-template.json --vault V username=x")
+        given = next((l for l in sent.splitlines() if l.startswith("op: ")), "")
+        check("a template: the host's file, sent", 'read: {"title":"From the host"}' in sent and "far-template.json" not in given and "--vault V username=x" in given, sent)
+        piped = ran(f"printf 'from the pipe' | {olo} op item create -")
+        check("standard input: the host's", "stdin: from the pipe" in piped, piped)
+        out = f"{D}/far-out.txt"
+        if os.path.exists(out): os.remove(out)
+        ran(f"{olo} op read op://v/i/f -o {out}")
+        mode = oct(os.stat(out).st_mode & 0o777) if os.path.exists(out) else None
+        check("a file it writes: on the host, its owner's alone", os.path.exists(out) and open(out).read() == "written by op" and mode == "0o600", {"mode": mode})
+        again = ran(f"{olo} op read op://v/i/f -o {out} 2>&1")
+        check("not over a file with something in it", "already exists" in again, again)
+        named = do("olo.op", {"args": ["item", "get", "pic"]})
+        check("a picture an answer names: not carried", named.get("ok") and not named.get("files"), named)
+        r.grant("far", passwords=False)
         r.grant("far", agent_screens=False)
         line = r.wait(lambda: (lambda b: b if b and b.startswith("Off") else None)(bridge()), 10)
         check("taken back", line and do("olo.screen", {"args": ["tree", "agent"]}).get("ok") is False, line)

@@ -920,17 +920,44 @@ Permita no celular
 Allow NVIDIA Fallback on Battery
 Usar a NVIDIA na bateria se necessário
 
+Allow Once
+Permitir uma vez
+
 Allow Sleep
 Permitir suspensão
 
 Allow Sleep (awake until {})
 Permitir suspensão (ativo até {})
 
+Allow This Terminal
+Permitir este terminal
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+Permitir este terminal deixa que ele adicione e altere itens sem perguntar até o Passwords bloquear.
+
 Allow it on the phone
 Permita no celular
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 Permitir que programas em “{}” entrem usando suas chaves SSH? Um terminal de lá solicitou isso pelo Rex.
+
+Allow {} to add an item to {}?
+Permitir que {} crie um item em {}?
+
+Allow {} to add “{}” to {}?
+Permitir que {} adicione “{}” a {}?
+
+Allow {} to change “{}” in {}?
+Permitir que {} altere “{}” em {}?
+
+Allow {} to delete “{}” from {}?
+Permitir que {} apague “{}” de {}?
+
+Allow {} to move “{}” from {} to {}?
+Permitir que {} mova “{}” de {} para {}?
+
+Allow {} to move “{}” to the Archive?
+Permitir que {} mova “{}” para o arquivo?
 
 Allow {} to sign in to your hosts with your SSH keys?
 Permitir que {} entre nos seus hosts com suas chaves SSH?
@@ -1335,6 +1362,15 @@ Perguntar ao assistente
 
 Ask what to do about urgent ones
 Perguntar o que fazer em casos urgentes
+
+Asked by “{}” from {} in {}.
+Pedido por “{}” a partir de {} em {}.
+
+Asked by “{}” from {}.
+Pedido por “{}” a partir de {}.
+
+Asked by “{}”.
+Pedido por “{}”.
 
 Asked now:
 Servidores em uso:
@@ -2098,6 +2134,9 @@ O item mudou aqui e no 1Password. A versão do 1Password substitui a local, e a 
 
 Changed here now, and in 1Password at the next sync.
 Alteração salva aqui. O 1Password será atualizado na próxima sincronização.
+
+Changes its {}.
+Altera: {}.
 
 Changes to “{}”
 Alterações em “{}”
@@ -3334,6 +3373,9 @@ Excluindo {} de {}
 
 Deleting {}: {} of {}
 Excluindo {}: {} de {}
+
+Deny
+Negar
 
 Description
 Descrição
@@ -4608,6 +4650,9 @@ Para os mouses que seguem o ajuste geral e os que você conectar.
 
 For {} · process {}
 Para {} · processo {}
+
+For {}.
+Para {}.
 
 For:
 Para:
@@ -8751,6 +8796,9 @@ O Passwords guarda seus itens criptografados neste computador e pode sincronizá
 Passwords on this screen has no SSH keys shared with it.
 O Passwords nesta tela não tem chaves SSH compartilhadas com ela.
 
+Passwords unlocked without asking
+Passwords desbloqueado sem perguntar
+
 Passwords: Clipboard
 Passwords: área de transferência
 
@@ -9674,6 +9722,9 @@ Renomear aba…
 Rename Worktree…
 Renomear árvore de trabalho…
 
+Renames it “{}”.
+Renomeia para “{}”.
+
 Rename…
 Renomear…
 
@@ -10100,6 +10151,9 @@ Chaves SSH
 
 SSH keys offered: {}.
 Chaves SSH oferecidas: {}.
+
+SSH keys used without asking
+Chaves SSH usadas sem perguntar
 
 SSH sessions
 Sessões SSH
@@ -14315,6 +14369,9 @@ every {n} minutes
 one: a cada {n} minuto
 other: a cada {n} minutos
 
+fields
+campos
+
 for {}
 por {}
 
@@ -14683,8 +14740,41 @@ só as janelas de pastas e da busca são movidas
 only terminal windows move
 só as janelas do terminal são movidas
 
+op added “{}” to {}.
+op adicionou “{}” a {}.
+
+op allowed without asking
+op permitido sem perguntar
+
+op changed Passwords without asking
+op alterou o Passwords sem perguntar
+
+op changed “{}”.
+op alterou “{}”.
+
+op deleted “{}”.
+op apagou “{}”.
+
+op moved “{}” to the Archive.
+op moveu “{}” para o arquivo.
+
+op moved “{}” to {}.
+op moveu “{}” para {}.
+
+op on {}
+op em {}
+
 optional
 opcional
+
+op’s Changes to “{}”
+Alterações do op em “{}”
+
+op’s Deletion of “{}”
+Exclusão de “{}” pelo op
+
+op’s New “{}”
+Novo “{}” do op
 
 organizer
 organizador
@@ -14700,6 +14790,9 @@ parte da tela
 
 passphrase
 frase secreta
+
+password
+senha
 
 plugged in, charge limit {}%
 na tomada, limite de carga de {}%
@@ -14765,6 +14858,9 @@ ssh://you@host ou host.ts.net
 
 sudo needs your password to run this{}:
 o sudo precisa da sua senha para executar este comando{}:
+
+tags
+etiquetas
 
 taken as at least {}% busy
 considerado pelo menos {}% ocupado
@@ -14975,6 +15071,9 @@ validando
 visibility down to {}
 visibilidade de até {}
 
+website
+site
+
 what holds it back
 o que limita o desempenho
 
@@ -15017,6 +15116,9 @@ você não tem permissão
 
 your cloud storage
 seu armazenamento na nuvem
+
+your home folder
+sua pasta pessoal
 
 your own picture
 uma imagem sua
@@ -15504,6 +15606,9 @@ há {} horas
 
 {} in
 {} entrada
+
+{} in Passwords brings it back until Passwords locks.
+{} no Passwords o recupera até o Passwords bloquear.
 
 {} in all
 {} no total

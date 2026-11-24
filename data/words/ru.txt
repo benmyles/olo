@@ -928,17 +928,44 @@ Allow It on the Phone
 Allow NVIDIA Fallback on Battery
 Разрешить NVIDIA при работе от батареи
 
+Allow Once
+Разрешить один раз
+
 Allow Sleep
 Разрешить сон
 
 Allow Sleep (awake until {})
 Разрешить сон (не засыпать до {})
 
+Allow This Terminal
+Разрешить этот терминал
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+«Разрешить этот терминал» позволяет добавлять и изменять записи без запроса, пока Passwords не заблокирован.
+
 Allow it on the phone
 Разрешите доступ на телефоне
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 Разрешить программам на «{}» входить с вашими ключами SSH? Запрос поступил из терминала там через Rex.
+
+Allow {} to add an item to {}?
+Разрешить {} создать запись в {}?
+
+Allow {} to add “{}” to {}?
+Разрешить {} добавить «{}» в {}?
+
+Allow {} to change “{}” in {}?
+Разрешить {} изменить «{}» в {}?
+
+Allow {} to delete “{}” from {}?
+Разрешить {} удалить «{}» из {}?
+
+Allow {} to move “{}” from {} to {}?
+Разрешить {} перенести «{}» из {} в {}?
+
+Allow {} to move “{}” to the Archive?
+Разрешить {} перенести «{}» в архив?
 
 Allow {} to sign in to your hosts with your SSH keys?
 Разрешить {} входить на ваши узлы с вашими ключами SSH?
@@ -1347,6 +1374,15 @@ Ask the assistant
 
 Ask what to do about urgent ones
 Спрашивать, что делать со срочными
+
+Asked by “{}” from {} in {}.
+Запрошено «{}» из {} в {}.
+
+Asked by “{}” from {}.
+Запрошено «{}» из {}.
+
+Asked by “{}”.
+Запрошено «{}».
 
 Asked now:
 Сейчас запрошено:
@@ -2112,6 +2148,9 @@ Changed both here and in 1Password: 1Password’s version replaces it here, and 
 
 Changed here now, and in 1Password at the next sync.
 Здесь изменения уже сохранены, в 1Password они появятся при следующей синхронизации.
+
+Changes its {}.
+Изменяет: {}.
 
 Changes to “{}”
 Изменения в «{}»
@@ -3360,6 +3399,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 Удаление {}: {} из {}
+
+Deny
+Отклонить
 
 Description
 Описание
@@ -4650,6 +4692,9 @@ For the mice set to follow the others, and any you connect.
 
 For {} · process {}
 Работает {} · процесс {}
+
+For {}.
+Для {}.
 
 For:
 На время:
@@ -8803,6 +8848,9 @@ Passwords хранит записи на этом компьютере в заш
 Passwords on this screen has no SSH keys shared with it.
 У Passwords на этом экране нет общих с ним ключей SSH.
 
+Passwords unlocked without asking
+Passwords разблокирован без запроса
+
 Passwords: Clipboard
 Passwords: буфер обмена
 
@@ -9730,6 +9778,9 @@ Rename Tab…
 Rename Worktree…
 Переименовать рабочее дерево…
 
+Renames it “{}”.
+Переименовывает в «{}».
+
 Rename…
 Переименовать…
 
@@ -10158,6 +10209,9 @@ SSH keys
 
 SSH keys offered: {}.
 Предложенные ключи SSH: {}.
+
+SSH keys used without asking
+SSH-ключи использованы без запроса
 
 SSH sessions
 Сеансы SSH
@@ -14389,6 +14443,9 @@ few: раз в {n} минуты
 many: раз в {n} минут
 other: раз в {n} минуты
 
+fields
+поля
+
 for {}
 в течение {}
 
@@ -14773,8 +14830,41 @@ only folder and Find windows move
 only terminal windows move
 перемещаются только окна терминала
 
+op added “{}” to {}.
+op добавил «{}» в {}.
+
+op allowed without asking
+op разрешён без запроса
+
+op changed Passwords without asking
+op изменил Passwords без запроса
+
+op changed “{}”.
+op изменил «{}».
+
+op deleted “{}”.
+op удалил «{}».
+
+op moved “{}” to the Archive.
+op перенёс «{}» в архив.
+
+op moved “{}” to {}.
+op перенёс «{}» в {}.
+
+op on {}
+op на {}
+
 optional
 необязательно
+
+op’s Changes to “{}”
+Изменения op в «{}»
+
+op’s Deletion of “{}”
+Удаление «{}» через op
+
+op’s New “{}”
+Новая запись «{}» от op
 
 organizer
 организатор
@@ -14790,6 +14880,9 @@ part of the screen
 
 passphrase
 парольная фраза
+
+password
+пароль
 
 plugged in, charge limit {}%
 от сети, предел заряда {}%
@@ -14859,6 +14952,9 @@ ssh://you@host или host.ts.net
 
 sudo needs your password to run this{}:
 sudo запрашивает ваш пароль для выполнения команды{}:
+
+tags
+метки
 
 taken as at least {}% busy
 считается загруженным не менее чем на {}%
@@ -15079,6 +15175,9 @@ validating
 visibility down to {}
 видимость до {}
 
+website
+сайт
+
 what holds it back
 что его замедляет
 
@@ -15123,6 +15222,9 @@ you don't have permission
 
 your cloud storage
 ваше облачное хранилище
+
+your home folder
+домашняя папка
 
 your own picture
 ваше изображение
@@ -15726,6 +15828,9 @@ other: {n} недели
 
 {} in
 {} вх.
+
+{} in Passwords brings it back until Passwords locks.
+{} в Passwords вернёт запись, пока Passwords не заблокирован.
 
 {} in all
 {} всего

@@ -16,6 +16,7 @@ mod agent;
 mod allow;
 mod allowed;
 mod cli;
+mod cli_write;
 mod edit;
 mod generator;
 mod lock;
@@ -290,6 +291,102 @@ fn allow_message(a: &cli::Asker, ssh: bool, ways: Option<String>) -> String {
     m
 }
 
+/// What the person answered to a change `op` asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WriteAnswer {
+    Deny,
+    /// This one.
+    Once,
+    /// This session's additions and changes until Passwords locks.
+    Terminal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChangeKind {
+    Add,
+    Change,
+    Delete,
+    Archive,
+    Move,
+}
+
+/// A change `op` asks for, as the person is told it.
+struct AskedChange {
+    kind: ChangeKind,
+    title: Option<String>,
+    /// The item's vault's name (a new one's: where it goes).
+    vault: String,
+    /// Where a move takes it.
+    to: String,
+    /// The title an edit gives it.
+    renamed: Option<String>,
+    /// The fields an edit sets.
+    fields: Vec<String>,
+}
+
+impl AskedChange {
+    /// Whether it takes an item away (asked on its own, Deny the default).
+    fn removes(&self) -> bool {
+        matches!(self.kind, ChangeKind::Delete | ChangeKind::Archive)
+    }
+
+    /// The question: "Allow op to add “GitHub” to Personal?"
+    fn question(&self, who: &str) -> String {
+        let title = self.title.clone().unwrap_or_default();
+        match self.kind {
+            ChangeKind::Add if self.title.is_none() => olo_kit::tr!("Allow {} to add an item to {}?", who, self.vault),
+            ChangeKind::Add => olo_kit::tr!("Allow {} to add “{}” to {}?", who, title, self.vault),
+            ChangeKind::Change => olo_kit::tr!("Allow {} to change “{}” in {}?", who, title, self.vault),
+            ChangeKind::Delete => olo_kit::tr!("Allow {} to delete “{}” from {}?", who, title, self.vault),
+            ChangeKind::Archive => olo_kit::tr!("Allow {} to move “{}” to the Archive?", who, title),
+            ChangeKind::Move => olo_kit::tr!("Allow {} to move “{}” from {} to {}?", who, title, self.vault, self.to),
+        }
+    }
+
+    /// What else it does, under the question: an edit's new title and
+    /// fields; a deletion's way back.
+    fn details(&self) -> String {
+        match self.kind {
+            ChangeKind::Change => {
+                let mut said = Vec::new();
+                if let Some(t) = &self.renamed {
+                    said.push(olo_kit::tr!("Renames it “{}”.", t));
+                }
+                if !self.fields.is_empty() {
+                    said.push(olo_kit::tr!("Changes its {}.", self.fields.join(", ")));
+                }
+                said.join(" ")
+            }
+            ChangeKind::Delete => olo_kit::tr!("{} in Passwords brings it back until Passwords locks.", olo_kit::words::menu_path(&["Edit", "Undo"])),
+            _ => String::new(),
+        }
+    }
+
+    /// What was done, as the status line and a quiet notification say it.
+    fn done(&self) -> String {
+        let title = self.title.clone().unwrap_or_default();
+        match self.kind {
+            ChangeKind::Add => olo_kit::tr!("op added “{}” to {}.", title, self.vault),
+            ChangeKind::Change => olo_kit::tr!("op changed “{}”.", title),
+            ChangeKind::Delete => olo_kit::tr!("op deleted “{}”.", title),
+            ChangeKind::Archive => olo_kit::tr!("op moved “{}” to the Archive.", title),
+            ChangeKind::Move => olo_kit::tr!("op moved “{}” to {}.", title, self.to),
+        }
+    }
+}
+
+/// A command line's name as a person reads it: `op` and its
+/// subcommands ("op item edit"), its flags and values left out.
+fn command_name(line: &str) -> String {
+    let mut words = line.split_whitespace();
+    let Some(first) = words.next() else { return String::new() };
+    let program = match first.rsplit('/').next().unwrap_or(first) {
+        "olo-op" => "op",
+        p => p,
+    };
+    std::iter::once(program).chain(words.take_while(|w| !w.starts_with('-')).take(2)).collect::<Vec<_>>().join(" ")
+}
+
 /// A host as it is said to the person: its name here and its address
 /// (“build (you@build.example)”), or the address where that is its name.
 fn host_named(origin: &olo_keychain::SshOrigin) -> String {
@@ -513,6 +610,10 @@ pub struct Passwords {
     pub waiting: Vec<Incoming>,
     /// `op`'s, waiting for the person to allow their sessions.
     cli_waiting: Vec<(cli::Session, Incoming)>,
+    /// `op`'s changes waiting for the person (one asked about at a time
+    /// for each session: `writing_shown`).
+    cli_writing: Vec<(cli::Session, Incoming)>,
+    writing_shown: HashSet<cli::Session>,
     /// The terminal sessions allowed to use `op`.
     grants: cli::Grants,
     /// The programs allowed an item for good (Approve Always), as the
@@ -1212,6 +1313,18 @@ impl Passwords {
                 let message = "Olo’s op is turned off (Preferences ▸ Security).".into();
                 return incoming.reply(Response::Error { message });
             }
+            // A category's template (`op item template`) holds nothing of
+            // the person's: no permission, nor unlocking.
+            if let olo_keychain::CliQuery::Template { category } = query {
+                let json = match category {
+                    Some(c) => cli_write::category_named(c).map(cli_write::template),
+                    None => Ok(cli_write::templates()),
+                };
+                return incoming.reply(match json {
+                    Ok(json) => Response::Cli { json },
+                    Err(message) => Response::Error { message },
+                });
+            }
             // Which accounts there are needs no permission (or unlocking).
             if matches!(query, olo_keychain::CliQuery::Accounts) {
                 let linked = self.settings.accounts.clone();
@@ -1342,6 +1455,27 @@ impl Passwords {
                 let Some(session) = cli::session_of(incoming.pid) else {
                     return incoming.reply(Response::Error { message: "op went away".into() });
                 };
+                // A change: asked about on its own (each, or Allow Until
+                // Locked), never taken from a session allowed to read; not
+                // on an agent's screen, whose store is a copy.
+                if query.writes() {
+                    if on_screen() {
+                        return incoming.reply(Response::Error { message: "op can’t change Passwords on an agent screen: its items are a copy of the person’s.".into() });
+                    }
+                    let removes = matches!(query, olo_keychain::CliQuery::Delete { .. });
+                    if !removes && self.grants.check_writes(session) {
+                        return self.store.send(Job::Cli { incoming: Box::new(incoming) });
+                    }
+                    if approving_without_asking() {
+                        let what = self.asked_change(query).done();
+                        tracing::info!(%what, "op's change allowed without asking");
+                        quietly(&self.notifier, olo_kit::words::tr("op changed Passwords without asking"), what);
+                        return self.store.send(Job::Cli { incoming: Box::new(incoming) });
+                    }
+                    self.cli_writing.push((session, incoming));
+                    self.ask_write(session);
+                    return;
+                }
                 // (On a screen: what it was given is the agents' there.)
                 if !on_screen() && !self.grants.check(session) {
                     // Ask once per session, however many are waiting.
@@ -1603,6 +1737,164 @@ impl Passwords {
         }
     }
 
+    /// The next change `session`'s `op` asks for, put to the person (one
+    /// at a time). The question is the change ("Allow op to add “GitHub”
+    /// to Personal?"); under it what else changes, who asked and where
+    /// (the command's name, not its line: its assignments are the values
+    /// being set, a password among them), and what Allow This Terminal
+    /// covers. A deletion is asked on its own each time, its default
+    /// Deny (Return and Escape both), Delete the button that does it, and
+    /// never covered by Allow This Terminal. (Opus's and Astra's looks,
+    /// 2026-11-24: the default deleted; the question named the command.)
+    fn ask_write(&mut self, session: cli::Session) {
+        if self.writing_shown.contains(&session) {
+            return;
+        }
+        let Some((_, incoming)) = self.cli_writing.iter().find(|(s, _)| *s == session) else { return };
+        let Request::Cli { query } = &incoming.request else { return };
+        let asked = self.asked_change(query);
+        let host = self.cli_waiting_host(incoming);
+        let who = host.clone().unwrap_or_else(|| "op".to_owned());
+        let mut message = asked.question(&who);
+        let details = asked.details();
+        if !details.is_empty() {
+            message.push_str("\n\n");
+            message.push_str(&details);
+        }
+        message.push_str("\n\n");
+        message.push_str(&match (host, cli::asker(incoming.pid)) {
+            (Some(h), _) => olo_kit::tr!("Asked by “{}”.", h),
+            (None, a) => {
+                let command = command_name(&a.command);
+                let place = |d: &str| if d == "~" { olo_kit::words::tr("your home folder").to_owned() } else { d.to_owned() };
+                match (&a.parent, &a.cwd) {
+                    (Some(p), Some(d)) => olo_kit::tr!("Asked by “{}” from {} in {}.", command, p, place(d)),
+                    (Some(p), None) => olo_kit::tr!("Asked by “{}” from {}.", command, p),
+                    _ => olo_kit::tr!("Asked by “{}”.", command),
+                }
+            }
+        });
+        self.writing_shown.insert(session);
+        if asked.removes() {
+            let button = if asked.kind == ChangeKind::Archive { "Archive" } else { "Delete" };
+            olo_kit::widgets::open_app_alert_escaping("Passwords", "stop", &message, &[button, "Deny"], 1, move |choice| {
+                app().answer_write(session, if choice == Some(0) { WriteAnswer::Once } else { WriteAnswer::Deny })
+            });
+        } else {
+            message.push_str("\n\n");
+            message.push_str(olo_kit::words::tr("Allow This Terminal lets it add and change items without asking until Passwords locks."));
+            open_app_alert("Passwords", "warning", &message, &["Deny", "Allow This Terminal", "Allow Once"], move |choice| {
+                app().answer_write(
+                    session,
+                    match choice {
+                        Some(1) => WriteAnswer::Terminal,
+                        Some(2) => WriteAnswer::Once,
+                        _ => WriteAnswer::Deny,
+                    },
+                )
+            });
+        }
+    }
+
+    /// What a change `op` asks for is, as the person is told it: its kind,
+    /// the item (its title), its vault's name, and what else changes.
+    fn asked_change(&self, query: &olo_keychain::CliQuery) -> AskedChange {
+        use olo_keychain::CliQuery;
+        let vault_of = |key: &Option<String>| key.as_ref().and_then(|k| self.vaults.iter().find(|v| v.id == *k || v.title.eq_ignore_ascii_case(k)));
+        let named = |key: &Option<String>| match (key, vault_of(key)) {
+            (_, Some(v)) => v.title.clone(),
+            (Some(k), None) => k.clone(),
+            (None, None) => vault::Vault::default_vault(&self.vaults).map_or_else(String::new, |v| v.title.clone()),
+        };
+        // (The item by its id or name, in its vault if one is named: its
+        // title and its vault's name.)
+        let item = |vault: &Option<String>, key: &str| -> (String, String) {
+            let in_vault = vault_of(vault).map(|v| v.id.clone());
+            let found = self.items.iter().filter(|i| in_vault.as_ref().is_none_or(|v| &i.vault_id == v)).find(|i| i.id == key || i.title.eq_ignore_ascii_case(key));
+            match found {
+                Some(i) => (i.title.clone(), self.vaults.iter().find(|v| v.id == i.vault_id).map_or_else(String::new, |v| v.title.clone())),
+                None => (key.to_owned(), named(vault)),
+            }
+        };
+        let empty = AskedChange { kind: ChangeKind::Add, title: None, vault: String::new(), to: String::new(), renamed: None, fields: Vec::new() };
+        match query {
+            CliQuery::Create { vault, change, .. } => {
+                let title = change.title.clone().or_else(|| change.template.as_ref().and_then(|t| t.get("title")).and_then(|t| t.as_str()).filter(|t| !t.is_empty()).map(str::to_owned));
+                AskedChange { kind: ChangeKind::Add, title, vault: named(vault), ..empty }
+            }
+            CliQuery::Edit { vault, item: key, change, .. } => {
+                let (title, vault) = item(vault, key);
+                let mut fields: Vec<String> = change.assignments.iter().map(|a| a.field.clone()).collect();
+                for (given, word) in [(change.url.is_some(), "website"), (change.tags.is_some(), "tags"), (change.generate_password.is_some(), "password"), (change.template.is_some(), "fields")] {
+                    if given && !fields.iter().any(|w| w == word) {
+                        fields.push(olo_kit::words::tr(word).to_owned());
+                    }
+                }
+                AskedChange { kind: ChangeKind::Change, title: Some(title), vault, renamed: change.title.clone(), fields, ..empty }
+            }
+            CliQuery::Delete { vault, item: key, archive } => {
+                let (title, vault) = item(vault, key);
+                AskedChange { kind: if *archive { ChangeKind::Archive } else { ChangeKind::Delete }, title: Some(title), vault, ..empty }
+            }
+            CliQuery::Move { vault, item: key, to } => {
+                let (title, vault) = item(vault, key);
+                AskedChange { kind: ChangeKind::Move, title: Some(title), vault, to: named(&Some(to.clone())), ..empty }
+            }
+            _ => empty,
+        }
+    }
+
+    /// A host's `op`, where Rex's bridge carries the request ("op on
+    /// build"): the host it says in its environment, believed only of an
+    /// `op` this Olo's own Rex started (any program could say it).
+    fn cli_waiting_host(&self, incoming: &Incoming) -> Option<String> {
+        let parent = std::fs::read_to_string(format!("/proc/{}/stat", incoming.pid)).ok()?.rsplit_once(") ")?.1.split(' ').nth(1)?.parse::<i32>().ok()?;
+        if !carried_by_rex(parent) {
+            return None;
+        }
+        let env = std::fs::read(format!("/proc/{}/environ", incoming.pid)).ok()?;
+        let host = env.split(|b| *b == 0).find_map(|kv| kv.strip_prefix(b"OLO_REX_REMOTE_HOST=")).filter(|h| !h.is_empty())?;
+        Some(olo_kit::tr!("op on {}", String::from_utf8_lossy(host)))
+    }
+
+    /// The person's answer to a change `op` asked for: Deny (everything
+    /// the session has waiting), Allow This Terminal (all of it but
+    /// deletions, and what it asks after, until Passwords locks), Allow
+    /// Once (this one; the next asked about in turn).
+    fn answer_write(&mut self, session: cli::Session, answer: WriteAnswer) {
+        self.writing_shown.remove(&session);
+        let (theirs, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut self.cli_writing).into_iter().partition(|(s, _)| *s == session);
+        self.cli_writing = rest;
+        let mut theirs = theirs.into_iter();
+        match answer {
+            WriteAnswer::Terminal => {
+                self.grants.allow_writes(session);
+                for (_, incoming) in theirs {
+                    let removes = matches!(&incoming.request, Request::Cli { query: olo_keychain::CliQuery::Delete { .. } });
+                    if removes {
+                        self.cli_writing.push((session, incoming));
+                    } else {
+                        self.store.send(Job::Cli { incoming: Box::new(incoming) });
+                    }
+                }
+                self.ask_write(session);
+            }
+            WriteAnswer::Once => {
+                self.grants.allow(session);
+                if let Some((_, incoming)) = theirs.next() {
+                    self.store.send(Job::Cli { incoming: Box::new(incoming) });
+                }
+                self.cli_writing.extend(theirs);
+                self.ask_write(session);
+            }
+            WriteAnswer::Deny => {
+                for (_, incoming) in theirs {
+                    incoming.reply(Response::Error { message: "Passwords: not allowed".into() });
+                }
+            }
+        }
+    }
+
     /// The person's answer to a program asking for a secret by its
     /// reference: allowed until Passwords quits, or refused.
     fn answer_reference(&mut self, asked: &(String, String), answer: Grant) {
@@ -1653,7 +1945,7 @@ impl Passwords {
                 from.dedup();
                 let from = from.join(", ");
                 tracing::info!(%from, "unlocked without asking");
-                quietly(&self.notifier, "Passwords unlocked without asking", format!("For {from}."));
+                quietly(&self.notifier, olo_kit::words::tr("Passwords unlocked without asking"), olo_kit::tr!("For {}.", from));
                 if self.lock.approved() {
                     self.now_unlocked();
                 }
@@ -1677,7 +1969,7 @@ impl Passwords {
                 if on {
                     let said = if host.is_some() || own.is_some() { "SSH keys used without asking" } else { "op allowed without asking" };
                     tracing::info!(command = asker.command, "{said}");
-                    quietly(&self.notifier, said, asker.command.clone());
+                    quietly(&self.notifier, olo_kit::words::tr(said), asker.command.clone());
                     self.answer_cli(session, true);
                 } else {
                     // Allowed by its button, or by what unlocks Passwords.
@@ -2587,6 +2879,32 @@ impl Passwords {
                 self.flash(format!("Saved “{title}”."));
                 self.changed_here();
             }
+            Reply::OpSaved { item, created, tag } => {
+                if let Some(tag) = &tag
+                    && let Some(change) = undo::Change::of_saved(&item, created, tag)
+                {
+                    self.history.record(tag.purpose, tag.name.clone(), change);
+                }
+                let overview = ItemOverview {
+                    id: item.id.clone(),
+                    title: item.title.clone(),
+                    category: item.category,
+                    vault_id: item.vault_id.clone(),
+                    websites: item.websites.clone(),
+                    tags: item.tags.clone(),
+                    created_at: item.created_at,
+                    updated_at: item.updated_at,
+                    state: ItemState::Active,
+                };
+                self.items.retain(|i| i.id != item.id);
+                self.items.push(overview);
+                let title = item.title.clone();
+                let vault = self.vaults.iter().find(|v| v.id == item.vault_id).map_or_else(String::new, |v| v.title.clone());
+                self.details.insert(item.id.clone(), *item);
+                self.invalidate();
+                self.flash(if created { olo_kit::tr!("op added “{}” to {}.", title, vault) } else { olo_kit::tr!("op changed “{}”.", title) });
+                self.changed_here();
+            }
             Reply::Archived { item } => {
                 let row = self.visible().iter().position(|i| i.id == item);
                 if let Some(i) = self.items.iter_mut().find(|i| i.id == item) {
@@ -3338,6 +3656,8 @@ fn main() {
             generator: None,
             vault_info: None,
             allow_shown: HashMap::new(),
+            cli_writing: Vec::new(),
+            writing_shown: HashSet::new(),
             status: Notice::default(),
             last_use: Instant::now(),
             unlocked: false,
@@ -3484,7 +3804,15 @@ impl Served {
 
 #[cfg(test)]
 mod tests {
-    use super::unasked;
+    use super::{command_name, unasked};
+
+    /// A write's approval names the command, never its values.
+    #[test]
+    fn a_commands_name_leaves_its_values_out() {
+        assert_eq!(command_name("olo-op item edit HBO username=jane password=hunter2"), "op item edit");
+        assert_eq!(command_name("/usr/bin/op item create --category login --title X"), "op item create");
+        assert_eq!(command_name("op on build"), "op on build");
+    }
 
     /// Olo's own apps that sign in to hosts by themselves are known by
     /// their program beside Passwords' own, asked about by the name the

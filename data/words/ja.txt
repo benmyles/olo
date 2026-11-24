@@ -916,17 +916,44 @@ Allow It on the Phone
 Allow NVIDIA Fallback on Battery
 バッテリー駆動時も必要に応じてNVIDIAを使用
 
+Allow Once
+1回だけ許可
+
 Allow Sleep
 スリープを許可
 
 Allow Sleep (awake until {})
 スリープを許可（{}までスリープしない）
 
+Allow This Terminal
+この端末を許可
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+「この端末を許可」を選ぶと、Passwordsがロックされるまで確認なしで項目の追加と変更ができます。
+
 Allow it on the phone
 電話で許可
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 「{}」上のプログラムにSSH鍵でのサインインを許可しますか？ リモートの端末がRex経由で要求しています。
+
+Allow {} to add an item to {}?
+{}に{}で項目を作成することを許可しますか？
+
+Allow {} to add “{}” to {}?
+{0}に「{1}」を{2}に追加することを許可しますか？
+
+Allow {} to change “{}” in {}?
+{0}に{2}の「{1}」の変更を許可しますか？
+
+Allow {} to delete “{}” from {}?
+{0}に{2}から「{1}」を削除することを許可しますか？
+
+Allow {} to move “{}” from {} to {}?
+{0}に「{1}」を{2}から{3}に移動することを許可しますか？
+
+Allow {} to move “{}” to the Archive?
+{}に「{}」をアーカイブに移動することを許可しますか？
 
 Allow {} to sign in to your hosts with your SSH keys?
 {}がSSH鍵を使ってホストにサインインするのを許可しますか？
@@ -1329,6 +1356,15 @@ Ask the assistant
 
 Ask what to do about urgent ones
 緊急の問題は対処方法を確認
+
+Asked by “{}” from {} in {}.
+{2}の{1}から「{0}」が要求しました。
+
+Asked by “{}” from {}.
+{1}から「{0}」が要求しました。
+
+Asked by “{}”.
+「{}」が要求しました。
 
 Asked now:
 使用中のサーバー:
@@ -2091,6 +2127,9 @@ Changed both here and in 1Password: 1Password’s version replaces it here, and 
 
 Changed here now, and in 1Password at the next sync.
 手元の変更を保存しました。次回の同期で1Passwordにも反映します。
+
+Changes its {}.
+変更する項目：{}。
 
 Changes to “{}”
 「{}」の変更
@@ -3321,6 +3360,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 {}を削除中：{} / {}
+
+Deny
+拒否
 
 Description
 説明
@@ -4587,6 +4629,9 @@ For the mice set to follow the others, and any you connect.
 
 For {} · process {}
 {}用 · プロセス{}
+
+For {}.
+{}用。
 
 For:
 対象:
@@ -8725,6 +8770,9 @@ Passwordsは項目を暗号化してこのコンピューターに保存しま�
 Passwords on this screen has no SSH keys shared with it.
 この画面のPasswordsには、共有されたSSH鍵がありません。
 
+Passwords unlocked without asking
+確認なしでPasswordsのロックを解除しました
+
 Passwords: Clipboard
 Passwords：クリップボード
 
@@ -9646,6 +9694,9 @@ Rename Tab…
 Rename Worktree…
 ワークツリー名を変更…
 
+Renames it “{}”.
+名前を「{}」に変更します。
+
 Rename…
 名前を変更…
 
@@ -10071,6 +10122,9 @@ SSH鍵
 
 SSH keys offered: {}.
 提供されたSSH鍵: {}。
+
+SSH keys used without asking
+確認なしでSSHキーを使用しました
 
 SSH sessions
 SSHセッション
@@ -14278,6 +14332,9 @@ every hour
 every {n} minutes
 other: {n}分ごと
 
+fields
+フィールド
+
 for {}
 {}の間
 
@@ -14638,8 +14695,41 @@ only folder and Find windows move
 only terminal windows move
 Terminalのウィンドウだけ移動
 
+op added “{}” to {}.
+opが「{}」を{}に追加しました。
+
+op allowed without asking
+確認なしでopを許可しました
+
+op changed Passwords without asking
+opが確認なしでPasswordsを変更しました
+
+op changed “{}”.
+opが「{}」を変更しました。
+
+op deleted “{}”.
+opが「{}」を削除しました。
+
+op moved “{}” to the Archive.
+opが「{}」をアーカイブに移動しました。
+
+op moved “{}” to {}.
+opが「{}」を{}に移動しました。
+
+op on {}
+{}上のop
+
 optional
 任意
+
+op’s Changes to “{}”
+opによる「{}」の変更
+
+op’s Deletion of “{}”
+opによる「{}」の削除
+
+op’s New “{}”
+opによる新規「{}」
 
 organizer
 主催者
@@ -14655,6 +14745,9 @@ part of the screen
 
 passphrase
 パスフレーズ
+
+password
+パスワード
 
 plugged in, charge limit {}%
 電源接続中、充電上限{}%
@@ -14718,6 +14811,9 @@ ssh://you@host または host.ts.net
 
 sudo needs your password to run this{}:
 sudoが次の操作{}を実行するにはパスワードが必要です：
+
+tags
+タグ
 
 taken as at least {}% busy
 使用率{}%以上とみなす
@@ -14923,6 +15019,9 @@ validating
 visibility down to {}
 視程は{}まで低下
 
+website
+Webサイト
+
 what holds it back
 速度を制限している要因
 
@@ -14964,6 +15063,9 @@ you don't have permission
 
 your cloud storage
 自分のクラウドストレージ
+
+your home folder
+ホームフォルダ
 
 your own picture
 自分の画像
@@ -15393,6 +15495,9 @@ other: {n}週間
 
 {} in
 入力 {}
+
+{} in Passwords brings it back until Passwords locks.
+Passwordsの{}で、Passwordsがロックされるまで元に戻せます。
 
 {} in all
 合計{}

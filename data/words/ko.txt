@@ -916,17 +916,44 @@ Allow It on the Phone
 Allow NVIDIA Fallback on Battery
 배터리 사용 시 NVIDIA 대체 허용
 
+Allow Once
+한 번 허용
+
 Allow Sleep
 잠자기 허용
 
 Allow Sleep (awake until {})
 잠자기 허용 ({}까지 깨어 있음)
 
+Allow This Terminal
+이 터미널 허용
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+‘이 터미널 허용’을 선택하면 Passwords가 잠길 때까지 묻지 않고 항목을 추가하고 변경합니다.
+
 Allow it on the phone
 휴대전화에서 허용
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 ‘{}’의 프로그램이 내 SSH 키로 로그인하도록 허용할까요? 그곳의 터미널이 Rex를 통해 요청했습니다.
+
+Allow {} to add an item to {}?
+{}에서 {}에 항목을 만들도록 허용할까요?
+
+Allow {} to add “{}” to {}?
+{0}에서 ‘{1}’을(를) {2}에 추가하도록 허용할까요?
+
+Allow {} to change “{}” in {}?
+{0}에서 {2}의 ‘{1}’을(를) 변경하도록 허용할까요?
+
+Allow {} to delete “{}” from {}?
+{0}에서 {2}의 ‘{1}’을(를) 삭제하도록 허용할까요?
+
+Allow {} to move “{}” from {} to {}?
+{0}에서 ‘{1}’을(를) {2}에서 {3}(으)로 옮기도록 허용할까요?
+
+Allow {} to move “{}” to the Archive?
+{}에서 ‘{}’을(를) 보관함으로 옮기도록 허용할까요?
 
 Allow {} to sign in to your hosts with your SSH keys?
 {}에서 내 SSH 키로 호스트에 로그인하도록 허용할까요?
@@ -1329,6 +1356,15 @@ Ask the assistant
 
 Ask what to do about urgent ones
 긴급 알림 처리 방법 묻기
+
+Asked by “{}” from {} in {}.
+{2}의 {1}에서 ‘{0}’이(가) 요청했습니다.
+
+Asked by “{}” from {}.
+{1}에서 ‘{0}’이(가) 요청했습니다.
+
+Asked by “{}”.
+‘{}’이(가) 요청했습니다.
 
 Asked now:
 지금 요청한 값:
@@ -2091,6 +2127,9 @@ Changed both here and in 1Password: 1Password’s version replaces it here, and 
 
 Changed here now, and in 1Password at the next sync.
 여기에 변경했습니다. 1Password에는 다음 동기화 때 반영합니다.
+
+Changes its {}.
+변경: {}.
 
 Changes to “{}”
 ‘{}’ 변경 사항
@@ -3321,6 +3360,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 {0} 삭제 중: {2}개 중 {1}개
+
+Deny
+거부
 
 Description
 설명
@@ -4587,6 +4629,9 @@ For the mice set to follow the others, and any you connect.
 
 For {} · process {}
 실행 시간 {} · 프로세스 {}
+
+For {}.
+{}용.
 
 For:
 기간:
@@ -8725,6 +8770,9 @@ Passwords는 이 컴퓨터에 항목을 암호화해 보관하며 1Password 계�
 Passwords on this screen has no SSH keys shared with it.
 이 화면의 Passwords에는 공유된 SSH 키가 없습니다.
 
+Passwords unlocked without asking
+묻지 않고 Passwords 잠금을 해제했습니다
+
 Passwords: Clipboard
 Passwords: 클립보드
 
@@ -9646,6 +9694,9 @@ Rename Tab…
 Rename Worktree…
 작업 트리 이름 변경…
 
+Renames it “{}”.
+이름을 ‘{}’(으)로 바꿉니다.
+
 Rename…
 이름 바꾸기…
 
@@ -10071,6 +10122,9 @@ SSH 키
 
 SSH keys offered: {}.
 제공된 SSH 키: {}.
+
+SSH keys used without asking
+묻지 않고 SSH 키를 사용했습니다
 
 SSH sessions
 SSH 세션
@@ -14278,6 +14332,9 @@ every hour
 every {n} minutes
 other: {n}분마다
 
+fields
+필드
+
 for {}
 {} 동안
 
@@ -14638,8 +14695,41 @@ only folder and Find windows move
 only terminal windows move
 터미널 창만 이동
 
+op added “{}” to {}.
+op가 ‘{}’을(를) {}에 추가했습니다.
+
+op allowed without asking
+묻지 않고 op를 허용했습니다
+
+op changed Passwords without asking
+op가 묻지 않고 Passwords를 변경했습니다
+
+op changed “{}”.
+op가 ‘{}’을(를) 변경했습니다.
+
+op deleted “{}”.
+op가 ‘{}’을(를) 삭제했습니다.
+
+op moved “{}” to the Archive.
+op가 ‘{}’을(를) 보관함으로 옮겼습니다.
+
+op moved “{}” to {}.
+op가 ‘{}’을(를) {}(으)로 옮겼습니다.
+
+op on {}
+{}의 op
+
 optional
 선택 사항
+
+op’s Changes to “{}”
+op의 ‘{}’ 변경
+
+op’s Deletion of “{}”
+op의 ‘{}’ 삭제
+
+op’s New “{}”
+op의 새 ‘{}’
 
 organizer
 주최자
@@ -14655,6 +14745,9 @@ part of the screen
 
 passphrase
 암호문
+
+password
+암호
 
 plugged in, charge limit {}%
 전원 연결됨, 충전 한도 {}%
@@ -14718,6 +14811,9 @@ ssh://you@host 또는 host.ts.net
 
 sudo needs your password to run this{}:
 sudo에서 다음 작업{}을 실행하려면 암호가 필요합니다:
+
+tags
+태그
 
 taken as at least {}% busy
 {}% 이상이면 사용 중으로 판단
@@ -14923,6 +15019,9 @@ validating
 visibility down to {}
 가시거리 최저 {}
 
+website
+웹사이트
+
 what holds it back
 제약 요인
 
@@ -14964,6 +15063,9 @@ you don't have permission
 
 your cloud storage
 내 클라우드 저장소
+
+your home folder
+홈 폴더
 
 your own picture
 내 사진
@@ -15393,6 +15495,9 @@ other: {n}주
 
 {} in
 입력 {}
+
+{} in Passwords brings it back until Passwords locks.
+Passwords의 {}(으)로 Passwords가 잠길 때까지 되돌릴 수 있습니다.
 
 {} in all
 총 {}

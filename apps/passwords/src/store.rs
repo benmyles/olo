@@ -15,7 +15,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use chrono::{DateTime, Utc};
-use olo_keychain::{Incoming, Request, Response};
+use olo_keychain::{CliQuery, Incoming, Request, Response};
 use olo_kit::Proxy;
 use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 
@@ -205,6 +205,14 @@ pub enum Reply {
     Item(Box<Item>),
     /// Created or changed (`created`: it is new), and what for.
     Saved {
+        item: Box<Item>,
+        created: bool,
+        tag: Option<Tag>,
+    },
+    /// Made or changed by `op` (`created`: it is new): in the list and
+    /// Edit ▸ Undo, but the person's selection and editor left as they
+    /// are.
+    OpSaved {
         item: Box<Item>,
         created: bool,
         tag: Option<Tag>,
@@ -772,6 +780,11 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
             }
             Job::Cli { incoming } => {
                 let response = match &incoming.request {
+                    Request::Cli { query: query @ (CliQuery::Create { .. } | CliQuery::Edit { .. } | CliQuery::Delete { .. } | CliQuery::Move { .. }) } => op_change(v, query, &reply),
+                    Request::Cli { query: CliQuery::DocumentGet { vault, item, include_archive } } => match crate::cli_write::document(v, vault.as_deref(), item, *include_archive) {
+                        Ok(json) => Response::Cli { json },
+                        Err(message) => Response::Error { message },
+                    },
                     Request::Cli { query } => crate::cli::answer(&v.data, query),
                     _ => Response::Error { message: "unexpected".into() },
                 };
@@ -779,6 +792,39 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
             }
         }
     }
+}
+
+/// A change `op` asked for (approved), made as the window's would be:
+/// the window told (Edit ▸ Undo names it as `op`'s), the index anew, and
+/// `op` answered with the item.
+fn op_change(v: &mut Vault, query: &CliQuery, reply: &impl Fn(Reply)) -> Response {
+    use crate::cli_write::Done;
+    let tag = |name: String, before: Option<Item>| Some(Tag { purpose: olo_kit::undo::Purpose::Do, name, before: before.map(Box::new) });
+    let (json, done) = match crate::cli_write::write(v, query) {
+        Ok(x) => x,
+        Err(message) => return Response::Error { message },
+    };
+    match done {
+        Done::Nothing => return Response::Cli { json },
+        Done::Made(item) => {
+            let name = olo_kit::tr!("op’s New “{}”", item.title);
+            reply(Reply::OpSaved { item: Box::new(item), created: true, tag: tag(name, None) });
+        }
+        Done::Changed { item, was } => {
+            if item.id != was.id {
+                reply(Reply::Renamed { old: was.id.clone(), new: item.id.clone() });
+            }
+            let name = olo_kit::tr!("op’s Changes to “{}”", was.title);
+            reply(Reply::OpSaved { item: Box::new(item), created: false, tag: tag(name, Some(was)) });
+        }
+        Done::Deleted { was } => {
+            let name = olo_kit::tr!("op’s Deletion of “{}”", was.title);
+            reply(Reply::Deleted { item: was.id.clone(), was: Some(Box::new(was)), tag: tag(name, None) });
+        }
+        Done::Archived { item } => reply(Reply::Archived { item }),
+    }
+    reply(Reply::Index(index(v)));
+    Response::Cli { json }
 }
 
 /// Make an approved plan's changes on a thread of its own.

@@ -5831,7 +5831,10 @@ impl RexHubInner {
                             arg("args").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect()).unwrap_or_default(),
                         ),
                     };
-                    let req = bridge::BridgeRequest { cmd: cmd.to_owned(), session_id: session_id.clone(), block_id: block_id.clone(), args: given, payload: Value::Null };
+                    // (`op`'s standard input and the files its flags read: the
+                    // host's, sent with the request; `bridge::OpCarry`.)
+                    let payload = if cmd == "op" { json!({ "stdin": arg("stdin"), "files": arg("files") }) } else { Value::Null };
+                    let req = bridge::BridgeRequest { cmd: cmd.to_owned(), session_id: session_id.clone(), block_id: block_id.clone(), args: given, payload };
                     let label = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_else(|| host_key.to_owned());
                     let (inner, hk, sid) = (self.clone(), host_key.to_owned(), session_id.clone());
                     let forward: bridge::LocalhostForwardFn = Arc::new(move |host, port| {

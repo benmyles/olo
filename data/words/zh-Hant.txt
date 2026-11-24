@@ -916,17 +916,44 @@ Allow It on the Phone
 Allow NVIDIA Fallback on Battery
 使用電池時允許回退到 NVIDIA
 
+Allow Once
+允許一次
+
 Allow Sleep
 允許睡眠
 
 Allow Sleep (awake until {})
 允許睡眠（保持喚醒至 {}）
 
+Allow This Terminal
+允許此終端機
+
+Allow This Terminal lets it add and change items without asking until Passwords locks.
+選擇「允許此終端機」後，在 Passwords 鎖定前，它可以不經詢問加入和更改項目。
+
 Allow it on the phone
 在手機上允許
 
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 要允許「{}」上的程式使用您的 SSH 金鑰登入嗎？該主機上的終端機透過 Rex 提出此要求。
+
+Allow {} to add an item to {}?
+允許{}在{}中建立項目嗎？
+
+Allow {} to add “{}” to {}?
+允許{0}將「{1}」加入{2}嗎？
+
+Allow {} to change “{}” in {}?
+允許{0}更改{2}中的「{1}」嗎？
+
+Allow {} to delete “{}” from {}?
+允許{0}從{2}中刪除「{1}」嗎？
+
+Allow {} to move “{}” from {} to {}?
+允許{0}將「{1}」從{2}移至{3}嗎？
+
+Allow {} to move “{}” to the Archive?
+允許{}將「{}」移至封存嗎？
 
 Allow {} to sign in to your hosts with your SSH keys?
 要允許 {} 使用您的 SSH 金鑰登入您的主機嗎？
@@ -1329,6 +1356,15 @@ Ask the assistant
 
 Ask what to do about urgent ones
 詢問如何處理緊急問題
+
+Asked by “{}” from {} in {}.
+由{1}在{2}中的「{0}」要求。
+
+Asked by “{}” from {}.
+由{1}中的「{0}」要求。
+
+Asked by “{}”.
+由「{}」要求。
 
 Asked now:
 目前要求值：
@@ -2091,6 +2127,9 @@ Changed both here and in 1Password: 1Password’s version replaces it here, and 
 
 Changed here now, and in 1Password at the next sync.
 更改已儲存在本機，下次同步時會更新到 1Password。
+
+Changes its {}.
+更改：{}。
 
 Changes to “{}”
 對「{}」的更改
@@ -3321,6 +3360,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 正在刪除 {}：{} / {}
+
+Deny
+拒絕
 
 Description
 描述
@@ -4587,6 +4629,9 @@ For the mice set to follow the others, and any you connect.
 
 For {} · process {}
 已執行 {} · 行程 {}
+
+For {}.
+用於 {}。
 
 For:
 時間長度：
@@ -8725,6 +8770,9 @@ Passwords 會在本機加密儲存項目，也可以與 1Password 帳號雙向�
 Passwords on this screen has no SSH keys shared with it.
 此螢幕上的 Passwords 沒有與其共享的 SSH 金鑰。
 
+Passwords unlocked without asking
+Passwords 已未經詢問解鎖
+
 Passwords: Clipboard
 Passwords：剪貼簿
 
@@ -9646,6 +9694,9 @@ Rename Tab…
 Rename Worktree…
 重新命名工作樹…
 
+Renames it “{}”.
+將其重新命名為「{}」。
+
 Rename…
 重新命名…
 
@@ -10071,6 +10122,9 @@ SSH 金鑰
 
 SSH keys offered: {}.
 已提供的 SSH 金鑰：{}。
+
+SSH keys used without asking
+已未經詢問使用 SSH 金鑰
 
 SSH sessions
 SSH 工作階段
@@ -14278,6 +14332,9 @@ every hour
 every {n} minutes
 other: 每 {n} 分鐘
 
+fields
+欄位
+
 for {}
 持續 {}
 
@@ -14638,8 +14695,41 @@ only folder and Find windows move
 only terminal windows move
 僅移動終端視窗
 
+op added “{}” to {}.
+op 已將「{}」加入{}。
+
+op allowed without asking
+已未經詢問允許 op
+
+op changed Passwords without asking
+op 未經詢問更改了 Passwords
+
+op changed “{}”.
+op 已更改「{}」。
+
+op deleted “{}”.
+op 已刪除「{}」。
+
+op moved “{}” to the Archive.
+op 已將「{}」移至封存。
+
+op moved “{}” to {}.
+op 已將「{}」移至{}。
+
+op on {}
+{} 上的 op
+
 optional
 可選
+
+op’s Changes to “{}”
+op 對「{}」的更改
+
+op’s Deletion of “{}”
+op 刪除「{}」
+
+op’s New “{}”
+op 新增的「{}」
 
 organizer
 組織者
@@ -14655,6 +14745,9 @@ part of the screen
 
 passphrase
 通關密語
+
+password
+密碼
 
 plugged in, charge limit {}%
 已接電，充電上限 {}%
@@ -14718,6 +14811,9 @@ ssh://you@host 或 host.ts.net
 
 sudo needs your password to run this{}:
 sudo 需要您的密碼以執行以下指令{}：
+
+tags
+標籤
 
 taken as at least {}% busy
 視為使用率至少達到 {}%
@@ -14923,6 +15019,9 @@ validating
 visibility down to {}
 能見度低至 {}
 
+website
+網站
+
 what holds it back
 限制因素
 
@@ -14964,6 +15063,9 @@ you don't have permission
 
 your cloud storage
 您的雲端儲存空間
+
+your home folder
+你的個人資料夾
 
 your own picture
 您的圖片
@@ -15393,6 +15495,9 @@ other: {n} 週
 
 {} in
 {} 輸入
+
+{} in Passwords brings it back until Passwords locks.
+在 Passwords 鎖定前，可用 Passwords 中的{}復原。
 
 {} in all
 共 {}

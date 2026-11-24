@@ -37,7 +37,7 @@ pub mod views;
 
 pub use alert::{
     ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, Alert, AlertFrame, Conversation, ConversationField, Timeout, Unsaved, WAYS_IN, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert,
-    open_app_alert, open_timed_alert, paragraph, paragraph_height, ways_in,
+    open_app_alert, open_app_alert_escaping, open_timed_alert, paragraph, paragraph_height, ways_in,
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, countdown_box, verdict_mark};
 pub use buttons::{

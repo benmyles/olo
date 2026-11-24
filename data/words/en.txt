@@ -303,10 +303,19 @@ All {} connected.
 Allow
 Allow It on the Phone
 Allow NVIDIA Fallback on Battery
+Allow Once
 Allow Sleep
 Allow Sleep (awake until {})
+Allow This Terminal
+Allow This Terminal lets it add and change items without asking until Passwords locks.
 Allow it on the phone
 Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
+Allow {} to add an item to {}?
+Allow {} to add “{}” to {}?
+Allow {} to change “{}” in {}?
+Allow {} to delete “{}” from {}?
+Allow {} to move “{}” from {} to {}?
+Allow {} to move “{}” to the Archive?
 Allow {} to sign in to your hosts with your SSH keys?
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Allowed with {}
@@ -441,6 +450,9 @@ Ask for Full Access at Start
 Ask for sudo Passwords in a Window
 Ask the assistant
 Ask what to do about urgent ones
+Asked by “{}” from {} in {}.
+Asked by “{}” from {}.
+Asked by “{}”.
 Asked now:
 Asking
 Asking GitHub for Olo's releases…
@@ -695,6 +707,7 @@ Change Background…
 Change them in Preferences ▸ Keyboard ▸ Shortcuts.
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 Changed here now, and in 1Password at the next sync.
+Changes its {}.
 Changes to “{}”
 Change…
 Changing a limit of process {}
@@ -1105,6 +1118,7 @@ Deleting the unfinished backup
 Deleting {}
 Deleting {} of {}
 Deleting {}: {} of {}
+Deny
 Description
 Description removed
 Description:
@@ -1527,6 +1541,7 @@ For ever
 For finding out why
 For the mice set to follow the others, and any you connect.
 For {} · process {}
+For {}.
 For:
 Force End
 Force Quit {} Processes…
@@ -2906,6 +2921,7 @@ Passwords keeps no password for it (an item “{}”).
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then choose the accounts.
 Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords on this screen has no SSH keys shared with it.
+Passwords unlocked without asking
 Passwords: Clipboard
 Passwords: Command line
 Passwords: Locking
@@ -3213,6 +3229,7 @@ Rename Section
 Rename Session…
 Rename Tab…
 Rename Worktree…
+Renames it “{}”.
 Rename…
 Reopen Closed Tab
 Repeat rate
@@ -3355,6 +3372,7 @@ SSH Key
 SSH allows ten sessions on a connection by default; each pane uses one.
 SSH keys
 SSH keys offered: {}.
+SSH keys used without asking
 SSH sessions
 SSW
 SW
@@ -4757,6 +4775,7 @@ every 6 hours
 every day
 every hour
 every {n} minutes
+fields
 for {}
 from {}
 full size, with a numeric keypad
@@ -4877,12 +4896,24 @@ one an hour for ever
 one an hour for {n} hours
 only folder and Find windows move
 only terminal windows move
+op added “{}” to {}.
+op allowed without asking
+op changed Passwords without asking
+op changed “{}”.
+op deleted “{}”.
+op moved “{}” to the Archive.
+op moved “{}” to {}.
+op on {}
 optional
+op’s Changes to “{}”
+op’s Deletion of “{}”
+op’s New “{}”
 organizer
 out of the archive
 overdue, {}
 part of the screen
 passphrase
+password
 plugged in, charge limit {}%
 plugged in, held at the {}% limit
 plugged in, not charging
@@ -4904,6 +4935,7 @@ something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh://you@host or host.ts.net
 sudo needs your password to run this{}:
+tags
 taken as at least {}% busy
 tan is undefined there
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
@@ -4972,6 +5004,7 @@ update {n} packages
 use . for decimals
 validating
 visibility down to {}
+website
 what holds it back
 when it yields
 when its turn ends
@@ -4986,6 +5019,7 @@ yesterday at {}
 you
 you don't have permission
 your cloud storage
+your home folder
 your own picture
 {n} Background Processes Lowered
 {n} Events Found
@@ -5129,6 +5163,7 @@ your own picture
 {} hasn’t answered for {} seconds
 {} hours ago
 {} in
+{} in Passwords brings it back until Passwords locks.
 {} in all
 {} in the last minute
 {} in the last minute, {} of {} in all

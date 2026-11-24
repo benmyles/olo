@@ -1688,6 +1688,27 @@ something nobody here has is in "Blocked", with what it waits for.
     (Renaming a session or a tab and moving a tab are done, and a
     password asked for is seen: HACKING, Rex, "Names and places",
     "A password asked for".)
+  - *A command run on the Olo desktop from a host, when the person says
+    so* (Ben, 2026-11-24: "add the ability for an agent in a rex
+    terminal to be able to run commands on my local olo desktop. have
+    them require a permission modal on the olo desktop (e.g. the same
+    one that shows when something wants sudo) but skip it if the auto
+    approve feature is enabled in the olo tray"). Its own command, not a
+    way through another (a host's `op run` did this unasked until
+    2026-11-24, and is refused now): `olo run [--cwd DIR] -- COMMAND…`
+    on the host (and `rex do olo.run`), a permission of its own in
+    Preferences ▸ Rex (off until given), each run asked on the desktop
+    in the sheet `sudo` asks with (olo-sudo's: the command whole, the
+    host, the folder, Allow and Deny, and what unlocks it there), not
+    asked while the tray's Approve Without Asking is on (said in a quiet
+    notification, as Passwords says it). The command's output streamed
+    back as it comes, its status the command's, cancelled when the host's
+    `olo` is (^C), run as the person in their home unless a folder is
+    given, nothing of the host's environment carried. In the skill for
+    agents, with when to use it (the desktop's own programs, files and
+    devices) and when not (what the host can do itself). Tried on the
+    rig: asked, allowed, denied, auto-approved, a long command streamed
+    and cancelled, the permission off.
   - *The Host window in tabs, and the account's window reached from it*
     (Ben, 2026-11-24: "make the rex manage host dialog a window with
     multiple tabs and group things under logical tabs e.g. Rex / Olo
@@ -1842,8 +1863,21 @@ something nobody here has is in "Blocked", with what it waits for.
   only the label goes grey: the frame, fill and bevel stay the same as
   an enabled button … Drop the bevel's light and dark edges and draw the
   frame at about half contrast against the panel").
-- **`op` writes too: items made, changed and deleted from the command
-  line** (Ben, 2026-11-24: "we need to add write/update support to the
+- ~~**`op` writes too: items made, changed and deleted from the command
+  line**~~ Done (2026-11-24; HACKING, "op: 1Password's command line",
+  its changes and "From a host, through Rex's bridge"): `op item
+  create`, `edit`, `delete`, `move`, `template`, `op document get`,
+  `list`, `delete`, with 1Password's flags, assignment statements and
+  JSON, each change approved on its own (Deny, Allow Until Locked,
+  Allow), synced and undone as the window's edits are; from a host too.
+  Found on the way and fixed: through the bridge a host's `op run` ran
+  its command on the desktop, `-i` read the desktop's files and `-o`
+  wrote them, and any `….png` path an answer named was read and sent to
+  the host. Left: `op document create` and `edit`, and `[file]`
+  assignments, which wait on files made here being sent to 1Password
+  (refused till then, saying so); `op run` from a host done on the host
+  itself (its references read through the bridge, its command run
+  there), where now it is refused. (Ben, 2026-11-24: "we need to add write/update support to the
   op cli for olo passwords -- right now it's read only"). Olo's `op`
   (apps/op, answered by Passwords' `cli.rs`) reads only: `whoami`,
   `vault list|get`, `item list|get`, `read`, `inject` and `run`. Ben,
@@ -2690,6 +2724,39 @@ something nobody here has is in "Blocked", with what it waits for.
   rex-vt), the person's profile's keys respected (a Mac profile's ⌥,
   a Windows one's Ctrl+← and →), with a test of the bytes each sends
   and one through a real shell on the rig.
+
+- **The alert's own look, as every review of one finds it** (the kit's
+  `widgets::alert` and app_server's frame for it; Opus's and Astra's
+  looks at Deskbar's agent-screen alert and Passwords' `op` approvals,
+  2026-11-24, and Opus's at Preferences' Services: each said some of
+  it). One change for every alert:
+  - *No zoom box, nor a close box that means nothing*: "An alert can't
+    be zoomed, so the zoom box is a dead control. The close box is
+    ambiguous: does it mean Deny? … BeOS alerts are modal and have no
+    zoom box" (Opus): a tab with the title only, or none.
+  - *The default button's ring seen in dark*: "a near-black line on a
+    near-black window. All three buttons look identical, so you can't
+    tell which one Return presses … draw the default ring in the control
+    frame colour used for the button bevel highlight, or in the
+    focus/selection blue … at least the same contrast against the
+    window that the light ring has."
+  - *The button row on the text's grid*: the first button "about 4 pt
+    right of the left edge of the title and body text … Align Deny's
+    left edge exactly with the text's left edge. Keep [the others] as a
+    right-aligned pair with an 8 pt gap, and let the free space fall
+    between Deny and that pair. This is the standard way to show
+    'cancel' as separate. Make the bottom margin equal the right margin
+    and the top margin, 16 pt each, measured from the default ring"
+    (Opus; Astra the same of the left edge). And Deskbar's: "Make all
+    three as wide as the widest label" where they're few.
+  - *The side strip in dark*: "nearly the same tone as the alert body
+    … lift the strip one step, to the panel or raised-surface colour,
+    so the difference from the body matches the light theme's."
+  - *A paragraph in the secondary colour* (what an alert says under its
+    question, "Asked by …"): the alert takes paragraphs, all one ink.
+  And in Passwords, after `op`'s change: "Briefly highlight the
+  inserted row while keeping the selection … on [the person's]"
+  (Astra), its name in the status line a link that selects it (Opus).
 
 - **Preferences ▸ Windows in a vertical third** (seen 2026-11-24 while
   picturing the notes above, in English and German at 1× and 2×; there
