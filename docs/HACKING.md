@@ -18948,6 +18948,30 @@ window's group and whether it shows all tabs across an upgrade. A new
 ⌘⇧ shortcut must also go in `view::SHORTCUTS`, or the shell gets the
 Ctrl key too (⌘⇧D would send Ctrl+D and end the shell).
 
+**Antigravity, as Claude Code and Codex** (`Agent::Antigravity`; Ben,
+2026-11-23: "make sure that keep it going and auto approve and any and
+all other agent features for both terminal and olo rex work with
+antigravity tui (agy)"). Told by its program (`agy`). Its screen is
+read by its own words (agy 1.5.15, recorded from a run of it):
+*working*, "esc to cancel" under its field (which under Claude Code's
+is a question's, so `classify` is given the agent); *asking*, "↑/↓
+Navigate" under a question's answers; *at its prompt* (`at_prompt`),
+a ">" between its field's two rules with neither of those. Auto
+Approve answers its question ("Run this command?" with "> 1. Yes, run
+command" right under it, `approvable`) with Return, which there is
+yes for this once (tried with the real program: the command ran, no
+second question, nothing written to its settings); never with the
+chooser on another answer (2 and 3 always allow). Keep It Going types
+at its prompt. The tab's and the sidebar's marks, Next Waiting Agent
+and the notices follow from the state. Rex reads the same words
+(`apps/rex/src/agent.rs`). `tools/dev/stand-ins/agy RECORD` draws those
+screens in a tab and writes down what it is answered and told (no
+agent, no account): in a headless Terminal it was told apart as
+Antigravity, answered with Return three seconds after Auto Approve
+was turned on (`OLO_TERMINAL_AUTO_APPROVE_SECS=3`), and told "Please
+continue" at its prompt by Keep It Going. Not yet: the tab-title tool
+and the context hook set up in Antigravity's own configuration (TODO).
+
 **Agents** (`src/agent.rs`). A thread looks at every tab (shown or not)
 when a shell has printed (`session::on_output`, a `Nudge` every output
 chunk pokes, coalesced), at most every 600 ms, and while a reading

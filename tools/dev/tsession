@@ -413,15 +413,21 @@ def pid_files(d):
 
 def alive(groups, e):
     """What still runs of a session: processes in `groups`, and any
-    carrying session `e`'s environment (its display and its own config
-    dir: a program started and forgotten, olo-termd and its shells, which
-    left the groups; the person's session never matches). Never zombies:
-    they've gone, only their parent's wait is left."""
+    carrying session `e`'s environment (its display, and its own config
+    dir or its name: a program started and forgotten, olo-termd and its
+    shells, which left the groups; the person's session never matches).
+    By its name too (`OLO_TEST_DESKTOP`, which every `run` gives): a
+    program run with a config folder of its own (`run NAME
+    XDG_CONFIG_HOME=… olo-terminal`) had neither the groups nor the
+    session's folder, and its olo-termd lived on with its shells past
+    three `stop`s, at the next session's display (2026-11-23). Never
+    zombies: they've gone, only their parent's wait is left."""
     me = (os.getpid(), os.getppid())
-    disp = cfg = None
+    disp = cfg = named = None
     if e:
         disp = f"\0WAYLAND_DISPLAY={e['WAYLAND_DISPLAY']}\0".encode()
         cfg = f"\0XDG_CONFIG_HOME={e.get('XDG_CONFIG_HOME', '-')}\0".encode()
+        named = f"\0OLO_TEST_DESKTOP={e['OLO_TEST_DESKTOP']}\0".encode() if e.get("OLO_TEST_DESKTOP") else None
     out = []
     for proc in os.listdir("/proc"):
         if not proc.isdigit() or int(proc) in me:
@@ -440,7 +446,7 @@ def alive(groups, e):
                 env = b"\0" + open(f"/proc/{proc}/environ", "rb").read()
             except OSError:
                 continue
-            if disp in env and cfg in env:
+            if disp in env and (cfg in env or (named and named in env)):
                 out.append(int(proc))
     return out
 

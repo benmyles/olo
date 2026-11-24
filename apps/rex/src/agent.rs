@@ -36,7 +36,8 @@ impl AgentActivity {
 /// (e.g. Claude Code, Codex, Aider, Goose, OpenCode over plain SSH shells).
 pub fn detect_agent_from_screen(foreground_name: Option<&str>, last_lines: &[String]) -> Option<AgentActivity> {
     let fg = foreground_name.unwrap_or_default().to_ascii_lowercase();
-    let is_known_agent = matches!(fg.as_str(), "claude" | "codex" | "aider" | "opencode" | "goose" | "gemini") || last_lines.iter().any(|l| l.contains("Claude Code") || l.contains("OpenAI Codex"));
+    let is_known_agent = matches!(fg.as_str(), "claude" | "codex" | "agy" | "antigravity" | "aider" | "opencode" | "goose" | "gemini")
+        || last_lines.iter().any(|l| l.contains("Claude Code") || l.contains("OpenAI Codex"));
     if !is_known_agent {
         return None;
     }
@@ -44,7 +45,11 @@ pub fn detect_agent_from_screen(foreground_name: Option<&str>, last_lines: &[Str
     let tail: String = last_lines.iter().rev().take(8).cloned().collect::<Vec<_>>().join("\n");
     let lower = tail.to_ascii_lowercase();
 
-    if lower.contains("do you want to proceed?")
+    // (Antigravity's question: its line of keys under the answers. Its
+    // "esc to cancel" is under its field while it works, and under a
+    // question too: the question is looked for first.)
+    if lower.contains("↑/↓ navigate")
+        || lower.contains("do you want to proceed?")
         || lower.contains("allow once")
         || lower.contains("yes, allow")
         || lower.contains("approve this")
@@ -68,6 +73,10 @@ pub fn detect_agent_from_screen(foreground_name: Option<&str>, last_lines: &[Str
         || lower.contains("thinking…")
         || lower.contains("working…")
         || lower.contains("esc to interrupt")
+        // (Antigravity: any of braille's figures turning at a line's
+        // start, and what is under its field while it works.)
+        || tail.lines().any(|l| l.trim_start().chars().next().is_some_and(|c| ('\u{2800}'..='\u{28ff}').contains(&c)))
+        || (matches!(fg.as_str(), "agy" | "antigravity") && lower.contains("esc to cancel"))
     {
         return Some(AgentActivity::Working);
     }
@@ -111,5 +120,29 @@ impl KeepGoingState {
             }
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Antigravity's screens (agy 1.5.15: Terminal's `agent` has the
+    /// same, recorded from one run): at rest, working, asking.
+    #[test]
+    fn antigravity_is_read_by_its_own_words() {
+        let lines = |text: &str| text.lines().map(str::to_owned).collect::<Vec<_>>();
+        let rule = "────────────────────────────────────────";
+        let at_rest = lines(&format!("  DONE\n{rule}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{rule}\n? for shortcuts"));
+        let working = lines(&format!("⣽  Generating...\n{rule}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{rule}\nesc to cancel"));
+        let asking =
+            lines("Run this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command\nesc to cancel");
+        assert_eq!(detect_agent_from_screen(Some("agy"), &at_rest), Some(AgentActivity::Idle));
+        assert_eq!(detect_agent_from_screen(Some("agy"), &working), Some(AgentActivity::Working));
+        assert_eq!(detect_agent_from_screen(Some("agy"), &asking), Some(AgentActivity::Blocked));
+        // (Its spinner has gone by and only the line under its field says so.)
+        assert_eq!(detect_agent_from_screen(Some("agy"), &lines(&format!("{rule}\n> \n{rule}\nesc to cancel"))), Some(AgentActivity::Working));
+        // (A shell is no agent, whatever is on its screen.)
+        assert_eq!(detect_agent_from_screen(Some("bash"), &lines("$ echo esc to cancel")), None);
     }
 }

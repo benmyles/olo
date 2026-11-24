@@ -2859,6 +2859,23 @@ an argument it doesn't know starts the lint (read its first lines).
   changes**: both of Rex's lists had live scroll bars only there (a
   height added up by hand, a fraction of a device pixel short), and
   1×, 1.5× and 2× showed nothing.
+- **Give `tsession run` no `XDG_CONFIG_HOME` of your own when the
+  program is Terminal** (or anything that leaves a daemon): a
+  session's processes were recognised by its display and its config
+  folder, and a Terminal run with another folder left its olo-termd
+  and its shells alive past `stop`, at the next session's display: the
+  next Terminal there reattached to them (what I typed went into the
+  last run's program). `stop` goes by the session's name too now; and
+  after a Terminal test, `ls $XDG_RUNTIME_DIR | grep olo-termd` shows
+  the person's display alone.
+- **A coding agent's screens are tried with a stand-in**
+  (`tools/dev/stand-ins/agy RECORD`, run as `bash …/stand-ins/agy`: its
+  name is what tells it apart), never a real agent in a test session.
+  What the real one does with a key is tried in one of the helpers'
+  own tmux sessions (`tmux -L olo-agents send-keys -t =NAME:0.0
+  Enter`), on a specimen brief that touches nothing.
+- **Auto Approve asked for through the commands socket asks the
+  person** (an alert, "Turn On"): a test presses it, as a person.
 - **After anything run against the person's test server, look at
   what it left**: `rex ls` there showed eight sessions named
   `olo-connect-test` in the person's sidebar (2026-11-23; the

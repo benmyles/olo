@@ -1637,21 +1637,23 @@ something nobody here has is in "Blocked", with what it waits for.
 - **Every agent feature, with Antigravity's TUI too** (Ben,
   2026-11-23: "make sure that keep it going and auto approve and any
   and all other agent features for both terminal and olo rex work
-  with antigravity tui (agy)"). In Terminal and in Rex alike, each
-  thing that is done for Claude Code and Codex, tried with `agy` and
-  made to work where it doesn't: an agent told apart by what runs in
-  the pane (its name, its state: working, waiting for an answer,
-  done); Keep It Going (what `agy` shows when a turn ends, and what
-  it takes to go on); Auto Approve (the questions it asks leave with,
-  each of its forms, and their answers; what is never approved);
-  attention (the tab's and the sidebar's marks, Next Waiting Agent,
-  the notice when one waits); the tab's title it sets; the status its
-  hooks report, if it has hooks; typing ahead and the caret in Rex.
-  A list first, of each feature against each of the three agents in
-  each of the two apps, from the code and from a real `agy` on an
-  Agent Screen (never the person's own session); then what is
-  missing, built; tests with recorded screens of `agy`, as the other
-  two have.
+  with antigravity tui (agy)"). Done (2026-11-23; HACKING,
+  "Antigravity, as Claude Code and Codex"): told apart, its states
+  read, Keep It Going, Auto Approve, and the marks and notices that
+  follow from its state, in Terminal; its states in Rex. Left:
+  - *The tab-title tool and the context hook set up for it*
+    (`agent_title.rs`, `agent_context.rs`: Claude Code's and Codex's
+    configurations are written; Antigravity's aren't). Its MCP servers
+    are said to be in `~/.gemini/config/mcp_config.json` and its hooks
+    in `~/.gemini/config/hooks.json`: read its documentation and try
+    with the real program before writing either.
+  - *Rex's Keep It Going with a real agy on a host* (it goes by the
+    same reading of the screen, tested with recorded screens only),
+    and Rex's Auto Approve, which Rex has for no agent yet
+    (Terminal's is the one to share).
+  - *The list*: each feature against each of the three agents in
+    each of the two apps, written down in HACKING with how each was
+    tried.
 
 - **SSH sessions that don't stall under load; Terminal and Rex first in
   line** (Ben, 2026-11-22: "look into whether there's a way to prioritize

@@ -426,7 +426,7 @@ fn peer(stream: &TcpStream) -> Option<(u32, u64)> {
 
 /// What agents' processes are called: looked in first (one has asked,
 /// nearly always), before every other process of the user's.
-const AGENTS: [&str; 5] = ["claude", "codex", "node", "bun", "code"];
+const AGENTS: [&str; 6] = ["claude", "codex", "agy", "node", "bun", "code"];
 
 /// The process (of user `uid`) holding socket `inode`.
 fn holder(inode: u64, uid: u32) -> Option<i32> {
