@@ -965,10 +965,9 @@ fn paint_row<V>(
 ) {
     let p = theme::palette();
     if selected {
-        let sel = if focused { p.list_selected_background } else { olo_theme::mix(p.list_selected_background, p.list_background, 0.35) };
-        style::fill_rect(g, r, style::c(sel));
+        style::fill_rect(g, r, style::c(style::selection_ground(&p, p.list_background, focused)));
     }
-    let text_color = style::c(if selected { p.list_selected_item_text } else { p.list_item_text });
+    let text_color = style::c(if selected { style::selection_text(&p, p.list_item_text, focused) } else { p.list_item_text });
     let mut texts = RowTexts::new();
     for (at, (x0, x1)) in spans(widths, r.left(), r.right(), sideways).into_iter().enumerate() {
         let i = order[at];

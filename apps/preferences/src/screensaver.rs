@@ -104,7 +104,7 @@ fn fade(ui: &mut Ui, battery: bool) {
         }
         cx.notify();
     });
-    ui.add(CheckBox::new("Turn off screen", off).on_toggle(toggle));
+    ui.add_mark(CheckBox::new("Turn off screen", off).on_toggle(toggle));
     ui.enabled_if(off, |ui| minutes_slider(ui, "off-minutes", "Turn off after", minutes.max(1), move |s, v| s.power.set_idle_minutes(battery, false, v)));
     ui.enabled_if(ss.enabled, |ui| {
         ui.check("Password lock", ss.lock, |s, v| s.screen_saver.lock = v);

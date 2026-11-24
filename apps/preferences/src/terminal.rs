@@ -68,16 +68,13 @@ fn coding_agents(ui: &mut Ui) {
         ui.note(
             "Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).",
         );
-        ui.space(m::TIGHT);
         ui.check("Let coding agents keep their tab’s title current", t.agent_titles, |s, v| s.terminal.agent_titles = v);
         ui.note("Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.");
-        ui.space(m::TIGHT);
         ui.check("Tell coding agents to use Olo’s Agent Screens", t.agent_screens, |s, v| s.terminal.agent_screens = v);
         ui.note("Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.");
         // What Keep It Going types (Ben, 2026-11-08: "make the keep going
         // message configurable, by default it should be "Please continue"
         // … as well as revert back to the default").
-        ui.space(m::TIGHT);
         let default = olo_protocol::TerminalSettings::KEEP_GOING_SAYS;
         let field = ui.field("keep-going-says", &t.keep_going_says, |f| f.hint(default).name("Keep It Going says"), |s, v| s.terminal.keep_going_says = v);
         let changed = t.keep_going_says != default;

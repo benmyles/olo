@@ -445,7 +445,7 @@ fn mode_box(ui: &mut Ui, mode: Mode, on_battery: bool, facts: &Facts, st: &State
         if !facts.gpus.is_empty() {
             let ready = plan.mode_gpu_ready(mode);
             let on = plan_change(ui, &plan, &kept, Box::new(move |p, _| p.set_mode(mode, "gpu-ready", (!ready != (mode == Mode::Performance)).then(|| if ready { "off" } else { "on" }.into()))));
-            ui.add(CheckBox::new(olo_kit::words::of_text("Keep graphics ready between tasks"), ready).id("power-mode-gpu-ready").enabled(enabled).on_toggle(move |_, cx| on(&0, cx)));
+            ui.add_mark(CheckBox::new(olo_kit::words::of_text("Keep graphics ready between tasks"), ready).id("power-mode-gpu-ready").enabled(enabled).on_toggle(move |_, cx| on(&0, cx)));
         }
         // Cooling and storage, a little apart from the chips.
         if facts.fans || !facts.drives.is_empty() {

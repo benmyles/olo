@@ -320,7 +320,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let items = ui.collect(|ui| {
                 let check = |ui: &mut Ui, label: &str, on: Option<bool>, make: fn(bool) -> Change| {
                     let ask = ask.clone();
-                    ui.add(CheckBox::new(label.to_owned(), on.unwrap_or(false)).enabled(ui.enabled() && on.is_some()).on_toggle(move |v, _| ask(make(*v))));
+                    ui.add_mark(CheckBox::new(label.to_owned(), on.unwrap_or(false)).enabled(ui.enabled() && on.is_some()).on_toggle(move |v, _| ask(make(*v))));
                 };
                 if a.abilities.adaptive {
                     check(ui, "Conversation Awareness: lower the sound when you speak", s.conversation_awareness, Change::ConversationAwareness);
@@ -417,7 +417,7 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
     let items = ui.collect(|ui| {
         let address = Some(a.address.clone());
         let ear = a.settings.ear_detection;
-        ui.add(CheckBox::new("Automatic Ear Detection: pause when you take an AirPod out", settings.pause_when_removed && ear != Some(false)).on_toggle(move |on: &bool, cx| {
+        ui.add_mark(CheckBox::new("Automatic Ear Detection: pause when you take an AirPod out", settings.pause_when_removed && ear != Some(false)).on_toggle(move |on: &bool, cx| {
             let on = *on;
             save(|s, on| s.pause_when_removed = on)(&on, cx);
             // The AirPods' own (they stop sending sound to a bud out).
@@ -431,8 +431,10 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
             );
         }
         let listening = link.shared.lock().unwrap().state.listening;
-        ui.add(CheckBox::new("Connect automatically when you put them in near this computer", settings.connect_automatically).enabled(listening).on_toggle(save(|s, on| s.connect_automatically = on)));
-        ui.add(CheckBox::new("Switch automatically between this computer and your iPhone", settings.switch_automatically).enabled(listening).on_toggle(save(|s, on| s.switch_automatically = on)));
+        ui.add_mark(
+            CheckBox::new("Connect automatically when you put them in near this computer", settings.connect_automatically).enabled(listening).on_toggle(save(|s, on| s.connect_automatically = on)),
+        );
+        ui.add_mark(CheckBox::new("Switch automatically between this computer and your iPhone", settings.switch_automatically).enabled(listening).on_toggle(save(|s, on| s.switch_automatically = on)));
         if !listening {
             ui.note("These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.");
         }

@@ -258,7 +258,7 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
     let save = move |s: voice::Settings| _ = tx.send(Change::Voice(s));
     ui.bbox("Voice Processing", |ui| {
         let s2 = save.clone();
-        ui.add(CheckBox::new("Clean up the microphone's sound", settings.enabled).on_toggle(move |on, _| s2(voice::Settings { enabled: *on, ..settings })));
+        ui.add_mark(CheckBox::new("Clean up the microphone's sound", settings.enabled).on_toggle(move |on, _| s2(voice::Settings { enabled: *on, ..settings })));
         let modes: Vec<SharedString> = voice::Mode::ALL.iter().map(|m| SharedString::from(m.label())).collect();
         let at = voice::Mode::ALL.iter().position(|m| *m == settings.mode).unwrap_or(0);
         let s2 = save.clone();
@@ -288,7 +288,9 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
                 .on_change(move |i, _| s2(voice::Settings { model: voice::Model::ALL[*i], ..settings })),
         );
         let s2 = save.clone();
-        ui.add(CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _| s2(voice::Settings { echo_cancellation: *on, ..settings })));
+        ui.add_mark(
+            CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _| s2(voice::Settings { echo_cancellation: *on, ..settings })),
+        );
         // The microphone's boost (each its own), by steps, and the one
         // its voice was measured to want, to take at once.
         if let Some(mic) = state.microphone.clone() {
@@ -518,7 +520,7 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
         let name = dev.name.clone();
         // (An id of its own: the output's and the input's Mute, one id,
         // lost their clicks.)
-        ui.add(CheckBox::new("Mute", dev.volume.muted).id(format!("mute-{title}")).on_toggle(move |muted, _| {
+        ui.add_mark(CheckBox::new("Mute", dev.volume.muted).id(format!("mute-{title}")).on_toggle(move |muted, _| {
             let _ = tx.send(Change::Mute(kind, name.clone(), *muted));
         }));
         if kind == Kind::Output {

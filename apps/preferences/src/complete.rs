@@ -218,7 +218,7 @@ pub fn ui(ui: &mut Ui) {
     ui.bbox("Command Suggestions", |ui| {
         let tx = link.tx.clone();
         let enabled = ui.enabled() && usable && !learning;
-        ui.add(CheckBox::new(LABEL, on).enabled(enabled).on_toggle(move |v, _| {
+        ui.add_mark(CheckBox::new(LABEL, on).enabled(enabled).on_toggle(move |v, _| {
             let _ = tx.send(Job::Turn(*v));
         }));
         let mut text = match (&shell, on) {

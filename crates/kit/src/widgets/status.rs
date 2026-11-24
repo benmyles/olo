@@ -114,7 +114,8 @@ pub fn busy_span(phase: f32) -> (f32, f32) {
 
 /// A busy bar alone ([`StatusBar::busy`]): the well, and its block.
 pub fn busy_bar(g: &mut Painter, bar: Bounds<Pixels>, phase: f32, fill: Option<Hsla>, p: &olo_theme::Palette) {
-    let inner = style::inset(g, bar, 1.0);
+    // (In the kit's sunken well, as `level_bar`.)
+    let inner = style::inset(g, bar, 2.0);
     style::fill_rect(g, inner, style::c(p.document_background));
     let fill = fill.unwrap_or(style::c(p.status_bar));
     let (from, to) = busy_span(phase);
@@ -124,13 +125,17 @@ pub fn busy_bar(g: &mut Painter, bar: Bounds<Pixels>, phase: f32, fill: Option<H
     let lower: Hsla = olo_interface::Rgba { r: rgb.r * 0.8, g: rgb.g * 0.8, b: rgb.b * 0.8, a: 1.0 }.into();
     style::vgradient(g, block, fill, lower);
     style::hline(g, block.left(), block.right(), block.top(), style::c(p.gloss));
-    style::bevel(g, bar, style::shade(p, p.panel_background, 1.45), style::c(p.shine));
+    style::sunken(g, bar, p, false);
 }
 
 /// The bar alone: a sunken well filled to `fraction` (with `fill`, or the
 /// palette's status bar colour), glossed along the top. What's filled.
 pub fn level_bar(g: &mut Painter, bar: Bounds<Pixels>, fraction: f32, fill: Option<Hsla>, p: &olo_theme::Palette) -> Bounds<Pixels> {
-    let inner = style::inset(g, bar, 1.0);
+    // (In the well every field and list sits in, `style::sunken`: in one
+    // bevel, its light lines against a white ground, the light look's was
+    // a white field with a rule along its top only. Opus's look at Rex's
+    // Quick Look, 2026-11-24.)
+    let inner = style::inset(g, bar, 2.0);
     style::fill_rect(g, inner, style::c(p.document_background));
     let fill = fill.unwrap_or(style::c(p.status_bar));
     let f = fraction.clamp(0.0, 1.0);
@@ -143,7 +148,7 @@ pub fn level_bar(g: &mut Painter, bar: Bounds<Pixels>, fraction: f32, fill: Opti
         style::vgradient(g, done, fill, lower);
         style::hline(g, done.left(), done.right(), done.top(), style::c(p.gloss));
     }
-    style::bevel(g, bar, style::shade(p, p.panel_background, 1.45), style::c(p.shine));
+    style::sunken(g, bar, p, false);
     done
 }
 

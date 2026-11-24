@@ -317,12 +317,11 @@ impl Sidebar {
                     return;
                 }
                 if selected {
-                    let sel = if focused { style::c(p.list_selected_background) } else { style::c(olo_theme::mix(p.list_selected_background, p.panel_background, 0.35)) };
-                    style::fill_rect(g, r, sel);
+                    style::fill_rect(g, r, style::c(style::selection_ground(&p, p.panel_background, focused)));
                 } else if state.hovered {
                     style::fill_rect(g, r, style::shade(&p, p.panel_background, 1.1));
                 }
-                let text = if selected { style::c(p.list_selected_item_text) } else { style::c(p.panel_text) };
+                let text = style::c(if selected { style::selection_text(&p, p.panel_text, focused) } else { p.panel_text });
                 let icon = Bounds { origin: point(r.left() + px(m::WINDOW_INSET), r.center().y - px(8.0)), size: size(px(16.0), px(16.0)) };
                 if let Some(hue) = row.dot {
                     paint_dot(g, icon, p.hue(hue), &p);

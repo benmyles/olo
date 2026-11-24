@@ -340,7 +340,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
     let tx = st.link.tx.clone();
     ui.enabled_if(can_ntp && !busy, |ui| {
         let tx = tx.clone();
-        ui.add(olo_kit::widgets::CheckBox::new("Set date and time automatically", ntp).enabled(ui.enabled()).on_toggle(move |on, _| {
+        ui.add_mark(olo_kit::widgets::CheckBox::new("Set date and time automatically", ntp).enabled(ui.enabled()).on_toggle(move |on, _| {
             let _ = tx.send(Request::Ntp(*on));
         }));
     });

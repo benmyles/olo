@@ -15178,6 +15178,9 @@ other: {n} weken
 {} MB
 {} MB
 
+{} Preferences
+{}-voorkeuren
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Vervangen door de versie uit de back-up van {} of beide bewaren? De herstelde versie krijgt het tijdstip in de naam.
 

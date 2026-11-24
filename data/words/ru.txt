@@ -15400,6 +15400,9 @@ other: {n} недели
 {} MB
 {} МБ
 
+{} Preferences
+Настройки: {}
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Заменить версией из резервной копии от {} или сохранить обе? Ко второй будет добавлено время восстановления.
 

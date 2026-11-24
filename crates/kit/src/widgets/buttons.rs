@@ -127,8 +127,9 @@ impl IntoElement for Button {
         .look((&self.label, default, pushed, self.small, working.map(|d| d.map(|f| (f.clamp(0.0, 1.0) * 1000.0).round() as u32))))
         .enabled(self.enabled)
         .focusable();
-        if working.is_some() {
-            // (Its meter says it can't be pressed now: not faded too.)
+        // (Its meter says it can't be pressed now: not faded too. Dimmed in
+        // a dark look, it dims itself, its frame kept: `paint_button`.)
+        if working.is_some() || (!self.enabled && dims_itself()) {
             c = c.unfaded();
         }
         c = match working {
@@ -514,15 +515,28 @@ impl IntoElement for LinkButton {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Whether a dimmed button draws its own dimness (a dark look), rather
+/// than being faded as a whole: faded, its frame went halfway to the
+/// panel, and over a dark one the button all but went (12,21,27 on
+/// 24,43,54, where light's is 153,159,167 on 219,227,238: Opus's look at
+/// About's Software Update).
+fn dims_itself() -> bool {
+    theme::palette().mode == olo_theme::ThemeMode::Dark
+}
+
 fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str, default: bool, pushed: bool, font_size: f32) {
     let p = theme::palette();
     let bg = p.panel_background;
+    // (Dimmed in a dark look: its face, groove and bevel as faded as a
+    // control is, its frame whole, so it still reads as a button.)
+    let own_dim = !s.enabled && dims_itself();
+    let fade = |c: olo_interface::Hsla| if own_dim { c.opacity(olo_interface::DISABLED_OPACITY) } else { c };
     if default {
         // A recessed groove the button sits in.
         let ring = px(3.0);
         let outer = style::snap(g, Bounds::from_corners(point(r.left() - ring, r.top() - ring), point(r.right() + ring, r.bottom() + ring)));
-        style::fill_rect(g, outer, style::shade(&p, bg, 1.06));
-        style::bevel(g, outer, style::shade(&p, bg, 1.3), style::c(p.shine));
+        style::fill_rect(g, outer, fade(style::shade(&p, bg, 1.06)));
+        style::bevel(g, outer, fade(style::shade(&p, bg, 1.3)), fade(style::c(p.shine)));
     }
     let pressed = s.pressed || pushed;
     let base = p.control_background;
@@ -533,14 +547,14 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     } else {
         (style::tint(base, 0.85), style::shade(&p, base, 1.06))
     };
-    let border = if s.enabled { style::shade(&p, bg, 1.6) } else { style::shade(&p, bg, 1.3) };
+    let border = if s.enabled || own_dim { style::shade(&p, bg, 1.6) } else { style::shade(&p, bg, 1.3) };
     let inner = style::inset(g, r, 1.0);
-    style::vgradient(g, inner, top, bottom);
+    style::vgradient(g, inner, fade(top), fade(bottom));
     style::frame_rect(g, r, border);
     if pressed {
-        style::bevel(g, inner, style::shade(&p, base, 1.35), style::shade(&p, base, 1.1));
+        style::bevel(g, inner, fade(style::shade(&p, base, 1.35)), fade(style::shade(&p, base, 1.1)));
     } else {
-        style::bevel(g, inner, style::c(p.shine), style::shade(&p, base, 1.2));
+        style::bevel(g, inner, fade(style::c(p.shine)), fade(style::shade(&p, base, 1.2)));
     }
     // Held by the pointer, the label gives a device pixel; one that
     // stays down (a chosen tool) keeps it level with its row.

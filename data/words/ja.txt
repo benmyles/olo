@@ -15067,6 +15067,9 @@ other: {n}週間
 {} MB
 {} MB
 
+{} Preferences
+{}の環境設定
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} {}にバックアップした版に置き換えますか？ 両方残す場合、復元する方の名前に時刻を付けます。
 

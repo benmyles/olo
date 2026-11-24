@@ -270,7 +270,7 @@ impl Prefs {
         // screen, with room for the window’s edges.
         let width = if panel == Panel::Rex { olo_kit::displays().iter().map(|d| (f32::from(d.size.width) - 2.0 * m::WINDOW_INSET).max(1.0)).fold(w as f32, f32::min) } else { w as f32 };
         let opened = self.settings.clone().unwrap_or_default();
-        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), width, h as f32).fits_content() };
+        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.window_title(), width, h as f32).fits_content() };
         let window = olo_kit::open_window(options, move |cx| PanelView::new(panel, opened, cx));
         self.windows.push(Shown::Panel(panel, window));
     }

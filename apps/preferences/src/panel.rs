@@ -194,6 +194,17 @@ impl Panel {
         }
     }
 
+    /// Its window's title: its name, but where an app has that name
+    /// ("Rex Preferences" beside Rex's own window, as BeOS titled Tracker's
+    /// "Tracker Preferences"). Two yellow tabs that said "Rex" couldn't be
+    /// told apart (Opus's look at Rex's settings, 2026-11-24).
+    pub fn window_title(self) -> String {
+        match self {
+            Panel::Deskbar | Panel::Notifications | Panel::Phone | Panel::Rex | Panel::Terminal | Panel::Tracker => olo_kit::tr!("{} Preferences", olo_kit::words::tr(self.title())).to_string(),
+            _ => self.title().to_owned(),
+        }
+    }
+
     pub fn icon(self) -> &'static str {
         match self {
             Panel::Ai => "ai",

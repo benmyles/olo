@@ -839,6 +839,55 @@ pub fn label_runs_fit(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align
     }
 }
 
+/// A list's selection over `ground` (its rows' ground): the selection's
+/// colour where the list has the keyboard; where it hasn't (its window
+/// not in front, or the keyboard in a field or a pane beside it), in a
+/// light look as light but with half its colour, as a list out of focus
+/// greys, and in a dark look halfway back to the ground. So the one place
+/// typing goes is the one in full colour, and the other still stands out.
+/// (A third of the way back in both was a step of a few levels on a light
+/// panel, where the light look's selection, made for white lists, is
+/// already pale, and as strong as a focused one on a dark panel: Opus's
+/// look at Rex's sidebar, whose keyboard is never its own.) Its rows keep
+/// their own words' colours on it: [`selection_text`].
+pub fn selection_ground(palette: &Palette, ground: olo_theme::Rgba, focused: bool) -> olo_theme::Rgba {
+    let sel = palette.list_selected_background;
+    if focused {
+        sel
+    } else if palette.mode == olo_theme::ThemeMode::Dark {
+        olo_theme::mix(sel, ground, 0.5)
+    } else {
+        // (From the ground towards the look's highlight until it is
+        // `UNFOCUSED_STEP` lightness units under it: the light selection,
+        // made for white lists, is a step of two or three on a panel. On
+        // a white list it stays paler than the focused selection.)
+        let lightness = |c: olo_theme::Rgba| {
+            let y = olo_theme::luminance(c);
+            116.0 * if y > 0.008856 { y.cbrt() } else { 7.787 * y + 16.0 / 116.0 } - 16.0
+        };
+        let (target, toward) = (lightness(ground) - UNFOCUSED_STEP, palette.menu_selected_background);
+        let (mut near, mut far) = (0.0f32, 1.0f32);
+        for _ in 0..12 {
+            let t = (near + far) / 2.0;
+            if lightness(olo_theme::mix(ground, toward, t)) > target { near = t } else { far = t }
+        }
+        olo_theme::mix(ground, toward, far)
+    }
+}
+
+/// How far under its ground a light look's selection without the keyboard
+/// is, in CIE lightness: about what Opus's look measured a selection needs
+/// on a panel to be seen at 1× (`selection_ground`).
+const UNFOCUSED_STEP: f32 = 6.0;
+
+/// The words on a selected row ([`selection_ground`]): the selection's
+/// own colour where the list has the keyboard, the row's own (`own`)
+/// where it hasn't, so a state's colour on it (Rex's orange "Waiting")
+/// isn't lost on the row the person is looking at.
+pub fn selection_text(palette: &Palette, own: olo_theme::Rgba, focused: bool) -> olo_theme::Rgba {
+    if focused { palette.list_selected_item_text } else { own }
+}
+
 /// Selection over `r`, for a thing selected in place with nothing round
 /// it (a part of a bar, a cell flush with its neighbours): the list's
 /// selection colour, see-through, and its edge hairline just inside.
@@ -1501,6 +1550,43 @@ pub fn paint_swatch(g: &mut Painter, b: Bounds<Pixels>, color: Hsla, p: &Palette
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A selection without the keyboard: in a light look six lightness units
+    /// under its ground (a panel, a white list) and paler than the focused
+    /// selection on a white list; in a dark look halfway back to its ground.
+    #[test]
+    fn a_selection_without_the_keyboard_stands_out_less_but_is_seen() {
+        let lightness = |c: olo_theme::Rgba| {
+            let y = olo_theme::luminance(c);
+            116.0 * if y > 0.008856 { y.cbrt() } else { 7.787 * y + 16.0 / 116.0 } - 16.0
+        };
+        for theme in ["classic", "platinum", "beos", "aqua"] {
+            let light = olo_theme::looks::palette(theme, olo_theme::ThemeMode::Light);
+            for ground in [light.panel_background, light.list_background] {
+                let step = lightness(ground) - lightness(selection_ground(&light, ground, false));
+                assert!((step - UNFOCUSED_STEP).abs() < 0.5, "{theme}: {step}");
+            }
+            let on_white = selection_ground(&light, light.list_background, false);
+            assert!(lightness(on_white) > lightness(light.list_selected_background), "{theme}: paler than the focused one");
+            let dark = olo_theme::looks::palette(theme, olo_theme::ThemeMode::Dark);
+            assert_eq!(selection_ground(&dark, dark.panel_background, false), olo_theme::mix(dark.list_selected_background, dark.panel_background, 0.5));
+            assert_eq!(selection_ground(&dark, dark.panel_background, true), dark.list_selected_background);
+        }
+    }
+
+    /// What it costs a selected row's drawing: `cargo test --release -p
+    /// olo-kit selection_ground_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn selection_ground_cost() {
+        let light = olo_theme::looks::palette("classic", olo_theme::ThemeMode::Light);
+        let n = 100_000;
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            std::hint::black_box(selection_ground(std::hint::black_box(&light), std::hint::black_box(light.panel_background), false));
+        }
+        println!("selection_ground, light, without the keyboard: {:?} a row", t.elapsed() / n);
+    }
 
     #[test]
     fn keys_split_at_their_last_key() {

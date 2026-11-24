@@ -2296,7 +2296,10 @@ Alerts: the icons are BeOS's `warning`, `stop`, `info` and `idea`; the
 last button is the default and Escape picks the first. The kit makes an
 alert a child (`xdg_toplevel.set_parent`) of the app's window that has
 the keyboard, and app_server opens any window with a parent over it as
-BAlert does: centred across, a quarter of the way down. An alert with no
+BAlert does: centred across, a quarter of the way down. Where there is a question and
+what it means, a blank line between ("Restart the Window Server?\n\nThe
+screen goes blank…"), the question is set in bold and the rest 8 points
+under it (`alert::message`; a person reads the question first). An alert with no
 parent (a modal xdg-dialog naming none: asked from the desktop, a menu
 or Deskbar, where no window of its app had the focus, or a toolkit's
 parentless message box) opens in the middle of the display the pointer
@@ -3324,7 +3327,10 @@ it.
   `baseline_at` and `label_on_baseline` (things of different sizes on
   one baseline), `card_ink`/`card_paper` (cards on a gutter).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
-  `level_bar` (the bar alone). The trailing note is drawn whole and the
+  `level_bar` (the bar alone), in the well fields and lists sit in
+  (`style::sunken`: in one bevel, its light lines on a white ground, the
+  light look's bar was a white field ruled along its top only). The
+  trailing note is drawn whole and the
   label cut short ("…", its whole in a tip) to the room it leaves, so a
   label that changes as work goes on never runs into the note nor
   widens the bar's box. **Work whose end isn't known**
@@ -3367,6 +3373,10 @@ it.
   own left line carried up (it was a point left of it, in every list).
 - `widgets::ColumnListView::new(id, &model, columns, rows, cell)`:
   BColumnListView, its state in a `ListModel` entity the app keeps
+  (its selection, and a sidebar's, in full colour only where it has the
+  keyboard, a third of the way back to its ground where it hasn't:
+  `style::selection_ground(p, ground, focused)`, which a list drawn by an
+  app takes too, Rex's Sessions and Activity, whose keyboard is its pane's)
   (`ListModel::new(cx, multiple)`; `state` is the shared
   `olo_kit_base::list::ListState`: its selection,
   anchor, cursor and sort). Only the rows in view are built
@@ -3462,8 +3472,13 @@ it.
   painter the state of an enabled control at rest and no widget picks
   a disabled colour of its own as well: a check box's label, a
   button's and a menu field's were dimmed twice, fainter than a
-  disabled field's words beside them. What is drawn outside a
-  `Control` (a slider's label and value, a field's text, a form's
+  disabled field's words beside them. But for a push button in a dark
+  look, which dims itself (`.unfaded()`, `paint_button`): its face,
+  groove and bevel as faded, its label `disabled_text`, its frame whole.
+  Faded as a whole its frame went halfway to the panel, and over a dark
+  one the button all but went (12,21,27 on 24,43,54, where light's is
+  153,159,167 on 219,227,238: Opus's look at About, 2026-11-24). What is
+  drawn outside a `Control` (a slider's label and value, a field's text, a form's
   note) uses `style::disabled_text`, the panel's text as far towards
   the panel as the fade (`1 − DISABLED_OPACITY`), so the two are one
   grey side by side (measured in pictures: one pixel colour). A
@@ -4576,7 +4591,9 @@ it.
   this size is a smear at 1×; one device line to 2×; the other marks,
   `Keyboard`, `Bridge` and `Book`, are an `Indicator`'s: below) and a count after
   it (`.count(n)`: a disc in the look's notice colour, "99+" over 99,
-  nothing for none; 14 points, its middle on the plate's middle, a
+  nothing for none; `.waiting(n)` where what it counts waits for the
+  person's answer, the disc in the orange an agent asking is marked with,
+  as Rex's Activity counts; 14 points, its middle on the plate's middle, a
   point of the plate's face over and under it, its 11-point numerals in
   its own middle: a box of its own to the layout review, which would
   else hold them to the name's line) if it has them. Marks show where every segment has room for its own beside
@@ -7280,7 +7297,11 @@ Small, focused commits with a descriptive message ending in the
 ## Preferences (apps/preferences)
 
 One process, one small fixed-size window per panel, as BeOS had a
-preference app per area. `olo-preferences <panel>` opens or brings
+preference app per area, titled with its name; a panel named as an app
+("Rex", "Terminal", "Tracker", "Deskbar", "Phone", "Notifications") is
+titled "Rex Preferences" (`Panel::window_title`), as BeOS's Tracker
+Preferences was: two yellow tabs that said "Rex", the app's and its
+panel's, couldn't be told apart. `olo-preferences <panel>` opens or brings
 forward a panel (Deskbar's Preferences menu does this); with no argument a
 launcher lists them. The panel list Deskbar shows is
 `olo_xdg::apps::PREFERENCE_PANELS`; a unit test keeps it in step with
@@ -7338,8 +7359,17 @@ lint at a time).
   under it in `enabled_if(on, |ui| ui.indented(..))`: set in by a
   check box's mark and its gap, so it starts where the label does,
   and greyed together with it off, notes too (the check box's own
-  note comes first, at its edge, and stays live); what a panel keeps of
-  its own goes in `panel::State` and is changed through `ui.on_view`.
+  note comes first and stays live); what a panel keeps of its own goes
+  in `panel::State` and is changed through `ui.on_view`. A note under a
+  check box or a radio button starts where its label does, `TIGHT`
+  under it, and what follows that setting is `SETTING_GAP` (14 points)
+  under the note, nearer than a box is to the next, so each setting
+  reads as a whole and each box as a group (Opus's two looks at Rex's
+  settings, 2026-11-24: from the box's edge a note read as the box's,
+  and Terminal's pane had put 26 points between its settings by hand,
+  more than between its boxes, and Rex's 10). A check box or radio
+  button made by hand, for a job rather than a setting, goes in with
+  `ui.add_mark` so its note is set in the same way.
   A tall panel is two columns, side by side and each as wide as the
   other (`ui.columns(left, right)`, or `ui.collect` each side and
   `ui.add_columns` when both sides need the panel's state, as Sound's

@@ -46,6 +46,10 @@ pub struct Fields {
     setters: HashMap<SharedString, Set<String>>,
 }
 
+/// How far what follows a setting (a check box or a radio button and its
+/// note) is under the note (`add`).
+const SETTING_GAP: f32 = 14.0;
+
 pub struct Ui<'a, 'b, 'c> {
     pub cx: &'a mut Cx<'b, 'c, PanelView>,
     /// The settings as they are now.
@@ -62,11 +66,17 @@ pub struct Ui<'a, 'b, 'c> {
     /// Building a row (`row_gap`): its check boxes are a control's height,
     /// centred with the menus and fields beside them.
     in_row: bool,
+    /// The last thing added was a check box or a radio button, not in a
+    /// row: a note under it is set in to its label (`note`).
+    after_mark: bool,
+    /// The last thing added was a note under one: what comes next is
+    /// `SETTING_GAP` under it (`add`).
+    after_setting: bool,
 }
 
 impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
     pub fn new(cx: &'a mut Cx<'b, 'c, PanelView>, s: &'a Settings, fields: &'a mut Fields) -> Self {
-        Ui { cx, s, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new(), in_row: false }
+        Ui { cx, s, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new(), in_row: false, after_mark: false, after_setting: false }
     }
 
     /// Boxes whose settings aren't their defaults get a Reset.
@@ -91,7 +101,21 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
     }
 
     pub fn add(&mut self, element: impl IntoElement) {
-        self.items.push(element.into_element());
+        // (A check box and its note are one setting: what follows them is
+        // `SETTING_GAP` under the note, further than the note is from its
+        // check box (`TIGHT`) and nearer than one box is to the next,
+        // so each setting reads as a whole and a box as a group. Terminal's
+        // pane put 26 points there by hand, more than between its boxes,
+        // and Rex's had 10: Opus's two looks at Rex's settings,
+        // 2026-11-24. Nothing after the last in a box: its foot is its
+        // own.)
+        let element = element.into_element();
+        if std::mem::take(&mut self.after_setting) {
+            self.items.push(div().mt(px(SETTING_GAP - m::STACK)).child(element).into_element());
+        } else {
+            self.items.push(element);
+        }
+        self.after_mark = false;
     }
 
     pub fn enabled(&self) -> bool {
@@ -169,7 +193,12 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
     /// What `build` adds, for the caller to lay out.
     pub fn collect(&mut self, build: impl FnOnce(&mut Self)) -> Vec<Element> {
         let outer = std::mem::take(&mut self.items);
+        // (A note first in what's collected is under nothing of it, and
+        // nothing is spaced from what came before it.)
+        self.after_mark = false;
+        self.after_setting = false;
         build(self);
+        self.after_setting = false;
         std::mem::replace(&mut self.items, outer)
     }
 
@@ -267,11 +296,29 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
     /// can't be used it is as grey as the control's own words (it stood
     /// out under a greyed check box as the darkest thing in the group: a
     /// reviewer's eye, 2026-11-20).
+    /// A check box or a radio button made by hand (one that starts a job
+    /// rather than sets one of `Settings`): added as `check` adds its own,
+    /// so a note under it is set in to its label.
+    pub fn add_mark(&mut self, element: impl IntoElement) {
+        self.add(element);
+        self.after_mark = !self.in_row;
+    }
+
     pub fn note(&mut self, text: impl Into<SharedString>) {
-        // (The first in its box has no control to be close to.)
+        // (The first in its box has no control to be close to. Under its
+        // control `TIGHT`, the closest the rhythm puts two things: Opus's
+        // look asked for 4 points under a check box's label, nearer than
+        // the layout review lets anything stand to another.)
+        let under_mark = self.after_mark;
         let pull = if self.items.is_empty() { 0.0 } else { m::TIGHT - m::STACK };
+        // (Under a check box or a radio button, where its label begins, as
+        // what is set in under one is (`indented`): from the box's own
+        // edge it read as the box's, not the setting's. Opus's look at
+        // Rex's settings, 2026-11-24.)
+        let set_in = if under_mark { m::MARK_SIZE + m::MARK_GAP } else { 0.0 };
         let words = if self.enabled { StringView::new(text).dim(true) } else { StringView::new(text).color(olo_kit::style::disabled_text(&olo_kit::theme::palette())) };
-        self.add(div().mt(px(pull)).child(words.wrap(true)));
+        self.add(div().mt(px(pull)).pl(px(set_in)).child(words.wrap(true)));
+        self.after_setting = under_mark;
     }
 
     pub fn check(&mut self, label: impl Into<SharedString>, on: bool, set: impl Fn(&mut Settings, bool) + 'static) {
@@ -288,6 +335,7 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
             c = c.height(m::CONTROL_HEIGHT);
         }
         self.add(c);
+        self.after_mark = !self.in_row;
     }
 
     pub fn radio(&mut self, label: impl Into<SharedString>, selected: bool, set: impl Fn(&mut Settings) + 'static) {
@@ -298,6 +346,7 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
         }
         let r = RadioButton::new(label, selected).enabled(self.enabled).on_select(self.edit_click(move |s| set(s)));
         self.add(r);
+        self.after_mark = !self.in_row;
     }
 
     /// A slider; `with` sets its label, text and limits.

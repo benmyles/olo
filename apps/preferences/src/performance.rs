@@ -706,7 +706,7 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
             };
             let (shared, proxy, setting) = (shared.clone(), olo_kit::proxy(), b.setting);
             let enabled = !busy && !b.locked;
-            ui.add(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(enabled).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
+            ui.add_mark(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(enabled).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
             // (Under the label, past the mark.)
             let rows: Vec<(SharedString, SharedString)> = b.facts.into_iter().map(|(l, v)| (SharedString::from(l), SharedString::from(v))).collect();
             let about = StringView::new(b.about).dim(true).wrap(true);

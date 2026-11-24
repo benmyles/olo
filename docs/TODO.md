@@ -24,55 +24,75 @@ something nobody here has is in "Blocked", with what it waits for.
   Astra's look at that change's pictures (`/var/tmp/claude-olo/aa/
   review2`, to be taken again then): Opus 5.5's two rounds alone were
   had.
-- **From the look at Rex's Quick Look** (Opus 5.5, 2026-11-24), not
-  Rex's to fix: Viewer opens at the window server's stagger, its tab over
-  the window it was opened from ("centre the Viewer window over Rex's
-  terminal pane … never put another window's tab over a menu bar"), and
-  at a size far larger than a small picture; its title doesn't say a
-  copy came from a host ("quick-look-me.png — far"); the kit's level
-  bar's well, in light, is a white field with a rule along its top only
-  ("draw it like every other well on the desktop").
-- **Pre-existing, from the look at About's Software Update** (Opus 5.5,
-  2026-11-24): an alert's question and its explanation are one size
-  ("make the question bold … and cut the gap below it to 8 pt"); an
-  alert opens over its window's top, its tab over About's wordmark
-  ("move the alert down until its tab clears the header"); dimmed
-  buttons in dark lose their frame ("keep the dimmed button's 1 px
-  frame … so a dimmed button still reads as a button"); a build from
-  source could name its commit under the wordmark. And the helpers'
-  tool: an approval prompt folds a long command ("⋯ 28 lines hidden")
-  and nothing shows the rest, so a minder can't judge it (the
-  translators were told to write scripts to files instead).
-- **Pre-existing, from the looks at Rex's Activity and Auto Approve**
-  (Opus 5.5, 2026-11-24): the kit's context menus open at the pointer
-  over the tab they belong to ("open the menu with its top edge 2 pt
-  below the tab's bottom edge"); the segmented control's count is the
-  look's notice blue even where it counts what waits ("make the badge
-  the waiting orange"); a list's selection keeps its full colour when
-  the list doesn't have the keyboard, Rex's Sessions and Activity alike
-  ("use the inactive-selection role"); dark text at 1× "looks heavier
-  and softer than light at 1x" (to measure at true size first); the
-  kit's menus' shortcut column ends at different insets ("⌘J" 23 pt,
-  "⌥⌘W" 15 pt). And in Rex: a split's panes are given the window's whole
-  width to share, the sidebar's in it (`render_layout_node`'s
-  `avail_w`), so a pane head's buttons decide by more width than the
-  pane has; Activity's done and failed states, a far host's rows and a
-  row under the pointer not yet pictured.
-- **From the look at Rex's settings pass** (Opus 5.5, 2026-11-24), there
-  before it: Preferences' notes under a check box start at the box's
-  own edge, not its label's, and wrap at their own measure rather than
-  the buttons' right edge (the form's way in every pane: "indent them
-  18 pt … so they line up with the label text"; Terminal's pane keeps
-  26 points between a note and the next check box, Rex's now 10); on
-  Rex's Hosts tab the caution under the ticks is set two rows below
-  them ("put it directly under 'Read and set the clipboard', 4 pt
-  below, indented to the label") and the ticks are 30 points apart
-  against General's 24; the menus' shortcuts end at a different right
-  edge in each menu ("24 px (Pane), about 27 px (Rex), 31 px (View) and
-  37 px (Agents)"); a Preferences pane's window is titled as the app
-  is ("Rex" beside Rex's own window: "the two yellow tabs can't be told
-  apart"); Rex's status bar marks at its right end are low in contrast
-  and unlabelled.
+- **Alerts in BeOS's modal look, with no tab; and set over their window
+  on a seam of it** (Opus 5.5's looks at About's Software Update,
+  2026-11-24). An alert opens a quarter of the way down its window less a
+  third of its height (Haiku's BAlert), so over a short window its tab is
+  on the window's head ("move the alert down until its tab clears the
+  header"); put a quarter of the way down instead, "the alert's frame top
+  [fell] onto the 'Machine:' row … A row of half-cut glyphs next to a tab
+  looks broken", and its edges ran 12 points inside the box's ("three
+  nested frames with 12 pt gutters"), so it went back. "Haiku's modal
+  alerts have none [no tab] … the same words appear twice, and the tab is
+  what lands on the parent's content. Consider the tabless modal look"
+  (BeOS's B_MODAL_WINDOW_LOOK). app_server assumes every window has its
+  tab in some 44 places (`deco::content_offset`, `extra_size`, tab
+  dragging, tiling). Then Opus's placing: "the kit (which knows the
+  parent's views) should move the alert so its frame top lands on the top
+  edge of the parent view it falls in, if that edge is within 32 pt", and
+  widened to overhang a box it would run alongside by 8 points (the kit
+  has the window's nodes, `agent_nodes`, and a tag can carry the place to
+  app_server, as `under-pointer` does). And the nit: "the margin above the
+  question is 20 pt but the margin below the buttons is 15 pt. Make both
+  16 pt".
+- **Left of the reviews' findings on the kit and Rex** (Opus 5.5,
+  2026-11-24). Done 2026-11-24: an alert's question in bold, its
+  explanation 8 points under it (`alert::message`); dimmed buttons keep
+  their frame in a dark look; a level bar in the sunken well; a list's
+  selection without the keyboard by look (`style::selection_ground`,
+  `selection_text`), Rex's sidebar's too; Activity's count in the asking
+  orange, its numeral dark; Rex's split panes share what the sidebar
+  leaves; Preferences' notes under a check box at its label and 14
+  points to the next setting; a pane named as an app titled "Rex
+  Preferences". Kept, as they are: a context menu opens at the pointer
+  (the desktop's way, and BeOS's pop-ups'); the menus' keys column
+  ("⌘J" 23 pt, "⌥⌘W" 15 pt from the edge: the keys' left edges and the
+  modifiers in a column, as macOS's, where right-aligned strings put the
+  modifiers five points apart, HACKING); Rex's Hosts tab's caution apart
+  from the last tick (both reviews of 2026-11-23 asked for it apart: close
+  under the last row, "it read as that row's own"). Left:
+  - Viewer, opened by Rex's Quick Look: "centre the Viewer window over
+    Rex's terminal pane … never put another window's tab over a menu
+    bar", at a size far larger than a small picture, and its title not
+    saying the copy came from a host ("quick-look-me.png — far"): a place
+    asked of app_server across programs (a tag, as above).
+  - About: a build from source could name its commit under the wordmark;
+    its info box "is loose: 34 pt pitch for 13 pt rows, against 24–28 pt
+    in the Software Update group just below. Use 22 pt".
+  - The helpers' tool: an approval prompt folds a long command ("⋯ 28
+    lines hidden"); agy's own line under it says "ctrl+g edit/expand
+    command", which the tool could use to read it whole (the rule now
+    asks agents to put a script of more than a line in a file).
+  - Rex: dark text at 1× "looks heavier and softer than light at 1x" (to
+    measure at true size first); its status bar's marks at its right end
+    "low in contrast and unlabelled" (they have tips and names for
+    agents: to picture on a far host and measure); the Hosts tab's ticks
+    30 points apart against General's 24; Activity's done and failed
+    states, a far host's rows and a row under the pointer not pictured;
+    "Rex's Sessions/Activity switch looks inverted: the chosen segment is
+    raised and light, and the other looks pressed in and grey. In this
+    desktop, pressed means 'on'"; "Rex's 'claude' row has four signal
+    colours: an orange icon badge, a blue ▶, a green ✓ and orange
+    'Waiting' … Show at most one state glyph beside the status word".
+  - Preferences: a note's distance under its control differs by pane
+    ("Power (radio buttons) 17 pt … Rex, Terminal, Security 24 pt … Date
+    & Time ≈26.7 pt. One structure, three rhythms"); Opus would have it 4
+    points under the label's line, nearer than the layout review lets two
+    things stand (`TIGHT`), so it stays `TIGHT` under the control.
+  - A well's light lines are white on a white field, so a level bar
+    "reads as ruled on top and left … only bolder" (as a text field does):
+    "make the outer bottom/right line one step darker than the ground
+    (#c9d0da) for wells only".
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

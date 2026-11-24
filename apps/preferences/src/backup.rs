@@ -1737,7 +1737,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     }
                     cx.notify();
                 });
-                ui.add(CheckBox::new("Include passwords and sign-ins, sealed with a password", sealed).enabled(idle).on_toggle(toggle));
+                ui.add_mark(CheckBox::new("Include passwords and sign-ins, sealed with a password", sealed).enabled(idle).on_toggle(toggle));
                 ui.enabled_if(idle && sealed, |ui| {
                     ui.add(TextControl::new(ui.cx, &st.password).label("Password:").divider(divider));
                     ui.add(TextControl::new(ui.cx, &st.again).label("Again:").divider(divider));

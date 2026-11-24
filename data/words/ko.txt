@@ -15067,6 +15067,9 @@ other: {n}주
 {} MB
 {} MB
 
+{} Preferences
+{} 환경설정
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} {}에 백업한 버전으로 교체할까요, 아니면 둘 다 보관할까요? 둘 다 보관하면 복원한 파일 이름에 시각을 붙입니다.
 

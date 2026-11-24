@@ -15067,6 +15067,9 @@ other: {n} 週
 {} MB
 {} MB
 
+{} Preferences
+{} 偏好設定
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} 用 {} 備份的版本替換，還是兩者都保留？兩者都保留時，會在還原的檔名中加上時間。
 

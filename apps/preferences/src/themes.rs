@@ -318,7 +318,7 @@ fn colors(ui: &mut Ui, st: &mut State, a: &Appearance, t: &'static Theme) {
                 }
                 cx.notify();
             });
-            ui.add(RadioButton::new(name, m == mode).id(format!("colors-in-{}", name.to_lowercase())).on_select(pick));
+            ui.add_mark(RadioButton::new(name, m == mode).id(format!("colors-in-{}", name.to_lowercase())).on_select(pick));
         }
         if mode != a.effective_theme {
             ui.add(

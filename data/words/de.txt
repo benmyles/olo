@@ -15178,6 +15178,9 @@ other: {n} Wochen
 {} MB
 {} MB
 
+{} Preferences
+{}-Einstellungen
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Durch die {} gesicherte Version ersetzen oder beide behalten (die wiederhergestellte mit ihrer Zeit benannt)?
 

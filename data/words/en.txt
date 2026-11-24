@@ -5020,6 +5020,7 @@ your own picture
 {} Choose a workspace's own from Deskbar's tray.
 {} Hz, {} ms a frame
 {} MB
+{} Preferences
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} Type your password.
 {} Wh of {} Wh new ({}%)

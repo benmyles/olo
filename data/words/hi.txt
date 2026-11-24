@@ -15178,6 +15178,9 @@ other: {n} हफ़्ते
 {} MB
 {} MB
 
+{} Preferences
+{} वरीयताएँ
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} इसे {} के बैकअप वाले संस्करण से बदलें या दोनों रखें? दोनों रखने पर बहाल प्रति के नाम में समय जुड़ेगा।
 

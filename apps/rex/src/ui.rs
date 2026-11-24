@@ -995,7 +995,7 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None });
+        let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None, width: None });
 
         // (The demo's other windows, opened as it starts, for the live
         // lint and for pictures: `OLO_REX_DEMO_OPEN=app.hosts`, the
@@ -2895,6 +2895,13 @@ impl RexWindow {
                     cx.invalidate();
                 });
             }
+            let width = Some((total_w - side_w).max(200.0));
+            if child.read(cx).width != width {
+                child.update(cx, |pv, cx| {
+                    pv.width = width;
+                    cx.invalidate();
+                });
+            }
             div().flex_1().min_w_0().min_h_0().size_full().child(child)
         } else {
             // (The app's own state before the hub's, never inside it:
@@ -3255,7 +3262,7 @@ impl RexWindow {
         // control looks weird".)
         let segments = widgets::SegmentedControl::new(
             "rex-side",
-            [widgets::Segment::new("Sessions").mark(widgets::Mark::Terminal), widgets::Segment::new("Activity").mark(widgets::Mark::Pulse).count(blocked_n)],
+            [widgets::Segment::new("Sessions").mark(widgets::Mark::Terminal), widgets::Segment::new("Activity").mark(widgets::Mark::Pulse).waiting(blocked_n)],
             if mode == SidebarMode::Activity { 1 } else { 0 },
         )
         .width(((width - 2.0 * m::SPACING) / 2.0).floor() * 2.0)
@@ -3321,7 +3328,7 @@ impl RexWindow {
                     // that can't be chosen, and choosing it is the way
                     // to Reconnect. Its grey dot says the rest.)
                     let ink = if selected {
-                        style::c(p.list_selected_item_text)
+                        style::c(style::selection_text(&p, p.panel_text, false))
                     } else if connected {
                         style::c(p.panel_text)
                     } else {
@@ -3351,7 +3358,8 @@ impl RexWindow {
                 });
                 let mut row = div().w_full().h(px(m::LABEL_ROW + m::TIGHT)).flex_shrink_0().flex().flex_row().items_center().gap(px(m::TIGHT));
                 if selected {
-                    row = row.bg(style::c(theme::palette().list_selected_background));
+                    let p = theme::palette();
+                    row = row.bg(style::c(style::selection_ground(&p, p.panel_background, false)));
                 }
                 let new_session = cx.msg(WinMsg::CreateSession(hk_new, None));
                 row = row.child(row_label).child(GlyphButton::new("New Session", Glyph::Plus).id(format!("rex-new-session-{hk}")).enabled(connected).on_click(move |_, cx| new_session(&(), cx)));
@@ -4632,6 +4640,12 @@ impl TextInput for RexWindow {
 pub struct PanesView {
     win_id: WinId,
     session: Option<(String, String)>,
+    /// The width it is given: the window's less the sidebar's beside it
+    /// (none yet: the window's). A split shares it among its panes, and a
+    /// pane's head decides its buttons by its share. (The window's whole
+    /// width was shared, the sidebar's in it, and a head kept buttons it
+    /// had no room for: Opus's look at Activity, 2026-11-24.)
+    width: Option<f32>,
 }
 
 impl View for PanesView {
@@ -4663,7 +4677,7 @@ impl View for PanesView {
 
         let mut layer_stack = div().relative().size_full();
 
-        let vp_w = f32::from(cx.viewport_size().width).max(200.0);
+        let vp_w = self.width.unwrap_or_else(|| f32::from(cx.viewport_size().width)).max(200.0);
         if let Some(zoom_id) = &win_view.zoomed_block_id {
             let bk = BlockKey { host_key: host_key.clone(), session_id: sess.session_id.clone(), block_id: zoom_id.clone() };
             layer_stack = layer_stack.child(render_single_pane(bk, &host_label, is_local, true, true, true, vp_w, &settings, &active_theme, &metrics, pad, win_id, cx));
@@ -5674,10 +5688,13 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, help: c
     let b_paint = badge.clone();
     canvas(move |g, b| {
         let p = theme::palette();
+        // (The keyboard is the pane's, never the sidebar's: a list's
+        // selection without it, as the kit's lists and sidebar draw one.
+        // Opus's look at Activity.)
         if selected {
-            style::fill_rect(g, b, style::c(p.list_selected_background));
+            style::fill_rect(g, b, style::c(style::selection_ground(&p, p.panel_background, false)));
         }
-        let ink = style::c(if selected { p.list_selected_item_text } else { p.panel_text });
+        let ink = style::c(if selected { style::selection_text(&p, p.panel_text, false) } else { p.panel_text });
         // Indent sessions 15 pt under host header so icon left aligns to exact pixel with host title (x=27).
         let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
         // (The icon at the size it is drawn for, as a list's small icons
@@ -5785,11 +5802,14 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(),
         // A list's row, as Sessions' are: the one this window shows
         // selected (Ben, 2026-11-24: "rex activity doesn't have a selected
         // state like i'd expect"). Each was a raised card, none chosen.
-        let ground = if selected { style::c(p.list_selected_background) } else { style::c(p.panel_background) };
+        let ground = if selected { style::c(style::selection_ground(&p, p.panel_background, false)) } else { style::c(p.panel_background) };
         if selected {
             style::fill_rect(g, b, ground);
         }
-        let (ink, quiet) = if selected { (style::c(p.list_selected_item_text), style::c(p.list_selected_item_text)) } else { (style::c(p.panel_text), style::secondary_text(&p)) };
+        // (The row's own colours on its selection, which never has the
+        // keyboard: "Waiting" orange on the row the person is looking at.
+        // White and bold there, it lost its colour: Opus's look.)
+        let (ink, quiet) = (style::c(p.panel_text), style::secondary_text(&p));
         // Its icon with what its agent is doing (at rest too, while its
         // program runs); Auto Approve and Keep It Going at the row's right
         // end, where there is room, not on the icon (Opus's review: three
@@ -5815,9 +5835,9 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, on_click: impl Fn(&(),
         // mixed toward the text's to read on the row.
         let mut sub_right = b.right() - px(m::TIGHT);
         if let Some((word, urgent)) = state {
-            let color = match (selected, urgent) {
-                (true, _) | (false, None) => quiet,
-                (false, Some(tone)) => style::c(olo_theme::mix(tone, p.panel_text, 0.3)),
+            let color = match urgent {
+                None => quiet,
+                Some(tone) => style::c(olo_theme::mix(tone, p.panel_text, 0.3)),
             };
             let weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
             let at = style::label(g, sub_right, b.top() + px(28.0), style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(weight), color);

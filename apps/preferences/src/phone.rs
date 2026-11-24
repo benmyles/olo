@@ -571,20 +571,20 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     Notify::Messages => "Messages: each as it comes, answered in place",
                     Notify::Nothing => "Nothing",
                 };
-                ui.add(RadioButton::new(detail, settings.notify == choice).on_select(move |_, _| {
+                ui.add_mark(RadioButton::new(detail, settings.notify == choice).on_select(move |_, _| {
                     let mut s = link.shared.lock().unwrap().settings.clone();
                     s.notify = choice;
                     link.shared.lock().unwrap().settings = s.clone();
                     let _ = link.tx.send(Job::Save(s));
                 }));
             }
-            ui.add(CheckBox::new("Show what a message says", settings.show_text).enabled(settings.notify == Notify::Messages).on_toggle(save(|s, on| s.show_text = on)));
+            ui.add_mark(CheckBox::new("Show what a message says", settings.show_text).enabled(settings.notify == Notify::Messages).on_toggle(save(|s, on| s.show_text = on)));
             // (An iPhone's, of every app, calls among them: its Show
             // Notifications switch for this computer allows them.)
-            ui.add(CheckBox::new("Show the phone’s other notifications", settings.others).on_toggle(save(|s, on| s.others = on)));
+            ui.add_mark(CheckBox::new("Show the phone’s other notifications", settings.others).on_toggle(save(|s, on| s.others = on)));
             // (Answered or made here, a call's sound is here: the
             // hands-free profile, for that call alone.)
-            ui.add(CheckBox::new("Take calls on this computer", settings.calls).on_toggle(save(|s, on| s.calls = on)));
+            ui.add_mark(CheckBox::new("Take calls on this computer", settings.calls).on_toggle(save(|s, on| s.calls = on)));
         });
         ui.add(BBox::new("Notifications").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
     });
@@ -634,11 +634,11 @@ pub fn codes(ui: &mut Ui) {
     let items = ui.collect(|ui| {
         ui.label("Look for codes in:");
         if phone {
-            ui.add(CheckBox::new(olo_kit::tr!("Text messages to “{}”", state.name), settings.codes).on_toggle(toggle(|s, on| s.codes = on)));
+            ui.add_mark(CheckBox::new(olo_kit::tr!("Text messages to “{}”", state.name), settings.codes).on_toggle(toggle(|s, on| s.codes = on)));
         }
         for account in &mail {
             let address = account.address.clone();
-            ui.add(CheckBox::new(olo_kit::tr!("Mail to {} ({})", account.address, account.provider.name()), watched(account)).on_toggle(move |on: &bool, _: &mut WindowCx| {
+            ui.add_mark(CheckBox::new(olo_kit::tr!("Mail to {} ({})", account.address, account.provider.name()), watched(account)).on_toggle(move |on: &bool, _: &mut WindowCx| {
                 let mut s = link.shared.lock().unwrap().settings.clone();
                 s.unwatched_mail.retain(|a| *a != address);
                 if !*on {
@@ -654,7 +654,7 @@ pub fn codes(ui: &mut Ui) {
             (true, false) => ui.note("Mail is read only while a page waits for a code, for up to a minute."),
         }
         ui.enabled_if(any, |ui| {
-            ui.add(CheckBox::new("Offer a code in the browser tab waiting for it", settings.codes_in_browser).enabled(ui.enabled()).on_toggle(toggle(|s, on| s.codes_in_browser = on)));
+            ui.add_mark(CheckBox::new("Offer a code in the browser tab waiting for it", settings.codes_in_browser).enabled(ui.enabled()).on_toggle(toggle(|s, on| s.codes_in_browser = on)));
             let names: Vec<SharedString> = AgentCodes::ALL.iter().map(|a| SharedString::from(a.label())).collect();
             let at = AgentCodes::ALL.iter().position(|a| *a == settings.agent_screens).unwrap_or(0);
             ui.add(MenuField::new("phone-agent-codes", names, at).label("In an agent’s tab:").enabled(ui.enabled() && settings.codes_in_browser).on_change(move |i, _| {
@@ -667,7 +667,7 @@ pub fn codes(ui: &mut Ui) {
                 AgentCodes::Ask => "You’re asked each time a tab on an Agent Screen is the one waiting.",
                 AgentCodes::Never => "Tabs on Agent Screens are never given a code.",
             });
-            ui.add(CheckBox::new("Copy a code no tab is waiting for", settings.copy_codes).enabled(ui.enabled()).on_toggle(toggle(|s, on| s.copy_codes = on)));
+            ui.add_mark(CheckBox::new("Copy a code no tab is waiting for", settings.copy_codes).enabled(ui.enabled()).on_toggle(toggle(|s, on| s.copy_codes = on)));
         });
     });
     ui.add(BBox::new("One-Time Codes").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));

@@ -96,11 +96,13 @@ pub struct Segment {
     mark: Option<Mark>,
     /// How many wait in it, if it is one that counts.
     count: Option<usize>,
+    /// What it counts waits for an answer ([`Segment::waiting`]).
+    waiting: bool,
 }
 
 impl Segment {
     pub fn new(name: impl Into<SharedString>) -> Segment {
-        Segment { name: crate::words::of(name), mark: None, count: None }
+        Segment { name: crate::words::of(name), mark: None, count: None, waiting: false }
     }
 
     /// A mark before its name. Marks show where every segment has room
@@ -118,6 +120,16 @@ impl Segment {
     /// when the first one comes.
     pub fn count(mut self, n: usize) -> Self {
         self.count = Some(n);
+        self
+    }
+
+    /// As [`Segment::count`], of what waits for the person's answer (agents
+    /// asking): the disc in the orange an agent asking is marked with
+    /// (`agent_marks`), so the count reads as the marks in its list do,
+    /// not as a notification's blue. Opus's look at Rex's Activity.
+    pub fn waiting(mut self, n: usize) -> Self {
+        self.count = Some(n);
+        self.waiting = true;
         self
     }
 
@@ -491,7 +503,11 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
             // name is in, its numerals the trough's ground showing
             // through.
             let (h, size) = sz.count;
-            let (ground, numerals) = if enabled { (style::c(p.notice), style::ink_on(p.notice)) } else { (ink, style::shade(&p, p.panel_background, 1.1)) };
+            let tone = if seg.waiting { p.hue(olo_theme::Hue::Orange) } else { p.notice };
+            // (On the asking orange, numerals of a warm near-black: white
+            // was about 2.6 to 1 there, and smeared at 1×. Opus's look.)
+            let ink_on = |tone| if seg.waiting { style::c([0x2b, 0x16, 0x00, 0xff]) } else { style::ink_on(tone) };
+            let (ground, numerals) = if enabled { (style::c(tone), ink_on(tone)) } else { (ink, style::shade(&p, p.panel_background, 1.1)) };
             let middle = point(x + px(name_width + GAP + disc / 2.0), baseline - px(sz.font * style::CAP_HEIGHT / 2.0));
             let disc_at = style::snap_centred(g, middle, disc, h);
             g.paint_quad(fill(disc_at, ground).corner_radii(disc_at.size.height / 2.0));

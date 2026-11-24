@@ -878,6 +878,11 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Open a window that names a parent (an alert, a dialog) over it, as
     /// Haiku's BAlert does: centred across, a quarter of the way down.
+    /// (Over a short window its tab is on the window's head, About's
+    /// wordmark; its tab put a quarter of the way down instead, its top
+    /// cut a line of the window's text through, half of it showing beside
+    /// the tab: both of Opus's looks, 2026-11-24. BeOS's alerts have no
+    /// tab, B_MODAL_WINDOW_LOOK: in the TODO.)
     pub fn place_over_parent(&mut self, surface: &WlSurface) {
         let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else {
             return;

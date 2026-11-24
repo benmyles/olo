@@ -217,6 +217,44 @@ pub fn paragraph(text: impl Into<SharedString>) -> Element {
     div().relative().w_full().line_height(olo_interface::relative(style::LINE_HEIGHT)).child(crate::words::of(text))
 }
 
+/// How far an alert's explanation is under its question ([`message`]).
+const QUESTION_GAP: f32 = 8.0;
+
+/// An alert's message: where it is a question and what it means, a blank
+/// line between ("Restart the Window Server?\n\nThe screen goes blank
+/// …"), the question in bold and the rest under it, [`QUESTION_GAP`]
+/// apart, as a person reads the question first; otherwise a
+/// [`paragraph`]. (Both at one size, the question read as the first line
+/// of a paragraph: Opus's look at About's Software Update. Only the
+/// alert's: a paragraph's text elsewhere, an answer in the palette, has
+/// paragraphs of its own.)
+pub fn message(text: impl Into<SharedString>) -> Element {
+    let text: SharedString = crate::words::of(text);
+    match text.split_once("\n\n") {
+        Some((question, rest)) => div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .child(div().relative().w_full().line_height(olo_interface::relative(style::LINE_HEIGHT)).font_weight(FontWeight::BOLD).child(question.to_owned()))
+            .child(div().h(px(QUESTION_GAP)).flex_shrink_0())
+            .child(paragraph(rest.to_owned()))
+            .into_element(),
+        None => paragraph(text),
+    }
+}
+
+/// The height of [`message`] wrapped to `width`.
+pub fn message_height(text: &str, width: f32) -> f32 {
+    match text.split_once("\n\n") {
+        Some((question, rest)) => {
+            let mut wrapper = olo_interface::text_system().line_wrapper(style::ui_font(FontWeight::BOLD), px(style::PLAIN_SIZE));
+            let lines: usize = question.split('\n').map(|line| 1 + wrapper.wrap_line(&[olo_interface::LineFragment::text(line)], px(width)).count()).sum();
+            (lines as f32 * style::PLAIN_SIZE * style::LINE_HEIGHT).ceil() + QUESTION_GAP + paragraph_height(rest, width)
+        }
+        None => paragraph_height(text, width),
+    }
+}
+
 /// The height of `text` wrapped to `width` in the plain font, for sizing
 /// a window before it opens.
 pub fn paragraph_height(text: &str, width: f32) -> f32 {
@@ -237,7 +275,7 @@ pub fn alert_width(buttons: &[&str]) -> f32 {
 
 /// How tall an alert of `width` with `message` must be.
 pub fn alert_height(message: &str, width: f32) -> f32 {
-    let text = paragraph_height(message, width - ALERT_TEXT_X - m::WINDOW_INSET);
+    let text = message_height(message, width - ALERT_TEXT_X - m::WINDOW_INSET);
     (m::WINDOW_INSET + text.max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
 }
 
@@ -380,7 +418,7 @@ impl View for Alert {
                     cx.stop_propagation();
                 }
             }))
-            .child(AlertFrame::new(self.icon.clone()).child(paragraph(self.message.clone())).children(countdown).child(div().flex_1()).child(row))
+            .child(AlertFrame::new(self.icon.clone()).child(message(self.message.clone())).children(countdown).child(div().flex_1()).child(row))
     }
 }
 

@@ -15178,6 +15178,9 @@ other: {n} semanas
 {} MB
 {} MB
 
+{} Preferences
+Preferencias de {}
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} ¿Sustituirlo por la versión copiada {} o conservar ambas (la restaurada con su hora en el nombre)?
 
