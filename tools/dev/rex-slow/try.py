@@ -418,6 +418,17 @@ elif what == "poolrex":
             r.invoke("host.manage")
             first = r.wait(lambda: (lambda l: l if l and "Not installed" in l else None)(line()), 25)
             check("the Host window, no pool there", first, first or line())
+            # From the Token Pool itself, as its own Hosts window does it: Rex's window, open and asked nothing,
+            # follows (it holds one question open with the pool, answered when a host's standing changes).
+            def pool_does(what):
+                req = urllib.request.Request(f"http://127.0.0.1:27991/pool/hosts/far/{what}", data=b"", method="POST")
+                return urllib.request.urlopen(req, timeout=5).status
+            pool_does("install")
+            got = r.wait(lambda: (lambda l: l if l and l.startswith("Installed") and "up to date" in l else None)(line()), 60, every=0.5)
+            check("installed from the Token Pool, and Rex's window followed by itself", got, got or line())
+            pool_does("remove")
+            gone = r.wait(lambda: (lambda l: l if l and "Not installed" in l else None)(line()), 60, every=0.5)
+            check("removed from the Token Pool, and Rex's window followed", gone, gone or line())
             r.invoke("host.put:far:pool")
             got = r.wait(lambda: (lambda l: l if l and l.startswith("Installed") else None)(line()), 60, every=0.5)
             check("installed from Rex's window", got and "up to date" in got, got or line())

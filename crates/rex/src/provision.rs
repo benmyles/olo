@@ -515,6 +515,13 @@ impl std::fmt::Display for Failed {
 /// root. Each line a command writes goes to `said` as it comes.
 pub trait Runner {
     fn run(&mut self, root: bool, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> impl std::future::Future<Output = Result<Ran, Failed>> + Send;
+
+    /// Root's connection is let go of: what is run next signs in
+    /// anew. For looking at what only a new sign-in is given (its
+    /// limits: a connection keeps the ones it began with).
+    fn afresh(&mut self) -> impl std::future::Future<Output = ()> + Send {
+        async {}
+    }
 }
 
 /// Commands run over SSH: as the account of `target`, and as root on the
@@ -534,6 +541,10 @@ impl Runner for OverSsh {
             crate::error::RexError::SshRefused(who) => Failed { refused: true, why: format!("{who} let nobody in with the keys offered") },
             other => Failed { refused: false, why: other.to_string() },
         })
+    }
+
+    async fn afresh(&mut self) {
+        self.pool.close(&self.target.as_root(self.root_key.clone())).await;
     }
 }
 

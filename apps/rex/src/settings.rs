@@ -103,6 +103,10 @@ impl HostBridgePolicy {
             (self.allow_localhost_autoforward, "local servers"),
             (self.allow_agent_screens, "Agent Screens"),
             (self.allow_passwords_op, "Passwords"),
+            // (Its keys, where the host has been given them: with them
+            // unsaid, nothing in Rex showed whether a host had them when
+            // git there was refused.)
+            (self.allow_ssh_agent, "SSH keys"),
             (self.allow_remote_control, "clipboard"),
         ]
         .into_iter()

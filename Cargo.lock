@@ -8302,6 +8302,8 @@ dependencies = [
  "olo-theme",
  "olo-xdg",
  "p256",
+ "p384",
+ "p521",
  "qrcode",
  "rqrr",
  "rsa",

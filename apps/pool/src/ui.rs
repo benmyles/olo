@@ -167,7 +167,10 @@ impl Hub {
     /// Opens the Hosts window (or brings it to the front).
     pub fn open_hosts(&mut self) {
         let (shared, hosts) = (self.shared.clone(), self.hosts.clone());
-        let options = WindowOptions::new("Hosts", 560.0, 420.0).min_size(460.0, 260.0);
+        // (A panel beside what it is about, never a tile of its own: tiled, its one row
+        // sat at the head of a whole screen. Ben, 2026-11-23: "token pool hosts should
+        // be a floating window".)
+        let options = WindowOptions::new("Hosts", 560.0, 420.0).min_size(460.0, 260.0).floating();
         olo_kit::open_or_raise(&mut self.hosts_win, options, move |cx| HostsWindow::new(shared, hosts, cx));
         self.open.hosts.store(true, Ordering::Relaxed);
     }

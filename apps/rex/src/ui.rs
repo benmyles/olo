@@ -328,6 +328,10 @@ fn open_host(hub: &Arc<RexHub>, key: &str) {
     // (How its Token Pool stands is this computer's Token Pool's to
     // say: asked as the window opens. And its account, of the host.)
     hub.ask_pools();
+    // (And followed while the window is open: a pool installed or
+    // synced from the Token Pool's own window shows here as it
+    // happens.)
+    hub.watch_pools(|| crate::host::current().is_some());
     hub.ask_account(key, host_changed);
 }
 

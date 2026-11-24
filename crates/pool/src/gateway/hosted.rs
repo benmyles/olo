@@ -130,6 +130,17 @@ impl Shared {
         self.hosting.lock().unwrap().clone()
     }
 
+    /// How the hosts' pools stand has changed (`hosts::Hosts` says so
+    /// at each change): whoever waits on `/pool/hosts?after=` is
+    /// answered.
+    pub fn hosts_changed(&self) {
+        self.hosts_seen.send_modify(|stamp| *stamp += 1);
+    }
+
+    pub fn hosts_seen(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.hosts_seen.subscribe()
+    }
+
     /// `told` is called (from any thread) whenever the accounts or
     /// their sign-ins change here.
     pub fn on_accounts(&self, told: impl Fn() + Send + Sync + 'static) {

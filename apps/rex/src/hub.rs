@@ -2948,6 +2948,42 @@ impl RexHub {
         });
     }
 
+    /// Follows this computer's Token Pool while `keep` says so (a Host
+    /// window is open): one question held open by the pool until its
+    /// hosts stand otherwise (`pool::hosts_after`), asked again as it
+    /// is answered. Nothing is asked while nothing changes. One at a
+    /// time; it ends when the pool can't be asked (not running, or one
+    /// from before it could hold a question), and is begun again as a
+    /// Host window opens.
+    pub fn watch_pools(&self, keep: impl Fn() -> bool + Send + Sync + 'static) {
+        static WATCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if WATCHING.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            return;
+        }
+        let inner = self.inner.clone();
+        self.rt.spawn(async move {
+            let mut after = u64::MAX;
+            while keep() {
+                let Ok(Ok((pools, stamp))) = tokio::task::spawn_blocking(move || crate::pool::hosts_after(after)).await else { break };
+                let pools = Some(pools);
+                let changed = {
+                    let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let changed = st.pools != pools;
+                    st.pools = pools;
+                    changed
+                };
+                if changed {
+                    (inner.notify)(HubNotice::StateChanged);
+                }
+                match stamp {
+                    Some(stamp) => after = stamp,
+                    None => break,
+                }
+            }
+            WATCHING.store(false, std::sync::atomic::Ordering::Release);
+        });
+    }
+
     pub fn check_host(&self, host_key: &str, done: impl FnOnce() + Send + 'static) {
         let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {

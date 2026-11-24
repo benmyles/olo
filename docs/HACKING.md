@@ -25273,6 +25273,20 @@ command" (`PasswordsSecurity::op_cli`, on by default) at startup and on
 each change, skipping `target/` builds; Passwords refuses `op` while it
 is off.
 
+*Every key, in every form.* `agent::private_key` reads a key as
+OpenSSH writes it, as PKCS#8, and in the classic PEM forms (PKCS#1,
+"RSA PRIVATE KEY"; SEC1, "EC PRIVATE KEY"), for RSA, Ed25519 and the
+three NIST curves. (The classic forms, and P-384 and P-521 in PKCS#8,
+were "not a private key Passwords can read", and a key that couldn't
+be read was left out of what the agent offers without a word: of
+three SSH keys in a person's Passwords one was offered, here and on
+their host. Ben, 2026-11-23: "there are 3 keys in passwords it should
+be offering them". An `id_rsa` kept from before OpenSSH's own format
+is one.) A key that can't be offered (one under a passphrase) is
+logged by its item's name with why. Tests: the curves' older forms
+from fixed numbers; and `OLO_KEYS_PROBE`, a folder of ssh-keygen's
+keys of every kind in the three forms (21 of 21).
+
 Passwords is the session's SSH agent (`agent.rs`; Preferences ▸ Security
 ▸ "Be the SSH agent", on by default): the agent protocol
 (draft-miller-ssh-agent: identities and signatures; adding, removing
@@ -25805,6 +25819,18 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     behind since, carried at, and the host pool's own status with its
     accounts, requests and use as it last answered), for Rex's
     windows and agents; `POST /pool/hosts/ID/WHAT` does one thing.
+    Its answer has a `stamp` that counts the hosts' changes
+    (`Shared::hosts_changed`, told by `Hosts` at each), and
+    `/pool/hosts?after=N` is held until the stamp is no longer N, or
+    five minutes: Rex's Host window keeps one such question open
+    while it shows (`RexHub::watch_pools`, `pool::hosts_after`), and
+    follows a pool installed from the Token Pool's own window as it
+    happens. (It asked as it opened and at Check Again only, and said
+    "Not installed" of a host the Token Pool showed up to date: Ben,
+    2026-11-23. `try.py poolrex` installs and removes from the pool
+    itself and watches Rex's window follow.) The Hosts window floats
+    (`WindowOptions::floating`): tiled, its one row sat at the head
+    of a whole screen.
   - *The Hosts window* (Pool ▸ Hosts; `apps/pool/src/hosts_window.rs`;
     a tab beside the pool's own window, as its Clients window is):
     each host Rex reaches over SSH, with a light and how its pool
@@ -28034,6 +28060,21 @@ to set them up").
   stopped half way with nothing of it there then or later, then all
   that was left one after another. Pictures: `OLO_REX_DEMO_ACCOUNT=
   new|ready|doing|failed|other|asking`.
+
+**Limits are a sign-in's, and are looked at through a new one**
+(`Runner::afresh`, `manage::act`; Ben, 2026-11-23: "i just applied all
+limits but open files didn't change and it didn't give me an error or
+anything"). The open files a sign-in is given are set when its
+connection is made (PAM's limits, once for a connection: every
+session on it has them). The window's root connection changed the
+limits and then looked through itself: it still had the old ones, and
+"Open files and tasks" stood at "1 of 3 to change" with Apply offered
+again, on a host where a new sign-in had the new limit (looked at on
+the test server). After a limit is applied or put back, root's
+connection is let go of (`SshSessionPool::close`) and the look signs
+in anew. The same holds for the person's own panes: its note says the
+open files hold "for the panes you have open, after Disconnect and
+Connect".
 
 **A host made ready for heavy work: the Server window's Limits**
 (2026-11-23, `crates/rex/src/tune.rs`; Ben, when a host's SSH server

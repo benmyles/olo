@@ -2859,6 +2859,23 @@ an argument it doesn't know starts the lint (read its first lines).
   changes**: both of Rex's lists had live scroll bars only there (a
   height added up by hand, a fraction of a device pixel short), and
   1×, 1.5× and 2× showed nothing.
+- **After anything run against the person's test server, look at
+  what it left**: `rex ls` there showed eight sessions named
+  `olo-connect-test` in the person's sidebar (2026-11-23; the
+  client's `connecting_is_timed` and runs of it that were cut short).
+  End them by that name, and only them.
+- **A host's limits are looked at through a new connection**: PAM
+  sets them once for an SSH connection, and every session on it has
+  those; `ssh HOST 'ulimit -Hn'` from a shell is a new sign-in, a
+  pooled connection's exec is not.
+- **"Permission denied (publickey)" on a host with the keys given**:
+  `ssh -v` there says how many keys the agent returned and which were
+  offered; `ssh-add -l` through `~/.local/state/olo-rex/agent.sock`
+  counts them (it asks nothing of the person). Count before theories:
+  the forwarding was whole, and Passwords offered one key of three.
+- **Never `pidof`/`pgrep` one of the person's programs to look at it**
+  (I did, once, to read where two of them ran from: it told nothing
+  the logs hadn't).
 - **podman carries this session's proxy settings into a container**
   (`HTTPS_PROXY`, set here for the Token Pool's proxy on 127.0.0.1,
   which inside a container is the container): nothing in it reaches

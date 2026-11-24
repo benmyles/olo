@@ -233,6 +233,10 @@ pub struct Shared {
     /// when the accounts change.
     hosting: Mutex<Option<Arc<dyn Hosting>>>,
     accounts_changed: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// Counts the changes to how the hosts' pools stand: what
+    /// `/pool/hosts?after=N` waits on, so that whoever shows them (Rex's
+    /// Host window) hears of a change without asking over and over.
+    hosts_seen: tokio::sync::watch::Sender<u64>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -367,6 +371,7 @@ impl Shared {
             lent: Mutex::new(HashMap::new()),
             hosting: Mutex::new(None),
             accounts_changed: Mutex::new(None),
+            hosts_seen: tokio::sync::watch::channel(0).0,
         });
         // What the copy it took over from finishes after the handover,
         // booked here, where it's saved.
@@ -1507,16 +1512,30 @@ pub fn status_json(p: &Pool) -> Value {
 }
 
 /// The pools on Rex hosts, for Rex's windows and agents: how each
-/// stands (`hosts::Stands`).
-async fn hosts(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+/// stands (`hosts::Stands`), and `stamp`, which counts their changes.
+/// `?after=N`: answered when the stamp is no longer N (a pool installed
+/// from the Token Pool's own window, a sync that ended), or after five
+/// minutes as things stand: one request held open for whoever shows
+/// them, instead of asking again and again. (Rex's Host window asked
+/// as it opened and never again: a pool installed from the Token Pool's
+/// window stayed "Not installed" there. Ben, 2026-11-23: "even after i
+/// enabeld it the rex settings still say not installed".)
+async fn hosts(State(ctx): State<Ctx>, RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
     if let Err(r) = local_only(&headers, ctx.port) {
         return *r;
     }
-    let hosting = ctx.shared.hosting();
-    match hosting {
-        Some(hosting) => axum::Json(hosting.list()).into_response(),
-        None => axum::Json(json!({"hosts": []})).into_response(),
+    let after = query.as_deref().and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("after="))).and_then(|n| n.parse::<u64>().ok());
+    let mut seen = ctx.shared.hosts_seen();
+    if after == Some(*seen.borrow_and_update()) {
+        let _ = tokio::time::timeout(Duration::from_secs(300), seen.changed()).await;
     }
+    let stamp = *seen.borrow();
+    let mut list = match ctx.shared.hosting() {
+        Some(hosting) => hosting.list(),
+        None => json!({"hosts": []}),
+    };
+    list["stamp"] = json!(stamp);
+    axum::Json(list).into_response()
 }
 
 /// One thing done to a host's pool: `install`, `remove`, `sync`,

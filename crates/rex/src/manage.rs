@@ -581,6 +581,15 @@ pub async fn act(runner: &mut impl Runner, server: &Server, action: &Action, sai
             }
         }
     }
+    // (Limits are a sign-in's: the connection that changed them keeps
+    // the ones it began with, and looked at through it the open files
+    // stood as before, "1 of 3 to change" after Apply with no error.
+    // Ben, 2026-11-23: "i just applied all limits but open files didn't
+    // change and it didn't give me an error or anything". Looked at
+    // through a new sign-in.)
+    if matches!(action, Action::Tune(_) | Action::Untune(_)) {
+        runner.afresh().await;
+    }
     look(runner, *action == Action::Update).await
 }
 
@@ -742,6 +751,39 @@ mod tests {
     struct Host {
         rules: Vec<(&'static str, Ran)>,
         ran: Vec<String>,
+    }
+
+    /// Limits changed are looked at through a new sign-in: the one that
+    /// changed them still has the old ones.
+    #[test]
+    fn limits_are_looked_at_through_a_new_sign_in_after_they_change() {
+        struct Signed(Host, Vec<&'static str>);
+        impl Runner for Signed {
+            async fn run(&mut self, root: bool, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
+                self.1.push(if command.contains("90-olo") && command.contains("set -e") {
+                    "changed"
+                } else if command.contains("MaxSessions $(sshd") {
+                    "looked"
+                } else {
+                    "other"
+                });
+                self.0.run(root, command, said).await
+            }
+            async fn afresh(&mut self) {
+                self.1.push("signed in anew");
+            }
+        }
+        let block =
+            |work: std::pin::Pin<Box<dyn std::future::Future<Output = Result<Server, Failed>> + '_>>| tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(work);
+        let mut host = Signed(Host { rules: vec![("os=", says(FACTS))], ran: Vec::new() }, Vec::new());
+        let server = Server { tuning: Some(crate::tune::Tuning::read("ram 16000000\nopen files 1024\n")), ..Server::default() };
+        block(Box::pin(act(&mut host, &server, &Action::Tune(vec![crate::tune::Tune::Files]), &mut |_| {}))).unwrap();
+        let order: Vec<&str> = host.1.iter().copied().filter(|what| *what != "other").collect();
+        assert_eq!(order, ["changed", "signed in anew", "looked"]);
+        // (Nothing of the kind for what isn't a limit.)
+        let mut host = Signed(Host { rules: vec![("os=", says(FACTS))], ran: Vec::new() }, Vec::new());
+        block(Box::pin(act(&mut host, &server, &Action::Restart(Service::Login), &mut |_| {}))).unwrap();
+        assert!(!host.1.contains(&"signed in anew"));
     }
 
     impl Runner for Host {

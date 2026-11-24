@@ -1623,6 +1623,17 @@ something nobody here has is in "Blocked", with what it waits for.
     short is cut at its end, where a folder's last part is what tells
     it ("bash — ~/src/olo/crates/re…": the middle, as Tracker's names);
     a lone "~" is slight as a whole folder's name.
+- **Which SSH keys there are, said where they are used** (from Ben's
+  three reports of 2026-11-23 that git on a host was refused: the
+  forwarding worked, and two of their three keys were never offered).
+  Passwords: on an SSH Key item it can't offer, why (now only its
+  log says: "an SSH key in Passwords can't be offered"), and a key
+  under a passphrase asked for it once. Rex: beside the grant of SSH
+  keys to a host (Preferences ▸ Rex, and the Host window's Bridge
+  line, which now names "SSH keys"), how many keys go and their
+  names. The Token Pool's Clients window floating too, as its Hosts
+  window now is?
+
 - **Every agent feature, with Antigravity's TUI too** (Ben,
   2026-11-23: "make sure that keep it going and auto approve and any
   and all other agent features for both terminal and olo rex work

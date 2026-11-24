@@ -3204,6 +3204,7 @@ SSD temperature
 SSE
 SSH Authentication
 SSH allows ten sessions on a connection by default; each pane uses one.
+SSH keys
 SSH sessions
 SSW
 SW
@@ -3805,6 +3806,7 @@ The next 6 hours
 The next backup sends again what it can.
 The next hours, each its sky and temperature, with the chance of rain or the cloud.
 The one it started on
+The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
 The package service reads what’s installed and what each repository has.
 The packages can’t be read
 The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.

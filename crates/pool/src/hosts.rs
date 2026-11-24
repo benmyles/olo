@@ -165,7 +165,7 @@ impl Hosts {
             changed
         };
         if changed {
-            (self.changed)();
+            self.told();
             self.carry_soon();
         }
     }
@@ -220,6 +220,13 @@ impl Hosts {
 
     fn live(&self, id: &str, change: impl FnOnce(&mut Live)) {
         change(self.state.lock().unwrap().live.entry(id.to_owned()).or_default());
+        self.told();
+    }
+
+    /// How the hosts stand has changed: the app's window is told, and
+    /// whoever waits on the gateway's `/pool/hosts?after=`.
+    fn told(&self) {
+        self.shared.hosts_changed();
         (self.changed)();
     }
 
@@ -343,7 +350,7 @@ impl Hosts {
             again
         };
         self.save();
-        (self.changed)();
+        self.told();
         if let Some(wait) = again {
             let hosts = self.clone();
             self.shared.spawn(async move {

@@ -37,10 +37,16 @@ fn port() -> u16 {
 /// One request to it: the answer's status and body. Blocks, a few
 /// seconds at most.
 fn ask(method: &str, path: &str) -> Result<(u16, String), String> {
+    ask_within(method, path, Duration::from_secs(4))
+}
+
+/// [`ask`], with `within` for the answer to come in (a question the
+/// pool holds until something changes is given minutes).
+fn ask_within(method: &str, path: &str, within: Duration) -> Result<(u16, String), String> {
     let port = port();
     let not_running = || olo_kit::words::tr("Token Pool isn’t running on this computer.").to_string();
     let mut s = std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2)).map_err(|_| not_running())?;
-    s.set_read_timeout(Some(Duration::from_secs(4))).ok();
+    s.set_read_timeout(Some(within)).ok();
     write!(s, "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     s.read_to_end(&mut out).map_err(|e| e.to_string())?;
@@ -76,6 +82,23 @@ pub fn hosts() -> Result<HashMap<String, PoolStands>, String> {
     }
 }
 
+/// The pool's count of its hosts' changes, in what it answered (none:
+/// a pool from before it counted them).
+pub fn stamp(body: &str) -> Option<u64> {
+    serde_json::from_str::<serde_json::Value>(body).ok()?["stamp"].as_u64()
+}
+
+/// [`hosts`], held by the pool until its hosts stand otherwise than at
+/// `after` (its stamp then), or five minutes have passed: how they
+/// stand now, and the stamp now. None for the stamp: a pool that
+/// doesn't count, which answers at once and isn't to be asked so again.
+pub fn hosts_after(after: u64) -> Result<(HashMap<String, PoolStands>, Option<u64>), String> {
+    match ask_within("GET", &format!("/pool/hosts?after={after}"), Duration::from_secs(330))? {
+        (200, body) => Ok((read(&body).ok_or_else(|| olo_kit::words::tr("Token Pool answered something else.").to_string())?, stamp(&body))),
+        _ => Err(olo_kit::words::tr("The Token Pool running on this computer is older: upgrade it first.").to_string()),
+    }
+}
+
 /// Has the Token Pool do `what` ("install", "remove", "sync") to the
 /// host `id`: begun there; [`hosts`] says how it goes.
 pub fn act(id: &str, what: &str) -> Result<(), String> {
@@ -99,6 +122,7 @@ mod tests {
         assert_eq!(hosts["h2"], PoolStands { wanted: true, doing: Some("Carrying the accounts".into()), error: Some("no route".into()), in_step: false, accounts: None });
         assert_eq!(hosts["h3"], PoolStands::default());
         assert_eq!(read("{}"), None);
+        assert_eq!((stamp(r#"{"hosts":[],"stamp":7}"#), stamp(body), stamp("no")), (Some(7), None, None));
         assert_eq!(read(r#"{"hosts":[]}"#), Some(HashMap::new()));
     }
 }

@@ -86,7 +86,7 @@ impl Tune {
     pub fn note(self) -> Option<&'static str> {
         match self {
             Tune::Sessions => Some("The SSH server reads its settings again; open connections stay."),
-            Tune::Files => Some("The open files hold from the next sign-in, and for services from their next start."),
+            Tune::Files => Some("The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start."),
             Tune::Kernel | Tune::Writeback | Tune::Memory => None,
         }
     }
