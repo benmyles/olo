@@ -2115,17 +2115,21 @@ something nobody here has is in "Blocked", with what it waits for.
     host connects), and `rex`'s command line the same. Tried on the
     rig: made, listed, a page reached at the same port, the port taken,
     stopped, kept over a reconnect and over Rex's restart.
-    **Done** 2026-11-24 (HACKING, Rex, the bridge, "Forwards a host
-    makes"): `olo forward TARGET [--port N | --any-port]`, `ls
-    [--json]`, `close PORT… | --all`, read as `rex forward open` reads
+    **Done** 2026-11-24 / 2026-11-25 (HACKING, Rex, the bridge, "Forwards
+    a host makes"): `olo forward TARGET [--port N | --any-port] [--keep]`,
+    `ls [--json]`, `close PORT… | --all`, read as `rex forward open` reads
     a target, at the target's own port, a taken port said; `olo open`
     and `olo screen` through the host's forward to that address; pages
     keep `localhost`; every forward back at its port over an upgrade in
-    place, through its own block (none orphaned on the server). In the
-    skill. Tried on the rig. Left: `--keep` (a forward made again when
-    Rex starts, and as its host connects with its session gone), the
-    Ports list's New Forward… with Keep, and who made a forward shown
-    there.
+    place, through its own block (none orphaned on the server); `--keep`
+    and Forward Port's *"Keep when Rex restarts"* persisted in
+    `RexSettings::kept_forwards` and restored automatically on Rex start,
+    host reconnect, and after the originating session ends; Hosts and Ports
+    list shows `Made by` (*You*, *Agent*, *Link*), a dedicated `Kept`
+    checkmark column, a *Keep* toggle for existing forwards, and a one-line
+    help row under Ports. In the
+    skill; tried end-to-end on the rig (`try.py bridge` including full Rex
+    restart restore & forget on close).
   - *The Host window in tabs, and the account's window reached from it*
     (Ben, 2026-11-24: "make the rex manage host dialog a window with
     multiple tabs and group things under logical tabs e.g. Rex / Olo
@@ -3301,13 +3305,13 @@ something nobody here has is in "Blocked", with what it waits for.
   sidebar at 1× ("Darken the secondary-text role one step in light mode
   only").
 
-- **Bug: Rex's splitters overlap in a vertical half and a quarter**:
-  `tools/dev/ui-lint --tiles Rex` on this computer's screen, "Splitter
-  'Pane Height' and Splitter 'Rex Sidebar' overlap by 2.0×7.5 (a vertical
-  half, a quarter)", in the main window and a session's; HEAD's own
-  release build too (2026-11-24). And the review's two there: "node —
-  ~/olo/rex" and ":3000" a pixel off level at 1.75×, "~/olo/rex · 66 ×
-  40" a pixel high in its band at 2×.
+- ~~**Bug: Rex's splitters overlap in a vertical half and a quarter**~~
+  **Done** 2026-11-25: `split_grip` horizontal dividers inset 7 pt so
+  `"Pane Height"` clears `"Rex Sidebar"`'s 6 pt grip (`ui-lint --tiles Rex`:
+  0 errors); workspace status bar changed from `.pb(2.0)` to symmetric
+  `.py(1.0)` (0 off-centre findings at 2×); pane header pills given
+  `.height(header_h)` and `LinkButton::beside(style::PLAIN_SIZE)` (0
+  near-level findings at 1.5×/1.75×).
 - **Rex's Server window: its words never reach the catalogs**: its
   buttons and headings went through helpers that handed the kit a
   `String` (shown as it is, in English in every language; fixed

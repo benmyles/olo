@@ -91,7 +91,7 @@ pub fn lost_and_gone<'a>(
 /// What the command says of itself (`olo forward --help`), and after a
 /// mistake.
 pub const USAGE: &str = "\
-usage: olo forward TARGET [--port N | --any-port]
+usage: olo forward TARGET [--port N | --any-port] [--keep]
        olo forward ls [--json]
        olo forward close PORT… | --all
 
@@ -101,14 +101,16 @@ olo forward TARGET   reach TARGET, a server this host reaches, from the
                      (5173), HOST:PORT, or a URL (http://localhost:5173/app).
                      PORT there is TARGET's own, so sign-in links, cookies
                      and callbacks name the same address there as here;
-                     --port N chooses another, --any-port a free one. It
-                     prints the address there, and lasts until it is closed
-                     or this Rex session ends (over Rex's upgrades too).
+                     --port N chooses another, --any-port a free one.
+                     --keep saves the forward so Rex brings it back when Rex
+                     starts and when the host reconnects, even if this Rex
+                     session ends; otherwise it lasts until closed or this
+                     Rex session ends (over Rex's upgrades too).
 olo forward ls       this host's forwards on the Olo desktop: the port
                      there, what it reaches, how it stands, who made it.
 olo forward close    closes forwards made from this host, by their port on
-                     the desktop (--all: every one); the person's own are
-                     theirs to close, in Rex.
+                     the desktop (--all: every one, including kept ones);
+                     the person's own are theirs to close, in Rex.
 ";
 
 /// Who made a forward: the person (the Ports list's Forward), a page a
@@ -132,6 +134,14 @@ impl Made {
             Made::Agent => "olo forward",
         }
     }
+    /// Short title-case label for the Hosts and Ports list's `Made by` column.
+    pub fn short(self) -> &'static str {
+        match self {
+            Made::Person => "You",
+            Made::Link => "Link",
+            Made::Agent => "Agent",
+        }
+    }
     /// Whether a host's `olo forward close` may close it.
     pub fn hosts(self) -> bool {
         self != Made::Person
@@ -144,12 +154,14 @@ pub enum Ask {
     /// A forward to `host:port` as the host reaches it, at `here` on this
     /// computer: `Some(0)` a free port, `None` the target's own (or a free
     /// one for a port under 1024). `url`: the target as a URL, given so,
-    /// for the answer: the same URL at its port here.
+    /// for the answer: the same URL at its port here. `keep`: persisted in
+    /// desktop settings and recreated on Rex restart / host reconnect.
     Make {
         host: String,
         port: u16,
         here: Option<u16>,
         url: Option<String>,
+        keep: bool,
     },
     List {
         json: bool,
@@ -192,25 +204,27 @@ pub fn ask(args: &[String]) -> Result<Ask, String> {
         }
         target => {
             if target.starts_with('-') {
-                return Err("say what to forward first: olo forward TARGET [--port N | --any-port]".into());
+                return Err("say what to forward first: olo forward TARGET [--port N | --any-port] [--keep]".into());
             }
             let (host, port, url) = target_of(target)?;
             let mut here = None;
+            let mut keep = false;
             let mut rest = rest.into_iter();
             while let Some(flag) = rest.next() {
-                here = Some(match flag {
-                    "--any-port" => 0,
-                    "--port" | "-p" => port_of(rest.next().ok_or("--port takes a port")?)?,
+                match flag {
+                    "--keep" => keep = true,
+                    "--any-port" => here = Some(0),
+                    "--port" | "-p" => here = Some(port_of(rest.next().ok_or("--port takes a port")?)?),
                     other => match other.strip_prefix("--port=") {
-                        Some(p) => port_of(p)?,
+                        Some(p) => here = Some(port_of(p)?),
                         None => return Err(format!("{other} isn't one of olo forward's options")),
                     },
-                });
+                }
             }
             if let Some(p) = here.filter(|p| *p != 0 && *p < LOWEST) {
                 return Err(format!("port {p} is the system's on the Olo desktop: choose one of {LOWEST} or above, or --any-port"));
             }
-            Ok(Ask::Make { host, port, here, url })
+            Ok(Ask::Make { host, port, here, url, keep })
         }
     }
 }
@@ -267,29 +281,33 @@ pub fn address_here(url: Option<&str>, here: u16) -> String {
 /// A forward as `olo forward ls` lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listed {
-    /// Its port on this computer.
+    /// Its port on this computer (`0` when waiting for a free port).
     pub port: u16,
     /// What it reaches, as the host does (`localhost:5173`).
     pub to: String,
     /// How it stands: forwarded, waiting (its host away), failed (why).
     pub state: String,
     pub made: Made,
+    /// Kept across Rex restarts and host reconnects (`--keep`).
+    pub kept: bool,
 }
 
 /// `olo forward ls`'s answer: a table, or JSON.
 pub fn listed(rows: &[Listed], as_json: bool) -> String {
     if as_json {
-        let rows: Vec<_> = rows.iter().map(|r| json!({ "port": r.port, "to": r.to, "state": r.state, "made_by": r.made.said() })).collect();
+        let rows: Vec<_> = rows.iter().map(|r| json!({ "port": r.port, "to": r.to, "state": r.state, "made_by": r.made.said(), "kept": r.kept })).collect();
         return format!("{}\n", serde_json::Value::Array(rows));
     }
     if rows.is_empty() {
         return String::new();
     }
+    let port_str = |r: &Listed| if r.port == 0 { "–".to_owned() } else { r.port.to_string() };
+    let made_str = |r: &Listed| if r.kept { format!("{} (kept)", r.made.said()) } else { r.made.said().to_owned() };
     let width = |f: &dyn Fn(&Listed) -> usize, head: &str| rows.iter().map(f).max().unwrap_or(0).max(head.len());
-    let (wp, wt, ws) = (width(&|r| r.port.to_string().len(), "PORT"), width(&|r| r.to.len(), "TO"), width(&|r| r.state.len(), "STATE"));
+    let (wp, wt, ws) = (width(&|r| port_str(r).len(), "PORT"), width(&|r| r.to.len(), "TO"), width(&|r| r.state.len(), "STATE"));
     let mut out = format!("{:wp$}  {:wt$}  {:ws$}  MADE BY\n", "PORT", "TO", "STATE");
     for r in rows {
-        out.push_str(&format!("{:<wp$}  {:wt$}  {:ws$}  {}\n", r.port, r.to, r.state, r.made.said()));
+        out.push_str(&format!("{:<wp$}  {:wt$}  {:ws$}  {}\n", port_str(r), r.to, r.state, made_str(r)));
     }
     out
 }
@@ -303,7 +321,7 @@ mod tests {
     }
 
     fn make(host: &str, port: u16, here: Option<u16>, url: Option<&str>) -> Ask {
-        Ask::Make { host: host.into(), port, here, url: url.map(str::to_owned) }
+        Ask::Make { host: host.into(), port, here, url: url.map(str::to_owned), keep: false }
     }
 
     /// As `rex forward open` reads a target: a port is the host's own, a
@@ -312,6 +330,9 @@ mod tests {
     #[test]
     fn a_target_reads_as_rex_forward_open_reads_one() {
         assert_eq!(asked("5173"), Ok(make("localhost", 5173, None, None)));
+        assert_eq!(asked("5173 --keep"), Ok(Ask::Make { host: "localhost".into(), port: 5173, here: None, url: None, keep: true }));
+        assert_eq!(asked("5173 --port 8080 --keep"), Ok(Ask::Make { host: "localhost".into(), port: 5173, here: Some(8080), url: None, keep: true }));
+        assert_eq!(asked("5173 --keep --any-port"), Ok(Ask::Make { host: "localhost".into(), port: 5173, here: Some(0), url: None, keep: true }));
         assert_eq!(asked("5173 --port 8080"), Ok(make("localhost", 5173, Some(8080), None)));
         assert_eq!(asked("5173 --port=8080"), Ok(make("localhost", 5173, Some(8080), None)));
         assert_eq!(asked("5173 --any-port"), Ok(make("localhost", 5173, Some(0), None)));
@@ -394,12 +415,14 @@ mod tests {
     #[test]
     fn the_list_is_a_table_or_json() {
         let rows = [
-            Listed { port: 5173, to: "localhost:5173".into(), state: "forwarded".into(), made: Made::Agent },
-            Listed { port: 40001, to: "db.internal:5432".into(), state: "waiting".into(), made: Made::Person },
+            Listed { port: 5173, to: "localhost:5173".into(), state: "forwarded".into(), made: Made::Agent, kept: false },
+            Listed { port: 40001, to: "db.internal:5432".into(), state: "waiting".into(), made: Made::Person, kept: true },
         ];
-        assert_eq!(listed(&rows, false), "PORT   TO                STATE      MADE BY\n5173   localhost:5173    forwarded  olo forward\n40001  db.internal:5432  waiting    the person\n");
+        assert_eq!(listed(&rows, false), "PORT   TO                STATE      MADE BY\n5173   localhost:5173    forwarded  olo forward\n40001  db.internal:5432  waiting    the person (kept)\n");
         let parsed: serde_json::Value = serde_json::from_str(&listed(&rows, true)).unwrap();
+        assert_eq!(parsed[0]["kept"], false);
         assert_eq!(parsed[1]["made_by"], "the person");
+        assert_eq!(parsed[1]["kept"], true);
         assert_eq!(listed(&[], false), "");
         assert_eq!(listed(&[], true), "[]\n");
     }

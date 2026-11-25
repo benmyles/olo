@@ -1101,7 +1101,37 @@ pub struct ActiveForward {
     pub state: ForwardState,
     /// Who made it: a host closes only what was made from it.
     pub made: crate::forwards::Made,
+    /// Persisted across Rex restarts and host reconnects (`--keep` or Keep).
+    pub kept: bool,
     handle: LocalForwardHandle,
+}
+
+/// Stable synthetic ID for a kept forward that doesn't currently have a live
+/// `ActiveForward` (waiting for host/session, or failed to bind).
+pub fn kept_forward_id(kf: &olo_protocol::RexKeptForward) -> String {
+    format!("kept:{}:{}:{}:{}", kf.host, kf.remote_host, kf.remote_port, kf.local_port)
+}
+
+fn kept_forward_key(kf: &olo_protocol::RexKeptForward) -> (String, String, u16, u16) {
+    (kf.host.clone(), kf.remote_host.clone(), kf.remote_port, kf.local_port)
+}
+
+fn kept_matches_active(kf: &olo_protocol::RexKeptForward, af: &ActiveForward) -> bool {
+    kf.host == af.host_key && kf.remote_host == af.remote_host && kf.remote_port == af.remote_port && (kf.local_port == 0 || kf.local_port == af.local_addr.port())
+}
+
+fn maker_to_made(m: olo_protocol::RexForwardMaker) -> crate::forwards::Made {
+    match m {
+        olo_protocol::RexForwardMaker::Person => crate::forwards::Made::Person,
+        olo_protocol::RexForwardMaker::Agent => crate::forwards::Made::Agent,
+    }
+}
+
+fn made_to_maker(m: crate::forwards::Made) -> olo_protocol::RexForwardMaker {
+    match m {
+        crate::forwards::Made::Person => olo_protocol::RexForwardMaker::Person,
+        crate::forwards::Made::Link | crate::forwards::Made::Agent => olo_protocol::RexForwardMaker::Agent,
+    }
 }
 
 /// A host's folder kept in step here (`RexKept`), as it stands now.
@@ -1319,6 +1349,8 @@ pub struct SavedForward {
     pub local_port: u16,
     #[serde(default)]
     pub made: crate::forwards::Made,
+    #[serde(default)]
+    pub kept: bool,
 }
 
 /// The forwards Rex had before an upgrade in place, each taken up again
@@ -1640,6 +1672,13 @@ pub struct HubState {
     pub host_order: Vec<String>,
     pub blocks: HashMap<BlockKey, Arc<Mutex<BlockRuntime>>>,
     pub forwards: Vec<ActiveForward>,
+    /// Hosts' port forwards kept across Rex restarts and host reconnects
+    /// (mirrored from `RexSettings::kept_forwards`).
+    pub kept_forwards: Vec<olo_protocol::RexKeptForward>,
+    /// Error from the last attempt to restore a kept forward (shown in Ports).
+    pub kept_forward_errors: HashMap<(String, String, u16, u16), String>,
+    /// Kept forwards currently being opened asynchronously (prevents duplicates).
+    kept_forwards_starting: std::collections::HashSet<(String, String, u16, u16)>,
     /// Hosts' folders kept in step here (the desktop's `RexSettings::
     /// kept`), each as it stands (`RexHubInner::keep`).
     pub kept: Vec<Kept>,
@@ -2360,6 +2399,9 @@ impl RexHub {
             host_order,
             blocks: HashMap::new(),
             forwards: Vec::new(),
+            kept_forwards: Vec::new(),
+            kept_forward_errors: HashMap::new(),
+            kept_forwards_starting: std::collections::HashSet::new(),
             settings,
             active_theme,
             pools: None,
@@ -2780,6 +2822,47 @@ impl RexHub {
         (self.notify)(HubNotice::StateChanged);
     }
 
+    /// Sync kept port forwards from desktop `RexSettings::kept_forwards`,
+    /// stopping any removed kept forwards and opening newly added ones on
+    /// connected hosts.
+    fn follow_kept_forwards(&self, kept: &[olo_protocol::RexKeptForward]) {
+        let to_open: Vec<(String, ControlClient, RexEndpoint)> = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if st.kept_forwards == kept {
+                return;
+            }
+            st.kept_forwards = kept.to_vec();
+            let valid_keys: std::collections::HashSet<_> = st.kept_forwards.iter().map(kept_forward_key).collect();
+            st.kept_forward_errors.retain(|k, _| valid_keys.contains(k));
+            // Mark matching active forwards as kept; drop active kept forwards
+            // that were removed from settings.
+            let kept_snapshot = st.kept_forwards.clone();
+            st.forwards.retain_mut(|af| {
+                let is_kept = kept_snapshot.iter().any(|kf| kept_matches_active(kf, af));
+                if af.kept && !is_kept {
+                    return false;
+                }
+                if is_kept {
+                    af.kept = true;
+                }
+                true
+            });
+            let hosts: std::collections::HashSet<String> = st.kept_forwards.iter().map(|kf| kf.host.clone()).collect();
+            hosts
+                .into_iter()
+                .filter_map(|hk| {
+                    let h = st.hosts.get(&hk)?;
+                    if h.conn_state == HostConnState::Connected { Some((hk, h.control.clone()?, h.endpoint.clone()?)) } else { None }
+                })
+                .collect()
+        };
+        let _in_runtime = self.rt.enter();
+        for (hk, ctrl, ep) in to_open {
+            self.inner.ensure_kept_forwards(&hk, &ctrl, &ep);
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
     pub fn follow_shared(&self, rex: &olo_protocol::RexSettings) {
         // (The person's repositories, as the settings have them; the
         // demo's own, where it has some.)
@@ -2804,6 +2887,7 @@ impl RexHub {
             }
         }
         self.follow_kept(&rex.kept);
+        self.follow_kept_forwards(&rex.kept_forwards);
         if !crate::shared::settled(rex) {
             return;
         }
@@ -3878,13 +3962,18 @@ impl RexHub {
         });
     }
 
-    pub fn add_local_forward(&self, host_key: &str, session_id: &str, remote_host: String, remote_port: u16, local_port: u16, open_in_browser: bool, feedback: Feedback) {
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_local_forward(&self, host_key: &str, session_id: &str, remote_host: String, remote_port: u16, local_port: u16, open_in_browser: bool, keep: bool, feedback: Feedback) {
         let hk = host_key.to_owned();
         let sid = session_id.to_owned();
         if self
             .with_control(host_key, move |ctrl, ep, inner| async move {
-                match inner.create_forward(&hk, &ctrl, ep, &sid, remote_host, remote_port, local_port, crate::forwards::Made::Person).await {
+                match inner.create_forward(&hk, &ctrl, ep, &sid, remote_host.clone(), remote_port, local_port, crate::forwards::Made::Person, keep).await {
                     Ok(local_addr) => {
+                        if keep {
+                            let entry = olo_protocol::RexKeptForward { host: hk.clone(), remote_host, remote_port, local_port, made: olo_protocol::RexForwardMaker::Person };
+                            inner.remember_kept_forward(entry);
+                        }
                         if open_in_browser {
                             let url = format!("http://127.0.0.1:{}", local_addr.port());
                             let _ = bridge::open_url_with_autoforward(&url, false, None).await;
@@ -3917,6 +4006,7 @@ impl RexHub {
                 remote_port: f.remote_port,
                 local_port: f.local_addr.port(),
                 made: f.made,
+                kept: f.kept,
             })
             .collect();
         drop(st);
@@ -3946,9 +4036,103 @@ impl RexHub {
     }
 
     pub fn remove_forward(&self, forward_id: &str) {
-        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        st.forwards.retain(|f| f.id != forward_id);
-        drop(st);
+        let mut forgotten: Vec<(String, String, u16, u16)> = Vec::new();
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(pos) = st.forwards.iter().position(|f| f.id == forward_id) {
+                let removed = st.forwards.remove(pos);
+                if removed.kept {
+                    st.kept_forwards.retain(|kf| {
+                        let m = kept_matches_active(kf, &removed);
+                        if m {
+                            forgotten.push(kept_forward_key(kf));
+                        }
+                        !m
+                    });
+                }
+            } else {
+                // Waiting or failed kept forward listed under its synthetic id.
+                st.kept_forwards.retain(|kf| {
+                    let m = kept_forward_id(kf) == forward_id;
+                    if m {
+                        forgotten.push(kept_forward_key(kf));
+                    }
+                    !m
+                });
+            }
+            for k in &forgotten {
+                st.kept_forward_errors.remove(k);
+            }
+        }
+        if !forgotten.is_empty() {
+            olo_kit::settings::update(move |s| {
+                s.rex.kept_forwards.retain(|kf| !forgotten.contains(&kept_forward_key(kf)));
+            });
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// Toggle whether an existing forward in the Ports list is kept across
+    /// Rex restarts and host reconnects.
+    pub fn set_forward_kept(&self, forward_id: &str, keep: bool) {
+        let mut to_add: Option<olo_protocol::RexKeptForward> = None;
+        let mut forgotten: Vec<(String, String, u16, u16)> = Vec::new();
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(f) = st.forwards.iter_mut().find(|f| f.id == forward_id) {
+                if f.kept == keep {
+                    return;
+                }
+                f.kept = keep;
+                let snap = (f.host_key.clone(), f.remote_host.clone(), f.remote_port, f.local_addr.port(), f.made);
+                if keep {
+                    let entry = olo_protocol::RexKeptForward {
+                        host: snap.0,
+                        remote_host: snap.1,
+                        remote_port: snap.2,
+                        local_port: if snap.4 == crate::forwards::Made::Agent { snap.3 } else { 0 },
+                        made: made_to_maker(snap.4),
+                    };
+                    let key = kept_forward_key(&entry);
+                    if !st.kept_forwards.iter().any(|k| kept_forward_key(k) == key) {
+                        st.kept_forwards.push(entry.clone());
+                    }
+                    to_add = Some(entry);
+                } else {
+                    st.kept_forwards.retain(|kf| {
+                        let m = kf.host == snap.0 && kf.remote_host == snap.1 && kf.remote_port == snap.2 && (kf.local_port == 0 || kf.local_port == snap.3);
+                        if m {
+                            forgotten.push(kept_forward_key(kf));
+                        }
+                        !m
+                    });
+                }
+            } else if !keep {
+                // Unkeeping a waiting/failed kept forward removes it from kept settings.
+                st.kept_forwards.retain(|kf| {
+                    let m = kept_forward_id(kf) == forward_id;
+                    if m {
+                        forgotten.push(kept_forward_key(kf));
+                    }
+                    !m
+                });
+            }
+            for k in &forgotten {
+                st.kept_forward_errors.remove(k);
+            }
+        }
+        if let Some(entry) = to_add {
+            let key = kept_forward_key(&entry);
+            olo_kit::settings::update(move |s| {
+                if !s.rex.kept_forwards.iter().any(|k| kept_forward_key(k) == key) {
+                    s.rex.kept_forwards.push(entry);
+                }
+            });
+        } else if !forgotten.is_empty() {
+            olo_kit::settings::update(move |s| {
+                s.rex.kept_forwards.retain(|kf| !forgotten.contains(&kept_forward_key(kf)));
+            });
+        }
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -5090,7 +5274,7 @@ impl RexHubInner {
             Ask::Help => json!({ "ok": true, "stdout": USAGE }),
             Ask::List { json: as_json } => {
                 let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                let rows: Vec<Listed> = st
+                let mut rows: Vec<Listed> = st
                     .forwards
                     .iter()
                     .filter(|f| f.host_key == host_key)
@@ -5103,27 +5287,74 @@ impl RexHubInner {
                             ForwardState::Failed(why) => format!("failed: {why}"),
                         },
                         made: f.made,
+                        kept: f.kept,
                     })
                     .collect();
+                for kf in st.kept_forwards.iter().filter(|kf| kf.host == host_key) {
+                    if st.forwards.iter().any(|af| kept_matches_active(kf, af)) {
+                        continue;
+                    }
+                    let state = match st.kept_forward_errors.get(&kept_forward_key(kf)) {
+                        Some(why) => format!("failed: {why}"),
+                        None => "waiting".into(),
+                    };
+                    rows.push(Listed {
+                        port: kf.local_port,
+                        to: if kf.remote_host.contains(':') { format!("[{}]:{}", kf.remote_host, kf.remote_port) } else { format!("{}:{}", kf.remote_host, kf.remote_port) },
+                        state,
+                        made: maker_to_made(kf.made),
+                        kept: true,
+                    });
+                }
                 json!({ "ok": true, "stdout": listed(&rows, as_json) })
             }
             Ask::Close { ports, all } => {
-                let (mut closed, mut refused) = (Vec::new(), Vec::new());
+                let (mut closed, mut refused, mut forgotten) = (Vec::new(), Vec::new(), Vec::new());
                 {
                     let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                     for p in &ports {
-                        match st.forwards.iter().find(|f| f.host_key == host_key && f.local_addr.port() == *p) {
-                            None => refused.push(format!("no forward of this host's listens on port {p} of the Olo desktop (olo forward ls lists them)")),
-                            Some(f) if !f.made.hosts() => refused.push(format!("the forward on port {p} is the person's: closed in Rex, not from here")),
-                            Some(_) => {}
+                        let active = st.forwards.iter().find(|f| f.host_key == host_key && f.local_addr.port() == *p);
+                        let kept_only = st.kept_forwards.iter().find(|kf| kf.host == host_key && kf.local_port == *p);
+                        match (active, kept_only) {
+                            (Some(f), _) if !f.made.hosts() => refused.push(format!("the forward on port {p} is the person's: closed in Rex, not from here")),
+                            (None, Some(kf)) if !maker_to_made(kf.made).hosts() => refused.push(format!("the forward on port {p} is the person's: closed in Rex, not from here")),
+                            (None, None) => refused.push(format!("no forward of this host's listens on port {p} of the Olo desktop (olo forward ls lists them)")),
+                            _ => {}
                         }
                     }
+                    let mut closed_specs: Vec<(String, u16, u16)> = Vec::new();
                     st.forwards.retain(|f| {
                         let close = f.host_key == host_key && f.made.hosts() && (all || ports.contains(&f.local_addr.port()));
                         if close {
                             closed.push(f.local_addr.port());
+                            if f.kept {
+                                closed_specs.push((f.remote_host.clone(), f.remote_port, f.local_addr.port()));
+                            }
                         }
                         !close
+                    });
+                    st.kept_forwards.retain(|kf| {
+                        if kf.host != host_key || !maker_to_made(kf.made).hosts() {
+                            return true;
+                        }
+                        let matched_active = closed_specs.iter().any(|(rh, rp, lp)| kf.remote_host == *rh && kf.remote_port == *rp && (kf.local_port == 0 || kf.local_port == *lp));
+                        let matched_waiting = all || (kf.local_port != 0 && ports.contains(&kf.local_port));
+                        if matched_active || matched_waiting {
+                            if matched_waiting && !closed.contains(&kf.local_port) && kf.local_port != 0 {
+                                closed.push(kf.local_port);
+                            }
+                            forgotten.push(kept_forward_key(kf));
+                            return false;
+                        }
+                        true
+                    });
+                    for k in &forgotten {
+                        st.kept_forward_errors.remove(k);
+                    }
+                }
+                if !forgotten.is_empty() {
+                    olo_kit::settings::update(move |s| {
+                        s.rex.kept_forwards.retain(|kf| !forgotten.contains(&kept_forward_key(kf)));
                     });
                 }
                 if !closed.is_empty() {
@@ -5133,17 +5364,39 @@ impl RexHubInner {
                 let stderr: String = refused.iter().map(|why| format!("olo: {why}\n")).collect();
                 json!({ "ok": refused.is_empty(), "stdout": stdout, "stderr": stderr })
             }
-            Ask::Make { host, port, here, url } => {
+            Ask::Make { host, port, here, url, keep } => {
                 // (This computer's own server: its ports are here already.)
                 if is_local {
                     return json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), port)) });
                 }
                 let want = here.unwrap_or(if port >= LOWEST { port } else { 0 });
                 let (ctrl, ep, sid) = {
-                    let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                    let to = |f: &&ActiveForward| f.host_key == host_key && f.remote_host == host && f.remote_port == port;
-                    if let Some(f) = st.forwards.iter().filter(to).find(|f| f.state == ForwardState::Active && (want == 0 || f.local_addr.port() == want)) {
-                        return json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), f.local_addr.port())) });
+                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let existing_port = st
+                        .forwards
+                        .iter_mut()
+                        .find(|f| f.host_key == host_key && f.remote_host == host && f.remote_port == port && f.state == ForwardState::Active && (want == 0 || f.local_addr.port() == want))
+                        .map(|f| {
+                            let promoted = keep && !f.kept;
+                            if promoted {
+                                f.kept = true;
+                            }
+                            (f.local_addr.port(), f.made, promoted)
+                        });
+                    if let Some((bound, made, promoted)) = existing_port {
+                        drop(st);
+                        if promoted {
+                            let saved_port = if here == Some(0) { 0 } else { bound };
+                            self.remember_kept_forward(olo_protocol::RexKeptForward {
+                                host: host_key.to_owned(),
+                                remote_host: host,
+                                remote_port: port,
+                                local_port: saved_port,
+                                made: made_to_maker(made),
+                            });
+                            (self.notify)(HubNotice::StateChanged);
+                        }
+                        return json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), bound)) });
                     }
                     if want != 0
                         && let Some(f) = st.forwards.iter().find(|f| f.local_addr.port() == want)
@@ -5170,8 +5423,20 @@ impl RexHubInner {
                         None => format!("port {want} of the Olo desktop is taken by another program there: --port N, or --any-port"),
                     });
                 }
-                match self.create_forward(host_key, &ctrl, ep, &sid, host, port, want, Made::Agent).await {
-                    Ok(at) => json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), at.port())) }),
+                match self.create_forward(host_key, &ctrl, ep, &sid, host.clone(), port, want, Made::Agent, keep).await {
+                    Ok(at) => {
+                        if keep {
+                            let saved_port = if here == Some(0) { 0 } else { at.port() };
+                            self.remember_kept_forward(olo_protocol::RexKeptForward {
+                                host: host_key.to_owned(),
+                                remote_host: host,
+                                remote_port: port,
+                                local_port: saved_port,
+                                made: olo_protocol::RexForwardMaker::Agent,
+                            });
+                        }
+                        json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), at.port())) })
+                    }
                     Err(why) => fail(format!("the forward couldn't be made: {why}")),
                 }
             }
@@ -5625,9 +5890,78 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
             st.hosts.get(host_key).and_then(|h| Some((h.control.clone()?, h.endpoint.clone()?))).ok_or_else(|| format!("host '{host_key}' is not connected"))?
         };
-        self.create_forward(host_key, &ctrl, ep, session_id, remote_host.to_owned(), remote_port, 0, crate::forwards::Made::Link).await.map(|a| a.port())
+        self.create_forward(host_key, &ctrl, ep, session_id, remote_host.to_owned(), remote_port, 0, crate::forwards::Made::Link, false).await.map(|a| a.port())
     }
 
+    /// Persist a kept forward in `HubState` and desktop `RexSettings::kept_forwards`.
+    fn remember_kept_forward(&self, entry: olo_protocol::RexKeptForward) {
+        let key = kept_forward_key(&entry);
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if !st.kept_forwards.iter().any(|k| kept_forward_key(k) == key) {
+                st.kept_forwards.push(entry.clone());
+            }
+            st.kept_forward_errors.remove(&key);
+        }
+        olo_kit::settings::update(move |s| {
+            if !s.rex.kept_forwards.iter().any(|k| kept_forward_key(k) == key) {
+                s.rex.kept_forwards.push(entry);
+            }
+        });
+    }
+
+    /// Open any kept forwards for `host_key` that don't yet have a running or
+    /// resuming forward (called on host connect, on `SessionCreated`, and when
+    /// `RexSettings::kept_forwards` changes while connected).
+    fn ensure_kept_forwards(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint) {
+        let pending: Vec<(olo_protocol::RexKeptForward, String)> = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(h) = st.hosts.get(host_key) else { return };
+            if !h.control.as_ref().is_some_and(|c| c.same_connection(ctrl)) {
+                return;
+            }
+            let Some(sid) = h.session_summaries.first().map(|s| s.session_id.clone()) else {
+                return;
+            };
+            let saved = SAVED_FORWARDS.lock().unwrap_or_else(|e| e.into_inner());
+            let mut out = Vec::new();
+            for kf in st.kept_forwards.clone().into_iter().filter(|kf| kf.host == host_key) {
+                let key = kept_forward_key(&kf);
+                let has_active = st.forwards.iter().any(|af| kept_matches_active(&kf, af));
+                let is_saved =
+                    saved.iter().any(|sf| sf.host_key == kf.host && sf.remote_host == kf.remote_host && sf.remote_port == kf.remote_port && (kf.local_port == 0 || kf.local_port == sf.local_port));
+                if has_active || is_saved || st.kept_forwards_starting.contains(&key) {
+                    continue;
+                }
+                st.kept_forwards_starting.insert(key);
+                out.push((kf, sid.clone()));
+            }
+            out
+        };
+        for (kf, sid) in pending {
+            let (inner, ctrl, ep) = (self.clone(), ctrl.clone(), ep.clone());
+            tokio::spawn(async move {
+                let key = kept_forward_key(&kf);
+                let made = maker_to_made(kf.made);
+                let res = inner.create_forward(&kf.host, &ctrl, ep, &sid, kf.remote_host.clone(), kf.remote_port, kf.local_port, made, true).await;
+                {
+                    let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.kept_forwards_starting.remove(&key);
+                    match res {
+                        Ok(_) => {
+                            st.kept_forward_errors.remove(&key);
+                        }
+                        Err(why) => {
+                            st.kept_forward_errors.insert(key, why);
+                        }
+                    }
+                }
+                (inner.notify)(HubNotice::StateChanged);
+            });
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn create_forward(
         &self,
         host_key: &str,
@@ -5638,6 +5972,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         remote_port: u16,
         local_port: u16,
         made: crate::forwards::Made,
+        kept: bool,
     ) -> Result<SocketAddr, String> {
         let handle = start_local_forward(ctrl.clone(), ep, session_id.into(), remote_host.clone(), remote_port, local_port).await.map_err(|e| e.to_string())?;
         let local_addr = handle.local_addr;
@@ -5651,7 +5986,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             if !st.hosts.get(host_key).and_then(|h| h.control.as_ref()).is_some_and(|c| c.same_connection(ctrl)) {
                 return Err("The host disconnected while opening the forward.".into());
             }
-            st.forwards.push(ActiveForward { id: uuid::Uuid::new_v4().to_string(), host_key: host_key.into(), remote_host, remote_port, local_addr, state: ForwardState::Active, made, handle });
+            st.forwards.push(ActiveForward { id: uuid::Uuid::new_v4().to_string(), host_key: host_key.into(), remote_host, remote_port, local_addr, state: ForwardState::Active, made, kept, handle });
         }
         (self.notify)(HubNotice::StateChanged);
         Ok(local_addr)
@@ -6033,6 +6368,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             local_addr,
                             state: ForwardState::Active,
                             made: f.made,
+                            kept: f.kept,
                             handle,
                         });
                         Ok(())
@@ -6052,7 +6388,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.and_then(|h| h.session_summaries.iter().find(|s| s.session_id == f.session_id).or_else(|| h.session_summaries.first()).map(|s| s.session_id.clone()))
                         };
                         match sid {
-                            Some(sid) => inner.create_forward(&f.host_key, &ctrl, ep, &sid, f.remote_host.clone(), f.remote_port, f.local_port, f.made).await.map(|_| ()),
+                            Some(sid) => inner.create_forward(&f.host_key, &ctrl, ep, &sid, f.remote_host.clone(), f.remote_port, f.local_port, f.made, f.kept).await.map(|_| ()),
                             None => Err("the host has no session to forward through".into()),
                         }
                     }
@@ -6076,20 +6412,33 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
         for f in st.forwards.iter().filter(|f| f.host_key == host_key && f.state != ForwardState::Active) {
             let reconnect = f.handle.reconnect(ctrl.clone(), ep.clone());
-            let (id, sid, hk, ctrl, inner) = (f.id.clone(), f.handle.session_id.clone(), host_key.to_owned(), ctrl.clone(), self.clone());
+            let (id, sid, hk, ctrl, ep, inner, kept) = (f.id.clone(), f.handle.session_id.clone(), host_key.to_owned(), ctrl.clone(), ep.clone(), self.clone(), f.kept);
             tokio::spawn(async move {
                 let result = reconnect.await;
-                let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                let Some(host) = st.hosts.get(&hk).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(&ctrl))) else { return };
-                let session_ended = !host.session_summaries.iter().any(|s| s.session_id == sid);
-                let Some(f) = st.forwards.iter_mut().find(|f| f.id == id) else { return };
-                f.state = match result {
-                    Ok(()) => ForwardState::Active,
-                    Err(olo_rex_client::RexError::Api(_)) if session_ended => ForwardState::Failed(olo_kit::words::tr("its session has ended.").into()),
-                    Err(olo_rex_client::RexError::Api(e)) => ForwardState::Failed(e.message),
-                    Err(e) => ForwardState::Failed(e.to_string()),
-                };
-                drop(st);
+                let mut reattach_kept = false;
+                {
+                    let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let Some(host) = st.hosts.get(&hk).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(&ctrl))) else { return };
+                    let session_ended = !host.session_summaries.iter().any(|s| s.session_id == sid);
+                    if kept && session_ended && result.is_err() {
+                        // A kept forward outlives the session that made it: drop
+                        // the stale handle and let `ensure_kept_forwards` reopen it
+                        // on the host's first live session.
+                        st.forwards.retain(|f| f.id != id);
+                        reattach_kept = true;
+                    } else {
+                        let Some(f) = st.forwards.iter_mut().find(|f| f.id == id) else { return };
+                        f.state = match result {
+                            Ok(()) => ForwardState::Active,
+                            Err(olo_rex_client::RexError::Api(_)) if session_ended => ForwardState::Failed(olo_kit::words::tr("its session has ended.").into()),
+                            Err(olo_rex_client::RexError::Api(e)) => ForwardState::Failed(e.message),
+                            Err(e) => ForwardState::Failed(e.to_string()),
+                        };
+                    }
+                }
+                if reattach_kept {
+                    inner.ensure_kept_forwards(&hk, &ctrl, &ep);
+                }
                 (inner.notify)(HubNotice::StateChanged);
             });
         }
@@ -6393,6 +6742,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
                     self.resume_saved_forwards(&host_key, &ctrl, &endpoint);
+                    self.ensure_kept_forwards(&host_key, &ctrl, &endpoint);
                     self.keep_folders_of(&host_key);
 
                     (self.notify)(HubNotice::StateChanged);
@@ -6993,6 +7343,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 if let Ok(att) = ctrl.session_attach(&s.session_id).await {
                     self.ingest_session(host_key, ctrl, ep, att.payload.view, &[]).await;
                 }
+                self.ensure_kept_forwards(host_key, ctrl, ep);
             }
             ControlEvent::SessionMoved { session_id, before_session_id } => {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -7004,14 +7355,31 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 (self.notify)(HubNotice::StateChanged);
             }
             ControlEvent::SessionDestroyed { session_id } => {
-                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(h) = st.hosts.get_mut(host_key) {
-                    h.sessions.remove(&session_id);
-                    h.pending_focus.remove(&session_id);
-                    h.session_summaries.retain(|s| s.session_id != session_id);
+                let mut reattach_kept = false;
+                {
+                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(h) = st.hosts.get_mut(host_key) {
+                        h.sessions.remove(&session_id);
+                        h.pending_focus.remove(&session_id);
+                        h.session_summaries.retain(|s| s.session_id != session_id);
+                    }
+                    st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id));
+                    st.forwards.retain(|f| {
+                        if f.host_key == host_key && f.handle.session_id == session_id {
+                            if f.kept {
+                                reattach_kept = true;
+                                return false;
+                            }
+                            if f.made == crate::forwards::Made::Agent {
+                                return false;
+                            }
+                        }
+                        true
+                    });
                 }
-                st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id));
-                drop(st);
+                if reattach_kept {
+                    self.ensure_kept_forwards(host_key, ctrl, ep);
+                }
                 self.write_palette_index();
                 (self.notify)(HubNotice::StateChanged);
             }
@@ -7937,6 +8305,7 @@ mod tests {
             remote_port: 5173,
             local_port: 5173,
             made: crate::forwards::Made::Agent,
+            kept: true,
         };
         let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()], help: Vec::new(), forwards: vec![forward.clone()] }).unwrap();
         let read = serde_json::from_str::<crate::ui::SavedAppState>(&kept).unwrap();

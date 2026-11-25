@@ -546,6 +546,42 @@ exit 0
               {"made": made, "mine": mine, "theirs": theirs, "ended": bool(ended), "left": left, "back": back, "now": sorted(now)})
         for b in theirs: r.rex("forward", "close", "--all")
         r.win = next((w for w in r.windows() if w.get("title") == "Rex"), r.win)
+        # `--keep`: persisted in desktop settings, survives a full Rex restart (even without upgrade state),
+        # shown as kept in `olo forward ls --json`, and forgotten on `olo forward close`.
+        kept_port = free()
+        kept_made = fwd(str(far_port), "--port", str(kept_port), "--keep")
+        kept_ls = json.loads(fwd("ls", "--json") or "[]")
+        os.kill(r.win["pid"], signals.SIGTERM)
+        kept_ended = r.wait(lambda: not any(w["id"] == r.win["id"] for w in r.windows()), 15, every=0.2)
+        r.start_app(trust=False)
+        kept_restored = r.wait(lambda: reached(kept_port) == b"far server", 45, every=0.3)
+        # Find the restarted app's far client by checking `olo forward ls --json` for kept_port
+        # (don't call `far_client()` which probes `far_port` with `--any-port` and closes it!).
+        def find_kept_client():
+            apps = [c["client_id"] for c in first(r.far.ran(f"{rex} client ls --json 2>/dev/null")).get("clients", []) if c.get("info", {}).get("kind") == "app" and c.get("connection_state") == "connected"]
+            for c in apps:
+                client[0] = c
+                try:
+                    rows = json.loads(fwd("ls", "--json") or "[]")
+                    if any(x.get("port") == kept_port and x.get("kept") is True for x in rows):
+                        return c
+                except ValueError:
+                    pass
+            return None
+        kept_back_client = r.wait(find_kept_client, 30, every=0.5)
+        kept_ls_after = json.loads(fwd("ls", "--json") or "[]") if kept_back_client else []
+        kept_closed = fwd("close", str(kept_port)) if kept_back_client else ""
+        kept_gone = r.wait(lambda: reached(kept_port) is None, 5, every=0.1)
+        kept_ls_final = json.loads(fwd("ls", "--json") or "[]") if kept_back_client else []
+        check("forward --keep: restored on Rex restart and forgotten on close",
+              kept_made == f"localhost:{kept_port}\n"
+              and any(x.get("port") == kept_port and x.get("kept") is True for x in kept_ls)
+              and kept_ended and kept_restored
+              and any(x.get("port") == kept_port and x.get("kept") is True for x in kept_ls_after)
+              and kept_closed == f"closed {kept_port}\n" and kept_gone
+              and not any(x.get("port") == kept_port for x in kept_ls_final),
+              {"made": kept_made, "ls": kept_ls, "restored": kept_restored, "ls_after": kept_ls_after, "closed": kept_closed, "ls_final": kept_ls_final})
+        r.win = next((w for w in r.windows() if w.get("title") == "Rex"), r.win)
         server.close()
         # `olo send`: files and folders of the host's saved here, in the app's Downloads ▸ Rex ▸ far, by the engine
         # through the host's helper; sent again, only what changed goes.

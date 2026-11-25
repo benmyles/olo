@@ -129,7 +129,9 @@ person's browser or on your own screen there:
 
 1. `olo forward 5173`: the desktop's localhost:5173 reaches this host's
    from then on, at the same port, so the app's own links, cookies and
-   sign-in callbacks name an address that works there too.
+   sign-in callbacks name an address that works there too. Add `--keep`
+   for a lasting forward that Rex brings back automatically when Rex
+   starts and when the host reconnects, even if this Rex session ends.
 2. `olo open http://localhost:5173` for the person, or
    `olo screen run NAME olo-chrome http://localhost:5173` for yourself:
    the address goes through that forward (the page still says
@@ -138,8 +140,9 @@ person's browser or on your own screen there:
    `set`, `look`. What you type is sent as you wrote it, an address
    too: only what is opened (`run`'s and `start`'s arguments, `olo
    open`) is sent through a forward.
-4. `olo forward close 5173` when you're done; it closes by itself when
-   this Rex session ends.
+4. `olo forward close 5173` when you're done (also stops a `--keep`
+   forward); without `--keep` it closes by itself when this Rex session
+   ends.
 
 Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):

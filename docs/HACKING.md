@@ -29514,7 +29514,17 @@ Rex server, as every Rex client offers its own
   forward is a tunnel block in the asking session on the host's server
   (`create_forward`, which the Ports list's Forward uses too), so it
   lasts until closed or that session ends; for this computer's own
-  server the port is here already, and said so. *Over an upgrade in
+  server the port is here already, and said so. *Kept forwards* (`--keep`,
+  or the Forward Port dialog's *"Keep when Rex restarts"* check box):
+  persisted in `RexSettings::kept_forwards` (`RexKeptForward`) and
+  recreated automatically on Rex startup, host reconnect, and when the
+  originating session ends (re-attached to the host's first live session,
+  or opened when `SessionCreated` fires), until removed via `olo forward
+  close` or the Ports list's Stop / Remove. The Hosts and Ports list shows
+  who made each forward (`Made by`: *You*, *Agent*, *Link*), a dedicated
+  centred `Kept` checkmark column (`✓`), a live *Keep* toggle in the Ports
+  button row, and a one-line help row under Ports explaining the chosen row.
+  *Over an upgrade in
   place* every forward comes back at its port (`hub::SavedForward`,
   kept with the windows): Rex's process is replaced with `exec`, which
   runs no destructor, so its blocks stay open on the server, and the

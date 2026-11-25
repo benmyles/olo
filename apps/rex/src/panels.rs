@@ -178,7 +178,7 @@ pub fn host_rows(hub: &RexHub, waits_for_agent: &dyn Fn(&str) -> bool) -> Vec<Ho
         .filter_map(|k| st.hosts.get(k))
         .map(|h| {
             let named = !h.label.is_empty() && h.label != h.endpoint_raw;
-            let forwards = st.forwards.iter().filter(|f| f.host_key == h.key).count() + demo_forwards().iter().filter(|(.., host, _, _)| *host == h.key).count();
+            let forwards = st.forwards.iter().filter(|f| f.host_key == h.key).count() + demo_forwards().iter().filter(|row| row.3 == h.key).count();
             HostRow {
                 line: host_line(&h.conn_state, h.is_local, waits_for_agent(&h.endpoint_raw), h.session_summaries.len().max(h.sessions.len()), forwards),
                 key: h.key.clone(),
@@ -219,8 +219,8 @@ pub enum PortKind {
     Forwarded { id: String, local_port: u16, failed: bool },
 }
 
-/// A row of the Ports list: a port, the program on it, its host, and
-/// how it stands (listening there; forwarded here, to which port).
+/// A row of the Ports list: a port, the program on it, its host, who made it,
+/// whether it is kept, and how it stands (listening there; forwarded here, to which port).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PortRow {
     pub kind: PortKind,
@@ -232,9 +232,15 @@ pub struct PortRow {
     pub here: String,
     pub program: String,
     pub host: String,
+    /// Who made a forward (`You`, `Link`, `Agent`); empty for listening ports.
+    pub made: String,
+    /// Whether Rex brings this forward back automatically across restarts / reconnects.
+    pub kept: bool,
     pub light: Light,
     /// How it stands, in a word, as a host's row says it.
     pub state: String,
+    /// Full-sentence help line shown under the Ports buttons when this row is selected.
+    pub line: String,
     /// Why a forward couldn't be brought back, where one couldn't.
     pub trouble: Option<String>,
 }
@@ -243,21 +249,29 @@ pub struct PortRow {
 /// first (they are the person's own doing), then those programs in
 /// the panes listen on.
 /// The demo's forwards, which it has no hosts to make
-/// (`OLO_REX_DEMO_HOSTS=states`, for the window's pictures): a forward
-/// that works, one of the host being connected to, one of the host
-/// that isn't connected.
-fn demo_forwards() -> &'static [(&'static str, &'static str, u16, &'static str, Light, &'static str)] {
+/// (`OLO_REX_DEMO_HOSTS=states`, for the window's pictures): a kept forward
+/// made by the person, a kept forward made by an agent, and one opened by a link.
+fn demo_forwards() -> &'static [(&'static str, &'static str, u16, &'static str, &'static str, bool, Light, &'static str, &'static str)] {
     static DEMO: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *DEMO.get_or_init(|| std::env::var("OLO_REX_DEMO_HOSTS").ok().as_deref() == Some("states")) {
         &[
-            ("demo-1", "5432", 49152, "dev-box", Light::On, "Forwarded"),
-            // (On the host that is being connected to, and saying what
-            // a real one says there: `forward_said`.)
-            ("demo-2", "8080", 49153, "build", Light::Waiting, "Waiting for host"),
-            ("demo-3", "9090", 49154, "nas", Light::Off, "Waiting for host"),
+            ("demo-1", "5432", 49152, "dev-box", "You", true, Light::On, "Forwarded", "Forwarded by you. Rex sets it up again when it restarts; Stop removes it."),
+            ("demo-2", "8080", 8080, "build", "Agent", true, Light::Waiting, "Waiting for host", "Made with olo forward. Rex sets it up again when it restarts; Stop removes it."),
+            ("demo-3", "9090", 49154, "nas", "Link", false, Light::Off, "Waiting for host", "Opened from a link. Ends when you stop it or Rex closes."),
         ]
     } else {
         &[]
+    }
+}
+
+fn forward_help_line(made: crate::forwards::Made, kept: bool) -> String {
+    match (made, kept) {
+        (crate::forwards::Made::Person, true) => olo_kit::words::tr("Forwarded by you. Rex sets it up again when it restarts; Stop removes it.").into(),
+        (crate::forwards::Made::Person, false) => olo_kit::words::tr("Forwarded by you. Ends when you stop it or Rex closes.").into(),
+        (crate::forwards::Made::Agent, true) => olo_kit::words::tr("Made with olo forward. Rex sets it up again when it restarts; Stop removes it.").into(),
+        (crate::forwards::Made::Agent, false) => olo_kit::words::tr("Made with olo forward. Ends when its session closes.").into(),
+        (crate::forwards::Made::Link, true) => olo_kit::words::tr("Opened from a link. Rex sets it up again when it restarts; Stop removes it.").into(),
+        (crate::forwards::Made::Link, false) => olo_kit::words::tr("Opened from a link. Ends when you stop it or Rex closes.").into(),
     }
 }
 
@@ -280,8 +294,52 @@ pub fn port_rows(hub: &RexHub) -> Vec<PortRow> {
                 here: local_port.to_string(),
                 program: String::new(),
                 host: label(&f.host_key),
+                made: olo_kit::words::tr(f.made.short()).into(),
+                kept: f.kept,
                 light,
                 state: olo_kit::words::tr(state).into(),
+                line: forward_help_line(f.made, f.kept),
+                trouble,
+            },
+        ));
+    }
+    // Kept forwards not yet live in `st.forwards` (host disconnected on Rex
+    // start, no session yet, or failed to bind).
+    for kf in &st.kept_forwards {
+        let already_active = st
+            .forwards
+            .iter()
+            .any(|af| kf.host == af.host_key && kf.remote_host == af.remote_host && kf.remote_port == af.remote_port && (kf.local_port == 0 || kf.local_port == af.local_addr.port()));
+        if already_active {
+            continue;
+        }
+        let err_key = (kf.host.clone(), kf.remote_host.clone(), kf.remote_port, kf.local_port);
+        let err = st.kept_forward_errors.get(&err_key).cloned();
+        let host_conn = st.hosts.get(&kf.host).map(|h| &h.conn_state);
+        let (light, base_state, trouble) = match err {
+            Some(why) => (Light::Down, "Failed", Some(why)),
+            None => match host_conn {
+                Some(HostConnState::Connecting | HostConnState::Reconnecting { .. } | HostConnState::Connected) => (Light::Waiting, "Waiting for host", None),
+                _ => (Light::Off, "Waiting for host", None),
+            },
+        };
+        let made = match kf.made {
+            olo_protocol::RexForwardMaker::Person => crate::forwards::Made::Person,
+            olo_protocol::RexForwardMaker::Agent => crate::forwards::Made::Agent,
+        };
+        rows.push((
+            (place(&kf.host), kf.remote_port, 0),
+            PortRow {
+                kind: PortKind::Forwarded { id: crate::hub::kept_forward_id(kf), local_port: kf.local_port, failed: trouble.is_some() },
+                port: kf.remote_port.to_string(),
+                here: if kf.local_port > 0 { kf.local_port.to_string() } else { String::new() },
+                program: String::new(),
+                host: label(&kf.host),
+                made: olo_kit::words::tr(made.short()).into(),
+                kept: true,
+                light,
+                state: olo_kit::words::tr(base_state).into(),
+                line: forward_help_line(made, true),
                 trouble,
             },
         ));
@@ -290,6 +348,12 @@ pub fn port_rows(hub: &RexHub) -> Vec<PortRow> {
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
         let program = g.process.as_ref().and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.clone()).unwrap_or_default();
         let here = st.hosts.get(&bk.host_key).is_some_and(|h| h.is_local);
+        let host_name = label(&bk.host_key);
+        let line = if here {
+            olo_kit::words::tr("Listening on this computer. Open reaches it in your browser.").into()
+        } else {
+            olo_kit::tr!("Listening on {}. Open forwards it here and opens it.", host_name).to_string()
+        };
         for pe in &g.ports.ports {
             rows.push((
                 (place(&bk.host_key), pe.port, 1),
@@ -298,16 +362,19 @@ pub fn port_rows(hub: &RexHub) -> Vec<PortRow> {
                     port: pe.port.to_string(),
                     here: if here { pe.port.to_string() } else { String::new() },
                     program: program.clone(),
-                    host: label(&bk.host_key),
+                    host: host_name.clone(),
+                    made: String::new(),
+                    kept: false,
                     // (Working: green, as a connected host. Grey is for off.)
                     light: Light::On,
                     state: olo_kit::words::tr("Listening").into(),
+                    line: line.clone(),
                     trouble: None,
                 },
             ));
         }
     }
-    for &(id, port, local_port, host, light, state) in demo_forwards() {
+    for &(id, port, local_port, host, made, kept, light, state, line) in demo_forwards() {
         rows.push((
             (place(host), port.parse().unwrap_or(0), 0),
             PortRow {
@@ -316,8 +383,11 @@ pub fn port_rows(hub: &RexHub) -> Vec<PortRow> {
                 here: local_port.to_string(),
                 program: String::new(),
                 host: host.to_owned(),
+                made: olo_kit::words::tr(made).into(),
+                kept,
                 light,
                 state: olo_kit::words::tr(state).into(),
+                line: olo_kit::words::tr(line).into(),
                 trouble: None,
             },
         ));
@@ -343,10 +413,28 @@ pub fn list_rows(rows: usize, least: usize) -> usize {
 /// state is a word or two.
 pub const STATUS_AT: f32 = 384.0;
 pub const STATUS: f32 = 146.0;
-/// The Ports list's two columns of numbers: a port (five figures at
-/// most), and the port it is here.
-const PORT: f32 = 48.0;
-const HERE: f32 = 56.0;
+/// The Ports list's column widths before `Status` (sum = `STATUS_AT` = 384 so
+/// the `Status` column aligns directly under Hosts' `Status` column above).
+const PORT: f32 = 46.0;
+const HERE: f32 = 50.0;
+const PROGRAM: f32 = 62.0;
+const MADE_BY: f32 = 84.0;
+const KEPT_COL: f32 = 40.0;
+
+/// Draw a centred BeOS checkmark tick inside a `Kept` cell.
+fn kept_tick_cell(g: &mut olo_kit::Painter, cell: &mut olo_kit::widgets::Cell) {
+    let c = cell.bounds.center();
+    let s = g.scale_factor();
+    let sw = px((style::line_pixels(s) * 1.5) / s);
+    let mut pb = olo_kit::PathBuilder::stroke(sw);
+    pb.move_to(point(c.x - px(4.0), c.y + px(0.2)));
+    pb.line_to(point(c.x - px(1.2), c.y + px(3.0)));
+    pb.line_to(point(c.x + px(4.2), c.y - px(3.2)));
+    if let Ok(path) = pb.build() {
+        g.paint_path(path, cell.text_color);
+    }
+    cell.say(olo_kit::words::tr("Kept").to_owned());
+}
 
 /// A light and the words beside it, in a list's cell: the light where
 /// the cell's text begins, the words after it.
@@ -394,6 +482,7 @@ pub fn render_hosts_panel(
     on_manage: impl Fn(&String, &mut WindowCx) + 'static,
     on_port: impl Fn(&(), &mut WindowCx) + 'static,
     on_forward: impl Fn(&(), &mut WindowCx) + 'static,
+    on_keep: impl Fn(&(String, bool), &mut WindowCx) + 'static,
     on_stop: impl Fn(&String, &mut WindowCx) + 'static,
     on_open: impl Fn(&PortKind, &mut WindowCx) + 'static,
 ) -> Element {
@@ -509,31 +598,41 @@ pub fn render_hosts_panel(
         cx,
         "rex-ports",
         ports_list,
-        // (The port, and the port it is here: two columns of numbers,
-        // set right. They were one, "5432 → 49152" under "Port", which
-        // didn't say which was which; and "Port → Here" over it was a
-        // title with an arrow in it, over rows that had none. Opus's
-        // reviews, 2026-11-23.)
-        vec![Column::new("Port", PORT).right(), Column::new("Here", HERE).right(), Column::new("Program", 116.0), Column::new("Host", STATUS_AT - 220.0), Column::new("Status", STATUS)],
+        // (Columns sum to STATUS_AT = 384 before Status so Status lights line
+        // up directly underneath the Hosts list above.)
+        vec![
+            Column::new("Port", PORT).right(),
+            Column::new("Here", HERE).right(),
+            Column::new("Program", PROGRAM),
+            Column::new("Host", STATUS_AT - PORT - HERE - PROGRAM - MADE_BY - KEPT_COL),
+            Column::new("Made by", MADE_BY),
+            Column::new("Kept", KEPT_COL).center(),
+            Column::new("Status", STATUS),
+        ],
         ports.len(),
         |v: &crate::ui::RexWindow, cell, g| {
             let Some(p) = v.ports_rows.get(cell.row) else { return };
+            let dash = |cell: &mut olo_kit::widgets::Cell, g: &mut olo_kit::Painter| {
+                let ink = if cell.selected { cell.text_color } else { style::secondary_text(&theme::palette()) };
+                cell.text_with(g, "–", style::ui_font(olo_kit::FontWeight::NORMAL), ink)
+            };
             match cell.column {
                 0 => cell.text(g, p.port.clone()),
-                // (Not here, nor a program known: a dash, quiet, not a
-                // blank that reads as something not loaded.)
-                1 | 2 if (if cell.column == 1 { &p.here } else { &p.program }).is_empty() => {
-                    let ink = if cell.selected { cell.text_color } else { style::secondary_text(&theme::palette()) };
-                    cell.text_with(g, "–", style::ui_font(olo_kit::FontWeight::NORMAL), ink)
-                }
+                1 if p.here.is_empty() => dash(cell, g),
                 1 => cell.text(g, p.here.clone()),
+                2 if p.program.is_empty() => dash(cell, g),
                 2 => cell.text(g, p.program.clone()),
                 3 => cell.text(g, p.host.clone()),
+                // Leave Made by empty on listening rows (dash only means unknown / not forwarded).
+                4 if p.made.is_empty() => {}
+                4 => cell.text(g, p.made.clone()),
+                5 if p.kept => kept_tick_cell(g, cell),
+                5 => {}
                 _ => lit_cell(g, cell, p.light, &p.state),
             }
         },
     )
-    .row_key(|v: &crate::ui::RexWindow, row| v.ports_rows.get(row).map_or(0, |p| style::key((&p.port, &p.here, &p.program, &p.host, p.light, &p.state))))
+    .row_key(|v: &crate::ui::RexWindow, row| v.ports_rows.get(row).map_or(0, |p| style::key((&p.port, &p.here, &p.program, &p.host, &p.made, p.kept, p.light, &p.state))))
     .empty_text("No programs in the panes are listening on ports, and none is forwarded here.")
     .on_select(on_port);
     let port_list = div().w_full().h(tall(list_rows(ports.len(), 4))).child(port_list);
@@ -546,10 +645,15 @@ pub fn render_hosts_panel(
     let stop_words = if stop.as_ref().is_some_and(|(_, failed)| *failed) { "Remove" } else { "Stop" };
     let stop_id = stop.map(|(id, _)| id);
     let stops = stop_id.is_some();
+    let keep_id = stop_id.clone();
+    let keep_checked = port.is_some_and(|p| p.kept);
     // (Open: a port here is opened; another host's is forwarded here
     // first, and one already forwarded is opened where it is here.
     // One word for the three: its row then says where it is.)
-    let opens = port.is_some_and(|p| !matches!(p.kind, PortKind::Forwarded { failed: true, .. }));
+    let opens = port.is_some_and(|p| match p.kind {
+        PortKind::Forwarded { local_port, failed, .. } => !failed && local_port > 0,
+        PortKind::Listening { .. } => true,
+    });
     let open_kind = port.map(|p| p.kind.clone());
     let port_actions = div()
         .w_full()
@@ -558,6 +662,13 @@ pub fn render_hosts_panel(
         .items_center()
         .gap(px(m::SPACING))
         .child(Button::new("Forward…").min_width(wide).enabled(can_forward).on_click(move |_, cx| on_forward(&(), cx)))
+        // Lets the person change whether an existing forward is kept across restarts
+        // (left edge aligned with Remove above).
+        .child(CheckBox::new("Keep", keep_checked).enabled(stops).on_toggle(move |v, cx| {
+            if let Some(id) = &keep_id {
+                on_keep(&(id.clone(), *v), cx);
+            }
+        }))
         .child(div().flex_1())
         .child(Button::new(stop_words).min_width(wide).enabled(stops).on_click(move |_, cx| {
             if let Some(id) = &stop_id {
@@ -570,17 +681,22 @@ pub fn render_hosts_panel(
             }
         }));
 
-    // (A forward that couldn't be brought back: why, as a host's reason
-    // is said. At the window's foot, nothing under it to move.)
-    let port_trouble = port.and_then(|p| p.trouble.clone()).map(|why| {
-        div()
+    // One-line help / trouble row under Ports buttons, matching the Hosts section above.
+    let port_said: String = match port {
+        Some(p) => p.line.clone(),
+        None => olo_kit::words::tr("Choose a port to open it, or a forward to stop or keep it.").into(),
+    };
+    let port_line = div().w_full().h(px(row)).child(match port.and_then(|p| p.trouble.clone()) {
+        Some(why) => div()
             .w_full()
+            .h(px(row))
             .flex()
             .flex_row()
-            .items_start()
+            .items_center()
             .gap(px(m::TIGHT))
-            .child(div().h(px(style::line_row(style::PLAIN_SIZE))).flex().items_center().child(light(Light::Down)))
-            .child(div().flex_1().min_w_0().child(StringView::new(why).wrap(true)))
+            .child(light(Light::Down))
+            .child(div().flex_1().min_w_0().child(StringView::new(why).cut_words(true).height(row))),
+        None => div().w_full().child(StringView::new(port_said).dim(true).cut_words(true).height(row)),
     });
     div()
         .flex()
@@ -610,7 +726,7 @@ pub fn render_hosts_panel(
                 .flex_col()
                 .gap(px(m::SPACING))
                 .child(div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new("Ports").bold(true)).child(port_list))
-                .child(div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(port_actions).children(port_trouble)),
+                .child(div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(port_actions).child(port_line)),
         )
 }
 
@@ -1431,35 +1547,61 @@ pub fn render_move_panel(mv: &crate::moving::Move, phase: f32, on_do: impl Fn(&M
     }
 }
 
-/// The Forward Port window: a port of another host, and which host, to
-/// have here; Cancel and Forward. (It is forwarded, not opened: a port
-/// typed here may be a database's.)
+/// The Forward Port window: a port of another host, which host, whether to
+/// keep it across Rex restarts and host reconnects, and Cancel / Forward.
+#[allow(clippy::too_many_arguments)]
 pub fn render_forward_panel(
     cx: &WindowCx,
     port_field: &Child<TextField>,
     from: Vec<SharedString>,
     chosen: usize,
+    keep: bool,
     can_forward: bool,
     on_from: impl Fn(&usize, &mut WindowCx) + 'static,
+    on_keep: impl Fn(&bool, &mut WindowCx) + 'static,
     on_done: impl Fn(&bool, &mut WindowCx) + 'static,
 ) -> Element {
     let on_done = std::rc::Rc::new(on_done);
     let (cancel, forward) = (on_done.clone(), on_done);
     let divider = divider_for(&["Port:", "From:"]);
+    let p = theme::palette();
+    // Crisp secondary ink at >=5.2:1 against the panel so help notes stay distinct from disabled controls.
+    let help_ink = style::c(olo_theme::readable(olo_theme::mix(p.panel_text, p.panel_background, 0.30), p.panel_background, 5.2));
     div()
         .flex()
         .flex_col()
         .gap(px(m::SPACING))
-        .p(px(m::WINDOW_INSET))
+        .px(px(m::WINDOW_INSET))
+        .pt(px(m::WINDOW_INSET))
+        .pb(px(m::WINDOW_INSET + 3.0))
         .w_full()
-        .child(TextControl::new(cx, port_field).label("Port:").divider(divider).width(divider + 96.0))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.0))
+                .child(TextControl::new(cx, port_field).label("Port:").divider(divider).width(divider + 96.0))
+                .child(div().pl(px(divider)).child(StringView::new("Rex picks a free port on this computer.").size(style::SMALL_SIZE).color(help_ink).wrap(true))),
+        )
         // (The menu to the window's right edge, as Add Host's fields
         // are; a number's field is short.)
         .child(MenuField::new("fwd-host", from, chosen).label("From:").divider(divider).width(olo_kit::widgets::ALERT_WIDTH - 2.0 * m::WINDOW_INSET).on_change(on_from))
-        .child(div().pl(px(divider)).child(StringView::new("Rex picks a free port on this computer; the Ports list shows it.").size(style::SMALL_SIZE).dim(true).wrap(true)))
         .child(
+            div()
+                .pl(px(divider))
+                .flex()
+                .flex_col()
+                // Tight 2 pt gap under the checkbox (~18 pt baseline pitch) so the note binds directly to it.
+                .gap(px(2.0))
+                .child(CheckBox::new("Keep when Rex restarts", keep).on_toggle(on_keep))
+                .child(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("Rex also sets it up again whenever the host reconnects.").size(style::SMALL_SIZE).color(help_ink).wrap(true))),
+        )
+        .child(
+            // Inset 3 pt on the right so Forward's outer default ring aligns flush
+            // with From:'s right edge and the right margin matches the bottom margin.
             olo_kit::widgets::button_row()
                 .pt(px(m::TIGHT))
+                .pr(px(3.0))
                 .child(Button::new("Cancel").on_click(move |_, cx| cancel(&false, cx)))
                 .child(Button::new("Forward").default(true).enabled(can_forward).on_click(move |_, cx| forward(&true, cx))),
         )

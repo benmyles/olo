@@ -859,6 +859,7 @@ pub enum WinMsg {
     PortsChosen,
     /// The Forward Port window: Forward (true), or Cancel.
     ForwardDone(bool),
+    ForwardKeep(bool),
     /// The Add Host window: Add and Connect (true), or Cancel.
     AddHostDone(bool),
     /// How Rex runs on the host being added, and whether to set it up.
@@ -953,6 +954,8 @@ pub struct RexWindow {
     pub fwd_port_field: Option<Child<TextField>>,
     /// The host a port typed in the Hosts window is forwarded from (its key).
     pub fwd_host: Option<String>,
+    /// Whether the Forward Port dialog's "Keep when Rex restarts" checkbox is ticked.
+    pub fwd_keep: bool,
     /// The Hosts window's list: its state, its rows as last said (the
     /// list draws from them), and the host chosen in it (its key).
     /// Add Host: how Rex runs on the host, and whether to set it up.
@@ -1132,6 +1135,7 @@ impl RexWindow {
             host_addr_field: None,
             fwd_port_field: None,
             fwd_host: None,
+            fwd_keep: false,
             add_mode: Default::default(),
             add_set_up: true,
             setup_tick: None,
@@ -1342,6 +1346,7 @@ impl RexWindow {
             host_addr_field,
             fwd_port_field,
             fwd_host: None,
+            fwd_keep: false,
             add_mode: Default::default(),
             add_set_up: true,
             setup_tick: None,
@@ -1619,7 +1624,7 @@ impl RexWindow {
         let hub = app().hub.clone();
         let session = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key).and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone()));
         if let Some(session) = session {
-            hub.add_local_forward(&key, &session, "127.0.0.1".to_owned(), port, 0, false, Feedback::start(self.id));
+            hub.add_local_forward(&key, &session, "127.0.0.1".to_owned(), port, 0, false, self.fwd_keep, Feedback::start(self.id));
         }
         cx.request_close();
     }
@@ -3097,12 +3102,9 @@ impl RexWindow {
                     .w_full()
                     .min_h(px(m::LABEL_ROW))
                     .px(px(m::SPACING))
-                    // (Two points under its words, as the bar's line
-                    // above stands two points clear of them: they sat
-                    // low in it. Gemini's review, 2026-11-22: eleven
-                    // pixels over the capitals and nine under the
-                    // baseline at 2×.)
-                    .pb(px(2.0))
+                    // Symmetric 1 pt vertical padding inside the 18 pt status bar so
+                    // the 16 pt status text sits centred to the pixel at every scale.
+                    .py(px(1.0))
                     .child(canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(1).absolute().inset_0())
                     // What the bar says stays where it is; a host that
                     // is silent is said at the bar's far end, with the
@@ -3581,6 +3583,7 @@ impl RexWindow {
                 };
                 let (hosts, ports) = (self.hosts_rows.clone(), self.ports_rows.clone());
                 let (hosts_list, ports_list) = (self.hosts_list.clone(), self.ports_list.clone());
+                let hub_k = hub.clone();
                 let panel = panels::render_hosts_panel(
                     cx,
                     &hosts_list,
@@ -3607,6 +3610,10 @@ impl RexWindow {
                     cx.msg_with(|hk: &String| WinMsg::HostOpen(hk.clone())),
                     cx.msg_with(|_: &()| WinMsg::PortsChosen),
                     cx.msg_with(|_: &()| WinMsg::Command("app.forward_port".into())),
+                    cx.msg_with(move |(fid, keep): &(String, bool)| {
+                        hub_k.set_forward_kept(fid, *keep);
+                        WinMsg::Redraw
+                    }),
                     cx.msg_with(move |fid: &String| {
                         hub_s.remove_forward(fid);
                         WinMsg::Redraw
@@ -3615,7 +3622,7 @@ impl RexWindow {
                         match kind {
                             panels::PortKind::Listening { port, here: true, .. } => hub_f.open_local_port(*port, Feedback::start(window)),
                             panels::PortKind::Listening { host_key, session_id, port, here: false } => {
-                                hub_f.add_local_forward(host_key, session_id, "127.0.0.1".to_owned(), *port, 0, true, Feedback::start(window))
+                                hub_f.add_local_forward(host_key, session_id, "127.0.0.1".to_owned(), *port, 0, true, false, Feedback::start(window))
                             }
                             panels::PortKind::Forwarded { local_port, .. } => hub_f.open_local_port(*local_port, Feedback::start(window)),
                         }
@@ -3645,8 +3652,10 @@ impl RexWindow {
                         pf,
                         from.iter().map(|(_, name)| name.clone().into()).collect(),
                         chosen,
+                        self.fwd_keep,
                         typed && !from.is_empty(),
                         cx.msg_with(move |i: &usize| WinMsg::HostsForwardFrom(keys.get(*i).cloned().unwrap_or_default())),
+                        cx.msg_with(|keep: &bool| WinMsg::ForwardKeep(*keep)),
                         cx.msg_with(|forward: &bool| WinMsg::ForwardDone(*forward)),
                     ))
             }
@@ -4205,6 +4214,10 @@ impl View for RexWindow {
             }
             WinMsg::ForwardDone(true) => self.submit_forward(cx),
             WinMsg::ForwardDone(false) => cx.request_close(),
+            WinMsg::ForwardKeep(keep) => {
+                self.fwd_keep = keep;
+                cx.invalidate();
+            }
             WinMsg::AddHostDone(true) => self.submit_add_host(cx),
             WinMsg::AddHostDone(false) => cx.request_close(),
             WinMsg::AddHostMode(i) => {
@@ -5381,11 +5394,6 @@ fn render_single_pane(
         let show_split_btns = pane_w >= 230.0;
         let show_close_btn = pane_w >= 140.0;
         let show_extras = pane_w >= 260.0;
-        let right_controls_w = HEADER_END
-            + if show_close_btn { widgets::GLYPH_BUTTON.0 + m::TIGHT } else { 0.0 }
-            + if show_split_btns { (widgets::GLYPH_BUTTON.0 + m::TIGHT) * 2.0 } else { 0.0 }
-            + if show_extras { ports_pill.as_deref().map_or(0.0, |p| widgets::link_button_width(p) + m::TIGHT) } else { 0.0 }
-            + if show_extras { zoom_pill.as_deref().map_or(0.0, |z| widgets::link_button_width(z) + m::TIGHT) } else { 0.0 };
 
         let bk_click = bk.clone();
         let bk_split_r = bk.clone();
@@ -5394,7 +5402,7 @@ fn render_single_pane(
         let bk_close = bk.clone();
         let title_paint = header_title.clone();
         let pane_help = crate::hub::help_of(&bk);
-        let key = style::key((&header_title, &git_pill, &ports_pill, &host_pill, focused, zoomed, activity as u8, &pane_help, pane_w as i32));
+        let key = style::key((focused, pane_w as i32));
 
         let head_bg = canvas(move |g, b| {
             let p = theme::palette();
@@ -5416,21 +5424,43 @@ fn render_single_pane(
                 let line = style::snap(g, Bounds::from_corners(point(b.left(), b.bottom() - px(2.0)), b.bottom_right()));
                 style::fill_rect(g, line, style::c(p.keyboard_navigation));
             }
-            // The icon over the pane's text (the first column's edge),
-            // as a tab's is over the menu bar's first title and as
-            // Terminal's panes have theirs.
-            let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-            let icon_b = style::snap_centred(g, point(b.left() + px(pad.0 + ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
-            paint_activity_icon(g, icon_b, activity, &pane_help);
-            let left = pad.0 + ROW_ICON + m::MARK_GAP;
-            let title_max_w = (f32::from(b.size.width) - left - right_controls_w - m::TIGHT).max(24.0);
-            let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
-            let weight = if focused { FontWeight::MEDIUM } else { FontWeight::NORMAL };
-            style::label_fit(g, b.left() + px(left), b.center().y, style::Align::Left, title_paint.clone(), style::PLAIN_SIZE, style::ui_font(weight), title_ink, px(title_max_w));
         })
         .paint_key(key)
         .absolute()
         .inset_0();
+
+        let icon_el = {
+            let pane_help = pane_help.clone();
+            let ikey = style::key(("pane-icon", activity as u8, &pane_help));
+            canvas(move |g, b| {
+                // Same `m::LABEL_ROW` box as title, pills, and LinkButton so
+                // every element in the pane header shares one snapped baseline
+                // at 1×, 1.25×, 1.5×, 1.75×, and 2×.
+                let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+                let icon_b = style::snap_centred(g, point(b.left() + px(ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
+                paint_activity_icon(g, icon_b, activity, &pane_help);
+            })
+            .paint_key(ikey)
+            .w(px(ROW_ICON))
+            .h(px(m::LABEL_ROW))
+            .flex_shrink_0()
+        };
+
+        let title_el = {
+            let p = theme::palette();
+            let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
+            let title_w = if focused { FontWeight::MEDIUM } else { FontWeight::NORMAL };
+            let title_paint = title_paint.clone();
+            let tkey = style::key(("pane-title", &title_paint, focused, style::ink_key(Some(title_ink))));
+            canvas(move |g, b| {
+                let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, title_paint.clone(), style::PLAIN_SIZE, style::ui_font(title_w), title_ink, b.size.width);
+                g.agent(agent::Node::label(title_paint.clone(), r));
+            })
+            .paint_key(tkey)
+            .w_full()
+            .min_w_0()
+            .h(px(m::LABEL_ROW))
+        };
 
         let mut bar = div()
             .relative()
@@ -5440,22 +5470,23 @@ fn render_single_pane(
             .flex()
             .flex_row()
             .items_center()
-            .justify_end()
             .gap(px(m::TIGHT))
-            .pl(px(pad.0 + ROW_ICON + m::MARK_GAP))
+            .pl(px(pad.0))
             .pr(px(HEADER_END))
             .on_mouse_down(MouseButton::Left, move |_, _| {
                 let hub = app().hub.clone();
                 hub.focus_block(&bk_click.host_key, &bk_click.session_id, &bk_click.block_id);
             })
-            .child(head_bg);
+            .child(head_bg)
+            .child(icon_el)
+            .child(div().flex_1().min_w_0().child(title_el));
 
         if show_extras {
             if let Some(hp) = host_pill {
-                bar = bar.child(StringView::new(hp).bold(true));
+                bar = bar.child(StringView::new(hp).bold(true).height(m::LABEL_ROW));
             }
             if let Some(gp) = git_pill {
-                bar = bar.child(StringView::new(gp).dim(true));
+                bar = bar.child(StringView::new(gp).dim(true).height(m::LABEL_ROW));
             }
             if let Some(pp) = ports_pill {
                 // (The ports it listens on, and Zoomed: the kit's link
@@ -5467,12 +5498,12 @@ fn render_single_pane(
                 bar = bar.child(
                     div()
                         .opacity(if focused { 1.0 } else { 0.7 })
-                        .child(widgets::LinkButton::new(pp).id(format!("rex-ports-{}", bk.block_id)).on_click(move |_, _| open_or_raise_panel(WinRole::Hosts))),
+                        .child(widgets::LinkButton::new(pp).beside(style::PLAIN_SIZE).id(format!("rex-ports-{}", bk.block_id)).on_click(move |_, _| open_or_raise_panel(WinRole::Hosts))),
                 );
             }
             if let Some(zp) = zoom_pill {
                 let z = bk_zoom.clone();
-                bar = bar.child(widgets::LinkButton::new(zp).id(format!("rex-zoomed-{}", bk.block_id)).on_click(move |_, _| {
+                bar = bar.child(widgets::LinkButton::new(zp).beside(style::PLAIN_SIZE).id(format!("rex-zoomed-{}", bk.block_id)).on_click(move |_, _| {
                     app().hub.toggle_zoom(&z.host_key, &z.session_id, Some(z.block_id.clone()));
                 }));
             }
@@ -6032,8 +6063,12 @@ fn split_grip(b: Bounds<Pixels>, ratio: f32, side_by_side: bool, line: f32) -> B
         let x = b.left() + px((f32::from(b.size.width) - line) * ratio);
         Bounds::from_corners(point(x - px(SPLIT_GRIP), b.top() + px(SPLIT_GRIP)), point(x + px(line + SPLIT_GRIP), b.bottom() - px(SPLIT_GRIP)))
     } else {
+        // Horizontal divider grip inset 7 pt horizontally so it clears the 6 pt
+        // Rex Sidebar divider grip on the left when splits stack vertically in
+        // narrow tiles (vertical half / quarter).
+        let inset = SPLIT_GRIP.max(7.0);
         let y = b.top() + px((f32::from(b.size.height) - line) * ratio);
-        Bounds::from_corners(point(b.left() + px(SPLIT_GRIP), y - px(SPLIT_GRIP_OVER)), point(b.right() - px(SPLIT_GRIP), y + px(line + SPLIT_GRIP_UNDER)))
+        Bounds::from_corners(point(b.left() + px(inset), y - px(SPLIT_GRIP_OVER)), point(b.right() - px(inset), y + px(line + SPLIT_GRIP_UNDER)))
     }
 }
 
@@ -6396,7 +6431,7 @@ mod workspace_tests {
         // head of the pane below is there).
         let g = split_grip(b, 0.5, false, 0.5);
         assert_eq!((g.top(), g.bottom()), (px(50.0 + 199.75 - 6.0), px(50.0 + 199.75 + 0.5 + 1.0)));
-        assert_eq!((g.left(), g.right()), (px(104.0), px(897.0)));
+        assert_eq!((g.left(), g.right()), (px(107.0), px(894.0)));
         // Dragged, the divider stays under the pointer: 80 points of 800
         // is a tenth, in a split of any width.
         assert_eq!(split_dragged(0.25, 80.0, 800.0), Some(0.35));

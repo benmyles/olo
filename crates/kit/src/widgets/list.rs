@@ -76,6 +76,12 @@ impl Column {
         self.align = style::Align::Right;
         self
     }
+
+    /// Its text in the middle (marks, checkmarks).
+    pub fn center(mut self) -> Self {
+        self.align = style::Align::Center;
+        self
+    }
 }
 
 /// What the pointer is doing to the list.

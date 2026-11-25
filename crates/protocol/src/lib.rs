@@ -2055,6 +2055,8 @@ pub struct RexSettings {
     pub repos: Vec<RexRepo>,
     /// Hosts' folders kept in step here, in the order they were kept.
     pub kept: Vec<RexKept>,
+    /// Hosts' port forwards kept across Rex restarts and host reconnects.
+    pub kept_forwards: Vec<RexKeptForward>,
     /// How many days back the agents' sessions copied to a host go, by
     /// when each was last used (Rex's Account window; 0: all of them).
     pub sessions_days: u32,
@@ -2118,6 +2120,32 @@ pub struct RexKept {
     pub exclude: Vec<String>,
 }
 
+/// Who asked for a kept port forward (`RexKeptForward`).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RexForwardMaker {
+    #[default]
+    Person,
+    Agent,
+}
+
+/// A host's port forward kept across Rex restarts and host reconnects
+/// (`olo forward TARGET --keep`, or Forward Port… with Keep checked).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexKeptForward {
+    /// The host's id (`RexHost::id`).
+    pub host: String,
+    /// Target host as reached from the remote host (`localhost` or `127.0.0.1` unless another).
+    pub remote_host: String,
+    /// Target port on the remote host.
+    pub remote_port: u16,
+    /// Port on this computer's `127.0.0.1` (`0` = pick any free port).
+    pub local_port: u16,
+    /// Who asked for this forward to be kept.
+    pub made: RexForwardMaker,
+}
+
 impl Default for RexSettings {
     fn default() -> Self {
         RexSettings {
@@ -2129,6 +2157,7 @@ impl Default for RexSettings {
             sessions_days: 7,
             repos: Vec::new(),
             kept: Vec::new(),
+            kept_forwards: Vec::new(),
             show_typing_at_once: true,
             typing_helper: true,
             keep_going_says: REX_KEEP_GOING_SAYS.to_owned(),
