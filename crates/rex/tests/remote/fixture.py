@@ -170,8 +170,10 @@ def inside(case):
                 (ROOT / "etc/pam.d").mkdir()
                 (ROOT / "etc/pam.d/sshd").write_text("auth required pam_unix.so nodelay\naccount required pam_permit.so\nsession required pam_permit.so\n")
             wrapper = ROOT / "dial"
+            # (Rex's dial, `rex` found as an SSH command there finds it, on its
+            # path or in ~/.local/bin: any dial of the server's, written down.)
             wrapper.write_text("#!/bin/sh\necho \"$SSH_ORIGINAL_COMMAND\" >> /fixture/dial-calls\ncase \"$SSH_ORIGINAL_COMMAND\" in\n"
-                               "\"rex __internal dial-stdio\"|\"rex -S unix://'/fixture/rex/rex.sock' __internal dial-stdio\") ;;\n*) exit 1;; esac\n"
+                               "*'__internal dial-stdio'*) ;;\n*) exit 1;; esac\n"
                                "export HOME=/fixture/home XDG_RUNTIME_DIR=/fixture/run XDG_STATE_HOME=/fixture/state REX_SERVER_SOCKET=/fixture/rex/rex.sock\n"
                                "exec /usr/bin/rex -S unix:///fixture/rex/rex.sock --autostart=false __internal dial-stdio\n")
             wrapper.chmod(0o700)

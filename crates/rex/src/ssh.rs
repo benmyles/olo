@@ -1584,24 +1584,34 @@ fn shell_escape(s: &str) -> String {
 /// each stream. Where that build isn't there, or runs nothing, it ends
 /// at once and there is no link.
 fn quic_command(socket: Option<&str>, id: &str) -> String {
-    let dial = match socket {
-        Some(sock) => format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)),
-        None => "rex __internal dial-stdio".to_owned(),
-    };
+    let dial = rex_dial(socket);
     let dir = crate::helper::DIR;
-    let script = format!("L=\"$HOME\"/{dir}/olo-rex-link-{id}-$(uname -m); if [ -f \"$L\" ] && [ -O \"$L\" ]; then exec \"$L\" quic -- {dial}; fi; exit 127");
+    let script = format!("{FIND_REX}L=\"$HOME\"/{dir}/olo-rex-link-{id}-$(uname -m); if [ -f \"$L\" ] && [ -O \"$L\" ]; then exec \"$L\" quic -- {dial}; fi; exit 127");
     format!("sh -c {}", shell_escape(&script))
 }
 
+/// `rex` where an SSH command on the host finds it: on its path, else
+/// where Rex's own installer puts an account's (`~/.local/bin`), which a
+/// command's shell doesn't have on its path on Ubuntu (its `.bashrc` stops
+/// before its lines when not interactive): as `provision`'s look finds it.
+/// An Ubuntu host set up for an account's own server was never reached
+/// ("remote rex command not found", the rig's move test, 2026-11-25).
+const FIND_REX: &str = "R=$(command -v rex 2> /dev/null) || R=\"$HOME\"/.local/bin/rex; ";
+
+/// The server's command, `rex` as [`FIND_REX`] found it.
+fn rex_dial(socket: Option<&str>) -> String {
+    match socket {
+        Some(sock) => format!("\"$R\" -S unix://{} __internal dial-stdio", shell_escape(sock)),
+        None => "\"$R\" __internal dial-stdio".to_owned(),
+    }
+}
+
 fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
-    let dial = match socket {
-        Some(sock) => format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)),
-        None => "rex __internal dial-stdio".to_owned(),
-    };
-    let Some(id) = helper else { return dial };
+    let dial = rex_dial(socket);
+    let Some(id) = helper else { return format!("sh -c {}", shell_escape(&format!("{FIND_REX}exec {dial}"))) };
     let dir = crate::helper::DIR;
     let script = format!(
-        "d=\"$HOME\"/{dir}; m=$(uname -m); \
+        "{FIND_REX}d=\"$HOME\"/{dir}; m=$(uname -m); \
          run() {{ if [ -f \"$1\" ] && [ -O \"$1\" ] && \"$1\" --version > /dev/null 2>&1; then exec \"$1\" -- {dial}; fi; }}; \
          run \"$d/olo-rex-link-{id}-$m\"; \
          for L in $(ls -t \"$d\"/olo-rex-link-*-\"$m\" 2> /dev/null); do run \"$L\"; done; \
@@ -1729,7 +1739,7 @@ mod dial_tests {
         assert!(!link_is_as_quick(ms(225), ms(167)), "what was measured: a third slower");
         assert!(link_is_as_quick(ms(11), ms(1)) && !link_is_as_quick(ms(30), ms(1)), "a host next door");
         let said = quic_command(Some("/run/it's/rex.sock"), "0a1b2c");
-        assert!(said.contains("olo-rex-link-0a1b2c-$(uname -m)") && said.contains("quic -- rex -S unix://") && said.ends_with("exit 127'"), "{said}");
+        assert!(said.contains("olo-rex-link-0a1b2c-$(uname -m)") && said.contains("quic -- \"$R\" -S unix://") && said.contains(".local/bin/rex") && said.ends_with("exit 127'"), "{said}");
     }
 
     /// A channel's window follows the link: what the link brings in a
@@ -1800,8 +1810,6 @@ mod dial_tests {
     /// running it, with stand-ins for `rex` and for the helper.
     #[test]
     fn a_control_connection_goes_through_the_helper_where_it_is_and_straight_where_it_isnt() {
-        assert_eq!(dial_command(None, None), "rex __internal dial-stdio");
-        assert_eq!(dial_command(Some("/run/it's/rex.sock"), None), "rex -S unix://'/run/it'\\''s/rex.sock' __internal dial-stdio");
         // (On disk: /tmp is memory here.)
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-dial-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1818,11 +1826,23 @@ mod dial_tests {
         // otherwise says who it is and what it was given.)
         let helper = |name: &str| format!("if [ \"$1\" = --version ]; then echo olo-rex-link 1; exit 0; fi; echo \"{name}: $*\"");
         script(&bin.join("rex"), "echo \"rex: $*\"");
+        // (The commands' path: the stand-ins and links to the two programs
+        // the dial uses, nothing else: this computer's own `rex` is never
+        // reached, whatever its path has.)
+        let tools = dir.join("tools");
+        std::fs::create_dir_all(&tools).unwrap();
+        for program in ["sh", "uname", "ls"] {
+            let at = String::from_utf8(std::process::Command::new("sh").arg("-c").arg(format!("command -v {program}")).output().unwrap().stdout).unwrap();
+            std::os::unix::fs::symlink(at.trim(), tools.join(program)).unwrap();
+        }
         let run = |command: &str| {
-            let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+            let path = format!("{}:{}", bin.display(), tools.display());
             let out = std::process::Command::new("sh").arg("-c").arg(command).env("HOME", &home).env("PATH", path).output().unwrap();
             String::from_utf8_lossy(&out.stdout).trim().to_owned()
         };
+        let rex = bin.join("rex");
+        // (No helper, no socket: the server's own command, as the path finds it.)
+        assert_eq!(run(&dial_command(None, None)), "rex: __internal dial-stdio");
         let machine = String::from_utf8(std::process::Command::new("uname").arg("-m").output().unwrap().stdout).unwrap().trim().to_owned();
         let file = |id: &str| there.join(format!("olo-rex-link-{id}-{machine}"));
         let aged = |id: &str, days: u64| std::fs::File::options().write(true).open(file(id)).unwrap().set_modified(std::time::SystemTime::now() - Duration::from_secs(days * 86400)).unwrap();
@@ -1840,25 +1860,25 @@ mod dial_tests {
             assert_eq!(run(&command), format!("rex: {wanted}"));
             // The app's own build: through it, given the server's command.
             script(&file("0a1b2c"), &helper("mine"));
-            assert_eq!(run(&command), format!("mine: -- rex {wanted}"));
+            assert_eq!(run(&command), format!("mine: -- {} {wanted}", rex.display()));
             // With other builds beside it: still the app's own.
             script(&file("old1"), &helper("old1"));
             aged("0a1b2c", 3);
-            assert_eq!(run(&command), format!("mine: -- rex {wanted}"));
+            assert_eq!(run(&command), format!("mine: -- {} {wanted}", rex.display()));
             // Only other builds: the newest of them.
             std::fs::remove_file(file("0a1b2c")).unwrap();
             script(&file("old2"), &helper("old2"));
             aged("old1", 9);
             aged("old2", 2);
-            assert_eq!(run(&command), format!("old2: -- rex {wanted}"));
+            assert_eq!(run(&command), format!("old2: -- {} {wanted}", rex.display()));
             aged("old2", 20);
-            assert_eq!(run(&command), format!("old1: -- rex {wanted}"));
+            assert_eq!(run(&command), format!("old1: -- {} {wanted}", rex.display()));
             // The app's own build there, but it doesn't run (a file cut
             // short, a home that runs nothing): another that does.
             script(&file("0a1b2c"), "exit 126");
-            assert_eq!(run(&command), format!("old1: -- rex {wanted}"));
+            assert_eq!(run(&command), format!("old1: -- {} {wanted}", rex.display()));
             std::fs::write(file("0a1b2c"), b"\x7fELF not a program").unwrap();
-            assert_eq!(run(&command), format!("old1: -- rex {wanted}"));
+            assert_eq!(run(&command), format!("old1: -- {} {wanted}", rex.display()));
             // None that runs: straight to the server, never a failure.
             script(&file("old1"), "exit 1");
             script(&file("old2"), "exit 1");
@@ -1870,6 +1890,14 @@ mod dial_tests {
             script(&there.join("olo-rex-link-0a1b2c-othermachine"), &helper("another machine's"));
             assert_eq!(run(&command), format!("rex: {wanted}"));
         }
+        // Rex where its own installer puts an account's, not on a
+        // command's path (Ubuntu's .bashrc stops before its lines): found.
+        std::fs::remove_file(&rex).unwrap();
+        std::fs::create_dir_all(home.join(".local/bin")).unwrap();
+        script(&home.join(".local/bin/rex"), "echo \"rex in .local/bin: $*\"");
+        assert_eq!(run(&dial_command(None, None)), "rex in .local/bin: __internal dial-stdio");
+        script(&file("0a1b2c"), &helper("mine"));
+        assert_eq!(run(&dial_command(None, Some("0a1b2c"))), format!("mine: -- {} __internal dial-stdio", home.join(".local/bin/rex").display()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

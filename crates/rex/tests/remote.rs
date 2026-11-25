@@ -123,7 +123,10 @@ case!(ssh_direct_exec_and_known_host, {
     assert!(known.exists());
     assert!(!Path::new("/fixture/dial-calls").exists(), "explicit socket used the exec fallback");
     version(&endpoint("fixture", None)).await?;
-    assert_eq!(fs::read_to_string("/fixture/dial-calls")?.trim(), "rex __internal dial-stdio");
+    // (`rex` as an SSH command finds it there: on its path, else in
+    // ~/.local/bin, where Rex's own installer puts an account's.)
+    let dialled = fs::read_to_string("/fixture/dial-calls")?;
+    assert!(dialled.trim().starts_with("sh -c 'R=$(command -v rex 2> /dev/null) || R=\"$HOME\"/.local/bin/rex; exec \"$R\" __internal dial-stdio"), "{dialled}");
     Ok(())
 });
 
