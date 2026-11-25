@@ -48,6 +48,15 @@ function connect() {
       });
       return;
     }
+    // A tab shown, and its window brought forward (Agent Screens' click on
+    // a tab in the tree: the host's `tab ID`).
+    if (m.activate_tab !== undefined) {
+      chrome.tabs
+        .update(m.activate_tab, { active: true })
+        .then((t) => chrome.windows.update(t.windowId, { focused: true }))
+        .catch(() => {});
+      return;
+    }
     // Chrome's Downloads page, asked by Olo's notification of a download
     // Chrome holds (in Slack's Chrome, whose own download UI is off).
     if (m.show_downloads) {
@@ -1126,6 +1135,17 @@ async function windowTrees() {
       const tab = (w.tabs || []).find((t) => t.active);
       const out = { title: tab?.title || "", width: w.width, height: w.height, active: !!w.focused, nodes: [] };
       out.nodes.push({ id: 1, role: "Window", name: out.title, x: 0, y: 0, width: w.width, height: w.height, enabled: true });
+      // Its tabs, where it has two or more, as its strip shows them: with
+      // no place of their own (Chrome draws the strip, out of the
+      // extension's sight), each carries the command that shows it, which
+      // Agent Screens' `click` sends (`tab ID`, the host's invoke). An
+      // agent had only a shortcut to find, and only ⌘1 worked.
+      const tabs = w.tabs || [];
+      if (tabs.length > 1) {
+        for (const t of tabs) {
+          out.nodes.push({ id: out.nodes.length + 1, parent: 1, role: "Tab", name: t.title || t.url || "", value: t.url || "", x: 0, y: 0, width: 0, height: 0, enabled: true, clickable: true, selected: !!t.active, command: `tab ${t.id}` });
+        }
+      }
       if (!tab) return out;
       let page = null;
       let zoom = 1;
@@ -1138,12 +1158,13 @@ async function windowTrees() {
       const top = page ? Math.max(0, w.height - ph) : 0;
       // (Busy while its tab loads: Agent Screens wait for the page an
       // action brought, not answer with the one it left.)
-      out.nodes.push({ id: 2, parent: 1, role: "Document", name: tab.title || "", value: tab.url || "", x: 0, y: top, width: w.width, height: ph, enabled: true, busy: tab.status === "loading" });
+      const doc = out.nodes.length + 1;
+      out.nodes.push({ id: doc, parent: 1, role: "Document", name: tab.title || "", value: tab.url || "", x: 0, y: top, width: w.width, height: ph, enabled: true, busy: tab.status === "loading" });
       for (const n of page?.nodes || []) {
         out.nodes.push({
           ...n,
-          id: n.id + 2,
-          parent: (n.parent || 0) + 2,
+          id: n.id + doc,
+          parent: (n.parent || 0) + doc,
           x: n.x * zoom,
           y: top + n.y * zoom,
           width: n.width * zoom,

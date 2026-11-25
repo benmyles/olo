@@ -3046,6 +3046,16 @@ the command takes it: an agent's shell may leave a pipe open, and
   doesn't wait for fetches begun after load without the budget; to time
   the script, load it with a synchronous request and call it in the
   page (in the top frame it runs synchronously).
+  The extension and its host can be tried the same way: copy
+  `extension/` to a scratch folder and `--load-extension` it (its id is
+  the folder's path's sha256, first 32 hex digits as a to p), write
+  `PROFILE/NativeMessagingHosts/com.olodesktop.passwords.json` naming
+  `target/debug/olo-chrome` for that id, and start it with a scratch
+  `XDG_RUNTIME_DIR` and `HOME`: the host answers
+  `RUN/olo-menus-PID.sock` (`{"tree":true}`, `{"invoke":…}`) for the
+  browser process (not the pid you started). Headless takes one address
+  at start: open more with `--remote-debugging-port` on 127.0.0.1 and
+  `curl -X PUT 'http://127.0.0.1:PORT/json/new?URL'`.
 
 - **`olo-screen ACTION NAME --help` acts.** Only `olo-screen --help`
   prints help: `olo-screen type agent --help` typed "--help" into the

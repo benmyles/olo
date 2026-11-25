@@ -138,10 +138,13 @@ olo-screen run agent olo-chrome --user-data-dir="$(mktemp -d)" https://example.c
 
 Chrome's pages are in the tree too (a `Document` with the page's
 title and address, then its headings, text, links, fields and buttons),
-so `tree`, `click --name`, `set` and `wait` work on web pages. Chrome's
-own tab strip, toolbar and right-click menus aren't: use `key` (`Cmd+L`
-for the address bar, `Cmd+T`, `Cmd+W`), or `look` and click by
-position, for those.
+so `tree`, `click --name`, `set` and `wait` work on web pages. A window
+with two tabs or more lists them first, each a `Tab` with its title and
+address (the one shown `selected`) and no place: `click agent --role
+Tab --name "Mail"` shows that one. Chrome's own toolbar and
+right-click menus aren't in the tree: use `key` (`Cmd+L` for the
+address bar, `Cmd+T`, `Cmd+W`), or `look` and click by position, for
+those.
 
 **A code texted to the person's phone.** When a sign-in says it has sent
 a code by text message, stay on the page that asks for it and wait

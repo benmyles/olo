@@ -92,6 +92,10 @@ pub struct Found {
     /// page's own over it (its sticky header: "sticky Banner").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub covered: Option<String>,
+    /// What does what a click on it would, where it has no place to click
+    /// (Chrome's tabs): its program's command, which `click` invokes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 /// `s` as it's compared: lower case, curly quotes straight, "…" as three
@@ -154,6 +158,7 @@ impl Found {
             rows: n.rows,
             options: n.options.clone(),
             covered: n.covered.clone(),
+            command: n.command.clone(),
         }
     }
 }
@@ -170,7 +175,9 @@ pub fn matches(trees: &[ScreenTree], q: &Query) -> Vec<Found> {
         for n in &t.nodes {
             let repeat = last.is_some_and(|l| l.role == n.role && l.name == n.name && l.value == n.value && l.x == n.x && l.y == n.y);
             last = Some(n);
-            if repeat || n.width < 1.0 || n.height < 1.0 || !q.role_ok(n) || !q.text_ok(n) {
+            // (No area, nothing to click: but for what a command does.)
+            let placeless = (n.width < 1.0 || n.height < 1.0) && n.command.is_none();
+            if repeat || placeless || !q.role_ok(n) || !q.text_ok(n) {
                 continue;
             }
             match &q.name {
@@ -440,6 +447,7 @@ mod tests {
             rows: None,
             options: Vec::new(),
             covered: None,
+            command: None,
         }
     }
 

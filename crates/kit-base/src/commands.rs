@@ -130,6 +130,13 @@ pub struct UiNode {
     /// instead, so Agent Screens scroll it clear first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub covered: Option<String>,
+    /// What does what a click on it would, where it has no place of its
+    /// own to click (Chrome's tabs: Chrome draws its tab strip, and the
+    /// extension can't see where): a command of its program's, as
+    /// `{"invoke":…}` takes it ("tab 1234"). Agent Screens' `click` sends
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 /// What one window shows.

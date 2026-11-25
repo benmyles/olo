@@ -23058,8 +23058,17 @@ CSS pixels times the tab's zoom, the page set at the bottom of the
 window below Chrome's tab strip and toolbar (`window.height − page
 height`); a `Window` node and a `Document` node (title, URL) hold it.
 Agent Screens matches a tree to its window by the page title the
-window's title starts with. Chrome's own tab strip and toolbar aren't in
-the tree. Test on an agent screen with a private `XDG_RUNTIME_DIR`, a
+window's title starts with. A window with two tabs or more lists them
+first under its `Window` node (extension 1.16.1): each a `Tab` with its
+title, its address as value and `selected` for the one shown, and no
+place of its own (Chrome draws its strip, out of the extension's
+sight), but a `command`, `tab ID` (`UiNode::command`: what does what a
+click on it would), which Agent Screens' `click` sends with the kit
+socket's `invoke` and the host passes to the extension
+(`{activate_tab}`: the tab shown, its window brought forward); an agent
+had only a shortcut to find, and only ⌘1 worked. A node with no place
+says none in `tree`, and `--visible-only` keeps it where it has a
+command. Chrome's toolbar isn't in the tree. Test on an agent screen with a private `XDG_RUNTIME_DIR`, a
 copy of Chrome in a fixture `XDG_DATA_HOME` (`olo-chrome` writes into
 the install's `extensions` folder) with a fresh `.checked`, a throwaway
 profile and a page served from 127.0.0.1.

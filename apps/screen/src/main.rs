@@ -911,7 +911,18 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let s = screen()?;
             let (x, y, matched) = match find::Query::from_args(rest)? {
                 Some(q) => {
-                    let f = into_view(&s, &q, find::find(&s, &q)?)?;
+                    let f = find::find(&s, &q)?;
+                    // (With no place to click, what a click on it does,
+                    // invoked: Chrome's tabs, whose strip Chrome draws.)
+                    if let Some(command) = f.command.clone().filter(|_| f.width < 1.0 || f.height < 1.0) {
+                        let w = s.windows()?.into_iter().find(|w| w.id == f.window).ok_or_else(|| format!("its window {} has gone", f.window))?;
+                        if !commands::invoke(pid_of(&w)?, &command) {
+                            return Err(format!("the {} {:?} has no place to click, and {} didn't do {command:?}", f.role, f.name.as_deref().unwrap_or(""), w.app_id));
+                        }
+                        print_json(&json!({ "invoked": command, "matched": f, "after": afterwards(&s, quick, None) }));
+                        return Ok(());
+                    }
+                    let f = into_view(&s, &q, f)?;
                     (f.center.0 as f64, f.center.1 as f64, Some(f))
                 }
                 None => {
@@ -1712,7 +1723,9 @@ impl Filter {
             // content or not.)
             let within = |c: &Frame| n.x < (c.x + c.width) as f32 && n.y < (c.y + c.height) as f32 && n.x + n.width > c.x as f32 && n.y + n.height > c.y as f32;
             let inside = within(&c) || popups.iter().any(within);
-            if n.width < 1.0 || n.height < 1.0 || !inside {
+            // (What has no place but is shown, done by a command, is kept:
+            // Chrome's tabs.)
+            if (n.width < 1.0 || n.height < 1.0 || !inside) && n.command.is_none() {
                 return false;
             }
         }
@@ -1787,7 +1800,11 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
                 let shown: Vec<String> = n.options.iter().take(12).map(|o| format!("{:?}", filter.cut(o))).collect();
                 let _ = write!(o, " options=[{}{}]", shown.join(", "), if n.options.len() > shown.len() { format!(", … {} in all", n.options.len()) } else { String::new() });
             }
-            let _ = write!(o, " at {:.0},{:.0} {:.0}x{:.0}", n.x, n.y, n.width, n.height);
+            // (A node with no place says none: Chrome's tabs, done by a
+            // command.)
+            if n.width > 0.0 || n.height > 0.0 {
+                let _ = write!(o, " at {:.0},{:.0} {:.0}x{:.0}", n.x, n.y, n.width, n.height);
+            }
             if let (Some(row), Some(rows)) = (n.row, n.rows) {
                 let _ = write!(o, " row {}/{rows}", row + 1);
             }
@@ -1880,6 +1897,7 @@ mod tests {
             rows: None,
             options: Vec::new(),
             covered: None,
+            command: None,
         };
         let f = field("TextInput", Some(""), 10.0);
         assert!(set_not_kept(&f, "123456", Some(&field("TextInput", Some(""), 10.0))).is_some(), "empty after");
@@ -2016,6 +2034,44 @@ mod tests {
         // Out from under: up in the view's upper half, down in its lower.
         assert_eq!(wheel_out(52.0, 0.0, 600.0), -1);
         assert_eq!(wheel_out(580.0, 0.0, 600.0), 1);
+    }
+
+    /// Chrome's tabs: no place of their own (Chrome draws its strip), each
+    /// with the command that shows it. Found by name and role as anything
+    /// is, so `click` can send that; said in `tree` with no place, kept
+    /// with --visible-only.
+    #[test]
+    fn a_tab_with_no_place_is_done_by_its_command() {
+        let tab = |id, name: &str, url: &str, on: bool| commands::UiNode {
+            id,
+            parent: Some(1),
+            role: "Tab".into(),
+            name: Some(name.into()),
+            value: Some(url.into()),
+            enabled: true,
+            clickable: true,
+            selected: Some(on),
+            command: Some(format!("tab {}", 40 + id)),
+            ..Default::default()
+        };
+        let window = commands::UiNode { id: 1, role: "Window".into(), name: Some("Docs".into()), width: 800.0, height: 600.0, enabled: true, ..Default::default() };
+        let t = ScreenTree {
+            window: 7,
+            app_id: "google-chrome".into(),
+            title: "Docs - Google Chrome".into(),
+            focused: true,
+            content: Frame { x: 0, y: 0, width: 800, height: 600 },
+            nodes: vec![window, tab(2, "Docs", "https://docs.example/", true), tab(3, "Mail", "https://mail.example/", false)],
+            popups: Vec::new(),
+        };
+        let found = find::matches(std::slice::from_ref(&t), &find::Query { role: Some("Tab".into()), name: Some("Mail".into()), ..Default::default() });
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].command.as_deref(), Some("tab 43"));
+        let o = outline(std::slice::from_ref(&t), &Filter::default());
+        assert!(o.contains("Tab \"Mail\" value=\"https://mail.example/\" clickable\n"), "{o}");
+        assert!(o.contains("Tab \"Docs\" value=\"https://docs.example/\" clickable selected\n"), "{o}");
+        let seen = outline(std::slice::from_ref(&t), &Filter { visible_only: true, ..Default::default() });
+        assert!(seen.contains("Tab \"Mail\""), "{seen}");
     }
 
     /// Where, as agents write it: `X Y`, `X,Y`, `--at X,Y`; anything else

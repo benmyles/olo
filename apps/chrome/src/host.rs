@@ -432,8 +432,13 @@ fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option
         None => {
             let out = out_for_invoke;
             // (`open-in-front {url, title, width, height}`: a web link, in
-            // the window so named and sized.)
+            // the window so named and sized. `tab ID`: that tab shown, as
+            // a tab's node in the tree says, Agent Screens' click on it.)
             let invoke = move |command: &str| {
+                if let Some(id) = tab_asked(command) {
+                    send(&out, &json!({ "activate_tab": id }));
+                    return true;
+                }
                 let Some(ask) = command.strip_prefix("open-in-front ").and_then(|a| serde_json::from_str::<Value>(a).ok()) else { return false };
                 let web = ask["url"].as_str().is_some_and(|u| ["http://", "https://"].iter().any(|p| u.starts_with(p)));
                 if web {
@@ -454,6 +459,11 @@ fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option
         }
         Err(e) => eprintln!("olo-chrome: can't answer for Chrome's widget trees: {e}"),
     }
+}
+
+/// The tab a `tab ID` command shows (a tab's node in the tree carries it).
+fn tab_asked(command: &str) -> Option<u64> {
+    command.strip_prefix("tab ")?.trim().parse().ok()
 }
 
 /// Chrome's socket for agents as this host answers it (or did, until
@@ -582,6 +592,13 @@ fn visited(bus: &zbus::blocking::Connection, host: &str) -> zbus::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tabs_command_names_it() {
+        assert_eq!(tab_asked("tab 1234"), Some(1234));
+        assert_eq!(tab_asked("tab x"), None);
+        assert_eq!(tab_asked("open-in-front {}"), None);
+    }
 
     #[test]
     fn only_browser_requests_pass() {

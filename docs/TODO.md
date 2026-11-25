@@ -3081,6 +3081,12 @@ something nobody here has is in "Blocked", with what it waits for.
   - *Chrome's tabs on a screen*: the tree shows its tabs only as windows,
     and switching needs a shortcut (⌘1 worked, Ctrl+1 not): its tabs in
     the tree, or a `tab` command.
+    **Done** 2026-11-24: a window's tabs in the tree (`Tab`, title,
+    address, `selected`), each with the command that shows it
+    (`UiNode::command`, `tab ID`, extension 1.16.1), which `click`
+    invokes. Unit-tested (olo-screen, the host), and tried end to end in
+    a headless Chromium with the extension and olo-chrome as its host:
+    both tabs in the tree, `tab ID` showed the other.
   - *A port taken by a forward of Rex's own, said by name*: `olo
     forward 5176` said "port 5176 of the Olo desktop is taken by another
     program there" where it was a forward made earlier with `rex forward
