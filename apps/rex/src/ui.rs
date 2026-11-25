@@ -504,6 +504,29 @@ pub fn open_demo_carry() {
     carry_changed();
 }
 
+/// Switch the demo workspace to Activity sidebar with deterministic nested subagents
+/// (`OLO_REX_DEMO_ACTIVITY=1|collapsed|transcript|follow|failed|find|nomatch|tmux|tmux_big`) for headless visual QA.
+pub fn open_demo_activity(mode: &str) {
+    let hub = app().hub.clone();
+    {
+        let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.settings.sidebar_mode = SidebarMode::Activity;
+        st.settings.sidebar_collapsed = false;
+        // Focus the active agent block so its Activity row carries the selection band.
+        if let Some(h) = st.hosts.get_mut("local")
+            && let Some(s) = h.sessions.get_mut("demo-main")
+            && let Some(w) = s.windows.first_mut()
+        {
+            w.focused_block_id = Some("demo-agent".to_owned());
+        }
+    }
+    crate::activity_watch::sync_watchers(&hub, true);
+    if matches!(mode, "find" | "nomatch") {
+        broadcast_to_role(WinRole::Workspace, || WinMsg::Command("terminal.find".into()));
+    }
+    activity_changed();
+}
+
 fn broadcast_msg(msg: WinMsg) {
     let handles: Vec<WindowHandle<RexWindow>> = wins().map.values().map(|s| s.handle.clone()).collect();
     for h in handles {
@@ -609,6 +632,10 @@ pub fn account_changed() {
 
 pub fn carry_changed() {
     broadcast_to_role(WinRole::Carry, || WinMsg::CarryChanged);
+}
+
+pub fn activity_changed() {
+    broadcast_to_role(WinRole::Workspace, || WinMsg::ActivityChanged);
 }
 
 fn open_carry(hub: &Arc<RexHub>, key: &str) {
@@ -954,6 +981,11 @@ pub enum WinMsg {
     RenameTab(String, String, String),
     /// A tab's menu asked for (which tab, where the pointer is).
     TabMenu(usize, Point<Pixels>),
+    ActivityChanged,
+    ToggleActivityFold(BlockKey),
+    OpenSubagent(BlockKey, olo_rex_client::activity::SubagentInfo, bool),
+    OpenPaneTranscript(BlockKey, String),
+    TranscriptDo(crate::transcript_view::TranscriptDo),
     SidebarMoved,
     CloseWindow,
 }
@@ -978,6 +1010,10 @@ pub struct RexWindow {
     pub side_pane: SidePane,
     sidebar_scroll: olo_kit::ScrollHandle,
     run_scroll: olo_kit::ScrollHandle,
+    transcript_scroll: olo_kit::ScrollHandle,
+    tmux_scroll: olo_kit::ScrollHandle,
+    last_transcript_gen: u64,
+    tmux_visual: Rc<crate::terminal_pane::PaneVisualState>,
     pub panes_view: Option<Child<PanesView>>,
     pub overlay: Option<ActiveOverlay>,
     pub overlay_field: Option<Child<TextField>>,
@@ -1161,6 +1197,10 @@ impl RexWindow {
             pending_focus: None,
             sidebar_scroll: olo_kit::ScrollHandle::new(),
             run_scroll: olo_kit::ScrollHandle::new(),
+            transcript_scroll: olo_kit::ScrollHandle::new(),
+            tmux_scroll: olo_kit::ScrollHandle::new(),
+            last_transcript_gen: 0,
+            tmux_visual: Rc::new(crate::terminal_pane::PaneVisualState::default()),
             created_session: None,
             qr_url: None,
             qr: None,
@@ -1387,6 +1427,10 @@ impl RexWindow {
             pending_focus: None,
             sidebar_scroll: olo_kit::ScrollHandle::new(),
             run_scroll: olo_kit::ScrollHandle::new(),
+            transcript_scroll: olo_kit::ScrollHandle::new(),
+            tmux_scroll: olo_kit::ScrollHandle::new(),
+            last_transcript_gen: 0,
+            tmux_visual: Rc::new(crate::terminal_pane::PaneVisualState::default()),
             created_session: None,
             qr_url: None,
             qr: None,
@@ -1467,6 +1511,14 @@ impl RexWindow {
     }
 
     fn where_it_is(&mut self) -> String {
+        if let Some(tr) = crate::activity_watch::active_transcript() {
+            let g = tr.lock().unwrap_or_else(|e| e.into_inner());
+            return g.target.status_bar_text(g.last_timestamp());
+        }
+        if let Some(tm) = crate::activity_watch::active_tmux() {
+            let g = tm.lock().unwrap_or_else(|e| e.into_inner());
+            return g.target.status_bar_text(None);
+        }
         let hub = app().hub.clone();
         let focused = self.focused_block_key();
         let (block, local, far) = {
@@ -1629,6 +1681,15 @@ impl RexWindow {
 
     fn run_find_query(&mut self, cx: &mut olo_kit::Cx<Self>) {
         let q = self.find_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
+        if let Some(tr) = crate::activity_watch::active_transcript() {
+            let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+            g.search_query = q;
+            g.match_idx = None;
+            g.recompute_search();
+            g.generation += 1;
+            cx.invalidate();
+            return;
+        }
         if let Some(bk) = self.focused_block_key() {
             let hub = app().hub.clone();
             hub.find(&bk, (!q.is_empty()).then_some(q.as_str()));
@@ -1637,6 +1698,13 @@ impl RexWindow {
     }
 
     fn step_find(&mut self, back: bool, cx: &mut olo_kit::Cx<Self>) {
+        if let Some(tr) = crate::activity_watch::active_transcript() {
+            let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = g.step_search(back);
+            g.generation += 1;
+            cx.invalidate();
+            return;
+        }
         if let Some(bk) = self.focused_block_key() {
             let hub = app().hub.clone();
             if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
@@ -1792,6 +1860,7 @@ impl RexWindow {
                     st.settings.sidebar_collapsed = false;
                     st.settings.save();
                 }
+                crate::activity_watch::sync_watchers(&hub, true);
                 self.side_pane.show_pane();
                 cx.invalidate();
             }
@@ -1802,8 +1871,54 @@ impl RexWindow {
                     st.settings.sidebar_collapsed = false;
                     st.settings.save();
                 }
+                crate::activity_watch::sync_watchers(&hub, false);
                 self.side_pane.show_pane();
                 cx.invalidate();
+            }
+            "pane.view:transcript" => {
+                if let Some(bk) = self.focused_block_key() {
+                    let title = pane_name(&hub, &bk);
+                    crate::activity_watch::open_pane_transcript(&hub, &bk, title);
+                }
+            }
+            "pane.view:terminal" => {
+                if let Some(crate::activity_watch::ViewTarget::SubagentTranscript { parent, sub }) = crate::activity_watch::active_view_target()
+                    && sub.tmux.is_some()
+                {
+                    crate::activity_watch::open_subagent(&hub, &parent, sub, false);
+                } else {
+                    crate::activity_watch::close_viewer();
+                }
+            }
+            c if c.starts_with("activity.open.transcript:") => {
+                let id = c.trim_start_matches("activity.open.transcript:");
+                if let Some((parent, sub)) = crate::activity_watch::find_subagent_by_id(id) {
+                    crate::activity_watch::open_subagent(&hub, &parent, sub, true);
+                }
+            }
+            c if c.starts_with("activity.open.terminal:") => {
+                let id = c.trim_start_matches("activity.open.terminal:");
+                if let Some((parent, sub)) = crate::activity_watch::find_subagent_by_id(id)
+                    && sub.tmux.is_some()
+                {
+                    crate::activity_watch::open_subagent(&hub, &parent, sub, false);
+                }
+            }
+            c if c.starts_with("activity.open:") => {
+                let id = c.trim_start_matches("activity.open:");
+                if let Some((parent, sub)) = crate::activity_watch::find_subagent_by_id(id) {
+                    crate::activity_watch::open_subagent(&hub, &parent, sub, false);
+                }
+            }
+            c if c.starts_with("activity.fold:") => {
+                let bid = c.trim_start_matches("activity.fold:");
+                let found = {
+                    let mgr = crate::activity_watch::manager().lock().unwrap_or_else(|e| e.into_inner());
+                    mgr.by_block.keys().find(|bk| bk.block_id == bid).cloned()
+                };
+                if let Some(bk) = found {
+                    crate::activity_watch::toggle_fold(&bk);
+                }
             }
             // Where the tabs are, said outright (it was one command that
             // went round the four).
@@ -2167,6 +2282,12 @@ impl RexWindow {
             "terminal.find" => {
                 self.find_open = true;
                 if let Some(f) = &self.find_field {
+                    if let Some(tr) = crate::activity_watch::active_transcript() {
+                        let q = tr.lock().unwrap_or_else(|e| e.into_inner()).search_query.clone();
+                        if !q.is_empty() && f.read(cx).text() != q {
+                            f.update(cx, |tf, cx| tf.set_text(q, cx));
+                        }
+                    }
                     f.focus(cx);
                 }
                 cx.invalidate();
@@ -2542,6 +2663,16 @@ impl RexWindow {
         if step != 0 && self.resolve_active_session().is_some_and(|(_, s)| s.windows.len() > 1) {
             self.execute_action(if step > 0 { "window.next" } else { "window.previous" }, None, cx);
             cx.stop_propagation();
+            return;
+        }
+
+        // While a read-only transcript or read-only tmux subagent view is open,
+        // never leak keyboard input to the hidden parent terminal; Escape closes it.
+        if crate::activity_watch::active_view_target().is_some() {
+            if k.key == "escape" && !self.find_open {
+                crate::activity_watch::close_viewer();
+                cx.stop_propagation();
+            }
             return;
         }
 
@@ -2998,6 +3129,7 @@ impl RexWindow {
             let mut strip = TabStrip::new("rex-tabs", strip_tabs, active_tab_idx).content(tab_content_bg, tab_content_fg).in_window(surface).on_action(cx.msg_with(move |act: &StripAction| {
                 match act {
                     StripAction::Select(i) => {
+                        crate::activity_watch::close_viewer();
                         if let Some(id) = ids.get(*i) {
                             hub.select_window(&hk, &sid, id);
                         }
@@ -3030,8 +3162,72 @@ impl RexWindow {
             None
         };
 
-        // Main terminal panes view (isolated `PanesView` child so 120 Hz output doesn't rebuild menus/sidebar!).
-        let panes_el = if let Some((hk, sess)) = &sess_info
+        // Optional Find Bar (for Transcript view, placed neatly beneath the transcript header;
+        // for normal Terminal panes, placed above the panes).
+        let tr_active = crate::activity_watch::active_transcript();
+        let focused_bk_for_find = if self.find_open { self.focused_block_key() } else { None };
+        let (tr_find_bar, find_el) = if self.find_open
+            && let Some(ff) = &self.find_field
+        {
+            let query = ff.read(cx).text().to_owned();
+            if let Some(tr) = &tr_active {
+                let (total, sel) = {
+                    let g = tr.lock().unwrap_or_else(|e| e.into_inner());
+                    (g.matches.len(), g.match_idx)
+                };
+                let said = find_said(&query, total, sel, None);
+                (Some(crate::transcript_view::render_transcript_find_bar(cx, ff, said, total > 0, cx.msg_with(|back: &bool| WinMsg::FindStep(*back)), cx.msg_with(|_: &()| WinMsg::FindClose))), None)
+            } else {
+                let (total, sel, finding) = focused_bk_for_find
+                    .and_then(|bk| {
+                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                        st.blocks.get(&bk).map(|br| {
+                            let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                            (g.search.total_matches(), g.search.selected_index(), g.finding)
+                        })
+                    })
+                    .unwrap_or((0, None, false));
+                let said = if finding { "Searching…".into() } else { find_said(&query, total, sel, None) };
+                (None, Some(find_bar(cx, ff, said, total > 0, cx.msg_with(|back: &bool| WinMsg::FindStep(*back)), cx.msg_with(|_: &()| WinMsg::FindClose))))
+            }
+        } else {
+            (None, None)
+        };
+
+        // Main center content: live Transcript view, safe read-only Tmux viewer, or normal tiled terminal panes!
+        let panes_el = if let Some(tr_sess) = tr_active {
+            let (cur_gen, follow) = {
+                let g = tr_sess.lock().unwrap_or_else(|e| e.into_inner());
+                (g.generation, g.follow)
+            };
+            if follow && cur_gen != self.last_transcript_gen {
+                self.last_transcript_gen = cur_gen;
+                self.transcript_scroll.set_offset(cx, point(px(0.0), px(-1_000_000.0)));
+            } else {
+                self.last_transcript_gen = cur_gen;
+            }
+            div().flex_1().min_w_0().min_h_0().size_full().child(crate::transcript_view::render_transcript_view(
+                &tr_sess,
+                &self.transcript_scroll,
+                self.find_open,
+                tr_find_bar,
+                cx.msg_with(|what: &crate::transcript_view::TranscriptDo| WinMsg::TranscriptDo(what.clone())),
+            ))
+        } else if let Some(tm_viewer) = crate::activity_watch::active_tmux() {
+            let metrics = Metrics::from_settings(scale, &settings);
+            let avail_w = (total_w - side_w).max(200.0);
+            let avail_h = (f32::from(cx.viewport_size().height) - 26.0 - widgets::STRIP_HEIGHT - m::LABEL_ROW - 4.0).max(160.0);
+            div().flex_1().min_w_0().min_h_0().size_full().child(crate::transcript_view::render_tmux_viewer(
+                &tm_viewer,
+                &self.tmux_visual,
+                &self.tmux_scroll,
+                avail_w,
+                avail_h,
+                &active_theme,
+                &metrics,
+                cx.msg_with(|what: &crate::transcript_view::TranscriptDo| WinMsg::TranscriptDo(what.clone())),
+            ))
+        } else if let Some((hk, sess)) = &sess_info
             && let Some(w) = sess.active_window().or_else(|| sess.windows.first())
             && w.all_blocks().next().is_some()
             && let Some(child) = &self.panes_view
@@ -3107,27 +3303,6 @@ impl RexWindow {
             div().flex_1().min_w_0().min_h_0().child(group)
         };
 
-        // Optional Find Bar above panes.
-        let focused_bk_for_find = if self.find_open { self.focused_block_key() } else { None };
-        let find_el = if self.find_open
-            && let Some(ff) = &self.find_field
-        {
-            let query = ff.read(cx).text().to_owned();
-            let (total, sel, finding) = focused_bk_for_find
-                .and_then(|bk| {
-                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                    st.blocks.get(&bk).map(|br| {
-                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                        (g.search.total_matches(), g.search.selected_index(), g.finding)
-                    })
-                })
-                .unwrap_or((0, None, false));
-            let said = if finding { "Searching…".into() } else { find_said(&query, total, sel, None) };
-            Some(find_bar(cx, ff, said, total > 0, cx.msg_with(|back: &bool| WinMsg::FindStep(*back)), cx.msg_with(|_: &()| WinMsg::FindClose)))
-        } else {
-            None
-        };
-
         // The tabs along the top of the panes, or down their side.
         let mut center = div().flex_1().min_w_0().min_h_0().flex();
         center = match settings.toolbar_layout {
@@ -3165,6 +3340,7 @@ impl RexWindow {
                 body_row = body_row.child(self.render_sidebar(total_w, cx));
             }
             SidePanes::Rest => {
+                crate::activity_watch::sync_watchers(&hub, false);
                 body_row = body_row.child(center);
             }
         }
@@ -3432,9 +3608,13 @@ impl RexWindow {
         )
         .width(((width - 2.0 * m::SPACING) / 2.0).floor() * 2.0)
         .on_choose(cx.msg_with(move |i: &usize| {
-            let mut st = hub_s1.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.settings.sidebar_mode = if *i == 1 { SidebarMode::Activity } else { SidebarMode::Sessions };
-            st.settings.save();
+            let activity = *i == 1;
+            {
+                let mut st = hub_s1.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.settings.sidebar_mode = if activity { SidebarMode::Activity } else { SidebarMode::Sessions };
+                st.settings.save();
+            }
+            crate::activity_watch::sync_watchers(&hub_s1, activity);
             WinMsg::Redraw
         }));
         let header = div()
@@ -3568,41 +3748,156 @@ impl RexWindow {
                 }
                 list = list.child(group);
             }
-        } else {
+        }
+        crate::activity_watch::sync_watchers(&hub, mode == SidebarMode::Activity);
+        if mode == SidebarMode::Activity {
             if activity_rows.is_empty() {
                 list = list.child(div().py(px(m::SECTION)).child(StringView::new("All agents and shells are quiet.").dim(true)));
             }
-            // (One group, its rows touching as Sessions' do: the list's
-            // gap is between hosts.)
-            let mut rows = div().w_full().flex_shrink_0().flex().flex_col();
+            let active_view = crate::activity_watch::active_view_target();
+            let active_sub_id = active_view.as_ref().and_then(|v| v.subagent_id()).map(str::to_owned);
+            let win_id = self.id;
+            // Group Activity rows by host under clean section headers (so rows
+            // never repeat "· This computer" at the end of every description line).
+            let mut rows = div().w_full().flex_shrink_0().flex().flex_col().agent("Group", "activity-subagents").agent_value(crate::activity_watch::activity_agent_json());
+            let mut last_host: Option<String> = None;
             for row in activity_rows {
+                if last_host.as_deref() != Some(row.host.as_str()) {
+                    let host_name = row.host.clone();
+                    let top_pad = if last_host.is_some() { 10.0 } else { 0.0 };
+                    rows = rows.child(
+                        div().w_full().pt(px(top_pad)).pb(px(6.0)).pl(px(m::WINDOW_INSET)).pr(px(m::TIGHT)).child(StringView::new(host_name).bold(true).size(style::SMALL_SIZE).dim(true).height(14.0)),
+                    );
+                    last_host = Some(row.host.clone());
+                }
+                let subs = crate::activity_watch::subagents_for(&row.bk);
+                let total_children = subs.len();
+                let failed_children = subs.iter().filter(|s| s.state == olo_rex_client::activity::SubagentState::Failed).count();
+                let has_children = total_children > 0;
+                let expanded = has_children && !crate::activity_watch::is_folded(&row.bk);
                 let bk_jump = row.bk.clone();
-                let selected = shown.as_ref() == Some(&row.bk);
+                let bk_fold = row.bk.clone();
+                let bk_children = row.bk.clone();
+                let bk_menu = row.bk.clone();
+                let row_title = row.title.clone();
+                let viewing_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &row.bk);
+                let selected = active_sub_id.is_none() && shown.as_ref() == Some(&row.bk);
                 // (As wide as the list's room: the sidebar less its inset.)
-                rows = rows.child(sidebar_activity_row(row, selected, width - 2.0 * m::SPACING, cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone()))));
+                let parent_el = sidebar_activity_row(
+                    row,
+                    selected,
+                    has_children,
+                    expanded,
+                    total_children,
+                    failed_children,
+                    width - 2.0 * m::SPACING,
+                    cx.msg_with(move |_: &()| WinMsg::FocusBlock(bk_jump.clone())),
+                    cx.msg_with(move |_: &()| WinMsg::ToggleActivityFold(bk_fold.clone())),
+                )
+                .on_mouse_down(MouseButton::Right, move |e, cx| {
+                    let bk = bk_menu.clone();
+                    let title = row_title.clone();
+                    let mut menu = Menu::new("").item("Show Transcript", "row.transcript").checked(viewing_tr).item("Show Terminal", "row.terminal").checked(!viewing_tr);
+                    menu::resolve(std::slice::from_mut(&mut menu), true);
+                    menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
+                        "row.transcript" => {
+                            if let Some(slot) = wins().map.get(&win_id) {
+                                slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title.clone()));
+                            }
+                        }
+                        "row.terminal" => {
+                            if let Some(slot) = wins().map.get(&win_id) {
+                                slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
+                            }
+                        }
+                        _ => {}
+                    });
+                    cx.stop_propagation();
+                });
+                rows = rows.child(parent_el);
+
+                if expanded {
+                    let parent_bk = bk_children;
+                    for (sub_idx, sub) in subs.iter().enumerate() {
+                        let is_last = sub_idx + 1 == subs.len();
+                        let sub_selected = active_sub_id.as_deref() == Some(sub.id.as_str());
+                        let sub_click = sub.clone();
+                        let sub_menu = sub.clone();
+                        let parent_click = parent_bk.clone();
+                        let parent_menu = parent_bk.clone();
+                        let has_tmux = sub.tmux.is_some();
+                        let has_tr = sub.transcript.is_some();
+                        let viewing_sub_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::SubagentTranscript { sub: s, .. }) if s.id == sub.id);
+                        let viewing_sub_tm = matches!(&active_view, Some(crate::activity_watch::ViewTarget::SubagentTmux { sub: s, .. }) if s.id == sub.id);
+                        let tip_key = format!("rex-sub-{}", sub.id);
+                        let tip_action = if has_tmux { "Opens read-only terminal" } else { "Opens transcript" };
+                        let tip_text = if sub.description.is_empty() { format!("{} — {tip_action}", sub.name) } else { format!("{} — {} ({tip_action})", sub.name, sub.description) };
+                        olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
+                        let sub_el = olo_kit::tip::on(
+                            sidebar_subagent_row(
+                                sub.clone(),
+                                sub_selected,
+                                is_last,
+                                width - 2.0 * m::SPACING,
+                                cx.msg_with(move |_: &()| WinMsg::OpenSubagent(parent_click.clone(), sub_click.clone(), false)),
+                            )
+                            .on_mouse_down(MouseButton::Right, move |e, cx| {
+                                let sub = sub_menu.clone();
+                                let parent = parent_menu.clone();
+                                let mut menu = Menu::new("")
+                                    .item("Show Transcript", "sub.transcript")
+                                    .enabled(has_tr)
+                                    .checked(viewing_sub_tr)
+                                    .item("Show Terminal", "sub.terminal")
+                                    .enabled(has_tmux)
+                                    .checked(viewing_sub_tm);
+                                menu::resolve(std::slice::from_mut(&mut menu), true);
+                                menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
+                                    "sub.transcript" => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::OpenSubagent(parent.clone(), sub.clone(), true));
+                                        }
+                                    }
+                                    "sub.terminal" if has_tmux => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::OpenSubagent(parent.clone(), sub.clone(), false));
+                                        }
+                                    }
+                                    _ => {}
+                                });
+                                cx.stop_propagation();
+                            }),
+                            tip_key,
+                            tip_text,
+                        );
+                        rows = rows.child(sub_el);
+                    }
+                }
             }
             list = list.child(rows);
         }
 
-        // Bottom-anchored sidebar footer (8 pt above bottom, crisp 1 px top rule).
-        let footer_bg = canvas(|g, b| {
-            let p = theme::palette();
-            style::hline(g, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.25));
-        })
-        .paint_key(202)
-        .absolute()
-        .inset_0();
-        let footer = div()
-            .relative()
-            .w_full()
-            .flex_shrink_0()
-            .px(px(m::SPACING))
-            .py(px(8.0))
-            .flex()
-            .flex_row()
-            .items_center()
-            .child(footer_bg)
-            .child(Button::new("Add Host…").small().on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::Command("app.add_host".into()))));
+        // Bottom-anchored sidebar footer ("Add Host…" is a Sessions action; hide in Activity).
+        let footer = (mode == SidebarMode::Sessions).then(|| {
+            let footer_bg = canvas(|g, b| {
+                let p = theme::palette();
+                style::hline(g, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.25));
+            })
+            .paint_key(202)
+            .absolute()
+            .inset_0();
+            div()
+                .relative()
+                .w_full()
+                .flex_shrink_0()
+                .px(px(m::SPACING))
+                .py(px(8.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .child(footer_bg)
+                .child(Button::new("Add Host…").small().on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::Command("app.add_host".into()))))
+        });
 
         div()
             .relative()
@@ -3614,7 +3909,7 @@ impl RexWindow {
             .child(back)
             .child(header)
             .child(div().flex_1().min_h_0().child(widgets::ScrollView::new(&self.sidebar_scroll).border(false).auto_hide(true).background(theme::palette().panel_background).child(list)))
-            .child(footer)
+            .children(footer)
             .child(
                 canvas(|g, b| {
                     let p = theme::palette();
@@ -4305,8 +4600,99 @@ impl View for RexWindow {
                 }
             }
             WinMsg::FocusBlock(bk) => {
+                crate::activity_watch::close_viewer();
                 self.jump_to(JumpTarget::Pane(bk), cx);
                 cx.activate_window();
+            }
+            WinMsg::ActivityChanged => {
+                cx.invalidate();
+            }
+            WinMsg::ToggleActivityFold(bk) => {
+                crate::activity_watch::toggle_fold(&bk);
+            }
+            WinMsg::OpenSubagent(parent, sub, force_transcript) => {
+                let hub = app().hub.clone();
+                self.jump_to(JumpTarget::Pane(parent.clone()), cx);
+                crate::activity_watch::open_subagent(&hub, &parent, sub, force_transcript);
+                cx.invalidate();
+            }
+            WinMsg::OpenPaneTranscript(bk, title) => {
+                let hub = app().hub.clone();
+                self.jump_to(JumpTarget::Pane(bk.clone()), cx);
+                crate::activity_watch::open_pane_transcript(&hub, &bk, title);
+                cx.invalidate();
+            }
+            WinMsg::TranscriptDo(what) => {
+                use crate::transcript_view::TranscriptDo;
+                let hub = app().hub.clone();
+                match what {
+                    TranscriptDo::ShowTerminal => {
+                        if let Some(crate::activity_watch::ViewTarget::SubagentTranscript { parent, sub }) = crate::activity_watch::active_view_target()
+                            && sub.tmux.is_some()
+                        {
+                            crate::activity_watch::open_subagent(&hub, &parent, sub, false);
+                        } else {
+                            crate::activity_watch::close_viewer();
+                        }
+                    }
+                    TranscriptDo::ShowTranscript => {
+                        if let Some(crate::activity_watch::ViewTarget::SubagentTmux { parent, sub, .. }) = crate::activity_watch::active_view_target() {
+                            crate::activity_watch::open_subagent(&hub, &parent, sub, true);
+                        }
+                    }
+                    TranscriptDo::ToggleExpand(eid) => {
+                        if let Some(tr) = crate::activity_watch::active_transcript() {
+                            let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+                            let is_failed_tool = g
+                                .doc
+                                .entries
+                                .iter()
+                                .any(|e| matches!(e, olo_rex_client::activity::TranscriptEntry::ToolCall { id, status: olo_rex_client::activity::ToolStatus::Error, .. } if *id == eid));
+                            if is_failed_tool {
+                                if g.collapsed_errors.contains(&eid) {
+                                    g.collapsed_errors.remove(&eid);
+                                    g.expanded.insert(eid);
+                                } else {
+                                    g.expanded.remove(&eid);
+                                    g.collapsed_errors.insert(eid);
+                                }
+                            } else if !g.expanded.remove(&eid) {
+                                g.expanded.insert(eid);
+                            }
+                            g.generation += 1;
+                        }
+                        cx.invalidate();
+                    }
+                    TranscriptDo::ToggleFollow => {
+                        if let Some(tr) = crate::activity_watch::active_transcript() {
+                            let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+                            g.follow = !g.follow;
+                            if g.follow {
+                                self.transcript_scroll.set_offset(cx, point(px(0.0), px(-1_000_000.0)));
+                            }
+                            g.generation += 1;
+                        }
+                        cx.invalidate();
+                    }
+                    TranscriptDo::ToggleFind => {
+                        if self.find_open {
+                            self.find_open = false;
+                            if let Some(tr) = crate::activity_watch::active_transcript() {
+                                let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+                                g.clear_search();
+                                g.generation += 1;
+                            }
+                            cx.invalidate();
+                        } else {
+                            self.execute_action("terminal.find", None, cx);
+                        }
+                    }
+                    TranscriptDo::Close => {
+                        crate::activity_watch::close_viewer();
+                        self.find_open = false;
+                        cx.invalidate();
+                    }
+                }
             }
             WinMsg::PaneCommand(key, cmd) => {
                 if self.focused_block_key().as_ref() == Some(&key) {
@@ -4360,6 +4746,11 @@ impl View for RexWindow {
             WinMsg::FindStep(back) => self.step_find(back, cx),
             WinMsg::FindClose => {
                 self.find_open = false;
+                if let Some(tr) = crate::activity_watch::active_transcript() {
+                    let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+                    g.clear_search();
+                    g.generation += 1;
+                }
                 if let Some(bk) = self.focused_block_key()
                     && let Some(br) = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned()
                 {
@@ -4851,7 +5242,12 @@ impl View for RexWindow {
                     })
                 });
                 let several = sess.windows.get(i).is_some_and(|w| w.all_blocks().count() > 1);
+                let active_view = crate::activity_watch::active_view_target();
+                let viewing_transcript = tab_block.as_ref().is_some_and(|tb| matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == tb));
                 let mut menu = Menu::new("").item("Rename Tab…", "window.rename").item(olo_kit_base::tracker::LABEL, "files.open_in_tracker").enabled(tab_block.is_some()).separator();
+                if tab_block.is_some() {
+                    menu = menu.item("Show Transcript", "pane.show_transcript").checked(viewing_transcript).item("Show Terminal", "pane.show_terminal").checked(!viewing_transcript).separator();
+                }
                 for (n, p) in panes.iter().enumerate() {
                     let help = app().hub.help(p);
                     let (keep, approve) = if several {
@@ -4882,6 +5278,17 @@ impl View for RexWindow {
                             if let Some(bk) = &tab_block {
                                 open_block_in_tracker(&hub, bk);
                             }
+                        }
+                        "pane.show_transcript" => {
+                            if let Some(bk) = &tab_block {
+                                let title = pane_name(&hub, bk);
+                                if let Some(slot) = wins().map.get(&window) {
+                                    slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title));
+                                }
+                            }
+                        }
+                        "pane.show_terminal" => {
+                            crate::activity_watch::close_viewer();
                         }
                         _ if cmd.starts_with("agent.keep_going_toggle#") => {
                             if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
@@ -5042,13 +5449,16 @@ impl Drop for RexWindow {
         self.cancel_preview();
         app().attention.hide(self.id);
         wins().map.remove(&self.id);
+        if self.role == WinRole::Workspace && !wins().map.values().any(|s| s.role == WinRole::Workspace) {
+            crate::activity_watch::stop_all();
+        }
     }
 }
 
 impl TextInput for RexWindow {
     fn insert_text(&mut self, text: &str, cx: &mut olo_kit::Cx<Self>) {
         self.preedit = None;
-        if self.role != WinRole::Workspace || self.overlay.is_some() || text.is_empty() {
+        if self.role != WinRole::Workspace || self.overlay.is_some() || text.is_empty() || crate::activity_watch::active_view_target().is_some() {
             return;
         }
         if let Some(bk) = self.focused_block_key() {
@@ -6319,94 +6729,141 @@ fn bevel_colors(p: &olo_theme::Palette) -> (olo_kit::Hsla, olo_kit::Hsla) {
     }
 }
 
-fn sidebar_activity_row(row: ActivityRow, selected: bool, width: f32, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let ActivityRow { host, title, detail, act, help, running, .. } = row;
-    // (What tells rows apart first, its folder; then its host, apart by
-    // the status bar's "·": Opus's review, 2026-11-24.)
+#[allow(clippy::too_many_arguments)]
+fn sidebar_activity_row(
+    row: ActivityRow,
+    selected: bool,
+    has_children: bool,
+    expanded: bool,
+    total_children: usize,
+    failed_children: usize,
+    width: f32,
+    on_click: impl Fn(&(), &mut WindowCx) + 'static,
+    on_toggle_fold: impl Fn(&(), &mut WindowCx) + 'static,
+) -> Element {
+    let ActivityRow { title, detail, act, help, running, .. } = row;
     let state = activity_state_word(act, running);
-    // (What it says of itself on two lines where one won't hold it: Ben,
-    // 2026-11-24, "let's allow for 2 lines in the description text under
-    // the title instead of the 1 it is now". Broken where a word ends, by
-    // the room the row will have, the host kept at the last line's end
-    // (cut, the end went first, and with it which machine: Opus's look);
-    // the row a line taller only then. The state's word is on the name's
-    // line: at the first line's end it broke the sentence, "…on Working
-    // the terminal…", both looks.)
     let left = m::WINDOW_INSET + ROW_ICON + m::TIGHT;
-    let host_part = if detail.is_empty() { host.clone() } else { format!("\u{b7} {host}") };
-    let sub_lines = if detail.is_empty() { (host.clone(), String::new()) } else { two_lines(&format!("{detail} {host_part}"), width - left - m::TIGHT, style::SMALL_SIZE) };
-    // (The second line's description, cut short past its room less the
-    // host's: the host whole at its end.)
-    let second = if sub_lines.1.is_empty() { None } else { Some(sub_lines.1.strip_suffix(host_part.as_str()).map(|d| d.trim_end().to_owned()).unwrap_or_else(|| sub_lines.1.clone())) };
+    let collapsed_badge: Option<(String, bool)> = if has_children && !expanded {
+        if failed_children > 0 { Some((format!("{failed_children} failed"), true)) } else { Some((format!("{total_children} subagent{}", if total_children == 1 { "" } else { "s" }), false)) }
+    } else {
+        None
+    };
+    let badge_reserve = collapsed_badge.as_ref().map_or(0.0, |(s, is_err)| {
+        let w = if *is_err { FontWeight::BOLD } else { FontWeight::NORMAL };
+        f32::from(style::text_width(s.clone(), style::SMALL_SIZE, style::ui_font(w))) + 8.0
+    });
+    // Host is shown once in the section header above the list, leaving full width
+    // for a clean 1-to-2 line description (short of the collapsed summary if any).
+    let sub_lines = if detail.is_empty() {
+        (String::new(), String::new())
+    } else if collapsed_badge.is_some() {
+        (detail.clone(), String::new())
+    } else {
+        two_lines(&detail, (width - left - m::TIGHT).max(48.0), style::SMALL_SIZE)
+    };
     let height = if sub_lines.1.is_empty() { ACTIVITY_ROW } else { ACTIVITY_ROW + ACTIVITY_LINE };
-    let key = style::key((&title, &sub_lines, act as u8, &help, running, selected));
+    let key = style::key((&title, &sub_lines, act as u8, &help, running, selected, has_children, expanded, total_children, failed_children));
     let words = activity_row_words(act, running, &help);
+    let fold_hit = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
+    let fold_hit_paint = fold_hit.clone();
     canvas(move |g, b| {
+        fold_hit_paint.set(crate::transcript_view::disclosure_hit_rect(b));
         let p = theme::palette();
-        // A list's row, as Sessions' are: the one this window shows
-        // selected (Ben, 2026-11-24: "rex activity doesn't have a selected
-        // state like i'd expect"). Each was a raised card, none chosen.
+        let dark = p.mode == olo_theme::ThemeMode::Dark;
         let ground = if selected { style::c(style::selection_ground(&p, p.panel_background, false)) } else { style::c(p.panel_background) };
         if selected {
             style::fill_rect(g, b, ground);
         }
-        // (The row's own colours on its selection, which never has the
-        // keyboard: "Waiting" orange on the row the person is looking at.
-        // White and bold there, it lost its colour: Opus's look.)
         let (ink, quiet) = (style::c(p.panel_text), style::secondary_text(&p));
-        // Its icon with what its agent is doing (at rest too, while its
-        // program runs); Auto Approve and Keep It Going at the row's right
-        // end, where there is room, not on the icon (Opus's review: three
-        // marks on 16 points hid the terminal).
-        // (At one height in every row, beside the name and the line under
-        // it: centred on a taller row it floated between lines, both
-        // looks.)
-        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), b.top() + px(ACTIVITY_ROW / 2.0)), ROW_ICON, ROW_ICON);
-        widgets::strip::drawn_on(ground, || widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(act, &crate::agent::Help::default(), running)));
-        // (Auto Approve's disc last: a triangle at a row's very end read
-        // as a disclosure arrow.)
+        let baseline = style::baseline_at(g, b.top() + px(12.0), style::PLAIN_SIZE);
+        // Align 16 pt icon and disclosure latch cleanly on the name line's capitals middle.
+        let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        if has_children {
+            crate::transcript_view::paint_disclosure(g, point(b.left() + px(m::WINDOW_INSET / 2.0), name_mid), expanded, quiet);
+        }
+        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
+        // Unified colour roles: green live dot for Working, orange ! for Waiting, red × for Failed, clean icon for Done.
+        match act {
+            AgentActivity::Working => {
+                icons::paint(g, icon_b, "terminal");
+                let dot_c = point(icon_b.right() - px(3.0), icon_b.top() + px(3.0));
+                style::dot(g, dot_c, 7.0, ground);
+                style::dot(g, dot_c, 5.0, style::c(p.success));
+            }
+            AgentActivity::Done => {
+                icons::paint(g, icon_b, "terminal");
+            }
+            _ => {
+                widgets::strip::drawn_on(ground, || widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(act, &crate::agent::Help::default(), running)));
+            }
+        }
+        // Connect vertical tree guide directly from 2 pt below the parent icon down to the first child row.
+        if has_children && expanded {
+            let guide_x = style::snap_coord(g, icon_b.center().x);
+            let guide_c = if dark {
+                let base_g = if selected { style::selection_ground(&p, p.panel_background, false) } else { p.panel_background };
+                style::c(olo_theme::mix(base_g, p.panel_text, 0.34))
+            } else {
+                style::shade(&p, p.panel_background, 1.32)
+            };
+            style::vline(g, guide_x, icon_b.bottom() + px(2.0), b.bottom(), guide_c);
+        }
+
         let mut right = b.right() - px(m::TIGHT);
-        let mid = b.top() + px(13.0);
         if help.auto_approve {
-            widgets::agent_marks::auto_approve_mark(g, point(right - px(4.5), mid), 9.0, ground);
+            widgets::agent_marks::auto_approve_mark(g, point(right - px(4.5), name_mid), 9.0, ground);
             right -= px(9.0 + m::MARK_GAP);
         }
         if help.keep_going {
-            widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), mid), 9.0, ground);
+            widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), name_mid), 9.0, ground);
             right -= px(8.0 + m::MARK_GAP);
         }
-        let left = b.left() + px(left);
-        // What its agent is doing, in a word at the name line's end (its
-        // mark alone was a speck at 1×), one column down the list: waiting
-        // and failed in their colours, mixed toward the text's to read on
-        // the row.
+        let left_x = b.left() + px(left);
         if let Some((word, urgent)) = state {
             let color = match urgent {
-                None => quiet,
+                Some(_) if act == AgentActivity::Error => style::c(p.failure),
                 Some(tone) => style::c(olo_theme::mix(tone, p.panel_text, 0.3)),
+                None if act == AgentActivity::Working => ink,
+                None => style::disabled_text(&p),
             };
             let weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
-            // (On the name's baseline: centred on the line in its smaller
-            // size, it sat a pixel off the name at 1.25× to 1.75×, the
-            // review said.)
-            let baseline = style::baseline_at(g, b.top() + px(13.0), style::PLAIN_SIZE);
             let at = style::label_on_baseline(g, right - px(m::TIGHT), baseline, style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(weight), color);
             right = at.left();
         }
-        style::label_fit(g, left, b.top() + px(13.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, (right - px(m::TIGHT) - left).max(px(24.0)));
-        // Under it what it says of itself and its host, on two lines where
-        // one won't hold them, each to the row's one trailing edge; the
-        // second's description cut short before the host, which stays.
-        let edge = b.right() - px(m::TIGHT);
-        style::label_fit(g, left, b.top() + px(28.0), style::Align::Left, sub_lines.0.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet, (edge - left).max(px(24.0)));
-        if let Some(said) = &second {
-            let y = b.top() + px(28.0 + ACTIVITY_LINE);
-            let font = style::ui_font(FontWeight::NORMAL);
-            let host_w = if said.as_str() == sub_lines.1 { px(0.0) } else { style::text_width(format!(" {host_part}"), style::SMALL_SIZE, font.clone()) };
-            let shown = style::label_fit(g, left, y, style::Align::Left, said.clone(), style::SMALL_SIZE, font.clone(), quiet, (edge - left - host_w).max(px(24.0)));
-            if host_w > px(0.0) {
-                style::label(g, shown.right() + style::text_width(" ".to_owned(), style::SMALL_SIZE, font.clone()), y, style::Align::Left, host_part.clone(), style::SMALL_SIZE, font, quiet);
-            }
+        style::label_fit(g, left_x, b.top() + px(12.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, (right - px(10.0) - left_x).max(px(24.0)));
+        let right_edge = b.right() - px(2.0 * m::TIGHT);
+        if let Some((badge_str, is_err)) = &collapsed_badge {
+            let b_color = if *is_err { style::c(p.failure) } else { quiet };
+            let b_weight = if *is_err { FontWeight::BOLD } else { FontWeight::NORMAL };
+            let b2 = style::baseline_at(g, b.top() + px(26.0), style::SMALL_SIZE);
+            style::label_on_baseline(g, right_edge, b2, style::Align::Right, badge_str.clone(), style::SMALL_SIZE, style::ui_font(b_weight), b_color);
+        }
+        if !sub_lines.0.is_empty() {
+            style::label_fit(
+                g,
+                left_x,
+                b.top() + px(26.0),
+                style::Align::Left,
+                sub_lines.0.clone(),
+                style::SMALL_SIZE,
+                style::ui_font(FontWeight::NORMAL),
+                quiet,
+                (right_edge - px(badge_reserve) - left_x).max(px(24.0)),
+            );
+        }
+        if !sub_lines.1.is_empty() {
+            style::label_fit(
+                g,
+                left_x,
+                b.top() + px(26.0 + ACTIVITY_LINE),
+                style::Align::Left,
+                sub_lines.1.clone(),
+                style::SMALL_SIZE,
+                style::ui_font(FontWeight::NORMAL),
+                quiet,
+                (right_edge - left_x).max(px(24.0)),
+            );
         }
         g.agent(agent::Node {
             role: "ListItem",
@@ -6422,6 +6879,116 @@ fn sidebar_activity_row(row: ActivityRow, selected: bool, width: f32, on_click: 
     .paint_key(key)
     .w_full()
     .h(px(height))
+    .cursor(CursorStyle::PointingHand)
+    .on_mouse_down(MouseButton::Left, move |e, cx| {
+        if has_children && fold_hit.get().contains(&e.position) {
+            on_toggle_fold(&(), cx);
+        } else {
+            on_click(&(), cx);
+        }
+        cx.stop_propagation();
+    })
+}
+
+/// Compact 2-line nested subagent row (`38 pt`) under its parent Activity row:
+/// vertically centered inside its selection band (~5.5 pt top & bottom padding),
+/// connected tree guide, name-line-centred icon (terminal vs document carries
+/// whether Terminal mode exists), title + right-aligned status on line 1
+/// (>= 10 pt gutter), and full-width readable description on line 2.
+fn sidebar_subagent_row(sub: olo_rex_client::activity::SubagentInfo, selected: bool, is_last: bool, _width: f32, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    use olo_rex_client::activity::{SubagentOrigin, SubagentState};
+    const SUB_INDENT: f32 = 18.0;
+    const SUB_ROW_H: f32 = 38.0;
+
+    let origin_word = match sub.origin {
+        SubagentOrigin::Tmux => "tmux",
+        SubagentOrigin::Native => "subagent",
+        SubagentOrigin::Shell => "shell",
+    };
+    let left = m::WINDOW_INSET + SUB_INDENT + ROW_ICON + m::TIGHT;
+    let icon_name = if sub.tmux.is_some() { "terminal" } else { "text" };
+    let (state_word, urgent) = crate::transcript_view::subagent_state_word(sub.state);
+    let mark = crate::transcript_view::subagent_mark(sub.state);
+    let key = style::key((&sub.id, &sub.name, &sub.description, sub.state, sub.tmux.is_some(), selected, is_last));
+    let title = sub.name.clone();
+    let desc = sub.description.clone();
+    let sub_state = sub.state;
+    let agent_val = format!("{origin_word}; {state_word}");
+
+    canvas(move |g, b| {
+        let p = theme::palette();
+        let dark = p.mode == olo_theme::ThemeMode::Dark;
+        let sel_rgba = style::selection_ground(&p, p.panel_background, false);
+        let ground = if selected { style::c(sel_rgba) } else { style::c(p.panel_background) };
+        if selected {
+            style::fill_rect(g, b, ground);
+        }
+        let (ink, quiet, tertiary) = (style::c(p.panel_text), style::secondary_text(&p), style::disabled_text(&p));
+        // Centered vertically in the 38 pt band (~5.5 pt above line 1 and below line 2).
+        let baseline1 = style::baseline_at(g, b.top() + px(11.5), style::PLAIN_SIZE);
+        let name_mid = baseline1 - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + SUB_INDENT + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
+
+        // Connected vertical & horizontal tree guide in crisp separator strength.
+        let guide_x = style::snap_coord(g, b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0));
+        let guide_end = if is_last { name_mid } else { b.bottom() };
+        let guide_c = if dark {
+            let base_g = if selected { sel_rgba } else { p.panel_background };
+            style::c(olo_theme::mix(base_g, p.panel_text, if selected { 0.42 } else { 0.34 }))
+        } else {
+            style::shade(&p, p.panel_background, 1.32)
+        };
+        style::vline(g, guide_x, b.top(), guide_end, guide_c);
+        style::hline(g, guide_x, icon_b.left() - px(2.0), name_mid, guide_c);
+
+        match sub_state {
+            SubagentState::Working => {
+                icons::paint(g, icon_b, icon_name);
+                let dot_c = point(icon_b.right() - px(3.0), icon_b.top() + px(3.0));
+                style::dot(g, dot_c, 7.0, ground);
+                style::dot(g, dot_c, 5.0, style::c(p.success));
+            }
+            SubagentState::Done => {
+                icons::paint(g, icon_b, icon_name);
+            }
+            _ => {
+                widgets::strip::drawn_on(ground, || {
+                    widgets::agent_marks::paint(g, icon_b, icon_name, widgets::agent_marks::Marks { agent: mark, keep_going: false, auto_approve: false });
+                });
+            }
+        }
+
+        let right_edge = b.right() - px(2.0 * m::TIGHT);
+        let state_color = match urgent {
+            Some(_) if sub_state == SubagentState::Failed => style::c(p.failure),
+            Some(tone) => style::c(olo_theme::mix(tone, p.panel_text, 0.3)),
+            None if sub_state == SubagentState::Working => ink,
+            None => tertiary,
+        };
+        let state_weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
+        let at = style::label_on_baseline(g, right_edge, baseline1, style::Align::Right, olo_kit::words::tr(state_word).to_string(), style::SMALL_SIZE, style::ui_font(state_weight), state_color);
+        let left_x = b.left() + px(left);
+        style::label_fit(g, left_x, b.top() + px(11.5), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::MEDIUM), ink, (at.left() - px(10.0) - left_x).max(px(24.0)));
+
+        // Full-width readable description on line 2 (origin lives in tooltip & status bar).
+        if !desc.is_empty() {
+            style::label_fit(g, left_x, b.top() + px(25.5), style::Align::Left, desc.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet, (right_edge - left_x).max(px(24.0)));
+        }
+
+        g.agent(agent::Node {
+            role: "ListItem",
+            name: Some(title.clone().into()),
+            value: Some(agent_val.clone().into()),
+            bounds: b,
+            selected: Some(selected),
+            enabled: true,
+            clickable: true,
+            ..Default::default()
+        });
+    })
+    .paint_key(key)
+    .w_full()
+    .h(px(SUB_ROW_H))
     .cursor(CursorStyle::PointingHand)
     .on_mouse_down(MouseButton::Left, move |_, cx| {
         on_click(&(), cx);

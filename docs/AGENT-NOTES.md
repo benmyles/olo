@@ -3301,3 +3301,14 @@ then runs the program as it last was, which looked like a key handler
 never called. Before trusting a picture of a change, check the
 program's time (`ls -l target/debug/PROGRAM`) or build by its package
 (`grep '^name' apps/X/Cargo.toml`).
+
+**`tmux attach -r -f ignore-size` on a detached session still uses the
+client PTY size** (2026-11-25): `ignore-size` excludes the client only
+relative to *other* attached clients; when a tmux session has zero other
+attached clients (such as every detached helper session under
+`tools/dev/agents`), tmux resizes the window to the attaching client's
+PTY minus `status` rows (e.g. a `97×31` PTY with `status on` shrinks a
+`97×31` detached pane to `97×30`). To attach read-only without changing
+a detached pane's dimensions by even one row, size the viewer PTY to
+`#{window_width} × (#{window_height} + status_rows)` alongside `-r -f
+ignore-size`.

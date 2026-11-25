@@ -49,8 +49,12 @@ impl Places {
         Places { home, claude, codex: codex_home() }
     }
 
-    fn agy(&self) -> PathBuf {
+    pub(crate) fn agy(&self) -> PathBuf {
         self.home.join(".gemini/antigravity-cli/conversations")
+    }
+
+    pub(crate) fn agy_brain(&self) -> PathBuf {
+        self.home.join(".gemini/antigravity-cli/brain")
     }
 }
 
@@ -67,12 +71,12 @@ fn session_file(places: &Places, target: &Path) -> bool {
 /// When a process started, in clock ticks after boot (`/proc/PID/stat`'s
 /// field 22, counted after the name's closing bracket: a name may hold
 /// spaces and brackets of its own).
-fn start_ticks(pid: i32) -> u64 {
+pub(crate) fn start_ticks(pid: i32) -> u64 {
     std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().and_then(|s| s.rsplit_once(')').and_then(|(_, rest)| rest.split_whitespace().nth(19)?.parse().ok())).unwrap_or(0)
 }
 
 /// One process for `look-pane`.
-fn process_json(p: &Proc, places: &Places) -> serde_json::Value {
+pub(crate) fn process_json(p: &Proc, places: &Places) -> serde_json::Value {
     let argv: Vec<String> =
         std::fs::read(format!("/proc/{}/cmdline", p.pid)).map(|c| c.split(|&b| b == 0).filter(|w| !w.is_empty()).map(|w| String::from_utf8_lossy(w).into_owned()).collect()).unwrap_or_default();
     let cwd = std::fs::read_link(format!("/proc/{}/cwd", p.pid)).map(|c| c.display().to_string()).unwrap_or_default();
@@ -85,7 +89,7 @@ fn process_json(p: &Proc, places: &Places) -> serde_json::Value {
     serde_json::json!({"pid": p.pid, "ppid": p.ppid, "name": p.comm, "argv": argv, "cwd": cwd, "exe": exe, "start": start_ticks(p.pid), "open": open})
 }
 
-fn base(s: &str) -> &str {
+pub(crate) fn base(s: &str) -> &str {
     s.rsplit('/').next().unwrap_or(s)
 }
 
@@ -134,7 +138,7 @@ pub fn agent_of(argv: &[String], comm: &str, exe: &str) -> Option<(&'static str,
 }
 
 /// Whether `w` is a session's id as the agents write them (a UUID).
-fn uuid(w: &str) -> bool {
+pub(crate) fn uuid(w: &str) -> bool {
     let parts: Vec<&str> = w.split('-').collect();
     parts.len() == 5 && parts.iter().zip([8, 4, 4, 4, 12]).all(|(p, n)| p.len() == n && p.bytes().all(|b| b.is_ascii_hexdigit()))
 }
@@ -166,7 +170,7 @@ pub fn argv_session(agent: &str, args: &[String]) -> Option<String> {
 
 /// When a process started, as the clock has it (its start in ticks after
 /// boot, and boot's time).
-fn started_at(start_ticks: u64) -> Option<SystemTime> {
+pub(crate) fn started_at(start_ticks: u64) -> Option<SystemTime> {
     let boot: u64 = std::fs::read_to_string("/proc/stat").ok()?.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())?;
     // SAFETY: a getter.
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
@@ -175,13 +179,13 @@ fn started_at(start_ticks: u64) -> Option<SystemTime> {
 
 /// Claude Code's name for a project's folder: its path, each byte but a
 /// letter or a digit as `-`.
-fn project_name(path: &str) -> String {
+pub(crate) fn project_name(path: &str) -> String {
     path.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
 /// The session Claude Code's own record of process `pid` says it is in,
 /// if the record is that process's (by its start: a pid is used again).
-fn claude_record(places: &Places, pid: i32, start: u64) -> Option<String> {
+pub(crate) fn claude_record(places: &Places, pid: i32, start: u64) -> Option<String> {
     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(places.claude.join("sessions").join(format!("{pid}.json"))).ok()?).ok()?;
     let recorded = match &v["procStart"] {
         serde_json::Value::String(s) => s.parse::<u64>().ok()?,
@@ -193,15 +197,15 @@ fn claude_record(places: &Places, pid: i32, start: u64) -> Option<String> {
 /// A session that may be a pane's: its id, its transcript, when it was
 /// last written.
 #[derive(Clone, Debug)]
-struct Candidate {
-    id: String,
-    file: Option<PathBuf>,
-    when: SystemTime,
+pub(crate) struct Candidate {
+    pub(crate) id: String,
+    pub(crate) file: Option<PathBuf>,
+    pub(crate) when: SystemTime,
 }
 
 /// The files of `dir` named `ID` + `ext` (an id a UUID), newest first;
 /// written since `since` if given.
-fn sessions_in(dir: &Path, ext: &str, since: Option<SystemTime>) -> Vec<Candidate> {
+pub(crate) fn sessions_in(dir: &Path, ext: &str, since: Option<SystemTime>) -> Vec<Candidate> {
     let mut all: Vec<Candidate> = std::fs::read_dir(dir)
         .map(|d| {
             d.filter_map(|e| {
@@ -220,7 +224,7 @@ fn sessions_in(dir: &Path, ext: &str, since: Option<SystemTime>) -> Vec<Candidat
 
 /// Codex's rollouts by their conversation's id (`rollout-STAMP-ID.jsonl`,
 /// in folders by date, archived ones too).
-fn codex_rollouts(places: &Places) -> HashMap<String, PathBuf> {
+pub(crate) fn codex_rollouts(places: &Places) -> HashMap<String, PathBuf> {
     let mut out = HashMap::new();
     let mut stack: Vec<(PathBuf, usize)> = vec![(places.codex.join("sessions"), 0), (places.codex.join("archived_sessions"), 0)];
     while let Some((dir, depth)) = stack.pop() {
@@ -248,7 +252,7 @@ fn codex_rollouts(places: &Places) -> HashMap<String, PathBuf> {
 /// What Codex's daemon has open: each conversation's id and folder (none
 /// when there is no daemon). Over its control socket (a WebSocket, as the
 /// Token Pool asks it), five seconds at most.
-fn codex_threads(places: &Places) -> Vec<(String, String)> {
+pub(crate) fn codex_threads(places: &Places) -> Vec<(String, String)> {
     let deadline = Instant::now() + Duration::from_secs(5);
     let Ok(stream) = UnixStream::connect(places.codex.join("app-server-control/app-server-control.sock")) else { return Vec::new() };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
@@ -338,19 +342,19 @@ fn score(lines: &[String], tail: &str) -> usize {
 }
 
 /// A pane's agent, as found.
-struct Found {
-    agent: &'static str,
-    pid: i32,
-    args: Vec<String>,
-    cwd: String,
-    start: u64,
-    open: Option<String>,
+pub(crate) struct Found {
+    pub(crate) agent: &'static str,
+    pub(crate) pid: i32,
+    pub(crate) args: Vec<String>,
+    pub(crate) cwd: String,
+    pub(crate) start: u64,
+    pub(crate) open: Option<String>,
     /// Its own processes (Claude Code's record may be any one's).
-    pids: Vec<(i32, u64)>,
+    pub(crate) pids: Vec<(i32, u64)>,
 }
 
 /// The agent in a pane's tree (parents first), if one runs there.
-fn found_in(tree: &[serde_json::Value]) -> Option<Found> {
+pub(crate) fn found_in(tree: &[serde_json::Value]) -> Option<Found> {
     let words = |p: &serde_json::Value, key: &str| -> Vec<String> { p[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()).unwrap_or_default() };
     let (p, agent, args) = tree.iter().find_map(|p| {
         let (agent, args) = agent_of(&words(p, "argv"), p["name"].as_str().unwrap_or_default(), p["exe"].as_str().unwrap_or_default())?;
@@ -380,7 +384,13 @@ fn found_in(tree: &[serde_json::Value]) -> Option<Found> {
 /// Each pane's agent and the session it is in (`null` for a pane with
 /// none), as the module's head says. `threads`: what Codex's daemon has
 /// open, asked only where a Codex pane needs it.
-fn sessions(found: &[Option<Found>], screens: &HashMap<i32, Vec<String>>, roots: &[i32], places: &Places, threads: &mut dyn FnMut() -> Vec<(String, String)>) -> Vec<Option<(String, &'static str)>> {
+pub(crate) fn sessions(
+    found: &[Option<Found>],
+    screens: &HashMap<i32, Vec<String>>,
+    roots: &[i32],
+    places: &Places,
+    threads: &mut dyn FnMut() -> Vec<(String, String)>,
+) -> Vec<Option<(String, &'static str)>> {
     let mut out: Vec<Option<(String, &'static str)>> = vec![None; found.len()];
     let mut taken: HashSet<String> = HashSet::new();
     // (Asked once, where a Codex pane needs it.)

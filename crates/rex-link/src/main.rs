@@ -12,6 +12,8 @@
 //! that stops reading stops only what goes to it.
 
 #[cfg(feature = "move")]
+mod activity;
+#[cfg(feature = "move")]
 mod fix;
 #[cfg(feature = "sync")]
 mod fs_op;
@@ -125,6 +127,16 @@ fn main() {
         #[cfg(not(feature = "move"))]
         {
             eprintln!("olo-rex-link: built without moving an account");
+            std::process::exit(126);
+        }
+    }
+    // (`activity`: zero-polling subagent discovery and live transcript streaming.)
+    if args.first().is_some_and(|a| a == "activity") {
+        #[cfg(feature = "move")]
+        activity::run(args.split_off(1));
+        #[cfg(not(feature = "move"))]
+        {
+            eprintln!("olo-rex-link: built without activity support");
             std::process::exit(126);
         }
     }

@@ -6,6 +6,7 @@
 
 mod account;
 mod account_panel;
+mod activity_watch;
 mod agent;
 mod attach;
 mod attention;
@@ -38,6 +39,7 @@ mod shared;
 mod tailscale;
 mod terminal_pane;
 mod themes;
+mod transcript_view;
 mod ui;
 
 use olo_kit::instance::{self, Launch};
@@ -236,6 +238,11 @@ fn main() {
             && !mode.trim().is_empty()
         {
             ui::open_demo_carry();
+        }
+        if let Ok(mode) = std::env::var("OLO_REX_DEMO_ACTIVITY")
+            && !mode.trim().is_empty()
+        {
+            ui::open_demo_activity(mode.trim());
         }
     });
 }

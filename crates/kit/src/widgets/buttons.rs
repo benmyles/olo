@@ -560,9 +560,16 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
         style::bevel(g, outer, fade(style::shade(&p, bg, 1.3)), fade(style::c(p.shine)));
     }
     let pressed = s.pressed || pushed;
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
     let base = p.control_background;
     let (top, bottom) = if pressed {
-        (style::shade(&p, base, 1.2), style::shade(&p, base, 1.12))
+        if dark {
+            // Genuine recessed dark fill so pushed toggles read unmistakably against raised buttons.
+            let hole = p.document_background;
+            (style::c(hole), style::c(olo_theme::mix(hole, base, 0.25)))
+        } else {
+            (style::shade(&p, base, 1.24), style::shade(&p, base, 1.14))
+        }
     } else if s.hovered {
         (style::tint(base, 0.7), style::shade(&p, base, 1.02))
     } else {
@@ -573,12 +580,16 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     style::vgradient(g, inner, fade(top), fade(bottom));
     style::frame_rect(g, r, border);
     if pressed {
-        style::bevel(g, inner, fade(style::shade(&p, base, 1.35)), fade(style::shade(&p, base, 1.1)));
+        if dark {
+            style::bevel(g, inner, fade(style::c([0, 0, 0, 180])), fade(style::c(olo_theme::mix(base, p.panel_text, 0.22))));
+        } else {
+            style::bevel(g, inner, fade(style::shade(&p, base, 1.38)), fade(style::c(p.shine)));
+        }
     } else {
         style::bevel(g, inner, fade(style::c(p.shine)), fade(style::shade(&p, base, 1.2)));
     }
     // Held by the pointer, the label gives a device pixel; one that
-    // stays down (a chosen tool) keeps it level with its row.
+    // stays down (a chosen tool) keeps it level with its row, in semibold.
     let off = if s.pressed && !pushed { style::hairline(g) } else { px(0.0) };
     let color = if s.enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
     let c = r.center();
@@ -588,10 +599,11 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     // mark, which read as a stray mark. Opus's look, 2026-11-24.)
     const GAP: f32 = 7.0;
     const MARK: f32 = 8.0;
-    let tw = if menu { style::text_width_app(label, font_size, &style::ui_font(FontWeight::NORMAL)) } else { 0.0 };
+    let weight = if pushed { FontWeight::SEMIBOLD } else { FontWeight::NORMAL };
+    let tw = if menu { style::text_width_app(label, font_size, &style::ui_font(weight)) } else { 0.0 };
     let unit_left = c.x - px((tw + GAP + MARK) / 2.0);
     let label_x = if menu { unit_left + px(tw / 2.0) } else { c.x };
-    let text = style::label(g, label_x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(FontWeight::NORMAL), color);
+    let text = style::label(g, label_x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(weight), color);
     if menu {
         let ax = style::snap_coord(g, unit_left + px(tw + GAP + MARK / 2.0)) + off;
         let ay = px(f32::from(c.y).round()) + off;

@@ -1497,6 +1497,119 @@ elif what == "connect":
                 line = re.sub(r"(session|block|window|layer|client):[0-9a-f-]+", r"\1:…", line.rstrip("\n"))
                 line = re.sub(r'"(user|path|invoked_path|cwd|home|hostname|label|ticket|reconnect_token)":"[^"]*"', r'"\1":"…"', line)
                 print(line[:150])
+elif what == "activity":
+    # Stand-in parent agent on a far host starts one child agent in its pty (transcript-only, streaming)
+    # and one child agent in tmux at an explicit 97x31 geometry (read-only attach with -f ignore-size):
+    # verifies zero watchers while Sessions is shown, nested discovery of both under the parent when Activity
+    # is opened, read-only tmux attach without resizing 97x31, live inotify transcript streaming, and clean
+    # watcher shutdown when leaving Activity.
+    import shutil, subprocess
+    home = f"{D}/home"
+    act_dir = f"{D}/tmp/act-standin"
+    shutil.rmtree(act_dir, ignore_errors=True)
+    os.makedirs(act_dir, exist_ok=True)
+    sock = f"{act_dir}/tmux.sock"
+    parent_tr = f"{act_dir}/parent.jsonl"
+    pty_tr = f"{act_dir}/pty-sub.jsonl"
+    tmux_tr = f"{act_dir}/tmux-sub.jsonl"
+    open(parent_tr, "w").write(json.dumps({"type": "user", "timestamp": "2026-11-25T15:00:00Z", "message": {"role": "user", "content": "Coordinate subagents"}}) + "\n")
+    open(pty_tr, "w").write(json.dumps({"type": "user", "timestamp": "2026-11-25T15:00:01Z", "message": {"role": "user", "content": "Initial pty subagent prompt"}}) + "\n")
+    open(tmux_tr, "w").write(json.dumps({"step_index": 0, "type": "USER_INPUT", "created_at": "2026-11-25T15:00:02Z", "content": "Review tmux subagent layout"}) + "\n")
+
+    launcher = f"{act_dir}/parent.sh"
+    open(launcher, "w").write(f"""#!/bin/sh
+export OLO_ACTIVITY_AGENT=claude
+export OLO_ACTIVITY_TRANSCRIPT={parent_tr}
+export OLO_ACTIVITY_NAME=parent-agent
+# 1. Start shell/pty subagent child process directly under this parent agent.
+(
+  export OLO_ACTIVITY_AGENT=codex
+  export OLO_ACTIVITY_NAME=pty-worker
+  export OLO_ACTIVITY_DESC="Inspecting build graph"
+  export OLO_ACTIVITY_TRANSCRIPT={pty_tr}
+  exec sleep 120
+) &
+# 2. Start tmux subagent inheriting REX_BLOCK at explicit 97x31 geometry.
+tmux -S {sock} kill-server 2>/dev/null || true
+tmux -S {sock} new-session -d -s tmux-worker -x 97 -y 31 \\
+  "OLO_ACTIVITY_AGENT=agy OLO_ACTIVITY_NAME=tmux-worker OLO_ACTIVITY_DESC='Visual QA pass' OLO_ACTIVITY_TRANSCRIPT={tmux_tr} REX_BLOCK=\\"$REX_BLOCK\\" sh -c 'printf \\"TMUX_SUBAGENT_READY\\\\r\\\\n\\"; sleep 120'"
+printf 'PARENT_READY\\n'
+exec sleep 120
+""")
+    os.chmod(launcher, 0o755)
+
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
+
+    def count_watchers():
+        out = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True).stdout
+        return sum(1 for l in out.splitlines() if "olo-rex-link" in l and "activity watch" in l)
+
+    try:
+        with Rig(f"sh {launcher}", delay=0, far=True, far_delay=0, bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None), env=["RUST_LOG=warn,olo_rex=info"]) as r:
+            def act_snap():
+                for n in r.nodes("Rex"):
+                    if n.get("name") == "activity-subagents" and n.get("value"):
+                        try: return json.loads(n["value"])
+                        except Exception: return None
+                return None
+            def tr_snap():
+                for n in r.nodes("Rex"):
+                    if n.get("name") == "agent-transcript" and n.get("value"):
+                        try: return json.loads(n["value"])
+                        except Exception: return None
+                return None
+            def has_tmux_ro():
+                return any(n.get("name") == "agent-tmux-ro" for n in r.nodes("Rex"))
+
+            # Wait for stand-in launcher to spawn tmux session.
+            tmux_up = r.wait(lambda: subprocess.run(["tmux", "-S", sock, "list-panes", "-t", "tmux-worker", "-F", "#{pane_width}x#{pane_height}"], capture_output=True, text=True).stdout.strip() or None, 20)
+            check("stand-in tmux subagent started at 97x31", tmux_up == "97x31", tmux_up)
+            check("no activity watcher runs while Sessions sidebar is shown", count_watchers() == 0, count_watchers())
+
+            # Switch to Activity -> both pty-worker and tmux-worker must be discovered nested under parent.
+            r.invoke("app.view_activity")
+            discovered = r.wait(lambda: (lambda rows: rows if rows and any(
+                {s["name"] for s in row.get("subagents", [])} >= {"pty-worker", "tmux-worker"} for row in rows
+            ) else None)(act_snap()), 25)
+            subs = [s for row in (discovered or []) for s in row.get("subagents", [])]
+            by_name = {s["name"]: s for s in subs}
+            check("both pty (shell) and tmux subagents discovered nested under parent",
+                  "pty-worker" in by_name and by_name["pty-worker"]["origin"] == "shell" and by_name["pty-worker"]["tmux"] is None
+                  and "tmux-worker" in by_name and by_name["tmux-worker"]["origin"] == "tmux" and by_name["tmux-worker"]["tmux"] is not None,
+                  {k: (v["origin"], bool(v["tmux"])) for k, v in by_name.items()})
+
+            # Attach to tmux-worker read-only and verify tmux pane stays 97x31!
+            r.invoke("activity.open:tmux-worker")
+            ro_open = r.wait(lambda: True if has_tmux_ro() else None, 15)
+            time.sleep(0.8)
+            size_after = subprocess.run(["tmux", "-S", sock, "list-panes", "-t", "tmux-worker", "-F", "#{pane_width}x#{pane_height}"], capture_output=True, text=True).stdout.strip()
+            check("read-only tmux attach opens without resizing 97x31 subagent pane", bool(ro_open) and size_after == "97x31", {"open": ro_open, "size": size_after})
+
+            # Open pty-worker (transcript-only) and verify live streaming on append!
+            r.invoke("activity.open:pty-worker")
+            tr1 = r.wait(lambda: (lambda s: s if s and s.get("streaming") and any("Initial pty subagent prompt" in t for t in s.get("recent_texts", [])) else None)(tr_snap()), 20)
+            check("pty subagent opens read-only streaming transcript with terminal unavailable",
+                  tr1 is not None and tr1.get("has_terminal") is False,
+                  tr1 and {"has_terminal": tr1.get("has_terminal"), "streaming": tr1.get("streaming"), "entries": tr1.get("entries")})
+
+            with open(pty_tr, "a") as f:
+                f.write(json.dumps({"type": "assistant", "timestamp": "2026-11-25T15:00:09Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "Streamed live via inotify!"}]}}) + "\n")
+                f.flush()
+            tr2 = r.wait(lambda: (lambda s: s if s and any("Streamed live via inotify!" in t for t in s.get("recent_texts", [])) else None)(tr_snap()), 15)
+            check("appended transcript turn streams live over inotify", tr2 is not None, tr2 and tr2.get("recent_texts"))
+
+            # Toggle back to Sessions and verify host activity watcher exits cleanly.
+            r.invoke("pane.view:terminal")
+            r.invoke("app.view_sessions")
+            stopped = r.wait(lambda: True if count_watchers() == 0 else None, 10)
+            check("leaving Activity stops host activity watcher cleanly", bool(stopped), count_watchers())
+    finally:
+        subprocess.run(["tmux", "-S", sock, "kill-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        shutil.rmtree(act_dir, ignore_errors=True)
+    print("PASS" if ok else "FAIL")
 else:
     raise SystemExit(__doc__)
 print("crash reports:", len(glob.glob(f"{D}/state/olo/crashes/*.json")))

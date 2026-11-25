@@ -1871,7 +1871,7 @@ impl HubState {
 /// Thread-safe handle to the Rex background engine.
 pub struct RexHub {
     pub state: Arc<Mutex<HubState>>,
-    rt: tokio::runtime::Runtime,
+    pub(crate) rt: tokio::runtime::Runtime,
     notify: Arc<dyn Fn(HubNotice) + Send + Sync>,
     inner: Arc<RexHubInner>,
 }
@@ -7560,6 +7560,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         && let Ok(r) = ctrl.terminal_process(&sid, &bid).await
                     {
                         block.lock().unwrap_or_else(|e| e.into_inner()).process_snapshot(r);
+                        crate::activity_watch::nudge_host(&host_key);
                     }
                     if matches!(what, None | Some("input_mode_changed"))
                         && let Ok(r) = ctrl.terminal_input_mode(&sid, &bid).await
@@ -7694,6 +7695,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                     g.pwd = cwd;
                                 }
                                 g.recompute_activity();
+                                crate::activity_watch::nudge_host(&host_key);
                             }
                             "bell" => {
                                 g.last_bell = Some(Instant::now());

@@ -98,11 +98,19 @@ pub struct Segment {
     count: Option<usize>,
     /// What it counts waits for an answer ([`Segment::waiting`]).
     waiting: bool,
+    /// Whether this individual segment can be chosen.
+    enabled: bool,
 }
 
 impl Segment {
     pub fn new(name: impl Into<SharedString>) -> Segment {
-        Segment { name: crate::words::of(name), mark: None, count: None, waiting: false }
+        Segment { name: crate::words::of(name), mark: None, count: None, waiting: false, enabled: true }
+    }
+
+    /// Whether this segment can be chosen (greyed and unclickable when false).
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
     }
 
     /// A mark before its name. Marks show where every segment has room
@@ -326,6 +334,8 @@ impl IntoElement for SegmentedControl {
             return el.disabled(!enabled).unfaded();
         }
         let (pressed, keys) = (on_choose.clone(), on_choose);
+        let seg_enabled_click: Rc<[bool]> = segments.iter().map(|s| s.enabled).collect();
+        let seg_enabled_keys = seg_enabled_click.clone();
         // (Tab reaches it; a press chooses and leaves the keyboard where it
         // was, as BeOS's controls do, and as the menu bar's titles: given
         // the keyboard by a click, Rex's Sessions and Activity took the
@@ -339,19 +349,21 @@ impl IntoElement for SegmentedControl {
                 let hit = places(cx.scale_factor(), cx.listener_bounds(), &pressed_at).iter().position(|r| r.contains(&e.position));
                 if let (Some(i), Some(f)) = (hit, &pressed)
                     && i != chosen
+                    && seg_enabled_click.get(i).copied().unwrap_or(false)
                 {
                     f(&i, cx);
                 }
             })
             .on_key_down(move |e: &KeyDownEvent, cx| {
+                let next_enabled = |iter: Box<dyn Iterator<Item = usize>>| iter.filter(|&i| seg_enabled_keys.get(i).copied().unwrap_or(false)).next();
                 let to = match e.keystroke.key.as_str() {
-                    "left" | "up" => chosen.saturating_sub(1),
-                    "right" | "down" => (chosen + 1).min(n - 1),
-                    "home" => 0,
-                    "end" => n - 1,
+                    "left" | "up" => next_enabled(Box::new((0..chosen).rev())),
+                    "right" | "down" => next_enabled(Box::new((chosen + 1)..n)),
+                    "home" => next_enabled(Box::new(0..n)),
+                    "end" => next_enabled(Box::new((0..n).rev())),
                     _ => return,
                 };
-                if let Some(f) = &keys
+                if let (Some(to), Some(f)) = (to, &keys)
                     && to != chosen
                 {
                     f(&to, cx);
@@ -457,8 +469,9 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
     // be told from a control that can't be used: Opus, of the poll's
     // pictures. One that can't be used draws itself so, in the colour
     // for text that can't be used; it isn't faded besides.)
-    let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
     for (i, ((seg, r), slot)) in segments.iter().zip(&rects).zip(&at).enumerate() {
+        let seg_enabled = enabled && seg.enabled;
+        let ink = if seg_enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
         let on = i == chosen;
         let font = style::ui_font(if on { CHOSEN } else { FontWeight::NORMAL });
         let (mark, name_room, count) = parts(seg, sz);
@@ -513,7 +526,7 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
             // (On the asking orange, numerals of a warm near-black: white
             // was about 2.6 to 1 there, and smeared at 1×. Opus's look.)
             let ink_on = |tone| if seg.waiting { style::c([0x2b, 0x16, 0x00, 0xff]) } else { style::ink_on(tone) };
-            let (ground, numerals) = if enabled { (style::c(tone), ink_on(tone)) } else { (ink, style::shade(&p, p.panel_background, 1.1)) };
+            let (ground, numerals) = if seg_enabled { (style::c(tone), ink_on(tone)) } else { (ink, style::shade(&p, p.panel_background, 1.1)) };
             let middle = point(x + px(name_width + GAP + disc / 2.0), baseline - px(sz.font * style::CAP_HEIGHT / 2.0));
             let disc_at = style::snap_centred(g, middle, disc, h);
             g.paint_quad(fill(disc_at, ground).corner_radii(disc_at.size.height / 2.0));
@@ -528,8 +541,8 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
             name: Some(seg.name.clone()),
             value: seg.badge().map(Into::into),
             bounds: *r,
-            enabled,
-            clickable: enabled,
+            enabled: seg_enabled,
+            clickable: seg_enabled,
             focused: on && focused,
             selected: Some(on),
             ..Default::default()

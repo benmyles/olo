@@ -15,6 +15,7 @@
 //! - Bidirectional `-L` (`dial`) and `-R` (`listen`) port-forwarding tunnels.
 
 pub mod accounts;
+pub mod activity;
 pub mod carry;
 pub mod control;
 pub mod data;

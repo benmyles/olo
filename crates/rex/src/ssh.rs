@@ -1021,6 +1021,18 @@ impl SshSessionPool {
         Ok(Box::pin(tokio::io::join(reader, writer)))
     }
 
+    /// Run a command on the host inside a remote PTY (`xterm-256color`, `cols × rows`):
+    /// used for read-only `tmux attach -r -f ignore-size` viewers of nested subagents.
+    /// Dropping the returned stream closes the SSH channel and cleanly detaches tmux.
+    pub async fn exec_pty(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, cols: u16, rows: u16, command: &str) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+        let channel = self.session(target, askpass).await?;
+        channel.request_pty(true, "xterm-256color", u32::from(cols.max(20)), u32::from(rows.max(5)), 0, 0, &[]).await.map_err(|e| RexError::Ssh(format!("pty on {} failed: {e}", target.display())))?;
+        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+        let writer = channel.make_writer();
+        let reader = ExecOutput::Starting(Some(channel));
+        Ok(Box::pin(tokio::io::join(reader, writer)))
+    }
+
     /// [`Self::put`] for input too large to hold at once (a week of an
     /// agent's sessions can be gigabytes): `chunks` given to the command
     /// on its input as they come, its input ending when they end; what

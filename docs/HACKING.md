@@ -30292,6 +30292,70 @@ host's, and red is an error's alone (a host disconnected, or never
 connected to, is off). The port a pane's program listens on and
 "Zoomed" are `LinkButton`s.
 
+*Nested subagents, live Transcript view, and safe read-only tmux attach*
+(Ben, 2026-11-24; `crates/rex-link/src/activity.rs`,
+`crates/rex/src/activity.rs`, `apps/rex/src/activity_watch.rs`,
+`apps/rex/src/transcript_view.rs`):
+- **Zero-polling host discovery (`olo-rex-link activity watch` / `tail`)**:
+  `ActivityManager::sync_watchers` starts `olo-rex-link activity watch` on
+  each connected host (local bundled binary or remote SSH `exec_io`) **only
+  while the Activity sidebar is visible**, and closes stdin (exiting the
+  helper cleanly) the moment Activity is hidden. Inside `olo-rex-link`,
+  `inotify_init1` + `SYS_pidfd_open` + `poll(..., -1)` blocks with zero CPU
+  at rest, coalescing bursts over 150 ms. It discovers five subagent kinds
+  under each top-level Rex pane: native Claude Code subagents
+  (`subagents/agent-*.{jsonl,meta.json}`), native Codex subagents
+  (`rollout-*.jsonl` matching `parent_thread_id` /
+  `source.subagent.thread_spawn`), native Antigravity CLI subagents
+  (`invoke_subagent` + child `conversationId`), shell/pty descendant agents
+  in `/proc`, and tmux-launched child agents (scanning tmux sockets and
+  recording `window_width`, `window_height`, and `status` rows).
+- **Nested Activity tree**: Activity rows are grouped under host section
+  headers (`This computer`, …) with `"Add Host…"` hidden outside Sessions.
+  Parent rows with subagents carry a BeOS disclosure latch (`style::latch`)
+  centred on the name line and a connected vertical tree guide running from
+  2 pt below the parent icon down to the last child (`└`). Collapsed parent
+  rows show a right-aligned summary on line 2 (`N subagents`, or `N failed`
+  in `p.failure` when any child failed). Subagent rows sit at a compact
+  38 pt pitch (`Working` green live dot, no badge on `Done`, orange `!` on
+  `Waiting`, red `×` on `Failed`; terminal vs document icon indicates
+  whether Terminal mode is available).
+- **Safe read-only tmux attach (`tmux -S <sock> attach -r -f ignore-size`)**:
+  Opening a tmux-launched subagent allocates a read-only PTY (local
+  `openpty` or remote SSH `exec_pty`) sized to `TmuxTarget::attach_size()`
+  (`window_width × (window_height + status_rows)`, since attaching to a
+  detached tmux session otherwise subtracts status-bar rows even with
+  `-f ignore-size`) and never forwards keyboard input. `render_tmux_viewer`
+  frames the exact `cols × rows` remote grid inside a BeOS sunken well
+  (`style::sunken`) with a neutral grey unfocused cursor, centred in the
+  canvas when it fits and pinned 12 pt top-left with scrollbars when larger.
+- **Live streaming Transcript view**: Available for any top-level agent
+  (right-click tab or Activity row → `Show Transcript`) and every subagent
+  (read-only when no tmux terminal exists). `olo-rex-link activity tail`
+  streams initial lines (latest 1 MB snapped to newline) and appends live
+  via `inotify`; `TranscriptDoc` incrementally parses Claude Code, Codex,
+  Antigravity CLI, and plain-text logs, pairing tool calls with results.
+  The 34-pt header (matching `TabStrip`) places `Back` at the leading edge,
+  bold agent name + regular em-dash description, matching status readout
+  (`● Working`, `Done`, `● Failed`, plus `· Read-only` in Terminal mode),
+  `Find` and `Follow` toggle buttons (`Button::pushed` recessed in light
+  and dark), and pins the `Transcript | Terminal` `SegmentedControl` (using
+  per-segment `Segment::enabled`) to the trailing edge so switching modes
+  never shifts the control under the pointer. The document body uses two
+  treatments only: turn-grouped messages on `document_background` (prose
+  capped at 560 pt with backtick-stripped inline monospace) and unified
+  22-pt latch event rows with a fixed 64-pt label column and single BeOS
+  sunken wells (`4 pt` below their own latch row, `12 pt` between all other
+  blocks; failed tool rows open by default with stderr and exit code;
+  redundant Bash JSON input is omitted). In-panel Find counts every
+  occurrence across prose, thinking, and code wells, highlights exact
+  matched characters inline via `styled_text` (no block tint or layout
+  shift), and auto-expands only the active match's collapsed item. Structured
+  agent commands: `pane.view:transcript`, `pane.view:terminal`,
+  `activity.open:<id>`, `activity.open.transcript:<id>`,
+  `activity.open.terminal:<id>`, and `activity.fold:<block_id>`, plus
+  `activity-subagents`, `agent-transcript`, and `agent-tmux-ro` agent nodes.
+
 *Where the keyboard is*: every pane's head is on the panel's ground
 (the chosen tab's face, which opens onto them: with the focused head
 alone on that ground, the keyboard in a pane on the right left the tab

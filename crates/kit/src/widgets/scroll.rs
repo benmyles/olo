@@ -378,7 +378,17 @@ fn arrow_button(g: &mut Painter, r: Bounds<Pixels>, dir: Arrow, down: bool, enab
 fn knob(g: &mut Painter, k: Bounds<Pixels>, vertical: bool, pressed: bool, p: &olo_theme::Palette) {
     let base = p.control_background;
     let bg = p.panel_background;
-    let (t0, t1) = if pressed { (style::shade(p, base, 1.12), style::shade(p, base, 1.05)) } else { (style::tint(base, 0.85), style::shade(p, base, 1.04)) };
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let (t0, t1) = if dark {
+        // In dark mode, lift the thumb clearly above the recessed track so it reads at a glance.
+        let lifted = olo_theme::mix(base, p.panel_text, if pressed { 0.08 } else { 0.14 });
+        let lower = olo_theme::mix(base, p.panel_text, if pressed { 0.04 } else { 0.08 });
+        (style::c(lifted), style::c(lower))
+    } else if pressed {
+        (style::shade(p, base, 1.12), style::shade(p, base, 1.05))
+    } else {
+        (style::tint(base, 0.85), style::shade(p, base, 1.04))
+    };
     let inner = style::inset(g, k, 1.0);
     if vertical {
         // Shaded across the knob, as light falls on a vertical bar.
@@ -387,7 +397,8 @@ fn knob(g: &mut Painter, k: Bounds<Pixels>, vertical: bool, pressed: bool, p: &o
         style::vgradient(g, inner, t0, t1);
     }
     style::frame_rect(g, k, style::shade(p, bg, 1.55));
-    style::bevel(g, inner, style::c(p.shine), style::shade(p, base, 1.18));
+    let shine = if dark { style::c(olo_theme::mix(base, [255, 255, 255, 255], 0.24)) } else { style::c(p.shine) };
+    style::bevel(g, inner, shine, style::shade(p, base, 1.18));
     // Three grip lines in the middle.
     let len = f32::from(if vertical { k.size.height } else { k.size.width });
     if len > 20.0 {

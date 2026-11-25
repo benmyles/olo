@@ -3506,52 +3506,29 @@ something nobody here has is in "Blocked", with what it waits for.
   word moved to the name's line (at the first line's end it broke the
   sentence: both looks), the icon at one height in every row.
 
-- **Rex's Activity: the agents an agent starts, under it; any agent's
-  transcript as well as its terminal** (Ben, 2026-11-24: "in activity i
-  want to be able to also see subagents that have been launched by the
-  top-level agents, and they should be nested under those top agents in
-  the sidebar. it needs to support both when claude/codex/agy launch a
-  native subagent and also when they launch another agent through a
-  shell command (and that should still be nested). e.g. a common case
-  is where a claude agent will launch an agy agent in a shell or via
-  tmux … to collaborate with it. i want olo rex terminal to discover
-  all this automatically and show it so i can see and access all those
-  agents too. if it's not possible to show the interactive tui for one
-  b/c it doesn't have a tui or we can't connect to it without causing
-  problems for the parent agent then still show it but show it read
-  only like stream the logs for it when clicking on it and show them
-  nicely styled with search etc. too. and that reminds me, we also
-  should add the ability to view the log stream for any running agent
-  like this too. maybe make it an option by right clicking the agent
-  tab and you can toggle between log/transcript view and tui. then a
-  logs only subagent would be the same but tui would be unavailable").
-  - *Found by itself, on the host* (the helper there: `olo-rex-link`,
-    which can read `/proc` and watch files): an agent's own subagents
-    (Claude Code's Task agents, their transcripts beside the session's;
-    Codex's and agy's, from their own records: read each program's
-    files before building on them), and agents started through a shell
-    (`agy`, `codex`, `claude` run by an agent's tool, in its pty or in
-    tmux: a program of the agent's descendants, or a tmux pane whose
-    server was started from the agent's pane, `REX_BLOCK` in its
-    environment, the agent's own markers beside it). Told as they come
-    and go (process events, files appearing: inotify), never polled
-    while nothing changes; nothing looked for while Activity isn't
-    shown.
-  - *Nested in Activity*: each under the agent that started it, with
-    its own mark and state, a disclosure to fold them.
-  - *Its terminal where that is safe*: a tmux pane's agent attached
-    read only and without its size counting (`tmux attach -r -f
-    ignore-size`: the parent agent reads that screen, and must see it
-    as it was); none for one in another program's pty.
-  - *Its transcript otherwise, and for any agent* (the pane's tab's
-    menu, or the row's: Show Transcript / Show Terminal, the second
-    dimmed where there is none): the agent's own record (Claude Code's
-    and Codex's `.jsonl`, agy's) streamed as it grows, styled as a
-    conversation (who spoke, tool calls folded, code set as code), with
-    Find, read only.
-  - Tried on the rig with stand-ins: an agent that starts one in its pty
-    and one in tmux, both nested, the tmux one's terminal attached
-    without resizing it, the other's transcript streaming.
+- ~~**Rex's Activity: the agents an agent starts, under it; any agent's
+  transcript as well as its terminal**~~ **Done** 2026-11-25 (HACKING, Rex,
+  "Nested subagents, live Transcript view, and safe read-only tmux attach"):
+  zero-polling `olo-rex-link activity watch` (`inotify` + `pidfd_open` +
+  `poll(..., -1)`, stopped immediately when Activity is hidden) discovers
+  native Claude Code, Codex, Antigravity CLI, shell/pty descendant, and
+  tmux-launched subagents; nested under parent rows in Activity with
+  disclosure latches, connected tree guides, and collapsed failure/count
+  summaries; safe read-only `tmux attach -r -f ignore-size` sized to
+  `window_width × (window_height + status_rows)` framed in a bounded BeOS
+  sunken well; live streaming styled Transcript view for any top-level
+  agent (tab/row context menu) or subagent with per-occurrence character-
+  level Find, pinned `Transcript | Terminal` segmented control, `Segment::
+  enabled`, and dark-mode recessed `Button::pushed`; verified with unit
+  tests, `try.py activity` (7/7 PASS, `97x31` unchanged), `ui-lint --tiles`,
+  0 `tsession review` findings across all 19 states/scales, and two full
+  rounds of Opus 5.5 max + Gemini 4 Neon xhigh design reviews.
+  - *Left from Opus's Round-2 look elsewhere in Rex (there before this
+    change)*: align tab-strip & pane-header working badges from blue to
+    green (`agent_marks` across Terminal/Deskbar/Rex), draw `:3000` port
+    link in secondary ink (underline on hover) or document link blue role,
+    and draw unfocused interactive pane hollow cursors in neutral grey
+    matching the read-only tmux viewer.
 
 - **Rex: a tab switched to opens with text selected** (Ben, 2026-11-24:
   "in rex terminal sometimes when switching between tabs a tab will
