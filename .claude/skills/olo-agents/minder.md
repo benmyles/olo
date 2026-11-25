@@ -88,8 +88,11 @@ alone), its settings, and its report when it is done.
 
 Say yes (`y`) when the command, every part of it, is one of these:
 
-- it only reads (files, git's history and state, processes it started,
-  the system's facts), whatever the tool;
+- it only reads (files of the repository and of `/var/tmp`, git's
+  history and state, processes it started, the system's facts),
+  whatever the tool; for an investigator, the logs of the programs its
+  brief is about (`olo-logs --print --program NAME`), and nothing
+  wider (`--all-programs`, `journalctl` of the whole session: no);
 - it builds, checks, tests or formats with cargo in the repository
   (`cargo fmt` only with `-p` and its own package), or runs one of
   Olo's test tools under `tools/dev/` (never `agents`, `agy-help`,

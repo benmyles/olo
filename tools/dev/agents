@@ -394,7 +394,9 @@ Building and testing
   name to signal, trace or inspect it (the person's own programs have
   the same names).
 - Nothing of the person's (their name, email, accounts, files, what
-  their windows show) goes to any outside service.
+  their windows show) goes to any outside service, and what you read
+  goes to your model's: read nothing of theirs outside the repository
+  and /var/tmp (their ~/.config, ~/.local, ~/.ssh, their logs).
 - A script of more than one line (python3 -c '…', a heredoc, a loop)
   goes in a file in your scratch folder, run from there: a long command
   shows folded where leave is asked ("⋯ N lines hidden"), can't be read,
@@ -462,7 +464,15 @@ you look into.)
   (tools/dev/tsession, run with /usr/bin/python3; a name beginning
   "agy-"), and stop it when you're done. Never run a GUI program from
   your shell. Never play sound. Reading the person's session is fine
-  (its logs: target/release/olo-logs --print …; read-only IPC; /proc).
+  where the brief's problem is in it: its logs, of the programs the
+  brief is about (target/release/olo-logs --print --program NAME …;
+  not --all-programs, whose lines tell of everything else they do);
+  read-only IPC; /proc. Not their files outside the repository and
+  /var/tmp (their ~/.config, ~/.local, ~/.ssh, their mail and
+  documents): what you read goes to your model's service. (An
+  investigator read a unit file and a folder of the person's pool,
+  2026-11-25; the routine reads go ahead unasked, so this is yours to
+  keep.)
   Don't attach to its running programs: no perf record, breakpoints,
   ptrace, gdb, strace or bpftrace on their processes (a stopped or
   slowed window server is the person's desktop stopped). Reproduce in
