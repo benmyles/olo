@@ -28894,7 +28894,23 @@ to set them up").
   this computer's git has them (read from its file, `ready::who_in`,
   never asked of git); and Olo's skill for agents, which is the
   account's too and was a section of the Host window. Nothing is done
-  as root, nothing outside the account's home. The host's own Token
+  as root, nothing outside the account's home, but git's install
+  where the host has none: a Fedora cloud image has no git, and the
+  Git step and the repositories' clone install it first with sudo, by
+  the system's own package manager (`ready::GIT_FIRST`: dnf's
+  `git-core` on Fedora, apt's `git` on Ubuntu; Ben, 2026-11-25: "if
+  there is stuff that we need to install on the fedora host that's
+  fine too"), where the account is an administrator (`Account::admin`:
+  in `wheel`, `sudo` or `admin`, told by its groups, sudo never tried
+  as the host is looked at, since a refused sudo may be logged or
+  mailed). The window says so: the row "No git there; Set installs it
+  with sudo", and the line under the head "…; only git is installed as
+  root." Elsewhere, "Needs git there". Tried on the rig's Fedora 44
+  (`ready::tests::the_scripts_for_a_test_host` writes the look and each
+  step's script): the path there already (Fedora's `.bashrc` has
+  `~/.local/bin`), the three agents from their makers' installers
+  (2.1.331, 0.172.0, 1.5.16), git installed with sudo and its identity
+  set, the look after saying all of it done. The host's own Token
   Pool, where there is one, points Claude Code and Codex at itself.
 - *The person's settings for their agents, carried*
   (`crates/rex/src/carry.rs`; Ben: "copy my local settings"): the

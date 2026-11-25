@@ -89,10 +89,12 @@ fi
                 command = shell_word(command),
             ),
         };
+        // (git, installed with sudo where the host has none, as the Git
+        // step installs it: a Fedora cloud image has none.)
+        let git_first = crate::ready::GIT_FIRST;
         format!(
             r#"set -eu
-command -v git > /dev/null 2>&1 || {{ echo "git isn't installed on this host." >&2; exit 1; }}
-cd "$HOME"
+{git_first}cd "$HOME"
 export PATH="$HOME/.local/bin:$PATH"
 d={place}
 if [ ! -e "$d/.git" ]; then

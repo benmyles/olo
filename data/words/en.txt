@@ -1857,6 +1857,7 @@ Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in plac
 Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
 Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
+Installed in your home folder there, as you; git alone needs root.
 Installed in your home folder there, as you; nothing runs as root.
 Installing
 Installing {}: {} ({}%)…
@@ -2510,6 +2511,7 @@ No entries.
 No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 No folders on {} are kept in step here. An agent there keeps one with:
+No git there
 No key yet.
 No keyboards are plugged in.
 No limit

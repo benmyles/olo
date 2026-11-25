@@ -122,15 +122,27 @@ curl -fsSL --retry 2 -o "$f" {url}
             Step::Antigravity => fetched("agy.sh", ANTIGRAVITY, "bash"),
             Step::Git => {
                 let (name, email) = who?;
-                format!(
-                    "set -eu\ncommand -v git > /dev/null 2>&1 || {{ echo \"git isn't installed on this host.\" >&2; exit 1; }}\ngit config --global user.name {}\ngit config --global user.email {}\n",
-                    shell_word(name),
-                    shell_word(email)
-                )
+                format!("set -eu\n{GIT_FIRST}git config --global user.name {}\ngit config --global user.email {}\n", shell_word(name), shell_word(email))
             }
         })
     }
 }
+
+/// git, installed with sudo by the system's own package manager where the
+/// host has none (Ben, 2026-11-25: "if there is stuff that we need to
+/// install on the fedora host that's fine too the rex host setup should
+/// handle it for fedora": a Fedora cloud image has no git), else said.
+/// The one thing here done as root, and only where git is missing.
+pub(crate) const GIT_FIRST: &str = r#"if ! command -v git > /dev/null 2>&1; then
+  sudo -n true 2> /dev/null || { echo "git isn't installed on this host, and installing it needs sudo without a password." >&2; exit 1; }
+  . /etc/os-release 2> /dev/null || true
+  case "${ID:-}" in
+    fedora) sudo -n dnf -y install git-core ;;
+    ubuntu|debian) sudo -n env DEBIAN_FRONTEND=noninteractive apt-get -y -q update && sudo -n env DEBIAN_FRONTEND=noninteractive apt-get -y -q install git ;;
+    *) echo "git isn't installed on this host, and Rex installs it only on Ubuntu and Fedora." >&2; exit 1 ;;
+  esac
+fi
+"#;
 
 /// Puts `~/.local/bin` on the path of the account's shells: a line in
 /// the files its shells read as they start, those that are there (and
@@ -225,6 +237,11 @@ pub struct Account {
     /// git for its identity.
     pub has_curl: bool,
     pub has_git: bool,
+    /// The account is an administrator there (in `wheel`, `sudo` or
+    /// `admin`): it may install git with sudo where the host has none (a
+    /// Fedora cloud image has none). Told by its groups, not by trying
+    /// sudo, which a host may log, or mail to its administrators.
+    pub admin: bool,
 }
 
 impl Account {
@@ -241,6 +258,7 @@ impl Account {
             git: said("git-name").zip(said("git-email")).map(|(n, e)| (n.to_owned(), e.to_owned())).filter(|(n, e)| !n.is_empty() || !e.is_empty()),
             has_curl: yes("has-curl"),
             has_git: yes("has-git"),
+            admin: yes("admin"),
         }
     }
 
@@ -312,6 +330,7 @@ else
   echo "has-git no"
 fi
 command -v curl > /dev/null 2>&1 && echo "has-curl yes" || echo "has-curl no"
+case " $(id -Gn 2> /dev/null) " in *" wheel "*|*" sudo "*|*" admin "*) echo "admin yes" ;; *) echo "admin no" ;; esac
 true
 "##;
 
@@ -353,6 +372,38 @@ pub fn who_in(config: &str) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The look and each step's script, written to `OLO_REX_READY_OUT` for a
+    /// try on a host of a test's own (the rig's Fedora 44): `look.sh`,
+    /// `STEP.sh`, the identity A Person <person@example.org>.
+    #[test]
+    #[ignore = "writes the look and the steps' scripts for a try on a test host: OLO_REX_READY_OUT"]
+    fn the_scripts_for_a_test_host() {
+        let Ok(out) = std::env::var("OLO_REX_READY_OUT") else { return };
+        std::fs::write(format!("{out}/look.sh"), LOOK).unwrap();
+        let who = ("A Person".to_owned(), "person@example.org".to_owned());
+        for step in Step::ALL {
+            std::fs::write(format!("{out}/{}.sh", step.id()), step.run(Some(&who), None).unwrap()).unwrap();
+        }
+    }
+
+    /// A host with no git (a Fedora cloud image's): an administrator's
+    /// account there is said to be one (by its groups, sudo untried), and
+    /// the Git step installs git first, with sudo, by the system's own
+    /// package manager; where git is there nothing is installed.
+    #[test]
+    fn git_is_installed_with_sudo_where_the_host_has_none() {
+        let fedora = Account::read("path yes\nhas-git no\nhas-curl yes\nadmin yes\n");
+        assert!(!fedora.has_git && fedora.admin);
+        assert!(!Account::read("has-git no\nadmin no\n").admin);
+        assert!(LOOK.contains(r#"*" wheel "*|*" sudo "*|*" admin "*) echo "admin yes""#) && !LOOK.contains("sudo -n"), "the look never tries sudo");
+        let who = ("A Person".to_owned(), "person@example.org".to_owned());
+        let git = Step::Git.run(Some(&who), None).unwrap();
+        let (install, set) = (git.find("if ! command -v git").unwrap(), git.find("git config --global user.name").unwrap());
+        assert!(install < set, "{git}");
+        assert!(git.contains("fedora) sudo -n dnf -y install git-core") && git.contains("apt-get -y -q install git"), "{git}");
+        assert!(git.contains("needs sudo without a password"), "{git}");
+    }
 
     #[test]
     fn what_a_host_says_of_its_account_is_read() {

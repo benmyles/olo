@@ -5602,6 +5602,9 @@ Installiert
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Wird dort in Ihrem Benutzerordner als Sie über das jeweilige Installationsprogramm installiert. Nichts läuft als root.
 
+Installed in your home folder there, as you; git alone needs root.
+Wird dort in Ihrem Benutzerordner als Sie installiert; nur git braucht root.
+
 Installed in your home folder there, as you; nothing runs as root.
 Wird dort in Ihrem Benutzerordner als Sie installiert; nichts läuft als root.
 
@@ -7562,6 +7565,9 @@ Kein Termin von vor einem Jahr bis in zwei Jahren hat „{}“ im Titel, im Ort 
 
 No folders on {} are kept in step here. An agent there keeps one with:
 Hier werden keine Ordner von {} abgeglichen. Ein Agent dort gleicht einen ab mit:
+
+No git there
+Kein git dort
 
 No key yet.
 Noch kein Schlüssel.

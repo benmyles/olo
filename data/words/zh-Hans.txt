@@ -5578,6 +5578,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 使用各自官方安装程序以您的身份安装到远程主文件夹中，无需 root 权限。
 
+Installed in your home folder there, as you; git alone needs root.
+以您的身份安装到远程主文件夹中；只有 git 需要 root。
+
 Installed in your home folder there, as you; nothing runs as root.
 以您的身份安装到远程主文件夹中；不以 root 运行任何内容。
 
@@ -7536,6 +7539,9 @@ No event from a year back to two years on has “{}” in its title, its place o
 
 No folders on {} are kept in step here. An agent there keeps one with:
 {} 上没有文件夹同步到这里。那里的智能体可以用以下命令同步：
+
+No git there
+那里没有 git
 
 No key yet.
 尚无密钥。

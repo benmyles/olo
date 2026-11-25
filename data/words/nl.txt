@@ -5602,6 +5602,9 @@ Geïnstalleerd
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Geïnstalleerd in uw persoonlijke map daar, onder uw account, via het eigen installatieprogramma van elke maker. Niets draait als root.
 
+Installed in your home folder there, as you; git alone needs root.
+Geïnstalleerd in uw persoonlijke map daar, onder uw account; alleen git heeft root nodig.
+
 Installed in your home folder there, as you; nothing runs as root.
 Geïnstalleerd in uw persoonlijke map daar, onder uw account; niets draait als root.
 
@@ -7562,6 +7565,9 @@ Van een jaar geleden tot twee jaar vooruit is er geen afspraak met ‘{}’ in d
 
 No folders on {} are kept in step here. An agent there keeps one with:
 Er worden hier geen mappen van {} gelijk gehouden. Een agent daar houdt er een gelijk met:
+
+No git there
+Daar geen git
 
 No key yet.
 Nog geen sleutel.

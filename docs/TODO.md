@@ -185,6 +185,22 @@ something nobody here has is in "Blocked", with what it waits for.
   goes to the folder, as a modern file manager does. A way to a new
   window stays: the File menu's, a modifier on the open.)
 
+- **Rex's Account window, from the looks of 2026-11-25** (there before
+  that change; their words):
+  - Astra: "'Set Up 5' leaves the reader to work out what the number
+    counts. 'Set Up 5 Items' would connect the action more clearly to
+    the readiness count at the top."
+  - Opus: "the 11 pt grey description lines (e.g. 'Anthropic's coding
+    agent.') are on the faint side against the blue-grey ground. Raise
+    that text role one step darker in light mode."
+  - Opus: "Agent sessions row: the extra Copy button is the only control
+    left of the right-hand button column … If the popup could move into
+    the description line, or Copy could take the popup's place with the
+    period in a menu, the column would stay single."
+  - Opus: "Hollow vs filled dots (optional vs needed) are hard to tell
+    apart at 1x: a 7 pt ring against a 7 pt dot. Consider a 1.5 pt ring
+    stroke at 1x."
+
 - **Rex's Add Host confirm list, from the looks of 2026-11-25** (there
   before that change; their words):
   - Opus: "Heading sizes are flat. The window title, the group headers
@@ -3561,6 +3577,18 @@ something nobody here has is in "Blocked", with what it waits for.
   " | olo" is the agent's own title, not Terminal's.)
 
 ## Done, waiting for Ben to try or confirm
+
+- **Olo's Rex hosts on Fedora 44, all of it** (Ben, 2026-11-25: "make
+  sure all our other stuff for olo/rex will support fedora 44 as a host
+  too"). Gone through on a Fedora 44 host of the rig's own (a cloud
+  image's: no polkit, no git): the setup (lingering by root, above), an
+  account made ready (path, Claude Code, Codex, agy, git's identity:
+  git installed with sudo first, as for the repositories' clone, where
+  the account is an administrator), the Token Pool's host program under
+  its user manager (and its upgrade without a cut), and what needs no
+  change: Olo's helper and the pool's program are static (musl), the
+  bridge's scripts use only `rex` and coreutils. **To try**: Set on the
+  Account window's Git row there.
 
 - **Rex sets hosts up on Fedora 44 as on Ubuntu, and says so of any
   other system** (Ben, 2026-11-25: "trying to setup a host and it just

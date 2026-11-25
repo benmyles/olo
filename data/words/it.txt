@@ -5602,6 +5602,9 @@ Installato
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Installati nella tua cartella home lì, con il tuo utente, dal programma di installazione ufficiale. Nulla viene eseguito come root.
 
+Installed in your home folder there, as you; git alone needs root.
+Installati nella tua cartella home lì, con il tuo utente; solo git richiede root.
+
 Installed in your home folder there, as you; nothing runs as root.
 Installati nella tua cartella home lì, con il tuo utente; nulla viene eseguito come root.
 
@@ -7562,6 +7565,9 @@ Nessun evento tra un anno fa e i prossimi due anni contiene “{}” nel titolo,
 
 No folders on {} are kept in step here. An agent there keeps one with:
 Nessuna cartella di {} è sincronizzata qui. Un agente lì ne sincronizza una con:
+
+No git there
+Nessun git lì
 
 No key yet.
 Ancora nessuna chiave.

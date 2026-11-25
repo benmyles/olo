@@ -5602,6 +5602,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 हर निर्माता के अपने इंस्टॉलर से वहाँ आपके होम फ़ोल्डर में आपके खाते से इंस्टॉल होता है। कुछ भी root के रूप में नहीं चलता।
 
+Installed in your home folder there, as you; git alone needs root.
+वहाँ आपके होम फ़ोल्डर में आपके खाते से इंस्टॉल होता है; केवल git को root चाहिए।
+
 Installed in your home folder there, as you; nothing runs as root.
 वहाँ आपके होम फ़ोल्डर में आपके खाते से इंस्टॉल होता है; कुछ भी root के रूप में नहीं चलता।
 
@@ -7562,6 +7565,9 @@ No event from a year back to two years on has “{}” in its title, its place o
 
 No folders on {} are kept in step here. An agent there keeps one with:
 {} का कोई फ़ोल्डर यहाँ सिंक में नहीं रखा जाता। वहाँ का एजेंट इससे एक रखता है:
+
+No git there
+वहाँ git नहीं है
 
 No key yet.
 अभी कोई कुंजी नहीं।

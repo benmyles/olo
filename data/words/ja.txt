@@ -5578,6 +5578,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 各提供元の公式インストーラーを使い、一般ユーザーとしてリモートのホームフォルダーにインストールします。root権限は使いません。
 
+Installed in your home folder there, as you; git alone needs root.
+ホームフォルダーに一般ユーザーとしてインストールします。root権限が要るのは git だけです。
+
 Installed in your home folder there, as you; nothing runs as root.
 ホームフォルダーに一般ユーザーとしてインストールします。root権限は使いません。
 
@@ -7536,6 +7539,9 @@ No event from a year back to two years on has “{}” in its title, its place o
 
 No folders on {} are kept in step here. An agent there keeps one with:
 {} のフォルダーはここに同期されていません。ホストのエージェントは次のコマンドで同期します:
+
+No git there
+そこに git がありません
 
 No key yet.
 鍵はまだありません。

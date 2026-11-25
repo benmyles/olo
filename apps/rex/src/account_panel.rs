@@ -296,6 +296,11 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         }
         (Item::Step(step), Some(true)) => Row { said: host.account.as_ref().and_then(|a| a.has(step)).unwrap_or_else(|| tr("Installed").into()), ..plain(Lamp::Light(Light::On), "", None) },
         (Item::Step(Step::Path), Some(false)) => off("Not on the path", true),
+        // (No git there: installed with root's sudo first where the account
+        // is an administrator, a Fedora cloud image's, else said. A fact,
+        // as the other rows' are; root said once, in the line under the
+        // head: both looks, 2026-11-25.)
+        (Item::Step(Step::Git), Some(false)) if host.account.as_ref().is_some_and(|a| !a.has_git && a.admin) => off("No git there", shown.who.is_some()),
         (Item::Step(Step::Git), Some(false)) if host.account.as_ref().is_some_and(|a| !a.has_git) => off("Needs git there", false),
         (Item::Step(Step::Git), Some(false)) => off("Not set", shown.who.is_some()),
         (Item::Step(_), Some(false)) if host.account.as_ref().is_some_and(|a| !a.has_curl) => off("Needs curl there", false),
@@ -432,10 +437,15 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
     // under the head at the window's margin, Opus's look. The link where
     // its words fit, else on a line of its own. The promise in fewer
     // words, so the link fits after it.)
+    // (Where git is missing and is to be installed with sudo, root does
+    // that one thing: said.)
+    let git_by_sudo = host.account.as_ref().is_some_and(|a| !a.has_git && a.admin);
     let promise = if host.conn == HostConnState::Connected && !host.ssh {
-        "This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here."
+        olo_kit::words::en("This host isn’t reached over SSH: its account can’t be asked how it stands, or changed, from here.")
+    } else if git_by_sudo {
+        olo_kit::words::en("Installed in your home folder there, as you; git alone needs root.")
     } else {
-        "Installed in your home folder there, as you; nothing runs as root."
+        olo_kit::words::en("Installed in your home folder there, as you; nothing runs as root.")
     };
     let on_host = on_do.clone();
     // (A space between its parts, as between words: a wider gap read as a

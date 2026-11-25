@@ -5602,6 +5602,9 @@ Instalado
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Instalados na sua pasta pessoal lá, na sua conta, pelo instalador oficial de cada fornecedor. Nada roda como root.
 
+Installed in your home folder there, as you; git alone needs root.
+Instalados na sua pasta pessoal lá, na sua conta; só o git precisa de root.
+
 Installed in your home folder there, as you; nothing runs as root.
 Instalados na sua pasta pessoal lá, na sua conta; nada roda como root.
 
@@ -7562,6 +7565,9 @@ Não há eventos com “{}” no título, local ou notas entre o ano passado e o
 
 No folders on {} are kept in step here. An agent there keeps one with:
 Nenhuma pasta de {} fica sincronizada aqui. Um agente de lá sincroniza uma com:
+
+No git there
+Sem git lá
 
 No key yet.
 Ainda sem chave.

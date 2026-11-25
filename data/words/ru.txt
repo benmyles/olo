@@ -5650,6 +5650,9 @@ Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Устанавливаются в вашу домашнюю папку на узле от вашего имени фирменными установщиками. От root ничего не запускается.
 
+Installed in your home folder there, as you; git alone needs root.
+Устанавливаются в вашу домашнюю папку на узле от вашего имени; root нужен только для git.
+
 Installed in your home folder there, as you; nothing runs as root.
 Устанавливаются в вашу домашнюю папку на узле от вашего имени; от root ничего не запускается.
 
@@ -7614,6 +7617,9 @@ No event from a year back to two years on has “{}” in its title, its place o
 
 No folders on {} are kept in step here. An agent there keeps one with:
 Ни одна папка {} здесь не синхронизируется. Агент на узле синхронизирует папку командой:
+
+No git there
+Там нет git
 
 No key yet.
 Ключа пока нет.

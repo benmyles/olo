@@ -1942,16 +1942,18 @@ fn demo_kept(host_key: &str) -> Vec<Kept> {
 /// The demo's account on its connected host, for the Account window's
 /// pictures and its lint (`OLO_REX_DEMO_ACCOUNT`: `new`, nothing there
 /// yet; `ready`, all of it; `asking`, not answered yet; `other`,
-/// another name for git there; else some of it).
+/// another name for git there; `nogit`, a Fedora cloud image's, no git
+/// and an administrator's account; else some of it).
 fn demo_account() -> Option<olo_rex_client::ready::Account> {
     use olo_rex_client::ready::Account;
     let who = Some(("You".to_owned(), "you@example.org".to_owned()));
-    let some = Account { path: true, claude: Some("2.1.331".into()), codex: None, antigravity: None, git: who, has_curl: true, has_git: true };
+    let some = Account { path: true, claude: Some("2.1.331".into()), codex: None, antigravity: None, git: who, has_curl: true, has_git: true, admin: false };
     Some(match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
         Some("asking") => return None,
         Some("new") => Account { has_curl: true, has_git: true, ..Account::default() },
         Some("ready") => Account { codex: Some("0.172.0".into()), antigravity: Some("1.5.15".into()), ..some },
         Some("other") => Account { git: Some(("Somebody Else".to_owned(), "else@example.org".to_owned())), ..some },
+        Some("nogit") => Account { git: None, has_git: false, admin: true, ..some },
         _ => some,
     })
 }
