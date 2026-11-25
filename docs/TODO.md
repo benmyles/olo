@@ -3480,6 +3480,17 @@ something nobody here has is in "Blocked", with what it waits for.
   in the same window. Agents do it as well (Rex's commands: the
   differences as JSON, a choice per item). Tried on the rig with a host
   whose settings differ in each way.
+  **Done** 2026-11-25 (`crates/rex/src/carry.rs`, `apps/rex/src/carry.rs`,
+  `carry_panel.rs`; HACKING, "Agent settings"): item-level diff and
+  merge for JSON settings, Codex TOML, Markdown headings, and skill/command
+  files; batch multi-select conflict review window (`Copy` / `Skip` /
+  `Merge`, `Remember choice`, aligned `Both versions` & `Result`
+  previews, `Remembered` tab); per-host persistence in
+  `RexSettings::carry_choices`; Account row shows conflict count and
+  `Review…` (skipped by `Set Up N`); full agent commands and JSON
+  snapshot; verified on the rig (`try.py carry`: 11/11, `try.py account`:
+  14/14) and two rounds of visual reviews (Opus 5.5 max + Gemini 4 Neon
+  xhigh).
 
 - **Rex's Activity: two lines of what an agent says under its name**
   (Ben, 2026-11-24: "in the rex activity sidebar, let's allow for 2 lines

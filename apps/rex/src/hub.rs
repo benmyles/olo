@@ -1520,9 +1520,9 @@ pub struct HostStands {
     pub version: Option<String>,
     /// How the account there stands; none: not asked yet.
     pub account: Option<olo_rex_client::ready::Account>,
-    /// The person's agent settings there: files to copy, files the
-    /// same, and whether this computer's weren't all gathered.
-    pub carried: Option<(usize, usize, bool)>,
+    /// The person's agent settings there: summary of files to copy,
+    /// conflicts, new items, and remembered choices.
+    pub carried: Option<olo_rex_client::carry::Summary>,
     /// The agents' sessions there, of those used in the window chosen
     /// (`olo_rex_client::sessions`); none: not asked yet.
     pub sessions: Option<olo_rex_client::sessions::Summary>,
@@ -1587,10 +1587,9 @@ pub struct HostRuntime {
     /// it has been (the Account window asks).
     pub account: Option<olo_rex_client::ready::Account>,
     /// What of the person's settings for their agents the host has
-    /// (`olo_rex_client::carry`), asked with the account: how many
-    /// files would be copied now, how many are there as here, and
-    /// whether this computer's weren't all gathered.
-    pub carried: Option<(usize, usize, bool)>,
+    /// (`olo_rex_client::carry`), asked with the account: summary of
+    /// files to copy, conflicts, new items, and remembered choices.
+    pub carried: Option<olo_rex_client::carry::Summary>,
     /// The agents' sessions there, asked with the account
     /// (`olo_rex_client::sessions`).
     pub agent_sessions: Option<olo_rex_client::sessions::Summary>,
@@ -1691,6 +1690,9 @@ pub struct HubState {
     /// The person's repositories (the desktop's settings: Preferences'
     /// Rex, kept by the Repositories window), in their order.
     pub repos: Vec<olo_rex_client::repos::Repo>,
+    /// Remembered per-item conflict choices for carried agent settings,
+    /// mirrored from `RexSettings::carry_choices`.
+    pub carry_choices: Vec<olo_protocol::RexCarryRemembered>,
     /// How far back the agents' sessions copied to a host go (the
     /// desktop's settings).
     pub sessions_window: olo_rex_client::sessions::Window,
@@ -1798,8 +1800,11 @@ impl HubState {
                 account: there.then(demo_account).flatten(),
                 carried: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
                     Some("asking") => None,
-                    Some("ready") => there.then_some((0, 14, false)),
-                    _ => there.then_some((14, 0, false)),
+                    Some("ready") => there.then_some(olo_rex_client::carry::Summary { same_files: 14, ..Default::default() }),
+                    Some("conflicts") => {
+                        there.then_some(olo_rex_client::carry::Summary { to_copy_files: 4, new_items: 2, conflicts: 4, auto_updates: 1, same_files: 6, remembered_total: 3, ..Default::default() })
+                    }
+                    _ => there.then_some(olo_rex_client::carry::Summary { to_copy_files: 14, new_items: 14, ..Default::default() }),
                 },
                 // (`OLO_REX_DEMO_SESSIONS=none`: none used in the window;
                 // `newer`: some continued there.)
@@ -1951,17 +1956,35 @@ pub fn demo_repos() -> Vec<olo_rex_client::repos::Repo> {
     ]
 }
 
-/// What a host has of the person's settings for their agents, against
-/// what this computer carries (`olo_rex_client::carry`): this
-/// computer's files gathered off the async threads, the host asked by
-/// a script given on a shell's input (a line a file: too long for a
-/// command's own words). None: it couldn't be asked.
-async fn carried_stands(pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) -> Option<olo_rex_client::carry::Stands> {
+/// Full item-level plan comparing this computer's carried agent settings
+/// against what a host currently has, respecting `remembered` choices.
+async fn carried_plan(
+    pool: &olo_rex_client::SshSessionPool,
+    target: &olo_rex_client::SshTarget,
+    askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>,
+    remembered: &HashMap<String, olo_protocol::RexCarryChoice>,
+) -> Option<olo_rex_client::carry::Plan> {
     use olo_rex_client::carry;
     let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
     let (files, short) = tokio::task::spawn_blocking(move || carry::gather(&home)).await.ok()?;
     let ran = pool.put(target, askpass, "sh", carry::look(&files).as_bytes()).await.ok()?;
-    carry::Stands::read(&ran.output, &files, short)
+    carry::Plan::read(&ran.output, &files, short, remembered)
+}
+
+/// What a host has of the person's settings for their agents, against
+/// what this computer carries (`olo_rex_client::carry`), respecting
+/// remembered per-item choices for that host.
+async fn carried_stands(
+    pool: &olo_rex_client::SshSessionPool,
+    target: &olo_rex_client::SshTarget,
+    askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>,
+    remembered: &HashMap<String, olo_protocol::RexCarryChoice>,
+) -> Option<olo_rex_client::carry::Stands> {
+    let plan = carried_plan(pool, target, askpass, remembered).await?;
+    let to_copy = plan.apply_auto();
+    let summary = plan.summary();
+    let same = plan.files.len().saturating_sub(to_copy.len());
+    Some(olo_rex_client::carry::Stands { home: plan.home, to_copy, same, short: plan.short, summary })
 }
 
 /// How long a copy of `total` bytes has left, `sent` of them gone in
@@ -2406,6 +2429,7 @@ impl RexHub {
             active_theme,
             pools: None,
             repos: Vec::new(),
+            carry_choices: Vec::new(),
             kept: Vec::new(),
             sessions_window: olo_rex_client::sessions::Window::default(),
             git_cache: GitCache::new(),
@@ -2885,7 +2909,11 @@ impl RexHub {
                     host.repos_there = None;
                 }
             }
+            if st.carry_choices != rex.carry_choices {
+                st.carry_choices.clone_from(&rex.carry_choices);
+            }
         }
+        crate::carry::sync_remembered(self);
         self.follow_kept(&rex.kept);
         self.follow_kept_forwards(&rex.kept_forwards);
         if !crate::shared::settled(rex) {
@@ -4586,11 +4614,81 @@ impl RexHub {
         Some(task.abort_handle())
     }
 
-    /// Puts on a host what it lacks of the person's settings for their
-    /// agents (`olo_rex_client::carry`): asked what it has, given the
-    /// files that are missing or differ in one archive, what was there
-    /// kept beside each; then asked again how the account stands.
-    pub fn carry_settings(&self, host_key: &str, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+    /// Remembered carried-settings choices stored for `host_key`.
+    pub fn carry_choices_for(&self, host_key: &str) -> Vec<olo_protocol::RexCarryRemembered> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.carry_choices.iter().filter(|r| r.host == host_key).cloned().collect()
+    }
+
+    /// Persist per-item remembered choice edits for `host_key` (`Some(choice)` sets/updates, `None` removes).
+    pub fn update_carry_choices(&self, host_key: &str, edits: Vec<(String, Option<olo_protocol::RexCarryChoice>)>) {
+        if edits.is_empty() {
+            return;
+        }
+        let next = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            for (item, choice) in edits {
+                st.carry_choices.retain(|r| !(r.host == host_key && r.item == item));
+                if let Some(c) = choice {
+                    st.carry_choices.push(olo_protocol::RexCarryRemembered { host: host_key.to_owned(), item, choice: c });
+                }
+            }
+            st.carry_choices.clone()
+        };
+        olo_kit::settings::update(move |s| s.rex.carry_choices = next);
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// Forget specific remembered items (`Some(ids)`) or all remembered items (`None`) for `host_key`.
+    pub fn forget_carry_choices(&self, host_key: &str, items: Option<&[String]>) {
+        let next = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            match items {
+                Some(ids) => st.carry_choices.retain(|r| !(r.host == host_key && ids.contains(&r.item))),
+                None => st.carry_choices.retain(|r| r.host != host_key),
+            }
+            if let Some(host) = st.hosts.get_mut(host_key) {
+                host.carried = None;
+            }
+            st.carry_choices.clone()
+        };
+        olo_kit::settings::update(move |s| s.rex.carry_choices = next);
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// Inspect item-level differences between this computer's carried agent settings
+    /// and `host_key`, respecting remembered choices.
+    pub fn inspect_carry_plan(&self, host_key: &str, done: impl FnOnce(Result<olo_rex_client::carry::Plan, String>) + Send + 'static) {
+        let (endpoint, remembered) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let endpoint = st.hosts.get(host_key).and_then(|h| h.endpoint.clone());
+            let remembered: HashMap<String, olo_protocol::RexCarryChoice> = st.carry_choices.iter().filter(|r| r.host == host_key).map(|r| (r.item.clone(), r.choice)).collect();
+            (endpoint, remembered)
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            let res = match carried_plan(&pool, &target, askpass.clone(), &remembered).await {
+                Some(plan) => {
+                    let summary = plan.summary();
+                    if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
+                        host.carried = Some(summary);
+                    }
+                    (inner.notify)(HubNotice::StateChanged);
+                    Ok(plan)
+                }
+                None => Err(olo_kit::words::tr("The host didn’t say what it has.").into()),
+            };
+            done(res);
+        });
+    }
+
+    /// Write an explicit set of resolved carried files to `host_key` in one tar archive,
+    /// then refresh the host's account summary.
+    pub fn apply_carry_files(&self, host_key: &str, files: Vec<olo_rex_client::carry::File>, done: impl FnOnce(Result<(), String>) + Send + 'static) {
         use olo_rex_client::carry;
         let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
@@ -4599,7 +4697,41 @@ impl RexHub {
         };
         let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
         self.rt.spawn(async move {
-            let result = match carried_stands(&pool, &target, askpass.clone()).await {
+            let result = if files.is_empty() {
+                Ok(())
+            } else {
+                match pool.put(&target, askpass.clone(), &format!("sh -c {}", shell_quote(carry::PUT)), &carry::archive(&files)).await {
+                    Ok(ran) if ran.ok() => Ok(()),
+                    Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty() && !l.starts_with("put ")).unwrap_or("it didn’t say why").trim().to_owned()),
+                    Err(e) => Err(e.to_string()),
+                }
+            };
+            inner.ask_the_account(&host_key, &pool, &target, askpass).await;
+            (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+    }
+
+    /// Puts on a host what it lacks of the person's settings for their
+    /// agents (`olo_rex_client::carry`): asked what it has, given the
+    /// files that are missing or differ in one archive, respecting
+    /// remembered per-item choices; what was there kept beside each;
+    /// then asked again how the account stands.
+    pub fn carry_settings(&self, host_key: &str, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+        use olo_rex_client::carry;
+        let (endpoint, remembered) = {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let endpoint = st.hosts.get(host_key).and_then(|h| h.endpoint.clone());
+            let remembered: HashMap<String, olo_protocol::RexCarryChoice> = st.carry_choices.iter().filter(|r| r.host == host_key).map(|r| (r.item.clone(), r.choice)).collect();
+            (endpoint, remembered)
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return;
+        };
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            let result = match carried_stands(&pool, &target, askpass.clone(), &remembered).await {
                 None => Err(olo_kit::words::tr("The host didn’t say what it has.").into()),
                 Some(stands) if stands.to_copy.is_empty() => Ok(()),
                 Some(stands) => match pool.put(&target, askpass.clone(), &format!("sh -c {}", shell_quote(carry::PUT)), &carry::archive(&stands.to_copy)).await {
@@ -4975,7 +5107,11 @@ impl RexHubInner {
         let account = ready::Account::read(&ran.output);
         // (And what of the person's settings for their agents it has,
         // and of their sessions.)
-        let carried = carried_stands(pool, target, askpass.clone()).await.map(|stands| (stands.to_copy.len(), stands.same, stands.short));
+        let remembered: HashMap<String, olo_protocol::RexCarryChoice> = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.carry_choices.iter().filter(|r| r.host == host_key).map(|r| (r.item.clone(), r.choice)).collect()
+        };
+        let carried = carried_stands(pool, target, askpass.clone(), &remembered).await.map(|stands| stands.summary);
         let window = self.state.lock().unwrap_or_else(|e| e.into_inner()).sessions_window;
         let sessions = sessions_stands(pool, target, askpass.clone(), window).await.map(|(stands, _)| stands.summary());
         // (And how each of the person's repositories stands there.)

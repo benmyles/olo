@@ -80,6 +80,9 @@ pub enum WinRole {
     /// one or changes one.
     Repos,
     RepoEdit,
+    /// Agent settings carried to a host: batch conflict review, preview,
+    /// and remembered choices (`carry`).
+    Carry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -492,6 +495,15 @@ pub fn open_demo_run_approve(mode: &str) {
     open_or_raise_panel(WinRole::RunApprove);
 }
 
+/// Open the Agent Settings batch conflict review window populated with
+/// deterministic demo data (`OLO_REX_DEMO_CARRY=1|empty|remembered|merged`) for headless visual QA.
+pub fn open_demo_carry() {
+    let hub = app().hub.clone();
+    crate::carry::open(&hub, "dev", "dev-box");
+    open_or_raise_panel(WinRole::Carry);
+    carry_changed();
+}
+
 fn broadcast_msg(msg: WinMsg) {
     let handles: Vec<WindowHandle<RexWindow>> = wins().map.values().map(|s| s.handle.clone()).collect();
     for h in handles {
@@ -593,6 +605,25 @@ fn open_host(hub: &Arc<RexHub>, key: &str) {
 /// ended, a line its installer wrote).
 pub fn account_changed() {
     broadcast_to_role(WinRole::Account, || WinMsg::AccountChanged);
+}
+
+pub fn carry_changed() {
+    broadcast_to_role(WinRole::Carry, || WinMsg::CarryChanged);
+}
+
+fn open_carry(hub: &Arc<RexHub>, key: &str) {
+    let name = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| h.label.clone());
+    let Some(name) = name else { return };
+    crate::carry::open(hub, key, &name);
+    open_or_raise_panel(WinRole::Carry);
+    carry_changed();
+}
+
+fn carry_title() -> String {
+    match crate::carry::current() {
+        Some(shown) => olo_kit::tr!("Agent Settings on “{}”", shown.name).into(),
+        None => olo_kit::words::tr("Agent Settings").into(),
+    }
 }
 
 /// Opens the Account window on the host `key`: its account made ready
@@ -778,6 +809,7 @@ pub fn open_or_raise_panel(role: WinRole) {
         WinRole::Account => WindowOptions { fixed: true, ..WindowOptions::new(account_title(), crate::account_panel::ACCOUNT_WIDTH, 120.0).dialog() },
         WinRole::Repos => WindowOptions { fixed: true, ..WindowOptions::new("Repositories", crate::repos::WIDTH, 120.0).dialog() },
         WinRole::RepoEdit => WindowOptions::alert(if crate::repos::editing().is_some() { "Edit Repository" } else { "Add Repository" }, crate::repos::FORM_WIDTH, 120.0),
+        WinRole::Carry => WindowOptions { fixed: true, ..WindowOptions::new(carry_title(), crate::carry_panel::CARRY_WIDTH, 120.0).dialog() },
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
             WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
@@ -895,6 +927,11 @@ pub enum WinMsg {
     ReposDo(crate::repos::ReposDo),
     /// The repository form: done (true), or cancelled.
     RepoEditDone(bool),
+    /// The Agent Settings conflict review window.
+    CarryChanged,
+    CarryChangesChosen,
+    CarryRemChosen,
+    CarryDo(crate::carry_panel::CarryDo),
     ServerChanged,
     ServerDo(crate::server_panel::ServerDo),
     ServerKey(usize),
@@ -983,6 +1020,13 @@ pub struct RexWindow {
     pub repos_list: widgets::ListModel,
     pub repos_rows: Rc<Vec<crate::repos::RepoRow>>,
     repo_fields: Option<[Child<TextField>; 3]>,
+    /// The Agent Settings batch review window's lists, rows, and preview scrollers.
+    pub carry_changes_list: widgets::ListModel,
+    pub carry_changes_rows: Rc<Vec<crate::carry_panel::ChangeRow>>,
+    pub carry_rem_list: widgets::ListModel,
+    pub carry_rem_rows: Rc<Vec<crate::carry_panel::RememberedRow>>,
+    carry_here_scroll: olo_kit::ScrollHandle,
+    carry_there_scroll: olo_kit::ScrollHandle,
     pub server_rows: Rc<Vec<crate::server_panel::PersonRow>>,
     server_chosen: Option<String>,
     server_log: Option<Child<widgets::TextView>>,
@@ -1150,6 +1194,12 @@ impl RexWindow {
             repos_list: widgets::ListModel::new(false),
             repos_rows: Rc::default(),
             repo_fields: None,
+            carry_changes_list: widgets::ListModel::new(true),
+            carry_changes_rows: Rc::default(),
+            carry_rem_list: widgets::ListModel::new(true),
+            carry_rem_rows: Rc::default(),
+            carry_here_scroll: olo_kit::ScrollHandle::new(),
+            carry_there_scroll: olo_kit::ScrollHandle::new(),
             server_rows: Rc::default(),
             server_chosen: None,
             server_log: None,
@@ -1281,6 +1331,15 @@ impl RexWindow {
         if role == WinRole::Repos {
             repos_list.focus(cx);
         }
+        let carry_changes_list = widgets::ListModel::new(true);
+        let carry_rem_list = widgets::ListModel::new(true);
+        if role == WinRole::Carry {
+            if crate::carry::current().is_some_and(|s| s.tab == 1) {
+                carry_rem_list.focus(cx);
+            } else {
+                carry_changes_list.focus(cx);
+            }
+        }
         let repo_fields = (role == WinRole::RepoEdit).then(|| {
             let was = crate::repos::editing().and_then(|i| app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.get(i).cloned()).unwrap_or_default();
             let address = widgets::text_field(cx, |f| f.name("Address").hint("git@github.com:you/project.git").with_text(was.url.clone()));
@@ -1361,6 +1420,12 @@ impl RexWindow {
             repos_list,
             repos_rows: Rc::default(),
             repo_fields,
+            carry_changes_list,
+            carry_changes_rows: Rc::default(),
+            carry_rem_list,
+            carry_rem_rows: Rc::default(),
+            carry_here_scroll: olo_kit::ScrollHandle::new(),
+            carry_there_scroll: olo_kit::ScrollHandle::new(),
             server_rows: Rc::default(),
             server_chosen: None,
             server_log,
@@ -1795,6 +1860,45 @@ impl RexWindow {
             // where it shows.)
             "host.account" => open_account(&hub, &self.active_host),
             c if c.starts_with("host.account:") => open_account(&hub, c.trim_start_matches("host.account:")),
+            // (Agent settings batch conflict review & per-item agent API:
+            // `host.carry:KEY` opens & inspects differences, exposing them as JSON
+            // on the window's `carry-diff` node; `host.carry.choose:KEY:{JSON}` sets
+            // choices; `host.carry.apply:KEY` or `host.carry.apply:KEY:{JSON}` applies;
+            // `host.carry.forget:KEY` or `host.carry.forget:KEY:ITEM_ID` forgets.)
+            "host.carry" => open_carry(&hub, &self.active_host),
+            c if c.starts_with("host.carry:") => open_carry(&hub, c.trim_start_matches("host.carry:")),
+            c if c.starts_with("host.carry.choose:") => {
+                let rest = c.trim_start_matches("host.carry.choose:");
+                if let Some((key, json)) = rest.split_once(':')
+                    && crate::carry::current().is_some_and(|s| s.key == key)
+                    && let Ok(batch) = serde_json::from_str::<crate::carry::AgentChoiceBatch>(json)
+                {
+                    crate::carry::apply_agent_batch(&batch);
+                }
+            }
+            c if c.starts_with("host.carry.apply:") => {
+                let rest = c.trim_start_matches("host.carry.apply:");
+                let (key, json) = match rest.split_once(':') {
+                    Some((k, j)) => (k, Some(j)),
+                    None => (rest, None),
+                };
+                if crate::carry::current().is_some_and(|s| s.key == key) {
+                    if let Some(j) = json
+                        && let Ok(batch) = serde_json::from_str::<crate::carry::AgentChoiceBatch>(j)
+                    {
+                        crate::carry::apply_agent_batch(&batch);
+                    }
+                    crate::carry::apply(&hub);
+                }
+            }
+            c if c.starts_with("host.carry.forget:") => {
+                let rest = c.trim_start_matches("host.carry.forget:");
+                match rest.split_once(':') {
+                    Some((key, item_id)) if !item_id.is_empty() => crate::carry::forget(&hub, Some(key), Some(&[item_id.to_owned()])),
+                    Some((key, _)) => crate::carry::forget(&hub, Some(key), None),
+                    None => crate::carry::forget(&hub, Some(rest), None),
+                }
+            }
             "host.ready.stop" => crate::account::stop(&hub),
             // (How far back the agents' sessions copied go: days, 0 for
             // all of them, as the Account window's pop-up chooses.)
@@ -3787,6 +3891,68 @@ impl RexWindow {
                 };
                 div().w_full().child(crate::account_panel::render_account_panel(&stands, &shown, cx.msg_with(|what: &crate::account_panel::AccountDo| WinMsg::AccountDo(what.clone()))))
             }
+            WinRole::Carry => {
+                let Some(shown) = crate::carry::current() else {
+                    return div();
+                };
+                self.carry_changes_rows = Rc::new(crate::carry_panel::change_rows(&shown));
+                self.carry_rem_rows = Rc::new(crate::carry_panel::remembered_rows(&shown));
+                if let Some(demo_sel) = crate::carry::take_demo_selection() {
+                    if shown.tab == 0 {
+                        let len = self.carry_changes_rows.len();
+                        let mut st = self.carry_changes_list.state_mut();
+                        st.selected = demo_sel.into_iter().filter(|&i| i < len).collect();
+                        st.anchor = st.selected.iter().next().copied();
+                        st.cursor = st.selected.iter().next().copied();
+                    } else {
+                        let len = self.carry_rem_rows.len();
+                        let mut st = self.carry_rem_list.state_mut();
+                        st.selected = demo_sel.into_iter().filter(|&i| i < len).collect();
+                        st.anchor = st.selected.iter().next().copied();
+                        st.cursor = st.selected.iter().next().copied();
+                    }
+                }
+                {
+                    let len = self.carry_changes_rows.len();
+                    let mut st = self.carry_changes_list.state_mut();
+                    st.selected.retain(|&i| i < len);
+                    if st.selected.is_empty() && len > 0 {
+                        st.select(0);
+                    }
+                }
+                {
+                    let len = self.carry_rem_rows.len();
+                    let mut st = self.carry_rem_list.state_mut();
+                    st.selected.retain(|&i| i < len);
+                }
+                let changes_list = self.carry_changes_list.clone();
+                let changes_rows = self.carry_changes_rows.clone();
+                let rem_list = self.carry_rem_list.clone();
+                let rem_rows = self.carry_rem_rows.clone();
+                let here_scroll = self.carry_here_scroll.clone();
+                let there_scroll = self.carry_there_scroll.clone();
+                div()
+                    .w_full()
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        if e.keystroke.key == "escape" && !crate::carry::current().is_some_and(|s| s.applying) {
+                            cx.stop_propagation();
+                            cx.request_close();
+                        }
+                    }))
+                    .child(crate::carry_panel::render_carry_panel(
+                        cx,
+                        &shown,
+                        &changes_list,
+                        &changes_rows,
+                        &rem_list,
+                        &rem_rows,
+                        &here_scroll,
+                        &there_scroll,
+                        cx.msg_with(|_: &()| WinMsg::CarryChangesChosen),
+                        cx.msg_with(|_: &()| WinMsg::CarryRemChosen),
+                        cx.msg_with(|what: &crate::carry_panel::CarryDo| WinMsg::CarryDo(what.clone())),
+                    ))
+            }
             WinRole::Host => {
                 let Some(shown) = crate::host::current() else {
                     return div();
@@ -4364,6 +4530,11 @@ impl View for RexWindow {
                     AccountDo::Stop => crate::account::stop(&hub),
                     AccountDo::Check => crate::account::check(&hub),
                     AccountDo::Repos => open_or_raise_panel(WinRole::Repos),
+                    AccountDo::Carry => {
+                        if let Some(shown) = crate::account::current() {
+                            open_carry(&hub, &shown.key);
+                        }
+                    }
                     AccountDo::Window(window) => hub.set_sessions_window(window),
                     AccountDo::Host => {
                         if let Some(shown) = crate::account::current() {
@@ -4418,6 +4589,57 @@ impl View for RexWindow {
                 hub.set_repos(repos);
                 crate::account::check(&hub);
                 cx.request_close();
+            }
+            WinMsg::CarryChanged => {
+                if self.role == WinRole::Carry {
+                    cx.set_window_title(carry_title());
+                }
+                cx.invalidate();
+            }
+            WinMsg::CarryChangesChosen => {
+                self.carry_here_scroll.set_offset(cx, point(px(0.0), px(0.0)));
+                self.carry_there_scroll.set_offset(cx, point(px(0.0), px(0.0)));
+                cx.invalidate();
+            }
+            WinMsg::CarryRemChosen => cx.invalidate(),
+            WinMsg::CarryDo(what) => {
+                use crate::carry_panel::CarryDo;
+                let hub = app().hub.clone();
+                match what {
+                    CarryDo::Tab(i) => {
+                        crate::carry::set_tab(i);
+                        if i == 0 {
+                            self.carry_changes_list.focus(cx);
+                        } else {
+                            self.carry_rem_list.focus(cx);
+                        }
+                    }
+                    CarryDo::Check => crate::carry::check(&hub),
+                    CarryDo::SelectAll => {
+                        let len = self.carry_changes_rows.len();
+                        self.carry_changes_list.state_mut().select_all(len);
+                        self.carry_changes_list.focus(cx);
+                        cx.invalidate();
+                    }
+                    CarryDo::SetChoice(choice) => {
+                        let ids: Vec<String> = self.carry_changes_list.state().selected.iter().filter_map(|&i| self.carry_changes_rows.get(i).map(|r| r.id.clone())).collect();
+                        crate::carry::set_choices_for(&ids, choice);
+                    }
+                    CarryDo::SetRemember(remember) => {
+                        let ids: Vec<String> = self.carry_changes_list.state().selected.iter().filter_map(|&i| self.carry_changes_rows.get(i).map(|r| r.id.clone())).collect();
+                        crate::carry::set_remember_for(&ids, remember);
+                    }
+                    CarryDo::SetPreviewResult(result) => crate::carry::set_preview_result(result),
+                    CarryDo::Apply => crate::carry::apply(&hub),
+                    CarryDo::Close => cx.request_close(),
+                    CarryDo::ForgetSelected => {
+                        let ids: Vec<String> = self.carry_rem_list.state().selected.iter().filter_map(|&i| self.carry_rem_rows.get(i).map(|r| r.id.clone())).collect();
+                        if !ids.is_empty() {
+                            crate::carry::forget(&hub, None, Some(&ids));
+                        }
+                    }
+                    CarryDo::ForgetAll => crate::carry::forget(&hub, None, None),
+                }
             }
             WinMsg::HostDo(what) => {
                 use crate::host_panel::HostDo;
@@ -4809,6 +5031,9 @@ impl Drop for RexWindow {
         }
         if self.role == WinRole::Account {
             crate::account::close();
+        }
+        if self.role == WinRole::Carry {
+            crate::carry::close();
         }
         if self.role == WinRole::RunApprove {
             // Closing the alert window denies the pending command.

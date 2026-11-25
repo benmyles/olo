@@ -11,6 +11,8 @@ mod attach;
 mod attention;
 mod bridge;
 mod bridge_run;
+mod carry;
+mod carry_panel;
 mod copy_mode;
 mod files_sock;
 mod forwards;
@@ -229,6 +231,11 @@ fn main() {
             && !mode.trim().is_empty()
         {
             ui::open_demo_run_approve(mode.trim());
+        }
+        if let Ok(mode) = std::env::var("OLO_REX_DEMO_CARRY")
+            && !mode.trim().is_empty()
+        {
+            ui::open_demo_carry();
         }
     });
 }

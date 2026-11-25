@@ -107,7 +107,7 @@ impl Item {
         }
         match self {
             Item::Step(step) => host.account.as_ref().map(|account| account.done(step, who)),
-            Item::Carry => host.carried.map(|(to_copy, ..)| to_copy == 0),
+            Item::Carry => host.carried.map(|s| s.all_set()),
             Item::Sessions => host.sessions.map(|s| s.sessions == 0),
             Item::Skill => host.skill,
             Item::Repos => host.repos_there.as_ref().map(|there| there.iter().all(olo_rex_client::repos::There::done)),

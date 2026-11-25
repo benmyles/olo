@@ -1103,7 +1103,7 @@ echo "Installed {name} {version}"
             skill = lambda: os.path.exists(f"{home}/.claude/skills/olo-rex-bridge/SKILL.md")
             r.invoke("host.account:far")
             first = r.wait(lambda: (lambda w: w if w.get("Claude Code") == "Not installed" else None)(rows()), 25)
-            check("the window, asked of a new account", first and first.get("Codex") == "Not installed" and first.get("Git identity") == "Not set" and first.get("Program folder") == "Not on the path" and first.get("Agent settings") == "3 files to copy", first or rows())
+            check("the window, asked of a new account", first and first.get("Codex") == "Not installed" and first.get("Git identity") == "Not set" and first.get("Program folder") == "Not on the path" and first.get("Agent settings") == "1 conflict  ·  2 new", first or rows())
             r.invoke("host.ready:far:claude")
             got = r.wait(lambda: (lambda w: w if w.get("Claude Code") == "9.9.1" else None)(rows()), 30)
             check("Claude Code installed by its installer, and its version said", got and there("claude"), (got or rows()).get("Claude Code"))
@@ -1179,6 +1179,147 @@ echo "Installed {name} {version}"
         with contextlib.suppress(FileNotFoundError): os.remove(f"{app_home}/.gitconfig")
         shutil.rmtree(f"{app_home}/.claude", ignore_errors=True); shutil.rmtree(f"{home}/.claude/projects", ignore_errors=True)
         shutil.rmtree(origin, ignore_errors=True); shutil.rmtree(f"{home}/src/origin", ignore_errors=True)
+    print("PASS" if ok else "FAIL")
+elif what == "carry":
+    # Agent settings carried to a far host with item-level conflicts across JSON
+    # settings, Codex TOML, Markdown instruction sections, and whole files:
+    # read as JSON via `host.carry:far`, resolved in one mixed batch (Keep Host,
+    # Use Desktop, Merge) with Remember, verified on the host, re-checked for
+    # convergence, updated automatically for a remembered TakeDesktop change,
+    # and forgotten via `host.carry.forget`.
+    import shutil
+    home, app_home = f"{D}/home", f"{D}/home-app"
+    def clean():
+        for base in (home, app_home):
+            for rel in (".claude", ".codex", ".gemini"):
+                shutil.rmtree(f"{base}/{rel}", ignore_errors=True)
+    clean()
+    def put(base, rel, text):
+        full = f"{base}/{rel}"
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        open(full, "w").write(text)
+    put(app_home, ".claude/settings.json", json.dumps({
+        "model": "opus",
+        "effortLevel": "high",
+        "env": {"EDITOR": "vi", "PAGER": "less"},
+        "permissions": {"allow": ["Bash(cargo)", "Bash(jato)"]},
+        "mcpServers": {
+            "docs": {"url": "https://docs.example/v2", "timeout": 30},
+            "new_srv": {"url": "https://new.example/mcp"},
+        },
+    }, indent=2) + "\n")
+    put(app_home, ".codex/config.toml", 'model = "gpt-5"\napproval_policy = "on-request"\n\n[mcp_servers.docs]\nurl = "https://docs.example/v2"\nretries = 3\n')
+    put(app_home, ".claude/CLAUDE.md", "# Rules\n\n## Style\n- Keep functions small.\n- Use jato for builds.\n\n## Testing\n- Run unit tests.\n")
+    put(app_home, ".claude/commands/ship.md", "Desktop ship command.\n")
+    put(app_home, ".claude/commands/fresh.md", "Brand new command.\n")
+
+    put(home, ".claude/settings.json", json.dumps({
+        "model": "sonnet",
+        "theme": "host-only",
+        "env": {"HTTPS_PROXY": "http://127.0.0.1:27892", "EDITOR": "nano"},
+        "permissions": {"allow": ["Bash(jato)", "Bash(podman)"]},
+        "mcpServers": {
+            "docs": {"url": "https://docs.example/v1", "hostFlag": True},
+            "host_only": {"url": "https://host.local/mcp"},
+        },
+    }, indent=2) + "\n")
+    put(home, ".codex/config.toml", 'model = "gpt-4"\n\n[projects."/home/far/work"]\ntrust_level = "trusted"\n\n[mcp_servers.docs]\nurl = "https://docs.example/v1"\nregion = "eu"\n')
+    put(home, ".claude/CLAUDE.md", "# Rules\n\n## Style\n- Keep functions small.\n- Host uses Fedora 44.\n\n## Host Notes\n- Keep GPU free.\n")
+    put(home, ".claude/commands/ship.md", "Host ship command.\n")
+
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
+    try:
+        with Rig("shell", delay=0, far=True, far_delay=0, env=["RUST_LOG=warn,olo_rex=info"]) as r:
+            def carry_snap():
+                for n in r.nodes("Agent Settings"):
+                    if n.get("name") == "carry-diff" and n.get("value"):
+                        try: return json.loads(n["value"])
+                        except Exception: return None
+                return None
+            def account_carry_row():
+                said = [str(n.get("name") or "") for n in r.nodes("Account") if n.get("role") in ("Label", "Text", "StaticText")]
+                if "Agent settings" in said:
+                    at = said.index("Agent settings")
+                    if at + 2 < len(said) and said[at + 1] == "·": return said[at + 2]
+                return None
+            r.invoke("host.account:far")
+            acc = r.wait(lambda: (lambda v: v if v and "conflict" in v else None)(account_carry_row()), 25)
+            check("Account row shows conflicts before anything is written", acc == "8 conflicts  ·  6 new", acc)
+
+            r.invoke("host.carry:far")
+            snap = r.wait(lambda: (lambda s: s if s and not s.get("checking") and len(s.get("items", [])) >= 12 else None)(carry_snap()), 25)
+            ids = {it["id"]: it for it in (snap or {}).get("items", [])}
+            check("Carry window exposes every item diff as JSON",
+                  snap and ids.get(".claude/settings.json::model", {}).get("kind") == "conflict"
+                  and ids.get(".claude/settings.json::permissions.allow", {}).get("can_merge") is True
+                  and ids.get(".codex/config.toml::mcp_servers.docs", {}).get("can_merge") is True
+                  and ids.get(".claude/CLAUDE.md::## Style", {}).get("can_merge") is True
+                  and ids.get(".claude/commands/ship.md", {}).get("kind") == "conflict",
+                  sorted(ids.keys()))
+
+            batch = {"items": [
+                {"id": ".claude/settings.json::model", "choice": "keep-host", "remember": True},
+                {"id": ".claude/settings.json::env.EDITOR", "choice": "take-desktop", "remember": True},
+                {"id": ".claude/settings.json::permissions.allow", "choice": "merge", "remember": True},
+                {"id": ".claude/settings.json::mcpServers.docs", "choice": "merge", "remember": True},
+                {"id": ".codex/config.toml::model", "choice": "keep-host", "remember": True},
+                {"id": ".codex/config.toml::mcp_servers.docs", "choice": "merge", "remember": True},
+                {"id": ".claude/CLAUDE.md::## Style", "choice": "merge", "remember": True},
+                {"id": ".claude/commands/ship.md", "choice": "keep-host", "remember": True},
+            ]}
+            r.invoke("host.carry.apply:far:" + json.dumps(batch, separators=(",", ":")))
+            after = r.wait(lambda: (lambda s: s if s and not s.get("checking") and not s.get("applying") and len(s.get("items", [])) == 0 and len(s.get("remembered", [])) == 8 else None)(carry_snap()), 30)
+            check("mixed batch applied and remembered; zero pending diffs remain", after is not None, after and {"items": len(after["items"]), "remembered": len(after["remembered"]), "note": after.get("applied_note")})
+
+            claude = json.loads(open(f"{home}/.claude/settings.json").read())
+            codex = open(f"{home}/.codex/config.toml").read()
+            md = open(f"{home}/.claude/CLAUDE.md").read()
+            ship = open(f"{home}/.claude/commands/ship.md").read()
+            fresh = open(f"{home}/.claude/commands/fresh.md").read() if os.path.exists(f"{home}/.claude/commands/fresh.md") else None
+            check("JSON settings merged & host-only entries preserved",
+                  claude.get("model") == "sonnet" and claude.get("effortLevel") == "high" and claude.get("theme") == "host-only"
+                  and claude.get("env") == {"HTTPS_PROXY": "http://127.0.0.1:27892", "EDITOR": "vi", "PAGER": "less"}
+                  and claude.get("permissions", {}).get("allow") == ["Bash(cargo)", "Bash(jato)", "Bash(podman)"]
+                  and claude.get("mcpServers", {}).get("docs") == {"url": "https://docs.example/v2", "hostFlag": True, "timeout": 30}
+                  and claude.get("mcpServers", {}).get("host_only", {}).get("url") == "https://host.local/mcp"
+                  and claude.get("mcpServers", {}).get("new_srv", {}).get("url") == "https://new.example/mcp",
+                  claude)
+            check("Codex TOML merged & host projects preserved",
+                  'model = "gpt-4"' in codex and 'approval_policy = "on-request"' in codex and 'region = "eu"' in codex and 'retries = 3' in codex and '/home/far/work' in codex,
+                  codex)
+            check("CLAUDE.md sections merged & host-only section preserved",
+                  "- Use jato for builds." in md and "- Host uses Fedora 44." in md and "## Testing" in md and "## Host Notes" in md and md.count("- Keep functions small.") == 1,
+                  md)
+            check("whole files: kept ship.md untouched, copied fresh.md", ship == "Host ship command.\n" and fresh == "Brand new command.\n", {"ship": ship, "fresh": fresh})
+
+            acc_done = r.wait(lambda: (lambda v: v if v == "As on this computer  ·  8 remembered" else None)(account_carry_row()), 20)
+            check("Account row reflects resolved state with remembered count", acc_done is not None, acc_done or account_carry_row())
+
+            # Update a remembered TakeDesktop key locally: updates cleanly without becoming an unremembered conflict.
+            local_claude = json.loads(open(f"{app_home}/.claude/settings.json").read())
+            local_claude["env"]["EDITOR"] = "helix"
+            put(app_home, ".claude/settings.json", json.dumps(local_claude, indent=2) + "\n")
+            r.invoke("host.carry:far")
+            upd = r.wait(lambda: (lambda s: s if s and not s.get("checking") and len(s.get("items", [])) == 1 else None)(carry_snap()), 25)
+            check("desktop change on remembered TakeDesktop item appears as auto-update",
+                  upd and upd["items"][0]["id"] == ".claude/settings.json::env.EDITOR" and upd["items"][0]["remembered"] == "take-desktop",
+                  upd and upd["items"])
+            r.invoke("host.ready:far:settings")
+            applied_upd = r.wait(lambda: json.loads(open(f"{home}/.claude/settings.json").read()).get("env", {}).get("EDITOR") == "helix", 25)
+            claude2 = json.loads(open(f"{home}/.claude/settings.json").read())
+            check("auto-copy applied remembered TakeDesktop and still kept remembered KeepHost",
+                  applied_upd and claude2.get("model") == "sonnet" and claude2.get("env", {}).get("EDITOR") == "helix",
+                  {"model": claude2.get("model"), "editor": claude2.get("env", {}).get("EDITOR")})
+
+            # Forget one remembered KeepHost item: re-appears as an unremembered conflict.
+            r.invoke("host.carry.forget:far:.claude/settings.json::model")
+            forgot = r.wait(lambda: (lambda s: s if s and not s.get("checking") and len(s.get("remembered", [])) == 7 and any(it["id"] == ".claude/settings.json::model" and it["remembered"] is None for it in s.get("items", [])) else None)(carry_snap()), 25)
+            check("forgetting a remembered choice brings the conflict back", forgot is not None, forgot and {"items": [it["id"] for it in forgot["items"]], "remembered": len(forgot["remembered"])})
+    finally:
+        clean()
     print("PASS" if ok else "FAIL")
 elif what == "sessions":
     # The agents' sessions copied to the far host by the host's helper (the engine: olo-rex-link sync), then a turn

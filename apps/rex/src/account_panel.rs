@@ -48,6 +48,8 @@ pub enum AccountDo {
     Check,
     /// The Repositories window.
     Repos,
+    /// The Agent Settings conflict review window.
+    Carry,
     /// A host that isn't connected, connected to.
     Connect,
     /// How far back the agents' sessions copied go, chosen.
@@ -73,6 +75,8 @@ pub enum Press {
     RemoveSkill,
     /// Opens the Repositories window.
     Repos,
+    /// Opens the Agent Settings review window.
+    Carry,
 }
 
 /// How an item stands, on its row.
@@ -253,7 +257,17 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         // button. Six greyed Installs said nothing was there.)
         (_, None) => plain(Lamp::Light(Light::Off), "—", None),
         (Item::Skill, Some(true)) => plain(Lamp::Light(Light::On), "Installed", Some(("Remove", Press::RemoveSkill, can))),
-        (Item::Carry, Some(true)) => plain(Lamp::Light(Light::On), "As on this computer", None),
+        (Item::Carry, Some(true)) => {
+            let rem = host.carried.map_or(0, |s| s.remembered_total);
+            if rem > 0 {
+                Row {
+                    said: format!("{}  ·  {}", tr("As on this computer"), olo_kit::words::count(rem as u64, "1 remembered", "{n} remembered")),
+                    ..plain(Lamp::Light(Light::On), "", Some(("Review…", Press::Carry, can)))
+                }
+            } else {
+                plain(Lamp::Light(Light::On), "As on this computer", None)
+            }
+        }
         // (Optional, and not counted: to copy, and none in the time
         // chosen, a hollow ring, as the repositories' None chosen; only
         // as here is green. Opus's look.)
@@ -275,8 +289,14 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
             }
         }
         (Item::Carry, Some(false)) => {
-            let to_copy = host.carried.map_or(0, |(to_copy, ..)| to_copy);
-            Row { said: olo_kit::words::count(to_copy as u64, "1 file to copy", "{n} files to copy"), ..off("", true) }
+            let s = host.carried.unwrap_or_default();
+            if s.conflicts > 0 {
+                let conf = olo_kit::words::count(s.conflicts as u64, "1 conflict", "{n} conflicts");
+                let said = if s.new_items > 0 { format!("{conf}  ·  {}", olo_kit::words::count(s.new_items as u64, "1 new", "{n} new")) } else { conf };
+                Row { lamp: Lamp::Light(Light::Waiting), said, host_said: None, note: None, button: Some(("Review…", Press::Carry, can)), bar: None }
+            } else {
+                Row { said: olo_kit::words::count(s.to_copy_files as u64, "1 file to copy", "{n} files to copy"), ..off("", true) }
+            }
         }
         (Item::Step(Step::Path), Some(true)) => plain(Lamp::Light(Light::On), "On the path", None),
         (Item::Step(Step::Git), Some(true)) => {
@@ -389,7 +409,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
     // (Its count's button measured as it says itself, in the person's
     // language: "Set Up 9" was measured in English, which no catalog had.)
     let set_up = olo_kit::tr!("Set Up {}", 9).to_string();
-    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Use Mine", set_up.as_str()]
+    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Review…", "Use Mine", set_up.as_str()]
         .iter()
         .map(|l| button_width(l, false))
         .fold(m::BUTTON_MIN_WIDTH, f32::max);
@@ -499,6 +519,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
                         Press::Run => AccountDo::Run(vec![item]),
                         Press::RemoveSkill => AccountDo::RemoveSkill,
                         Press::Repos => AccountDo::Repos,
+                        Press::Carry => AccountDo::Carry,
                     };
                     // (Its words in the person's language: a `String` made
                     // of the literal was shown as it is, in English.)
@@ -638,7 +659,7 @@ mod tests {
             version: None,
             account,
             // (The settings carried: as here, but where a test says.)
-            carried: Some((0, 3, false)),
+            carried: Some(olo_rex_client::carry::Summary { same_files: 3, ..Default::default() }),
             sessions: None,
             sessions_window: Default::default(),
             // (No repositories chosen, but where a test says.)
@@ -709,11 +730,22 @@ mod tests {
         assert_eq!(row(&h, &shown, Item::Skill).button, Some(("Install", Press::Run, true)));
         assert_eq!(left(&h, &shown), [CODEX, AGY, Item::Skill]);
         assert_eq!(head_state(&h, &shown), (Lamp::Light(Light::Waiting), "4 of 7 ready".into()));
-        // (The person's settings: how many would be copied; as here, nothing to press.)
-        let lacking = HostStands { carried: Some((12, 2, false)), ..h.clone() };
+        // (The person's settings: how many would be copied; conflicts open Review…; as here, nothing to press unless remembered choices exist.)
+        let lacking = HostStands { carried: Some(olo_rex_client::carry::Summary { to_copy_files: 12, new_items: 12, same_files: 2, ..Default::default() }), ..h.clone() };
         assert_eq!(
             row(&lacking, &shown, Item::Carry),
             Row { lamp: Lamp::Light(Light::Off), said: "12 files to copy".into(), host_said: None, note: None, button: Some(("Copy", Press::Run, true)), bar: None }
+        );
+        let conflicted = HostStands { carried: Some(olo_rex_client::carry::Summary { to_copy_files: 4, new_items: 2, conflicts: 4, same_files: 6, ..Default::default() }), ..h.clone() };
+        assert_eq!(
+            row(&conflicted, &shown, Item::Carry),
+            Row { lamp: Lamp::Light(Light::Waiting), said: "4 conflicts  ·  2 new".into(), host_said: None, note: None, button: Some(("Review…", Press::Carry, true)), bar: None }
+        );
+        assert!(!left(&conflicted, &shown).contains(&Item::Carry), "Set Up doesn't silently overwrite unreviewed conflicts");
+        let remembered_done = HostStands { carried: Some(olo_rex_client::carry::Summary { same_files: 5, remembered_total: 2, ..Default::default() }), ..h.clone() };
+        assert_eq!(
+            row(&remembered_done, &shown, Item::Carry),
+            Row { lamp: Lamp::Light(Light::On), said: "As on this computer  ·  2 remembered".into(), host_said: None, note: None, button: Some(("Review…", Press::Carry, true)), bar: None }
         );
         assert_eq!(row(&h, &shown, Item::Carry), Row { lamp: Lamp::Light(Light::On), said: "As on this computer".into(), host_said: None, note: None, button: None, bar: None });
         assert_eq!(left(&lacking, &shown), [CODEX, AGY, Item::Carry, Item::Skill]);
@@ -753,7 +785,10 @@ mod tests {
             row(&bare, &shown, Item::Skill),
             Row { lamp: Lamp::Light(Light::On), said: "Installed".into(), host_said: None, note: None, button: Some(("Remove", Press::RemoveSkill, true)), bar: None }
         );
-        let fresh = HostStands { carried: Some((5, 0, false)), ..host(Some(Account { has_curl: true, has_git: true, ..Account::default() }), Some(false), HostConnState::Connected) };
+        let fresh = HostStands {
+            carried: Some(olo_rex_client::carry::Summary { to_copy_files: 5, new_items: 5, ..Default::default() }),
+            ..host(Some(Account { has_curl: true, has_git: true, ..Account::default() }), Some(false), HostConnState::Connected)
+        };
         assert_eq!(row(&fresh, &Shown { who: None, ..shown.clone() }, GIT).button, Some(("Set", Press::Run, false)));
         assert_eq!(head_state(&fresh, &shown), (Lamp::Light(Light::Off), "Not set up".into()));
 

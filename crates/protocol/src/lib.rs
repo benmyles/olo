@@ -2057,6 +2057,8 @@ pub struct RexSettings {
     pub kept: Vec<RexKept>,
     /// Hosts' port forwards kept across Rex restarts and host reconnects.
     pub kept_forwards: Vec<RexKeptForward>,
+    /// Remembered per-item conflict choices when carrying agent settings to a host.
+    pub carry_choices: Vec<RexCarryRemembered>,
     /// How many days back the agents' sessions copied to a host go, by
     /// when each was last used (Rex's Account window; 0: all of them).
     pub sessions_days: u32,
@@ -2146,6 +2148,32 @@ pub struct RexKeptForward {
     pub made: RexForwardMaker,
 }
 
+/// How a conflicting carried agent setting item is resolved for a host.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum RexCarryChoice {
+    /// Put this computer's value on the host.
+    #[default]
+    TakeDesktop,
+    /// Leave the host's existing value as it is.
+    KeepHost,
+    /// Combine both where the format allows (settings objects/lists, Markdown sections).
+    Merge,
+}
+
+/// A remembered conflict choice for one carried agent setting item on a host.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexCarryRemembered {
+    /// The host's id (`RexHost::id`).
+    pub host: String,
+    /// Stable item identifier within `carry` (e.g. `.claude/settings.json::model`,
+    /// `.codex/config.toml::mcp_servers.docs`, `.claude/CLAUDE.md::## Style`).
+    pub item: String,
+    /// The remembered resolution strategy.
+    pub choice: RexCarryChoice,
+}
+
 impl Default for RexSettings {
     fn default() -> Self {
         RexSettings {
@@ -2158,6 +2186,7 @@ impl Default for RexSettings {
             repos: Vec::new(),
             kept: Vec::new(),
             kept_forwards: Vec::new(),
+            carry_choices: Vec::new(),
             show_typing_at_once: true,
             typing_helper: true,
             keep_going_says: REX_KEEP_GOING_SAYS.to_owned(),

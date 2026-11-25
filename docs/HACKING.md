@@ -29133,13 +29133,30 @@ to set them up").
   shell's input, a line a file; `Stands::read`), the row says how many
   files would be copied, and Copy puts those in one tar archive
   (`carry::PUT`): each in its place, what was there and differs kept
-  beside it as `NAME.before-olo` the first time. Claude Code's
-  settings are put together with the host's (`carry::merged`): what
-  only the host has stays (its own pool's way out, the hook Rex's
-  skill set-up writes), ours is said where both say something, a list
-  is ours and what the host's has besides. Asked with the account
+  beside it as `NAME.before-olo` the first time. Where anything on the
+  host already differs (`carry::Plan`, `carry::DiffItem`: split by item
+  for JSON settings' top-level keys plus `mcpServers`/`env`/`permissions`,
+  Codex TOML keys plus `mcp_servers`/`model_providers`, Markdown
+  headings, or whole skill/command files), the Account row says how many
+  conflicts and new items there are (`4 conflicts · 2 new`) with
+  `Review…` (and `Set Up N` skips it rather than guessing). Clicking
+  `Review…` opens `WinRole::Carry` (`apps/rex/src/carry.rs`,
+  `carry_panel.rs`, `Agent Settings on “HOST”`): one multi-select batch
+  list (`⇧`, `⌘`, `⌘A`), selection-scoped `Copy` / `Skip` / `Merge`
+  radios and three-state `Remember choice` checkbox, LCS line-by-line
+  aligned side-by-side diff (`Both versions`) and `Result` provenance
+  preview with permanent BeOS scrollbars, and a `Remembered` tab to
+  inspect and forget saved choices. Remembered choices persist per host
+  and item in `RexSettings::carry_choices`: already-satisfied items stay
+  out of pending changes, and desktop updates to a remembered `Copy` or
+  `Merge` item apply without prompting again. Host-only keys, sections
+  and tables (such as Token Pool's `HTTPS_PROXY`, hooks, and Codex
+  `[projects]`) are always preserved. Asked with the account
   (`RexHub::ask_account`), and again when a run ends. Agents:
-  `host.ready:KEY:settings`.
+  `host.ready:KEY:settings`, `host.carry:KEY`,
+  `host.carry.choose:KEY:{JSON}`, `host.carry.apply:KEY[:{JSON}]`,
+  `host.carry.forget:KEY[:ITEM_ID]`, and the Carry window's `carry-diff`
+  agent node JSON snapshot.
 - *The agents' sessions* (`crates/rex/src/sessions.rs`; Ben,
   2026-11-23: "an Agent Sessions item that copies over the
   transcripts/session logs for all the agents … a dropdown to choose
