@@ -562,7 +562,24 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
     let mut plan = j0.plan.clone();
     let (from, to) = (plan.from.clone(), plan.to.clone());
     let excluded = migrate::excluded(&from, &to, j0.choices.cache);
-    let var_tmp: Vec<String> = if j0.choices.var_tmp { from.var_tmp.iter().map(|f| f.path.clone()).collect() } else { Vec::new() };
+    let var_tmp = j0.choices.var_tmp && from.var_tmp_count() > 0;
+
+    // Make sure this build's helper is on both hosts (e.g. Try Again after
+    // an Olo upgrade) and `rsync` is installed on both hosts.
+    for (runner, target) in [(&s, &src), (&d, &dst)] {
+        match olo_rex_client::helper::ensure(&runner.pool, target, None, crate::link::ID, &crate::link::BUILDS).await {
+            Ok(olo_rex_client::helper::Stands::NoBuild(_)) => {
+                return Err(fail("Olo’s helper has no build for a host", olo_kit::words::tr("A move needs Olo’s helper on both hosts, built for their machines.").to_string()));
+            }
+            Ok(_) => {}
+            Err(e) => return Err(fail("Olo’s helper couldn’t be put on a host", e.why)),
+        }
+    }
+    if !has("rsync") {
+        migrate::ensure_rsync(&mut s, &from).await.map_err(|e| fail("rsync isn’t ready on the old host", e))?;
+        migrate::ensure_rsync(&mut d, &to).await.map_err(|e| fail("rsync isn’t ready on the new host", e))?;
+        done("rsync");
+    }
 
     // The move's key, let in there; a way from the source to the
     // destination (the name and port Rex reaches it by, then its own sshd's
@@ -570,7 +587,7 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
     // files kept aside.
     if !has("allowed") {
         let public = migrate::make_key(&mut s, crate::link::ID, &from, &id).await.map_err(|e| fail("The move’s key couldn’t be made", e))?;
-        migrate::allow(&mut d, crate::link::ID, &id, &public, &var_tmp).await.map_err(|e| fail("The move’s key couldn’t be let in", e))?;
+        migrate::allow(&mut d, crate::link::ID, &id, &public, var_tmp).await.map_err(|e| fail("The move’s key couldn’t be let in", e))?;
         journal(turn, |j| j.public = public);
         done("allowed");
     }
@@ -593,7 +610,7 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
 
     // The first pass, the source working meanwhile.
     if !has("pass1") {
-        migrate::start_pass(&mut s, crate::link::ID, &from, &to, &id, &way, 1, &excluded, &var_tmp).await.map_err(|e| fail("The copy didn’t start", e))?;
+        migrate::start_pass(&mut s, crate::link::ID, &from, &to, &id, &way, 1, &excluded, var_tmp).await.map_err(|e| fail("The copy didn’t start", e))?;
         let first = follow(&mut s, &from, &id, turn, stop, 1).await?;
         if first["phase"] != "done" {
             return Err(fail("The copy didn’t finish", first["error"].as_str().unwrap_or_default().to_owned()));
@@ -637,8 +654,8 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
     step(1);
     if !has("pass2") {
         let public = journal_of(turn).map(|j| j.public).unwrap_or_default();
-        let _ = migrate::allow(&mut d, crate::link::ID, &id, &public, &var_tmp).await;
-        migrate::start_pass(&mut s, crate::link::ID, &from, &to, &id, &way, 2, &excluded, &var_tmp).await.map_err(|e| fail("The last copy didn’t start", e))?;
+        let _ = migrate::allow(&mut d, crate::link::ID, &id, &public, var_tmp).await;
+        migrate::start_pass(&mut s, crate::link::ID, &from, &to, &id, &way, 2, &excluded, var_tmp).await.map_err(|e| fail("The last copy didn’t start", e))?;
         let second = follow(&mut s, &from, &id, turn, stop, 2).await?;
         if second["phase"] != "done" {
             return Err(fail("The last copy didn’t finish", second["error"].as_str().unwrap_or_default().to_owned()));
@@ -664,7 +681,7 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
         {
             said.push(olo_kit::tr!("{} SSH keys for {} now sign in to {} too.", n, mv.source_label, mv.dest_label).to_string());
         }
-        let fixed = migrate::fix_destination(&mut d, crate::link::ID, &from, &to, &id, &var_tmp).await.unwrap_or_default();
+        let fixed = migrate::fix_destination(&mut d, crate::link::ID, &from, &to, &id, var_tmp).await.unwrap_or_default();
         if let Some(mentions) = fixed["mentions"].as_array().filter(|m| !m.is_empty()) {
             said.push(olo_kit::tr!("These still name the old home, left as they are: {}.", mentions.iter().filter_map(|m| m.as_str()).take(8).collect::<Vec<_>>().join(", ")).to_string());
         }
@@ -752,7 +769,7 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
             to: to.clone(),
             when: &when,
             linked,
-            var_tmp: !var_tmp.is_empty(),
+            var_tmp,
             ports: &from.listening,
             ..migrate::Told::default()
         };

@@ -2,39 +2,40 @@
 //! host to another (Ben, 2026-11-25: "machine to machine copy (don't go
 //! via the user's desktop)"), driven by the app (`olo_rex_client::
 //! migrate`). The same program on Ubuntu, Fedora or anything else (it is
-//! static), so nothing of the host's is needed for it: no rsync, tar or
-//! zstd (Fedora's cloud image has none of them), no ssh-keygen.
+//! static); file copies run `rsync` over SSH in parallel streams with a
+//! per-move ephemeral key and pinned host key.
 //!
 //! - `move key DIR`: a key of the move's own (ed25519, made here) in the
 //!   move's folder on the source, its public line printed.
-//! - `move allow ID LINE [--root /var/tmp/NAME]…` / `move disallow ID`:
+//! - `move allow ID LINE [--var-tmp]` / `move disallow ID`:
 //!   that key let into the destination's account (`~/.ssh/authorized_keys`)
 //!   for a day, able to run nothing but this helper's `move receive --id
-//!   ID`, writing nothing but the home itself and the folders of `/var/tmp`
-//!   named here; and taken out again.
+//!   ID`, writing nothing but the home itself (and `/var/tmp` when
+//!   `--var-tmp` is given); and taken out again.
 //! - `move receive --id ID`: what that key runs (its forced command): the
-//!   one thing asked of it (`SSH_ORIGINAL_COMMAND`), from a short list;
-//!   never the destination's own keys, its helper or the move's folder.
+//!   one thing asked of it (`SSH_ORIGINAL_COMMAND`), either `hello`,
+//!   `forget`, or a validated receiving `rsync --server` (never `--sender`,
+//!   never `--delete`, never the destination's own keys, its helper or the
+//!   move's folder).
 //! - `move keep ID` / `move put-back ID`: the destination's own files kept
 //!   aside before the copy (hard links), and put back by Go Back.
 //! - `move add-keys ID HEX` / `move take-keys ID`: the source's
 //!   `authorized_keys` let in at the destination too, and out again.
 //! - `move codex-stop`: Codex's daemon stopped as Codex restarts it.
 //! - `move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT
-//!   [--pass N] [--exclude PATTERN]… [--also /var/tmp/NAME]… [--detach]`:
-//!   the copy, from the home here to ROOT there (and each folder of
-//!   `/var/tmp` named to the same place there), over an SSH connection of its own with the
-//!   move's key, the destination's host key pinned (`KEY`, as the app's
-//!   own connection checked it: never trusted on first sight); detached,
-//!   it goes on with the app gone (its log, pid and `status.json` in DIR).
-//!   A second pass sends what changed and takes away there what the first
-//!   put there and is gone here.
+//!   [--pass N] [--exclude PATTERN]… [--var-tmp] [--each BYTES] [--detach]`:
+//!   the copy, from the home here to ROOT there (and the account's own
+//!   entries in `/var/tmp` when `--var-tmp` is set), over parallel `rsync`
+//!   streams using an isolated SSH config with the move's key and pinned
+//!   host key; detached, it goes on with the app gone (its log, pid and
+//!   `status.json` in DIR). A second pass sends what changed and takes away
+//!   there what the first put there and is gone here.
 //! - `move status DIR`: how the copy in the move's folder stands.
 //! - `move look [--size] [--exclude PATTERN]…`: what this host and account
 //!   are, for a move (JSON); with `--size`, what the home holds that the
-//!   copy brings, and the account's folders in `/var/tmp`.
-//! - `move fix --from OLD --to NEW [--once FILE]`: a moved home made right
-//!   where its path changed (`crate::fix`).
+//!   copy brings, and a summary of the account's entries in `/var/tmp`.
+//! - `move fix --from OLD --to NEW [--once FILE] [--var-tmp]`: a moved home
+//!   made right where its path changed (`crate::fix`).
 //! - `move look-pane [--screens HEX] PID…`: each pane's programs and the
 //!   agent there with its session (`crate::panes`).
 //! - `move stop [--spare PID…]`: every process of the account stopped but
@@ -48,7 +49,7 @@ use std::time::{Duration, Instant};
 
 use russh::keys::ssh_key::{LineEnding, PrivateKey, private::Ed25519Keypair};
 
-const USAGE: &str = "usage: olo-rex-link move look [--size] [--exclude PATTERN]...\n       olo-rex-link move codex-stop\n       olo-rex-link move halt DIR\n       olo-rex-link move keep ID [--exclude PATTERN]...\n       olo-rex-link move put-back ID\n       olo-rex-link move add-keys ID HEX\n       olo-rex-link move take-keys ID\n       olo-rex-link move reach DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT\n       olo-rex-link move look-pane [--screens HEX] PID...\n       olo-rex-link move key DIR\n       olo-rex-link move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude PATTERN]... [--also /var/tmp/NAME]... [--detach]\n       olo-rex-link move allow ID PUBLIC-KEY-LINE [--root /var/tmp/NAME]...\n       olo-rex-link move disallow ID\n       olo-rex-link move receive --id ID   (a move's key's forced command)\n       olo-rex-link move status DIR\n       olo-rex-link move stop [--spare PID]…";
+const USAGE: &str = "usage: olo-rex-link move look [--size] [--exclude PATTERN]...\n       olo-rex-link move codex-stop\n       olo-rex-link move halt DIR\n       olo-rex-link move keep ID [--exclude PATTERN]...\n       olo-rex-link move put-back ID\n       olo-rex-link move add-keys ID HEX\n       olo-rex-link move take-keys ID\n       olo-rex-link move reach DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT\n       olo-rex-link move look-pane [--screens HEX] PID...\n       olo-rex-link move key DIR\n       olo-rex-link move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude PATTERN]... [--var-tmp] [--each BYTES] [--detach]\n       olo-rex-link move allow ID PUBLIC-KEY-LINE [--var-tmp]\n       olo-rex-link move disallow ID\n       olo-rex-link move receive --id ID   (a move's key's forced command)\n       olo-rex-link move status DIR\n       olo-rex-link move stop [--spare PID]…";
 
 pub fn run(args: Vec<String>) -> ! {
     let code = match args.first().map(String::as_str) {
@@ -227,31 +228,38 @@ fn allowed_line(public: &str, id: &str, helper: &Path, expiry: &str) -> Option<S
     Some(format!("restrict,expiry-time=\"{expiry}\",command=\"{helper} move receive --id {id}\" {kind} {body} {}", comment(id)))
 }
 
-/// `move allow ID LINE [--root PATH]…`: the move's key let in (again: a
-/// later allow puts its day off, the line once); with the folders of
-/// `/var/tmp` it may write besides the home, which this account keeps in
-/// the move's folder here, out of the key's reach.
+/// `move allow ID LINE [--var-tmp]`: the move's key let in (again: a
+/// later allow puts its day off, the line once); with `--var-tmp` when
+/// `/var/tmp` is also allowed for this move, kept in the move's folder
+/// here, out of the key's reach.
 fn allow(args: &[String]) -> i32 {
     let (Some(id), Some(public)) = (args.first(), args.get(1)) else {
         eprintln!("{USAGE}");
         return 2;
     };
-    let mut roots = Vec::new();
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
-        match (a.as_str(), it.next()) {
-            ("--root", Some(r)) if var_tmp_root(r) => roots.push(r.clone()),
-            _ => {
-                eprintln!("olo-rex-link move allow: a folder of /var/tmp of its own, by its whole path, after --root");
-                return 2;
-            }
+    let mut var_tmp = false;
+    for a in &args[2..] {
+        if a == "--var-tmp" {
+            var_tmp = true;
+        } else {
+            eprintln!("olo-rex-link move allow: unknown option {a} (expected --var-tmp)");
+            return 2;
         }
     }
     if named(id) {
         let dir = home().join(MOVES).join(id);
-        let saved = std::fs::create_dir_all(&dir)
-            .and_then(|()| std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)))
-            .and_then(|()| write_whole(&dir.join("roots"), roots.join("\n").as_bytes(), 0o600));
+        let marker = dir.join("var_tmp");
+        let saved = std::fs::create_dir_all(&dir).and_then(|()| std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))).and_then(|()| {
+            if var_tmp {
+                write_whole(&marker, b"1\n", 0o600)
+            } else {
+                match std::fs::remove_file(&marker) {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+        });
         if let Err(e) = saved {
             eprintln!("olo-rex-link move allow: {e}");
             return 1;
@@ -333,27 +341,11 @@ fn kept(rel: &Path) -> bool {
     KEPT.iter().any(|k| rel.starts_with(k) || Path::new(k).starts_with(rel))
 }
 
-/// A folder of `/var/tmp` itself (`/var/tmp/NAME`, nothing deeper), by a
-/// plain whole path.
-fn var_tmp_root(root: &str) -> bool {
-    let path = Path::new(root);
-    path.parent() == Some(Path::new("/var/tmp")) && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| !n.starts_with('.') && named_file(n))
-}
-
-/// A file's name of plain characters, no `..` or `/`.
-fn named_file(name: &str) -> bool {
-    !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.chars().any(char::is_control)
-}
-
-/// What a move's key may ask (`move receive`), hex-coded JSON as the last
-/// word of its command (`olo-rex-link move do HEX`: no shell between).
+/// What a move's key may ask through `olo-rex-link move do HEX`.
 #[derive(Debug, PartialEq, Eq)]
 enum Asked {
-    /// Can it be reached, and by which helper.
+    /// Can it be reached, by which helper, and is `rsync` present.
     Hello,
-    /// The engine's receiving side into `root` (under the home, or the
-    /// account's own folder in `/var/tmp`), with these of its options.
-    Sync { root: String, options: Vec<String> },
     /// The paths named on the input (NUL after each, under `root`) taken
     /// away: the second pass's, of what the first put there and the
     /// source no longer has.
@@ -367,29 +359,132 @@ pub(crate) fn unhex(s: &str) -> Option<Vec<u8>> {
 
 /// The ask in a command's last word (`SSH_ORIGINAL_COMMAND`).
 fn asked(command: &str) -> Option<Asked> {
-    let word = command.split_whitespace().last()?;
+    let mut words = command.split_whitespace();
+    if (words.next(), words.next(), words.next()) != (Some("olo-rex-link"), Some("move"), Some("do")) {
+        return None;
+    }
+    let word = words.next()?;
+    if words.next().is_some() {
+        return None;
+    }
     let v: serde_json::Value = serde_json::from_slice(&unhex(word)?).ok()?;
     let root = || v["root"].as_str().map(str::to_owned);
     match v["op"].as_str()? {
         "hello" => Some(Asked::Hello),
-        "sync" => {
-            let options: Vec<String> = v["options"].as_array()?.iter().map(|o| o.as_str().map(str::to_owned)).collect::<Option<_>>()?;
-            // (Only what keeps the home's own files: never `--delete`.)
-            let mut it = options.iter();
-            while let Some(o) = it.next() {
-                match o.as_str() {
-                    "--scoped" | "--keep-newer" | "--no-cache" => {}
-                    "--exclude" => {
-                        it.next()?;
-                    }
-                    _ => return None,
-                }
-            }
-            Some(Asked::Sync { root: root()?, options })
-        }
         "forget" => Some(Asked::Forget { root: root()? }),
         _ => None,
     }
+}
+
+/// Splits a POSIX shell-escaped command (`SSH_ORIGINAL_COMMAND` from rsync
+/// with `--no-secluded-args`) into literal arguments, refusing unquoted
+/// shell metacharacters, newlines and NULs.
+fn split_shell_words(s: &str) -> Option<Vec<String>> {
+    if s.bytes().any(|b| b == 0 || b == b'\n' || b == b'\r') {
+        return None;
+    }
+    let mut words = Vec::new();
+    let mut cur = String::new();
+    let mut in_word = false;
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            ' ' | '\t' => {
+                if in_word {
+                    words.push(std::mem::take(&mut cur));
+                    in_word = false;
+                }
+            }
+            '\\' => {
+                let next = chars.next()?;
+                cur.push(next);
+                in_word = true;
+            }
+            '\'' => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        Some('\'') => break,
+                        Some(ch) => cur.push(ch),
+                        None => return None,
+                    }
+                }
+            }
+            '"' => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        Some('"') => break,
+                        Some('\\') => {
+                            let next = chars.next()?;
+                            cur.push(next);
+                        }
+                        Some('$' | '`') | None => return None,
+                        Some(ch) => cur.push(ch),
+                    }
+                }
+            }
+            ';' | '|' | '&' | '$' | '`' | '<' | '>' | '(' | ')' => return None,
+            _ => {
+                cur.push(c);
+                in_word = true;
+            }
+        }
+    }
+    if in_word {
+        words.push(cur);
+    }
+    Some(words)
+}
+
+/// A validated receiving `rsync --server` command from
+/// `SSH_ORIGINAL_COMMAND`: never `--sender` (read-only is refused), never
+/// `--delete*`, never options that run programs or read files on the
+/// destination, and exactly one target path after `.`. Returns the
+/// arguments to pass to `rsync` (`words[1..]`) and the destination path.
+fn asked_rsync(command: &str) -> Option<(Vec<String>, String)> {
+    let words = split_shell_words(command)?;
+    if words.len() < 4 || words[0] != "rsync" || words[1] != "--server" {
+        return None;
+    }
+    let dot = words[2..].iter().position(|w| w == ".")? + 2;
+    if dot + 2 != words.len() {
+        return None;
+    }
+    for opt in &words[2..dot] {
+        if let Some(long) = opt.strip_prefix("--") {
+            let ok = matches!(long, "partial" | "no-implied-dirs" | "ignore-missing-args" | "stats" | "preallocate" | "8-bit-output")
+                || long.strip_prefix("log-format=").is_some_and(|v| !v.is_empty() && !v.chars().any(char::is_control))
+                || long.strip_prefix("out-format=").is_some_and(|v| !v.is_empty() && !v.chars().any(char::is_control))
+                || long.strip_prefix("timeout=").is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
+                || long.strip_prefix("compress-choice=").is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b','))
+                || long.strip_prefix("checksum-choice=").is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b','))
+                || long.strip_prefix("compress-level=").is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit() || b == b'-'))
+                || long.strip_prefix("skip-compress=").is_some_and(|v| !v.chars().any(char::is_control));
+            if !ok {
+                return None;
+            }
+        } else {
+            let short = opt.strip_prefix('-')?;
+            if short.is_empty() {
+                return None;
+            }
+            let (flags, compat) = match short.split_once("e.") {
+                Some((f, c)) => (f, Some(c)),
+                None => (short, None),
+            };
+            if !flags.bytes().all(|b| matches!(b, b'l' | b'H' | b't' | b'p' | b'r' | b'R' | b'x' | b'S' | b'z' | b'8' | b'v' | b'q' | b'u' | b'W' | b'I' | b'd')) {
+                return None;
+            }
+            if let Some(c) = compat
+                && (c.is_empty() || !c.bytes().all(|b| b.is_ascii_alphanumeric()))
+            {
+                return None;
+            }
+        }
+    }
+    let dest = words[dot + 1].clone();
+    Some((words[1..].to_vec(), dest))
 }
 
 /// Where a move's key may write: the home itself (by its real path:
@@ -397,9 +492,9 @@ fn asked(command: &str) -> Option<Asked> {
 /// of the copy goes to (sent in parallel), never one on the way to or in
 /// what the destination keeps ([`KEPT`]: not `.ssh`, not `.local`), each
 /// folder on the way a folder and not a link, itself a folder or not
-/// there yet; or a folder of `/var/tmp` the app named for this move when
-/// it let the key in (`roots`), the account's own or not there yet, not a
-/// link. Nothing else.
+/// there yet; or `/var/tmp` when `allow --var-tmp` permitted it for this
+/// move (the sticky bit keeps every other account's files untouched).
+/// Nothing else.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Root {
     Home,
@@ -407,21 +502,27 @@ enum Root {
     VarTmp,
 }
 
-fn writable_root(root: &str, home: &Path, uid: u32, roots: &[String]) -> Option<Root> {
-    let path = Path::new(root);
+fn writable_root(root: &str, home: &Path, var_tmp_ok: bool) -> Option<Root> {
+    let trimmed = root.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = Path::new(trimmed);
     if !path.is_absolute() || path.components().any(|c| !matches!(c, std::path::Component::RootDir | std::path::Component::Normal(_))) {
         return None;
     }
-    if let (Ok(real), Ok(home)) = (std::fs::canonicalize(path), std::fs::canonicalize(home))
-        && real == home
+    let canon_home = std::fs::canonicalize(home).ok();
+    if let (Ok(real), Some(ch)) = (std::fs::canonicalize(path), &canon_home)
+        && real == *ch
     {
         return Some(Root::Home);
     }
-    if let Ok(rel) = path.strip_prefix(home)
+    let part_rel = path.strip_prefix(home).ok().map(|r| (home, r)).or_else(|| canon_home.as_deref().and_then(|ch| path.strip_prefix(ch).ok().map(|r| (ch, r))));
+    if let Some((base, rel)) = part_rel
         && !rel.as_os_str().is_empty()
         && rel.components().all(|c| matches!(c, std::path::Component::Normal(_)))
         && !kept(rel)
-        && no_link_on_the_way(home, rel)
+        && no_link_on_the_way(base, rel)
     {
         return match std::fs::symlink_metadata(path) {
             Ok(m) if m.is_dir() => Some(Root::Part),
@@ -429,19 +530,15 @@ fn writable_root(root: &str, home: &Path, uid: u32, roots: &[String]) -> Option<
             _ => None,
         };
     }
-    if !(var_tmp_root(root) && roots.iter().any(|r| r == root)) {
-        return None;
+    if trimmed == "/var/tmp" && var_tmp_ok {
+        return Some(Root::VarTmp);
     }
-    match std::fs::symlink_metadata(path) {
-        Ok(m) => (m.is_dir() && std::os::unix::fs::MetadataExt::uid(&m) == uid).then_some(Root::VarTmp),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Some(Root::VarTmp),
-        Err(_) => None,
-    }
+    None
 }
 
-/// The `/var/tmp` folders the app named for move `id` (`allow --root`).
-fn allowed_roots(id: &str) -> Vec<String> {
-    std::fs::read_to_string(home().join(MOVES).join(id).join("roots")).map(|t| t.lines().filter(|l| var_tmp_root(l)).map(str::to_owned).collect()).unwrap_or_default()
+/// Whether `allow --var-tmp` permitted `/var/tmp` for move `id`.
+fn var_tmp_allowed(id: &str) -> bool {
+    home().join(MOVES).join(id).join("var_tmp").exists()
 }
 
 /// `move receive --id ID`: what the move's key runs (its forced command
@@ -460,68 +557,58 @@ fn receive(args: &[String]) -> i32 {
     }
     // SAFETY: a getter.
     let uid = unsafe { libc::getuid() };
-    let roots = allowed_roots(id);
-    let dir = home().join(MOVES).join(id);
-    match asked(&command) {
-        Some(Asked::Hello) => {
-            println!("{{\"ok\":true,\"helper\":\"{}\"}}", olo_rex_link::VERSION);
-            0
-        }
-        Some(Asked::Sync { root, mut options }) => {
-            let Some(kind) = writable_root(&root, &home(), uid, &roots) else {
-                eprintln!("olo-rex-link move receive: {root} isn't somewhere this move may write");
-                return 2;
-            };
-            // (What the destination keeps as its own, whatever the sender
-            // sends: its keys, its helper, the move's own folder. Its
-            // index kept in the move's folder, not the home's cache, where
-            // it would stay: one for each root.)
-            options.retain(|o| o != "--no-cache");
-            let mut args = vec!["receive".to_owned(), root.clone()];
-            args.extend(options);
-            if kind == Root::Home {
-                for p in KEPT {
-                    args.extend(["--protect".to_owned(), (*p).to_owned()]);
+    let var_tmp_ok = var_tmp_allowed(id);
+    if let Some(ask) = asked(&command) {
+        return match ask {
+            Asked::Hello => {
+                println!("{{\"ok\":true,\"helper\":\"{}\",\"rsync\":{}}}", olo_rex_link::VERSION, find_program("rsync").is_some());
+                0
+            }
+            Asked::Forget { root } => match writable_root(&root, &home(), var_tmp_ok) {
+                Some(kind) => {
+                    let trimmed = root.trim_end_matches('/');
+                    forget(Path::new(trimmed), kind, Path::new(trimmed).strip_prefix(home()).ok().map(Path::to_path_buf), uid)
                 }
-            }
-            let made = match kind {
-                Root::Home => Ok(()),
-                Root::VarTmp => std::fs::create_dir(&root).or_else(|e| if e.kind() == io::ErrorKind::AlreadyExists { Ok(()) } else { Err(e) }),
-                // (Its folders on the way made where the home's own session
-                // hasn't yet: they are made right when it gets there.)
-                Root::Part => std::fs::create_dir_all(&root),
-            };
-            if let Err(e) = made {
-                eprintln!("olo-rex-link move receive: {root}: {e}");
-                return 1;
-            }
-            let name = if kind == Root::Home { "recv-index".to_owned() } else { format!("recv-index-{}", key_of("r", &root)) };
-            args.extend(["--cache".to_owned(), dir.join(name).display().to_string()]);
-            crate::sync::run(args)
-        }
-        Some(Asked::Forget { root }) => match writable_root(&root, &home(), uid, &roots) {
-            // (What is under a part is kept as the home's is: by its path
-            // from the home.)
-            Some(kind) => forget(Path::new(&root), kind, Path::new(&root).strip_prefix(home()).ok().map(Path::to_path_buf)),
-            None => {
-                eprintln!("olo-rex-link move receive: {root} isn't somewhere this move may write");
-                2
-            }
-        },
-        None => {
-            eprintln!("olo-rex-link move receive: not something a move's key may ask");
-            2
-        }
+                None => {
+                    eprintln!("olo-rex-link move receive: {root} isn't somewhere this move may write");
+                    2
+                }
+            },
+        };
     }
+    let Some((rsync_args, dest)) = asked_rsync(&command) else {
+        eprintln!("olo-rex-link move receive: not something a move's key may ask");
+        return 2;
+    };
+    let Some(kind) = writable_root(&dest, &home(), var_tmp_ok) else {
+        eprintln!("olo-rex-link move receive: {dest} isn't somewhere this move may write");
+        return 2;
+    };
+    if kind == Root::Part
+        && let Err(e) = std::fs::create_dir_all(dest.trim_end_matches('/'))
+    {
+        eprintln!("olo-rex-link move receive: {dest}: {e}");
+        return 1;
+    }
+    let Some(rsync) = find_program("rsync") else {
+        eprintln!("olo-rex-link move receive: rsync isn't installed on this host");
+        return 127;
+    };
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(rsync).args(&rsync_args).exec();
+    eprintln!("olo-rex-link move receive: rsync: {err}");
+    127
 }
 
 /// `forget`: each path on the input (NUL after each, under `root`) taken
 /// away, a folder only if it is empty; deepest first. Never one the
 /// destination keeps ([`KEPT`]), never through a link (each folder on the
-/// way a folder, not a link to one elsewhere), and in a folder that is
+/// way a folder, not a link to one elsewhere), for `/var/tmp` only entries
+/// whose top-level entry is owned by `uid`, and in a folder that is
 /// read-only (Go's module cache: 0555) by opening it to the account a
 /// moment, its mode and time put back.
-fn forget(root: &Path, kind: Root, under_home: Option<PathBuf>) -> i32 {
+fn forget(root: &Path, kind: Root, under_home: Option<PathBuf>, uid: u32) -> i32 {
+    use std::os::unix::fs::MetadataExt;
     let mut input = Vec::new();
     if io::stdin().read_to_end(&mut input).is_err() {
         return 1;
@@ -535,6 +622,16 @@ fn forget(root: &Path, kind: Root, under_home: Option<PathBuf>) -> i32 {
         if rel.is_absolute() || rel.components().any(|c| !matches!(c, std::path::Component::Normal(_))) || in_home.is_some_and(|p| kept(&p)) || !folders_on_the_way(root, rel) {
             left += 1;
             continue;
+        }
+        if kind == Root::VarTmp {
+            let Some(first) = rel.components().next() else {
+                left += 1;
+                continue;
+            };
+            if !std::fs::symlink_metadata(root.join(first)).is_ok_and(|m| m.uid() == uid) {
+                left += 1;
+                continue;
+            }
         }
         if remove_entry(&root.join(rel)) {
             gone += 1;
@@ -884,8 +981,8 @@ struct Sending {
     there: String,
     pass: u32,
     exclude: Vec<String>,
-    /// Folders of `/var/tmp` sent too, each to the same place there.
-    also: Vec<String>,
+    /// Also copy this account's entries in `/var/tmp` to `/var/tmp` there.
+    var_tmp: bool,
     /// A part's share of the home, where it is told (the rig's: a small
     /// home in parts all the same); else a stream's, a gigabyte or more.
     each: Option<u64>,
@@ -924,13 +1021,7 @@ fn sending(args: &[String]) -> Option<Sending> {
                 let (host, port) = host_port(at)?;
                 (s.user, s.host, s.port) = (user.to_owned(), host, port);
             }
-            "--also" => {
-                let root = it.next()?;
-                if !var_tmp_root(root) {
-                    return None;
-                }
-                s.also.push(root.clone());
-            }
+            "--var-tmp" => s.var_tmp = true,
             "--host-key" => s.host_key = it.next()?.split_whitespace().take(2).collect::<Vec<_>>().join(" "),
             "--there" => s.there = it.next()?.clone(),
             "--pass" => s.pass = it.next()?.parse().ok()?,
@@ -1028,108 +1119,6 @@ fn write_standing(dir: &Path, standing: &Shared) {
     let _ = write_whole(&dir.join("status.json"), v.to_string().as_bytes(), 0o600);
 }
 
-/// A part of the home (or a folder of /var/tmp) as the engine sends it,
-/// keeping the paths it sends (the next pass's: what it put there and is
-/// gone here is taken away there), and passing on the engine's single read
-/// of new files and its cache.
-struct Counted {
-    inner: olo_rex_sync::wire::FolderSource,
-    keep_paths: PathBuf,
-}
-
-impl olo_rex_sync::wire::Source for Counted {
-    fn index(&self) -> io::Result<olo_rex_sync::Index> {
-        let index = self.inner.index()?;
-        keep_paths(&self.keep_paths, &index)?;
-        Ok(index)
-    }
-
-    fn index_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<olo_rex_sync::Index> {
-        let index = self.inner.index_with_progress(on_entry)?;
-        keep_paths(&self.keep_paths, &index)?;
-        Ok(index)
-    }
-
-    fn index_lazy_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(olo_rex_sync::Index, HashSet<String>)>> {
-        let found = self.inner.index_lazy_with_progress(on_entry)?;
-        if let Some((index, _)) = &found {
-            keep_paths(&self.keep_paths, index)?;
-        }
-        Ok(found)
-    }
-
-    fn hash_entry(&self, path: &str, size: u64) -> io::Result<olo_rex_sync::FileDigest> {
-        self.inner.hash_entry(path, size)
-    }
-
-    fn wants_cache(&self) -> bool {
-        self.inner.wants_cache()
-    }
-
-    fn save_cache(&self, index: &olo_rex_sync::Index) -> io::Result<()> {
-        self.inner.save_cache(index)
-    }
-
-    fn check_unchanged(&self, entry: &olo_rex_sync::Entry) -> bool {
-        self.inner.check_unchanged(entry)
-    }
-
-    fn extent_at(&self, path: &str, offset: u64, max_len: u64) -> io::Result<(bool, u64)> {
-        self.inner.extent_at(path, offset, max_len)
-    }
-
-    fn read(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
-        self.inner.read(path, offset, len)
-    }
-}
-
-/// An async stream read and written from a blocking thread (the engine's
-/// side), the runtime driving it on its own.
-struct Blocking<S> {
-    stream: S,
-    handle: tokio::runtime::Handle,
-    standing: Shared,
-}
-
-impl<S: tokio::io::AsyncRead + Unpin> Read for Blocking<S> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        use tokio::io::AsyncReadExt;
-        self.handle.block_on(self.stream.read(buf))
-    }
-}
-
-impl<S: tokio::io::AsyncWrite + Unpin> Write for Blocking<S> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        use tokio::io::AsyncWriteExt;
-        let n = self.handle.block_on(self.stream.write(buf))?;
-        self.standing.lock().unwrap_or_else(|e| e.into_inner()).sent += n as u64;
-        Ok(n)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        use tokio::io::AsyncWriteExt;
-        self.handle.block_on(self.stream.flush())
-    }
-}
-
-/// The destination as the app's own connection found it: its key, and
-/// nothing else, let through.
-struct Pinned {
-    key: String,
-}
-
-impl russh::client::Handler for Pinned {
-    type Error = russh::Error;
-
-    async fn check_server_key(&mut self, server: &russh::keys::PublicKeyOrCertificate) -> Result<bool, Self::Error> {
-        let key = match server {
-            russh::keys::PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
-            russh::keys::PublicKeyOrCertificate::Certificate(cert) => russh::keys::PublicKey::from(cert.public_key().clone()),
-        };
-        Ok(key.to_openssh().is_ok_and(|line| line.split_whitespace().take(2).collect::<Vec<_>>().join(" ") == self.key))
-    }
-}
-
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -1137,6 +1126,51 @@ fn hex(bytes: &[u8]) -> String {
 /// The command a move's key sends for `ask` (its forced command reads it).
 fn command_for(ask: &serde_json::Value) -> String {
     format!("olo-rex-link move do {}", hex(ask.to_string().as_bytes()))
+}
+
+/// Writes `known_hosts` and an isolated `ssh_config` in `s.dir` so every
+/// `ssh` and `rsync` stream uses only the move's key and pinned host key,
+/// ignoring `~/.ssh/config` and `~/.ssh/known_hosts`.
+fn write_ssh_files(s: &Sending) -> Result<(), String> {
+    std::fs::create_dir_all(&s.dir).and_then(|()| std::fs::set_permissions(&s.dir, std::fs::Permissions::from_mode(0o700))).map_err(|e| format!("{}: {e}", s.dir.display()))?;
+    let abs = std::fs::canonicalize(&s.dir).unwrap_or_else(|_| s.dir.clone());
+    let abs_str = abs.to_str().ok_or_else(|| "the move's folder path isn't UTF-8".to_owned())?;
+    for (what, val) in [("host", s.host.as_str()), ("user", s.user.as_str()), ("host key", s.host_key.as_str()), ("move folder", abs_str)] {
+        if val.contains(['"', '\n', '\r']) || val.chars().any(char::is_control) {
+            return Err(format!("invalid character in {what}"));
+        }
+    }
+    if s.host.chars().any(char::is_whitespace) || s.user.chars().any(char::is_whitespace) {
+        return Err("whitespace in host or user".into());
+    }
+    let known = format!("olo-move-dest {}\n", s.host_key);
+    write_whole(&abs.join("known_hosts"), known.as_bytes(), 0o600).map_err(|e| format!("known_hosts: {e}"))?;
+    // (OpenSSH expands `%` tokens in IdentityFile / UserKnownHostsFile.)
+    let esc_dir = abs_str.replace('%', "%%");
+    let config = format!(
+        "Host dest\n\
+         \tHostName {host}\n\
+         \tPort {port}\n\
+         \tUser {user}\n\
+         \tHostKeyAlias olo-move-dest\n\
+         \tIdentityFile \"{esc_dir}/key\"\n\
+         \tIdentitiesOnly yes\n\
+         \tUserKnownHostsFile \"{esc_dir}/known_hosts\"\n\
+         \tGlobalKnownHostsFile /dev/null\n\
+         \tStrictHostKeyChecking yes\n\
+         \tUpdateHostKeys no\n\
+         \tBatchMode yes\n\
+         \tCompression no\n\
+         \tServerAliveInterval 15\n\
+         \tServerAliveCountMax 4\n\
+         \tConnectTimeout 30\n\
+         \tClearAllForwardings yes\n\
+         \tControlMaster no\n",
+        host = s.host,
+        port = s.port,
+        user = s.user,
+    );
+    write_whole(&abs.join("ssh_config"), config.as_bytes(), 0o600).map_err(|e| format!("ssh_config: {e}"))
 }
 
 /// `move send …`.
@@ -1150,9 +1184,7 @@ fn send(args: &[String]) -> i32 {
         return 1;
     }
     // (Held to the end, by the child when it forks: the descriptor goes
-    // with it.)
-    // (Half a second's grace: `status` takes the lock a moment to see
-    // whether it is held.)
+    // with it. Half a second's grace: `status` takes the lock a moment.)
     let mut held = lock(&s.dir);
     for _ in 0..10 {
         if !matches!(held, Ok(None)) {
@@ -1190,8 +1222,6 @@ fn send(args: &[String]) -> i32 {
             0 => {
                 // SAFETY: plain calls on the child's own descriptors.
                 unsafe { libc::setsid() };
-                // (Its streams never the connection that started it, which
-                // would wait for them to close: the log, else nowhere.)
                 use std::os::fd::AsRawFd;
                 if let Ok(null) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/null") {
                     let log = std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(s.dir.join("log"));
@@ -1228,8 +1258,7 @@ fn send(args: &[String]) -> i32 {
             }
         })
     };
-    // (Threads for the sessions' connections: each encrypts on its own.)
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(2, 16);
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(2, 8);
     let ended = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(threads)
         .enable_all()
@@ -1257,121 +1286,55 @@ fn send(args: &[String]) -> i32 {
     code
 }
 
-/// The paths a pass sent of a part (by its key), by the pass's number.
-fn kept_paths(dir: &Path, key: &str, pass: u32) -> PathBuf {
-    dir.join(format!("paths-{key}-{pass}"))
-}
-
 /// A short name for a root, for its files in the move's folder.
 fn key_of(kind: &str, root: &str) -> String {
     let id = olo_rex_sync::chunk::chunk_id(root.as_bytes());
     format!("{kind}{}", hex(&id[..8]))
 }
 
-/// What a pass sent, as a sorted list (NUL after each): its index's
-/// paths, and those it couldn't read (still there: never taken away as
-/// gone). A pass made again (a cut first pass started over) adds to what
-/// the one before it kept, so nothing the first try put there is
-/// forgotten.
-fn keep_paths(file: &Path, index: &olo_rex_sync::Index) -> io::Result<()> {
-    let mut paths: Vec<&str> = index.entries.keys().map(String::as_str).collect();
-    let unread: Vec<String> = index.skipped().unread.paths;
-    paths.extend(unread.iter().map(String::as_str));
-    let before = std::fs::read(file).unwrap_or_default();
-    paths.extend(before.split(|&b| b == 0).filter(|p| !p.is_empty()).filter_map(|p| std::str::from_utf8(p).ok()));
-    paths.sort_unstable();
-    paths.dedup();
-    let mut out = Vec::with_capacity(paths.iter().map(|p| p.len() + 1).sum());
-    for p in paths {
-        out.extend_from_slice(p.as_bytes());
-        out.push(0);
-    }
-    write_whole(file, &out, 0o600)
-}
-
-/// What was sent before (a sorted list) and isn't now (another): what to
-/// take away there. Never what lies on another filesystem here (the copy
-/// doesn't go there: its files aren't gone), nor what this pass couldn't
-/// read; `None` when there is no list from before (a first pass, or a
-/// move whose first pass was never made).
-fn gone_since(before: &Path, now: &Path, mounts: &[String]) -> Option<Vec<u8>> {
-    let before = std::fs::read(before).ok()?;
-    let now = std::fs::read(now).ok()?;
-    let now: HashSet<&[u8]> = now.split(|&b| b == 0).filter(|p| !p.is_empty()).collect();
-    let under_mount = |p: &[u8]| mounts.iter().any(|m| p == m.as_bytes() || (p.starts_with(m.as_bytes()) && p.get(m.len()) == Some(&b'/')));
-    let mut out = Vec::new();
-    for p in before.split(|&b| b == 0).filter(|p| !p.is_empty()) {
-        if !now.contains(p) && !under_mount(p) {
-            out.extend_from_slice(p);
-            out.push(0);
-        }
-    }
-    Some(out)
-}
-
-/// The destination reached with the move's key, its host key pinned.
-async fn connect(s: &Sending) -> Result<russh::client::Handle<Pinned>, String> {
-    let private = std::fs::read_to_string(s.dir.join("key")).map_err(|e| format!("the move's key: {e}"))?;
-    let key = PrivateKey::from_openssh(&private).map_err(|e| format!("the move's key: {e}"))?;
-    // (The pinned key's kind asked for first: the destination shows the
-    // key the app checked, whatever its kinds; no SSH compression, the
-    // engine compresses; no waiting to fill packets; a window for a far
-    // link's round trips.)
-    let mut preferred = russh::Preferred::default();
-    if let Some(kind) = s.host_key.split_whitespace().next()
-        && let Ok(algorithm) = kind.parse::<russh::keys::Algorithm>()
-    {
-        let mut kinds: Vec<russh::keys::Algorithm> = if kind == "ssh-rsa" {
-            use russh::keys::{Algorithm, HashAlg};
-            vec![Algorithm::Rsa { hash: Some(HashAlg::Sha512) }, Algorithm::Rsa { hash: Some(HashAlg::Sha256) }, algorithm]
-        } else {
-            vec![algorithm]
-        };
-        kinds.extend(preferred.key.iter().filter(|k| !kinds.contains(k)).cloned().collect::<Vec<_>>());
-        preferred.key = std::borrow::Cow::Owned(kinds);
-    }
-    preferred.compression = std::borrow::Cow::Borrowed(&[russh::compression::NONE]);
-    let config =
-        std::sync::Arc::new(russh::client::Config { keepalive_interval: Some(Duration::from_secs(15)), keepalive_max: 4, nodelay: true, window_size: 16 << 20, preferred, ..Default::default() });
-    let session = tokio::time::timeout(Duration::from_secs(30), russh::client::connect(config, (s.host.as_str(), s.port), Pinned { key: s.host_key.clone() }))
-        .await
-        .map_err(|_| format!("{}:{} didn't answer in 30 seconds", s.host, s.port))?
-        .map_err(|e| match e {
-            russh::Error::UnknownKey => format!("{}:{} isn't the host the app knows (its key differs)", s.host, s.port),
-            e => format!("{}:{}: {e}", s.host, s.port),
-        })?;
-    let mut session = session;
-    let auth = session.authenticate_publickey(&s.user, russh::keys::PrivateKeyWithHashAlg::new(std::sync::Arc::new(key), None)).await.map_err(|e| e.to_string())?;
-    if !auth.success() {
-        return Err(format!("{}@{} didn't let the move's key in", s.user, s.host));
-    }
-    Ok(session)
-}
-
 /// `move reach DIR --to … --host-key …`: whether the destination can be
-/// reached from here with the move's key (before anything is stopped).
+/// reached from here with the move's key over `ssh` (the exact path
+/// `move send` uses), and `rsync` is installed on both hosts.
 fn reach(args: &[String]) -> i32 {
     let Some(s) = sending(args) else {
         eprintln!("{USAGE}");
         return 2;
     };
-    let said = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string()).and_then(|rt| {
+    let said = (|| -> Result<serde_json::Value, String> {
+        let ssh = find_program("ssh").ok_or_else(|| "ssh isn't installed on this host".to_owned())?;
+        if find_program("rsync").is_none() {
+            return Err("rsync isn't installed on this host".into());
+        }
+        write_ssh_files(&s)?;
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
         rt.block_on(async {
-            let session = connect(&s).await?;
-            let channel = session.channel_open_session().await.map_err(|e| e.to_string())?;
-            channel.exec(true, command_for(&serde_json::json!({"op": "hello"}))).await.map_err(|e| e.to_string())?;
-            let mut stream = channel.into_stream();
-            let mut answer = String::new();
-            use tokio::io::AsyncReadExt;
-            tokio::time::timeout(Duration::from_secs(20), stream.read_to_string(&mut answer)).await.map_err(|_| "the destination's helper didn't answer".to_owned())?.map_err(|e| e.to_string())?;
-            let _ = session.disconnect(russh::Disconnect::ByApplication, "", "").await;
-            Ok::<String, String>(answer)
+            let mut cmd = tokio::process::Command::new(&ssh);
+            cmd.current_dir(&s.dir)
+                .args(["-F", "ssh_config", "dest", &command_for(&serde_json::json!({"op": "hello"}))])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .kill_on_drop(true);
+            let out = tokio::time::timeout(Duration::from_secs(25), cmd.output()).await.map_err(|_| format!("{}:{} didn't answer in 25 seconds", s.host, s.port))?.map_err(|e| format!("ssh: {e}"))?;
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if !out.status.success() {
+                let why = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("ssh failed").trim();
+                return Err(why.to_owned());
+            }
+            let v: serde_json::Value = stdout.lines().rev().find_map(|l| serde_json::from_str(l.trim()).ok()).unwrap_or_default();
+            if v["ok"].as_bool() != Some(true) {
+                return Err(format!("the destination's helper didn't answer ({})", stdout.trim()));
+            }
+            if v["rsync"].as_bool() == Some(false) {
+                return Err("rsync isn't installed on the new host".into());
+            }
+            Ok(v)
         })
-    });
+    })();
     match said {
-        Ok(answer) => {
-            let v: serde_json::Value = serde_json::from_str(answer.trim()).unwrap_or_default();
-            println!("{}", serde_json::json!({"ok": v["ok"].as_bool() == Some(true), "helper": v["helper"]}));
+        Ok(v) => {
+            println!("{}", serde_json::json!({"ok": true, "helper": v["helper"], "rsync": true}));
             0
         }
         Err(e) => {
@@ -1381,9 +1344,9 @@ fn reach(args: &[String]) -> i32 {
     }
 }
 
-/// What a pass sends in a session (and over a connection) of its own: the
-/// home's own (all of it but its parts), a part of it (a folder), or a
-/// folder of `/var/tmp`.
+/// What a pass sends in an `rsync` stream of its own: the home's own (all
+/// of it but its split parts), a split folder of the home, or a balanced
+/// bucket of the account's entries in `/var/tmp`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PartKind {
     Home,
@@ -1397,11 +1360,13 @@ struct Part {
     /// Where it is here, and where it goes there.
     here: PathBuf,
     there: String,
-    /// The move's exclusions under it, anchored at it.
+    /// The move's exclusions under it, anchored at it (for Home / Folder).
     exclude: Vec<String>,
+    /// For `/var/tmp` buckets: NUL-separated top-level entry names (`--files-from`).
+    files_from: Option<PathBuf>,
     /// Its files' name in the move's folder.
     key: String,
-    /// What the split measured of it.
+    /// What the split measured of it (logical file bytes, matching rsync progress).
     files: u64,
     bytes: u64,
 }
@@ -1418,25 +1383,45 @@ fn excludes_under(exclude: &[String], rel: &str) -> Vec<String> {
         .collect()
 }
 
+/// Escapes wildcard characters in a literal folder path for rsync's
+/// `--exclude-from` so split folder names containing `[` or `*` match
+/// literally.
+fn rsync_escape_pattern(rel: &str) -> String {
+    let mut out = String::with_capacity(rel.len() + 1);
+    out.push('/');
+    for c in rel.chars() {
+        if matches!(c, '\\' | '*' | '?' | '[' | ']') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// What [`measure_tree`] found: each folder's files and bytes (of all
-/// under it), each folder's folders, and the whole's.
+/// under it), each folder's folders, which folders have only owner-writable
+/// non-symlink ancestors, and the whole's.
 struct Tree {
     sizes: std::collections::HashMap<String, (u64, u64)>,
     children: std::collections::HashMap<String, Vec<String>>,
+    writable: HashSet<String>,
     files: u64,
     bytes: u64,
 }
 
 /// The home walked once, as the copy brings it (`filter`, one filesystem):
-/// what each folder holds.
+/// what each folder holds (logical bytes `meta.len()`, matching rsync's
+/// progress counter).
 fn measure_tree(home: &Path, filter: &olo_rex_sync::index::Filter) -> Tree {
     use std::os::unix::fs::MetadataExt;
     let dev = std::fs::symlink_metadata(home).map(|m| m.dev()).unwrap_or(0);
     let mut sizes: std::collections::HashMap<String, (u64, u64)> = std::collections::HashMap::new();
     let mut children: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut writable = HashSet::new();
+    writable.insert(String::new());
     let (mut files, mut bytes) = (0u64, 0u64);
-    let mut stack = vec![String::new()];
-    while let Some(rel) = stack.pop() {
+    let mut stack = vec![(String::new(), true)];
+    while let Some((rel, parent_writable)) = stack.pop() {
         let dir = if rel.is_empty() { home.to_path_buf() } else { home.join(&rel) };
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
         for e in rd.filter_map(|e| e.ok()) {
@@ -1445,18 +1430,21 @@ fn measure_tree(home: &Path, filter: &olo_rex_sync::index::Filter) -> Tree {
             let Ok(meta) = std::fs::symlink_metadata(e.path()) else { continue };
             if meta.is_dir() {
                 if meta.dev() == dev && filter.allow_dir(&child) {
+                    let is_w = parent_writable && (meta.permissions().mode() & 0o200 != 0);
+                    if is_w {
+                        writable.insert(child.clone());
+                    }
                     children.entry(rel.clone()).or_default().push(child.clone());
-                    stack.push(child);
+                    stack.push((child, is_w));
                 }
                 continue;
             }
             if !filter.matches_entry(&child) {
                 continue;
             }
-            let size = meta.blocks() * 512;
+            let size = if meta.is_file() { meta.len() } else { 0 };
             files += 1;
             bytes += size;
-            // (Its size to each folder it is in.)
             let mut at = child.as_str();
             while let Some((up, _)) = at.rsplit_once('/') {
                 match sizes.get_mut(up) {
@@ -1472,19 +1460,18 @@ fn measure_tree(home: &Path, filter: &olo_rex_sync::index::Filter) -> Tree {
             }
         }
     }
-    Tree { sizes, children, files, bytes }
+    Tree { sizes, children, writable, files, bytes }
 }
 
 /// The home split for sending in parallel: folders of it (by their paths
-/// under it), each a session of its own, of about `each` bytes or more;
-/// the biggest split into their folders until none is much bigger (a
-/// folder's own files stay with the home's session); never a folder on the
-/// way to what the destination keeps (`.ssh`, `.local`), nor one the move
-/// leaves out (the walk didn't go there). With what each holds, the
-/// biggest first, at most `most`.
+/// under it), each an `rsync` stream of its own, of about `each` bytes or
+/// more; the biggest split into their folders until none is much bigger;
+/// never a folder on the way to what the destination keeps (`.ssh`,
+/// `.local`), nor one under a read-only (`0555`) parent that a parallel
+/// stream couldn't `mkdir` under. Biggest first, at most `most`.
 fn split(tree: &Tree, each: u64, most: usize) -> Vec<(String, u64, u64)> {
-    let (sizes, children) = (&tree.sizes, &tree.children);
-    let may_be = |rel: &str| !kept(Path::new(rel));
+    let (sizes, children, writable) = (&tree.sizes, &tree.children, &tree.writable);
+    let may_be = |rel: &str| !kept(Path::new(rel)) && writable.contains(rel);
     let size_of = |rel: &str| sizes.get(rel).copied().unwrap_or_default();
     let mut parts: Vec<String> = children.get("").cloned().unwrap_or_default().into_iter().filter(|r| may_be(r)).collect();
     for _ in 0..2000 {
@@ -1500,10 +1487,97 @@ fn split(tree: &Tree, each: u64, most: usize) -> Vec<(String, u64, u64)> {
     out
 }
 
+/// Scans `root` (ordinarily `/var/tmp`) for top-level entries owned by `uid`
+/// and packs them into 1..=8 balanced buckets (greedy largest-first), each
+/// written as a NUL-separated `--files-from` list in `dir`. Zero entry names
+/// ever appear on a command line.
+fn var_tmp_buckets_in(root: &Path, uid: u32, dir: &Path, pass: u32, each: u64) -> io::Result<Vec<Part>> {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::MetadataExt;
+    let Ok(rd) = std::fs::read_dir(root) else { return Ok(Vec::new()) };
+    let root_dev = std::fs::symlink_metadata(root).map(|m| m.dev()).unwrap_or(0);
+    let mut items: Vec<(Vec<u8>, u64, u64)> = Vec::new();
+    let until = Instant::now() + Duration::from_secs(30);
+    for e in rd.filter_map(|e| e.ok()) {
+        let name = e.file_name();
+        let raw = name.as_bytes();
+        if raw.is_empty() || raw == b"." || raw == b".." || raw.contains(&0) || raw.contains(&b'/') {
+            continue;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(e.path()) else { continue };
+        if meta.uid() != uid {
+            continue;
+        }
+        let (mut files, mut bytes) = (0u64, 0u64);
+        if meta.is_dir() {
+            let mut stack = vec![e.path()];
+            while let Some(d) = stack.pop() {
+                if Instant::now() > until {
+                    break;
+                }
+                let Ok(sub) = std::fs::read_dir(&d) else { continue };
+                for f in sub.filter_map(|f| f.ok()) {
+                    let Ok(m) = std::fs::symlink_metadata(f.path()) else { continue };
+                    if m.is_dir() {
+                        if m.dev() == root_dev {
+                            stack.push(f.path());
+                        }
+                    } else {
+                        files += 1;
+                        if m.is_file() {
+                            bytes += m.len();
+                        }
+                    }
+                }
+            }
+        } else {
+            files = 1;
+            if meta.is_file() {
+                bytes = meta.len();
+            }
+        }
+        items.push((raw.to_vec(), files, bytes));
+    }
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    // (Largest first so greedy bin-packing balances byte size across buckets.)
+    items.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    let total_bytes: u64 = items.iter().map(|x| x.2).sum();
+    let target_buckets = if each == 0 || total_bytes < each { 1 } else { ((total_bytes / each) as usize).clamp(2, 8) }.min(items.len());
+    let mut buckets: Vec<(Vec<u8>, u64, u64)> = (0..target_buckets).map(|_| (Vec::new(), 0, 0)).collect();
+    for (name, f, b) in items {
+        let idx = buckets.iter().enumerate().min_by_key(|(_, x)| (x.2, x.1)).map_or(0, |(i, _)| i);
+        buckets[idx].0.extend_from_slice(&name);
+        buckets[idx].0.push(0);
+        buckets[idx].1 += f;
+        buckets[idx].2 += b;
+    }
+    let mut parts = Vec::new();
+    for (i, (list_bytes, files, bytes)) in buckets.into_iter().enumerate() {
+        if list_bytes.is_empty() {
+            continue;
+        }
+        let list_path = dir.join(format!("vartmp-{pass}-{i}.list"));
+        write_whole(&list_path, &list_bytes, 0o600)?;
+        parts.push(Part {
+            kind: PartKind::VarTmp,
+            here: root.to_path_buf(),
+            there: root.display().to_string(),
+            exclude: Vec::new(),
+            files_from: Some(list_path),
+            key: format!("vt{i}"),
+            files: if pass == 1 { files } else { 0 },
+            bytes: if pass == 1 { bytes } else { 0 },
+        });
+    }
+    Ok(parts)
+}
+
 /// How many sessions a pass runs at once: as many as make it go fastest,
 /// found as it goes. More while each step up makes it faster; held where
 /// it stops; tried one more now and then, and one fewer kept where that
-/// is slower. (A session is never cut: fewer means none started until the
+/// is slower. (A stream is never cut: fewer means none started until the
 /// running are fewer.)
 #[derive(Debug)]
 struct Streams {
@@ -1533,8 +1607,6 @@ impl Streams {
         let rate = bytes.saturating_sub(self.last_bytes) as f64 / secs.max(0.001);
         self.last_bytes = bytes;
         self.ticks += 1;
-        // (Nothing sent yet, sessions still looking at their files: no
-        // judgment of the level by that.)
         if rate <= 0.0 {
             return self.level;
         }
@@ -1571,58 +1643,155 @@ impl Streams {
 
 /// The parts a pass sends: the home's split, kept from its first pass in
 /// the move's folder (a later pass's, and a first pass's started again, are
-/// the same: what each sent is told by it), the home's own session, and
-/// each folder of `/var/tmp`.
+/// the same), the home's own session, and (when `--var-tmp`) 1..=8 balanced
+/// buckets of this account's entries in `/var/tmp`.
 fn parts_of(s: &Sending, sessions_most: usize) -> io::Result<Vec<Part>> {
     let file = s.dir.join("parts.json");
     let home = home();
-    let saved: Option<Vec<(String, u64, u64)>> = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok());
-    let (split_parts, total) = match saved {
-        Some(parts) => (parts, None),
+    let mut base_exclude: Vec<String> = KEPT.iter().map(|k| format!("/{k}")).collect();
+    for e in &s.exclude {
+        if !base_exclude.contains(e) {
+            base_exclude.push(e.clone());
+        }
+    }
+    type SavedSplit = (Vec<(String, u64, u64)>, u64, u64);
+    let saved: Option<SavedSplit> = std::fs::read(&file).ok().and_then(|b| {
+        serde_json::from_slice::<SavedSplit>(&b).ok().or_else(|| {
+            // (Older format: just the split vec.)
+            serde_json::from_slice::<Vec<(String, u64, u64)>>(&b).ok().map(|v| (v, 0, 0))
+        })
+    });
+    let (split_parts, total_files, total_bytes, each_bytes) = match saved {
+        Some((parts, tf, tb)) => {
+            let each = s.each.unwrap_or_else(|| (tb / (3 * sessions_most as u64).max(1)).max(1 << 30));
+            (parts, tf, tb, each)
+        }
         None => {
-            let filter = olo_rex_sync::index::Filter { exclude: s.exclude.clone(), ..olo_rex_sync::index::Filter::default() };
-            // (About three parts a stream, so the number running can be
-            // changed as it goes; none smaller than a gigabyte.)
+            let filter = olo_rex_sync::index::Filter { exclude: base_exclude.clone(), ..olo_rex_sync::index::Filter::default() };
             let tree = measure_tree(&home, &filter);
             let each = s.each.unwrap_or_else(|| (tree.bytes / (3 * sessions_most as u64).max(1)).max(1 << 30));
             let parts = split(&tree, each, 64);
-            write_whole(&file, serde_json::to_string(&parts).unwrap_or_default().as_bytes(), 0o600)?;
-            (parts, Some((tree.files, tree.bytes)))
+            let payload = (&parts, tree.files, tree.bytes);
+            write_whole(&file, serde_json::to_string(&payload).unwrap_or_default().as_bytes(), 0o600)?;
+            (parts, tree.files, tree.bytes, each)
         }
     };
     let here = |rel: &str| home.join(rel);
-    // (A part no longer a folder here is the home's own session's again.)
     let folders: Vec<&(String, u64, u64)> = split_parts.iter().filter(|(rel, _, _)| std::fs::symlink_metadata(here(rel)).is_ok_and(|m| m.is_dir())).collect();
-    let mut home_exclude = s.exclude.clone();
-    home_exclude.extend(folders.iter().map(|(rel, _, _)| format!("/{rel}")));
-    let (in_parts_files, in_parts_bytes) = folders.iter().fold((0, 0), |(f, b), p| (f + p.1, b + p.2));
-    let (home_files, home_bytes) = total.map_or((0, 0), |(f, b)| (f.saturating_sub(in_parts_files), b.saturating_sub(in_parts_bytes)));
-    let mut parts = vec![Part { kind: PartKind::Home, here: home.clone(), there: s.there.clone(), exclude: home_exclude, key: "home".into(), files: home_files, bytes: home_bytes }];
-    for (rel, files, bytes) in split_parts.iter() {
+    let mut home_exclude = base_exclude.clone();
+    home_exclude.extend(folders.iter().map(|(rel, _, _)| rsync_escape_pattern(rel)));
+    let (in_parts_files, in_parts_bytes) = folders.iter().fold((0u64, 0u64), |(f, b), p| (f + p.1, b + p.2));
+    let (home_files, home_bytes) = if s.pass == 1 && total_bytes > 0 { (total_files.saturating_sub(in_parts_files), total_bytes.saturating_sub(in_parts_bytes)) } else { (0, 0) };
+    let mut parts = vec![Part { kind: PartKind::Home, here: home.clone(), there: s.there.clone(), exclude: home_exclude, files_from: None, key: "home".into(), files: home_files, bytes: home_bytes }];
+    for (rel, files, bytes) in &split_parts {
         let gone = !folders.iter().any(|p| &p.0 == rel);
         parts.push(Part {
             kind: PartKind::Folder,
             here: here(rel),
             there: format!("{}/{rel}", s.there.trim_end_matches('/')),
-            exclude: excludes_under(&s.exclude, rel),
+            exclude: excludes_under(&base_exclude, rel),
+            files_from: None,
             key: key_of("p", rel),
-            files: if gone || total.is_none() { 0 } else { *files },
-            bytes: if gone || total.is_none() { 0 } else { *bytes },
+            files: if gone || s.pass > 1 { 0 } else { *files },
+            bytes: if gone || s.pass > 1 { 0 } else { *bytes },
         });
     }
-    for root in &s.also {
-        parts.push(Part { kind: PartKind::VarTmp, here: PathBuf::from(root), there: root.clone(), exclude: Vec::new(), key: key_of("t", root), files: 0, bytes: 0 });
+    if s.var_tmp {
+        // SAFETY: a getter.
+        let uid = unsafe { libc::getuid() };
+        parts.extend(var_tmp_buckets_in(Path::new("/var/tmp"), uid, &s.dir, s.pass, each_bytes)?);
     }
     Ok(parts)
 }
 
-/// A pass: its parts sent, the home's own session first and then the
-/// biggest, as many at once as make it go fastest ([`Streams`]). The home's
-/// session failing, or a part's, is the pass's (what the others did is
-/// kept: a pass started again finds it there); a folder of `/var/tmp`'s is
-/// said in the report.
+/// Decodes rsync's `\#OOO` octal escapes (emitted with `--8-bit-output` for
+/// control characters) back to raw path bytes.
+fn unescape_rsync(s: &str) -> Vec<u8> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 4 < bytes.len() && bytes[i] == b'\\' && bytes[i + 1] == b'#' && bytes[i + 2..i + 5].iter().all(|b| (b'0'..=b'7').contains(b)) {
+            let v = ((bytes[i + 2] - b'0') as u16) * 64 + ((bytes[i + 3] - b'0') as u16) * 8 + ((bytes[i + 4] - b'0') as u16);
+            if v <= 255 {
+                out.push(v as u8);
+                i += 5;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Parses an `rsync --info=progress2` status line (`120,000 100% 83.19MB/s
+/// 0:00:00 (xfr#2, to-chk=0/4)`), returning `(bytes_transferred, xfr_count)`.
+fn parse_progress2(line: &str) -> Option<(u64, Option<u64>)> {
+    if !line.contains('%') || !(line.contains("/s") || line.contains("xfr#")) {
+        return None;
+    }
+    let mut words = line.split_whitespace();
+    let first = words.next()?;
+    let second = words.next()?;
+    if !second.ends_with('%') {
+        return None;
+    }
+    let digits: String = first.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let bytes = digits.parse::<u64>().ok()?;
+    let xfr = line.split_once("xfr#").and_then(|(_, rest)| {
+        let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        num.parse::<u64>().ok()
+    });
+    Some((bytes, xfr))
+}
+
+/// What one `rsync` part produced.
+#[derive(Default)]
+struct PartResult {
+    copied: u64,
+    wire: u64,
+    gone: u64,
+    /// Skipped on a Pass 1 retry because `done-1-{key}` already existed.
+    skipped_done: bool,
+    warnings: Vec<String>,
+}
+
+/// Whether `stderr` from an exit-23 `rsync` shows a fatal destination write
+/// error (disk full, read-only fs, quota, refusal to write) rather than a
+/// live-source vanished/unreadable file.
+fn fatal_dest_error(stderr: &str) -> bool {
+    let low = stderr.to_ascii_lowercase();
+    for needle in [
+        "no space left on device",
+        "read-only file system",
+        "disk quota exceeded",
+        "mkstemp",
+        "isn't somewhere this move may write",
+        "not something a move's key may ask",
+        "host key verification failed",
+        "permission denied (publickey",
+    ] {
+        if low.contains(needle) {
+            return true;
+        }
+    }
+    false
+}
+
+/// A pass: its parts sent in parallel over `rsync`, with adaptive stream
+/// concurrency ([`Streams`]), staggered starts (never hammering sshd's
+/// `MaxStartups`), and live rolling throughput/ETA. Pass 1 resumes by
+/// skipping finished parts and using `--partial`; Pass 2 syncs every part
+/// and forgets paths sent in Pass 1 that no longer exist on the source.
 async fn copy(s: std::sync::Arc<Sending>, standing: Shared) -> Result<(), String> {
-    let most = std::thread::available_parallelism().map_or(8, |n| n.get()).clamp(2, 24);
+    let ssh = find_program("ssh").ok_or_else(|| "ssh isn't installed on this host".to_owned())?;
+    let rsync = find_program("rsync").ok_or_else(|| "rsync isn't installed on this host".to_owned())?;
+    write_ssh_files(&s)?;
+    let most = std::thread::available_parallelism().map_or(8, |n| n.get()).clamp(2, 12);
     standing.lock().unwrap_or_else(|e| e.into_inner()).phase = "splitting";
     let parts = {
         let s = s.clone();
@@ -1633,20 +1802,33 @@ async fn copy(s: std::sync::Arc<Sending>, standing: Shared) -> Result<(), String
         st.parts = parts.iter().map(|p| PartStanding { measured_files: p.files, measured_bytes: p.bytes, phase: "waiting", ..PartStanding::default() }).collect();
         st.phase = "copying";
     }
-    let mut whole = serde_json::json!({"same": 0, "copied": 0, "patched": 0, "failed": 0, "failures": [], "wire": 0, "gone": 0,
-        "skipped": {"unread": {"count": 0, "paths": []}, "odd_names": {"count": 0, "paths": []}, "special": {"count": 0, "paths": []}, "mounts": {"count": 0, "paths": []}}});
+    let mut whole = serde_json::json!({"copied": 0, "failed": 0, "failures": [], "wire": 0, "gone": 0});
     let mut waiting: std::collections::VecDeque<usize> = (0..parts.len()).collect();
     let mut running = tokio::task::JoinSet::new();
     let mut streams = Streams::new(4, most);
     let mut failed: Option<String> = None;
-    let every = Duration::from_secs(15);
-    let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+    let climb_every = Duration::from_secs(15);
+    let rate_every = Duration::from_secs(2);
+    let mut climb_tick = tokio::time::interval_at(tokio::time::Instant::now() + climb_every, climb_every);
+    let mut rate_tick = tokio::time::interval_at(tokio::time::Instant::now() + rate_every, rate_every);
+    let mut samples: std::collections::VecDeque<(Instant, u64)> = std::collections::VecDeque::from([(Instant::now(), 0)]);
+    let mut skipped_bytes = 0u64;
+    let mut last_spawn = Instant::now() - Duration::from_secs(1);
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok();
+    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()).ok();
     loop {
         while failed.is_none()
             && running.len() < streams.level
             && let Some(k) = waiting.pop_front()
         {
-            running.spawn(send_part(s.clone(), parts[k].clone(), k, standing.clone()));
+            // (Stagger new SSH handshakes by 150 ms so sshd never sees a
+            // MaxStartups spike.)
+            let since = last_spawn.elapsed();
+            if since < Duration::from_millis(150) {
+                tokio::time::sleep(Duration::from_millis(150) - since).await;
+            }
+            last_spawn = Instant::now();
+            running.spawn(send_part(s.clone(), ssh.clone(), rsync.clone(), parts[k].clone(), k, standing.clone()));
         }
         {
             let mut st = standing.lock().unwrap_or_else(|e| e.into_inner());
@@ -1657,10 +1839,31 @@ async fn copy(s: std::sync::Arc<Sending>, standing: Shared) -> Result<(), String
         }
         tokio::select! {
             Some(done) = running.join_next() => match done {
-                Ok((k, Ok(report))) => {
-                    add_report(&mut whole, &report.0);
-                    whole["gone"] = (whole["gone"].as_u64().unwrap_or(0) + report.1).into();
-                    standing.lock().unwrap_or_else(|e| e.into_inner()).parts[k].phase = "done";
+                Ok((k, Ok(res))) => {
+                    whole["copied"] = (whole["copied"].as_u64().unwrap_or(0) + res.copied).into();
+                    whole["wire"] = (whole["wire"].as_u64().unwrap_or(0) + res.wire).into();
+                    whole["gone"] = (whole["gone"].as_u64().unwrap_or(0) + res.gone).into();
+                    if !res.warnings.is_empty()
+                        && let Some(list) = whole["failures"].as_array_mut()
+                    {
+                        for w in res.warnings.iter().take(200usize.saturating_sub(list.len())) {
+                            list.push(serde_json::json!({"path": parts[k].there, "why": w}));
+                        }
+                    }
+                    let mut st = standing.lock().unwrap_or_else(|e| e.into_inner());
+                    st.sent += res.wire;
+                    let mine = &mut st.parts[k];
+                    mine.phase = "done";
+                    if s.pass == 1 && mine.measured_bytes > 0 {
+                        if res.skipped_done {
+                            skipped_bytes = skipped_bytes.saturating_add(mine.measured_bytes);
+                        }
+                        mine.bytes = mine.bytes.max(mine.measured_bytes);
+                        mine.bytes_total = mine.bytes;
+                        mine.files = mine.files.max(mine.measured_files);
+                        mine.files_total = mine.files;
+                        mine.planned = true;
+                    }
                 }
                 Ok((k, Err(e))) => {
                     standing.lock().unwrap_or_else(|e| e.into_inner()).parts[k].phase = "failed";
@@ -1676,13 +1879,45 @@ async fn copy(s: std::sync::Arc<Sending>, standing: Shared) -> Result<(), String
                 }
                 Err(e) => failed = failed.or(Some(e.to_string())),
             },
-            _ = ticker.tick() => {
-                let sent = standing.lock().unwrap_or_else(|e| e.into_inner()).totals().1;
-                streams.tick(sent, every.as_secs_f64());
-                standing.lock().unwrap_or_else(|e| e.into_inner()).rate = streams.last_rate as u64;
+            _ = rate_tick.tick() => {
+                let now = Instant::now();
+                let bytes = standing.lock().unwrap_or_else(|e| e.into_inner()).totals().1.saturating_sub(skipped_bytes);
+                samples.push_back((now, bytes));
+                while samples.len() > 2 && samples.front().is_some_and(|(t, _)| now.duration_since(*t) > Duration::from_secs(12)) {
+                    samples.pop_front();
+                }
+                if let Some((t0, b0)) = samples.front() {
+                    let dt = now.duration_since(*t0).as_secs_f64();
+                    if dt >= 0.5 && bytes >= *b0 {
+                        standing.lock().unwrap_or_else(|e| e.into_inner()).rate = ((bytes - *b0) as f64 / dt) as u64;
+                    }
+                }
+            }
+            _ = climb_tick.tick() => {
+                let bytes = standing.lock().unwrap_or_else(|e| e.into_inner()).totals().1.saturating_sub(skipped_bytes);
+                streams.tick(bytes, climb_every.as_secs_f64());
+            }
+            _ = async { if let Some(sig) = &mut sigterm { sig.recv().await } else { std::future::pending().await } } => {
+                running.abort_all();
+                return Err("the copy was stopped".into());
+            }
+            _ = async { if let Some(sig) = &mut sigint { sig.recv().await } else { std::future::pending().await } } => {
+                running.abort_all();
+                return Err("the copy was stopped".into());
             }
         }
         standing.lock().unwrap_or_else(|e| e.into_inner()).report = Some(whole.clone());
+    }
+    // Pass 2: remove `/var/tmp` files sent in Pass 1 that no longer exist on
+    // the source (checked across all `/var/tmp` buckets at once).
+    if failed.is_none() && s.pass > 1 && s.var_tmp {
+        let gone = vanished_in_sent_prefix(&s.dir, "sent-vt", Path::new("/var/tmp"));
+        if !gone.is_empty()
+            && let Ok(n) = forget_there(&s, &ssh, "/var/tmp", &gone).await
+        {
+            whole["gone"] = (whole["gone"].as_u64().unwrap_or(0) + n).into();
+            standing.lock().unwrap_or_else(|e| e.into_inner()).report = Some(whole);
+        }
     }
     match failed {
         Some(e) => Err(e),
@@ -1690,56 +1925,251 @@ async fn copy(s: std::sync::Arc<Sending>, standing: Shared) -> Result<(), String
     }
 }
 
-/// One part sent in a session of its own, over a connection of its own:
-/// its report and how many of the destination's it took away (a later
-/// pass's: what the passes before put there and is gone here).
-async fn send_part(s: std::sync::Arc<Sending>, part: Part, k: usize, standing: Shared) -> (usize, Result<(olo_rex_sync::wire::Report, u64), String>) {
+/// Collects NUL-separated paths from `file` (deduplicated) that no longer
+/// exist under `root` (`NotFound`), or all of them when `root` itself is gone.
+fn vanished_in_file(file: &Path, root: &Path, root_exists: bool) -> Vec<u8> {
+    let Ok(raw) = std::fs::read(file) else { return Vec::new() };
+    let mut seen: HashSet<&[u8]> = HashSet::new();
+    let mut out = Vec::new();
+    for p in raw.split(|&b| b == 0).filter(|p| !p.is_empty()) {
+        if !seen.insert(p) {
+            continue;
+        }
+        let gone = !root_exists || matches!(std::fs::symlink_metadata(root.join(std::ffi::OsStr::from_bytes_compat(p))), Err(e) if e.kind() == io::ErrorKind::NotFound);
+        if gone {
+            out.extend_from_slice(p);
+            out.push(0);
+        }
+    }
+    out
+}
+
+/// Like [`vanished_in_file`], merged across every file in `dir` whose name
+/// starts with `prefix` (all `/var/tmp` buckets from Pass 1).
+fn vanished_in_sent_prefix(dir: &Path, prefix: &str, root: &Path) -> Vec<u8> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut seen: HashSet<Vec<u8>> = HashSet::new();
+    let mut out = Vec::new();
+    for e in rd.filter_map(|e| e.ok()) {
+        if !e.file_name().to_str().is_some_and(|n| n.starts_with(prefix)) {
+            continue;
+        }
+        let Ok(raw) = std::fs::read(e.path()) else { continue };
+        for p in raw.split(|&b| b == 0).filter(|p| !p.is_empty()) {
+            if !seen.insert(p.to_vec()) {
+                continue;
+            }
+            if matches!(std::fs::symlink_metadata(root.join(std::ffi::OsStr::from_bytes_compat(p))), Err(e) if e.kind() == io::ErrorKind::NotFound) {
+                out.extend_from_slice(p);
+                out.push(0);
+            }
+        }
+    }
+    out
+}
+
+/// Appends NUL-separated paths recorded by Pass 1 to `path` (`0600`).
+fn append_sent_paths(path: &Path, buf: &[u8]) {
+    if buf.is_empty() {
+        return;
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(path) {
+        let _ = f.write_all(buf);
+    }
+}
+
+/// One part sent by `rsync` over SSH (using `DIR/ssh_config`), with retries
+/// on transient SSH/network drops, live progress parsing, Pass 1 resume,
+/// and Pass 2 deletion of files vanished since Pass 1.
+async fn send_part(s: std::sync::Arc<Sending>, ssh: PathBuf, rsync: PathBuf, part: Part, k: usize, standing: Shared) -> (usize, Result<PartResult, String>) {
     let ended = async {
-        let session = connect(&s).await?;
-        let mut gone_count = 0u64;
+        let done_marker = s.dir.join(format!("done-1-{}", part.key));
+        if s.pass == 1 && part.kind != PartKind::VarTmp && done_marker.exists() {
+            return Ok(PartResult { skipped_done: true, ..PartResult::default() });
+        }
         let here_is = std::fs::symlink_metadata(&part.here).is_ok_and(|m| m.is_dir());
-        let report = if here_is {
-            standing.lock().unwrap_or_else(|e| e.into_inner()).parts[k].phase = "indexing";
-            // The engine's receiving side there.
-            let channel = session.channel_open_session().await.map_err(|e| e.to_string())?;
-            let ask = serde_json::json!({"op": "sync", "root": part.there, "options": ["--scoped"]});
-            channel.exec(true, command_for(&ask)).await.map_err(|e| e.to_string())?;
-            let filter = olo_rex_sync::index::Filter { exclude: part.exclude.clone(), ..olo_rex_sync::index::Filter::default() };
-            let source = Counted {
-                inner: olo_rex_sync::wire::FolderSource { root: part.here.clone(), filter: filter.clone(), cache_path: Some(s.dir.join(format!("index-cache-{}", part.key))) },
-                keep_paths: kept_paths(&s.dir, &part.key, s.pass),
+        let mut res = PartResult::default();
+        if here_is {
+            let exclude_file = if !part.exclude.is_empty() {
+                let p = s.dir.join(format!("exclude-{}", part.key));
+                let body: String = part.exclude.iter().flat_map(|e| [e.as_str(), "\n"]).collect();
+                write_whole(&p, body.as_bytes(), 0o600).map_err(|e| format!("exclude file: {e}"))?;
+                Some(p)
+            } else {
+                None
             };
-            let shared = standing.clone();
-            let progress: olo_rex_sync::wire::ProgressCallback = std::sync::Arc::new(move |p: &olo_rex_sync::wire::Progress| {
-                let mut st = shared.lock().unwrap_or_else(|e| e.into_inner());
-                let mine = &mut st.parts[k];
-                if p.phase == olo_rex_sync::wire::Phase::Indexing {
-                    mine.phase = "indexing";
-                } else {
-                    (mine.phase, mine.planned) = ("sending", true);
-                    (mine.files, mine.bytes, mine.files_total, mine.bytes_total) = (p.files, p.bytes, p.files_total, p.bytes_total);
+            let sent_file = s.dir.join(format!("sent-{}", part.key));
+            let rsh = format!("{} -F ssh_config", ssh.display());
+            let src_arg = format!("{}/", part.here.display().to_string().trim_end_matches('/'));
+            let dst_arg = format!("dest:{}/", part.there.trim_end_matches('/'));
+            let mut attempt = 0u32;
+            let backoffs = [2u64, 5, 10];
+            loop {
+                attempt += 1;
+                standing.lock().unwrap_or_else(|e| e.into_inner()).parts[k].phase = "sending";
+                let mut cmd = tokio::process::Command::new(&rsync);
+                cmd.current_dir(&s.dir).env("LC_ALL", "C").args([
+                    "-rlptHSxz",
+                    "--partial",
+                    "--8-bit-output",
+                    "--no-secluded-args",
+                    "--info=progress2",
+                    "--stats",
+                    "--out-format=OLO_ITEM\t%i\t%n",
+                    "--timeout=120",
+                    "-e",
+                    &rsh,
+                ]);
+                if let Some(ex) = &exclude_file {
+                    cmd.arg("--exclude-from").arg(ex);
                 }
-                if !p.current.is_empty() {
-                    p.current.clone_into(&mut st.current);
+                if let Some(ff) = &part.files_from {
+                    cmd.arg("--from0").arg("--files-from").arg(ff).arg("--no-implied-dirs").arg("--ignore-missing-args");
                 }
-            });
-            let io = Blocking { stream: channel.into_stream(), handle: tokio::runtime::Handle::current(), standing: standing.clone() };
-            let options = olo_rex_sync::wire::Options { filter, progress: Some(progress), ..olo_rex_sync::wire::Options::default() };
-            tokio::task::spawn_blocking(move || olo_rex_sync::wire::send(io, &source, options)).await.map_err(|e| e.to_string())?.map_err(|e| match e.kind() {
-                io::ErrorKind::UnexpectedEof | io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset => format!("the copy ended early ({e})"),
-                _ => e.to_string(),
-            })?
-        } else {
-            olo_rex_sync::wire::Report::default()
-        };
-        // A later pass: what the passes before put there and is gone here
-        // taken away there (and nothing else of the destination's); a part
-        // gone here whole, all it sent, and its folder.
-        if s.pass > 1 {
-            let before = kept_paths(&s.dir, &part.key, s.pass - 1);
-            let gone = if here_is { gone_since(&before, &kept_paths(&s.dir, &part.key, s.pass), &report.skipped.mounts.paths) } else { std::fs::read(&before).ok() };
-            if let Some(gone) = gone.filter(|g| !g.is_empty()) {
-                gone_count += forget_there(&session, &part.there, &gone).await?;
+                cmd.arg(&src_arg).arg(&dst_arg).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+                let mut child = cmd.spawn().map_err(|e| format!("rsync: {e}"))?;
+                let mut stdout = child.stdout.take().ok_or_else(|| "rsync stdout missing".to_owned())?;
+                let mut stderr = child.stderr.take().ok_or_else(|| "rsync stderr missing".to_owned())?;
+                let stderr_task = tokio::spawn(async move {
+                    use tokio::io::AsyncReadExt;
+                    let mut out = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    loop {
+                        match stderr.read(&mut chunk).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => {
+                                if out.len() < 256 * 1024 {
+                                    let take = n.min(256 * 1024 - out.len());
+                                    out.extend_from_slice(&chunk[..take]);
+                                }
+                            }
+                        }
+                    }
+                    String::from_utf8_lossy(&out).into_owned()
+                });
+                let mut buf = [0u8; 8192];
+                let mut pending: Vec<u8> = Vec::new();
+                let mut sent_buf: Vec<u8> = Vec::new();
+                let mut wire = 0u64;
+                let mut copied = 0u64;
+                let base_bytes = standing.lock().unwrap_or_else(|e| e.into_inner()).parts[k].bytes;
+                let base_files = standing.lock().unwrap_or_else(|e| e.into_inner()).parts[k].files;
+                use tokio::io::AsyncReadExt;
+                loop {
+                    let n = stdout.read(&mut buf).await.map_err(|e| format!("rsync output: {e}"))?;
+                    if n == 0 {
+                        break;
+                    }
+                    pending.extend_from_slice(&buf[..n]);
+                    let mut start = 0;
+                    for i in 0..pending.len() {
+                        if pending[i] == b'\n' || pending[i] == b'\r' {
+                            let line = String::from_utf8_lossy(&pending[start..i]);
+                            start = i + 1;
+                            if let Some(rest) = line.strip_prefix("OLO_ITEM\t") {
+                                if let Some((item, raw_path)) = rest.split_once('\t') {
+                                    let rel = raw_path.trim_end_matches('/');
+                                    if !rel.is_empty() {
+                                        if s.pass == 1 && item.starts_with(['<', '>', 'c', 'h']) {
+                                            sent_buf.extend_from_slice(&unescape_rsync(rel));
+                                            sent_buf.push(0);
+                                            if sent_buf.len() >= 65536 {
+                                                append_sent_paths(&sent_file, &sent_buf);
+                                                sent_buf.clear();
+                                            }
+                                        }
+                                        let mut st = standing.lock().unwrap_or_else(|e| e.into_inner());
+                                        rel.clone_into(&mut st.current);
+                                    }
+                                }
+                            } else if let Some(rest) = line.strip_prefix("Total bytes sent: ") {
+                                let d: String = rest.chars().filter(|c| c.is_ascii_digit()).collect();
+                                if let Ok(v) = d.parse::<u64>() {
+                                    wire = v;
+                                }
+                            } else if let Some(rest) = line.strip_prefix("Number of regular files transferred: ") {
+                                let d: String = rest.chars().filter(|c| c.is_ascii_digit()).collect();
+                                if let Ok(v) = d.parse::<u64>() {
+                                    copied = v;
+                                }
+                            } else if let Some((bytes, xfr)) = parse_progress2(&line) {
+                                let mut st = standing.lock().unwrap_or_else(|e| e.into_inner());
+                                let mine = &mut st.parts[k];
+                                let total_b = base_bytes.saturating_add(bytes);
+                                mine.bytes = mine.bytes.max(total_b);
+                                if let Some(x) = xfr {
+                                    mine.files = mine.files.max(base_files.saturating_add(x));
+                                }
+                                if s.pass == 1 {
+                                    mine.bytes_total = mine.measured_bytes.max(mine.bytes);
+                                    mine.files_total = mine.measured_files.max(mine.files);
+                                } else {
+                                    mine.bytes_total = mine.bytes;
+                                    mine.files_total = mine.files;
+                                }
+                                mine.planned = true;
+                            }
+                        }
+                    }
+                    if start > 0 {
+                        pending.drain(..start);
+                    }
+                }
+                if !sent_buf.is_empty() {
+                    append_sent_paths(&sent_file, &sent_buf);
+                }
+                let status = child.wait().await.map_err(|e| format!("rsync wait: {e}"))?;
+                let err_text = stderr_task.await.unwrap_or_default();
+                let code = status.code().unwrap_or(-1);
+                res.wire += wire;
+                res.copied += copied;
+                match code {
+                    0 => break,
+                    24 => {
+                        // (Vanished source files: normal while the source is still running.)
+                        if !err_text.trim().is_empty() {
+                            res.warnings.push("some files vanished during copy".into());
+                        }
+                        break;
+                    }
+                    23 if s.pass == 1 && !fatal_dest_error(&err_text) => {
+                        // (Live Pass 1: unreadable or mid-change source file; Pass 2 checks cleanly.)
+                        let msg = err_text.lines().find(|l| !l.trim().is_empty()).unwrap_or("some files could not be read").trim();
+                        res.warnings.push(msg.to_owned());
+                        break;
+                    }
+                    10 | 12 | 30 | 35 | 255 if (attempt as usize) <= backoffs.len() => {
+                        let wait = backoffs[(attempt - 1) as usize];
+                        eprintln!("olo-rex-link move send: {} attempt {attempt} failed (exit {code}), retrying in {wait}s: {}", part.key, err_text.lines().last().unwrap_or(""));
+                        tokio::time::sleep(Duration::from_secs(wait)).await;
+                        continue;
+                    }
+                    _ => {
+                        let why = err_text
+                            .lines()
+                            .rev()
+                            .find(|l| {
+                                let t = l.trim();
+                                !t.is_empty() && !t.starts_with("rsync error:")
+                            })
+                            .or_else(|| err_text.lines().rev().find(|l| !l.trim().is_empty()))
+                            .map(str::trim)
+                            .unwrap_or("rsync failed");
+                        return Err(format!("{why} (rsync exit {code})"));
+                    }
+                }
+            }
+            if s.pass == 1 && part.kind != PartKind::VarTmp {
+                let _ = write_whole(&done_marker, b"1\n", 0o600);
+            }
+        }
+        // Pass 2 for Home / Folder parts: remove files Pass 1 put there that
+        // no longer exist on the source (never destination's pre-existing files).
+        if s.pass > 1 && part.kind != PartKind::VarTmp {
+            let sent_file = s.dir.join(format!("sent-{}", part.key));
+            let gone = vanished_in_file(&sent_file, &part.here, here_is);
+            if !gone.is_empty() {
+                res.gone += forget_there(&s, &ssh, &part.there, &gone).await?;
             }
             if !here_is
                 && part.kind == PartKind::Folder
@@ -1747,53 +2177,39 @@ async fn send_part(s: std::sync::Arc<Sending>, part: Part, k: usize, standing: S
             {
                 let mut list = rel.as_bytes().to_vec();
                 list.push(0);
-                gone_count += forget_there(&session, &s.there, &list).await?;
+                res.gone += forget_there(&s, &ssh, &s.there, &list).await?;
             }
         }
-        let _ = session.disconnect(russh::Disconnect::ByApplication, "", "").await;
-        Ok((report, gone_count))
+        Ok(res)
     }
     .await;
     (k, ended)
 }
 
-/// The paths of `list` (NUL after each) taken away under `root` there: how
-/// many went.
-async fn forget_there(session: &russh::client::Handle<Pinned>, root: &str, list: &[u8]) -> Result<u64, String> {
-    let channel = session.channel_open_session().await.map_err(|e| e.to_string())?;
-    channel.exec(true, command_for(&serde_json::json!({"op": "forget", "root": root}))).await.map_err(|e| e.to_string())?;
-    let mut stream = channel.into_stream();
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    stream.write_all(list).await.map_err(|e| e.to_string())?;
-    stream.shutdown().await.map_err(|e| e.to_string())?;
-    let mut said = String::new();
-    stream.read_to_string(&mut said).await.map_err(|e| e.to_string())?;
-    let v: serde_json::Value = said.lines().rev().find_map(|l| serde_json::from_str(l).ok()).unwrap_or_default();
+/// The paths of `list` (NUL after each) taken away under `root` there over
+/// `ssh -F ssh_config dest`: how many went.
+async fn forget_there(s: &Sending, ssh: &Path, root: &str, list: &[u8]) -> Result<u64, String> {
+    use tokio::io::AsyncWriteExt;
+    let mut cmd = tokio::process::Command::new(ssh);
+    cmd.current_dir(&s.dir)
+        .args(["-F", "ssh_config", "dest", &command_for(&serde_json::json!({"op": "forget", "root": root}))])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = cmd.spawn().map_err(|e| format!("ssh forget: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(list).await.map_err(|e| format!("ssh forget stdin: {e}"))?;
+        let _ = stdin.shutdown().await;
+    }
+    let out = child.wait_with_output().await.map_err(|e| format!("ssh forget wait: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("forget failed").trim().to_owned());
+    }
+    let said = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = said.lines().rev().find_map(|l| serde_json::from_str(l.trim()).ok()).unwrap_or_default();
     Ok(v["gone"].as_u64().unwrap_or(0))
-}
-
-/// A root's report added to the pass's: counts summed, what failed and
-/// what was passed over named (the first 200 of each).
-fn add_report(whole: &mut serde_json::Value, report: &olo_rex_sync::wire::Report) {
-    let add = |v: &mut serde_json::Value, n: u64| *v = (v.as_u64().unwrap_or(0) + n).into();
-    add(&mut whole["same"], report.same);
-    add(&mut whole["copied"], report.copied + report.new);
-    add(&mut whole["patched"], report.patched + report.appended);
-    add(&mut whole["failed"], report.errors.len() as u64);
-    add(&mut whole["wire"], report.wire_bytes());
-    if let Some(list) = whole["failures"].as_array_mut() {
-        list.extend(report.errors.iter().take(200usize.saturating_sub(list.len())).map(|e| serde_json::json!({"path": e.path, "why": e.reason})));
-    }
-    // (What the engine passed over, counted and named: files it couldn't
-    // read, names that aren't UTF-8, sockets and FIFOs, other filesystems.)
-    let skipped = &report.skipped;
-    for (key, kind) in [("unread", &skipped.unread), ("odd_names", &skipped.non_utf8), ("special", &skipped.special), ("mounts", &skipped.mounts)] {
-        let to = &mut whole["skipped"][key];
-        add(&mut to["count"], kind.count);
-        if let Some(list) = to["paths"].as_array_mut() {
-            list.extend(kind.paths.iter().take(200usize.saturating_sub(list.len())).map(|p| serde_json::Value::String(p.clone())));
-        }
-    }
 }
 
 /// `move status DIR`: the copy's own account of itself (`status.json`,
@@ -1947,14 +2363,17 @@ fn free_at(path: &Path) -> Option<(u64, u64)> {
     (unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0).then(|| (st.f_bavail as u64 * st.f_frsize as u64, st.f_favail as u64))
 }
 
-/// Whether `name` is a program here: on the path, or where an SSH
-/// command's path leaves out (Ubuntu's has no `/usr/sbin`, where `usermod`
-/// and `restorecon` are; `~/.local/bin`, the account's own).
-fn on_path(name: &str) -> bool {
+/// Where `name` lives on this host: on `PATH`, or in standard system/user
+/// folders an SSH command's path leaves out (`/usr/sbin`, `~/.local/bin`).
+fn find_program(name: &str) -> Option<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     dirs.extend(["/usr/local/sbin", "/usr/sbin", "/sbin", "/usr/local/bin", "/usr/bin", "/bin"].map(PathBuf::from));
     dirs.push(home().join(".local/bin"));
-    dirs.iter().any(|d| std::fs::metadata(d.join(name)).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
+    dirs.into_iter().map(|d| d.join(name)).find(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
+}
+
+fn on_path(name: &str) -> bool {
+    find_program(name).is_some()
 }
 
 /// The account's entry in the system's accounts: its name, home and
@@ -2096,51 +2515,58 @@ fn measure(root: &Path, filter: &olo_rex_sync::index::Filter, top: usize) -> (u6
     (bytes, files, big)
 }
 
-/// The account's own folders in `/var/tmp` (its scratch: agents keep
-/// theirs there), each with its room and files; a folder looked into no
-/// further than a few hundred thousand entries (`more`).
-fn var_tmp_folders(uid: u32) -> (Vec<serde_json::Value>, u64) {
+/// Summary of the account's own entries in `/var/tmp` (both directories
+/// and files owned by `uid`): `(total_bytes, total_files, total_count,
+/// more, top_8_entries)` — bounded JSON even when `/var/tmp` has thousands
+/// of folders.
+fn var_tmp_summary(uid: u32) -> (u64, u64, u64, bool, Vec<serde_json::Value>) {
     use std::os::unix::fs::MetadataExt;
-    let (mut out, mut loose) = (Vec::new(), 0u64);
-    let Ok(rd) = std::fs::read_dir("/var/tmp") else { return (out, loose) };
-    // (Every folder counted whole, a minute at most for them all: past
-    // it, what is left is `more`.)
+    let Ok(rd) = std::fs::read_dir("/var/tmp") else { return (0, 0, 0, false, Vec::new()) };
+    let root_dev = std::fs::symlink_metadata("/var/tmp").map(|m| m.dev()).unwrap_or(0);
     let until = Instant::now() + Duration::from_secs(60);
+    let (mut total_bytes, mut total_files, mut total_count, mut any_more) = (0u64, 0u64, 0u64, false);
+    let mut entries: Vec<(String, u64, u64, bool)> = Vec::new();
     for e in rd.filter_map(|e| e.ok()) {
         let Some(name) = e.file_name().to_str().map(str::to_owned) else { continue };
         let Ok(meta) = std::fs::symlink_metadata(e.path()) else { continue };
         if meta.uid() != uid {
             continue;
         }
-        if !meta.is_dir() || !var_tmp_root(&format!("/var/tmp/{name}")) {
-            // (A file of the account's straight in /var/tmp: not carried.)
-            loose += 1;
-            continue;
-        }
+        total_count += 1;
         let (mut bytes, mut files, mut more) = (0u64, 0u64, false);
-        let mut stack = vec![e.path()];
-        while let Some(dir) = stack.pop() {
-            if Instant::now() > until {
-                more = true;
-                break;
-            }
-            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-            for f in rd.filter_map(|f| f.ok()) {
-                let Ok(m) = std::fs::symlink_metadata(f.path()) else { continue };
-                if m.is_dir() {
-                    if m.dev() == meta.dev() {
-                        stack.push(f.path());
+        if meta.is_dir() {
+            let mut stack = vec![e.path()];
+            while let Some(dir) = stack.pop() {
+                if Instant::now() > until {
+                    more = true;
+                    any_more = true;
+                    break;
+                }
+                let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+                for f in rd.filter_map(|f| f.ok()) {
+                    let Ok(m) = std::fs::symlink_metadata(f.path()) else { continue };
+                    if m.is_dir() {
+                        if m.dev() == root_dev {
+                            stack.push(f.path());
+                        }
+                    } else {
+                        bytes += m.blocks() * 512;
+                        files += 1;
                     }
-                } else {
-                    bytes += m.blocks() * 512;
-                    files += 1;
                 }
             }
+        } else {
+            bytes = meta.blocks() * 512;
+            files = 1;
         }
-        out.push(serde_json::json!({"path": format!("/var/tmp/{name}"), "bytes": bytes, "files": files, "more": more}));
+        total_bytes += bytes;
+        total_files += files;
+        entries.push((format!("/var/tmp/{name}"), bytes, files, more));
     }
-    out.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
-    (out, loose)
+    entries.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    entries.truncate(8);
+    let top = entries.into_iter().map(|(path, bytes, files, more)| serde_json::json!({"path": path, "bytes": bytes, "files": files, "more": more})).collect();
+    (total_bytes, total_files, total_count, any_more, top)
 }
 
 /// Codex's home (`CODEX_HOME`, else `~/.codex`).
@@ -2162,7 +2588,9 @@ fn codex_daemon() -> Option<i32> {
 
 /// `move halt DIR`: the move's copy that runs from DIR ended (a move given
 /// up): by its pid file, once that process is seen to be that copy (its
-/// command line `move send` for DIR), asked first, then ended.
+/// command line `move send` for DIR), signaling its whole process group
+/// (when detached via `setsid`) so child `rsync` and `ssh` processes stop
+/// with it.
 fn halt(args: &[String]) -> i32 {
     let [dir] = args else {
         eprintln!("{USAGE}");
@@ -2181,15 +2609,18 @@ fn halt(args: &[String]) -> i32 {
         println!("{}", serde_json::json!({"halted": false}));
         return 0;
     }
-    // SAFETY: a signal to the move's own copy, checked above.
-    unsafe { libc::kill(pid, libc::SIGTERM) };
+    // (When detached via `setsid`, `pid` is its own process group leader:
+    // `-pid` terminates the coordinator and every child `rsync`/`ssh`.)
+    // SAFETY: `getpgid` and `kill` on the verified move-send process.
+    let target = unsafe { if libc::getpgid(pid) == pid { -pid } else { pid } };
+    unsafe { libc::kill(target, libc::SIGTERM) };
     let until = Instant::now() + Duration::from_secs(5);
     while Instant::now() < until && proc_of(pid).is_some_and(|p| p.state != 'Z') {
         std::thread::sleep(Duration::from_millis(100));
     }
     if proc_of(pid).is_some_and(|p| p.state != 'Z') {
         // SAFETY: as above.
-        unsafe { libc::kill(pid, libc::SIGKILL) };
+        unsafe { libc::kill(target, libc::SIGKILL) };
     }
     println!("{}", serde_json::json!({"halted": true}));
     0
@@ -2262,7 +2693,7 @@ fn look(args: &[String]) -> i32 {
     let (units, enabled) = own_units(&config.join("systemd/user"));
     let quadlet_services = quadlets(&config.join("containers/systemd"));
     let tools: Vec<&str> =
-        ["crontab", "restorecon", "selinuxenabled", "sudo", "tmux", "screen", "podman", "docker", "git", "zsh", "fish", "bash", "loginctl", "systemctl", "usermod", "dnf", "apt-get"]
+        ["rsync", "ssh", "crontab", "restorecon", "selinuxenabled", "sudo", "tmux", "screen", "podman", "docker", "git", "zsh", "fish", "bash", "loginctl", "systemctl", "usermod", "dnf", "apt-get"]
             .into_iter()
             .filter(|t| on_path(t))
             .collect();
@@ -2313,9 +2744,13 @@ fn look(args: &[String]) -> i32 {
         v["home_bytes"] = bytes.into();
         v["home_files"] = files.into();
         v["big"] = big.into_iter().map(|(path, bytes)| serde_json::json!({"path": path, "bytes": bytes})).collect();
-        let (folders, loose) = var_tmp_folders(uid);
-        v["var_tmp"] = folders.into();
-        v["var_tmp_loose"] = loose.into();
+        let (vt_bytes, vt_files, vt_count, vt_more, top) = var_tmp_summary(uid);
+        v["var_tmp_bytes"] = vt_bytes.into();
+        v["var_tmp_files"] = vt_files.into();
+        v["var_tmp_count"] = vt_count.into();
+        v["var_tmp_more"] = vt_more.into();
+        v["var_tmp"] = top.into();
+        v["var_tmp_loose"] = 0u64.into();
     }
     println!("{v}");
     0
@@ -2357,41 +2792,55 @@ mod tests {
         s.bytes().map(|b| format!("{b:02x}")).collect()
     }
 
-    /// What the key may ask, and nothing else: a receive that never takes
-    /// away (no `--delete`), only where the account may write.
+    /// What the key may ask, and nothing else: `hello`, `forget`, or a
+    /// receiving `rsync --server` (never `--sender`, never `--delete`,
+    /// never shell metacharacters or dangerous flags), only where the
+    /// account may write.
     #[test]
     fn a_moves_key_may_ask_only_its_own() {
         let ask = |json: &str| asked(&format!("olo-rex-link move do {}", hex(json)));
         assert_eq!(ask(r#"{"op":"hello"}"#), Some(Asked::Hello));
-        assert_eq!(
-            ask(r#"{"op":"sync","root":"/home/f","options":["--scoped","--exclude",".cache"]}"#),
-            Some(Asked::Sync { root: "/home/f".into(), options: ["--scoped", "--exclude", ".cache"].map(String::from).to_vec() })
-        );
-        assert_eq!(ask(r#"{"op":"sync","root":"/home/f","options":["--delete"]}"#), None);
-        assert_eq!(ask(r#"{"op":"sync","root":"/home/f","options":["--exclude"]}"#), None);
         assert_eq!(ask(r#"{"op":"forget","root":"/home/f"}"#), Some(Asked::Forget { root: "/home/f".into() }));
         assert_eq!(ask(r#"{"op":"shell","command":"rm -rf ~"}"#), None);
         assert_eq!(asked("rm -rf ~"), None);
         assert_eq!(asked(""), None);
+        // (Validated receiving `rsync --server` commands, including escaped spaces.)
+        let (args, dest) = asked_rsync("rsync --server -lHtprxSze.iLsfxCIvu --log-format=%i --timeout=120 --stats --partial . /home/a\\ b/dst/").unwrap();
+        assert_eq!(dest, "/home/a b/dst/");
+        assert_eq!(args[0], "--server");
+        let (args_vt, dest_vt) = asked_rsync("rsync --server -lHtprRxSze.iLsfxCIvu --log-format=%i --timeout=120 --stats --partial --no-implied-dirs . /var/tmp/").unwrap();
+        assert_eq!(dest_vt, "/var/tmp/");
+        assert!(args_vt.contains(&"--no-implied-dirs".to_owned()));
+        // (Refused rsync commands: sender, delete, remote shell, files-from, shell injection, extra paths.)
+        for bad in [
+            "rsync --server --sender -lHtprxSze.iLsfxCIvu . /home/f/",
+            "rsync --server -lHtprxSze.iLsfxCIvu --delete . /home/f/",
+            "rsync --server -lHtprxSze.iLsfxCIvu --delete-before . /home/f/",
+            "rsync --server -e sh . /home/f/",
+            "rsync --server -lHtprxSze.iLsfxCIvu --files-from=/etc/passwd . /home/f/",
+            "rsync --server -lHtprxSze.iLsfxCIvu --rsh=sh . /home/f/",
+            "rsync --server -lHtprxSze.iLsfxCIvu . /home/f/; rm -rf ~",
+            "rsync --server -lHtprxSze.iLsfxCIvu . /home/f/ /tmp/",
+            "rsync --server -lHtprxSze.iLsfxCIvu . $(id)",
+        ] {
+            assert_eq!(asked_rsync(bad), None, "must refuse: {bad}");
+        }
         // (The home itself, by its real path; a folder under it a part of
-        // the copy goes to, never one through `..`.)
+        // the copy goes to, never one through `..`; `/var/tmp` only when allowed.)
         let home = PathBuf::from(format!("/var/tmp/olo-rex-link-roots-{}", std::process::id()));
         std::fs::create_dir_all(home.join("proj")).unwrap();
         let h = home.display().to_string();
-        // SAFETY: a getter.
-        let uid = unsafe { libc::getuid() };
-        assert_eq!(writable_root(&h, &home, uid, &[]), Some(Root::Home));
-        assert_eq!(writable_root(&format!("{h}/proj"), &home, uid, &[]), Some(Root::Part));
-        assert_eq!(writable_root(&format!("{h}/proj/.."), &home, uid, &[]), None);
-        assert_eq!(writable_root("/etc", &home, uid, &[]), None);
-        assert_eq!(writable_root("var/tmp/x", &home, uid, &[]), None);
-        // (A folder of /var/tmp the app named for the move: one not there
-        // yet may be made; one not named, deeper, or another's may not.)
-        let named = ["/var/tmp/olo-move-test-none-such".to_owned()];
-        assert_eq!(writable_root("/var/tmp/olo-move-test-none-such", &home, uid, &named), Some(Root::VarTmp));
-        assert_eq!(writable_root("/var/tmp/olo-move-test-none-such", &home, uid, &[]), None);
-        assert_eq!(writable_root("/var/tmp/olo-move-test-none-such/x", &home, uid, &named), None);
-        assert_eq!(writable_root("/var/tmp", &home, uid, &named), None);
+        assert_eq!(writable_root(&h, &home, false), Some(Root::Home));
+        assert_eq!(writable_root(&format!("{h}/"), &home, false), Some(Root::Home));
+        assert_eq!(writable_root(&format!("{h}/proj"), &home, false), Some(Root::Part));
+        assert_eq!(writable_root(&format!("{h}/proj/"), &home, false), Some(Root::Part));
+        assert_eq!(writable_root(&format!("{h}/proj/.."), &home, false), None);
+        assert_eq!(writable_root("/etc", &home, false), None);
+        assert_eq!(writable_root("var/tmp/x", &home, false), None);
+        assert_eq!(writable_root("/var/tmp", &home, true), Some(Root::VarTmp));
+        assert_eq!(writable_root("/var/tmp/", &home, true), Some(Root::VarTmp));
+        assert_eq!(writable_root("/var/tmp", &home, false), None);
+        assert_eq!(writable_root("/var/tmp/olo-move-test-none-such", &home, true), None);
         assert!(kept(Path::new(".ssh/authorized_keys")) && kept(Path::new(".ssh")) && kept(Path::new(".local/state/olo-rex/move/m1/key")) && !kept(Path::new(".ssh/config")));
         let _ = std::fs::remove_dir_all(&home);
     }
@@ -2482,13 +2931,11 @@ mod tests {
         std::fs::create_dir_all(home.with_extension("elsewhere")).unwrap();
         std::os::unix::fs::symlink(home.with_extension("elsewhere"), home.join("link")).unwrap();
         let h = home.display().to_string();
-        // SAFETY: a getter.
-        let uid = unsafe { libc::getuid() };
-        assert_eq!(writable_root(&format!("{h}/src/olo"), &home, uid, &[]), Some(Root::Part));
-        assert_eq!(writable_root(&format!("{h}/src/new"), &home, uid, &[]), Some(Root::Part), "not there yet");
-        assert_eq!(writable_root(&format!("{h}/data/b"), &home, uid, &[]), Some(Root::Part), "its folder not there yet either");
+        assert_eq!(writable_root(&format!("{h}/src/olo"), &home, false), Some(Root::Part));
+        assert_eq!(writable_root(&format!("{h}/src/new"), &home, false), Some(Root::Part), "not there yet");
+        assert_eq!(writable_root(&format!("{h}/data/b"), &home, false), Some(Root::Part), "its folder not there yet either");
         for refused in [".ssh", ".local", ".local/share/olo", ".local/share/olo/rex-link", "link", "link/x"] {
-            assert_eq!(writable_root(&format!("{h}/{refused}"), &home, uid, &[]), None, "{refused}");
+            assert_eq!(writable_root(&format!("{h}/{refused}"), &home, false), None, "{refused}");
         }
         let _ = std::fs::remove_dir_all(&home);
         let _ = std::fs::remove_dir_all(home.with_extension("elsewhere"));
@@ -2528,19 +2975,39 @@ mod tests {
         }
     }
 
-    /// What a later pass takes away: what the passes before sent and this
-    /// one hasn't, but nothing on another filesystem here.
+    /// What a later pass takes away: paths recorded by Pass 1 that no
+    /// longer exist on the source (deduplicated); rsync progress2 parsing,
+    /// octal unescaping, exclude escaping, and `/var/tmp` bucketing even
+    /// with thousands of entries.
     #[test]
     fn a_later_pass_forgets_only_what_is_gone() {
         let dir = PathBuf::from(format!("/var/tmp/olo-rex-link-gone-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let list = |name: &str, paths: &[&str]| std::fs::write(dir.join(name), paths.iter().flat_map(|p| p.bytes().chain([0])).collect::<Vec<u8>>()).unwrap();
-        list("before", &["a", "a/x", "b", "mnt/f", "mnt2"]);
-        list("now", &["a", "mnt2"]);
-        let gone = gone_since(&dir.join("before"), &dir.join("now"), &["mnt".to_owned()]).unwrap();
-        assert_eq!(gone, b"a/x\0b\0");
-        assert!(gone_since(&dir.join("none"), &dir.join("now"), &[]).is_none(), "no list from before: nothing taken away");
+        let root = dir.join("root");
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        std::fs::write(root.join("a/stay"), "x").unwrap();
+        std::fs::write(dir.join("sent"), b"a/stay\0a/gone\0b\0b\0").unwrap();
+        assert_eq!(vanished_in_file(&dir.join("sent"), &root, true), b"a/gone\0b\0");
+        assert_eq!(vanished_in_file(&dir.join("sent"), &root, false), b"a/stay\0a/gone\0b\0");
+        assert!(vanished_in_file(&dir.join("none"), &root, true).is_empty());
+        // (Progress2 parsing, octal unescaping, pattern escaping.)
+        assert_eq!(parse_progress2("      1,081,344  34% 1024.00kB/s    0:00:02  "), Some((1_081_344, None)));
+        assert_eq!(parse_progress2("        120,000 100%   83.19MB/s    0:00:00 (xfr#2, to-chk=0/4)"), Some((120_000, Some(2))));
+        assert_eq!(parse_progress2("OLO_ITEM\t<f+++++++++\ta.txt"), None);
+        assert_eq!(unescape_rsync(r"a\#011b/café.txt"), b"a\tb/caf\xc3\xa9.txt");
+        assert_eq!(rsync_escape_pattern("dir/[a]*?"), r"/dir/\[a\]\*\?");
+        // (Thousands of `/var/tmp` entries pack into at most 8 buckets.)
+        let vt = dir.join("vt");
+        std::fs::create_dir_all(&vt).unwrap();
+        for i in 0..2000 {
+            std::fs::write(vt.join(format!("e-{i:04}")), "x").unwrap();
+        }
+        // SAFETY: a getter.
+        let uid = unsafe { libc::getuid() };
+        let parts = var_tmp_buckets_in(&vt, uid, &dir, 1, 100).unwrap();
+        assert!((2..=8).contains(&parts.len()), "expected 2..=8 buckets, got {}", parts.len());
+        let listed: usize = parts.iter().map(|p| std::fs::read(p.files_from.as_ref().unwrap()).unwrap().split(|&b| b == 0).filter(|s| !s.is_empty()).count()).sum();
+        assert_eq!(listed, 2000);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2583,9 +3050,9 @@ mod tests {
         assert_eq!(host_port("fd00::1"), Some(("fd00::1".to_owned(), 22)), "a bare v6 address has no port");
         assert_eq!(host_port("[fd00::1]"), Some(("fd00::1".to_owned(), 22)));
         assert_eq!(host_port("h:x"), None);
-        let also = sending(&args("/var/tmp/x/m1 --to f@h --host-key k|b --there /home/f --also /var/tmp/scratch").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).unwrap();
-        assert_eq!(also.also, ["/var/tmp/scratch"]);
-        assert!(sending(&args("/var/tmp/x/m1 --to f@h --host-key k|b --there /home/f --also /etc").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).is_none(), "only a folder of /var/tmp");
+        let vt = sending(&args("/var/tmp/x/m1 --to f@h --host-key k|b --there /home/f --var-tmp").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).unwrap();
+        assert!(vt.var_tmp);
+        assert!(sending(&args("/var/tmp/x/m1 --to f@h --host-key k|b --there /home/f --also /etc").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).is_none());
         assert_eq!(sending(&args("/var/tmp/x/m1 --to f@h --host-key k|b --there /home/f").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).unwrap().port, 22);
         assert!(sending(&args("/var/tmp/x/m1 --to f@h --host-key k|b --there home/f").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).is_none(), "a relative root");
         assert!(sending(&args("/var/tmp/x/m1 --to h --host-key k|b --there /home/f").iter().map(|a| a.replace('|', " ")).collect::<Vec<_>>()).is_none(), "no account");

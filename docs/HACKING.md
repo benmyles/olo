@@ -28841,18 +28841,22 @@ the world": quinn, rustls with aws-lc, rcgen).
   `src/panes.rs`, `src/fix.rs`, its `move` feature: `sync`'s, russh and
   tungstenite): the host's part in moving an account's home from one host
   to another, machine to machine (`olo_rex_client::migrate` drives it).
-  Nothing of the host's is used for it (no rsync, tar, zstd or
-  ssh-keygen: Fedora's cloud image has none of them).
+  File copies run `rsync` in parallel over an isolated SSH config with
+  the move's ephemeral key and pinned host key (`ensure_rsync` installs
+  `rsync` on hosts that lack it when the account has `sudo`).
   - `move look [--size] [--exclude P]…`: the host and account as JSON
     (system, machine, account, home and its room, `/var/tmp`'s and its
-    filesystem, groups, tools on the path or in `/usr/sbin`, SELinux,
+    filesystem, groups, tools on the path or in `/usr/sbin` including
+    `rsync` and `ssh`, SELinux,
     lingering, the account's own units, a template's instances by their
     own names, its Quadlets' services, the TCP ports it listens on, logins
     with a terminal (Rex's own connections have none), mounts under the
     home, tmux and screen, machine and boot ids, the SSH port it was
     reached on, the login shells `/etc/shells` has, Codex's daemon); with
     `--size`, what the home holds that the copy brings (blocks, files, its
-    biggest folders two deep) and the account's folders in `/var/tmp`.
+    biggest folders two deep) and a bounded summary of the account's own
+    entries in `/var/tmp` (`var_tmp_bytes`, `var_tmp_files`,
+    `var_tmp_count`, and the 8 largest).
   - `move look-pane [--screens HEX] PID…` (`panes.rs`): each pane's
     process tree and the agent there with its session, by the surest
     evidence, each pane its own: Claude Code's own record of each process
@@ -28867,49 +28871,52 @@ the world": quinn, rustls with aws-lc, rcgen).
     screen lines (the app's `fingerprint`) are matched against each
     candidate's transcript's end. `agent_of` is the program itself, or
     the script an interpreter runs (`vim claude` is no agent).
-  - `move key DIR`; `move allow ID LINE [--root /var/tmp/NAME]…` and
+  - `move key DIR`; `move allow ID LINE [--var-tmp]` and
     `move disallow ID`: the key let into the destination for a day
     (`expiry-time` in the system's zone, as sshd reads it, the account's
     `TZ` left out), able to run only the helper's own path with `move
-    receive --id ID` (quoted where the home has a space).
-  - `move receive --id ID`: writes the home itself, a folder under it
-    a part of the copy goes to (never one on the way to or in what the
-    destination keeps: `.ssh/authorized_keys`, its helper, the moves'
-    folder; never through a link), or a folder of `/var/tmp` the app named
-    in `allow`; its index cache in the move's folder (checkpointed, so a
-    cut pass goes on); `forget` likewise, a read-only folder (Go's module
-    cache) opened a moment.
+    receive --id ID` (quoted where the home has a space). `--var-tmp`
+    writes a marker in the move's folder instead of listing folder names
+    on the command line.
+  - `move receive --id ID`: answers `hello` (with `rsync` availability),
+    runs `forget` (read-only folders opened a moment; `/var/tmp` entries
+    checked for account ownership), or validates and execs a receiving
+    `rsync --server` (strict option allowlist: never `--sender`, never
+    `--delete`, no shell metacharacters) writing only the home, a safe
+    subfolder under it (never `.ssh`, `.local`, or through a symlink), or
+    `/var/tmp` when `allow --var-tmp` permitted it.
   - `move send DIR --to … --host-key KEY --there ROOT [--pass N]
-    [--exclude P]… [--also /var/tmp/NAME]… [--detach]`: the copy, in
-    parallel. The first pass measures the home and splits its biggest
-    folders until each part is about a third of a stream's share (a
-    gigabyte at least; kept in `parts.json` for the passes after); the
-    home's own session sends the rest, each part and each folder of
-    `/var/tmp` a session over a connection of its own (a multi-threaded
-    runtime: each encrypts on its own core), the biggest first; how many
-    at once is found as it goes (`Streams`: four to start, more while each
-    step up is 5% faster, held where it isn't, one more tried after a
-    minute, one fewer kept where that was slower; never a session cut).
-    One copy of a move at a time (a lock in DIR, which `status` reads);
-    the pass's `status.json` written before it forks (a pass never reads
-    another's "done"): files and bytes of the plan, parts done, streams,
-    the rate. A later pass takes away there what the passes before sent
-    and this one hasn't (`paths-KEY-N`, sorted, a cut first pass's
-    merged), never what it couldn't read or what lies on another
-    filesystem.
+    [--exclude P]… [--var-tmp] [--detach]`: the copy, in parallel via
+    `rsync -rlptHSxz --partial` over an isolated `ssh_config` (`HostKeyAlias`,
+    pinned `known_hosts`, move key only, `Compression no`). The first pass
+    measures the home and splits its biggest writable folders until each
+    part is about a third of a stream's share (a gigabyte at least; kept
+    in `parts.json` for later passes); the home's own stream sends the
+    rest (with `KEPT` and split folders in a local `--exclude-from` file),
+    and with `--var-tmp` the account's own `/var/tmp` entries are packed
+    into 1–8 balanced NUL-separated `--files-from` buckets (never on a
+    command line). Concurrency adapts (`Streams`: 4 to start, up to 12,
+    staggered 150 ms so sshd never hits `MaxStartups`), with 2 s rolling
+    throughput/ETA, retries on transient SSH drops, and Pass 1 resume
+    (`done-1-*` + `--partial`). Pass 1 records sent items from
+    `--out-format`; Pass 2 syncs every part and calls `forget` for paths
+    that vanished on the source without touching destination's pre-existing
+    files. `move halt` signals the detached process group (`-pid`) so child
+    `rsync`/`ssh` processes stop with it.
   - `move stop [--spare PID]…`, `move codex-stop` (Codex's daemon by
     its JSON pid file, ten seconds), `move keep ID` / `move put-back ID`
     (the destination's own files kept aside by hard links before the
     copy, for Go Back), `move add-keys ID HEX` / `move take-keys ID`
     (the source's `authorized_keys` let in there too, by kind and body).
-  - `move fix --from OLD --to NEW [--once F] [--also /var/tmp/NAME]…`:
+  - `move fix --from OLD --to NEW [--once F] [--var-tmp]`:
     links into the old home retargeted first (a dotfile linked into the
     home's own folder is found as a file then), then the keyed files
     (agents' settings, sessions, plugins and memory; SSH, git, cargo,
     systemd units and drop-ins, Quadlets), git's worktree links and own
     configs, Claude Code's project folders renamed and merged (nothing
     lost: the older of two files kept as `NAME.older`); only inside the
-    home; private temp files of a fixed name length; `--once` written
+    home (and the account's own `/var/tmp` entries when `--var-tmp` is
+    set); private temp files of a fixed name length; `--once` written
     only when nothing failed.
 - *A move's client side* (`olo_rex_client::migrate`): what each host's
   look says (`Facts`, read from the last JSON line: a shell's startup

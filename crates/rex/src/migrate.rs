@@ -146,12 +146,18 @@ pub struct Facts {
     /// `/var/tmp`'s filesystem (beside `home_dev`: one room or two).
     pub var_tmp_dev: Option<u64>,
     /// With `--size`: what its home holds that the copy brings (room on
-    /// disk, files), its biggest folders, its own folders in `/var/tmp` and
-    /// how many of its files lie straight in `/var/tmp` (not carried).
+    /// disk, files), its biggest folders, and a summary of its own entries
+    /// in `/var/tmp` (totals + up to 8 largest).
     pub home_bytes: u64,
     pub home_files: u64,
     pub big: Vec<Big>,
     pub var_tmp: Vec<VarTmpFolder>,
+    #[serde(rename = "var_tmp_bytes")]
+    pub var_tmp_size: u64,
+    #[serde(rename = "var_tmp_files")]
+    pub var_tmp_file_count: u64,
+    pub var_tmp_count: u64,
+    pub var_tmp_more: bool,
     pub var_tmp_loose: u64,
 }
 
@@ -206,13 +212,18 @@ impl Facts {
             && self.home_ino == other.home_ino
     }
 
-    /// Room the account's folders in `/var/tmp` take.
+    /// Room the account's entries in `/var/tmp` take.
     pub fn var_tmp_bytes(&self) -> u64 {
-        self.var_tmp.iter().map(|f| f.bytes).sum()
+        self.var_tmp_size.max(self.var_tmp.iter().map(|f| f.bytes).sum())
     }
 
     pub fn var_tmp_files(&self) -> u64 {
-        self.var_tmp.iter().map(|f| f.files).sum()
+        self.var_tmp_file_count.max(self.var_tmp.iter().map(|f| f.files).sum())
+    }
+
+    /// Number of top-level entries owned by the account in `/var/tmp`.
+    pub fn var_tmp_count(&self) -> u64 {
+        self.var_tmp_count.max(self.var_tmp.len() as u64)
     }
 }
 
@@ -358,6 +369,16 @@ pub fn refusals(from: &Facts, to: &Facts, var_tmp: bool, to_name: &str) -> Vec<S
     let apart = from.now.abs_diff(to.now);
     if from.now > 0 && to.now > 0 && apart > 60 {
         why.push(format!("The two hosts' clocks are {apart} seconds apart: set them right first (the copy tells changed files by their times)."));
+    }
+    let can_install = |f: &Facts| f.admin && (f.has("dnf") || f.has("apt-get"));
+    if !from.tools.is_empty() && !from.has("ssh") {
+        why.push("OpenSSH (ssh) isn't installed on the old host.".to_owned());
+    }
+    if !from.tools.is_empty() && !from.has("rsync") && !can_install(from) {
+        why.push("rsync isn't installed on the old host, and this account can't install packages there.".to_owned());
+    }
+    if !to.tools.is_empty() && !to.has("rsync") && !can_install(to) {
+        why.push(format!("rsync isn't installed on {to_name}, and this account can't install packages there."));
     }
     let need = |b: u64| b + b / 10 + (1 << 30);
     let (tmp_bytes, tmp_files) = if var_tmp { (from.var_tmp_bytes(), from.var_tmp_files()) } else { (0, 0) };
@@ -846,13 +867,40 @@ pub async fn make_key<R: crate::provision::Runner>(source: &mut R, helper_id: &s
     out.lines().find(|l| l.starts_with("ssh-ed25519 ")).map(str::to_owned).ok_or_else(|| format!("the source's helper made no key: {out}"))
 }
 
+/// Ensures `rsync` is installed on a host (instant no-op when `look`
+/// already found it or `command -v rsync` succeeds; otherwise installs via
+/// `dnf` or `apt-get` where the account is an administrator).
+pub async fn ensure_rsync<R: crate::provision::Runner>(host: &mut R, facts: &Facts) -> Result<(), String> {
+    if facts.has("rsync") {
+        return Ok(());
+    }
+    if ran(host, "command -v rsync > /dev/null 2>&1").await.is_ok() {
+        return Ok(());
+    }
+    if !facts.admin {
+        return Err("rsync isn't installed there, and this account can't install packages".into());
+    }
+    let install = if facts.has("dnf") {
+        "dnf install -y -q rsync"
+    } else if facts.has("apt-get") {
+        "sh -c 'DEBIAN_FRONTEND=noninteractive apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q rsync'"
+    } else {
+        return Err("rsync isn't installed there, and no supported package manager (dnf, apt-get) was found".into());
+    };
+    let done = host.run(true, install, &mut |_| {}).await.map_err(|f| f.why)?;
+    if !done.ok() {
+        return Err(format!("rsync couldn't be installed: {}", done.output.lines().last().unwrap_or("it ended badly").trim()));
+    }
+    ran(host, "command -v rsync > /dev/null").await.map(|_| ()).map_err(|_| "rsync still wasn't found after installing it".into())
+}
+
 /// That key let into the destination's account (a day from now, only the
 /// helper's receive; again before each pass, which puts its day off),
-/// writing the home and the folders of `/var/tmp` named in `var_tmp`.
-pub async fn allow<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, id: &str, public: &str, var_tmp: &[String]) -> Result<(), String> {
+/// writing the home and (when `var_tmp` is set) `/var/tmp`.
+pub async fn allow<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, id: &str, public: &str, var_tmp: bool) -> Result<(), String> {
     let mut c = format!("{} move allow {} {}", crate::helper::file(helper_id), crate::provision::shell_word(id), crate::provision::shell_word(public));
-    for root in var_tmp {
-        c.push_str(&format!(" --root {}", crate::provision::shell_word(root)));
+    if var_tmp {
+        c.push_str(" --var-tmp");
     }
     ran(dest, &c).await.map(|_| ())
 }
@@ -909,14 +957,14 @@ pub async fn start_pass<R: crate::provision::Runner>(
     way: &Way,
     pass: u32,
     excluded: &[String],
-    var_tmp: &[String],
+    var_tmp: bool,
 ) -> Result<u32, String> {
     let mut command = format!("{} move send {} {} --pass {pass} --detach", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)), way.words(&to.home));
     for e in excluded {
         command.push_str(&format!(" --exclude {}", crate::provision::shell_word(e)));
     }
-    for root in var_tmp {
-        command.push_str(&format!(" --also {}", crate::provision::shell_word(root)));
+    if var_tmp {
+        command.push_str(" --var-tmp");
     }
     // (The rig's: a small home sent in parts all the same, to try them.)
     if let Some(each) = std::env::var("OLO_REX_TEST_MOVE_EACH").ok().and_then(|e| e.parse::<u64>().ok()) {
@@ -991,9 +1039,9 @@ pub async fn mask_quadlets<R: crate::provision::Runner>(source: &mut R, from: &F
 }
 
 /// A home whose path changed made right on the destination (`move fix`,
-/// the folders of `/var/tmp` carried with it walked too): what it
+/// with `--var-tmp` when `/var/tmp` was carried with it): what it
 /// rewrote, renamed, retargeted, and what it only names.
-pub async fn fix_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str, var_tmp: &[String]) -> Result<serde_json::Value, String> {
+pub async fn fix_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str, var_tmp: bool) -> Result<serde_json::Value, String> {
     if from.home == to.home {
         return Ok(serde_json::json!({}));
     }
@@ -1006,8 +1054,8 @@ pub async fn fix_destination<R: crate::provision::Runner>(dest: &mut R, helper_i
         crate::provision::shell_word(&to.home),
         crate::provision::shell_word(&once)
     );
-    for root in var_tmp {
-        c.push_str(&format!(" --also {}", crate::provision::shell_word(root)));
+    if var_tmp {
+        c.push_str(" --var-tmp");
     }
     let out = ran(dest, &c).await?;
     last_json(&out).ok_or_else(|| format!("the fix's report didn't read: {}", out.lines().last().unwrap_or("nothing said").trim()))
@@ -1624,8 +1672,8 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    const UBUNTU: &str = r#"{"system":"ubuntu","system_like":"debian","system_name":"Ubuntu 26.04.1 LTS","machine":"x86_64","user":"ubuntu","uid":1000,"gid":1000,"home":"/home/ubuntu","shell":"/bin/bash","free":52428800000,"free_inodes":3000000,"var_tmp_free":1,"var_tmp_inodes":1,"admin":true,"groups":["ubuntu","sudo"],"tools":["crontab","sudo","git","bash","systemctl","tmux"],"selinux":false,"linger":true,"units":["backup.service","backup.timer","rex.socket"],"enabled":["backup.timer","rex.socket"],"listening":[8080],"other_logins":1,"mounts":[],"tmux":true,"screen":false,"machine_id":"aa","boot_id":"b1","home_dev":2049,"home_ino":131073,"ssh_port":22,"now":1795600000,"helper":"1"}"#;
-    const FEDORA: &str = r#"{"system":"fedora","system_name":"Fedora Linux 44 (Cloud Edition)","machine":"aarch64","user":"fedora","uid":1000,"gid":1000,"home":"/home/fedora","shell":"/bin/bash","free":1073741824,"admin":true,"tools":["sudo","bash"],"selinux":true,"machine_id":"cc","boot_id":"b2","ssh_port":2222,"now":1795600003}"#;
+    const UBUNTU: &str = r#"{"system":"ubuntu","system_like":"debian","system_name":"Ubuntu 26.04.1 LTS","machine":"x86_64","user":"ubuntu","uid":1000,"gid":1000,"home":"/home/ubuntu","shell":"/bin/bash","free":52428800000,"free_inodes":3000000,"var_tmp_free":1,"var_tmp_inodes":1,"admin":true,"groups":["ubuntu","sudo"],"tools":["rsync","ssh","crontab","sudo","git","bash","systemctl","tmux"],"selinux":false,"linger":true,"units":["backup.service","backup.timer","rex.socket"],"enabled":["backup.timer","rex.socket"],"listening":[8080],"other_logins":1,"mounts":[],"tmux":true,"screen":false,"machine_id":"aa","boot_id":"b1","home_dev":2049,"home_ino":131073,"ssh_port":22,"now":1795600000,"helper":"1"}"#;
+    const FEDORA: &str = r#"{"system":"fedora","system_name":"Fedora Linux 44 (Cloud Edition)","machine":"aarch64","user":"fedora","uid":1000,"gid":1000,"home":"/home/fedora","shell":"/bin/bash","free":1073741824,"admin":true,"tools":["rsync","ssh","sudo","bash","dnf"],"selinux":true,"machine_id":"cc","boot_id":"b2","ssh_port":2222,"now":1795600003}"#;
 
     /// Each host's look is read whole (what an older helper doesn't say is
     /// its default); what a move needs to know of a pair (another system,
@@ -1916,20 +1964,32 @@ mod tests {
         let mut dst = Scripted { ran: vec![], answers: vec![] };
         let public = block(make_key(&mut src, "abc", &from, "m1")).unwrap();
         assert_eq!(public, "ssh-ed25519 AAAAkey olo-move-m1");
-        block(allow(&mut dst, "abc", "m1", &public, &["/var/tmp/scratch".to_owned()])).unwrap();
-        assert!(dst.ran[0].1.ends_with("move allow m1 'ssh-ed25519 AAAAkey olo-move-m1' --root /var/tmp/scratch"), "{:?}", dst.ran);
+        block(allow(&mut dst, "abc", "m1", &public, true)).unwrap();
+        assert!(dst.ran[0].1.ends_with("move allow m1 'ssh-ed25519 AAAAkey olo-move-m1' --var-tmp"), "{:?}", dst.ran);
         let way = Way { user: "fedora".into(), host: "dest".into(), port: 22, host_key: "ssh-ed25519 HOSTKEY".into() };
         let refused = block(reach(&mut src, "abc", &from, &to, "m1", std::slice::from_ref(&way))).unwrap_err();
         assert_eq!(refused, "dest:22: connection refused");
-        let pid = block(start_pass(&mut src, "abc", &from, &to, "m1", &way, 1, &["/.cache".to_owned(), "/a b".to_owned()], &["/var/tmp/scratch".to_owned()])).unwrap();
+        let pid = block(start_pass(&mut src, "abc", &from, &to, "m1", &way, 1, &["/.cache".to_owned(), "/a b".to_owned()], true)).unwrap();
         assert_eq!(pid, 4242);
         let send = &src.ran.iter().find(|(_, c)| c.contains("move send")).unwrap().1;
         assert!(
             send.contains(
-                "move send /home/ubuntu/.local/state/olo-rex/move/m1 --to fedora@dest:22 --host-key 'ssh-ed25519 HOSTKEY' --there /home/fedora --pass 1 --detach --exclude /.cache --exclude '/a b' --also /var/tmp/scratch"
+                "move send /home/ubuntu/.local/state/olo-rex/move/m1 --to fedora@dest:22 --host-key 'ssh-ed25519 HOSTKEY' --there /home/fedora --pass 1 --detach --exclude /.cache --exclude '/a b' --var-tmp"
             ),
             "{send}"
         );
+        // (`ensure_rsync`: no-op when present on host; installs via dnf when missing and admin.)
+        let mut bare_dst = Scripted { ran: vec![], answers: vec![("command -v rsync > /dev/null 2>&1", 1, String::new())] };
+        let mut to_no_rsync = to.clone();
+        to_no_rsync.tools.retain(|t| t != "rsync");
+        block(ensure_rsync(&mut bare_dst, &to_no_rsync)).unwrap();
+        assert!(bare_dst.ran.iter().any(|(root, c)| *root && c.contains("dnf install -y -q rsync")), "{:?}", bare_dst.ran);
+        let mut has_rsync_dst = Scripted { ran: vec![], answers: vec![] };
+        block(ensure_rsync(&mut has_rsync_dst, &to_no_rsync)).unwrap();
+        assert!(!has_rsync_dst.ran.iter().any(|(root, _)| *root), "already installed: no sudo needed");
+        let mut no_admin = to_no_rsync.clone();
+        no_admin.admin = false;
+        assert!(refusals(&from, &no_admin, false, "big-box").iter().any(|w| w.contains("rsync")));
         let left = block(stop_source(&mut src, "abc", &from, "m1", &[801])).unwrap();
         assert!(left.is_empty());
         let n = src.ran.len();

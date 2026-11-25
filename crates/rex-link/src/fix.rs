@@ -422,7 +422,13 @@ pub fn fix_with(home: &Path, also: &[PathBuf], old: &str, new: &str) -> Fixed {
     };
     walk(home, &mut each);
     for root in also {
-        walk(root, &mut each);
+        if let Ok(meta) = std::fs::symlink_metadata(root) {
+            if meta.is_dir() {
+                walk(root, &mut each);
+            } else {
+                each(root, &meta);
+            }
+        }
     }
     for (path, target, meta) in links {
         let temp = beside(&path, "link");
@@ -473,21 +479,60 @@ pub fn fix_with(home: &Path, also: &[PathBuf], old: &str, new: &str) -> Fixed {
     done
 }
 
-/// `move fix --from OLD --to NEW [--once FILE] [--also /var/tmp/NAME]…`.
+/// Top-level entries in `/var/tmp` owned by `uid`.
+fn var_tmp_owned(uid: u32) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir("/var/tmp") else { return Vec::new() };
+    let mut out: Vec<PathBuf> = rd.filter_map(|e| e.ok()).filter(|e| std::fs::symlink_metadata(e.path()).is_ok_and(|m| m.uid() == uid)).map(|e| e.path()).collect();
+    out.sort();
+    out
+}
+
+/// `move fix --from OLD --to NEW [--once FILE] [--var-tmp] [--also /var/tmp/NAME]…`.
 pub fn run(args: &[String]) -> i32 {
-    let (mut from, mut to, mut once, mut also) = (None, None, None, Vec::new());
+    let (mut from, mut to, mut once, mut also, mut var_tmp) = (None, None, None, Vec::new(), false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
-        match (a.as_str(), it.next()) {
-            ("--from", Some(v)) => from = Some(v.clone()),
-            ("--to", Some(v)) => to = Some(v.clone()),
-            ("--once", Some(v)) => once = Some(PathBuf::from(v)),
-            ("--also", Some(v)) if Path::new(v).parent() == Some(Path::new("/var/tmp")) => also.push(PathBuf::from(v)),
+        match a.as_str() {
+            "--from" => match it.next() {
+                Some(v) => from = Some(v.clone()),
+                None => {
+                    eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--var-tmp]");
+                    return 2;
+                }
+            },
+            "--to" => match it.next() {
+                Some(v) => to = Some(v.clone()),
+                None => {
+                    eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--var-tmp]");
+                    return 2;
+                }
+            },
+            "--once" => match it.next() {
+                Some(v) => once = Some(PathBuf::from(v)),
+                None => {
+                    eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--var-tmp]");
+                    return 2;
+                }
+            },
+            "--var-tmp" => var_tmp = true,
+            "--also" => match it.next() {
+                Some(v) if Path::new(v).parent() == Some(Path::new("/var/tmp")) => also.push(PathBuf::from(v)),
+                _ => {
+                    eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--var-tmp]");
+                    return 2;
+                }
+            },
             _ => {
-                eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--also /var/tmp/NAME]...");
+                eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--var-tmp]");
                 return 2;
             }
         }
+    }
+    if var_tmp {
+        // SAFETY: a getter.
+        also.extend(var_tmp_owned(unsafe { libc::getuid() }));
+        also.sort();
+        also.dedup();
     }
     let (Some(old), Some(new)) = (from, to) else {
         eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE]");

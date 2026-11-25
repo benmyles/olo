@@ -64,7 +64,10 @@ printf 'first thing\\nsecond thing\\n' > ~/todo.txt
 echo 'print(1)' > ~/proj-a/main.py; echo 'fn main() {{}}' > ~/proj-b/main.rs
 head -c 3000000 /dev/urandom > ~/data/a/blob1; head -c 3000000 /dev/urandom > ~/data/b/blob2; head -c 2000000 /dev/urandom > ~/proj-b/big.bin
 printf '[core]\\n\\texcludesFile = %s/.gitignore_global\\n' "$HOME" > ~/dotfiles/gitconfig; ln -sf "$HOME/dotfiles/gitconfig" ~/.gitconfig
-mkdir -p /var/tmp/olo-rig-scratch && echo 'scratch notes' > /var/tmp/olo-rig-scratch/notes.txt
+echo 'gone after pass 1' > ~/ephemeral.tmp
+mkdir -p /var/tmp/olo-rig-scratch && echo 'scratch notes' > /var/tmp/olo-rig-scratch/notes.txt && echo 'gone vt' > /var/tmp/olo-rig-scratch/ephemeral.tmp
+echo 'loose scratch' > /var/tmp/olo-rig-loose.txt
+for g in {{00..49}}; do mkdir -p /var/tmp/olo-bulk-$g-{{00..99}}; done
 echo '{key}' >> ~/.ssh/authorized_keys
 export PATH="$HOME/.local/bin:$PATH"
 rex new work --cwd ~ --window main -- bash -l > /dev/null
@@ -89,6 +92,7 @@ if __name__ == "__main__":
             if not ok:
                 sys.exit(1)
         print("the source's panes:", scenario(src).replace("\n", " | "), flush=True)
+        dst.ran("echo 'stay put' > ~/dest-preexisting.txt", timeout=30)
         home = f"{D}/move-home"
         shutil.rmtree(home, ignore_errors=True)
         os.makedirs(f"{home}/.ssh", mode=0o700)

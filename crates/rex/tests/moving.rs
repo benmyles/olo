@@ -109,10 +109,12 @@ fn an_account_moves_whole() {
         let plain = migrate::Facts::read(&ran(&mut src, &migrate::look_command(id)).await).expect("the source's look");
         let excluded = migrate::excluded(&plain, &to, false);
         let from = migrate::Facts::read(&ran(&mut src, &migrate::look_sized_command(id, &excluded)).await).expect("the source's look, sized");
-        step(&format!("looked: {} ({}) to {} ({}); {} files, {} in /var/tmp folders", from.system, from.machine, to.system, to.machine, from.home_files, from.var_tmp.len()));
+        step(&format!("looked: {} ({}) to {} ({}); {} files, {} in /var/tmp", from.system, from.machine, to.system, to.machine, from.home_files, from.var_tmp_count()));
         assert!(migrate::refusals(&from, &to, true, "the destination").is_empty(), "{:?}", migrate::refusals(&from, &to, true, "the destination"));
-        let var_tmp: Vec<String> = from.var_tmp.iter().map(|f| f.path.clone()).collect();
-        assert!(var_tmp.iter().any(|p| p == "/var/tmp/olo-rig-scratch"), "the account's folder in /var/tmp: {var_tmp:?}");
+        let var_tmp = from.var_tmp_count() > 0;
+        assert!(var_tmp && from.var_tmp_count() >= 5000, "the account's entries in /var/tmp: count={}", from.var_tmp_count());
+        migrate::ensure_rsync(&mut src.runner, &from).await.expect("rsync on source");
+        migrate::ensure_rsync(&mut dst.runner, &to).await.expect("rsync on destination");
 
         // Each session read, each pane's agent and session found (two
         // Claude Codes in one folder told apart by their own records).
@@ -134,7 +136,7 @@ fn an_account_moves_whole() {
 
         // The key, a way from the source; the destination's own files kept aside.
         let public = migrate::make_key(&mut src.runner, id, &from, id).await.expect("the key");
-        migrate::allow(&mut dst.runner, id, id, &public, &var_tmp).await.expect("the key let in");
+        migrate::allow(&mut dst.runner, id, id, &public, var_tmp).await.expect("the key let in");
         let verified = dst.runner.pool.verified(&dst.runner.target).expect("the destination's key, as its connection checked it");
         let (user, at) = peer.split_once('@').expect("USER@HOST:PORT");
         let (peer_host, peer_port) = at.rsplit_once(':').expect("HOST:PORT");
@@ -154,11 +156,13 @@ fn an_account_moves_whole() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
         }
-        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 1, &excluded, &var_tmp).await.expect("pass 1 started");
+        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 1, &excluded, var_tmp).await.expect("pass 1 started");
         let p1 = finish(&mut src, id, &from, 1).await;
         assert_eq!(p1["phase"], "done", "{p1}");
         assert!(p1["parts"].as_u64().unwrap_or(0) > 2, "the home sent in parts: {p1}");
         step(&format!("pass 1: {} files of {} in {} parts, {} bytes on the wire", p1["files"], p1["total_files"], p1["parts"], p1["sent"]));
+        // Delete a file on the source after Pass 1 so Pass 2 proves `forget` removes it on the destination without touching destination's own files.
+        ran(&mut src, "rm -f ~/ephemeral.tmp /var/tmp/olo-rig-scratch/ephemeral.tmp").await;
 
         // Read again just before the stop (the source went on working), then
         // stopped, the second pass, its lingering off, its Quadlets masked.
@@ -192,8 +196,8 @@ fn an_account_moves_whole() {
         assert!(left.is_empty(), "left running: {left:?}");
         let crontab = migrate::saved_crontab(&mut src.runner, &from, id).await.expect("its crontab read");
         step(&format!("the source stopped{}", if crontab.is_some() { ", its crontab saved" } else { "" }));
-        migrate::allow(&mut dst.runner, id, id, &public, &var_tmp).await.expect("the key's day put off");
-        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 2, &excluded, &var_tmp).await.expect("pass 2 started");
+        migrate::allow(&mut dst.runner, id, id, &public, var_tmp).await.expect("the key's day put off");
+        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 2, &excluded, var_tmp).await.expect("pass 2 started");
         let p2 = finish(&mut src, id, &from, 2).await;
         assert_eq!(p2["phase"], "done", "{p2}");
         step(&format!("pass 2: {} files, {} on the wire, {} gone", p2["files"], p2["sent"], p2["report"]["gone"]));
@@ -203,7 +207,7 @@ fn an_account_moves_whole() {
         // The destination made right: keys, paths, labels, shell, link,
         // units and crontab, the path; its agents' programs checked.
         let added = migrate::merge_keys(&mut src.runner, &mut dst.runner, id, id).await.expect("the source's keys let in there");
-        let fixed = migrate::fix_destination(&mut dst.runner, id, &from, &to, id, &var_tmp).await.expect("the destination made right");
+        let fixed = migrate::fix_destination(&mut dst.runner, id, &from, &to, id, var_tmp).await.expect("the destination made right");
         let label = migrate::relabel(&mut dst.runner, &to).await.expect("its labels");
         let shell = migrate::login_shell(&mut dst.runner, &from, &to).await.expect("its login shell");
         let linked = migrate::compat_link(&mut dst.runner, &from, &to).await.expect("the old home's path");
@@ -274,10 +278,18 @@ fn an_account_moves_whole() {
                 None => {}
             }
         }
-        let there_now = ran(&mut dst, "cat /var/tmp/olo-rig-scratch/notes.txt; echo; readlink ~/.gitconfig; cat ~/dotfiles/gitconfig").await;
+        let there_now = ran(
+            &mut dst,
+            "cat /var/tmp/olo-rig-scratch/notes.txt; echo; cat /var/tmp/olo-rig-loose.txt; echo; cat ~/dest-preexisting.txt; echo; [ ! -e ~/ephemeral.tmp ] && echo home-gone; [ ! -e /var/tmp/olo-rig-scratch/ephemeral.tmp ] && echo vt-gone; echo vtcount=$(ls -d /var/tmp/olo-bulk-* | wc -l); readlink ~/.gitconfig; cat ~/dotfiles/gitconfig",
+        )
+        .await;
         assert!(there_now.contains("scratch notes"), "/var/tmp's folder came: {there_now}");
+        assert!(there_now.contains("loose scratch"), "/var/tmp's loose file came: {there_now}");
+        assert!(there_now.contains("stay put"), "destination's pre-existing file kept: {there_now}");
+        assert!(there_now.contains("home-gone") && there_now.contains("vt-gone"), "vanished Pass 1 files forgotten: {there_now}");
+        assert!(there_now.contains("vtcount=5000"), "all 5000 /var/tmp dirs arrived: {there_now}");
         assert!(there_now.contains(&format!("{}/dotfiles/gitconfig", to.home)) && there_now.contains(&format!("{}/.gitignore_global", to.home)), "the linked dotfile made right: {there_now}");
-        println!("  /var/tmp's folder there; the linked dotfile names the new home");
+        println!("  /var/tmp's 5000+ folders & loose file there; destination's own file kept; vanished files forgotten; linked dotfile made right");
         let state = ran(&mut src, "sh -c 'export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; echo socket=$(systemctl --user is-enabled rex.socket 2>&1); echo server=$(systemctl --user is-active rex.service 2>&1);'").await;
         assert!(state.contains("socket=disabled") && state.contains("server=inactive"), "the source isn't stopped: {state}");
         println!("  the source: Rex's socket disabled, its server down (and nothing of the account's left running, its drain said)");

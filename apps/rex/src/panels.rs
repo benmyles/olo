@@ -1215,13 +1215,14 @@ pub fn render_move_panel(mv: &crate::moving::Move, phase: f32, on_do: impl Fn(&M
                 home.push(small(olo_kit::tr!("Largest: {}", big.join(" · ")).to_string()).into_element());
             }
             let tmp_bytes = plan.from.var_tmp_bytes();
-            let tmp_label = match plan.from.var_tmp.len() {
+            let tmp_count = plan.from.var_tmp_count();
+            let tmp_label = match tmp_count {
                 0 => olo_kit::words::tr("Also copy your folders in /var/tmp (you have none)").to_string(),
                 1 => olo_kit::tr!("Also copy your folder in /var/tmp ({})", size_words(tmp_bytes)).to_string(),
                 n => olo_kit::tr!("Also copy your {} folders in /var/tmp ({})", n, size_words(tmp_bytes)).to_string(),
             };
             let (on_tmp, on_cache) = (on_do.clone(), on_do.clone());
-            let tmp = CheckBox::new(tmp_label, choices.var_tmp).id("move-var-tmp").enabled(!plan.from.var_tmp.is_empty()).on_toggle(move |on: &bool, cx| on_tmp(&MoveDo::VarTmp(*on), cx));
+            let tmp = CheckBox::new(tmp_label, choices.var_tmp).id("move-var-tmp").enabled(tmp_count > 0).on_toggle(move |on: &bool, cx| on_tmp(&MoveDo::VarTmp(*on), cx));
             let cache = CheckBox::new(olo_kit::words::tr("Also copy ~/.cache (rebuilt as it’s used)").to_string(), choices.cache)
                 .id("move-cache")
                 .on_toggle(move |on: &bool, cx| on_cache(&MoveDo::Cache(*on), cx));
