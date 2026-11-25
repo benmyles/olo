@@ -89,6 +89,65 @@ are universal and non-negotiable:
   (2026-11-18: "you should be visually reviewing everything you do").
   Check the picture shows what you meant to show (the right tab, the
   window in front) before judging it.
+- **Design lessons baked in before Round 1 (don't repeat review mistakes).**
+  Apply these up front on every UI you design or change so reviews don't
+  spend rounds re-finding them (Ben, 2026-11-25):
+  - *Colour role purity:* Never reuse an identity colour (provider,
+    series, group) for unrelated semantic roles (status rings, quota
+    bars, warnings). Neutral meters/progress bars use neutral slate
+    (`#5E6E84` light / `#8C9DB3` dark); warning fills use true amber
+    (`#E3A008`) paired with warning/error ink on the figure itself (never
+    bar colour alone); in-progress status text uses primary/secondary
+    ink (never green, which belongs to health dots); in-progress marks
+    use a neutral ¾-arc spinner + left-anchored diagonal barber-pole bar
+    (never a hollow "off" circle or full-width floating quota-bar block);
+    small 14–16 pt list icons use neutral slate light/dark variants so
+    multi-colour icons never collide with status or provider colours.
+  - *Stable section order, problems first inside, stated once:* Keep
+    named sections in fixed canonical order (never swap whole sections
+    when one item breaks); float problem rows to the top *within* their
+    section (or in a flat list) so broken items surface immediately.
+    State each error once on its row (`Name · Status` in error red,
+    secondary grey reason below, inline action button on the row); use
+    BeOS alert construction (32 pt `stop`/`warning` icon, bold title,
+    clear consequence, right-aligned action buttons, neutral lifted dark
+    panel fill with 1 pt accent border — never khaki or pink web strips)
+    for app-wide errors and inline confirmations.
+  - *Quiet healthy rows, crisp hierarchy & uniform rhythm:* Healthy rows
+    get zero permanent action buttons (actions live in menus, context
+    menus, double-click, and footer). Use one consistent heading style
+    across sections, ensure top-level section gaps unmistakably exceed
+    internal item spacing (never use an inner divider that looks stronger
+    than the section break), keep one uniform title-line height/pitch
+    across rows with and without buttons, omit repetitive row icons when
+    every row has the same icon, and align row sub-lines flush with the
+    item name.
+  - *Aligned columns, crisp charts, proper empty states:* Put primary
+    numbers (`42%`) in a fixed right-aligned column in primary ink and
+    left-align secondary text after them; cap right-aligned `Status`
+    columns compactly so variable-width columns (`Model`, `Name`) absorb
+    extra table width; frame tables with BeOS sunken wells matching
+    charts and scroll lists. In `Graph`, use bare numeric Y-axis labels
+    with tight headroom (`y_labels(true)`), keep X-axis clock ticks in an
+    inside-well band culled by logical-point stride (`x_labels(…)`),
+    auto-switch to a clean sparkline when plot height is too short, avoid
+    muddy opaque fills, and put live counts right-aligned on the table
+    heading instead of decorative swatch sections. Centre empty states at
+    ~⅓ well height with a 48 pt icon, bold title, concise guidance,
+    default primary footer button, and disabled inapplicable actions.
+  - *Consistent footers & width-driven tiling:* Use the same button order
+    and noun-qualified labels across tabs (`Add …`, `Edit/Remove …` …
+    `Updated/Checked HH:MM`, global action), disabling `Remove …` while
+    its inline confirmation is open. Use ≥20 pt gutters in two-column
+    tiling layouts with aligned headings and well tops, drop table
+    columns strictly by available width, drop whole trailing segments
+    rather than cutting mid-word, and size labeled `MenuField` popups to
+    fit their longest option without ellipsis.
+  - *Complete, mathematically coherent review batches:* Test charts with
+    organic non-periodic data whose last-hour totals, today totals,
+    failure counts, and host statuses agree 100% across every tab, and
+    include light/dark empty lists, error/stopped states across tabs,
+    disabled controls, and dark-mode menus/confirmations in the batch.
 - **Two more pairs of eyes on every picture: Gemini 4 Neon's and Opus
   5.5's.** Give all the pictures of a change to both for a design
   review before it's committed (Ben, 2026-11-19, of a new app's first
@@ -217,7 +276,12 @@ are universal and non-negotiable:
   blocked (Ben, 2026-11-24: "keep in there for me an up to date todo
   list of the work (just a brief 1 line entry for each one and check
   them off as you go"; "a rule asking you to do it by default on new
-  sessions").
+  sessions"). Each time you start a UX/visual design review, also keep
+  the work board updated with the most relevant 3–6 screenshots via
+  `@img PATH [CAPTION]` (rendered inline with Kitty graphics by
+  `tools/dev/worklist`, e.g. 1–2 crisp contact-sheet strips covering the
+  key states/themes) so the person can follow along live (Ben,
+  2026-11-25).
 - **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
   Gemini 4 Neon at xhigh in the Antigravity CLI (`agy`) but Opus's

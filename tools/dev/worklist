@@ -17,8 +17,10 @@ FILE, by default /var/tmp/olo-worklist/list.txt, holds one line an item:
 dim (what is blocked, say). Write it whole and rename it into place (a
 pane never draws half of it): `worklist` itself never writes it.
 """
+import base64
 import ctypes
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -27,13 +29,34 @@ DEFAULT = "/var/tmp/olo-worklist/list.txt"
 GREEN, DIM, BOLD, YELLOW, CYAN, RESET = "\x1b[32m", "\x1b[2m", "\x1b[1m", "\x1b[33m", "\x1b[36m", "\x1b[0m"
 
 
+def kitty_png(img_path):
+    """Emit a Kitty graphics protocol inline PNG scaled to the pane's width."""
+    try:
+        data = open(img_path, "rb").read()
+    except OSError:
+        return ""
+    cols = max(20, shutil.get_terminal_size((80, 24)).columns - 2)
+    b64 = base64.b64encode(data).decode("ascii")
+    chunk_size = 4096
+    parts = []
+    for i in range(0, len(b64), chunk_size):
+        chunk = b64[i:i + chunk_size]
+        more = 1 if i + chunk_size < len(b64) else 0
+        if i == 0:
+            parts.append(f"\x1b_Ga=T,f=100,q=2,c={cols},m={more};{chunk}\x1b\\")
+        else:
+            parts.append(f"\x1b_Gm={more};{chunk}\x1b\\")
+    return "".join(parts) + "\n"
+
+
 def draw(path):
     try:
         lines = open(path, encoding="utf-8").read().splitlines()
     except OSError:
         lines = ["(no list yet)"]
     items = [l for l in lines if l[:3] in ("[x]", "[ ]", "[>]")]
-    out = ["\x1b[H\x1b[2J\x1b[3J", f"{BOLD}The work{RESET}  {DIM}{sum(1 for l in items if l.startswith('[x]'))} of {len(items)} done{RESET}\n"]
+    # Clear any prior Kitty image placements before redrawing the pane.
+    out = ["\x1b_Ga=d,d=A,q=2\x1b\\\x1b[H\x1b[2J\x1b[3J", f"{BOLD}The work{RESET}  {DIM}{sum(1 for l in items if l.startswith('[x]'))} of {len(items)} done{RESET}\n"]
     for l in lines:
         if l.startswith("[x]"):
             out.append(f"{GREEN}✓{RESET} {DIM}{l[3:].strip()}{RESET}\n")
@@ -43,6 +66,15 @@ def draw(path):
             out.append(f"○ {l[3:].strip()}\n")
         elif l.startswith("#"):
             out.append(f"\n{CYAN}{BOLD}{l.lstrip('#').strip()}{RESET}\n")
+        elif l.startswith("@img "):
+            rest = l[5:].strip().split(" ", 1)
+            img_path = rest[0]
+            caption = rest[1].strip() if len(rest) > 1 else ""
+            if caption:
+                out.append(f"\n{CYAN}{BOLD}{caption}{RESET}\n")
+            else:
+                out.append("\n")
+            out.append(kitty_png(img_path))
         elif l.strip():
             out.append(f"{DIM}{l}{RESET}\n")
     sys.stdout.write("".join(out))

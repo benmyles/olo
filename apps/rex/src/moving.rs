@@ -815,7 +815,7 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
     if plan.had_pool && !has("pool_on") {
         // (Done says where the sign-ins are, as Confirm said they'd go.)
         let said = if crate::pool::act(&j0.dest, "install").is_err() {
-            olo_kit::tr!("The Token Pool couldn’t be put on {}: put it there from its Hosts window.", mv.dest_label).to_string()
+            olo_kit::tr!("The Token Pool couldn’t be put on {}: manage it in Token Pool\u{a0}▸\u{a0}Machines.", mv.dest_label).to_string()
         } else {
             olo_kit::tr!("Your sign-ins in the Token Pool are on {} now.", mv.dest_label).to_string()
         };

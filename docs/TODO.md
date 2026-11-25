@@ -62,6 +62,11 @@ something nobody here has is in "Blocked", with what it waits for.
   - Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
     message headers/timestamps/rules to the prose width (~560 pt) and
     align sender icons in the left gutter with `Back`.
+  - Dark-mode popup menus & `Menu::app_items` grouping (Opus 5.5 R3 on
+    Token Pool, 2026-11-25): give dark popup menus stronger border
+    contrast and drop shadow so they separate cleanly from dark panels
+    behind them; separate `About <App>` onto its own top group above
+    `Settings…` + `Keyboard Shortcuts`.
 - **Left of the reviews' findings on the kit and Rex** (Opus 5.5,
   2026-11-24). Done 2026-11-24: an alert's question in bold, its
   explanation 8 points under it (`alert::message`); dimmed buttons keep
@@ -192,15 +197,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Token Pool UX overhaul: cohesive local vs remote Rex hosts menus,
-  preferences, management, and unified activity monitoring** (Ben,
-  2026-11-25: "all the menu options and preferences and management and
-  activity monitoring and general ux for token pool with local vs remote
-  rex hosts etc. is a total nightmare right now it's all over the place
-  and i can't make sense of it. i need you to clean it all up to be
-  intuitive and feel cohesive"; "as soon as the token pool stuff is done
-  please do a release").
-
 - **Rex native nested subagent tabs, Olo Kit hierarchical child-tab
   switcher, Activity tree, and agent-ergonomic tab control/watch tooling
   & skill** (Ben, 2026-11-25):
@@ -232,8 +228,9 @@ something nobody here has is in "Blocked", with what it waits for.
   - **Agent-ergonomic control, watch & event alerts (best integrated
     mechanism — Rex custom actions / `olo` CLI / bridge):** give agents
     full, frictionless control over tabs they launch:
-    - Launch / list / inspect / close child tabs (capturing pane ID /
-      handle cleanly, setting title/role/cwd/env/command).
+    - Launch / list / inspect / stop / close child tabs cleanly (graceful
+      stop and forceful kill/close of any subagent or tab they launched,
+      capturing pane ID / handle cleanly, setting title/role/cwd/env/command).
     - Tail / read / watch a child session's output & screen state.
     - Structured event alerts / waits: trigger when the child agent asks
       a question, needs an approval, goes idle, finishes/exits, or
@@ -11107,6 +11104,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Token Pool UX overhaul: cohesive local vs remote Rex hosts menus, preferences, management, and unified activity monitoring**~~ (done 2026-11-25, commit after b4a95db46):
+  - Unified Token Pool into one BeOS-native three-tab window (`Accounts`, `Activity`, `Machines`) with `Cmd+1/2/3`, `Cmd+R`, `Cmd+Shift+S`, deleting the redundant `Clients` and `Hosts` sub-windows while keeping legacy `--hosts-window` / `hosts` / `clients` callers opening the matching tab seamlessly.
+  - Added pure local+remote aggregation (`apps/pool/src/aggregate.rs`) merging live requests, recent requests, per-minute activity series, account rollups, sign-in custody, and host status across This Computer and all remote Rex hosts, with severity-sorted rows within canonical sections, consistent BeOS-native Gateway Stopped alert above the tab bar, centred empty states with default `Add Account…`, quiet healthy rows, neutral slate machine glyphs/quota bars/barber-pole install bars/¾-arc spinner, right-aligned `Running · …` counts on `Recent Requests`, `Remove Host…` + `Checked HH:MM` footer, and width-driven tiling (20pt two-column gutters, sparkline auto-mode in `hthird`).
+  - Upgraded reusable `olo-kit` widgets: `TabView::lights` integer-pixel-snapped `!` badges & dark tab contrast; `Graph::y_labels(true)` tight headroom + `Graph::x_labels(…)` inside-well clock band with logical-point stride & sparkline auto-mode; softened dark `CellGrid` empty wells.
+  - Added Kitty graphics `@img PATH [CAPTION]` preview support to `tools/dev/worklist` and codified review screenshot updates + visual design lessons in `AGENTS.md`.
+  - Reviewed through 3 full rounds by Opus 5.5 max and Gemini 4 Neon xhigh; 30/30 headless `tsession review` checks at 0 findings across 1×/1.5×/2×, light/dark, empty, stopped, and all tiling layouts.
 
 - ~~**Rex: Subagent transcript & read-only tmux scrolling fixes (incl. Taffy cross-axis `max_w` layout bug), Manage Host sync status & seamless Update buttons, status-bar error banner `×` dismiss, Cmd+click Tracker reveal (`/var/tmp` too) & `rex://local/...` paste/fetch**~~ (done 2026-11-25, commit after c5a0b27d2):
   - Fixed all 7 root causes of disabled scrollbars & dead `Jump to End` / `Jump to Live` in subagent transcripts and read-only tmux panes: clamped definite cross size by `min_size`/`max_size` before intrinsic main-size measurement in `vendor/taffy/src/compute/flexbox.rs` (`w_full().max_w(...)` wrapped prose now measures true height instead of collapsing on wide windows); tracked `inter.watches` in `olo_interface` reconcile and scanned nodes when `items_stale`; replaced naive 1 MiB seek in `rex-link/src/activity.rs` with backward chunk scan filtering Claude 2.1/Codex telemetry blobs; persisted transcript scroll state with proper pause/resume, `Jump to End`, Find `scroll_to_item`, keyboard scroll handling, and explicit tmux stage sizing.

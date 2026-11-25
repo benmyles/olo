@@ -312,10 +312,9 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], lig
     // tabs are a shade lighter there, under a chosen tab in the content's
     // dark colours; over the panel's own, here, lighter read as in front
     // of the chosen one: the Kernel tab's reviews, 2026-11-20.)
-    // (A quarter of the way to black: about ten levels under a dark
-    // panel, the step a light look's tabs take. An eighth was three to
-    // six, and read as no change: Opus's look, measured.)
-    let behind = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.25)) } else { f.behind };
+    // (A third of the way to black in dark mode so unselected tabs recede
+    // clearly behind the selected tab's panel fill.)
+    let behind = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.34)) } else { f.behind };
     for (_, r) in rects.iter().enumerate().filter(|&(i, _)| i != selected) {
         strip::folder(g, foot(r, y0 + hair), behind, f.light, f.shadow, f.soft, sh);
     }
@@ -368,12 +367,19 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], lig
                 style::dot(g, point(cx, cap_mid), TAB_ALERT, fill_c);
                 let white = style::c(olo_theme::WHITE);
                 let s = g.scale_factor();
-                let snap = |v: Pixels| px((f32::from(v) * s).round() / s);
-                let bw = px((1.5 * s).round().max(1.0) / s);
-                let bx = snap(cx - bw / 2.0);
-                // Exclamation stem (3.5 pt) + dot (1.5 pt), centred optically inside the 10 pt disc.
-                let stem = Bounds::new(point(bx, snap(cap_mid - px(3.0))), olo_interface::size(bw, px((3.5 * s).round().max(2.0) / s)));
-                let pip = Bounds::new(point(bx, snap(cap_mid + px(1.5))), olo_interface::size(bw, bw));
+                // Snap stem + guaranteed ≥1 device-pixel gap + dot in integer
+                // device pixels so `!` stays unmistakable even at 1×.
+                let cx_px = (f32::from(cx) * s).round();
+                let cy_px = (f32::from(cap_mid) * s).round();
+                let bw_px = if s <= 1.25 { 1.0 } else { (1.5 * s).round().max(2.0) };
+                let gap_px = (1.0 * s).round().max(1.0);
+                let stem_h = (3.5 * s).round().max(3.0);
+                let pip_h = bw_px;
+                let total_h = stem_h + gap_px + pip_h;
+                let top_px = (cy_px - total_h / 2.0).round();
+                let left_px = (cx_px - bw_px / 2.0).round();
+                let stem = Bounds::new(point(px(left_px / s), px(top_px / s)), olo_interface::size(px(bw_px / s), px(stem_h / s)));
+                let pip = Bounds::new(point(px(left_px / s), px((top_px + stem_h + gap_px) / s)), olo_interface::size(px(bw_px / s), px(pip_h / s)));
                 style::fill_rect(g, stem, white);
                 style::fill_rect(g, pip, white);
             } else {

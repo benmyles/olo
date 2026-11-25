@@ -116,6 +116,28 @@ impl GraphState {
 
 type TimeFn = Rc<dyn Fn(&f64, &mut WindowCx)>;
 
+/// Format a bare numeric tick label without trailing `.0`.
+fn bare_num(v: f64) -> String {
+    if (v - v.round()).abs() < 1e-6 || v.abs() >= 10.0 { format!("{v:.0}") } else { format!("{v:.1}") }
+}
+
+/// Tight "nice" ceiling for Y-labelled charts: avoids leaving 40%+ empty headroom
+/// (e.g. peak 11 -> ceiling 15 with 0/5/10/15 ticks, rather than jumping to 20).
+fn nice_axis_ceiling(v: f64) -> (f64, usize) {
+    if v <= 0.0 || !v.is_finite() {
+        return (1.0, 2);
+    }
+    let p = 10f64.powf(v.log10().floor());
+    let choices: [(f64, usize); 9] = [(1.0, 2), (1.2, 3), (1.5, 3), (2.0, 2), (3.0, 3), (4.0, 2), (5.0, 2), (6.0, 3), (8.0, 2)];
+    for &(k, steps) in &choices {
+        let n = k * p;
+        if n >= v * (1.0 - 1e-9) {
+            return (n, steps);
+        }
+    }
+    (10.0 * p, 2)
+}
+
 /// A live graph of [`Series`]; it fills the box it's given.
 #[derive(Clone)]
 pub struct Graph {
@@ -129,6 +151,8 @@ pub struct Graph {
     grid_seconds: f64,
     smooth: bool,
     well: bool,
+    y_labels: bool,
+    x_labels: Option<Rc<dyn Fn(f64) -> String>>,
     on_click: Option<TimeFn>,
     on_hover: Option<TimeFn>,
 }
@@ -137,7 +161,22 @@ impl Graph {
     /// A graph of `series` at time `now` (seconds, as their samples'):
     /// still until what holds it says what it shows again.
     pub fn new(id: impl Into<SharedString>, series: impl Into<Rc<[Series]>>, now: f64) -> Graph {
-        Graph { id: id.into(), series: series.into(), now, clock: None, span: 60.0, max: None, unit: None, grid_seconds: 10.0, smooth: true, well: true, on_click: None, on_hover: None }
+        Graph {
+            id: id.into(),
+            series: series.into(),
+            now,
+            clock: None,
+            span: 60.0,
+            max: None,
+            unit: None,
+            grid_seconds: 10.0,
+            smooth: true,
+            well: true,
+            y_labels: false,
+            x_labels: None,
+            on_click: None,
+            on_hover: None,
+        }
     }
 
     /// A graph of `series` that moves as time passes: `clock` says what
@@ -190,6 +229,20 @@ impl Graph {
         self
     }
 
+    /// Draw bare numeric Y-axis scale labels (0, mid, top) in a dedicated left gutter
+    /// aligned to the horizontal gridlines, with automatic headroom above data peaks.
+    pub fn y_labels(mut self, on: bool) -> Self {
+        self.y_labels = on;
+        self
+    }
+
+    /// Draw X-axis tick labels directly aligned beneath the vertical gridlines
+    /// (plus `"now"` at the right edge), using `f(timestamp_secs)` to format times.
+    pub fn x_labels(mut self, f: impl Fn(f64) -> String + 'static) -> Self {
+        self.x_labels = Some(Rc::new(f));
+        self
+    }
+
     /// The time clicked.
     pub fn on_click(mut self, f: impl Fn(&f64, &mut WindowCx) + 'static) -> Self {
         self.on_click = Some(Rc::new(f));
@@ -206,63 +259,124 @@ impl Graph {
 
 impl IntoElement for Graph {
     fn into_element(self) -> Element {
-        let Graph { id, series, now, clock, span, max, unit, grid_seconds, smooth, well, on_click, on_hover } = self;
+        let Graph { id, series, now, clock, span, max, unit, grid_seconds, smooth, well, y_labels, x_labels, on_click, on_hover } = self;
         let clickable = on_click.is_some();
         let mut element = canvas(move |g, b| {
             let p = theme::palette();
             let s = g.scale_factor();
             let now = clock.as_ref().map_or(now, |clock| clock());
-            let rect = style::snap(g, b);
+            let total = style::snap(g, b);
+            // Below 76pt total height (e.g. horizontal-third compact tiles), render a clean
+            // sparkline inside the well without cramped axes or clipped tick labels.
+            let sparkline = f32::from(total.size.height) < 76.0;
+            let rect = total;
             let inner = if well { style::inset(g, rect, 2.0) } else { rect };
             if well {
                 style::fill_rect(g, inner, style::c(p.document_background));
-                style::sunken(g, rect, &p, false);
             }
+            let show_x = !sparkline && x_labels.is_some() && f32::from(inner.size.height) >= 68.0;
+            let x_strip_h = if show_x { 16.0 } else { 0.0 };
+            let plot_bottom = inner.bottom() - px(x_strip_h);
+            let shown = |s: &Series| s.samples.iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0f64, f64::max);
+            let raw_max = series.iter().filter(|s| s.top.is_none()).map(shown).fold(0.0, f64::max);
+            let (top, y_steps) = match max {
+                Some(m) => (m, 2),
+                None if y_labels && !sparkline => nice_axis_ceiling((raw_max * 1.15).max(1.0)),
+                None => (nice_ceiling(raw_max), 2),
+            };
+            let label_font = style::ui_font(FontWeight::NORMAL);
+            let label_size = style::SMALL_SIZE - 1.0;
+            let show_y = !sparkline && y_labels && f32::from(inner.size.width) >= 120.0;
+            let y_ticks: Vec<f64> = if show_y {
+                let steps = if f32::from(plot_bottom - inner.top()) < 72.0 { 2 } else { y_steps };
+                (0..=steps).map(|i| top * (i as f64) / (steps as f64)).collect()
+            } else {
+                Vec::new()
+            };
+            let gutter_w = if show_y {
+                let max_lbl_w = y_ticks.iter().map(|&v| f32::from(style::text_width(bare_num(v), label_size, label_font.clone()))).fold(0.0f32, f32::max);
+                (max_lbl_w + 10.0).clamp(22.0, (f32::from(inner.size.width) * 0.25).max(22.0)).ceil()
+            } else {
+                0.0
+            };
+            let plot = Bounds::from_corners(point(inner.left() + px(gutter_w), inner.top()), point(inner.right(), plot_bottom));
             let hover = {
                 let state = g.node_state::<GraphState>();
-                (state.inner, state.now, state.span) = (inner, now, span);
+                (state.inner, state.now, state.span) = (plot, now, span);
                 state.hover
             };
             // The next drawing when the samples have moved a device
             // pixel.
             if smooth && clock.is_some() {
-                g.paint_again_within(span / (f32::from(inner.size.width) * s).max(1.0) as f64);
+                g.paint_again_within(span / (f32::from(plot.size.width) * s).max(1.0) as f64);
             }
-            let width = f32::from(inner.size.width);
-            let x_of = move |t: f64| inner.right() - px(((now - t) / span) as f32 * width);
-            let time_at = move |x: Pixels| now - (f32::from(inner.right() - x) / width) as f64 * span;
+            let width = f32::from(plot.size.width);
+            let x_of = move |t: f64| plot.right() - px(((now - t) / span) as f32 * width);
+            let time_at = move |x: Pixels| now - (f32::from(plot.right() - x) / width) as f64 * span;
             let say = |series: &Series, v: f64| match (&series.format, &unit) {
                 (Some(f), _) | (None, Some(f)) => f(v),
                 (None, None) => format!("{v:.1}"),
             };
-            g.with_content_mask(Some(olo_interface::ContentMask { bounds: inner }), |g| {
+            let h = f32::from(plot.size.height);
+            let top_pad = if show_y { 8.0 } else { 4.0 };
+            let bot_pad = if show_y { 7.0 } else { 4.0 };
+            let usable_h = (h - top_pad - bot_pad).max(1.0);
+            let grid = style::c(olo_theme::mix(p.document_text, p.document_background, 0.9));
+            let tick_ink = style::c(olo_theme::mix(p.document_text, p.document_background, 0.65));
+            let axis_ink = style::c(olo_theme::mix(p.document_text, p.document_background, 0.35));
+            let axis_bg = style::c(olo_theme::mix(p.document_background, p.panel_background, 0.35));
+            if show_y {
+                let y_gutter = Bounds::from_corners(inner.origin, point(plot.left(), inner.bottom()));
+                style::fill_rect(g, y_gutter, axis_bg);
+                style::vline(g, plot.left(), inner.top(), plot_bottom, grid);
+                crate::review::own_grid(g, y_gutter);
+                for &val in &y_ticks {
+                    let frac = (val / top).clamp(0.0, 1.0) as f32;
+                    let y = (plot.bottom() - px(bot_pad + frac * usable_h)).clamp(inner.top() + px(7.0), plot.bottom() - px(6.0));
+                    style::label(g, plot.left() - px(4.0), y, style::Align::Right, bare_num(val), label_size, label_font.clone(), axis_ink);
+                }
+            }
+            let mut grid_times: Vec<(f64, Pixels)> = Vec::new();
+            g.with_content_mask(Some(olo_interface::ContentMask { bounds: plot }), |g| {
                 // The grid, the fills and the lines in one layer: one
                 // place in the scene's order for all of them rather
                 // than one each, found among everything drawn before
                 // (in a layer, quads go under paths under segments).
-                g.paint_layer(inner, |g| {
-                    // The grid: quarters across, and a time line every so
-                    // often that moves with the samples.
-                    let grid = style::c(olo_theme::mix(p.document_text, p.document_background, 0.9));
-                    for k in 1..4 {
-                        style::hline(g, inner.left(), inner.right(), inner.top() + inner.size.height * (k as f32 / 4.0), grid);
+                g.paint_layer(plot, |g| {
+                    // The grid: horizontal lines aligned to the Y-axis scale,
+                    // and time lines every so often that move with the samples.
+                    if show_y {
+                        for &val in &y_ticks {
+                            let frac = (val / top).clamp(0.0, 1.0) as f32;
+                            let y = plot.bottom() - px(bot_pad + frac * usable_h);
+                            style::hline(g, plot.left(), plot.right(), y, grid);
+                        }
+                    } else if !sparkline {
+                        for k in 1..4 {
+                            style::hline(g, plot.left(), plot.right(), plot.top() + plot.size.height * (k as f32 / 4.0), grid);
+                        }
                     }
                     if !well {
                         let base = style::c(olo_theme::mix(p.document_text, p.document_background, 0.75));
-                        style::hline_above(g, inner.left(), inner.right(), inner.bottom(), base);
+                        style::hline_above(g, plot.left(), plot.right(), plot.bottom(), base);
                     }
-                    let mut t = (now / grid_seconds).floor() * grid_seconds;
-                    while t > now - span {
-                        style::vline(g, x_of(t), inner.top(), inner.bottom(), grid);
-                        t -= grid_seconds;
+                    if !sparkline {
+                        let mut t = (now / grid_seconds).floor() * grid_seconds;
+                        while t > now - span {
+                            let gx = x_of(t);
+                            if gx > plot.left() + px(6.0) && gx < plot.right() - px(6.0) {
+                                style::vline(g, gx, plot.top(), plot.bottom(), grid);
+                                if show_y || show_x {
+                                    style::vline(g, gx, plot.bottom() - px(3.0), plot.bottom(), tick_ink);
+                                }
+                                grid_times.push((t, gx));
+                            }
+                            t -= grid_seconds;
+                        }
                     }
-                    // The top: fixed, or the nice number over what shows.
-                    let shown = |series: &Series| series.samples.iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0f64, f64::max);
-                    let top = max.unwrap_or_else(|| nice_ceiling(series.iter().filter(|s| s.top.is_none()).map(shown).fold(0.0, f64::max)));
                     for line in series.iter() {
                         let top = line.top.unwrap_or(top);
-                        let h = f32::from(inner.size.height);
-                        let y_of = |v: f64| inner.bottom() - px(1.5 + (v / top).clamp(0.0, 1.0) as f32 * (h - 3.0));
+                        let y_of = |v: f64| plot.bottom() - px(bot_pad + (v / top).clamp(0.0, 1.0) as f32 * usable_h);
                         // At most a point a device pixel: past that a line
                         // only frays.
                         let mut runs: Vec<Vec<Point<Pixels>>> = vec![Vec::new()];
@@ -293,7 +407,7 @@ impl IntoElement for Graph {
                             let under = line.color.opacity(40.0 / 255.0);
                             for run in &runs {
                                 for w in run.windows(2) {
-                                    g.paint_area(w[0], w[1], inner.bottom(), under);
+                                    g.paint_area(w[0], w[1], plot.bottom() - px(bot_pad), under);
                                 }
                             }
                         }
@@ -306,13 +420,48 @@ impl IntoElement for Graph {
                 });
                 // Hovering: the time under the pointer and each value
                 // then.
-                if let Some(pos) = hover.filter(|pos| inner.contains(pos)) {
+                if let Some(pos) = hover.filter(|pos| plot.contains(pos)) {
                     let t = time_at(pos.x);
-                    style::vline(g, pos.x, inner.top(), inner.bottom(), style::c(olo_theme::mix(p.document_text, p.document_background, 0.5)));
+                    style::vline(g, pos.x, plot.top(), plot.bottom(), style::c(olo_theme::mix(p.document_text, p.document_background, 0.5)));
                     let lines: Vec<(Hsla, String)> = series.iter().map(|line| (line.color, format!("{}: {}", line.name, line.at(t).map(|v| say(line, v)).unwrap_or_else(|| "–".into())))).collect();
-                    readout(g, inner, pos, &lines, ago(now - t));
+                    readout(g, plot, pos, &lines, ago(now - t));
                 }
             });
+            // Aligned X-axis clock band INSIDE the sunken well so the chart is one framed object!
+            // Uses deterministic logical-point integer stride so 1×, 1.5×, and 2× render identical ticks.
+            if show_x && let Some(fmt_x) = &x_labels {
+                let x_strip = Bounds::from_corners(point(plot.left(), plot_bottom), inner.bottom_right());
+                style::fill_rect(g, x_strip, axis_bg);
+                style::hline(g, inner.left(), inner.right(), plot_bottom, grid);
+                if show_y {
+                    style::vline(g, plot.left(), plot_bottom, inner.bottom(), grid);
+                }
+                crate::review::own_grid(g, x_strip);
+                let cy = plot_bottom + px(x_strip_h * 0.5);
+                let now_w = f32::from(style::text_width("now", label_size, label_font.clone()));
+                let right_edge = plot.right() - px(4.0);
+                style::label(g, right_edge, cy, style::Align::Right, "now", label_size, label_font.clone(), axis_ink);
+                let right_limit = f32::from(right_edge) - now_w - 8.0;
+                let left_limit = f32::from(plot.left()) + 5.0;
+                let sample_w = grid_times.first().map(|&(t_val, _)| f32::from(style::text_width(fmt_x(t_val), label_size, label_font.clone()))).unwrap_or(28.0).max(28.0);
+                let dx = ((grid_seconds / span) as f32 * width).max(1.0);
+                let stride = (((sample_w + 18.0) / dx).ceil() as i64).max(1);
+                for &(t_val, gx) in &grid_times {
+                    let slot = (t_val / grid_seconds).round() as i64;
+                    if slot.rem_euclid(stride) != 0 {
+                        continue;
+                    }
+                    let lbl = fmt_x(t_val);
+                    let lw = f32::from(style::text_width(lbl.clone(), label_size, label_font.clone()));
+                    let cx = f32::from(gx);
+                    if cx + lw * 0.5 <= right_limit && cx - lw * 0.5 >= left_limit {
+                        style::label(g, gx, cy, style::Align::Center, lbl, label_size, label_font.clone(), axis_ink);
+                    }
+                }
+            }
+            if well {
+                style::sunken(g, rect, &p, false);
+            }
             // What agents read: each series' latest value.
             let said = series.iter().map(|line| format!("{}: {}", line.name, line.latest().map(|v| say(line, v)).unwrap_or_else(|| "–".into()))).collect::<Vec<_>>().join(", ");
             g.agent(agent::Node { role: "Figure", name: Some("Graph".into()), value: Some(said.into()), bounds: rect, enabled: true, clickable, ..Default::default() });
@@ -634,9 +783,15 @@ impl IntoElement for CellGrid {
             // as LEDs are: not controls crowded together.)
             crate::review::own_grid(g, b);
             for (i, well) in wells.iter().enumerate() {
-                // The well: sunken, as an unlit LED.
-                style::fill_rect(g, *well, style::shade(&p, p.panel_background, 1.12));
-                style::bevel(g, *well, style::shade(&p, p.panel_background, 1.4), style::c(p.shine));
+                // The well: sunken in light mode; quietly recessed without a loud
+                // wireframe outline in dark mode.
+                if p.mode == olo_theme::ThemeMode::Dark {
+                    style::fill_rect(g, *well, style::c(olo_theme::mix(p.panel_background, p.document_text, 0.06)));
+                    style::bevel(g, *well, style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.35)), style::c(olo_theme::mix(p.panel_background, p.document_text, 0.10)));
+                } else {
+                    style::fill_rect(g, *well, style::shade(&p, p.panel_background, 1.12));
+                    style::bevel(g, *well, style::shade(&p, p.panel_background, 1.4), style::c(p.shine));
+                }
                 let Some(item) = cells.get(i) else { continue };
                 let inner = style::inset(g, *well, 1.0);
                 if let Some(color) = item.color {

@@ -21,9 +21,8 @@
 //! `olo_token_pool::drain`), and the pid olo-session follows stays as
 //! the keeper (`keeper`).
 
-mod clients_window;
+mod aggregate;
 mod host_builds;
-mod hosts_window;
 mod ui;
 
 use std::{
@@ -95,8 +94,10 @@ fn duration(ms: u64) -> String {
 // ---- the command line -------------------------------------------------
 
 const USAGE: &str =
-    "usage: olo-pool [--service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex | --hosts | --host ID install|remove|sync|look]
+    "usage: olo-pool [--tab accounts|activity|machines | --hosts-window | --service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex | --hosts | --host ID install|remove|sync|look]
   (none)            open Token Pool (starting the gateway if it isn't running)
+  --tab TAB         open Token Pool directly to accounts, activity, or machines
+  --hosts-window    open Token Pool directly to the Machines tab
   --service         run the gateway in the background (the session does)
   --status [--json] the pool's accounts, quota and state (no sign-ins), and
                     each minute's requests by client over the last day
