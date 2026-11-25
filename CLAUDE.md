@@ -89,18 +89,17 @@ are universal and non-negotiable:
   (2026-11-18: "you should be visually reviewing everything you do").
   Check the picture shows what you meant to show (the right tab, the
   window in front) before judging it.
-- **Two more pairs of eyes on every picture: Astra 6.2's and Opus
+- **Two more pairs of eyes on every picture: Gemini 4 Neon's and Opus
   5.5's.** Give all the pictures of a change to both for a design
   review before it's committed (Ben, 2026-11-19, of a new app's first
   pictures: "omg so much is ugly make sure you get visual design reviews
-  from opus 5.5 and astra 6.2"; 2026-11-23, after a day of Gemini 4
-  Neon's looks: "for the visual reviews please go back to using astra
-  6.2 on high -- neon is missing too much stuff"):
-  `tools/dev/astra-look --about "WHAT CHANGED" PICTURE.png…`
-  (Astra 6.2 at high, in the Codex CLI: what's wrong by a
+  from opus 5.5 and astra 6.2"; 2026-11-25: "everything should be
+  either opus 5.5 max or neon 4 xhigh"):
+  `tools/dev/agy-look --about "WHAT CHANGED" PICTURE.png…`
+  (Gemini 4 Neon at xhigh, in the Antigravity CLI: what's wrong by a
   pixel) and `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
-  PICTURE.png…` (Claude Opus 5.5: the design itself, what looks amateur
-  or unfinished). Each looks in a tmux session of its own: run both in
+  PICTURE.png…` (Claude Opus 5.5 at max: the design itself, what looks
+  amateur or unfinished). Each looks in a tmux session of its own: run both in
   the background, read what each is doing as it goes (`tools/dev/agents
   peek`), and take each one's end: its review written, or a question
   for you. Whole windows and enlarged crops, each state, look and
@@ -221,12 +220,12 @@ are universal and non-negotiable:
   sessions").
 - **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
-  Gemini 4 Neon in the Antigravity CLI (`agy`) but the looks at
-  pictures (never Codex nor Astra for the work: Ben, 2026-11-22, "stop using codex/astra for
+  Gemini 4 Neon at xhigh in the Antigravity CLI (`agy`) but Opus's
+  design review (never Codex nor Astra: Ben, 2026-11-22, "stop using codex/astra for
   olo qa/dev tasks and everywhere we use codex/astra at the moment for
   olo dev/qa replace it with antigravity (`agy`) and gemini 4 neon on
-  xhigh", at high since the same day; never a Claude fork, and the
-  Agent tool only for the minder, below). That is for the
+  xhigh"; never a Claude fork, and the Agent tool only for the minder,
+  below). That is for the
   help Olo's development gets: Olo's own support for Codex and Astra
   (Terminal, Rex, the pool, Preferences) is the product's and stays.
   - Narrow, targeted work items that can go on in parallel: subagents,
@@ -247,19 +246,16 @@ are universal and non-negotiable:
     soon as a bug's cause isn't plain (below), while you keep working
     on your own line: two brains are better than one. It looks and
     reports; you check what it found and do the work.
-  - `tools/dev/astra-look`, the second look at every change's
-    pictures (above): Astra 6.2 in the Codex CLI, in a tmux session,
-    on copies of the pictures, writing only there, with no network and
-    no leave to ask (Ben, 2026-11-23, above: the looks alone went back
-    to Astra; subagents and the investigator stay Gemini's); and, the
-    one Claude among them, `tools/dev/opus-look`, Opus
-    5.5's design review of the same pictures (the Claude CLI in a tmux
-    session, with the tools to read and write files in a folder of the
-    pictures' copies and no other).
+  - `tools/dev/agy-look`, the second look at every change's pictures
+    (above): Gemini 4 Neon in the Antigravity CLI, in a tmux session,
+    on copies of the pictures; and, the one Claude among them,
+    `tools/dev/opus-look`, Opus 5.5's design review of the same
+    pictures (the Claude CLI in a tmux session, with the tools to read
+    and write files in a folder of the pictures' copies and no other).
 - **Every helper in a tmux session, never a script that goes silent.**
   A subagent, the investigator and both reviewers each run their
   program's own interactive screen in a tmux session
-  (`tools/dev/agents`; `agy-help`, `astra-look` and `opus-look` are its
+  (`tools/dev/agents`; `agy-help`, `agy-look` and `opus-look` are its
   front doors), so what each is doing can be read at any moment
   (`agents peek NAME`), it can be told more (`agents say`), and what it
   asks leave for reaches you (`agents approve`). Never `agy --print`,
@@ -282,14 +278,16 @@ are universal and non-negotiable:
   outside its scope, or sudo.
 - **A minder answers the helpers, so none waits on you.** Whenever a
   helper runs for more than a moment, start the minder with it: one
-  subagent of the Agent tool (general-purpose, model `fable`, effort
-  medium), told to read `.claude/skills/olo-agents/minder.md` and
+  subagent of the Agent tool (general-purpose, model `opus`, effort
+  max), told to read `.claude/skills/olo-agents/minder.md` and
   given the commands to start and the agents to mind (Ben, 2026-11-22,
   when a helper's question had waited 66 seconds on a busy lead: "i
   think you're not getting the approval requests or not responding to
-  them quick enough … launch a fable 5.2 medium subagent whose only
-  job is to launch and manage the tmux sessions for these tmux
-  subagents so that they get their responses quickly"). It starts the
+  them quick enough … launch a … subagent whose only job is to launch
+  and manage the tmux sessions for these tmux subagents so that they
+  get their responses quickly"; 2026-11-25: "NOTHING should still be
+  using fable -- everything should be either opus 5.5 max or neon 4
+  xhigh"). It starts the
   tmux agents, waits on `tools/dev/agents watch`, says yes or no at
   once to what its written lists cover, and hands back to you what
   they don't, every question about the work itself, and each result's
@@ -310,13 +308,13 @@ are universal and non-negotiable:
   program exited, one done and untouched for half an hour, one idle
   for three hours: `agents tidy`, which `list`, `watch` and `start`
   run), but that is the net, not the way.
-- **Gemini 4 Neon, Astra 6.2 and Opus 5.5 at high.** Wherever Gemini
-  reasons for Olo (a subagent, the second investigator), it is Gemini
-  4 Neon with its effort at high (`gemini-4-neon-high`); Astra 6.2's
-  look at pictures and Opus 5.5's design review run at high too (Ben,
-  2026-11-22, after first asking for xhigh: "let's also switch the
-  reasoning level to high for both of them"; 2026-11-23: "astra 6.2 on
-  high").
+- **Opus 5.5 at max, Gemini 4 Neon at xhigh: nothing else.** Every
+  helper is one of the two (Ben, 2026-11-25: "NOTHING should still be
+  using fable -- everything should be either opus 5.5 max or neon 4
+  xhigh"): wherever Gemini reasons for Olo (a subagent, the second
+  investigator, the look at pictures) it is Gemini 4 Neon at xhigh
+  (`gemini-4-neon-xhigh`); Opus 5.5's design review and the minder run
+  at max. No Fable, no Astra, no other model, at no other effort.
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`

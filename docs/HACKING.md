@@ -22125,7 +22125,7 @@ that skill**: it is the map a stranger's agent follows.
 (`tools/dev/agents`; the `olo-agents` and `olo-debug-help` skills in
 `.claude/skills/`, the repository's own, for whoever works on Olo;
 `.claude/` is ignored but for `.claude/skills/`). Three kinds of help
-CLAUDE.md's "Subagents" allows, all Gemini 4 Neon at high in the
+CLAUDE.md's "Subagents" allows, all Gemini 4 Neon at xhigh in the
 Antigravity CLI (`agy`) but the design review, which is Opus 5.5 in the
 Claude CLI. Until 2026-11-22 they were Codex (gpt-6.2-astra), the looks
 and the investigator as headless runs; Ben then: "stop using
@@ -22173,12 +22173,14 @@ that words these differently is fixed there, in `ASKING` and `WORKING`.
 
 So that no helper waits on a lead who is in the middle of something,
 the lead starts **a minder** with them: one subagent of the Agent tool
-(general-purpose, Fable 5.2 at medium), whose standing instructions are
+(general-purpose, Opus 5.5 at max), whose standing instructions are
 `.claude/skills/olo-agents/minder.md` (it waits on `agents watch --for
-2` in the foreground, again and again; Ben, 2026-11-22: "launch a fable
-5.2 medium subagent whose only job is to launch and manage the tmux
-sessions for these tmux subagents so that they get their responses
-quickly"; a question had waited 66 seconds). It starts the agents it is
+2` in the foreground, again and again; Ben, 2026-11-22: "launch a …
+subagent whose only job is to launch and manage the tmux sessions for
+these tmux subagents so that they get their responses quickly"; a
+question had waited 66 seconds; 2026-11-25: "NOTHING should still be
+using fable -- everything should be either opus 5.5 max or neon 4
+xhigh"). It starts the agents it is
 given, waits on `agents watch`, says yes or no at once to what its
 written lists cover, and hands back what they don't, with each result's
 path. It does none of the work; it is the one use of the Agent tool.
@@ -22258,27 +22260,22 @@ not the last of its plan's steps ("○ Write report.md" for ten minutes
 of a worker on its second step of six). What it says is a lead:
 checked, then fixed by whoever asked.
 
-**A second look at every change's pictures** (`tools/dev/astra-look`,
+**A second look at every change's pictures** (`tools/dev/agy-look`,
 which is `agents look`; Ben, 2026-11-18, after a status line set right
 under its paragraph reached them on every Integrations tab: "provide
 all screenshots of changes to a … agent … for a second review / set of
-eyes to identify anything you missed"; Astra 6.2 at high since
-2026-11-23, after a day of Gemini 4 Neon's: "neon is missing too much
-stuff"): `astra-look --about "WHAT CHANGED" PICTURE.png…` copies the
-pictures into a folder of the look's own, where a Codex named
-`astra-FOLDER` works (as Opus's is `opus-FOLDER`): `codex -m
-gpt-6.2-astra -c model_reasoning_effort="high" -s workspace-write -a
-never --disable hooks --disable multi_agent --no-alt-screen`, its
-folder trusted for that run alone (`-c projects."DIR".trust_level`:
-unsaid, Codex asks whether to trust a folder new to it, and waits),
-so it writes only there, has no network and asks no leave; nothing of
-the project loaded, a designer's brief (spacing, alignment, text cut
-or crowded, what's out of keeping). Its review is kept as
-`astra-look.md` beside the first picture (its transcript as
-`astra-look.log`) and printed, and its session ended. (`agents look
---by gemini`, `agy-look`, is the same with Gemini 4 Neon, as it was
-for a day.) A picture takes it a few minutes. What it says is
-checked against the picture, as the investigator's is.
+eyes to identify anything you missed"; Gemini 4 Neon at xhigh since
+2026-11-25: "everything should be either opus 5.5 max or neon 4
+xhigh"): `agy-look --about "WHAT CHANGED" PICTURE.png…` copies the
+pictures into a folder of the look's own, where an agy named
+`agy-FOLDER` works (as Opus's is `opus-FOLDER`), with a designer's brief
+(spacing, alignment, text cut or crowded, what's out of keeping). Its
+review is kept as `agy-look.md` beside the first picture (its
+transcript as `agy-look.log`) and printed, and its session ended.
+(`agents look --by astra`, `astra-look`, is Astra 6.2's in the Codex
+CLI, kept only to be asked for by name.) A picture takes it a few
+minutes. What it says is checked against the picture, as the
+investigator's is.
 
 **And a designer's review of them** (`tools/dev/opus-look`, which is
 `agents look --by opus`; Ben, 2026-11-19, of To-Do's first pictures:
@@ -22286,7 +22283,7 @@ checked against the picture, as the investigator's is.
 5.5 and astra 6.2"): `opus-look --about "WHAT IT IS, WHAT CHANGED"
 PICTURE.png…` hands copies of the same pictures to Claude Opus 5.5 in
 a session named `opus-FOLDER` (`claude --model claude-opus-5-5
---effort high --restricted --strict-mcp-config --tools Read,Write
+--effort max --restricted --strict-mcp-config --tools Read,Write
 --permission-mode acceptEdits`: no tool that runs anything, the file
 tools kept to the look's folder, none of the person's settings, hooks
 or MCP servers) with a product designer's brief: composition,
@@ -22295,7 +22292,7 @@ keeping with the desktop, and what to do about each, the most important
 first. It keeps its review as `opus-look.md` beside the first picture.
 It can only look, so give it whole windows and enlarged crops. Every
 change's pictures go to both before a commit, and something new goes to
-both early, before it's built out: astra-look is for what's wrong by a
+both early, before it's built out: agy-look is for what's wrong by a
 pixel, opus-look for whether the design is any good. Run both in the
 background at once; each returns when its review is written, or when
 it needs its lead.

@@ -1,6 +1,6 @@
 ---
 name: olo-debug-help
-description: Get a second investigator on a bug or a hard problem in Olo - start an Antigravity CLI (agy, Gemini 4 Neon at high) in a tmux session with a written brief, let it dig in parallel while you go on (reading its screen, answering what it asks leave for, steering it), then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
+description: Get a second investigator on a bug or a hard problem in Olo - start an Antigravity CLI (agy, Gemini 4 Neon at xhigh) in a tmux session with a written brief, let it dig in parallel while you go on (reading its screen, answering what it asks leave for, steering it), then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
 ---
 
 # A second investigator, for a cause you can't find
@@ -12,11 +12,11 @@ investigator on it and keep working on your own line meanwhile. Don't
 wait until you've circled for hours, and never settle for a guess. It
 is one of the helpers CLAUDE.md's "Subagents" allows (the others:
 subagents for narrow work items, `tools/dev/agents` and the
-`olo-agents` skill; and `astra-look` and `opus-look` for pictures), all
+`olo-agents` skill; and `agy-look` and `opus-look` for pictures), all
 Gemini 4 Neon in the Antigravity CLI but Opus's design review (Ben,
 2026-11-22: "stop using codex/astra for olo qa/dev tasks and … replace
-it with antigravity (`agy`) and gemini 4 neon on xhigh", at high since
-the same day), each in a
+it with antigravity (`agy`) and gemini 4 neon on xhigh"; 2026-11-25:
+"everything should be either opus 5.5 max or neon 4 xhigh"), each in a
 tmux session where it can be read and answered ("always do it through
 tmux never a script that just goes silent"). The helper investigates
 and reports; the work stays yours.
@@ -73,7 +73,7 @@ looking at, with a reproduction and a patch that checked out.
    ```
 
    Run it with `run_in_background`. It starts the helper, an `agy` in a
-   tmux session named `help-YOURS` (Gemini 4 Neon at high, in the
+   tmux session named `help-YOURS` (Gemini 4 Neon at xhigh, in the
    repository), with rules in front of your brief: no changes to the
    working tree, no commits, the person's session left alone, headless
    tests under an `agy-` name, scratch in the brief's folder, no

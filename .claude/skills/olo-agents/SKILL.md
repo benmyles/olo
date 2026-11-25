@@ -1,6 +1,6 @@
 ---
 name: olo-agents
-description: Run subagents on narrow, targeted Olo work items in parallel - each an interactive Antigravity CLI (agy, Gemini 4 Neon at high) in a tmux session of its own, in this working tree, scoped to one crate no other agent is in, running routine commands without asking and asking leave for the rest - and start, watch, steer, approve, review and commit their work with tools/dev/agents. Also how every helper here is run and watched in tmux (the second investigator, Gemini's look at pictures, Opus 5.5's design review). Use when a task splits into independent pieces in separate crates (one app each; a big feature built in parallel; the same kind of change across several apps), at most five at once, and whenever a helper is running and needs reading, answering or steering. Not for finding a bug's cause (olo-debug-help).
+description: Run subagents on narrow, targeted Olo work items in parallel - each an interactive Antigravity CLI (agy, Gemini 4 Neon at xhigh) in a tmux session of its own, in this working tree, scoped to one crate no other agent is in, running routine commands without asking and asking leave for the rest - and start, watch, steer, approve, review and commit their work with tools/dev/agents. Also how every helper here is run and watched in tmux (the second investigator, Gemini's look at pictures, Opus 5.5's design review). Use when a task splits into independent pieces in separate crates (one app each; a big feature built in parallel; the same kind of change across several apps), at most five at once, and whenever a helper is running and needs reading, answering or steering. Not for finding a bug's cause (olo-debug-help).
 ---
 
 # Subagents: narrow work, in parallel, each in tmux
@@ -8,10 +8,10 @@ description: Run subagents on narrow, targeted Olo work items in parallel - each
 CLAUDE.md, "Subagents": besides the debug helper and the looks at
 pictures, narrow, targeted work items that can go on in parallel may be
 handed to subagents (Ben, 2026-11-19). Each is an interactive
-Antigravity CLI (`agy`: Gemini 4 Neon, reasoning at high; Ben,
+Antigravity CLI (`agy`: Gemini 4 Neon, reasoning at xhigh; Ben,
 2026-11-22: "stop using codex/astra for olo qa/dev tasks and … replace
-it with antigravity (`agy`) and gemini 4 neon on xhigh", then "switch
-the reasoning level to high") in a tmux
+it with antigravity (`agy`) and gemini 4 neon on xhigh"; 2026-11-25:
+"everything should be either opus 5.5 max or neon 4 xhigh") in a tmux
 session of its own, so its work can be read as it goes, its questions
 answered and its course steered. All work in this same working tree,
 each in one crate that no other agent, nor you, changes meanwhile: that
@@ -22,7 +22,7 @@ Every helper is run this way, never as a script that answers only at
 its end (Ben, 2026-11-22: "always do it through tmux never a script
 that just goes silent … for all the subagents/reviewers etc"): the
 second investigator (`tools/dev/agy-help`, the `olo-debug-help` skill),
-Astra 6.2's look at a change's pictures (`tools/dev/astra-look`, the Codex CLI) and Opus
+Gemini 4 Neon's look at a change's pictures (`tools/dev/agy-look`) and Opus
 5.5's design review of them (`tools/dev/opus-look`) are front doors to
 the same `tools/dev/agents`, and everything under "Running them" below
 (peek, say, approve, the watching) holds for them too.
@@ -30,14 +30,15 @@ the same `tools/dev/agents`, and everything under "Running them" below
 ## The minder
 
 Start a minder with the helpers, so what they ask is answered in
-seconds and not when you next look up (Ben, 2026-11-22: "launch a fable
-5.2 medium subagent whose only job is to launch and manage the tmux
-sessions for these tmux subagents so that they get their responses
-quickly"). It is one subagent of the Agent tool, the only use of that
+seconds and not when you next look up (Ben, 2026-11-22: "launch a …
+subagent whose only job is to launch and manage the tmux sessions for
+these tmux subagents so that they get their responses quickly";
+2026-11-25: "NOTHING should still be using fable -- everything should be
+either opus 5.5 max or neon 4 xhigh"). It is one subagent of the Agent tool, the only use of that
 tool here:
 
 ```
-Agent(subagent_type: "general-purpose", model: "fable", effort: "medium",
+Agent(subagent_type: "general-purpose", model: "opus", effort: "max",
       description: "Mind the tmux agents",
       prompt: "You are the minder … read REPO/.claude/skills/olo-agents/minder.md
                first, in full, and follow it exactly. The repository: REPO.
@@ -141,7 +142,7 @@ tools/dev/agents allowed                     # what goes ahead unasked, what is 
   whenever any agent runs; when it returns, deal with every agent it
   names (`peek` first), then start it again. Look at `agents list` now
   and then besides, between your own steps, so nothing waits on you
-  unseen. (`agy-help`, `astra-look` and `opus-look` do this waiting
+  unseen. (`agy-help`, `agy-look` and `opus-look` do this waiting
   themselves for the one they started: run those in the background the
   same way, and run the same command again after answering.)
 - **What goes ahead, what is refused, what comes to you.** An agent
@@ -186,7 +187,7 @@ When it says DONE:
    lints (`cargo ui-lint`, `tools/dev/ui-lint`, `--tiles`), and picture
    every window and state it changed at 1×, 1.5× and 2×, light and dark,
    judging each closely as a designer. Expect spacing, alignment,
-   hierarchy and words to need your hand. Then `astra-look` and
+   hierarchy and words to need your hand. Then `agy-look` and
    `opus-look`, as every change's pictures get.
 4. Fix what isn't right yourself, or, while it still runs, `say` it back
    with exact instructions.
@@ -215,7 +216,7 @@ over a week ago; the tmux server goes with its last session.
   screen and history read as text (`tmux capture-pane`). The program's
   banner, which names the account it is signed in to, is left out of
   everything the tool prints.
-- An agy agent is `agy --model gemini-4-neon-high --mode accept-edits
+- An agy agent is `agy --model gemini-4-neon-xhigh --mode accept-edits
   --settings ITS/settings.json --add-dir ITS -i "Read ITS/brief.md …"`,
   started in the repository (a look: in its own folder, on copies of
   the pictures, with no command allowed unasked). The settings hold
@@ -239,7 +240,7 @@ over a week ago; the tmux server goes with its last session.
   always allow in this conversation for commands that start with '…'
   3. … (Persist to settings.json) 4. No, cancel"); a digit takes a
   choice.
-- Opus's design review is `claude --model claude-opus-5-5 --effort high
+- Opus's design review is `claude --model claude-opus-5-5 --effort max
   --restricted --strict-mcp-config --tools Read,Write --permission-mode
   acceptEdits --disable-slash-commands BRIEF`, in its own folder on
   copies of the pictures: no tool that runs anything, the file tools

@@ -2,15 +2,14 @@
 """Every agent that helps with Olo, each in a tmux session of its own:
 narrow, parallel work items, second investigators and the looks at a
 change's pictures. Each is an interactive Antigravity CLI (`agy`: Gemini
-4 Neon, its reasoning at high), but the looks at pictures: Astra 6.2's
-for what is wrong by a pixel, in the Codex CLI (Ben, 2026-11-23: "for
-the visual reviews please go back to using astra 6.2 on high -- neon
-is missing too much stuff"), and the design review, Opus 5.5 in the
-Claude CLI (both at high too); all are read, answered and steered from here
+4 Neon, its reasoning at xhigh), the look at pictures for what is wrong
+by a pixel too, but the design review, Opus 5.5 at max in the Claude CLI
+(Ben, 2026-11-25: "NOTHING should still be using fable -- everything
+should be either opus 5.5 max or neon 4 xhigh"); all are read, answered and steered from here
 (CLAUDE.md, "Subagents"; the olo-agents and olo-debug-help skills say
 how to use them). Ben, 2026-11-22: "stop using codex/astra for olo
 qa/dev tasks and … replace it with antigravity (`agy`) and gemini 4
-neon on xhigh" (high, since the same day), run "via tmux … so that you will get notified when it
+neon on xhigh", run "via tmux … so that you will get notified when it
 needs you and be able to steer it and approve things", with "the auto
 approval stuff [configured] to auto approve all the most common
 commands it might need to run"; and of every helper, the reviewers
@@ -24,7 +23,7 @@ too: "always do it through tmux never a script that just goes silent".
                                      answer written to DIR (the brief's folder),
                                      and wait as `watch` does, for it alone; run
                                      again, it goes on waiting for the same one
-  agents look [--by opus] [--about TEXT] PICTURE…
+  agents look [--by opus] [--about TEXT] PICTURE…   (Neon's look by default)
                                      have a change's pictures looked at: by Astra 6.2
                                      for what's wrong by a pixel (tools/dev/astra-look
                                      is this), or by Opus 5.5 for the design itself
@@ -117,12 +116,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 HOME = "/var/tmp/olo-agents"
 SOCKET = "olo-agents"
 MOST = 5
-# The model's name carries its effort (`agy models`): high, wherever
-# Gemini reasons for Olo (CLAUDE.md; Ben, 2026-11-22, of Gemini and
-# Opus: "switch the reasoning level to high for both of them". At xhigh
-# a look at three pictures was still turning them over after ten
-# minutes).
-MODEL = "gemini-4-neon-high"
+# The model's name carries its effort (`agy models`): xhigh, wherever
+# Gemini reasons for Olo (CLAUDE.md; Ben, 2026-11-25: "NOTHING should
+# still be using fable -- everything should be either opus 5.5 max or
+# neon 4 xhigh"; it was high from 2026-11-22).
+MODEL = "gemini-4-neon-xhigh"
 # The one Claude among them: Opus 5.5, for the design review of a
 # change's pictures (`look --by opus`, tools/dev/opus-look).
 OPUS = "claude-opus-5-5"
@@ -606,7 +604,7 @@ def launch_opus(name, cwd, brief):
     message, after an option that takes no value: `--tools` and
     `--add-dir` take as many as follow them, and took the brief for a
     folder's name, 2026-11-22.)"""
-    session(name, cwd, [], ["claude", "--model", OPUS, "--effort", "high", "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
+    session(name, cwd, [], ["claude", "--model", OPUS, "--effort", "max", "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
                             "--permission-mode", "acceptEdits", "--disable-slash-commands", brief])
 
 
@@ -807,12 +805,14 @@ def say_swept(gone):
 def look(args):
     """Start a look at pictures (or find the one started on them), wait
     until it needs the lead or has written its review, and print it.
-    Astra 6.2's look at what's wrong by a pixel, or with `--by opus`
-    Opus 5.5's review of the design itself. (`--by gemini`: Gemini 4
-    Neon's look, as it was for a day; kept for a comparison, not the
-    rule.)"""
+    Gemini 4 Neon's look (at xhigh) at what's wrong by a pixel, or with
+    `--by opus` Opus 5.5's review (at max) of the design itself.
+    (`--by astra`: Astra 6.2's, by name only.)"""
     refuse_nested()
-    by, about = "astra", ""
+    # (Neon's by default, with Opus's beside it: Ben, 2026-11-25,
+    # "everything should be either opus 5.5 max or neon 4 xhigh". Astra's
+    # only when asked by name.)
+    by, about = "gemini", ""
     while len(args) >= 2 and args[0] in ("--by", "--about"):
         if args[0] == "--by":
             by = args[1]
@@ -820,7 +820,7 @@ def look(args):
             about = args[1]
         args = args[2:]
     if by not in ("astra", "gemini", "opus"):
-        sys.exit("agents: look --by astra, or --by opus")
+        sys.exit("agents: look [--by gemini], or --by opus (--by astra by name)")
     front = {"astra": "astra-look", "gemini": "agy-look", "opus": "opus-look"}[by]
     # (Codex not signed in on this computer: it would start at its sign-in
     # screen and wait there. Signing in is the person's: said at once.

@@ -1,6 +1,6 @@
 #!/bin/bash
 # A second investigator for a bug that won't give up its cause: Gemini 4
-# Neon (its reasoning at high) in the Antigravity CLI, given a written
+# Neon (its reasoning at xhigh) in the Antigravity CLI, given a written
 # brief, working beside you, answering in a file.
 #
 #   tools/dev/agy-help BRIEF.md [DIR]
