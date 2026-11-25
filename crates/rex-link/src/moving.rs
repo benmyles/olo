@@ -261,6 +261,11 @@ fn edit_keys(id: &str, line: Option<&str>) -> io::Result<()> {
     write_whole(&file, edited.as_bytes(), mode)
 }
 
+/// What a move never writes in the destination's home, whatever the sender
+/// sends (the sender leaves them out too): the account's keys (the source's
+/// would lock the destination's out), its helper, the move's own folder.
+const KEPT: &[&str] = &[".ssh/authorized_keys", ".ssh/authorized_keys2", ".local/share/olo/rex-link", ".local/state/olo-rex/move"];
+
 /// What a move's key may ask (`move receive`), hex-coded JSON as the last
 /// word of its command (`olo-rex-link move do HEX`: no shell between).
 #[derive(Debug, PartialEq, Eq)]
@@ -340,8 +345,15 @@ fn receive() -> i32 {
             0
         }
         Some(Asked::Sync { root, options }) if writable_root(&root, &home(), uid) => {
-            let mut args = vec!["receive".to_owned(), root];
+            // (What the destination keeps as its own, whatever the sender
+            // sends: its keys, its helper, the move's own folder.)
+            let mut args = vec!["receive".to_owned(), root.clone()];
             args.extend(options);
+            if Path::new(&root) == home() {
+                for p in KEPT {
+                    args.extend(["--protect".to_owned(), (*p).to_owned()]);
+                }
+            }
             crate::sync::run(args)
         }
         Some(Asked::Forget { root }) if writable_root(&root, &home(), uid) => forget(Path::new(&root)),
@@ -491,6 +503,14 @@ impl olo_rex_sync::wire::Source for Counted {
         let mut s = self.standing.lock().unwrap_or_else(|e| e.into_inner());
         (s.phase, s.total_files, s.total_bytes) = ("copying", files, bytes);
         Ok(index)
+    }
+
+    fn check_unchanged(&self, entry: &olo_rex_sync::Entry) -> bool {
+        self.inner.check_unchanged(entry)
+    }
+
+    fn extent_at(&self, path: &str, offset: u64, max_len: u64) -> io::Result<(bool, u64)> {
+        self.inner.extent_at(path, offset, max_len)
     }
 
     fn read(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
@@ -677,9 +697,14 @@ async fn copy(s: &Sending, standing: Shared) -> Result<(), String> {
     let options = olo_rex_sync::wire::Options { filter, ..olo_rex_sync::wire::Options::default() };
     let report = tokio::task::spawn_blocking(move || olo_rex_sync::wire::send(io, &source, options)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
     let failed: Vec<serde_json::Value> = report.errors.iter().take(200).map(|e| serde_json::json!({"path": e.path, "why": e.reason})).collect();
+    // (What the engine passed over, counted and named: files it couldn't
+    // read, names that aren't UTF-8, sockets and FIFOs, other filesystems.)
+    let kind = |k: &olo_rex_sync::SkippedKind| serde_json::json!({"count": k.count, "paths": k.paths});
+    let skipped = &report.skipped;
     standing.lock().unwrap_or_else(|e| e.into_inner()).report = Some(serde_json::json!({
         "same": report.same, "copied": report.copied + report.new, "patched": report.patched + report.appended,
         "failed": report.errors.len(), "failures": failed, "wire": report.wire_bytes(),
+        "skipped": {"unread": kind(&skipped.unread), "odd_names": kind(&skipped.non_utf8), "special": kind(&skipped.special), "mounts": kind(&skipped.mounts)},
     }));
     // A second pass: what the one before put there and is gone here
     // taken away there (and nothing else of the destination's).

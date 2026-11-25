@@ -11,7 +11,10 @@
 //! there into `.` went into the real home, 2026-11-24). Options:
 //! `--delete` (receiving: what the
 //! sender hasn't is taken away, a mirror), `--keep-newer` (receiving: a
-//! file newer here is left), `--exclude PATTERN` (again for more),
+//! file newer here is left), `--exclude PATTERN` (again for more; from
+//! the root only when it starts with `/`), `--protect PATH` (receiving:
+//! never written, replaced or taken away, nor what is under it: a moved
+//! home's own keys),
 //! `--shallow` (the folder's own files alone), `--scoped` (receiving:
 //! only the files the sender names are looked at, nothing taken away: a
 //! root that is the whole home), `--no-cache` (no index
@@ -27,7 +30,7 @@ use std::path::{Path, PathBuf};
 use olo_rex_sync::index::Filter;
 use olo_rex_sync::wire::{FolderSource, Options, receive, send};
 
-const USAGE: &str = "usage: olo-rex-link sync watch ROOT [--exclude PATTERN]… [--settle MS]\n       olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--shallow] [--scoped] [--no-cache]";
+const USAGE: &str = "usage: olo-rex-link sync watch ROOT [--exclude PATTERN]… [--settle MS]\n       olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--protect PATH]… [--shallow] [--scoped] [--no-cache]";
 
 /// The helper's input and output, as the session's one stream.
 struct Stdio {
@@ -84,6 +87,7 @@ pub fn run(args: Vec<String>) -> ! {
             "--scoped" => options.scoped = true,
             "--no-cache" => cached = false,
             "--exclude" => filter.exclude.push(it.next().unwrap_or_else(|| fail("--exclude takes a pattern"))),
+            "--protect" => options.protect.push(it.next().unwrap_or_else(|| fail("--protect takes a path"))),
             other => fail(&format!("{other} isn't one of its options")),
         }
     }

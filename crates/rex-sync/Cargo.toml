@@ -11,6 +11,7 @@ license.workspace = true
 # Read and Write.)
 [dependencies]
 blake3 = "1"
+libc = "0.2"
 zstd = "0.14"
 
 [dev-dependencies]

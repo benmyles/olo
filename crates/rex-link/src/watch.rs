@@ -192,7 +192,7 @@ pub fn run(args: Vec<String>) -> ! {
                     continue;
                 }
                 let rel = if dir.is_empty() { name.clone() } else { format!("{dir}/{name}") };
-                if name.is_empty() || name.ends_with(olo_rex_sync::index::PART_SUFFIX) {
+                if name.is_empty() || olo_rex_sync::index::is_part_name(&name) {
                     continue;
                 }
                 let is_dir = event.mask & libc::IN_ISDIR != 0;

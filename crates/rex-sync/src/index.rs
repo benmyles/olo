@@ -2,7 +2,7 @@
 //! root, with stat-based caching so re-scanning an unchanged tree reads zero
 //! file bytes, and a compact binary encoding for the on-disk cache.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -11,10 +11,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::chunk::{self, ChunkId, ChunkRef};
 
-/// Temporary suffix used by `wire::receive` while building a file beside its
-/// destination; ignored by `Index::scan` so a crashed transfer never leaks
-/// into an index.
+/// Legacy temporary suffix once used by `wire::receive` while building a file
+/// beside its destination; still recognized by [`is_part_name`] and skipped by
+/// `Index::scan`.
 pub const PART_SUFFIX: &str = ".olo-sync-part";
+
+/// Fixed-length temporary prefix used by `wire::receive` while building a file
+/// beside its destination (`.olo-sync-part-<16 hex>`), fitting `NAME_MAX` even
+/// for 255-byte filenames; skipped by `Index::scan`.
+pub const PART_PREFIX: &str = ".olo-sync-part-";
+
+/// Whether a single filename (not a path) is a receiver partial-transfer file.
+pub fn is_part_name(name: &str) -> bool {
+    name.starts_with(PART_PREFIX) || name.ends_with(PART_SUFFIX)
+}
+
+/// Maximum number of example paths recorded per skipped category in [`Skipped`].
+pub const MAX_SKIPPED_PATHS: usize = 200;
 
 const MAGIC: &[u8; 8] = b"OLOSYNC\0";
 const FORMAT_VERSION: u32 = 1;
@@ -27,6 +40,9 @@ pub enum EntryKind {
     Dir,
     /// Symlink with its raw link target (recorded, never followed).
     Symlink(String),
+    /// Hard link to an earlier included regular file in the same index
+    /// (its root-relative path).
+    HardLink(String),
 }
 
 /// One entry in an [`Index`].
@@ -39,11 +55,12 @@ pub struct Entry {
     pub mtime_ns: i64,
     pub ctime_ns: i64,
     pub ino: u64,
-    /// Unix permission bits (`mode & 0o777`).
+    /// Unix permission bits (`mode & 0o777` for files; `mode & 0o3777` for
+    /// directories, keeping setgid and sticky but never setuid).
     pub mode: u32,
-    /// Whole-file BLAKE3 (zeros for directories; BLAKE3 of target for symlinks).
+    /// Whole-file BLAKE3 (zeros for directories and hard links; BLAKE3 of target for symlinks).
     pub hash: [u8; 32],
-    /// Content-defined chunks (empty for directories and symlinks).
+    /// Content-defined chunks (empty for directories, symlinks and hard links).
     pub chunks: Vec<ChunkRef>,
 }
 
@@ -52,9 +69,10 @@ pub struct Entry {
 pub struct Filter {
     /// Whether to descend into subdirectories. Default: `true`.
     pub recursive: bool,
-    /// Glob patterns to exclude (e.g. `".git"`, `"*.tmp"`, `"build/out"`).
-    /// A pattern without `/` matches any path component; with `/` it matches
-    /// the whole relative path.
+    /// Glob patterns to exclude (e.g. `".git"`, `"*.tmp"`, `"build/out"`,
+    /// `"/.cache"`). A pattern starting with `/` matches only from the root;
+    /// a pattern without `/` matches any path component; a pattern with `/`
+    /// inside matches the whole relative path.
     pub exclude: Vec<String>,
     /// If non-empty, only non-directory entries matching at least one pattern
     /// are included (directories are still traversed when `recursive` is true,
@@ -107,12 +125,40 @@ impl Filter {
     }
 
     fn is_excluded(&self, rel_path: &str) -> bool {
-        self.exclude.iter().any(|p| pattern_matches(p, rel_path))
+        if self.exclude.iter().any(|p| pattern_matches(p, rel_path)) {
+            return true;
+        }
+        // An excluded ancestor folder excludes everything under it (so a
+        // root-anchored pattern like `/.cache` also excludes `.cache/foo`).
+        let mut end = rel_path.len();
+        while let Some(slash) = rel_path[..end].rfind('/') {
+            let ancestor = &rel_path[..slash];
+            if self.exclude.iter().any(|p| pattern_matches(p, ancestor)) {
+                return true;
+            }
+            end = slash;
+        }
+        false
     }
 }
 
 fn pattern_matches(pattern: &str, rel_path: &str) -> bool {
-    if pattern.contains('/') { glob_match(pattern.as_bytes(), rel_path.as_bytes()) } else { rel_path.split('/').any(|seg| glob_match(pattern.as_bytes(), seg.as_bytes())) }
+    if let Some(anchored) = pattern.strip_prefix('/') {
+        let anchored = anchored.trim_end_matches('/');
+        if anchored.is_empty() {
+            return false;
+        }
+        // Root-anchored: a single-segment pattern like `/.cache` or `/*.tmp`
+        // matches only at the root, never deeper in a subfolder.
+        if !anchored.contains('/') && rel_path.contains('/') {
+            return false;
+        }
+        glob_match(anchored.as_bytes(), rel_path.as_bytes())
+    } else if pattern.contains('/') {
+        glob_match(pattern.as_bytes(), rel_path.as_bytes())
+    } else {
+        rel_path.split('/').any(|seg| glob_match(pattern.as_bytes(), seg.as_bytes()))
+    }
 }
 
 /// Simple `*` / `?` glob matcher (non-backtracking DP / two-pointer).
@@ -142,8 +188,8 @@ fn glob_match(pat: &[u8], text: &[u8]) -> bool {
 }
 
 /// Validate that a relative path has no leading/trailing `/`, no empty
-/// segments, no `.` or `..`, no NUL bytes, and does not end with
-/// [`PART_SUFFIX`].
+/// segments, no `.` or `..`, no NUL bytes, and no reserved partial-transfer
+/// filename (`.olo-sync-part-...` or `*.olo-sync-part`).
 pub fn validate_rel_path(path: &str) -> Result<(), &'static str> {
     if path.is_empty() {
         return Err("empty path");
@@ -164,22 +210,69 @@ pub fn validate_rel_path(path: &str) -> Result<(), &'static str> {
         if seg == "." || seg == ".." {
             return Err("dot segment in path");
         }
-    }
-    if path.ends_with(PART_SUFFIX) {
-        return Err("reserved partial-transfer suffix");
+        if is_part_name(seg) {
+            return Err("reserved partial-transfer name");
+        }
     }
     Ok(())
+}
+
+/// One category of entries passed over during a scan: exact total count and
+/// up to [`MAX_SKIPPED_PATHS`] example paths.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SkippedKind {
+    pub count: u64,
+    pub paths: Vec<String>,
+}
+
+impl SkippedKind {
+    pub fn push(&mut self, path: String) {
+        self.count += 1;
+        if self.paths.len() < MAX_SKIPPED_PATHS {
+            self.paths.push(path);
+        }
+    }
+}
+
+/// Everything a scan saw and passed over rather than sending, grouped by why:
+/// counted and named, never silently dropped.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Skipped {
+    /// Files, folders or symlinks that couldn't be read or stat'd.
+    pub unread: SkippedKind,
+    /// Entries whose name wasn't valid UTF-8 (lossily printed).
+    pub non_utf8: SkippedKind,
+    /// Special files (sockets, FIFOs, devices).
+    pub special: SkippedKind,
+    /// Folders on another filesystem below the root (`st_dev` differs).
+    pub mounts: SkippedKind,
+}
+
+impl Skipped {
+    pub fn is_empty(&self) -> bool {
+        self.total() == 0
+    }
+
+    pub fn total(&self) -> u64 {
+        self.unread.count + self.non_utf8.count + self.special.count + self.mounts.count
+    }
 }
 
 /// Snapshot of every synced entry under a root, ordered by relative path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Index {
     pub entries: BTreeMap<String, Entry>,
-    /// What a scan saw and couldn't read (no leave to, a name that isn't
-    /// UTF-8 is never here: it can't be named on the wire), each with why:
+    /// What a scan saw and couldn't read (no leave to), each with why:
     /// neither sent nor, by a mirror, taken away on the other side, since
     /// what it holds isn't known. Not kept in the encoding.
     pub unread: BTreeMap<String, String>,
+    /// Folders on another filesystem below the root (`st_dev` differs from
+    /// root's), passed over. Not kept in the encoding.
+    pub mounts: Vec<String>,
+    /// Names that weren't valid UTF-8, lossily printed. Not kept in the encoding.
+    pub non_utf8: Vec<String>,
+    /// Special files (sockets, FIFOs, devices), passed over. Not kept in the encoding.
+    pub special: Vec<String>,
 }
 
 impl Index {
@@ -195,16 +288,48 @@ impl Index {
 
     /// Like [`Index::scan`], opening files through `open` (useful in tests to
     /// verify that re-scanning an unchanged tree opens and reads zero files).
-    pub fn scan_with<R: io::Read>(root: &Path, filter: &Filter, previous: Option<&Index>, mut open: impl FnMut(&Path) -> io::Result<R>) -> io::Result<Self> {
+    pub fn scan_with<R: io::Read>(root: &Path, filter: &Filter, previous: Option<&Index>, open: impl FnMut(&Path) -> io::Result<R>) -> io::Result<Self> {
+        Self::scan_with_dev(root, filter, previous, open, |_, m| m.dev())
+    }
+
+    pub(crate) fn scan_with_dev<R: io::Read>(
+        root: &Path,
+        filter: &Filter,
+        previous: Option<&Index>,
+        mut open: impl FnMut(&Path) -> io::Result<R>,
+        mut dev_of: impl FnMut(&Path, &fs::Metadata) -> u64,
+    ) -> io::Result<Self> {
         let mut index = Self::default();
         let mut chunk_buf = Vec::new();
+        let mut seen_inodes: HashMap<(u64, u64), String> = HashMap::new();
         // (The root itself must be there: a folder gone isn't a folder
         // emptied, which a mirror would make the other side.)
-        if !fs::symlink_metadata(root)?.is_dir() {
+        let root_meta = fs::symlink_metadata(root)?;
+        if !root_meta.is_dir() {
             return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
         }
-        scan_dir(root, "", filter, previous, &mut open, &mut chunk_buf, &mut index)?;
+        let root_dev = dev_of(root, &root_meta);
+        scan_dir(root, "", root_dev, filter, previous, &mut open, &mut dev_of, &mut chunk_buf, &mut seen_inodes, &mut index)?;
         Ok(index)
+    }
+
+    /// Summary of everything this scan passed over (counted, and up to
+    /// [`MAX_SKIPPED_PATHS`] example paths per kind).
+    pub fn skipped(&self) -> Skipped {
+        let mut s = Skipped::default();
+        for p in self.unread.keys() {
+            s.unread.push(p.clone());
+        }
+        for p in &self.non_utf8 {
+            s.non_utf8.push(p.clone());
+        }
+        for p in &self.special {
+            s.special.push(p.clone());
+        }
+        for p in &self.mounts {
+            s.mounts.push(p.clone());
+        }
+        s
     }
 
     /// What `root` has at `paths` alone (a scoped session's receiver: the
@@ -219,6 +344,7 @@ impl Index {
         }
         let mut index = Self::default();
         let mut chunk_buf = Vec::new();
+        let mut seen_inodes: HashMap<(u64, u64), String> = HashMap::new();
         'paths: for rel in paths {
             if validate_rel_path(rel).is_err() {
                 continue;
@@ -239,16 +365,28 @@ impl Index {
             };
             let mtime_ns = meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec());
             let ctime_ns = meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec());
-            let (ino, mode, size) = (meta.ino(), meta.permissions().mode() & 0o777, meta.len());
+            let (dev, ino, mode, size) = (meta.dev(), meta.ino(), meta.permissions().mode() & 0o777, meta.len());
+            if meta.nlink() > 1
+                && let Some(first) = seen_inodes.get(&(dev, ino))
+            {
+                index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::HardLink(first.clone()), size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+                continue;
+            }
             if let Some(prev) = previous.and_then(|idx| idx.entries.get(rel))
                 && prev.kind == EntryKind::File
                 && (prev.size, prev.mtime_ns, prev.ctime_ns, prev.ino) == (size, mtime_ns, ctime_ns, ino)
             {
+                if meta.nlink() > 1 {
+                    seen_inodes.insert((dev, ino), rel.clone());
+                }
                 index.entries.insert(rel.clone(), Entry { mode, ..prev.clone() });
                 continue;
             }
             match fs::File::open(&at).and_then(|f| chunk::hash_and_chunk_in(&mut chunk_buf, f)) {
                 Ok(d) => {
+                    if meta.nlink() > 1 {
+                        seen_inodes.insert((dev, ino), rel.clone());
+                    }
                     index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::File, size: d.size, mtime_ns, ctime_ns, ino, mode, hash: d.hash, chunks: d.chunks });
                 }
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -280,10 +418,15 @@ impl Index {
                 }
                 EntryKind::Dir => {
                     h.update(&[1u8]);
-                    h.update(&dir_mode(entry.mode).to_le_bytes());
+                    h.update(&final_dir_mode(entry.mode).to_le_bytes());
                 }
                 EntryKind::Symlink(target) => {
                     h.update(&[2u8]);
+                    h.update(&(target.len() as u32).to_le_bytes());
+                    h.update(target.as_bytes());
+                }
+                EntryKind::HardLink(target) => {
+                    h.update(&[3u8]);
                     h.update(&(target.len() as u32).to_le_bytes());
                     h.update(target.as_bytes());
                 }
@@ -312,6 +455,10 @@ impl Index {
                 EntryKind::Dir => out.push(1),
                 EntryKind::Symlink(target) => {
                     out.push(2);
+                    write_str(&mut out, target);
+                }
+                EntryKind::HardLink(target) => {
+                    out.push(3);
                     write_str(&mut out, target);
                 }
             }
@@ -366,6 +513,11 @@ impl Index {
                 0 => EntryKind::File,
                 1 => EntryKind::Dir,
                 2 => EntryKind::Symlink(cur.read_str()?),
+                3 => {
+                    let target = cur.read_str()?;
+                    validate_rel_path(&target).map_err(|e| invalid_data(format!("invalid hardlink target: {e}")))?;
+                    EntryKind::HardLink(target)
+                }
                 _ => return Err(invalid_data(format!("unknown entry kind {kind_tag}"))),
             };
             let size = cur.read_u64()?;
@@ -389,7 +541,7 @@ impl Index {
                     }
                     (hash, chunks)
                 }
-                EntryKind::Dir => ([0u8; 32], Vec::new()),
+                EntryKind::Dir | EntryKind::HardLink(_) => ([0u8; 32], Vec::new()),
                 EntryKind::Symlink(target) => (*blake3::hash(target.as_bytes()).as_bytes(), Vec::new()),
             };
             entries.insert(path.clone(), Entry { path, kind, size, mtime_ns, ctime_ns, ino, mode, hash, chunks });
@@ -397,7 +549,7 @@ impl Index {
         if cur.remaining() != 0 {
             return Err(invalid_data("trailing bytes in index"));
         }
-        Ok(Self { entries, unread: BTreeMap::new() })
+        Ok(Self { entries, ..Self::default() })
     }
 
     /// Write the encoded index atomically to `path` (temporary sibling file
@@ -439,13 +591,17 @@ impl Index {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scan_dir<R: io::Read>(
     root: &Path,
     rel_prefix: &str,
+    root_dev: u64,
     filter: &Filter,
     previous: Option<&Index>,
     open: &mut impl FnMut(&Path) -> io::Result<R>,
+    dev_of: &mut impl FnMut(&Path, &fs::Metadata) -> u64,
     chunk_buf: &mut Vec<u8>,
+    seen_inodes: &mut HashMap<(u64, u64), String>,
     out: &mut Index,
 ) -> io::Result<()> {
     let dir_path = if rel_prefix.is_empty() { root.to_path_buf() } else { root.join(rel_prefix) };
@@ -461,13 +617,26 @@ fn scan_dir<R: io::Read>(
         Err(e) => return Err(e),
     };
     let mut names: Vec<String> = Vec::new();
+    let mut non_utf8_here: Vec<String> = Vec::new();
     for entry in listing {
         let Ok(entry) = entry else { continue };
-        let Ok(name) = entry.file_name().into_string() else { continue };
-        if name.ends_with(PART_SUFFIX) {
-            continue;
+        match entry.file_name().into_string() {
+            Ok(name) => {
+                if is_part_name(&name) {
+                    continue;
+                }
+                names.push(name);
+            }
+            Err(os_name) => {
+                let lossy = os_name.to_string_lossy();
+                let rel = if rel_prefix.is_empty() { lossy.into_owned() } else { format!("{rel_prefix}/{lossy}") };
+                non_utf8_here.push(rel);
+            }
         }
-        names.push(name);
+    }
+    if !non_utf8_here.is_empty() {
+        non_utf8_here.sort();
+        out.non_utf8.extend(non_utf8_here);
     }
     names.sort();
 
@@ -485,19 +654,26 @@ fn scan_dir<R: io::Read>(
         let ft = meta.file_type();
         let mtime_ns = meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec());
         let ctime_ns = meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec());
+        let dev = dev_of(&full, &meta);
         let ino = meta.ino();
-        let mode = meta.permissions().mode() & 0o777;
 
         if ft.is_dir() {
             if !filter.allow_dir(&rel) {
                 continue;
             }
+            // One filesystem: never descend into a mount on another device.
+            if dev != root_dev {
+                out.mounts.push(rel);
+                continue;
+            }
+            let mode = final_dir_mode(meta.permissions().mode());
             out.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Dir, size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
-            scan_dir(root, &rel, filter, previous, open, chunk_buf, out)?;
+            scan_dir(root, &rel, root_dev, filter, previous, open, dev_of, chunk_buf, seen_inodes, out)?;
         } else if ft.is_symlink() {
             if !filter.matches_entry(&rel) {
                 continue;
             }
+            let mode = meta.permissions().mode() & 0o777;
             let target = match fs::read_link(&full).map(|t| t.into_os_string().into_string()) {
                 Ok(Ok(target)) => target,
                 Ok(Err(_)) => {
@@ -517,6 +693,13 @@ fn scan_dir<R: io::Read>(
             if !filter.matches_entry(&rel) {
                 continue;
             }
+            let mode = meta.permissions().mode() & 0o777;
+            if meta.nlink() > 1
+                && let Some(first) = seen_inodes.get(&(dev, ino))
+            {
+                out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::HardLink(first.clone()), size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+                continue;
+            }
             let size = meta.len();
             if let Some(prev) = previous.and_then(|idx| idx.entries.get(&rel))
                 && prev.kind == EntryKind::File
@@ -525,6 +708,9 @@ fn scan_dir<R: io::Read>(
                 && prev.ctime_ns == ctime_ns
                 && prev.ino == ino
             {
+                if meta.nlink() > 1 {
+                    seen_inodes.insert((dev, ino), rel.clone());
+                }
                 out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::File, size, mtime_ns, ctime_ns, ino, mode, hash: prev.hash, chunks: prev.chunks.clone() });
                 continue;
             }
@@ -536,20 +722,29 @@ fn scan_dir<R: io::Read>(
                     continue;
                 }
             };
+            if meta.nlink() > 1 {
+                seen_inodes.insert((dev, ino), rel.clone());
+            }
             out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::File, size: digest.size, mtime_ns, ctime_ns, ino, mode, hash: digest.hash, chunks: digest.chunks });
+        } else if filter.matches_entry(&rel) {
+            // Special files (sockets, FIFOs, devices): recorded, never silently dropped.
+            out.special.push(rel);
         }
-        // Special files (sockets, FIFOs, devices) are skipped: nothing of
-        // theirs can be sent.
     }
     Ok(())
 }
 
-/// A folder's mode as it is kept on the receiving side, and compared: its
-/// owner may always read, write and enter it, or the files sent into a
-/// folder read only there (0555, as Go's module cache keeps its) couldn't
-/// be written.
+/// A folder's working mode while the receiver is writing into it: its owner
+/// can always read, write and enter it (`| 0o700`), before the end of the
+/// session sets it back to [`final_dir_mode`].
 pub fn dir_mode(mode: u32) -> u32 {
-    (mode & 0o777) | 0o700
+    (mode & 0o3777) | 0o700
+}
+
+/// A folder's final mode: keeps setgid (`0o2000`), sticky (`0o1000`) and
+/// `rwx` bits (`0o777`), never setuid (`0o4000`).
+pub fn final_dir_mode(mode: u32) -> u32 {
+    mode & 0o3777
 }
 
 fn write_str(out: &mut Vec<u8>, s: &str) {
@@ -738,5 +933,65 @@ mod tests {
         let s = Filter::shallow();
         assert!(!s.allow_dir("sub"));
         assert!(s.matches_entry("top.txt"));
+    }
+
+    /// Item 2: root-anchored patterns starting with `/` match only from the
+    /// root, while patterns without `/` match any component and patterns with
+    /// `/` inside match the whole relative path.
+    #[test]
+    fn root_anchored_excludes_match_only_from_root() {
+        let f = Filter { exclude: vec!["/.cache".into(), "/*.log".into(), "build/out".into(), "*.tmp".into()], ..Filter::default() };
+        assert!(!f.allow_dir(".cache"));
+        assert!(!f.matches_entry(".cache/data"));
+        assert!(!f.matches_entry(".cache/sub/data"));
+        assert!(f.allow_dir("proj/.cache"));
+        assert!(f.matches_entry("proj/.cache/data"));
+        assert!(!f.matches_entry("root.log"));
+        assert!(f.matches_entry("proj/app.log"));
+        assert!(!f.allow_dir("build/out"));
+        assert!(f.allow_dir("nested/build/out"));
+        assert!(!f.matches_entry("a.tmp"));
+        assert!(!f.matches_entry("proj/b.tmp"));
+
+        let root = scratch_dir("anchored-exclude");
+        fs::create_dir_all(root.join(".cache/sub")).unwrap();
+        fs::create_dir_all(root.join("proj/.cache")).unwrap();
+        fs::write(root.join(".cache/sub/x"), b"skip").unwrap();
+        fs::write(root.join("proj/.cache/keep"), b"keep").unwrap();
+        fs::write(root.join("root.log"), b"skip").unwrap();
+        fs::write(root.join("proj/app.log"), b"keep").unwrap();
+
+        let idx = Index::scan(&root, &f, None).unwrap();
+        assert!(!idx.entries.contains_key(".cache"));
+        assert!(!idx.entries.contains_key(".cache/sub/x"));
+        assert!(!idx.entries.contains_key("root.log"));
+        assert!(idx.entries.contains_key("proj/.cache/keep"));
+        assert!(idx.entries.contains_key("proj/app.log"));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Item 4b + Item 5: hard links encode/decode cleanly and fixed-length
+    /// `.olo-sync-part-<hash>` files are skipped by `Index::scan` and refused
+    /// by `validate_rel_path`.
+    #[test]
+    fn hardlinks_roundtrip_in_index_and_part_files_skipped() {
+        let root = scratch_dir("hl-part-idx");
+        fs::write(root.join("a.txt"), b"shared bytes").unwrap();
+        fs::hard_link(root.join("a.txt"), root.join("b.txt")).unwrap();
+        fs::write(root.join(format!("{PART_PREFIX}0123456789abcdef")), b"temp").unwrap();
+        fs::write(root.join(format!("legacy{PART_SUFFIX}")), b"temp").unwrap();
+
+        let idx = Index::scan(&root, &Filter::all(), None).unwrap();
+        assert_eq!(idx.entries.len(), 2);
+        assert_eq!(idx.entries["a.txt"].kind, EntryKind::File);
+        assert_eq!(idx.entries["b.txt"].kind, EntryKind::HardLink("a.txt".into()));
+
+        let decoded = Index::decode(&idx.encode()).unwrap();
+        assert_eq!(idx, decoded);
+        assert!(validate_rel_path(&format!("{PART_PREFIX}0123456789abcdef")).is_err());
+        assert!(validate_rel_path(&format!("sub/{PART_PREFIX}deadbeef")).is_err());
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

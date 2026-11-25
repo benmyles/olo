@@ -28904,7 +28904,7 @@ the world": quinn, rustls with aws-lc, rcgen).
   was). The helper is 4.6 MB for x86_64 and 3.3 MB for aarch64 with it
   (0.7 MB without): 2.4 s to put on the real test host. With keeping
   files in step too (zstd, BLAKE3: 2026-11-24) 5.6 MB and 4.1 MB; with
-  moving an account too (russh, 2026-11-25) 7.7 MB and 5.9 MB (about a
+  moving an account too (russh, 2026-11-25) 7.9 MB and 6.0 MB (about a
   second more to put on a host, once a release).
 - *Measured* on the real test host, over the internet (release of the
   helper, the client's tests `typing_over_the_link_is_timed` and
@@ -29553,9 +29553,31 @@ reviewed and fixed here:
   refused and said in the report; a folder where a file goes is taken
   away only by a mirror (`Options::delete_extra`, the receiver's to
   choose, which it says to the sender and holds to itself), and a
-  file newer there is left with `keep_newer`. A folder's owner always
-  may write in it there (`index::dir_mode`: a folder read only where it
-  comes from, as Go's module cache keeps its, would take nothing).
+  file newer there is left with `keep_newer`. A folder's owner may
+  write in it there while a session works (`index::dir_mode`: a folder
+  read only where it comes from, as Go's module cache keeps its, would
+  take nothing), and at its end each folder it made or opened is set to
+  the sender's mode and time, deepest first (`final_dir_mode`: setgid
+  and sticky kept, setuid never).
+- *For a whole home* (2026-11-25, for moving an account; a subagent's,
+  reviewed and finished): `Options::protect`, paths the receiver keeps
+  as its own (a file, or a folder and what is under it; nor a hard link
+  made to one): never written, replaced, changed or taken away, said in
+  the report ("kept: the receiver's own"); excludes from the root with a
+  leading `/` (`/.cache`, not `proj/.cache`); a file gone, shrunk or
+  changed between the index and its read passed over alone
+  (`TAG_FILE_ABORT`, "changed while it was sent"), the session going on;
+  hard links carried as links (`EntryKind::HardLink`, `TAG_HARDLINK`, made
+  once their file is in place, again when it is replaced; never appended
+  into in place, which would change the twin); part files of a fixed
+  short name (`.olo-sync-part-` and 16 hex: a name of 242 bytes and more
+  fits); no frame over 8 MiB however long the symlinks, a file's chunk
+  list or the report; sparse files kept sparse (holes skipped on the
+  sender, `SEEK_DATA`/`SEEK_HOLE`, once a file of a mebibyte or more and
+  piece by piece only in one that has some; zero blocks not written on
+  the receiver); one filesystem (`Index::mounts`); and what isn't sent
+  counted and named in `Report::skipped` (unreadable, names that aren't
+  UTF-8: not carried yet, special files, mounts). `WIRE_VERSION` 2.
   A malformed message is an error, never a panic, and nothing is
   allocated as large as a peer says: pieces, frames and every list
   (`MAX_ITEMS` over all its frames) are bounded.
@@ -29569,6 +29591,8 @@ reviewed and fixed here:
   | 1 byte in a 50 MB file of records | 7.1 KiB | 123 ms |
   | a 50 MB file renamed | 380 B | 81 ms |
   | 500 new files of 2 KiB of text | 163 KiB (of 1.09 MiB) | 20 ms |
+  | a home-like tree into nothing (20,000 small files, 50 of 1–5 MiB, a 64 MiB image with 4 MiB of data) | 263 MiB | 1.78 s |
+  | the same, unchanged, no cache | 0.8 MiB | 1.03 s |
 
   Closer to the least that could be sent, still to do: the small new
   files in one zstd stream (each its own frame now, their headers and

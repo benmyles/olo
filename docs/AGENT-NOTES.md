@@ -2703,6 +2703,12 @@ the command takes it: an agent's shell may leave a pipe open, and
   dependencies taken out), the suites run there with `--locked`; commit
   in the main tree only your paths (`git add` each), which is what the
   worktree tested. jato's cache makes its first build quick.
+- **Counting instructions on the dev server needs root** (its
+  `perf_event_paranoid` is 4): `sudo -n perf stat --no-scale -e
+  instructions:u -p PID -- sleep 30` around a process of yours, or `--
+  sudo -u $USER BIN` for one it starts: a binary it starts itself runs
+  as root, and what it writes is root's (a bench's tree in /var/tmp,
+  2026-11-25: removed with sudo after).
 - **The dev server's `sleep`, `cat` and the rest are one program**
   (uutils' coreutils, multi-call): a copy of `/bin/sleep` under another
   name refuses to run ("coreutils: unknown program"). For a test

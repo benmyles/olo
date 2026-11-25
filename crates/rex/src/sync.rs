@@ -66,6 +66,9 @@ impl HostFolder {
             filter: olo_rex_sync::index::Filter { recursive: !self.shallow, exclude: self.exclude.clone(), ..Default::default() },
             cache_path: None,
             scoped: self.scoped,
+            // (This computer's side keeps nothing of its own from a host's
+            // files: what it receives is the person's to have.)
+            protect: Vec::new(),
         }
     }
 }
