@@ -9,15 +9,15 @@ use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::chunk::{self, ChunkId, ChunkRef, StreamDigest};
 use crate::index::{Entry, EntryKind, Filter, Index, PART_PREFIX, Skipped, dir_mode, final_dir_mode, validate_rel_path};
 use crate::recipe::{self, AppendProbe, DataCodec, MAX_DATA_PIECE_LEN, Piece, Plan, REF_PREFIX_MAX, RecipeKind, SuperChunk};
 
 /// Wire protocol version exchanged in the opening handshake.
-pub const WIRE_VERSION: u32 = 2;
+pub const WIRE_VERSION: u32 = 3;
 
 /// Maximum allowed frame payload length (8 MiB). Any frame advertising a
 /// larger payload is rejected immediately before allocating.
@@ -38,7 +38,7 @@ const MAX_ITEMS_PER_FRAME: usize = 250_000;
 /// The most entries a peer's list holds over all its frames (a manifest,
 /// what it asks of chunks): one that never says "no more" can't grow this
 /// side's memory for ever.
-const MAX_ITEMS: usize = 4_000_000;
+const MAX_ITEMS: usize = 20_000_000;
 /// The most chunks an append's tail is said in (about 4 GiB of it): more,
 /// and the file is built beside its place instead.
 const MAX_TAIL_CHUNKS: usize = 256 << 10;
@@ -77,10 +77,54 @@ const REASON_CHANGED: &str = "changed while it was sent";
 const SPARSE_BLOCK: usize = 4096;
 static ZEROS: [u8; 64 << 10] = [0u8; 64 << 10];
 
+/// How often the receiver checkpoints its index mid-session: every 30
+/// seconds at most, and never sooner than twenty times its last save took
+/// (an index of millions of entries takes seconds to write whole: saved by
+/// files or bytes received, a fast session spent most of its time saving).
+/// So saving is at most a twentieth of a session's time, whatever its size.
+const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(30);
+const CHECKPOINT_SAVES_APART: u32 = 20;
+/// A checkpoint by files received (tests only: none in a real session).
+const CHECKPOINT_FILES: u64 = u64::MAX;
+
 /// What the sender can offer: an index of entries and random-access reads of
 /// file slices.
 pub trait Source {
     fn index(&self) -> io::Result<Index>;
+
+    /// Like [`Source::index`], calling `on_entry(path, size)` as each regular
+    /// file is indexed so progress is reported from the start of a session.
+    fn index_with_progress(&self, _on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Index> {
+        self.index()
+    }
+
+    /// Optional stat-only index pass: returns `(index, unhashed_paths)` where
+    /// uncached regular files in `unhashed_paths` have not been read yet.
+    /// Brand-new files are then streamed once with their BLAKE3 computed on the
+    /// fly and sent in `TAG_FILE_END`. Default: `Ok(None)` (eager indexing).
+    fn index_lazy_with_progress(&self, _on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(Index, HashSet<String>)>> {
+        Ok(None)
+    }
+
+    /// Hash (and chunk when `size >= chunk::CHUNK_MIN_SIZE`) a single unhashed
+    /// file on demand when the receiver already has a file at this path or of
+    /// this size.
+    fn hash_entry(&self, _path: &str, _size: u64) -> io::Result<chunk::FileDigest> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "lazy hashing not supported by this Source"))
+    }
+
+    /// Whether [`Source::save_cache`] persists the index (used to skip
+    /// computing sender-side chunk lists for brand-new files when no cache is
+    /// configured).
+    fn wants_cache(&self) -> bool {
+        false
+    }
+
+    /// Save the completed index cache at the end of a lazy session.
+    fn save_cache(&self, _index: &Index) -> io::Result<()> {
+        Ok(())
+    }
+
     fn read(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>>;
 
     /// Whether `entry` on the source still matches its indexed stat (size,
@@ -114,12 +158,45 @@ impl FolderSource {
 
 impl Source for FolderSource {
     fn index(&self) -> io::Result<Index> {
+        self.index_with_progress(&mut |_, _| {})
+    }
+
+    fn index_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Index> {
         let prev = self.cache_path.as_deref().and_then(|p| Index::load(p).ok());
-        let idx = Index::scan(&self.root, &self.filter, prev.as_ref())?;
+        let idx = Index::scan_with_progress(&self.root, &self.filter, prev.as_ref(), on_entry)?;
         if let Some(cache) = &self.cache_path {
             idx.save(cache)?;
         }
         Ok(idx)
+    }
+
+    fn index_lazy_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(Index, HashSet<String>)>> {
+        // (Lazily only where a cache keeps the hashes for next time: a
+        // sender without one hashes it all, so an unchanged tree is told in
+        // one round trip by its tree's hash.)
+        if self.cache_path.is_none() {
+            return Ok(None);
+        }
+        let prev = self.cache_path.as_deref().and_then(|p| Index::load(p).ok());
+        let (idx, unhashed) = Index::scan_stat_with_progress(&self.root, &self.filter, prev.as_ref(), on_entry)?;
+        Ok(Some((idx, unhashed)))
+    }
+
+    fn hash_entry(&self, path: &str, size: u64) -> io::Result<chunk::FileDigest> {
+        validate_rel_path(path).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let mut f = open_no_symlink_components(&self.root, path)?;
+        chunk::hash_and_chunk_file_in(&mut Vec::new(), &mut f, size)
+    }
+
+    fn wants_cache(&self) -> bool {
+        self.cache_path.is_some()
+    }
+
+    fn save_cache(&self, index: &Index) -> io::Result<()> {
+        if let Some(cache) = &self.cache_path {
+            index.save(cache)?;
+        }
+        Ok(())
     }
 
     fn read(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
@@ -162,35 +239,8 @@ impl Source for FolderSource {
         if actual_len < offset.saturating_add(max_len) {
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "file shrunk"));
         }
-        Ok(probe_extent(&f, offset, max_len))
+        Ok(chunk::probe_extent(&f, offset, max_len))
     }
-}
-
-fn probe_extent(file: &fs::File, offset: u64, max_len: u64) -> (bool, u64) {
-    use std::os::fd::AsRawFd;
-    let fd = file.as_raw_fd();
-    let Ok(off) = libc::off_t::try_from(offset) else {
-        return (false, max_len);
-    };
-    // SAFETY: `fd` is a valid open regular file descriptor owned by `file`.
-    let data_pos = unsafe { libc::lseek(fd, off, libc::SEEK_DATA) };
-    if data_pos < 0 {
-        if io::Error::last_os_error().raw_os_error() == Some(libc::ENXIO) {
-            return (true, max_len);
-        }
-        return (false, max_len);
-    }
-    let data_pos = data_pos as u64;
-    if data_pos > offset {
-        return (true, (data_pos - offset).min(max_len));
-    }
-    // SAFETY: `fd` is a valid open regular file descriptor owned by `file`.
-    let hole_pos = unsafe { libc::lseek(fd, off, libc::SEEK_HOLE) };
-    if hole_pos < 0 {
-        return (false, max_len);
-    }
-    let hole_pos = hole_pos as u64;
-    if hole_pos > offset { (false, (hole_pos - offset).min(max_len)) } else { (false, max_len) }
 }
 
 /// Metadata for one file provided by [`ListSource`].
@@ -227,12 +277,17 @@ impl ListSource {
 
 impl Source for ListSource {
     fn index(&self) -> io::Result<Index> {
+        self.index_with_progress(&mut |_, _| {})
+    }
+
+    fn index_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Index> {
         let mut entries = BTreeMap::new();
         let mut buf = Vec::new();
         let mut cache = self.cache.lock().unwrap();
         for item in &self.items {
             let bytes = (self.provider)(&item.path)?;
-            let digest = chunk::hash_and_chunk_in(&mut buf, &bytes[..])?;
+            let digest = if bytes.len() as u64 >= chunk::CHUNK_MIN_SIZE { chunk::hash_and_chunk_in(&mut buf, &bytes[..])? } else { chunk::hash_only_in(&mut buf, &bytes[..])? };
+            on_entry(&item.path, digest.size);
             cache.insert(item.path.clone(), bytes);
             entries.insert(
                 item.path.clone(),
@@ -265,8 +320,35 @@ impl Source for ListSource {
     }
 }
 
+/// Stage of a sync session reported through [`Options::progress`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    /// Walking the source tree (files and bytes looked at so far).
+    Indexing,
+    /// Diff against the receiver is complete; totals reflect what will be sent.
+    Planned,
+    /// Streaming planned files to the receiver.
+    Sending,
+    /// Session finished.
+    Done,
+}
+
+/// Live progress snapshot delivered to [`Options::progress`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Progress {
+    pub phase: Phase,
+    pub files: u64,
+    pub bytes: u64,
+    pub files_total: u64,
+    pub bytes_total: u64,
+    pub current: String,
+}
+
+/// Callback type for [`Options::progress`].
+pub type ProgressCallback = Arc<dyn Fn(&Progress) + Send + Sync>;
+
 /// Options governing a sync session.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Options {
     /// Remove entries on the receiver that the sender does not have.
     /// Default: `false`. Enforced by the receiver so an untrusted sender
@@ -289,6 +371,50 @@ pub struct Options {
     /// and everything under it): every operation that would create, replace,
     /// change or remove one is refused with `"kept: the receiver's own"`.
     pub protect: Vec<String>,
+    /// Optional observer called by [`send`] no more than ten times a second
+    /// within a phase and once at each phase's end.
+    pub progress: Option<ProgressCallback>,
+}
+
+impl std::fmt::Debug for Options {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Options")
+            .field("delete_extra", &self.delete_extra)
+            .field("keep_newer", &self.keep_newer)
+            .field("filter", &self.filter)
+            .field("cache_path", &self.cache_path)
+            .field("scoped", &self.scoped)
+            .field("protect", &self.protect)
+            .field("progress", &self.progress.as_ref().map(|_| ".."))
+            .finish()
+    }
+}
+
+const PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(100);
+
+struct ProgressReporter<'a> {
+    cb: Option<&'a (dyn Fn(&Progress) + Send + Sync)>,
+    last_emit: Option<Instant>,
+}
+
+impl<'a> ProgressReporter<'a> {
+    fn new(cb: Option<&'a ProgressCallback>) -> Self {
+        Self { cb: cb.map(|f| f.as_ref()), last_emit: None }
+    }
+
+    fn maybe_emit(&mut self, p: &Progress) {
+        let Some(cb) = self.cb else { return };
+        if self.last_emit.is_none_or(|t| t.elapsed() >= PROGRESS_MIN_INTERVAL) {
+            cb(p);
+            self.last_emit = Some(Instant::now());
+        }
+    }
+
+    fn emit_now(&mut self, p: &Progress) {
+        let Some(cb) = self.cb else { return };
+        cb(p);
+        self.last_emit = Some(Instant::now());
+    }
 }
 
 /// Per-path failure recorded in a [`Report`] without aborting the session.
@@ -327,11 +453,22 @@ impl Report {
 
 /// Sender entry point: sync everything from `source` to the peer on `conn`.
 pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> io::Result<Report> {
-    let mut raw_index = source.index()?;
-    filter_index(&mut raw_index, &options.filter);
-    let sender_index = raw_index;
-    let skipped = sender_index.skipped();
-    let sender_tree_hash = sender_index.tree_hash();
+    let mut progress = ProgressReporter::new(options.progress.as_ref());
+    let mut indexed_files = 0u64;
+    let mut indexed_bytes = 0u64;
+    let mut on_index_entry = |path: &str, size: u64| {
+        indexed_files += 1;
+        indexed_bytes += size;
+        progress.maybe_emit(&Progress { phase: Phase::Indexing, files: indexed_files, bytes: indexed_bytes, files_total: 0, bytes_total: 0, current: path.to_owned() });
+    };
+    let (mut raw_index, mut unhashed, used_lazy) = match source.index_lazy_with_progress(&mut on_index_entry)? {
+        Some((idx, unhashed)) => (idx, unhashed, true),
+        None => (source.index_with_progress(&mut on_index_entry)?, HashSet::new(), false),
+    };
+    filter_index(&mut raw_index, &options.filter, &mut unhashed);
+    let mut sender_index = raw_index;
+    let (final_indexed_files, final_indexed_bytes) = sender_index.entries.values().filter(|e| e.kind == EntryKind::File).fold((0u64, 0u64), |(f, b), e| (f + 1, b + e.size));
+    progress.emit_now(&Progress { phase: Phase::Indexing, files: final_indexed_files, bytes: final_indexed_bytes, files_total: 0, bytes_total: 0, current: String::new() });
     let mut wire = Wire::new(conn);
 
     // 1. Handshake: receiver sends Hello, sender checks version and tree hash.
@@ -351,13 +488,19 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     if scoped {
         send_scope(&mut wire, &sender_index)?;
         wire.flush()?;
-    } else if hello.tree_hash == sender_tree_hash {
+    } else if unhashed.is_empty() && hello.tree_hash == sender_index.tree_hash() {
         let mut ack = Vec::with_capacity(5);
         ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
         ack.push(1); // in_sync = true
         wire.write_frame(TAG_HELLO_ACK, &ack)?;
         wire.flush()?;
-        return Ok(Report { same: sender_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, skipped, ..Report::default() });
+        if used_lazy {
+            source.save_cache(&sender_index)?;
+        }
+        progress.emit_now(&Progress { phase: Phase::Planned, files: 0, bytes: 0, files_total: 0, bytes_total: 0, current: String::new() });
+        progress.emit_now(&Progress { phase: Phase::Sending, files: 0, bytes: 0, files_total: 0, bytes_total: 0, current: String::new() });
+        progress.emit_now(&Progress { phase: Phase::Done, files: 0, bytes: 0, files_total: 0, bytes_total: 0, current: String::new() });
+        return Ok(Report { same: sender_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, skipped: sender_index.skipped(), ..Report::default() });
     } else {
         let mut ack = Vec::with_capacity(5);
         ack.extend_from_slice(&WIRE_VERSION.to_le_bytes());
@@ -382,37 +525,92 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         }
     }
 
-    // Index receiver files by BLAKE3 for O(1) CopyFile detection.
+    // Index receiver files by BLAKE3 (for O(1) CopyFile detection) and by size
+    // (so lazy-indexed new files only hash upfront when a CopyFile is possible).
     let mut recv_by_hash: HashMap<[u8; 32], String> = HashMap::new();
+    let mut recv_sizes: HashSet<u64> = HashSet::new();
     for entry in recv_manifest.values() {
         if entry.kind == EntryKind::File {
             recv_by_hash.entry(entry.hash).or_insert_with(|| entry.path.clone());
+            recv_sizes.insert(entry.size);
         }
     }
 
     // 3. Classify every sender file and gather chunk requests for differing files.
     let mut same_count = 0u64;
     let mut left_newer_count = 0u64;
-    let mut set_meta_files: Vec<&Entry> = Vec::new();
-    let mut copy_files: Vec<(&Entry, String)> = Vec::new();
-    let mut new_files: Vec<&Entry> = Vec::new();
-    let mut delta_files: Vec<&Entry> = Vec::new();
+    let mut set_meta_files: Vec<String> = Vec::new();
+    let mut copy_files: Vec<(String, String)> = Vec::new();
+    // `(path, hash_at_end)`
+    let mut new_files: Vec<(String, bool)> = Vec::new();
+    let mut delta_files: Vec<String> = Vec::new();
     let mut chunk_reqs: Vec<ChunkReq> = Vec::new();
     let mut updated_files: HashSet<String> = HashSet::new();
     let mut aborted_files: HashSet<String> = HashSet::new();
+    let mut unread_targets: HashSet<String> = HashSet::new();
     let mut sender_errors: Vec<PathError> = Vec::new();
 
-    for entry in sender_index.entries.values() {
-        if entry.kind != EntryKind::File {
-            continue;
+    let file_paths: Vec<String> = sender_index.entries.values().filter(|e| e.kind == EntryKind::File).map(|e| e.path.clone()).collect();
+    for path in file_paths {
+        if unhashed.contains(&path) {
+            let (entry_size, entry_mtime_ns) = {
+                let e = &sender_index.entries[&path];
+                (e.size, e.mtime_ns)
+            };
+            let their_same_path = recv_manifest.get(&path).filter(|t| t.kind == EntryKind::File);
+            if let Some(their) = their_same_path
+                && effective_keep_newer
+                && their.mtime_ns > entry_mtime_ns
+            {
+                left_newer_count += 1;
+                continue;
+            }
+            let need_prehash = match their_same_path {
+                Some(their) => their.size == entry_size || (their.size >= chunk::CHUNK_MIN_SIZE && entry_size >= chunk::CHUNK_MIN_SIZE) || (entry_size > 0 && recv_sizes.contains(&entry_size)),
+                None => entry_size > 0 && recv_sizes.contains(&entry_size),
+            };
+            if !need_prehash {
+                updated_files.insert(path.clone());
+                new_files.push((path, true));
+                continue;
+            }
+            match source.hash_entry(&path, entry_size) {
+                Ok(digest) => {
+                    if let Some(e) = sender_index.entries.get_mut(&path) {
+                        e.size = digest.size;
+                        e.hash = digest.hash;
+                        e.chunks = digest.chunks;
+                    }
+                    unhashed.remove(&path);
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    sender_index.entries.remove(&path);
+                    unhashed.remove(&path);
+                    continue;
+                }
+                Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+                    sender_index.entries.remove(&path);
+                    unhashed.remove(&path);
+                    sender_index.unread.insert(path.clone(), e.to_string());
+                    unread_targets.insert(path);
+                    continue;
+                }
+                Err(_) => {
+                    aborted_files.insert(path.clone());
+                    sender_errors.push(PathError { path, reason: REASON_CHANGED.into() });
+                    continue;
+                }
+            }
         }
+
+        let entry = &sender_index.entries[&path];
         if let Some(their) = recv_manifest.get(&entry.path)
             && their.kind == EntryKind::File
         {
             if their.hash == entry.hash {
                 same_count += 1;
                 if their.mode != entry.mode {
-                    set_meta_files.push(entry);
+                    set_meta_files.push(path);
                 }
                 continue;
             }
@@ -423,13 +621,14 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         }
         if let Some(from) = recv_by_hash.get(&entry.hash) {
             updated_files.insert(entry.path.clone());
-            copy_files.push((entry, from.clone()));
+            copy_files.push((path, from.clone()));
             continue;
         }
         if let Some(their) = recv_manifest.get(&entry.path)
             && their.kind == EntryKind::File
-            && their.size > 0
-            && entry.size > 0
+            && their.size >= chunk::CHUNK_MIN_SIZE
+            && entry.size >= chunk::CHUNK_MIN_SIZE
+            && !entry.chunks.is_empty()
         {
             let probe = if entry.size > their.size {
                 match recipe::append_probe_for(entry, their.size, |off, len| source.read(&entry.path, off, len)) {
@@ -448,11 +647,11 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
                 None => ChunkReq::SuperOrLeaf { path: entry.path.clone() },
             });
             updated_files.insert(entry.path.clone());
-            delta_files.push(entry);
+            delta_files.push(path);
             continue;
         }
         updated_files.insert(entry.path.clone());
-        new_files.push(entry);
+        new_files.push((path, false));
     }
 
     // 4. Ask receiver for append confirmation / super-chunks / leaf chunks.
@@ -480,7 +679,8 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         // Round 2: for any SuperChunks response that has unmatched super-chunks,
         // request leaf chunks ONLY for the receiver's unmatched super-chunks.
         let mut leaf_reqs: Vec<(String, Vec<u32>)> = Vec::new();
-        for entry in &delta_files {
+        for path in &delta_files {
+            let entry = &sender_index.entries[path];
             if let Some(ChunkResp::SuperChunks(their_supers)) = chunk_resps.get(&entry.path) {
                 let our_supers = recipe::super_chunks(&entry.chunks);
                 let their_ids: HashSet<(ChunkId, u64)> = their_supers.iter().map(|s| (s.id, s.len)).collect();
@@ -516,6 +716,15 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
     }
 
     // 5. Pipelined transfer phase: dirs -> symlinks -> meta -> copies -> recipes -> hardlinks -> removes -> done.
+    let plan_files = (copy_files.len() + delta_files.len() + new_files.len()) as u64;
+    let plan_bytes: u64 = copy_files
+        .iter()
+        .map(|(p, _)| sender_index.entries[p].size)
+        .chain(delta_files.iter().map(|p| sender_index.entries[p].size))
+        .chain(new_files.iter().map(|(p, _)| sender_index.entries[p].size))
+        .sum();
+    progress.emit_now(&Progress { phase: Phase::Planned, files: 0, bytes: 0, files_total: plan_files, bytes_total: plan_bytes, current: String::new() });
+
     for entry in sender_index.entries.values() {
         if entry.kind == EntryKind::Dir {
             let needs_dir = !matches!(
@@ -548,7 +757,8 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         }
     }
 
-    for entry in set_meta_files {
+    for path in set_meta_files {
+        let entry = &sender_index.entries[&path];
         let mut buf = Vec::with_capacity(entry.path.len() + 16);
         write_str(&mut buf, &entry.path);
         buf.extend_from_slice(&entry.mode.to_le_bytes());
@@ -556,7 +766,11 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         wire.write_frame(TAG_SET_META, &buf)?;
     }
 
-    for (entry, from) in copy_files {
+    let mut sent_files = 0u64;
+    let mut sent_bytes = 0u64;
+
+    for (path, from) in copy_files {
+        let entry = &sender_index.entries[&path];
         let mut buf = Vec::with_capacity(entry.path.len() + from.len() + 64);
         write_str(&mut buf, &entry.path);
         write_str(&mut buf, &from);
@@ -565,12 +779,18 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
         buf.extend_from_slice(&entry.size.to_le_bytes());
         buf.extend_from_slice(&entry.hash);
         wire.write_frame(TAG_COPY_FILE, &buf)?;
+        sent_files += 1;
+        sent_bytes += entry.size;
+        progress.maybe_emit(&Progress { phase: Phase::Sending, files: sent_files, bytes: sent_bytes, files_total: plan_files, bytes_total: plan_bytes, current: path });
     }
 
     let mut data_bytes_raw = 0u64;
     let mut data_bytes_compressed = 0u64;
+    let wants_cache = source.wants_cache();
 
-    for entry in delta_files {
+    for path in delta_files {
+        let entry = &sender_index.entries[&path];
+        let entry_size = entry.size;
         let their_size = recv_manifest.get(&entry.path).map(|e| e.size).unwrap_or(0);
         let plan = match chunk_resps.get(&entry.path) {
             Some(ChunkResp::AppendConfirmed) => recipe::plan_append(&entry.path, entry.size, their_size),
@@ -582,29 +802,96 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
             }
             None => recipe::plan_new(entry.size),
         };
-        if let Plan::Build { kind, ops } = plan
-            && !stream_file_plan(&mut wire, source, entry, kind, &ops, &mut data_bytes_raw, &mut data_bytes_compressed)?
-        {
-            aborted_files.insert(entry.path.clone());
-            sender_errors.push(PathError { path: entry.path.clone(), reason: REASON_CHANGED.into() });
+        let mut in_file = 0u64;
+        let mut on_bytes = |n: u64| {
+            in_file += n;
+            progress.maybe_emit(&Progress {
+                phase: Phase::Sending,
+                files: sent_files,
+                bytes: sent_bytes + in_file.min(entry_size),
+                files_total: plan_files,
+                bytes_total: plan_bytes,
+                current: path.clone(),
+            });
+        };
+        if let Plan::Build { kind, ops } = plan {
+            match stream_file_plan(&mut wire, source, entry, kind, &ops, false, false, &mut data_bytes_raw, &mut data_bytes_compressed, &mut on_bytes)? {
+                StreamOutcome::Sent { .. } => {}
+                StreamOutcome::Changed => {
+                    aborted_files.insert(path.clone());
+                    sender_errors.push(PathError { path: path.clone(), reason: REASON_CHANGED.into() });
+                }
+                StreamOutcome::Unread(reason) => {
+                    sender_index.entries.remove(&path);
+                    sender_index.unread.insert(path.clone(), reason);
+                    unread_targets.insert(path.clone());
+                }
+            }
         }
+        sent_files += 1;
+        sent_bytes += entry_size;
+        progress.maybe_emit(&Progress { phase: Phase::Sending, files: sent_files, bytes: sent_bytes, files_total: plan_files, bytes_total: plan_bytes, current: path });
     }
 
-    for entry in new_files {
-        let Plan::Build { kind, ops } = recipe::plan_new(entry.size) else {
+    for (path, hash_at_end) in new_files {
+        let entry_size = sender_index.entries[&path].size;
+        let Plan::Build { kind, ops } = recipe::plan_new(entry_size) else {
             unreachable!();
         };
-        if !stream_file_plan(&mut wire, source, entry, kind, &ops, &mut data_bytes_raw, &mut data_bytes_compressed)? {
-            aborted_files.insert(entry.path.clone());
-            sender_errors.push(PathError { path: entry.path.clone(), reason: REASON_CHANGED.into() });
+        let mut in_file = 0u64;
+        let mut on_bytes = |n: u64| {
+            in_file += n;
+            progress.maybe_emit(&Progress {
+                phase: Phase::Sending,
+                files: sent_files,
+                bytes: sent_bytes + in_file.min(entry_size),
+                files_total: plan_files,
+                bytes_total: plan_bytes,
+                current: path.clone(),
+            });
+        };
+        let compute_chunks = hash_at_end && wants_cache && entry_size >= chunk::CHUNK_MIN_SIZE;
+        let outcome = stream_file_plan(&mut wire, source, &sender_index.entries[&path], kind, &ops, hash_at_end, compute_chunks, &mut data_bytes_raw, &mut data_bytes_compressed, &mut on_bytes)?;
+        match outcome {
+            StreamOutcome::Sent { hash, chunks } => {
+                if hash_at_end {
+                    if let Some(e) = sender_index.entries.get_mut(&path) {
+                        e.hash = hash;
+                        e.chunks = chunks;
+                    }
+                    unhashed.remove(&path);
+                }
+            }
+            StreamOutcome::Changed => {
+                aborted_files.insert(path.clone());
+                sender_errors.push(PathError { path: path.clone(), reason: REASON_CHANGED.into() });
+            }
+            StreamOutcome::Unread(reason) => {
+                sender_index.entries.remove(&path);
+                unhashed.remove(&path);
+                sender_index.unread.insert(path.clone(), reason);
+                unread_targets.insert(path.clone());
+            }
         }
+        sent_files += 1;
+        sent_bytes += entry_size;
+        progress.maybe_emit(&Progress { phase: Phase::Sending, files: sent_files, bytes: sent_bytes, files_total: plan_files, bytes_total: plan_bytes, current: path });
     }
+
+    progress.emit_now(&Progress { phase: Phase::Sending, files: sent_files, bytes: sent_bytes, files_total: plan_files, bytes_total: plan_bytes, current: String::new() });
 
     // Hard links are sent once all target files are in place. If the target
     // was replaced in this pass (or isn't linked to it on the receiver yet),
     // make the link (again).
+    let mut unread_hardlinks: Vec<(String, String)> = Vec::new();
     for entry in sender_index.entries.values() {
         if let EntryKind::HardLink(target) = &entry.kind {
+            if unread_targets.contains(target) {
+                if let Some(reason) = sender_index.unread.get(target) {
+                    unread_hardlinks.push((entry.path.clone(), reason.clone()));
+                }
+                continue;
+            }
             if aborted_files.contains(target) {
                 sender_errors.push(PathError { path: entry.path.clone(), reason: REASON_CHANGED.into() });
                 continue;
@@ -622,6 +909,11 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
                 wire.write_frame(TAG_HARDLINK, &buf)?;
             }
         }
+    }
+
+    for (p, reason) in unread_hardlinks {
+        sender_index.entries.remove(&p);
+        sender_index.unread.insert(p, reason);
     }
 
     if effective_delete_extra {
@@ -647,10 +939,20 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
 
     // 6. Read final report from receiver (may span multiple frames).
     let mut report = read_report(&mut wire)?;
+    let skipped = sender_index.skipped();
+    if used_lazy {
+        // Persist only entries whose hashes were actually computed (never
+        // aborted or unhashed keep_newer entries).
+        for p in unhashed.iter().chain(aborted_files.iter()) {
+            sender_index.entries.remove(p);
+        }
+        source.save_cache(&sender_index)?;
+    }
     report.errors.extend(sender_errors);
     report.skipped = skipped;
     report.bytes_sent = wire.bytes_sent;
     report.bytes_received = wire.bytes_received;
+    progress.emit_now(&Progress { phase: Phase::Done, files: plan_files, bytes: plan_bytes, files_total: plan_files, bytes_total: plan_bytes, current: String::new() });
     Ok(report)
 }
 
@@ -660,6 +962,10 @@ pub fn send<S: Read + Write>(conn: S, source: &dyn Source, options: Options) -> 
 /// `..`, or would traverse a symlink are refused and recorded in
 /// [`Report::errors`].
 pub fn receive<S: Read + Write>(conn: S, root: &Path, options: Options) -> io::Result<Report> {
+    receive_inner(conn, root, options, |p| fs::File::open(p), CHECKPOINT_FILES)
+}
+
+fn receive_inner<S: Read + Write, R: Read>(conn: S, root: &Path, options: Options, open: impl FnMut(&Path) -> io::Result<R>, checkpoint_files: u64) -> io::Result<Report> {
     // (Scoped, nothing is taken away: what else the root holds isn't the
     // session's.)
     let options = Options { delete_extra: options.delete_extra && !options.scoped, ..options };
@@ -697,12 +1003,12 @@ pub fn receive<S: Read + Write>(conn: S, root: &Path, options: Options) -> io::R
                 break;
             }
         }
-        Index::scan_paths(root, &paths, prev.as_ref())?
+        Index::scan_paths_with(root, &paths, prev.as_ref(), open)?
     } else {
-        Index::scan(root, &options.filter, prev.as_ref())?
+        Index::scan_with(root, &options.filter, prev.as_ref(), open)?
     };
     if options.scoped {
-        return receive_after_hello(wire, root, options, recv_index);
+        return receive_after_hello(wire, root, options, recv_index, checkpoint_files);
     }
     let recv_tree_hash = recv_index.tree_hash();
 
@@ -737,12 +1043,12 @@ pub fn receive<S: Read + Write>(conn: S, root: &Path, options: Options) -> io::R
         return Ok(Report { same: recv_index.file_count(), bytes_sent: wire.bytes_sent, bytes_received: wire.bytes_received, ..Report::default() });
     }
 
-    receive_after_hello(wire, root, options, recv_index)
+    receive_after_hello(wire, root, options, recv_index, checkpoint_files)
 }
 
 /// The receiver's session once the hellos are done: its manifest, then
 /// what the sender asks and sends, until it is done.
-fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options: Options, mut recv_index: Index) -> io::Result<Report> {
+fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options: Options, mut recv_index: Index, checkpoint_files: u64) -> io::Result<Report> {
     // 2. Send manifest (no chunk lists).
     send_manifest(&mut wire, &recv_index)?;
     wire.flush()?;
@@ -755,9 +1061,46 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
     // Folders created or temporarily made writable: `(final_mode, Option<mtime_ns>)`,
     // finalized deepest-first at the end of the session.
     let mut pending_dirs: BTreeMap<String, (u32, Option<i64>)> = BTreeMap::new();
+    let mut last_checkpoint = Instant::now();
+    let mut files_since_checkpoint = 0u64;
+    let mut bytes_since_checkpoint = 0u64;
+    let mut index_dirty = false;
+    // (How long the last save took: the next is that many times later.)
+    let mut save_took = Duration::ZERO;
+
+    let mut maybe_checkpoint = |recv_index: &Index, dirty: &mut bool, files: &mut u64, bytes: &mut u64, last: &mut Instant| {
+        if !*dirty {
+            return;
+        }
+        let Some(cache) = &options.cache_path else {
+            return;
+        };
+        let due = CHECKPOINT_INTERVAL.max(save_took * CHECKPOINT_SAVES_APART);
+        if *files >= checkpoint_files || last.elapsed() >= due {
+            let began = Instant::now();
+            if recv_index.save(cache).is_ok() {
+                save_took = began.elapsed();
+                *dirty = false;
+                *files = 0;
+                *bytes = 0;
+                *last = Instant::now();
+            }
+        }
+    };
 
     loop {
-        let (tag, payload) = wire.read_frame()?;
+        let (tag, payload) = match wire.read_frame() {
+            Ok(frame) => frame,
+            Err(e) => {
+                if let Some(af) = active_file.take() {
+                    abort_file(af);
+                }
+                if index_dirty && let Some(cache) = &options.cache_path {
+                    let _ = recv_index.save(cache);
+                }
+                return Err(e);
+            }
+        };
         match tag {
             TAG_NEED_CHUNKS => {
                 if active_file.is_some() {
@@ -806,8 +1149,9 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 let mode = cur.read_u32()?;
                 let mtime_ns = cur.read_i64()?;
                 cur.expect_eof()?;
-                if let Err(reason) = apply_mkdir(root, &path, mode, mtime_ns, &options.protect, &mut pending_dirs, &mut recv_index) {
-                    report.errors.push(PathError { path, reason });
+                match apply_mkdir(root, &path, mode, mtime_ns, &options.protect, &mut pending_dirs, &mut recv_index) {
+                    Ok(()) => index_dirty = true,
+                    Err(reason) => report.errors.push(PathError { path, reason }),
                 }
             }
             TAG_SYMLINK => {
@@ -819,8 +1163,9 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 let target = cur.read_str(MAX_PATH_LEN)?;
                 let mtime_ns = cur.read_i64()?;
                 cur.expect_eof()?;
-                if let Err(reason) = apply_symlink(root, &path, &target, mtime_ns, &options, &mut pending_dirs, &mut recv_index) {
-                    report.errors.push(PathError { path, reason });
+                match apply_symlink(root, &path, &target, mtime_ns, &options, &mut pending_dirs, &mut recv_index) {
+                    Ok(()) => index_dirty = true,
+                    Err(reason) => report.errors.push(PathError { path, reason }),
                 }
             }
             TAG_HARDLINK => {
@@ -831,8 +1176,9 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 let path = cur.read_str(MAX_PATH_LEN)?;
                 let target = cur.read_str(MAX_PATH_LEN)?;
                 cur.expect_eof()?;
-                if let Err(reason) = apply_hardlink(root, &path, &target, &options, &mut pending_dirs, &mut recv_index) {
-                    report.errors.push(PathError { path, reason });
+                match apply_hardlink(root, &path, &target, &options, &mut pending_dirs, &mut recv_index) {
+                    Ok(()) => index_dirty = true,
+                    Err(reason) => report.errors.push(PathError { path, reason }),
                 }
             }
             TAG_SET_META => {
@@ -844,8 +1190,9 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 let mode = cur.read_u32()?;
                 let mtime_ns = cur.read_i64()?;
                 cur.expect_eof()?;
-                if let Err(reason) = apply_set_meta(root, &path, mode, mtime_ns, &options.protect, &mut recv_index) {
-                    report.errors.push(PathError { path, reason });
+                match apply_set_meta(root, &path, mode, mtime_ns, &options.protect, &mut recv_index) {
+                    Ok(()) => index_dirty = true,
+                    Err(reason) => report.errors.push(PathError { path, reason }),
                 }
             }
             TAG_COPY_FILE => {
@@ -861,7 +1208,13 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 let hash = cur.read_array::<32>()?;
                 cur.expect_eof()?;
                 match apply_copy_file(root, &path, &from, mode, mtime_ns, size, hash, &options, &mut pending_dirs, &mut recv_index, &mut copy_buf) {
-                    Ok(CopyOutcome::Copied) => report.copied += 1,
+                    Ok(CopyOutcome::Copied) => {
+                        report.copied += 1;
+                        index_dirty = true;
+                        files_since_checkpoint += 1;
+                        bytes_since_checkpoint += size;
+                        maybe_checkpoint(&recv_index, &mut index_dirty, &mut files_since_checkpoint, &mut bytes_since_checkpoint, &mut last_checkpoint);
+                    }
                     Ok(CopyOutcome::LeftNewer) => report.left_newer += 1,
                     Err(reason) => report.errors.push(PathError { path, reason }),
                 }
@@ -881,13 +1234,29 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                 apply_active_piece(root, af, &piece, &mut copy_buf);
             }
             TAG_FILE_END => {
-                if !payload.is_empty() {
-                    return Err(invalid_data("trailing bytes in FileEnd"));
-                }
-                let Some(af) = active_file.take() else {
+                let Some(mut af) = active_file.take() else {
                     return Err(invalid_data("FileEnd without FileStart"));
                 };
+                if af.expected_hash.is_some() {
+                    if !payload.is_empty() {
+                        return Err(invalid_data("trailing bytes in FileEnd"));
+                    }
+                } else {
+                    if payload.len() != 32 {
+                        return Err(invalid_data("expected 32-byte hash in FileEnd"));
+                    }
+                    let hash: [u8; 32] = payload.try_into().unwrap();
+                    af.expected_hash = Some(hash);
+                }
+                let expected_size = af.expected_size;
+                let before_done = report.new + report.patched + report.appended;
                 finish_file(root, af, &options.protect, &mut recv_index, &mut report);
+                if report.new + report.patched + report.appended > before_done {
+                    index_dirty = true;
+                    files_since_checkpoint += 1;
+                    bytes_since_checkpoint += expected_size;
+                    maybe_checkpoint(&recv_index, &mut index_dirty, &mut files_since_checkpoint, &mut bytes_since_checkpoint, &mut last_checkpoint);
+                }
             }
             TAG_FILE_ABORT => {
                 if !payload.is_empty() {
@@ -911,7 +1280,10 @@ fn receive_after_hello<S: Read + Write>(mut wire: Wire<S>, root: &Path, options:
                     report.errors.push(PathError { path, reason: "remove refused: delete_extra is false".into() });
                 } else {
                     match apply_remove(root, &path, &options.protect, &mut pending_dirs, &mut recv_index) {
-                        Ok(true) => report.removed += 1,
+                        Ok(true) => {
+                            report.removed += 1;
+                            index_dirty = true;
+                        }
                         Ok(false) => {}
                         Err(reason) => report.errors.push(PathError { path, reason }),
                     }
@@ -960,7 +1332,9 @@ struct FileStartMsg {
     size: u64,
     mode: u32,
     mtime_ns: i64,
-    hash: [u8; 32],
+    /// `Some(hash)` when known up front, or `None` when the sender streams a
+    /// new file once and delivers its 32-byte BLAKE3 in `TAG_FILE_END`.
+    hash: Option<[u8; 32]>,
     basis_paths: Vec<String>,
     /// An append's: the size the receiver's file has, and the sender's
     /// chunks from the start of that file's last one to the end.
@@ -1062,12 +1436,8 @@ fn is_all_zero(block: &[u8]) -> bool {
     chunks.iter().all(|c| *c == [0u8; 16]) && rem.iter().all(|&b| b == 0)
 }
 
-fn feed_zeros(digest: &mut StreamDigest, mut len: u64) {
-    while len > 0 {
-        let take = (len as usize).min(ZEROS.len());
-        digest.update(&ZEROS[..take]);
-        len -= take as u64;
-    }
+fn feed_zeros(digest: &mut StreamDigest, len: u64) {
+    digest.update_zeros(len);
 }
 
 enum ActiveState {
@@ -1112,7 +1482,7 @@ struct ActiveFile {
     expected_size: u64,
     mode: u32,
     mtime_ns: i64,
-    expected_hash: [u8; 32],
+    expected_hash: Option<[u8; 32]>,
     basis_paths: Vec<String>,
     state: ActiveState,
 }
@@ -1187,6 +1557,7 @@ fn begin_file(root: &Path, start: FileStartMsg, options: &Options, pending_dirs:
     }
 
     let part_path = part_path_for(root, &start.path);
+    let digest = if start.size >= chunk::CHUNK_MIN_SIZE { StreamDigest::new() } else { StreamDigest::new_hash_only() };
     match create_part(&part_path) {
         Ok(file) => ActiveFile {
             replace_dirs: options.delete_extra,
@@ -1197,7 +1568,7 @@ fn begin_file(root: &Path, start: FileStartMsg, options: &Options, pending_dirs:
             mtime_ns: start.mtime_ns,
             expected_hash: start.hash,
             basis_paths: start.basis_paths,
-            state: ActiveState::Writing { part_path, writer: SparseWriter::new(file), digest: Box::new(StreamDigest::new()), written: 0 },
+            state: ActiveState::Writing { part_path, writer: SparseWriter::new(file), digest: Box::new(digest), written: 0 },
         },
         Err(e) => {
             report.errors.push(PathError { path: start.path.clone(), reason: format!("create temp file failed: {e}") });
@@ -1389,7 +1760,7 @@ fn finish_file(root: &Path, af: ActiveFile, protect: &[String], recv_index: &mut
                                 // (The sender's, of a file whose every chunk is
                                 // checked: the old ones by the index, the new
                                 // ones here.)
-                                hash: af.expected_hash,
+                                hash: af.expected_hash.unwrap_or([0u8; 32]),
                                 chunks,
                             },
                         );
@@ -1417,7 +1788,10 @@ fn finish_file(root: &Path, af: ActiveFile, protect: &[String], recv_index: &mut
                 if written != af.expected_size || computed.size != af.expected_size {
                     return Err(format!("size mismatch: wrote {}, expected {}", computed.size, af.expected_size));
                 }
-                if computed.hash != af.expected_hash {
+                let Some(expected_hash) = af.expected_hash else {
+                    return Err("missing BLAKE3 hash".into());
+                };
+                if computed.hash != expected_hash {
                     return Err("BLAKE3 verification failed".into());
                 }
                 file.set_permissions(fs::Permissions::from_mode(af.mode & 0o777)).map_err(|e| format!("set mode: {e}"))?;
@@ -1878,7 +2252,7 @@ fn apply_copy_file(
 
     let res: Result<Vec<ChunkRef>, String> = (|| {
         let mut hasher = blake3::Hasher::new();
-        let mut sd = if reuse_chunks.is_none() { Some(StreamDigest::new()) } else { None };
+        let mut sd = if size >= chunk::CHUNK_MIN_SIZE && reuse_chunks.as_ref().is_none_or(Vec::is_empty) { Some(StreamDigest::new()) } else { None };
         let mut copied = 0u64;
         loop {
             let n = src.read(copy_buf).map_err(|e| format!("read '{from}': {e}"))?;
@@ -1909,9 +2283,9 @@ fn apply_copy_file(
             fs::remove_dir_all(&dst).map_err(|e| format!("replace dir: {e}"))?;
         }
         fs::rename(&part, &dst).map_err(|e| format!("rename: {e}"))?;
-        Ok(match reuse_chunks {
-            Some(c) => c,
-            None => sd.unwrap().finalize().chunks,
+        Ok(match sd {
+            Some(d) => d.finalize().chunks,
+            None => reuse_chunks.unwrap_or_default(),
         })
     })();
 
@@ -2014,7 +2388,7 @@ fn ns_to_system_time(ns: i64) -> Option<SystemTime> {
     if ns >= 0 { UNIX_EPOCH.checked_add(Duration::from_nanos(ns as u64)) } else { UNIX_EPOCH.checked_sub(Duration::from_nanos(ns.unsigned_abs())) }
 }
 
-fn filter_index(index: &mut Index, filter: &Filter) {
+fn filter_index(index: &mut Index, filter: &Filter, unhashed: &mut HashSet<String>) {
     if filter.recursive && filter.exclude.is_empty() && filter.include.is_empty() && filter.only.is_empty() {
         return;
     }
@@ -2060,6 +2434,9 @@ fn filter_index(index: &mut Index, filter: &Filter) {
                 } else if let Some(orig) = index.entries.get(target) {
                     let mut updated = orig.clone();
                     updated.path = path.clone();
+                    if unhashed.contains(target) {
+                        unhashed.insert(path.clone());
+                    }
                     promoted.insert(target.clone(), path.clone());
                     updates.push((path.clone(), updated));
                 }
@@ -2070,6 +2447,7 @@ fn filter_index(index: &mut Index, filter: &Filter) {
         index.entries.insert(path, entry);
     }
     index.entries.retain(|path, entry| keep_path(path, &entry.kind));
+    unhashed.retain(|path| index.entries.contains_key(path));
     index.mounts.retain(|path| keep_path(path, &EntryKind::Dir));
     index.special.retain(|path| keep_path(path, &EntryKind::File));
     index.unread.retain(|path, _| keep_path(path, &EntryKind::File) || keep_path(path, &EntryKind::Dir));
@@ -2201,10 +2579,10 @@ fn send_manifest<S: Read + Write>(wire: &mut Wire<S>, index: &Index) -> io::Resu
 
 /// The sender's paths, to a scoped receiver: its files first (so the
 /// receiver's `scan_paths` sees the first file before any hard link to it),
-/// then links, in compressed batches.
+/// then links and folders, in compressed batches.
 fn send_scope<S: Read + Write>(wire: &mut Wire<S>, index: &Index) -> io::Result<()> {
     let mut paths: Vec<&String> = index.entries.values().filter(|e| e.kind == EntryKind::File).map(|e| &e.path).collect();
-    paths.extend(index.entries.values().filter(|e| matches!(e.kind, EntryKind::HardLink(_) | EntryKind::Symlink(_))).map(|e| &e.path));
+    paths.extend(index.entries.values().filter(|e| matches!(e.kind, EntryKind::HardLink(_) | EntryKind::Symlink(_) | EntryKind::Dir)).map(|e| &e.path));
     let mut start = 0;
     loop {
         let (mut raw, mut end, mut size) = (Vec::new(), start, 4usize);
@@ -2389,7 +2767,7 @@ fn send_chunk_info_with_limit<S: Read + Write>(wire: &mut Wire<S>, recv_index: &
         let path = match req {
             ChunkReq::AppendOrSuper { path, .. } | ChunkReq::SuperOrLeaf { path } => path,
         };
-        let Some(entry) = recv_index.entries.get(path).filter(|e| e.kind == EntryKind::File) else {
+        let Some(entry) = recv_index.entries.get(path).filter(|e| e.kind == EntryKind::File && !e.chunks.is_empty()) else {
             continue;
         };
         let confirmed = match req {
@@ -2696,22 +3074,68 @@ fn write_data_piece_frame<S: Read + Write>(
     wire.write_frame(TAG_FILE_PIECE, piece_buf)
 }
 
-/// Stream one file's plan to the receiver. Returns `Ok(true)` if the file was
-/// sent and committed with `TAG_FILE_END`, or `Ok(false)` if it vanished,
-/// shrunk, grew or changed while being sent (in which case `TAG_FILE_ABORT`
-/// was sent if `TAG_FILE_START` had already gone out).
+enum StreamOutcome {
+    Sent { hash: [u8; 32], chunks: Vec<ChunkRef> },
+    Changed,
+    Unread(String),
+}
+
+/// Stream one file's plan to the receiver. When `hash_at_end` is true, the
+/// file was indexed by stat alone, so its BLAKE3 (and optionally chunk list for
+/// the sender's cache) is computed on the fly in a single read pass and sent in
+/// `TAG_FILE_END`.
+#[allow(clippy::too_many_arguments)]
 fn stream_file_plan<S: Read + Write>(
     wire: &mut Wire<S>,
     source: &dyn Source,
     entry: &Entry,
     kind: RecipeKind,
     ops: &[recipe::PlanOp],
+    hash_at_end: bool,
+    compute_chunks: bool,
     data_bytes_raw: &mut u64,
     data_bytes_compressed: &mut u64,
-) -> io::Result<bool> {
+    on_bytes: &mut impl FnMut(u64),
+) -> io::Result<StreamOutcome> {
     if !source.check_unchanged(entry) {
-        return Ok(false);
+        return Ok(StreamOutcome::Changed);
     }
+
+    // (Holes looked for once a file, in one of a mebibyte or more, and piece
+    // by piece only in one that has some: each look opens the file again,
+    // and a home is mostly small files with none.)
+    let may_have_holes = if entry.size >= 1 << 20 {
+        match source.extent_at(&entry.path, 0, entry.size) {
+            Ok((hole, len)) => hole || len < entry.size,
+            Err(e) if hash_at_end && e.kind() == io::ErrorKind::PermissionDenied => return Ok(StreamOutcome::Unread(e.to_string())),
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
+    // Fast single-read path for lazy-hashed files that fit in one piece
+    // (<= 2 MiB, no holes): read BEFORE sending TAG_FILE_START so unreadable
+    // files (PermissionDenied) are caught with zero extra open() calls and
+    // zero frames written.
+    let preloaded_single = if hash_at_end && !may_have_holes && ops.len() <= 1 {
+        let need = entry.size as usize;
+        match source.read(&entry.path, 0, need) {
+            Ok(b) if b.len() == need => Some(b),
+            Ok(_) => return Ok(StreamOutcome::Changed),
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied => return Ok(StreamOutcome::Unread(e.to_string())),
+            Err(_) => return Ok(StreamOutcome::Changed),
+        }
+    } else {
+        if hash_at_end && entry.size < (1 << 20) {
+            match source.read(&entry.path, 0, 0) {
+                Ok(_) => {}
+                Err(e) if e.kind() == io::ErrorKind::PermissionDenied => return Ok(StreamOutcome::Unread(e.to_string())),
+                Err(_) => return Ok(StreamOutcome::Changed),
+            }
+        }
+        None
+    };
 
     // Intern all receiver basis paths referenced by ops into a small table.
     let mut basis_paths: Vec<String> = Vec::new();
@@ -2748,7 +3172,12 @@ fn stream_file_plan<S: Read + Write>(
     start_buf.extend_from_slice(&entry.size.to_le_bytes());
     start_buf.extend_from_slice(&entry.mode.to_le_bytes());
     start_buf.extend_from_slice(&entry.mtime_ns.to_le_bytes());
-    start_buf.extend_from_slice(&entry.hash);
+    if hash_at_end {
+        start_buf.push(0); // hash arrives in TAG_FILE_END
+    } else {
+        start_buf.push(1);
+        start_buf.extend_from_slice(&entry.hash);
+    }
     start_buf.extend_from_slice(&(basis_paths.len() as u16).to_le_bytes());
     for bp in &basis_paths {
         write_str(&mut start_buf, bp);
@@ -2779,93 +3208,99 @@ fn stream_file_plan<S: Read + Write>(
     // If the source file vanishes, shrinks or changes mid-read, abort this
     // file alone with TAG_FILE_ABORT rather than failing the whole session.
     let mut piece_buf = Vec::new();
-    let mut verify_hasher = (kind == RecipeKind::New).then(blake3::Hasher::new);
+    let mut stream_digest = (kind == RecipeKind::New).then(|| if compute_chunks { StreamDigest::new() } else { StreamDigest::new_hash_only() });
     let mut source_changed = false;
-    // (Holes looked for once a file, in one of a mebibyte or more, and piece
-    // by piece only in one that has some: each look opens the file again,
-    // and a home is mostly small files with none.)
-    let may_have_holes = entry.size >= 1 << 20 && matches!(source.extent_at(&entry.path, 0, entry.size), Ok((hole, len)) if hole || len < entry.size);
 
-    'ops: for op in ops {
-        match op {
-            recipe::PlanOp::Copy { from, offset, len } => {
-                write_data_piece_frame(wire, &mut piece_buf, &basis_index, Piece::Copy { from: from.clone(), offset: *offset, len: *len }, data_bytes_raw, data_bytes_compressed)?;
-            }
-            recipe::PlanOp::Data { offset, len, ref_prefix } => {
-                if ref_prefix.is_some() || *len < SPARSE_BLOCK as u64 || !may_have_holes {
-                    let raw = match source.read(&entry.path, *offset, *len as usize) {
-                        Ok(b) if b.len() as u64 == *len => b,
-                        _ => {
-                            source_changed = true;
-                            break 'ops;
-                        }
-                    };
-                    let prefix_buf = match ref_prefix {
-                        Some(rp) if rp.len > 0 => match source.read(&entry.path, rp.sender_offset, rp.len as usize) {
-                            Ok(p) if p.len() == rp.len as usize => Some((rp.from.as_str(), rp.receiver_offset, p)),
+    if let Some(raw) = preloaded_single {
+        if let Some(sd) = stream_digest.as_mut() {
+            sd.update(&raw);
+        }
+        if !raw.is_empty() {
+            let piece = recipe::compress_piece(&raw, None)?;
+            write_data_piece_frame(wire, &mut piece_buf, &basis_index, piece, data_bytes_raw, data_bytes_compressed)?;
+            on_bytes(raw.len() as u64);
+        }
+    } else {
+        'ops: for op in ops {
+            match op {
+                recipe::PlanOp::Copy { from, offset, len } => {
+                    write_data_piece_frame(wire, &mut piece_buf, &basis_index, Piece::Copy { from: from.clone(), offset: *offset, len: *len }, data_bytes_raw, data_bytes_compressed)?;
+                    on_bytes(*len);
+                }
+                recipe::PlanOp::Data { offset, len, ref_prefix } => {
+                    if ref_prefix.is_some() || *len < SPARSE_BLOCK as u64 || !may_have_holes {
+                        let raw = match source.read(&entry.path, *offset, *len as usize) {
+                            Ok(b) if b.len() as u64 == *len => b,
                             _ => {
                                 source_changed = true;
                                 break 'ops;
                             }
-                        },
-                        _ => None,
-                    };
-                    if let Some(h) = verify_hasher.as_mut() {
-                        h.update(&raw);
-                    }
-                    let piece = match &prefix_buf {
-                        Some((from, recv_off, p)) => recipe::compress_piece(&raw, Some((from, *recv_off, p)))?,
-                        None => recipe::compress_piece(&raw, None)?,
-                    };
-                    write_data_piece_frame(wire, &mut piece_buf, &basis_index, piece, data_bytes_raw, data_bytes_compressed)?;
-                } else {
-                    let mut cur_off = *offset;
-                    let mut rem = *len;
-                    while rem > 0 {
-                        let (is_hole, extent_len) = match source.extent_at(&entry.path, cur_off, rem) {
-                            Ok(e) => e,
-                            Err(_) => {
-                                source_changed = true;
-                                break 'ops;
-                            }
                         };
-                        if is_hole && extent_len >= SPARSE_BLOCK as u64 {
-                            let hlen = extent_len.min(rem);
-                            if let Some(h) = verify_hasher.as_mut() {
-                                let mut z = hlen;
-                                while z > 0 {
-                                    let t = (z as usize).min(ZEROS.len());
-                                    h.update(&ZEROS[..t]);
-                                    z -= t as u64;
-                                }
-                            }
-                            piece_buf.clear();
-                            piece_buf.push(2); // Zero (sparse hole)
-                            piece_buf.extend_from_slice(&hlen.to_le_bytes());
-                            wire.write_frame(TAG_FILE_PIECE, &piece_buf)?;
-                            cur_off += hlen;
-                            rem -= hlen;
-                        } else {
-                            let take = if is_hole {
-                                // Tiny hole (< 4 KiB): read normally with following bytes.
-                                rem.min(MAX_DATA_PIECE_LEN as u64) as usize
-                            } else {
-                                extent_len.max(1).min(rem).min(MAX_DATA_PIECE_LEN as u64) as usize
-                            };
-                            let raw = match source.read(&entry.path, cur_off, take) {
-                                Ok(b) if b.len() == take => b,
+                        let prefix_buf = match ref_prefix {
+                            Some(rp) if rp.len > 0 => match source.read(&entry.path, rp.sender_offset, rp.len as usize) {
+                                Ok(p) if p.len() == rp.len as usize => Some((rp.from.as_str(), rp.receiver_offset, p)),
                                 _ => {
                                     source_changed = true;
                                     break 'ops;
                                 }
+                            },
+                            _ => None,
+                        };
+                        if let Some(sd) = stream_digest.as_mut() {
+                            sd.update(&raw);
+                        }
+                        let piece = match &prefix_buf {
+                            Some((from, recv_off, p)) => recipe::compress_piece(&raw, Some((from, *recv_off, p)))?,
+                            None => recipe::compress_piece(&raw, None)?,
+                        };
+                        write_data_piece_frame(wire, &mut piece_buf, &basis_index, piece, data_bytes_raw, data_bytes_compressed)?;
+                        on_bytes(*len);
+                    } else {
+                        let mut cur_off = *offset;
+                        let mut rem = *len;
+                        while rem > 0 {
+                            let (is_hole, extent_len) = match source.extent_at(&entry.path, cur_off, rem) {
+                                Ok(e) => e,
+                                Err(_) => {
+                                    source_changed = true;
+                                    break 'ops;
+                                }
                             };
-                            if let Some(h) = verify_hasher.as_mut() {
-                                h.update(&raw);
+                            if is_hole && extent_len >= SPARSE_BLOCK as u64 {
+                                let hlen = extent_len.min(rem);
+                                if let Some(sd) = stream_digest.as_mut() {
+                                    sd.update_zeros(hlen);
+                                }
+                                piece_buf.clear();
+                                piece_buf.push(2); // Zero (sparse hole)
+                                piece_buf.extend_from_slice(&hlen.to_le_bytes());
+                                wire.write_frame(TAG_FILE_PIECE, &piece_buf)?;
+                                on_bytes(hlen);
+                                cur_off += hlen;
+                                rem -= hlen;
+                            } else {
+                                let take = if is_hole {
+                                    // Tiny hole (< 4 KiB): read normally with following bytes.
+                                    rem.min(MAX_DATA_PIECE_LEN as u64) as usize
+                                } else {
+                                    extent_len.max(1).min(rem).min(MAX_DATA_PIECE_LEN as u64) as usize
+                                };
+                                let raw = match source.read(&entry.path, cur_off, take) {
+                                    Ok(b) if b.len() == take => b,
+                                    _ => {
+                                        source_changed = true;
+                                        break 'ops;
+                                    }
+                                };
+                                if let Some(sd) = stream_digest.as_mut() {
+                                    sd.update(&raw);
+                                }
+                                let piece = recipe::compress_piece(&raw, None)?;
+                                write_data_piece_frame(wire, &mut piece_buf, &basis_index, piece, data_bytes_raw, data_bytes_compressed)?;
+                                on_bytes(take as u64);
+                                cur_off += take as u64;
+                                rem -= take as u64;
                             }
-                            let piece = recipe::compress_piece(&raw, None)?;
-                            write_data_piece_frame(wire, &mut piece_buf, &basis_index, piece, data_bytes_raw, data_bytes_compressed)?;
-                            cur_off += take as u64;
-                            rem -= take as u64;
                         }
                     }
                 }
@@ -2873,9 +3308,18 @@ fn stream_file_plan<S: Read + Write>(
         }
     }
 
+    let computed = stream_digest.map(StreamDigest::finalize);
     if !source_changed
-        && let Some(h) = verify_hasher
-        && *h.finalize().as_bytes() != entry.hash
+        && !hash_at_end
+        && let Some(ref d) = computed
+        && d.hash != entry.hash
+    {
+        source_changed = true;
+    }
+    if !source_changed
+        && hash_at_end
+        && let Some(ref d) = computed
+        && d.size != entry.size
     {
         source_changed = true;
     }
@@ -2885,10 +3329,14 @@ fn stream_file_plan<S: Read + Write>(
 
     if source_changed {
         wire.write_frame(TAG_FILE_ABORT, &[])?;
-        Ok(false)
+        Ok(StreamOutcome::Changed)
+    } else if hash_at_end {
+        let d = computed.expect("New file must compute digest");
+        wire.write_frame(TAG_FILE_END, &d.hash)?;
+        Ok(StreamOutcome::Sent { hash: d.hash, chunks: d.chunks })
     } else {
         wire.write_frame(TAG_FILE_END, &[])?;
-        Ok(true)
+        Ok(StreamOutcome::Sent { hash: entry.hash, chunks: Vec::new() })
     }
 }
 
@@ -2904,7 +3352,11 @@ fn decode_file_start(payload: &[u8]) -> io::Result<FileStartMsg> {
     let size = cur.read_u64()?;
     let mode = cur.read_u32()?;
     let mtime_ns = cur.read_i64()?;
-    let hash = cur.read_array::<32>()?;
+    let hash = match cur.read_u8()? {
+        0 => None,
+        1 => Some(cur.read_array::<32>()?),
+        f => return Err(invalid_data(format!("unknown has_hash flag {f}"))),
+    };
     let basis_count = cur.read_u16()? as usize;
     if basis_count > 1024 {
         return Err(invalid_data("too many basis paths"));
@@ -3775,7 +4227,7 @@ mod tests {
             expected_size: old.len() as u64 + 5,
             mode: 0o644,
             mtime_ns: 0,
-            expected_hash: [0; 32],
+            expected_hash: Some([0; 32]),
             basis_paths: vec!["log".into()],
             state,
         };
@@ -3841,8 +4293,579 @@ mod tests {
         let named = ["a/one", "a/missing", "link/three", "../x"].map(String::from);
         let index = Index::scan_paths(&root, &named, None).unwrap();
         assert_eq!(index.entries.keys().collect::<Vec<_>>(), ["a/one"]);
+        // Naming folders and symlinks directly records them as scan does.
+        let named_all = ["a", "a/one", "link"].map(String::from);
+        let index_all = Index::scan_paths(&root, &named_all, None).unwrap();
+        assert_eq!(index_all.entries["a"].kind, EntryKind::Dir);
+        assert_eq!(index_all.entries["a/one"].kind, EntryKind::File);
+        assert!(matches!(index_all.entries["link"].kind, EntryKind::Symlink(_)));
         for d in [root, elsewhere] {
             fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    /// Item 1: a scoped second pass over an unchanged tree with nested folders
+    /// and symlinks sends no mkdir or symlink frames and leaves every folder's
+    /// mode/mtime and every symlink's inode untouched; a folder or symlink that
+    /// did change is still updated.
+    #[test]
+    fn scoped_second_pass_skips_unchanged_dirs_and_symlinks() {
+        use std::os::unix::fs::MetadataExt as _;
+        use std::sync::{Arc, Mutex as StdMutex};
+
+        /// Transport wrapper that parses outgoing frame tags from the sender.
+        struct TagRecorder {
+            inner: UnixStream,
+            tags: Arc<StdMutex<Vec<u8>>>,
+            buf: Vec<u8>,
+            skip: usize,
+        }
+
+        impl Read for TagRecorder {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                self.inner.read(buf)
+            }
+        }
+
+        impl Write for TagRecorder {
+            fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+                self.buf.extend_from_slice(data);
+                let mut pos = 0usize;
+                loop {
+                    if self.skip > 0 {
+                        let take = self.skip.min(self.buf.len() - pos);
+                        pos += take;
+                        self.skip -= take;
+                        if self.skip > 0 {
+                            break;
+                        }
+                    }
+                    if self.buf.len() - pos < 5 {
+                        break;
+                    }
+                    let len = u32::from_le_bytes(self.buf[pos..pos + 4].try_into().unwrap()) as usize;
+                    let tag = self.buf[pos + 4];
+                    self.tags.lock().unwrap().push(tag);
+                    pos += 5;
+                    self.skip = len;
+                }
+                if pos > 0 {
+                    self.buf.drain(..pos);
+                }
+                self.inner.write(data)
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                self.inner.flush()
+            }
+        }
+
+        let (src, dst, caches) = (scratch_dir("scoped-ds-src"), scratch_dir("scoped-ds-dst"), scratch_dir("scoped-ds-cache"));
+        fs::create_dir_all(src.join("alpha/beta")).unwrap();
+        fs::create_dir_all(src.join("empty_dir")).unwrap();
+        fs::write(src.join("alpha/beta/f.txt"), b"hello").unwrap();
+        symlink("alpha/beta/f.txt", src.join("sym_file")).unwrap();
+        symlink("alpha", src.join("sym_dir")).unwrap();
+        let past = UNIX_EPOCH + Duration::from_secs(1_700_001_000);
+        fs::File::open(src.join("alpha/beta")).unwrap().set_modified(past).unwrap();
+        fs::File::open(src.join("alpha")).unwrap().set_modified(past).unwrap();
+        fs::File::open(src.join("empty_dir")).unwrap().set_modified(past).unwrap();
+        fs::set_permissions(src.join("alpha/beta"), fs::Permissions::from_mode(0o750)).unwrap();
+        fs::set_permissions(src.join("empty_dir"), fs::Permissions::from_mode(0o700)).unwrap();
+
+        let run = |tags: Arc<StdMutex<Vec<u8>>>| {
+            let (a, b) = UnixStream::pair().unwrap();
+            let rec = TagRecorder { inner: a, tags, buf: Vec::new(), skip: 0 };
+            let src_dir = src.clone();
+            let sc = caches.join("s");
+            let dc = caches.join("r");
+            let t = thread::spawn(move || {
+                let source = FolderSource { root: src_dir, filter: Filter::default(), cache_path: Some(sc) };
+                send(rec, &source, Options { scoped: true, ..Options::default() }).unwrap()
+            });
+            let r = receive(b, &dst, Options { scoped: true, cache_path: Some(dc), ..Options::default() }).unwrap();
+            let s = t.join().unwrap();
+            (s, r)
+        };
+
+        // Pass 1: everything created.
+        let tags1 = Arc::new(StdMutex::new(Vec::new()));
+        let (_, r1) = run(tags1.clone());
+        assert!(r1.errors.is_empty(), "{:?}", r1.errors);
+        assert_eq!(r1.new, 1);
+        assert!(tags1.lock().unwrap().contains(&TAG_MKDIR));
+        assert!(tags1.lock().unwrap().contains(&TAG_SYMLINK));
+
+        // Record destination directory mtimes/modes and symlink inodes.
+        let dir_snap = |p: &str| {
+            let m = fs::symlink_metadata(dst.join(p)).unwrap();
+            (m.permissions().mode() & 0o7777, m.mtime(), m.mtime_nsec())
+        };
+        let sym_ino = |p: &str| fs::symlink_metadata(dst.join(p)).unwrap().ino();
+        let before_alpha = dir_snap("alpha");
+        let before_beta = dir_snap("alpha/beta");
+        let before_empty = dir_snap("empty_dir");
+        let before_sym_file = sym_ino("sym_file");
+        let before_sym_dir = sym_ino("sym_dir");
+        assert_eq!(before_beta.0, 0o750);
+        assert_eq!(before_empty.0, 0o700);
+
+        // Pass 2: unchanged -> zero TAG_MKDIR and zero TAG_SYMLINK, mtimes and inodes preserved.
+        let tags2 = Arc::new(StdMutex::new(Vec::new()));
+        let (_, r2) = run(tags2.clone());
+        assert!(r2.errors.is_empty(), "{:?}", r2.errors);
+        assert_eq!(r2.same, 1);
+        let t2 = tags2.lock().unwrap().clone();
+        assert!(!t2.contains(&TAG_MKDIR), "unexpected TAG_MKDIR on unchanged scoped pass: {t2:?}");
+        assert!(!t2.contains(&TAG_SYMLINK), "unexpected TAG_SYMLINK on unchanged scoped pass: {t2:?}");
+        assert_eq!(dir_snap("alpha"), before_alpha);
+        assert_eq!(dir_snap("alpha/beta"), before_beta);
+        assert_eq!(dir_snap("empty_dir"), before_empty);
+        assert_eq!(sym_ino("sym_file"), before_sym_file);
+        assert_eq!(sym_ino("sym_dir"), before_sym_dir);
+
+        // Pass 3: change one folder mode and one symlink target; only those change.
+        fs::set_permissions(src.join("empty_dir"), fs::Permissions::from_mode(0o755)).unwrap();
+        fs::remove_file(src.join("sym_dir")).unwrap();
+        symlink("alpha/beta", src.join("sym_dir")).unwrap();
+
+        let tags3 = Arc::new(StdMutex::new(Vec::new()));
+        let (_, r3) = run(tags3.clone());
+        assert!(r3.errors.is_empty(), "{:?}", r3.errors);
+        let t3 = tags3.lock().unwrap().clone();
+        assert_eq!(t3.iter().filter(|&&t| t == TAG_MKDIR).count(), 1);
+        assert_eq!(t3.iter().filter(|&&t| t == TAG_SYMLINK).count(), 1);
+        assert_eq!(dir_snap("empty_dir").0, 0o755);
+        assert_eq!(fs::read_link(dst.join("sym_dir")).unwrap().to_str().unwrap(), "alpha/beta");
+        // Unchanged dir and symlink still untouched.
+        assert_eq!(dir_snap("alpha/beta"), before_beta);
+        assert_eq!(sym_ino("sym_file"), before_sym_file);
+
+        for d in [src, dst, caches] {
+            let _ = fs::remove_dir_all(d);
+        }
+    }
+
+    /// Item 2: progress observer receives phases in order (`Indexing -> Planned
+    /// -> Sending -> Done`), its last `Sending` matches the plan's totals, and
+    /// a second pass with one changed file plans only that one file.
+    #[test]
+    fn progress_reports_phases_in_order_and_plan_totals() {
+        let (src, dst, caches) = (scratch_dir("prog-src"), scratch_dir("prog-dst"), scratch_dir("prog-cache"));
+        fs::create_dir_all(src.join("sub")).unwrap();
+        let files = [("a.txt", b"alpha payload".as_slice()), ("b.txt", b"beta payload 1234".as_slice()), ("sub/c.txt", b"gamma".as_slice()), ("sub/d.bin", &[9u8; 4096])];
+        for (p, data) in &files {
+            fs::write(src.join(p), data).unwrap();
+        }
+        let total_bytes: u64 = files.iter().map(|(_, d)| d.len() as u64).sum();
+
+        let phase_rank = |p: Phase| match p {
+            Phase::Indexing => 0u8,
+            Phase::Planned => 1,
+            Phase::Sending => 2,
+            Phase::Done => 3,
+        };
+
+        let check_order = |events: &[Progress]| {
+            assert!(!events.is_empty());
+            for w in events.windows(2) {
+                assert!(phase_rank(w[0].phase) <= phase_rank(w[1].phase), "phases went backwards: {:?} -> {:?}", w[0].phase, w[1].phase);
+            }
+            for wanted in [Phase::Indexing, Phase::Planned, Phase::Sending, Phase::Done] {
+                assert!(events.iter().any(|e| e.phase == wanted), "missing phase {wanted:?} in {events:?}");
+            }
+        };
+
+        // Pass 1: all 4 files planned and sent.
+        let events1: Arc<Mutex<Vec<Progress>>> = Arc::new(Mutex::new(Vec::new()));
+        let cb1: ProgressCallback = {
+            let ev = events1.clone();
+            Arc::new(move |p: &Progress| ev.lock().unwrap().push(p.clone()))
+        };
+        let opts1 = Options { progress: Some(cb1), ..Options::default() };
+        // Ensure Options keeps Debug and Clone with a progress observer set.
+        let _dbg = format!("{opts1:?}");
+        let _cloned = opts1.clone();
+        let (_, r1) = sync_folders(&src, &dst, Some(caches.join("s")), Some(caches.join("r")), opts1);
+        assert!(r1.errors.is_empty(), "{:?}", r1.errors);
+
+        let ev1 = events1.lock().unwrap().clone();
+        check_order(&ev1);
+        let planned1 = ev1.iter().find(|e| e.phase == Phase::Planned).unwrap();
+        assert_eq!((planned1.files, planned1.bytes, planned1.files_total, planned1.bytes_total), (0, 0, 4, total_bytes));
+        let last_sending1 = ev1.iter().rev().find(|e| e.phase == Phase::Sending).unwrap();
+        assert_eq!((last_sending1.files, last_sending1.bytes, last_sending1.files_total, last_sending1.bytes_total), (4, total_bytes, 4, total_bytes));
+        let done1 = ev1.last().unwrap();
+        assert_eq!(done1.phase, Phase::Done);
+        assert_eq!((done1.files, done1.bytes, done1.files_total, done1.bytes_total), (4, total_bytes, 4, total_bytes));
+
+        // Pass 2: change 1 file -> plan has 1 file and its bytes (scoped too).
+        let updated = b"beta payload updated with more content!";
+        fs::write(src.join("b.txt"), updated).unwrap();
+        let events2: Arc<Mutex<Vec<Progress>>> = Arc::new(Mutex::new(Vec::new()));
+        let cb2: ProgressCallback = {
+            let ev = events2.clone();
+            Arc::new(move |p: &Progress| ev.lock().unwrap().push(p.clone()))
+        };
+        let (_, r2) = sync_folders(&src, &dst, Some(caches.join("s")), Some(caches.join("r")), Options { scoped: true, progress: Some(cb2), ..Options::default() });
+        assert!(r2.errors.is_empty(), "{:?}", r2.errors);
+
+        let ev2 = events2.lock().unwrap().clone();
+        check_order(&ev2);
+        let planned2 = ev2.iter().find(|e| e.phase == Phase::Planned).unwrap();
+        assert_eq!((planned2.files_total, planned2.bytes_total), (1, updated.len() as u64));
+        let last_sending2 = ev2.iter().rev().find(|e| e.phase == Phase::Sending).unwrap();
+        assert_eq!((last_sending2.files, last_sending2.bytes, last_sending2.files_total, last_sending2.bytes_total), (1, updated.len() as u64, 1, updated.len() as u64));
+
+        // Pass 3: unchanged fast path -> plan has 0 files.
+        let events3: Arc<Mutex<Vec<Progress>>> = Arc::new(Mutex::new(Vec::new()));
+        let cb3: ProgressCallback = {
+            let ev = events3.clone();
+            Arc::new(move |p: &Progress| ev.lock().unwrap().push(p.clone()))
+        };
+        let (_, r3) = sync_folders(&src, &dst, Some(caches.join("s")), Some(caches.join("r")), Options { progress: Some(cb3), ..Options::default() });
+        assert!(r3.errors.is_empty(), "{:?}", r3.errors);
+        let ev3 = events3.lock().unwrap().clone();
+        check_order(&ev3);
+        let planned3 = ev3.iter().find(|e| e.phase == Phase::Planned).unwrap();
+        assert_eq!((planned3.files_total, planned3.bytes_total), (0, 0));
+
+        for d in [src, dst, caches] {
+            let _ = fs::remove_dir_all(d);
+        }
+    }
+
+    /// Item 5: a receive session cut midway checkpoints its index cache (both
+    /// periodically while receiving and when the connection drops), so a second
+    /// session finishes without re-reading or re-hashing files from the first.
+    #[test]
+    fn receiver_checkpoints_index_on_interrupted_session() {
+        /// Transport wrapper on the sender side that shuts down the stream
+        /// cleanly after forwarding `cut_after` `TAG_FILE_END` frames.
+        struct CuttingTransport {
+            inner: UnixStream,
+            buf: Vec<u8>,
+            skip: usize,
+            in_file_end: bool,
+            file_ends: usize,
+            cut_after: usize,
+            cut: bool,
+        }
+
+        impl Read for CuttingTransport {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                if self.cut {
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, "cut"));
+                }
+                self.inner.read(buf)
+            }
+        }
+
+        impl Write for CuttingTransport {
+            fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+                if self.cut {
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, "cut"));
+                }
+                self.buf.extend_from_slice(data);
+                let mut pos = 0usize;
+                let mut cut_at = None;
+                loop {
+                    if self.skip > 0 {
+                        let take = self.skip.min(self.buf.len() - pos);
+                        pos += take;
+                        self.skip -= take;
+                        if self.skip > 0 {
+                            break;
+                        }
+                        if self.in_file_end {
+                            self.in_file_end = false;
+                            self.file_ends += 1;
+                            if self.file_ends >= self.cut_after {
+                                cut_at = Some(pos);
+                                break;
+                            }
+                        }
+                    }
+                    if self.buf.len() - pos < 5 {
+                        break;
+                    }
+                    let len = u32::from_le_bytes(self.buf[pos..pos + 4].try_into().unwrap()) as usize;
+                    let tag = self.buf[pos + 4];
+                    if self.buf.len() - pos < 5 + len {
+                        let header_end = pos + 5;
+                        let body_avail = self.buf.len() - header_end;
+                        self.skip = len - body_avail;
+                        self.in_file_end = tag == TAG_FILE_END;
+                        break;
+                    }
+                    pos += 5 + len;
+                    if tag == TAG_FILE_END {
+                        self.file_ends += 1;
+                        if self.file_ends >= self.cut_after {
+                            cut_at = Some(pos);
+                            break;
+                        }
+                    }
+                }
+                if let Some(end) = cut_at {
+                    self.inner.write_all(&self.buf[..end])?;
+                    self.inner.flush()?;
+                    let _ = self.inner.shutdown(std::net::Shutdown::Both);
+                    self.buf.clear();
+                    self.cut = true;
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, "cut"));
+                }
+                let to_send = self.buf.split_off(0);
+                self.inner.write_all(&to_send)?;
+                Ok(data.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                if self.cut {
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, "cut"));
+                }
+                self.inner.flush()
+            }
+        }
+
+        for scoped in [false, true] {
+            let (src, dst, caches) = (
+                scratch_dir(if scoped { "ckpt-sc-src" } else { "ckpt-src" }),
+                scratch_dir(if scoped { "ckpt-sc-dst" } else { "ckpt-dst" }),
+                scratch_dir(if scoped { "ckpt-sc-cache" } else { "ckpt-cache" }),
+            );
+            for i in 0..30 {
+                fs::write(src.join(format!("f_{i:02}.txt")), format!("file number {i} content\n").repeat(20)).unwrap();
+            }
+            let src_cache = caches.join("src.idx");
+            let dst_cache = caches.join("dst.idx");
+
+            // Session 1: cut the connection after 12 files, with periodic
+            // checkpointing set to every 5 files so periodic saves run too.
+            let (a, b) = UnixStream::pair().unwrap();
+            let s_dir = src.clone();
+            let sc = src_cache.clone();
+            let dc = dst_cache.clone();
+            let t = thread::spawn(move || {
+                let transport = CuttingTransport { inner: a, buf: Vec::new(), skip: 0, in_file_end: false, file_ends: 0, cut_after: 12, cut: false };
+                let source = FolderSource { root: s_dir, filter: Filter::default(), cache_path: Some(sc) };
+                send(transport, &source, Options { scoped, ..Options::default() })
+            });
+            let recv_res = receive_inner(b, &dst, Options { scoped, cache_path: Some(dc), ..Options::default() }, |p| fs::File::open(p), 5);
+            let send_res = t.join().unwrap();
+            assert!(send_res.is_err(), "expected sender error on cut");
+            assert!(recv_res.is_err(), "expected receiver error on cut");
+
+            // Cache must exist and record the 12 files already received.
+            let cached = Index::load(&dst_cache).expect("checkpoint cache must exist after cut");
+            assert_eq!(cached.file_count(), 12, "expected 12 checkpointed files (scoped={scoped})");
+
+            // Session 2: resume full sync; receiver must NOT open/hash any of
+            // the 12 already-received files.
+            let (a, b) = UnixStream::pair().unwrap();
+            let s_dir = src.clone();
+            let sc = src_cache.clone();
+            let dc = dst_cache.clone();
+            let t = thread::spawn(move || {
+                let source = FolderSource { root: s_dir, filter: Filter::default(), cache_path: Some(sc) };
+                send(a, &source, Options { scoped, ..Options::default() }).unwrap()
+            });
+            let receiver_opens = AtomicUsize::new(0);
+            let r2 = receive_inner(
+                b,
+                &dst,
+                Options { scoped, cache_path: Some(dc), ..Options::default() },
+                |p| {
+                    receiver_opens.fetch_add(1, Ordering::Relaxed);
+                    fs::File::open(p)
+                },
+                CHECKPOINT_FILES,
+            )
+            .unwrap();
+            let s2 = t.join().unwrap();
+            assert!(r2.errors.is_empty(), "{:?}", r2.errors);
+            assert_eq!(receiver_opens.load(Ordering::Relaxed), 0, "already-received files were re-hashed on resume (scoped={scoped})");
+            assert_eq!(s2.same, 12, "expected 12 unchanged files from session 1 (scoped={scoped})");
+            assert_eq!(r2.new, 18, "expected remaining 18 files transferred (scoped={scoped})");
+            assert_eq!(Index::scan(&src, &Filter::all(), None).unwrap().tree_hash(), Index::scan(&dst, &Filter::all(), None).unwrap().tree_hash());
+
+            for d in [src, dst, caches] {
+                let _ = fs::remove_dir_all(d);
+            }
+        }
+    }
+
+    /// Item 7: on a first pass into an empty receiver, new files are indexed by
+    /// stat alone and read from disk exactly once (streaming their BLAKE3 in
+    /// `TAG_FILE_END`), and the receiver verifies that trailing hash and rejects
+    /// corruption.
+    #[test]
+    fn new_files_read_once_on_first_pass_and_end_hash_verified() {
+        use std::sync::atomic::AtomicU64;
+
+        struct CountingFolderSource {
+            inner: FolderSource,
+            hash_entry_calls: Arc<AtomicUsize>,
+            bytes_read: Arc<AtomicU64>,
+        }
+
+        impl Source for CountingFolderSource {
+            fn index(&self) -> io::Result<Index> {
+                self.inner.index()
+            }
+
+            fn index_lazy_with_progress(&self, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Option<(Index, HashSet<String>)>> {
+                self.inner.index_lazy_with_progress(on_entry)
+            }
+
+            fn hash_entry(&self, path: &str, size: u64) -> io::Result<chunk::FileDigest> {
+                self.hash_entry_calls.fetch_add(1, Ordering::Relaxed);
+                self.inner.hash_entry(path, size)
+            }
+
+            fn wants_cache(&self) -> bool {
+                self.inner.wants_cache()
+            }
+
+            fn save_cache(&self, index: &Index) -> io::Result<()> {
+                self.inner.save_cache(index)
+            }
+
+            fn read(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
+                let b = self.inner.read(path, offset, len)?;
+                self.bytes_read.fetch_add(b.len() as u64, Ordering::Relaxed);
+                Ok(b)
+            }
+
+            fn check_unchanged(&self, entry: &Entry) -> bool {
+                self.inner.check_unchanged(entry)
+            }
+
+            fn extent_at(&self, path: &str, offset: u64, max_len: u64) -> io::Result<(bool, u64)> {
+                self.inner.extent_at(path, offset, max_len)
+            }
+        }
+
+        let (src, dst, caches) = (scratch_dir("once-src"), scratch_dir("once-dst"), scratch_dir("once-cache"));
+        let small = b"small single-pass file".to_vec();
+        let medium = structured_records(128 << 10);
+        let big = structured_records(3 << 20); // > MAX_DATA_PIECE_LEN -> multi-piece stream
+        fs::write(src.join("small.txt"), &small).unwrap();
+        fs::write(src.join("medium.bin"), &medium).unwrap();
+        fs::write(src.join("big.bin"), &big).unwrap();
+        let total_len = (small.len() + medium.len() + big.len()) as u64;
+
+        let hash_calls = Arc::new(AtomicUsize::new(0));
+        let bytes_read = Arc::new(AtomicU64::new(0));
+        let (sc, dc) = (caches.join("s"), caches.join("r"));
+
+        // Pass 1: every file read once, zero pre-hashing.
+        let (a, b) = UnixStream::pair().unwrap();
+        let s_dir = src.clone();
+        let sc1 = sc.clone();
+        let hc = hash_calls.clone();
+        let br = bytes_read.clone();
+        let t = thread::spawn(move || {
+            let source = CountingFolderSource { inner: FolderSource { root: s_dir, filter: Filter::default(), cache_path: Some(sc1) }, hash_entry_calls: hc, bytes_read: br };
+            send(a, &source, Options::default()).unwrap()
+        });
+        let r1 = receive(b, &dst, Options { cache_path: Some(dc.clone()), ..Options::default() }).unwrap();
+        let _s1 = t.join().unwrap();
+        assert!(r1.errors.is_empty(), "{:?}", r1.errors);
+        assert_eq!(r1.new, 3);
+        assert_eq!(hash_calls.load(Ordering::Relaxed), 0, "first pass must not pre-hash new files");
+        assert_eq!(bytes_read.load(Ordering::Relaxed), total_len, "each new file must be read exactly once");
+        assert_eq!(fs::read(dst.join("small.txt")).unwrap(), small);
+        assert_eq!(fs::read(dst.join("medium.bin")).unwrap(), medium);
+        assert_eq!(fs::read(dst.join("big.bin")).unwrap(), big);
+
+        // Pass 2: sender cache saved by pass 1 -> 0 reads, 1-RTT no-op!
+        bytes_read.store(0, Ordering::Relaxed);
+        let (a, b) = UnixStream::pair().unwrap();
+        let s_dir = src.clone();
+        let sc2 = sc.clone();
+        let hc = hash_calls.clone();
+        let br = bytes_read.clone();
+        let t = thread::spawn(move || {
+            let source = CountingFolderSource { inner: FolderSource { root: s_dir, filter: Filter::default(), cache_path: Some(sc2) }, hash_entry_calls: hc, bytes_read: br };
+            send(a, &source, Options::default()).unwrap()
+        });
+        let r2 = receive(b, &dst, Options { cache_path: Some(dc), ..Options::default() }).unwrap();
+        let s2 = t.join().unwrap();
+        assert!(r2.errors.is_empty(), "{:?}", r2.errors);
+        assert_eq!(s2.same, 3);
+        assert_eq!(bytes_read.load(Ordering::Relaxed), 0);
+        assert!(s2.wire_bytes() < 256, "expected 1-RTT no-op after lazy pass 1, got {} B", s2.wire_bytes());
+
+        // Corrupting the 32-byte trailing hash in TAG_FILE_END must fail BLAKE3 verification.
+        struct CorruptFileEnd {
+            inner: UnixStream,
+            buf: Vec<u8>,
+            skip: usize,
+            corrupting_end: bool,
+        }
+
+        impl Read for CorruptFileEnd {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                self.inner.read(buf)
+            }
+        }
+
+        impl Write for CorruptFileEnd {
+            fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+                self.buf.extend_from_slice(data);
+                let mut pos = 0usize;
+                loop {
+                    if self.skip > 0 {
+                        let take = self.skip.min(self.buf.len() - pos);
+                        if self.corrupting_end && take > 0 {
+                            self.buf[pos] ^= 0xFF;
+                            self.corrupting_end = false;
+                        }
+                        pos += take;
+                        self.skip -= take;
+                        if self.skip > 0 {
+                            break;
+                        }
+                    }
+                    if self.buf.len() - pos < 5 {
+                        break;
+                    }
+                    let len = u32::from_le_bytes(self.buf[pos..pos + 4].try_into().unwrap()) as usize;
+                    let tag = self.buf[pos + 4];
+                    pos += 5;
+                    self.skip = len;
+                    self.corrupting_end = tag == TAG_FILE_END && len == 32;
+                }
+                let out = self.buf.split_off(0);
+                self.inner.write_all(&out)?;
+                Ok(data.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                self.inner.flush()
+            }
+        }
+
+        let dst_bad = scratch_dir("once-dst-bad");
+        let (a, b) = UnixStream::pair().unwrap();
+        let s_dir = src.clone();
+        // (A source keeping a cache, new to it: the lazy way, each file's
+        // hash at its end.)
+        let bad_cache = scratch_dir("once-bad-cache").join("idx");
+        let t = thread::spawn(move || {
+            let wire = CorruptFileEnd { inner: a, buf: Vec::new(), skip: 0, corrupting_end: false };
+            send(wire, &FolderSource { root: s_dir, filter: Filter::default(), cache_path: Some(bad_cache) }, Options::default()).unwrap()
+        });
+        let r_bad = receive(b, &dst_bad, Options::default()).unwrap();
+        let _ = t.join().unwrap();
+        assert_eq!(r_bad.new, 0);
+        assert_eq!(r_bad.errors.len(), 3);
+        assert!(r_bad.errors.iter().all(|e| e.reason.contains("BLAKE3")), "{:?}", r_bad.errors);
+        assert!(!dst_bad.join("small.txt").exists());
+
+        for d in [src, dst, dst_bad, caches] {
+            let _ = fs::remove_dir_all(d);
         }
     }
 

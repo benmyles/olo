@@ -4,12 +4,13 @@
 //! across the old file with adjacent copies merged), and `New` (streamed in
 //! bounded pieces). Uncompressible data goes raw, flagged.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use zstd::zstd_safe::{self, CParameter};
+use zstd::zstd_safe::{self, CParameter, ResetDirective};
 
 use crate::chunk::{self, ChunkId, ChunkRef};
 use crate::index::{Entry, EntryKind, Index, validate_rel_path};
@@ -384,6 +385,8 @@ pub fn plan_file(ours: &Entry, receiver: &Index, read: impl FnMut(u64, usize) ->
     if let Some(theirs) = receiver.entries.get(&ours.path)
         && theirs.kind == EntryKind::File
         && theirs.size > 0
+        && !ours.chunks.is_empty()
+        && !theirs.chunks.is_empty()
     {
         if is_append(ours, theirs, read)? {
             return Ok(plan_append(&ours.path, ours.size, theirs.size));
@@ -462,6 +465,17 @@ fn attach_patch_ref_prefixes(ops: &mut [PlanOp]) {
     }
 }
 
+thread_local! {
+    /// Per-thread zstd compression context reused across [`compress_piece`]
+    /// calls so compressing millions of small files doesn't allocate and free a
+    /// `ZSTD_CCtx` per piece.
+    static COMPRESS_CTX: RefCell<zstd_safe::CCtx<'static>> = RefCell::new({
+        let mut cctx = zstd_safe::CCtx::create();
+        let _ = cctx.set_parameter(CParameter::CompressionLevel(ZSTD_LEVEL));
+        cctx
+    });
+}
+
 /// Compress `raw` with zstd level 3 (and optional `ref_prefix`), falling back
 /// to `DataCodec::Raw` if compression does not make the payload smaller.
 pub fn compress_piece(raw: &[u8], ref_prefix: Option<(&str, u64, &[u8])>) -> io::Result<Piece> {
@@ -472,19 +486,26 @@ pub fn compress_piece(raw: &[u8], ref_prefix: Option<(&str, u64, &[u8])>) -> io:
 
     let bound = zstd_safe::compress_bound(raw.len());
     let mut out = Vec::with_capacity(bound);
-    let mut cctx = zstd_safe::CCtx::create();
-    cctx.set_parameter(CParameter::CompressionLevel(ZSTD_LEVEL)).map_err(zstd_err)?;
 
     let codec = if let Some((from, prefix_offset, prefix)) = ref_prefix
         && !prefix.is_empty()
     {
+        let mut cctx = zstd_safe::CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(ZSTD_LEVEL)).map_err(zstd_err)?;
         cctx.ref_prefix(prefix).map_err(zstd_err)?;
+        cctx.compress2(&mut out, raw).map_err(zstd_err)?;
         DataCodec::ZstdRefPrefix { from: from.to_owned(), prefix_offset, prefix_len: prefix.len() as u32 }
     } else {
+        COMPRESS_CTX.with(|cell| {
+            let mut cctx = cell.borrow_mut();
+            cctx.reset(ResetDirective::SessionOnly).map_err(zstd_err)?;
+            cctx.set_parameter(CParameter::CompressionLevel(ZSTD_LEVEL)).map_err(zstd_err)?;
+            cctx.compress2(&mut out, raw).map_err(zstd_err)?;
+            Ok::<(), io::Error>(())
+        })?;
         DataCodec::Zstd
     };
 
-    cctx.compress2(&mut out, raw).map_err(zstd_err)?;
     if out.len() < raw.len() { Ok(Piece::Data { raw_len, codec, bytes: out }) } else { Ok(Piece::Data { raw_len, codec: DataCodec::Raw, bytes: raw.to_vec() }) }
 }
 
@@ -821,5 +842,50 @@ mod tests {
 
         let _ = fs::remove_dir_all(&recv_dir);
         let _ = fs::remove_dir_all(&send_dir);
+    }
+
+    #[test]
+    fn compress_piece_reuses_cctx_cleanly_across_mixed_inputs() {
+        let a = jsonl_lines(0, 10);
+        let b = pseudo_random(4096, 77);
+        let c = jsonl_lines(10, 10);
+        for _ in 0..8 {
+            let p1 = compress_piece(&a, None).unwrap();
+            let p2 = compress_piece(&b, None).unwrap();
+            let p3 = compress_piece(&c, Some(("a.jsonl", 0, &a))).unwrap();
+            let p4 = compress_piece(&c, None).unwrap();
+            for (piece, want) in [(&p1, &a), (&p2, &b), (&p3, &c), (&p4, &c)] {
+                let Piece::Data { raw_len, codec, bytes } = piece else {
+                    unreachable!();
+                };
+                let got = decode_data_piece(*raw_len, codec, bytes, |_, off, len| Ok(a[off as usize..off as usize + len].to_vec())).unwrap();
+                assert_eq!(&got, want);
+            }
+        }
+    }
+
+    /// Measure compressing 50,000 small (~2 KiB) pieces (run by hand in release).
+    #[test]
+    #[ignore = "a measurement, run by hand"]
+    fn bench_compress_small_pieces() {
+        let sample = jsonl_lines(0, 12); // ~2 KiB
+        let n = 50_000usize;
+        let t0 = std::time::Instant::now();
+        let mut total_compressed = 0usize;
+        for _ in 0..n {
+            let Piece::Data { bytes, .. } = compress_piece(&sample, None).unwrap() else {
+                unreachable!();
+            };
+            total_compressed += bytes.len();
+        }
+        let elapsed = t0.elapsed();
+        println!(
+            "compress_piece x {n} ({} B each): {:.1} ms ({:.2} us/piece, {:.1} MiB/s), compressed total {} B",
+            sample.len(),
+            elapsed.as_secs_f64() * 1000.0,
+            elapsed.as_secs_f64() * 1e6 / n as f64,
+            (sample.len() * n) as f64 / (1 << 20) as f64 / elapsed.as_secs_f64(),
+            total_compressed
+        );
     }
 }

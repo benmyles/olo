@@ -2,9 +2,9 @@
 //! root, with stat-based caching so re-scanning an unchanged tree reads zero
 //! file bytes, and a compact binary encoding for the on-disk cache.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,8 +30,10 @@ pub fn is_part_name(name: &str) -> bool {
 pub const MAX_SKIPPED_PATHS: usize = 200;
 
 const MAGIC: &[u8; 8] = b"OLOSYNC\0";
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 const TRAILER_LEN: usize = 16;
+const MAX_INDEX_STR_LEN: usize = 64 << 10;
+const INDEX_IO_BUF: usize = 64 << 10;
 
 /// What kind of filesystem entry an [`Entry`] describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,7 +285,13 @@ impl Index {
     /// files (sockets, FIFOs, device nodes) and `.olo-sync-part` temp files
     /// are skipped.
     pub fn scan(root: &Path, filter: &Filter, previous: Option<&Index>) -> io::Result<Self> {
-        Self::scan_with(root, filter, previous, |p| fs::File::open(p))
+        Self::scan_with_progress(root, filter, previous, &mut |_, _| {})
+    }
+
+    /// Like [`Index::scan`], calling `on_entry(rel_path, size)` as each regular
+    /// file is indexed.
+    pub fn scan_with_progress(root: &Path, filter: &Filter, previous: Option<&Index>, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<Self> {
+        Self::scan_with_hasher(root, filter, previous, |p, size, buf| fs::File::open(p).and_then(|mut f| chunk::hash_and_chunk_file_in(buf, &mut f, size)), |_, m| m.dev(), on_entry)
     }
 
     /// Like [`Index::scan`], opening files through `open` (useful in tests to
@@ -297,7 +305,25 @@ impl Index {
         filter: &Filter,
         previous: Option<&Index>,
         mut open: impl FnMut(&Path) -> io::Result<R>,
+        dev_of: impl FnMut(&Path, &fs::Metadata) -> u64,
+    ) -> io::Result<Self> {
+        Self::scan_with_hasher(
+            root,
+            filter,
+            previous,
+            |p, size, buf| open(p).and_then(|r| if size >= chunk::CHUNK_MIN_SIZE { chunk::hash_and_chunk_in(buf, r) } else { chunk::hash_only_in(buf, r) }),
+            dev_of,
+            &mut |_, _| {},
+        )
+    }
+
+    fn scan_with_hasher(
+        root: &Path,
+        filter: &Filter,
+        previous: Option<&Index>,
+        mut hash_file: impl FnMut(&Path, u64, &mut Vec<u8>) -> io::Result<chunk::FileDigest>,
         mut dev_of: impl FnMut(&Path, &fs::Metadata) -> u64,
+        on_entry: &mut dyn FnMut(&str, u64),
     ) -> io::Result<Self> {
         let mut index = Self::default();
         let mut chunk_buf = Vec::new();
@@ -309,8 +335,26 @@ impl Index {
             return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
         }
         let root_dev = dev_of(root, &root_meta);
-        scan_dir(root, "", root_dev, filter, previous, &mut open, &mut dev_of, &mut chunk_buf, &mut seen_inodes, &mut index)?;
+        scan_dir(root, "", root_dev, filter, previous, &mut hash_file, &mut dev_of, on_entry, &mut chunk_buf, &mut seen_inodes, &mut index)?;
         Ok(index)
+    }
+
+    /// Walk `root` by `stat` alone, reusing cached hashes and chunks from
+    /// `previous` where `(size, mtime_ns, ctime_ns, ino)` match and leaving
+    /// uncached regular files unhashed (their paths returned in the second
+    /// value so the sender can hash only files that need comparison or delta
+    /// negotiation and stream brand-new files in a single read pass).
+    pub(crate) fn scan_stat_with_progress(root: &Path, filter: &Filter, previous: Option<&Index>, on_entry: &mut dyn FnMut(&str, u64)) -> io::Result<(Self, HashSet<String>)> {
+        let mut index = Self::default();
+        let mut unhashed = HashSet::new();
+        let mut seen_inodes: HashMap<(u64, u64), String> = HashMap::new();
+        let root_meta = fs::symlink_metadata(root)?;
+        if !root_meta.is_dir() {
+            return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
+        }
+        let root_dev = root_meta.dev();
+        scan_dir_stat(root, "", root_dev, filter, previous, on_entry, &mut seen_inodes, &mut index, &mut unhashed)?;
+        Ok((index, unhashed))
     }
 
     /// Summary of everything this scan passed over (counted, and up to
@@ -333,12 +377,23 @@ impl Index {
     }
 
     /// What `root` has at `paths` alone (a scoped session's receiver: the
-    /// files a sender names, nothing else of a root that may be a whole
+    /// entries a sender names, nothing else of a root that may be a whole
     /// home looked at), each as `scan` would have it: a file unchanged
-    /// since `previous` not read again, one that isn't there or is reached
-    /// through a symlink left out (the receiver refuses to write there
-    /// anyway), one that can't be read in `unread`.
+    /// since `previous` not read again, folders and symlinks recorded as
+    /// `scan` records them, anything that isn't there or is reached through
+    /// a symlink left out (the receiver refuses to write there anyway), and
+    /// anything that can't be read in `unread`.
     pub fn scan_paths(root: &Path, paths: &[String], previous: Option<&Index>) -> io::Result<Self> {
+        Self::scan_paths_with_hasher(root, paths, previous, |p, size, buf| fs::File::open(p).and_then(|mut f| chunk::hash_and_chunk_file_in(buf, &mut f, size)))
+    }
+
+    pub(crate) fn scan_paths_with<R: io::Read>(root: &Path, paths: &[String], previous: Option<&Index>, mut open: impl FnMut(&Path) -> io::Result<R>) -> io::Result<Self> {
+        Self::scan_paths_with_hasher(root, paths, previous, |p, size, buf| {
+            open(p).and_then(|r| if size >= chunk::CHUNK_MIN_SIZE { chunk::hash_and_chunk_in(buf, r) } else { chunk::hash_only_in(buf, r) })
+        })
+    }
+
+    fn scan_paths_with_hasher(root: &Path, paths: &[String], previous: Option<&Index>, mut hash_file: impl FnMut(&Path, u64, &mut Vec<u8>) -> io::Result<chunk::FileDigest>) -> io::Result<Self> {
         if !fs::symlink_metadata(root)?.is_dir() {
             return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} isn't a folder", root.display())));
         }
@@ -360,38 +415,68 @@ impl Index {
             }
             at.push(parts[parts.len() - 1]);
             let meta = match fs::symlink_metadata(&at) {
-                Ok(meta) if meta.is_file() => meta,
-                _ => continue,
+                Ok(meta) => meta,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    index.unread.insert(rel.clone(), e.to_string());
+                    continue;
+                }
             };
+            let ft = meta.file_type();
             let mtime_ns = meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec());
             let ctime_ns = meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec());
-            let (dev, ino, mode, size) = (meta.dev(), meta.ino(), meta.permissions().mode() & 0o777, meta.len());
-            if meta.nlink() > 1
-                && let Some(first) = seen_inodes.get(&(dev, ino))
-            {
-                index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::HardLink(first.clone()), size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
-                continue;
-            }
-            if let Some(prev) = previous.and_then(|idx| idx.entries.get(rel))
-                && prev.kind == EntryKind::File
-                && (prev.size, prev.mtime_ns, prev.ctime_ns, prev.ino) == (size, mtime_ns, ctime_ns, ino)
-            {
-                if meta.nlink() > 1 {
-                    seen_inodes.insert((dev, ino), rel.clone());
+            let (dev, ino) = (meta.dev(), meta.ino());
+            if ft.is_dir() {
+                let mode = final_dir_mode(meta.permissions().mode());
+                index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Dir, size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+            } else if ft.is_symlink() {
+                let mode = meta.permissions().mode() & 0o777;
+                let target = match fs::read_link(&at).map(|t| t.into_os_string().into_string()) {
+                    Ok(Ok(target)) => target,
+                    Ok(Err(_)) => {
+                        index.unread.insert(rel.clone(), "its target isn't UTF-8".into());
+                        continue;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                    Err(e) => {
+                        index.unread.insert(rel.clone(), e.to_string());
+                        continue;
+                    }
+                };
+                let hash = *blake3::hash(target.as_bytes()).as_bytes();
+                let size = target.len() as u64;
+                index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Symlink(target), size, mtime_ns, ctime_ns, ino, mode, hash, chunks: Vec::new() });
+            } else if ft.is_file() {
+                let (mode, size) = (meta.permissions().mode() & 0o777, meta.len());
+                if meta.nlink() > 1
+                    && let Some(first) = seen_inodes.get(&(dev, ino))
+                {
+                    index
+                        .entries
+                        .insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::HardLink(first.clone()), size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+                    continue;
                 }
-                index.entries.insert(rel.clone(), Entry { mode, ..prev.clone() });
-                continue;
-            }
-            match fs::File::open(&at).and_then(|f| chunk::hash_and_chunk_in(&mut chunk_buf, f)) {
-                Ok(d) => {
+                if let Some(prev) = previous.and_then(|idx| idx.entries.get(rel))
+                    && prev.kind == EntryKind::File
+                    && (prev.size, prev.mtime_ns, prev.ctime_ns, prev.ino) == (size, mtime_ns, ctime_ns, ino)
+                {
                     if meta.nlink() > 1 {
                         seen_inodes.insert((dev, ino), rel.clone());
                     }
-                    index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::File, size: d.size, mtime_ns, ctime_ns, ino, mode, hash: d.hash, chunks: d.chunks });
+                    index.entries.insert(rel.clone(), Entry { mode, ..prev.clone() });
+                    continue;
                 }
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    index.unread.insert(rel.clone(), e.to_string());
+                match hash_file(&at, size, &mut chunk_buf) {
+                    Ok(d) => {
+                        if meta.nlink() > 1 {
+                            seen_inodes.insert((dev, ino), rel.clone());
+                        }
+                        index.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::File, size: d.size, mtime_ns, ctime_ns, ino, mode, hash: d.hash, chunks: d.chunks });
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => {
+                        index.unread.insert(rel.clone(), e.to_string());
+                    }
                 }
             }
         }
@@ -444,101 +529,117 @@ impl Index {
     /// trailing 16-byte BLAKE3 integrity tag.
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(64 + self.entries.len() * 64);
-        out.extend_from_slice(MAGIC);
-        out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-        out.extend_from_slice(&(self.entries.len() as u32).to_le_bytes());
+        self.encode_to(&mut out).expect("encoding into Vec cannot fail");
+        out
+    }
+
+    /// Stream the binary encoding directly to `writer` with a trailing 16-byte
+    /// BLAKE3 integrity tag, without buffering the whole index in memory.
+    pub fn encode_to(&self, writer: impl Write) -> io::Result<()> {
+        let mut hw = HashingWriter::new(writer);
+        hw.write_all(MAGIC)?;
+        hw.write_all(&FORMAT_VERSION.to_le_bytes())?;
+        let count = u32::try_from(self.entries.len()).map_err(|_| invalid_data("too many entries in index"))?;
+        hw.write_all(&count.to_le_bytes())?;
 
         for entry in self.entries.values() {
-            write_str(&mut out, &entry.path);
+            write_str_to(&mut hw, &entry.path)?;
+            let has_chunks = matches!(entry.kind, EntryKind::File) && !entry.chunks.is_empty();
             match &entry.kind {
-                EntryKind::File => out.push(0),
-                EntryKind::Dir => out.push(1),
+                EntryKind::File => hw.write_all(&[if has_chunks { 4 } else { 0 }])?,
+                EntryKind::Dir => hw.write_all(&[1])?,
                 EntryKind::Symlink(target) => {
-                    out.push(2);
-                    write_str(&mut out, target);
+                    hw.write_all(&[2])?;
+                    write_str_to(&mut hw, target)?;
                 }
                 EntryKind::HardLink(target) => {
-                    out.push(3);
-                    write_str(&mut out, target);
+                    hw.write_all(&[3])?;
+                    write_str_to(&mut hw, target)?;
                 }
             }
-            out.extend_from_slice(&entry.size.to_le_bytes());
-            out.extend_from_slice(&entry.mtime_ns.to_le_bytes());
-            out.extend_from_slice(&entry.ctime_ns.to_le_bytes());
-            out.extend_from_slice(&entry.ino.to_le_bytes());
-            out.extend_from_slice(&entry.mode.to_le_bytes());
+            hw.write_all(&entry.size.to_le_bytes())?;
+            hw.write_all(&entry.mtime_ns.to_le_bytes())?;
+            hw.write_all(&entry.ctime_ns.to_le_bytes())?;
+            hw.write_all(&entry.ino.to_le_bytes())?;
+            hw.write_all(&entry.mode.to_le_bytes())?;
             if matches!(entry.kind, EntryKind::File) {
-                out.extend_from_slice(&entry.hash);
-                out.extend_from_slice(&(entry.chunks.len() as u32).to_le_bytes());
-                for c in &entry.chunks {
-                    out.extend_from_slice(&c.len.to_le_bytes());
-                    out.extend_from_slice(&c.id);
+                hw.write_all(&entry.hash)?;
+                if has_chunks {
+                    let chunk_count = u32::try_from(entry.chunks.len()).map_err(|_| invalid_data("too many chunks in entry"))?;
+                    hw.write_all(&chunk_count.to_le_bytes())?;
+                    for c in &entry.chunks {
+                        hw.write_all(&c.len.to_le_bytes())?;
+                        hw.write_all(&c.id)?;
+                    }
                 }
             }
         }
 
-        let tag = blake3::hash(&out);
-        out.extend_from_slice(&tag.as_bytes()[..TRAILER_LEN]);
-        out
+        let (mut inner, tag) = hw.finish();
+        inner.write_all(&tag.as_bytes()[..TRAILER_LEN])?;
+        inner.flush()
     }
 
     /// Decode an index produced by [`Index::encode`]. Any bad magic, unknown
     /// version, truncated buffer, bad checksum or malformed path returns an
     /// `io::Error` rather than panicking or over-allocating.
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
-        if bytes.len() < MAGIC.len() + 4 + 4 + TRAILER_LEN {
-            return Err(invalid_data("index too short"));
-        }
-        if &bytes[..MAGIC.len()] != MAGIC {
+        Self::decode_from(bytes)
+    }
+
+    /// Stream-decode an index produced by [`Index::encode_to`] / [`Index::save`]
+    /// without reading the whole file into memory first.
+    pub fn decode_from(reader: impl Read) -> io::Result<Self> {
+        let mut hr = HashingReader::new(reader);
+        let magic = hr.read_array::<8>().map_err(|_| invalid_data("index too short"))?;
+        if &magic != MAGIC {
             return Err(invalid_data("bad index magic"));
         }
-        let version = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+        let version = hr.read_u32()?;
         if version != FORMAT_VERSION {
             return Err(invalid_data(format!("unsupported index version {version}")));
         }
-        let body_len = bytes.len() - TRAILER_LEN;
-        let expected = blake3::hash(&bytes[..body_len]);
-        if expected.as_bytes()[..TRAILER_LEN] != bytes[body_len..] {
-            return Err(invalid_data("index checksum mismatch"));
-        }
-
-        let mut cur = Cursor::new(&bytes[12..body_len]);
-        let count = cur.read_u32()? as usize;
+        let count = hr.read_u32()? as usize;
         let mut entries = BTreeMap::new();
+        let mut str_buf = Vec::new();
         for _ in 0..count {
-            let path = cur.read_str()?;
+            let path = hr.read_str(&mut str_buf)?;
             validate_rel_path(&path).map_err(|e| invalid_data(format!("invalid path: {e}")))?;
-            let kind_tag = cur.read_u8()?;
-            let kind = match kind_tag {
-                0 => EntryKind::File,
-                1 => EntryKind::Dir,
-                2 => EntryKind::Symlink(cur.read_str()?),
+            let kind_tag = hr.read_u8()?;
+            let (kind, has_chunks) = match kind_tag {
+                0 => (EntryKind::File, false),
+                4 => (EntryKind::File, true),
+                1 => (EntryKind::Dir, false),
+                2 => (EntryKind::Symlink(hr.read_str(&mut str_buf)?), false),
                 3 => {
-                    let target = cur.read_str()?;
+                    let target = hr.read_str(&mut str_buf)?;
                     validate_rel_path(&target).map_err(|e| invalid_data(format!("invalid hardlink target: {e}")))?;
-                    EntryKind::HardLink(target)
+                    (EntryKind::HardLink(target), false)
                 }
                 _ => return Err(invalid_data(format!("unknown entry kind {kind_tag}"))),
             };
-            let size = cur.read_u64()?;
-            let mtime_ns = cur.read_i64()?;
-            let ctime_ns = cur.read_i64()?;
-            let ino = cur.read_u64()?;
-            let mode = cur.read_u32()?;
+            let size = hr.read_u64()?;
+            let mtime_ns = hr.read_i64()?;
+            let ctime_ns = hr.read_i64()?;
+            let ino = hr.read_u64()?;
+            let mode = hr.read_u32()?;
             let (hash, chunks) = match &kind {
                 EntryKind::File => {
-                    let hash = cur.read_array::<32>()?;
-                    let chunk_count = cur.read_u32()? as usize;
-                    // Bound allocation by remaining bytes (each ChunkRef is 20 bytes).
-                    if chunk_count.saturating_mul(20) > cur.remaining() {
-                        return Err(invalid_data("truncated chunk list in index"));
-                    }
-                    let mut chunks = Vec::with_capacity(chunk_count);
-                    for _ in 0..chunk_count {
-                        let len = cur.read_u32()?;
-                        let id: ChunkId = cur.read_array::<16>()?;
-                        chunks.push(ChunkRef { len, id });
-                    }
+                    let hash = hr.read_array::<32>()?;
+                    let chunks = if has_chunks {
+                        let chunk_count = hr.read_u32()? as usize;
+                        // Bound initial capacity so a corrupt header cannot force a huge allocation before EOF.
+                        let mut chunks = Vec::with_capacity(chunk_count.min(4096));
+                        for _ in 0..chunk_count {
+                            let len = hr.read_u32()?;
+                            let id: ChunkId = hr.read_array::<16>()?;
+                            chunks.push(ChunkRef { len, id });
+                        }
+                        chunks.shrink_to_fit();
+                        chunks
+                    } else {
+                        Vec::new()
+                    };
                     (hash, chunks)
                 }
                 EntryKind::Dir | EntryKind::HardLink(_) => ([0u8; 32], Vec::new()),
@@ -546,14 +647,22 @@ impl Index {
             };
             entries.insert(path.clone(), Entry { path, kind, size, mtime_ns, ctime_ns, ino, mode, hash, chunks });
         }
-        if cur.remaining() != 0 {
+
+        let (mut inner, expected) = hr.finish();
+        let mut trailer = [0u8; TRAILER_LEN];
+        inner.read_exact(&mut trailer).map_err(|_| invalid_data("truncated index trailer"))?;
+        if expected.as_bytes()[..TRAILER_LEN] != trailer {
+            return Err(invalid_data("index checksum mismatch"));
+        }
+        let mut extra = [0u8; 1];
+        if inner.read(&mut extra)? != 0 {
             return Err(invalid_data("trailing bytes in index"));
         }
         Ok(Self { entries, ..Self::default() })
     }
 
-    /// Write the encoded index atomically to `path` (temporary sibling file
-    /// renamed into place).
+    /// Write the encoded index atomically to `path` (streamed through a
+    /// `BufWriter` to a temporary sibling file, then renamed into place).
     pub fn save(&self, path: &Path) -> io::Result<()> {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         if let Some(parent) = path.parent()
@@ -561,7 +670,6 @@ impl Index {
         {
             fs::create_dir_all(parent)?;
         }
-        let data = self.encode();
         let pid = std::process::id();
         let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
         let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("index");
@@ -571,10 +679,11 @@ impl Index {
             _ => Path::new(&tmp_name).to_path_buf(),
         };
         let res = (|| -> io::Result<()> {
-            let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp_path)?;
-            f.write_all(&data)?;
-            f.flush()?;
-            drop(f);
+            let f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp_path)?;
+            let mut w = BufWriter::with_capacity(INDEX_IO_BUF, f);
+            self.encode_to(&mut w)?;
+            w.flush()?;
+            drop(w);
             fs::rename(&tmp_path, path)?;
             Ok(())
         })();
@@ -584,22 +693,25 @@ impl Index {
         res
     }
 
-    /// Load and decode an index previously saved with [`Index::save`].
+    /// Load and decode an index previously saved with [`Index::save`],
+    /// streaming through a `BufReader`.
     pub fn load(path: &Path) -> io::Result<Self> {
-        let bytes = fs::read(path)?;
-        Self::decode(&bytes)
+        let f = fs::File::open(path)?;
+        let r = BufReader::with_capacity(INDEX_IO_BUF, f);
+        Self::decode_from(r)
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn scan_dir<R: io::Read>(
+fn scan_dir(
     root: &Path,
     rel_prefix: &str,
     root_dev: u64,
     filter: &Filter,
     previous: Option<&Index>,
-    open: &mut impl FnMut(&Path) -> io::Result<R>,
+    hash_file: &mut impl FnMut(&Path, u64, &mut Vec<u8>) -> io::Result<chunk::FileDigest>,
     dev_of: &mut impl FnMut(&Path, &fs::Metadata) -> u64,
+    on_entry: &mut dyn FnMut(&str, u64),
     chunk_buf: &mut Vec<u8>,
     seen_inodes: &mut HashMap<(u64, u64), String>,
     out: &mut Index,
@@ -668,7 +780,7 @@ fn scan_dir<R: io::Read>(
             }
             let mode = final_dir_mode(meta.permissions().mode());
             out.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Dir, size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
-            scan_dir(root, &rel, root_dev, filter, previous, open, dev_of, chunk_buf, seen_inodes, out)?;
+            scan_dir(root, &rel, root_dev, filter, previous, hash_file, dev_of, on_entry, chunk_buf, seen_inodes, out)?;
         } else if ft.is_symlink() {
             if !filter.matches_entry(&rel) {
                 continue;
@@ -711,10 +823,11 @@ fn scan_dir<R: io::Read>(
                 if meta.nlink() > 1 {
                     seen_inodes.insert((dev, ino), rel.clone());
                 }
+                on_entry(&rel, size);
                 out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::File, size, mtime_ns, ctime_ns, ino, mode, hash: prev.hash, chunks: prev.chunks.clone() });
                 continue;
             }
-            let digest = match open(&full).and_then(|reader| chunk::hash_and_chunk_in(chunk_buf, reader)) {
+            let digest = match hash_file(&full, size, chunk_buf) {
                 Ok(digest) => digest,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(e) => {
@@ -725,9 +838,143 @@ fn scan_dir<R: io::Read>(
             if meta.nlink() > 1 {
                 seen_inodes.insert((dev, ino), rel.clone());
             }
+            on_entry(&rel, digest.size);
             out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::File, size: digest.size, mtime_ns, ctime_ns, ino, mode, hash: digest.hash, chunks: digest.chunks });
         } else if filter.matches_entry(&rel) {
             // Special files (sockets, FIFOs, devices): recorded, never silently dropped.
+            out.special.push(rel);
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scan_dir_stat(
+    root: &Path,
+    rel_prefix: &str,
+    root_dev: u64,
+    filter: &Filter,
+    previous: Option<&Index>,
+    on_entry: &mut dyn FnMut(&str, u64),
+    seen_inodes: &mut HashMap<(u64, u64), String>,
+    out: &mut Index,
+    unhashed: &mut HashSet<String>,
+) -> io::Result<()> {
+    let dir_path = if rel_prefix.is_empty() { root.to_path_buf() } else { root.join(rel_prefix) };
+    let listing = match fs::read_dir(&dir_path) {
+        Ok(listing) => listing,
+        Err(e) if e.kind() == io::ErrorKind::NotFound && !rel_prefix.is_empty() => return Ok(()),
+        Err(e) if !rel_prefix.is_empty() => {
+            out.unread.insert(rel_prefix.to_owned(), e.to_string());
+            return Ok(());
+        }
+        Err(e) => return Err(e),
+    };
+    let mut names: Vec<String> = Vec::new();
+    let mut non_utf8_here: Vec<String> = Vec::new();
+    for entry in listing {
+        let Ok(entry) = entry else { continue };
+        match entry.file_name().into_string() {
+            Ok(name) => {
+                if is_part_name(&name) {
+                    continue;
+                }
+                names.push(name);
+            }
+            Err(os_name) => {
+                let lossy = os_name.to_string_lossy();
+                let rel = if rel_prefix.is_empty() { lossy.into_owned() } else { format!("{rel_prefix}/{lossy}") };
+                non_utf8_here.push(rel);
+            }
+        }
+    }
+    if !non_utf8_here.is_empty() {
+        non_utf8_here.sort();
+        out.non_utf8.extend(non_utf8_here);
+    }
+    names.sort();
+
+    for name in names {
+        let rel = if rel_prefix.is_empty() { name } else { format!("{rel_prefix}/{name}") };
+        let full = root.join(&rel);
+        let meta = match fs::symlink_metadata(&full) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                out.unread.insert(rel, e.to_string());
+                continue;
+            }
+        };
+        let ft = meta.file_type();
+        let mtime_ns = meta.mtime().saturating_mul(1_000_000_000).saturating_add(meta.mtime_nsec());
+        let ctime_ns = meta.ctime().saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec());
+        let dev = meta.dev();
+        let ino = meta.ino();
+
+        if ft.is_dir() {
+            if !filter.allow_dir(&rel) {
+                continue;
+            }
+            if dev != root_dev {
+                out.mounts.push(rel);
+                continue;
+            }
+            let mode = final_dir_mode(meta.permissions().mode());
+            out.entries.insert(rel.clone(), Entry { path: rel.clone(), kind: EntryKind::Dir, size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+            scan_dir_stat(root, &rel, root_dev, filter, previous, on_entry, seen_inodes, out, unhashed)?;
+        } else if ft.is_symlink() {
+            if !filter.matches_entry(&rel) {
+                continue;
+            }
+            let mode = meta.permissions().mode() & 0o777;
+            let target = match fs::read_link(&full).map(|t| t.into_os_string().into_string()) {
+                Ok(Ok(target)) => target,
+                Ok(Err(_)) => {
+                    out.unread.insert(rel, "its target isn't UTF-8".into());
+                    continue;
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    out.unread.insert(rel, e.to_string());
+                    continue;
+                }
+            };
+            let hash = *blake3::hash(target.as_bytes()).as_bytes();
+            let size = target.len() as u64;
+            out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::Symlink(target), size, mtime_ns, ctime_ns, ino, mode, hash, chunks: Vec::new() });
+        } else if ft.is_file() {
+            if !filter.matches_entry(&rel) {
+                continue;
+            }
+            let mode = meta.permissions().mode() & 0o777;
+            if meta.nlink() > 1
+                && let Some(first) = seen_inodes.get(&(dev, ino))
+            {
+                out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::HardLink(first.clone()), size: 0, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+                continue;
+            }
+            let size = meta.len();
+            if let Some(prev) = previous.and_then(|idx| idx.entries.get(&rel))
+                && prev.kind == EntryKind::File
+                && prev.size == size
+                && prev.mtime_ns == mtime_ns
+                && prev.ctime_ns == ctime_ns
+                && prev.ino == ino
+            {
+                if meta.nlink() > 1 {
+                    seen_inodes.insert((dev, ino), rel.clone());
+                }
+                on_entry(&rel, size);
+                out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::File, size, mtime_ns, ctime_ns, ino, mode, hash: prev.hash, chunks: prev.chunks.clone() });
+                continue;
+            }
+            if meta.nlink() > 1 {
+                seen_inodes.insert((dev, ino), rel.clone());
+            }
+            on_entry(&rel, size);
+            unhashed.insert(rel.clone());
+            out.entries.insert(rel.clone(), Entry { path: rel, kind: EntryKind::File, size, mtime_ns, ctime_ns, ino, mode, hash: [0u8; 32], chunks: Vec::new() });
+        } else if filter.matches_entry(&rel) {
             out.special.push(rel);
         }
     }
@@ -747,63 +994,101 @@ pub fn final_dir_mode(mode: u32) -> u32 {
     mode & 0o3777
 }
 
-fn write_str(out: &mut Vec<u8>, s: &str) {
-    out.extend_from_slice(&(s.len() as u32).to_le_bytes());
-    out.extend_from_slice(s.as_bytes());
+fn write_str_to(w: &mut impl Write, s: &str) -> io::Result<()> {
+    let len = u32::try_from(s.len()).map_err(|_| invalid_data("string too long for index"))?;
+    w.write_all(&len.to_le_bytes())?;
+    w.write_all(s.as_bytes())
 }
 
 fn invalid_data(msg: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.into())
 }
 
-struct Cursor<'a> {
-    buf: &'a [u8],
-    pos: usize,
+struct HashingWriter<W> {
+    inner: W,
+    hasher: blake3::Hasher,
 }
 
-impl<'a> Cursor<'a> {
-    fn new(buf: &'a [u8]) -> Self {
-        Self { buf, pos: 0 }
+impl<W: Write> HashingWriter<W> {
+    fn new(inner: W) -> Self {
+        Self { inner, hasher: blake3::Hasher::new() }
     }
 
-    fn remaining(&self) -> usize {
-        self.buf.len() - self.pos
+    fn finish(self) -> (W, blake3::Hash) {
+        (self.inner, self.hasher.finalize())
+    }
+}
+
+impl<W: Write> Write for HashingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.hasher.update(&buf[..n]);
+        Ok(n)
     }
 
-    fn take(&mut self, n: usize) -> io::Result<&'a [u8]> {
-        let end = self.pos.checked_add(n).ok_or_else(|| invalid_data("length overflow"))?;
-        if end > self.buf.len() {
-            return Err(invalid_data("unexpected end of index"));
-        }
-        let s = &self.buf[self.pos..end];
-        self.pos = end;
-        Ok(s)
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+struct HashingReader<R> {
+    inner: R,
+    hasher: blake3::Hasher,
+}
+
+impl<R: Read> HashingReader<R> {
+    fn new(inner: R) -> Self {
+        Self { inner, hasher: blake3::Hasher::new() }
+    }
+
+    fn finish(self) -> (R, blake3::Hash) {
+        (self.inner, self.hasher.finalize())
+    }
+
+    fn read_exact_hashed(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        self.inner.read_exact(buf).map_err(|_| invalid_data("unexpected end of index"))?;
+        self.hasher.update(buf);
+        Ok(())
     }
 
     fn read_u8(&mut self) -> io::Result<u8> {
-        Ok(self.take(1)?[0])
+        let mut b = [0u8; 1];
+        self.read_exact_hashed(&mut b)?;
+        Ok(b[0])
     }
 
     fn read_u32(&mut self) -> io::Result<u32> {
-        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+        let mut b = [0u8; 4];
+        self.read_exact_hashed(&mut b)?;
+        Ok(u32::from_le_bytes(b))
     }
 
     fn read_u64(&mut self) -> io::Result<u64> {
-        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+        let mut b = [0u8; 8];
+        self.read_exact_hashed(&mut b)?;
+        Ok(u64::from_le_bytes(b))
     }
 
     fn read_i64(&mut self) -> io::Result<i64> {
-        Ok(i64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+        let mut b = [0u8; 8];
+        self.read_exact_hashed(&mut b)?;
+        Ok(i64::from_le_bytes(b))
     }
 
     fn read_array<const N: usize>(&mut self) -> io::Result<[u8; N]> {
-        Ok(self.take(N)?.try_into().unwrap())
+        let mut b = [0u8; N];
+        self.read_exact_hashed(&mut b)?;
+        Ok(b)
     }
 
-    fn read_str(&mut self) -> io::Result<String> {
+    fn read_str(&mut self, scratch: &mut Vec<u8>) -> io::Result<String> {
         let len = self.read_u32()? as usize;
-        let bytes = self.take(len)?;
-        let s = std::str::from_utf8(bytes).map_err(|_| invalid_data("invalid UTF-8 in index"))?;
+        if len > MAX_INDEX_STR_LEN {
+            return Err(invalid_data("string exceeds index limit"));
+        }
+        scratch.resize(len, 0);
+        self.read_exact_hashed(&mut scratch[..len])?;
+        let s = std::str::from_utf8(&scratch[..len]).map_err(|_| invalid_data("invalid UTF-8 in index"))?;
         Ok(s.to_owned())
     }
 }
@@ -993,5 +1278,117 @@ mod tests {
         assert!(validate_rel_path(&format!("sub/{PART_PREFIX}deadbeef")).is_err());
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn small_files_omit_chunks_and_large_files_keep_them() {
+        let root = scratch_dir("chunk-threshold");
+        fs::write(root.join("small.txt"), b"tiny file").unwrap();
+        fs::write(root.join("large.bin"), vec![0x5Au8; chunk::CHUNK_MIN_SIZE as usize + 1024]).unwrap();
+
+        let idx = Index::scan(&root, &Filter::all(), None).unwrap();
+        assert!(idx.entries["small.txt"].chunks.is_empty());
+        assert_eq!(idx.entries["small.txt"].chunks.capacity(), 0);
+        assert!(!idx.entries["large.bin"].chunks.is_empty());
+
+        let cache = root.join("index.cache");
+        idx.save(&cache).unwrap();
+        let loaded = Index::load(&cache).unwrap();
+        assert_eq!(loaded, idx);
+        assert!(loaded.entries["small.txt"].chunks.is_empty());
+        assert_eq!(loaded.entries["small.txt"].chunks.capacity(), 0);
+        assert!(!loaded.entries["large.bin"].chunks.is_empty());
+
+        // Trailing byte after checksum trailer must be rejected by streaming decode.
+        let mut with_extra = idx.encode();
+        with_extra.push(0);
+        assert!(Index::decode(&with_extra).is_err());
+
+        // Old version 1 header must be rejected cleanly.
+        let mut old_ver = idx.encode();
+        old_ver[8..12].copy_from_slice(&1u32.to_le_bytes());
+        assert!(Index::decode(&old_ver).is_err());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn read_proc_mem_kib(key: &str) -> Option<u64> {
+        let status = fs::read_to_string("/proc/self/status").ok()?;
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix(key) {
+                return rest.split_whitespace().next()?.parse().ok();
+            }
+        }
+        None
+    }
+
+    /// Peak memory (`VmHWM`) and cache size for scanning, saving, and loading an
+    /// index of 200,000 small files plus a few multi-MiB files.
+    #[test]
+    #[ignore = "a measurement, run by hand"]
+    fn index_bench_200k_memory() {
+        let base = PathBuf::from("/var/tmp/olo-agents/engine-big/mem-bench-200k");
+        let tree = base.join("tree");
+        let cache = base.join("index.cache");
+        if !tree.join("done").exists() {
+            let _ = fs::remove_dir_all(&tree);
+            fs::create_dir_all(&tree).unwrap();
+            for d in 0..200 {
+                let dir = tree.join(format!("d{d:03}"));
+                fs::create_dir_all(&dir).unwrap();
+                for f in 0..1000 {
+                    fs::write(dir.join(format!("f{f:04}.txt")), format!("dir {d} file {f} small payload\n")).unwrap();
+                }
+            }
+            fs::create_dir_all(tree.join("large")).unwrap();
+            let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+            let mut next = || {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x
+            };
+            for i in 0..5 {
+                let mut buf = vec![0u8; 4 << 20];
+                for chunk in buf.chunks_mut(8) {
+                    let v = next().to_le_bytes();
+                    chunk.copy_from_slice(&v[..chunk.len()]);
+                }
+                fs::write(tree.join(format!("large/big_{i}.bin")), &buf).unwrap();
+            }
+            fs::write(tree.join("done"), b"").unwrap();
+        }
+
+        let t0 = std::time::Instant::now();
+        let idx = Index::scan(&tree, &Filter::all(), None).unwrap();
+        let scan_s = t0.elapsed().as_secs_f64();
+        let rss_after_scan = read_proc_mem_kib("VmRSS:").unwrap_or(0);
+        let hwm_after_scan = read_proc_mem_kib("VmHWM:").unwrap_or(0);
+
+        let t1 = std::time::Instant::now();
+        idx.save(&cache).unwrap();
+        let save_s = t1.elapsed().as_secs_f64();
+        let cache_bytes = fs::metadata(&cache).unwrap().len();
+        let hwm_after_save = read_proc_mem_kib("VmHWM:").unwrap_or(0);
+
+        let entries_count = idx.entries.len();
+        drop(idx);
+
+        let t2 = std::time::Instant::now();
+        let loaded = Index::load(&cache).unwrap();
+        let load_s = t2.elapsed().as_secs_f64();
+        assert_eq!(loaded.entries.len(), entries_count);
+        let rss_after_load = read_proc_mem_kib("VmRSS:").unwrap_or(0);
+        let hwm_final = read_proc_mem_kib("VmHWM:").unwrap_or(0);
+
+        println!(
+            "entries={entries_count} cache={:.2} MiB scan={scan_s:.2}s save={save_s:.2}s load={load_s:.2}s | VmRSS scan={:.1} MiB load={:.1} MiB | VmHWM scan={:.1} MiB save={:.1} MiB final={:.1} MiB",
+            cache_bytes as f64 / (1 << 20) as f64,
+            rss_after_scan as f64 / 1024.0,
+            rss_after_load as f64 / 1024.0,
+            hwm_after_scan as f64 / 1024.0,
+            hwm_after_save as f64 / 1024.0,
+            hwm_final as f64 / 1024.0,
+        );
     }
 }

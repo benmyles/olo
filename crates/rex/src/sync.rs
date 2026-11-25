@@ -69,6 +69,7 @@ impl HostFolder {
             // (This computer's side keeps nothing of its own from a host's
             // files: what it receives is the person's to have.)
             protect: Vec::new(),
+            progress: None,
         }
     }
 }

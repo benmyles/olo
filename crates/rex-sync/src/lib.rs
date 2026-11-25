@@ -13,4 +13,4 @@ pub mod wire;
 pub use chunk::{ChunkId, ChunkRef, FileDigest};
 pub use index::{Entry, EntryKind, Filter, Index, MAX_SKIPPED_PATHS, Skipped, SkippedKind};
 pub use recipe::{DataCodec, Piece, Plan, PlanOp, Recipe, RecipeKind, SuperChunk};
-pub use wire::{FolderSource, ListEntry, ListSource, Options, PathError, Report, Source, receive, send};
+pub use wire::{FolderSource, ListEntry, ListSource, Options, PathError, Phase, Progress, Report, Source, receive, send};
