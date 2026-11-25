@@ -64,6 +64,8 @@ pub enum WinRole {
     Rename,
     /// A host to add: its address, and a name.
     AddHost,
+    /// An account moved to another host (`crate::moving`).
+    Move,
     /// A port of another host to forward here.
     Forward,
     /// A host's own Rex server, looked after as root (`server`).
@@ -461,6 +463,29 @@ pub fn setup_changed() {
     broadcast_to_role(WinRole::AddHost, || WinMsg::SetupChanged);
 }
 
+/// The move under way stands otherwise: the Move window shows it.
+pub fn move_changed() {
+    *MOVE_CHANGED_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
+    broadcast_to_role(WinRole::Move, || WinMsg::MoveChanged);
+}
+
+/// When the Move window last changed: Cancel comes where Continue and
+/// Move were, so a press of it a double-click's time after is the second
+/// click of a double-click on them, not a Cancel (Opus's design review,
+/// 2026-11-25).
+static MOVE_CHANGED_AT: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+fn move_just_changed() -> bool {
+    MOVE_CHANGED_AT.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(500))
+}
+
+/// An account moved from host `from` to host `to`: each window showing
+/// `from` shows `to`, each of its sessions the one made again from it
+/// (`sessions`: by the old session's id).
+pub fn host_moved(from: String, to: String, sessions: std::collections::HashMap<String, String>) {
+    broadcast_to_role(WinRole::Workspace, || WinMsg::HostMoved(from.clone(), to.clone(), sessions.clone()));
+}
+
 /// The host whose server is looked after stands otherwise: the Server
 /// window shows it.
 pub fn server_changed() {
@@ -492,6 +517,18 @@ pub fn host_changed() {
 /// Opens the Host window on the host `key`: what it has of Olo's, and
 /// its Rex server. (Not for this computer: what is Olo's here is the
 /// desktop's own.)
+/// The Move window, for the account on host `key` (the move under way
+/// shown, if there is one).
+fn open_move(hub: &Arc<RexHub>, key: &str) {
+    if crate::moving::current().is_none() {
+        if !far_host(hub, key) {
+            return;
+        }
+        crate::moving::begin(hub, key);
+    }
+    open_or_raise_panel(WinRole::Move);
+}
+
 fn open_host(hub: &Arc<RexHub>, key: &str) {
     let Some(name) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| h.label.clone()) else { return };
     crate::host::open(key, &name);
@@ -688,6 +725,7 @@ pub fn open_or_raise_panel(role: WinRole) {
         }
         WinRole::Askpass => WindowOptions::alert("SSH Authentication", 460.0, 120.0),
         WinRole::AddHost => WindowOptions::alert("Add Host", panels::ADD_HOST_WIDTH, 120.0),
+        WinRole::Move => WindowOptions::alert("Move Account", panels::MOVE_WIDTH, 120.0),
         WinRole::Forward => WindowOptions::alert("Forward Port", widgets::ALERT_WIDTH, 120.0),
         // (Not brought back after a reload: it would sign in as root
         // again with nobody having asked it to.)
@@ -790,6 +828,13 @@ pub enum WinMsg {
     AddHostSetUp(bool),
     /// The host being set up stands otherwise (`setup::current`).
     SetupChanged,
+    /// The move under way stands otherwise.
+    MoveChanged,
+    /// An account moved: the host it was on, the one it is on, its sessions
+    /// there by their old ids.
+    HostMoved(String, String, std::collections::HashMap<String, String>),
+    /// What the Move window asks of the move.
+    MoveDo(panels::MoveDo),
     /// A busy bar's block moves on.
     SetupTick,
     SetupDo(panels::SetupDo),
@@ -1088,6 +1133,19 @@ impl RexWindow {
                     _ => {}
                 });
                 (None, None, Some(pf), None)
+            }
+            WinRole::Move => {
+                // (A made-up move at a stage, for the window's pictures
+                // and its lint; in the demo only.)
+                if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1")
+                    && let Ok(stage) = std::env::var("OLO_REX_DEMO_MOVE")
+                {
+                    let stage = stage.strip_prefix('@').map_or(stage.clone(), |file| std::fs::read_to_string(file).unwrap_or_default().trim().to_owned());
+                    if crate::moving::show_demo(&stage) {
+                        cx.send(WinMsg::MoveChanged);
+                    }
+                }
+                (None, None, None, None)
             }
             WinRole::AddHost => {
                 // (Each with the name agents know it by. The address
@@ -1733,6 +1791,8 @@ impl RexWindow {
             "app.hosts" => open_or_raise_panel(WinRole::Hosts),
             "app.add_host" => open_or_raise_panel(WinRole::AddHost),
             "host.manage" => open_host(&hub, &self.active_host),
+            "host.move" => open_move(&hub, &self.active_host),
+            c if c.starts_with("host.move:") => open_move(&hub, c.trim_start_matches("host.move:")),
             // (What the pane's host may do here: Preferences ▸ Rex, on
             // Hosts, at that host; as its window's Permissions… does.)
             "host.permissions" => olo_kit::app_menu::open_settings(&format!("rex/host:{}", self.active_host)),
@@ -2617,6 +2677,8 @@ impl RexWindow {
                 .item("Hosts and Ports…", "app.hosts")
                 .separator()
                 .item("Manage Host…", "host.manage")
+                .enabled(far_host(&hub, &self.active_host))
+                .item("Move to Another Host…", "host.move")
                 .enabled(far_host(&hub, &self.active_host))
                 .item("Set Up This Host’s Account…", "host.account")
                 .enabled(far_host(&hub, &self.active_host))
@@ -3776,6 +3838,12 @@ impl RexWindow {
                 let managed = managed_host(&hub, &shown.key).is_some();
                 div().w_full().child(crate::host_panel::render_host_panel(&stands, &shown, managed, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone()))))
             }
+            WinRole::Move => {
+                let Some(mv) = crate::moving::current() else {
+                    return div();
+                };
+                div().w_full().flex_1().flex().flex_col().child(panels::render_move_panel(&mv, self.setup_phase, cx.msg_with(|what: &panels::MoveDo| WinMsg::MoveDo(what.clone()))))
+            }
             WinRole::AddHost => {
                 let (Some(name), Some(address)) = (&self.host_label_field, &self.host_addr_field) else {
                     return div();
@@ -4215,6 +4283,74 @@ impl View for RexWindow {
                     cx.invalidate();
                 }
             }
+            WinMsg::MoveChanged => {
+                let stage = crate::moving::current().map(|m| m.stage);
+                // (Its busy bar moves while both hosts are looked at, and
+                // only then: Add Host's timer, the same way.)
+                // (Only while nothing measured is shown: a copy's bar moves
+                // by its own status, twice a second, for hours.)
+                let waited_for = match &stage {
+                    Some(crate::moving::Stage::Looking { .. } | crate::moving::Stage::GoingBack) => true,
+                    Some(crate::moving::Stage::Copying { status }) => status["total_bytes"].as_u64().unwrap_or(0) == 0,
+                    _ => false,
+                };
+                match (waited_for, self.setup_tick) {
+                    (true, None) => {
+                        self.setup_phase = 0.0;
+                        self.setup_tick = Some(cx.every(std::time::Duration::from_millis(100), || WinMsg::SetupTick));
+                    }
+                    (false, Some(timer)) => {
+                        cx.cancel(timer);
+                        self.setup_tick = None;
+                    }
+                    _ => {}
+                }
+                if stage.is_none() && self.role == WinRole::Move {
+                    cx.close_window();
+                    return;
+                }
+                cx.invalidate();
+            }
+            WinMsg::MoveDo(what) => {
+                let hub = app().hub.clone();
+                match what {
+                    panels::MoveDo::Pick(i) => crate::moving::pick(i),
+                    panels::MoveDo::Choose => {
+                        let chosen = match crate::moving::current().map(|m| m.stage) {
+                            Some(crate::moving::Stage::Choosing { chosen, .. }) => chosen,
+                            _ => 0,
+                        };
+                        crate::moving::choose(&hub, chosen);
+                    }
+                    panels::MoveDo::VarTmp(on) => crate::moving::choose_option(Some(on), None),
+                    panels::MoveDo::Cache(on) => crate::moving::choose_option(None, Some(on)),
+                    panels::MoveDo::Go => crate::moving::go(&hub),
+                    panels::MoveDo::GoBack => crate::moving::go_back(&hub),
+                    // (No other host to move to: Add Host, this window's
+                    // move given up.)
+                    panels::MoveDo::AddHost => {
+                        crate::moving::cancel(&hub);
+                        open_or_raise_panel(WinRole::AddHost);
+                    }
+                    // (Refused: the move given up, begun again for another
+                    // host; nothing was changed on either.)
+                    panels::MoveDo::Rechoose => {
+                        if let Some(source) = crate::moving::current().map(|m| m.source) {
+                            crate::moving::cancel(&hub);
+                            crate::moving::begin(&hub, &source);
+                        }
+                    }
+                    panels::MoveDo::Cancel if move_just_changed() => {}
+                    panels::MoveDo::Cancel | panels::MoveDo::Close => crate::moving::cancel(&hub),
+                }
+            }
+            WinMsg::HostMoved(from, to, sessions) => {
+                if self.active_host == from {
+                    self.active_session = self.active_session.as_ref().and_then(|s| sessions.get(s).cloned()).or_else(|| sessions.values().next().cloned());
+                    self.active_host = to;
+                    cx.invalidate();
+                }
+            }
             WinMsg::SetupTick => {
                 // (A turn there and back in two seconds.)
                 self.setup_phase += 0.05;
@@ -4317,6 +4453,11 @@ impl View for RexWindow {
                 use crate::host_panel::HostDo;
                 let hub = app().hub.clone();
                 match what {
+                    HostDo::Move => {
+                        if let Some(shown) = crate::host::current() {
+                            open_move(&hub, &shown.key);
+                        }
+                    }
                     HostDo::Account => {
                         if let Some(shown) = crate::host::current() {
                             open_account(&hub, &shown.key);
@@ -4634,6 +4775,11 @@ impl Drop for RexWindow {
     fn drop(&mut self) {
         if self.role == WinRole::AddHost {
             crate::setup::back();
+        }
+        // (A move that hasn't stopped the old host ends with its window;
+        // one copying or switching goes on, and opens it again to show.)
+        if self.role == WinRole::Move && !matches!(crate::moving::current().map(|m| m.stage), Some(crate::moving::Stage::Copying { .. } | crate::moving::Stage::Switching { .. })) {
+            crate::moving::cancel(&app().hub.clone());
         }
         if self.role == WinRole::Server {
             crate::server::close(&app().hub.clone());

@@ -595,6 +595,13 @@ Learned making To-Do (2026-11-19 and 20):
   the window): nine review rounds of pictures passed it. Drive each
   thing the window offers once (`tsession click`, `type`, `key`) and
   picture what happens.
+- **An alert a demo opens as its app starts sits at the screen's
+  corner, inactive.** (`OLO_REX_DEMO_OPEN=host.move:dev-box` and the
+  like, 2026-11-25.) No window has the keyboard yet, so it opens with no
+  parent, and app_server places it neither over its window nor in the
+  screen's middle: its tab lies on its window's, grey. Opened from the
+  menu it is over its window and active. Reviewers flag it each round:
+  say so in the brief (it is in docs/TODO.md to root-cause).
 
 ### What a window does on the way: pictures mid-move, and the wire
 
@@ -2719,7 +2726,30 @@ the command takes it: an agent's shell may leave a pipe open, and
   needs the helper built with `move` in `target/debug`. A connection to a
   host's Rex server goes through Olo's helper there
   (`SshSessionPool::set_helper`), and reading a session needs the
-  connection attached to it first (`session_attach`).
+  connection attached to it first (`session_attach`). Its stand-ins
+  answer `--version` (the move checks each agent starts there; without
+  it each waited 30 s on the SSH command's open input), and the stand-in
+  Claude Code keeps `~/.claude/sessions/PID.json` as the real one does.
+  `OLO_REX_TEST_MOVE_EACH=1048576` sends its small home in parts all the
+  same (the parallel copy).
+- **Which session a running Claude Code is in** (2026-11-25): it keeps
+  `~/.claude/sessions/PID.json` for each process of it (`pid`,
+  `sessionId`, `cwd`, `procStart`: the kernel's start ticks, field 22 of
+  `/proc/PID/stat`, so a record left by a pid used again is told
+  apart; the current session after a `/resume` or a compaction too).
+  Codex has no such record: its windows' turns run in its daemon
+  (`codex app-server`, pid file JSON), so no window holds a rollout open;
+  the daemon's control socket lists the open conversations with their
+  folders (`thread/loaded/list`, `thread/read`: crates/pool's
+  `codex_daemon` and the helper's `panes.rs` ask it).
+- **A subagent's engine work in a worktree of its own** (2026-11-25):
+  a worker changing a crate that nearly everything compiles (rex-sync)
+  would break the lead's builds mid-edit; so it worked in `git worktree
+  add -b NAME /var/tmp/claude-olo/wt-X HEAD`, its brief naming the
+  worktree's crate as its files and every command `cd`'d there, the
+  minder told to allow those; its diff applied to the main tree with
+  `git apply` once read whole, the worktree and branch removed after.
+  `agy models` names Neon's efforts (`gemini-4-neon-xhigh`).
 - **The dev server's `sleep`, `cat` and the rest are one program**
   (uutils' coreutils, multi-call): a copy of `/bin/sleep` under another
   name refuses to run ("coreutils: unknown program"). For a test

@@ -2748,7 +2748,7 @@ impl RexHub {
         }
         (self.notify)(HubNotice::StateChanged);
         if tell_desktop {
-            let host = olo_protocol::RexHost { id: id.clone(), label: label.clone(), endpoint: endpoint.clone(), connect_at_start: true, grants: Default::default() };
+            let host = olo_protocol::RexHost { id: id.clone(), label: label.clone(), endpoint: endpoint.clone(), connect_at_start: true, grants: Default::default(), moved_to: None };
             olo_kit::settings::update(move |s| {
                 if !s.rex.hosts.iter().any(|h| h.id == host.id) {
                     s.rex.hosts.push(host);

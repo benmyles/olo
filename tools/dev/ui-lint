@@ -115,7 +115,7 @@ def apps(home):
         # window, hosts in every state: a window the app doesn't show
         # at its start is one the lint doesn't see. `OLO_REX_DEMO_OPEN`:
         # the commands that open them.)
-        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock"), "OLO_REX_DEMO_OPEN": "app.hosts,host.manage:dev-box,host.account:dev-box,host.repos,host.repos.add", "OLO_REX_DEMO_HOSTS": "states", "OLO_REX_DEMO_REPOS": "1"}, False),
+        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock"), "OLO_REX_DEMO_OPEN": "app.hosts,host.manage:dev-box,host.account:dev-box,host.repos,host.repos.add,host.move:dev-box", "OLO_REX_DEMO_HOSTS": "states", "OLO_REX_DEMO_REPOS": "1", "OLO_REX_DEMO_MOVE": "confirm"}, False),
         ("Terminal", ["olo-terminal"], {}, False),
         ("Tracker", ["olo-tracker", home], {}, False),
         ("Viewer", ["olo-viewer", os.path.join(home, "Pictures/holiday.png")], {}, False),
@@ -750,8 +750,20 @@ def wait_for_room(what, short=processors_short, sleep=time.sleep):
                 print(f"ui-lint: waited {ROOM_ALLOWED / 60:.0f} minutes in all for room; going on without (the sessions are at idle priority)", file=sys.stderr, flush=True)
 
 
+# Its own options: any other is refused, not taken for none (`--help`
+# ran the whole lint, every app, 2026-11-25).
+OPTIONS = {"--dev", "--review", "--keep", "--no-cache", "--jobs", "--scales", "--screen", "--screens", "--tiles", "--shots", "--all-themes", "--person-screens", "--list"}
+
+
 def main():
     a = sys.argv[1:]
+    if "--help" in a or "-h" in a:
+        print(__doc__)
+        return 0
+    unknown = [x for x in a if x.startswith("-") and x not in OPTIONS]
+    if unknown:
+        print(f"ui-lint: no option {unknown[0]} (ui-lint --help)", file=sys.stderr)
+        return 2
     show_review = "--review" in a
     keep = "--keep" in a
     use_cache = "--no-cache" not in a

@@ -48,7 +48,7 @@ use std::time::{Duration, Instant};
 
 use russh::keys::ssh_key::{LineEnding, PrivateKey, private::Ed25519Keypair};
 
-const USAGE: &str = "usage: olo-rex-link move look [--size] [--exclude PATTERN]...\n       olo-rex-link move codex-stop\n       olo-rex-link move keep ID [--exclude PATTERN]...\n       olo-rex-link move put-back ID\n       olo-rex-link move add-keys ID HEX\n       olo-rex-link move take-keys ID\n       olo-rex-link move reach DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT\n       olo-rex-link move look-pane [--screens HEX] PID...\n       olo-rex-link move key DIR\n       olo-rex-link move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude PATTERN]... [--also /var/tmp/NAME]... [--detach]\n       olo-rex-link move allow ID PUBLIC-KEY-LINE [--root /var/tmp/NAME]...\n       olo-rex-link move disallow ID\n       olo-rex-link move receive --id ID   (a move's key's forced command)\n       olo-rex-link move status DIR\n       olo-rex-link move stop [--spare PID]…";
+const USAGE: &str = "usage: olo-rex-link move look [--size] [--exclude PATTERN]...\n       olo-rex-link move codex-stop\n       olo-rex-link move halt DIR\n       olo-rex-link move keep ID [--exclude PATTERN]...\n       olo-rex-link move put-back ID\n       olo-rex-link move add-keys ID HEX\n       olo-rex-link move take-keys ID\n       olo-rex-link move reach DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT\n       olo-rex-link move look-pane [--screens HEX] PID...\n       olo-rex-link move key DIR\n       olo-rex-link move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude PATTERN]... [--also /var/tmp/NAME]... [--detach]\n       olo-rex-link move allow ID PUBLIC-KEY-LINE [--root /var/tmp/NAME]...\n       olo-rex-link move disallow ID\n       olo-rex-link move receive --id ID   (a move's key's forced command)\n       olo-rex-link move status DIR\n       olo-rex-link move stop [--spare PID]…";
 
 pub fn run(args: Vec<String>) -> ! {
     let code = match args.first().map(String::as_str) {
@@ -62,6 +62,7 @@ pub fn run(args: Vec<String>) -> ! {
         Some("stop") => stop(&args[1..]),
         Some("look") => look(&args[1..]),
         Some("codex-stop") => codex_stop(),
+        Some("halt") => halt(&args[1..]),
         Some("add-keys") => add_keys(&args[1..]),
         Some("take-keys") => take_keys(&args[1..]),
         Some("keep") => keep_own(&args[1..]),
@@ -1725,7 +1726,7 @@ async fn send_part(s: std::sync::Arc<Sending>, part: Part, k: usize, standing: S
             let io = Blocking { stream: channel.into_stream(), handle: tokio::runtime::Handle::current(), standing: standing.clone() };
             let options = olo_rex_sync::wire::Options { filter, progress: Some(progress), ..olo_rex_sync::wire::Options::default() };
             tokio::task::spawn_blocking(move || olo_rex_sync::wire::send(io, &source, options)).await.map_err(|e| e.to_string())?.map_err(|e| match e.kind() {
-                io::ErrorKind::UnexpectedEof | io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset => format!("the destination ended the session ({e}): it refused to write there, or stopped"),
+                io::ErrorKind::UnexpectedEof | io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset => format!("the copy ended early ({e})"),
                 _ => e.to_string(),
             })?
         } else {
@@ -2157,6 +2158,41 @@ fn codex_daemon() -> Option<i32> {
     let start: u64 = stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()?;
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
     (start == ticks && cmdline.split(|&b| b == 0).any(|w| w == b"app-server")).then_some(pid)
+}
+
+/// `move halt DIR`: the move's copy that runs from DIR ended (a move given
+/// up): by its pid file, once that process is seen to be that copy (its
+/// command line `move send` for DIR), asked first, then ended.
+fn halt(args: &[String]) -> i32 {
+    let [dir] = args else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let dir = PathBuf::from(dir);
+    let Some(pid) = std::fs::read_to_string(dir.join("pid")).ok().and_then(|s| s.trim().parse::<i32>().ok()) else {
+        println!("{}", serde_json::json!({"halted": false}));
+        return 0;
+    };
+    let ours = std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| {
+        let words: Vec<&[u8]> = c.split(|&b| b == 0).collect();
+        words.contains(&b"move".as_slice()) && words.contains(&b"send".as_slice()) && words.iter().any(|w| Path::new(std::ffi::OsStr::from_bytes_compat(w)) == dir)
+    });
+    if !ours {
+        println!("{}", serde_json::json!({"halted": false}));
+        return 0;
+    }
+    // SAFETY: a signal to the move's own copy, checked above.
+    unsafe { libc::kill(pid, libc::SIGTERM) };
+    let until = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < until && proc_of(pid).is_some_and(|p| p.state != 'Z') {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if proc_of(pid).is_some_and(|p| p.state != 'Z') {
+        // SAFETY: as above.
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+    println!("{}", serde_json::json!({"halted": true}));
+    0
 }
 
 /// `move codex-stop`: Codex's daemon asked to end, and ten seconds given

@@ -24,10 +24,11 @@ too: "always do it through tmux never a script that just goes silent".
                                      and wait as `watch` does, for it alone; run
                                      again, it goes on waiting for the same one
   agents look [--by opus] [--about TEXT] PICTURE…   (Neon's look by default)
-                                     have a change's pictures looked at: by Astra 6.2
-                                     for what's wrong by a pixel (tools/dev/astra-look
-                                     is this), or by Opus 5.5 for the design itself
-                                     (--by opus: tools/dev/opus-look). The review is
+                                     have a change's pictures looked at: by Gemini 4
+                                     Neon at xhigh for what's wrong by a pixel
+                                     (tools/dev/agy-look is this), or by Opus 5.5 at
+                                     max for the design itself (--by opus:
+                                     tools/dev/opus-look). The review is
                                      written beside the first picture and printed,
                                      waited for as `investigate` waits
   agents list                        each one: what it's on, its state (working, asking,
@@ -100,7 +101,7 @@ for it nor written (the tool never takes the choice that would save a
 rule there).
 
 An agent can't start agents: OLO_SUBAGENT is set in its environment,
-which this script, agy-help, astra-look, agy-look and opus-look refuse, and agy,
+which this script and its front doors (agy-help, agy-look, opus-look) refuse, and agy,
 codex and claude are in DENY.
 """
 import hashlib
@@ -124,12 +125,10 @@ MODEL = "gemini-4-neon-xhigh"
 # The one Claude among them: Opus 5.5, for the design review of a
 # change's pictures (`look --by opus`, tools/dev/opus-look).
 OPUS = "claude-opus-5-5"
-# And Astra 6.2, in the Codex CLI at high: the look at a change's
-# pictures for what is wrong by a pixel (`look`, tools/dev/astra-look).
-# It was Gemini's for a day (Ben, 2026-11-23: "for the visual reviews
-# please go back to using astra 6.2 on high -- neon is missing too much
-# stuff"). The look only: subagents and the second investigator stay
-# Gemini's.
+# Astra 6.2, in the Codex CLI at high: kept for `look --by astra`, by
+# name only and never by default. Every helper is Gemini 4 Neon at xhigh
+# or Opus 5.5 at max (Ben, 2026-11-25: "everything should be either opus
+# 5.5 max or neon 4 xhigh").
 ASTRA = "gpt-6.2-astra"
 # What each program's TUI shows (agy 1.5.14, Claude Code 2.1.330; both
 # drawn inline, so the pane's history is the transcript). A question
@@ -262,7 +261,9 @@ def cli(name):
 
 
 def state(name):
-    """gone, exited, asking, working or idle (its turn over, waiting)."""
+    """gone, exited, starting (Claude Code asking to trust its own
+    folder, which the tool answers: no one's question), asking, working
+    or idle (its turn over, waiting)."""
     # (A session that isn't there: `display-message` answers nothing and
     # succeeds, and a bare name matches another's by its start; `=` is the
     # name exactly.)
@@ -274,6 +275,10 @@ def state(name):
     if r.stdout.strip() == "1":
         return "exited"
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+    # (Read as asking, a look starting on a new folder was shown to a
+    # minder as a question for two seconds, 2026-11-25.)
+    if cli(name) == "claude" and any("Yes, I trust this folder" in l for l in lines) and any(folder(name) in l for l in lines):
+        return "starting"
     if any(ASKING[cli(name)] in l for l in lines[-14:]):
         return "asking"
     if lines and WORKING[cli(name)] in lines[-1]:
@@ -965,13 +970,14 @@ def watch(stuck_min, only=None, at_most=None, among=None):
         # minute on a minder that took it at its word, 2026-11-24.)
         out_of_time = bool(at_most) and time.time() - began >= at_most * 60
         rows = [n for n in names() if only in (None, n) and (not among or any(n.startswith(p) for p in among))]
-        if not any(state(n) in ("working", "asking", "idle") for n in rows):
+        if not any(state(n) in ("starting", "working", "asking", "idle") for n in rows):
             print("agents: none running")
             return 1 if only else 0
         for n in rows:
             st = state(n)
             m = meta(n) or {}
-            if st == "asking" and trusts_own_folder(n):
+            if st == "starting":
+                trusts_own_folder(n)
                 continue
             if st == "asking":
                 question = asked(n)[0]

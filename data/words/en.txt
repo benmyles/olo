@@ -32,6 +32,7 @@
 1 request today
 1 second
 1 session
+1 session with {} is back on {}.
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.
 10 Minutes
@@ -127,6 +128,7 @@ A dotted line
 A finger ({} so far)
 A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
 A frame dropped in the last minute
+A host isn’t reached
 A key with no name
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 A little room
@@ -134,6 +136,7 @@ A look at the infrared camera can stand for your password: sudo in Terminal, adm
 A lot of room
 A mirror failed ({}): {}
 A month
+A move needs Olo’s helper on both hosts, built for their machines.
 A name can't have a slash, start with a dot or a dash, or end in .lock.
 A name, without “/”.
 A new build of Olo ({}) and {} are ready. Click to choose.
@@ -145,6 +148,7 @@ A new name for the tab “{}”:
 A newer version was installed after {} started. Restart it to use the new one.
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 A palm, ignored ({} so far)
+A pane
 A path: /…, ~/… or a name here
 A picture of your own
 A process needs at least one core.
@@ -156,6 +160,7 @@ A rising swell
 A row of dots
 A script of {} failed (code {}).
 A setting comes before any [repository].
+A shell, in its folder
 A small program of Olo’s, put on each host by Rex, sends what you type there in order and at once. A host’s own window says whether it has it.
 A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 A thick line
@@ -179,6 +184,9 @@ API key:
 About 
 About Olo
 About Olo Desktop
+About a minute left
+About {n} hours left
+About {n} minutes left
 About {}
 About…
 Acceleration:
@@ -236,6 +244,9 @@ Add an App…
 Add an account in Preferences
 Add lunch tomorrow at noon
 Add one in Rex or in Preferences ▸ Rex.
+Add the host it goes to in Rex first (Add Host), connected, then move to it.
+Add the host you want to move to and connect to it, then come back here.
+Add the host you want to move to and connect to it, then come back.
 Add the one-time code this page shows to your login {}?
 Add to Collector
 Add “{}” to Favorites
@@ -257,6 +268,8 @@ After tap and drag:
 After the active window
 After {n} minutes
 After {n} seconds
+Afterwards, on {}
+Afterwards, {} is stopped; its files stay where they are.
 Again
 Again:
 Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
@@ -321,6 +334,11 @@ Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you t
 Allowed with {}
 Along the Top
 Already saved as “{}”.
+Also copy your folder in /var/tmp ({})
+Also copy your folders in /var/tmp (you have none)
+Also copy your folders in /var/tmp ({} folders, {})
+Also copy your {} folders in /var/tmp ({})
+Also copy ~/.cache (rebuilt as it’s used)
 Also from the Deskbar: click the cup.
 Also leave out:
 Also used by
@@ -603,6 +621,9 @@ Bookmark Manager
 Bookmark This Tab
 Boost when work arrives and ease back between tasks.
 Boosted {} dB (suggested)
+Both hosts must be connected in Rex to move an account.
+Both hosts must be in Rex to go back.
+Both hosts must be in Rex to move an account.
 Bottom Half
 Bottom Left Quarter
 Bottom Right Quarter
@@ -685,6 +706,7 @@ Cancel Trimming
 Cancel echo from the speakers
 Can’t come back as it was: {} and {} more.
 Can’t come back as it was: {}.
+Can’t move {} to {}
 Cap unwritten data in memory
 Caps Lock is another Control key
 Capture Client Requests Again
@@ -956,12 +978,18 @@ Copy Username
 Copy Value
 Copy Version Info
 Copy a code no tab is waiting for
+Copy its folders in /var/tmp too (it has none)
+Copy its folders in /var/tmp too ({} folders, {})
 Copy the Code That Just Came
 Copy to clipboard
+Copy ~/.cache too (caches, made again as they are used)
 Copy-on-write
 Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Copying sessions…
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
+Copying what changed since the first copy
+Copying your files to {}…
+Copying {}’s home to {}…
 Copying…
 Core
 Cores
@@ -1031,6 +1059,8 @@ Couldn’t {}
 Couldn’t {} on {}
 Count accounts turned off or signed out
 Countdown
+Counting files
+Counting the files to copy
 Counting what there is to back up: {}, {} so far.
 Counting what to back up
 Cover
@@ -1404,6 +1434,7 @@ Everyone with an account on {} may sign in. The list is kept in {}.
 Everything
 Everything Else
 Everything else's brightness
+Everything in its home goes to the host you choose, machine to machine: its files, its agents’ settings, sign-ins and sessions. Its Rex sessions are made again there with each agent back in its own session. The old host is stopped, its files left where they are.
 Everything it needs looked for, in {}.
 Export
 Export Flattened PDF
@@ -1749,6 +1780,7 @@ Holding at least
 Holds
 Home
 Home Page
+Home folder
 Host
 Host “{}”
 Hosts
@@ -1877,6 +1909,7 @@ Is waiting for me
 It Matches
 It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
+It can’t be stopped halfway now.
 It can’t be stopped once it has started.
 It couldn’t be fetched: {}
 It couldn’t be reached ({}). Olo keeps trying.
@@ -1887,6 +1920,7 @@ It didn’t say why.
 It didn’t work.
 It downloads {}
 It goes on once there’s one. {}. {}.
+It has no Rex sessions.
 It has no [repository] in it.
 It has the active window: never lowered while it does.
 It isn't a WireGuard configuration: {}.
@@ -1911,8 +1945,11 @@ Its click is its own: a resting palm can't press.
 Its contacts haven’t come (Sync Contacts, on the phone)
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 Its file, {}, is removed
+Its files are copied while it works, then once more after it is stopped: only that last copy keeps it from working.
 Its folder becomes {}, and its branch, {}, takes the new name too.
 Its folder becomes {}; its branch stays as it is.
+Its home
+Its home moves from {} to {}: the paths its agents and tools keep are made the new home’s.
 Its key is damaged.
 Its key isn't in this login keyring: it opens only on the computer that made it.
 Its own
@@ -1924,8 +1961,11 @@ Its power limit is the computer's to set, as a laptop's is.
 Its release packages are installed: they add its repositories and keys.
 Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
+Its services, Rex’s server there, its crontab
 Its services, accounts and log, managed as root in their own window.
 Its sessions may:
+Its sessions, made again
+Its sessions, services, timers, crontab and Rex server are stopped.
 Its sign-in isn’t in the keyring: sign in again.
 Its vault is gone from 1Password
 Its versions can’t be read: {}.
@@ -2026,6 +2066,7 @@ Large
 Large pieces
 Larger
 Larger Pointer
+Largest: {}
 Last
 Last 30 days
 Last 7 days
@@ -2145,10 +2186,13 @@ Look:
 Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
 Looking at Bluetooth…
+Looking at both hosts
 Looking at its disk…
+Looking at what it holds
 Looking at what’s there
 Looking at what’s there…
 Looking at which processes use it…
+Looking at {} and {}…
 Looking at {}…
 Looking for Bluetooth…
 Looking for a newer release…
@@ -2216,6 +2260,7 @@ Makefile
 Making a hotspot (below)
 Making it again, empty
 Making it…
+Making your sessions again on {}
 Manage Host…
 Manage Rex Server…
 Manage…
@@ -2238,6 +2283,8 @@ Match:
 Max
 Maybe
 Measuring the round trip…
+Measuring what its home holds
+Measuring {}’s home
 Media errors
 Medium
 Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
@@ -2284,6 +2331,7 @@ More Menus
 More main windows
 More noise
 More space between windows
+Most of it: {}.
 Mostly clear
 Mostly clear and drizzle
 Mostly clear and flurries
@@ -2327,6 +2375,7 @@ Mounted At
 Mouse
 Mouse speed
 Move
+Move Account
 Move All
 Move All Windows To
 Move All to Trash
@@ -2355,15 +2404,22 @@ Move the tile's edge down
 Move the tile's edge left
 Move the tile's edge right
 Move the tile's edge up
+Move to Another Host…
 Move to Archive
 Move to New Window
 Move to Trash
 Move to Workspace
 Move to the scratchpad
 Move to {}
+Move undone
+Move {} to another host
+Move {} to {}
+Moved to {}
 Moved “{}” to the Archive.
+Moving Rex over
 Moving {} to the Trash
 Moving {} to the Trash…
+Moving {} to {}…
 Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
 Music
 Music Quality (AAC)
@@ -2392,6 +2448,10 @@ Needed by another package
 Needs curl there
 Needs full access
 Needs git there
+Needs {} with room to spare · {} free on {}
+Needs {} with room to spare; only {} free on {}.
+Needs {} with room to spare; {} free. Without /var/tmp it fits.
+Needs {} · {} free on {}
 Neither kind of Rex server is in use on {}. Start one of them:
 Network
 Network name
@@ -2484,6 +2544,7 @@ No Keypad
 No Other Windows
 No Pull Request
 No Receivers Paired
+No Rex sessions.
 No SSH hosts yet
 No Saved Groups
 No Section
@@ -2523,6 +2584,7 @@ No new notifications
 No notes.
 No one on Telegram is called {}.
 No open files.
+No other host to move to
 No phone found yet.
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 No phone paired
@@ -2581,6 +2643,7 @@ Not answered
 Not applied yet.
 Not applied.
 Not applied: an administrator's password is needed.
+Not at their prompts in time, so the move’s message isn’t typed in: {}.
 Not backed up yet
 Not boosted
 Not boosted (suggested)
@@ -2595,7 +2658,9 @@ Not cloned
 Not connected
 Not connected: only public repositories’ pull requests show.
 Not connected: {}.
+Not copied from /var/tmp: {}.
 Not enough touches to learn from
+Not everything of the move’s was tidied away: {}
 Not fixed with the others: it has its own button.
 Not found
 Not imported: {}
@@ -2641,16 +2706,22 @@ Nothing due today
 Nothing else was changed.
 Nothing found
 Nothing found by that name or address.
+Nothing has changed yet.
 Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
 Nothing is changed until you choose something to do.
+Nothing is changed yet.
 Nothing more today
 Nothing new
 Nothing new to learn
+Nothing of yours on {} was deleted.
 Nothing on this computer is granted to “{}”. To grant it something, see Preferences ▸ Rex.
 Nothing on {} is changed yet.
 Nothing on {} is known until it connects.
 Nothing on {} is known until it’s connected.
+Nothing on {} was stopped. Try Again goes on with the copy.
+Nothing on {} was stopped; it keeps working. Close leaves the part already copied on {}; nothing else there changes.
+Nothing on {} was stopped; it keeps working. Close leaves what was copied on {}, and its own files as they were.
 Nothing read yet
 Nothing recorded yet. Press Record and talk for a few seconds.
 Nothing to calculate
@@ -2764,6 +2835,9 @@ On this computer
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 On {}
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
+On {}, everything is stopped; its files are still there.
+On {}, its own files are put back as they were.
+On {}, its services, crontab and Rex server are running again.
 On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
 On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
 On: brush starts olo-complete as you next type in it.
@@ -3098,8 +3172,10 @@ Put Back
 Put a device in pairing mode to see it here.
 Put the computer to sleep after:
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
+Putting Olo’s helper on both hosts
 Putting it in place
 Putting {} back
+Putting {} back as it was.
 Putting {} back…
 Python
 Python bytecode and virtual environments
@@ -3154,6 +3230,7 @@ Reading the log…
 Reading the packages…
 Reading the updates…
 Reading your logins in Passwords…
+Reading {}’s sessions
 Reading…
 Reads
 Ready
@@ -3375,6 +3452,7 @@ Rows
 Rows:
 Ruby
 Ruler
+Run again:
 Run module
 Run on it with “olo-screen run”
 Running
@@ -3384,6 +3462,7 @@ Running sudo as {}
 Running systemctl as {}
 Running, started again once
 Running, started again {n} times
+Runs again:
 Runs on
 Russian
 Rust
@@ -3522,9 +3601,11 @@ Server’s window
 Service
 Service Order
 Services
+Services, crontab and the Rex server
 Session:
 Sessions
 Sessions on this computer may:
+Sessions on {}
 Sessions on {} may:
 Sessions there keep running.
 Sessions used in
@@ -3551,6 +3632,7 @@ Setting it: an administrator’s password is asked…
 Setting up backups to {}…
 Setting up needs root. Nothing on {} is changed yet.
 Setting up the backups in {}’s Google Drive…
+Setting up your home on {}
 Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 Setting up {} of {}…
@@ -3696,10 +3778,12 @@ Software License
 Software Update
 Sol 6.1
 Some accounts connected weren’t allowed Google Drive: sign in again there, and allow it.
+Some files couldn’t be labelled for SELinux: {}
 Some items are left out…
 Some of what changed takes effect only once the computer starts again.
 Some room
 Some waiting
+Someone is signed in to {} with a terminal: what they run is stopped too.
 Sonnet 5.5
 Sorry, that didn't work. Please try again.
 Sort By
@@ -3744,7 +3828,10 @@ Started {n} minutes ago
 Starting Tailscale…
 Starting Up
 Starting over…
+Starting the agents on {}
 Starting the agent…
+Starting {} again and putting {} back
+Starting {} again…
 Starting…
 Starts flushing
 Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
@@ -3763,7 +3850,9 @@ Steady rain
 Steady sleet
 Steady snow
 Step 1 is done. Try Again carries on from step 2.
+Step {} of 4
 Step {} of {}
+Step {} of {} · {} of {} changed files copied
 Steps 1 to {} are done. Try Again carries on from step {}.
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 Stop
@@ -3782,10 +3871,13 @@ Stopped
 Stopped after ending too often
 Stopped before step {} of {}
 Stopped part way, {}
+Stopped with it: sessions, services, timers, crontab and the Rex server.
 Stopped · {}
 Stopped.
+Stopped: its sessions, its own services and timers, its crontab, Rex’s server there. Its files all stay where they are.
 Stopped: what was restored so far is there.
 Stopping after this step…
+Stopping everything on {}
 Stopping the backup
 Store
 Stretch the charge and keep everyday work responsive.
@@ -3937,8 +4029,11 @@ The GPU
 The MTU is a number of bytes.
 The New Build
 The Rex server isn’t connected.
+The SSH keys that sign in to {} will sign in to {} too.
 The Theme’s Own
+The Token Pool couldn’t be put on {}: put it there from its Hosts window.
 The Token Pool running on this computer is older: upgrade it first.
+The Token Pool’s sign-ins it keeps go with it, kept on the new host.
 The VPN couldn't be saved.
 The Window Server can’t be stopped, only restarted.
 The account answering now
@@ -3984,6 +4079,7 @@ The first look is two minutes after it starts.
 The folder is a place under your home there (src/name).
 The hand-written ones: not fine-tuned yet
 The host didn’t say what it has.
+The hosts
 The icons on the desktop (Tracker).
 The icons {} is drawn with, everywhere.
 The infrared camera couldn’t be opened (its shutter, or another program).
@@ -4024,12 +4120,16 @@ The model wasn't good enough to keep
 The module
 The most powerful (the processor)
 The most powerful ({})
+The move didn’t finish, and {} is stopped
+The move was given up
 The network couldn't be asked for receivers.
 The next 12 hours
 The next 3 hours
 The next 6 hours
 The next backup sends again what it can.
 The next hours, each its sky and temperature, with the chance of rain or the cloud.
+The old host
+The old host stopped answering
 The one it started on
 The ones you choose, cloned in your home folder there and set up once.
 The open files hold from the next sign-in (for the panes you have open, after Disconnect and Connect), and for services from their next start.
@@ -4114,9 +4214,15 @@ There's no Wi-Fi adapter.
 There: {} <{}>  ·  Here: {} <{}>
 There’s no fingerprint sensor, or fprintd isn’t running.
 There’s no infrared camera.
+There’s {} free on {}; this needs {} ({} plus room to spare).
+There’s {} free on {}; this needs {} ({} plus room to spare). Without /var/tmp it needs {} and fits.
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
+These didn’t start on {}: {}.
+These don’t start on {} (built for another machine?): {}. Set Up This Host’s Account installs them again.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
+These still name the old home, left as they are: {}.
 These take effect at once:
+They’re sent in parallel streams once counted.
 ThinkPad
 Thinking ({})…
 Thinking:
@@ -4179,6 +4285,7 @@ Tidied away
 Tidy away read notifications after
 Tidying goes on by itself once it’s back, from where it got to.
 Tidying old backups
+Tidying up
 Tidying: letting go of old snapshots
 Tile
 Tile All
@@ -4200,6 +4307,7 @@ Title
 Title and preview
 Title only
 Title:
+To
 To Do
 To allow it, you can also {}.
 To the next display
@@ -4276,6 +4384,8 @@ Trust & Connect
 Trust this repository’s key?
 Trusting the key…
 Try Again
+Try Again goes on from where it left off. Undo Move starts {} again and puts {} back as it was.
+Try Again goes on from where it stopped. Undo Move starts {} again as it was and puts {} back.
 Try It…
 Try Voice Processing
 Try again now.
@@ -4327,6 +4437,7 @@ Type {} on “{}”, then press Return.
 Type:
 TypeScript
 Typed to the coding agent in a pane once its turn is over and the pane has been quiet two minutes, at most once an hour. Turned on in the Agents menu, or a pane’s or tab’s menu.
+Typed, not run:
 Typically
 Typing
 Typing helper
@@ -4348,6 +4459,7 @@ Undo Transaction…
 Undo Window Arrangement
 Undo window arrangement
 Undo {}
+Undoing the move…
 Undo…
 Unexpected input
 Unfinished: {} ({}) done and {} sent; the next backup goes on from there.
@@ -4371,6 +4483,7 @@ Unread notifications put a blue dot beside their app.
 Unreaped for
 Unsafe shutdowns
 Until Turned Off
+Until this finishes, {} stays stopped.
 Until:
 Unwritten at most
 Up
@@ -4598,6 +4711,7 @@ While downloading
 While less is free than
 While sharing or recording the screen (errors wait too)
 While uploading
+While your files are copied, you can keep using {}. It stops only for a last copy of what changed, and stays stopped; its files stay where they are.
 Why
 Why misses missed
 Wi-Fi
@@ -4678,6 +4792,8 @@ Yes
 Yes in {} s
 Yesterday
 Yesterday {}
+You can keep using {} meanwhile.
+You can keep using {} while your files are copied. Then it stops for good, after a last copy of what changed; its files are kept.
 You don't have permission to see inside this folder.
 You don’t have permission to read it in 1Password.
 You stopped it {}. {}. {}
@@ -4697,11 +4813,15 @@ Your face wasn’t recognised. Type your password.
 Your face wasn’t seen well enough: sit facing the camera, at arm’s length, and try again.
 Your home folder
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
+Your home moves from {} to {}: the paths your agents and tools keep are made the new home’s.
+Your home, your agents’ settings, sign-ins and Rex sessions go straight from {} to the host you choose, not through this computer.
+Your home, your agents’ settings, sign-ins and Rex sessions go straight from {} to the host you choose, not through this computer. Afterwards {} is stopped; its files stay where they are.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Your name and address on commits made there, as on this computer.
 Your notes, files and forwarded messages
 Your other devices on Tailscale can reach these sessions.
 Your own files and folders
+Your own files on {} are back as they were; what was copied stays there.
 Your own:
 Your palm model couldn't be saved
 Your palm model is ready: saving…
@@ -4712,8 +4832,11 @@ Your palm over the right edge
 Your password couldn’t be checked ({}).
 Your phone’s calls, messages and one-time codes.
 Your repositories
+Your services, timers, crontab and the Rex server on {} are running again.
 Your settings as they were are in “{}”.
 Your shirt against the touchpad
+Your sign-ins in the Token Pool are on {} now.
+Your sign-ins in the Token Pool move to {}.
 Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.
 Your touchpad
 Your voice came in at {} dB; voice processing aims for {} dB.
@@ -4765,6 +4888,7 @@ and frees {}.
 and needs no more disk space.
 and takes {} more disk space.
 and the {n} items in it
+and {n} more panes
 and {} more
 app_server's main thread: nice {}{}, {}
 applied
@@ -5020,6 +5144,7 @@ this connection still uses it
 this event
 this site
 tidying
+to {}.
 today
 today at {}
 today or tomorrow
@@ -5069,6 +5194,8 @@ your own picture
 {n} More in Calendar…
 {n} SSH keys
 {n} agent screens are running. Click to watch them.
+{n} agents are back in their own sessions.
+{n} agents carried on where they left off.
 {n} archived items aren’t
 {n} backups
 {n} backups chosen.
@@ -5100,6 +5227,7 @@ your own picture
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 {n} overdue
 {n} packs as sent, by their checksums
+{n} panes
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 {n} ports forwarded here.
 {n} problems reading 1Password…
@@ -5148,6 +5276,8 @@ your own picture
 {} MB
 {} Preferences
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
+{} SSH keys for {} now sign in to {} too.
+{} SSH keys that could sign in to {} can sign in to {} too.
 {} Settings…
 {} Type your password.
 {} Wh of {} Wh new ({}%)
@@ -5169,6 +5299,7 @@ your own picture
 {} begun in the last minute (swipes, pinches, holds)
 {} bytes
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
+{} can’t be moved to {}
 {} can’t be set up from here
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Unlock Olo Passwords, or add a key to it that root there accepts.
@@ -5180,6 +5311,8 @@ your own picture
 {} continued there
 {} copied: 1Password doesn’t let other apps read its archive.
 {} couldn't be found: {}
+{} couldn’t all be put back: {}
+{} couldn’t all be started again: {}
 {} couldn’t be cloned: {}
 {} couldn’t be unpacked.
 {} d
@@ -5221,10 +5354,14 @@ your own picture
 {} in the last second
 {} in the last second, at {}
 {} in {}
+{} in {} files
+{} in {} files, copied machine to machine while it works.
 {} in {} s
 {} in {}, by the last backup.
 {} in {}.
 {} is Fedora’s own: it can be turned off, not removed.
+{} is as it was
+{} is as it was: its services, Rex’s server there and its crontab started again.
 {} is available.
 {} is back
 {} is being installed ({}, {}%). Olo switches to it when it's done: your windows stay open.
@@ -5235,8 +5372,12 @@ your own picture
 {} is installed  ·  up to date
 {} is installed  ·  {} is available
 {} is protected by a password.
+{} is put back as it was before the move.
 {} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{}
 {} is ready. Click to upgrade.
+{} is stopped, its files all still there.
+{} is stopped, its files all still there. Try Again goes on from where it was; Go Back starts {} again as it was.
+{} is stopped. Try Again goes on from where it was; Go Back starts it again as it was.
 {} is there already.
 {} is too big a picture
 {} is undefined there
@@ -5244,20 +5385,24 @@ your own picture
 {} is waiting for a login.
 {} is waiting for a passkey.
 {} is waiting for you
+{} is {}, {} is {}: programs built for one don’t run on the other.
 {} isn't paired with.
 {} isn't shaped.
 {} isn't there (a disk not plugged in?)
 {} items in it, {} unpacked
+{} keeps working meanwhile.
 {} kept in {}{}.
 {} kept of {}
 {} kept, still shared with builds' target folders
 {} keys
+{} keys that signed in to {} sign in to {} too.
 {} keys, at {}
 {} knows this computer.
 {} later: gone
 {} least, {} now
 {} likely from {}
 {} link clipping.txt
+{} made again on {}.
 {} min
 {} min ago
 {} minutes after
@@ -5281,9 +5426,11 @@ your own picture
 {} of your newest commands, kept back to test it ({} hand-written)
 {} of {}
 {} of {} Events Found
+{} of {} changed files copied
 {} of {} cloned
 {} of {} connected.
 {} of {} connections
+{} of {} files
 {} of {} free
 {} of {} freed
 {} of {} pages
@@ -5316,6 +5463,7 @@ your own picture
 {} s ago
 {} said:
 {} sent “{}”
+{} sessions with {} are back on {}.
 {} shared with this screen
 {} since the computer started{}
 {} starting in about {} minutes
@@ -5346,6 +5494,7 @@ your own picture
 {} was turned on.
 {} whole{}, and {} a word at a time
 {} will hold:
+{} with {} made again on {}.
 {} words a minute · {}% right
 {} {}, {} there
 {} µs a report typically, the longest {} µs
@@ -5375,6 +5524,9 @@ your own picture
 {}'s {} quota
 {}, all day
 {}, all disks
+{}, and {} is stopped
+{}, in its newest session (a guess)
+{}, in its own session
 {}, in place of its code
 {}, in the folder “{}”
 {}, in “{}”
@@ -5382,9 +5534,13 @@ your own picture
 {}, on set days
 {}, over SSH
 {}, over Tailscale
+{}, resumed
+{}, resumed (a guess at which conversation)
+{}, started again
 {}, until {}
 {}, {}
 {}, {} new to the backup, {} sent so far.
+{}, {} on {}
 {}, {} shown in this Terminal.
 {}, {}%
 {}, {}% of its life used
@@ -5394,6 +5550,7 @@ your own picture
 {}. Click to stop.
 {}. The next backup starts afresh.
 {}. Until then Token Pool asks {} to wait.
+{}/s in {} streams, {} · {} keeps working meanwhile.
 {}: 1 application. Click to show it.
 {}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode.
 {}: Focus, only the active window shows, zoomed. Click to choose a windowing mode.
@@ -5404,6 +5561,7 @@ your own picture
 {}: expected auto, conservative, or off
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: it can’t keep a secret for Olo (no hmac-secret)
+{}: its shell, in its folder
 {}: left as it is here, as this computer's couldn't be saved first.
 {}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
 {}: not here yet
@@ -5416,6 +5574,9 @@ your own picture
 {}: {}
 {}: {} applications. Click to show them.
 {}: {} examples, {} steps, {} ms on the {}
+{}: {}, back in its own session
+{}: {}, in its newest session there (a guess)
+{}: {}, started again
 {}: {}. {}. {}
 {}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
 {}; not allowed {} (sign in again)

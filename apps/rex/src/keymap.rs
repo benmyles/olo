@@ -271,6 +271,9 @@ pub fn action_catalog() -> Vec<ActionSpec> {
             args_schema: None,
         },
         ActionSpec { id: "host.manage", title: "Manage Host…", category: "Network", keywords: &["host", "helper", "bridge", "skill", "install", "remove", "server"], args_schema: None },
+        // (The account on the host in front moved whole to another of the
+        // person's hosts: `host.move:KEY` for another's.)
+        ActionSpec { id: "host.move", title: "Move to Another Host…", category: "Network", keywords: &["move", "migrate", "host", "account", "home", "copy", "server"], args_schema: None },
         ActionSpec {
             id: "host.permissions",
             title: "This Host’s Permissions…",

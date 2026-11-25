@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use olo_kit::{
-    Bounds, Child, Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, metrics as m, point, px, size, style, theme,
+    Bounds, Child, Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, icons, metrics as m, point, px, size, style, theme,
     widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, StringView, TextControl, TextField, divider_for},
 };
 use olo_rex_client::{AgentStatus, SshAskpass};
@@ -960,6 +960,467 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
             .child(buttons().child(button("Back", SetupDo::Back).default(true)))
             .into_element(),
         Stage::Done => col(),
+    }
+}
+
+/// The Move window's width: Add Host's.
+pub const MOVE_WIDTH: f32 = ADD_HOST_WIDTH;
+
+/// What the Move window asks of the move.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MoveDo {
+    /// The destination chosen in its menu (by its place).
+    Pick(usize),
+    /// Go on with the destination chosen.
+    Choose,
+    /// Its folders in `/var/tmp` brought too, or not.
+    VarTmp(bool),
+    /// `~/.cache` brought too, or not.
+    Cache(bool),
+    /// The plan agreed to (or Try Again): move.
+    Go,
+    /// The source started again as it was.
+    GoBack,
+    /// No other host to move to: Add Host.
+    AddHost,
+    /// Refused: back to choosing the host.
+    Rechoose,
+    /// Stop where it stands, and close.
+    Cancel,
+    /// Close the window (a move done, or one that can't be made).
+    Close,
+}
+
+/// The Move window: where a move of an account to another host stands
+/// (`crate::moving`), each stage as Add Host's setting up is drawn.
+pub fn render_move_panel(mv: &crate::moving::Move, phase: f32, on_do: impl Fn(&MoveDo, &mut WindowCx) + 'static) -> Element {
+    use crate::moving::Stage;
+    use olo_kit::FontWeight;
+    use olo_kit::widgets::{AlertFrame, MenuField, StatusBar, alert_title};
+    use olo_rex_client::migrate::size_words;
+    let on_do = std::rc::Rc::new(on_do);
+    let button = |label: &'static str, what: MoveDo| {
+        let on_do = on_do.clone();
+        Button::new(label).on_click(move |_, cx| on_do(&what, cx))
+    };
+    // (Its titles as the other alerts' are; the plan's heads a step under
+    // them, quiet: the parts of one question, not its peers.)
+    let title = |text: String| StringView::new(text).bold(true).wrap(true);
+    let body = |text: String| StringView::new(text).wrap(true);
+    let secondary = |text: String| StringView::new(text).dim(true).wrap(true);
+    let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
+    // (A list's line: one row a label's height, its rows 20 points apart.)
+    let cell = |text: String| StringView::new(text).height(m::LABEL_ROW);
+    let col = || div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).w_full();
+    let buttons = || olo_kit::widgets::button_row().pt(px(m::TIGHT));
+    let gap = |h: f32| div().h(px(h)).flex_shrink_0();
+    let width = |t: &str, weight| f32::from(style::text_width(t.to_owned(), style::PLAIN_SIZE, style::ui_font(weight))).ceil();
+    // (A full stop at a line's end; what a host or a program said, its
+    // first letter capital too. Never a line of the move's own, which may
+    // name a host: as the person spelled it.)
+    let stop = |text: &str| -> String {
+        let mut out = text.trim().to_owned();
+        if !out.is_empty() && !out.ends_with(['.', '!', '?', ':']) {
+            out.push('.');
+        }
+        out
+    };
+    let sentence = |text: &str| -> String {
+        let t = text.trim();
+        stop(&t.chars().take(1).flat_map(char::to_uppercase).chain(t.chars().skip(1)).collect::<String>())
+    };
+    // A group of the plan: its quiet head, then its rows; a step above
+    // each but the first.
+    let group = |first: bool, head: String, rows: Vec<Element>| {
+        div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .pt(px(if first { 0.0 } else { 14.0 - m::SPACING }))
+            .child(StringView::new(head).size(style::SMALL_SIZE).bold(true).dim(true).height(m::LABEL_ROW))
+            .child(gap(4.0))
+            .child(div().flex().flex_col().gap(px(4.0)).w_full().children(rows))
+    };
+    // Every stage under way one height: its title, the bar with its words
+    // above it and a line under it (never empty), then the button row with
+    // how the old host stands at its left and Cancel (dimmed where it
+    // can't be).
+    let progress = |heading: String, bar: StatusBar, detail: String, state: String, can_cancel: bool| {
+        col()
+            .child(title(heading))
+            // (The detail 8 points under the bar: the three lines one unit.)
+            .child(div().flex().flex_col().gap(px(4.0)).w_full().child(bar).child(StringView::new(detail).size(style::SMALL_SIZE).dim(true).cut(true).height(m::LABEL_ROW)))
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .pt(px(m::TIGHT))
+                    // (On the button's baseline, smaller as it is.)
+                    .child(div().flex_1().min_w_0().child(StringView::new(state).size(style::SMALL_SIZE).dim(true).beside(style::PLAIN_SIZE).cut(true)))
+                    .child(button("Cancel", MoveDo::Cancel).enabled(can_cancel)),
+            )
+            .into_element()
+    };
+    let (from, to) = (mv.source_label.clone(), mv.dest_label.clone());
+    match &mv.stage {
+        Stage::Choosing { choices, .. } if choices.is_empty() => AlertFrame::new("info")
+            .child(alert_title(olo_kit::words::tr("No other host to move to").to_string()))
+            .child(gap(m::TIGHT))
+            .child(body(olo_kit::words::tr("Add the host you want to move to and connect to it, then come back.").into()))
+            .child(gap(m::SPACING))
+            .child(buttons().child(button("Close", MoveDo::Close)).child(button("Add Host…", MoveDo::AddHost).default(true)))
+            .into_element(),
+        Stage::Choosing { choices, chosen } => {
+            let names: Vec<olo_kit::SharedString> = choices.iter().map(|(_, label)| label.clone().into()).collect();
+            let on_pick = on_do.clone();
+            let menu = MenuField::new("move-to", names, *chosen).label("To:").width(160.0).on_change(move |i: &usize, cx| on_pick(&MoveDo::Pick(*i), cx));
+            // (What goes, quiet; what becomes of the old host, a line of
+            // its own in the body's colour: the one that matters.)
+            col()
+                .child(title(olo_kit::tr!("Move {} to another host", from).into()))
+                .child(menu)
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.0))
+                        .w_full()
+                        .child(small(
+                            olo_kit::tr!("Your home, your agents’ settings, sign-ins and Rex sessions go straight from {} to the host you choose, not through this computer.", from).to_string(),
+                        ))
+                        .child(body(olo_kit::tr!("Afterwards, {} is stopped; its files stay where they are.", from).to_string())),
+                )
+                .child(buttons().child(button("Cancel", MoveDo::Cancel)).child(button("Continue", MoveDo::Choose).default(true)))
+                .into_element()
+        }
+        Stage::Looking { what, step } => progress(
+            olo_kit::tr!("Looking at {} and {}…", from, to).into(),
+            StatusBar::busy(phase).label(what.clone()),
+            olo_kit::tr!("Step {} of 4", step).to_string(),
+            olo_kit::words::tr("Nothing has changed yet.").to_string(),
+            true,
+        ),
+        Stage::Refused { why, more } => {
+            let mut frame = AlertFrame::new("warning").child(alert_title(olo_kit::tr!("Can’t move {} to {}", from, to).to_string()));
+            for line in why {
+                frame = frame.child(gap(m::TIGHT)).child(body(sentence(line)));
+            }
+            let mut row = buttons();
+            if *more {
+                row = row.child(button("Choose Another Host…", MoveDo::Rechoose));
+            }
+            frame.child(gap(m::SPACING)).child(row.child(button("Close", MoveDo::Close).default(true))).into_element()
+        }
+        Stage::Confirm { plan, choices } => {
+            // The panes: each one's name, and what it comes back as (an
+            // agent resumed; a command typed or run again, in the
+            // terminal's face, as quiet as the rest of its column).
+            let agent_name = |a: &str| {
+                match a {
+                    "claude" => "Claude Code",
+                    "codex" => "Codex",
+                    "agy" => "Antigravity",
+                    other => other,
+                }
+                .to_owned()
+            };
+            let total: usize = plan.captured.iter().map(|c| c.panes.len()).sum();
+            // (Six at most, then how many more: an account of many panes
+            // still fits the smallest screen.)
+            let shown = if total > 7 { 6 } else { total };
+            let mut entries: Vec<(String, Element)> = Vec::new();
+            for c in &plan.captured {
+                let (runs, _, run_it) = olo_rex_client::migrate::pane_runs(c, &plan.panes, &|p| p.to_owned());
+                for p in &c.panes {
+                    if entries.len() == shown {
+                        break;
+                    }
+                    let name = if p.label.is_empty() { olo_kit::words::tr("A pane").to_string() } else { p.label.clone() };
+                    let agent = p.pid.and_then(|pid| plan.panes.iter().find(|x| x.pid == pid)).and_then(|x| x.agent.clone());
+                    let command = runs.get(&p.block_id).and_then(|r| r.command.clone()).map(|c| olo_rex_client::migrate::command_text(&c));
+                    let what: Element = match (agent, command) {
+                        (Some(a), _) => cell(match a.how.as_str() {
+                            "guess" => olo_kit::tr!("{}, resumed (a guess at which conversation)", agent_name(&a.agent)).to_string(),
+                            "none" => olo_kit::tr!("{}, started again", agent_name(&a.agent)).to_string(),
+                            _ => olo_kit::tr!("{}, resumed", agent_name(&a.agent)).to_string(),
+                        })
+                        .dim(true)
+                        .cut(true)
+                        .into_element(),
+                        (None, Some(command)) => {
+                            // (What becomes of it first, the command after in
+                            // the rest of the row: a cut text has no width of
+                            // its own to keep. The terminal's face a point
+                            // smaller: its x-height is the larger.)
+                            let how = if run_it.get(&p.block_id).copied().unwrap_or(false) { olo_kit::words::tr("Runs again:") } else { olo_kit::words::tr("Typed, not run:") };
+                            div()
+                                .w_full()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(4.0))
+                                .child(div().flex_shrink_0().child(cell(how.to_string()).dim(true)))
+                                .child(div().flex_1().min_w_0().child(cell(command).mono(true).size(style::MONO_SIZE - 1.0).height(m::LABEL_ROW).beside(style::PLAIN_SIZE).dim(true).cut(true)))
+                                .into_element()
+                        }
+                        (None, None) => cell(olo_kit::words::tr("A shell, in its folder").to_string()).dim(true).cut(true).into_element(),
+                    };
+                    entries.push((name, what));
+                }
+            }
+            // One column for the values of both lists (the hosts' systems,
+            // what each pane comes back as), as far right as the further of
+            // the two needs.
+            let (from_word, to_word) = (olo_kit::words::tr("From").to_string(), olo_kit::words::tr("To").to_string());
+            let labels_w = width(&from_word, FontWeight::NORMAL).max(width(&to_word, FontWeight::NORMAL));
+            let names_w = width(&from, FontWeight::BOLD).max(width(&to, FontWeight::BOLD)).min(160.0);
+            let panes_w = entries.iter().map(|(n, _)| width(n, FontWeight::NORMAL)).fold(0.0, f32::max).min(120.0);
+            let value_x = (labels_w + m::TIGHT + names_w + m::SPACING).max(panes_w + m::SPACING);
+            // The hosts: From and To right-aligned and flush with the head,
+            // the names bold, what each runs; the machine only where the
+            // two differ.
+            let host_row = |label: String, name: &str, f: &olo_rex_client::migrate::Facts| {
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .child(div().w(px(labels_w)).flex_shrink_0().flex().justify_end().child(cell(label).dim(true)))
+                    .child(div().w(px(value_x - labels_w)).flex_shrink_0().pl(px(m::TIGHT)).pr(px(m::SPACING)).child(cell(name.to_owned()).bold(true).cut(true)))
+                    .child(div().flex_1().min_w_0().child(cell(f.system_name.clone()).dim(true).cut(true)))
+                    .into_element()
+            };
+            let mut hosts = vec![host_row(from_word, &from, &plan.from), host_row(to_word, &to, &plan.to)];
+            if !plan.from.machine.is_empty() && !plan.to.machine.is_empty() && plan.from.machine != plan.to.machine {
+                hosts.push(
+                    StringView::new(olo_kit::tr!("{} is {}, {} is {}: programs built for one don’t run on the other.", from, plan.from.machine, to, plan.to.machine).to_string())
+                        .color(style::c(theme::palette().warning))
+                        .wrap(true)
+                        .into_element(),
+                );
+            }
+            if plan.from.home != plan.to.home {
+                hosts
+                    .push(small(olo_kit::tr!("Your home moves from {} to {}: the paths your agents and tools keep are made the new home’s.", plan.from.home, plan.to.home).to_string()).into_element());
+            }
+            // Your home: what it holds, its largest folders, the options,
+            // and the room it needs (the options and that line nearer one
+            // another than the groups are).
+            let mut home = vec![body(olo_kit::tr!("{} in {} files", size_words(plan.from.home_bytes), style::thousands(plan.from.home_files as usize)).to_string()).into_element()];
+            let big: Vec<String> = plan.from.big.iter().take(3).map(|b| format!("{} {}", b.path, size_words(b.bytes))).collect();
+            if !big.is_empty() {
+                home.push(small(olo_kit::tr!("Largest: {}", big.join(" · ")).to_string()).into_element());
+            }
+            let tmp_bytes = plan.from.var_tmp_bytes();
+            let tmp_label = match plan.from.var_tmp.len() {
+                0 => olo_kit::words::tr("Also copy your folders in /var/tmp (you have none)").to_string(),
+                1 => olo_kit::tr!("Also copy your folder in /var/tmp ({})", size_words(tmp_bytes)).to_string(),
+                n => olo_kit::tr!("Also copy your {} folders in /var/tmp ({})", n, size_words(tmp_bytes)).to_string(),
+            };
+            let (on_tmp, on_cache) = (on_do.clone(), on_do.clone());
+            let tmp = CheckBox::new(tmp_label, choices.var_tmp).id("move-var-tmp").enabled(!plan.from.var_tmp.is_empty()).on_toggle(move |on: &bool, cx| on_tmp(&MoveDo::VarTmp(*on), cx));
+            let cache = CheckBox::new(olo_kit::words::tr("Also copy ~/.cache (rebuilt as it’s used)").to_string(), choices.cache)
+                .id("move-cache")
+                .on_toggle(move |on: &bool, cx| on_cache(&MoveDo::Cache(*on), cx));
+            let fits = olo_rex_client::migrate::refusals(&plan.from, &plan.to, choices.var_tmp, &to).is_empty();
+            let copied = plan.from.home_bytes + if choices.var_tmp { tmp_bytes } else { 0 };
+            let need = |b: u64| b + b / 10 + (1 << 30);
+            // (One line whether it fits or not, so the window keeps its
+            // height as /var/tmp is ticked: its words where the checkboxes'
+            // labels are, the warning's triangle in their marks' column.)
+            let label_x = m::MARK_SIZE + m::MARK_GAP;
+            let room: Element = if fits {
+                div()
+                    .w_full()
+                    .pl(px(label_x))
+                    .child(
+                        StringView::new(olo_kit::tr!("Needs {} with room to spare · {} free on {}", size_words(need(copied)), size_words(plan.to.free), to).to_string())
+                            .size(style::SMALL_SIZE)
+                            .dim(true)
+                            .height(m::LABEL_ROW)
+                            .cut_words(true),
+                    )
+                    .into_element()
+            } else {
+                let said = if olo_rex_client::migrate::refusals(&plan.from, &plan.to, false, &to).is_empty() {
+                    olo_kit::tr!("Needs {} with room to spare; {} free. Without /var/tmp it fits.", size_words(need(copied)), size_words(plan.to.free)).to_string()
+                } else {
+                    olo_kit::tr!("Needs {} with room to spare; only {} free on {}.", size_words(need(copied)), size_words(plan.to.free), to).to_string()
+                };
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .child(
+                        div().w(px(label_x)).h(px(m::LABEL_ROW)).flex_shrink_0().child(
+                            canvas(|g, b| {
+                                icons::paint(g, b, "warning");
+                            })
+                            .paint_key(1)
+                            .w(px(m::MARK_SIZE))
+                            .h(px(m::MARK_SIZE))
+                            .mt(px(1.0)),
+                        ),
+                    )
+                    .child(div().flex_1().min_w_0().child(cell(said).cut_words(true)))
+                    .into_element()
+            };
+            // (The checkboxes a control's room apart, as far below
+            // "Largest" as from each other; the room line close under
+            // them.)
+            home.push(
+                div()
+                    .pt(px(5.0))
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .child(div().flex().flex_col().gap(px(m::TIGHT)).w_full().child(tmp).child(cache))
+                    .child(div().pt(px(2.0)).w_full().child(room))
+                    .into_element(),
+            );
+            // On the new host: the panes, then the keys and the Token Pool.
+            let mut there: Vec<Element> = entries
+                .into_iter()
+                .map(|(name, what)| {
+                    div()
+                        .w_full()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .child(div().w(px(value_x)).flex_shrink_0().pr(px(m::SPACING)).child(cell(name).cut(true)))
+                        .child(div().flex_1().min_w_0().child(what))
+                        .into_element()
+                })
+                .collect();
+            if total > shown {
+                there.push(small(olo_kit::words::count((total - shown) as u64, "and 1 more pane", "and {n} more panes")).into_element());
+            }
+            if total == 0 {
+                there.push(secondary(olo_kit::words::tr("No Rex sessions.").to_string()).into_element());
+            }
+            there.push(div().pt(px(4.0)).w_full().child(secondary(olo_kit::tr!("The SSH keys that sign in to {} will sign in to {} too.", from, to).to_string())).into_element());
+            if plan.had_pool {
+                there.push(secondary(olo_kit::tr!("Your sign-ins in the Token Pool move to {}.", to).to_string()).into_element());
+            }
+            // On the old host: when it stops, and what stops with it.
+            let mut after = vec![
+                body(olo_kit::tr!("You can keep using {} while your files are copied. Then it stops for good, after a last copy of what changed; its files are kept.", from).to_string())
+                    .into_element(),
+                secondary(olo_kit::words::tr("Stopped with it: sessions, services, timers, crontab and the Rex server.").to_string()).into_element(),
+            ];
+            if plan.from.other_logins > 0 {
+                after.push(
+                    StringView::new(olo_kit::tr!("Someone is signed in to {} with a terminal: what they run is stopped too.", from).to_string())
+                        .color(style::c(theme::palette().warning))
+                        .wrap(true)
+                        .into_element(),
+                );
+            }
+            col()
+                .child(title(olo_kit::tr!("Move {} to {}", from, to).into()))
+                .child(group(true, olo_kit::words::tr("Hosts").to_string(), hosts))
+                .child(group(false, olo_kit::words::tr("Home folder").to_string(), home))
+                .child(group(false, olo_kit::tr!("On {}", to).to_string(), there))
+                .child(group(false, olo_kit::tr!("On {}", from).to_string(), after))
+                .child(buttons().child(button("Cancel", MoveDo::Cancel)).child(button("Move", MoveDo::Go).default(fits).enabled(fits)))
+                .into_element()
+        }
+        Stage::Copying { status } => {
+            let (bytes, total) = (status["bytes"].as_u64().unwrap_or(0), status["total_bytes"].as_u64().unwrap_or(0));
+            let rate = status["rate"].as_u64().unwrap_or(0);
+            // (How long is left, at the speed it goes: minutes, then hours.)
+            let left = match (rate > 0 && total > bytes).then(|| (total - bytes) / rate) {
+                Some(secs) if secs < 90 => olo_kit::words::tr("About a minute left").to_string(),
+                Some(secs) if secs < 90 * 60 => olo_kit::words::count(secs.div_ceil(60), "About 1 minute left", "About {n} minutes left"),
+                Some(secs) => olo_kit::words::count(secs.div_ceil(3600), "About 1 hour left", "About {n} hours left"),
+                None => String::new(),
+            };
+            let (bar, detail) = if total == 0 {
+                (StatusBar::busy(phase).label(olo_kit::words::tr("Counting the files to copy").to_string()), olo_kit::words::tr("They’re sent in parallel streams once counted.").to_string())
+            } else {
+                let files = olo_kit::tr!("{} of {} files", style::thousands(status["files"].as_u64().unwrap_or(0) as usize), style::thousands(status["total_files"].as_u64().unwrap_or(0) as usize))
+                    .to_string();
+                let detail = if rate > 0 { format!("{files} · {}/s", size_words(rate)) } else { files };
+                (StatusBar::new((bytes as f32 / total as f32).min(1.0)).label(olo_kit::tr!("{} of {}", size_words(bytes), size_words(total)).to_string()).trailing(left), detail)
+            };
+            progress(olo_kit::tr!("Copying your files to {}…", to).into(), bar, detail, olo_kit::tr!("You can keep using {} meanwhile.", from).to_string(), true)
+        }
+        Stage::Switching { at, status } => {
+            let steps = crate::moving::SWITCHING;
+            let bar = StatusBar::new((*at as f32 + 0.15) / steps as f32).label(crate::moving::switching_step(*at, &from, &to));
+            let detail = match status["files"].as_u64() {
+                Some(files) if *at == 1 => olo_kit::tr!(
+                    "Step {} of {} · {} of {} changed files copied",
+                    at + 1,
+                    steps,
+                    style::thousands(files as usize),
+                    style::thousands(status["total_files"].as_u64().unwrap_or(0) as usize)
+                )
+                .to_string(),
+                _ => olo_kit::tr!("Step {} of {}", at + 1, steps).to_string(),
+            };
+            progress(olo_kit::tr!("Moving {} to {}…", from, to).into(), bar, detail, olo_kit::tr!("Until this finishes, {} stays stopped.", from).to_string(), false)
+        }
+        Stage::Done { said } => {
+            let mut frame = AlertFrame::new("info").child(alert_title(olo_kit::tr!("Moved to {}", to).to_string())).child(gap(m::TIGHT));
+            for (i, line) in said.iter().enumerate() {
+                if i > 0 {
+                    frame = frame.child(gap(m::TIGHT - 2.0));
+                }
+                frame = frame.child(body(stop(line)));
+            }
+            frame.child(gap(m::SPACING)).child(buttons().child(button("Close", MoveDo::Close).default(true))).into_element()
+        }
+        Stage::Failed { what, why, stopped } => {
+            // (The title says what went wrong and, where it is, that the
+            // old host is stopped; the cause as the host said it, quiet
+            // and close under it; then what each button does.)
+            let what = olo_kit::words::of(what.clone()).to_string();
+            let heading = match (*stopped, what.is_empty()) {
+                (true, true) => olo_kit::tr!("The move didn’t finish, and {} is stopped", from).to_string(),
+                (true, false) => olo_kit::tr!("{}, and {} is stopped", what, from).to_string(),
+                (false, _) => what,
+            };
+            let mut frame = AlertFrame::new("warning").child(alert_title(heading));
+            if !why.is_empty() {
+                frame = frame.child(gap(4.0)).child(small(sentence(why))).child(gap(m::SPACING));
+            } else {
+                frame = frame.child(gap(m::TIGHT));
+            }
+            let state = if *stopped {
+                olo_kit::tr!("Try Again goes on from where it left off. Undo Move starts {} again and puts {} back as it was.", from, to).to_string()
+            } else {
+                olo_kit::tr!("Nothing on {} was stopped; it keeps working. Close leaves the part already copied on {}; nothing else there changes.", from, to).to_string()
+            };
+            frame = frame.child(body(state));
+            let row = if *stopped {
+                buttons().child(button("Undo Move", MoveDo::GoBack)).child(button("Try Again", MoveDo::Go).default(true))
+            } else {
+                buttons().child(button("Close", MoveDo::Cancel)).child(button("Try Again", MoveDo::Go).default(true))
+            };
+            frame.child(gap(m::SPACING)).child(row).into_element()
+        }
+        Stage::GoingBack => progress(
+            olo_kit::words::tr("Undoing the move…").to_string(),
+            StatusBar::busy(phase).label(olo_kit::tr!("Starting {} again and putting {} back", from, to).to_string()),
+            olo_kit::tr!("Nothing of yours on {} was deleted.", from).to_string(),
+            olo_kit::tr!("Until this finishes, {} stays stopped.", from).to_string(),
+            false,
+        ),
+        Stage::WentBack { said } => {
+            let mut frame = AlertFrame::new("info").child(alert_title(olo_kit::words::tr("Move undone").to_string())).child(gap(m::TIGHT));
+            for (i, line) in said.iter().enumerate() {
+                if i > 0 {
+                    frame = frame.child(gap(m::TIGHT - 2.0));
+                }
+                frame = frame.child(body(stop(line)));
+            }
+            frame.child(gap(m::SPACING)).child(buttons().child(button("Close", MoveDo::Close).default(true))).into_element()
+        }
     }
 }
 

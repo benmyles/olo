@@ -63,8 +63,9 @@ alone), its settings, and its report when it is done.
      is as it should be. (Your own `watch` may say of a look "is DONE"
      or "idle … DONE" in the moment between its review being written
      and its front door ending it: the same end, nothing to answer.
-     The two looks of a folder are named `astra-FOLDER` and
-     `opus-FOLDER`.)
+     The two looks of a folder are named `agy-FOLDER` and
+     `opus-FOLDER`. Opus's may show `starting` for a moment: Claude
+     Code asking to trust its folder, which the tool answers.)
    - *It finished a turn with a question, or without its result*
      (`list` shows it `idle`): if the answer is plainly in what it was
      given (`/var/tmp/olo-agents/NAME/brief.md`: its rules, then the

@@ -341,24 +341,99 @@ something nobody here has is in "Blocked", with what it waits for.
   the build to it after; tried for real between two hosts (containers or
   VMs of the rig's own: an Ubuntu one to a Fedora one), never the
   person's.
-  **Going** (2026-11-25): the plan reviewed twice by Neon and by the
-  lead, each finding checked in the code (its third version's decisions
-  kept beside the work while it is built: the copy Olo's own, the
-  helper's, not rsync; the Token Pool by its own hand-back; sessions
-  found by what runs, not argv alone; the message typed at an idle
-  prompt and Keep It Going held while it stands; lingering off only after
-  the second pass; `.cache` left out unless asked). Built and tried host
-  to host: the helper's `move` (key, allow, receive, send over its own
-  SSH connection with the host key pinned, two passes, status, stop, a
-  native look at a host and at its panes, the fix of a home whose path
-  changed), each agent's resume line from its real options, what never
-  moves, the refusals, the source's stop script. Being built: the
-  engine for a whole home (protected paths, root-anchored excludes,
-  files changing mid-copy, hard links, sparse files, folders' modes, one
-  filesystem, nothing dropped silently: a subagent), then the move's
-  orchestration and journal, the Move window, Rex following, Neon's look
-  at the build, and the whole move for real between the rig's Ubuntu and
-  Fedora hosts.
+  **Done** (2026-11-25): the plan reviewed twice by Neon, the build
+  once (about sixty findings in ten groups, each checked in the code:
+  the real ones fixed, two that didn't hold said why). Ben, as it was
+  built: the transfer "must be ultra efficient, compress things
+  performantly, be able to resume" (the engine's own: a single read of
+  new files, checkpoints a cut pass goes on from, zstd's context kept);
+  "we definitely want parallel streams" (the home split by size, a
+  session and a connection each, how many at once found as it goes);
+  `/var/tmp` copied, "an option checked/on by default"; "we don't want to
+  delete the original copy" (nothing of the source's is: stopped, its
+  crontab kept, a record of what was stopped beside it). Tried whole for
+  real between the rig's Ubuntu and Fedora containers (`move.py`), the
+  Move window pictured in every stage (HACKING, Rex, "The Move window").
+  **Left**:
+  - Keep It Going isn't carried to a moved pane (its new pane starts
+    with it off): carry it, held while the move's message stands unsent
+    (the general draft rule waits on the screen's styles).
+  - A sleep inhibitor while the desktop drives the switch.
+  - `olo.move.plan` / `olo.move.start` for agents (asked on the desktop,
+    answered at once with the move's id).
+  - Confirm's commands to run again, each ticked by the person (now: a
+    viewer runs again, anything else is typed as a comment).
+  - Not tried with a shared or login-mode Rex server as the source (its
+    server is the system's: the move stops the account's processes and
+    its own units, not that server, which would start sessions for the
+    account again if it signed in there).
+  - Hard links between two parts of a parallel copy arrive as two files.
+
+- **The kit's look, as the Move window's first design review saw it**
+  (Gemini 4 Neon at xhigh, 2026-11-25; there before the Move window, in
+  every alert and window that uses these, so not fixed in that change),
+  in its words:
+  - "In dark mode, that outer frame [the default button's ring] is a dark
+    thin line against a dark slate background, making `Move` look almost
+    identical to `Cancel` … and `Try Again` almost identical to `Go
+    Back`": increase the ring's contrast in the dark looks.
+  - The progress bar in the light look: "a bright white line runs along
+    the *outer top and left* edges of the progress bar (outside its dark
+    inset stroke), unlike the inset checkboxes", and "the blue fill
+    covers the thin grey inner bottom border … producing a subtle ~1px
+    visual step right where the blue fill meets the white track".
+  - Its status line "sits tightly against the bar's top edge … whereas
+    the muted line below the bar sits more than twice as far away".
+  - Alerts with a stripe "use a noticeably tighter heading-to-body gap and
+    a noticeably taller blank gap above the button row than the
+    non-stripe message stages", so "the text hugs the top while the
+    buttons sit low".
+  - Checkboxes: "the checkbox squares sit about 1px high relative to the
+    visual middle of the lowercase label text, and the upper-right tip of
+    the checkmark sits very close to the right inner bevel".
+  - And the Move window's own: its title tab's close box looks the same
+    on the stages that can't be stopped (closing hides the window; the
+    move goes on): dim it there, or say so.
+  And Opus 5.5's (at max, the same day), not done in that change:
+  - An alert opened as its app starts (a move Rex shows again after it
+    closed mid-move; every demo window the lint opens) sits at the
+    screen's top-left corner, its tab on its window's: "Centre the window
+    on Rex, at least 8 pt inside the screen, with its top at least 24 pt
+    below Rex's tab", and most of the pictures show it inactive ("a
+    dialog with a grey tab looks dead, and Return and Escape go to
+    Rex"). Seen so far: no window has the keyboard yet, so the alert
+    opens with no parent (`client.rs`, `open_window`), and it is placed
+    neither over Rex's window (`place_over_parent`: the parent isn't
+    mapped yet) nor in the middle of the screen (`place_alert`); giving
+    it the app's newest window as parent changed nothing. Root-cause it.
+  - "Remove the close box while the move can't be stopped … Never show
+    the zoom box": an alert's tab has no zoom box to lose (the kit's
+    fixed windows all show one).
+  - "For about 0.5 s, ignore clicks on a button that has just appeared
+    under the pointer": the Move window does it for its Cancel; the kit
+    should for every button.
+  - The indeterminate bar: "In a still frame, the block from 67 % to
+    92 % looks like a broken, partly filled bar. A barber pole (diagonal
+    stripes across the full width) reads as 'working' even in a still."
+  - The hosts' rows with "the sidebar's 8 pt status dot" before each
+    name; a Move icon of its own for the window's alerts ("a home going
+    from one host to another"), Rex's until then.
+  And from their second round (the same day), not done in that change:
+  - Opus: "Put the status dot that Rex's sidebar shows for build in front
+    of the status line, so the old host's state reads at a glance";
+    during the switch "show 'About 2 minutes left' when it can be
+    estimated"; under the bar while nothing is measured yet, a count so
+    far ("214 GB measured so far", "1,250,000 files found so far": the
+    helper's status has none then); "Consider a default 'Show Session'
+    button" in Done; "The ~/.cache option gives no size, so the user
+    can't weigh it" (the look doesn't measure what it leaves out).
+  - Neon, of the kit's StatusBar: "the bottoms of g, y, and p come
+    noticeably closer to the top edge of the progress bar (about 4–5 pt)
+    than the secondary line below the bar sits from the bottom edge".
+  - Where the alert opened at start sits (above): the window list taken
+    with each picture shows it focused, and in one session's runs over
+    Rex's window, in another's in the screen's middle, in the rest at the
+    corner: it depends on the run.
 
 - **An upgrade of Olo cuts the Token Pool's answers mid-stream** (Ben,
   2026-11-25: "when upgrading olo it seems to sever the token pool

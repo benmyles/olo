@@ -20,6 +20,7 @@ mod hub;
 mod keymap;
 mod link;
 mod links;
+mod moving;
 mod overlays;
 mod panels;
 mod pool;
@@ -112,7 +113,16 @@ fn main() {
     let cli = parse_args(&raw_args);
     let restored_raw = olo_kit::restored_state();
     let restored: Option<SavedAppState> = restored_raw.as_deref().and_then(|s| serde_json::from_str::<SavedAppState>(s).ok());
-    hub::set_let_go(restored.as_ref().map(|a| a.let_go.clone()).unwrap_or_default());
+    // (Not connected to as Rex starts: what the person let go of before an
+    // upgrade, and the source of a move Rex closed in the middle of: its
+    // Rex would start again there, mid-move.)
+    let mut let_go = restored.as_ref().map(|a| a.let_go.clone()).unwrap_or_default();
+    for held in moving::held_hosts() {
+        if !let_go.contains(&held) {
+            let_go.push(held);
+        }
+    }
+    hub::set_let_go(let_go);
     hub::set_helps(restored.as_ref().map(|a| a.help.clone()).unwrap_or_default());
     hub::set_saved_forwards(restored.as_ref().map(|a| a.forwards.clone()).unwrap_or_default());
     let restored_workspaces: Vec<SavedWorkspaceState> = restored.map(|a| a.workspaces).unwrap_or_default();
@@ -187,6 +197,11 @@ fn main() {
             }
         } else {
             ui::open_workspace_window(None);
+        }
+        // (A move Rex closed in the middle of, shown again: gone on, or
+        // gone back from.)
+        if moving::resume_unfinished() {
+            ui::open_panel_from_cli(ui::WinRole::Move);
         }
 
         if let Some((h, s, b)) = cli.focus_block {

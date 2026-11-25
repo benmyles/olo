@@ -155,7 +155,7 @@ pub fn carry_over(old: &Old, rex: &mut RexSettings) -> bool {
             continue;
         }
         let granted = old.host_policies.get(&host.id).map(|p| p.grants()).unwrap_or_default();
-        rex.hosts.push(RexHost { id: host.id.clone(), label: host.label.clone(), endpoint: host.endpoint.clone(), connect_at_start: host.auto_connect, grants: granted });
+        rex.hosts.push(RexHost { id: host.id.clone(), label: host.label.clone(), endpoint: host.endpoint.clone(), connect_at_start: host.auto_connect, grants: granted, moved_to: None });
     }
     let fresh = RexSettings::default();
     if rex.local == fresh.local

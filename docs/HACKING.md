@@ -28837,72 +28837,133 @@ the world": quinn, rustls with aws-lc, rcgen).
   ends when its input closes. At rest it costs nothing: asleep in
   `poll`, no time-out unless a change is settling (measured, ten
   seconds: no CPU, no wakeups).
-- *Moving an account* (`olo-rex-link move …`, `src/moving.rs`, its
-  `move` feature: `sync`'s, and russh): the host's part in moving an
-  account's home from one host to another, machine to machine
-  (`olo_rex_client::migrate` drives it; TODO, "Rex: move an account").
+- *Moving an account* (`olo-rex-link move …`, `src/moving.rs`,
+  `src/panes.rs`, `src/fix.rs`, its `move` feature: `sync`'s, russh and
+  tungstenite): the host's part in moving an account's home from one host
+  to another, machine to machine (`olo_rex_client::migrate` drives it).
   Nothing of the host's is used for it (no rsync, tar, zstd or
-  ssh-keygen: Fedora's cloud image has none of them): `move look` (the
-  host and account as JSON: system, machine, account, home and its
-  room, `/var/tmp`'s, groups, tools on the path, SELinux, lingering,
-  the account's own units and those enabled, the TCP ports it listens
-  on, other logins, mounts under the home, tmux and screen, machine and
-  boot ids, the SSH port it was reached on from `$SSH_CONNECTION`), `move
-  look-pane PID…` (each pane's process tree: command lines whole, a
-  newline in an argument too; folders; start times read after the
-  name's last bracket; the agents' session files held open, agy's
-  `.db-wal` too), `move key DIR` (an ed25519 key made in Rust, in the
-  move's folder, 0600), `move allow ID LINE` and `move disallow ID` (that
-  key let into the destination's `authorized_keys` for a day,
-  `restrict,expiry-time="YYYYMMDDHHMM"`, able to run only the helper's
-  own resolved path with `move receive`, by its comment taken out; the
-  file rewritten whole beside itself and renamed, its mode kept), `move
-  receive` (that key's forced command: the ask in
-  `SSH_ORIGINAL_COMMAND`'s last word, hex-coded JSON: `hello`, the
-  engine's receiving side `--scoped` into the home or the account's own
-  folder of `/var/tmp`, never `--delete`, or `forget`: paths the first
-  pass put there that the source no longer has), `move send DIR --to
-  USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude
-  P]… [--detach]` (its own SSH connection with the move's key, the
-  destination's host key pinned as the app's own connection checked it
-  (`SshSessionPool::verified`): never trusted on first sight; the
-  engine on a blocking thread over the channel; detached, a session of
-  its own, its log, pid and `status.json` (phase, files and bytes of
-  the total, what went on the wire, the report) in DIR, twice a second;
-  a second pass takes away there what the first's index had and this
-  one's hasn't), `move status DIR`, `move stop [--spare PID]…` (every
-  process of the account but its own line of parents, the account's
-  systemd, its PAM half and its bus: TERM, three seconds, KILL, three
-  rounds; what is left said). Tried host to host between the rig's
-  Ubuntu and Fedora containers (tools/dev/rex-slow, `UbuntuHost`,
-  `FedoraHost`, `rig_network`): a wrong host key refused, 311 files in
-  1.3 s, the second pass two files and 112 taken away.
-- *A move's client side* (`olo_rex_client::migrate`): `Facts` and
-  `Pane` read the helper's looks; `excluded` (what never moves, each
-  pattern from the home's root: the destination's `authorized_keys`,
-  each host's own Olo, Rex and Token Pool state, the move's own, `.cache`
-  unless asked; Codex's database where the home's path changes, its
-  daemon's packages where the system or machine does), `refusals` (the
-  same home by machine id, boot id, uid and the home's device and inode;
-  clocks over a minute apart; too little room, bytes or files), `stop_script`
-  (crontab saved and emptied, the account's own timers, paths and
-  sockets before its services, Rex's socket, the agents before Codex's
-  daemon, tmux, screen, rootless containers, Rex's server; never the
-  system's user units; lingering left on for the second pass),
-  `resume_line` (each agent's command line from its real options:
-  `claude <flags> --resume ID`, `codex resume <flags> ID`, `agy <flags>
-  --conversation ID`; its own flags kept with their values' paths
-  rewritten, an old resume or continue, a session id, a first prompt or
-  `--print` never), `capture` and `rebuild` (a session's windows, layers
-  and splits as `rebuild_splits` orders them: each split of a pane
-  already made, the old pane keeping the first side, its ratio set at
-  once; labels, the pane in front, zoom last, the window in front), and
-  `message` (what each agent finds typed at its prompt, not sent: one
-  line, no `@`, only what is true of that move and pane). The whole of
-  it is tried for real by `tools/dev/rex-slow/move.py`: an Ubuntu and a
-  Fedora container each set up by Rex's real setup, stand-in agents in a
-  session on the first, `crates/rex/tests/moving.rs` driving the move as
-  the app does, and what came out checked on the second.
+  ssh-keygen: Fedora's cloud image has none of them).
+  - `move look [--size] [--exclude P]…`: the host and account as JSON
+    (system, machine, account, home and its room, `/var/tmp`'s and its
+    filesystem, groups, tools on the path or in `/usr/sbin`, SELinux,
+    lingering, the account's own units, a template's instances by their
+    own names, its Quadlets' services, the TCP ports it listens on, logins
+    with a terminal (Rex's own connections have none), mounts under the
+    home, tmux and screen, machine and boot ids, the SSH port it was
+    reached on, the login shells `/etc/shells` has, Codex's daemon); with
+    `--size`, what the home holds that the copy brings (blocks, files, its
+    biggest folders two deep) and the account's folders in `/var/tmp`.
+  - `move look-pane [--screens HEX] PID…` (`panes.rs`): each pane's
+    process tree and the agent there with its session, by the surest
+    evidence, each pane its own: Claude Code's own record of each process
+    (`~/.claude/sessions/PID.json`, its `procStart` the kernel's start
+    ticks, so a pid used again isn't it), a session file held open (agy's
+    conversation, a Codex without its daemon), Codex's daemon's open
+    conversations in the pane's folder (its control socket's WebSocket,
+    `thread/loaded/list`, as the Token Pool asks it), a folder's sessions
+    written since the agent started, the command line (`--resume=ID`,
+    `codex resume [FLAGS] ID`: only an id), else the newest (a guess).
+    Where one pane has several candidates, or two panes one, each pane's
+    screen lines (the app's `fingerprint`) are matched against each
+    candidate's transcript's end. `agent_of` is the program itself, or
+    the script an interpreter runs (`vim claude` is no agent).
+  - `move key DIR`; `move allow ID LINE [--root /var/tmp/NAME]…` and
+    `move disallow ID`: the key let into the destination for a day
+    (`expiry-time` in the system's zone, as sshd reads it, the account's
+    `TZ` left out), able to run only the helper's own path with `move
+    receive --id ID` (quoted where the home has a space).
+  - `move receive --id ID`: writes the home itself, a folder under it
+    a part of the copy goes to (never one on the way to or in what the
+    destination keeps: `.ssh/authorized_keys`, its helper, the moves'
+    folder; never through a link), or a folder of `/var/tmp` the app named
+    in `allow`; its index cache in the move's folder (checkpointed, so a
+    cut pass goes on); `forget` likewise, a read-only folder (Go's module
+    cache) opened a moment.
+  - `move send DIR --to … --host-key KEY --there ROOT [--pass N]
+    [--exclude P]… [--also /var/tmp/NAME]… [--detach]`: the copy, in
+    parallel. The first pass measures the home and splits its biggest
+    folders until each part is about a third of a stream's share (a
+    gigabyte at least; kept in `parts.json` for the passes after); the
+    home's own session sends the rest, each part and each folder of
+    `/var/tmp` a session over a connection of its own (a multi-threaded
+    runtime: each encrypts on its own core), the biggest first; how many
+    at once is found as it goes (`Streams`: four to start, more while each
+    step up is 5% faster, held where it isn't, one more tried after a
+    minute, one fewer kept where that was slower; never a session cut).
+    One copy of a move at a time (a lock in DIR, which `status` reads);
+    the pass's `status.json` written before it forks (a pass never reads
+    another's "done"): files and bytes of the plan, parts done, streams,
+    the rate. A later pass takes away there what the passes before sent
+    and this one hasn't (`paths-KEY-N`, sorted, a cut first pass's
+    merged), never what it couldn't read or what lies on another
+    filesystem.
+  - `move stop [--spare PID]…`, `move codex-stop` (Codex's daemon by
+    its JSON pid file, ten seconds), `move keep ID` / `move put-back ID`
+    (the destination's own files kept aside by hard links before the
+    copy, for Go Back), `move add-keys ID HEX` / `move take-keys ID`
+    (the source's `authorized_keys` let in there too, by kind and body).
+  - `move fix --from OLD --to NEW [--once F] [--also /var/tmp/NAME]…`:
+    links into the old home retargeted first (a dotfile linked into the
+    home's own folder is found as a file then), then the keyed files
+    (agents' settings, sessions, plugins and memory; SSH, git, cargo,
+    systemd units and drop-ins, Quadlets), git's worktree links and own
+    configs, Claude Code's project folders renamed and merged (nothing
+    lost: the older of two files kept as `NAME.older`); only inside the
+    home; private temp files of a fixed name length; `--once` written
+    only when nothing failed.
+- *A move's client side* (`olo_rex_client::migrate`): what each host's
+  look says (`Facts`, read from the last JSON line: a shell's startup
+  noise before it isn't an error), `excluded` (what never moves, from the
+  home's root: the destination's keys, each host's own Olo, Rex and Token
+  Pool state, Rex's own binary in `~/.local/bin`, Claude Code's process
+  records, `.cache` unless asked), `refusals` (the same home; clocks
+  apart; too little room for the home and, where asked, `/var/tmp`'s
+  folders: one room where `/var/tmp` is on the home's filesystem there),
+  `stop_script` (its crontab saved once, so a stop run again keeps it;
+  timers before services, a template's instances and Quadlets, the agents
+  before Codex's daemon), `stop_source` (an answer from the helper or an
+  error), the steps after the last pass (`merge_keys`, `fix_destination`,
+  `relabel` for SELinux, `login_shell` with `usermod -s`, installing the
+  shell first, `compat_link` from the old home's path, `units_and_crontab`
+  merged with the destination's own, `agents_broken`), `dirs_there` and
+  `rebuild` (a pane's folder the destination hasn't: the home; a
+  forward's block's room its neighbour's), `pane_runs` (`fresh_line` for
+  an agent with no session: its own flags whole), `clean_up` (each host
+  tried whatever the other did; on the source, its crontab and a record
+  of what was stopped kept in `~/.local/state/olo-rex/moved/ID`: the
+  source's files all stay where they are), and Go Back's
+  `restart_source` and `restore_destination`. Tried whole for real by
+  `tools/dev/rex-slow/move.py` (an Ubuntu and a Fedora container set up
+  by Rex's real setup; stand-in agents, two Claude Codes in one folder;
+  a dotfile linked into the home, `/var/tmp`'s folder, a second key,
+  the home in parts): every pane back, each agent in its own session
+  with the message at its prompt, in 2.3 s.
+- *The Move window* (`apps/rex/src/moving.rs`, Hosts ▸ Move to Another
+  Host…, the host window's foot, `host.move[:KEY]`): choose the host
+  (connected ones reached over SSH), Looking (both helpers, both looks,
+  the source measured, its sessions read), Confirm (the hosts in a grid,
+  the home and its largest folders, "Also copy your folders in /var/tmp"
+  checked by default, `~/.cache` not, the room it needs under them (the
+  warning in its place, saying what fits, where it doesn't: Move off),
+  each pane on a line of its own, then what becomes of the old host:
+  quiet heads, no rules), the stages under way one height (the bar with
+  bytes and time left over it, files and speed under it, how the old
+  host stands at the button row's left: Copying, the switch's seven
+  steps, the sessions read again first as the source went on working,
+  Undoing), and the endings as alerts with their icon (no other host,
+  refused, Done, failed, undone). A failure's Try Again goes on from
+  where it was and Undo Move (`MoveDo::GoBack`) starts the source again
+  as it was; a Cancel pressed within half a second of the window changing is
+  taken for a double-click's second press of what was there. Each step
+  is done once: the move's journal in `~/.local/state/olo/rex/moves`
+  says which are, so Rex closed mid-move shows it again at its start,
+  its source held (`held_hosts`: never connected to then). The Token
+  Pool's sign-ins go to the destination alone (`move-to-DEST`: a
+  reservation for a day, released when that host has no pool); Rex's
+  windows on the source show the destination's sessions after; the
+  source is saved as moved (`RexHost::moved_to`, not connected at start).
+  Its pictures: `OLO_REX_DEMO=1 OLO_REX_DEMO_MOVE=STAGE|@FILE` with
+  `OLO_REX_DEMO_OPEN=host.move:dev-box` (`moving::show_demo`).
 - *Built for hosts* with TLS in it: its ciphers are C (aws-lc),
   compiled by zig as the pool's host program's are (`apps/rex/
   build.rs`; without zig the helper is built without the link, as it

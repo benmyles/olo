@@ -90,6 +90,8 @@ pub enum HostDo {
     OpenPool,
     /// The Account window: the host's account made ready for work.
     Account,
+    /// The Move window: the account moved to another host.
+    Move,
     /// Remove All… pressed (`true`), or its question answered no.
     AskAll(bool),
     /// Its question answered yes: these taken off.
@@ -774,7 +776,14 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             .child(button("Cancel", "host-all-cancel", HostDo::AskAll(false), true).default(true))
             .child(button("Remove All", "host-all-remove", HostDo::RemoveAll(there.clone()), reached && !busy && !there.is_empty()))
     } else {
-        div().w_full().flex().flex_row().items_center().child(button("Remove All…", "host-all", HostDo::AskAll(true), reached && !busy && !there.is_empty())).child(div().flex_1())
+        // (The account moved to another host, whole: the other thing done
+        // to the host as a whole, at the foot's other end.)
+        div().w_full().flex().flex_row().items_center().child(button("Remove All…", "host-all", HostDo::AskAll(true), reached && !busy && !there.is_empty())).child(div().flex_1()).child(button(
+            "Move to Another Host…",
+            "host-move",
+            HostDo::Move,
+            reached && !busy,
+        ))
     };
     // (Under the tabs' panel, whose edge is its rule.)
     page.push(foot.into_element());

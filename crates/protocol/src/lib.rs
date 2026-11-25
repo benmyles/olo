@@ -2140,6 +2140,9 @@ pub struct RexHost {
     /// Connected as Rex starts (else when the person asks).
     pub connect_at_start: bool,
     pub grants: RexGrants,
+    /// The host (its id) its account was moved to (Rex's Move to Another
+    /// Host): this one is stopped, its files left where they are.
+    pub moved_to: Option<String>,
 }
 
 /// What the sessions of a host may do on this computer: each is asked
@@ -3588,7 +3591,14 @@ mod tests {
         assert_eq!(none.rex.grants(""), RexGrants::all());
         assert!(!none.rex.grants("somewhere").any());
         let mut s = Settings::default();
-        s.rex.hosts.push(RexHost { id: "h1".into(), label: "Build box".into(), endpoint: "ssh://build".into(), connect_at_start: true, grants: RexGrants { open_links: true, ..Default::default() } });
+        s.rex.hosts.push(RexHost {
+            id: "h1".into(),
+            label: "Build box".into(),
+            endpoint: "ssh://build".into(),
+            connect_at_start: true,
+            grants: RexGrants { open_links: true, ..Default::default() },
+            moved_to: None,
+        });
         s.rex.hosts.push(RexHost { id: "h2".into(), label: "Elsewhere".into(), endpoint: "https://elsewhere.example".into(), ..Default::default() });
         s.rex.notify_done = false;
         let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();

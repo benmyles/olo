@@ -350,7 +350,7 @@ pub fn excluded(from: &Facts, to: &Facts, bring_cache: bool) -> Vec<String> {
 /// there (bytes and files) for what the source's look measured of its home
 /// and, with `var_tmp`, its folders in `/var/tmp` (one room where `/var/tmp`
 /// is on the home's filesystem there, else each its own).
-pub fn refusals(from: &Facts, to: &Facts, var_tmp: bool) -> Vec<String> {
+pub fn refusals(from: &Facts, to: &Facts, var_tmp: bool, to_name: &str) -> Vec<String> {
     let mut why = Vec::new();
     if from.same_home(to) {
         why.push("That's the same account on the same machine.".to_owned());
@@ -364,37 +364,42 @@ pub fn refusals(from: &Facts, to: &Facts, var_tmp: bool) -> Vec<String> {
     let together = to.var_tmp_dev.is_some() && to.var_tmp_dev == to.home_dev;
     let (home_bytes, home_files) = if together { (from.home_bytes + tmp_bytes, from.home_files + tmp_files) } else { (from.home_bytes, from.home_files) };
     if to.free < need(home_bytes) {
-        let what = if together && tmp_bytes > 0 { "its home and its folders in /var/tmp" } else { "its home" };
-        why.push(format!("{} has {} free in its home; the move needs {} for {what}.", to.system_name_or_host(), size_words(to.free), size_words(need(home_bytes))));
+        let what = if together && tmp_bytes > 0 { "your home and your folders in /var/tmp" } else { "your home" };
+        why.push(format!("Moving {what} needs {} with room to spare; only {} is free on {to_name}. Free some space there, or choose another host.", size_words(need(home_bytes)), size_words(to.free)));
     }
     if to.free_inodes > 0 && to.free_inodes < home_files + 10_000 {
-        why.push(format!("{} has room for {} more files in its home; the move brings {home_files}.", to.system_name_or_host(), to.free_inodes));
+        why.push(format!("There's room for {} more files on {to_name}; moving your home brings {home_files}.", to.free_inodes));
     }
     if !together && tmp_bytes > 0 {
         if to.var_tmp_free < need(tmp_bytes) {
-            why.push(format!("{} has {} free in /var/tmp; your folders there need {}.", to.system_name_or_host(), size_words(to.var_tmp_free), size_words(need(tmp_bytes))));
+            why.push(format!("There's {} free in /var/tmp on {to_name}; your folders there need {}.", size_words(to.var_tmp_free), size_words(need(tmp_bytes))));
         }
         if to.var_tmp_inodes > 0 && to.var_tmp_inodes < tmp_files + 10_000 {
-            why.push(format!("{} has room for {} more files in /var/tmp; your folders there have {tmp_files}.", to.system_name_or_host(), to.var_tmp_inodes));
+            why.push(format!("There's room for {} more files in /var/tmp on {to_name}; your folders there have {tmp_files}.", to.var_tmp_inodes));
         }
     }
     why
 }
 
-impl Facts {
-    fn system_name_or_host(&self) -> String {
-        "The new host".to_owned()
-    }
-}
-
 /// Bytes as the person reads them ("12.3 GB").
 pub fn size_words(bytes: u64) -> String {
     let b = bytes as f64;
-    match bytes {
-        0..1_000_000 => format!("{:.0} KB", b / 1e3),
-        1_000_000..1_000_000_000 => format!("{:.0} MB", b / 1e6),
-        _ => format!("{:.1} GB", b / 1e9),
-    }
+    let (v, unit) = match bytes {
+        0..1_000_000 => (b / 1e3, "KB"),
+        1_000_000..1_000_000_000 => (b / 1e6, "MB"),
+        1_000_000_000..1_000_000_000_000 => (b / 1e9, "GB"),
+        _ => (b / 1e12, "TB"),
+    };
+    // (Three figures at most, no trailing zero: 720 GB, 87.4 GB, 3.5 TB.)
+    let s = if v >= 100.0 {
+        format!("{v:.0}")
+    } else if v >= 10.0 {
+        format!("{v:.1}")
+    } else {
+        format!("{v:.2}")
+    };
+    let s = if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_owned() } else { s };
+    format!("{s} {unit}")
 }
 
 /// The units a move stops and disables on the source and enables on the
@@ -923,6 +928,12 @@ pub async fn start_pass<R: crate::provision::Runner>(
         return Err(e.to_owned());
     }
     v["started"].as_u64().map(|p| p as u32).ok_or_else(|| format!("the copy didn't start: {}", out.output.trim()))
+}
+
+/// The copy running for a move ended (a move given up: it goes on by
+/// itself otherwise).
+pub async fn halt_pass<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, id: &str) -> Result<(), String> {
+    ran(source, &format!("{} move halt {}", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)))).await.map(|_| ())
 }
 
 /// How the copy stands (its `status.json`, and whether it still runs).
@@ -1708,25 +1719,29 @@ mod tests {
         to.free = 100_000_000_000;
         to.free_inodes = 5_000_000;
         (from.home_bytes, from.home_files) = (20_000_000_000, 300_000);
-        assert!(refusals(&from, &to, true).is_empty());
+        assert!(refusals(&from, &to, true, "big-box").is_empty());
         from.home_bytes = 95_000_000_000;
-        assert_eq!(refusals(&from, &to, true), ["The new host has 100.0 GB free in its home; the move needs 105.6 GB for its home."]);
+        assert_eq!(refusals(&from, &to, true, "big-box"), ["Moving your home needs 106 GB with room to spare; only 100 GB is free on big-box. Free some space there, or choose another host."]);
+        assert_eq!(
+            (size_words(720_000_000_000), size_words(87_400_000_000), size_words(3_500_000_000_000), size_words(512_000)),
+            ("720 GB".into(), "87.4 GB".into(), "3.5 TB".into(), "512 KB".into())
+        );
         // (/var/tmp on the home's filesystem there: one room for both; on
         // its own, its own.)
         from.home_bytes = 60_000_000_000;
         from.var_tmp = vec![VarTmpFolder { path: "/var/tmp/x".into(), bytes: 40_000_000_000, files: 10, more: false }];
         (to.home_dev, to.var_tmp_dev) = (Some(1), Some(1));
-        assert_eq!(refusals(&from, &to, true).len(), 1, "together, 100 GB don't fit");
-        assert!(refusals(&from, &to, false).is_empty(), "without /var/tmp they do");
+        assert_eq!(refusals(&from, &to, true, "big-box").len(), 1, "together, 100 GB don't fit");
+        assert!(refusals(&from, &to, false, "big-box").is_empty(), "without /var/tmp they do");
         (to.var_tmp_dev, to.var_tmp_free) = (Some(2), 10_000_000_000);
-        assert!(refusals(&from, &to, true)[0].contains("free in /var/tmp"));
+        assert!(refusals(&from, &to, true, "big-box")[0].contains("free in /var/tmp"));
         from.var_tmp.clear();
         to.free_inodes = 200_000;
-        assert_eq!(refusals(&from, &to, true).len(), 1);
+        assert_eq!(refusals(&from, &to, true, "big-box").len(), 1);
         to.free_inodes = 0;
         to.now = from.now + 3600;
-        assert!(refusals(&from, &to, true)[0].starts_with("The two hosts' clocks are 3600 seconds apart"));
-        assert_eq!(refusals(&from, &from, true)[0], "That's the same account on the same machine.");
+        assert!(refusals(&from, &to, true, "big-box")[0].starts_with("The two hosts' clocks are 3600 seconds apart"));
+        assert_eq!(refusals(&from, &from, true, "big-box")[0], "That's the same account on the same machine.");
     }
 
     /// The source is stopped so it stays stopped: crontab saved and emptied,

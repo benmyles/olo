@@ -110,7 +110,7 @@ fn an_account_moves_whole() {
         let excluded = migrate::excluded(&plain, &to, false);
         let from = migrate::Facts::read(&ran(&mut src, &migrate::look_sized_command(id, &excluded)).await).expect("the source's look, sized");
         step(&format!("looked: {} ({}) to {} ({}); {} files, {} in /var/tmp folders", from.system, from.machine, to.system, to.machine, from.home_files, from.var_tmp.len()));
-        assert!(migrate::refusals(&from, &to, true).is_empty(), "{:?}", migrate::refusals(&from, &to, true));
+        assert!(migrate::refusals(&from, &to, true, "the destination").is_empty(), "{:?}", migrate::refusals(&from, &to, true, "the destination"));
         let var_tmp: Vec<String> = from.var_tmp.iter().map(|f| f.path.clone()).collect();
         assert!(var_tmp.iter().any(|p| p == "/var/tmp/olo-rig-scratch"), "the account's folder in /var/tmp: {var_tmp:?}");
 
