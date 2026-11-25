@@ -18,7 +18,9 @@ for ((i = 0; i < ${#args[@]}; i++)); do
   next=${args[$((i + 1))]:-}
   case "$me:${args[$i]}" in
     claude:--resume | agy:--resume | agy:--conversation | agy:-r | agy:-conversation) id=$next ;;
-    codex:resume) [ "$next" != --last ] && id=$next ;;
+    # (Codex: `codex resume [OPTIONS] [SESSION_ID]`: its id the last word
+    # after `resume` that isn't an option, as the real one reads it.)
+    codex:resume) for w in "${args[@]:$((i + 1))}"; do case "$w" in -*) ;; *) id=$w ;; esac; done ;;
   esac
 done
 [ -n "$id" ] || id=$(cat /proc/sys/kernel/random/uuid)

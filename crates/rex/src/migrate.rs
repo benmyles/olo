@@ -504,7 +504,8 @@ pub struct CapturedSession {
 /// A session of the source's, read whole: its windows and layers and how
 /// their panes are split, each pane's process and last screen.
 pub async fn capture(client: &crate::control::ControlClient, session_id: &str) -> Result<CapturedSession, crate::error::RexError> {
-    let view = client.session_view(session_id).await?.payload;
+    // (A session is read by a connection attached to it.)
+    let view = client.session_attach(session_id).await?.payload.view;
     let mut out = CapturedSession { label: view.label.clone(), ..CapturedSession::default() };
     out.active_window = view.active_window_id.as_ref().and_then(|a| view.windows.iter().position(|w| &w.window_id == a));
     for w in &view.windows {
@@ -528,7 +529,7 @@ pub async fn capture(client: &crate::control::ControlClient, session_id: &str) -
                     continue;
                 }
                 let process = client.terminal_process(session_id, &b.block_id).await.ok().map(|r| r.payload);
-                let screen = client.terminal_format(session_id, &b.block_id, "plain").await.map(|r| r.payload).unwrap_or_default();
+                let screen = client.terminal_format(session_id, &b.block_id, "text").await.map(|r| r.payload).unwrap_or_default();
                 out.panes.push(CapturedPane {
                     block_id: b.block_id.clone(),
                     label: b.label.clone(),
@@ -574,6 +575,8 @@ pub async fn rebuild(
     let mut made: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let created = client.session_create(Some(&captured.label), shell_in(captured.windows.first().and_then(first).as_ref())).await?.payload;
     let sid = created.get("session_id").and_then(Value::as_str).ok_or_else(|| crate::error::RexError::Protocol("session.create: no session_id".into()))?.to_owned();
+    // (Read and changed by a connection attached to it.)
+    client.session_attach(&sid).await?;
     let mut window_ids = Vec::new();
     for (wi, window) in captured.windows.iter().enumerate() {
         // (The session came with its first window; each other is made.)
@@ -824,6 +827,15 @@ pub async fn units_and_crontab<R: crate::provision::Runner>(dest: &mut R, from: 
     }
     s.push_str("true\n");
     ran(dest, &format!("sh -c {}", crate::provision::shell_word(&s))).await.map(|_| ())
+}
+
+/// `~/.local/bin` on the path of the account's shells on the destination,
+/// as the Account window's own step puts it there (where the agents and
+/// Rex live: the source's dotfiles came over, but a login shell there may
+/// read the destination's own `.bash_profile`, which has no line for it).
+pub async fn path_on<R: crate::provision::Runner>(dest: &mut R) -> Result<(), String> {
+    let script = crate::ready::Step::Path.run(None, None).ok_or("the path's step has no script")?;
+    ran(dest, &format!("sh -c {}", crate::provision::shell_word(&script))).await.map(|_| ())
 }
 
 /// The move's key taken out of the destination, its folder off the source

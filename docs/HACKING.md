@@ -28901,7 +28901,11 @@ the world": quinn, rustls with aws-lc, rcgen).
   already made, the old pane keeping the first side, its ratio set at
   once; labels, the pane in front, zoom last, the window in front), and
   `message` (what each agent finds typed at its prompt, not sent: one
-  line, no `@`, only what is true of that move and pane).
+  line, no `@`, only what is true of that move and pane). The whole of
+  it is tried for real by `tools/dev/rex-slow/move.py`: an Ubuntu and a
+  Fedora container each set up by Rex's real setup, stand-in agents in a
+  session on the first, `crates/rex/tests/moving.rs` driving the move as
+  the app does, and what came out checked on the second.
 - *Built for hosts* with TLS in it: its ciphers are C (aws-lc),
   compiled by zig as the pool's host program's are (`apps/rex/
   build.rs`; without zig the helper is built without the link, as it

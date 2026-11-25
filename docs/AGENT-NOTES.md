@@ -2709,6 +2709,17 @@ the command takes it: an agent's shell may leave a pipe open, and
   sudo -u $USER BIN` for one it starts: a binary it starts itself runs
   as root, and what it writes is root's (a bench's tree in /var/tmp,
   2026-11-25: removed with sudo after).
+- **The whole account move, for real** (2026-11-25):
+  `tools/dev/rex-slow/move.py` makes an Ubuntu and a Fedora container on a
+  network of their own, sets each up for Rex with the host test's real
+  setup (personal), gives the source stand-in agents in a session with a
+  work list, and runs `crates/rex/tests/moving.rs` (the move as the app
+  drives it) with one agent holding both hosts' keys and a scratch HOME
+  that knows both; about five minutes, most of it the two setups. It
+  needs the helper built with `move` in `target/debug`. A connection to a
+  host's Rex server goes through Olo's helper there
+  (`SshSessionPool::set_helper`), and reading a session needs the
+  connection attached to it first (`session_attach`).
 - **The dev server's `sleep`, `cat` and the rest are one program**
   (uutils' coreutils, multi-call): a copy of `/bin/sleep` under another
   name refuses to run ("coreutils: unknown program"). For a test

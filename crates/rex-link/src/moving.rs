@@ -1068,7 +1068,7 @@ fn look() -> i32 {
         "home_ino": home_meta.as_ref().map(std::os::unix::fs::MetadataExt::ino),
         "ssh_port": ssh_port,
         "now": unix_now(),
-        "helper": olo_rex_link::VERSION,
+        "helper": olo_rex_link::VERSION.to_string(),
     });
     println!("{v}");
     0
