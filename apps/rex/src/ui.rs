@@ -60,6 +60,8 @@ pub enum WinRole {
     Access,
     Diagnostics,
     Askpass,
+    /// Desktop command approval sheet (`olo run` from a Rex host).
+    RunApprove,
     /// A new name for a session or a tab ([`Renaming`]).
     Rename,
     /// A host to add: its address, and a name.
@@ -275,6 +277,7 @@ fn pane_name(hub: &RexHub, key: &BlockKey) -> String {
 pub struct RexApp {
     pub hub: Arc<RexHub>,
     pub askpass: Arc<OloAskpass>,
+    pub run_approvals: Arc<crate::bridge_run::RunApprovals>,
     pub keymap: KeymapEngine,
     /// How the SSH agent stands (asked once as Rex starts), for Diagnostics.
     pub ssh_agent: olo_rex_client::AgentStatus,
@@ -386,9 +389,15 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
         },
         || broadcast_msg(WinMsg::Redraw),
     );
-    let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), move |notice| handle_hub_notice(notice));
+    let run_approvals = crate::bridge_run::RunApprovals::new(
+        || {
+            open_or_raise_panel(WinRole::RunApprove);
+        },
+        || broadcast_to_role(WinRole::RunApprove, || WinMsg::RunApproveChanged),
+    );
+    let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), Some(run_approvals.clone()), move |notice| handle_hub_notice(notice));
     let keymap = KeymapEngine::new(&[], &[], &[]);
-    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, ssh_agent: Default::default(), renaming: None, attention: Attention::new(), broadcast_windows: HashSet::new() }));
+    let _ = APP.set(Mutex::new(RexApp { hub, askpass, run_approvals, keymap, ssh_agent: Default::default(), renaming: None, attention: Attention::new(), broadcast_windows: HashSet::new() }));
 
     // How the SSH agent stands, asked once and off this thread, for Diagnostics.
     let agent_override = settings.ssh_agent_socket.map(PathBuf::from);
@@ -468,7 +477,19 @@ fn handle_hub_notice(notice: HubNotice) {
                 w.messenger().send(WinMsg::Said(text));
             }
         }
+        HubNotice::QuietNote { title, body } => {
+            if let Some(a) = APP.get() {
+                a.lock().unwrap_or_else(|e| e.into_inner()).attention.quiet(title, body);
+            }
+        }
     }
+}
+
+/// Open the `olo run` desktop command approval sheet populated with a
+/// deterministic demo prompt (`OLO_REX_DEMO_RUN=1|long|plain`) for headless visual QA.
+pub fn open_demo_run_approve(mode: &str) {
+    app().run_approvals.show_demo(mode);
+    open_or_raise_panel(WinRole::RunApprove);
 }
 
 fn broadcast_msg(msg: WinMsg) {
@@ -744,6 +765,7 @@ pub fn open_or_raise_panel(role: WinRole) {
             o
         }
         WinRole::Askpass => WindowOptions::alert("SSH Authentication", 460.0, 120.0),
+        WinRole::RunApprove => WindowOptions::alert("Run Command", panels::RUN_APPROVE_WIDTH, 120.0),
         WinRole::AddHost => WindowOptions::alert("Add Host", panels::ADD_HOST_WIDTH, 120.0),
         WinRole::Move => WindowOptions::alert("Move Account", panels::MOVE_WIDTH, 120.0),
         WinRole::Forward => WindowOptions::alert("Forward Port", widgets::ALERT_WIDTH, 120.0),
@@ -882,6 +904,8 @@ pub enum WinMsg {
     HostsForwardFrom(String),
     AskpassConfirm(bool),
     AskpassSubmit,
+    RunApproveChoice(bool),
+    RunApproveChanged,
     /// The Rename window: Rename (true) or Cancel; and another thing to
     /// name while it is open.
     RenameDone(bool),
@@ -915,6 +939,7 @@ pub struct RexWindow {
     due: olo_kit::due::Due,
     pub side_pane: SidePane,
     sidebar_scroll: olo_kit::ScrollHandle,
+    run_scroll: olo_kit::ScrollHandle,
     pub panes_view: Option<Child<PanesView>>,
     pub overlay: Option<ActiveOverlay>,
     pub overlay_field: Option<Child<TextField>>,
@@ -1088,6 +1113,7 @@ impl RexWindow {
             side_pane,
             pending_focus: None,
             sidebar_scroll: olo_kit::ScrollHandle::new(),
+            run_scroll: olo_kit::ScrollHandle::new(),
             created_session: None,
             qr_url: None,
             qr: None,
@@ -1297,6 +1323,7 @@ impl RexWindow {
             side_pane: SidePane::new(220.0, 168.0),
             pending_focus: None,
             sidebar_scroll: olo_kit::ScrollHandle::new(),
+            run_scroll: olo_kit::ScrollHandle::new(),
             created_session: None,
             qr_url: None,
             qr: None,
@@ -3885,6 +3912,23 @@ impl RexWindow {
                     None => div().p(px(m::WINDOW_INSET)).child(StringView::new("No active SSH authentication request.").dim(true)),
                 }
             }
+            WinRole::RunApprove => {
+                let prompt = app().run_approvals.current();
+                div()
+                    .w_full()
+                    .track_focus(&self.focus)
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        // Both Escape and Return deny: unlike `olo-sudo` (where the
+                        // user typed `sudo` and expects the prompt), `olo run` is
+                        // started by another machine and may appear over a terminal
+                        // the user is typing in. A stray Return must never allow it.
+                        if matches!(e.keystroke.key.as_str(), "escape" | "enter" | "return") && !e.keystroke.modifiers.modified() {
+                            cx.stop_propagation();
+                            cx.send(WinMsg::RunApproveChoice(false));
+                        }
+                    }))
+                    .child(panels::render_run_approve_panel(prompt, &self.run_scroll, cx.msg_with(|allow: &bool| WinMsg::RunApproveChoice(*allow))))
+            }
             WinRole::Rename => {
                 let what = app().renaming.clone();
                 let typed = self.askpass_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
@@ -4525,6 +4569,27 @@ impl View for RexWindow {
                 cx.request_close();
             }
             WinMsg::AskpassSubmit => self.submit_askpass(cx),
+            WinMsg::RunApproveChoice(allow) => {
+                let approvals = app().run_approvals.clone();
+                if let Some(cur) = approvals.current() {
+                    if !approvals.respond_from_ui(&cur.id, allow) {
+                        // Inside the 0.5 s accidental-click guard for Allow: ignore.
+                        return;
+                    }
+                }
+                if approvals.current().is_none() {
+                    cx.request_close();
+                } else {
+                    cx.invalidate();
+                }
+            }
+            WinMsg::RunApproveChanged => {
+                if app().run_approvals.current().is_none() {
+                    cx.request_close();
+                } else {
+                    cx.invalidate();
+                }
+            }
             WinMsg::RenameDone(true) => self.submit_rename(cx),
             WinMsg::RenameDone(false) => {
                 app().renaming = None;
@@ -4731,6 +4796,10 @@ impl Drop for RexWindow {
         }
         if self.role == WinRole::Account {
             crate::account::close();
+        }
+        if self.role == WinRole::RunApprove {
+            // Closing the alert window denies the pending command.
+            app().run_approvals.clone().deny_front();
         }
         self.cancel_preview();
         app().attention.hide(self.id);

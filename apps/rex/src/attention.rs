@@ -57,6 +57,14 @@ impl Attention {
         self.notes.insert(target, id);
     }
 
+    /// A quiet notification that makes no sound and always shows (e.g. a host
+    /// command auto-approved while Deskbar's Approve Without Asking is active).
+    pub fn quiet(&mut self, title: String, body: String) {
+        let mut note = Note::new(title).body(body).icon("rex");
+        note.silent = true;
+        self.notifier.show(None, note);
+    }
+
     pub fn showing(&mut self, window: WinId, front: Target) {
         self.notes.retain(|target, id| {
             if target.visible_in(&front) {

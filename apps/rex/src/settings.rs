@@ -83,11 +83,23 @@ pub struct HostBridgePolicy {
     /// Files a program there sends (`olo send`) saved here, in Downloads
     /// ▸ Rex ▸ HOST.
     pub allow_send_files: bool,
+    /// Run commands on this computer (`olo run`), asked first unless
+    /// Approve Without Asking is on in the tray.
+    pub allow_run_commands: bool,
 }
 
 impl HostBridgePolicy {
     pub fn local_default() -> Self {
-        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_remote_control: true, allow_ssh_agent: true, allow_send_files: true }
+        Self {
+            allow_open_url: true,
+            allow_localhost_autoforward: true,
+            allow_agent_screens: true,
+            allow_passwords_op: true,
+            allow_remote_control: true,
+            allow_ssh_agent: true,
+            allow_send_files: true,
+            allow_run_commands: true,
+        }
     }
 
     pub fn remote_default() -> Self {
@@ -106,6 +118,7 @@ impl HostBridgePolicy {
             (self.allow_send_files, "files"),
             (self.allow_localhost_autoforward, "local servers"),
             (self.allow_passwords_op, "Passwords"),
+            (self.allow_run_commands, "desktop commands"),
             // (Its keys, where the host has been given them: with them
             // unsaid, nothing in Rex showed whether a host had them when
             // git there was refused.)
@@ -120,7 +133,7 @@ impl HostBridgePolicy {
     }
 
     pub fn any_enabled(&self) -> bool {
-        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control || self.allow_send_files
+        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control || self.allow_send_files || self.allow_run_commands
     }
 }
 

@@ -765,6 +765,148 @@ elif what == "tracker":
         check("Rex quit while open: Tracker shows clear error", gone_err, [n.get("name") for n in (app_nodes(tpid) if tpid else []) if n.get("name")][:12])
     shutil.rmtree(work, ignore_errors=True); shutil.rmtree(local_dl, ignore_errors=True)
     print("PASS" if ok else "FAIL")
+elif what == "run":
+    # `olo run [--cwd DIR] -- COMMAND…` from a far host onto the Olo desktop:
+    # permission off (refused), asked & denied, asked & allowed (clean desktop env + --cwd),
+    # long streaming command cancelled via SIGINT (desktop process killed), and tray
+    # Auto Approve skipping the modal.
+    import shlex, signal, subprocess, threading
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:230], flush=True)
+    def click_alert_btn(r, label):
+        win = r.wait(lambda: next((w for w in r.windows() if w.get("title") == "Run Command"), None), 15, every=0.15)
+        if not win:
+            print(f"  [debug] no Run Command window for {label}; windows={[(w.get('title'), w.get('id')) for w in r.windows()]}", flush=True)
+            return False
+        gone = lambda: not any(w.get("title") == "Run Command" for w in r.windows())
+        for attempt in range(4):
+            nodes = r.nodes("Run Command") or r.nodes()
+            btn = next((n for n in nodes if n.get("role") == "Button" and n.get("name") == label), None)
+            if not btn:
+                time.sleep(0.2)
+                continue
+            # Allow clicks are ignored for the first 0.5 s after the sheet appears
+            # so a stray click or keypress never runs a remote command by accident.
+            time.sleep(0.6 if label == "Allow" else 0.2)
+            win = next((w for w in r.windows() if w.get("title") == "Run Command"), win)
+            cx = int(win["content"]["x"] + btn["x"] + btn["width"] / 2)
+            cy = int(win["content"]["y"] + btn["y"] + btn["height"] / 2)
+            r.ts("click", r.name, str(cx), str(cy))
+            if r.wait(gone, 4, every=0.15):
+                return True
+        print(f"  [debug] Run Command stayed open after clicking {label}; nodes={[(n.get('role'), n.get('name')) for n in r.nodes() if n.get('role') == 'Button']}", flush=True)
+        return False
+
+    bin_arg = next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)
+    with Rig(delay=0, far=True, bin=bin_arg) as r:
+        rex = f"rex -S unix://{D}/rex/rex.sock --autostart=false"
+        ran_clean = lambda c: "\n".join(l for l in r.far.ran(c).splitlines() if not l.startswith("Warning: Permanently"))
+        first = lambda out: json.JSONDecoder().raw_decode(out.lstrip())[0]
+        # Install the updated skill & `olo` script onto the far host.
+        r.invoke("host.put:far:skill")
+        olo_path = r.wait(lambda: (lambda p: p if p and os.path.exists(p) else None)(ran_clean("echo $HOME/.claude/skills/olo-rex-bridge/olo").strip()), 30, every=0.3)
+        check("skill installed on far host", bool(olo_path), olo_path)
+
+        # Find the far client's session_id so `olo.lua` routes through the far host client
+        # (not the local client on the shared rig machine).
+        def find_far_session():
+            clients = first(r.far.ran(f"{rex} client ls --json 2>/dev/null")).get("clients", [])
+            for c in clients:
+                if c.get("info", {}).get("kind") == "app" and c.get("connection_state") == "connected":
+                    cid = c["client_id"]
+                    out = r.far.ran(f"{rex} -C {cid} do olo.run --json --args '{{\"args\":[\"--\",\"true\"]}}' 2>/dev/null")
+                    try:
+                        j = first(out)
+                        if "Ask to run commands on this computer" in str(j.get("stderr") or ""):
+                            sids = c.get("session_ids") or []
+                            return (cid, sids[0] if sids else "")
+                    except ValueError:
+                        pass
+            return None
+        far_info = r.wait(find_far_session, 15, every=0.3)
+        far_cid, far_sid = far_info if far_info else ("", "")
+        olo_cmd = f'REX_SESSION={shlex.quote(far_sid)} OLO_BRIDGE_REX="{rex}" FAR_SECRET_LEAK=must_not_leak {shlex.quote(olo_path)}'
+        def far_run_cmd(subcmd, timeout=25):
+            return subprocess.run(["sh", "-c", f"{olo_cmd} {subcmd}"], capture_output=True, text=True, timeout=timeout)
+
+        # 1. Permission off -> refused with status 69.
+        res = far_run_cmd("run -- echo denied-perm")
+        check("permission off: refused with status 69", res.returncode == 69 and "Ask to run commands on this computer" in res.stderr, {"rc": res.returncode, "err": res.stderr.strip()})
+
+        # Grant run_commands on far host.
+        r.grant("far", run_commands=True)
+        time.sleep(0.6)
+
+        # 2. Asked & Denied -> alert appears, clicking Deny exits 126.
+        res_box = {}
+        def run_deny():
+            res_box["deny"] = far_run_cmd("run -- echo should-not-run")
+        t = threading.Thread(target=run_deny, daemon=True); t.start()
+        saw_alert = r.wait(lambda: any(w.get("title") == "Run Command" for w in r.windows()), 15, every=0.15)
+        check("asked: approval sheet opens on desktop", bool(saw_alert), [w.get("title") for w in r.windows()])
+        if saw_alert:
+            click_alert_btn(r, "Deny")
+        t.join(timeout=15)
+        d = res_box.get("deny")
+        check("denied: exits 126 without running command", d and d.returncode == 126 and "should-not-run" not in d.stdout and "denied" in d.stderr, d and (d.returncode, d.stdout, d.stderr))
+
+        # 3. Asked & Allowed -> runs on desktop with --cwd, clean env (no FAR_SECRET_LEAK), exact exit status!
+        cwd_dir = "/var/tmp/olo-rex-slow/run-cwd"
+        os.makedirs(cwd_dir, exist_ok=True)
+        def run_allow():
+            res_box["allow"] = far_run_cmd(f"run --cwd {cwd_dir} -- sh -c 'pwd; echo leak=${{FAR_SECRET_LEAK:-clean}}; echo err_line >&2; exit 7'")
+        t = threading.Thread(target=run_allow, daemon=True); t.start()
+        click_alert_btn(r, "Allow")
+        t.join(timeout=15)
+        a = res_box.get("allow")
+        check(
+            "allowed: runs in desktop --cwd with clean env, stdout/stderr, exact exit status",
+            a and a.returncode == 7 and cwd_dir in a.stdout and "leak=clean" in a.stdout and "err_line" in a.stderr,
+            a and (a.returncode, a.stdout.strip(), a.stderr.strip()),
+        )
+
+        # 4. Long command streamed live & cancelled on SIGINT -> desktop child dies cleanly!
+        marker = "/var/tmp/olo-rex-slow/run-cancel-pid"
+        if os.path.exists(marker): os.remove(marker)
+        proc = subprocess.Popen(
+            ["sh", "-c", f"{olo_cmd} run -- sh -c 'echo $$ > {marker}; echo tick1; sleep 30'"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True,
+        )
+        click_alert_btn(r, "Allow")
+        got_line = ""
+        if proc.stdout:
+            got_line = proc.stdout.readline().strip()
+        pid_file = r.wait(lambda: os.path.exists(marker) and open(marker).read().strip(), 10, every=0.1)
+        os.killpg(proc.pid, signal.SIGINT)
+        proc.wait(timeout=15)
+        child_dead = False
+        if pid_file:
+            cpid = int(pid_file)
+            child_dead = bool(r.wait(lambda: not os.path.exists(f"/proc/{cpid}"), 10, every=0.15))
+        check("long command: streamed live and killed on ^C", got_line == "tick1" and child_dead, {"line": got_line, "pid": pid_file, "dead": child_dead})
+
+        # 5. Auto-approved (Approve Without Asking active) -> skips approval modal!
+        r.invoke("app.quit")
+        r.wait(lambda: not any(w.get("app_id") == "olo.rex" for w in r.windows()), 10, every=0.2)
+        r.env = list(r.env) + ["OLO_REX_TEST_AUTO_APPROVE=1"]
+        r.start_app(trust=False)
+        r.ready()
+        # Refresh far session id after reconnect
+        def find_any_app_session():
+            clients = first(r.far.ran(f"{rex} client ls --json 2>/dev/null")).get("clients", [])
+            for c in clients:
+                if c.get("info", {}).get("kind") == "app" and c.get("connection_state") == "connected" and c.get("session_ids"):
+                    return c["session_ids"][0]
+            return None
+        sid2 = r.wait(find_any_app_session, 15, every=0.3) or far_sid
+        olo_cmd2 = f'REX_SESSION={shlex.quote(sid2)} OLO_BRIDGE_REX="{rex}" {shlex.quote(olo_path)}'
+        auto_res = subprocess.run(["sh", "-c", f"{olo_cmd2} run -- echo auto-ok"], capture_output=True, text=True, timeout=20)
+        no_modal = not any(w.get("title") == "Run Command" for w in r.windows())
+        check("auto-approved: runs immediately without modal", auto_res.returncode == 0 and auto_res.stdout.strip() == "auto-ok" and no_modal, (auto_res.returncode, auto_res.stdout.strip(), auto_res.stderr.strip()))
+    print("PASS" if ok else "FAIL")
 elif what == "pool":
     # The Token Pool put on the far host over SSH by the desktop pool's own code, kept in step, borrowed from and
     # taken away (crates/pool/tests/hosts_live.rs: a made-up account, a provider of the test's own). The far

@@ -28,6 +28,7 @@ pub fn policy(g: RexGrants) -> HostBridgePolicy {
         allow_remote_control: g.clipboard,
         allow_ssh_agent: g.ssh_keys,
         allow_send_files: g.send_files,
+        allow_run_commands: g.run_commands,
     }
 }
 
@@ -65,6 +66,7 @@ impl OldPolicy {
             // it: not carried over as a yes.)
             ssh_keys: false,
             send_files: false,
+            run_commands: false,
         }
     }
 }

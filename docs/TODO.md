@@ -2072,6 +2072,19 @@ something nobody here has is in "Blocked", with what it waits for.
     devices) and when not (what the host can do itself). Tried on the
     rig: asked, allowed, denied, auto-approved, a long command streamed
     and cancelled, the permission off.
+    **Done** 2026-11-25 (HACKING, Rex, the bridge, "A command run on the
+    Olo desktop"): `RexGrants::run_commands` (Preferences ▸ Rex ▸ Hosts:
+    "Ask to run commands on this computer", off by default, last grant
+    above calm secondary caution with 12 pt amber warning mark), `olo run
+    [--cwd DIR] -- COMMAND…` + `olo.run`/`olo.run.poll`/`olo.run.cancel`
+    (`apps/rex/src/bridge_run.rs`), BeOS approval sheet with bold host,
+    sunken scrolling command well (column-0 wraps with right-inset `↩`),
+    Touch ID/face unlock inline with buttons, default Deny + Return/Escape
+    deny + 0.5 s Allow guard (`WinRole::RunApprove`), Deskbar Approve
+    Without Asking auto-approval with quiet notification, live streaming
+    stdout/stderr + process-group `^C` kill, documented in `bridge_skill.md`,
+    verified live on the rig (`try.py run`, 7/7 PASS), `ui-lint`, and
+    2 rounds of Opus 5.5 & Gemini 4 Neon reviews.
   - *Forwards an agent on a host makes and ends itself* (Ben,
     2026-11-24, of an agent on a host that had asked them to run `rex
     forward new -L 127.0.0.1:PORT:localhost:PORT` on the laptop and

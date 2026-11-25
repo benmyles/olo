@@ -10,6 +10,7 @@ mod agent;
 mod attach;
 mod attention;
 mod bridge;
+mod bridge_run;
 mod copy_mode;
 mod files_sock;
 mod forwards;
@@ -223,6 +224,11 @@ fn main() {
         }
         if cli.open_qr {
             ui::open_panel_from_cli(ui::WinRole::Access);
+        }
+        if let Ok(mode) = std::env::var("OLO_REX_DEMO_RUN")
+            && !mode.trim().is_empty()
+        {
+            ui::open_demo_run_approve(mode.trim());
         }
     });
 }

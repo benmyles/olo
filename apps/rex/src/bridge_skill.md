@@ -96,6 +96,25 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
 - Also `olo notify TITLE [BODY]` (a notification on the desktop, which
   leads back to this pane), `olo clipboard TEXT` (copied there) and
   `olo paste` (what is copied there, as text).
+- **A command run on the Olo desktop**: `olo run [--cwd DIR] -- COMMAND…`
+  runs `COMMAND` on the person's desktop as their desktop account (in
+  their desktop home unless `--cwd DIR` is given, with none of this
+  host's environment). Requires the host's *Ask to run commands on this
+  computer* permission in Preferences ▸ Rex (off by default). Each run opens an
+  approval sheet on the desktop (showing the full command, this host and
+  folder) unless Deskbar's *Approve Without Asking* is active, in which
+  case it runs at once with a quiet desktop notification. Standard output
+  and error stream back live as they arrive, the exit status is the
+  command's own, and `^C` cancels the desktop command (or dismisses its
+  approval sheet).
+  - **When to use it:** driving the desktop's own programs, reading or
+    modifying files that live only on the desktop, or accessing devices
+    and services attached to the desktop (printers, audio, local hardware,
+    desktop apps).
+  - **When not to use it:** anything this host can do itself (builds,
+    tests, git, file edits on this host), or tasks that already have a
+    dedicated bridge command (`olo open`, `olo send`, `olo sync`,
+    `olo forward`, `olo op`, `olo screen`).
 - **The desktop commands**, where the person has put them on this host
   (Rex's Host window, "Desktop commands"): in a Rex session the usual
   commands already go to the desktop, so a program doesn't need to know
@@ -128,6 +147,8 @@ Underneath it is Rex's own `rex do`, which you can use directly
 `rex do olo.screen --args '{"args":[…]}'`, `rex do olo.forward --args
 '{"args":["5173"]}'`, `rex do olo.send --args '{"args":["/whole/path"]}'`,
 `rex do olo.sync --args '{"args":["/whole/path"]}'`,
+`rex do olo.run --args '{"args":["--","uname","-a"]}'` (streamed with
+`rex do olo.run.poll id=…` and cancelled with `rex do olo.run.cancel id=…`),
 `rex do olo.notify title=…`,
 `rex do olo.clipboard.set text=…`, `rex do olo.clipboard.get --args
 '{}'`; an answer that says `pending` is

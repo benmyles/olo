@@ -2,10 +2,11 @@
 # olo COMMAND [ARGUMENT…]: a command of the Olo desktop this Rex host is
 # used from, asked through Rex (olo.lua beside this file, run by
 # `rex do`): olo open URL, olo op …, olo screen …, olo forward …, olo
-# send PATH…, olo notify TITLE [BODY], olo clipboard TEXT, olo paste.
-# Part of Olo's skill
-# for agents, and of the desktop commands (xdg-open and the rest, beside
-# it). Its status is 69 where the desktop couldn't be asked.
+# send PATH…, olo sync …, olo run [--cwd DIR] -- COMMAND…, olo notify
+# TITLE [BODY], olo clipboard TEXT, olo paste.
+# Part of Olo's skill for agents, and of the desktop commands (xdg-open
+# and the rest, beside it). Its status is 69 where the desktop couldn't
+# be asked.
 here=$(dirname "$0")
 OLO_BRIDGE_CMD=${1:-}
 [ $# -gt 0 ] && shift
@@ -37,6 +38,25 @@ if [ "$takes" = yes ] && [ ! -t 0 ] && { [ -p /dev/stdin ] || [ -f /dev/stdin ];
 		exit 1
 	fi
 	export OLO_BRIDGE_STDIN
+fi
+# `olo run`: give the run a known id and trap INT/TERM/HUP so ^C cancels
+# the desktop command (or dismisses its approval alert) immediately.
+if [ "$OLO_BRIDGE_CMD" = run ]; then
+	OLO_RUN_ID="run-$$-$(date +%s 2>/dev/null || echo 0)"
+	export OLO_RUN_ID
+	cancel_run() {
+		trap - INT TERM HUP
+		[ -n "${child_pid:-}" ] && kill "$child_pid" 2>/dev/null || true
+		OLO_BRIDGE_CMD=run_cancel OLO_BRIDGE_ARGC=0 ${OLO_BRIDGE_REX:-rex} --timeout 5s do "$here/olo.lua" >/dev/null 2>&1 || true
+		exit 130
+	}
+	trap cancel_run INT TERM HUP
+	${OLO_BRIDGE_REX:-rex} --timeout 3600s do "$here/olo.lua" &
+	child_pid=$!
+	wait "$child_pid"
+	rc=$?
+	trap - INT TERM HUP
+	exit "$rc"
 fi
 # (OLO_BRIDGE_REX: another way to say `rex`, for Olo's own tests.)
 exec ${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"

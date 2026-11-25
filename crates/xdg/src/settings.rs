@@ -267,6 +267,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Use Agent Screens", role: "CheckBox" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Get items from Passwords", role: "CheckBox" },
     Setting { panel: "rex", tab: "Hosts", group: "", name: "Read and set the clipboard", role: "CheckBox" },
+    Setting { panel: "rex", tab: "Hosts", group: "", name: "Ask to run commands on this computer", role: "CheckBox" },
     Setting { panel: "screensaver", tab: "Fade", group: "", name: "Enable Screen Saver", role: "CheckBox" },
     Setting { panel: "screensaver", tab: "Fade", group: "", name: "Run module", role: "Slider" },
     Setting { panel: "screensaver", tab: "Fade", group: "", name: "Turn off screen", role: "CheckBox" },

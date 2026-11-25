@@ -2193,6 +2193,9 @@ pub struct RexGrants {
     /// Save files a program there sends (`olo send`) on this computer,
     /// in Downloads ▸ Rex ▸ HOST, and nowhere else.
     pub send_files: bool,
+    /// Run commands on this computer (`olo run`), each asked first on the
+    /// desktop unless Approve Without Asking is on in the tray.
+    pub run_commands: bool,
 }
 
 impl RexGrants {
@@ -2200,12 +2203,12 @@ impl RexGrants {
     pub const fn all() -> Self {
         // (Not `ssh_keys`: it is a host's alone, and counted here it made
         // this computer's own permissions differ from their defaults.)
-        RexGrants { open_links: true, forward_ports: true, agent_screens: true, passwords: true, clipboard: true, ssh_keys: false, send_files: true }
+        RexGrants { open_links: true, forward_ports: true, agent_screens: true, passwords: true, clipboard: true, ssh_keys: false, send_files: true, run_commands: true }
     }
 
     /// Whether anything is granted.
     pub fn any(&self) -> bool {
-        self.open_links || self.forward_ports || self.agent_screens || self.passwords || self.clipboard || self.ssh_keys || self.send_files
+        self.open_links || self.forward_ports || self.agent_screens || self.passwords || self.clipboard || self.ssh_keys || self.send_files || self.run_commands
     }
 }
 

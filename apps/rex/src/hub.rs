@@ -80,6 +80,12 @@ pub enum HubNotice {
     /// workspace's status bar says it for a few seconds, where nothing
     /// else is being said.
     Said(String),
+    /// A silent desktop notification (e.g. a host command auto-approved
+    /// while Deskbar's Approve Without Asking is active).
+    QuietNote {
+        title: String,
+        body: String,
+    },
 }
 
 /// Connection lifecycle state for one Rex host.
@@ -1840,6 +1846,9 @@ struct RexHubInner {
     agent_socks: Mutex<HashMap<String, String>>,
     /// What hosts' bridges asked that isn't over (`bridge::Calls`).
     bridge_calls: bridge::Calls,
+    /// Active `olo run` desktop command runs (`bridge_run::RunJobs`) and their approval queue.
+    run_jobs: crate::bridge_run::RunJobs,
+    run_approvals: Arc<crate::bridge_run::RunApprovals>,
     /// Each kept folder's runner and the lock its syncs take (one at a
     /// time into a folder: the runner's, and an agent's `olo sync wait`),
     /// by its host and its path there.
@@ -2232,7 +2241,13 @@ fn wanted_back(conn: &HostConnState) -> bool {
 }
 
 impl RexHub {
-    pub fn start(settings: Settings, active_theme: TerminalTheme, askpass: Option<Arc<dyn SshAskpass>>, notify: impl Fn(HubNotice) + Send + Sync + 'static) -> Arc<Self> {
+    pub fn start(
+        settings: Settings,
+        active_theme: TerminalTheme,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        run_approvals: Option<Arc<crate::bridge_run::RunApprovals>>,
+        notify: impl Fn(HubNotice) + Send + Sync + 'static,
+    ) -> Arc<Self> {
         // (Every key and its echo pass through these, at the shell's tier as
         // Terminal's echo path is: they waited behind whatever else ran.)
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -2363,6 +2378,8 @@ impl RexHub {
             notify: notify.clone(),
             spares: Mutex::new(HashMap::new()),
             bridge_calls: Default::default(),
+            run_jobs: crate::bridge_run::RunJobs::new(),
+            run_approvals: run_approvals.unwrap_or_else(|| crate::bridge_run::RunApprovals::new(|| {}, || {})),
             agent_socks: Mutex::new(HashMap::new()),
             keeping: Mutex::new(HashMap::new()),
         });
@@ -7379,6 +7396,44 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         return Some(json!({ "ok": false, "stderr": "olo: this host may not reach its servers from the Olo desktop (Preferences ▸ Rex: Reach its local servers)\n" }));
                     }
                     return Some(self.bridge_forward(host_key, is_local, session_id, &given).await);
+                }
+                // A host's `olo run [--cwd DIR] -- COMMAND…`: runs a command on
+                // the Olo desktop after user approval (or silently when tray
+                // Approve Without Asking is active), streaming stdout/stderr live.
+                "olo.run" => {
+                    if !policy.allow_run_commands {
+                        return Some(json!({
+                            "ok": false,
+                            "done": true,
+                            "stderr": "olo: this host may not run commands on the Olo desktop (Preferences ▸ Rex: Ask to run commands on this computer)\n",
+                            "data": { "code": 69 }
+                        }));
+                    }
+                    let given: Vec<String> = args
+                        .as_ref()
+                        .and_then(|a| a.get("args"))
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect())
+                        .unwrap_or_default();
+                    let ask = match crate::bridge_run::RunAsk::parse(&given) {
+                        Ok(a) => a,
+                        Err(e) => return Some(json!({ "ok": false, "done": true, "stderr": format!("olo: {e}\n"), "data": { "code": 2 } })),
+                    };
+                    let req_id = args.as_ref().and_then(|a| a.get("id")).and_then(Value::as_str).map(str::to_owned);
+                    let label = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_else(|| host_key.to_owned());
+                    let notify_cb = self.notify.clone();
+                    let on_quiet = Arc::new(move |title: String, body: String| {
+                        (notify_cb)(HubNotice::QuietNote { title, body });
+                    });
+                    return Some(self.run_jobs.start(req_id, label, ask, self.run_approvals.clone(), on_quiet).await);
+                }
+                "olo.run.poll" => {
+                    let id = args.as_ref().and_then(|a| a.get("id")).and_then(Value::as_str).unwrap_or_default();
+                    return Some(self.run_jobs.poll(id).await);
+                }
+                "olo.run.cancel" => {
+                    let id = args.as_ref().and_then(|a| a.get("id")).and_then(Value::as_str).unwrap_or_default();
+                    return Some(self.run_jobs.cancel(id));
                 }
                 "olo.notify" => {
                     self.bridge_notice(host_key, session_id.as_deref(), block_id.as_deref(), args.as_ref().unwrap_or(&Value::Null));

@@ -53,9 +53,11 @@ local asked = ({
   notify = function() return "olo.notify", { title = args[1] or "", body = args[2] or "" } end,
   clipboard = function() return "olo.clipboard.set", { text = args[1] or "" } end,
   paste = function() return "olo.clipboard.get", {} end,
+  run = function() return "olo.run", { id = os.getenv("OLO_RUN_ID") or "", args = args } end,
+  run_cancel = function() return "olo.run.cancel", { id = os.getenv("OLO_RUN_ID") or "" } end,
 })[cmd]
 if not asked then
-  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
+  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 
@@ -119,6 +121,28 @@ local function ask(name, with)
 end
 
 local r = ask(action, a)
+if cmd == "run_cancel" then
+  os.exit(0)
+end
+if cmd == "run" then
+  local function flush_chunk(chunk)
+    if chunk.stdout and chunk.stdout ~= "" then
+      io.write(chunk.stdout)
+      io.stdout:flush()
+    end
+    if chunk.stderr and chunk.stderr ~= "" then
+      io.stderr:write(chunk.stderr)
+      io.stderr:flush()
+    end
+  end
+  flush_chunk(r)
+  while not r.done and r.id and r.id ~= "" do
+    r = ask("olo.run.poll", { id = r.id })
+    flush_chunk(r)
+  end
+  local code = type(r.data) == "table" and tonumber(r.data.code) or nil
+  os.exit(r.ok and 0 or ((code and code ~= 0) and code or 1))
+end
 while r.pending do r = ask("olo.wait", { id = r.pending }) end
 
 -- A picture comes in pieces of base64 (a request through Rex has a

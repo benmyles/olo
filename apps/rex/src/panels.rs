@@ -2044,9 +2044,491 @@ mod tests {
     }
 }
 
+/// Width of the desktop command approval sheet (`olo run`).
+pub const RUN_APPROVE_WIDTH: f32 = 452.0;
+
+/// One displayed line inside the `olo run` command well.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WrappedLine {
+    /// Verbatim slice of the command (no synthetic spaces or trailing `\`).
+    pub text: String,
+    /// True when this line wrapped in the middle of one simple command (draws
+    /// a dim `↩` in the right inset). False after shell separators (`&&`, `||`,
+    /// `|`, `;`) and real newlines, where breaking reads naturally.
+    pub mid_wrap: bool,
+    /// True when this line continues a mid-command wrap (indented in layout by
+    /// 2 mono cells so wrapped arguments never look like a separate command).
+    pub indented: bool,
+}
+
+/// Soft-wrap a command for the approval well without adding any synthetic
+/// characters: breaks after shell separators (`&&`, `||`, `|`, `;`) start the
+/// next line at column 0 with no `↩`; wraps inside a single command set
+/// `mid_wrap = true` on the wrapped line and `indented = true` on its
+/// continuation (laid out 2 character cells right without inserting spaces).
+pub fn wrap_run_command(cmd: &str, max_cols: usize) -> Vec<WrappedLine> {
+    let max_cols = max_cols.max(12);
+    let mut out = Vec::new();
+    for raw_line in cmd.split('\n') {
+        let mut rest = raw_line;
+        let mut indented = false;
+        loop {
+            let eff_cols = if indented { max_cols.saturating_sub(2).max(10) } else { max_cols };
+            let chars: Vec<(usize, char)> = rest.char_indices().collect();
+            if chars.len() <= eff_cols {
+                out.push(WrappedLine { text: rest.to_owned(), mid_wrap: false, indented });
+                break;
+            }
+            let limit = chars[eff_cols].0;
+            let slice = &rest[..limit];
+            let min_byte = chars[eff_cols / 3].0;
+            // 1. Prefer breaking right after shell separators (`&& `, `|| `, `| `, `; `):
+            //    a newline there means the same to the shell, so no `↩` and column 0 next.
+            let sep_split = [" && ", " || ", " | ", "; "].into_iter().filter_map(|sep| slice.rfind(sep).map(|i| i + sep.len())).filter(|&i| i >= min_byte && i <= limit).max();
+            if let Some(split_at) = sep_split {
+                out.push(WrappedLine { text: rest[..split_at].trim_end_matches(' ').to_owned(), mid_wrap: false, indented });
+                rest = &rest[split_at..];
+                indented = false;
+                continue;
+            }
+            // 2. Wrap inside a single command: mark with `↩` and indent continuation in layout.
+            let split_at = slice.rfind(' ').map(|i| i + 1).filter(|&i| i >= min_byte && i <= limit).unwrap_or(limit);
+            out.push(WrappedLine { text: rest[..split_at].to_owned(), mid_wrap: true, indented });
+            rest = &rest[split_at..];
+            indented = true;
+        }
+    }
+    if out.is_empty() {
+        out.push(WrappedLine { text: String::new(), mid_wrap: false, indented: false });
+    }
+    out
+}
+
+/// Elide the middle of a path by whole directory segments (`~/src/olo/apps/…/scripts`)
+/// to fit `max_width`, keeping start and leaf directories intact so the folder
+/// where a command runs is never ambiguous.
+fn middle_elide_mono(g: &olo_kit::Painter, text: &str, font_size: f32, font: &olo_kit::Font, max_width: olo_kit::Pixels) -> SharedString {
+    let measure = |s: &str| {
+        let run = olo_kit::TextRun { len: s.len(), font: font.clone(), color: olo_kit::black(), background_color: None, underline: None, strikethrough: None, size: None };
+        g.text_system().shape_line(s.to_owned().into(), px(font_size), &[run], None).width
+    };
+    if measure(text) <= max_width {
+        return text.to_owned().into();
+    }
+    // Split into directory segments while preserving leading `~/` or `/`.
+    let (prefix, body) = if let Some(rest) = text.strip_prefix("~/") {
+        ("~/", rest)
+    } else if let Some(rest) = text.strip_prefix('/') {
+        ("/", rest)
+    } else {
+        ("", text)
+    };
+    let segs: Vec<&str> = body.split('/').filter(|s| !s.is_empty()).collect();
+    if segs.len() >= 3 {
+        // Start from prefix + first + /…/ + last, then add trailing segments first
+        // (then leading segments) while the whole string fits.
+        let build = |left_n: usize, right_n: usize| -> String {
+            let mut s = String::from(prefix);
+            if left_n > 0 {
+                s.push_str(&segs[..left_n].join("/"));
+                s.push('/');
+            }
+            s.push('…');
+            if right_n > 0 {
+                s.push('/');
+                s.push_str(&segs[segs.len() - right_n..].join("/"));
+            }
+            s
+        };
+        let mut left_n = 1usize;
+        let mut right_n = 1usize;
+        if measure(&build(left_n, right_n)) <= max_width {
+            // Greedily add back trailing directories first, then leading directories.
+            while left_n + right_n + 1 < segs.len() {
+                if measure(&build(left_n, right_n + 1)) <= max_width {
+                    right_n += 1;
+                } else {
+                    break;
+                }
+            }
+            while left_n + right_n + 1 < segs.len() {
+                if measure(&build(left_n + 1, right_n)) <= max_width {
+                    left_n += 1;
+                } else {
+                    break;
+                }
+            }
+            return build(left_n, right_n).into();
+        }
+        // Try `prefix + …/last` if even `first` didn't fit.
+        let minimal = build(0, 1);
+        if measure(&minimal) <= max_width {
+            return minimal.into();
+        }
+    }
+    // Fallback for a single very long segment with no directory separators.
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= 5 {
+        return text.to_owned().into();
+    }
+    let mut lo = 2usize;
+    let mut hi = chars.len() - 1;
+    let mut best = "…".to_owned();
+    while lo <= hi {
+        let keep = (lo + hi) / 2;
+        let left_n = (keep * 2 / 5).max(2);
+        let right_n = keep.saturating_sub(left_n).max(2);
+        if left_n + right_n >= chars.len() {
+            hi = keep.saturating_sub(1);
+            continue;
+        }
+        let candidate: String = chars[..left_n].iter().chain(std::iter::once(&'…')).chain(&chars[chars.len() - right_n..]).collect();
+        if measure(&candidate) <= max_width {
+            best = candidate;
+            lo = keep + 1;
+        } else {
+            if keep == 0 {
+                break;
+            }
+            hi = keep - 1;
+        }
+    }
+    best.into()
+}
+
+/// Host sentence with the host name in bold so the changing part stands out
+/// immediately (`A session on **dev-box** wants to run this command:`).
+fn render_host_line(host: &str, content_w: f32) -> Element {
+    let prefix: String = olo_kit::words::tr("A session on ").to_owned();
+    let suffix: String = olo_kit::words::tr(" wants to run this command:").to_owned();
+    let host_owned = host.to_owned();
+    let regular = style::ui_font(olo_kit::FontWeight::NORMAL);
+    let bold = style::ui_font(olo_kit::FontWeight::BOLD);
+    let total_w = f32::from(style::text_width(prefix.clone(), style::PLAIN_SIZE, regular.clone()))
+        + f32::from(style::text_width(host_owned.clone(), style::PLAIN_SIZE, bold.clone()))
+        + f32::from(style::text_width(suffix.clone(), style::PLAIN_SIZE, regular));
+    let two_lines = total_w > content_w;
+    let height = if two_lines { 2.0 * 18.0 } else { m::LABEL_ROW };
+    let key = style::key(("run-host-line", &host_owned, two_lines));
+    canvas(move |g, b| {
+        let p = theme::palette();
+        let ink = style::c(p.panel_text);
+        let reg = |len: usize| olo_kit::TextRun { len, font: style::ui_font(olo_kit::FontWeight::NORMAL), color: ink, background_color: None, underline: None, strikethrough: None, size: None };
+        let bld = |len: usize| olo_kit::TextRun { len, font: style::ui_font(olo_kit::FontWeight::BOLD), color: ink, background_color: None, underline: None, strikethrough: None, size: None };
+        let full: SharedString = format!("{prefix}{host_owned}{suffix}").into();
+        if !two_lines {
+            let runs = [reg(prefix.len()), bld(host_owned.len()), reg(suffix.len())];
+            let r = style::label_runs_fit(g, b.left(), b.center().y, style::Align::Left, full.clone(), style::PLAIN_SIZE, &runs, b.size.width);
+            g.agent(olo_kit::agent::Node::label(full, r));
+        } else {
+            let line1: SharedString = format!("{prefix}{host_owned}").into();
+            let runs1 = [reg(prefix.len()), bld(host_owned.len())];
+            style::label_runs_fit(g, b.left(), b.top() + px(9.0), style::Align::Left, line1, style::PLAIN_SIZE, &runs1, b.size.width);
+            let line2: SharedString = suffix.trim_start().to_owned().into();
+            let runs2 = [reg(line2.len())];
+            style::label_runs_fit(g, b.left(), b.top() + px(27.0), style::Align::Left, line2, style::PLAIN_SIZE, &runs2, b.size.width);
+            g.agent(olo_kit::agent::Node::label(full, b));
+        }
+    })
+    .paint_key(key)
+    .w_full()
+    .h(px(height))
+    .into_element()
+}
+
+/// Subtle 12 pt fingerprint (or camera) mark in secondary ink for the Touch ID
+/// / Face Unlock hint beside the decision buttons, hand-tuned per scale so 1×
+/// (11×11 px pixel-grid) and 1.5× (16 px grid) stay razor sharp without smudge.
+fn paint_biometric_mark(g: &mut olo_kit::Painter, b: Bounds<olo_kit::Pixels>, finger: bool, ink: olo_kit::Hsla) {
+    let s = g.scale_factor();
+    let c = b.center();
+    if finger {
+        if s < 1.25 {
+            // 1×: hand-aligned 11×11 device-pixel grid: 3 concentric open arches
+            // with 1 px strokes and exact 1 px gaps between ridges.
+            let px1 = 1.0 / s;
+            let cx = (f32::from(c.x) * s).round() / s;
+            let cy = (f32::from(c.y) * s).round() / s;
+            let mut dot = |dx: i32, dy: i32, w: i32, h: i32| {
+                let r = Bounds { origin: point(px(cx + dx as f32 * px1), px(cy + dy as f32 * px1)), size: size(px(w as f32 * px1), px(h as f32 * px1)) };
+                style::fill_rect(g, r, ink);
+            };
+            // Outer arch (r = 5): top cap + upper corners + side flanks
+            dot(-2, -5, 5, 1);
+            dot(-4, -4, 2, 1);
+            dot(3, -4, 2, 1);
+            dot(-5, -3, 1, 7);
+            dot(5, -3, 1, 7);
+            // Middle arch (r = 3): top cap + side flanks
+            dot(-1, -3, 3, 1);
+            dot(-2, -2, 1, 1);
+            dot(2, -2, 1, 1);
+            dot(-3, -1, 1, 6);
+            dot(3, -1, 1, 6);
+            // Inner core (r = 1): rounded top + vertical ridge
+            dot(-1, -1, 3, 1);
+            dot(0, 0, 1, 5);
+            return;
+        }
+        if s < 1.85 {
+            // 1.5×: exact 1-device-pixel stroke on a 16 px grid with 3 clearly
+            // separated concentric arches (2.5 dev px pitch between ridges).
+            let stroke = px(1.0 / s);
+            let mut pb = olo_kit::PathBuilder::stroke(stroke);
+            for (rx, ry, flank_y) in [(4.67f32, 4.67f32, 3.67f32), (2.67, 2.8, 4.2), (1.0, 1.33, 4.33)] {
+                let steps = 16;
+                for i in 0..=steps {
+                    let deg = -180.0 + 180.0 * (i as f32 / steps as f32);
+                    let rad = deg.to_radians();
+                    let pt = point(c.x + px(rx * rad.cos()), c.y + px(0.2 + ry * rad.sin()));
+                    if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
+                }
+                if rx > 1.5 {
+                    pb.move_to(point(c.x - px(rx), c.y + px(0.2)));
+                    pb.line_to(point(c.x - px(rx), c.y + px(flank_y)));
+                    pb.move_to(point(c.x + px(rx), c.y + px(0.2)));
+                    pb.line_to(point(c.x + px(rx), c.y + px(flank_y)));
+                }
+            }
+            pb.move_to(point(c.x, c.y - px(0.3)));
+            pb.line_to(point(c.x, c.y + px(4.5)));
+            if let Ok(path) = pb.build() {
+                g.paint_path(path, ink);
+            }
+            return;
+        }
+        // 2×+: crisp upright symmetric vector fingerprint arches.
+        let stroke = px((style::line_pixels(s) * 1.15) / s);
+        let mut pb = olo_kit::PathBuilder::stroke(stroke);
+        for (rx, ry, start_deg, end_deg) in [(4.4f32, 4.8f32, -165.0f32, -15.0f32), (2.8, 3.3, -172.0, -8.0), (1.3, 1.8, -175.0, -5.0)] {
+            let steps = 16;
+            for i in 0..=steps {
+                let deg = start_deg + (end_deg - start_deg) * (i as f32 / steps as f32);
+                let rad = deg.to_radians();
+                let pt = point(c.x + px(rx * rad.cos()), c.y + px(0.4 + ry * rad.sin()));
+                if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
+            }
+        }
+        pb.move_to(point(c.x - px(4.2), c.y + px(0.2)));
+        pb.line_to(point(c.x - px(4.0), c.y + px(3.4)));
+        pb.move_to(point(c.x + px(4.2), c.y + px(0.2)));
+        pb.line_to(point(c.x + px(4.0), c.y + px(3.4)));
+        pb.move_to(point(c.x - px(2.7), c.y + px(0.4)));
+        pb.line_to(point(c.x - px(2.4), c.y + px(4.2)));
+        pb.move_to(point(c.x + px(2.7), c.y + px(0.4)));
+        pb.line_to(point(c.x + px(2.4), c.y + px(4.2)));
+        pb.move_to(point(c.x, c.y - px(0.6)));
+        pb.line_to(point(c.x, c.y + px(4.5)));
+        if let Ok(path) = pb.build() {
+            g.paint_path(path, ink);
+        }
+    } else {
+        let stroke = px((style::line_pixels(s) * 1.15) / s);
+        let mut pb = olo_kit::PathBuilder::stroke(stroke);
+        let steps = 20;
+        for i in 0..=steps {
+            let rad = (i as f32 / steps as f32) * std::f32::consts::TAU;
+            let pt = point(c.x + px(4.2 * rad.cos()), c.y + px(4.2 * rad.sin()));
+            if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
+        }
+        for i in 0..=12 {
+            let rad = (i as f32 / 12.0) * std::f32::consts::TAU;
+            let pt = point(c.x + px(1.5 * rad.cos()), c.y + px(1.5 * rad.sin()));
+            if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
+        }
+        if let Ok(path) = pb.build() {
+            g.paint_path(path, ink);
+        }
+    }
+}
+
+/// Desktop approval sheet for a host's `olo run [--cwd DIR] -- COMMAND…`:
+/// BeOS alert frame + sunken BeOS command well (column-0 soft wraps marked with
+/// right-inset `↩`, capped at 6 lines with a real scroll bar) + folder +
+/// Touch ID hint inline with the decision buttons.
+///
+/// Security note: **Deny** is intentionally the default button (and both Return
+/// and Escape deny). Unlike `olo-sudo` (where the user typed `sudo` and expects
+/// the prompt), an `olo run` request comes from another machine and can appear
+/// while the user is typing in a terminal — a stray Return must never run a
+/// command on this computer.
+pub fn render_run_approve_panel(prompt: Option<crate::bridge_run::RunPrompt>, scroll: &olo_kit::ScrollHandle, on_choice: impl Fn(&bool, &mut WindowCx) + 'static) -> Element {
+    use olo_kit::widgets::{ALERT_TEXT_X, AlertFrame, ScrollView, alert_title};
+
+    let Some(prompt) = prompt else {
+        return div().p(px(m::WINDOW_INSET)).child(StringView::new("No command waiting for approval.").dim(true));
+    };
+    let p = theme::palette();
+    let content_w = RUN_APPROVE_WIDTH - ALERT_TEXT_X - m::WINDOW_INSET;
+
+    // First estimate with no scroll bar (~46 mono columns); if >6 lines, re-wrap
+    // slightly narrower for the 14 pt vertical scroll bar and show it on frame 1.
+    let mut lines = wrap_run_command(&prompt.command, 46);
+    let needs_scroll = lines.len() > 6;
+    if needs_scroll {
+        lines = wrap_run_command(&prompt.command, 43);
+    }
+    let shown_rows = lines.len().clamp(1, 6);
+    const WELL_LINE_H: f32 = 18.0;
+    const WELL_PAD_Y: f32 = 5.0;
+    const WELL_PAD_X: f32 = 10.0;
+    const WRAP_INDENT_PX: f32 = 14.0;
+    let s = olo_kit::scale_factor();
+    let rim = 2.0 * style::line_pixels(s) / s;
+    // When scrolling, make the inside 6 pt + 6.5 lines (123 pt) so line 7 is
+    // visibly cut through the middle ("more below" — crucial in a security
+    // approval prompt), while short commands keep exact symmetric top/bottom padding.
+    let well_h = if needs_scroll { 2.0 * rim + 6.0 + 6.5 * WELL_LINE_H } else { 2.0 * rim + 2.0 * WELL_PAD_Y + (shown_rows as f32) * WELL_LINE_H };
+    let inner_h = 2.0 * WELL_PAD_Y + (lines.len().max(1) as f32) * WELL_LINE_H;
+
+    let cmd_lines = std::rc::Rc::new(lines);
+    let full_cmd: SharedString = prompt.command.clone().into();
+    let well_canvas = {
+        let lines = cmd_lines.clone();
+        let full_cmd = full_cmd.clone();
+        let key = style::key(("run-cmd-well", &prompt.id, &prompt.command, needs_scroll));
+        canvas(move |g, b| {
+            let p = theme::palette();
+            let text_ink = style::c(p.document_text);
+            let wrap_ink = style::c(olo_theme::readable(olo_theme::mix(p.document_text, p.document_background, 0.50), p.document_background, 3.0));
+            let mono = style::mono_font(olo_kit::FontWeight::NORMAL);
+            let ui = style::ui_font(olo_kit::FontWeight::NORMAL);
+            let font_sz = style::MONO_SIZE - 0.5;
+            for (idx, line) in lines.iter().enumerate() {
+                let cy = b.top() + px(WELL_PAD_Y + (idx as f32 + 0.5) * WELL_LINE_H);
+                let left_inset = WELL_PAD_X + if line.indented { WRAP_INDENT_PX } else { 0.0 };
+                let right_reserve = if line.mid_wrap { WELL_PAD_X + 16.0 } else { WELL_PAD_X };
+                let text_max_w = (b.size.width - px(left_inset + right_reserve)).max(px(40.0));
+                style::label_fit(g, b.left() + px(left_inset), cy, style::Align::Left, line.text.clone(), font_sz, mono.clone(), text_ink, text_max_w);
+                if line.mid_wrap {
+                    // Inset `↩` by WELL_PAD_X (10 pt) from inner right edge / scrollbar,
+                    // matching the text's left inset.
+                    style::label(g, b.right() - px(WELL_PAD_X), cy, style::Align::Right, "↩", style::SMALL_SIZE, ui.clone(), wrap_ink);
+                }
+            }
+            g.agent(olo_kit::agent::Node::label(full_cmd.clone(), b));
+        })
+        .paint_key(key)
+        .w_full()
+        .h(px(inner_h))
+    };
+    let well = div().w_full().h(px(well_h)).child(ScrollView::new(scroll).background(p.document_background).vertical(needs_scroll).auto_hide(false).child(well_canvas));
+
+    // Secondary ink at ≥5.5:1 against the panel so labels stay crisp at 1× and in dark mode.
+    let quiet_ink = style::c(olo_theme::readable(olo_theme::mix(p.panel_text, p.panel_background, 0.30), p.panel_background, 5.5));
+    let cwd_full: SharedString = prompt.cwd.clone().into();
+    let cwd_el = {
+        let cwd = cwd_full.clone();
+        let key = style::key(("run-cwd", &cwd));
+        canvas(move |g, b| {
+            let p = theme::palette();
+            let font = style::mono_font(olo_kit::FontWeight::NORMAL);
+            let font_sz = style::MONO_SIZE - 0.5;
+            let shown = middle_elide_mono(g, &cwd, font_sz, &font, b.size.width);
+            let baseline = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+            let r = style::label_on_baseline(g, b.left(), baseline, style::Align::Left, shown, font_sz, font, style::c(p.panel_text));
+            g.agent(olo_kit::agent::Node::label(cwd.clone(), r));
+        })
+        .paint_key(key)
+        .w_full()
+        .min_w_0()
+        .h(px(m::LABEL_ROW))
+    };
+    let folder_row = div()
+        .w_full()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::TIGHT))
+        .child(div().flex_shrink_0().child(StringView::new("Folder:").color(quiet_ink).height(m::LABEL_ROW)))
+        .child(div().flex_1().min_w_0().child(cwd_el));
+
+    let on_choice = std::rc::Rc::new(on_choice);
+    // Deny is the default button (see doc comment above — intentionally differs from olo-sudo).
+    let deny = {
+        let f = on_choice.clone();
+        Button::new("Deny").default(true).on_click(move |_: &olo_kit::ClickEvent, cx| f(&false, cx))
+    };
+    let allow = Button::new("Allow").on_click(move |_: &olo_kit::ClickEvent, cx| on_choice(&true, cx));
+
+    let ways_el = prompt.ways_note.map(|note| {
+        let finger = prompt.ways.finger;
+        let mark_ink = quiet_ink;
+        let mark = canvas(move |g, b| {
+            // Centre mark on the plain button label's capitals.
+            let base = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+            let cap_mid = base - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+            let box_at = Bounds { origin: point(b.left(), cap_mid - px(6.0)), size: size(px(12.0), px(12.0)) };
+            paint_biometric_mark(g, box_at, finger, mark_ink);
+        })
+        .paint_key(style::key(("run-bio-mark", finger, style::ink_key(Some(mark_ink)))))
+        .w(px(12.0))
+        .h(px(m::CONTROL_HEIGHT))
+        .flex_shrink_0();
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(5.0))
+            .min_w_0()
+            .child(mark)
+            .child(StringView::new(note).size(style::DETAIL_SIZE).beside(style::PLAIN_SIZE).color(quiet_ink).height(m::CONTROL_HEIGHT))
+    });
+
+    let buttons = div().flex().flex_row().items_center().gap(px(m::SPACING + 2.0)).flex_shrink_0().child(deny).child(allow);
+    let decision_row = match ways_el {
+        Some(ways) => div().w_full().flex().flex_row().items_center().justify_between().gap(px(m::SPACING)).child(ways).child(buttons),
+        None => div().w_full().flex().flex_row().items_center().justify_end().child(buttons),
+    };
+
+    let mut frame = AlertFrame::new("authentication")
+        .child(alert_title("Run Command on This Computer"))
+        .child(div().h(px(m::TIGHT)))
+        .child(render_host_line(&prompt.host, content_w))
+        .child(div().h(px(m::TIGHT)))
+        .child(well)
+        .child(div().h(px(m::TIGHT)))
+        .child(folder_row);
+
+    if prompt.queued > 1 {
+        let more = prompt.queued - 1;
+        let msg = if more == 1 { "1 more command waiting.".to_owned() } else { format!("{more} more commands waiting.") };
+        frame = frame.child(div().h(px(4.0))).child(StringView::new(msg).small(true).color(quiet_ink).height(m::LABEL_ROW));
+    }
+    // 18 pt above the decision row (~20 pt from Folder's baseline to the top of
+    // Deny's default ring), plus 3 pt below so Deny's outer default ring balances
+    // the top and right margins cleanly.
+    frame.child(div().h(px(18.0))).child(decision_row).child(div().h(px(3.0))).into_element()
+}
+
 #[cfg(test)]
 mod command_tests {
-    use super::command_lines;
+    use super::{WrappedLine, command_lines, wrap_run_command};
+
+    #[test]
+    fn wrap_run_command_distinguishes_shell_breaks_from_mid_command_wraps() {
+        // Break after `&&`: column 0, no `↩`, no indent.
+        let cmd = "systemctl --user status pipewire && pactl list short sinks";
+        let lines = wrap_run_command(cmd, 46);
+        assert_eq!(
+            lines,
+            vec![
+                WrappedLine { text: "systemctl --user status pipewire &&".to_owned(), mid_wrap: false, indented: false },
+                WrappedLine { text: "pactl list short sinks".to_owned(), mid_wrap: false, indented: false },
+            ]
+        );
+        // Mid-command wrap: carries `↩` and indents continuation in layout (no synthetic spaces).
+        let wrapped = wrap_run_command("systemctl --user status pipewire pipewire-pulse wireplumber", 36);
+        assert_eq!(wrapped.len(), 2);
+        assert!(wrapped[0].mid_wrap && !wrapped[0].indented);
+        assert!(!wrapped[1].mid_wrap && wrapped[1].indented);
+        assert!(!wrapped[1].text.starts_with(' '));
+        let joined: String = wrapped.into_iter().map(|l| l.text).collect();
+        assert_eq!(joined, "systemctl --user status pipewire pipewire-pulse wireplumber");
+        // Real newlines stay explicit at column 0 and preserve real indentation.
+        let multi = wrap_run_command("echo first\n  echo indented", 46);
+        assert_eq!(multi, vec![WrappedLine { text: "echo first".to_owned(), mid_wrap: false, indented: false }, WrappedLine { text: "  echo indented".to_owned(), mid_wrap: false, indented: false },]);
+    }
 
     /// A command is set on lines as one is written out by hand: broken
     /// after a pipe or an `&&`, a long part at a space with a backslash,

@@ -29596,6 +29596,31 @@ Rex server, as every Rex client offers its own
   --shallow --exclude` live local inotify push, `--two-way` desktop add +
   delete, host add, edit-vs-edit conflict preserved identically on both
   sides, `ls --json`, `conflicts --json`, and `stop`.
+- *A command run on the Olo desktop* (`olo run [--cwd DIR] -- COMMAND…`,
+  `rex do olo.run`, `apps/rex/src/bridge_run.rs`; Ben, 2026-11-24): runs
+  a command on the desktop as the desktop user (in desktop `$HOME` unless
+  `--cwd DIR` is given, with none of the host's environment), under its
+  own permission (`RexGrants::run_commands`, off by default on remote
+  hosts; Preferences ▸ Rex ▸ Hosts: *"Ask to run commands on this
+  computer"*). Each run opens an approval sheet styled after `olo-sudo`'s
+  (`WinRole::RunApprove`, `panels::render_run_approve_panel`: bold host
+  name, BeOS sunken command well with column-0 soft wraps marked by
+  right-inset `↩` and a 6-line cap scrolling inside `ScrollView`,
+  middle-elided folder, optional Touch ID / face unlock note inline with
+  the buttons, **default Deny** + Escape/Return deny + 0.5 s click/key
+  guard on Allow so a stray Return or click never approves a remote
+  command), unless
+  Deskbar's *Approve Without Asking* is active (`Request::PowerStatus`
+  `auto_approve_until`), in which case it runs immediately with a quiet
+  notification (`Attention::quiet`). Stdout and stderr stream live via
+  `olo.run.poll` with the command's exact exit code; `^C` on the host
+  traps `INT`/`TERM`/`HUP` in `bridge_olo.sh`, fires `olo.run.cancel`,
+  and kills the child's process group (`setpgid(0, 0)` + `SIGTERM` →
+  `SIGKILL`) or dismisses the pending approval alert immediately (with a
+  heartbeat watchdog as fallback). Verified by unit tests (`bridge_run::
+  tests`) and live on the rig (`try.py run`, 7/7 PASS: permission off,
+  asked/denied, asked/allowed with `--cwd` & clean env & exit code, live
+  streaming + `^C` kill, and Approve Without Asking).
 - *Olo's own tests name themselves "Olo Rex test"*, kind `test`
   (`ClientIdentity::a_test`): as the app, each left a client the
   server listed as lost on the host it ran against.

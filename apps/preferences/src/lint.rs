@@ -313,9 +313,9 @@ fn ui_lint_rex_host() {
             move |cx: &mut olo_kit::Cx<PanelView>| PanelView::new(Panel::Rex, settings.clone(), cx)
         };
         // (Its Hosts tab, at This computer, keeps the room of the caution
-        // a host given passwords, SSH keys or the clipboard shows under
-        // its ticks, so the window keeps its height from one to another.)
-        lint.keeps_room(olo_kit::metrics::STACK + 2.0 * olo_kit::metrics::LABEL_ROW, "the caution under a host's grants, kept at This computer");
+        // a remote host shows under its ticks, so the window keeps its
+        // height from one to another.)
+        lint.keeps_room(2.0 + 2.0 * olo_kit::style::line_row(olo_kit::style::SMALL_SIZE), "the caution under a host's grants, kept at This computer");
         assert_clean(&format!("Rex’s General tab at {width} points"), &lint.window(&options, general));
         let remote = crate::rex::Selection::Host("host-4".into());
         let found = lint.window(&options, view(remote.clone()));

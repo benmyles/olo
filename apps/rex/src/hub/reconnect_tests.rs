@@ -408,7 +408,7 @@ fn fixture(case: &str) {
     let link = rt.block_on(Link::start(&dir));
     let clips = Arc::new(AtomicUsize::new(0));
     let seen = clips.clone();
-    let hub = RexHub::start(Settings::default(), TerminalTheme::default(), None, move |n| {
+    let hub = RexHub::start(Settings::default(), TerminalTheme::default(), None, None, move |n| {
         if matches!(n, HubNotice::SetClipboard(_)) {
             seen.fetch_add(1, Ordering::SeqCst);
         }

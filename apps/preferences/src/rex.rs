@@ -307,7 +307,7 @@ fn host_list(ui: &mut Ui, st: &State, wide: bool) {
     // beside the details as tall as the tab lets it, those rows at least;
     // above them, in a narrow window, those rows (the window there is as
     // tall as what it shows: nothing for the list to take).
-    let lines = if wide { 16.0 } else { 4.0 };
+    let lines = if wide { 17.0 } else { 4.0 };
     let least = px(m::LIST_ROW * lines + 2.0 * list_rim(ui));
     if wide {
         ui.add(div().flex_1().min_h(least).flex().flex_col().child(div().flex_1().min_h_0().child(list)));
@@ -402,9 +402,42 @@ fn fields(ui: &mut Ui, host: Option<&RexHost>, st: &mut State, changed_host: boo
     ui.add(div().flex().flex_col().gap(px(m::TIGHT)).children(fields));
 }
 
-/// The most the caution under a host's permissions is wide: its
-/// longest sentence in two lines of about a length.
-const CAUTION_WIDTH: f32 = 320.0;
+/// Caution triangle (12 pt) centred on the first line of the caution note,
+/// sitting in the checkbox column so the warning colour stays on the mark while
+/// the sentence beside it stays calm secondary text.
+fn caution_mark() -> olo_kit::Element {
+    let h = style::line_row(style::SMALL_SIZE);
+    olo_kit::canvas(move |g, b| {
+        let p = theme::palette();
+        let fill_ink = style::c(olo_theme::readable(p.warning, p.panel_background, 3.0));
+        let ex_ink = if p.mode == olo_theme::ThemeMode::Dark { style::c(p.document_background) } else { olo_kit::white() };
+        let base = style::baseline_at(g, b.center().y, style::SMALL_SIZE);
+        let cy = base - px(style::SMALL_SIZE * style::CAP_HEIGHT / 2.0) + px(1.0);
+        let cx = b.left() + px(m::MARK_SIZE / 2.0);
+        let mut tri = olo_kit::PathBuilder::fill();
+        tri.move_to(olo_kit::point(cx, cy - px(5.2)));
+        tri.line_to(olo_kit::point(cx + px(5.6), cy + px(4.6)));
+        tri.line_to(olo_kit::point(cx - px(5.6), cy + px(4.6)));
+        tri.close();
+        if let Ok(path) = tri.build() {
+            g.paint_path(path, fill_ink);
+        }
+        let s = g.scale_factor();
+        let sw = px((style::line_pixels(s) * 1.35) / s);
+        let mut bang = olo_kit::PathBuilder::stroke(sw);
+        bang.move_to(olo_kit::point(cx, cy - px(2.0)));
+        bang.line_to(olo_kit::point(cx, cy + px(1.2)));
+        if let Ok(path) = bang.build() {
+            g.paint_path(path, ex_ink);
+        }
+        let dot = style::snap_centred(g, olo_kit::point(cx, cy + px(2.9)), 1.4, 1.4);
+        style::fill_rect(g, dot, ex_ink);
+    })
+    .paint_key(style::key("rex-caution-mark"))
+    .w(px(m::MARK_SIZE))
+    .h(px(h))
+    .flex_shrink_0()
+}
 
 fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGrants) {
     let local = *selected == Selection::Local;
@@ -434,14 +467,16 @@ fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGran
         check("Use Agent Screens", grants.agent_screens, |g| &mut g.agent_screens);
         check("Get items from Passwords", grants.passwords, |g| &mut g.passwords);
         // (Not this computer's own: they have Passwords' agent as every
-        // program here has. Its room is kept there, after the others
-        // and unseen, so that choosing a host moves nothing.)
+        // program here has. Its room is kept at the bottom and unseen on
+        // This computer, so that choosing a host moves nothing.)
         // ("to other hosts": under the host's own address, "Sign in
         // with your SSH keys" read as how Rex signs in to it.)
         if !local {
             check("Sign in to other hosts with your SSH keys", grants.ssh_keys, |g| &mut g.ssh_keys);
         }
         check("Read and set the clipboard", grants.clipboard, |g| &mut g.clipboard);
+        // Last visible grant so the trust caution hangs directly underneath it.
+        check("Ask to run commands on this computer", grants.run_commands, |g| &mut g.run_commands);
         if local {
             check("Sign in to other hosts with your SSH keys", false, |g| &mut g.ssh_keys);
         }
@@ -449,37 +484,39 @@ fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGran
     let rows = checks.len();
     let checks = checks.into_iter().enumerate().map(|(i, row)| if local && i + 1 == rows { div().invisible().child(row) } else { div().child(row) });
     ui.add(div().mt(px(m::TIGHT - m::STACK)).flex().flex_col().gap(px(m::STACK)).children(checks));
-    // Reserve the same wrapped line(s) in every state. Hidden messages
-    // take their room without being painted or appearing in the tree.
-    let p = theme::palette();
-    let ink = olo_theme::readable(p.warning, p.panel_background, 4.5);
-    // (One determiner, plain nouns, in the rows' order: Opus's review of
-    // "Give Passwords, your SSH keys and the clipboard".)
-    // (Each in two lines of about a length, broken here: wrapped where
-    // the width ran out, one left "this computer." alone under a long
-    // line. Both reviews' third look.)
-    let words = match (grants.passwords, grants.ssh_keys, grants.clipboard) {
-        (true, false, false) => "Give your passwords only to a host\nyou trust as much as this computer.",
-        (false, true, false) => "Give your SSH keys only to a host\nyou trust as much as this computer.",
-        (false, false, true) => "Give your clipboard only to a host\nyou trust as much as this computer.",
-        (true, true, false) => "Give your passwords and SSH keys only to\na host you trust as much as this computer.",
-        (false, true, true) => "Give your SSH keys and clipboard only to\na host you trust as much as this computer.",
-        (true, false, true) => "Give your passwords and clipboard only to\na host you trust as much as this computer.",
-        _ => "Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.",
+    // Caution directly under "Ask to run commands on this computer": warning
+    // colour stays on the 12 pt mark in the checkbox column while the words
+    // align on the label column in calm small secondary text, full column width.
+    // Always shown for remote hosts (advice before ticking as well as after);
+    // kept invisible on This computer so choosing a host never moves anything.
+    let sensitive: Vec<&str> = [(grants.passwords, "passwords"), (grants.ssh_keys, "SSH keys"), (grants.clipboard, "clipboard"), (grants.run_commands, "commands")]
+        .into_iter()
+        .filter_map(|(on, w)| on.then_some(w))
+        .collect();
+    let words: String = match sensitive.as_slice() {
+        [] | ["commands"] => "Only allow this for hosts you trust as much as this computer.".to_owned(),
+        ["passwords"] => "Give your passwords only to a host you trust as much as this computer.".to_owned(),
+        ["SSH keys"] => "Give your SSH keys only to a host you trust as much as this computer.".to_owned(),
+        ["clipboard"] => "Give your clipboard only to a host you trust as much as this computer.".to_owned(),
+        [other, "commands"] => format!("Give your {other} and command access only to a host you trust as much as this computer."),
+        [a, b] => format!("Give your {a} and {b} only to a host you trust as much as this computer."),
+        _ => "Give this level of access only to a host you trust as much as this computer.".to_owned(),
     };
-    // A note for the ticks as a group: from their own left edge, and
-    // further under the last of them than they are from each other
-    // (begun at the labels' edge and close under the last row it read
-    // as that row's own, which with three things it may be about is
-    // often the wrong one: both design reviews, 2026-11-23). Two lines'
-    // room always, so that a tick never changes the window's height.
-    // (No wider than the ticks' own words, in two lines of about a
-    // length: at the fields' width it was a long strip with two words
-    // under it. And the list beside is a row longer, so that Add and
-    // Remove stand at the group's foot as the button of the group
-    // above does. Both reviews' second look.)
-    let caution = div().mt(px(m::STACK)).min_h(px(2.0 * m::LABEL_ROW)).max_w(px(CAUTION_WIDTH)).child(StringView::new(words).color(style::c(ink)).wrap(true));
-    ui.add(if !local && (grants.passwords || grants.clipboard || grants.ssh_keys) { caution } else { caution.invisible() });
+    let caution_min_h = 2.0 * style::line_row(style::SMALL_SIZE);
+    // Cancel `details`'s `m::STACK` (10 pt) flex gap down to 2 pt below the last
+    // checkbox so the caution's baseline sits ~18 pt below "Ask to run commands
+    // on this computer" (visibly bound to it rather than farther than sibling rows).
+    let caution = div()
+        .w_full()
+        .mt(px(2.0 - m::STACK))
+        .min_h(px(caution_min_h))
+        .flex()
+        .flex_row()
+        .items_start()
+        .gap(px(m::MARK_GAP))
+        .child(caution_mark())
+        .child(div().flex_1().min_w_0().child(StringView::new(words).small(true).dim(true).wrap(true)));
+    ui.add(if !local { caution } else { caution.invisible() });
 }
 
 #[cfg(test)]

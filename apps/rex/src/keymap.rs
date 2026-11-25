@@ -412,6 +412,27 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             args_schema: command(),
         },
         ActionSpec {
+            id: "olo.run",
+            title: "Run a Command on the Olo Desktop",
+            category: "Olo Bridge",
+            keywords: &["run", "exec", "command", "desktop"],
+            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}},"required":["args"]})),
+        },
+        ActionSpec {
+            id: "olo.run.poll",
+            title: "Stream Output of a Running Desktop Command",
+            category: "Olo Bridge",
+            keywords: &["run", "poll", "stream"],
+            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
+        },
+        ActionSpec {
+            id: "olo.run.cancel",
+            title: "Cancel a Running Desktop Command",
+            category: "Olo Bridge",
+            keywords: &["run", "cancel", "kill"],
+            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
+        },
+        ActionSpec {
             id: "olo.file",
             title: "Fetch a Picture an Answer Named",
             category: "Olo Bridge",
