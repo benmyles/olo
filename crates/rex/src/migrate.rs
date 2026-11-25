@@ -136,13 +136,29 @@ pub struct Program {
     pub open: Vec<String>,
 }
 
+/// The agent in a pane and the session it is in, as the helper found them
+/// (`how`: "open", the file it holds; "written", Claude Code's transcript
+/// written since it started; "argv", its command line's; "guess", the
+/// newest of its folder; "none").
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct PaneAgent {
+    pub agent: String,
+    pub pid: u32,
+    pub argv: Vec<String>,
+    pub cwd: String,
+    pub session: Option<String>,
+    pub how: String,
+}
+
 /// A pane: its process (as Rex's report gives it) and everything under it,
-/// parents first.
+/// parents first; the agent there, if one is.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct Pane {
     pub pid: u32,
     pub tree: Vec<Program>,
+    pub agent: Option<PaneAgent>,
 }
 
 impl Pane {
@@ -634,6 +650,248 @@ pub async fn rebuild(
     Ok((sid, made))
 }
 
+/// A move's own folder on a host, under the account's home (the copy
+/// leaves it out; its key, its log, its status, the source's saved
+/// crontab).
+pub fn move_dir(home: &str, id: &str) -> String {
+    format!("{}/.local/state/olo-rex/move/{id}", home.trim_end_matches('/'))
+}
+
+/// Runs `command` on a host as the account; what it wrote, if it ended
+/// well.
+async fn ran<R: crate::provision::Runner>(host: &mut R, command: &str) -> Result<String, String> {
+    let ran = host.run(false, command, &mut |_| {}).await.map_err(|f| f.why)?;
+    match ran.status {
+        Some(0) => Ok(ran.output),
+        _ => Err(ran.output.lines().last().unwrap_or("it ended badly").to_owned()),
+    }
+}
+
+/// The move's key, made on the source (its public line).
+pub async fn make_key<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, id: &str) -> Result<String, String> {
+    let out = ran(source, &format!("{} move key {}", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)))).await?;
+    out.lines().find(|l| l.starts_with("ssh-ed25519 ")).map(str::to_owned).ok_or_else(|| format!("the source's helper made no key: {out}"))
+}
+
+/// That key let into the destination's account (a day, only the helper's
+/// receive).
+pub async fn allow<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, id: &str, public: &str) -> Result<(), String> {
+    ran(dest, &format!("{} move allow {id} {}", crate::helper::file(helper_id), crate::provision::shell_word(public))).await.map(|_| ())
+}
+
+/// Where the source reaches the destination, and how (`send`'s and
+/// `reach`'s words).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
+pub struct Way {
+    pub user: String,
+    pub host: String,
+    pub port: u16,
+    /// The destination's host key, as the app's own connection checked it.
+    pub host_key: String,
+}
+
+impl Way {
+    fn words(&self, there: &str) -> String {
+        let host = if self.host.contains(':') { format!("[{}]", self.host) } else { self.host.clone() };
+        format!(
+            "--to {} --host-key {} --there {}",
+            crate::provision::shell_word(&format!("{}@{host}:{}", self.user, self.port)),
+            crate::provision::shell_word(&self.host_key),
+            crate::provision::shell_word(there)
+        )
+    }
+}
+
+/// The first of `ways` by which the source reaches the destination with
+/// the move's key (nothing stopped yet); `Err` with each one's answer.
+pub async fn reach<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str, ways: &[Way]) -> Result<Way, String> {
+    let mut said = Vec::new();
+    for way in ways {
+        let command = format!("{} move reach {} {}", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)), way.words(&to.home));
+        let out = source.run(false, &command, &mut |_| {}).await.map_err(|f| f.why)?;
+        let v: serde_json::Value = out.output.lines().rev().find_map(|l| serde_json::from_str(l).ok()).unwrap_or_default();
+        if v["ok"].as_bool() == Some(true) {
+            return Ok(way.clone());
+        }
+        said.push(format!("{}:{}: {}", way.host, way.port, v["error"].as_str().unwrap_or(out.output.trim())));
+    }
+    Err(said.join("; "))
+}
+
+/// A pass of the copy started on the source, detached (it goes on with
+/// the app gone); its pid.
+#[allow(clippy::too_many_arguments)]
+pub async fn start_pass<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str, way: &Way, pass: u32, excluded: &[String]) -> Result<u32, String> {
+    let mut command = format!("{} move send {} {} --pass {pass} --detach", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)), way.words(&to.home));
+    for e in excluded {
+        command.push_str(&format!(" --exclude {}", crate::provision::shell_word(e)));
+    }
+    let out = ran(source, &command).await?;
+    let v: serde_json::Value = out.lines().rev().find_map(|l| serde_json::from_str(l).ok()).unwrap_or_default();
+    v["started"].as_u64().map(|p| p as u32).ok_or_else(|| format!("the copy didn't start: {}", out.trim()))
+}
+
+/// How the copy stands (its `status.json`, and whether it still runs).
+pub async fn pass_status<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, id: &str) -> Result<serde_json::Value, String> {
+    let out = ran(source, &format!("{} move status {}", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)))).await?;
+    serde_json::from_str(out.trim()).map_err(|e| format!("the copy's status didn't read: {e}"))
+}
+
+/// The source stopped and kept stopped ([`stop_script`]), then everything
+/// of the account but the helper's own line ended (`move stop`): what is
+/// left, if anything (a process in `D`, one a root supervisor starts
+/// again).
+pub async fn stop_source<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, id: &str, agents: &[u32]) -> Result<Vec<serde_json::Value>, String> {
+    ran(source, &format!("sh -c {}", crate::provision::shell_word(&stop_script(from, &move_dir(&from.home, id), agents)))).await?;
+    let out = source.run(false, &format!("{} move stop", crate::helper::file(helper_id)), &mut |_| {}).await.map_err(|f| f.why)?;
+    let v: serde_json::Value = out.output.lines().rev().find_map(|l| serde_json::from_str(l).ok()).unwrap_or_default();
+    Ok(v["left"].as_array().cloned().unwrap_or_default())
+}
+
+/// The source's lingering turned off (after the second pass: a detached
+/// pass needs the account's systemd), by the account where it may, else by
+/// root through sudo where it is an administrator.
+pub async fn linger_off<R: crate::provision::Runner>(source: &mut R, from: &Facts) -> Result<(), String> {
+    if !from.linger {
+        return Ok(());
+    }
+    let mine = source.run(false, "loginctl disable-linger", &mut |_| {}).await.map_err(|f| f.why)?;
+    if mine.status == Some(0) {
+        return Ok(());
+    }
+    if from.admin {
+        let user = crate::provision::shell_word(&from.user);
+        let root = source.run(true, &format!("loginctl disable-linger {user}"), &mut |_| {}).await.map_err(|f| f.why)?;
+        if root.status == Some(0) {
+            return Ok(());
+        }
+    }
+    Err("its lingering couldn't be turned off (a reboot would start what was stopped)".into())
+}
+
+/// A home whose path changed made right on the destination (`move fix`):
+/// what it rewrote, renamed, retargeted, and what it only names.
+pub async fn fix_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str) -> Result<serde_json::Value, String> {
+    if from.home == to.home {
+        return Ok(serde_json::json!({}));
+    }
+    let once = format!("{}/fixed.json", move_dir(&to.home, id));
+    let out = ran(
+        dest,
+        &format!(
+            "mkdir -p {} && {} move fix --from {} --to {} --once {}",
+            crate::provision::shell_word(&move_dir(&to.home, id)),
+            crate::helper::file(helper_id),
+            crate::provision::shell_word(&from.home),
+            crate::provision::shell_word(&to.home),
+            crate::provision::shell_word(&once)
+        ),
+    )
+    .await?;
+    serde_json::from_str(out.lines().last().unwrap_or_default()).map_err(|e| format!("the fix's report didn't read: {e}"))
+}
+
+/// The crontab the source had, as its stop saved it (none: it had none).
+pub async fn saved_crontab<R: crate::provision::Runner>(source: &mut R, from: &Facts, id: &str) -> Result<Option<String>, String> {
+    let file = crate::provision::shell_word(&format!("{}/crontab", move_dir(&from.home, id)));
+    let out = ran(source, &format!("[ -s {file} ] && cat {file} || true")).await?;
+    Ok((!out.trim().is_empty()).then_some(out))
+}
+
+/// The account's own units that were enabled on the source enabled (and
+/// started) on the destination; its crontab, as the source had it, made
+/// there, the old home's paths in it the new home's (`crontab` must be
+/// there: else it is kept in the move's folder, and Done says so).
+pub async fn units_and_crontab<R: crate::provision::Runner>(dest: &mut R, from: &Facts, to: &Facts, id: &str, crontab: Option<&str>) -> Result<(), String> {
+    let wanted: Vec<String> = from.enabled.iter().filter(|u| !(u.starts_with("rex.") || u.starts_with("olo-pool."))).cloned().collect();
+    let mut s = String::from("export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user daemon-reload 2> /dev/null\n");
+    if !wanted.is_empty() {
+        let w = wanted.iter().map(|u| crate::provision::shell_word(u)).collect::<Vec<_>>().join(" ");
+        s.push_str(&format!("systemctl --user enable --now {w} 2>&1 || true\n"));
+    }
+    if let Some(table) = crontab {
+        let table = String::from_utf8_lossy(&crate::sessions::rewritten(table.as_bytes().to_vec(), &from.home, &to.home)).into_owned();
+        let saved = format!("{}/crontab", move_dir(&to.home, id));
+        // (A delimiter no line of the table is.)
+        let mut end = "OLO_MOVE_CRONTAB".to_owned();
+        while table.lines().any(|l| l == end) {
+            end.push('_');
+        }
+        s.push_str(&format!("mkdir -p {}\ncat > {} <<'{end}'\n{}\n{end}\n", crate::provision::shell_word(&move_dir(&to.home, id)), crate::provision::shell_word(&saved), table.trim_end_matches('\n')));
+        if to.has("crontab") {
+            s.push_str(&format!("crontab {}\n", crate::provision::shell_word(&saved)));
+        }
+    }
+    s.push_str("true\n");
+    ran(dest, &format!("sh -c {}", crate::provision::shell_word(&s))).await.map(|_| ())
+}
+
+/// The move's key taken out of the destination, its folder off the source
+/// (its record kept on this computer).
+pub async fn clean_up<S: crate::provision::Runner, D: crate::provision::Runner>(source: &mut S, dest: &mut D, helper_id: &str, from: &Facts, id: &str) -> Result<(), String> {
+    ran(dest, &format!("{} move disallow {id}", crate::helper::file(helper_id))).await?;
+    ran(source, &format!("rm -rf {}", crate::provision::shell_word(&move_dir(&from.home, id)))).await.map(|_| ())
+}
+
+/// A program a pane runs that only shows something (a list followed, a
+/// log, a monitor): run again on the destination as it was. Any other is
+/// not (`git push` running when the source was looked at is never run
+/// twice): its command line is left typed at the shell's prompt instead.
+pub fn only_shows(argv: &[String]) -> bool {
+    let name = argv.first().map(|a| a.rsplit('/').next().unwrap_or(a)).unwrap_or_default();
+    matches!(name, "tail" | "less" | "more" | "watch" | "htop" | "top" | "btop" | "glances" | "nvtop" | "journalctl" | "dmesg" | "man" | "olo-worklist")
+        || (name == "tail" && argv.iter().any(|a| a == "-f" || a == "-F"))
+}
+
+/// What each pane runs on the destination, by the source's block: in its
+/// folder (the new home's), an agent resumed in its session with its own
+/// flags, a program that only shows something run again, anything else
+/// typed and left for the person; a shell, a shell. And the agents' pids
+/// on the source (to stop them first). `path`: the old home's paths made
+/// the new home's.
+pub fn pane_runs(captured: &CapturedSession, panes: &[Pane], path: &dyn Fn(&str) -> String) -> (std::collections::HashMap<String, PaneRun>, Vec<u32>, std::collections::HashMap<String, bool>) {
+    let mut runs = std::collections::HashMap::new();
+    let mut agents = Vec::new();
+    // (Whether each pane's command is to be run, not only typed.)
+    let mut run_it = std::collections::HashMap::new();
+    for cp in &captured.panes {
+        let pane = cp.pid.and_then(|pid| panes.iter().find(|p| p.pid == pid));
+        let cwd = path(&cp.cwd);
+        let (command, run) = match pane.and_then(|p| p.agent.as_ref()) {
+            Some(a) => {
+                agents.push(a.pid);
+                let line = match &a.session {
+                    Some(session) => resume_line(&a.agent, &a.argv, session, path),
+                    // (An agent not yet in a session of its own: started
+                    // again as it was told, nothing to resume.)
+                    None => Some(std::iter::once(a.agent.clone()).chain(a.argv.iter().skip(1).filter(|w| w.starts_with('-')).map(|w| path(w))).collect()),
+                };
+                (line, true)
+            }
+            None => {
+                // (The program in front, if it isn't the pane's shell.)
+                let front = pane.and_then(|p| p.tree.iter().find(|t| Some(t.pid) == cp.foreground && Some(t.pid) != cp.pid).or_else(|| p.tree.first().filter(|t| !is_shell(&t.name))));
+                match front {
+                    Some(t) if !is_shell(&t.name) => (Some(t.argv.iter().map(|a| path(a)).collect::<Vec<_>>()), only_shows(&t.argv)),
+                    _ => (None, false),
+                }
+            }
+        };
+        run_it.insert(cp.block_id.clone(), run);
+        runs.insert(cp.block_id.clone(), PaneRun { cwd, command });
+    }
+    (runs, agents, run_it)
+}
+
+fn is_shell(name: &str) -> bool {
+    matches!(name.trim_start_matches('-'), "bash" | "zsh" | "fish" | "sh" | "dash" | "ksh" | "tcsh" | "csh" | "nu" | "xonsh")
+}
+
+/// A command line as a shell takes it: each word quoted where it must be.
+pub fn command_text(words: &[String]) -> String {
+    words.iter().map(|w| crate::provision::shell_word(w)).collect::<Vec<_>>().join(" ")
+}
+
 /// How an agent's flag takes its value, as its own program parses it
 /// (Claude Code's commander, Codex's clap, agy's Go flags).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1011,5 +1269,122 @@ mod tests {
         let same = message(&Told { from_label: "a", to_label: "b", from: from.clone(), to: from.clone(), var_tmp: true, ..Told::default() });
         assert!(!same.contains("home moved") && !same.contains("packages") && !same.contains("machine") && !same.contains("cut off") && !same.contains("port"), "{same}");
         assert!(same.contains("and your folders in /var/tmp"));
+    }
+
+    fn block<F: std::future::Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    }
+
+    /// A host that writes down each command and answers from a script:
+    /// the first answer whose words are in the command, else nothing, ended
+    /// well.
+    struct Scripted {
+        ran: Vec<(bool, String)>,
+        answers: Vec<(&'static str, u32, String)>,
+    }
+
+    impl crate::provision::Runner for Scripted {
+        async fn run(&mut self, root: bool, command: &str, _: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, crate::provision::Failed> {
+            self.ran.push((root, command.to_owned()));
+            let (status, output) = self.answers.iter().find(|(w, _, _)| command.contains(w)).map(|(_, s, o)| (*s, o.clone())).unwrap_or((0, String::new()));
+            Ok(crate::provision::Ran { status: Some(status), output })
+        }
+    }
+
+    /// The move's steps on its hosts, each as the helper's command with its
+    /// words quoted whole, its answer read: the key's line, the first way
+    /// that reaches, a pass started detached (its excludes passed on), the
+    /// source stopped then drained, lingering off by root where the account
+    /// can't, the crontab carried with the new home's paths, and the key and
+    /// folder taken away after.
+    #[test]
+    fn the_moves_steps_run_on_its_hosts() {
+        let (from, to) = (Facts::read(UBUNTU).unwrap(), Facts::read(FEDORA).unwrap());
+        let mut src = Scripted {
+            ran: vec![],
+            answers: vec![
+                ("move key", 0, "ssh-ed25519 AAAAkey olo-move-m1\n".into()),
+                ("move reach", 1, r#"{"ok":false,"error":"connection refused"}"#.into()),
+                ("move send", 0, "{\"started\":4242}\n".into()),
+                ("move stop", 0, r#"{"ended":3,"left":[]}"#.into()),
+                ("disable-linger ubuntu", 0, String::new()),
+                ("loginctl disable-linger", 1, "Access denied\n".into()),
+            ],
+        };
+        let mut dst = Scripted { ran: vec![], answers: vec![] };
+        let public = block(make_key(&mut src, "abc", &from, "m1")).unwrap();
+        assert_eq!(public, "ssh-ed25519 AAAAkey olo-move-m1");
+        block(allow(&mut dst, "abc", "m1", &public)).unwrap();
+        assert!(dst.ran[0].1.ends_with("move allow m1 'ssh-ed25519 AAAAkey olo-move-m1'"), "{:?}", dst.ran);
+        let way = Way { user: "fedora".into(), host: "dest".into(), port: 22, host_key: "ssh-ed25519 HOSTKEY".into() };
+        let refused = block(reach(&mut src, "abc", &from, &to, "m1", std::slice::from_ref(&way))).unwrap_err();
+        assert_eq!(refused, "dest:22: connection refused");
+        let pid = block(start_pass(&mut src, "abc", &from, &to, "m1", &way, 1, &["/.cache".to_owned(), "/a b".to_owned()])).unwrap();
+        assert_eq!(pid, 4242);
+        let send = &src.ran.iter().find(|(_, c)| c.contains("move send")).unwrap().1;
+        assert!(
+            send.contains(
+                "move send /home/ubuntu/.local/state/olo-rex/move/m1 --to fedora@dest:22 --host-key 'ssh-ed25519 HOSTKEY' --there /home/fedora --pass 1 --detach --exclude /.cache --exclude '/a b'"
+            ),
+            "{send}"
+        );
+        let left = block(stop_source(&mut src, "abc", &from, "m1", &[801])).unwrap();
+        assert!(left.is_empty());
+        let n = src.ran.len();
+        assert!(src.ran[n - 2].1.starts_with("sh -c ") && src.ran[n - 2].1.contains("kill -TERM 801") && src.ran[n - 1].1.ends_with("move stop"));
+        block(linger_off(&mut src, &from)).unwrap();
+        assert_eq!(src.ran.last().unwrap(), &(true, "loginctl disable-linger ubuntu".to_owned()), "by root once the account was refused");
+        block(units_and_crontab(&mut dst, &from, &to, "m1", Some("0 * * * * /home/ubuntu/bin/backup\n"))).unwrap();
+        let units = &dst.ran.last().unwrap().1;
+        assert!(units.contains("enable --now backup.timer") && !units.contains("rex.socket"), "{units}");
+        assert!(units.contains("0 * * * * /home/fedora/bin/backup") && units.contains("OLO_MOVE_CRONTAB"), "{units}");
+        assert!(!units.contains("crontab /home"), "the destination has no crontab program: kept in the move's folder");
+        block(clean_up(&mut src, &mut dst, "abc", &from, "m1")).unwrap();
+        assert!(dst.ran.last().unwrap().1.ends_with("move disallow m1"));
+        assert_eq!(src.ran.last().unwrap().1, "rm -rf /home/ubuntu/.local/state/olo-rex/move/m1");
+    }
+
+    /// Each pane comes back running what it ran: an agent resumed in its
+    /// session with its flags (its home's paths the new home's), a viewer
+    /// run again, another program only typed, a shell a shell; the agents'
+    /// pids kept to stop them first.
+    #[test]
+    fn each_pane_comes_back_running_what_it_ran() {
+        let captured = CapturedSession {
+            panes: vec![
+                CapturedPane { block_id: "b1".into(), pid: Some(10), foreground: Some(11), cwd: "/home/ubuntu/proj-a".into(), ..CapturedPane::default() },
+                CapturedPane { block_id: "b2".into(), pid: Some(20), foreground: Some(20), cwd: "/home/ubuntu".into(), ..CapturedPane::default() },
+                CapturedPane { block_id: "b3".into(), pid: Some(30), foreground: Some(31), cwd: "/home/ubuntu/proj-b".into(), ..CapturedPane::default() },
+                CapturedPane { block_id: "b4".into(), pid: Some(40), foreground: Some(40), cwd: "/home/ubuntu".into(), ..CapturedPane::default() },
+            ],
+            ..CapturedSession::default()
+        };
+        let prog = |pid: u32, argv: &[&str]| Program { pid, name: argv[0].rsplit('/').next().unwrap().into(), argv: argv.iter().map(|a| a.to_string()).collect(), ..Program::default() };
+        let panes = vec![
+            Pane {
+                pid: 10,
+                tree: vec![prog(10, &["bash"]), prog(11, &["claude", "--dangerously-skip-permissions"])],
+                agent: Some(PaneAgent {
+                    agent: "claude".into(),
+                    pid: 11,
+                    argv: vec!["claude".into(), "--dangerously-skip-permissions".into()],
+                    session: Some("S1".into()),
+                    how: "written".into(),
+                    ..PaneAgent::default()
+                }),
+            },
+            Pane { pid: 20, tree: vec![prog(20, &["tail", "-f", "/home/ubuntu/todo.txt"])], agent: None },
+            Pane { pid: 30, tree: vec![prog(30, &["bash"]), prog(31, &["git", "push"])], agent: None },
+            Pane { pid: 40, tree: vec![prog(40, &["bash", "-l"])], agent: None },
+        ];
+        let path = |p: &str| p.replace("/home/ubuntu", "/home/fedora");
+        let (runs, agents, run_it) = pane_runs(&captured, &panes, &path);
+        assert_eq!(agents, [11]);
+        assert_eq!(runs["b1"], PaneRun { cwd: "/home/fedora/proj-a".into(), command: Some(["claude", "--dangerously-skip-permissions", "--resume", "S1"].map(String::from).to_vec()) });
+        assert_eq!(runs["b2"].command.as_deref(), Some(["tail", "-f", "/home/fedora/todo.txt"].map(String::from).as_slice()));
+        assert_eq!((run_it["b1"], run_it["b2"], run_it["b3"]), (true, true, false), "a viewer runs again; git push is only typed");
+        assert_eq!(runs["b3"].command.as_deref(), Some(["git", "push"].map(String::from).as_slice()));
+        assert_eq!(runs["b4"].command, None);
+        assert_eq!(command_text(&["tail".into(), "-f".into(), "/home/fedora/my todo.txt".into()]), "tail -f '/home/fedora/my todo.txt'");
     }
 }

@@ -38,12 +38,13 @@ use std::time::{Duration, Instant};
 
 use russh::keys::ssh_key::{LineEnding, PrivateKey, private::Ed25519Keypair};
 
-const USAGE: &str = "usage: olo-rex-link move look\n       olo-rex-link move look-pane PID...\n       olo-rex-link move key DIR\n       olo-rex-link move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude PATTERN]... [--detach]\n       olo-rex-link move allow ID PUBLIC-KEY-LINE\n       olo-rex-link move disallow ID\n       olo-rex-link move receive   (a move's key's forced command)\n       olo-rex-link move status DIR\n       olo-rex-link move stop [--spare PID]…";
+const USAGE: &str = "usage: olo-rex-link move look\n       olo-rex-link move reach DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT\n       olo-rex-link move look-pane PID...\n       olo-rex-link move key DIR\n       olo-rex-link move send DIR --to USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude PATTERN]... [--detach]\n       olo-rex-link move allow ID PUBLIC-KEY-LINE\n       olo-rex-link move disallow ID\n       olo-rex-link move receive   (a move's key's forced command)\n       olo-rex-link move status DIR\n       olo-rex-link move stop [--spare PID]…";
 
 pub fn run(args: Vec<String>) -> ! {
     let code = match args.first().map(String::as_str) {
         Some("key") => key(&args[1..]),
         Some("send") => send(&args[1..]),
+        Some("reach") => reach(&args[1..]),
         Some("allow") => allow(&args[1..]),
         Some("disallow") => disallow(&args[1..]),
         Some("receive") => receive(),
@@ -667,7 +668,8 @@ fn kept_index(dir: &Path, pass: u32) -> PathBuf {
     dir.join(format!("index-{pass}"))
 }
 
-async fn copy(s: &Sending, standing: Shared) -> Result<(), String> {
+/// The destination reached with the move's key, its host key pinned.
+async fn connect(s: &Sending) -> Result<russh::client::Handle<Pinned>, String> {
     let private = std::fs::read_to_string(s.dir.join("key")).map_err(|e| format!("the move's key: {e}"))?;
     let key = PrivateKey::from_openssh(&private).map_err(|e| format!("the move's key: {e}"))?;
     let config = std::sync::Arc::new(russh::client::Config { keepalive_interval: Some(Duration::from_secs(15)), keepalive_max: 4, ..Default::default() });
@@ -683,6 +685,44 @@ async fn copy(s: &Sending, standing: Shared) -> Result<(), String> {
     if !auth.success() {
         return Err(format!("{}@{} didn't let the move's key in", s.user, s.host));
     }
+    Ok(session)
+}
+
+/// `move reach DIR --to … --host-key …`: whether the destination can be
+/// reached from here with the move's key (before anything is stopped).
+fn reach(args: &[String]) -> i32 {
+    let Some(s) = sending(args) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let said = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string()).and_then(|rt| {
+        rt.block_on(async {
+            let session = connect(&s).await?;
+            let channel = session.channel_open_session().await.map_err(|e| e.to_string())?;
+            channel.exec(true, command_for(&serde_json::json!({"op": "hello"}))).await.map_err(|e| e.to_string())?;
+            let mut stream = channel.into_stream();
+            let mut answer = String::new();
+            use tokio::io::AsyncReadExt;
+            tokio::time::timeout(Duration::from_secs(20), stream.read_to_string(&mut answer)).await.map_err(|_| "the destination's helper didn't answer".to_owned())?.map_err(|e| e.to_string())?;
+            let _ = session.disconnect(russh::Disconnect::ByApplication, "", "").await;
+            Ok::<String, String>(answer)
+        })
+    });
+    match said {
+        Ok(answer) => {
+            let v: serde_json::Value = serde_json::from_str(answer.trim()).unwrap_or_default();
+            println!("{}", serde_json::json!({"ok": v["ok"].as_bool() == Some(true), "helper": v["helper"]}));
+            0
+        }
+        Err(e) => {
+            println!("{}", serde_json::json!({"ok": false, "error": e}));
+            1
+        }
+    }
+}
+
+async fn copy(s: &Sending, standing: Shared) -> Result<(), String> {
+    let session = connect(s).await?;
     // The engine's receiving side there, in the destination's home.
     let channel = session.channel_open_session().await.map_err(|e| e.to_string())?;
     let ask = serde_json::json!({"op": "sync", "root": s.there, "options": ["--scoped"]});
@@ -1062,8 +1102,107 @@ fn process_json(p: &Proc, home: &Path) -> serde_json::Value {
     serde_json::json!({"pid": p.pid, "ppid": p.ppid, "name": p.comm, "argv": argv, "cwd": cwd, "start": start, "open": open})
 }
 
+/// Which agent a process is (`claude`, `codex`, `agy`), by its name or
+/// its program's.
+fn agent_of(argv: &[String], name: &str) -> Option<&'static str> {
+    let base = |s: &str| s.rsplit('/').next().unwrap_or(s).to_owned();
+    let names: Vec<String> = [name.to_owned()].into_iter().chain(argv.iter().take(2).map(|a| base(a))).collect();
+    if names.iter().any(|n| n == "claude") || argv.iter().any(|a| a.contains("@anthropic-ai/claude-code") || a.contains("/claude/versions/")) {
+        Some("claude")
+    } else if names.iter().any(|n| n == "codex") {
+        Some("codex")
+    } else if names.iter().any(|n| n == "agy" || n == "antigravity") {
+        Some("agy")
+    } else {
+        None
+    }
+}
+
+/// The session id on an agent's command line (`--resume ID`, `-r ID`,
+/// `--session-id ID`, Codex's `resume ID`, agy's `--conversation ID`).
+fn argv_session(agent: &str, argv: &[String]) -> Option<String> {
+    let flags: &[&str] = match agent {
+        "claude" => &["--resume", "-r", "--session-id"],
+        "codex" => &["resume"],
+        _ => &["--conversation", "-conversation", "--resume", "-r"],
+    };
+    argv.windows(2).find(|w| flags.contains(&w[0].as_str()) && !w[1].starts_with('-')).map(|w| w[1].clone())
+}
+
+/// A Claude Code session's transcripts, newest first: `(id, written)` in
+/// the project folder of `cwd`.
+fn claude_transcripts(home: &Path, cwd: &str) -> Vec<(String, std::time::SystemTime)> {
+    let project: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let mut all: Vec<(String, std::time::SystemTime)> = std::fs::read_dir(home.join(".claude/projects").join(project))
+        .map(|d| {
+            d.filter_map(|e| {
+                let e = e.ok()?;
+                let name = e.file_name().into_string().ok()?;
+                Some((name.strip_suffix(".jsonl")?.to_owned(), e.metadata().ok()?.modified().ok()?))
+            })
+            .collect()
+        })
+        .unwrap_or_default();
+    all.sort_by(|a, b| b.1.cmp(&a.1));
+    all
+}
+
+/// When a process started, as the clock has it (its start in ticks after
+/// boot, and boot's time).
+fn started_at(start_ticks: u64) -> Option<std::time::SystemTime> {
+    let boot: u64 = std::fs::read_to_string("/proc/stat").ok()?.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())?;
+    // SAFETY: a getter.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
+    Some(std::time::UNIX_EPOCH + Duration::from_secs(boot) + Duration::from_millis(start_ticks * 1000 / hz))
+}
+
+/// Which agent runs in a pane's tree and the session it is in, and how
+/// that was found: the session file it holds open (Codex's, agy's); for
+/// Claude Code, the newest transcript of its folder written since it
+/// started (a `/resume` inside it moves on from its command line); the
+/// command line's; else the newest of its folder, a guess.
+fn pane_agent(tree: &[serde_json::Value], home: &Path) -> serde_json::Value {
+    let Some((p, agent)) = tree.iter().find_map(|p| {
+        let argv: Vec<String> = p["argv"].as_array()?.iter().filter_map(|a| a.as_str().map(str::to_owned)).collect();
+        agent_of(&argv, p["name"].as_str().unwrap_or_default()).map(|a| (p, a))
+    }) else {
+        return serde_json::Value::Null;
+    };
+    let argv: Vec<String> = p["argv"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+    let cwd = p["cwd"].as_str().unwrap_or_default();
+    let open: Option<String> = tree.iter().flat_map(|q| q["open"].as_array().cloned().unwrap_or_default()).filter_map(|f| f.as_str().map(str::to_owned)).find_map(|f| {
+        let name = f.rsplit('/').next()?.to_owned();
+        for log in [".db", ".db-wal", ".db-shm"] {
+            if let Some(stem) = name.strip_suffix(log) {
+                return Some(stem.to_owned());
+            }
+        }
+        let stem = name.strip_suffix(".jsonl")?;
+        let parts: Vec<&str> = stem.split('-').collect();
+        (parts.len() >= 5).then(|| parts[parts.len() - 5..].join("-"))
+    });
+    let (session, how) = if let Some(id) = open {
+        (Some(id), "open")
+    } else if agent == "claude"
+        && let Some(since) = started_at(p["start"].as_u64().unwrap_or(0))
+        && let Some((id, _)) = claude_transcripts(home, cwd).into_iter().find(|(_, written)| *written >= since)
+    {
+        (Some(id), "written")
+    } else if let Some(id) = argv_session(agent, &argv) {
+        (Some(id), "argv")
+    } else if agent == "claude"
+        && let Some((id, _)) = claude_transcripts(home, cwd).into_iter().next()
+    {
+        (Some(id), "guess")
+    } else {
+        (None, "none")
+    };
+    serde_json::json!({"agent": agent, "pid": p["pid"], "argv": argv, "cwd": cwd, "session": session, "how": how})
+}
+
 /// `move look-pane PID…`: for each pane's process (Rex's report gives its
-/// pid), it and everything under it, parents first (JSON).
+/// pid), it and everything under it, parents first, and the agent there
+/// with its session ([`pane_agent`]) (JSON).
 fn look_pane(args: &[String]) -> i32 {
     let Ok(pids) = args.iter().map(|a| a.parse::<i32>()).collect::<Result<Vec<_>, _>>() else {
         eprintln!("{USAGE}");
@@ -1084,7 +1223,8 @@ fn look_pane(args: &[String]) -> i32 {
                     at.extend(children);
                 }
             }
-            serde_json::json!({"pid": root, "tree": tree})
+            let agent = pane_agent(&tree, &home);
+            serde_json::json!({"pid": root, "tree": tree, "agent": agent})
         })
         .collect();
     println!("{}", serde_json::Value::Array(panes));
@@ -1273,5 +1413,23 @@ mod tests {
         assert_eq!(v["argv"][3], "a word\nwith a line");
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    /// The agent in a pane's tree and its session: the file it holds open
+    /// first, its command line's next; never a program that isn't one.
+    #[test]
+    fn a_panes_agent_and_session_are_found() {
+        let home = Path::new("/var/tmp/olo-rex-link-no-such-home");
+        let p = |pid: u32, argv: &[&str], open: &[&str]| serde_json::json!({"pid": pid, "name": argv[0], "argv": argv, "cwd": "/home/u/p", "start": 0, "open": open});
+        let codex = [p(1, &["bash"], &[]), p(2, &["codex", "resume", "OLD", "--yolo"], &["/home/u/.codex/sessions/2026/11/25/rollout-2026-11-25T01-02-03-0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b.jsonl"])];
+        let v = pane_agent(&codex, home);
+        assert_eq!((v["agent"].as_str(), v["session"].as_str(), v["how"].as_str()), (Some("codex"), Some("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"), Some("open")));
+        let agy = [p(5, &["agy", "--conversation", "C1"], &[])];
+        assert_eq!(pane_agent(&agy, home)["session"], "C1");
+        let claude = [p(7, &["/home/u/.local/bin/claude", "--dangerously-skip-permissions", "--resume", "S1"], &[])];
+        let v = pane_agent(&claude, home);
+        assert_eq!((v["agent"].as_str(), v["session"].as_str(), v["how"].as_str()), (Some("claude"), Some("S1"), Some("argv")));
+        assert!(pane_agent(&[p(9, &["tail", "-f", "todo.txt"], &[])], home).is_null());
+        assert_eq!(argv_session("codex", &["codex".into(), "resume".into(), "--last".into()]), None);
     }
 }
