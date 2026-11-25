@@ -37,14 +37,20 @@ pub fn window_options(title: String) -> WindowOptions {
     WindowOptions::new(title, 480.0, 360.0).min_size(320.0, 200.0).child().dialog()
 }
 
+fn item_at(e: &Entry, local_path: PathBuf) -> Item {
+    Item { path: local_path, name: e.name.clone(), is_dir: e.is_dir, size: e.size, modified: e.modified, kind: e.kind, icon: items::icon_of(e).to_string() }
+}
+
 fn item(e: &Entry) -> Item {
-    Item { path: e.path.clone(), name: e.name.clone(), is_dir: e.is_dir, size: e.size, modified: e.modified, kind: e.kind, icon: items::icon_of(e).to_string() }
+    item_at(e, e.path.clone())
 }
 
 /// What Quick Look's window is told.
 pub enum QuickMsg {
     /// Another item (of window `.0`'s), in the same window.
     Show(u64, Entry, u64),
+    /// A remote file fetched to a local cache copy for preview.
+    RemoteReady(u64, Result<PathBuf, String>),
     /// The picture's editor says something (of the picture at a path).
     Edited(PathBuf, EditEvent),
     /// A drag out of it is over.
@@ -56,6 +62,7 @@ pub struct QuickLook {
     /// The folder or Find window (or the desktop) whose selection shows.
     pub source: u64,
     pub entry: Entry,
+    generation: u64,
     pub preview: Child<PreviewView>,
     /// "Open with …": who opens the entry (looked up once per item).
     opener: Option<String>,
@@ -63,7 +70,7 @@ pub struct QuickLook {
     editor: Option<Editor>,
     /// The entry is a picture that can be written back.
     editable: bool,
-    /// The last rotation couldn't be saved.
+    /// The last rotation couldn't be saved (or remote preview download failed).
     failed: Option<String>,
     /// What the picture is ("JPEG image"), kept for the note as it turns.
     what: String,
@@ -81,6 +88,7 @@ impl QuickLook {
     /// after a moment with a spinner if that is slow.
     pub fn new(source: u64, entry: Entry, generation: u64, cx: &mut Cx<Self>) -> QuickLook {
         cx.hold_commit(olo_preview::SLOW);
+        let remote_file = !entry.is_dir && fs::is_remote(&entry.path);
         let it = item(&entry);
         let preview = cx.new_view(|cx| PreviewView::new(it, generation, false, cx));
         cx.subscribe(&preview, |q: &mut QuickLook, e: &PreviewEvent, cx| {
@@ -90,6 +98,12 @@ impl QuickLook {
             }
             cx.invalidate();
         });
+        if remote_file && let Some(rp) = fs::rex_path(&entry.path) {
+            let to = cx.messenger();
+            std::thread::spawn(move || {
+                to.send(QuickMsg::RemoteReady(generation, crate::rex::read_to_cache(&rp)));
+            });
+        }
         // Dragging the picture out where it doesn't pan: the file.
         let me = cx.view_ref();
         preview.update(cx, |p, cx| {
@@ -103,23 +117,33 @@ impl QuickLook {
             });
         });
         let opener = fs::opener_name(&entry);
-        let editable = !entry.is_dir && edit::editable(&entry.path);
+        let editable = !entry.is_dir && !fs::is_remote(&entry.path) && edit::editable(&entry.path);
         let focus = FocusHandle::new();
         focus.focus(cx);
-        QuickLook { source, entry, preview, opener, editor: None, editable, failed: None, what: String::new(), shown: false, awake: false, press: None, focus }
+        QuickLook { source, entry, generation, preview, opener, editor: None, editable, failed: None, what: String::new(), shown: false, awake: false, press: None, focus }
     }
 
     /// Show another item in the same window (what's shown stays until it
     /// comes, so stepping through a folder doesn't flash).
     pub fn retarget(&mut self, source: u64, entry: Entry, generation: u64, cx: &mut Cx<Self>) {
         self.source = source;
-        let it = item(&entry);
-        self.preview.update(cx, |p, cx| p.retarget(it, generation, cx));
+        self.generation = generation;
+        if !entry.is_dir
+            && let Some(rp) = fs::rex_path(&entry.path)
+        {
+            let to = cx.messenger();
+            std::thread::spawn(move || {
+                to.send(QuickMsg::RemoteReady(generation, crate::rex::read_to_cache(&rp)));
+            });
+        } else {
+            let it = item(&entry);
+            self.preview.update(cx, |p, cx| p.retarget(it, generation, cx));
+        }
         self.opener = fs::opener_name(&entry);
         // A rotation still being written finishes on its own thread.
         self.editor = None;
         self.failed = None;
-        self.editable = !entry.is_dir && edit::editable(&entry.path);
+        self.editable = !entry.is_dir && !fs::is_remote(&entry.path) && edit::editable(&entry.path);
         cx.set_window_title(entry.name.clone());
         self.entry = entry;
         cx.invalidate();
@@ -273,6 +297,23 @@ impl View for QuickLook {
     fn message(&mut self, message: QuickMsg, cx: &mut Cx<Self>) {
         match message {
             QuickMsg::Show(source, entry, generation) => self.retarget(source, entry, generation, cx),
+            QuickMsg::RemoteReady(generation, res) => {
+                if generation != self.generation {
+                    return;
+                }
+                match res {
+                    Ok(local) => {
+                        let it = item_at(&self.entry, local);
+                        self.preview.update(cx, |p, cx| p.retarget(it, generation, cx));
+                    }
+                    Err(why) => {
+                        self.failed = Some(why);
+                        self.shown = true;
+                        cx.release_commit();
+                    }
+                }
+                cx.invalidate();
+            }
             QuickMsg::Edited(path, event) => {
                 if self.edited(&path, event, cx) {
                     self.fit(cx);

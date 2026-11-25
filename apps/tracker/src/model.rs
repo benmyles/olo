@@ -128,26 +128,56 @@ impl FolderWin {
         let (hidden, counter, Loader { to }) = (self.hidden, self.listed.clone(), self.loader.clone());
         let counter = if pane.is_none() { counter } else { Arc::default() };
         std::thread::spawn(move || {
-            let result = fs::list_counting(&path, hidden, &counter).map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => olo_kit::words::tr("This folder was moved or deleted.").to_owned(),
-                std::io::ErrorKind::PermissionDenied => olo_kit::words::tr("You don't have permission to see inside this folder.").to_owned(),
-                _ => e.to_string(),
-            });
+            let (result, remote_free, host_state, resolved) = if let Some(rex) = fs::rex_path(&path) {
+                match crate::rex::list(&rex, hidden) {
+                    Ok(res) => {
+                        counter.fetch_add(res.entries.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                        let canonical = fs::RexPath::new(&res.host, &res.resolved).to_path_buf();
+                        (Ok(res.entries), res.free_bytes, Some(crate::rex::HostState::Connected), Some(canonical))
+                    }
+                    Err(e) => {
+                        let st = crate::rex::host_state(&rex.host);
+                        (Err(e), None, Some(st), None)
+                    }
+                }
+            } else {
+                let r = fs::list_counting(&path, hidden, &counter).map_err(|e| match e.kind() {
+                    std::io::ErrorKind::NotFound => olo_kit::words::tr("This folder was moved or deleted.").to_owned(),
+                    std::io::ErrorKind::PermissionDenied => olo_kit::words::tr("You don't have permission to see inside this folder.").to_owned(),
+                    _ => e.to_string(),
+                });
+                (r, None, None, None)
+            };
             // What Open With offers for the kinds here, worked out now
             // (after the listing's gone), so a menu finds it at once.
             let kinds: std::collections::BTreeSet<String> = result.as_ref().map(|v| v.iter().map(|e| olo_xdg::open::kind_of(&e.name, e.is_dir)).collect()).unwrap_or_default();
-            to.send(FolderMsg::Listed { path, generation, result });
+            to.send(FolderMsg::Listed { path, generation, result, remote_free, host_state, resolved });
             olo_xdg::open::warm(kinds);
         });
     }
 
     /// A listing came back; ignore it if a newer one was asked for since.
-    pub fn listed(&mut self, path: &Path, generation: u64, result: Result<Vec<Entry>, String>) {
+    pub fn listed(&mut self, path: &Path, generation: u64, result: Result<Vec<Entry>, String>, remote_free: Option<u64>, host_state: Option<crate::rex::HostState>, resolved: Option<PathBuf>) {
         self.stamp += 1;
         let sort = self.sort;
         let mut first = None;
         if path == self.path && generation == self.root_generation {
             self.loading = false;
+            if let Some(st) = host_state {
+                self.remote_state = Some(st);
+            }
+            if fs::is_remote(&self.path) {
+                self.remote_free = remote_free;
+            }
+            if let Some(canon) = resolved
+                && canon != self.path
+            {
+                if self.history.get(self.at) == Some(&self.path) {
+                    self.history[self.at] = canon.clone();
+                }
+                self.path = canon;
+                self.path_said = false;
+            }
             if self.dirty {
                 // Something changed after the listing began: what it found
                 // may already be stale, so look again (keeping what is
@@ -166,6 +196,12 @@ impl FolderWin {
                 }
             }
         } else if let Some(k) = self.panes.iter().position(|p| p.path == path && p.generation == generation) {
+            if let Some(st) = host_state {
+                self.remote_state = Some(st);
+            }
+            if fs::is_remote(path) && remote_free.is_some() {
+                self.remote_free = remote_free;
+            }
             match result {
                 Ok(v) => {
                     let p = &mut self.panes[k];
@@ -190,7 +226,8 @@ impl FolderWin {
         let shown: Vec<bool> = self.pending_select.iter().map(|(d, _)| self.column_of(d).is_some()).collect();
         let mut shown = shown.into_iter();
         self.pending_select.retain(|_| shown.next().unwrap_or(false));
-        if let Some(k) = self.column_of(path) {
+        let listed_dir = if path == self.path || (generation == self.root_generation) { self.path.as_path() } else { path };
+        if let Some(k) = self.column_of(listed_dir) {
             self.select_pending(k, true);
         }
         // → went into this column before it was listed: in now, as it
@@ -297,8 +334,13 @@ impl FolderWin {
     /// Show a new item right away (before the next listing lands), so it
     /// can be selected or renamed at once.
     pub fn add_entry(&mut self, path: &Path) {
-        self.stamp += 1;
         let Some(e) = fs::entry(path) else { return };
+        self.insert_entry(e);
+    }
+
+    /// Insert an already-constructed entry into the current view.
+    pub fn insert_entry(&mut self, e: Entry) {
+        self.stamp += 1;
         let sort = self.sort;
         let (entries, list) = self.current_mut();
         if entries.iter().any(|x| x.path == e.path) {
@@ -385,18 +427,18 @@ impl FolderWin {
     /// inside this one, as it was before a reload. Any not listed yet are
     /// selected when that folder's listing brings them in.
     pub fn select_paths(&mut self, paths: &[PathBuf]) {
-        let Some(dir) = paths.first().and_then(|p| p.parent()).map(Path::to_owned) else { return };
-        let paths: Vec<PathBuf> = paths.iter().filter(|p| p.parent() == Some(dir.as_path())).cloned().collect();
+        let Some(dir) = paths.first().and_then(|p| fs::parent_of(p)) else { return };
+        let paths: Vec<PathBuf> = paths.iter().filter(|p| fs::parent_of(p).as_deref() == Some(dir.as_path())).cloned().collect();
         let k = match self.column_of(&dir) {
             Some(k) => k,
-            None if self.view == ViewMode::Columns && dir.starts_with(&self.path) => {
+            None if self.view == ViewMode::Columns && fs::starts_with_dir(&dir, &self.path) => {
                 // From the deepest column on the way, each selects the
                 // folder the next one shows.
-                let mut k = (1..=self.panes.len()).rev().find(|&k| dir.starts_with(&self.panes[k - 1].path)).unwrap_or(0);
+                let mut k = (1..=self.panes.len()).rev().find(|&k| fs::starts_with_dir(&dir, &self.panes[k - 1].path)).unwrap_or(0);
                 let mut at = self.column_at(k).0.to_owned();
-                let steps: Vec<_> = dir.strip_prefix(&at).map(|r| r.components().map(|c| c.as_os_str().to_owned()).collect()).unwrap_or_default();
+                let steps = fs::relative_segments(&dir, &at).unwrap_or_default();
                 for name in steps {
-                    let next = at.join(name);
+                    let next = fs::join_name(&at, &name);
                     self.select_paths(std::slice::from_ref(&next));
                     if self.column_of(&next).is_none() {
                         let hidden = self.hidden;

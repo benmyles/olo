@@ -270,3 +270,61 @@ fn what_it_isnt_asked_right_it_says() {
     }
     fs::remove_dir_all(cache).unwrap();
 }
+
+/// `olo-rex-link fs`: list, stat, mkdir (--unique), rename (--unique), copy,
+/// write (--unique), read, and remove (with root/$HOME protection).
+#[test]
+fn fs_subcommands_round_trip() {
+    let dir = scratch("fs-ops");
+    let run = |args: &[&str]| Command::new(env!("CARGO_BIN_EXE_olo-rex-link")).arg("fs").args(args).output().unwrap();
+    let json = |args: &[&str]| -> serde_json::Value {
+        let out = run(args);
+        assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stdout));
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+
+    // mkdir + mkdir --unique
+    let mk1 = json(&["mkdir", dir.join("New Folder").to_str().unwrap(), "--unique"]);
+    assert_eq!(mk1["path"].as_str(), Some(dir.join("New Folder").to_str().unwrap()));
+    let mk2 = json(&["mkdir", dir.join("New Folder").to_str().unwrap(), "--unique"]);
+    assert_eq!(mk2["path"].as_str(), Some(dir.join("New Folder 2").to_str().unwrap()));
+
+    // write + write --unique + read
+    let mut w =
+        Command::new(env!("CARGO_BIN_EXE_olo-rex-link")).args(["fs", "write", dir.join("note.txt").to_str().unwrap(), "--unique"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    w.stdin.take().unwrap().write_all(b"hello rex tracker").unwrap();
+    let w_out = w.wait_with_output().unwrap();
+    assert!(w_out.status.success());
+    let read_out = run(&["read", dir.join("note.txt").to_str().unwrap()]);
+    assert!(read_out.status.success());
+    assert_eq!(read_out.stdout, b"hello rex tracker");
+
+    // copy + rename --unique
+    let cp = json(&["copy", dir.join("note.txt").to_str().unwrap(), dir.join("note copy.txt").to_str().unwrap()]);
+    assert_eq!(cp["path"].as_str(), Some(dir.join("note copy.txt").to_str().unwrap()));
+    let mv = json(&["rename", dir.join("note copy.txt").to_str().unwrap(), dir.join("New Folder/moved.txt").to_str().unwrap(), "--unique"]);
+    assert_eq!(mv["path"].as_str(), Some(dir.join("New Folder/moved.txt").to_str().unwrap()));
+
+    // list (hidden filtering + free_bytes)
+    fs::write(dir.join(".secret"), b"x").unwrap();
+    let ls = json(&["list", dir.to_str().unwrap()]);
+    assert!(ls["free_bytes"].as_u64().is_some());
+    let names: Vec<&str> = ls["entries"].as_array().unwrap().iter().filter_map(|e| e["name"].as_str()).collect();
+    assert!(names.contains(&"note.txt") && names.contains(&"New Folder") && !names.contains(&".secret"));
+    let ls_h = json(&["list", dir.to_str().unwrap(), "--hidden"]);
+    assert!(ls_h["entries"].as_array().unwrap().iter().any(|e| e["name"].as_str() == Some(".secret")));
+
+    // stat + remove
+    let st = json(&["stat", dir.join("New Folder/moved.txt").to_str().unwrap()]);
+    assert_eq!(st["exists"].as_bool(), Some(true));
+    assert_eq!(st["entry"]["size"].as_u64(), Some(17));
+    let _ = json(&["remove", dir.join("New Folder").to_str().unwrap()]);
+    let st_gone = json(&["stat", dir.join("New Folder").to_str().unwrap()]);
+    assert_eq!(st_gone["exists"].as_bool(), Some(false));
+
+    // Refuses removing root
+    let root_rm = run(&["remove", "/"]);
+    assert!(!root_rm.status.success());
+
+    fs::remove_dir_all(dir).unwrap();
+}

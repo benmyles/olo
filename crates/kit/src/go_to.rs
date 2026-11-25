@@ -27,6 +27,7 @@ use olo_kit_base::{
     files::{self, Kind},
     keys::Shortcut,
     metrics as m,
+    tracker::RexPath,
 };
 
 use crate::{
@@ -114,8 +115,9 @@ impl Names for Plain {
 }
 
 /// The path `text` names, if it names one: absolute, from home (`~`,
-/// `~/…`), a `file://` URI, or relative to `base`; quoted or with a
-/// trailing newline as copied. None for nothing or more than a line.
+/// `~/…`), a `file://` or `rex://HOST/PATH` URI, or relative to `base`;
+/// quoted or with a trailing newline as copied. None for nothing or more
+/// than a line.
 pub fn parse(text: &str, base: &Path) -> Option<PathBuf> {
     if let Some((_, path)) = files::written_path(text) {
         return Some(path);
@@ -124,12 +126,16 @@ pub fn parse(text: &str, base: &Path) -> Option<PathBuf> {
     if t.is_empty() || t.contains('\n') {
         return None;
     }
-    Some(base.join(['"', '\''].iter().find_map(|q| t.strip_prefix(*q).and_then(|t| t.strip_suffix(*q))).unwrap_or(t)))
+    let unquoted = ['"', '\''].iter().find_map(|q| t.strip_prefix(*q).and_then(|t| t.strip_suffix(*q))).unwrap_or(t);
+    if let Some(rex) = RexPath::from_path(base) {
+        return Some(rex.join(unquoted).to_path_buf());
+    }
+    Some(base.join(unquoted))
 }
 
 /// A path in the clipboard's text, as it's to be shown in the field:
 /// only one written whole (absolute, from home as written, a `file://`
-/// URI's), not any word that could be a name here.
+/// or `rex://` URI), not any word that could be a name here.
 fn clipboard_path(text: &str) -> Option<String> {
     files::written_path(text).map(|(shown, _)| shown)
 }
@@ -137,8 +143,27 @@ fn clipboard_path(text: &str) -> Option<String> {
 /// The folder `text`'s last name is looked for in, and that name so far
 /// (a path ending in `/` is the folder itself, nothing typed in it yet).
 fn split(text: &str, base: &Path) -> Option<(PathBuf, String)> {
+    let t = text.trim();
+    if let Some(rest) = t.strip_prefix(olo_kit_base::tracker::REX_SCHEME) {
+        if !rest.contains('/') {
+            return Some((PathBuf::from(olo_kit_base::tracker::REX_SCHEME), rest.to_owned()));
+        }
+        let rex = RexPath::parse(t)?;
+        if t.ends_with('/') || rex.path == "~" {
+            return Some((rex.to_path_buf(), String::new()));
+        }
+        let parent = rex.parent()?;
+        return Some((parent.to_path_buf(), rex.file_name().to_owned()));
+    }
     let path = parse(text, base)?;
-    if text.trim().ends_with('/') || text.trim() == "~" {
+    if let Some(rex) = RexPath::from_path(&path) {
+        if t.ends_with('/') {
+            return Some((rex.to_path_buf(), String::new()));
+        }
+        let parent = rex.parent()?;
+        return Some((parent.to_path_buf(), rex.file_name().to_owned()));
+    }
+    if t.ends_with('/') || t == "~" {
         return Some((path, String::new()));
     }
     let name = path.file_name()?.to_string_lossy().into_owned();
@@ -228,7 +253,7 @@ pub struct GoTo<N: Names> {
 impl<N: Names> GoTo<N> {
     pub fn new(base: PathBuf, text: String, on_go: Box<dyn Fn(PathBuf) + Send>, cx: &mut Cx<Self>) -> GoTo<N> {
         let typed = !text.is_empty();
-        let field = text_field(cx, |f| f.hint("A path: /…, ~/… or a name here").name("Go to").with_text(text));
+        let field = text_field(cx, |f| f.hint("A path: /…, ~/…, rex://host/… or a name here").name("Go to").with_text(text));
         if typed {
             field.update(cx, |f, cx| f.caret_to_end(cx));
         } else {
@@ -348,8 +373,13 @@ impl<N: Names> GoTo<N> {
             return self.put(&as_typed::<N>(&e), cx);
         }
         let text = self.text(cx);
+        if text.trim() == olo_kit_base::tracker::REX_SCHEME {
+            self.error = Some("Enter a host name after rex://.".into());
+            cx.invalidate();
+            return;
+        }
         let Some(path) = parse(&text, &self.base) else { return };
-        if std::fs::symlink_metadata(&path).is_err() {
+        if !RexPath::is_rex(&path) && std::fs::symlink_metadata(&path).is_err() {
             self.error = Some(format!("There's nothing at {}.", shown(&path)));
             cx.invalidate();
             return;
@@ -468,6 +498,15 @@ mod tests {
         assert_eq!(split("/usr/", base), Some((PathBuf::from("/usr/"), String::new())));
         assert_eq!(shown(&home.join("Pictures")), "~/Pictures");
         assert_eq!(shown(Path::new("/etc")), "/etc");
+        // Remote rex:// paths & host completion.
+        let rbase = Path::new("rex://dev-box/home/dev");
+        assert_eq!(parse("src/olo", rbase), Some(PathBuf::from("rex://dev-box/home/dev/src/olo")));
+        assert_eq!(parse("rex://dev-box/var/log", base), Some(PathBuf::from("rex://dev-box/var/log")));
+        assert_eq!(clipboard_path("rex://dev-box/home/dev\n"), Some("rex://dev-box/home/dev".to_owned()));
+        assert_eq!(split("rex://dev", base), Some((PathBuf::from("rex://"), "dev".to_owned())));
+        assert_eq!(split("rex://dev-box/", base), Some((PathBuf::from("rex://dev-box/"), String::new())));
+        assert_eq!(split("rex://dev-box/home/de", base), Some((PathBuf::from("rex://dev-box/home"), "de".to_owned())));
+        assert_eq!(split("rex://dev-box/home/dev/", base), Some((PathBuf::from("rex://dev-box/home/dev"), String::new())));
     }
 
     #[test]

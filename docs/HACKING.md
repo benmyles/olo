@@ -21488,6 +21488,44 @@ deferred so the Tracker can update the window back):
   where its content would be unscrolled, and the stage moves it.
   The column preview is keyed by its file and the thumbnails made
   (`thumbs::made`).
+- **Navigator bar and remote Rex hosts (`rex://HOST/PATH`)** (2026-11-25;
+  `crates/kit-base/src/tracker.rs`, `crates/kit/src/go_to.rs`,
+  `crates/rex-link/src/fs_op.rs`, `apps/rex/src/files_sock.rs`,
+  `apps/tracker/src/rex.rs`, `apps/tracker/src/folder.rs`):
+  - Every `FolderWin` has a **Navigator bar** directly under its menu bar
+    (`View ▸ Show Navigator`, on by default, saved in
+    `TrackerSettings::show_navigator`): bevelled 22 × 20 pt Back, Forward,
+    and Up buttons (unified BeOS/Haiku shafted arrows `← → ↑`) plus a
+    sunken path well (clicking opens Go to Folder, `⇧⌘G`, with paths
+    start-elided `…/src/jato` when narrow). In Column view the window's
+    title tab tracks the deepest open subfolder so tab and path well agree.
+  - **Remote folders (`rex://HOST/PATH`)**: canonical URI scheme parsed by
+    `olo_kit_base::tracker::RexPath`, round-tripped through `file_uri` /
+    `uri_list_paths` (so DnD and Copy/Cut/Paste work across local and
+    remote Tracker windows), and accepted with host + path completion in
+    Go to Folder (`olo_kit::go_to`). On a remote folder, the Navigator bar
+    prefixes the sunken well with a Navigator-bar-filled host chip showing
+    the live connection state (filled green dot = connected, filled amber
+    = connecting/reconnecting, hollow red ring + secondary text =
+    disconnected/unreachable) beside the bold host name and a Refresh (`↻`,
+    `⌘R` / `F5`) button on the right. When disconnected or Rex isn't
+    running, the content pane shows a designed empty state (Rex icon with
+    red `×` badge, bold title, explanation, Try Again and Open Rex buttons)
+    and the status bar reads `Not connected` instead of `0 items`.
+  - **Through Rex, never a second SSH connection**: Rex serves a same-UID
+    (`SO_PEERCRED`, mode `0600`) Unix socket at
+    `olo_kit_base::tracker::rex_files_socket()` (`apps/rex/src/files_sock.rs`)
+    backed by `olo-rex-link fs` (`list`, `stat`, `mkdir`, `rename`, `copy`,
+    `remove`, `read`, `write` + `statvfs` free space) and `olo-rex-sync`
+    streaming transfers (`upload`, `download` with live progress & Stop).
+    Tracker's `apps/tracker/src/rex.rs` talks to that socket on worker
+    threads (never blocking the UI, with `OLO_TRACKER_DEMO_REX=1` fixtures
+    for headless visual QA). Rex's own `PathBrowser` and `Go to Folder…`
+    are gone, replaced by **Open in Tracker** in Rex's Pane menu, tab
+    right-click menu, and pane right-click menu (plus `olo open rex://…`).
+    Verified on the rig (`try.py tracker`, 8/8 PASS), `ui-lint --dev
+    --tiles Tracker`, `tsession review` (0 findings across 1×/1.5×/2×),
+    and both Opus 5.5 and Gemini 4 Neon reviews.
 - **A picture's icon is the picture, a video's a frame of it** (the
   icon view's big icons and the desktop's; `items::small`, `thumbs.rs`;
   Ben, 2026-11-17: "in tracker's icon view the icons should show

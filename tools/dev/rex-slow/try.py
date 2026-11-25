@@ -653,6 +653,118 @@ exit 0
         shutil.rmtree(kept, ignore_errors=True)
         shutil.rmtree(sent_dir, ignore_errors=True); shutil.rmtree(f"{D}/home-app/Downloads", ignore_errors=True)
         print("PASS" if ok else "FAIL")
+elif what == "tracker":
+    # A host's folders in Tracker (`rex://HOST/PATH`): opened from a Rex pane,
+    # listed, a file read & written, a folder made, renamed, moved & deleted,
+    # Go to Folder `rex://`, and Rex quit while Tracker is open.
+    import base64, shutil, socket as socklib
+    work = f"{D}/tracker-far"
+    local_dl = f"{D}/tracker-local"
+    shutil.rmtree(work, ignore_errors=True); os.makedirs(f"{work}/sub")
+    shutil.rmtree(local_dl, ignore_errors=True); os.makedirs(local_dl)
+    open(f"{work}/readme.txt", "w").write("hello from far host\n")
+    open(f"{work}/sub/nested.txt", "w").write("nested content\n")
+    open(f"{local_dl}/upload-me.txt", "w").write("uploaded from desktop\n")
+    ok = True
+    def check(what, passed, shown):
+        global ok
+        ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:220], flush=True)
+    files_sock = f"{D}/rex-files.sock"
+    if os.path.exists(files_sock): os.remove(files_sock)
+    def rpc(req):
+        s = socklib.socket(socklib.AF_UNIX, socklib.SOCK_STREAM)
+        s.settimeout(30)
+        s.connect(files_sock)
+        s.sendall((json.dumps(req) + "\n").encode())
+        buf = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk: break
+            buf += chunk
+            lines = buf.splitlines()
+            if lines:
+                last = json.loads(lines[-1].decode())
+                if last.get("event") != "progress":
+                    s.close()
+                    return last
+        s.close()
+        return {"ok": False, "error": "eof"}
+    with Rig(f"cd {work} && PS1='you@far$ ' exec bash --norc -i", delay=0, far=True, env=[f"OLO_REX_FILES_SOCKET={files_sock}"], bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
+        def app_nodes(pid, title_prefix=None):
+            s = socklib.socket(socklib.AF_UNIX); s.settimeout(4)
+            try:
+                s.connect(f"/run/user/{os.getuid()}/olo-menus-{pid}.sock")
+                s.sendall(b'{"tree":true}\n')
+                t = json.loads(s.makefile().readline() or "[]")
+            except (OSError, ValueError):
+                return []
+            finally:
+                s.close()
+            def walk(v, out):
+                if isinstance(v, dict):
+                    if "role" in v: out.append(v)
+                    for x in v.values(): walk(x, out)
+                elif isinstance(v, list):
+                    for x in v: walk(x, out)
+                return out
+            roots = t if isinstance(t, list) else [t]
+            out = []
+            for root in roots:
+                found = walk(root, [])
+                if title_prefix is None or any(n.get("role") == "Window" and str(n.get("name") or "").startswith(title_prefix) for n in found):
+                    out += found
+            return out
+        def app_invoke(pid, cmd):
+            s = socklib.socket(socklib.AF_UNIX); s.settimeout(6)
+            try:
+                s.connect(f"/run/user/{os.getuid()}/olo-menus-{pid}.sock")
+                s.sendall((json.dumps({"invoke": cmd}) + "\n").encode())
+                return json.loads(s.makefile().readline() or "null")
+            except (OSError, ValueError) as e:
+                return {"error": str(e)}
+            finally:
+                s.close()
+        # Wait until Rex's files socket is listening and "far" is connected.
+        ready = r.wait(lambda: os.path.exists(files_sock) and any(h.get("label") == "far" and h.get("state") == "connected" for h in rpc({"op": "hosts"}).get("hosts", [])), 30, every=0.2)
+        check("rex files socket lists connected far host", ready, rpc({"op": "hosts"}) if os.path.exists(files_sock) else "no socket")
+        # 1. Open Tracker directly on `rex://far/<work>` via --reveal (same path Open in Tracker uses).
+        r.ts("run", r.name, f"OLO_REX_FILES_SOCKET={files_sock}", f"{R3}/target/debug/olo-tracker", "--reveal", f"rex://far{work}")
+        tracker_win = r.wait(lambda: next((w for w in r.windows() if "tracker-far" in w.get("title", "")), None), 25, every=0.25)
+        tpid = tracker_win["pid"] if tracker_win else None
+        listed_ui = r.wait(lambda: tpid and any("readme.txt" in str(n.get("name") or "") for n in app_nodes(tpid, "tracker-far")), 20, every=0.25)
+        nav_ok = bool(tpid and any("Path: rex://far" in str(n.get("name") or "") for n in app_nodes(tpid, "tracker-far")))
+        check("Tracker opens rex://far folder & shows Navigator path + entries", listed_ui and nav_ok, {"win": tracker_win, "listed": listed_ui, "nav": nav_ok})
+        # 2. Read file to cache & write file back through Rex's socket.
+        cached = rpc({"op": "read_to_cache", "host": "far", "path": f"{work}/readme.txt"})
+        check("read remote file to desktop cache", cached.get("ok") and open(cached["local"]).read() == "hello from far host\n", cached)
+        written = rpc({"op": "write_file", "host": "far", "path": f"{work}/written.txt", "unique": True, "base64": base64.b64encode(b"written via tracker\n").decode()})
+        check("write new remote file", written.get("ok") and open(f"{work}/written.txt").read() == "written via tracker\n", written)
+        # 3. Make folder, rename it, move a file into it, copy & delete via Rex socket.
+        mk = rpc({"op": "mkdir", "host": "far", "path": f"{work}/New Folder", "unique": True})
+        ren = rpc({"op": "rename", "host": "far", "from": mk.get("path", ""), "to": f"{work}/Renamed", "unique": False})
+        mv = rpc({"op": "rename", "host": "far", "from": f"{work}/written.txt", "to": f"{work}/Renamed/written.txt", "unique": True})
+        check("mkdir + rename + move on far host", mk.get("ok") and ren.get("ok") and mv.get("ok") and os.path.exists(f"{work}/Renamed/written.txt"), {"mk": mk, "ren": ren, "mv": mv})
+        # 4. Upload desktop -> host and download host -> desktop via olo-rex-sync.
+        up = rpc({"op": "upload", "host": "far", "local_path": f"{local_dl}/upload-me.txt", "remote_dest_dir": work, "remote_name": "upload-me.txt", "is_dir": False})
+        dn = rpc({"op": "download", "host": "far", "remote_path": f"{work}/sub", "local_dest_dir": local_dl, "local_name": "sub", "is_dir": True})
+        check("upload & download through olo-rex-sync", up.get("ok") and dn.get("ok") and open(f"{work}/upload-me.txt").read() == "uploaded from desktop\n" and open(f"{local_dl}/sub/nested.txt").read() == "nested content\n", {"up": up, "dn": dn})
+        # 5. Delete remote folder.
+        rm = rpc({"op": "remove", "host": "far", "path": f"{work}/Renamed"})
+        check("remove remote folder", rm.get("ok") and not os.path.exists(f"{work}/Renamed"), rm)
+        # 6. Go to Folder `rex://far/<work>/sub` inside Tracker.
+        if tpid:
+            app_invoke(tpid, f"go-to:rex://far{work}/sub")
+        went_sub = r.wait(lambda: tpid and any("nested.txt" in str(n.get("name") or "") for n in app_nodes(tpid, "sub")), 20, every=0.25)
+        check("Go to Folder rex://far/…/sub opens remote subfolder", went_sub, went_sub)
+        # 7. Quit Rex while Tracker is open -> Refresh in Tracker reports Rex isn't running!
+        r.invoke("app.quit")
+        r.wait(lambda: not any(w.get("app_id") == "olo.rex" for w in r.windows()), 15, every=0.2)
+        if tpid:
+            app_invoke(tpid, "reload")
+        gone_err = r.wait(lambda: tpid and any("Rex isn" in str(n.get("name") or "") for n in app_nodes(tpid)), 15, every=0.25)
+        check("Rex quit while open: Tracker shows clear error", gone_err, [n.get("name") for n in (app_nodes(tpid) if tpid else []) if n.get("name")][:12])
+    shutil.rmtree(work, ignore_errors=True); shutil.rmtree(local_dl, ignore_errors=True)
+    print("PASS" if ok else "FAIL")
 elif what == "pool":
     # The Token Pool put on the far host over SSH by the desktop pool's own code, kept in step, borrowed from and
     # taken away (crates/pool/tests/hosts_live.rs: a made-up account, a provider of the test's own). The far

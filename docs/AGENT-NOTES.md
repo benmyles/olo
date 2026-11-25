@@ -3203,9 +3203,15 @@ this one is, and what differs:
   pre-push hook's release build of the last pushed commit is at
   `/var/tmp/olo-prepush/tree/target/release`, a ready "before") or copy
   it plainly, and remove the copy after.
-- **Docker needs `sudo`** (the account isn't in its group):
+- **Docker / rootless Podman in `tools/publish-release.sh`**: on Ubuntu
+  where Docker needs `sudo` (the account isn't in its group),
   `tools/publish-release.sh` says `sudo docker` by itself where it must.
-  Releases are built in its Fedora 44 container, never on this system.
+  On Fedora 44 where `docker` is rootless Podman (`podman-docker`),
+  `--user "$(id -u):$(id -g)"` without `--userns=keep-id` maps host
+  files to `root:root` inside the container and fails with `EACCES` on
+  `.cargo-build-lock`; `tools/publish-release.sh` now detects rootless
+  Podman and passes `--userns=keep-id` automatically. Releases are built
+  in the Fedora 44 container, never on the host.
 - **The person's Olo desktop** is reached from here through Rex (the
   `olo-rex-bridge` skill): a link opened there, an Agent Screen of
   one's own there, a secret from their Passwords once they allow it.

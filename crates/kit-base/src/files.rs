@@ -300,11 +300,37 @@ mod tests {
         assert_eq!(super::natural_cmp("a", "a1"), Less);
         assert_eq!(super::natural_cmp("x", "x"), Equal);
     }
+
+    #[test]
+    fn rex_uris_round_trip_through_uri_list_and_written_path() {
+        let rp = crate::tracker::RexPath::new("dev-box", "/home/dev/my folder/notes.txt").to_path_buf();
+        let uri = super::file_uri(&rp);
+        assert_eq!(uri, "rex://dev-box/home/dev/my%20folder/notes.txt");
+        let parsed = super::uri_list_paths(&format!("{uri}\r\nfile:///tmp/a%20b\r\n"));
+        assert_eq!(parsed, vec![rp.clone(), std::path::PathBuf::from("/tmp/a b")]);
+        let (shown, wp) = super::written_path("rex://dev-box/home/dev/src").unwrap();
+        assert_eq!(shown, "rex://dev-box/home/dev/src");
+        assert_eq!(wp, std::path::PathBuf::from("rex://dev-box/home/dev/src"));
+    }
 }
 
-/// `file:///path`, with what URIs can't hold percent-encoded.
+/// `file:///path` (or `rex://HOST/path` for a Rex host path), with what
+/// URIs can't hold percent-encoded.
 pub fn file_uri(path: &std::path::Path) -> String {
     use std::os::unix::ffi::OsStrExt;
+    if let Some(rex) = crate::tracker::RexPath::from_path(path) {
+        let mut out = format!("{}//", crate::tracker::REX_SCHEME.trim_end_matches('/'));
+        let uri = rex.to_uri();
+        let rest = uri.strip_prefix(crate::tracker::REX_SCHEME).unwrap_or("");
+        for &b in rest.as_bytes() {
+            if b.is_ascii_alphanumeric() || b"/-._~!$&'()*+,;=:@%".contains(&b) {
+                out.push(b as char);
+            } else {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+        return out;
+    }
     let mut out = String::from("file://");
     for &b in path.as_os_str().as_bytes() {
         if b.is_ascii_alphanumeric() || b"/-._~!$&'()*+,;=:@".contains(&b) {
@@ -316,32 +342,45 @@ pub fn file_uri(path: &std::path::Path) -> String {
     out
 }
 
-/// The local paths in a `text/uri-list`: one URI a line, `#` comments.
+/// The paths in a `text/uri-list`: one URI a line (`file://` or `rex://`),
+/// `#` comments.
 pub fn uri_list_paths(list: &str) -> Vec<std::path::PathBuf> {
     use std::os::unix::ffi::OsStringExt;
+    let decode = |raw: &str| -> Option<Vec<u8>> {
+        let bytes = raw.as_bytes();
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%'
+                && i + 2 < bytes.len()
+                && let Ok(b) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?, 16)
+            {
+                out.push(b);
+                i += 3;
+            } else {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+        Some(out)
+    };
     list.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .filter_map(|l| {
+            if let Some(rest) = l.strip_prefix(crate::tracker::REX_SCHEME) {
+                let (host_enc, tail) = match rest.find('/') {
+                    Some(i) => (&rest[..i], &rest[i..]),
+                    None => (rest, "/"),
+                };
+                let tail_dec = String::from_utf8(decode(tail)?).ok()?;
+                let raw = format!("{}{host_enc}{tail_dec}", crate::tracker::REX_SCHEME);
+                return crate::tracker::RexPath::parse(&raw).map(|r| r.to_path_buf());
+            }
             let rest = l.strip_prefix("file://")?;
             // file://host/path: only this computer's.
             let path = if rest.starts_with('/') { rest } else { &rest[rest.find('/')?..] };
-            let bytes = path.as_bytes();
-            let mut out = Vec::with_capacity(bytes.len());
-            let mut i = 0;
-            while i < bytes.len() {
-                if bytes[i] == b'%'
-                    && i + 2 < bytes.len()
-                    && let Ok(b) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?, 16)
-                {
-                    out.push(b);
-                    i += 3;
-                } else {
-                    out.push(bytes[i]);
-                    i += 1;
-                }
-            }
-            Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(out)))
+            Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(decode(path)?)))
         })
         .collect()
 }
@@ -361,6 +400,12 @@ pub fn written_path(text: &str) -> Option<(String, std::path::PathBuf)> {
     if t.starts_with("file://") {
         let p = uri_list_paths(t).into_iter().next()?;
         return Some((p.to_string_lossy().into_owned(), p));
+    }
+    if t.starts_with(crate::tracker::REX_SCHEME) {
+        if let Some(rp) = crate::tracker::RexPath::parse(t) {
+            return Some((t.to_owned(), rp.to_path_buf()));
+        }
+        return Some((t.to_owned(), std::path::PathBuf::from(t)));
     }
     if t.starts_with('/') {
         Some((t.to_owned(), t.into()))

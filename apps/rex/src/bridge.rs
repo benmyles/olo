@@ -712,6 +712,16 @@ pub fn open_folder_in_tracker(path: &Path) {
     });
 }
 
+/// Open a local path or `rex://HOST/PATH` URI in Olo Tracker, off the UI thread.
+pub fn open_uri_in_tracker(uri: &str) {
+    let target = uri.to_owned();
+    let _ = std::thread::Builder::new().name("rex-tracker".into()).spawn(move || {
+        if let Err(e) = olo_kit_base::tracker::open_uri(&target) {
+            tracing::warn!("open {target} in Tracker failed: {e}");
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

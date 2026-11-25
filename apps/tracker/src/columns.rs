@@ -930,7 +930,7 @@ fn draw_preview(g: &mut Painter, e: &Entry, rect: Bounds<Pixels>) {
     let area = Bounds::from_corners(point(rect.left() + px(m::WINDOW_INSET), rect.top() + px(m::WINDOW_INSET)), point(rect.right() - px(m::WINDOW_INSET), rect.bottom() - px(m::WINDOW_INSET)));
     let image_box = Bounds { origin: point(area.center().x - px(PREVIEW_IMAGE / 2.0), area.top()), size: size(px(PREVIEW_IMAGE), px(PREVIEW_IMAGE * 0.75)) };
     let scale = g.scale_factor();
-    let thumb = (e.kind == Kind::Image).then(|| crate::thumbs::get(&e.path, (PREVIEW_IMAGE * scale).round() as u32)).flatten();
+    let thumb = (!fs::is_remote(&e.path) && e.kind == Kind::Image).then(|| crate::thumbs::get(&e.path, (PREVIEW_IMAGE * scale).round() as u32)).flatten();
     match thumb {
         Some(img) => {
             let s = img.size(0);
@@ -961,7 +961,7 @@ fn draw_preview(g: &mut Painter, e: &Entry, rect: Bounds<Pixels>) {
     let plain = style::ui_font(FontWeight::NORMAL);
     style::label(g, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, e.kind_text(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
     y += px(m::LABEL_ROW + m::SPACING);
-    let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
+    let created = if fs::is_remote(&e.path) { None } else { std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok()) };
     for (k, v) in [("Size", e.size_text()), ("Created", fs::format_time(created)), ("Modified", fs::format_time(e.modified))] {
         let cy = y + px(m::LABEL_ROW / 2.0);
         style::label(g, area.center().x - px(m::TIGHT), cy, Align::Right, k, style::SMALL_SIZE, plain.clone(), style::disabled_text(&p));

@@ -39,7 +39,7 @@ use crate::{
     hub::{BlockKey, HostConnState, HubNotice, RexHub},
     keymap::{self, KeyMatch, KeymapEngine},
     links::{self, LinkTarget},
-    overlays::{self, ActiveOverlay, JumpTarget, PathBrowserMode},
+    overlays::{self, ActiveOverlay, JumpTarget},
     panels::{self, AskpassReply, AskpassRequest, OloAskpass},
     settings::{BarBehavior, SchemeChoice, Settings, SidebarMode, ToolbarLayout},
     terminal_pane::{self, Metrics, PanePaintArgs, PaneVisualState},
@@ -139,6 +139,26 @@ pub fn toggle_auto_approve(hub: &Arc<RexHub>, key: &BlockKey, said: &str) {
 /// The panes of a tab Keep It Going and Auto Approve are offered for in
 /// its menu: those an agent runs in or with either on, else the one with
 /// the keyboard.
+/// Open a pane's working folder in Olo Tracker (local path on this computer,
+/// canonical `rex://HOST/PATH` URI on a remote Rex host).
+fn open_block_in_tracker(hub: &Arc<RexHub>, bk: &BlockKey) {
+    let info = {
+        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        let host = st.hosts.get(&bk.host_key).map(|h| (h.is_local, h.label.clone()));
+        let pwd = st.blocks.get(bk).map(|br| br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).unwrap_or_default();
+        host.map(|(is_local, label)| (is_local, label, pwd))
+    };
+    let Some((is_local, label, pwd)) = info else { return };
+    if is_local {
+        let dir = if pwd.is_empty() { std::env::var("HOME").unwrap_or_else(|_| "/".into()) } else { pwd };
+        bridge::open_folder_in_tracker(std::path::Path::new(&dir));
+    } else {
+        let path = if pwd.is_empty() { "~" } else { &pwd };
+        let uri = olo_kit_base::tracker::RexPath::new(label, path).to_uri();
+        bridge::open_uri_in_tracker(&uri);
+    }
+}
+
 fn tab_agent_panes(hub: &RexHub, host_key: &str, session_id: &str, w: &olo_rex_client::WindowView) -> Vec<BlockKey> {
     let key = |block_id: &str| BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: block_id.to_owned() };
     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -795,10 +815,6 @@ pub enum WinMsg {
     StopTransfer,
     QrReady(String, Option<Arc<qrcode::QrCode>>),
     OpenPreview(BlockKey, String),
-    DirListingReady {
-        key: BlockKey,
-        listing: olo_rex_client::DirListing,
-    },
     SetClipboard(String),
     PasteText(BlockKey, olo_rex_client::ControlClient, String),
     /// A picture pasted (its type and bytes): to the pane's host, its path typed.
@@ -1027,10 +1043,6 @@ impl RexWindow {
                         ActiveOverlay::RexPrompt { query, selected_idx, .. } => {
                             *query = txt;
                             *selected_idx = 0;
-                        }
-                        ActiveOverlay::PathBrowser { query, selected, .. } => {
-                            *query = txt;
-                            *selected = 0;
                         }
                     }
                 }
@@ -1421,26 +1433,6 @@ impl RexWindow {
         Some(BlockKey { host_key: hk, session_id: sess.session_id, block_id: bid })
     }
 
-    fn open_path_browser(&mut self, mode: PathBrowserMode, cx: &mut olo_kit::Cx<Self>) {
-        let Some(bk) = self.focused_block_key() else { return };
-        let hub = app().hub.clone();
-        let dir = {
-            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.blocks.get(&bk).map(|br| br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".to_owned())
-        };
-        let to = cx.messenger();
-        let key = bk.clone();
-        hub.request_dir_listing(&bk, dir.clone(), mode == PathBrowserMode::InsertPath, move |listing| {
-            to.send(WinMsg::DirListingReady { key, listing });
-        });
-        self.overlay = Some(ActiveOverlay::PathBrowser { mode, block: bk, dir, query: String::new(), entries: Vec::new(), selected: 0 });
-        if let Some(f) = &self.overlay_field {
-            f.update(cx, |f, cx| f.set_text(String::new(), cx));
-            f.focus(cx);
-        }
-        cx.invalidate();
-    }
-
     fn cancel_preview(&mut self) {
         if let Some(job) = self.preview_job.take() {
             job.abort();
@@ -1487,31 +1479,6 @@ impl RexWindow {
                 };
                 app().hub.respond_prompt(&host_key, &req.call_id, false, Some(val));
             }
-            Some(ActiveOverlay::PathBrowser { mode, block, dir, query, entries, selected }) => {
-                let filtered: Vec<&olo_rex_client::DirEntry> = entries
-                    .iter()
-                    .filter(|e| {
-                        if mode == PathBrowserMode::GoToDir && e.file {
-                            return false;
-                        }
-                        overlays::fuzzy_score(&e.name, &query).is_some()
-                    })
-                    .collect();
-                if let Some(entry) = filtered.get(selected) {
-                    let full = if dir.ends_with('/') { format!("{dir}{}", entry.name) } else { format!("{dir}/{}", entry.name) };
-                    let hub = app().hub.clone();
-                    match mode {
-                        PathBrowserMode::InsertPath => {
-                            let s = format!("{} ", crate::hub::shell_quote(&full));
-                            hub.send_input(&block, s.into_bytes());
-                        }
-                        PathBrowserMode::GoToDir => {
-                            let s = format!("cd {}\r", crate::hub::shell_quote(&full));
-                            hub.send_input(&block, s.into_bytes());
-                        }
-                    }
-                }
-            }
             None => {}
         }
         self.focus.focus(cx);
@@ -1519,38 +1486,16 @@ impl RexWindow {
     }
 
     fn pick_overlay_index(&mut self, index: usize, cx: &mut olo_kit::Cx<Self>) {
-        match &mut self.overlay {
-            Some(ActiveOverlay::RexPrompt { host_key, req, .. }) => {
-                let hk = host_key.clone();
-                let cid = req.call_id.clone();
-                let chosen = req.prompt.items.as_ref().and_then(|v| v.get(index)).map(|i| i.id.clone());
-                self.overlay = None;
-                if let Some(id) = chosen {
-                    app().hub.respond_prompt(&hk, &cid, false, Some(json!({ "id": id })));
-                }
-                self.focus.focus(cx);
-                cx.invalidate();
+        if let Some(ActiveOverlay::RexPrompt { host_key, req, .. }) = &mut self.overlay {
+            let hk = host_key.clone();
+            let cid = req.call_id.clone();
+            let chosen = req.prompt.items.as_ref().and_then(|v| v.get(index)).map(|i| i.id.clone());
+            self.overlay = None;
+            if let Some(id) = chosen {
+                app().hub.respond_prompt(&hk, &cid, false, Some(json!({ "id": id })));
             }
-            Some(ActiveOverlay::PathBrowser { mode, block, dir, entries, .. }) => {
-                if let Some(entry) = entries.get(index).cloned() {
-                    let full = if dir.ends_with('/') { format!("{dir}{}", entry.name) } else { format!("{dir}/{}", entry.name) };
-                    let hub = app().hub.clone();
-                    let bk = block.clone();
-                    let m = *mode;
-                    self.overlay = None;
-                    match m {
-                        PathBrowserMode::InsertPath => {
-                            hub.send_input(&bk, format!("{} ", crate::hub::shell_quote(&full)).into_bytes());
-                        }
-                        PathBrowserMode::GoToDir => {
-                            hub.send_input(&bk, format!("cd {}\r", crate::hub::shell_quote(&full)).into_bytes());
-                        }
-                    }
-                    self.focus.focus(cx);
-                    cx.invalidate();
-                }
-            }
-            _ => {}
+            self.focus.focus(cx);
+            cx.invalidate();
         }
     }
 
@@ -2195,8 +2140,6 @@ impl RexWindow {
                     }
                 }
             }
-            "files.path_browser" => self.open_path_browser(PathBrowserMode::InsertPath, cx),
-            "files.go_to_dir" => self.open_path_browser(PathBrowserMode::GoToDir, cx),
             "files.quick_look" => {
                 if let Some(bk) = self.focused_block_key() {
                     let selected_path = {
@@ -2209,17 +2152,12 @@ impl RexWindow {
                     if let Some(p) = selected_path {
                         self.open_preview(bk, p);
                         cx.invalidate();
-                    } else {
-                        self.open_path_browser(PathBrowserMode::InsertPath, cx);
                     }
                 }
             }
             "files.open_in_tracker" => {
                 if let Some(bk) = self.focused_block_key() {
-                    let pwd = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map(|br| br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).unwrap_or_default();
-                    if !pwd.is_empty() {
-                        bridge::open_folder_in_tracker(std::path::Path::new(&pwd));
-                    }
+                    open_block_in_tracker(&hub, &bk);
                 }
             }
             "agent.keep_going_toggle" => {
@@ -2325,22 +2263,16 @@ impl RexWindow {
                     return;
                 }
                 "up" => {
-                    if let Some(ov) = &mut self.overlay {
-                        match ov {
-                            ActiveOverlay::PathBrowser { selected, .. } => *selected = selected.saturating_sub(1),
-                            ActiveOverlay::RexPrompt { selected_idx, .. } => *selected_idx = selected_idx.saturating_sub(1),
-                        }
+                    if let Some(ActiveOverlay::RexPrompt { selected_idx, .. }) = &mut self.overlay {
+                        *selected_idx = selected_idx.saturating_sub(1);
                     }
                     cx.invalidate();
                     cx.stop_propagation();
                     return;
                 }
                 "down" => {
-                    if let Some(ov) = &mut self.overlay {
-                        match ov {
-                            ActiveOverlay::PathBrowser { selected, .. } => *selected += 1,
-                            ActiveOverlay::RexPrompt { selected_idx, .. } => *selected_idx += 1,
-                        }
+                    if let Some(ActiveOverlay::RexPrompt { selected_idx, .. }) = &mut self.overlay {
+                        *selected_idx += 1;
                     }
                     cx.invalidate();
                     cx.stop_propagation();
@@ -2605,10 +2537,6 @@ impl RexWindow {
                 tabs = tabs.item(name, format!("window.select_{}", i + 1)).checked(Some(&w.window_id) == active.as_ref());
             }
         }
-        // A pane of this computer's own server: its folder is one Tracker
-        // can open, and it needs no bridge installed.
-        let here = self.active_host == "local";
-
         vec![
             Menu::new("Rex")
                 .app_items(&["rex", "notifications"])
@@ -2719,16 +2647,11 @@ impl RexWindow {
                 .checked(broadcast_on)
                 .enabled(panes > 1 || broadcast_on)
                 .separator()
-                // (The files of the pane's folder, on its host: they were
-                // in View, which is how the window looks.)
+                // (The files of the pane's folder, on this computer or its host.)
                 .item("Quick Look", "files.quick_look")
                 .enabled(pane)
-                .item("Browse Folders…", "files.path_browser")
-                .enabled(pane)
-                .item("Go to Folder…", "files.go_to_dir")
-                .enabled(pane)
                 .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
-                .enabled(pane && here)
+                .enabled(pane)
                 .separator()
                 .item("Close Pane", "pane.close")
                 .enabled(pane),
@@ -4141,16 +4064,6 @@ impl View for RexWindow {
                 self.cancel_preview();
                 cx.invalidate();
             }
-            WinMsg::DirListingReady { key, listing } => {
-                if let Some(ActiveOverlay::PathBrowser { block, dir, entries, selected, .. }) = &mut self.overlay
-                    && *block == key
-                {
-                    *dir = listing.path;
-                    *entries = listing.entries;
-                    *selected = 0;
-                    cx.invalidate();
-                }
-            }
             WinMsg::SetClipboard(txt) => {
                 olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
             }
@@ -4630,8 +4543,15 @@ impl View for RexWindow {
                 // pane with the keyboard, unchecked, beside another's
                 // countdown read as Auto Approve off (Opus's review).
                 let panes = sess.windows.get(i).map(|w| tab_agent_panes(&app().hub, &hk, &sess.session_id, w)).unwrap_or_default();
+                let tab_block = sess.windows.get(i).and_then(|w| {
+                    w.focused_block_id.as_deref().filter(|id| w.all_blocks().any(|b| b.block_id == *id)).or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(|bid| BlockKey {
+                        host_key: hk.clone(),
+                        session_id: sess.session_id.clone(),
+                        block_id: bid.to_owned(),
+                    })
+                });
                 let several = sess.windows.get(i).is_some_and(|w| w.all_blocks().count() > 1);
-                let mut menu = Menu::new("").item("Rename Tab…", "window.rename").separator();
+                let mut menu = Menu::new("").item("Rename Tab…", "window.rename").item(olo_kit_base::tracker::LABEL, "files.open_in_tracker").enabled(tab_block.is_some()).separator();
                 for (n, p) in panes.iter().enumerate() {
                     let help = app().hub.help(p);
                     let (keep, approve) = if several {
@@ -4656,6 +4576,11 @@ impl View for RexWindow {
                         "window.rename" => {
                             if let Some(slot) = wins().map.get(&window) {
                                 slot.handle.messenger().send(WinMsg::RenameTab(hk.clone(), sess.session_id.clone(), tab.clone()));
+                            }
+                        }
+                        "files.open_in_tracker" => {
+                            if let Some(bk) = &tab_block {
+                                open_block_in_tracker(&hub, bk);
                             }
                         }
                         _ if cmd.starts_with("agent.keep_going_toggle#") => {
@@ -5747,6 +5672,7 @@ fn render_single_pane(
             .checked(copying)
             .item("Quick Look", "files.quick_look")
             .enabled(selected)
+            .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
             .item("Clear Scrollback", "terminal.clear_scrollback")
             .separator()
             .item("Split Right", "pane.split_right")

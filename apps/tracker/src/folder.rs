@@ -15,17 +15,19 @@ use std::{
 };
 
 use olo_kit::{
-    Bounds, Cx, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, MenuBar, Modifiers, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _, View, WindowCx, canvas, div, menu, metrics as m, point, px, size,
+    Bounds, ClickEvent, CursorStyle, Cx, DISABLED_OPACITY, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu,
+    MenuBar, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, ScrollHandle, SharedString, Styled as _, View, WindowCx,
+    canvas, div, menu, metrics as m, point, px, size,
     style::{self, Align},
     theme,
     widgets::{
-        SCROLL_BAR, ScrollView,
+        Button, SCROLL_BAR, ScrollView,
         list::{Cell, Column, ColumnListView, ListModel},
         open_alert,
     },
 };
 use olo_kit_base::list::{ListState, Mods, SelectionBand, TypeSelect};
+use olo_theme::mix;
 
 use crate::{
     SavedFolder, ToHub, ViewMode, WinInfo, columns,
@@ -40,6 +42,20 @@ use crate::{
 const EDIT_DELAY: Duration = Duration::from_millis(600);
 /// How far a press moves before it's a drag.
 const DRAG_SLOP: f32 = 3.0;
+/// Navigator bar geometry: 33 pt bar (1 pt bottom shadow + 32 pt interior, giving
+/// symmetric 6 pt top/bottom margins around 22 × 20 pt bevelled Back / Forward / Up /
+/// Refresh buttons and the sunken path well 6 pt from them).
+const NAV_HEIGHT: f32 = 33.0;
+const NAV_BTN_W: f32 = 22.0;
+const NAV_BTN_H: f32 = 20.0;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum NavBtn {
+    Back,
+    Forward,
+    Up,
+    Refresh,
+}
 
 /// What a folder window is told: by its workers, by the app, by itself
 /// later.
@@ -49,6 +65,14 @@ pub enum FolderMsg {
         path: PathBuf,
         generation: u64,
         result: Result<Vec<Entry>, String>,
+        remote_free: Option<u64>,
+        host_state: Option<crate::rex::HostState>,
+        resolved: Option<PathBuf>,
+    },
+    /// A new remote folder created off the UI thread, ready to rename in place.
+    Created {
+        dir: PathBuf,
+        result: Result<(PathBuf, Option<Entry>), String>,
     },
     /// Changes seen on disk.
     Changed(Arc<Vec<watch::Change>>),
@@ -136,7 +160,10 @@ pub struct FolderWin {
     pub dropping: Option<(usize, Option<usize>)>,
     list_model: ListModel,
     pub cols: columns::Cols,
-    path_said: bool,
+    pub(crate) path_said: bool,
+    /// Last location reflected in the window title & agent path (follows
+    /// Columns view's deepest open subfolder so tab title and path well agree).
+    shown_loc: PathBuf,
     /// The keyboard goes back to the view (a name's edit ended).
     focus_after_edit: bool,
     /// The view the keyboard was last given to.
@@ -147,6 +174,12 @@ pub struct FolderWin {
     polling: bool,
     /// The free space under the count, and when it was read.
     free: RefCell<Option<(Instant, PathBuf, Option<u64>)>>,
+    /// Free bytes reported by a remote host's last `olo-rex-link fs list`.
+    pub remote_free: Option<u64>,
+    /// Connection state of a remote host, shown as the Navigator's live status light.
+    pub remote_state: Option<crate::rex::HostState>,
+    nav_hover: Option<NavBtn>,
+    nav_press: Option<NavBtn>,
     /// What the app was last told of this window.
     told: Option<WinInfo>,
 }
@@ -245,12 +278,17 @@ impl FolderWin {
             list_model,
             cols: columns::Cols::default(),
             path_said: false,
+            shown_loc: PathBuf::new(),
             focus_after_edit: false,
             focused_view: None,
             stamp: 0,
             names: (u64::MAX, Rc::from(Vec::new())),
             polling: false,
             free: RefCell::new(None),
+            remote_free: None,
+            remote_state: None,
+            nav_hover: None,
+            nav_press: None,
             told: None,
         };
         w.reload(hidden);
@@ -271,7 +309,7 @@ impl FolderWin {
 
     /// Where it is: its folder, or in column view its deepest column's.
     pub fn location(&self) -> PathBuf {
-        self.panes.last().map_or_else(|| self.path.clone(), |p| p.path.clone())
+        if self.view == ViewMode::Columns { self.panes.last().map_or_else(|| self.path.clone(), |p| p.path.clone()) } else { self.path.clone() }
     }
 
     /// A move into another folder by the person (in column view, a column
@@ -300,17 +338,17 @@ impl FolderWin {
         let Some(to) = self.at.checked_add_signed(by).filter(|&i| i < self.history.len()) else { return };
         let (from, path) = (self.location(), self.history[to].clone());
         self.at = to;
-        if self.view == ViewMode::Columns && path.starts_with(&self.path) {
+        if self.view == ViewMode::Columns && fs::starts_with_dir(&path, &self.path) {
             self.show_in_columns(&path, &from);
             cx.invalidate();
             return;
         }
         self.show_folder(path.clone(), cx);
         // Back out of a folder inside it: that folder selected.
-        if let Ok(rest) = from.strip_prefix(&path)
-            && let Some(first) = rest.components().next()
+        if let Some(segs) = fs::relative_segments(&from, &path)
+            && let Some(first) = segs.first()
         {
-            self.pending_select.push((path.clone(), vec![path.join(first)]));
+            self.pending_select.push((path.clone(), vec![fs::join_name(&path, first)]));
         }
     }
 
@@ -319,10 +357,10 @@ impl FolderWin {
     /// `dir`'s. Columns already showing the way stay; each other opens as
     /// the one before it is listed (`pending_select`).
     fn show_in_columns(&mut self, dir: &std::path::Path, from: &std::path::Path) {
-        let Ok(rest) = dir.strip_prefix(&self.path) else { return };
+        let Some(segs) = fs::relative_segments(dir, &self.path) else { return };
         let mut way = vec![self.path.clone()];
-        for c in rest.components() {
-            let next = way[way.len() - 1].join(c);
+        for c in segs {
+            let next = fs::join_name(&way[way.len() - 1], &c);
             way.push(next);
         }
         let kept = self.panes.iter().zip(way.iter().skip(1)).take_while(|(p, d)| p.path == **d).count();
@@ -357,8 +395,14 @@ impl FolderWin {
     /// Show `path` in this window: listed afresh, sorted as it's sorted,
     /// nothing selected, the window titled for it.
     fn show_folder(&mut self, path: PathBuf, cx: &mut Cx<Self>) {
-        let places = path.clone();
-        std::thread::spawn(move || olo_kit_base::places::visited(&places));
+        if !fs::is_remote(&path) {
+            let places = path.clone();
+            std::thread::spawn(move || olo_kit_base::places::visited(&places));
+            self.remote_free = None;
+            self.remote_state = None;
+        } else {
+            self.remote_free = None;
+        }
         self.sort = crate::sorts::of(&path);
         self.path = path;
         self.entries.clear();
@@ -430,47 +474,62 @@ impl FolderWin {
     /// The menus' and the views' items as the window shows them now.
     pub fn item_menu(&self) -> Menu {
         let one = self.current().1.selected.len() == 1;
-        let in_trash = self.current_dir().starts_with(fs::trash_files());
+        let dir = self.current_dir();
+        let remote = fs::is_remote(&dir);
+        let in_trash = !remote && dir.starts_with(fs::trash_files());
+        let selected = self.selected_entries();
+
+        // Group 1: Open family (Opus, 2026-11-25: keep all Open… items together).
         let mut menu = Menu::new("").item("Open", "open").key("o");
-        // (A folder opens in this window; a window of its own, asked.)
-        if self.selected_entries().iter().any(|e| e.is_dir) {
+        if selected.iter().any(|e| e.is_dir) {
             menu = menu.item("Open in New Window", "open-new-window");
         }
-        menu = menu.item("Quick Look", "quick-look").key("y").enabled(one);
-        // A running app of ours can open another window.
-        if one && self.selected_entries().first().and_then(fs::running_app).is_some() {
-            menu = menu.item("New Window", "new-window");
+        if !remote {
+            if one && selected.first().and_then(fs::running_app).is_some() {
+                menu = menu.item("New Window", "new-window");
+            }
+            if one {
+                menu = fs::grouping_item(menu, selected.first());
+            }
+            if let Some(open_with) = open_with_menu(&selected) {
+                menu = menu.submenu(open_with);
+            }
+            if let Some(play) = play_on_menu(&selected) {
+                menu = menu.submenu(play);
+            }
+            if selected.iter().all(|e| e.is_dir) {
+                menu = menu.item("Open in Terminal", "terminal-selected");
+                menu = menu.item("Open in Rex", "rex-selected");
+            }
+        } else if selected.iter().all(|e| e.is_dir) {
+            menu = menu.item("Show Host in Rex", "rex-selected");
         }
-        // An application's windows: grouped in one frame, or each its own.
-        if one {
-            menu = fs::grouping_item(menu, self.selected_entries().first());
-        }
-        menu = menu.item("Get Info", "info").key("i").item("Edit Name", "rename").key("e").enabled(one).item("Duplicate", "duplicate").key("d").item("Create Link", "link");
-        // Compress ▸, and Extract for archives (archives.rs).
-        if !in_trash {
-            menu = crate::archives::menu_items(menu, &self.selected_entries());
-        }
-        // DiskBackup's versions of a file (Ben: "if you right click a file in
-        // tracker it should show older versions that you can restore").
-        if crate::backups::on() {
-            let file = one && self.selected_entries().first().is_some_and(|e| !e.is_dir);
+
+        // Group 2: Inspect.
+        menu = menu.separator().item("Quick Look", "quick-look").key("y").enabled(one).item("Get Info", "info").key("i");
+        if !remote && crate::backups::on() {
+            let file = one && selected.first().is_some_and(|e| !e.is_dir);
             menu = menu.item("Older Versions…", "older-versions").enabled(file);
         }
-        // A folder opens in Terminal or Rex itself.
-        if self.selected_entries().iter().all(|e| e.is_dir) {
-            menu = menu.item("Open in Terminal", "terminal-selected");
-            menu = menu.item("Open in Rex", "rex-selected");
+
+        // Group 3: Modify.
+        menu = menu.separator().item("Edit Name", "rename").key("e").enabled(one).item("Duplicate", "duplicate").key("d");
+        if !remote {
+            menu = menu.item("Create Link", "link");
+            if !in_trash {
+                menu = crate::archives::menu_items(menu, &selected);
+            }
         }
-        if let Some(open_with) = open_with_menu(&self.selected_entries()) {
-            menu = menu.submenu(open_with);
-        }
-        if let Some(play) = play_on_menu(&self.selected_entries()) {
-            menu = menu.submenu(play);
-        }
+
+        // Group 4: Clipboard.
         menu = menu.separator().item("Cut", "cut").key("x").item("Copy", "copy").key("c").separator();
-        if !in_trash {
+
+        // Group 5: Remove / Restore.
+        if remote {
+            menu = menu.item("Delete…", "remote-delete");
+        } else if !in_trash {
             menu = menu.item("Move to Trash", "trash").key("t");
-        } else if self.current_dir() == fs::trash_files() {
+        } else if dir == fs::trash_files() {
             // Items at the top of the Trash go back where they came from.
             menu = menu.item("Restore", "restore");
         }
@@ -478,8 +537,10 @@ impl FolderWin {
     }
 
     pub fn background_menu(&self, can_paste: bool) -> Menu {
-        let in_trash = self.current_dir().starts_with(fs::trash_files());
-        Menu::new("")
+        let dir = self.current_dir();
+        let remote = fs::is_remote(&dir);
+        let in_trash = !remote && dir.starts_with(fs::trash_files());
+        let mut menu = Menu::new("")
             .item("New Folder", "new-folder")
             .shift_key("n")
             .enabled(!in_trash)
@@ -501,12 +562,13 @@ impl FolderWin {
             .checked(self.view == ViewMode::Columns)
             .separator()
             .item("Get Info", "info")
-            .key("i")
-            .item("Open in Terminal", "terminal")
-            .item("Open in Rex", "rex")
-            .item("Open Parent", "parent")
-            .key("up")
-            .enabled(self.path.parent().is_some())
+            .key("i");
+        if remote {
+            menu = menu.item("Refresh", "reload").key("r").item("Show Host in Rex", "rex");
+        } else {
+            menu = menu.item("Open in Terminal", "terminal").item("Open in Rex", "rex");
+        }
+        menu.item("Open Parent", "parent").key("up").enabled(fs::parent_of(&self.location()).is_some())
     }
 
     /// The menu bar's menus.
@@ -515,7 +577,9 @@ impl FolderWin {
     fn menus(&self, can_paste: bool, places: &olo_kit_base::places::Places, undo: &[(String, bool); 2]) -> Vec<Menu> {
         let current = self.current().1;
         let has_sel = !current.selected.is_empty();
-        let in_trash = self.current_dir().starts_with(fs::trash_files());
+        let dir = self.current_dir();
+        let remote = fs::is_remote(&dir);
+        let in_trash = !remote && dir.starts_with(fs::trash_files());
         // ⌘N a new window, ⇧⌘N a new folder, as Finder has them (Ben,
         // 2026-11-04: "pressing super+n should open a new tracker window").
         // (Its settings: its own, and which app opens which files.)
@@ -532,11 +596,15 @@ impl FolderWin {
             .enabled(has_sel)
             .item("Open Parent", "parent")
             .key("up")
-            .enabled(self.path.parent().is_some())
+            .enabled(fs::parent_of(&self.location()).is_some())
             .item("Get Info", "info")
-            .key("i")
-            .item("Open in Terminal", "terminal")
-            .item("Open in Rex", "rex")
+            .key("i");
+        if remote {
+            file = file.item("Show Host in Rex", "rex");
+        } else {
+            file = file.item("Open in Terminal", "terminal").item("Open in Rex", "rex");
+        }
+        file = file
             .item("Quick Look", "quick-look")
             .key("y")
             .enabled(has_sel)
@@ -545,15 +613,17 @@ impl FolderWin {
             .enabled(current.selected.len() == 1)
             .item("Duplicate", "duplicate")
             .key("d")
-            .enabled(has_sel)
-            .item("Create Link", "link")
             .enabled(has_sel);
-        if has_sel && !in_trash {
-            file = crate::archives::menu_items(file, &self.selected_entries());
+        if !remote {
+            file = file.item("Create Link", "link").enabled(has_sel);
+            if has_sel && !in_trash {
+                file = crate::archives::menu_items(file, &self.selected_entries());
+            }
         }
-        let mut file = file.separator().item("Move to Trash", "trash").key("t").enabled(has_sel && !in_trash);
+        let mut file =
+            if remote { file.separator().item("Delete…", "remote-delete").enabled(has_sel) } else { file.separator().item("Move to Trash", "trash").key("t").enabled(has_sel && !in_trash) };
         if in_trash {
-            file = file.item("Restore", "restore").enabled(has_sel && self.current_dir() == fs::trash_files()).item("Empty Trash", "empty-trash").enabled(!fs::trash_is_empty());
+            file = file.item("Restore", "restore").enabled(has_sel && dir == fs::trash_files()).item("Empty Trash", "empty-trash").enabled(!fs::trash_is_empty());
         }
         let file = file.close_quit();
         let edit = Menu::new("Edit")
@@ -612,8 +682,13 @@ impl FolderWin {
                     .item("Kind", "sort-kind")
                     .checked(sort(SortKey::Kind)),
             )
+            .item("Show Navigator", "navigator")
+            .checked(crate::show_navigator())
             .item("Show Hidden Files", "hidden")
-            .checked(self.hidden);
+            .checked(self.hidden)
+            .separator()
+            .item("Refresh", "reload")
+            .key("r");
         // The standard folders, favourites (this one added or taken away)
         // and recent folders, as every file panel has them.
         let here = self.current_dir();
@@ -621,15 +696,17 @@ impl FolderWin {
         for d in places.favorites.iter() {
             favorites = favorites.item(olo_kit_base::places::label(d), format!("go-place:{}", d.display()));
         }
-        if !places.favorites.is_empty() {
-            favorites = favorites.separator();
+        if !remote {
+            if !places.favorites.is_empty() {
+                favorites = favorites.separator();
+            }
+            let name = olo_kit_base::places::label(&here);
+            favorites = if places.favorites.contains(&here) {
+                favorites.item(olo_kit::tr!("Remove “{}” from Favorites", name), "favorite-off")
+            } else {
+                favorites.item(olo_kit::tr!("Add “{}” to Favorites", name), "favorite-on")
+            };
         }
-        let name = olo_kit_base::places::label(&here);
-        favorites = if places.favorites.contains(&here) {
-            favorites.item(olo_kit::tr!("Remove “{}” from Favorites", name), "favorite-off")
-        } else {
-            favorites.item(olo_kit::tr!("Add “{}” to Favorites", name), "favorite-on")
-        };
         let mut go = Menu::new("Go")
             // (Their keys the profile's: `app_keys`' tracker.back and .forward.)
             .item("Back", "back")
@@ -703,7 +780,11 @@ impl FolderWin {
         }
         match k.key.as_str() {
             "delete" if plain_extra("trash", "delete") => {
-                self.run("trash", cx);
+                if fs::is_remote(&self.current_dir()) {
+                    self.run("remote-delete", cx);
+                } else {
+                    self.run("trash", cx);
+                }
                 cx.stop_propagation();
                 return;
             }
@@ -1272,6 +1353,400 @@ impl FolderWin {
 
     // ---- the window --------------------------------------------------------
 
+    /// The Navigator bar directly under the menu bar (View ▸ Show Navigator):
+    /// Back, Forward, and Up bevelled 22 × 20 pt buttons with unified BeOS/Haiku
+    /// shafted arrows, plus a sunken path well 6 pt to their right (showing the
+    /// live host status light and bold host chip for `rex://HOST/PATH` folders,
+    /// with a Refresh button 6 pt past the well on remote folders).
+    fn navigator_bar(&self, cx: &mut Cx<Self>) -> Element {
+        let loc = self.location();
+        let remote = fs::rex_path(&loc);
+        let can_back = self.can_go(-1);
+        let can_fwd = self.can_go(1);
+        let is_remote = remote.is_some();
+        let remote_state = self.remote_state.clone();
+        let is_connecting =
+            matches!(remote_state, Some(crate::rex::HostState::Connecting | crate::rex::HostState::Reconnecting)) || (is_remote && self.loading && self.error.is_none() && remote_state.is_none());
+        let is_disconnected = is_remote && !is_connecting && !matches!(remote_state, Some(crate::rex::HostState::Connected));
+        let can_up = !is_disconnected && fs::parent_of(&loc).is_some();
+        let can_refresh = !is_connecting && !self.loading;
+
+        let nav_button = |btn: NavBtn, label: &'static str, tip: &'static str, enabled: bool, cmd: &'static str, cx: &mut Cx<Self>| -> Element {
+            let hovered = enabled && self.nav_hover == Some(btn);
+            let pressed = enabled && self.nav_press == Some(btn);
+            let el = canvas(move |g, b| {
+                let p = theme::palette();
+                let bg = p.panel_background;
+                let dark = p.mode == olo_theme::ThemeMode::Dark;
+                let own_dim = !enabled && dark;
+                let fade = |c: Hsla| if own_dim { c.opacity(DISABLED_OPACITY) } else { c };
+                let base = p.control_background;
+                // Unified BeOS push-button geometry matching `widgets::Button`:
+                // light enabled buttons sit between white and the bar fill so pure
+                // white is reserved for sunken wells; dark disabled buttons keep
+                // their frame and fade control_background instead of looking sunken.
+                let (top, bottom) = if !enabled && !dark {
+                    let flat = style::c(mix(bg, base, 0.28));
+                    (flat, flat)
+                } else if pressed {
+                    (style::shade(&p, base, 1.2), style::shade(&p, base, 1.12))
+                } else if hovered {
+                    if !dark { (style::c(mix(base, bg, 0.05)), style::c(mix(base, bg, 0.35))) } else { (style::tint(base, 0.7), style::shade(&p, base, 1.02)) }
+                } else if !dark {
+                    (style::c(mix(base, bg, 0.14)), style::c(mix(base, bg, 0.52)))
+                } else {
+                    (style::tint(base, 0.85), style::shade(&p, base, 1.06))
+                };
+                let border = if enabled || own_dim { style::shade(&p, bg, 1.6) } else { style::shade(&p, bg, 1.3) };
+                let inner = style::inset(g, b, 1.0);
+                style::vgradient(g, inner, fade(top), fade(bottom));
+                style::frame_rect(g, b, border);
+                if pressed {
+                    style::bevel(g, inner, fade(style::shade(&p, base, 1.35)), fade(style::shade(&p, base, 1.1)));
+                } else if enabled || own_dim {
+                    style::bevel(g, inner, fade(style::c(p.shine)), fade(style::shade(&p, base, 1.2)));
+                }
+
+                let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
+                let scale = g.scale_factor();
+                // Unified stroke across all four glyphs: 1px at 1×, 2px at 1.5×, 3px at 2×.
+                let sw_px = (1.35 * scale).round().max(1.0);
+                let sw = px(sw_px / scale);
+                let align_axis = |v: Pixels| -> Pixels {
+                    let p_val = (f32::from(v) * scale).round();
+                    let snapped = if (sw_px as i32) % 2 == 1 { p_val + 0.5 } else { p_val };
+                    px(snapped / scale)
+                };
+                let off = if pressed { style::hairline(g) } else { px(0.0) };
+                let cx_pt = align_axis(b.center().x + off);
+                let cy_pt = align_axis(b.center().y + off);
+                match btn {
+                    NavBtn::Back => {
+                        let mut path = PathBuilder::stroke(sw);
+                        path.move_to(point(cx_pt + px(3.5), cy_pt));
+                        path.line_to(point(cx_pt - px(3.5), cy_pt));
+                        path.move_to(point(cx_pt - px(0.5), cy_pt - px(3.0)));
+                        path.line_to(point(cx_pt - px(3.5), cy_pt));
+                        path.line_to(point(cx_pt - px(0.5), cy_pt + px(3.0)));
+                        if let Ok(path) = path.build() {
+                            g.paint_path(path, ink);
+                        }
+                    }
+                    NavBtn::Forward => {
+                        let mut path = PathBuilder::stroke(sw);
+                        path.move_to(point(cx_pt - px(3.5), cy_pt));
+                        path.line_to(point(cx_pt + px(3.5), cy_pt));
+                        path.move_to(point(cx_pt + px(0.5), cy_pt - px(3.0)));
+                        path.line_to(point(cx_pt + px(3.5), cy_pt));
+                        path.line_to(point(cx_pt + px(0.5), cy_pt + px(3.0)));
+                        if let Ok(path) = path.build() {
+                            g.paint_path(path, ink);
+                        }
+                    }
+                    NavBtn::Up => {
+                        let mut path = PathBuilder::stroke(sw);
+                        path.move_to(point(cx_pt, cy_pt + px(3.5)));
+                        path.line_to(point(cx_pt, cy_pt - px(3.5)));
+                        path.move_to(point(cx_pt - px(3.0), cy_pt - px(0.5)));
+                        path.line_to(point(cx_pt, cy_pt - px(3.5)));
+                        path.line_to(point(cx_pt + px(3.0), cy_pt - px(0.5)));
+                        if let Ok(path) = path.build() {
+                            g.paint_path(path, ink);
+                        }
+                    }
+                    NavBtn::Refresh => {
+                        // 300° clockwise arc opening at top-right (2 o'clock → 12 o'clock),
+                        // with the exact same open chevron head as ← → ↑ at 12 o'clock
+                        // pointing clockwise (+X) so it reads unmistakably as Refresh at 1×–2×.
+                        let r = 3.5_f32;
+                        let a_start = -std::f32::consts::FRAC_PI_6; // 2 o'clock (-30°)
+                        let a_end = 1.5 * std::f32::consts::PI; // 12 o'clock (270°)
+                        let mut arc = PathBuilder::stroke(sw);
+                        let steps = 20;
+                        for s in 0..=steps {
+                            let a = a_start + (s as f32 / steps as f32) * (a_end - a_start);
+                            let pt = point(cx_pt + px(r * a.cos()), cy_pt + px(r * a.sin()));
+                            if s == 0 {
+                                arc.move_to(pt);
+                            } else {
+                                arc.line_to(pt);
+                            }
+                        }
+                        // Open chevron centered on the 12 o'clock stroke endpoint pointing right.
+                        let tx = cx_pt + px(0.5);
+                        let ty = cy_pt - px(r);
+                        arc.move_to(point(tx - px(2.2), ty - px(2.2)));
+                        arc.line_to(point(tx, ty));
+                        arc.line_to(point(tx - px(2.2), ty + px(2.2)));
+                        if let Ok(path) = arc.build() {
+                            g.paint_path(path, ink);
+                        }
+                    }
+                }
+                olo_kit::agent::record(g, olo_kit::agent::Node { role: "Button", name: Some(label.into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
+            })
+            .w(px(NAV_BTN_W))
+            .h(px(NAV_BTN_H))
+            .cursor(if enabled { CursorStyle::PointingHand } else { CursorStyle::Arrow })
+            .on_hover(cx.listener(move |f: &mut FolderWin, over: &bool, cx| {
+                let next = if *over { Some(btn) } else { f.nav_hover.filter(|&h| h != btn) };
+                if next != f.nav_hover {
+                    f.nav_hover = next;
+                    cx.invalidate();
+                }
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |f: &mut FolderWin, _: &MouseDownEvent, cx| {
+                    if enabled {
+                        f.nav_press = Some(btn);
+                        cx.invalidate();
+                    }
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |f: &mut FolderWin, _: &MouseUpEvent, cx| {
+                    if f.nav_press.take() == Some(btn) && enabled {
+                        f.run(cmd, cx);
+                    } else {
+                        cx.invalidate();
+                    }
+                }),
+            );
+            olo_kit::tip::on(el, format!("nav-{cmd}"), tip)
+        };
+
+        let shown_path = fs::display_path(&loc);
+        let path_tip: SharedString = match &remote {
+            Some(rex) => {
+                let status = if is_connecting {
+                    "Connecting…"
+                } else if is_disconnected {
+                    "Not connected"
+                } else {
+                    "Connected"
+                };
+                format!("{} — {} · Go to File or Folder (⇧⌘G)", rex.host, status).into()
+            }
+            None => "Go to File or Folder (⇧⌘G)".into(),
+        };
+        let path_well = olo_kit::tip::on(
+            canvas(move |g, b| {
+                let p = theme::palette();
+                let line = style::hairline(g);
+                style::fill_rect(g, b, style::c(p.document_background));
+                // Inside the 2-hairline BeOS sunken bevel.
+                let cavity = Bounds::from_corners(point(b.left() + line * 2.0, b.top() + line * 2.0), point(b.right() - line * 2.0, b.bottom() - line * 2.0));
+                let font = style::ui_font(FontWeight::NORMAL);
+                let cy = cavity.center().y;
+                // Shared exact baseline for bold host chip & regular path, lifted slightly
+                // so descenders (g, p) have comfortable clearance above the bottom bevel.
+                let baseline = style::snap_coord(g, cy + px(style::SMALL_SIZE * 0.30));
+                // Keep path text in primary document colour (clicking opens Go to Folder even
+                // when disconnected); the host chip's hollow red ring + secondary host name
+                // clearly carries the disconnected state without looking like placeholder text.
+                let doc_ink = style::c(p.document_text);
+                if let Some(rex) = &remote {
+                    let bold = style::ui_font(FontWeight::BOLD);
+                    let dot_d = 6.0_f32;
+                    let pad_l = 5.5_f32;
+                    let dot_gap = 4.0_f32;
+                    let pad_r = 6.5_f32;
+                    let max_host_w = (f32::from(cavity.size.width) * 0.40 - (pad_l + dot_d + dot_gap + pad_r)).max(24.0);
+                    let host_fit = style::fit_with(&olo_kit::thread_text_system(), SharedString::from(rex.host.clone()), style::SMALL_SIZE, &bold, px(max_host_w));
+                    let host_w = f32::from(style::text_width(host_fit.clone(), style::SMALL_SIZE, bold.clone()));
+                    let badge_w = (pad_l + dot_d + dot_gap + host_w + pad_r).min(f32::from(cavity.size.width) - 24.0).max(24.0);
+                    let div_x = style::snap_coord(g, cavity.left() + px(badge_w));
+                    // Distinct raised-bar chip fill in both light and dark themes so the host
+                    // reads clearly as a fixed prefix segment against the recessed path field.
+                    let chip_bg = if p.mode == olo_theme::ThemeMode::Dark { mix(p.panel_background, p.control_background, 0.55) } else { p.panel_background };
+                    let badge_rect = Bounds::from_corners(cavity.origin, point(div_x, cavity.bottom()));
+                    style::fill_rect(g, badge_rect, style::c(chip_bg));
+                    let div_color = if p.mode == olo_theme::ThemeMode::Dark { style::c(mix(p.panel_text, chip_bg, 0.72)) } else { style::shade(&p, p.panel_background, 1.3) };
+                    style::vline(g, div_x, cavity.top(), cavity.bottom(), div_color);
+
+                    let dot_center = style::snap_centred(g, point(cavity.left() + px(pad_l + dot_d / 2.0), cy), dot_d, dot_d).center();
+                    let r_out = dot_d / 2.0;
+                    if is_connecting {
+                        g.paint_sector(dot_center, px(0.0), px(r_out), 0.0, std::f32::consts::TAU, style::c(p.warning));
+                    } else if is_disconnected {
+                        // Hollow red ring (not colour alone) so disconnected reads clearly even
+                        // without colour vision; stroke snaps to >= 1px at 1× with open centre.
+                        let stroke_pt = (1.4 * g.scale_factor()).round().max(1.0) / g.scale_factor();
+                        g.paint_sector(dot_center, px((r_out - stroke_pt).max(0.5)), px(r_out), 0.0, std::f32::consts::TAU, style::c(p.failure));
+                    } else {
+                        g.paint_sector(dot_center, px(0.0), px(r_out), 0.0, std::f32::consts::TAU, style::c(p.success));
+                    }
+                    let host_ink = if is_disconnected { style::c(olo_theme::readable(mix(p.panel_text, chip_bg, 0.35), chip_bg, 4.8)) } else { style::c(p.panel_text) };
+                    let host_x = cavity.left() + px(pad_l + dot_d + dot_gap);
+                    style::label_on_baseline(g, host_x, baseline, Align::Left, host_fit, style::SMALL_SIZE, bold, host_ink);
+
+                    let path_x = div_x + line + px(6.5);
+                    let avail = (cavity.right() - px(6.0) - path_x).max(px(0.0));
+                    paint_path_tail(g, path_x, baseline, &rex.path, style::SMALL_SIZE, font, doc_ink, avail);
+                } else {
+                    let path_x = cavity.left() + px(5.5);
+                    let avail = (cavity.right() - px(6.0) - path_x).max(px(0.0));
+                    paint_path_tail(g, path_x, baseline, &shown_path, style::SMALL_SIZE, font, doc_ink, avail);
+                }
+                style::sunken(g, b, &p, false);
+                olo_kit::agent::record(g, olo_kit::agent::Node { role: "Button", name: Some(format!("Path: {shown_path}").into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
+            })
+            .w_full()
+            .h(px(NAV_BTN_H))
+            .cursor(CursorStyle::PointingHand)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|f: &mut FolderWin, _: &MouseDownEvent, cx| {
+                    f.run("go-to", cx);
+                }),
+            ),
+            "nav-path",
+            path_tip,
+        );
+
+        let bg = canvas(|g, b| {
+            let p = theme::palette();
+            style::fill_rect(g, b, style::c(p.panel_background));
+            let y = b.bottom() - style::hairline(g);
+            style::hline(g, b.left(), b.right(), y, style::shade(&p, p.panel_background, 1.3));
+        })
+        .absolute()
+        .inset_0();
+
+        let mut row = div()
+            .relative()
+            .w_full()
+            .h(px(NAV_HEIGHT))
+            .px(px(m::CELL_INSET))
+            .flex()
+            .flex_row()
+            .items_center()
+            .child(bg)
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(2.0))
+                    .flex_shrink_0()
+                    .child(nav_button(NavBtn::Back, "Back", "Back", can_back, "back", cx))
+                    .child(nav_button(NavBtn::Forward, "Forward", "Forward", can_fwd, "forward", cx))
+                    .child(nav_button(NavBtn::Up, "Up", "Open Parent", can_up, "parent", cx)),
+            )
+            .child(div().w(px(6.0)).flex_shrink_0())
+            .child(div().flex_1().min_w_0().child(path_well));
+        if is_remote {
+            row = row.child(div().w(px(6.0)).flex_shrink_0()).child(nav_button(NavBtn::Refresh, "Refresh", "Refresh (⌘R)", can_refresh, "reload", cx));
+        }
+        row.into_any_element()
+    }
+
+    /// Designed empty/error state shown inside the document canvas when a remote
+    /// host isn't connected, Rex isn't running, or a folder can't be read.
+    fn error_view(&self, err: &str, cx: &mut Cx<Self>) -> Element {
+        let rex = fs::rex_path(&self.path);
+        let is_rex_stopped = matches!(self.remote_state, Some(crate::rex::HostState::RexNotRunning)) || err.contains("Rex isn");
+        let is_remote_conn =
+            is_rex_stopped || (rex.is_some() && matches!(self.remote_state, Some(crate::rex::HostState::Disconnected | crate::rex::HostState::Error(_) | crate::rex::HostState::Unknown)));
+        let (title, body): (String, String) = if is_rex_stopped {
+            ("Rex isn’t running".to_owned(), "Open Rex to browse files on remote hosts.".to_owned())
+        } else if let Some(rp) = &rex
+            && is_remote_conn
+        {
+            (format!("{} isn’t connected", rp.host), "Connect it in Rex to browse its files.".to_owned())
+        } else if let Some(rp) = &rex {
+            (format!("Couldn’t open folder on {}", rp.host), err.to_owned())
+        } else {
+            ("Couldn’t open folder".to_owned(), err.to_owned())
+        };
+        let is_remote = rex.is_some();
+
+        let icon = canvas(move |g, b| {
+            let p = theme::palette();
+            let icon_rect = style::snap_centred(g, b.center(), 32.0, 32.0);
+            olo_kit::icons::paint(g, icon_rect, if is_remote { "rex" } else { "folder" });
+            if is_remote_conn {
+                // Unplugged red badge with crisp white × at bottom-right of the 32pt icon.
+                let badge_c = style::snap_centred(g, point(icon_rect.right() - px(4.0), icon_rect.bottom() - px(4.0)), 12.0, 12.0).center();
+                g.paint_sector(badge_c, px(0.0), px(6.5), 0.0, std::f32::consts::TAU, style::c(p.document_background));
+                g.paint_sector(badge_c, px(0.0), px(5.5), 0.0, std::f32::consts::TAU, style::c(p.failure));
+                style::close_mark(g, badge_c, 5.0, style::c([255, 255, 255, 255]));
+            }
+        })
+        .w(px(40.0))
+        .h(px(40.0));
+
+        let title_el = {
+            let t = title.clone();
+            canvas(move |g, b| {
+                let p = theme::palette();
+                let at = style::label_fit(
+                    g,
+                    b.center().x,
+                    b.center().y,
+                    Align::Center,
+                    t.clone(),
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::BOLD),
+                    style::c(p.document_text),
+                    (b.size.width - px(24.0)).max(px(0.0)),
+                );
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(t.clone(), at));
+            })
+            .w_full()
+            .h(px(m::LABEL_ROW))
+        };
+
+        let body_el = {
+            let msg = body.clone();
+            canvas(move |g, b| {
+                let p = theme::palette();
+                // Readable secondary contrast (>= 4.8:1) on document_background in both themes.
+                let ink = style::c(olo_theme::readable(mix(p.document_text, p.document_background, 0.42), p.document_background, 4.8));
+                let at =
+                    style::label_fit(g, b.center().x, b.center().y, Align::Center, msg.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, (b.size.width - px(24.0)).max(px(0.0)));
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(msg.clone(), at));
+            })
+            .w_full()
+            .h(px(m::LABEL_ROW))
+        };
+
+        let retry = cx.listener(|f: &mut FolderWin, _: &ClickEvent, cx| {
+            f.run("reload", cx);
+        });
+        let buttons = if is_remote_conn {
+            div().flex().flex_row().items_center().gap(px(m::SPACING + 2.0)).child(Button::new("Try Again").on_click(retry)).child(Button::new("Open Rex").default(true).on_click(|_, _| {
+                if let Some(bin) = olo_xdg::find_program("olo-rex") {
+                    let _ = std::process::Command::new(bin).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                }
+            }))
+        } else {
+            div().flex().flex_row().items_center().child(Button::new("Try Again").default(true).on_click(retry))
+        };
+
+        let bg = canvas(|g, b| {
+            let p = theme::palette();
+            style::fill_rect(g, b, style::c(p.document_background));
+        })
+        .absolute()
+        .inset_0();
+
+        div()
+            .relative()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(bg)
+            .child(div().flex_1())
+            .child(div().w_full().flex().flex_col().items_center().child(icon).child(div().h(px(8.0))).child(title_el).child(div().h(px(4.0))).child(body_el).child(div().h(px(12.0))).child(buttons))
+            .child(div().flex_1())
+            .child(div().h(px(32.0)).flex_shrink_0())
+            .into_any_element()
+    }
+
     /// The bar along the bottom: the count on the left, free space on the
     /// right (BeOS put the count beside the scroll bar). A scroll bar and
     /// its etched edge tall: the small text's line under the edge (as
@@ -1283,16 +1758,38 @@ impl FolderWin {
         let (entries, list) = self.current();
         let n = entries.len();
         let loading = self.loading && self.entries.is_empty() && self.error.is_none();
-        let count = match (n, list.selected.len()) {
-            _ if loading => format!("Loading… {} items", self.listed.load(std::sync::atomic::Ordering::Relaxed)),
-            (1, 0) => "1 item".to_owned(),
-            (n, 0) => format!("{n} items"),
-            (n, s) => olo_kit::tr!("{} of {} selected", s, n),
+        let is_connecting = matches!(self.remote_state, Some(crate::rex::HostState::Connecting | crate::rex::HostState::Reconnecting));
+        let (count, muted_count) = if self.error.is_some() {
+            let status = if is_connecting {
+                "Connecting…".to_owned()
+            } else if fs::is_remote(&self.path) {
+                "Not connected".to_owned()
+            } else {
+                String::new()
+            };
+            (status, true)
+        } else if loading {
+            let found = self.listed.load(std::sync::atomic::Ordering::Relaxed);
+            let label = if is_connecting {
+                "Connecting…".to_owned()
+            } else if found == 0 {
+                "Loading…".to_owned()
+            } else {
+                format!("Loading… {found} items")
+            };
+            (label, true)
+        } else {
+            let text = match (n, list.selected.len()) {
+                (1, 0) => "1 item".to_owned(),
+                (n, 0) => format!("{n} items"),
+                (n, s) => olo_kit::tr!("{} of {} selected", s, n),
+            };
+            (text, false)
         };
-        let free = self.free_space();
+        let free = if self.error.is_some() { None } else { self.free_space() };
         // (The list view's own sunken frame edges it: an etched edge
         // under that one too crowded the two, a line apart.)
-        let etched = self.view != ViewMode::List;
+        let etched = self.view != ViewMode::List || self.error.is_some();
         canvas(move |g, b| {
             let p = theme::palette();
             let line = style::hairline(g);
@@ -1307,12 +1804,17 @@ impl FolderWin {
             style::fill_rect(g, under, style::c(p.panel_background));
             let cy = under.center().y;
             let font = style::ui_font(FontWeight::NORMAL);
-            // In line with the list's first column (its icons) above.
-            let at = style::label(g, b.left() + px(m::CELL_INSET), cy, Align::Left, count.clone(), style::SMALL_SIZE, font.clone(), style::c(p.panel_text));
-            olo_kit::agent::record(g, olo_kit::agent::Node::label(count.clone(), at));
+            // Readable secondary ink (>= 4.8:1 in both light and dark modes).
+            let quiet_ink = style::c(olo_theme::readable(mix(p.panel_text, p.panel_background, 0.38), p.panel_background, 4.8));
+            if !count.is_empty() {
+                let ink = if muted_count { quiet_ink } else { style::c(p.panel_text) };
+                // In line with the list's first column (its icons) above.
+                let at = style::label(g, b.left() + px(m::CELL_INSET), cy, Align::Left, count.clone(), style::SMALL_SIZE, font.clone(), ink);
+                olo_kit::agent::record(g, olo_kit::agent::Node::label(count.clone(), at));
+            }
             if let Some(free) = free {
                 let text = format!("{} free", fs::format_size(free));
-                let at = style::label(g, b.right() - px(m::CELL_INSET), cy, Align::Right, text.clone(), style::SMALL_SIZE, font, style::disabled_text(&p));
+                let at = style::label(g, b.right() - px(m::CELL_INSET), cy, Align::Right, text.clone(), style::SMALL_SIZE, font, quiet_ink);
                 olo_kit::agent::record(g, olo_kit::agent::Node::label(text, at));
             }
         })
@@ -1334,9 +1836,12 @@ impl FolderWin {
     }
 
     /// The free space where the folder is (read again every few seconds,
-    /// not every frame).
+    /// not every frame; remote folders use what the host's last list reported).
     fn free_space(&self) -> Option<u64> {
         let dir = self.current_dir();
+        if fs::is_remote(&dir) {
+            return self.remote_free;
+        }
         let mut free = self.free.borrow_mut();
         if let Some((at, d, v)) = &*free
             && *d == dir
@@ -1462,19 +1967,37 @@ impl FolderWin {
             // The folder it's in, with this one selected (to go on from),
             // in this window.
             "parent" => {
-                if let Some(up) = dir.parent().map(Path::to_owned) {
-                    self.go_to(up, Some(dir.clone()), cx);
+                let loc = self.location();
+                if let Some(up) = fs::parent_of(&loc) {
+                    self.go_to(up, Some(loc), cx);
                 }
             }
-            "new-folder" => match fs::new_folder(&dir) {
-                Ok(p) => {
-                    to_hub(ToHub::Done(olo_kit::words::tr("New Folder").into(), undo::Change::Made(vec![p.clone()])));
-                    self.add_entry(&p);
-                    self.edit_name(&p, cx);
+            "new-folder" => {
+                if let Some(rp) = fs::rex_path(&dir) {
+                    let to = cx.messenger();
+                    let dir_clone = dir.clone();
+                    std::thread::spawn(move || {
+                        let result = crate::rex::mkdir(&rp.join("New Folder"), true).map(|(p, e)| (p.to_path_buf(), e));
+                        to.send(FolderMsg::Created { dir: dir_clone, result });
+                    });
+                } else {
+                    match fs::new_folder(&dir) {
+                        Ok(p) => {
+                            to_hub(ToHub::Done(olo_kit::words::tr("New Folder").into(), undo::Change::Made(vec![p.clone()])));
+                            self.add_entry(&p);
+                            self.edit_name(&p, cx);
+                        }
+                        Err(e) => self.error(olo_kit::tr!("Couldn't create a folder: {}", e), cx),
+                    }
                 }
-                Err(e) => self.error(olo_kit::tr!("Couldn't create a folder: {}", e), cx),
-            },
-            "terminal" => fs::open_in_terminal(&dir),
+            }
+            "reload" => self.reload(self.hidden),
+            "navigator" => to_hub(ToHub::ToggleNavigator),
+            "terminal" => {
+                if !fs::is_remote(&dir) {
+                    fs::open_in_terminal(&dir);
+                }
+            }
             "rex" => fs::open_in_rex(&dir),
             "back" => self.go(-1, cx),
             "forward" => self.go(1, cx),
@@ -1488,7 +2011,7 @@ impl FolderWin {
             }
             "group-windows" => fs::toggle_grouping(entries.first()),
             "terminal-selected" => {
-                for e in entries.iter().filter(|e| e.is_dir) {
+                for e in entries.iter().filter(|e| e.is_dir && !fs::is_remote(&e.path)) {
                     fs::open_in_terminal(&e.path);
                 }
             }
@@ -1498,13 +2021,24 @@ impl FolderWin {
                 }
             }
             "older-versions" => {
-                if let Some(e) = entries.iter().find(|e| !e.is_dir) {
+                if let Some(e) = entries.iter().find(|e| !e.is_dir && !fs::is_remote(&e.path)) {
                     crate::backups::older_versions(&e.path);
                 }
             }
             "info" => {
-                let of = if entries.is_empty() { fs::entry(&dir).into_iter().collect() } else { entries };
-                to_hub(ToHub::GetInfo(of));
+                if entries.is_empty() {
+                    if fs::is_remote(&dir) {
+                        std::thread::spawn(move || {
+                            if let Some(e) = fs::entry(&dir) {
+                                to_hub(ToHub::GetInfo(vec![e]));
+                            }
+                        });
+                    } else {
+                        to_hub(ToHub::GetInfo(fs::entry(&dir).into_iter().collect()));
+                    }
+                } else {
+                    to_hub(ToHub::GetInfo(entries));
+                }
             }
             "rename" => {
                 if let [p] = selected.as_slice() {
@@ -1518,15 +2052,34 @@ impl FolderWin {
                 }
             }
             "link" => {
-                let made: Vec<PathBuf> = selected.iter().filter_map(|p| fs::make_link(p).ok()).collect();
-                to_hub(ToHub::Done(if made.len() == 1 { "Create Link" } else { "Create Links" }.into(), undo::Change::Made(made)));
-                to_hub(ToHub::ReloadAll);
+                if !fs::is_remote(&dir) {
+                    let made: Vec<PathBuf> = selected.iter().filter_map(|p| fs::make_link(p).ok()).collect();
+                    to_hub(ToHub::Done(if made.len() == 1 { "Create Link" } else { "Create Links" }.into(), undo::Change::Made(made)));
+                    to_hub(ToHub::ReloadAll);
+                }
             }
             "undo" => to_hub(ToHub::UndoRedo(false, Some(self.id))),
             "redo" => to_hub(ToHub::UndoRedo(true, Some(self.id))),
             "trash" => {
-                if !selected.is_empty() {
+                if !selected.is_empty() && !fs::is_remote(&dir) {
                     job(ops::Kind::Trash, selected, self.id);
+                }
+            }
+            "remote-delete" => {
+                if !selected.is_empty()
+                    && let Some(rp) = fs::rex_path(&dir)
+                {
+                    let what = match selected.as_slice() {
+                        [one] => format!("“{}”", fs::leaf_name(one)),
+                        many => format!("{} items", many.len()),
+                    };
+                    let msg = olo_kit::tr!("Permanently delete {} on {}? This cannot be undone.", what, rp.host);
+                    let id = self.id;
+                    let _ = open_alert(cx, "Delete", "trash-full", &msg, &["Cancel", "Delete"], move |choice, _| {
+                        if *choice == Some(1) {
+                            to_hub(ToHub::Job { kind: ops::Kind::Delete, sources: selected.clone(), dest: None, origin: Some(id) });
+                        }
+                    });
                 }
             }
             "restore" => {
@@ -1630,17 +2183,40 @@ impl FolderWin {
     fn pasted(&mut self, dir: &Path, mime: &str, data: &[u8], cx: &mut Cx<Self>) {
         if let Some((paths, cut)) = olo_kit_base::clipboard::copied_files(mime, data) {
             // Nothing goes into itself.
-            if let Some(p) = paths.iter().find(|p| p.is_dir() && dir.starts_with(p)) {
-                let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            if let Some(p) = paths.iter().find(|p| (fs::is_remote(p) || p.is_dir()) && fs::starts_with_dir(dir, p)) {
+                let name = fs::leaf_name(p);
                 return self.error(olo_kit::tr!("“{}” can't go inside itself.", name), cx);
             }
             if cut {
                 // Moved: the clipboard has them where they are now, copied.
-                let moved: Vec<PathBuf> = paths.iter().filter_map(|p| Some(dir.join(p.file_name()?))).collect();
+                let moved: Vec<PathBuf> = paths.iter().map(|p| fs::join_name(dir, &fs::leaf_name(p))).collect();
                 crate::copy_clip(olo_kit_base::clipboard::files(&moved, false));
             }
             let kind = if cut { ops::Kind::Move } else { ops::Kind::Copy };
             return to_hub(ToHub::Job { kind, sources: paths, dest: Some(dir.to_owned()), origin: Some(self.id) });
+        }
+        if fs::is_remote(dir) {
+            let dir = dir.to_owned();
+            let mime = mime.to_owned();
+            let data = data.to_vec();
+            std::thread::spawn(move || {
+                let saved = if let Some(kind) = mime.strip_prefix("image/") {
+                    fs::pasted_picture(&dir, kind, &data)
+                } else if mime.starts_with("text/") || mime == "UTF8_STRING" {
+                    let text = String::from_utf8_lossy(&data);
+                    if text.trim().is_empty() {
+                        return;
+                    }
+                    fs::clipping(&dir, &text)
+                } else {
+                    return;
+                };
+                match saved {
+                    Ok(_) => to_hub(ToHub::ReloadAll),
+                    Err(e) => to_hub(ToHub::Said(olo_kit::tr!("Couldn't paste: {}", e))),
+                }
+            });
+            return;
         }
         let saved = if let Some(kind) = mime.strip_prefix("image/") {
             fs::pasted_picture(dir, kind, data)
@@ -1739,7 +2315,21 @@ impl View for FolderWin {
 
     fn message(&mut self, message: FolderMsg, cx: &mut Cx<Self>) {
         match message {
-            FolderMsg::Listed { path, generation, result } => self.listed(&path, generation, result),
+            FolderMsg::Listed { path, generation, result, remote_free, host_state, resolved } => {
+                self.listed(&path, generation, result, remote_free, host_state, resolved);
+            }
+            FolderMsg::Created { dir, result } => match result {
+                Ok((p, entry)) => {
+                    if self.current_dir() == dir {
+                        if let Some(e) = entry {
+                            self.insert_entry(e);
+                        }
+                        self.edit_name(&p, cx);
+                    }
+                    to_hub(ToHub::ReloadAll);
+                }
+                Err(e) => self.error(olo_kit::tr!("Couldn't create a folder: {}", e), cx),
+            },
             FolderMsg::Changed(changes) => {
                 let touched = changes.iter().any(|c| match c {
                     watch::Change::Item { dir, .. } | watch::Change::Rescan(dir) => self.watched().any(|w| w == dir),
@@ -1845,10 +2435,12 @@ impl View for FolderWin {
         self.surface = cx.surface_id().or(self.surface);
         let vs = cx.viewport_size();
         self.size = (f32::from(vs.width).round() as u32, f32::from(vs.height).round() as u32);
-        if !self.path_said {
+        let loc = self.location();
+        if !self.path_said || self.shown_loc != loc {
             self.path_said = true;
-            olo_kit::agent::set_path(cx, Some(self.path.clone()));
-            cx.set_window_title(fs::display_name(&self.path));
+            self.shown_loc = loc.clone();
+            olo_kit::agent::set_path(cx, Some(loc.clone()));
+            cx.set_window_title(fs::display_name(&loc));
         }
         // The keyboard: an edited name's field has it (given as the edit
         // began), else the view.
@@ -1868,18 +2460,9 @@ impl View for FolderWin {
         self.poll_while_loading(cx);
         self.tell_app();
         let bar = MenuBar::of(self, cx, |v, _| v.menus(crate::can_paste(), &crate::places(), &crate::undo_names()));
+        let nav = crate::show_navigator().then(|| self.navigator_bar(cx));
         let body: Element = match (&self.error, self.view) {
-            (Some(err), _) => {
-                let err = err.clone();
-                canvas(move |g, b| {
-                    let p = theme::palette();
-                    style::fill_rect(g, b, style::c(p.document_background));
-                    let at = style::label(g, b.center().x, b.center().y, Align::Center, err.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-                    olo_kit::agent::record(g, olo_kit::agent::Node::label(err.clone(), at));
-                })
-                .size_full()
-                .into_any_element()
-            }
+            (Some(err), _) => self.error_view(err, cx),
             (None, ViewMode::List) => self.list_view(cx),
             (None, ViewMode::Columns) => self.columns_view(cx),
             (None, _) => self.icon_view(cx),
@@ -1895,10 +2478,46 @@ impl View for FolderWin {
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|f: &mut FolderWin, _: &MouseDownEvent, cx| f.go(-1, cx)))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|f: &mut FolderWin, _: &MouseDownEvent, cx| f.go(1, cx)))
             .child(bar)
+            .children(nav)
             .child(div().flex_1().min_h_0().relative().flex().flex_col().child(body))
             .child(self.count_bar(cx))
             .into_any_element()
     }
+}
+
+/// Paint a filesystem path on `baseline` within `max_width`, truncating from the
+/// start (`…/src/jato`) so the current folder name at the end stays visible.
+#[allow(clippy::too_many_arguments)]
+fn paint_path_tail(g: &mut Painter, x: Pixels, baseline: Pixels, path: &str, font_size: f32, font: olo_kit::Font, color: Hsla, max_width: Pixels) {
+    let fits = |s: &str| style::text_width(s.to_owned(), font_size, font.clone()) <= max_width;
+    if fits(path) {
+        style::label_on_baseline(g, x, baseline, Align::Left, path.to_owned(), font_size, font, color);
+        return;
+    }
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let mut chosen: Option<String> = None;
+    for skip in 1..parts.len() {
+        let candidate = format!("…/{}", parts[skip..].join("/"));
+        if fits(&candidate) {
+            chosen = Some(candidate);
+            break;
+        }
+    }
+    let shown = chosen.unwrap_or_else(|| {
+        // Even the leaf component alone overflows: trim leading chars with `…`.
+        let leaf = parts.last().copied().unwrap_or(path);
+        let mut chars: Vec<char> = leaf.chars().collect();
+        while !chars.is_empty() {
+            let cand = format!("…{}", chars.iter().collect::<String>());
+            if fits(&cand) {
+                return cand;
+            }
+            chars.remove(0);
+        }
+        "…".to_owned()
+    });
+    let at = style::label_on_baseline(g, x, baseline, Align::Left, shown, font_size, font, color);
+    g.note_cut(SharedString::from(path.to_owned()), at);
 }
 
 /// Play On ▸ for a film (one, not a folder): the AirPlay receivers paired

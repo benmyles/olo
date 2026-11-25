@@ -343,11 +343,9 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "terminal.font_reset", title: "Reset Font Size", category: "View", keywords: &["zoom", "actual"], args_schema: None },
         ActionSpec { id: "terminal.export_text", title: "Export Screen as Plain Text…", category: "Terminal", keywords: &["save", "dump"], args_schema: None },
         ActionSpec { id: "terminal.export_html", title: "Export Screen as HTML…", category: "Terminal", keywords: &["save", "html"], args_schema: None },
-        // ---- Files, Path Browser, Quick Look ----
-        ActionSpec { id: "files.path_browser", title: "Path Browser…", category: "Files", keywords: &["insert path", "browse", "files"], args_schema: None },
-        ActionSpec { id: "files.go_to_dir", title: "Go to Directory…", category: "Files", keywords: &["cd", "folder", "mru"], args_schema: None },
+        // ---- Files, Quick Look ----
         ActionSpec { id: "files.quick_look", title: "Quick Look Path…", category: "Files", keywords: &["preview", "inspect"], args_schema: None },
-        ActionSpec { id: "files.open_in_tracker", title: "Open Working Directory in Tracker", category: "Files", keywords: &["finder", "folder", "tracker"], args_schema: None },
+        ActionSpec { id: "files.open_in_tracker", title: "Open in Tracker", category: "Files", keywords: &["finder", "folder", "tracker", "browse", "files"], args_schema: None },
         // ---- Coding Agents & Automation ----
         ActionSpec { id: "agent.keep_going_toggle", title: "Toggle Keep It Going", category: "Agents", keywords: &["nudge", "continue", "autonomous"], args_schema: None },
         ActionSpec { id: "agent.auto_approve_toggle", title: "Toggle Auto Approve", category: "Agents", keywords: &["approve", "yes", "permission", "agent", "proceed"], args_schema: None },

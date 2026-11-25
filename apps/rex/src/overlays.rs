@@ -3,7 +3,6 @@
 //! - Go to Anything (`⌘P`)
 //! - `rex.ui` Custom Prompts (`input` & `pick` with `multiple`, `allow_other`, 16 Rex icons)
 //! - Which-Key Sequence Hints HUD (`KeyHint`) & Active Key Mode Pill
-//! - Integrated Path Browser (`⌃⌘I`) & Go to Directory (`⇧⌘G`)
 //! - Quick Look (`⌘Y`) image & text preview
 //! - Auto-Approve 30 s Countdown Pill & Password Prompt Autofill Banner
 
@@ -14,20 +13,13 @@ use olo_kit::{
     theme,
     widgets::{Button, KeyHint, StringView, TextControl, TextField},
 };
-use olo_rex_client::{ClientPromptRequested, DirEntry};
+use olo_rex_client::ClientPromptRequested;
 
 use crate::{hub::BlockKey, keymap::SequenceHint};
 
 /// Active modal/floating overlay open inside a Rex workspace window.
 pub enum ActiveOverlay {
     RexPrompt { host_key: String, req: ClientPromptRequested, query: String, selected_idx: usize, checked_ids: HashSet<String> },
-    PathBrowser { mode: PathBrowserMode, block: BlockKey, dir: String, query: String, entries: Vec<DirEntry>, selected: usize },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PathBrowserMode {
-    InsertPath,
-    GoToDir,
 }
 
 #[derive(Debug, Clone)]
@@ -197,57 +189,6 @@ pub fn render_active_overlay(
                     .child(Button::new(confirm_lbl).default(true).on_click(move |_, cx| ok_cb(&(), cx))),
             );
             modal_shell("Rex Prompt", 520.0, body)
-        }
-        ActiveOverlay::PathBrowser { mode, dir, query, entries, selected, .. } => {
-            let heading = match mode {
-                PathBrowserMode::InsertPath => format!("Path Browser — {dir}"),
-                PathBrowserMode::GoToDir => format!("Go to Directory — {dir}"),
-            };
-            let filtered: Vec<(usize, &DirEntry)> = entries
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| {
-                    if *mode == PathBrowserMode::GoToDir && e.file {
-                        return false;
-                    }
-                    fuzzy_score(&e.name, query).is_some()
-                })
-                .collect();
-            let mut list = div().flex().flex_col().gap(px(2.0)).w_full();
-            for (rank, (orig_idx, e)) in filtered.iter().take(12).enumerate() {
-                let is_sel = rank == *selected;
-                let pick = on_pick_index.clone();
-                let oi = *orig_idx;
-                let icon = if e.file { "document" } else { "folder" };
-                let kind_lbl = if e.symlink {
-                    "Symlink"
-                } else if e.file {
-                    "File"
-                } else {
-                    "Folder"
-                };
-                list = list.child(prompt_item_row(e.name.clone(), kind_lbl.to_owned(), None, icon, is_sel, move |cx| pick(&oi, cx)));
-            }
-            if filtered.is_empty() {
-                list = list.child(div().py(px(m::SECTION)).flex().justify_center().child(StringView::new("No matching entries").dim(true)));
-            }
-            let action_lbl = match mode {
-                PathBrowserMode::InsertPath => "Insert Path",
-                PathBrowserMode::GoToDir => "Open Folder",
-            };
-            modal_shell(
-                "Path Browser",
-                540.0,
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::SPACING))
-                    .w_full()
-                    .child(StringView::new(heading).bold(true).cut(true))
-                    .child(TextControl::new(cx, field))
-                    .child(list)
-                    .child(div().flex().flex_row().gap(px(m::SECTION)).pt(px(m::TIGHT)).child(KeyHint::new("↩", action_lbl)).child(KeyHint::new("Esc", "Close"))),
-            )
         }
     };
 

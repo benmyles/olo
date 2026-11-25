@@ -119,8 +119,87 @@ impl Entry {
 }
 
 pub use olo_kit_base::files::{Kind, format_size, format_time, kind_for};
+pub use olo_kit_base::tracker::{REX_SCHEME, RexPath};
+
+/// Whether `path` addresses a remote Rex host (`rex://HOST/PATH`).
+pub fn is_remote(path: &Path) -> bool {
+    RexPath::is_rex(path)
+}
+
+/// Parse `path` as a `RexPath`, if it is one.
+pub fn rex_path(path: &Path) -> Option<RexPath> {
+    RexPath::from_path(path)
+}
+
+/// Parent directory of a local or `rex://` path.
+pub fn parent_of(path: &Path) -> Option<PathBuf> {
+    if let Some(rex) = rex_path(path) {
+        return rex.parent().map(|p| p.to_path_buf());
+    }
+    if is_remote(path) {
+        return None;
+    }
+    path.parent().map(Path::to_owned)
+}
+
+/// Append a child segment to a local or `rex://` folder path.
+pub fn join_name(dir: &Path, name: &str) -> PathBuf {
+    if let Some(rex) = rex_path(dir) {
+        return rex.join(name).to_path_buf();
+    }
+    dir.join(name)
+}
+
+/// Leaf name of a local or `rex://` path.
+pub fn leaf_name(path: &Path) -> String {
+    if let Some(rex) = rex_path(path) {
+        return rex.file_name().to_owned();
+    }
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into())
+}
+
+/// Whether `path` equals `ancestor` or lies beneath it (handles both local and `rex://`).
+pub fn starts_with_dir(path: &Path, ancestor: &Path) -> bool {
+    match (rex_path(path), rex_path(ancestor)) {
+        (Some(p), Some(a)) => {
+            if !p.host.eq_ignore_ascii_case(&a.host) {
+                return false;
+            }
+            if a.path == "/" {
+                return p.path.starts_with('/');
+            }
+            p.path == a.path || p.path.strip_prefix(&a.path).is_some_and(|rest| rest.starts_with('/'))
+        }
+        (None, None) => path.starts_with(ancestor),
+        _ => false,
+    }
+}
+
+/// Child path segments from `ancestor` down to `path` (empty if equal, `None` if unrelated).
+pub fn relative_segments(path: &Path, ancestor: &Path) -> Option<Vec<String>> {
+    match (rex_path(path), rex_path(ancestor)) {
+        (Some(p), Some(a)) => {
+            if !p.host.eq_ignore_ascii_case(&a.host) {
+                return None;
+            }
+            if p.path == a.path {
+                return Some(Vec::new());
+            }
+            let tail = if a.path == "/" { p.path.strip_prefix('/')? } else { p.path.strip_prefix(&a.path)?.strip_prefix('/')? };
+            Some(tail.split('/').filter(|s| !s.is_empty()).map(str::to_owned).collect())
+        }
+        (None, None) => path.strip_prefix(ancestor).ok().map(|r| r.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect()),
+        _ => None,
+    }
+}
 
 pub fn entry(path: &Path) -> Option<Entry> {
+    if let Some(rex) = rex_path(path) {
+        return crate::rex::stat(&rex).ok().and_then(|s| s.entry);
+    }
+    if is_remote(path) {
+        return None;
+    }
     let lmeta = fs::symlink_metadata(path).ok()?;
     let is_link = lmeta.file_type().is_symlink();
     let meta = if is_link { fs::metadata(path).unwrap_or(lmeta) } else { lmeta };
@@ -212,6 +291,33 @@ pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
 
 /// [`list`], counting items into `count` as it goes (for progress).
 pub fn list_counting(dir: &Path, hidden: bool, count: &std::sync::atomic::AtomicU64) -> std::io::Result<Vec<Entry>> {
+    if dir == Path::new(REX_SCHEME) {
+        let mut hosts = crate::rex::hosts().map_err(std::io::Error::other)?;
+        hosts.sort_by(|a, b| b.state.is_connected().cmp(&a.state.is_connected()).then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase())));
+        let entries: Vec<Entry> = hosts
+            .into_iter()
+            .map(|h| Entry {
+                path: RexPath::new(&h.label, "/").to_path_buf(),
+                name: h.label,
+                is_dir: true,
+                is_link: false,
+                size: 0,
+                modified: None,
+                mode: 0o755,
+                kind: Kind::Folder,
+                app_icon: Some("network"),
+                downloading: None,
+                shown: Shown::default(),
+            })
+            .collect();
+        count.fetch_add(entries.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        return Ok(entries);
+    }
+    if let Some(rex) = rex_path(dir) {
+        let res = crate::rex::list(&rex, hidden).map_err(std::io::Error::other)?;
+        count.fetch_add(res.entries.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        return Ok(res.entries);
+    }
     let mut v = Vec::new();
     for e in fs::read_dir(dir)?.flatten() {
         let name = e.file_name();
@@ -235,6 +341,9 @@ pub fn home() -> PathBuf {
 
 /// A path for display, with the home folder shortened to `~`.
 pub fn display_path(p: &Path) -> String {
+    if let Some(rex) = rex_path(p) {
+        return rex.to_uri();
+    }
     match p.strip_prefix(home()) {
         Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
         Ok(rest) => format!("~/{}", rest.display()),
@@ -242,8 +351,12 @@ pub fn display_path(p: &Path) -> String {
     }
 }
 
-/// A display name for a folder: "Home" for $HOME, the volume name for "/".
+/// A display name for a folder: "Home" for $HOME, the volume name for "/",
+/// or `"folder — host"` for a remote Rex host folder.
 pub fn display_name(path: &Path) -> String {
+    if let Some(rex) = rex_path(path) {
+        return rex.window_title();
+    }
     if path == home() {
         return "Home".into();
     }
@@ -274,7 +387,7 @@ pub fn copy_target(from: &Path, dir: &Path) -> PathBuf {
 
 /// "notes copy.txt" for "notes.txt"; copying a copy gives "notes copy.txt"
 /// again (made unique as "notes copy 2.txt"), never "notes copy copy.txt".
-fn copy_name(name: &str) -> String {
+pub fn copy_name(name: &str) -> String {
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s, format!(".{e}")),
         _ => (name, String::new()),
@@ -285,6 +398,10 @@ fn copy_name(name: &str) -> String {
 }
 
 pub fn new_folder(dir: &Path) -> std::io::Result<PathBuf> {
+    if let Some(rex) = rex_path(dir) {
+        let (made, _) = crate::rex::mkdir(&rex.join("New Folder"), true).map_err(std::io::Error::other)?;
+        return Ok(made.to_path_buf());
+    }
     let p = unique(dir, "New Folder");
     fs::create_dir(&p)?;
     Ok(p)
@@ -293,6 +410,12 @@ pub fn new_folder(dir: &Path) -> std::io::Result<PathBuf> {
 pub fn rename(path: &Path, name: &str) -> std::io::Result<PathBuf> {
     if name.is_empty() || name.contains('/') {
         return Err(std::io::Error::other("invalid name"));
+    }
+    if let Some(rex) = rex_path(path) {
+        let parent = rex.parent().ok_or_else(|| std::io::Error::other("cannot rename root"))?;
+        let to = parent.join(name);
+        let moved = crate::rex::rename(&rex, &to, false).map_err(std::io::Error::other)?;
+        return Ok(moved.to_path_buf());
     }
     let to = path.with_file_name(name);
     if to.exists() && to != path {
@@ -337,7 +460,12 @@ pub fn clipping(dir: &Path, text: &str) -> std::io::Result<PathBuf> {
     if name.is_empty() {
         name = "Clipping".into();
     }
-    let to = unique(dir, &format!("{name} clipping.txt"));
+    let file_name = format!("{name} clipping.txt");
+    if let Some(rex) = rex_path(dir) {
+        let made = crate::rex::write_file(&rex.join(&file_name), true, text.as_bytes()).map_err(std::io::Error::other)?;
+        return Ok(made.to_path_buf());
+    }
+    let to = unique(dir, &file_name);
     fs::write(&to, text)?;
     Ok(to)
 }
@@ -345,6 +473,10 @@ pub fn clipping(dir: &Path, text: &str) -> std::io::Result<PathBuf> {
 /// A file dropped by its contents (`name`, `data`) into `dir`: under its
 /// name, or a free one beside it.
 pub fn save_new(dir: &Path, name: &str, data: &[u8]) -> std::io::Result<PathBuf> {
+    if let Some(rex) = rex_path(dir) {
+        let made = crate::rex::write_file(&rex.join(name), true, data).map_err(std::io::Error::other)?;
+        return Ok(made.to_path_buf());
+    }
     let to = unique(dir, name);
     fs::write(&to, data)?;
     Ok(to)
@@ -360,8 +492,14 @@ pub fn link_clipping(dir: &Path, url: &str, title: &str) -> std::io::Result<Path
     if name.is_empty() {
         name = "Link".into();
     }
-    let to = unique(dir, &olo_kit::tr!("{} link clipping.txt", name));
-    fs::write(&to, format!("{url}\n"))?;
+    let file_name = olo_kit::tr!("{} link clipping.txt", name);
+    let body = format!("{url}\n");
+    if let Some(rex) = rex_path(dir) {
+        let made = crate::rex::write_file(&rex.join(&file_name), true, body.as_bytes()).map_err(std::io::Error::other)?;
+        return Ok(made.to_path_buf());
+    }
+    let to = unique(dir, &file_name);
+    fs::write(&to, body)?;
     Ok(to)
 }
 
@@ -375,7 +513,12 @@ pub fn pasted_picture(dir: &Path, kind: &str, data: &[u8]) -> std::io::Result<Pa
         other => other,
     };
     let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
-    let to = unique(dir, &olo_kit::tr!("Pasted Picture.{}", if ext.is_empty() { "img" } else { &ext }));
+    let file_name = olo_kit::tr!("Pasted Picture.{}", if ext.is_empty() { "img" } else { &ext });
+    if let Some(rex) = rex_path(dir) {
+        let made = crate::rex::write_file(&rex.join(&file_name), true, data).map_err(std::io::Error::other)?;
+        return Ok(made.to_path_buf());
+    }
+    let to = unique(dir, &file_name);
     fs::write(&to, data)?;
     Ok(to)
 }
@@ -399,15 +542,33 @@ pub fn open_in_terminal(dir: &Path) {
     }
 }
 
-/// A new Rex workspace session in `dir`.
+/// A new Rex workspace session in `dir` (or focuses the host in Rex for a remote folder).
 pub fn open_in_rex(dir: &Path) {
     let rex = olo_xdg::find_program("olo-rex").map_or_else(|| "olo-rex".into(), PathBuf::into_os_string);
+    if let Some(rp) = rex_path(dir) {
+        if let Err(e) = opener::spawn(&[rex, "--focus-host".into(), rp.host.into()]) {
+            tracing::warn!("rex host {}: {e}", dir.display());
+        }
+        return;
+    }
     if let Err(e) = opener::spawn(&[rex, "--dir".into(), dir.as_os_str().to_owned()]) {
         tracing::warn!("rex in {}: {e}", dir.display());
     }
 }
 
 pub fn open_in_viewer(path: &Path) {
+    if let Some(rp) = rex_path(path) {
+        std::thread::spawn(move || match crate::rex::read_to_cache(&rp) {
+            Ok(local) => {
+                let viewer = olo_xdg::find_program("olo-viewer").map_or_else(|| "olo-viewer".into(), PathBuf::into_os_string);
+                if let Err(e) = opener::spawn(&[viewer, local.into_os_string()]) {
+                    tracing::warn!("viewer {}: {e}", rp.to_uri());
+                }
+            }
+            Err(e) => crate::to_hub(crate::ToHub::Said(olo_kit::tr!("Couldn’t open “{}”: {}", rp.file_name(), e))),
+        });
+        return;
+    }
     let viewer = olo_xdg::find_program("olo-viewer").map_or_else(|| "olo-viewer".into(), PathBuf::into_os_string);
     if let Err(e) = opener::spawn(&[viewer, path.as_os_str().to_owned()]) {
         tracing::warn!("viewer {}: {e}", path.display());
@@ -417,6 +578,18 @@ pub fn open_in_viewer(path: &Path) {
 /// Open a file with the right application: ours where we have one,
 /// otherwise the user's default (see `olo_xdg::open`). Programs run.
 pub fn open(entry: &Entry) {
+    if let Some(rp) = rex_path(&entry.path) {
+        let name = entry.name.clone();
+        std::thread::spawn(move || match crate::rex::read_to_cache(&rp) {
+            Ok(local) => {
+                if let Err(e) = opener::open(&opener::Target::Path(local)) {
+                    crate::to_hub(crate::ToHub::Said(olo_kit::tr!("Couldn’t open “{}”: {}", name, e)));
+                }
+            }
+            Err(e) => crate::to_hub(crate::ToHub::Said(olo_kit::tr!("Couldn’t open “{}”: {}", name, e))),
+        });
+        return;
+    }
     // An archive Olo reads is looked into in Tracker, as a folder is.
     if !entry.is_dir && entry.kind == Kind::Archive && opens_inside(&entry.name) {
         crate::to_hub(crate::ToHub::OpenArchive(entry.path.clone()));
@@ -485,6 +658,9 @@ pub fn volumes() -> Vec<(String, PathBuf, &'static str)> {
 
 /// Free / total bytes of the file system holding `path`.
 pub fn fs_space(path: &Path) -> Option<(u64, u64)> {
+    if is_remote(path) {
+        return None;
+    }
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
     // SAFETY: statvfs fills the zeroed struct we own.

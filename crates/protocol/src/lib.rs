@@ -2221,6 +2221,9 @@ pub struct TrackerSettings {
     /// [`TrackerSettings::COLUMN_WIDTH`] back). As saved; what Tracker
     /// uses is [`TrackerSettings::column`], within its least and most.
     pub column_width: u16,
+    /// Whether folder windows show the Navigator bar (Back, Forward, Up
+    /// and the path well) under the menu bar (View ▸ Show Navigator).
+    pub show_navigator: bool,
 }
 
 impl TrackerSettings {
@@ -2240,7 +2243,7 @@ impl TrackerSettings {
 
 impl Default for TrackerSettings {
     fn default() -> Self {
-        TrackerSettings { default_view: FolderView::default(), column_width: Self::COLUMN_WIDTH }
+        TrackerSettings { default_view: FolderView::default(), column_width: Self::COLUMN_WIDTH, show_navigator: true }
     }
 }
 

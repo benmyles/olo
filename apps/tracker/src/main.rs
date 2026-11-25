@@ -25,6 +25,7 @@ mod model;
 mod ops;
 mod panels;
 mod quicklook;
+mod rex;
 mod sorts;
 mod thumbs;
 mod undo;
@@ -102,6 +103,20 @@ pub enum ToHub {
     /// Show a path: a folder opens (`.1`: its parent does, with it
     /// selected); anything else is selected in its folder's window.
     Reveal(PathBuf, bool),
+    /// A remote `rex://HOST/PATH` was stat'ed off the looper for Reveal.
+    RemoteRevealed {
+        orig: PathBuf,
+        in_parent: bool,
+        result: Result<rex::StatResult, String>,
+    },
+    /// A remote rename finished off the looper.
+    RemoteRenamed {
+        win: Option<u64>,
+        old: PathBuf,
+        result: Result<PathBuf, String>,
+    },
+    /// View ▸ Show Navigator toggled in a window.
+    ToggleNavigator,
     GetInfo(Vec<Entry>),
     Find,
     /// Go to File or Folder, asked in a window on this folder.
@@ -242,6 +257,8 @@ struct PlacesCache {
 struct Shared {
     /// Hidden files are listed (every window's).
     hidden: AtomicBool,
+    /// Navigator bar shown under the menu bar (every folder window, saved in settings).
+    show_navigator: AtomicBool,
     /// Edit ▸ Undo's and Redo's names, and whether there's a step for
     /// each.
     undo: Mutex<[(String, bool); 2]>,
@@ -256,11 +273,17 @@ fn shared() -> &'static Shared {
     static SHARED: OnceLock<Shared> = OnceLock::new();
     SHARED.get_or_init(|| Shared {
         hidden: AtomicBool::new(false),
+        show_navigator: AtomicBool::new(true),
         undo: Mutex::new([("Undo".into(), false), ("Redo".into(), false)]),
         places: Mutex::new(PlacesCache { places: Arc::new(places::Places::default()), read: None, reading: false }),
         jobs: Mutex::new(Vec::new()),
         infos: Mutex::new(HashMap::new()),
     })
+}
+
+/// Whether folder windows show the Navigator bar under the menu bar.
+pub fn show_navigator() -> bool {
+    shared().show_navigator.load(Ordering::Relaxed)
 }
 
 /// A window says what it shows now.
@@ -387,6 +410,26 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
     if drop.mime != "text/uri-list" || paths.is_empty() {
         // A file offered by its contents (a picture from a web page),
         // else text or a link: a clipping file, as BeOS made.
+        if fs::is_remote(&dest) {
+            let mime = drop.mime.clone();
+            let data = drop.data.clone();
+            std::thread::spawn(move || {
+                let saved = if let Some(name) = olo_kit_base::files::named_file(&mime) {
+                    Some(fs::save_new(&dest, &name, &data))
+                } else if let Some((url, title)) = (mime == "text/x-moz-url").then(|| olo_kit_base::files::moz_url(&data)).flatten() {
+                    Some(fs::link_clipping(&dest, &url, &title))
+                } else {
+                    let text = String::from_utf8_lossy(&data).into_owned();
+                    (!text.trim().is_empty()).then(|| fs::clipping(&dest, &text))
+                };
+                match saved {
+                    Some(Ok(_)) => to_hub(ToHub::ReloadAll),
+                    Some(Err(e)) => to_hub(ToHub::Said(olo_kit::tr!("Couldn't save what was dropped: {}", e))),
+                    None => {}
+                }
+            });
+            return Ok(Vec::new());
+        }
         let saved = if let Some(name) = olo_kit_base::files::named_file(&drop.mime) {
             Some(fs::save_new(&dest, &name, &drop.data))
         } else if let Some((url, title)) = (drop.mime == "text/x-moz-url").then(|| olo_kit_base::files::moz_url(&drop.data)).flatten() {
@@ -406,21 +449,26 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
         };
     }
     // Nothing goes into itself.
-    if let Some(p) = paths.iter().find(|p| p.is_dir() && dest.starts_with(p)) {
-        let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    if let Some(p) = paths.iter().find(|p| (fs::is_remote(p) || p.is_dir()) && fs::starts_with_dir(&dest, p)) {
+        let name = fs::leaf_name(p);
         return Err(olo_kit::tr!("“{}” can't go inside itself.", name));
     }
+    let any_remote = fs::is_remote(&dest) || paths.iter().any(|p| fs::is_remote(p));
     match drop.action {
         DragAction::Ask => {
             // The menu for a secondary-button drop, where it fell.
-            let same = paths.iter().all(|p| p.parent() == Some(dest.as_path()));
-            let menu = Menu::new("").item("Move Here", "move").enabled(!same).item("Copy Here", "copy").item("Create Link Here", "link").separator().item("Cancel", "cancel");
+            let same = paths.iter().all(|p| fs::parent_of(p).as_deref() == Some(dest.as_path()));
+            let mut menu = Menu::new("").item("Move Here", "move").enabled(!same).item("Copy Here", "copy");
+            if !any_remote {
+                menu = menu.item("Create Link Here", "link");
+            }
+            let menu = menu.separator().item("Cancel", "cancel");
             menu::context_menu(cx, menu, drop.position, move |cmd, _| {
                 let (paths, dest) = (paths.clone(), dest.clone());
                 match cmd {
                     "move" => job(ops::Kind::Move, paths, dest),
                     "copy" => job(ops::Kind::Copy, paths, dest),
-                    "link" => {
+                    "link" if !any_remote => {
                         let mut made = Vec::new();
                         for p in &paths {
                             match fs::link_into(p, &dest) {
@@ -440,7 +488,7 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
         }
         DragAction::Move => {
             // Already there: nothing to move.
-            let paths: Vec<PathBuf> = paths.into_iter().filter(|p| p.parent() != Some(dest.as_path())).collect();
+            let paths: Vec<PathBuf> = paths.into_iter().filter(|p| fs::parent_of(p).as_deref() != Some(dest.as_path())).collect();
             if !paths.is_empty() {
                 job(ops::Kind::Move, paths, dest);
             }
@@ -605,11 +653,16 @@ impl Hub {
     /// The folder's window, brought forward, if it has one on this
     /// workspace; else a new one here (each workspace has its own).
     fn open_folder(&mut self, path: &Path) -> u64 {
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_owned());
-        // A recent folder now, for the Go menu and file panels (off the
-        // looper).
-        let p = path.clone();
-        std::thread::spawn(move || places::visited(&p));
+        let path = if fs::is_remote(path) {
+            fs::rex_path(path).map_or_else(|| path.to_owned(), |r| r.to_path_buf())
+        } else {
+            let p = path.canonicalize().unwrap_or_else(|_| path.to_owned());
+            // A recent folder now, for the Go menu and file panels (off the
+            // looper).
+            let visited = p.clone();
+            std::thread::spawn(move || places::visited(&visited));
+            p
+        };
         if let Some(id) = self.folder_window(&path) {
             if let Some(s) = self.shown(id) {
                 s.raise();
@@ -652,6 +705,14 @@ impl Hub {
     /// Show `path`: a folder opens; anything else is selected in its
     /// folder's window.
     fn reveal(&mut self, path: &Path) {
+        if let Some(rp) = fs::rex_path(path) {
+            let orig = rp.to_path_buf();
+            std::thread::spawn(move || {
+                let result = rex::stat(&rp);
+                to_hub(ToHub::RemoteRevealed { orig, in_parent: false, result });
+            });
+            return;
+        }
         if path.is_dir() {
             self.open_folder(path);
         } else {
@@ -661,11 +722,47 @@ impl Hub {
 
     /// Open `path`'s folder with it selected.
     fn show_in_parent(&mut self, path: &Path) {
+        if let Some(rp) = fs::rex_path(path) {
+            let orig = rp.to_path_buf();
+            std::thread::spawn(move || {
+                let result = rex::stat(&rp);
+                to_hub(ToHub::RemoteRevealed { orig, in_parent: true, result });
+            });
+            return;
+        }
         let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else { return };
         let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
         let id = self.open_folder(&dir);
         if let Some(f) = self.folder(id) {
             f.messenger().send(FolderMsg::Select(vec![dir.join(name)]));
+        }
+    }
+
+    fn remote_revealed(&mut self, orig: PathBuf, in_parent: bool, result: Result<rex::StatResult, String>) {
+        match result {
+            Ok(st) if st.exists => {
+                let canon = fs::RexPath::new(&st.host, &st.resolved);
+                let is_dir = st.entry.as_ref().is_some_and(|e| e.is_dir);
+                if is_dir && !in_parent {
+                    self.open_folder(&canon.to_path_buf());
+                } else if let Some(parent) = canon.parent() {
+                    let id = self.open_folder(&parent.to_path_buf());
+                    if let Some(f) = self.folder(id) {
+                        f.messenger().send(FolderMsg::Select(vec![canon.to_path_buf()]));
+                    }
+                } else {
+                    self.open_folder(&canon.to_path_buf());
+                }
+            }
+            Ok(st) => {
+                let shown = fs::RexPath::new(&st.host, &st.resolved).to_uri();
+                error(olo_kit::tr!("There’s nothing at {}.", shown));
+            }
+            // Rex isn't running or the host is disconnected: open the folder
+            // window so the window itself shows the live status and error.
+            Err(_) => {
+                self.open_folder(&orig);
+            }
         }
     }
 
@@ -723,7 +820,7 @@ impl Hub {
             d.messenger().send(DesktopMsg::Select(saved.desktop_selected));
         }
         for f in saved.folders {
-            if !f.path.is_dir() {
+            if !fs::is_remote(&f.path) && !f.path.is_dir() {
                 continue;
             }
             let (sort, selected) = (f.own_sort.then_some(f.sort), f.selected);
@@ -766,7 +863,9 @@ impl Hub {
                 }
                 p => {
                     let path = PathBuf::from(p);
-                    if path.is_dir() {
+                    if fs::is_remote(&path) {
+                        self.reveal(&path);
+                    } else if path.is_dir() {
                         self.open_folder(&path);
                     } else if let Some(e) = fs::entry(&path) {
                         fs::open(&e);
@@ -781,10 +880,19 @@ impl Hub {
     }
 
     /// Rename `p` to `name`; reports failures and returns the new path.
-    fn rename(&mut self, p: &Path, name: &str) -> Option<PathBuf> {
-        let current = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    fn rename(&mut self, win: Option<u64>, p: &Path, name: &str) -> Option<PathBuf> {
+        let current = fs::leaf_name(p);
         let name = name.trim();
         if name.is_empty() || name == current {
+            return None;
+        }
+        if fs::is_remote(p) {
+            let old = p.to_owned();
+            let new_name = name.to_owned();
+            std::thread::spawn(move || {
+                let result = fs::rename(&old, &new_name).map_err(|e| e.to_string());
+                to_hub(ToHub::RemoteRenamed { win, old, result });
+            });
             return None;
         }
         let r = fs::rename(p, name);
@@ -805,7 +913,7 @@ impl Hub {
         }
     }
 
-    /// Watch exactly the folders on screen: every folder window's folder
+    /// Watch exactly the local folders on screen: every folder window's folder
     /// and columns, the desktop's, items' Info and Find's results.
     fn sync_watches(&mut self) {
         self.windows.retain(|s| s.is_open());
@@ -816,8 +924,8 @@ impl Hub {
                 // (A folder's window before it has said what it shows:
                 // its folder.)
                 _ => match info_of(s.id) {
-                    Some(info) => want.extend(info.watched),
-                    None => want.extend(s.path.clone()),
+                    Some(info) => want.extend(info.watched.into_iter().filter(|p| !fs::is_remote(p))),
+                    None => want.extend(s.path.clone().filter(|p| !fs::is_remote(p))),
                 },
             }
         }
@@ -873,8 +981,12 @@ impl Hub {
     /// Run a file operation in the background. Short ones finish without a
     /// trace; longer ones show in the Tracker Status window.
     fn start_job(&mut self, kind: ops::Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, origin: Option<u64>) {
-        // (What it does is a step Undo takes back; emptying the Trash isn't.)
-        let record = (kind != ops::Kind::EmptyTrash).then(|| (undo::name_of(kind).to_owned(), undo::Purpose::Do));
+        // (What it does is a step Undo takes back; emptying the Trash, permanent
+        // remote deletes, and remote copies/cross-host moves aren't.)
+        let any_remote = sources.iter().any(|s| fs::is_remote(s)) || dest.as_deref().is_some_and(fs::is_remote);
+        let same_host_move =
+            kind == ops::Kind::Move && dest.as_deref().and_then(fs::rex_path).is_some_and(|dr| sources.iter().all(|s| fs::rex_path(s).is_some_and(|sr| sr.host.eq_ignore_ascii_case(&dr.host))));
+        let record = (kind != ops::Kind::EmptyTrash && kind != ops::Kind::Delete && (!any_remote || same_host_move)).then(|| (undo::name_of(kind).to_owned(), undo::Purpose::Do));
         self.run_job(kind, sources, dest, Vec::new(), origin, record);
     }
 
@@ -1043,9 +1155,10 @@ impl Hub {
         match *msg {
             ToHub::Settings(s) => {
                 self.default_view = s.default_view;
+                let nav_changed = shared().show_navigator.swap(s.show_navigator, Ordering::Relaxed) != s.show_navigator;
                 // (The columns' width: every window in columns draws
                 // again at it.)
-                if columns::follow_settings(&s) {
+                if columns::follow_settings(&s) || nav_changed {
                     self.refresh();
                 }
             }
@@ -1087,6 +1200,25 @@ impl Hub {
             }
             ToHub::Reveal(path, true) => self.show_in_parent(&path),
             ToHub::Reveal(path, false) => self.reveal(&path),
+            ToHub::RemoteRevealed { orig, in_parent, result } => self.remote_revealed(orig, in_parent, result),
+            ToHub::RemoteRenamed { win, old, result } => {
+                self.reload_all();
+                match result {
+                    Ok(new) => {
+                        self.done("Rename", undo::Change::Moved(vec![(old, new.clone())]));
+                        if let Some(f) = win.and_then(|w| self.folder(w)) {
+                            f.messenger().send(FolderMsg::Select(vec![new]));
+                        }
+                    }
+                    Err(e) => error(olo_kit::tr!("Couldn't rename “{}”: {}", fs::leaf_name(&old), e)),
+                }
+            }
+            ToHub::ToggleNavigator => {
+                let now = !shared().show_navigator.load(Ordering::Relaxed);
+                shared().show_navigator.store(now, Ordering::Relaxed);
+                olo_kit_base::settings::update(move |s| s.tracker.show_navigator = now);
+                self.refresh();
+            }
             ToHub::GetInfo(entries) => {
                 for e in entries {
                     self.open_info(e);
@@ -1095,7 +1227,7 @@ impl Hub {
             ToHub::Find => self.open_find(),
             ToHub::GoTo(base) => self.open_go_to(base),
             ToHub::Rename { win, path, name } => {
-                if let Some(new) = self.rename(&path, &name)
+                if let Some(new) = self.rename(win, &path, &name)
                     && let Some(f) = win.and_then(|w| self.folder(w))
                 {
                     f.messenger().send(FolderMsg::Select(vec![new]));
@@ -1243,8 +1375,9 @@ fn main() {
         let desktop = args.iter().any(|a| a == "--desktop");
         let file_manager = desktop || args.iter().any(|a| a == FILE_MANAGER_ARG);
         // Folders opened at startup can't wait for the watcher's first
-        // read: how they show, and how wide their columns are.
+        // read: how they show, whether Navigator shows, and how wide their columns are.
         let settings = olo_kit_base::settings::current().map(|s| s.tracker).unwrap_or_default();
+        shared().show_navigator.store(settings.show_navigator, Ordering::Relaxed);
         columns::follow_settings(&settings);
         let mut hub = Hub {
             windows: Vec::new(),

@@ -11,6 +11,7 @@ mod attach;
 mod attention;
 mod bridge;
 mod copy_mode;
+mod files_sock;
 mod forwards;
 mod frame;
 mod git;

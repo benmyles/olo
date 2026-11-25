@@ -36,6 +36,8 @@ pub enum Kind {
     /// Put items in the Trash back where they came from.
     Restore,
     EmptyTrash,
+    /// Permanently delete remote items on a Rex host (confirmed first).
+    Delete,
     /// Each source back to exactly its target (`start_to`): a move
     /// undone. Not over anything now there, nor of anything gone.
     PutBack,
@@ -76,7 +78,7 @@ impl Progress {
 
     fn set_current(&self, p: &Path) {
         if let Ok(mut c) = self.current.lock() {
-            *c = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            *c = fs::leaf_name(p);
         }
     }
 }
@@ -113,7 +115,7 @@ pub struct Outcome {
 
 fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
     let what = match sources {
-        [one] => format!("“{}”", one.file_name().unwrap_or_default().to_string_lossy()),
+        [one] => format!("“{}”", fs::leaf_name(one)),
         many => format!("{} items", many.len()),
     };
     let to = dest.map(|d| format!(" to “{}”", fs::display_name(d))).unwrap_or_default();
@@ -124,6 +126,7 @@ fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Trash => olo_kit::tr!("Moving {} to the Trash", what),
         Kind::Restore => format!("Restoring {what}"),
         Kind::EmptyTrash => olo_kit::words::tr("Emptying the Trash").into(),
+        Kind::Delete => olo_kit::tr!("Deleting {}", what),
         Kind::PutBack => olo_kit::tr!("Putting {} back", what),
         Kind::Compress(f) => format!("Compressing {what} ({})", f.label()),
         Kind::Extract => format!("Extracting {what}"),
@@ -194,7 +197,7 @@ fn context(e: io::Error, p: &Path) -> io::Error {
     if e.kind() == io::ErrorKind::Interrupted {
         return e;
     }
-    io::Error::new(e.kind(), format!("“{}”: {e}", p.file_name().unwrap_or_default().to_string_lossy()))
+    io::Error::new(e.kind(), format!("“{}”: {e}", fs::leaf_name(p)))
 }
 
 impl Worker<'_> {
@@ -246,6 +249,10 @@ impl Worker<'_> {
     fn run(&self, kind: Kind, sources: &[PathBuf], dest: Option<&Path>, targets: &[PathBuf], out: &mut Outcome) -> io::Result<()> {
         let created = &mut out.created;
         let moved = &mut out.moved;
+        let any_remote = sources.iter().any(|s| fs::is_remote(s)) || dest.is_some_and(fs::is_remote) || targets.iter().any(|t| fs::is_remote(t));
+        if any_remote || kind == Kind::Delete {
+            return self.run_remote(kind, sources, dest, targets, out);
+        }
         match kind {
             Kind::Copy | Kind::Duplicate => {
                 for s in sources {
@@ -340,8 +347,8 @@ impl Worker<'_> {
                     self.p.done_items.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            // (Run by `archive`.)
-            Kind::Compress(_) | Kind::Extract => {}
+            // (Run by `archive` or `run_remote`.)
+            Kind::Compress(_) | Kind::Extract | Kind::Delete => {}
             Kind::EmptyTrash => {
                 // Empty at once, as far as anyone looking can tell: the
                 // Trash's files and info are swapped for empty folders (one
@@ -535,6 +542,166 @@ impl Worker<'_> {
 
     fn remove_quietly(&self, p: &Path) -> io::Result<()> {
         if sfs::symlink_metadata(p)?.is_dir() { sfs::remove_dir_all(p) } else { sfs::remove_file(p) }
+    }
+
+    /// Operations where any source or destination is a `rex://HOST/PATH` URI
+    /// (same-host rename/copy/delete via `olo-rex-link fs`, cross-host and
+    /// desktop↔host transfers via `olo-rex-sync` with progress and Stop).
+    fn run_remote(&self, kind: Kind, sources: &[PathBuf], dest: Option<&Path>, targets: &[PathBuf], out: &mut Outcome) -> io::Result<()> {
+        let created = &mut out.created;
+        let moved = &mut out.moved;
+        match kind {
+            Kind::Delete => {
+                self.p.total_items.store(sources.len() as u64, Ordering::Relaxed);
+                self.p.counting.store(false, Ordering::Relaxed);
+                for s in sources {
+                    self.check()?;
+                    self.p.set_current(s);
+                    let rp = fs::rex_path(s).ok_or_else(|| io::Error::other("not a remote path"))?;
+                    crate::rex::remove(&rp).map_err(|e| context(io::Error::other(e), s))?;
+                    self.p.done_items.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            Kind::PutBack => {
+                self.p.total_items.store(sources.len() as u64, Ordering::Relaxed);
+                self.p.counting.store(false, Ordering::Relaxed);
+                for (s, target) in sources.iter().zip(targets) {
+                    self.check()?;
+                    self.p.set_current(s);
+                    let (Some(sr), Some(tr)) = (fs::rex_path(s), fs::rex_path(target)) else {
+                        return Err(io::Error::other("can’t undo across local and remote paths"));
+                    };
+                    let st = crate::rex::stat(&sr).map_err(|e| context(io::Error::other(e), s))?;
+                    if !st.exists {
+                        return Err(io::Error::other(olo_kit::tr!("“{}” isn't there any more", fs::leaf_name(s))));
+                    }
+                    let dst_st = crate::rex::stat(&tr).map_err(|e| context(io::Error::other(e), target))?;
+                    if dst_st.exists {
+                        return Err(io::Error::other(olo_kit::tr!("something else is called “{}” there now", fs::leaf_name(target))));
+                    }
+                    let back = crate::rex::rename(&sr, &tr, false).map_err(|e| context(io::Error::other(e), s))?;
+                    let back_pb = back.to_path_buf();
+                    moved.push((s.clone(), back_pb.clone()));
+                    created.push(back_pb);
+                    self.p.done_items.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            Kind::Copy | Kind::Duplicate => {
+                self.p.total_items.store(sources.len() as u64, Ordering::Relaxed);
+                for s in sources {
+                    if !fs::is_remote(s) {
+                        let _ = self.measure(s);
+                    } else if let Some(rp) = fs::rex_path(s)
+                        && let Ok(st) = crate::rex::stat(&rp)
+                        && let Some(e) = st.entry
+                    {
+                        self.p.total_bytes.fetch_add(e.size, Ordering::Relaxed);
+                    }
+                }
+                self.p.counting.store(false, Ordering::Relaxed);
+                for s in sources {
+                    self.check()?;
+                    self.p.set_current(s);
+                    let dir = match dest {
+                        Some(d) => d.to_owned(),
+                        None => fs::parent_of(s).ok_or_else(|| io::Error::other("no destination folder"))?,
+                    };
+                    let made = self.copy_any(s, &dir).map_err(|e| context(e, s))?;
+                    created.push(made);
+                    self.p.done_items.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            Kind::Move => {
+                let dir = dest.ok_or_else(|| io::Error::other("no destination"))?;
+                self.p.total_items.store(sources.len() as u64, Ordering::Relaxed);
+                for s in sources {
+                    if !fs::is_remote(s) {
+                        let _ = self.measure(s);
+                    } else if let Some(rp) = fs::rex_path(s)
+                        && let Ok(st) = crate::rex::stat(&rp)
+                        && let Some(e) = st.entry
+                    {
+                        self.p.total_bytes.fetch_add(e.size, Ordering::Relaxed);
+                    }
+                }
+                self.p.counting.store(false, Ordering::Relaxed);
+                for s in sources {
+                    self.check()?;
+                    self.p.set_current(s);
+                    if let (Some(sr), Some(dr)) = (fs::rex_path(s), fs::rex_path(dir))
+                        && sr.host.eq_ignore_ascii_case(&dr.host)
+                    {
+                        let target = dr.join(sr.file_name());
+                        let moved_to = crate::rex::rename(&sr, &target, true).map_err(|e| context(io::Error::other(e), s))?;
+                        let pb = moved_to.to_path_buf();
+                        moved.push((s.clone(), pb.clone()));
+                        created.push(pb);
+                    } else {
+                        let made = self.copy_any(s, dir).map_err(|e| context(e, s))?;
+                        // Only remove source once the transfer succeeded cleanly.
+                        if let Some(sr) = fs::rex_path(s) {
+                            crate::rex::remove(&sr).map_err(|e| context(io::Error::other(e), s))?;
+                        } else {
+                            self.remove(s).map_err(|e| context(e, s))?;
+                        }
+                        created.push(made);
+                    }
+                    self.p.done_items.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            _ => return Err(io::Error::other("This operation isn’t available for remote folders.")),
+        }
+        Ok(())
+    }
+
+    /// Copy one source (`s`, local or `rex://`) into folder `dir` (local or `rex://`).
+    fn copy_any(&self, s: &Path, dir: &Path) -> io::Result<PathBuf> {
+        let leaf = fs::leaf_name(s);
+        let same_parent = fs::parent_of(s).as_deref() == Some(dir);
+        let wanted_name = if same_parent { fs::copy_name(&leaf) } else { leaf };
+        match (fs::rex_path(s), fs::rex_path(dir)) {
+            // Same remote host: native copy on the host.
+            (Some(sr), Some(dr)) if sr.host.eq_ignore_ascii_case(&dr.host) => {
+                let target = dr.join(&wanted_name);
+                let made = crate::rex::copy_remote(&sr, &target).map_err(io::Error::other)?;
+                Ok(made.to_path_buf())
+            }
+            // Remote -> Local: olo-rex-sync download with progress & Stop.
+            (Some(sr), None) => {
+                let st = crate::rex::stat(&sr).map_err(io::Error::other)?;
+                let is_dir = st.entry.as_ref().is_some_and(|e| e.is_dir);
+                let target = fs::unique(dir, &wanted_name);
+                let local_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(wanted_name);
+                crate::rex::download(&sr, dir, &local_name, is_dir, self.p, self.cancel)
+            }
+            // Local -> Remote: olo-rex-sync upload with progress & Stop.
+            (None, Some(dr)) => {
+                let md = sfs::symlink_metadata(s)?;
+                let is_dir = md.is_dir();
+                let made = crate::rex::upload(s, &dr, &wanted_name, is_dir, self.p, self.cancel)?;
+                Ok(made.to_path_buf())
+            }
+            // Remote host A -> Remote host B: stage on disk in /var/tmp via olo-rex-sync, then upload.
+            (Some(sr), Some(dr)) => {
+                let st = crate::rex::stat(&sr).map_err(io::Error::other)?;
+                let is_dir = st.entry.as_ref().is_some_and(|e| e.is_dir);
+                let stage = PathBuf::from(format!("/var/tmp/olo-tracker-hop-{}-{}", std::process::id(), self.p.done_items.load(Ordering::Relaxed)));
+                let _ = sfs::remove_dir_all(&stage);
+                sfs::create_dir_all(&stage)?;
+                let res = (|| -> io::Result<PathBuf> {
+                    let local = crate::rex::download(&sr, &stage, &wanted_name, is_dir, self.p, self.cancel)?;
+                    let made = crate::rex::upload(&local, &dr, &wanted_name, is_dir, self.p, self.cancel)?;
+                    Ok(made.to_path_buf())
+                })();
+                let _ = sfs::remove_dir_all(&stage);
+                res
+            }
+            (None, None) => {
+                let target = fs::copy_target(s, dir);
+                self.copy(s, &target)?;
+                Ok(target)
+            }
+        }
     }
 }
 

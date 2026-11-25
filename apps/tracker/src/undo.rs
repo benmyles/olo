@@ -71,7 +71,7 @@ impl Change {
             Kind::Trash => Change::Trashed(outcome.moved.clone()),
             Kind::Restore => Change::Restored(outcome.moved.clone()),
             Kind::Copy | Kind::Duplicate | Kind::Compress(_) | Kind::Extract => Change::Made(outcome.created.clone()),
-            Kind::EmptyTrash => return None,
+            Kind::EmptyTrash | Kind::Delete => return None,
         };
         (!c.is_empty()).then_some(c)
     }
@@ -88,6 +88,7 @@ pub fn name_of(kind: Kind) -> &'static str {
         Kind::Trash => "Move to Trash",
         Kind::Restore => "Restore",
         Kind::EmptyTrash => "Empty Trash",
+        Kind::Delete => "Delete",
         Kind::PutBack => "Move",
         Kind::Compress(_) => "Compress",
         Kind::Extract => "Extract",

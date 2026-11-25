@@ -242,6 +242,13 @@ something nobody here has is in "Blocked", with what it waits for.
   row switchable from View ('Show Navigator') and on by default"). Haiku's
   Tracker has one (Window ▸ Show Navigator). For now Go ▸ Back shows its
   key (⌘[ on the Mac profile), which was Opus's least.
+  **Done** 2026-11-25 (HACKING, Tracker, "Navigator bar and remote Rex
+  hosts"): 33 pt Navigator bar under the menu bar (`View ▸ Show
+  Navigator`, on by default, saved in `TrackerSettings::show_navigator`),
+  bevelled 22 × 20 pt Back / Forward / Up buttons with unified BeOS/Haiku
+  shafted arrows (`← → ↑`), sunken path well clickable for Go to Folder
+  (start-eliding long paths, live host chip + Refresh on `rex://` remote
+  folders), and Columns view tab title synced to the deepest open folder.
 - **Tracker's folder window, from the looks of 2026-11-25** (there before
   that change; their words):
   - Opus: "Column dividers give no sign that they can be dragged … give
@@ -250,11 +257,9 @@ something nobody here has is in "Blocked", with what it waits for.
     Astra: in dark, "Below the highlight it reads as a faint rule against
     the dark pane. A slightly lighter stroke would make the drag target
     easier to find."
-  - Opus: "The context menu's first group is 11 items with no separators
-    … the 'Open…' family is now split in two … regroup the menu with the
-    existing etched separators": Open, Open in New Window, Open With,
-    Open in Terminal, Open in Rex; Quick Look, Get Info; Edit Name,
-    Duplicate, Create Link, Compress; Cut, Copy; Move to Trash.
+  - ~~Opus: "The context menu's first group is 11 items with no separators
+    … regroup the menu with the existing etched separators"~~ **Done**
+    2026-11-25 (Open family / Inspect / Modify / Clipboard / Remove).
   - Opus: "The dark menu has almost no edge … draw menus as raised
     surfaces in both themes"; Opus and Astra: the menu's bottom edge
     landed on the scroll bar's top line: check menus aren't clamped to
@@ -264,7 +269,20 @@ something nobody here has is in "Blocked", with what it waits for.
     disabled text role".
   - Opus: "The text-document icon is muddy at 1x … hand-draw a 16 px
     variant."
-  - Astra: "'2.5 TB free' at bottom right is faint, particularly at 1x".
+  - ~~Astra: "'2.5 TB free' at bottom right is faint, particularly at 1x".~~
+    **Done** 2026-11-25 (free-space label raised to >= 4.8:1 contrast in
+    light and dark modes).
+  - Opus (2026-11-25, pre-existing in Tracker/app_server): "Stacked tabs
+    truncate the host first (`dev — build-g…`) and leave dangling
+    punctuation (`src — dev-…`): size stacked tabs to their titles when
+    they fit, middle-elide the folder name rather than cutting the
+    ` — host` suffix, and strip trailing hyphens/spaces before `…`."
+  - Opus (2026-11-25, pre-existing in List view): "The blue focus ring of
+    the list sits about 1 pt inside the Navigator's bottom rule (stacking
+    a grey rule, a gap, a blue rule and the header bevel). Draw focus on
+    the content frame's own edge, align the first column ('Name' and row
+    icons) to the 6 pt left edge, and in narrow windows avoid clipping
+    Modified mid-character (`Nov 25, 2026, 1`)."
 
 - **Rex's Account window, from the looks of 2026-11-25** (there before
   that change; their words):
@@ -3162,6 +3180,17 @@ something nobody here has is in "Blocked", with what it waits for.
   - Tried on the rig: opened from a pane, listed, a file read and
     written, a folder made, renamed, moved and taken away, a path typed
     in Go to Folder, Rex quit while it was open.
+  **Done** 2026-11-25 (HACKING, Tracker, "Navigator bar and remote Rex
+  hosts"): `rex://HOST/PATH` canonical scheme (`olo_kit_base::tracker::
+  RexPath`), Go to Folder host + path completion (`olo_kit::go_to`),
+  `olo-rex-link fs` host operations + `statvfs`, Rex's same-UID files
+  Unix socket (`apps/rex/src/files_sock.rs`) with `olo-rex-sync`
+  transfers, Tracker's full r+w remote support (`apps/tracker/src/rex.rs`),
+  Navigator bar host chip & designed disconnected state, and `Open in
+  Tracker` in Rex's Pane/tab/pane-context menus (Rex's own PathBrowser
+  and Go to Folder removed). Verified on the rig (`try.py tracker`, 8/8
+  PASS), `ui-lint --dev --tiles Tracker`, `tsession review`, and both
+  Opus 5.5 & Gemini 4 Neon reviews.
 
 - **Bug: Rex's Activity names agents by a version or a program, not
   their tab's title** (Ben, 2026-11-24: "in the rex activity list it

@@ -13,6 +13,8 @@
 
 #[cfg(feature = "move")]
 mod fix;
+#[cfg(feature = "sync")]
+mod fs_op;
 #[cfg(feature = "move")]
 mod moving;
 #[cfg(feature = "move")]
@@ -102,6 +104,16 @@ fn main() {
         #[cfg(not(feature = "sync"))]
         {
             eprintln!("olo-rex-link: built without keeping files in step");
+            std::process::exit(126);
+        }
+    }
+    // (`fs`: remote filesystem operations for Tracker's `rex://HOST/PATH`.)
+    if args.first().is_some_and(|a| a == "fs") {
+        #[cfg(feature = "sync")]
+        fs_op::run(args.split_off(1));
+        #[cfg(not(feature = "sync"))]
+        {
+            eprintln!("olo-rex-link: built without remote filesystem support");
             std::process::exit(126);
         }
     }

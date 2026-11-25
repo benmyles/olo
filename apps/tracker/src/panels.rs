@@ -39,7 +39,7 @@ const INFO_KEY_WIDTH: f32 = 84.0;
 
 /// Rows in a Get Info window, for sizing it to fit.
 pub fn info_rows(e: &Entry) -> usize {
-    5 + usize::from(e.is_link)
+    5 + usize::from(e.is_link && !fs::is_remote(&e.path))
 }
 
 /// Height of a Get Info window's content for `rows` rows.
@@ -69,8 +69,8 @@ pub struct InfoWin {
 
 impl InfoWin {
     pub fn new(id: u64, entry: Entry, cx: &mut Cx<Self>) -> InfoWin {
-        // A folder: what's in it, counted on a worker.
-        if entry.is_dir {
+        // A local folder: what's in it, counted on a worker.
+        if entry.is_dir && !fs::is_remote(&entry.path) {
             let (to, path) = (cx.messenger(), entry.path.clone());
             std::thread::spawn(move || {
                 let mut limit = 200_000;
@@ -83,19 +83,24 @@ impl InfoWin {
 
     fn rows(&self) -> Vec<(&'static str, String)> {
         let e = &self.entry;
+        let remote = fs::is_remote(&e.path);
         let size_text = if e.is_dir {
-            match self.size {
-                Some((b, 1)) => format!("{} (1 item)", fs::format_size(b)),
-                Some((b, n)) => format!("{} ({n} items)", fs::format_size(b)),
-                None => "Calculating…".into(),
+            if remote {
+                "—".into()
+            } else {
+                match self.size {
+                    Some((b, 1)) => format!("{} (1 item)", fs::format_size(b)),
+                    Some((b, n)) => format!("{} ({n} items)", fs::format_size(b)),
+                    None => "Calculating…".into(),
+                }
             }
         } else if e.size < 1024 || e.downloading.is_some() {
             e.size_text()
         } else {
             format!("{} ({} bytes)", fs::format_size(e.size), style::thousands(e.size as usize))
         };
-        let location = e.path.parent().map(fs::display_path).unwrap_or_default();
-        let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
+        let location = fs::parent_of(&e.path).map(|p| fs::display_path(&p)).unwrap_or_default();
+        let created = if remote { None } else { std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok()) };
         let mut rows = vec![
             ("Size:", size_text),
             ("Where:", location),
@@ -104,6 +109,7 @@ impl InfoWin {
             ("Permissions:", fs::permissions_string(e.mode, e.is_dir)),
         ];
         if e.is_link
+            && !remote
             && let Ok(t) = std::fs::read_link(&e.path)
         {
             rows.push(("Link to:", t.display().to_string()));
@@ -142,7 +148,7 @@ impl View for InfoWin {
                 WinInfo {
                     path: self.entry.path.clone(),
                     surface: cx.surface_id(),
-                    watched: self.entry.path.parent().map(Path::to_owned).into_iter().collect(),
+                    watched: if fs::is_remote(&self.entry.path) { Vec::new() } else { self.entry.path.parent().map(Path::to_owned).into_iter().collect() },
                     selected: None,
                     folder: None,
                     find: false,

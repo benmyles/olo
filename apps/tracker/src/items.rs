@@ -53,6 +53,9 @@ pub fn small_of(e: &Entry) -> Option<crate::thumbs::Of> {
 /// while it's made (its kind's icon shows; drawn again when it has
 /// been), or for anything else.
 pub fn small(g: &Painter, e: &Entry) -> Option<crate::thumbs::Thumb> {
+    if fs::is_remote(&e.path) {
+        return None;
+    }
     crate::thumbs::of(&e.path, small_of(e)?, (ICON * g.scale_factor()).round() as u32, g.scale_factor())
 }
 
@@ -423,6 +426,12 @@ fn dragged_from() -> Option<PathBuf> {
     DRAGGING.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|(_, f)| f.clone())
 }
 
+fn remote_host_type(host: &str) -> String {
+    let mut h = DefaultHasher::new();
+    host.to_ascii_lowercase().hash(&mut h);
+    format!("application/x-olo-rex-host-{:016x}", h.finish())
+}
+
 /// Starts dragging `d` out of window `view` (while the button is still
 /// down): the files, plus Olo's own types saying which folder and file
 /// system they are from and whether the drop should ask. The view is
@@ -432,14 +441,16 @@ where
     V::Message: Send,
 {
     use std::os::unix::fs::MetadataExt;
-    let from = d.paths.first().and_then(|p| p.parent()).map(Path::to_path_buf);
+    let from = d.paths.first().and_then(|p| fs::parent_of(p));
     let mut drag = olo_kit::dnd::files(&d.paths, true, true);
     drag.ask = true;
     let mut extra: Vec<String> = Vec::new();
     if let Some(dir) = &from {
         extra.push(folder_type(dir));
     }
-    if let Some(dev) = d.paths.first().and_then(|p| std::fs::symlink_metadata(p).ok()).map(|m| m.dev()) {
+    if let Some(rp) = d.paths.first().and_then(|p| fs::rex_path(p)) {
+        extra.push(remote_host_type(&rp.host));
+    } else if let Some(dev) = d.paths.first().and_then(|p| std::fs::symlink_metadata(p).ok()).map(|m| m.dev()) {
         extra.push(device_type(dev));
     }
     if d.ask {
@@ -513,7 +524,7 @@ pub fn take_drop(cx: &WindowCx, o: &DropOffer, dir: &Path) -> Option<DropAccept>
             }
             DragAction::Move
         } else {
-            let same_fs = std::fs::metadata(dir).is_ok_and(|m| o.has(&device_type(m.dev())));
+            let same_fs = if let Some(rp) = fs::rex_path(dir) { o.has(&remote_host_type(&rp.host)) } else { std::fs::metadata(dir).is_ok_and(|m| o.has(&device_type(m.dev()))) };
             let copy = cx.modifiers().alt || !same_fs || !o.move_;
             // Only our own drags move: another program might delete what
             // it gave us once told it moved.
@@ -628,7 +639,7 @@ impl Rename {
     /// Starts editing `path`'s name, its name up to its extension
     /// selected (".txt" rarely changes); the field has the keyboard.
     pub fn new<V: View>(path: PathBuf, link: bool, cx: &mut Cx<V>) -> Rename {
-        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let name = fs::leaf_name(&path);
         let stem = match name.rfind('.') {
             Some(i) if i > 0 => i,
             _ => name.len(),

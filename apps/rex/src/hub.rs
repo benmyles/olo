@@ -17,7 +17,7 @@ use std::{
 };
 
 use olo_rex_client::{
-    BlockInfo, BytesDataStream, ClientPromptRequested, ControlClient, ControlEvent, DATA_TERMINAL_SUBPROTOCOL, DataTicketRequest, DemuxItem, DirListing, HostRecord, InlineApc, InlineApcDemuxer,
+    BlockInfo, BytesDataStream, ClientPromptRequested, ControlClient, ControlEvent, DATA_TERMINAL_SUBPROTOCOL, DataTicketRequest, DemuxItem, HostRecord, InlineApc, InlineApcDemuxer,
     KeyEvent as RexKeyEvent, KeymapBinding, KeymapDiagnostic, KeymapMode, LocalForwardHandle, PortsSnapshot, ProgramStatusRecord, RexEndpoint, ServerStatus, ServerVersion, SessionSummary,
     SessionView, SshAskpass, SshSessionPool, TailscaleStatus, TerminalDataStream, TerminalProcessSnapshot, TerminalStreamFrame, start_local_forward,
 };
@@ -2374,8 +2374,15 @@ impl RexHub {
         // without touching any real Rex server socket or user files.
         if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") {
             hub.populate_demo_workspace();
+            if std::env::var_os("OLO_REX_FILES_SOCKET").is_some() {
+                crate::files_sock::spawn(hub.rt.handle(), hub.state.clone());
+            }
             return hub;
         }
+
+        // Expose connected hosts over Rex's local Unix socket so Olo Tracker
+        // can browse, read and write `rex://HOST/PATH` through Rex's SSH pool.
+        crate::files_sock::spawn(hub.rt.handle(), hub.state.clone());
 
         // Zero-polling Linux rtnetlink connectivity watcher (`olo-net`): immediately reconnect
         // any disconnected/reconnecting remote hosts when Wi-Fi, Ethernet, or VPN changes.
@@ -3659,14 +3666,6 @@ impl RexHub {
         }
     }
 
-    pub fn request_dir_listing(&self, key: &BlockKey, path: String, files: bool, ready: impl FnOnce(DirListing) + Send + 'static) {
-        let (sid, bid) = (key.session_id.clone(), key.block_id.clone());
-        self.with_control(&key.host_key, move |ctrl, _, _| async move {
-            if let Ok(res) = ctrl.terminal_list_dir(&sid, &bid, &path, None, files).await {
-                ready(res.payload);
-            }
-        });
-    }
     /// Download a file via `com.superlogical.terminal.download_begin` + `rex.data.bytes.v1`
     /// with `if_none_match` ETag caching for instant Quick Look (`⌘Y`).
     /// Quick Look: the file at `path` (as the pane names it) opened in
@@ -7264,6 +7263,16 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 (is_local, policy)
             };
             let done = Some(json!({ "ok": true }));
+            // A `rex://HOST/PATH` URI from a host (`olo open rex://…`): opened in Tracker.
+            if action == "olo.open"
+                && let Some(target) = args.as_ref().and_then(|a| a.get("target")).and_then(Value::as_str).filter(|t| t.starts_with(olo_kit_base::tracker::REX_SCHEME))
+            {
+                if !policy.allow_open_url {
+                    return None;
+                }
+                crate::bridge::open_uri_in_tracker(target);
+                return Some(json!({ "ok": true, "stdout": format!("Opening {target} in Tracker\n") }));
+            }
             // A file of a far host's, by its path (its `xdg-open FILE`,
             // `olo open PATH`): not this computer's file at that path, as
             // it was opened before, but the host's, copied here and opened

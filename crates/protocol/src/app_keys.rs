@@ -209,6 +209,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("tracker.view-mini", TRACKER, "view-mini", "Mini Icon View", &["Cmd+2"], &["Ctrl+Shift+2"], &["Alt+2"]),
     k("tracker.view-list", TRACKER, "view-list", "List View", &["Cmd+3"], &["Ctrl+Shift+3"], &["Alt+3"]),
     k("tracker.view-columns", TRACKER, "view-columns", "Column View", &["Cmd+4"], &["Ctrl+Shift+4"], &["Alt+4"]),
+    k("tracker.reload", TRACKER, "reload", "Refresh", &["Cmd+R"], &["F5"], &["Alt+R"]),
     // Terminal: the command key reaches it with Shift (the shell keeps
     // Ctrl), so on Windows its keys are Ctrl+Shift ones, as in Windows
     // Terminal.
