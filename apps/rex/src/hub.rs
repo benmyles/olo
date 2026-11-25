@@ -1482,6 +1482,14 @@ pub enum HostThing {
     Pool,
 }
 
+/// What action is being done to a [`HostThing`] on a far host.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HostOp {
+    Install,
+    Update,
+    Remove,
+}
+
 /// How a host stands, for the Host window: what it has of Olo's, as
 /// last heard.
 #[derive(Clone, Debug, PartialEq)]
@@ -1496,6 +1504,14 @@ pub struct HostStands {
     /// Reached over SSH: what is put there and taken off goes that way.
     pub ssh: bool,
     pub helper: HostHelper,
+    /// Whether the helper installed on the host is this Olo's build
+    /// (`crate::link::ID`): `Some(true)` up to date, `Some(false)` an
+    /// older build is there or auto-update failed, `None` not installed
+    /// or not yet checked.
+    pub helper_current: Option<bool>,
+    /// What failed when auto-updating the helper while an older build
+    /// was already in use.
+    pub helper_sync_err: Option<String>,
     /// The helper was taken off this host here, and isn't put back by
     /// itself (`Settings::helper_hosts`: "off").
     pub helper_kept_off: bool,
@@ -1511,13 +1527,24 @@ pub struct HostStands {
     /// of them, by their items' names ([`HostRuntime::agent_keys`]).
     pub agent_keys: Option<Result<Vec<String>, String>>,
     pub skill: Option<bool>,
+    /// Whether the installed bridge skill matches this Olo's stamp.
+    pub skill_current: Option<bool>,
+    /// Last auto-sync failure for the bridge skill, if any.
+    pub skill_sync_err: Option<String>,
     /// The desktop commands there (`bridge::COMMANDS`): none until asked.
     pub commands: Option<bool>,
+    /// Whether the installed desktop commands match this Olo's stamp.
+    pub commands_current: Option<bool>,
+    /// Last auto-sync failure for desktop commands, if any.
+    pub commands_sync_err: Option<String>,
     /// How its Token Pool stands, as this computer's Token Pool says;
     /// none: that isn't running here (or wasn't asked yet).
     pub pool: Option<crate::pool::PoolStands>,
     /// Its Rex server's version, as it said when it connected.
     pub version: Option<String>,
+    /// Newer Rex server package known for this host (from the Server
+    /// window's package-repository check).
+    pub server_newer: Option<String>,
     /// How the account there stands; none: not asked yet.
     pub account: Option<olo_rex_client::ready::Account>,
     /// The person's agent settings there: summary of files to copy,
@@ -1568,14 +1595,21 @@ pub struct HostRuntime {
     retry: Option<Arc<tokio::sync::Notify>>,
     pub server_status: Option<ServerStatus>,
     pub server_version: Option<ServerVersion>,
+    pub server_newer: Option<String>,
     /// Olo's helper there, for this connection.
     pub helper: HostHelper,
+    pub helper_current: Option<bool>,
+    pub helper_sync_err: Option<String>,
     /// Whether Olo's bridge is on the host, and the skill for agents
     /// (their files in the account's home there): none until the host
     /// has been asked, and for a host that can't be (not over SSH).
     pub bridge_there: Option<bool>,
     pub skill_there: Option<bool>,
+    pub skill_current: Option<bool>,
+    pub skill_sync_err: Option<String>,
     pub commands_there: Option<bool>,
+    pub commands_current: Option<bool>,
+    pub commands_sync_err: Option<String>,
     /// What Passwords last answered when the host's programs asked the
     /// forwarded agent for the SSH keys: how many, or why none could be
     /// had; none: not asked on this connection. (Unsaid, a host was
@@ -1719,8 +1753,14 @@ impl HubState {
         }
         let name = &host.label;
         let helper = match &host.helper {
-            HostHelper::Used => Has { on: true, said: olo_kit::tr!("Olo’s typing helper is on “{}”.", name).to_string() },
+            HostHelper::Used if host.helper_current == Some(false) => {
+                Has { on: true, said: olo_kit::tr!("Olo’s typing helper on “{}” has an update available. Open Manage Host to update it.", name).to_string() }
+            }
+            HostHelper::Used => Has { on: true, said: olo_kit::tr!("Olo’s typing helper is on “{}” and up to date.", name).to_string() },
             HostHelper::Installing => Has { on: false, said: olo_kit::tr!("Olo’s typing helper is being added to “{}”…", name).to_string() },
+            HostHelper::Ready if host.helper_current == Some(false) => {
+                Has { on: false, said: olo_kit::tr!("An older build of Olo’s typing helper is on “{}”. Open Manage Host to update it.", name).to_string() }
+            }
             HostHelper::Ready => Has { on: false, said: olo_kit::tr!("Olo’s typing helper was added to “{}”. It will be used the next time you connect.", name).to_string() },
             HostHelper::Without(why) => Has { on: false, said: olo_kit::tr!("Olo’s typing helper isn’t on “{}”: {}", name, why).to_string() },
             HostHelper::None if !self.settings.host_helper => {
@@ -1736,9 +1776,10 @@ impl HubState {
         } else {
             Has { on: false, said: olo_kit::tr!("Nothing on this computer is granted to “{}”. To grant it something, see Preferences\u{a0}▸\u{a0}Rex.", name).to_string() }
         });
-        let skill = host.skill_there.map(|there| match there {
-            true => Has { on: true, said: olo_kit::tr!("Olo’s skill for agents is on “{}”.", name).to_string() },
-            false => Has {
+        let skill = host.skill_there.map(|there| match (there, host.skill_current) {
+            (true, Some(false)) => Has { on: true, said: olo_kit::tr!("Olo’s skill for agents on “{}” has an update available. Open Manage Host to update it.", name).to_string() },
+            (true, _) => Has { on: true, said: olo_kit::tr!("Olo’s skill for agents is on “{}” and up to date.", name).to_string() },
+            (false, _) => Has {
                 on: false,
                 said: olo_kit::tr!("Olo’s skill for agents isn’t on “{}”. To install it, choose Agents\u{a0}▸\u{a0}Install\u{a0}Olo’s\u{a0}Skill\u{a0}for\u{a0}Agents.", name).to_string(),
             },
@@ -1767,12 +1808,26 @@ impl HubState {
         // pictures and its lint.)
         if crate::server::demo_mode() && host.endpoint_raw.starts_with("ssh://") {
             let there = host.conn_state == HostConnState::Connected;
+            let demo_host_mode = std::env::var("OLO_REX_DEMO_HOST").ok();
+            let behind = demo_host_mode.as_deref() == Some("behind");
+            let current_demo = demo_host_mode.as_deref() == Some("current");
+            let skill = if behind || current_demo {
+                there.then_some(true)
+            } else {
+                match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
+                    Some("asking") => None,
+                    Some("ready") => there.then_some(true),
+                    _ => there.then_some(false),
+                }
+            };
             return Some(HostStands {
                 name: host.label.clone(),
                 address,
                 conn: host.conn_state.clone(),
                 ssh: true,
                 helper: if there { HostHelper::Used } else { HostHelper::None },
+                helper_current: there.then_some(!behind),
+                helper_sync_err: None,
                 helper_kept_off: false,
                 helper_setting: true,
                 bridge: there.then_some(true),
@@ -1780,23 +1835,30 @@ impl HubState {
                 // granted too, and what the host was offered of them.)
                 granted: match (there, std::env::var("OLO_REX_DEMO_KEYS").is_ok()) {
                     (false, _) => Vec::new(),
-                    (true, false) => vec!["links", "Passwords", "Agent Screens"],
-                    (true, true) => vec!["links", "Passwords", "SSH keys", "Agent Screens"],
+                    (true, false) => vec!["Links", "Passwords", "Agent Screens"],
+                    (true, true) => vec!["Links", "Passwords", "SSH keys", "Agent Screens"],
                 },
                 agent_keys: std::env::var("OLO_REX_DEMO_KEYS")
                     .ok()
                     .filter(|_| there)
                     .map(|keys| keys.parse::<usize>().map(|n| ["GitHub", "Work laptop", "Deploy"].iter().cycle().take(n).map(|k| k.to_string()).collect()).map_err(|_| keys)),
                 // (`OLO_REX_DEMO_ACCOUNT=ready`: the skill there too;
-                // `asking`: not answered.)
-                skill: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
-                    Some("asking") => None,
-                    Some("ready") => there.then_some(true),
-                    _ => there.then_some(false),
-                },
+                // `asking`: not answered; `OLO_REX_DEMO_HOST=current|behind`: host sync QA.)
+                skill,
+                skill_current: skill.filter(|&s| s).map(|_| !behind),
+                skill_sync_err: (there && behind).then(|| "chmod: cannot access ~/.claude/skills/olo-rex-bridge/olo: Read-only file system".to_owned()),
                 commands: Some(there),
-                pool: Some(crate::pool::PoolStands { wanted: there, in_step: there, accounts: there.then_some(3), ..Default::default() }),
+                commands_current: there.then_some(!behind),
+                commands_sync_err: None,
+                pool: Some(crate::pool::PoolStands {
+                    wanted: there,
+                    in_step: there && !behind,
+                    accounts: there.then_some(3),
+                    error: (there && behind).then(|| "The host couldn’t reach the Token Pool gateway.".to_owned()),
+                    ..Default::default()
+                }),
                 version: there.then(|| "0.19.2".to_owned()),
+                server_newer: (there && behind).then(|| "0.19.5".to_owned()),
                 account: there.then(demo_account).flatten(),
                 carried: match std::env::var("OLO_REX_DEMO_ACCOUNT").ok().as_deref() {
                     Some("asking") => None,
@@ -1829,15 +1891,22 @@ impl HubState {
             conn: host.conn_state.clone(),
             ssh: matches!(host.endpoint, Some(RexEndpoint::Ssh { .. })),
             helper: host.helper.clone(),
+            helper_current: host.helper_current,
+            helper_sync_err: host.helper_sync_err.clone(),
             helper_kept_off: self.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off"),
             helper_setting: self.settings.host_helper,
             bridge: host.bridge_there,
             granted: self.settings.policy_for_host(host_key, false).granted(),
             agent_keys: host.agent_keys.clone().filter(|_| self.settings.policy_for_host(host_key, false).allow_ssh_agent),
             skill: host.skill_there,
+            skill_current: host.skill_current,
+            skill_sync_err: host.skill_sync_err.clone(),
             commands: host.commands_there,
+            commands_current: host.commands_current,
+            commands_sync_err: host.commands_sync_err.clone(),
             pool: self.pools.as_ref().map(|pools| pools.get(host_key).cloned().unwrap_or_default()),
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
+            server_newer: host.server_newer.clone(),
             account: host.account.clone(),
             carried: host.carried,
             sessions: host.agent_sessions,
@@ -2350,10 +2419,17 @@ impl RexHub {
                 retry: None,
                 server_status: None,
                 server_version: None,
+                server_newer: None,
                 helper: HostHelper::None,
+                helper_current: None,
+                helper_sync_err: None,
                 bridge_there: None,
                 skill_there: None,
+                skill_current: None,
+                skill_sync_err: None,
                 commands_there: None,
+                commands_current: None,
+                commands_sync_err: None,
                 agent_keys: None,
                 account: None,
                 carried: None,
@@ -2391,10 +2467,17 @@ impl RexHub {
                         retry: None,
                         server_status: None,
                         server_version: None,
+                        server_newer: None,
                         helper: HostHelper::None,
+                        helper_current: None,
+                        helper_sync_err: None,
                         bridge_there: None,
                         skill_there: None,
+                        skill_current: None,
+                        skill_sync_err: None,
                         commands_there: None,
+                        commands_current: None,
+                        commands_sync_err: None,
                         agent_keys: None,
                         account: None,
                         carried: None,
@@ -2713,10 +2796,17 @@ impl RexHub {
             retry: None,
             server_status: None,
             server_version: None,
+            server_newer: None,
             helper: HostHelper::None,
+            helper_current: None,
+            helper_sync_err: None,
             bridge_there: None,
             skill_there: None,
+            skill_current: None,
+            skill_sync_err: None,
             commands_there: None,
+            commands_current: None,
+            commands_sync_err: None,
             agent_keys: None,
             account: None,
             carried: None,
@@ -3032,10 +3122,17 @@ impl RexHub {
                     retry: None,
                     server_status: None,
                     server_version: None,
+                    server_newer: None,
                     helper: HostHelper::None,
+                    helper_current: None,
+                    helper_sync_err: None,
                     bridge_there: None,
                     skill_there: None,
+                    skill_current: None,
+                    skill_sync_err: None,
                     commands_there: None,
+                    commands_current: None,
+                    commands_sync_err: None,
                     agent_keys: None,
                     account: None,
                     carried: None,
@@ -3797,6 +3894,62 @@ impl RexHub {
 
     /// Download a file via `com.superlogical.terminal.download_begin` + `rex.data.bytes.v1`
     /// with `if_none_match` ETag caching for instant Quick Look (`⌘Y`).
+    /// Resolve a path typed or clicked in a terminal pane against its `pwd`.
+    /// Keeps absolute paths and `~` / `~/…` intact, and joins relative paths
+    /// against `pwd` when available.
+    pub fn resolve_pane_path(path: &str, pwd: &str) -> String {
+        let p = path.trim();
+        if p.starts_with('/') || p == "~" || p.starts_with("~/") || p.starts_with(olo_kit_base::tracker::REX_SCHEME) || pwd.trim().is_empty() {
+            return p.to_owned();
+        }
+        let base = pwd.trim().trim_end_matches('/');
+        let rel = p.trim_start_matches("./");
+        if base.is_empty() { format!("/{rel}") } else { format!("{base}/{rel}") }
+    }
+
+    /// Reveal any file or open any folder in Olo Tracker — locally or on a
+    /// remote Rex host (`rex://HOST/PATH`) — from a terminal pane (Cmd+click).
+    /// Works for any remote path the user has permissions to access (e.g.
+    /// `/var/tmp/…`, `/etc/…`, `~/…`), never invoking Quick Look directly.
+    pub fn reveal_path_in_tracker(&self, key: &BlockKey, path: String, feedback: Feedback) {
+        if path.starts_with(olo_kit_base::tracker::REX_SCHEME) {
+            let uri = path;
+            self.rt.spawn_blocking(move || {
+                if let Err(e) = olo_kit_base::tracker::open_uri(&uri) {
+                    feedback.problem("Couldn’t open in Tracker.", e);
+                }
+            });
+            return;
+        }
+        let (is_local, host_label, pwd) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let pwd = st.blocks.get(key).map(|b| b.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).unwrap_or_default();
+            let h = st.hosts.get(&key.host_key);
+            (h.is_some_and(|h| h.is_local), h.map(|h| h.label.clone()).unwrap_or_default(), pwd)
+        };
+        let resolved = Self::resolve_pane_path(&path, &pwd);
+        let target = if is_local {
+            let expanded = if resolved == "~" {
+                local_home().unwrap_or_else(|| "/".into())
+            } else if let Some(rest) = resolved.strip_prefix("~/") {
+                match local_home() {
+                    Some(h) => format!("{}/{rest}", h.trim_end_matches('/')),
+                    None => resolved,
+                }
+            } else {
+                resolved
+            };
+            expanded
+        } else {
+            olo_kit_base::tracker::RexPath::new(host_label, &resolved).to_uri()
+        };
+        self.rt.spawn_blocking(move || {
+            if let Err(e) = olo_kit_base::tracker::open_uri(&target) {
+                feedback.problem("Couldn’t open in Tracker.", e);
+            }
+        });
+    }
+
     /// Quick Look: the file at `path` (as the pane names it) opened in
     /// Olo's own app for its kind (Viewer for a picture, Styled Edit for
     /// text, …), as Tracker opens one. On this computer, where it is; on a
@@ -3901,7 +4054,19 @@ impl RexHub {
                         feedback.problem("Couldn’t open the file.", e);
                     }
                 }
-                Err(e) => feedback.problem("Couldn’t copy the file from the host.", e),
+                Err(e) => {
+                    let msg = e.to_string();
+                    let lower = msg.to_ascii_lowercase();
+                    if lower.contains("is a directory") || lower.contains("not a regular file") {
+                        let resolved = RexHub::resolve_pane_path(&path, &pwd);
+                        let uri = olo_kit_base::tracker::RexPath::new(&host, &resolved).to_uri();
+                        if let Err(err) = tokio::task::spawn_blocking(move || olo_kit_base::tracker::open_uri(&uri)).await.unwrap_or_else(|je| Err(std::io::Error::other(je.to_string()))) {
+                            feedback.problem("Couldn’t open the folder in Tracker.", err);
+                        }
+                    } else {
+                        feedback.problem("Couldn’t copy the file from the host.", e);
+                    }
+                }
             }
         });
         if job.is_none() {
@@ -4165,6 +4330,15 @@ impl RexHub {
     }
 
     pub fn open_link_from_pane(&self, key: &BlockKey, url: String, feedback: Feedback) {
+        // `rex://HOST/PATH` and `rex://local/PATH` URIs always open/reveal in Olo Tracker.
+        if url.starts_with(olo_kit_base::tracker::REX_SCHEME) {
+            self.rt.spawn_blocking(move || {
+                if let Err(e) = olo_kit_base::tracker::open_uri(&url) {
+                    feedback.problem("Couldn’t open in Tracker.", e);
+                }
+            });
+            return;
+        }
         let (is_local, policy) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let is_local = st.hosts.get(&key.host_key).is_some_and(|h| h.is_local);
@@ -4208,13 +4382,36 @@ impl RexHub {
         });
     }
 
-    /// One of Olo's things is put on a far host, or taken off it, over
-    /// SSH and off the connection's own path (never typed into a
+    /// Records whether a newer Rex server package was found for the
+    /// host matching `target` (reported by the Server window's check).
+    pub fn set_server_newer(&self, target: &olo_rex_client::SshTarget, newer: Option<String>) {
+        let mut changed = false;
+        {
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            for h in st.hosts.values_mut() {
+                if let Some(RexEndpoint::Ssh { target: ep_target, .. }) = &h.endpoint
+                    && ep_target.host == target.host
+                    && ep_target.port == target.port
+                    && ep_target.user == target.user
+                    && h.server_newer != newer
+                {
+                    h.server_newer = newer.clone();
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            (self.notify)(HubNotice::StateChanged);
+        }
+    }
+
+    /// One of Olo's things is put on a far host, updated, or taken off it,
+    /// over SSH and off the connection's own path (never typed into a
     /// pane, where a program running there would take it): `done`,
     /// on the hub's threads, once the host has answered, with what it
     /// said if it couldn't. The host is asked what it has again
     /// before that.
-    pub fn change_host(&self, host_key: &str, thing: HostThing, add: bool, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+    pub fn change_host(&self, host_key: &str, thing: HostThing, op: HostOp, done: impl FnOnce(Result<(), String>) + Send + 'static) {
         let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
             done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
@@ -4234,11 +4431,14 @@ impl RexHub {
                 }
             };
             let script = |script: &str| format!("sh -c {}", shell_quote(script));
-            let result = match (thing, add) {
-                (HostThing::Helper, true) => {
+            let result = match (thing, op) {
+                (HostThing::Helper, HostOp::Install | HostOp::Update) => {
                     inner.helper_kept_off(&host_key, false);
-                    if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.helper != HostHelper::Used) {
-                        host.helper = HostHelper::Installing;
+                    if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
+                        host.helper_sync_err = None;
+                        if host.helper != HostHelper::Used {
+                            host.helper = HostHelper::Installing;
+                        }
                     }
                     (inner.notify)(HubNotice::StateChanged);
                     let stands = olo_rex_client::helper::ensure(&pool, &target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await;
@@ -4250,14 +4450,18 @@ impl RexHub {
                     inner.helper_stands(&host_key, stands, false);
                     said
                 }
-                (HostThing::Helper, false) => {
+                (HostThing::Helper, HostOp::Remove) => {
                     let ran = run(script(olo_rex_client::helper::REMOVE)).await;
                     if ran.is_ok() {
                         inner.helper_kept_off(&host_key, true);
                         // (A connection that goes through it goes on
                         // through it: said so while it does.)
-                        if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.helper != HostHelper::Used) {
-                            host.helper = HostHelper::None;
+                        if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
+                            host.helper_current = None;
+                            host.helper_sync_err = None;
+                            if host.helper != HostHelper::Used {
+                                host.helper = HostHelper::None;
+                            }
                         }
                     }
                     ran
@@ -4266,27 +4470,36 @@ impl RexHub {
                 (HostThing::Bridge, _) => Ok(()),
                 // (This computer's Token Pool does it; asked, and how
                 // it stands read again until it has.)
-                (HostThing::Pool, add) => {
-                    let (key, what) = (host_key.clone(), if add { "install" } else { "remove" });
+                (HostThing::Pool, op) => {
+                    let (key, what) = (
+                        host_key.clone(),
+                        match op {
+                            HostOp::Install => "install",
+                            HostOp::Update => "sync",
+                            HostOp::Remove => "remove",
+                        },
+                    );
                     match tokio::task::spawn_blocking(move || crate::pool::act(&key, what)).await.unwrap_or_else(|e| Err(e.to_string())) {
                         Err(why) => Err(why),
                         Ok(()) => {
                             let stands = inner.pools_settled(&host_key).await;
-                            match stands {
-                                Some(p) if p.wanted == add && (p.error.is_none() || !add) => Ok(()),
-                                Some(p) => Err(p.error.unwrap_or_else(|| olo_kit::words::tr("It didn’t say why.").to_string())),
-                                None => Err(olo_kit::words::tr("Token Pool isn’t running on this computer.").to_string()),
+                            match (stands, op) {
+                                (Some(p), HostOp::Update) if p.in_step && p.error.is_none() => Ok(()),
+                                (Some(p), HostOp::Install) if p.wanted && p.error.is_none() => Ok(()),
+                                (Some(p), HostOp::Remove) if !p.wanted => Ok(()),
+                                (Some(p), _) => Err(p.error.unwrap_or_else(|| olo_kit::words::tr("It didn’t say why.").to_string())),
+                                (None, _) => Err(olo_kit::words::tr("Token Pool isn’t running on this computer.").to_string()),
                             }
                         }
                     }
                 }
-                (HostThing::Skill, true) => run(script(&bridge::generate_remote_skill_install_script())).await,
-                (HostThing::Skill, false) => run(script(bridge::REMOVE_SKILL)).await,
-                (HostThing::Commands, true) => run(script(&bridge::install_commands_script())).await,
-                (HostThing::Commands, false) => run(script(bridge::REMOVE_COMMANDS)).await,
+                (HostThing::Skill, HostOp::Install | HostOp::Update) => run(script(&bridge::generate_remote_skill_install_script())).await,
+                (HostThing::Skill, HostOp::Remove) => run(script(bridge::REMOVE_SKILL)).await,
+                (HostThing::Commands, HostOp::Install | HostOp::Update) => run(script(&bridge::install_commands_script())).await,
+                (HostThing::Commands, HostOp::Remove) => run(script(bridge::REMOVE_COMMANDS)).await,
             };
-            if thing != HostThing::Helper {
-                inner.ask_what_the_host_has(&host_key, &pool, &target, askpass).await;
+            if thing != HostThing::Helper && thing != HostThing::Pool {
+                inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
             }
             (inner.notify)(HubNotice::StateChanged);
             done(result);
@@ -4351,17 +4564,31 @@ impl RexHub {
         let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
         self.rt.spawn(async move {
             use olo_rex_client::helper::{Asked, ask};
-            inner.ask_what_the_host_has(&host_key, &pool, &target, askpass.clone()).await;
+            inner.ask_what_the_host_has(&host_key, &pool, &target, askpass.clone(), false).await;
             inner.ask_the_pools().await;
             if crate::link::carried()
                 && let Ok(Ok(asked)) = ask(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await
+                && let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key)
             {
-                let here = matches!(asked, Asked::Here);
-                if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
-                    match (here, &host.helper) {
-                        (true, HostHelper::None | HostHelper::Without(_)) => host.helper = HostHelper::Ready,
-                        (false, HostHelper::Ready) => host.helper = HostHelper::None,
-                        _ => {}
+                match asked {
+                    Asked::Here => {
+                        host.helper_current = Some(true);
+                        host.helper_sync_err = None;
+                        if matches!(host.helper, HostHelper::None | HostHelper::Without(_)) {
+                            host.helper = HostHelper::Ready;
+                        }
+                    }
+                    Asked::Outdated(_) => {
+                        host.helper_current = Some(false);
+                        if matches!(host.helper, HostHelper::None) {
+                            host.helper = HostHelper::Ready;
+                        }
+                    }
+                    Asked::Needs(_) => {
+                        host.helper_current = if host.helper == HostHelper::Used { Some(false) } else { None };
+                        if matches!(host.helper, HostHelper::Ready) {
+                            host.helper = HostHelper::None;
+                        }
                     }
                 }
             }
@@ -4874,11 +5101,11 @@ impl RexHubInner {
     /// connection about to be made goes through it.
     fn helper_stands(&self, host_key: &str, stands: Result<olo_rex_client::helper::Stands, olo_rex_client::provision::Failed>, in_use: bool) {
         use olo_rex_client::helper::Stands;
-        let helper = match stands {
+        let (helper, current, sync_err) = match stands {
             Ok(Stands::Already) => {
                 tracing::info!("rex: Olo's helper is on host {host_key} already");
                 self.helper_known(host_key, Some(true));
-                HostHelper::Ready
+                (HostHelper::Ready, Some(true), None)
             }
             Ok(Stands::Installed { bytes, took }) => {
                 tracing::info!("rex: Olo's helper put on host {host_key}: {bytes} bytes in {} ms", took.as_millis());
@@ -4890,20 +5117,28 @@ impl RexHubInner {
                     olo_kit::tr!("Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.", label)
                 };
                 (self.notify)(HubNotice::Said(said.to_string()));
-                HostHelper::Ready
+                (HostHelper::Ready, Some(true), None)
             }
             Ok(Stands::NoBuild(kind)) => {
                 tracing::info!("rex: no helper is carried for host {host_key} ({kind})");
                 self.helper_known(host_key, Some(false));
-                HostHelper::Without(olo_kit::tr!("there isn’t one for {}", kind).to_string())
+                (HostHelper::Without(olo_kit::tr!("there isn’t one for {}", kind).to_string()), None, None)
             }
             Err(e) => {
                 tracing::warn!("rex: Olo's helper couldn't be put on host {host_key}: {e}");
-                HostHelper::Without(e.to_string())
+                let why = e.to_string();
+                (HostHelper::Without(why.clone()), Some(false), Some(why))
             }
         };
-        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key).filter(|h| h.helper != HostHelper::Used) {
-            host.helper = helper;
+        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
+            if host.helper == HostHelper::Used {
+                host.helper_current = current;
+                host.helper_sync_err = sync_err;
+            } else {
+                host.helper = helper;
+                host.helper_current = if current == Some(true) { Some(true) } else { None };
+                host.helper_sync_err = None;
+            }
         }
         (self.notify)(HubNotice::StateChanged);
     }
@@ -4936,7 +5171,7 @@ impl RexHubInner {
                 self.helper_stands(host_key, Ok(Stands::Already), true);
                 return true;
             }
-            Ok(Ok(Asked::Needs(build))) => build,
+            Ok(Ok(Asked::Needs(build) | Asked::Outdated(build))) => build,
             Ok(Err(kind)) => {
                 self.helper_stands(host_key, Ok(Stands::NoBuild(kind)), true);
                 return true;
@@ -5093,7 +5328,7 @@ impl RexHubInner {
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
-        tokio::spawn(async move { hub.ask_what_the_host_has(&host_key, &pool, &target, askpass).await });
+        tokio::spawn(async move { hub.ask_what_the_host_has(&host_key, &pool, &target, askpass, true).await });
     }
 
     /// The host asked how its account stands, and its answer kept
@@ -5129,12 +5364,24 @@ impl RexHubInner {
     }
 
     /// [`Self::look_at_what_the_host_has`], waited for: the host is
-    /// asked, and what it answered kept.
-    async fn ask_what_the_host_has(&self, host_key: &str, pool: &olo_rex_client::SshSessionPool, target: &olo_rex_client::SshTarget, askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>) {
+    /// asked, and what it answered kept. When `auto_sync` is true
+    /// (on connect), installed bridge skills and desktop commands from
+    /// an older Olo are updated automatically over SSH, and any failure
+    /// is recorded so Manage Host shows "Update available" with a
+    /// manual Update button instead of hiding the failure.
+    async fn ask_what_the_host_has(
+        &self,
+        host_key: &str,
+        pool: &olo_rex_client::SshSessionPool,
+        target: &olo_rex_client::SshTarget,
+        askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>,
+        auto_sync: bool,
+    ) {
         let Ok(ran) = pool.exec(target, askpass.clone(), bridge::PRESENT, &mut |_| {}).await else { return };
         if !ran.ok() {
             return;
         }
+        let err_of = |output: &str| output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().to_owned();
         let (old_shims, skill_there) = bridge::present(&ran.output);
         // (The shims of before did nothing, and an agent that finds
         // them takes them for the way: off they come.)
@@ -5142,22 +5389,46 @@ impl RexHubInner {
             let _ = pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(bridge::OLD_SHIMS)), &mut |_| {}).await;
         }
         // (A skill there from another Olo than this one: this one's is
-        // put in its place. An agent goes by what the skill there says.)
-        if skill_there && !bridge::skill_is_current(&ran.output) {
-            let _ = pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(&bridge::generate_remote_skill_install_script())), &mut |_| {}).await;
+        // put in its place on connect. An agent goes by what the skill there says.)
+        let mut skill_cur = skill_there.then(|| bridge::skill_is_current(&ran.output));
+        let mut skill_err: Option<String> = None;
+        if auto_sync && skill_cur == Some(false) {
+            match pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(&bridge::generate_remote_skill_install_script())), &mut |_| {}).await {
+                Ok(r) if r.ok() => skill_cur = Some(true),
+                Ok(r) => skill_err = Some(err_of(&r.output)),
+                Err(e) => skill_err = Some(e.to_string()),
+            }
         }
         // (The desktop commands kept in step as the skill is: another
-        // Olo's are given this one's.)
+        // Olo's are given this one's on connect.)
         let (commands_there, commands_current) = bridge::commands_there(&ran.output);
-        if commands_there && !commands_current {
-            let _ = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(&bridge::install_commands_script())), &mut |_| {}).await;
+        let mut commands_cur = commands_there.then_some(commands_current);
+        let mut commands_err: Option<String> = None;
+        if auto_sync && commands_cur == Some(false) {
+            match pool.exec(target, askpass, &format!("sh -c {}", shell_quote(&bridge::install_commands_script())), &mut |_| {}).await {
+                Ok(r) if r.ok() => commands_cur = Some(true),
+                Ok(r) => commands_err = Some(err_of(&r.output)),
+                Err(e) => commands_err = Some(e.to_string()),
+            }
         }
         let bridge_there = true;
         let changed = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(host) = st.hosts.get_mut(host_key) else { return };
-            let changed = (host.bridge_there, host.skill_there, host.commands_there) != (Some(bridge_there), Some(skill_there), Some(commands_there));
-            (host.bridge_there, host.skill_there, host.commands_there) = (Some(bridge_there), Some(skill_there), Some(commands_there));
+            // On a read-only check (`!auto_sync`), preserve a prior auto-sync error
+            // if the component is still out of date; clear it once up to date or removed.
+            if !auto_sync {
+                if skill_cur == Some(false) {
+                    skill_err = host.skill_sync_err.clone();
+                }
+                if commands_cur == Some(false) {
+                    commands_err = host.commands_sync_err.clone();
+                }
+            }
+            let next = (Some(bridge_there), Some(skill_there), skill_cur, skill_err, Some(commands_there), commands_cur, commands_err);
+            let prev = (host.bridge_there, host.skill_there, host.skill_current, host.skill_sync_err.clone(), host.commands_there, host.commands_current, host.commands_sync_err.clone());
+            let changed = prev != next;
+            (host.bridge_there, host.skill_there, host.skill_current, host.skill_sync_err, host.commands_there, host.commands_current, host.commands_sync_err) = next;
             changed
         };
         if changed {
@@ -7820,7 +8091,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 // allow and answered with what the command wrote; a
                 // command asked before waited for again; a piece of a
                 // picture an answer named.
-                "olo.wait" | "olo.file" | "olo.open" | "olo.op" | "olo.screen" => {
+                "olo.wait" | "olo.file" | "olo.open" | "olo.op" | "olo.screen" | "olo.get" | "olo.ls" => {
                     let arg = |name: &str| args.as_ref().and_then(|a| a.get(name));
                     let text = |name: &str| arg(name).and_then(Value::as_str).unwrap_or_default().to_owned();
                     let (cmd, given) = match action.as_str() {
@@ -7828,7 +8099,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         "olo.file" => return Some(self.bridge_calls.piece(&text("id"), arg("offset").and_then(Value::as_u64).unwrap_or(0) as usize)),
                         "olo.open" => ("open", vec![text("target")]),
                         other => (
-                            if other == "olo.op" { "op" } else { "screen" },
+                            match other {
+                                "olo.op" => "op",
+                                "olo.get" => "get",
+                                "olo.ls" => "ls",
+                                _ => "screen",
+                            },
                             arg("args").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).collect()).unwrap_or_default(),
                         ),
                     };

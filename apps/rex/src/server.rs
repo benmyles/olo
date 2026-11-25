@@ -128,6 +128,10 @@ struct Live {
     /// host whose window has closed isn't taken for the next one's.)
     turn: u64,
     task: Option<tokio::task::AbortHandle>,
+    /// Opened via Manage Host's Update… button: once the first look
+    /// finishes, go straight into the Update confirmation unless the
+    /// server was already confirmed up to date.
+    pending_update: bool,
 }
 
 static LIVE: Mutex<Option<Live>> = Mutex::new(None);
@@ -227,8 +231,27 @@ pub fn open(hub: &Arc<RexHub>, name: String, target: SshTarget) {
         log_range: LogRange::default(),
         log_reading: false,
     };
-    *live() = Some(Live { managed, turn: next_turn(), task: None });
+    *live() = Some(Live { managed, turn: next_turn(), task: None, pending_update: false });
     look(hub);
+}
+
+/// Opens the Server window and steps straight into updating Rex once
+/// the host's server has been looked at (or at once if already shown).
+pub fn open_for_update(hub: &Arc<RexHub>, name: String, target: SshTarget) {
+    if demo_mode() {
+        show_demo("login");
+        ask(Action::Update);
+        return;
+    }
+    let resolved = hub.with_agent(target.clone());
+    if current().is_some_and(|now| now.target == resolved && now.stage == Stage::Shown) {
+        ask(Action::Update);
+        return;
+    }
+    open(hub, name, target);
+    if let Some(live) = live().as_mut() {
+        live.pending_update = true;
+    }
 }
 
 /// Asks the host, as root, how its server stands (and its package
@@ -248,7 +271,21 @@ fn look(hub: &Arc<RexHub>) {
         };
         let mut runner = hub.over_ssh(managed.target.clone(), managed.root_key.clone(), by);
         match manage::look(&mut runner, true).await {
-            Ok(server) => set(turn, |m| shown(m, server)),
+            Ok(server) => {
+                hub.set_server_newer(&managed.target, server.newer.clone());
+                {
+                    let mut guard = live();
+                    if let Some(live) = guard.as_mut().filter(|l| l.turn == turn) {
+                        let wants_update = std::mem::take(&mut live.pending_update);
+                        let should_confirm = wants_update && (server.newer.is_some() || !server.checked);
+                        shown(&mut live.managed, server);
+                        if should_confirm {
+                            live.managed.stage = Stage::Confirm { action: Action::Update, choose: false };
+                        }
+                    }
+                }
+                crate::ui::server_changed();
+            }
             Err(failed) => {
                 let stage = could_not_look(&hub, &managed, failed).await;
                 set(turn, |m| m.stage = stage);
@@ -704,7 +741,7 @@ fn limits(applied: usize) -> olo_rex_client::tune::Tuning {
 /// Shows the demo's stage `named` in the window (Rex's demo only).
 pub fn show_demo(named: &str) -> bool {
     let Some(managed) = demo(named) else { return false };
-    *live() = Some(Live { managed, turn: next_turn(), task: None });
+    *live() = Some(Live { managed, turn: next_turn(), task: None, pending_update: false });
     true
 }
 

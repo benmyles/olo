@@ -864,9 +864,11 @@ pub fn command_lines(command: &str, most: usize) -> Vec<String> {
 pub fn well(inner: Element) -> Element {
     let back = canvas(|g, b| {
         let p = theme::palette();
-        // (The panel's own ground, a little shaded: not a field's
-        // white, which says "type here".)
-        style::fill_rect(g, b, style::shade(&p, p.panel_background, 1.06));
+        // (One step darker than the panel in both light and dark looks,
+        // matching `TextView::panel_well` so every raw-output well reads
+        // sunken rather than white or flat: Opus's review, 2026-11-25.)
+        let fill = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.28)) } else { style::tint(p.panel_background, 1.06) };
+        style::fill_rect(g, b, fill);
         style::sunken(g, b, &p, false);
     })
     .paint_key(0)
@@ -880,7 +882,8 @@ pub fn well(inner: Element) -> Element {
 pub fn command_well(inner: Element) -> Element {
     let back = canvas(|g, b| {
         let p = theme::palette();
-        style::fill_rect(g, b, style::shade(&p, p.panel_background, 1.06));
+        let fill = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.28)) } else { style::tint(p.panel_background, 1.06) };
+        style::fill_rect(g, b, fill);
         style::sunken(g, b, &p, false);
     })
     .paint_key(0)

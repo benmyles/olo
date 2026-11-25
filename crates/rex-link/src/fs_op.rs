@@ -394,6 +394,8 @@ mod tests {
         assert!(!entry.is_dir && entry.size == 5);
 
         assert_eq!(normalize_path(Path::new("/a/b/../c/./d")), PathBuf::from("/a/c/d"));
+        assert_eq!(resolve_path("/var/tmp/olo-qa-rex-tr"), PathBuf::from("/var/tmp/olo-qa-rex-tr"));
+        assert_eq!(resolve_path("/etc/hosts"), PathBuf::from("/etc/hosts"));
         fs::remove_dir_all(dir).unwrap();
     }
 }

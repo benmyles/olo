@@ -114,18 +114,18 @@ impl HostBridgePolicy {
     /// order Preferences lists them: for the Host window's line.
     pub fn granted(&self) -> Vec<&'static str> {
         [
-            (self.allow_open_url, "links"),
-            (self.allow_send_files, "files"),
-            (self.allow_localhost_autoforward, "local servers"),
+            (self.allow_open_url, "Links"),
+            (self.allow_send_files, "Files"),
+            (self.allow_localhost_autoforward, "Local Servers"),
             (self.allow_passwords_op, "Passwords"),
-            (self.allow_run_commands, "desktop commands"),
+            (self.allow_run_commands, "Desktop Commands"),
             // (Its keys, where the host has been given them: with them
             // unsaid, nothing in Rex showed whether a host had them when
             // git there was refused.)
             (self.allow_ssh_agent, "SSH keys"),
             // (In the order the Host window's description says them.)
             (self.allow_agent_screens, "Agent Screens"),
-            (self.allow_remote_control, "clipboard"),
+            (self.allow_remote_control, "Clipboard"),
         ]
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))

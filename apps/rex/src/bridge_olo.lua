@@ -50,6 +50,9 @@ local asked = ({
     end
     return "olo.sync", { args = whole }
   end,
+  get = function() return "olo.get", { args = args } end,
+  fetch = function() return "olo.get", { args = args } end,
+  ls = function() return "olo.ls", { args = args } end,
   notify = function() return "olo.notify", { title = args[1] or "", body = args[2] or "" } end,
   clipboard = function() return "olo.clipboard.set", { text = args[1] or "" } end,
   paste = function() return "olo.clipboard.get", {} end,
@@ -57,7 +60,7 @@ local asked = ({
   run_cancel = function() return "olo.run.cancel", { id = os.getenv("OLO_RUN_ID") or "" } end,
 })[cmd]
 if not asked then
-  fail("usage: olo open URL | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
+  fail("usage: olo open URL | olo get rex://local/PATH [DEST] | olo ls rex://local/PATH | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 
@@ -157,9 +160,9 @@ local printed = {}
 -- (`op`'s: whether it may replace a file with something in it, and the
 -- mode it gives one, as `op` itself would here.)
 local force, mode = false, "600"
--- (A screen's picture given a path here, `olo screen look NAME PATH`:
--- saved there, over one there before, readable as a picture.)
-if cmd == "screen" then force, mode = true, "644" end
+-- (A screen's picture or fetched desktop file: saved there, over one there
+-- before, readable by the user.)
+if cmd == "screen" or cmd == "get" or cmd == "fetch" then force, mode = true, "644" end
 if cmd == "op" then
   for i, x in ipairs(args) do
     if x == "--" then break end
@@ -169,9 +172,15 @@ if cmd == "op" then
 end
 for _, f in ipairs(r.files or {}) do
   local name = (f.path:match("([^/]+)$") or "picture.png"):gsub("[^%w%._-]", "_")
-  -- (A file the command here asked for, `op read -o FILE`: where it
-  -- said, readable by its owner alone; what it printed: in its place.)
+  -- (A file the command here asked for, `op read -o FILE` or `olo get`: if the
+  -- destination is an existing directory, write inside it using the leaf name.)
   local here = f.to and here_path(f.to) or dir .. "/" .. name
+  if f.to and (cmd == "get" or cmd == "fetch") then
+    local is_dir = rex.exec({ "sh", "-c", '[ -d "$1" ]', "sh", here })
+    if is_dir and is_dir.ok then
+      here = here:gsub("/+$", "") .. "/" .. name
+    end
+  end
   if f.stdout then here = dir .. "/stdout." .. f.id end
   local part = dir .. "/" .. f.id .. ".b64"
   local ready = true
@@ -183,7 +192,7 @@ for _, f in ipairs(r.files or {}) do
       io.stderr:write("olo: " .. f.to .. " already exists and isn't empty: not replaced (--force replaces it)\n")
       ready = false
     else
-      local made = rex.exec({ "sh", "-c", 'umask 077 && : > "$1"', "sh", here })
+      local made = rex.exec({ "sh", "-c", 'mkdir -p "$(dirname "$1")" && umask 077 && : > "$1"', "sh", here })
       ready = made and made.ok
     end
   else

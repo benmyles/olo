@@ -92,17 +92,19 @@ async fn ensure_helper(state: &Arc<Mutex<HubState>>, host: &ResolvedHost) -> Res
     }
     match helper_ask(&host.pool, &host.target, host.askpass.clone(), crate::link::ID, &crate::link::BUILDS).await {
         Ok(Ok(Asked::Here)) => {}
-        Ok(Ok(Asked::Needs(build))) => {
+        Ok(Ok(Asked::Needs(build) | Asked::Outdated(build))) => {
             helper_put(&host.pool, &host.target, host.askpass.clone(), crate::link::ID, build).await.map_err(|e| format!("Couldn’t install Olo’s helper on “{}”: {}", host.label, e.why))?;
         }
         Ok(Err(kind)) => return Err(format!("No Olo helper build is available for “{}” ({kind}).", host.label)),
         Err(e) => return Err(format!("Couldn’t reach “{}”: {}", host.label, e.why)),
     }
     let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(hr) = st.hosts.get_mut(&host.key)
-        && !matches!(hr.helper, HostHelper::Used)
-    {
-        hr.helper = HostHelper::Ready;
+    if let Some(hr) = st.hosts.get_mut(&host.key) {
+        hr.helper_current = Some(true);
+        hr.helper_sync_err = None;
+        if !matches!(hr.helper, HostHelper::Used) {
+            hr.helper = HostHelper::Ready;
+        }
     }
     Ok(())
 }

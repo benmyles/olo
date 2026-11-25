@@ -476,7 +476,10 @@ impl View for TextView {
         let body = if self.links.is_empty() { body.moves_matter_while_pressed() } else { body };
 
         // The note while empty, and what agents read.
-        let ground = if self.panel_well { p.shade(p.panel_background, 1.04) } else { p.document_background };
+        let panel_ground = |p: &olo_theme::Palette| {
+            if p.mode == olo_theme::ThemeMode::Dark { olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.28) } else { olo_theme::tint(p.panel_background, 1.06) }
+        };
+        let ground = if self.panel_well { panel_ground(&p) } else { p.document_background };
         let panel_well = self.panel_well;
         let (empty, text, auto_hide, clear_top, wrap) = (self.empty.clone(), self.text.clone(), self.auto_hide, self.clear_top, self.wrap);
         let note = canvas(move |g, b| {
@@ -488,7 +491,7 @@ impl View for TextView {
                 // scrolls, which this canvas is.)
                 let inner = style::inset(g, b, 2.0);
                 let bar = if auto_hide { 0.0 } else { crate::widgets::SCROLL_BAR };
-                let ground = if panel_well { p.shade(p.panel_background, 1.04) } else { p.document_background };
+                let ground = if panel_well { panel_ground(&p) } else { p.document_background };
                 style::fill_rect(g, Bounds::from_corners(inner.origin, point(inner.right() - px(bar), inner.top() + px(MARGIN_Y))), style::c(ground));
             }
             if text.is_empty() && !empty.is_empty() {

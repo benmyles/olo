@@ -465,6 +465,8 @@ pub fn render_transcript_find_bar(
 /// Render the terminal-themed live-streaming conversation transcript tail.
 /// Live / Paused state and `Jump to Live` live in the window status bar so the
 /// transcript viewport keeps one steady height without shifting on toggle.
+/// Returns the rendered element plus an optional direct-child index inside the
+/// `ScrollView` that should be scrolled into view (e.g., active Find match).
 #[allow(clippy::too_many_arguments)]
 pub fn render_transcript_view(
     session: &Arc<Mutex<TranscriptSession>>,
@@ -473,14 +475,15 @@ pub fn render_transcript_view(
     find_open: bool,
     find_bar: Option<Element>,
     on_do: impl Fn(&TranscriptDo, &mut WindowCx) + 'static,
-) -> Element {
+) -> (Element, Option<usize>) {
     let on_do: Arc<dyn Fn(&TranscriptDo, &mut WindowCx)> = Arc::new(on_do);
-    let (target, title, agent_label, model, loading, streaming, error, truncated, entries, expanded, collapsed_errors, collapsed_running, matches, active_match_idx, agent_json) = {
-        let g = session.lock().unwrap_or_else(|e| e.into_inner());
+    let (target, title, agent_label, model, loading, streaming, error, truncated, entries, expanded, collapsed_errors, collapsed_running, matches, active_match_idx, scroll_to_entry, agent_json) = {
+        let mut g = session.lock().unwrap_or_else(|e| e.into_inner());
         let mut exp: HashSet<usize> = g.expanded.clone();
         if let Some(auto_id) = g.find_auto_expanded {
             exp.insert(auto_id);
         }
+        let target_eid = g.scroll_to_entry.take();
         (
             g.target.clone(),
             g.target.title(),
@@ -496,6 +499,7 @@ pub fn render_transcript_view(
             g.collapsed_running.clone(),
             g.matches.clone(),
             g.match_idx,
+            target_eid,
             g.agent_json(),
         )
     };
@@ -520,21 +524,26 @@ pub fn render_transcript_view(
 
     let header = viewer_header(agent_icon, title, hdr_status, false, None, false, true, target.has_terminal(), Some(find_open), on_do.clone());
 
-    // Content outer left edge matches the toolbar's `Back` and Find field (`m::SPACING = 12 pt`).
-    let mut stream_col = div().w_full().flex().flex_col().px(px(m::SPACING)).pt(px(12.0)).pb(px(24.0));
+    // Direct children inside `ScrollView` so `scroll_to_item` targets exact entries
+    // (for Find match navigation) while keeping outer horizontal padding aligned with
+    // `Back` and the Find field (`m::SPACING = 12 pt`).
+    let mut stream_items: Vec<Element> = Vec::new();
+    let mut scroll_to_child: Option<usize> = None;
+    let wrap_row = |el: Element| div().w_full().px(px(m::SPACING)).flex().flex_col().child(el);
+    stream_items.push(div().w_full().h(px(12.0)));
 
     if truncated {
-        stream_col = stream_col.child(
+        stream_items.push(wrap_row(
             div()
                 .w_full()
                 .pl(px(LATCH_W))
                 .pb(px(8.0))
                 .child(StringView::new(olo_kit::words::tr("Showing the latest 1 MB of a long transcript.").to_owned()).size(style::SMALL_SIZE).color(tp.secondary).height(m::LABEL_ROW)),
-        );
+        ));
     }
 
     if let Some(err) = error {
-        stream_col = stream_col.child(
+        stream_items.push(wrap_row(
             div()
                 .w_full()
                 .py(px(m::SECTION))
@@ -544,10 +553,10 @@ pub fn render_transcript_view(
                 .gap(px(6.0))
                 .child(StringView::new(olo_kit::words::tr("Transcript unavailable").to_owned()).bold(true).color(tp.red))
                 .child(StringView::new(err).size(style::SMALL_SIZE).color(tp.secondary).wrap(true)),
-        );
+        ));
     } else if entries.is_empty() {
         let note = if loading { olo_kit::words::tr("Loading transcript…") } else { olo_kit::words::tr("Waiting for the agent’s first turn…") };
-        stream_col = stream_col.child(div().w_full().py(px(m::SECTION)).flex().items_center().justify_center().child(StringView::new(note.to_owned()).color(tp.secondary)));
+        stream_items.push(wrap_row(div().w_full().py(px(m::SECTION)).flex().items_center().justify_center().child(StringView::new(note.to_owned()).color(tp.secondary))));
     } else {
         let mut active_turn: Option<Speaker> = None;
         let mut prev_ts: Option<String> = None;
@@ -567,7 +576,7 @@ pub fn render_transcript_view(
                 let starts_new_turn = active_turn != Some(kind) || kind == Speaker::User;
                 if starts_new_turn {
                     if active_turn.is_some() {
-                        stream_col = stream_col.child(turn_separator(&tp));
+                        stream_items.push(wrap_row(turn_separator(&tp)));
                     }
                     let (speaker_name, ts_for_turn) = match entry {
                         TranscriptEntry::Message { label, timestamp, .. } => (label.clone(), timestamp.clone()),
@@ -579,7 +588,7 @@ pub fn render_transcript_view(
                     } else {
                         None
                     };
-                    stream_col = stream_col.child(render_speaker_line(&tp, kind, agent_icon, speaker_name, model_tag, ts_for_turn));
+                    stream_items.push(wrap_row(render_speaker_line(&tp, kind, agent_icon, speaker_name, model_tag, ts_for_turn)));
                     active_turn = Some(kind);
                     prev_block_kind = None;
                 }
@@ -635,35 +644,78 @@ pub fn render_transcript_view(
                 }
                 TranscriptEntry::Divider { label, timestamp, .. } => (render_divider(&tp, label, timestamp), BlockKind::ProseOrWell),
             };
-            stream_col = stream_col.child(el);
+            if scroll_to_entry == Some(eid) {
+                scroll_to_child = Some(stream_items.len());
+            }
+            stream_items.push(wrap_row(el));
             prev_block_kind = Some(end_kind);
         }
     }
+    stream_items.push(div().w_full().h(px(24.0)));
 
     let scroll_for_cb = scroll.clone();
     let sess_scroll = session.clone();
-    let last_y = Rc::new(std::cell::Cell::new(f32::from(scroll.offset().y)));
     let scroller = ScrollView::new(scroll)
         .vertical(true)
         .auto_hide(false)
         .border(false)
         .background(tp.bg_rgba)
-        .on_scroll(move |off, _| {
+        .on_scroll(move |off, cx| {
             let cur_y = f32::from(off.y);
-            let prev_y = last_y.replace(cur_y);
             let max_y = f32::from(scroll_for_cb.max_offset().height);
+            let mut g = sess_scroll.lock().unwrap_or_else(|e| e.into_inner());
+            let prev_y = g.last_scroll_y;
+            let prev_max = g.last_max_y;
+            g.last_scroll_y = cur_y;
+            g.last_max_y = max_y;
+            let scrollability_changed = (prev_max > 0.5) != (max_y > 0.5);
+            let mut notify = scrollability_changed;
+
+            if max_y <= 0.5 {
+                if !g.follow {
+                    g.follow = true;
+                    g.paused_unseen = 0;
+                    g.generation += 1;
+                    notify = true;
+                }
+                drop(g);
+                if notify {
+                    crate::ui::activity_changed();
+                }
+                return;
+            }
+
             // Offset y is 0 at top and -max_y at bottom; moving toward 0 means scrolling UP into history.
-            if max_y > 24.0 && cur_y > prev_y + 1.0 && -cur_y < max_y - 20.0 {
-                let mut g = sess_scroll.lock().unwrap_or_else(|e| e.into_inner());
+            let at_bottom = -cur_y >= max_y - 4.0;
+            let moved_up = cur_y > prev_y + 0.5;
+            if moved_up && !at_bottom {
                 if g.follow {
                     g.follow = false;
                     g.generation += 1;
-                    drop(g);
+                    notify = true;
+                }
+            } else if at_bottom {
+                if !g.follow {
+                    g.follow = true;
+                    g.paused_unseen = 0;
+                    g.generation += 1;
+                    notify = true;
+                }
+            } else if g.follow && max_y > prev_max + 0.5 {
+                // Viewport shrank or content grew while pinned to live tail: stay at bottom.
+                drop(g);
+                scroll_for_cb.scroll_to_bottom(cx);
+                if notify {
                     crate::ui::activity_changed();
                 }
+                return;
+            }
+            drop(g);
+            if notify {
+                crate::ui::activity_changed();
             }
         })
-        .child(stream_col);
+        .children(stream_items);
 
     let container_mark = canvas(|g, b| {
         olo_kit::review::container(g, b);
@@ -672,29 +724,13 @@ pub fn render_transcript_view(
     .absolute()
     .inset_0();
 
-    // Disable Follow automatically whenever the user wheels up into history.
-    let sess_wheel = session.clone();
-    let body_box = div()
-        .relative()
-        .flex_1()
-        .min_h_0()
-        .w_full()
-        .bg(tp.bg)
-        .on_scroll_wheel(move |e: &olo_kit::ScrollWheelEvent, _| {
-            let dy = f32::from(e.delta.pixel_delta(px(18.0)).y);
-            if dy > 0.5 {
-                let mut g = sess_wheel.lock().unwrap_or_else(|e| e.into_inner());
-                if g.follow {
-                    g.follow = false;
-                    g.generation += 1;
-                    drop(g);
-                    crate::ui::activity_changed();
-                }
-            }
-        })
-        .child(scroller);
+    // Flex column so `ScrollView` (`size_full`) inherits definite height cleanly;
+    // follow pause/resume is driven strictly by actual `ScrollView` movement above
+    // (never by wheel events falling through when `max_offset == 0`).
+    let body_box = div().relative().flex_1().min_h_0().w_full().flex().flex_col().bg(tp.bg).child(scroller);
 
-    div().relative().size_full().flex().flex_col().agent("Group", "agent-transcript").agent_value(agent_json).child(container_mark).child(header).children(find_bar).child(body_box)
+    let el = div().relative().size_full().flex().flex_col().agent("Group", "agent-transcript").agent_value(agent_json).child(container_mark).child(header).children(find_bar).child(body_box);
+    (el, scroll_to_child)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1527,7 +1563,9 @@ pub fn render_tmux_viewer(
     let body = if !need_h && !need_v {
         div().size_full().bg(style::c(p.panel_background)).flex().items_center().justify_center().child(framed_pane)
     } else {
-        let stage = div().p(px(12.0)).flex_shrink_0().child(framed_pane);
+        // Explicit outer size so Taffy's block layout inside `ScrollView` doesn't clamp
+        // `stage` to viewport width and disable the horizontal scrollbar on wide panes.
+        let stage = div().w(px(box_w + 24.0)).h(px(box_h + 24.0)).p(px(12.0)).flex_shrink_0().child(framed_pane);
         ScrollView::new(scroll).vertical(need_v).horizontal(need_h).auto_hide(false).border(false).background(p.panel_background).child(stage).into_element()
     };
 
@@ -1547,7 +1585,7 @@ pub fn render_tmux_viewer(
         .agent_value(title)
         .child(container_mark)
         .child(header)
-        .child(div().relative().flex_1().min_h_0().w_full().child(body))
+        .child(div().relative().flex_1().min_h_0().w_full().flex().flex_col().child(body))
 }
 
 /// Draw a small BeOS disclosure triangle (`▸` collapsed / `▾` expanded) snapped to device pixels.

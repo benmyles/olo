@@ -481,6 +481,50 @@ mod tests {
         }
     }
 
+    /// A flex-column item with `w_full().max_w(554)` measures its wrapped
+    /// child's height at its clamped width (554 minus padding = 540), not at
+    /// the column's full width (2000). Without clamping `child.size.cross` in
+    /// taffy's `determine_flex_base_size` / `determine_container_main_size`,
+    /// Rex's subagent transcript prose measured 2–4x too short on wide
+    /// windows, disabling the scrollbar and clipping text off the bottom.
+    #[test]
+    fn a_clamped_cross_size_measures_wrapped_height_at_its_max_width() {
+        for scale in [1.0, 2.0] {
+            let mut layout: Layout<u32> = Layout::new();
+            let rem = px(16.0);
+            let mut add = |element: crate::Element, children: &[LayoutId], measured: Option<u32>| {
+                let id = layout.add(&style(element), rem, scale, measured);
+                layout.set_children(id, children);
+                id
+            };
+            let text = add(div(), &[], Some(1));
+            let inner = add(div().w_full(), &[text], None);
+            let prose = add(div().w_full().max_w(px(554.0)).pl(px(14.0)), &[inner], None);
+            let msg = add(div().w_full().flex().flex_col(), &[prose], None);
+            let stream = add(div().w_full().flex().flex_col(), &[msg], None);
+            let available = size(AvailableSpace::Definite(px(2000.0)), AvailableSpace::Definite(px(1200.0)));
+            // Constant-area wrapped text: ~2000 pt tall at 540 pt wide, ~540 pt tall at 2000 pt wide.
+            let area = 540.0 * 2000.0;
+            layout.compute(stream, available, scale, |_, known, avail| {
+                let w = known
+                    .width
+                    .or(match avail.width {
+                        AvailableSpace::Definite(x) => Some(x),
+                        _ => None,
+                    })
+                    .unwrap_or(px(540.0));
+                let wf = f32::from(w).max(1.0);
+                size(px(wf), px((area / wf).ceil()))
+            });
+            let placed = |id| layout.placed(id, scale).0;
+            assert_eq!(placed(prose).size.width, px(554.0), "at {scale}x");
+            assert_eq!(placed(text).size.width, px(540.0), "at {scale}x");
+            assert_eq!(placed(prose).size.height, px(2000.0), "prose wrapper must match wrapped text height at {scale}x");
+            assert_eq!(placed(msg).size.height, px(2000.0), "message flex column must match wrapped text height at {scale}x");
+            assert_eq!(placed(stream).size.height, px(2000.0), "stream column must overflow viewport at {scale}x");
+        }
+    }
+
     /// What fills a pane by percentage keeps the pane's size when
     /// something beside it is laid out again. Rescue's terminal, a view
     /// filling the pane over its list of processes: the list's rows

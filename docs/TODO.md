@@ -44,6 +44,24 @@ something nobody here has is in "Blocked", with what it waits for.
   app_server, as `under-pointer` does). And the nit: "the margin above the
   question is 20 pt but the margin below the buttons is 15 pt. Make both
   16 pt".
+- **Dark-mode raised controls & link blue contrast** (Opus 5.5 & Gemini 4
+  Neon looks at Rex's Host window, 2026-11-25):
+  - In dark mode, raised push-button faces are currently a shade darker than
+    the panel (`control_background` vs `panel_background`), so they look
+    pressed in; raise them one step lighter than the panel desktop-wide.
+  - In dark mode, `LinkButton` blue (`Set Up This Host’s Account…`) is dim
+    against the dark slate panel; lighten link blue in dark themes so it
+    clears 4.5:1 like surrounding text.
+  - Consider replacing the inline `"Set Up This Host’s Account…"` header
+    link in Manage Host / Account windows with a native button, and adding
+    confirmation (`Remove…`) when `Remove` sits directly beside `Update`.
+  - Rex status-bar error banner (Opus 5.5 R2, 2026-11-25): add optional
+    retryable action callback (`Try Again` button on the detail well row)
+    for actions that can be re-run directly; keep Manage Host window
+    height fixed across current/failed states if bottom button row shifts.
+  - Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
+    message headers/timestamps/rules to the prose width (~560 pt) and
+    align sender icons in the left gutter with `Back`.
 - **Left of the reviews' findings on the kit and Rex** (Opus 5.5,
   2026-11-24). Done 2026-11-24: an alert's question in bold, its
   explanation 8 points under it (`alert::message`); dimmed buttons keep
@@ -174,32 +192,67 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Rex: Cmd+click any file or folder in terminal opens/reveals in Tracker
-  (any accessible remote path like `/var/tmp`), paste local paths as
-  `rex://local/...` with agent skill/tooling to access them, and status bar
-  error `×` dismiss button** (Ben, 2026-11-25: "tried cmd+clicking on a
-  folder in a rex terminal and got an error ... it should have opened in
-  tracker via the remote tracker support we already built ... any remote
-  location for which the user has permissions to access, not just the
-  user's home dir, i.e. /var/tmp folders should work ... make all cmd+click
-  work like that in rex terminal -- don't open quick look even if it's a
-  file, instead go to that file in tracker and then i can press space on it
-  to quick look if i want"; "also when an error appears at the bottom of
-  the screen in the status bar there needs to be an x button icon or
-  something to dismiss it too"; "and also if i paste a local file location
-  it should automatically convert that to like a rex url to my desktop if
-  such a thing exists and if not add it e.g. `rex://local/home/<user>/...` or
-  something like that ... and the skills and tooling need to tell agents
-  how to access those local files").
+- **Token Pool UX overhaul: cohesive local vs remote Rex hosts menus,
+  preferences, management, and unified activity monitoring** (Ben,
+  2026-11-25: "all the menu options and preferences and management and
+  activity monitoring and general ux for token pool with local vs remote
+  rex hosts etc. is a total nightmare right now it's all over the place
+  and i can't make sense of it. i need you to clean it all up to be
+  intuitive and feel cohesive"; "as soon as the token pool stuff is done
+  please do a release").
 
-- **Manage Host window: clear remote sync status (Rex, Olo bridge,
-  bridge skills, desktop commands, helper services) and seamless Update
-  button** (Ben, 2026-11-25: "after upgrading olo and receiving rex and
-  olo bridge changes it's not clear to me if they automatically sync to
-  the remote rex hosts or not including the bridge skills, any helper
-  services etc. please show the status of this clearly in the manage
-  host window and if some things do require a manual 'update' please put
-  a button there or something and make sure it'll work seamlessly").
+- **Rex native nested subagent tabs, Olo Kit hierarchical child-tab
+  switcher, Activity tree, and agent-ergonomic tab control/watch tooling
+  & skill** (Ben, 2026-11-25):
+  - **Tab hierarchy in Rex & Olo Kit (`TabStrip`):** allow agents running
+    in a Rex terminal to launch native nested subagents in their own
+    proper full terminal tab (forming a parent/child/nested tab tree).
+    Only top-level parent tabs appear in the horizontal tab bar so large
+    swarms don't overflow it. Extend Olo Kit tabs so any tab with child
+    tabs gets an icon button to the left of its `×` close button;
+    clicking it opens a right-click-context-menu-style hierarchical tab
+    tree showing the parent and all nested children with the active tab
+    clearly indicated, allowing switching to any child, sibling, or back
+    to the parent seamlessly.
+  - **Activity view tree:** show child tabs that have agents running
+    under their parent in the proper tree hierarchy; clicking one
+    switches directly to the full interactive terminal tab for that
+    agent.
+  - **Supported agents, session resume & explicit model/effort (mandatory):**
+    - First-class support for **`claude`**, **`codex`**, and **`agy`**.
+    - Support both **starting a new session** and **resuming a previous
+      session** (`--resume <id>` / `--continue` etc. per CLI).
+    - Support passing **all CLI options each agent supports** (model,
+      reasoning effort, permissions/approval mode, sandbox/flags, extra
+      passthrough args, etc.).
+    - **Always REQUIRE explicitly specifying both `model` and `effort`**
+      when launching a subagent (reject the launch with a clear error if
+      either is omitted) so there are never any surprises about which
+      model or effort level gets used.
+  - **Agent-ergonomic control, watch & event alerts (best integrated
+    mechanism — Rex custom actions / `olo` CLI / bridge):** give agents
+    full, frictionless control over tabs they launch:
+    - Launch / list / inspect / close child tabs (capturing pane ID /
+      handle cleanly, setting title/role/cwd/env/command).
+    - Tail / read / watch a child session's output & screen state.
+    - Structured event alerts / waits: trigger when the child agent asks
+      a question, needs an approval, goes idle, finishes/exits, or
+      matches user-specified keywords / regular expressions.
+    - Send input reliably, including control characters (`Ctrl-C`,
+      `Ctrl-D`, etc.), special keys (`Enter`, `Escape`, arrows, `Tab`),
+      and literal text.
+    - Optimize specifically for **agent ergonomics** (clean composable
+      subcommands, structured JSON output, zero fragile quoting or
+      polling loops).
+  - **Rex / Olo bridge agent skill:** explicitly instruct agents running
+    in Rex that because they are in this Rex environment, the user
+    strongly prefers using this native Rex child-tab mechanism to launch
+    and manage subagents over any other subagent/tmux mechanisms they may
+    have.
+  - **Remove legacy hacky subagent auto-detection:** as part of shipping
+    native Rex subagents, remove the old heuristic/auto-detected subagent
+    discovery (process/JSONL/tmux scraping) so ONLY native Rex child-tab
+    subagents appear in the Rex client.
 
 - **Phone service: self-heal Bluetooth `br-connection-busy` stuck state**
   (Ben, 2026-11-25: "sometimes the phone app is still getting stuck with
@@ -11054,6 +11107,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Rex: Subagent transcript & read-only tmux scrolling fixes (incl. Taffy cross-axis `max_w` layout bug), Manage Host sync status & seamless Update buttons, status-bar error banner `×` dismiss, Cmd+click Tracker reveal (`/var/tmp` too) & `rex://local/...` paste/fetch**~~ (done 2026-11-25, commit after c5a0b27d2):
+  - Fixed all 7 root causes of disabled scrollbars & dead `Jump to End` / `Jump to Live` in subagent transcripts and read-only tmux panes: clamped definite cross size by `min_size`/`max_size` before intrinsic main-size measurement in `vendor/taffy/src/compute/flexbox.rs` (`w_full().max_w(...)` wrapped prose now measures true height instead of collapsing on wide windows); tracked `inter.watches` in `olo_interface` reconcile and scanned nodes when `items_stale`; replaced naive 1 MiB seek in `rex-link/src/activity.rs` with backward chunk scan filtering Claude 2.1/Codex telemetry blobs; persisted transcript scroll state with proper pause/resume, `Jump to End`, Find `scroll_to_item`, keyboard scroll handling, and explicit tmux stage sizing.
+  - Manage Host window: added clear sync status & one-click `Update` / `Update All` across Rex server, Olo bridge, bridge skills, desktop commands, and helper services, plus `TabView::lights` color-blind-safe 10pt red `!` disc on errors & 6pt amber dot on updates.
+  - Rex status-bar error banner: hugging monospace detail well + crisp `×` dismiss button with flush hover bevel.
+  - Rex terminal Cmd+click reveals any accessible remote file or folder (including `/var/tmp`) in Tracker; pasting local paths converts them to `rex://local/...` backed by `olo get` / `olo ls` and documented in `bridge_skill.md`.
 
 - ~~**Find what removes dependency build units from `target/release`**~~
   (done 2026-11-19, the commit after 1962ab500; 2026-11-18: a workspace

@@ -118,6 +118,12 @@ pub struct TranscriptSession {
     pub follow: bool,
     /// Number of new transcript entries received while paused (`!follow`).
     pub paused_unseen: usize,
+    /// Last observed vertical scroll offset (`y`, `0` at top down to `-max_y`) and max extent,
+    /// persisted across renders so `on_scroll` can tell user scroll apart from layout reflow.
+    pub last_scroll_y: f32,
+    pub last_max_y: f32,
+    /// Entry ID requested to be scrolled into view (e.g., active Find match).
+    pub scroll_to_entry: Option<usize>,
     pub search_query: String,
     pub matches: Vec<SearchMatch>,
     pub match_idx: Option<usize>,
@@ -140,6 +146,9 @@ impl TranscriptSession {
             find_auto_expanded: None,
             follow: true,
             paused_unseen: 0,
+            last_scroll_y: 0.0,
+            last_max_y: 0.0,
+            scroll_to_entry: None,
             search_query: String::new(),
             matches: Vec::new(),
             match_idx: None,
@@ -170,11 +179,13 @@ impl TranscriptSession {
         if self.matches.is_empty() {
             self.match_idx = None;
             self.find_auto_expanded = None;
+            self.scroll_to_entry = None;
         } else {
             let idx = self.match_idx.unwrap_or(0).min(self.matches.len() - 1);
             self.match_idx = Some(idx);
             let hit = &self.matches[idx];
             self.find_auto_expanded = hit.in_collapsed_body.then_some(hit.entry_id);
+            self.scroll_to_entry = Some(hit.entry_id);
             self.follow = false;
         }
     }
@@ -184,12 +195,14 @@ impl TranscriptSession {
         self.matches.clear();
         self.match_idx = None;
         self.find_auto_expanded = None;
+        self.scroll_to_entry = None;
     }
 
     pub fn step_search(&mut self, back: bool) -> Option<usize> {
         if self.matches.is_empty() {
             self.match_idx = None;
             self.find_auto_expanded = None;
+            self.scroll_to_entry = None;
             return None;
         }
         let n = self.matches.len();
@@ -201,6 +214,7 @@ impl TranscriptSession {
         self.match_idx = Some(next);
         let hit = &self.matches[next];
         self.find_auto_expanded = hit.in_collapsed_body.then_some(hit.entry_id);
+        self.scroll_to_entry = Some(hit.entry_id);
         self.follow = false;
         Some(hit.entry_index)
     }
@@ -369,17 +383,19 @@ async fn ensure_remote_helper(hub: &Arc<RexHub>, host_key: &str) -> Result<(olo_
     if !ready {
         match helper_ask(&pool, &target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await {
             Ok(Ok(Asked::Here)) => {}
-            Ok(Ok(Asked::Needs(build))) => {
+            Ok(Ok(Asked::Needs(build) | Asked::Outdated(build))) => {
                 helper_put(&pool, &target, askpass.clone(), crate::link::ID, build).await.map_err(|e| e.why)?;
             }
             Ok(Err(kind)) => return Err(format!("No helper build for {kind}")),
             Err(e) => return Err(e.why),
         }
         let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(h) = st.hosts.get_mut(host_key)
-            && !matches!(h.helper, HostHelper::Used)
-        {
-            h.helper = HostHelper::Ready;
+        if let Some(h) = st.hosts.get_mut(host_key) {
+            h.helper_current = Some(true);
+            h.helper_sync_err = None;
+            if !matches!(h.helper, HostHelper::Used) {
+                h.helper = HostHelper::Ready;
+            }
         }
     }
     Ok((target, pool, askpass))

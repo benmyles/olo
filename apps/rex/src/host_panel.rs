@@ -33,7 +33,7 @@ use olo_kit::{
 };
 
 use crate::host::Shown;
-use crate::hub::{HostConnState, HostHelper, HostStands, HostThing};
+use crate::hub::{HostConnState, HostHelper, HostOp, HostStands, HostThing};
 use crate::panels::{self, Light};
 
 /// The window's width: Hosts and Ports', which it is opened from.
@@ -76,14 +76,18 @@ const WELL_OVER: f32 = 10.0;
 /// What a button of the window asks for.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HostDo {
-    /// `thing` put on the host (`true`), or taken off.
-    Change(HostThing, bool),
+    /// `thing` installed, updated, or removed on the host.
+    Change(HostThing, HostOp),
+    /// Every outdated Olo component on the host updated at once.
+    UpdateAll(Vec<HostThing>),
     /// The host asked again what it has.
     Check,
     /// A host that isn't connected, connected to (Check Again, there).
     Connect,
     /// The host's Rex server, in its own window.
     Server,
+    /// The host's Rex server window opened directly to Update.
+    UpdateServer,
     /// What the bridge may do here: Preferences ▸ Rex.
     Permissions,
     /// The Token Pool's Hosts window, where a host's pool is managed.
@@ -132,9 +136,12 @@ pub struct Stands {
     pub busy: bool,
     /// Whether it is on the host, to be taken off.
     pub there: bool,
-    /// What its button does, if it can be pressed now: put it there
-    /// (`true`) or take it off, and whether that is a second try.
-    pub can: Option<(bool, bool)>,
+    /// Whether an installed component is behind this Olo and can be
+    /// updated from here.
+    pub behind: bool,
+    /// What its button does, if it can be pressed now: install, update,
+    /// or remove, and whether that is a second try (`Try Again`).
+    pub can: Option<(HostOp, bool)>,
 }
 
 /// How a kept folder stands, on its line: in step (and how long ago it
@@ -191,7 +198,7 @@ pub fn kept_mode_parts(k: &crate::hub::Kept, host_name: &str) -> (String, Vec<St
 }
 
 fn stands(light: Light, said: &'static str) -> Stands {
-    Stands { light, said: olo_kit::words::tr(said).into(), more: None, host_said: None, why: None, which: None, busy: false, there: false, can: None }
+    Stands { light, said: olo_kit::words::tr(said).into(), more: None, host_said: None, why: None, which: None, busy: false, there: false, behind: false, can: None }
 }
 
 /// How `thing` stands on `host`, `reached` whether anything can be
@@ -253,26 +260,45 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
         .filter(|_| connected && host.granted.contains(&"SSH keys"));
         return Stands { more: Some(granted), why: none, which, ..stands(light, "On") };
     }
-    if let Some(add) = shown.doing(thing) {
-        return Stands { busy: true, ..stands(Light::Waiting, if add { "Being installed…" } else { "Being removed…" }) };
+    if let Some(op) = shown.doing(thing) {
+        let word = match op {
+            HostOp::Install => "Being installed…",
+            HostOp::Update => "Being updated…",
+            HostOp::Remove => "Being removed…",
+        };
+        return Stands { busy: true, ..stands(Light::Waiting, word) };
     }
     if !reached {
         return stands(Light::Off, "Not known");
     }
-    if let Some((add, said)) = shown.failed(thing) {
-        return Stands { host_said: Some(said.to_owned()), can: Some((add, true)), ..stands(Light::Down, if add { "Couldn’t install" } else { "Couldn’t remove" }) };
+    if let Some((op, said)) = shown.failed(thing) {
+        let word = match op {
+            HostOp::Install => "Couldn’t install",
+            HostOp::Update => "Couldn’t update",
+            HostOp::Remove => "Couldn’t remove",
+        };
+        let there = matches!(op, HostOp::Update | HostOp::Remove) && thing != HostThing::Pool;
+        return Stands { host_said: Some(said.to_owned()), there, behind: op == HostOp::Update, can: Some((op, true)), ..stands(Light::Down, word) };
     }
-    let installed = |s: Stands| Stands { there: true, can: Some((false, false)), ..s };
-    let absent = |s: Stands| Stands { can: Some((true, false)), ..s };
+    let installed = |s: Stands| Stands { there: true, can: Some((HostOp::Remove, false)), ..s };
+    let absent = |s: Stands| Stands { can: Some((HostOp::Install, false)), ..s };
     match thing {
         HostThing::Helper => match &host.helper {
             HostHelper::Installing => Stands { busy: true, ..stands(Light::Waiting, "Being installed…") },
             // (Taken off while a connection goes through it: that one
             // goes on through it, a program running.)
             HostHelper::Used if host.helper_kept_off => absent(more(stands(Light::Waiting, "Not installed"), "this connection still uses it")),
-            HostHelper::Used => installed(more(stands(Light::On, "Installed"), "in use")),
-            HostHelper::Ready => installed(more(stands(Light::On, "Installed"), "used the next time you connect")),
-            HostHelper::Without(why) => Stands { host_said: Some(why.clone()), can: Some((true, true)), ..stands(Light::Down, "Couldn’t install") },
+            HostHelper::Used if host.helper_current == Some(false) && host.helper_sync_err.is_some() => {
+                Stands { host_said: host.helper_sync_err.clone(), behind: true, ..installed(more(stands(Light::Down, "Update failed"), "older build in use")) }
+            }
+            HostHelper::Used if host.helper_current == Some(false) => Stands { behind: true, ..installed(more(stands(Light::Waiting, "Update available"), "older build in use")) },
+            HostHelper::Used => installed(more(stands(Light::On, "Up to date"), "in use")),
+            HostHelper::Ready if host.helper_current == Some(false) && host.helper_sync_err.is_some() => {
+                Stands { host_said: host.helper_sync_err.clone(), behind: true, ..installed(more(stands(Light::Down, "Update failed"), "older build on host")) }
+            }
+            HostHelper::Ready if host.helper_current == Some(false) => Stands { behind: true, ..installed(more(stands(Light::Waiting, "Update available"), "older build on host")) },
+            HostHelper::Ready => installed(more(stands(Light::On, "Up to date"), "used the next time you connect")),
+            HostHelper::Without(why) => Stands { host_said: Some(why.clone()), can: Some((HostOp::Install, true)), ..stands(Light::Down, "Couldn’t install") },
             HostHelper::None if !host.helper_setting => more(stands(Light::Off, "Not installed"), "turned off for every host"),
             HostHelper::None if !crate::link::carried() => stands(Light::Off, "Not installed"),
             HostHelper::None => absent(stands(Light::Off, "Not installed")),
@@ -281,41 +307,57 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
         // (As this computer's Token Pool says, which puts it there and
         // keeps its accounts in step: `pool`.)
         // (Never "there" for Remove All…, and with no Install or Remove
-        // of this window's: its accounts are the Token Pool's to move.)
+        // of this window's: its accounts are the Token Pool's to move;
+        // when behind or failed, Update / Try Again triggers a sync right here.)
         HostThing::Pool => {
-            let accounts = |pool: &crate::pool::PoolStands, then: &'static str| -> String {
-                let then = olo_kit::words::tr(then);
+            let accounts = |pool: &crate::pool::PoolStands| -> Option<String> {
                 match pool.accounts {
-                    Some(1) => format!("{}, {then}", olo_kit::words::tr("1 account")),
-                    Some(n) => format!("{}, {then}", olo_kit::tr!("{} accounts", n)),
-                    None => then.to_string(),
+                    Some(1) => Some(olo_kit::words::tr("1 account").to_string()),
+                    Some(n) => Some(olo_kit::tr!("{} accounts", n).to_string()),
+                    None => None,
                 }
             };
             match &host.pool {
                 None => more(stands(Light::Off, "Not known"), "Token Pool isn’t running on this computer"),
                 Some(pool) if pool.doing.is_some() => Stands { busy: true, ..stands(Light::Waiting, if pool.wanted { "Being updated…" } else { "Being installed…" }) },
-                Some(pool) if pool.wanted && pool.in_step => Stands { more: Some(accounts(pool, "up to date")), ..stands(Light::On, "Installed") },
-                Some(pool) if pool.wanted => Stands { more: Some(accounts(pool, "behind")), host_said: pool.error.clone(), ..stands(Light::Waiting, "Installed") },
-                Some(pool) if pool.error.is_some() => Stands { host_said: pool.error.clone(), ..stands(Light::Down, "Couldn’t install") },
+                Some(pool) if pool.wanted && pool.in_step => Stands { more: accounts(pool), ..stands(Light::On, "Up to date") },
+                Some(pool) if pool.wanted && pool.error.is_some() => Stands { more: accounts(pool), why: pool.error.clone(), behind: true, ..stands(Light::Down, "Can’t sync") },
+                Some(pool) if pool.wanted => Stands { more: accounts(pool), behind: true, ..stands(Light::Waiting, "Update available") },
+                Some(pool) if pool.error.is_some() => Stands { why: pool.error.clone(), ..stands(Light::Down, "Couldn’t install") },
                 Some(_) => stands(Light::Off, "Not installed"),
             }
         }
-        HostThing::Skill => match host.skill {
-            Some(true) => installed(stands(Light::On, "Installed")),
-            Some(false) => absent(stands(Light::Off, "Not installed")),
-            None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
+        HostThing::Skill => match (host.skill, host.skill_current) {
+            (Some(true), Some(false)) if host.skill_sync_err.is_some() => Stands { host_said: host.skill_sync_err.clone(), behind: true, ..installed(stands(Light::Down, "Update failed")) },
+            (Some(true), Some(false)) => Stands { behind: true, ..installed(stands(Light::Waiting, "Update available")) },
+            (Some(true), _) => installed(stands(Light::On, "Up to date")),
+            (Some(false), _) => absent(stands(Light::Off, "Not installed")),
+            (None, _) => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
         },
-        HostThing::Commands => match host.commands {
-            Some(true) => installed(stands(Light::On, "Installed")),
-            Some(false) => absent(stands(Light::Off, "Not installed")),
-            None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
+        HostThing::Commands => match (host.commands, host.commands_current) {
+            (Some(true), Some(false)) if host.commands_sync_err.is_some() => Stands { host_said: host.commands_sync_err.clone(), behind: true, ..installed(stands(Light::Down, "Update failed")) },
+            (Some(true), Some(false)) => Stands { behind: true, ..installed(stands(Light::Waiting, "Update available")) },
+            (Some(true), _) => installed(stands(Light::On, "Up to date")),
+            (Some(false), _) => absent(stands(Light::Off, "Not installed")),
+            (None, _) => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
         },
     }
 }
 
-/// The Rex server's line: running, and its version.
+/// The Rex server's line: running (or update available · old → new · running).
 fn server_stands(host: &HostStands) -> Stands {
-    if host.conn == HostConnState::Connected { Stands { more: host.version.clone(), ..stands(Light::On, "Running") } } else { stands(Light::Off, "Not known") }
+    if host.conn != HostConnState::Connected {
+        return stands(Light::Off, "Not known");
+    }
+    if let Some(newer) = &host.server_newer {
+        let running = olo_kit::words::tr("running");
+        let more = match &host.version {
+            Some(ver) => format!("{ver} → {newer}  ·  {running}"),
+            None => format!("{newer}  ·  {running}"),
+        };
+        return Stands { more: Some(more), ..stands(Light::Waiting, "Update available") };
+    }
+    Stands { more: host.version.clone(), ..stands(Light::On, "Running") }
 }
 
 /// A section's heading, over its rule (the Server window's).
@@ -331,10 +373,28 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
-    let wide = ["Check Again", "Connect", "Manage…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel", "Sync Now", "Forget…", "Forget", "Copy"]
-        .iter()
-        .map(|l| button_width(l, false))
-        .fold(0.0, f32::max);
+    let wide = [
+        "Check Again",
+        "Connect",
+        "Manage…",
+        "Update…",
+        "Update",
+        "Update All",
+        "Permissions…",
+        "Token Pool…",
+        "Install",
+        "Remove",
+        "Try Again",
+        "Remove All…",
+        "Cancel",
+        "Sync Now",
+        "Forget…",
+        "Forget",
+        "Copy",
+    ]
+    .iter()
+    .map(|l| button_width(l, false))
+    .fold(0.0, f32::max);
     // (Its words a literal, which the kit looks up in the person's
     // language: a `String` is shown as it is, and every button here was in
     // English in every language.)
@@ -353,80 +413,198 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // (How many letters a line of a well under a line's words holds.)
     let letter = f32::from(style::text_width("0000000000", MONO_SIZE, style::mono_font(olo_kit::FontWeight::NORMAL))) / 10.0;
     let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - panel - under - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
-    // A thing's line and what is under it; `named`: the line says what it
-    // is (one with no heading of its own, under another's).
-    let body = |s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>, named: Option<&str>, link: Option<Element>| {
+    // A thing's line and what is under it: one steady 2-line slot under every
+    // status line (description + sync policy on its own line), replaced in place
+    // by a sunken monospace well on raw command errors or an Olo prose sentence
+    // on gateway errors so the window keeps one height across every state.
+    let body = |s: &Stands, actions: Vec<Button>, note: String, policy: String, path: Option<&str>| {
+        let p = olo_kit::theme::palette();
+        // Regular-weight error labels need slightly higher contrast in light mode to match
+        // bold error headlines optically at 1× and 2× (Gemini Round 2 review).
+        let err_red = style::c(olo_theme::readable(p.failure, p.panel_background, 5.5));
         let lamp = if s.busy { panels::busy_of(panels::LIGHT) } else { panels::light(s.light) };
         let mut said = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(lamp);
-        // (Its state first and then what it is, as every line here reads:
-        // Opus's review.)
-        said = said.child(StringView::new(s.said.clone()));
-        if let Some(name) = named {
-            said = said.child(div().flex_shrink_0().child(StringView::new(format!("·  {name}")).dim(true)));
-        }
+        let said_sv = if s.light == Light::Down { StringView::new(s.said.clone()).color(err_red) } else { StringView::new(s.said.clone()) };
+        said = said.child(said_sv);
         if let Some(more) = &s.more {
             said = said.child(div().flex_1().min_w_0().child(StringView::new(format!("·  {more}")).dim(true).cut(true)));
         }
         let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(said).children(actions);
         let mut block = div().w_full().flex().flex_col().child(line);
-        // (What the host said, as it said it, under the line that
-        // says it couldn't: a line a line, a long one's rest set in.)
+        let mut notes = div().w_full().pl(px(under)).flex().flex_col();
         if let Some(host_said) = &s.host_said {
-            let lines: Vec<String> = host_said.lines().filter(|l| !l.trim().is_empty()).flat_map(|line| crate::server_panel::hung(line, room)).collect();
-            // (As far under the line's button as the note is under
-            // the well: ten points each, as they measure.)
+            // Verbatim command stderr in the sunken monospace well replaces line 1 (with
+            // 4 pt clearance under the action buttons) while keeping line 2 (sync policy)
+            // beneath it so every failure row shares the exact same 4-part layout.
+            let lines: Vec<String> = host_said.lines().filter(|l| !l.trim().is_empty()).flat_map(|line| crate::server_panel::hung(line, room)).take(3).collect();
             let lines = div().flex().flex_col().w_full().children(lines.into_iter().map(|line| StringView::new(line).mono(true).size(MONO_SIZE).wrap(true)));
-            block = block.child(div().h(px(WELL_OVER)).flex_shrink_0()).child(div().w_full().pl(px(under)).child(panels::well(lines.into_element())));
-        }
-        // (The note, and where the thing is on the host as its second
-        // line: a point smaller, in a line's own height, so a section
-        // that ends with one is as far from the next as one that ends
-        // with its note.)
-        let mut notes = div().w_full().pl(px(under)).pr(px(short)).flex().flex_col();
-        // (A reason, a little apart from the description under it: at
-        // the same size and indent they read as one paragraph that
-        // changed colour halfway, both looks said.)
-        if let Some(why) = &s.why {
-            notes = notes.child(StringView::new(why.clone()).size(style::SMALL_SIZE).wrap(true)).child(div().h(px(4.0)).flex_shrink_0());
-        }
-        // (Which, as apart: dim, as it is no trouble.)
-        if let Some(which) = &s.which {
-            notes = notes.child(small(which.clone())).child(div().h(px(4.0)).flex_shrink_0());
-        }
-        if !note.is_empty() {
-            notes = notes.child(small(note));
-        }
-        if let Some(link) = link {
-            notes = notes.child(link);
+            notes = notes.child(div().h(px(4.0)).flex_shrink_0()).child(panels::well(lines.into_element()));
+            if !policy.is_empty() {
+                notes = notes.child(div().h(px(6.0)).flex_shrink_0()).child(div().w_full().pr(px(short)).child(small(policy)));
+            }
+        } else {
+            let mut text_col = div().w_full().pr(px(short)).flex().flex_col();
+            if let Some(why) = &s.why {
+                // Olo's own message replaces the description line in UI font when
+                // the row failed (e.g. Token Pool gateway error); on a Bridge SSH-keys
+                // warning it sits cleanly above the description.
+                text_col = text_col.child(StringView::new(why.clone()).size(style::SMALL_SIZE).wrap(true));
+                if s.light != Light::Down && !note.is_empty() {
+                    text_col = text_col.child(div().h(px(4.0)).flex_shrink_0()).child(small(note));
+                }
+            } else {
+                if let Some(which) = &s.which {
+                    text_col = text_col.child(small(which.clone())).child(div().h(px(4.0)).flex_shrink_0());
+                }
+                if !note.is_empty() {
+                    text_col = text_col.child(small(note));
+                }
+            }
+            if !policy.is_empty() {
+                text_col = text_col.child(small(policy));
+            }
+            notes = notes.child(text_col);
         }
         if let Some(path) = path {
-            notes = notes.child(StringView::new(path.to_owned()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE)));
+            notes = notes
+                .child(div().h(px(4.0)).flex_shrink_0())
+                .child(div().w_full().pr(px(short)).child(StringView::new(path.to_owned()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE))));
         }
-        block.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes)
+        block = block.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes);
+        block
     };
-    let block = |title: &'static str, s: &Stands, actions: Vec<Button>, note: String, path: Option<&str>| {
-        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, note, path, None, None)).into_element()
+    let block = |title: &'static str, s: &Stands, actions: Vec<Button>, note: String, policy: String, path: Option<&str>| {
+        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, note, policy, path)).into_element()
     };
     let reached = host.conn == HostConnState::Connected && host.ssh;
+    let connected = host.conn == HostConnState::Connected;
+    let busy = !shown.doing.is_empty();
+
+    // Compute per-component state first so the header knows whether `Update All`
+    // should appear beside `Check Again` and each tab knows its status dot.
+    let srv_s = server_stands(host);
+    let mut rex_actions = Vec::new();
+    if host.server_newer.is_some() {
+        rex_actions.push(button("Update…", "host-server-update", HostDo::UpdateServer, managed && connected));
+    }
+    rex_actions.push(button("Manage…", "host-server", HostDo::Server, managed && connected));
+    let mut rex: Vec<Element> = vec![block(
+        "Rex server",
+        &srv_s,
+        rex_actions,
+        olo_kit::words::tr("Runs persistent sessions and shells on this host.").into(),
+        olo_kit::words::tr("Updates only when you choose (needs root).").into(),
+        None,
+    )];
+    let mut olo = Vec::new();
+
+    let mut there = Vec::new();
+    let mut behind = Vec::new();
+    let mut rex_dot: Option<Light> = if srv_s.light == Light::Waiting { Some(Light::Waiting) } else { None };
+    let mut olo_dot: Option<Light> = None;
+    let bump_dot = |slot: &mut Option<Light>, light: Light| match light {
+        Light::Down => *slot = Some(Light::Down),
+        Light::Waiting if *slot != Some(Light::Down) => *slot = Some(Light::Waiting),
+        _ => {}
+    };
+
+    for (thing, title, id, note, policy_ok, policy_behind, path) in [
+        (HostThing::Bridge, "Bridge", "bridge", "Runs from this computer over Rex (nothing installed on the host).", "Always matches this Olo.", "Always matches this Olo.", None),
+        (
+            HostThing::Commands,
+            "Desktop commands",
+            "commands",
+            "Lets xdg-open, notify-send, op and clipboard commands act here.",
+            "Updates automatically when you connect.",
+            "Updates automatically next time you connect.",
+            Some("~/.local/share/olo/rex-commands"),
+        ),
+        (
+            HostThing::Skill,
+            "Skill for agents",
+            "skill",
+            "Tells Claude Code and other agents there how to use Olo Bridge and Rex.",
+            "Updates automatically when you connect.",
+            "Updates automatically next time you connect.",
+            Some("~/.claude/skills/olo-rex-bridge"),
+        ),
+        (
+            HostThing::Pool,
+            "Token Pool",
+            "pool",
+            "Lets agents there use your accounts, even with this computer off.",
+            "Syncs automatically while Token Pool runs.",
+            "Syncs automatically while Token Pool runs.",
+            None,
+        ),
+        (
+            HostThing::Helper,
+            "Typing helper",
+            "helper",
+            "Speeds up typing and powers remote files, sync and activity.",
+            "Updates automatically when you connect.",
+            "Updates automatically next time you connect.",
+            Some("~/.local/share/olo/rex-link"),
+        ),
+    ] {
+        let s = thing_stands(host, shown, thing);
+        if s.there {
+            there.push(thing);
+        }
+        if s.behind && !s.busy {
+            behind.push(thing);
+        }
+        if !s.busy && matches!(s.light, Light::Down | Light::Waiting) {
+            if thing == HostThing::Helper {
+                bump_dot(&mut rex_dot, s.light);
+            } else {
+                bump_dot(&mut olo_dot, s.light);
+            }
+        }
+        let mut actions = Vec::new();
+        if thing == HostThing::Bridge {
+            actions.push(button("Permissions…", "host-bridge-permissions", HostDo::Permissions, true));
+        } else if thing == HostThing::Pool {
+            if s.behind && !s.busy && s.can.is_none() {
+                let label = if s.light == Light::Down { "Try Again" } else { "Update" };
+                let btn_id = if s.light == Light::Down { "host-pool-again" } else { "host-pool-update" };
+                actions.push(button(label, btn_id, HostDo::Change(HostThing::Pool, HostOp::Update), reached));
+            } else if let Some((op, true)) = s.can {
+                actions.push(button("Try Again", "host-pool-again", HostDo::Change(HostThing::Pool, op), reached));
+            }
+            actions.push(button("Manage…", "host-pool-open", HostDo::OpenPool, true));
+        } else {
+            if s.behind && !s.busy && !matches!(s.can, Some((_, true))) {
+                let label = if s.light == Light::Down { "Try Again" } else { "Update" };
+                let btn_id = if s.light == Light::Down { format!("host-{id}-again") } else { format!("host-{id}-update") };
+                actions.push(button(label, &btn_id, HostDo::Change(thing, HostOp::Update), reached));
+            }
+            actions.push(match s.can {
+                Some((op, true)) => button("Try Again", &format!("host-{id}-again"), HostDo::Change(thing, op), true),
+                Some((HostOp::Install, false)) => button("Install", &format!("host-{id}-install"), HostDo::Change(thing, HostOp::Install), true),
+                Some((HostOp::Update, false)) => button("Update", &format!("host-{id}-update"), HostDo::Change(thing, HostOp::Update), true),
+                Some((HostOp::Remove, false)) => button("Remove", &format!("host-{id}-remove"), HostDo::Change(thing, HostOp::Remove), true),
+                None => button(if s.there { "Remove" } else { "Install" }, &format!("host-{id}-wait"), HostDo::Check, false),
+            });
+        }
+        let (note, policy): (String, String) = if thing == HostThing::Helper && !host.helper_setting {
+            (olo_kit::words::tr("To use it, turn on Olo’s typing helper in Preferences\u{a0}▸\u{a0}Rex.").into(), String::new())
+        } else {
+            let pol = if s.behind && s.light == Light::Waiting { policy_behind } else { policy_ok };
+            (olo_kit::words::tr(note).into(), olo_kit::words::tr(pol).into())
+        };
+        let made = block(title, &s, actions, note, policy, path);
+        if thing == HostThing::Helper { rex.push(made) } else { olo.push(made) }
+    }
 
     // The host itself, at the window's head.
-    // (How its connection stands in the words' own colour, as every
-    // state here is, behind a light as large as a section's; the dot
-    // and where it is, dimmer.)
-    let connected = host.conn == HostConnState::Connected;
     let state: String = if shown.checking { olo_kit::words::tr("Checking…").into() } else { panels::host_state(&host.conn, false) };
-    // (The head's one button, named for what it does to the host as
-    // it stands: Check Again asks one that is connected what it has;
-    // one that isn't is connected to, Connect, as Hosts and Ports
-    // says; one that failed, Try Again, as a thing that failed here
-    // says. One label for all three had a note under it explaining
-    // what the button did: the sixth design review.)
     let again = match &host.conn {
         HostConnState::Connected => button("Check Again", "host-check", HostDo::Check, host.ssh && !shown.checking),
         HostConnState::Error(_) => button("Try Again", "host-check", HostDo::Connect, true),
         conn => button("Connect", "host-check", HostDo::Connect, *conn == HostConnState::Disconnected),
     };
-    let head = div()
+    let mut head_row = div()
         .w_full()
         .flex()
         .flex_row()
@@ -454,40 +632,25 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                     .child(StringView::new(state).size(style::SMALL_SIZE).height(STATE_ROW))
                     .child(div().flex_1().min_w_0().child(StringView::new(format!("·  {}", host.address)).size(style::SMALL_SIZE).dim(true).cut(true).height(STATE_ROW))),
             ),
-        )
-        .child(again);
+        );
+    // (`Update All` sits beside `Check Again` in the header — never ringed as a
+    // default button and never crowding host-lifecycle buttons in the footer.)
+    if !behind.is_empty() {
+        head_row = head_row.child(button("Update All", "host-update-all", HostDo::UpdateAll(behind.clone()), reached && !busy));
+    }
+    let head = head_row.child(again);
 
-    // Why nothing is known of it, or nothing can be done to it: a note
-    // of the host's own, under the head at the window's margin (with the
-    // line under it there too: hung from the name, they made three left
-    // edges, Opus's look), as far under the state as a section's note is
-    // under its line. What its
-    // connection said, where it failed, in a well, as the host's
-    // words always are here. (The host's name not first: most
-    // are in small letters, and a sentence that began with one read
-    // as a slip. And the note says what isn't known and what would
-    // end that, never a guess at why, nor the state over it again:
-    // "couldn't be reached" stood over a well that said the host had
-    // refused the keys.)
     let why: Option<String> = match &host.conn {
         HostConnState::Error(_) => Some(olo_kit::tr!("What’s installed on {} isn’t known until it connects.", host.name).into()),
         HostConnState::Disconnected => Some(olo_kit::tr!("What’s installed on {} isn’t known until it’s connected.", host.name).into()),
         HostConnState::Connected if !host.ssh => Some(olo_kit::tr!("Nothing can be installed on {} from here: it isn’t reached over SSH.", host.name).into()),
         _ => None,
     };
-    // (The head a step further from the first section than the
-    // sections are from each other: it has no rule under it.)
     let mut head = div().w_full().pb(px(m::TIGHT)).flex().flex_col().child(head);
-    // (What a connection that failed said comes first, right under
-    // the state, and the note under it: a failure has one shape in
-    // this window, its line, the well, then the note. The well as
-    // far under the state's words as a section's is under its line's.)
     if let HostConnState::Error(said) = &host.conn {
         let room = (((HOST_WIDTH - 2.0 * m::WINDOW_INSET - 2.0 * panels::WELL_INSET - 2.0) / letter).floor() as usize).max(20);
         let lines: Vec<String> = said.lines().filter(|l| !l.trim().is_empty()).flat_map(|line| crate::server_panel::hung(line, room)).collect();
         let lines = div().flex().flex_col().w_full().children(lines.into_iter().map(|line| StringView::new(line).mono(true).size(MONO_SIZE).wrap(true)));
-        // (Everything under the head's row at the window's margin, as the
-        // line under it is: one left edge, not three, Opus's second look.)
         head = head.child(div().h(px(WELL_OVER + 3.0)).flex_shrink_0()).child(panels::well(lines.into_element()));
         if let Some(why) = why {
             head = head.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(small(why));
@@ -496,28 +659,15 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         head = head.child(div().h(px(HEAD_NOTE_UNDER)).flex_shrink_0()).child(small(why));
     }
 
-    // What the window is for, and where the account's own window is, under
-    // the head at the window's margin, as the Account window says it the
-    // other way round (Ben, 2026-11-24: "make the account one like a button
-    // or link somewhere explaining that manage host is for host-wide
-    // management, and a link or button to open the manage your user account
-    // one"). (Not "for the whole host and every account on it": most of
-    // what is here is in the account's home there, Opus's look said. The
-    // link where its words fit, else on a line of its own.)
     {
         let on_account = on_do.clone();
-        // (A space between its parts, as between words: a wider gap read
-        // as a hole, Opus's second look.)
         let space = f32::from(style::text_width(" ", style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
         let link = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(space))
-            // (In the link's row, not a control's: a line, not a button's.)
             .child(StringView::new(olo_kit::words::tr("Your agents and repositories:").to_string()).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW))
-            // (In the size of the words it ends, as every link here is: the
-            // detail size read a size larger.)
             .child(
                 olo_kit::widgets::LinkButton::new(olo_kit::words::tr("Set Up This Host’s Account…").to_string())
                     .size(style::SMALL_SIZE)
@@ -532,83 +682,11 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                 .flex_wrap()
                 .items_center()
                 .gap(px(space))
-                // (As wide as its words, narrower and wrapped only where the
-                // line is too short: a wrapping view alone is as wide as
-                // the line, and put the link on a line of its own.)
                 .child(div().child(StringView::new(olo_kit::words::tr("Rex and Olo on this host.").to_string()).size(style::SMALL_SIZE).dim(true).wrap(true)))
                 .child(link),
         );
     }
     let mut page = vec![head.into_element()];
-
-    // The host's Rex: its server, and the helper that keeps typing quick.
-    let mut rex: Vec<Element> = vec![block(
-        "Rex server",
-        &server_stands(host),
-        // (Where its line says "Not known", there is nothing to manage.)
-        vec![button("Manage…", "host-server", HostDo::Server, managed && connected)],
-        olo_kit::words::tr("Its services, accounts and log, managed as root in their own window.").into(),
-        None,
-    )];
-    // Olo's integration there: the bridge and its commands, the pool.
-    let mut olo = Vec::new();
-
-    let mut there = Vec::new();
-    for (thing, title, id, note, path) in [
-        (HostThing::Bridge, "Bridge", "bridge", "Lets programs there use links, Passwords, SSH keys and Agent\u{a0}Screens here.", None),
-        // (The bridge's way on the host: the commands its programs
-        // already call, in a Rex session. Under the bridge's line, with
-        // no heading of its own.)
-        (HostThing::Commands, "desktop commands", "commands", "Lets xdg-open, notify-send and copy and paste commands there act here.", Some("~/.local/share/olo/rex-commands")),
-        // (What runs for the host first, the files put there after.)
-        (HostThing::Pool, "Token Pool", "pool", "Lets agents there use your accounts, even with this computer off.", None),
-        (HostThing::Skill, "Skill for agents", "skill", "Tells Claude Code and other agents there how to use the bridge and Rex.", Some("~/.claude/skills/olo-rex-bridge")),
-        (HostThing::Helper, "Typing helper", "helper", "Keeps typing quick over a slow link.", Some("~/.local/share/olo/rex-link")),
-    ] {
-        let s = thing_stands(host, shown, thing);
-        if s.there {
-            there.push(thing);
-        }
-        let mut actions = Vec::new();
-        // (What the bridge may do is set in Preferences: a step from
-        // here, and its one button, since nothing of it is installed.)
-        if thing == HostThing::Bridge {
-            actions.push(button("Permissions…", "host-bridge-permissions", HostDo::Permissions, true));
-        } else if thing == HostThing::Pool {
-            // (Installed, kept up to date and removed in the Token
-            // Pool's own Hosts window, which this opens: starting the
-            // pool where it isn't running.)
-            actions.push(button("Token Pool…", "host-pool-open", HostDo::OpenPool, true));
-        } else {
-            actions.push(match s.can {
-                Some((add, true)) => button("Try Again", &format!("host-{id}-again"), HostDo::Change(thing, add), true),
-                Some((true, false)) => button("Install", &format!("host-{id}-install"), HostDo::Change(thing, true), true),
-                Some((false, false)) => button("Remove", &format!("host-{id}-remove"), HostDo::Change(thing, false), true),
-                None => button(if s.there { "Remove" } else { "Install" }, &format!("host-{id}-wait"), HostDo::Check, false),
-            });
-        }
-        // (The skill is the account's, and has its row in the Account
-        // window: here it is still one of what Remove All… takes off.)
-        if thing == HostThing::Skill {
-            continue;
-        }
-        let note: String = if thing == HostThing::Helper && !host.helper_setting {
-            olo_kit::words::tr("To use it, turn on Olo’s typing helper in Preferences\u{a0}▸\u{a0}Rex.").into()
-        } else {
-            olo_kit::words::tr(note).into()
-        };
-        if thing == HostThing::Commands
-            && let Some(bridge) = olo.pop()
-        {
-            let words = olo_kit::words::tr(title);
-            // (Nearer the bridge's line than a section is to the next: a
-            // part of it.)
-            olo.push(div().w_full().flex().flex_col().child(bridge).child(div().h(px(4.0)).flex_shrink_0()).child(body(&s, actions, note, path, Some(words), None)).into_element());
-            continue;
-        }
-        let made = block(title, &s, actions, note, path);
-        if thing == HostThing::Helper { rex.push(made) } else { olo.push(made) }
-    }
 
     // The host's folders kept in step here (an agent's `olo sync` there),
     // a list that scrolls in the room the other tabs make (the window
@@ -812,13 +890,27 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // scrolls in it.)
     let tab = shown.tab.min(2);
     let on_tab = on_do.clone();
+    let mut files_dot: Option<Light> = None;
+    for k in &host.kept {
+        let ks = kept_stands(k);
+        if !ks.busy && matches!(ks.light, Light::Down | Light::Waiting) {
+            bump_dot(&mut files_dot, ks.light);
+        }
+    }
     let names: Vec<SharedString> = ["Rex", "Olo Integration", "Files"].into_iter().map(SharedString::from).collect();
     let page_of = |things: Vec<Element>| div().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(things).into_element();
-    page.push(TabView::new("host-tabs", names, tab).grows().on_select(move |i: &usize, cx| on_tab(&HostDo::Tab(*i), cx)).pages([page_of(rex), page_of(olo), files]).fill_page(2).into_element());
+    page.push(
+        TabView::new("host-tabs", names, tab)
+            .lights([rex_dot, olo_dot, files_dot])
+            .grows()
+            .on_select(move |i: &usize, cx| on_tab(&HostDo::Tab(*i), cx))
+            .pages([page_of(rex), page_of(olo), files])
+            .fill_page(2)
+            .into_element(),
+    );
 
     // Everything of Olo's off the host at once: the one thing here
     // that asks first, in its own place at the window's foot.
-    let busy = !shown.doing.is_empty();
     let foot = if shown.asking_all {
         div()
             .w_full()
@@ -826,22 +918,21 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             .flex_row()
             .items_center()
             .gap(px(m::SPACING))
-            // (One line, in the foot's own height: nothing moves when it
-            // is asked. What "all" is, by name, and no more: with the
-            // host's name and "The Rex server stays." after it, it was
-            // cut at the buttons. Cancel is what Return does.)
-            .child(div().flex_1().min_w_0().child(StringView::new(olo_kit::words::tr("Remove the bridge, skill and typing helper?")).cut(true)))
+            .child(div().flex_1().min_w_0().child(StringView::new(olo_kit::words::tr("Remove the desktop commands, skill and typing helper?")).cut(true)))
             .child(button("Cancel", "host-all-cancel", HostDo::AskAll(false), true).default(true))
             .child(button("Remove All", "host-all-remove", HostDo::RemoveAll(there.clone()), reached && !busy && !there.is_empty()))
     } else {
-        // (The account moved to another host, whole: the other thing done
-        // to the host as a whole, at the foot's other end.)
-        div().w_full().flex().flex_row().items_center().child(button("Remove All…", "host-all", HostDo::AskAll(true), reached && !busy && !there.is_empty())).child(div().flex_1()).child(button(
-            "Move to Another Host…",
-            "host-move",
-            HostDo::Move,
-            reached && !busy,
-        ))
+        // Footer stays host-lifecycle actions (`Remove All…` / `Move to Another Host…`)
+        // in every state; `Update All` lives beside `Check Again` in the header.
+        div()
+            .w_full()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .child(button("Remove All…", "host-all", HostDo::AskAll(true), reached && !busy && !there.is_empty()))
+            .child(div().flex_1())
+            .child(button("Move to Another Host…", "host-move", HostDo::Move, reached && !busy))
     };
     // (Under the tabs' panel, whose edge is its rule.)
     page.push(foot.into_element());
@@ -862,15 +953,22 @@ mod tests {
             conn: HostConnState::Connected,
             ssh: true,
             helper: HostHelper::None,
+            helper_current: None,
+            helper_sync_err: None,
             helper_kept_off: false,
             helper_setting: true,
             bridge: Some(false),
             granted: Vec::new(),
             agent_keys: None,
             skill: Some(false),
+            skill_current: None,
+            skill_sync_err: None,
             commands: Some(false),
+            commands_current: None,
+            commands_sync_err: None,
             pool: None,
             version: Some("0.19.2".into()),
+            server_newer: None,
             account: None,
             carried: None,
             sessions: None,
@@ -921,17 +1019,30 @@ mod tests {
         let away = HostStands { conn: HostConnState::Disconnected, granted: vec!["links", "SSH keys"], agent_keys: named(&["GitHub"]), ..h.clone() };
         assert_eq!(of(&away, &shown, HostThing::Bridge).which, None);
 
-        // The skill: asked, not there, there.
+        // The skill: asked, not there, up to date, update available, and update failed.
         h.skill = None;
         let s = of(&h, &shown, HostThing::Skill);
         assert_eq!((said(&s), s.can), ((Light::Waiting, "Asking…", None), None));
         h.skill = Some(false);
         let s = of(&h, &shown, HostThing::Skill);
-        assert_eq!((said(&s), s.can), ((Light::Off, "Not installed", None), Some((true, false))));
+        assert_eq!((said(&s), s.can), ((Light::Off, "Not installed", None), Some((HostOp::Install, false))));
+        h.skill = Some(true);
+        h.skill_current = Some(true);
+        let s = of(&h, &shown, HostThing::Skill);
+        assert_eq!((said(&s), s.there, s.behind, s.can), ((Light::On, "Up to date", None), true, false, Some((HostOp::Remove, false))));
+        h.skill_current = Some(false);
+        let s = of(&h, &shown, HostThing::Skill);
+        assert_eq!((said(&s), s.there, s.behind, s.host_said.as_deref()), ((Light::Waiting, "Update available", None), true, true, None));
+        h.skill_sync_err = Some("read-only".into());
+        let s = of(&h, &shown, HostThing::Skill);
+        assert_eq!((said(&s), s.there, s.behind, s.host_said.as_deref()), ((Light::Down, "Update failed", None), true, true, Some("read-only")));
+        h.skill = Some(false);
+        h.skill_current = None;
+        h.skill_sync_err = None;
 
         // The Token Pool, as this computer's own says: not running
         // here, none there, being installed, there and up to date,
-        // there and behind (why, in the host's words), couldn't be.
+        // there and update available, there and can't sync (Olo prose in `why`), couldn't install.
         use crate::pool::PoolStands;
         let s = of(&h, &shown, HostThing::Pool);
         assert_eq!((said(&s), s.can, s.there), ((Light::Off, "Not known", Some("Token Pool isn’t running on this computer")), None, false));
@@ -943,28 +1054,36 @@ mod tests {
         h.pool = Some(PoolStands { wanted: true, in_step: true, accounts: Some(2), ..Default::default() });
         let s = of(&h, &shown, HostThing::Pool);
         // (Never one of what Remove All… takes off: its accounts are the Token Pool's to move.)
-        assert_eq!((said(&s), s.there, s.can), ((Light::On, "Installed", Some("2 accounts, up to date")), false, None));
+        assert_eq!((said(&s), s.there, s.behind, s.can), ((Light::On, "Up to date", Some("2 accounts")), false, false, None));
+        h.pool = Some(PoolStands { wanted: true, in_step: false, accounts: Some(1), ..Default::default() });
+        let s = of(&h, &shown, HostThing::Pool);
+        assert_eq!((said(&s), s.behind, s.why.as_deref()), ((Light::Waiting, "Update available", Some("1 account")), true, None));
         h.pool = Some(PoolStands { wanted: true, error: Some("no route".into()), accounts: Some(1), ..Default::default() });
         let s = of(&h, &shown, HostThing::Pool);
-        assert_eq!((said(&s), s.host_said.as_deref()), ((Light::Waiting, "Installed", Some("1 account, behind")), Some("no route")));
+        assert_eq!((said(&s), s.behind, s.why.as_deref()), ((Light::Down, "Can’t sync", Some("1 account")), true, Some("no route")));
         h.pool = Some(PoolStands { error: Some("no room".into()), ..Default::default() });
         let s = of(&h, &shown, HostThing::Pool);
-        assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t install", None), Some("no room"), None));
+        assert_eq!((said(&s), s.why.as_deref(), s.can), ((Light::Down, "Couldn’t install", None), Some("no room"), None));
 
-        // The helper: in use, for the next connection, taken off while
+        // The helper: in use (up to date & outdated), for the next connection, taken off while
         // in use, couldn't be put there (the host's words kept), off.
         h.helper = HostHelper::Used;
+        h.helper_current = Some(true);
         let s = of(&h, &shown, HostThing::Helper);
-        assert_eq!((said(&s), s.there), ((Light::On, "Installed", Some("in use")), true));
+        assert_eq!((said(&s), s.there, s.behind), ((Light::On, "Up to date", Some("in use")), true, false));
+        h.helper_current = Some(false);
+        let s = of(&h, &shown, HostThing::Helper);
+        assert_eq!((said(&s), s.there, s.behind), ((Light::Waiting, "Update available", Some("older build in use")), true, true));
+        h.helper_current = Some(true);
         h.helper_kept_off = true;
         let s = of(&h, &shown, HostThing::Helper);
-        assert_eq!((said(&s), s.there, s.can, s.busy), ((Light::Waiting, "Not installed", Some("this connection still uses it")), false, Some((true, false)), false));
+        assert_eq!((said(&s), s.there, s.can, s.busy), ((Light::Waiting, "Not installed", Some("this connection still uses it")), false, Some((HostOp::Install, false)), false));
         h.helper_kept_off = false;
         h.helper = HostHelper::Ready;
-        assert_eq!(said(&of(&h, &shown, HostThing::Helper)), (Light::On, "Installed", Some("used the next time you connect")));
+        assert_eq!(said(&of(&h, &shown, HostThing::Helper)), (Light::On, "Up to date", Some("used the next time you connect")));
         h.helper = HostHelper::Without("no room".into());
         let s = of(&h, &shown, HostThing::Helper);
-        assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t install", None), Some("no room"), Some((true, true))));
+        assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t install", None), Some("no room"), Some((HostOp::Install, true))));
         h.helper = HostHelper::None;
         h.helper_setting = false;
         let s = of(&h, &shown, HostThing::Helper);
@@ -972,12 +1091,12 @@ mod tests {
 
         // What couldn't be done: the red light, the host's words, and
         // the same again to try; while it is tried, that it is.
-        shown.failed.push((HostThing::Skill, false, "rm: busy".into()));
+        shown.failed.push((HostThing::Skill, HostOp::Remove, "rm: busy".into()));
         let s = of(&h, &shown, HostThing::Skill);
-        assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t remove", None), Some("rm: busy"), Some((false, true))));
-        shown.doing.push((HostThing::Skill, false));
+        assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t remove", None), Some("rm: busy"), Some((HostOp::Remove, true))));
+        shown.doing.push((HostThing::Skill, HostOp::Update));
         let s = of(&h, &shown, HostThing::Skill);
-        assert_eq!((said(&s), s.can, s.busy), ((Light::Waiting, "Being removed…", None), None, true));
+        assert_eq!((said(&s), s.can, s.busy), ((Light::Waiting, "Being updated…", None), None, true));
 
         // A host that isn't connected: nothing is known, nothing to press.
         h.conn = HostConnState::Disconnected;
@@ -988,6 +1107,8 @@ mod tests {
         assert_eq!(said(&server_stands(&h)), (Light::Off, "Not known", None));
         h.conn = HostConnState::Connected;
         assert_eq!(said(&server_stands(&h)), (Light::On, "Running", Some("0.19.2")));
+        h.server_newer = Some("0.19.5".into());
+        assert_eq!(said(&server_stands(&h)), (Light::Waiting, "Update available", Some("0.19.2 → 0.19.5  ·  running")));
 
         // Kept folders: direction summaries and conflict amber state.
         use crate::hub::{Kept, KeptState};

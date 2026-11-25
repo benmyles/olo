@@ -486,8 +486,9 @@ impl WindowCore {
             // shows: made again when that changes here.)
             let motion = |i: &Option<Box<crate::element::Interactivity>>| i.as_ref().map(|i| (i.motion(), i.all_motion));
             let motion_changed = motion(&node.inter) != motion(&inter);
+            let watches_changed = node.inter.as_ref().map(|i| i.watches.as_slice()).unwrap_or(&[]) != inter.as_ref().map(|i| i.watches.as_slice()).unwrap_or(&[]);
             node.inter = inter;
-            if motion_changed {
+            if motion_changed || watches_changed {
                 self.reshaped();
             }
             if heard != hears {

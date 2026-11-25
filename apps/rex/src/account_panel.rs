@@ -256,7 +256,10 @@ pub fn row(host: &HostStands, shown: &Shown, item: Item) -> Row {
         // (Not known, of a host that isn't connected: a dash, and no
         // button. Six greyed Installs said nothing was there.)
         (_, None) => plain(Lamp::Light(Light::Off), "—", None),
-        (Item::Skill, Some(true)) => plain(Lamp::Light(Light::On), "Installed", Some(("Remove", Press::RemoveSkill, can))),
+        (Item::Skill, Some(true)) if host.skill_current == Some(false) => {
+            Row { host_said: host.skill_sync_err.clone(), ..plain(Lamp::Light(Light::Waiting), "Update available", Some(("Update", Press::Run, can))) }
+        }
+        (Item::Skill, Some(true)) => plain(Lamp::Light(Light::On), "Up to date", Some(("Remove", Press::RemoveSkill, can))),
         (Item::Carry, Some(true)) => {
             let rem = host.carried.map_or(0, |s| s.remembered_total);
             if rem > 0 {
@@ -409,7 +412,7 @@ pub fn render_account_panel(host: &HostStands, shown: &Shown, on_do: impl Fn(&Ac
     // (Its count's button measured as it says itself, in the person's
     // language: "Set Up 9" was measured in English, which no catalog had.)
     let set_up = olo_kit::tr!("Set Up {}", 9).to_string();
-    let wide = ["All Set", "Stop", "Install", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Review…", "Use Mine", set_up.as_str()]
+    let wide = ["All Set", "Stop", "Install", "Update", "Remove", "Try Again", "Check Again", "Connect", "Add", "Set", "Copy", "Choose…", "Review…", "Use Mine", set_up.as_str()]
         .iter()
         .map(|l| button_width(l, false))
         .fold(m::BUTTON_MIN_WIDTH, f32::max);
@@ -648,15 +651,22 @@ mod tests {
             conn,
             ssh: true,
             helper: crate::hub::HostHelper::None,
+            helper_current: None,
+            helper_sync_err: None,
             helper_kept_off: false,
             helper_setting: true,
             bridge: None,
             granted: Vec::new(),
             agent_keys: None,
             skill,
+            skill_current: skill.filter(|&s| s).map(|_| true),
+            skill_sync_err: None,
             commands: None,
+            commands_current: None,
+            commands_sync_err: None,
             pool: None,
             version: None,
+            server_newer: None,
             account,
             // (The settings carried: as here, but where a test says.)
             carried: Some(olo_rex_client::carry::Summary { same_files: 3, ..Default::default() }),
@@ -780,10 +790,15 @@ mod tests {
         assert_eq!((row(&bare, &shown, CLAUDE).said, row(&bare, &shown, CLAUDE).button), ("Needs curl there".into(), Some(("Install", Press::Run, false))));
         assert_eq!(row(&bare, &shown, GIT).said, "Needs git there");
         assert_eq!(left(&bare, &shown), [PATH]);
-        // (The skill that is there can be taken off: the one thing here that is.)
+        // (The skill that is there can be taken off when up to date, or updated when behind.)
         assert_eq!(
             row(&bare, &shown, Item::Skill),
-            Row { lamp: Lamp::Light(Light::On), said: "Installed".into(), host_said: None, note: None, button: Some(("Remove", Press::RemoveSkill, true)), bar: None }
+            Row { lamp: Lamp::Light(Light::On), said: "Up to date".into(), host_said: None, note: None, button: Some(("Remove", Press::RemoveSkill, true)), bar: None }
+        );
+        let stale_skill = HostStands { skill_current: Some(false), ..bare.clone() };
+        assert_eq!(
+            row(&stale_skill, &shown, Item::Skill),
+            Row { lamp: Lamp::Light(Light::Waiting), said: "Update available".into(), host_said: None, note: None, button: Some(("Update", Press::Run, true)), bar: None }
         );
         let fresh = HostStands {
             carried: Some(olo_rex_client::carry::Summary { to_copy_files: 5, new_items: 5, ..Default::default() }),

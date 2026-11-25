@@ -17,8 +17,11 @@ pub const LABEL: &str = "Open in Tracker";
 pub const COMMAND: &str = "open-in-tracker";
 /// URI prefix for a path on a Rex host.
 pub const REX_SCHEME: &str = "rex://";
+/// Reserved host name addressing files on this Olo desktop (`rex://local/…`).
+pub const LOCAL_HOST: &str = "local";
 
-/// A canonical path on a Rex host (`rex://HOST/PATH`).
+/// A canonical path on a Rex host (`rex://HOST/PATH`), or on this desktop
+/// when `host` is [`LOCAL_HOST`] (`rex://local/PATH`).
 ///
 /// `host` is the host's label (or id) as Rex knows it; `path` is either `"~"` /
 /// `"~/..."` (resolved against the host account's `$HOME`) or an absolute path
@@ -31,7 +34,8 @@ pub struct RexPath {
 
 impl RexPath {
     /// Parse a `rex://HOST/PATH` URI. Accepts `rex://HOST` (as `/`),
-    /// `rex://HOST/~/sub` (keeps `~/sub`), and percent-encoded host labels.
+    /// `rex://HOST/~/sub` (keeps `~/sub`), percent-encoded host labels, and
+    /// percent-encoded path characters (e.g. `%20` for spaces).
     pub fn parse(raw: &str) -> Option<Self> {
         let rest = raw.trim().strip_prefix(REX_SCHEME)?;
         if rest.is_empty() {
@@ -45,8 +49,34 @@ impl RexPath {
         if host.is_empty() {
             return None;
         }
-        let path = normalize_remote_path(tail);
+        let decoded_tail = percent_decode(tail);
+        let path = normalize_remote_path(&decoded_tail);
         Some(Self { host, path })
+    }
+
+    /// Construct a `rex://local/…` URI for an absolute local path on this desktop.
+    pub fn local(path: &Path) -> Self {
+        Self::new(LOCAL_HOST, path.to_string_lossy().as_ref())
+    }
+
+    /// True if this URI refers to this local desktop (`rex://local/…`).
+    pub fn is_local(&self) -> bool {
+        self.host.eq_ignore_ascii_case(LOCAL_HOST)
+    }
+
+    /// Resolve a `rex://local/…` URI to its local filesystem path on this desktop.
+    pub fn local_path(&self) -> Option<PathBuf> {
+        if !self.is_local() {
+            return None;
+        }
+        if self.path == "~" {
+            return Some(std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")));
+        }
+        if let Some(rest) = self.path.strip_prefix("~/") {
+            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+            return Some(home.join(rest));
+        }
+        Some(PathBuf::from(&self.path))
     }
 
     /// Parse a `Path` if it holds a `rex://HOST/PATH` URI.
@@ -74,10 +104,12 @@ impl RexPath {
         Self { host: host.into(), path: norm }
     }
 
-    /// Format as canonical `rex://HOST/PATH`.
+    /// Format as canonical `rex://HOST/PATH` (percent-encoding spaces and
+    /// URI-breaking characters in `path` so the URI stays a single clickable token).
     pub fn to_uri(&self) -> String {
         let host = percent_encode_host(&self.host);
-        if self.path.starts_with('/') { format!("{REX_SCHEME}{host}{}", self.path) } else { format!("{REX_SCHEME}{host}/{}", self.path) }
+        let path = percent_encode_path(&self.path);
+        if path.starts_with('/') { format!("{REX_SCHEME}{host}{path}") } else { format!("{REX_SCHEME}{host}/{path}") }
     }
 
     /// Store in a `PathBuf` (used throughout Tracker's windows, history and
@@ -173,6 +205,18 @@ fn percent_encode_host(host: &str) -> String {
     out
 }
 
+fn percent_encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for b in path.bytes() {
+        if b <= 0x20 || matches!(b, b'%' | b'#' | b'?' | b'"' | b'<' | b'>' | b'`' | b'[' | b']' | b'{' | b'}' | b'\\') {
+            out.push_str(&format!("%{b:02X}"));
+        } else {
+            out.push(b as char);
+        }
+    }
+    out
+}
+
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -253,5 +297,17 @@ mod tests {
         assert_eq!(home.path, "~/work");
         assert_eq!(home.to_uri(), "rex://my%20server/~/work");
         assert_eq!(RexPath::parse(&home.to_uri()), Some(home));
+
+        // Arbitrary non-home remote paths (e.g. /var/tmp) and local desktop URIs (with spaces).
+        let var_tmp = RexPath::new("dev-box", "/var/tmp/olo-qa-rex-tr");
+        assert_eq!(var_tmp.to_uri(), "rex://dev-box/var/tmp/olo-qa-rex-tr");
+        assert!(!var_tmp.is_local());
+        assert_eq!(var_tmp.local_path(), None);
+
+        let local = RexPath::local(Path::new("/home/alice/Pictures/my shot 1.png"));
+        assert!(local.is_local());
+        assert_eq!(local.to_uri(), "rex://local/home/alice/Pictures/my%20shot%201.png");
+        let parsed_local = RexPath::parse(&local.to_uri()).unwrap();
+        assert_eq!(parsed_local.local_path(), Some(PathBuf::from("/home/alice/Pictures/my shot 1.png")));
     }
 }

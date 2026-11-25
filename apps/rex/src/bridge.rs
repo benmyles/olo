@@ -471,12 +471,173 @@ pub async fn handle_bridge_request(
                 Err(e) => BridgeResponse::err(format!("failed to invoke olo-screen: {e}")),
             }
         }
+        "get" => handle_get_local_file(host_label, policy, &req.args).await,
+        "ls" => handle_ls_local_dir(host_label, policy, &req.args).await,
         "notify" => {
             notify(&req);
             BridgeResponse { ok: true, stdout: None, stderr: None, data: None, carried: Vec::new() }
         }
         other => BridgeResponse::err(format!("unknown Olo Bridge command '{other}'")),
     }
+}
+
+/// Resolve a desktop path given by a remote agent (`rex://local/…`, `file://…`,
+/// `~/…`, or `/…`) into an absolute local [`PathBuf`] on this desktop.
+pub fn resolve_desktop_path(raw: &str) -> Result<PathBuf, String> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err("missing desktop path or `rex://local/…` URI".into());
+    }
+    if t.starts_with(olo_kit_base::tracker::REX_SCHEME) {
+        let rp = olo_kit_base::tracker::RexPath::parse(t).ok_or_else(|| format!("invalid rex:// URI: {t}"))?;
+        return rp.local_path().ok_or_else(|| format!("`{t}` is on host `{}` — `olo get` / `olo ls` access files on this desktop (`rex://local/…`)", rp.host));
+    }
+    if let Some(rest) = t.strip_prefix("file://") {
+        let path_part = rest.strip_prefix("localhost").unwrap_or(rest);
+        if path_part.starts_with('/') {
+            let decoded = olo_kit_base::tracker::RexPath::parse(&format!("rex://local{path_part}")).and_then(|r| r.local_path());
+            return decoded.ok_or_else(|| format!("invalid file:// URI: {t}"));
+        }
+        return Err(format!("invalid file:// URI: {t}"));
+    }
+    if t == "~" {
+        return Ok(std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")));
+    }
+    if let Some(rest) = t.strip_prefix("~/") {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+        return Ok(home.join(rest));
+    }
+    if t.starts_with('/') {
+        return Ok(PathBuf::from(t));
+    }
+    Err(format!("expected a `rex://local/…` URI or absolute path on the desktop, got `{t}`"))
+}
+
+async fn handle_get_local_file(host_label: &str, policy: &HostBridgePolicy, args: &[String]) -> BridgeResponse {
+    if !policy.allow_send_files {
+        return BridgeResponse::err(format!("Olo Bridge: file access is disabled for host '{host_label}' (Preferences ▸ Rex: Send files to Downloads on this computer)"));
+    }
+    let mut as_json = false;
+    let mut dest: Option<String> = None;
+    let mut positionals: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => as_json = true,
+            "-o" | "--out" | "--output" => {
+                if let Some(v) = args.get(i + 1) {
+                    dest = Some(v.clone());
+                    i += 1;
+                }
+            }
+            a if a.starts_with("--out=") => dest = Some(a["--out=".len()..].to_owned()),
+            a if a.starts_with("--output=") => dest = Some(a["--output=".len()..].to_owned()),
+            a if a.starts_with('-') => {}
+            a => positionals.push(a),
+        }
+        i += 1;
+    }
+    let Some(raw_target) = positionals.first().copied() else {
+        return BridgeResponse::err("usage: olo get rex://local/PATH [DEST] [--json]");
+    };
+    if dest.is_none()
+        && let Some(d) = positionals.get(1)
+    {
+        dest = Some((*d).to_owned());
+    }
+    let path = match resolve_desktop_path(raw_target) {
+        Ok(p) => p,
+        Err(e) => return BridgeResponse::err(format!("olo get: {e}")),
+    };
+    let meta = match tokio::fs::metadata(&path).await {
+        Ok(m) => m,
+        Err(e) => return BridgeResponse::err(format!("olo get: {}: {e}", path.display())),
+    };
+    if meta.is_dir() {
+        let mut resp = list_desktop_dir(&path, false, as_json).await;
+        if resp.ok && !as_json {
+            let uri = olo_kit_base::tracker::RexPath::local(&path).to_uri();
+            let note = format!("\n(Directory on desktop: run `olo get {uri}/<name>` to fetch a file, or `olo ls {uri}` to list.)\n");
+            resp.stdout.get_or_insert_default().push_str(&note);
+        }
+        return resp;
+    }
+    if !meta.is_file() {
+        return BridgeResponse::err(format!("olo get: {} is not a regular file", path.display()));
+    }
+    if meta.len() > FILE_MOST {
+        return BridgeResponse::err(format!("olo get: {} is {} bytes (exceeds the {} MiB bridge limit; use `olo sync --to-host` for large files)", path.display(), meta.len(), FILE_MOST >> 20));
+    }
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(b) => b,
+        Err(e) => return BridgeResponse::err(format!("olo get: couldn't read {}: {e}", path.display())),
+    };
+    let abs = path.to_string_lossy().into_owned();
+    let size = bytes.len();
+    let stdout = if as_json { format!("{}\n", json!({ "ok": true, "kind": "file", "path": abs, "size": size })) } else { format!("{abs}\n") };
+    BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(json!({ "kind": "file", "size": size })), carried: vec![Carried { path: abs, to: dest, stdout: false, bytes }] }
+}
+
+async fn handle_ls_local_dir(host_label: &str, policy: &HostBridgePolicy, args: &[String]) -> BridgeResponse {
+    if !policy.allow_send_files {
+        return BridgeResponse::err(format!("Olo Bridge: file access is disabled for host '{host_label}' (Preferences ▸ Rex: Send files to Downloads on this computer)"));
+    }
+    let mut as_json = false;
+    let mut show_all = false;
+    let mut raw_target: Option<&str> = None;
+    for a in args {
+        match a.as_str() {
+            "--json" => as_json = true,
+            "-a" | "--all" => show_all = true,
+            s if s.starts_with('-') => {}
+            s if raw_target.is_none() => raw_target = Some(s),
+            _ => {}
+        }
+    }
+    let path = match resolve_desktop_path(raw_target.unwrap_or("~")) {
+        Ok(p) => p,
+        Err(e) => return BridgeResponse::err(format!("olo ls: {e}")),
+    };
+    list_desktop_dir(&path, show_all, as_json).await
+}
+
+async fn list_desktop_dir(path: &Path, show_all: bool, as_json: bool) -> BridgeResponse {
+    let mut rd = match tokio::fs::read_dir(path).await {
+        Ok(r) => r,
+        Err(e) => return BridgeResponse::err(format!("olo ls: {}: {e}", path.display())),
+    };
+    let mut rows: Vec<(bool, String, u64, String)> = Vec::new();
+    while let Ok(Some(ent)) = rd.next_entry().await {
+        let name = ent.file_name().to_string_lossy().into_owned();
+        if !show_all && name.starts_with('.') {
+            continue;
+        }
+        let full = ent.path();
+        let meta = tokio::fs::metadata(&full).await.ok();
+        let is_dir = meta.as_ref().is_some_and(|m| m.is_dir());
+        let size = if is_dir { 0 } else { meta.as_ref().map_or(0, |m| m.len()) };
+        let uri = olo_kit_base::tracker::RexPath::local(&full).to_uri();
+        rows.push((is_dir, name, size, uri));
+        if rows.len() >= 500 {
+            break;
+        }
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    if as_json {
+        let items: Vec<Value> = rows.iter().map(|(is_dir, name, size, uri)| json!({ "name": name, "kind": if *is_dir { "dir" } else { "file" }, "size": size, "uri": uri })).collect();
+        let dir_uri = olo_kit_base::tracker::RexPath::local(path).to_uri();
+        let out = format!("{}\n", json!({ "ok": true, "kind": "dir", "uri": dir_uri, "entries": items }));
+        return BridgeResponse { ok: true, stdout: Some(out), stderr: None, data: Some(json!({ "kind": "dir", "count": rows.len() })), carried: Vec::new() };
+    }
+    let mut out = String::new();
+    for (is_dir, _name, size, uri) in &rows {
+        if *is_dir {
+            out.push_str(&format!("d  {:>10}  {uri}/\n", "-"));
+        } else {
+            out.push_str(&format!("-  {:>10}  {uri}\n", size));
+        }
+    }
+    BridgeResponse { ok: true, stdout: Some(out), stderr: None, data: Some(json!({ "kind": "dir", "count": rows.len() })), carried: Vec::new() }
 }
 
 /// An `olo-screen look NAME [PATH]` from a host: its arguments without
@@ -1089,6 +1250,41 @@ mod commands_tests {
         assert_eq!(run("olo-screen run qa olo-chrome https://example.com", true, 0, None).2, "screen|run|qa|olo-chrome|https://example.com|\n");
         assert_eq!(run("olo-screen tree qa", true, 69, None).2, "screen|tree|qa|\nown olo-screen: tree|qa|\n");
         assert_eq!(run("olo-screen tree qa", false, 0, None).2, "own olo-screen: tree|qa|\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn olo_get_and_ls_access_local_desktop_files_via_rex_local_uri() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-bridge-get-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let file = dir.join("my shot.txt");
+        std::fs::write(&file, b"hello desktop").unwrap();
+
+        let uri = olo_kit_base::tracker::RexPath::local(&file).to_uri();
+        assert!(uri.starts_with("rex://local/var/tmp/"));
+        assert!(uri.contains("my%20shot.txt"));
+        assert_eq!(resolve_desktop_path(&uri).unwrap(), file);
+        assert!(resolve_desktop_path("rex://other-host/tmp/a").is_err());
+
+        let denied = HostBridgePolicy::default();
+        let r_deny = handle_get_local_file("dev-box", &denied, &[uri.clone()]).await;
+        assert!(!r_deny.ok);
+
+        let allow = HostBridgePolicy { allow_send_files: true, ..Default::default() };
+        let r_get = handle_get_local_file("dev-box", &allow, &[uri.clone(), "/tmp/dest.txt".into()]).await;
+        assert!(r_get.ok, "{:?}", r_get.stderr);
+        assert_eq!(r_get.carried.len(), 1);
+        assert_eq!(r_get.carried[0].bytes, b"hello desktop");
+        assert_eq!(r_get.carried[0].to.as_deref(), Some("/tmp/dest.txt"));
+
+        let dir_uri = olo_kit_base::tracker::RexPath::local(&dir).to_uri();
+        let r_ls = handle_ls_local_dir("dev-box", &allow, &[dir_uri.clone(), "--json".into()]).await;
+        assert!(r_ls.ok, "{:?}", r_ls.stderr);
+        let ls_out = r_ls.stdout.unwrap_or_default();
+        assert!(ls_out.contains("my shot.txt"));
+        assert!(ls_out.contains("sub"));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

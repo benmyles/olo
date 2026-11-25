@@ -684,6 +684,14 @@ fn open_server(hub: &Arc<RexHub>, key: &str) {
     open_or_raise_panel(WinRole::Server);
 }
 
+/// Opens the Server window on the host `key` and jumps straight to the
+/// Rex server Update confirmation once checked.
+fn open_server_for_update(hub: &Arc<RexHub>, key: &str) {
+    let Some((name, target)) = managed_host(hub, key) else { return };
+    crate::server::open_for_update(hub, name, target);
+    open_or_raise_panel(WinRole::Server);
+}
+
 fn broadcast_to_role(role: WinRole, make: impl Fn() -> WinMsg) {
     let handles: Vec<WindowHandle<RexWindow>> = wins().map.values().filter(|s| s.role == role).map(|s| s.handle.clone()).collect();
     for h in handles {
@@ -896,6 +904,10 @@ pub enum WinMsg {
     StopTransfer,
     QrReady(String, Option<Arc<qrcode::QrCode>>),
     OpenPreview(BlockKey, String),
+    /// Cmd+click a file or folder path in a terminal: open/reveal in Olo Tracker.
+    RevealInTracker(BlockKey, String),
+    /// Dismiss the current status-bar error banner (`×` button).
+    DismissFeedback,
     SetClipboard(String),
     PasteText(BlockKey, olo_rex_client::ControlClient, String),
     /// A picture pasted (its type and bytes): to the pane's host, its path typed.
@@ -1084,7 +1096,7 @@ pub struct RexWindow {
     qr: Option<Arc<qrcode::QrCode>>,
     preview_job: Option<tokio::task::AbortHandle>,
     feedback_serial: u64,
-    problem: Option<(String, Option<Child<widgets::TextView>>)>,
+    problem: Option<(String, Option<(Child<widgets::TextView>, usize)>)>,
     notice: olo_kit::due::Notice,
     due: olo_kit::due::Due,
     pub side_pane: SidePane,
@@ -1092,6 +1104,7 @@ pub struct RexWindow {
     run_scroll: olo_kit::ScrollHandle,
     transcript_scroll: olo_kit::ScrollHandle,
     tmux_scroll: olo_kit::ScrollHandle,
+    last_transcript_ptr: usize,
     last_transcript_gen: u64,
     tmux_visual: Rc<crate::terminal_pane::PaneVisualState>,
     activity_search_field: Option<Child<TextField>>,
@@ -1197,17 +1210,42 @@ impl RexWindow {
     fn feedback_line(&mut self, cx: &mut olo_kit::Cx<Self>) -> Option<Element> {
         self.due.at(self.notice.until(), cx, |_, cx| cx.invalidate());
         if let Some((title, detail)) = &self.problem {
+            let p = theme::palette();
             let scale = cx.scale_factor();
             let frame = 4.0 * style::line_pixels(scale) / scale;
-            return Some(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::TIGHT))
-                    .w_full()
-                    .child(StringView::new(title.clone()).color(style::c(theme::palette().failure)).wrap(true))
-                    .children(detail.as_ref().map(|view| div().w_full().h(px(widgets::TextView::line_height() + 2.0 * widgets::TextView::MARGINS.1 + frame)).child(view))),
-            );
+            let mono_size = style::SMALL_SIZE - 1.0;
+            // (Darken light-mode failure red enough to clear 4.5:1 on the panel
+            // and keep dark mode crisp: Opus & Gemini reviews, 2026-11-25.)
+            let err_red = style::c(olo_theme::readable(p.failure, p.panel_background, 4.8));
+            let row_h = style::line_row(style::PLAIN_SIZE);
+            let alert_icon = canvas(move |g, b| {
+                let cap_mid = b.top() + px(style::paragraph_caps_middle(style::PLAIN_SIZE));
+                let icon_b = style::snap_centred(g, point(b.left() + px(8.0), cap_mid), 16.0, 16.0);
+                icons::paint(g, icon_b, "stop");
+            })
+            .paint_key(911)
+            .w(px(16.0))
+            .h(px(row_h))
+            .flex_shrink_0();
+            let dismiss = GlyphButton::new("Dismiss Error", Glyph::Close).id("rex-dismiss-problem").on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::DismissFeedback));
+            let header = div()
+                .w_full()
+                .flex()
+                .flex_row()
+                .items_start()
+                .gap(px(m::TIGHT))
+                .child(div().flex_1().min_w_0().child(StringView::new(title.clone()).bold(true).color(err_red).wrap(true)))
+                .child(div().flex_shrink_0().mt(px(-1.0)).child(dismiss));
+            let col = div().flex_1().min_w_0().flex().flex_col().gap(px(8.0)).child(header).children(detail.as_ref().map(|(view, lines)| {
+                // Hug the detail text width (capped to the banner width) so a short
+                // one-line error doesn't stretch into a 1000 pt empty text-field trough.
+                let text = view.read(cx).text().to_owned();
+                let mono = style::mono_font(FontWeight::NORMAL);
+                let max_line_w = text.lines().map(|l| f32::from(style::text_width(l.to_owned(), mono_size, mono.clone()))).fold(0.0_f32, f32::max);
+                let hug_w = (max_line_w + 2.0 * widgets::TextView::MARGINS.0 + frame + 10.0).ceil().max(160.0);
+                div().w_full().max_w(px(hug_w)).h(px((*lines as f32) * widgets::TextView::line_height_at(mono_size) + 2.0 * widgets::TextView::MARGINS.1 + frame)).child(view)
+            }));
+            return Some(div().w_full().flex().flex_row().items_start().gap(px(m::TIGHT)).child(alert_icon).child(col));
         }
         self.notice.text().map(|s| div().child(StringView::new(s.clone()).size(style::SMALL_SIZE).height(m::LABEL_ROW)))
     }
@@ -1266,12 +1304,15 @@ impl RexWindow {
         // reviews the windows an app shows; shown none of these, it
         // passed a row of buttons in Hosts and Ports that was wider
         // than its window, 2026-11-23.)
-        if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1")
-            && restored.is_none()
-            && let Ok(open) = std::env::var("OLO_REX_DEMO_OPEN")
-        {
-            for command in open.split(',').map(str::trim).filter(|c| !c.is_empty()) {
-                cx.send(WinMsg::Command(command.to_owned()));
+        if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") && restored.is_none() {
+            if let Ok(open) = std::env::var("OLO_REX_DEMO_OPEN") {
+                for command in open.split(',').map(str::trim).filter(|c| !c.is_empty()) {
+                    cx.send(WinMsg::Command(command.to_owned()));
+                }
+            }
+            if std::env::var("OLO_REX_DEMO_ERROR").ok().as_deref() == Some("1") {
+                cx.send(WinMsg::StartFeedback(999));
+                cx.send(WinMsg::Problem(999, "Couldn’t open a session on dev-box.".into(), Some("ssh: connect to host dev-box port 22: Connection timed out".into())));
             }
         }
 
@@ -1288,6 +1329,7 @@ impl RexWindow {
             run_scroll: olo_kit::ScrollHandle::new(),
             transcript_scroll: olo_kit::ScrollHandle::new(),
             tmux_scroll: olo_kit::ScrollHandle::new(),
+            last_transcript_ptr: 0,
             last_transcript_gen: 0,
             tmux_visual: Rc::new(crate::terminal_pane::PaneVisualState::default()),
             activity_search_field: Some(activity_search_field),
@@ -1521,6 +1563,7 @@ impl RexWindow {
             run_scroll: olo_kit::ScrollHandle::new(),
             transcript_scroll: olo_kit::ScrollHandle::new(),
             tmux_scroll: olo_kit::ScrollHandle::new(),
+            last_transcript_ptr: 0,
             last_transcript_gen: 0,
             tmux_visual: Rc::new(crate::terminal_pane::PaneVisualState::default()),
             activity_search_field: None,
@@ -2176,16 +2219,23 @@ impl RexWindow {
                     crate::account::run(&hub, &items);
                 }
             }
-            // (One of Olo's things put on a host or taken off, for
-            // agents: `host.put:KEY:helper|bridge|skill`, `host.take:…`.
-            // In the Host window, where it shows.)
-            c if c.starts_with("host.put:") || c.starts_with("host.take:") => {
-                let add = c.starts_with("host.put:");
+            // (One of Olo's things put on a host, updated, or taken off, for
+            // agents: `host.put:KEY:helper|skill|commands|pool`, `host.update:…`,
+            // `host.take:…`, `host.update-all:KEY`. In the Host window, where it shows.)
+            c if c.starts_with("host.put:") || c.starts_with("host.update:") || c.starts_with("host.take:") => {
+                let op = if c.starts_with("host.put:") {
+                    crate::hub::HostOp::Install
+                } else if c.starts_with("host.update:") {
+                    crate::hub::HostOp::Update
+                } else {
+                    crate::hub::HostOp::Remove
+                };
                 let rest = c.split_once(':').map_or("", |(_, rest)| rest);
                 let thing = rest.rsplit_once(':').and_then(|(key, thing)| {
                     let thing = match thing {
                         "helper" => crate::hub::HostThing::Helper,
                         "skill" => crate::hub::HostThing::Skill,
+                        "commands" => crate::hub::HostThing::Commands,
                         "pool" => crate::hub::HostThing::Pool,
                         _ => return None,
                     };
@@ -2194,7 +2244,25 @@ impl RexWindow {
                 if let Some((key, thing)) = thing {
                     open_host(&hub, &key);
                     if crate::host::current().is_some_and(|shown| shown.key == key) {
-                        crate::host::change(&hub, thing, add);
+                        crate::host::change(&hub, thing, op);
+                    }
+                }
+            }
+            c if c.starts_with("host.update-all:") => {
+                let key = c.trim_start_matches("host.update-all:");
+                open_host(&hub, key);
+                if let Some(shown) = crate::host::current().filter(|shown| shown.key == key)
+                    && let Some(stands) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(key)
+                {
+                    let behind: Vec<crate::hub::HostThing> = [crate::hub::HostThing::Helper, crate::hub::HostThing::Commands, crate::hub::HostThing::Skill, crate::hub::HostThing::Pool]
+                        .into_iter()
+                        .filter(|&t| {
+                            let s = crate::host_panel::thing_stands(&stands, &shown, t);
+                            s.behind && !s.busy
+                        })
+                        .collect();
+                    if !behind.is_empty() {
+                        crate::host::update_all(&hub, &behind);
                     }
                 }
             }
@@ -2352,15 +2420,18 @@ impl RexWindow {
                         to.send(WinMsg::PasteText(bk, connection, text));
                         return;
                     }
-                    // No text: a picture, put on the pane's host as a
-                    // file of its own and its path typed, as a file
-                    // dropped on the pane is (Claude Code and Codex take
-                    // a pasted picture's path as the picture: an agent
-                    // there can't read this computer's clipboard). Ben,
-                    // 2026-11-24: "make it so that copy and paste of
-                    // images works properly in a rex session".
-                    olo_kit::clipboard::paste_as(vec!["image/png".into(), "image/".into()], move |got| {
+                    // No text: check for copied file URIs (`text/uri-list`, etc.)
+                    // or a pasted picture (put on the pane's host as a file of its
+                    // own and its path typed).
+                    olo_kit::clipboard::paste_as(vec!["x-special/gnome-copied-files".into(), "text/uri-list".into(), "image/png".into(), "image/".into()], move |got| {
                         if let Some((mime, bytes)) = got {
+                            if let Some((paths, _)) = olo_kit_base::clipboard::copied_files(&mime, &bytes) {
+                                let joined = paths.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>().join(" ");
+                                if !joined.is_empty() {
+                                    to.send(WinMsg::PasteText(bk, connection, joined));
+                                    return;
+                                }
+                            }
                             to.send(WinMsg::PasteImage(bk, mime, bytes));
                         }
                     });
@@ -2431,6 +2502,39 @@ impl RexWindow {
                 cx.invalidate();
             }
             "terminal.scroll_page_up" | "terminal.scroll_page_down" | "terminal.scroll_top" | "terminal.scroll_bottom" | "terminal.prompt_prev" | "terminal.prompt_next" => {
+                if let Some(tr) = crate::activity_watch::active_transcript() {
+                    let max_y = f32::from(self.transcript_scroll.max_offset().height);
+                    let page = (f32::from(self.transcript_scroll.bounds().size.height) * 0.85).max(120.0);
+                    match action {
+                        "terminal.scroll_page_up" => {
+                            if max_y > 0.5 {
+                                self.transcript_scroll.scroll_by(cx, point(px(0.0), px(page)));
+                            }
+                        }
+                        "terminal.scroll_page_down" => {
+                            if max_y > 0.5 {
+                                self.transcript_scroll.scroll_by(cx, point(px(0.0), px(-page)));
+                            }
+                        }
+                        "terminal.scroll_top" => {
+                            if max_y > 0.5 {
+                                self.transcript_scroll.set_offset(cx, point(px(0.0), px(0.0)));
+                            }
+                        }
+                        "terminal.scroll_bottom" => {
+                            {
+                                let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+                                g.follow = true;
+                                g.paused_unseen = 0;
+                                g.generation += 1;
+                            }
+                            self.transcript_scroll.scroll_to_bottom(cx);
+                        }
+                        _ => {}
+                    }
+                    cx.invalidate();
+                    return;
+                }
                 if let Some(bk) = self.focused_block_key()
                     && let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned()
                 {
@@ -2608,7 +2712,7 @@ impl RexWindow {
                     let over_ssh = far_host(&hub, &bk.host_key) && hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_stands(&bk.host_key).is_some_and(|h| h.ssh);
                     if over_ssh {
                         open_host(&hub, &bk.host_key);
-                        crate::host::change(&hub, crate::hub::HostThing::Skill, true);
+                        crate::host::change(&hub, crate::hub::HostThing::Skill, crate::hub::HostOp::Install);
                     } else {
                         hub.install_remote_skill_in_pane(&bk);
                     }
@@ -2802,11 +2906,52 @@ impl RexWindow {
         }
 
         // While a read-only transcript or read-only tmux subagent view is open,
-        // never leak keyboard input to the hidden parent terminal; Escape closes it.
+        // never leak keyboard input to the hidden parent terminal; Escape closes it
+        // and standard navigation keys scroll the transcript directly.
         if crate::activity_watch::active_view_target().is_some() {
             if k.key == "escape" && !self.find_open {
                 crate::activity_watch::close_viewer();
                 cx.stop_propagation();
+            } else if crate::activity_watch::active_transcript().is_some() && !k.modifiers.control && !k.modifiers.alt && !k.modifiers.platform {
+                let max_y = f32::from(self.transcript_scroll.max_offset().height);
+                let page = (f32::from(self.transcript_scroll.bounds().size.height) * 0.85).max(120.0);
+                match k.key.as_str() {
+                    "pageup" => {
+                        if max_y > 0.5 {
+                            self.transcript_scroll.scroll_by(cx, point(px(0.0), px(page)));
+                        }
+                        cx.stop_propagation();
+                    }
+                    "pagedown" => {
+                        if max_y > 0.5 {
+                            self.transcript_scroll.scroll_by(cx, point(px(0.0), px(-page)));
+                        }
+                        cx.stop_propagation();
+                    }
+                    "up" if !self.find_open => {
+                        if max_y > 0.5 {
+                            self.transcript_scroll.scroll_by(cx, point(px(0.0), px(48.0)));
+                        }
+                        cx.stop_propagation();
+                    }
+                    "down" if !self.find_open => {
+                        if max_y > 0.5 {
+                            self.transcript_scroll.scroll_by(cx, point(px(0.0), px(-48.0)));
+                        }
+                        cx.stop_propagation();
+                    }
+                    "home" if !self.find_open => {
+                        if max_y > 0.5 {
+                            self.transcript_scroll.set_offset(cx, point(px(0.0), px(0.0)));
+                        }
+                        cx.stop_propagation();
+                    }
+                    "end" if !self.find_open => {
+                        self.execute_action("terminal.scroll_bottom", None, cx);
+                        cx.stop_propagation();
+                    }
+                    _ => {}
+                }
             }
             return;
         }
@@ -3337,30 +3482,44 @@ impl RexWindow {
         };
 
         // Main center content: live Transcript view, safe read-only Tmux viewer, or normal tiled terminal panes!
+        if tr_active.is_none() {
+            self.last_transcript_ptr = 0;
+        }
         let panes_el = if let Some(tr_sess) = tr_active {
+            let ptr = Arc::as_ptr(&tr_sess) as usize;
+            let tr_changed = ptr != self.last_transcript_ptr;
+            if tr_changed {
+                self.last_transcript_ptr = ptr;
+                self.transcript_scroll.set_offset(cx, olo_kit::Point::default());
+            }
             let (cur_gen, follow) = {
                 let g = tr_sess.lock().unwrap_or_else(|e| e.into_inner());
                 (g.generation, g.follow)
             };
-            if follow && cur_gen != self.last_transcript_gen {
-                self.last_transcript_gen = cur_gen;
-                self.transcript_scroll.scroll_to_bottom(cx);
-            } else {
-                self.last_transcript_gen = cur_gen;
-            }
-            div().flex_1().min_w_0().min_h_0().size_full().child(crate::transcript_view::render_transcript_view(
+            let (tr_el, scroll_to_child) = crate::transcript_view::render_transcript_view(
                 &tr_sess,
                 &self.transcript_scroll,
                 &active_theme,
                 self.find_open,
                 tr_find_bar,
                 cx.msg_with(|what: &crate::transcript_view::TranscriptDo| WinMsg::TranscriptDo(what.clone())),
-            ))
+            );
+            if let Some(ix) = scroll_to_child {
+                self.last_transcript_gen = cur_gen;
+                self.transcript_scroll.scroll_to_item(cx, ix);
+            } else if follow && (tr_changed || cur_gen != self.last_transcript_gen) {
+                self.last_transcript_gen = cur_gen;
+                self.transcript_scroll.scroll_to_bottom(cx);
+            } else {
+                self.last_transcript_gen = cur_gen;
+            }
+            div().flex_1().min_w_0().min_h_0().w_full().flex().flex_col().child(tr_el)
         } else if let Some(tm_viewer) = crate::activity_watch::active_tmux() {
+            self.last_transcript_ptr = 0;
             let metrics = Metrics::from_settings(scale, &settings);
             let avail_w = (total_w - side_w).max(200.0);
             let avail_h = (f32::from(cx.viewport_size().height) - 26.0 - widgets::STRIP_HEIGHT - m::LABEL_ROW - 4.0).max(160.0);
-            div().flex_1().min_w_0().min_h_0().size_full().child(crate::transcript_view::render_tmux_viewer(
+            div().flex_1().min_w_0().min_h_0().w_full().flex().flex_col().child(crate::transcript_view::render_tmux_viewer(
                 &tm_viewer,
                 &self.tmux_visual,
                 &self.tmux_scroll,
@@ -3510,7 +3669,11 @@ impl RexWindow {
             None => div().child(StringView::new(self.where_it_is()).size(style::SMALL_SIZE).height(STATUS_ROW_H).dim(true).cut(true)).into_any_element(),
         };
         let silent = self.silent_host();
-        let tr_status = crate::activity_watch::active_transcript().map(|tr| {
+        let tr_visible = !matches!(side_layout, SidePanes::Pane);
+        let tr_max_y = f32::from(self.transcript_scroll.max_offset().height);
+        let tr_scrollable = tr_max_y > 0.5;
+        let tr_at_bottom = !tr_scrollable || -f32::from(self.transcript_scroll.offset().y) >= tr_max_y - 4.0;
+        let tr_status = tr_visible.then(crate::activity_watch::active_transcript).flatten().map(|tr| {
             let g = tr.lock().unwrap_or_else(|e| e.into_inner());
             let is_live_agent = match &g.target {
                 crate::activity_watch::ViewTarget::SubagentTranscript { sub, .. } => {
@@ -3534,8 +3697,35 @@ impl RexWindow {
             if !has_entries {
                 return None;
             }
+            // When the whole transcript fits in the viewport (`!tr_scrollable`), never show
+            // `Paused` + `Bottom` (there is nowhere to scroll); only show `● Live` if streaming.
+            if !tr_scrollable {
+                if !is_live_agent {
+                    return None;
+                }
+                let p = theme::palette();
+                let dc = style::c(p.success);
+                let row = div()
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(5.0))
+                    .child(
+                        canvas(move |g, b| {
+                            let mid = style::baseline_at(g, b.center().y, style::SMALL_SIZE) - px(style::SMALL_SIZE * style::CAP_HEIGHT / 2.0);
+                            style::dot(g, point(b.center().x, mid), 6.0, dc);
+                        })
+                        .paint_key(style::key(("rex-sb-live-dot", true)))
+                        .w(px(8.0))
+                        .h(px(STATUS_ROW_H))
+                        .flex_shrink_0(),
+                    )
+                    .child(StringView::new(olo_kit::words::tr("Live").to_owned()).size(style::SMALL_SIZE).dim(true).height(STATUS_ROW_H));
+                return Some(row.into_any_element());
+            }
             let p = theme::palette();
-            if follow {
+            if follow || (tr_at_bottom && !is_live_agent) {
                 let (dot_c, word) = if is_live_agent { (Some(style::c(p.success)), olo_kit::words::tr("Live")) } else { (None, olo_kit::words::tr("End")) };
                 let mut row = div().flex_shrink_0().flex().flex_row().items_center().gap(px(5.0));
                 if let Some(dc) = dot_c {
@@ -3559,7 +3749,7 @@ impl RexWindow {
                     olo_kit::words::tr("Paused").to_owned()
                 };
                 let dot_c = if is_live_agent { crate::transcript_view::waiting_chrome_color(&p) } else { style::secondary_text(&p) };
-                let btn_label = if is_live_agent { olo_kit::words::tr("Jump to Live").to_owned() } else { olo_kit::words::tr("Bottom").to_owned() };
+                let btn_label = if is_live_agent { olo_kit::words::tr("Jump to Live").to_owned() } else { olo_kit::words::tr("Jump to End").to_owned() };
                 let btn_w = (f32::from(style::text_width(btn_label.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))) + 16.0).ceil().max(64.0);
                 let btn_key = style::key(("rex-sb-jump-btn", &btn_label));
                 let cb = jump_live_cb;
@@ -3638,10 +3828,11 @@ impl RexWindow {
                     .w_full()
                     .min_h(px(STATUS_ROW_H + 2.0))
                     .px(px(m::SPACING))
-                    // Symmetric 1 pt vertical padding inside the 20 pt status bar so
-                    // the 18 pt status text and compact 18 pt Jump to Live button share
-                    // the exact same baseline at 1×, 1.5×, and 2×.
-                    .py(px(1.0))
+                    // Symmetric 1 pt vertical padding inside the 20 pt status bar; when an
+                    // error banner is open, optical 12 pt above icon/headline (9 pt + line slack)
+                    // and 12 pt below the sunken detail well.
+                    .pt(px(if self.problem.is_some() { 9.0 } else { 1.0 }))
+                    .pb(px(if self.problem.is_some() { m::SPACING } else { 1.0 }))
                     .child(canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(1).absolute().inset_0())
                     // What the bar says stays where it is; a host that
                     // is silent is said at the bar's far end, with the
@@ -4863,8 +5054,12 @@ impl View for RexWindow {
             WinMsg::Problem(serial, title, detail) => {
                 if self.feedback_serial == serial {
                     self.cancel_preview();
-                    let panel = self.role == WinRole::Access;
-                    let view = detail.map(|s| widgets::text_view(cx, |v| v.panel_well(panel).with_text(s, None).auto_hide(true)));
+                    let mono_size = style::SMALL_SIZE - 1.0;
+                    let view = detail.map(|s| {
+                        let est_lines = s.lines().map(|l| l.chars().count().max(1).div_ceil(88)).sum::<usize>().clamp(1, 3);
+                        let tv = widgets::text_view(cx, |v| v.panel_well(true).mono(true).size(mono_size).with_text(s, None).auto_hide(true));
+                        (tv, est_lines)
+                    });
                     self.problem = Some((title, view));
                     cx.invalidate();
                 }
@@ -4979,6 +5174,14 @@ impl View for RexWindow {
                 self.open_preview(bk, path);
                 cx.invalidate();
             }
+            WinMsg::RevealInTracker(bk, path) => {
+                app().hub.reveal_path_in_tracker(&bk, path, Feedback::start(self.id));
+                cx.invalidate();
+            }
+            WinMsg::DismissFeedback => {
+                self.clear_feedback();
+                cx.invalidate();
+            }
             WinMsg::StopTransfer => {
                 self.cancel_preview();
                 cx.invalidate();
@@ -4989,8 +5192,22 @@ impl View for RexWindow {
             WinMsg::PasteText(bk, connection, txt) => {
                 if self.focused_block_key().as_ref() == Some(&bk) {
                     let hub = app().hub.clone();
-                    let bracketed = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).is_some_and(|b| b.lock().unwrap_or_else(|e| e.into_inner()).terminal.bracketed_paste_mode());
-                    let encoded = encode_paste(&txt, bracketed).unwrap_or_else(|_| txt.into_bytes());
+                    let (is_local, bracketed) = {
+                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                        let is_local = st.hosts.get(&bk.host_key).is_some_and(|h| h.is_local);
+                        let bracketed = st.blocks.get(&bk).is_some_and(|b| b.lock().unwrap_or_else(|e| e.into_inner()).terminal.bracketed_paste_mode());
+                        (is_local, bracketed)
+                    };
+                    // When pasting local desktop file paths into a remote Rex terminal,
+                    // rewrite them to `rex://local/…` URIs so remote agents know they
+                    // live on the desktop and can fetch them with `olo get`.
+                    let pasted = if is_local {
+                        txt
+                    } else {
+                        let home = crate::hub::local_home().map(PathBuf::from);
+                        rewrite_local_paths_for_remote(&txt, home.as_deref(), |p| p.exists())
+                    };
+                    let encoded = encode_paste(&pasted, bracketed).unwrap_or_else(|_| pasted.into_bytes());
                     hub.write_input(&bk, encoded, Some(&connection));
                 }
             }
@@ -5036,12 +5253,18 @@ impl View for RexWindow {
                 let hub = app().hub.clone();
                 self.jump_to(JumpTarget::Pane(parent.clone()), cx);
                 crate::activity_watch::open_subagent(&hub, &parent, sub, force_transcript);
+                if self.side_pane.alone() {
+                    self.side_pane.show_rest();
+                }
                 cx.invalidate();
             }
             WinMsg::OpenPaneTranscript(bk, title) => {
                 let hub = app().hub.clone();
                 self.jump_to(JumpTarget::Pane(bk.clone()), cx);
                 crate::activity_watch::open_pane_transcript(&hub, &bk, title);
+                if self.side_pane.alone() {
+                    self.side_pane.show_rest();
+                }
                 cx.invalidate();
             }
             WinMsg::TranscriptDo(what) => {
@@ -5492,7 +5715,8 @@ impl View for RexWindow {
                             open_account(&hub, &shown.key);
                         }
                     }
-                    HostDo::Change(thing, add) => crate::host::change(&hub, thing, add),
+                    HostDo::Change(thing, op) => crate::host::change(&hub, thing, op),
+                    HostDo::UpdateAll(things) => crate::host::update_all(&hub, &things),
                     HostDo::Check => crate::host::check(&hub),
                     HostDo::Connect => {
                         if let Some(shown) = crate::host::current() {
@@ -5502,6 +5726,11 @@ impl View for RexWindow {
                     HostDo::Server => {
                         if let Some(shown) = crate::host::current() {
                             open_server(&hub, &shown.key);
+                        }
+                    }
+                    HostDo::UpdateServer => {
+                        if let Some(shown) = crate::host::current() {
+                            open_server_for_update(&hub, &shown.key);
                         }
                     }
                     // (Preferences ▸ Rex, on Hosts, with this host chosen.)
@@ -6762,7 +6991,7 @@ fn render_single_pane(
                     LinkTarget::Url(u) => app().hub.open_link_from_pane(&bk_mouse, u, Feedback::start(win_id)),
                     LinkTarget::FilePath { path, .. } => {
                         if let Some(slot) = wins().map.get(&win_id) {
-                            slot.handle.messenger().send(WinMsg::OpenPreview(bk_mouse.clone(), path));
+                            slot.handle.messenger().send(WinMsg::RevealInTracker(bk_mouse.clone(), path));
                         }
                     }
                 }
@@ -8092,6 +8321,170 @@ mod activity_tests {
     }
 }
 
+/// Directories that exist identically on every Unix system and should never be
+/// rewritten to `rex://local/…` when pasted bare.
+fn is_bare_system_dir(p: &std::path::Path) -> bool {
+    matches!(
+        p.to_str(),
+        Some(
+            "/" | "/tmp" | "/var" | "/var/tmp" | "/etc" | "/usr" | "/bin" | "/sbin" | "/lib" | "/lib64" | "/opt" | "/dev" | "/proc" | "/sys" | "/home" | "/root" | "/run" | "/boot" | "/mnt" | "/media"
+        )
+    )
+}
+
+fn parse_candidate_local_path(token: &str, home: Option<&std::path::Path>) -> Option<(PathBuf, bool)> {
+    let raw = token.trim();
+    if raw.is_empty() || raw.starts_with(olo_kit_base::tracker::REX_SCHEME) {
+        return None;
+    }
+    if let Some(rest) = raw.strip_prefix("file://") {
+        let path_part = rest.strip_prefix("localhost").unwrap_or(rest);
+        if path_part.starts_with('/') {
+            let p = olo_kit_base::tracker::RexPath::parse(&format!("rex://local{path_part}"))?.local_path()?;
+            return Some((p, true));
+        }
+        return None;
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        let h = home?;
+        return Some((h.join(rest), true));
+    }
+    if raw.starts_with('/') {
+        let p = PathBuf::from(raw);
+        let under_home = home.is_some_and(|h| p.starts_with(h) && p != h);
+        return Some((p, under_home));
+    }
+    None
+}
+
+/// Rewrite local desktop file/folder paths pasted into a remote Rex terminal
+/// into canonical `rex://local/…` URIs so remote agents know they live on the
+/// desktop and can fetch them with `olo get` (or open them with `olo open`).
+///
+/// Rewrites:
+/// - Any `file:///…` URI pointing to an existing local path.
+/// - Any path under the desktop's `$HOME/` (or `~/…`) that exists locally,
+///   even inside a sentence (`look at /home/u/Pictures/a.png`).
+/// - Any standalone pasted path(s) (one path per line or space-separated list
+///   where every token is an existing local path outside bare system roots like
+///   `/var/tmp` or `/etc`), including paths with spaces copied from Tracker.
+/// Leaves shell commands like `cat /etc/hosts` or `ls /var/tmp` untouched.
+pub(crate) fn rewrite_local_paths_for_remote(text: &str, home: Option<&std::path::Path>, exists: impl Fn(&std::path::Path) -> bool) -> String {
+    if text.trim().is_empty() {
+        return text.to_owned();
+    }
+    // Pass 1: if every non-empty line is itself a standalone existing local path
+    // (covers Tracker Cmd+C copying one or more paths, including spaces in names!).
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut non_empty_lines = 0usize;
+    let mut all_lines_paths = true;
+    let mut line_rewrites: Vec<Option<String>> = Vec::with_capacity(lines.len());
+    for line in &lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            line_rewrites.push(None);
+            continue;
+        }
+        non_empty_lines += 1;
+        let unquoted = ['"', '\''].iter().find_map(|q| trimmed.strip_prefix(*q).and_then(|s| s.strip_suffix(*q))).unwrap_or(trimmed);
+        if let Some((cand, _under_home)) = parse_candidate_local_path(unquoted, home)
+            && !is_bare_system_dir(&cand)
+            && exists(&cand)
+        {
+            line_rewrites.push(Some(olo_kit_base::tracker::RexPath::local(&cand).to_uri()));
+        } else {
+            all_lines_paths = false;
+            break;
+        }
+    }
+    if all_lines_paths && non_empty_lines > 0 {
+        let mut out = String::with_capacity(text.len() + non_empty_lines * 12);
+        for (i, line) in lines.iter().enumerate() {
+            if i > 0 {
+                out.push('\n');
+            }
+            if let Some(uri) = &line_rewrites[i] {
+                out.push_str(uri);
+            } else {
+                out.push_str(line);
+            }
+        }
+        return out;
+    }
+
+    // Pass 2: tokenize preserving exact whitespace. Check whether ALL tokens
+    // are standalone existing local paths (e.g. "/var/tmp/a.png /var/tmp/b.png"),
+    // else rewrite only `file://` URIs and paths under `$HOME/` that exist locally.
+    let mut tokens: Vec<(&str, bool)> = Vec::new(); // (slice, is_ws)
+    let mut start = 0usize;
+    let mut in_ws = text.chars().next().is_some_and(char::is_whitespace);
+    for (idx, ch) in text.char_indices() {
+        let ws = ch.is_whitespace();
+        if ws != in_ws {
+            tokens.push((&text[start..idx], in_ws));
+            start = idx;
+            in_ws = ws;
+        }
+    }
+    tokens.push((&text[start..], in_ws));
+
+    let resolve_tok = |tok: &str| -> Option<(String, bool)> {
+        let (lead_q, inner, trail_q) = if let Some(s) = tok.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+            ("\"", s, "\"")
+        } else if let Some(s) = tok.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+            ("'", s, "'")
+        } else {
+            ("", tok, "")
+        };
+        let (core, trail_punct) = if let Some((cand, explicit)) = parse_candidate_local_path(inner, home)
+            && exists(&cand)
+        {
+            return (!is_bare_system_dir(&cand)).then(|| (format!("{lead_q}{}{trail_q}", olo_kit_base::tracker::RexPath::local(&cand).to_uri()), explicit));
+        } else {
+            let trimmed = inner.trim_end_matches([',', ';', ')', ']', '.']);
+            (trimmed, &inner[trimmed.len()..])
+        };
+        if core.len() < inner.len()
+            && let Some((cand, explicit)) = parse_candidate_local_path(core, home)
+            && !is_bare_system_dir(&cand)
+            && exists(&cand)
+        {
+            return Some((format!("{lead_q}{}{trail_punct}{trail_q}", olo_kit_base::tracker::RexPath::local(&cand).to_uri()), explicit));
+        }
+        None
+    };
+
+    let mut non_ws_count = 0usize;
+    let mut all_tokens_local_paths = true;
+    for &(slice, ws) in &tokens {
+        if ws || slice.is_empty() {
+            continue;
+        }
+        non_ws_count += 1;
+        if resolve_tok(slice).is_none() {
+            all_tokens_local_paths = false;
+            break;
+        }
+    }
+    let rewrite_any_abs = all_tokens_local_paths && non_ws_count > 0;
+
+    let mut out = String::with_capacity(text.len() + 32);
+    for (slice, ws) in tokens {
+        if ws || slice.is_empty() {
+            out.push_str(slice);
+            continue;
+        }
+        if let Some((rewritten, explicit)) = resolve_tok(slice)
+            && (rewrite_any_abs || explicit)
+        {
+            out.push_str(&rewritten);
+        } else {
+            out.push_str(slice);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod paste_tests {
     use super::*;
@@ -8102,5 +8495,31 @@ mod paste_tests {
         assert_eq!(utc_stamp(0), "1970-01-01-000000");
         assert_eq!(utc_stamp(1_795_512_965), "2026-11-24-093605");
         assert_eq!(utc_stamp(951_782_400), "2000-02-29-000000");
+    }
+
+    #[test]
+    fn rewrites_local_desktop_paths_to_rex_local_uris_for_remote_panes() {
+        let home = std::path::Path::new("/home/alice");
+        let existing = |p: &std::path::Path| {
+            matches!(p.to_str(), Some("/home/alice/Pictures/shot1.png" | "/home/alice/Pictures/shot2.png" | "/home/alice/My Photos/big shot.png" | "/var/tmp/my-shot.png" | "/etc/hosts" | "/var/tmp"))
+        };
+
+        // Home paths inside a prompt convert cleanly, preserving prose.
+        assert_eq!(
+            rewrite_local_paths_for_remote("/home/alice/Pictures/shot1.png /home/alice/Pictures/shot2.png look at these", Some(home), existing),
+            "rex://local/home/alice/Pictures/shot1.png rex://local/home/alice/Pictures/shot2.png look at these"
+        );
+        // Single path with spaces (copied from Tracker) percent-encodes cleanly.
+        assert_eq!(rewrite_local_paths_for_remote("/home/alice/My Photos/big shot.png", Some(home), existing), "rex://local/home/alice/My%20Photos/big%20shot.png");
+        // Standalone file outside $HOME converts cleanly.
+        assert_eq!(rewrite_local_paths_for_remote("/var/tmp/my-shot.png", Some(home), existing), "rex://local/var/tmp/my-shot.png");
+        // file:// URI converts cleanly.
+        assert_eq!(rewrite_local_paths_for_remote("see file:///home/alice/My%20Photos/big%20shot.png.", Some(home), existing), "see rex://local/home/alice/My%20Photos/big%20shot.png.");
+        // Shell commands referencing system paths stay untouched!
+        assert_eq!(rewrite_local_paths_for_remote("cat /etc/hosts", Some(home), existing), "cat /etc/hosts");
+        assert_eq!(rewrite_local_paths_for_remote("ls /var/tmp", Some(home), existing), "ls /var/tmp");
+        assert_eq!(rewrite_local_paths_for_remote("/var/tmp", Some(home), existing), "/var/tmp");
+        // Existing rex:// URI stays untouched.
+        assert_eq!(rewrite_local_paths_for_remote("rex://local/home/alice/Pictures/shot1.png", Some(home), existing), "rex://local/home/alice/Pictures/shot1.png");
     }
 }

@@ -1718,29 +1718,7 @@ fn run_tail(args: &[String]) -> i32 {
     let mut offset: u64 = 0;
     let mut partial = Vec::<u8>::new();
 
-    let open_initial = |p: &Path, max_init: u64| -> Option<(u64, u64, bool, Vec<String>, Vec<u8>)> {
-        let meta: Metadata = std::fs::metadata(p).ok()?;
-        let ino = meta.ino();
-        let len = meta.len();
-        let mut f = File::open(p).ok()?;
-        let (start, truncated) = if len > max_init { (len - max_init, true) } else { (0, false) };
-        f.seek(SeekFrom::Start(start)).ok()?;
-        let mut data = Vec::new();
-        f.read_to_end(&mut data).ok()?;
-        let end_off = start + data.len() as u64;
-        let slice = if truncated {
-            match data.iter().position(|&b| b == b'\n') {
-                Some(nl) => &data[nl + 1..],
-                None => &data[..],
-            }
-        } else {
-            &data[..]
-        };
-        let (lines, rem) = split_complete_lines(slice);
-        Some((ino, end_off, truncated, lines, rem))
-    };
-
-    if let Some((ino, end_off, truncated, lines, rem)) = open_initial(&path, max_initial) {
+    if let Some((ino, end_off, truncated, lines, rem)) = read_initial_tail(&path, max_initial) {
         cur_ino = ino;
         offset = end_off;
         partial = rem;
@@ -1809,7 +1787,8 @@ fn run_tail(args: &[String]) -> i32 {
                         partial.extend_from_slice(&appended);
                         let (lines, rem) = split_complete_lines(&partial);
                         partial = rem;
-                        for chunk in lines.chunks(TAIL_BATCH_LINES) {
+                        let kept: Vec<String> = lines.into_iter().filter(|l| !is_tail_noise_line(l.as_bytes())).collect();
+                        for chunk in kept.chunks(TAIL_BATCH_LINES) {
                             if !emit_json(&serde_json::json!({"type": "lines", "lines": chunk})) {
                                 return 0;
                             }
@@ -1819,6 +1798,207 @@ fn run_tail(args: &[String]) -> i32 {
             }
         }
     }
+}
+
+/// Top-level JSONL record types dropped by `TranscriptDoc` that carry zero visible
+/// conversation content (e.g., Claude 2.1 `api-request-blob`, `attachment`, `progress`).
+fn is_tail_noise_type(ty: &str) -> bool {
+    matches!(
+        ty,
+        "progress"
+            | "attachment"
+            | "api-request"
+            | "api-request-blob"
+            | "api-request-shape"
+            | "data-flow-records"
+            | "data-flow-incomplete"
+            | "last-prompt"
+            | "custom-title"
+            | "agent-name"
+            | "mode"
+            | "permission-mode"
+            | "session-owner"
+            | "atis-latch"
+            | "file-history-snapshot"
+            | "file-history-delta"
+            | "tools-used"
+            | "derived-from"
+            | "cost-state"
+            | "queue-operation"
+            | "token_usage_record"
+            | "world_state"
+    )
+}
+
+#[derive(Deserialize)]
+struct TailLineProbe<'a> {
+    #[serde(rename = "type", default)]
+    ty: Option<&'a str>,
+    #[serde(default)]
+    attachment: Option<serde::de::IgnoredAny>,
+}
+
+/// Fast check for telemetry/noise JSONL records so 300 KB+ `api-request-blob` lines
+/// don't crowd out real conversation turns in `read_initial_tail` or flood SSH on live tail.
+fn is_tail_noise_line(bytes: &[u8]) -> bool {
+    let trimmed = bytes.trim_ascii();
+    if trimmed.is_empty() || trimmed[0] != b'{' {
+        return false;
+    }
+    // Fast path: check top-level `"type"` in the leading 512 bytes when it appears before
+    // any nested `"message"`/`"content"`/`"payload"` block (skips multi-hundred-KB blobs in O(1)).
+    let head = &trimmed[..trimmed.len().min(512)];
+    let find_sub = |hay: &[u8], pat: &[u8]| hay.windows(pat.len()).position(|w| w == pat);
+    let nested_at = [b"\"message\"".as_slice(), b"\"content\"", b"\"payload\""].into_iter().filter_map(|p| find_sub(head, p)).min().unwrap_or(head.len());
+    if let Some(pos) = find_sub(&head[..nested_at], b"\"type\"") {
+        let mut i = pos + 6;
+        while i < head.len() && matches!(head[i], b' ' | b'\t' | b':') {
+            i += 1;
+        }
+        if i < head.len() && head[i] == b'"' {
+            i += 1;
+            let start = i;
+            while i < head.len() && head[i] != b'"' && head[i] != b'\\' {
+                i += 1;
+            }
+            if i < head.len()
+                && head[i] == b'"'
+                && let Ok(ty) = std::str::from_utf8(&head[start..i])
+            {
+                if is_tail_noise_type(ty) {
+                    return true;
+                }
+                if matches!(
+                    ty,
+                    "user"
+                        | "assistant"
+                        | "system"
+                        | "summary"
+                        | "response_item"
+                        | "event_msg"
+                        | "session_meta"
+                        | "turn_context"
+                        | "compacted"
+                        | "USER_INPUT"
+                        | "PLANNER_RESPONSE"
+                        | "GENERIC"
+                        | "TOOL_RESPONSE"
+                        | "CHECKPOINT"
+                        | "SYSTEM_MESSAGE"
+                ) {
+                    return false;
+                }
+            }
+        }
+    }
+    if let Ok(probe) = serde_json::from_slice::<TailLineProbe<'_>>(trimmed) {
+        if probe.attachment.is_some() {
+            return true;
+        }
+        if let Some(ty) = probe.ty {
+            return is_tail_noise_type(ty);
+        }
+    }
+    false
+}
+
+/// Read the latest `max_init` bytes of *substantive* (non-telemetry) lines from `p`
+/// by scanning backwards in chunks (up to 32 MiB raw) so huge Claude 2.1 `api-request-blob`
+/// records cannot squeeze a long conversation down to 0–1 visible turns.
+fn read_initial_tail(p: &Path, max_init: u64) -> Option<(u64, u64, bool, Vec<String>, Vec<u8>)> {
+    let meta: Metadata = std::fs::metadata(p).ok()?;
+    let ino = meta.ino();
+    let len = meta.len();
+    let mut f = File::open(p).ok()?;
+
+    const CHUNK: u64 = 256 * 1024;
+    let raw_cap: u64 = max_init.saturating_mul(32).clamp(8 * 1024 * 1024, 32 * 1024 * 1024);
+    let min_pos = len.saturating_sub(raw_cap);
+
+    let mut pos = len;
+    let mut carry_tail = Vec::<u8>::new(); // bytes belonging to the start of the line continuing into the next (later) chunk
+    let mut rem_at_eof: Option<Vec<u8>> = None;
+    let mut kept_rev: Vec<String> = Vec::new();
+    let mut kept_bytes: u64 = 0;
+    let mut truncated = false;
+
+    while pos > min_pos {
+        let next_pos = pos.saturating_sub(CHUNK).max(min_pos);
+        let to_read = (pos - next_pos) as usize;
+        f.seek(SeekFrom::Start(next_pos)).ok()?;
+        let mut buf = vec![0u8; to_read];
+        f.read_exact(&mut buf).ok()?;
+        if !carry_tail.is_empty() {
+            buf.extend_from_slice(&carry_tail);
+            carry_tail.clear();
+        }
+        let mut end = buf.len();
+        // On the very first (EOF) chunk, anything after the last `\n` is an incomplete line still being written.
+        if rem_at_eof.is_none() {
+            match buf.iter().rposition(|&b| b == b'\n') {
+                Some(nl) => {
+                    rem_at_eof = Some(buf[nl + 1..].to_vec());
+                    end = nl;
+                }
+                None => {
+                    if next_pos == 0 {
+                        rem_at_eof = Some(buf);
+                        pos = 0;
+                        break;
+                    }
+                    carry_tail = buf;
+                    pos = next_pos;
+                    continue;
+                }
+            }
+        }
+
+        // Walk complete lines backwards inside `buf[..end]`.
+        let mut stop = false;
+        loop {
+            let line_start = match buf[..end].iter().rposition(|&b| b == b'\n') {
+                Some(nl) => nl + 1,
+                None => {
+                    if next_pos == 0 {
+                        0
+                    } else {
+                        carry_tail = buf[..end].to_vec();
+                        break;
+                    }
+                }
+            };
+            let mut line_end = end;
+            if line_end > line_start && buf[line_end - 1] == b'\r' {
+                line_end -= 1;
+            }
+            let line_slice = &buf[line_start..line_end];
+            if !line_slice.is_empty() && !is_tail_noise_line(line_slice) {
+                let sz = line_slice.len() as u64 + 1;
+                if kept_bytes > 0 && kept_bytes + sz > max_init {
+                    truncated = true;
+                    stop = true;
+                    break;
+                }
+                kept_bytes += sz;
+                kept_rev.push(String::from_utf8_lossy(line_slice).into_owned());
+            }
+            if line_start == 0 {
+                break;
+            }
+            end = line_start - 1;
+        }
+        pos = next_pos;
+        if stop {
+            break;
+        }
+    }
+
+    if !truncated && pos > 0 {
+        truncated = true;
+    }
+
+    kept_rev.reverse();
+    Some((ino, len, truncated, kept_rev, rem_at_eof.unwrap_or_default()))
 }
 
 fn split_complete_lines(bytes: &[u8]) -> (Vec<String>, Vec<u8>) {
@@ -1982,5 +2162,41 @@ mod tests {
         let (lines, rem) = split_complete_lines(b"one\ntwo\r\nthree");
         assert_eq!(lines, vec!["one", "two"]);
         assert_eq!(rem, b"three");
+    }
+
+    #[test]
+    fn initial_tail_skips_claude_telemetry_blobs_to_preserve_conversation() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-rex-link-tail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sub.jsonl");
+        let mut raw = String::new();
+        for i in 0..40 {
+            raw.push_str(&format!("{{\"type\":\"user\",\"message\":{{\"role\":\"user\",\"content\":\"Turn {i} question\"}}}}\n"));
+            raw.push_str(&format!("{{\"type\":\"assistant\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"Turn {i} answer with details\"}}]}}}}\n"));
+        }
+        // Append >1.4 MiB of Claude 2.1 `api-request-blob` telemetry followed by one final line.
+        let blob_payload = "x".repeat(350 * 1024);
+        for _ in 0..4 {
+            raw.push_str(&format!("{{\"type\":\"api-request-blob\",\"blob\":\"{blob_payload}\"}}\n"));
+        }
+        raw.push_str("{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"All 40 turns complete!\"}]}}\n");
+        std::fs::write(&path, &raw).unwrap();
+
+        let (_, end_off, truncated, lines, rem) = read_initial_tail(&path, DEFAULT_MAX_INITIAL).unwrap();
+        assert_eq!(end_off, raw.len() as u64);
+        assert!(rem.is_empty());
+        assert!(!truncated, "substantive bytes are far below 1 MiB once telemetry blobs are filtered");
+        assert_eq!(lines.len(), 81, "all 80 prior turns + final turn preserved despite 1.4 MiB of telemetry blobs");
+        assert!(lines.first().unwrap().contains("Turn 0 question"));
+        assert!(lines.last().unwrap().contains("All 40 turns complete!"));
+
+        // Ensure a user message mentioning `"type":"progress"` in prose is NOT dropped.
+        let prose_line = br#"{"type":"user","message":{"role":"user","content":"Check {\"type\":\"progress\"} handling"}}"#;
+        assert!(!is_tail_noise_line(prose_line));
+        assert!(is_tail_noise_line(br#"{"type":"api-request-blob","data":"..."}"#));
+        assert!(is_tail_noise_line(br#"{"type":"attachment","attachment":{"type":"deferred"}}"#));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

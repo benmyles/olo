@@ -1,9 +1,10 @@
 #!/bin/sh
 # olo COMMAND [ARGUMENT…]: a command of the Olo desktop this Rex host is
 # used from, asked through Rex (olo.lua beside this file, run by
-# `rex do`): olo open URL, olo op …, olo screen …, olo forward …, olo
-# send PATH…, olo sync …, olo run [--cwd DIR] -- COMMAND…, olo notify
-# TITLE [BODY], olo clipboard TEXT, olo paste.
+# `rex do`): olo open URL, olo get rex://local/PATH [DEST], olo ls
+# rex://local/PATH, olo op …, olo screen …, olo forward …, olo send PATH…,
+# olo sync …, olo run [--cwd DIR] -- COMMAND…, olo notify TITLE [BODY],
+# olo clipboard TEXT, olo paste.
 # Part of Olo's skill for agents, and of the desktop commands (xdg-open
 # and the rest, beside it). Its status is 69 where the desktop couldn't
 # be asked.

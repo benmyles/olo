@@ -130,6 +130,19 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   under 1, is laid out differently (otherwise the two agree).
   olo-interface's `a_negative_margin_takes_off_what_it_says` fails
   without it (the column 45 points tall, not 73).
+  A fourth (`src/compute/flexbox.rs`, `determine_flex_base_size` and
+  `determine_container_main_size`, marked "Olo:"), found 2026-11-25 by
+  a second investigator: when measuring a flex item's intrinsic main
+  size (height in a column), a definite cross size (`w_full()` +
+  `max_w(...)`) was passed into `measure_child_size` unclamped by
+  `min_size`/`max_size`, so wrapped prose was measured at the parent's
+  full width (2–4× too short) and then wrapped to `max_w` during final
+  layout, overflowing its parent and disabling Rex's transcript
+  scrollbar on wide windows. The patch clamps a definite cross size by
+  `min_size`/`max_size` (floored by cross padding+border, matching
+  `determine_hypothetical_cross_size`). olo-interface's
+  `a_clamped_cross_size_measures_wrapped_height_at_its_max_width` fails
+  without it.
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last

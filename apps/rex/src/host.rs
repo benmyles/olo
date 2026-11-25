@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use olo_sync::Mutex;
 
-use crate::hub::{HostThing, RexHub};
+use crate::hub::{HostOp, HostThing, RexHub};
 
 /// What the window is of, and at.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -27,11 +27,11 @@ pub struct Shown {
     /// here so the title is made without asking the app for its hub,
     /// which whoever opens the window may be holding).
     pub name: String,
-    /// What is being put there (`true`) or taken off now.
-    pub doing: Vec<(HostThing, bool)>,
+    /// What is being installed, updated, or removed now.
+    pub doing: Vec<(HostThing, HostOp)>,
     /// What couldn't be done last, of each thing, and what the host
-    /// said (put there, or taken off).
-    pub failed: Vec<(HostThing, bool, String)>,
+    /// said.
+    pub failed: Vec<(HostThing, HostOp, String)>,
     /// The host is being asked again what it has (Check Again).
     pub checking: bool,
     /// Remove All… was pressed, and waits to be told yes or no.
@@ -41,15 +41,15 @@ pub struct Shown {
 }
 
 impl Shown {
-    /// Whether `thing` is being put there (`Some(true)`) or taken off.
-    pub fn doing(&self, thing: HostThing) -> Option<bool> {
-        self.doing.iter().find(|(t, _)| *t == thing).map(|(_, add)| *add)
+    /// What is being done to `thing` right now, if anything.
+    pub fn doing(&self, thing: HostThing) -> Option<HostOp> {
+        self.doing.iter().find(|(t, _)| *t == thing).map(|(_, op)| *op)
     }
 
-    /// What the host said when `thing` couldn't be put there or taken
-    /// off, the last time.
-    pub fn failed(&self, thing: HostThing) -> Option<(bool, &str)> {
-        self.failed.iter().find(|(t, ..)| *t == thing).map(|(_, add, said)| (*add, said.as_str()))
+    /// What the host said when `thing` couldn't be installed, updated,
+    /// or removed, the last time.
+    pub fn failed(&self, thing: HostThing) -> Option<(HostOp, &str)> {
+        self.failed.iter().find(|(t, ..)| *t == thing).map(|(_, op, said)| (*op, said.as_str()))
     }
 }
 
@@ -79,26 +79,26 @@ pub fn close() {
     *live() = None;
 }
 
-/// Puts `thing` on the window's host (`add`), or takes it off: begun
+/// Installs, updates, or removes `thing` on the window's host: begun
 /// now, and the window told when the host has answered.
-pub fn change(hub: &Arc<RexHub>, thing: HostThing, add: bool) {
+pub fn change(hub: &Arc<RexHub>, thing: HostThing, op: HostOp) {
     let key = {
         let mut live = live();
         let Some(shown) = live.as_mut() else { return };
         if shown.doing(thing).is_some() {
             return;
         }
-        shown.doing.push((thing, add));
+        shown.doing.push((thing, op));
         shown.failed.retain(|(t, ..)| *t != thing);
         shown.key.clone()
     };
     crate::ui::host_changed();
     let of = key.clone();
-    hub.change_host(&key, thing, add, move |result| {
+    hub.change_host(&key, thing, op, move |result| {
         if let Some(shown) = live().as_mut().filter(|shown| shown.key == of) {
             shown.doing.retain(|(t, _)| *t != thing);
             if let Err(said) = result {
-                shown.failed.push((thing, add, said));
+                shown.failed.push((thing, op, said));
             }
         }
         crate::ui::host_changed();
@@ -156,7 +156,15 @@ pub fn remove_all(hub: &Arc<RexHub>, things: &[HostThing]) {
         shown.asking_all = false;
     }
     for &thing in things {
-        change(hub, thing, false);
+        change(hub, thing, HostOp::Remove);
+    }
+    crate::ui::host_changed();
+}
+
+/// Updates every outdated Olo component in `things` on the host at once.
+pub fn update_all(hub: &Arc<RexHub>, things: &[HostThing]) {
+    for &thing in things {
+        change(hub, thing, HostOp::Update);
     }
     crate::ui::host_changed();
 }
@@ -179,9 +187,9 @@ mod tests {
     fn the_window_is_of_one_host_and_keeps_what_it_shows_of_it() {
         close();
         open("a", "far");
-        live().as_mut().unwrap().failed.push((HostThing::Bridge, true, "no room".into()));
+        live().as_mut().unwrap().failed.push((HostThing::Bridge, HostOp::Install, "no room".into()));
         open("a", "far");
-        assert_eq!(current().unwrap().failed(HostThing::Bridge), Some((true, "no room")));
+        assert_eq!(current().unwrap().failed(HostThing::Bridge), Some((HostOp::Install, "no room")));
         assert_eq!(current().unwrap().doing(HostThing::Bridge), None);
         open("b", "near");
         assert_eq!(current(), Some(Shown { key: "b".into(), name: "near".into(), ..Shown::default() }));

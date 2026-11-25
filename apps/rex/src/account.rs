@@ -23,7 +23,7 @@ use std::{sync::Arc, time::Instant};
 use olo_rex_client::ready::Step;
 use olo_sync::Mutex;
 
-use crate::hub::{HostConnState, HostStands, HostThing, RexHub};
+use crate::hub::{HostConnState, HostOp, HostStands, HostThing, RexHub};
 
 /// One thing an account is given, as the window lists them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -337,7 +337,7 @@ pub fn remove_skill(hub: &Arc<RexHub>) {
     };
     crate::ui::account_changed();
     let (of, again) = (key.clone(), hub.clone());
-    hub.change_host(&key, HostThing::Skill, false, move |result| ended(&again, &of, Item::Skill, result));
+    hub.change_host(&key, HostThing::Skill, HostOp::Remove, move |result| ended(&again, &of, Item::Skill, result));
 }
 
 /// `item` ended on the host `key`: how, and on to the next.
@@ -389,7 +389,7 @@ fn next(hub: &Arc<RexHub>) {
             return;
         }
         Item::Skill => {
-            hub.change_host(&key, HostThing::Skill, true, move |result| ended(&again, &of_done, item, result));
+            hub.change_host(&key, HostThing::Skill, HostOp::Install, move |result| ended(&again, &of_done, item, result));
             return;
         }
     };

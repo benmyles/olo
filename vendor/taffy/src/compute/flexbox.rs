@@ -676,7 +676,17 @@ fn determine_flex_base_size(
         // Known dimensions for child sizing
         let child_known_dimensions = {
             let mut ckd = child.size.with_main(dir, None);
-            if child.align_self == AlignSelf::Stretch && ckd.cross(dir).is_none() {
+            // Olo: clamp a definite cross size by min/max cross size (and floor
+            // by cross padding+border, as `determine_hypothetical_cross_size`
+            // does) so a flex-column item with `w_full().max_w(...)` measures
+            // its wrapped height at its clamped width, not its parent's width.
+            if let Some(cross) = ckd.cross(dir) {
+                let cross_pb = (child.padding + child.border).cross_axis_sum(dir);
+                ckd.set_cross(
+                    dir,
+                    Some(cross.maybe_clamp(child.min_size.cross(dir), child.max_size.cross(dir)).max(cross_pb)),
+                );
+            } else if child.align_self == AlignSelf::Stretch {
                 ckd.set_cross(
                     dir,
                     cross_axis_available_space.into_option().maybe_sub(child.margin.cross_axis_sum(dir)),
@@ -1037,7 +1047,19 @@ fn determine_container_main_size(
                                 // Known dimensions for child sizing
                                 let child_known_dimensions = {
                                     let mut ckd = item.size.with_main(dir, None);
-                                    if item.align_self == AlignSelf::Stretch && ckd.cross(dir).is_none() {
+                                    // Olo: clamp definite cross size by min/max cross size (matching
+                                    // `determine_flex_base_size` and `determine_hypothetical_cross_size`).
+                                    if let Some(cross) = ckd.cross(dir) {
+                                        let cross_pb = (item.padding + item.border).cross_axis_sum(dir);
+                                        ckd.set_cross(
+                                            dir,
+                                            Some(
+                                                cross
+                                                    .maybe_clamp(item.min_size.cross(dir), item.max_size.cross(dir))
+                                                    .max(cross_pb),
+                                            ),
+                                        );
+                                    } else if item.align_self == AlignSelf::Stretch {
                                         ckd.set_cross(
                                             dir,
                                             cross_axis_available_space

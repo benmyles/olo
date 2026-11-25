@@ -398,6 +398,20 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             id: "olo.send", title: "Save Files of the Host’s on the Olo Desktop", category: "Olo Bridge", keywords: &["send", "download", "files", "folder", "copy"], args_schema: command()
         },
         ActionSpec {
+            id: "olo.get",
+            title: "Fetch a Local Desktop File (`rex://local/…`) onto the Host",
+            category: "Olo Bridge",
+            keywords: &["get", "fetch", "local", "desktop", "file", "rex://local"],
+            args_schema: command(),
+        },
+        ActionSpec {
+            id: "olo.ls",
+            title: "List a Local Desktop Folder (`rex://local/…`)",
+            category: "Olo Bridge",
+            keywords: &["ls", "list", "local", "desktop", "folder", "rex://local"],
+            args_schema: command(),
+        },
+        ActionSpec {
             id: "olo.sync",
             title: "Keep a Folder of the Host’s in Step on the Olo Desktop",
             category: "Olo Bridge",

@@ -653,6 +653,8 @@ impl Hub {
     /// The folder's window, brought forward, if it has one on this
     /// workspace; else a new one here (each workspace has its own).
     fn open_folder(&mut self, path: &Path) -> u64 {
+        let local_unwrapped = fs::rex_path(path).and_then(|r| r.local_path());
+        let path = local_unwrapped.as_deref().unwrap_or(path);
         let path = if fs::is_remote(path) {
             fs::rex_path(path).map_or_else(|| path.to_owned(), |r| r.to_path_buf())
         } else {
@@ -703,9 +705,17 @@ impl Hub {
     }
 
     /// Show `path`: a folder opens; anything else is selected in its
-    /// folder's window.
+    /// folder's window. `rex://local/…` resolves directly to this desktop.
     fn reveal(&mut self, path: &Path) {
         if let Some(rp) = fs::rex_path(path) {
+            if let Some(local) = rp.local_path() {
+                if local.is_dir() {
+                    self.open_folder(&local);
+                } else {
+                    self.show_in_parent(&local);
+                }
+                return;
+            }
             let orig = rp.to_path_buf();
             std::thread::spawn(move || {
                 let result = rex::stat(&rp);
@@ -723,6 +733,10 @@ impl Hub {
     /// Open `path`'s folder with it selected.
     fn show_in_parent(&mut self, path: &Path) {
         if let Some(rp) = fs::rex_path(path) {
+            if let Some(local) = rp.local_path() {
+                self.show_in_parent(&local);
+                return;
+            }
             let orig = rp.to_path_buf();
             std::thread::spawn(move || {
                 let result = rex::stat(&rp);

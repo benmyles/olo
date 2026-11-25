@@ -50,9 +50,16 @@ pub fn build_for<'a>(uname: &str, builds: &'a [Build]) -> Option<&'a Build> {
 }
 
 /// Asks the host what it is, and whether it has the helper of this
-/// build and can run it: `uname -sm`, then `here` if so.
+/// build and can run it: `uname -sm`, then `here` if so, or `older` if
+/// another build of the helper is there instead.
 fn asks(id: &str) -> String {
-    format!("sh -c {}", shell_word(&format!("uname -sm; L={}; if [ -f \"$L\" ] && [ -O \"$L\" ] && \"$L\" --version > /dev/null 2>&1; then echo here; fi", file(id))))
+    format!(
+        "sh -c {}",
+        shell_word(&format!(
+            "uname -sm; d=\"$HOME\"/{DIR}; L={}; if [ -f \"$L\" ] && [ -O \"$L\" ] && \"$L\" --version > /dev/null 2>&1; then echo here; elif find \"$d\" -maxdepth 1 -type f -name 'olo-rex-link-*' 2>/dev/null | grep -q .; then echo older; fi",
+            file(id)
+        ))
+    )
 }
 
 /// Takes the helper on its input and puts it in its place: whole (its
@@ -90,7 +97,10 @@ pub enum Stands {
 pub enum Asked<'a> {
     /// It has the helper of this build, and can run it.
     Here,
-    /// It hasn't: this is the build for it.
+    /// It has an older build of the helper, not this one: this is the
+    /// build for it.
+    Outdated(&'a Build),
+    /// It has none: this is the build for it.
     Needs(&'a Build),
 }
 
@@ -102,10 +112,15 @@ fn asked<'a>(ran: &crate::provision::Ran, builds: &'a [Build]) -> Result<Result<
     if !ran.ok() || uname.is_empty() {
         return Err(format!("the host didn't say what it is ({})", ran.output.lines().last().unwrap_or("no answer").trim()).into());
     }
-    if lines.any(|l| l.trim() == "here") {
-        return Ok(Ok(Asked::Here));
+    let mut older = false;
+    for line in lines {
+        match line.trim() {
+            "here" => return Ok(Ok(Asked::Here)),
+            "older" => older = true,
+            _ => {}
+        }
     }
-    Ok(build_for(&uname, builds).map(Asked::Needs).ok_or(uname))
+    Ok(build_for(&uname, builds).map(|b| if older { Asked::Outdated(b) } else { Asked::Needs(b) }).ok_or(uname))
 }
 
 fn failed(e: crate::error::RexError) -> Failed {
@@ -137,7 +152,7 @@ pub async fn put(pool: &SshSessionPool, target: &SshTarget, askpass: Option<Arc<
 pub async fn ensure(pool: &SshSessionPool, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, id: &str, builds: &[Build]) -> Result<Stands, Failed> {
     match ask(pool, target, askpass.clone(), id, builds).await? {
         Ok(Asked::Here) => Ok(Stands::Already),
-        Ok(Asked::Needs(build)) => put(pool, target, askpass, id, build).await,
+        Ok(Asked::Needs(build) | Asked::Outdated(build)) => put(pool, target, askpass, id, build).await,
         Err(kind) => Ok(Stands::NoBuild(kind)),
     }
 }
@@ -208,7 +223,7 @@ mod tests {
         // Another build beside it: both stay (two computers, two Olos).
         assert_eq!(home.run(&takes("ffff", RUNS.len()), RUNS).1, "installed");
         assert_eq!(home.files(), [format!("olo-rex-link-0a1b-{m}"), format!("olo-rex-link-ffff-{m}")]);
-        assert_ne!(home.run(&asks("9999"), b"").1.lines().last(), Some("here"));
+        assert_eq!(home.run(&asks("9999"), b"").1.lines().last(), Some("older"));
         // One that is there and doesn't run isn't "here": it is put again.
         std::fs::write(&file, b"#!/bin/sh\nexit 1\n").unwrap();
         assert_ne!(home.run(&asks("0a1b"), b"").1.lines().last(), Some("here"));
@@ -246,6 +261,7 @@ mod tests {
         let builds = [Build { system: "Linux", machines: &["x86_64"], bytes: b"x" }];
         let ran = |status, output: &str| crate::provision::Ran { status: Some(status), output: output.to_owned() };
         assert!(matches!(asked(&ran(0, "Linux x86_64\nhere\n"), &builds), Ok(Ok(Asked::Here))));
+        assert!(matches!(asked(&ran(0, "Linux x86_64\nolder\n"), &builds), Ok(Ok(Asked::Outdated(b))) if b.bytes == b"x"));
         assert!(matches!(asked(&ran(0, "Linux x86_64\n"), &builds), Ok(Ok(Asked::Needs(b))) if b.bytes == b"x"));
         assert!(matches!(asked(&ran(0, "FreeBSD amd64\n"), &builds), Ok(Err(kind)) if kind == "FreeBSD amd64"));
         assert!(asked(&ran(127, "sh: uname: not found\n"), &builds).is_err());

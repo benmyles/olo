@@ -37,6 +37,24 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   changed. (Rex's own `rex forward new`, `open` and `share`, run here,
   listen on this host, where `rex` runs, not on the desktop: the
   desktop's side is `olo forward`'s.)
+- **Local desktop files (`rex://local/…`)**: When the person pastes a file
+  or folder path from their Olo desktop into a remote Rex terminal, Rex
+  rewrites it as a `rex://local/ABS/PATH` URI (for example
+  `rex://local/home/user/Pictures/screenshot.png`). Those files live on the
+  person's desktop, NOT on this host — fetch or inspect them with:
+  - `olo get rex://local/PATH [DEST]` (alias `olo fetch`): downloads the
+    desktop file onto this host (into `DEST` if given, or
+    `/var/tmp/olo-rex-bridge/<filename>` by default, up to 32 MiB) and
+    prints the saved local path on this host so you can read, view, or
+    process it directly (`--json` for structured output). If given a folder,
+    lists its entries and shows how to fetch files inside it.
+  - `olo ls rex://local/PATH [--all] [--json]`: lists a folder on the
+    person's desktop (returns `rex://local/…` URIs for each entry).
+  - `olo open rex://local/PATH` (or `olo open rex://HOST/PATH`): opens or
+    reveals that folder or file in Tracker on the person's desktop.
+  Requires the host's file sharing permission in Preferences ▸ Rex (the same
+  leave as `olo send` / `olo sync`). For files larger than 32 MiB or whole
+  trees kept in step, use `olo sync --to-host`.
 - **Files and folders of this host, saved on the desktop**: `olo send
   dist/app.tar.zst build/` puts each in the person's Downloads ▸ Rex ▸
   HOST (a folder as a folder of its name), where the person may look at
@@ -146,7 +164,8 @@ person's browser or on your own screen there:
 
 Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):
-`rex do olo.open target=URL`, `rex do olo.op --args '{"args":[…]}'`,
+`rex do olo.open target=URL`, `rex do olo.get --args '{"args":["rex://local/PATH"]}'`,
+`rex do olo.ls --args '{"args":["rex://local/PATH"]}'`, `rex do olo.op --args '{"args":[…]}'`,
 `rex do olo.screen --args '{"args":[…]}'`, `rex do olo.forward --args
 '{"args":["5173"]}'`, `rex do olo.send --args '{"args":["/whole/path"]}'`,
 `rex do olo.sync --args '{"args":["/whole/path"]}'`,

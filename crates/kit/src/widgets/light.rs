@@ -25,7 +25,17 @@ impl Light {
             // (The look's orange: `warning` is made to be read as
             // text, and as a dot it was a brown hard to tell from red
             // at 1×.)
-            Light::Waiting => style::c(p.hue(olo_theme::Hue::Orange)),
+            Light::Waiting => {
+                let raw = p.hue(olo_theme::Hue::Orange);
+                if p.mode == olo_theme::ThemeMode::Dark {
+                    style::c(raw)
+                } else {
+                    // (Darken light-mode orange enough to pass 3:1 non-text
+                    // contrast against light panels without turning brown:
+                    // Opus's look, 2026-11-25.)
+                    style::c(olo_theme::readable(raw, p.panel_background, 3.2))
+                }
+            }
             Light::Down => style::c(p.failure),
             Light::Off => style::disabled_text(p),
         }

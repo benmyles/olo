@@ -24,19 +24,37 @@ use olo_interface::{
 use olo_kit_base::metrics as m;
 use smallvec::SmallVec;
 
-use super::strip::{self, Folder, Shape};
+use super::{
+    Light,
+    strip::{self, Folder, Shape},
+};
 use crate::{style, theme};
 
 /// The tabs' row.
 pub const TAB_HEIGHT: f32 = 22.0;
 /// How far in from the panel's left the first tab is.
 const FIRST: f32 = 8.0;
+/// Gap and badge sizes for a tab's optional status mark (`TabView::lights`):
+/// a 6 pt dot for waiting/update, and a 10 pt red disc with white `!` for failure
+/// so failure differs by shape as well as hue.
+const TAB_DOT_GAP: f32 = 6.0;
+const TAB_DOT: f32 = 6.0;
+const TAB_ALERT: f32 = 10.0;
+
+fn tab_mark_width(light: Option<Light>) -> f32 {
+    match light {
+        Some(Light::Down) => TAB_DOT_GAP + TAB_ALERT,
+        Some(_) => TAB_DOT_GAP + TAB_DOT,
+        None => 0.0,
+    }
+}
 
 type SelectFn = Rc<dyn Fn(&usize, &mut WindowCx)>;
 
 pub struct TabView {
     id: SharedString,
     tabs: Rc<[SharedString]>,
+    lights: Rc<[Option<Light>]>,
     selected: usize,
     on_select: Option<SelectFn>,
     children: SmallVec<[Element; 2]>,
@@ -49,7 +67,14 @@ pub struct TabView {
 
 impl TabView {
     pub fn new(id: impl Into<SharedString>, tabs: impl Into<Rc<[SharedString]>>, selected: usize) -> TabView {
-        TabView { id: id.into(), tabs: crate::words::of_all(tabs.into()), selected, on_select: None, children: SmallVec::new(), grows: false, paged: false, fill: None }
+        TabView { id: id.into(), tabs: crate::words::of_all(tabs.into()), lights: Rc::from([]), selected, on_select: None, children: SmallVec::new(), grows: false, paged: false, fill: None }
+    }
+
+    /// Optional status dot placed 6 pt after each tab's label (e.g. amber for
+    /// available updates, red for a failure on that tab).
+    pub fn lights(mut self, lights: impl Into<Rc<[Option<Light>]>>) -> Self {
+        self.lights = lights.into();
+        self
     }
 
     /// Every tab's page, the `i`th tab's `pages[i]`, in place of what the
@@ -143,7 +168,7 @@ pub fn tabs_width(tabs: &[&str]) -> f32 {
     // its tab, as the tab view draws it, chosen and so in bold.)
     let whole = |w: f32| {
         let outer = Bounds { origin: point(px(0.0), px(0.0)), size: olo_interface::size(px(w), px(TAB_HEIGHT)) };
-        [1.0, 1.25, 1.5, 1.75, 2.0].iter().all(|&s| places(s, outer, &shown).iter().zip(&names).all(|(r, n)| f32::from(r.size.width) - 2.0 * least >= *n + HINTING))
+        [1.0, 1.25, 1.5, 1.75, 2.0].iter().all(|&s| places(s, outer, &shown, &[]).iter().zip(&names).all(|(r, n)| f32::from(r.size.width) - 2.0 * least >= *n + HINTING))
     };
     let sum: f32 = names.iter().sum();
     let (mut lo, mut hi) = (sum, sum + 64.0 * names.len().max(1) as f32 + 2.0 * FIRST);
@@ -159,11 +184,18 @@ pub fn tabs_width(tabs: &[&str]) -> f32 {
 /// either side; where they don't all fit, with less room (to the least),
 /// then the widest cut back, their names cut short
 /// ([`strip::fit_widths`]).
-fn places(scale: f32, outer: Bounds<Pixels>, tabs: &[SharedString]) -> Vec<Bounds<Pixels>> {
+fn places(scale: f32, outer: Bounds<Pixels>, tabs: &[SharedString], lights: &[Option<Light>]) -> Vec<Bounds<Pixels>> {
     let sh = Shape::now();
     let (pad, least) = sh.name_pads();
     let bold = style::ui_font(FontWeight::BOLD);
-    let names: Vec<f32> = tabs.iter().map(|t| f32::from(style::text_width(t.clone(), style::PLAIN_SIZE, bold.clone()))).collect();
+    let names: Vec<f32> = tabs
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let dot = tab_mark_width(lights.get(i).copied().flatten());
+            f32::from(style::text_width(t.clone(), style::PLAIN_SIZE, bold.clone())) + dot
+        })
+        .collect();
     let n = names.len().max(1) as f32;
     let room = f32::from(outer.size.width) - 2.0 * FIRST - sh.gap * (n - 1.0);
     let pad = ((room - names.iter().sum::<f32>()) / (2.0 * n)).clamp(least, pad);
@@ -183,7 +215,7 @@ fn places(scale: f32, outer: Bounds<Pixels>, tabs: &[SharedString]) -> Vec<Bound
 
 impl IntoElement for TabView {
     fn into_element(self) -> Element {
-        let TabView { id, tabs, selected, on_select, children, grows, paged, fill: fills } = self;
+        let TabView { id, tabs, lights, selected, on_select, children, grows, paged, fill: fills } = self;
         let filled = paged && fills == Some(selected);
         // (Every page in one grid cell, as tall as the tallest: the one
         // chosen shown.)
@@ -199,13 +231,14 @@ impl IntoElement for TabView {
         };
         let n = tabs.len();
         let (painted, pressed) = (tabs.clone(), tabs.clone());
+        let (painted_lights, pressed_lights) = (lights.clone(), lights.clone());
         let (clicked, keys) = (on_select.clone(), on_select);
-        let face = canvas(move |g, outer| paint_face(g, outer, &painted, selected, filled))
-            .paint_key(style::key((&*tabs, selected, filled)))
+        let face = canvas(move |g, outer| paint_face(g, outer, &painted, &painted_lights, selected, filled))
+            .paint_key(style::key((&*tabs, &*lights, selected, filled)))
             .absolute()
             .inset_0()
             .on_mouse_down(MouseButton::Left, move |e, cx| {
-                let at = places(cx.scale_factor(), cx.listener_bounds(), &pressed);
+                let at = places(cx.scale_factor(), cx.listener_bounds(), &pressed, &pressed_lights);
                 let hit = at.iter().position(|r| r.contains(&e.position));
                 if let (Some(i), Some(f)) = (hit, &clicked)
                     && i != selected
@@ -252,7 +285,7 @@ impl IntoElement for TabView {
 /// shade off the panel and behind its edge, the chosen one in the
 /// panel's colour and open into it; the panel outlined, lit along its
 /// top and left and shaded along its bottom and right.
-fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], selected: usize, filled: bool) {
+fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], lights: &[Option<Light>], selected: usize, filled: bool) {
     let p = theme::palette();
     let sh = Shape::now();
     let least = sh.name_pads().1;
@@ -268,7 +301,7 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
             style::fill_rect(g, Bounds::from_corners(point(at(l), at(t)), point(at(r), at(b))), c);
         }
     };
-    let rects = places(s, outer, tabs);
+    let rects = places(s, outer, tabs, lights);
     // (The panel's edge: its outline's row, on a device pixel.)
     let y0 = strip::dev(g, outer.top() + px(TAB_HEIGHT));
     let (l, rr, b) = (strip::dev(g, outer.left()), strip::dev(g, outer.right()), strip::dev(g, outer.bottom()));
@@ -309,15 +342,47 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
     for (i, r) in rects.iter().enumerate() {
         let on = i == selected;
         let label = tabs.get(i).cloned().unwrap_or_default();
+        let dot = lights.get(i).copied().flatten();
+        let dot_extra = tab_mark_width(dot);
         let (font, ink) = if on { (style::ui_font(FontWeight::BOLD), f.front_ink) } else { (style::ui_font(FontWeight::NORMAL), f.ink) };
-        let room = r.size.width - px(2.0 * least);
+        let room = r.size.width - px(2.0 * least + dot_extra);
+        let text_w = style::text_width(label.clone(), style::PLAIN_SIZE, font.clone());
         // (A page's name cut short hides what the page is for: the
         // review hears of it. French's Network tabs were "Ordre des se…"
         // and "Mise en form…", and a label cut with "…" fits.)
-        if crate::review::recording(g) && style::text_width(label.clone(), style::PLAIN_SIZE, font.clone()) > room {
+        if crate::review::recording(g) && text_w > room {
             crate::review::cut_name(g, *r, &label);
         }
-        style::label_fit(g, r.center().x, cy, style::Align::Center, label.clone(), style::PLAIN_SIZE, font, ink, room);
+        if let Some(light) = dot {
+            let shown_w = text_w.min(room);
+            let total_w = shown_w + px(dot_extra);
+            // 1 pt optical nudge left so a lighter trailing badge balances the leading capital.
+            let left_x = r.center().x - total_w / 2.0 - px(1.0);
+            style::label_fit(g, left_x, cy, style::Align::Left, label.clone(), style::PLAIN_SIZE, font, ink, room);
+            let cap_mid = style::baseline_at(g, cy, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+            if light == Light::Down {
+                // Distinct shape + hue for failure: 10 pt red disc with crisp white `!`
+                // so it is unmistakable beside a 6 pt amber update dot (even at 1× / colour-blind).
+                let cx = left_x + shown_w + px(TAB_DOT_GAP + TAB_ALERT / 2.0);
+                let fill_c = style::c(olo_theme::readable(p.failure, p.panel_background, 4.5));
+                style::dot(g, point(cx, cap_mid), TAB_ALERT, fill_c);
+                let white = style::c(olo_theme::WHITE);
+                let s = g.scale_factor();
+                let snap = |v: Pixels| px((f32::from(v) * s).round() / s);
+                let bw = px((1.5 * s).round().max(1.0) / s);
+                let bx = snap(cx - bw / 2.0);
+                // Exclamation stem (3.5 pt) + dot (1.5 pt), centred optically inside the 10 pt disc.
+                let stem = Bounds::new(point(bx, snap(cap_mid - px(3.0))), olo_interface::size(bw, px((3.5 * s).round().max(2.0) / s)));
+                let pip = Bounds::new(point(bx, snap(cap_mid + px(1.5))), olo_interface::size(bw, bw));
+                style::fill_rect(g, stem, white);
+                style::fill_rect(g, pip, white);
+            } else {
+                let dot_cx = left_x + shown_w + px(TAB_DOT_GAP + TAB_DOT / 2.0);
+                style::dot(g, point(dot_cx, cap_mid), TAB_DOT, light.color(&p));
+            }
+        } else {
+            style::label_fit(g, r.center().x, cy, style::Align::Center, label.clone(), style::PLAIN_SIZE, font, ink, room);
+        }
         g.agent(agent::Node { role: "Tab", name: Some(label), bounds: *r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
     }
 }

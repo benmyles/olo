@@ -120,6 +120,9 @@ impl Names for Plain {
 /// than a line.
 pub fn parse(text: &str, base: &Path) -> Option<PathBuf> {
     if let Some((_, path)) = files::written_path(text) {
+        if let Some(local) = RexPath::from_path(&path).and_then(|r| r.local_path()) {
+            return Some(local);
+        }
         return Some(path);
     }
     let t = text.trim();
@@ -149,6 +152,13 @@ fn split(text: &str, base: &Path) -> Option<(PathBuf, String)> {
             return Some((PathBuf::from(olo_kit_base::tracker::REX_SCHEME), rest.to_owned()));
         }
         let rex = RexPath::parse(t)?;
+        if let Some(local) = rex.local_path() {
+            if t.ends_with('/') || rex.path == "~" {
+                return Some((local, String::new()));
+            }
+            let name = local.file_name()?.to_string_lossy().into_owned();
+            return Some((local.parent()?.to_owned(), name));
+        }
         if t.ends_with('/') || rex.path == "~" {
             return Some((rex.to_path_buf(), String::new()));
         }

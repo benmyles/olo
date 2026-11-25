@@ -1401,7 +1401,16 @@ impl<'a> WindowCx<'a> {
     fn tell_scrolled(&mut self) {
         while !self.core.scroll_changed.is_empty() {
             for (id, ways) in std::mem::take(&mut self.core.scroll_changed) {
-                let watching: Vec<NodeId> = self.core.watchers.iter().filter(|(watched, which, _)| *watched == id && which & ways != 0).map(|(_, _, node)| *node).collect();
+                let watching: Vec<NodeId> = if self.core.items_stale {
+                    self.core
+                        .nodes
+                        .iter()
+                        .filter(|(nid, n)| n.inter.as_ref().is_some_and(|i| i.watches.iter().any(|(watched, which)| *watched == id && which & ways != 0)) && self.core.is_shown(*nid))
+                        .map(|(nid, _)| nid)
+                        .collect()
+                } else {
+                    self.core.watchers.iter().filter(|(watched, which, _)| *watched == id && which & ways != 0).map(|(_, _, node)| *node).collect()
+                };
                 for node in watching {
                     self.core.mark_paint(node);
                     // What hears of a scroller it doesn't hold.
