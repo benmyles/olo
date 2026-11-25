@@ -7,7 +7,12 @@
 #     the kits and what they're built on), the layout lint runs
 #     headless (`cargo ui-lint`: every Preferences panel and the kit's
 #     forms at 1, 1.5 and 2×, light and dark) and a finding stops the
-#     commit. docs/HACKING.md, "The layout lint".
+#     commit. docs/HACKING.md, "The layout lint". It lints what is
+#     committed: where the working tree differs from it in what the lint
+#     builds (another's work beside, a subagent mid-edit in a crate the
+#     lint builds, 2026-11-25), in a checkout of HEAD with what is staged
+#     (tools/hooks/checkout-at, /var/tmp/olo-precommit/tree, its builds
+#     kept between commits); else in place.
 # OLO_SKIP_UI_LINT=1 skips the lint (not the formatting), for a commit
 # that can't wait; say why in its message.
 set -euo pipefail
@@ -41,7 +46,16 @@ if [ "${OLO_SKIP_UI_LINT:-}" != 1 ] && git diff --cached --name-only | tools/hoo
     else
         lint=(cargo ui-lint)
     fi
-    if ! out=$(env -u WAYLAND_DISPLAY -u OLO_SOCKET "${lint[@]}" 2>&1); then
+    # (What is committed, where the working tree holds more of what the
+    # lint builds: HEAD and what is staged, in a checkout of its own. Git
+    # gives a hook its index's path: never to a git run in another tree.)
+    where=.
+    if git diff --name-only | tools/hooks/lint-covers; then
+        echo "pre-commit: the working tree has more than is staged of what the lint builds: linting what is staged, in a checkout of its own" >&2
+        where=$(env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE tools/hooks/checkout-at HEAD "${OLO_PRECOMMIT_TREE:-/var/tmp/olo-precommit/tree}")
+        git diff --cached --binary | env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE git -C "$where" apply --whitespace=nowarn
+    fi
+    if ! out=$(cd "$where" && env -u WAYLAND_DISPLAY -u OLO_SOCKET -u GIT_INDEX_FILE "${lint[@]}" 2>&1); then
         echo "$out" | grep -E "^  (light|dark) at|panicked|^error" >&2 || echo "$out" | tail -30 >&2
         echo "pre-commit: the layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
         exit 1

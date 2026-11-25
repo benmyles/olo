@@ -7293,8 +7293,12 @@ the Rust staged (rustfmt, as above; vendor/ left alone) and stages it
 again, and, when something the lint builds is staged (the packages
 `cargo ui-lint` tests and every package of ours they depend on, as
 cargo says: `tools/hooks/lint-covers`; an app it doesn't draw, a daemon
-or the docs waits for nothing), runs `cargo ui-lint`;
-the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
+or the docs waits for nothing), runs `cargo ui-lint` on what is
+committed: in place, or, where the working tree holds more of what the
+lint builds than is staged (a subagent mid-edit in a crate it builds),
+in a checkout of HEAD with what is staged applied
+(`/var/tmp/olo-precommit/tree`, `tools/hooks/checkout-at`, its builds
+kept); the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
 (all of them when the kits, or what they're built on, did), after a release build of the
 workspace, then again tiled (`--tiles`) on the smallest screen and the
 person's, and neither when none of them has a window the lint opens.
