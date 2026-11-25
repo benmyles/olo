@@ -184,6 +184,49 @@ something nobody here has is in "Blocked", with what it waits for.
   (BeOS's Tracker opened a window a folder; Ben wants one window that
   goes to the folder, as a modern file manager does. A way to a new
   window stays: the File menu's, a modifier on the open.)
+  **Done** 2026-11-25: a folder opened from a folder window, the Go
+  menu's places and Open Parent go there in that window (`go_to`, its
+  history, Back coming back); several at once a window each; Open in New
+  Window in a folder's menu. In column view each column sized on its
+  own, by the line after it, its width kept for its folder
+  (`widths.rs`), a double click giving back the setting's. Tried
+  headless (HACKING, Tracker).
+
+- **Tracker: a Navigator, now that a folder opens in its window** (Opus,
+  2026-11-25, of folders opening in place: "Nothing on screen shows that
+  the window now has history … A window that behaves like a browser
+  needs a visible Back button. Do: add a navigator row under the menu
+  bar. Height: 24 pt, on the same blue-grey panel fill as the menu bar,
+  with a 1 pt shadow line under it. Buttons: Back, Forward and Up as
+  bevelled 20 × 18 pt buttons with 11 pt glyphs … When there is no
+  history, Back and Forward use the disabled role … Path: to the right
+  of the buttons, a sunken well 6 pt away holding the path … Make the
+  row switchable from View ('Show Navigator') and on by default"). Haiku's
+  Tracker has one (Window ▸ Show Navigator). For now Go ▸ Back shows its
+  key (⌘[ on the Mac profile), which was Opus's least.
+- **Tracker's folder window, from the looks of 2026-11-25** (there before
+  that change; their words):
+  - Opus: "Column dividers give no sign that they can be dragged … give
+    each divider a grip at its foot, just above the horizontal scrollbar
+    … Double-clicking the grip sets the column to fit its widest row";
+    Astra: in dark, "Below the highlight it reads as a faint rule against
+    the dark pane. A slightly lighter stroke would make the drag target
+    easier to find."
+  - Opus: "The context menu's first group is 11 items with no separators
+    … the 'Open…' family is now split in two … regroup the menu with the
+    existing etched separators": Open, Open in New Window, Open With,
+    Open in Terminal, Open in Rex; Quick Look, Get Info; Edit Name,
+    Duplicate, Create Link, Compress; Cut, Copy; Move to Trash.
+  - Opus: "The dark menu has almost no edge … draw menus as raised
+    surfaces in both themes"; Opus and Astra: the menu's bottom edge
+    landed on the scroll bar's top line: check menus aren't clamped to
+    the window ("right-clicking the last row in a window 200 pt tall").
+  - Opus: "The horizontal scrollbar has no thumb but its arrows look
+    active … when nothing can scroll, draw both arrow glyphs in the
+    disabled text role".
+  - Opus: "The text-document icon is muddy at 1x … hand-draw a 16 px
+    variant."
+  - Astra: "'2.5 TB free' at bottom right is faint, particularly at 1x".
 
 - **Rex's Account window, from the looks of 2026-11-25** (there before
   that change; their words):
@@ -254,9 +297,12 @@ something nobody here has is in "Blocked", with what it waits for.
   in the rex client and all be as seamless as possible. make sure your
   plan for this is reviewd by neon 4 and then have it review your impl
   and make sure you test it for real e.g. in containers/vms or
-  something"). The plan to Gemini 4 Neon before building, the build to it
-  after; tried for real between two hosts (containers or VMs of the
-  rig's own), never the person's.
+  something"; and: "it must also support the case where the source is
+  running eg ubuntu and the dest is eg fedora -- no requirement for them
+  to be the same distro"). The plan to Gemini 4 Neon before building,
+  the build to it after; tried for real between two hosts (containers or
+  VMs of the rig's own: an Ubuntu one to a Fedora one), never the
+  person's.
 
 - **An upgrade of Olo cuts the Token Pool's answers mid-stream** (Ben,
   2026-11-25: "when upgrading olo it seems to sever the token pool

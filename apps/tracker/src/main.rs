@@ -29,6 +29,7 @@ mod sorts;
 mod thumbs;
 mod undo;
 mod watch;
+mod widths;
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},

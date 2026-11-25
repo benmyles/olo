@@ -8493,6 +8493,9 @@ Arquivos abertos e tarefas
 Open in Google Drive
 Abrir no Google Drive
 
+Open in New Window
+Abrir em nova janela
+
 Open in Rex
 Abrir no Rex
 

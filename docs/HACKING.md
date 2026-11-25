@@ -21370,8 +21370,17 @@ from `cx.listener_bounds()` in its pointer handlers. Quick Look's
 window holds its first frame until its preview has come and it has
 taken its size (`hold_commit`), or 120 ms. The `Hub` keeps the windows
 (each known by a number it gives it) and does what opens windows or
-touches files: opening folders (a folder's window on this workspace is
-brought forward, else one opens here: `olo_kit::workspaces`; File ▸ New Window,
+touches files: opening folders (from a folder's window, a folder opens
+in that window, `FolderWin::go_to`, a place in its history, Back coming
+back: Ben, 2026-11-25, "when opening a folder it shouldn't open it in a
+new window it should take you to that folder in the current window you
+open it from"; as do the Go menu's places and Open Parent, the folder
+it came out of selected; several folders opened at once a window each,
+and Open in New Window, in a folder's menu, its own; in column view a
+folder chosen opens as the next column, so Open on it goes nowhere new.
+From the desktop, Quick Look and elsewhere, a folder's window on this
+workspace is brought forward, else one opens here: `olo_kit::workspaces`;
+File ▸ New Window,
 ⌘N, the `new` command, always opens another, on the folder it's pressed
 in, Home from the desktop or for `--new-window`; New Folder is ⇧⌘N, as
 Finder has them, both by `app_keys`' Tracker entries; Go ▸ Back and
@@ -21415,29 +21424,34 @@ deferred so the Tracker can update the window back):
   `ListModel` follows the window's selection); the column view's
   columns side by side, scrolled across, with a preview of a selected
   file (thumbs.rs: pictures made small on a thread of their own).
-  **The columns are one width, the person's to set** (columns.rs; Ben,
-  2026-11-21: "it resizes the width of all columns so there is just
-  one column width used for them all and persist it as a saved setting
-  that applies to all tracker windows in column mode"): the line
-  between two columns is dragged (a grip the kit's width,
-  `side_pane::GRIP`, the column-resize pointer; the line drawn
-  stronger under the pointer and while held), and every column of
-  every window follows frame by frame (`dragged_width`: the line after
-  column *k* moves *k* + 1 times as far as each column grows, so it
-  stays under the pointer); a double click gives 220 points back. The
-  width is `tracker.column_width` in the settings
-  (`TrackerSettings::column`: held to 140 to 520), written once, when
-  the line is let go, and followed by every Tracker window as the
-  settings change (`columns::follow_settings`); agents read each line
-  as a Splitter "Column width" whose value is the width, and set it
-  through the settings. In a window, a column is never wider than the
-  window less the start of the next column (`BESIDE`: its line always
-  shows, with the next column's icons, which say a folder opened
-  there), by the window's width as it is at render time
-  (`fit_columns`, `cx.viewport_size()`: by the scroll view's bounds of
-  the frame before, a window just tiled narrow kept the wider column),
-  and a whole number of device pixels (a width of 221 points is 331
-  and a half at 1.5×). The line is one line (a quarter of the way from
+  **Each column is sized on its own, and kept for its folder**
+  (columns.rs, widths.rs; Ben, 2026-11-25: "change how the column
+  resizing works so that columns can be independently resized and don't
+  all change as one and remember the size for specific folders where
+  their column width is resized"; one width for every column had been
+  his first ask, 2026-11-21): the line after a column is dragged (a grip
+  the kit's width, `side_pane::GRIP`, the column-resize pointer; the
+  line drawn stronger under the pointer and while held) and that column
+  alone follows, point for point (`dragged_width`), wherever its folder
+  shows; let go, its width is kept for that folder (`widths::set`,
+  `column-widths.json` in Tracker's state folder, as `sorts` keeps a
+  folder's order) and it shows that wide again in any window; a double
+  click gives it back the settings' width and forgets its own. Every
+  other folder's column is `tracker.column_width` (`TrackerSettings::
+  column`: held to 140 to 520, followed as the settings change,
+  `columns::follow_settings`). Agents read each line as a Splitter
+  "Column width" whose value is that column's width. In a window, a
+  column is never wider than the window less the start of the next
+  column (`BESIDE`: its line always shows, with the next column's
+  icons, which say a folder opened there), by the window's width as it
+  is at render time (`fit_columns`, `cx.viewport_size()`: by the scroll
+  view's bounds of the frame before, a window just tiled narrow kept
+  the wider column), and a whole number of device pixels (a width of
+  221 points is 331 and a half at 1.5×); the columns are laid out from
+  their widths in turn (`col_left`), the hit tests from where each is
+  laid (`col_geo`). Tried headless: a line dragged 60 points sized its
+  column alone (the next kept its 220), the width kept, a new window on
+  the folder at that width, a double click back to 220 and forgotten. The line is one line (a quarter of the way from
   the document's ground to its text, so it shows in every look), the
   last of its column, which the rows on both sides meet at every
   scale: it was an etched pair whose second half doesn't show on a

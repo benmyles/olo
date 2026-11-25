@@ -8493,6 +8493,9 @@ File aperti e attività
 Open in Google Drive
 Apri in Google Drive
 
+Open in New Window
+Apri in una nuova finestra
+
 Open in Rex
 Apri in Rex
 

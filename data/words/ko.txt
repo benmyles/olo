@@ -8467,6 +8467,9 @@ Open files and tasks
 Open in Google Drive
 Google Drive에서 열기
 
+Open in New Window
+새 창에서 열기
+
 Open in Rex
 Rex에서 열기
 

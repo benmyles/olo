@@ -8493,6 +8493,9 @@ Geopende bestanden en taken
 Open in Google Drive
 In Google Drive openen
 
+Open in New Window
+Openen in nieuw venster
+
 Open in Rex
 In Rex openen
 

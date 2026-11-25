@@ -378,13 +378,35 @@ impl FolderWin {
         cx.invalidate();
     }
 
-    /// Opens `e`: a folder's window (whose Back comes back here), a
-    /// file by what opens its kind.
-    pub fn open(&self, e: &Entry) {
+    /// Opens `e`: a folder in this window (`go_to`), a file by what opens
+    /// its kind.
+    pub fn open(&mut self, e: &Entry, cx: &mut Cx<Self>) {
         if e.is_dir {
-            to_hub(ToHub::Open { path: e.path.clone(), from: Some(self.path.clone()) });
+            self.go_to(e.path.clone(), None, cx);
         } else {
             fs::open(e);
+        }
+    }
+
+    /// Goes to folder `path` in this window (Ben, 2026-11-25: "when
+    /// opening a folder it shouldn't open it in a new window it should
+    /// take you to that folder in the current window you open it from"),
+    /// where BeOS's Tracker opened a window a folder: a new place in its
+    /// history, so Back comes back to where it was. `select`: what is
+    /// selected there once it is listed (Open Parent: the folder it came
+    /// out of). File ▸ New Window and Open in New Window still give a
+    /// window of its own.
+    pub fn go_to(&mut self, path: PathBuf, select: Option<PathBuf>, cx: &mut Cx<Self>) {
+        if path == self.location() {
+            return;
+        }
+        self.record_location();
+        self.history.truncate(self.at + 1);
+        self.history.push(path.clone());
+        self.at = self.history.len() - 1;
+        self.show_folder(path.clone(), cx);
+        if let Some(select) = select {
+            self.pending_select.push((path, vec![select]));
         }
     }
 
@@ -409,7 +431,12 @@ impl FolderWin {
     pub fn item_menu(&self) -> Menu {
         let one = self.current().1.selected.len() == 1;
         let in_trash = self.current_dir().starts_with(fs::trash_files());
-        let mut menu = Menu::new("").item("Open", "open").key("o").item("Quick Look", "quick-look").key("y").enabled(one);
+        let mut menu = Menu::new("").item("Open", "open").key("o");
+        // (A folder opens in this window; a window of its own, asked.)
+        if self.selected_entries().iter().any(|e| e.is_dir) {
+            menu = menu.item("Open in New Window", "open-new-window");
+        }
+        menu = menu.item("Quick Look", "quick-look").key("y").enabled(one);
         // A running app of ours can open another window.
         if one && self.selected_entries().first().and_then(fs::running_app).is_some() {
             menu = menu.item("New Window", "new-window");
@@ -1006,7 +1033,7 @@ impl FolderWin {
             if (e.position - press.at).magnitude() < DRAG_SLOP as f64
                 && let Some(entry) = press.item.and_then(|i| self.entries.get(i)).cloned()
             {
-                self.open(&entry);
+                self.open(&entry, cx);
             }
             cx.invalidate();
             return;
@@ -1227,7 +1254,7 @@ impl FolderWin {
             if f.list.selected.contains(row) {
                 f.run("open", cx);
             } else if let Some(e) = f.entries.get(*row).cloned() {
-                f.open(&e);
+                f.open(&e, cx);
             }
         }))
         .on_context(cx.listener(|f: &mut FolderWin, (_, at): &(usize, Point<Pixels>), cx| f.context_menu(true, *at, cx)))
@@ -1415,13 +1442,30 @@ impl FolderWin {
         }
         match cmd {
             "quick-look" => to_hub(ToHub::QuickLook(self.id)),
+            // (One folder: there, in this window. Several: a window each, as
+            // one window can't be in several places; files by their apps.)
             "open" => {
+                let folders = entries.iter().filter(|e| e.is_dir).count();
                 for e in &entries {
-                    self.open(e);
+                    if e.is_dir && folders > 1 {
+                        to_hub(ToHub::Open { path: e.path.clone(), from: Some(self.path.clone()) });
+                    } else {
+                        self.open(e, cx);
+                    }
                 }
             }
-            // The folder it's in, with this one selected (to go on from).
-            "parent" => to_hub(ToHub::Reveal(dir, true)),
+            "open-new-window" => {
+                for e in entries.iter().filter(|e| e.is_dir) {
+                    to_hub(ToHub::Open { path: e.path.clone(), from: Some(self.path.clone()) });
+                }
+            }
+            // The folder it's in, with this one selected (to go on from),
+            // in this window.
+            "parent" => {
+                if let Some(up) = dir.parent().map(Path::to_owned) {
+                    self.go_to(up, Some(dir.clone()), cx);
+                }
+            }
             "new-folder" => match fs::new_folder(&dir) {
                 Ok(p) => {
                     to_hub(ToHub::Done(olo_kit::words::tr("New Folder").into(), undo::Change::Made(vec![p.clone()])));
@@ -1539,13 +1583,14 @@ impl FolderWin {
                 crate::sorts::remember(&self.path, self.sort);
                 self.resort();
             }
-            "go-home" => to_hub(ToHub::Open { path: fs::home(), from: None }),
-            "go-desktop" => to_hub(ToHub::Open { path: fs::home().join("Desktop"), from: None }),
-            "go-root" => to_hub(ToHub::Open { path: PathBuf::from("/"), from: None }),
+            // (The Go menu's places: there, in this window.)
+            "go-home" => self.go_to(fs::home(), None, cx),
+            "go-desktop" => self.go_to(fs::home().join("Desktop"), None, cx),
+            "go-root" => self.go_to(PathBuf::from("/"), None, cx),
             "go-trash" => {
                 let t = fs::trash_files();
                 let _ = std::fs::create_dir_all(&t);
-                to_hub(ToHub::Open { path: t, from: None });
+                self.go_to(t, None, cx);
             }
             "favorite-on" | "favorite-off" => {
                 let on = cmd == "favorite-on";
@@ -1568,7 +1613,7 @@ impl FolderWin {
             c if c.starts_with("go-place:") => {
                 let dir = PathBuf::from(&c["go-place:".len()..]);
                 if dir.is_dir() {
-                    to_hub(ToHub::Open { path: dir, from: None });
+                    self.go_to(dir, None, cx);
                 }
             }
             "find" => to_hub(ToHub::Find),

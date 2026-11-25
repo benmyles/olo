@@ -8467,6 +8467,9 @@ Open files and tasks
 Open in Google Drive
 在 Google Drive 中開啟
 
+Open in New Window
+在新視窗中開啟
+
 Open in Rex
 在 Rex 中開啟
 

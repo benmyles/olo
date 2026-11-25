@@ -8493,6 +8493,9 @@ Open files and tasks
 Open in Google Drive
 Google Drive में खोलें
 
+Open in New Window
+नई विंडो में खोलें
+
 Open in Rex
 Rex में खोलें
 

@@ -2820,6 +2820,7 @@ Open and save panels, and screen sharing, for other apps.
 Open files
 Open files and tasks
 Open in Google Drive
+Open in New Window
 Open in Rex
 Open in Terminal
 Open in Tracker

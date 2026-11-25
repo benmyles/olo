@@ -8545,6 +8545,9 @@ Open files and tasks
 Open in Google Drive
 Открыть в Google Drive
 
+Open in New Window
+Открыть в новом окне
+
 Open in Rex
 Открыть в Rex
 
