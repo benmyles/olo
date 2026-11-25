@@ -45,14 +45,23 @@ is connected: then this host isn't open in Olo's Rex now, so say so).
   parts); `--mirror` also takes away, within that folder there, what
   is no longer here. Where the person hasn't let this host send files
   (Preferences ▸ Rex), it says so: ask them.
-- **A folder kept in step on the desktop**: `olo sync dist` keeps this
+- **A folder kept in step with the desktop**: `olo sync dist` keeps this
   host's folder in step in Downloads ▸ Rex ▸ HOST ▸ dist from then on
   (what changes here is brought there moments later, by itself: a
-  build's output, logs); `olo sync wait dist` brings it in step now and
-  answers when it is (after a build: `make && olo sync wait dist`);
-  `olo sync ls` lists this host's kept folders and how each stands;
-  `olo sync stop dist` lets it go (what was brought stays). `--mirror`
-  takes away there what is no longer here. The same leave as `olo send`.
+  build's output, logs). Direction flags: `--from-host` (default, host
+  to desktop), `--to-host` (desktop to host), or `--two-way` (alias
+  `--both`: edits, adds and deletes flow both ways, and when both sides
+  edit the same file the newer copy stays in place while the other is
+  preserved beside it as `name.conflict-SIDE-YYYYMMDD-HHMMSS.ext` on
+  both sides so nothing is lost). Options: `--mirror` (in one-way sync,
+  remove extras on the receiving side), `--shallow` (top-level files
+  only), `--exclude PATTERN` (repeatable glob, e.g. `--exclude target
+  --exclude '*.tmp'`). Other subcommands: `olo sync wait dist` brings it
+  in step now and answers when it is (after a build: `make && olo sync
+  wait dist`); `olo sync ls [--json]` lists this host's kept folders,
+  directions, states and conflict counts; `olo sync conflicts [PATH]
+  [--json]` lists any conflict copies to resolve; `olo sync stop dist`
+  lets it go (files stay on both sides). The same leave as `olo send`.
 - **A secret from Olo Passwords** (1Password's command line, answered
   on the desktop after the person approves there; no secret is kept on
   this host): `olo op read op://Vault/Item/field`. Changes too, as

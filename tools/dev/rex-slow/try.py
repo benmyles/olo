@@ -602,6 +602,54 @@ exit 0
         with open(f"{kept}/logs/build.log", "a") as f: f.write("line 3\n")
         time.sleep(3)
         check("sync: let go of, no longer brought", stopped.get("ok") and "line 3" not in open(here).read(), {"stopped": stopped, "log": open(here).read()})
+        # `--to-host`, `--exclude`, `--shallow`: changes on the desktop flow to the host automatically (local inotify).
+        tohost = f"{D}/kept-tohost"; shutil.rmtree(tohost, ignore_errors=True)
+        tohost_here = f"{downloads}/kept-tohost"; shutil.rmtree(tohost_here, ignore_errors=True); os.makedirs(f"{tohost_here}/nested")
+        open(f"{tohost_here}/top.txt", "w").write("from-desktop-1\n")
+        open(f"{tohost_here}/skip.tmp", "w").write("excluded\n")
+        open(f"{tohost_here}/nested/deep.txt", "w").write("shallow-ignored\n")
+        th_start = answered(synced(tohost, "--to-host", "--shallow", "--exclude", "*.tmp"))
+        check("sync to-host: initial push respects --shallow and --exclude",
+              th_start and th_start.get("ok") and os.path.exists(f"{tohost}/top.txt") and open(f"{tohost}/top.txt").read() == "from-desktop-1\n"
+              and not os.path.exists(f"{tohost}/skip.tmp") and not os.path.exists(f"{tohost}/nested/deep.txt"), th_start)
+        open(f"{tohost_here}/top.txt", "w").write("from-desktop-2\n")
+        pushed = r.wait(lambda: os.path.exists(f"{tohost}/top.txt") and open(f"{tohost}/top.txt").read() == "from-desktop-2\n", 20, every=0.2)
+        check("sync to-host: local desktop edit pushed automatically", pushed, {"there": open(f"{tohost}/top.txt").read() if os.path.exists(f"{tohost}/top.txt") else None})
+        answered(synced("stop", tohost))
+        # `--two-way`: edits flow both ways, deletions propagate, and edit-vs-edit conflicts keep both copies without data loss.
+        tw_there = f"{D}/kept-twoway"; shutil.rmtree(tw_there, ignore_errors=True); os.makedirs(tw_there)
+        tw_here = f"{downloads}/kept-twoway"; shutil.rmtree(tw_here, ignore_errors=True)
+        open(f"{tw_there}/shared.txt", "w").write("v1\n")
+        open(f"{tw_there}/drop-me.txt", "w").write("bye\n")
+        tw_start = answered(synced(tw_there, "--two-way", "--exclude", "*.ignored"))
+        check("sync two-way: initial pull + baseline", tw_start and tw_start.get("ok") and open(f"{tw_here}/shared.txt").read() == "v1\n", tw_start)
+        # Desktop adds a file and deletes drop-me.txt -> host receives add & delete automatically.
+        open(f"{tw_here}/from-desk.txt", "w").write("desk-added\n")
+        os.remove(f"{tw_here}/drop-me.txt")
+        tw_desk = r.wait(lambda: os.path.exists(f"{tw_there}/from-desk.txt") and open(f"{tw_there}/from-desk.txt").read() == "desk-added\n" and not os.path.exists(f"{tw_there}/drop-me.txt"), 20, every=0.2)
+        check("sync two-way: desktop add & delete flow to host automatically", tw_desk, os.listdir(tw_there))
+        # Host adds a file -> desktop receives it automatically.
+        open(f"{tw_there}/from-host.txt", "w").write("host-added\n")
+        tw_host = r.wait(lambda: os.path.exists(f"{tw_here}/from-host.txt") and open(f"{tw_here}/from-host.txt").read() == "host-added\n", 20, every=0.2)
+        check("sync two-way: host add flows to desktop automatically", tw_host, os.listdir(tw_here))
+        # Edit-vs-edit conflict: edit shared.txt on BOTH sides with distinct mtimes -> newer wins in place, loser kept as conflict copy on BOTH sides!
+        t_old = time.time() - 60
+        t_new = time.time()
+        open(f"{tw_there}/shared.txt", "w").write("host-older-version\n"); os.utime(f"{tw_there}/shared.txt", (t_old, t_old))
+        open(f"{tw_here}/shared.txt", "w").write("desktop-newer-version\n"); os.utime(f"{tw_here}/shared.txt", (t_new, t_new))
+        tw_wait = answered(synced("wait", tw_there))
+        confs_json = answered(synced("conflicts", tw_there, "--json"))
+        confs = json.loads(confs_json.get("stdout") or "[]") if confs_json and confs_json.get("ok") else []
+        ls_json = answered(synced("ls", "--json"))
+        ls_rows = json.loads(ls_json.get("stdout") or "[]") if ls_json and ls_json.get("ok") else []
+        cname = confs[0]["path"] if confs else ""
+        both_have_winner = open(f"{tw_here}/shared.txt").read() == "desktop-newer-version\n" and open(f"{tw_there}/shared.txt").read() == "desktop-newer-version\n"
+        both_have_loser = bool(cname) and os.path.exists(f"{tw_here}/{cname}") and os.path.exists(f"{tw_there}/{cname}") and open(f"{tw_here}/{cname}").read() == "host-older-version\n" and open(f"{tw_there}/{cname}").read() == "host-older-version\n"
+        check("sync two-way: edit-vs-edit keeps newer in place & conflict copy on both sides",
+              tw_wait and tw_wait.get("ok") and both_have_winner and both_have_loser and any(r.get("direction") == "both" and r.get("conflicts") for r in ls_rows),
+              {"confs": confs, "ls": ls_rows, "wait": tw_wait})
+        answered(synced("stop", tw_there))
+        shutil.rmtree(tohost, ignore_errors=True); shutil.rmtree(tw_there, ignore_errors=True)
         shutil.rmtree(kept, ignore_errors=True)
         shutil.rmtree(sent_dir, ignore_errors=True); shutil.rmtree(f"{D}/home-app/Downloads", ignore_errors=True)
         print("PASS" if ok else "FAIL")

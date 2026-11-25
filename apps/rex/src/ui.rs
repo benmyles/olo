@@ -4502,14 +4502,31 @@ impl View for RexWindow {
                         }
                     }
                     HostDo::Copy(text) => olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(text)),
+                    HostDo::SyncKept(there) => {
+                        if let Some(shown) = crate::host::current() {
+                            hub.sync_kept_now(&shown.key, &there);
+                        }
+                    }
                     HostDo::RetryKept(there) => {
                         if let Some(shown) = crate::host::current() {
                             hub.retry_kept(&shown.key, &there);
                         }
                     }
-                    HostDo::StopKept(there) => {
+                    HostDo::StopKept(there, confirm) => {
                         if let Some(shown) = crate::host::current() {
-                            hub.stop_kept(&shown.key, &there);
+                            if confirm {
+                                let leaf = there.trim_end_matches('/').rsplit('/').next().unwrap_or(&there).to_owned();
+                                let msg = olo_kit::tr!("{} will stop keeping “{}” in step. Both copies stay where they are.", shown.name, leaf).to_string();
+                                let hub = hub.clone();
+                                let key = shown.key.clone();
+                                let _ = olo_kit::widgets::open_alert(cx, "Rex", "network", &msg, &["Cancel", "Forget"], move |choice, _| {
+                                    if *choice == Some(1) {
+                                        hub.stop_kept(&key, &there);
+                                    }
+                                });
+                            } else {
+                                hub.stop_kept(&shown.key, &there);
+                            }
                         }
                     }
                 }

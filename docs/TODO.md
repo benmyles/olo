@@ -1981,12 +1981,21 @@ something nobody here has is in "Blocked", with what it waits for.
     folders here in Downloads ▸ Rex ▸ HOST, under a permission of its
     own (HACKING, the bridge, "Files a host sends"); a rebuilt archive
     sent again sends its change. The person's way in is Tracker's (the
-    item "A host's folders in Tracker"). And step (3) from a host:
-    `olo sync PATH` keeps a host's folder in step here, brought again
-    moments after it changes there (the helper's watch, no polling), with
-    `ls`, `wait`, `stop` (HACKING, the bridge, "Folders kept in step").
-    Next: the Host window's list of them (in its tabs), one kept the
-    other way (here to a host), the person's own way in, then both ways.
+    item "A host's folders in Tracker"). And step (3) complete (2026-11-25,
+    HACKING, the bridge, "Folders kept in step" & "The Host window"): `olo
+    sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow]
+    [--exclude PATTERN]… [--json]`, `ls [--json]`, `conflicts [PATH]
+    [--json]`, `wait PATH [--json]`, `stop PATH`; shared zero-polling
+    inotify watcher (`olo_rex_sync::watch`) on host and desktop; 3-way
+    reconciliation with zero-data-loss conflict copies on both sides
+    (`olo_rex_sync::twoway`, `olo-rex-link sync index|mutate|--only-file`,
+    `olo_rex_client::sync::sync_both`); Host window ▸ Files tab with Sync
+    Now, Forget… confirmation, host-named direction + monospace excludes,
+    amber-for-conflicts-only lights, green hollow syncing ring, clickable
+    conflict link. Verified on the rig (`try.py bridge`), `ui-lint`, and
+    both Opus 5.5 + Gemini 4 Neon reviews. Follow-up polish noted by Opus
+    for later: live file/byte progress count on `Syncing…`, and a BeOS
+    list + detail pane layout if many folders are kept.
   - *Agent Sessions' copy sends only what changed in a file* (Ben,
     2026-11-24: "improve the agent sessions copy in rex so that it is
     smart enough to e.g. copy new lines only when a file has only had

@@ -8,9 +8,13 @@
 pub mod chunk;
 pub mod index;
 pub mod recipe;
+pub mod twoway;
+pub mod watch;
 pub mod wire;
 
 pub use chunk::{ChunkId, ChunkRef, FileDigest};
 pub use index::{Entry, EntryKind, Filter, Index, MAX_SKIPPED_PATHS, Skipped, SkippedKind};
 pub use recipe::{DataCodec, Piece, Plan, PlanOp, Recipe, RecipeKind, SuperChunk};
+pub use twoway::{Conflict, TwoWayPlan, Winner};
+pub use watch::{DEFAULT_SETTLE_MS, MAX_WAIT_MS, WatchEvent, WatchHandle};
 pub use wire::{FolderSource, ListEntry, ListSource, Options, PathError, Phase, Progress, Report, Source, receive, send};

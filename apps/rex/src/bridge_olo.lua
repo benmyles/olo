@@ -29,12 +29,24 @@ local asked = ({
     for i, x in ipairs(args) do whole[i] = x:sub(1, 1) == "-" and x or ((x:sub(1, 1) == "/") and x or ((os.getenv("PWD") or ".") .. "/" .. x)) end
     return "olo.send", { args = whole }
   end,
-  -- (Its folder made whole as `send`'s paths are; its words left as they are.)
+  -- (Its folder made whole as `send`'s paths are; its words and `--exclude`
+  -- patterns left as they are.)
   sync = function()
-    local whole, words = {}, { ls = true, list = true, wait = true, stop = true, rm = true }
+    local whole = {}
+    local words = { ls = true, list = true, wait = true, stop = true, rm = true, conflicts = true }
+    local skip_next = false
     for i, x in ipairs(args) do
-      if x:sub(1, 1) == "-" or (i == 1 and words[x]) or x:sub(1, 1) == "/" then whole[i] = x
-      else whole[i] = (os.getenv("PWD") or ".") .. "/" .. x end
+      if skip_next then
+        whole[i] = x
+        skip_next = false
+      elseif x == "--exclude" or x == "-x" then
+        whole[i] = x
+        skip_next = true
+      elseif x:sub(1, 1) == "-" or (i == 1 and words[x]) or x:sub(1, 1) == "/" then
+        whole[i] = x
+      else
+        whole[i] = (os.getenv("PWD") or ".") .. "/" .. x
+      end
     end
     return "olo.sync", { args = whole }
   end,

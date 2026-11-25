@@ -28190,22 +28190,26 @@ its drawing, `HubState::host_stands` what it shows).
   *Olo Integration*, the bridge with its desktop commands and the Token
   Pool; *Files*, the host's folders kept in step here (`olo sync`, the
   bridge's "Folders kept in step"), a list that fills the panel to its
-  frame and scrolls there (`TabView::fill_page`), its bar against the
-  frame. A folder is a line and two under it, in two columns: its name
-  and the labels Here and There in the first, as wide as the widest of
-  them (at most 120 points, a longer name cut short); how it stands
-  (In step and how long ago, Syncing…, Waiting for the host, Gone from
-  the host, Failed and why, all on the line, cut short with its whole
-  in a tip) and the places in the second, from one edge, a dot between
-  in a column of its own (a state set after its name started where the
-  name's length put it, a point or two off the places under it: the
-  review's near-edge); Here a link that opens the copy here in Tracker,
-  There the folder's path on the host. Its buttons: Stop; Try Again
-  beside it for one that failed (`RexHub::retry_kept`: its runner ended
-  and started again, watching and syncing at once); Forget for one gone
-  from the host, which runs nothing to stop. None kept: what an agent
-  runs to keep one, in a well with Copy, and where they land, a link
-  (for a host not reached over SSH, that only such a host keeps one).
+  frame and scrolls there (`TabView::fill_page`) with an equal 20 pt
+  inset on all four sides (measured from the scrollbar's left edge when
+  scrolled). Folders are sorted alphabetically by name so rows stay put.
+  Each folder is an inline header line (`[lamp]` + bold name + `·` +
+  state + age, with any conflict copy count set as a clickable link that
+  opens the folder in Tracker) and three aligned detail lines under it:
+  `Here` (dim parent breadcrumb `Downloads ▸ Rex ▸ HOST ▸` with only the
+  folder leaf linked), `There` (monospace path on the host), and `Sync`
+  (primary-ink direction naming the host — `From HOST`, `To HOST`, or
+  `Both ways` — followed by dim modifiers `mirrored` / `top level only`
+  and monospace exclude globs). Status lights keep one meaning per
+  colour: green dot in step, green hollow ring syncing, amber dot in
+  step with conflicts to review, red dot failed (with reason and age),
+  grey dot waiting or gone from the host. Buttons sit in two fixed right
+  slots: `Sync Now` (disabled while syncing, replaced by `Try Again` on
+  failure) and `Forget…` (opens a confirmation alert; plain `Forget` on
+  gone rows). None kept: a button-height `command_well` (`olo sync
+  FOLDER`) with `Copy`, a flag hint 6 pt below it (`--two-way` and
+  `--to-host` in monospace), and where they land 14 pt below that (for a
+  host not reached over SSH, that only such a host keeps one).
   At the foot Remove All…, the one
   thing here that asks first (its question takes the foot's place). A
   section is the Server window's: heading and rule, a line with a
@@ -29523,30 +29527,37 @@ Rex server, as every Rex client offers its own
   Agent Sessions' copy does); said where it isn't. Tried on the rig
   (`try.py bridge`): refused ungranted; a file and a folder saved; the
   rebuilt file sent again, its change alone; a path not there said.
-- *Folders kept in step* (`olo sync PATH [--mirror]`, `olo sync ls`,
-  `olo sync wait PATH`, `olo sync stop PATH`; `rex do olo.sync`,
-  `hub::bridge_sync`): a host's folder kept in step here, in Downloads ▸
-  Rex ▸ HOST ▸ its name, from then on. Kept in the desktop's settings
-  (`RexSettings::kept`: the host, its path there, mirror or not; where
-  it goes here is this side's, `hub::kept_here`), followed by the hub
-  (`follow_kept`), each kept by a runner of its own while its host is
-  connected (`RexHubInner::keep`): the host's watch started first
-  (`olo-rex-link sync watch PATH`, "A helper on the host": nothing that
-  changes during the first sync goes unseen), a sync (`sync_kept`, the
-  engine through the helper, its index kept beside the app's cache),
-  then another each time the watch says "changed"; one sync at a time
-  into a folder (its lock, which `olo sync wait` takes too). Its host
-  gone, it waits, and is started again as the host connects; the folder
-  gone there, it says so and stops. `wait` syncs now and answers when it
-  is in step (after a build: `make && olo sync wait dist`); `ls` lists
-  the host's kept folders with how each stands and when it was last
-  brought in step; `stop` lets one go, what it brought staying. The
-  same leave as `olo send` (it writes nowhere else). Tried on the rig
-  (`try.py bridge`): kept and brought at once, a line appended to a log
-  and a folder made there brought by themselves moments later, listed
-  in step, waited for (60 bytes when nothing changed), let go of and no
-  longer brought. The Host window's list of them, and its Stop, come
-  with its tabs (TODO, "The Host window in tabs").
+- *Folders kept in step* (`olo sync PATH [--from-host | --to-host |
+  --two-way] [--mirror] [--shallow] [--exclude PATTERN]… [--json]`,
+  `olo sync ls [--json]`, `olo sync conflicts [PATH] [--json]`,
+  `olo sync wait PATH [--json]`, `olo sync stop PATH`; `rex do
+  olo.sync`, `hub::bridge_sync`): a folder kept in step between a host
+  and Downloads ▸ Rex ▸ HOST ▸ its name, one way either way (`--from-host`
+  default, `--to-host`) or both ways (`--two-way` / `--both`), optionally
+  top-level only (`--shallow`) and with repeatable glob exclusions
+  (`--exclude PATTERN`, passed verbatim by `bridge_olo.lua`). Kept in the
+  desktop's settings (`RexSettings::kept`: host, path, mirror, direction,
+  shallow, exclude; where it goes here is this side's, `hub::kept_here`),
+  followed by the hub (`follow_kept`), each kept by a runner of its own
+  while its host is connected (`RexHubInner::keep`): zero-polling Linux
+  inotify (`olo_rex_sync::watch`, shared by `olo-rex-link sync watch` on
+  the host and in-process `spawn_watch` on the desktop) watches the host
+  (`FromHost`), this computer (`ToHost`), or both via `tokio::select!`
+  (`Both`), aborting cleanly via pipe drop. Two-way sync uses a 3-way
+  reconciler (`olo_rex_sync::twoway::plan` + `olo-rex-link sync index` &
+  `mutate` + scoped `--only`/`--only-file` transfers via
+  `olo_rex_client::sync::sync_both`) against a persisted deterministic
+  baseline (`*.baseline.idx`): one-sided adds/edits/deletes propagate,
+  edit-vs-delete keeps the edit, file-vs-dir keeps the dir and preserves
+  the file, and edit-vs-edit/add-vs-add keeps the newer `mtime_ns` in
+  place while copying the other side's version to
+  `<stem>.conflict-<side>-<YYYYMMDD-HHMMSS>[.<ext>]` on both sides so no
+  data is ever lost. `conflicts` lists conflict copies (plain or JSON);
+  `ls --json` and `wait --json` expose full structured state for agents.
+  Tried on the rig (`try.py bridge`): host→desktop live watch, `--to-host
+  --shallow --exclude` live local inotify push, `--two-way` desktop add +
+  delete, host add, edit-vs-edit conflict preserved identically on both
+  sides, `ls --json`, `conflicts --json`, and `stop`.
 - *Olo's own tests name themselves "Olo Rex test"*, kind `test`
   (`ClientIdentity::a_test`): as the app, each left a client the
   server listed as lost on the host it ran against.

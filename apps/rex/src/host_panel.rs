@@ -98,8 +98,11 @@ pub enum HostDo {
     RemoveAll(Vec<HostThing>),
     /// A tab chosen: Rex, Olo Integration, Files.
     Tab(usize),
-    /// A kept folder (by its path there) let go of: what it brought stays.
-    StopKept(String),
+    /// A kept folder (by its path there) let go of: `true` asks to confirm
+    /// first (`Forget…`), `false` forgets immediately (gone folders).
+    StopKept(String, bool),
+    /// A kept folder synced immediately on demand.
+    SyncKept(String),
     /// A kept folder that failed, kept in step again from the start.
     RetryKept(String),
     /// A kept folder's copy here shown in Tracker (by its path there); with
@@ -142,17 +145,49 @@ pub fn kept_stands(k: &crate::hub::Kept) -> Stands {
     // (Said again as it changes: `olo_kit::ago`.)
     let ago = k.last.map(|(at, _, _)| olo_kit::ago::ago(at, olo_kit::ago::long));
     match &k.state {
+        // One amber, one meaning (Opus's review): amber is ONLY for conflicts
+        // needing a look; green dot is in step; green ring is syncing; grey dot
+        // is waiting or gone; red dot is failed.
+        KeptState::InStep if !k.conflicts.is_empty() => {
+            let conf = olo_kit::words::count(k.conflicts.len() as u64, "1 conflict copy", "{n} conflict copies").to_string();
+            let more = match ago {
+                Some(a) => format!("{conf}  ·  {a}"),
+                None => conf,
+            };
+            Stands { more: Some(more), ..stands(Light::Waiting, "In step") }
+        }
         KeptState::InStep => Stands { more: ago, ..stands(Light::On, "In step") },
-        KeptState::Syncing => Stands { busy: true, ..stands(Light::Waiting, "Syncing…") },
+        KeptState::Syncing => Stands { busy: true, ..stands(Light::On, "Syncing…") },
         KeptState::Waiting => stands(Light::Off, "Waiting for the host"),
-        // (Which side it's gone from, in the state's words, and no sentence
-        // under it saying it again: Astra's look.)
-        KeptState::Gone => stands(Light::Waiting, "Gone from the host"),
-        // (Its reason after the state, dim, on the line, as every folder's
-        // line is one line: under it, in the window's face, it was the
-        // loudest words in the list. Its whole in the line's tip.)
-        KeptState::Failed(why) => Stands { more: Some(why.clone()), ..stands(Light::Down, "Failed") },
+        KeptState::Gone => stands(Light::Off, "Gone from the host"),
+        KeptState::Failed(why) => {
+            let more = match ago {
+                Some(a) => format!("{why}  ·  {a}"),
+                None => why.clone(),
+            };
+            Stands { more: Some(more), ..stands(Light::Down, "Failed") }
+        }
     }
+}
+
+/// Primary direction phrase naming the host (Opus's review: primary ink so
+/// direction stands out from modifiers), plus dim modifier words and monospace
+/// exclude patterns.
+pub fn kept_mode_parts(k: &crate::hub::Kept, host_name: &str) -> (String, Vec<String>, Vec<String>) {
+    use olo_protocol::RexSyncDirection as Dir;
+    let dir = match k.direction {
+        Dir::FromHost => olo_kit::tr!("From {}", host_name).to_string(),
+        Dir::ToHost => olo_kit::tr!("To {}", host_name).to_string(),
+        Dir::Both => olo_kit::words::tr("Both ways").to_string(),
+    };
+    let mut mods = Vec::new();
+    if k.mirror && k.direction != Dir::Both {
+        mods.push(olo_kit::words::tr("mirrored").to_string());
+    }
+    if k.shallow {
+        mods.push(olo_kit::words::tr("top level only").to_string());
+    }
+    (dir, mods, k.exclude.clone())
 }
 
 fn stands(light: Light, said: &'static str) -> Stands {
@@ -296,7 +331,7 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
-    let wide = ["Check Again", "Connect", "Manage…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel", "Stop", "Forget", "Copy"]
+    let wide = ["Check Again", "Connect", "Manage…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel", "Sync Now", "Forget…", "Forget", "Copy"]
         .iter()
         .map(|l| button_width(l, false))
         .fold(0.0, f32::max);
@@ -583,18 +618,17 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // it is here, a link that opens it in Tracker, and where it is there,
     // each said ("Here", "There": two notations with nothing saying which
     // was which, Opus's look). Stop lets it go (what it brought stays).
-    let here_there = [olo_kit::words::tr("Here").to_string(), olo_kit::words::tr("There").to_string()];
+    let here_there = [olo_kit::words::tr("Here").to_string(), olo_kit::words::tr("There").to_string(), olo_kit::words::tr("Sync").to_string()];
     let label_w = here_there.iter().map(|l| f32::from(style::text_width(l.clone(), style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)))).fold(0.0, f32::max).ceil();
-    // (A label in the names' column, its value from the states' edge.)
-    let labelled = |label: &str, column: f32, dot_w: f32, height: f32, value: Element| {
+    // (A detail label column, its value aligned cleanly after a fixed gap.)
+    let labelled = |label: &str, column: f32, height: f32, value: Element| {
         div()
             .w_full()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(m::TIGHT))
+            .gap(px(m::TIGHT + 2.0))
             .child(div().w(px(column)).flex_shrink_0().child(StringView::new(label.to_owned()).size(style::SMALL_SIZE).dim(true).height(height)))
-            .child(div().w(px(dot_w)).flex_shrink_0())
             .child(div().flex_1().min_w_0().child(value))
             .into_element()
     };
@@ -617,13 +651,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     };
     let mut files = div().w_full().flex().flex_col();
     if host.kept.is_empty() && !host.ssh {
-        // (`olo sync` takes a host reached over SSH: what it takes said
-        // first, then that this one isn't, Astra's second look.)
         files = files.child(small(olo_kit::tr!("Folders are kept in step only from a host reached over SSH, which {} isn’t.", host.name).into()));
     } else if host.kept.is_empty() {
-        // (What there would be; the command that makes one, in a well of
-        // the host's words' face, to copy, as the one thing to take away;
-        // where they land, a link in its sentence: Opus's second look.)
         let command = format!("olo sync {}", olo_kit::words::tr("FOLDER"));
         let copy = button("Copy", "host-kept-copy", HostDo::Copy(command.clone()), true);
         let on_show = on_do.clone();
@@ -631,6 +660,20 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             .size(style::SMALL_SIZE)
             .id("host-kept-show")
             .on_click(move |_, cx| on_show(&HostDo::ShowKept(None), cx));
+        // (Command hint directly attached 6 pt under the well with flags in mono;
+        // destination sentence 14 pt below that: both Opus & Gemini reviews.)
+        let hint_row = div()
+            .w_full()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap(px(space))
+            .child(StringView::new(olo_kit::words::tr("Add").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
+            .child(StringView::new("--two-way".to_owned()).mono(true).size(MONO_SIZE).dim(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE))
+            .child(StringView::new(olo_kit::words::tr("to sync edits both ways, or").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
+            .child(StringView::new("--to-host".to_owned()).mono(true).size(MONO_SIZE).dim(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE))
+            .child(StringView::new(olo_kit::words::tr("to push from here.").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)));
         files = files
             .child(small(olo_kit::tr!("No folders on {} are kept in step here. An agent there keeps one with:", host.name).into()))
             .child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0())
@@ -641,34 +684,29 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                     .flex_row()
                     .items_center()
                     .gap(px(m::SPACING))
-                    .child(div().flex_1().min_w_0().child(panels::well(StringView::new(command).mono(true).size(MONO_SIZE).into_element())))
+                    .child(div().flex_1().min_w_0().child(panels::command_well(StringView::new(command).mono(true).size(MONO_SIZE).into_element())))
                     .child(copy),
             )
-            .child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0())
-            // (The link last, after a colon, as the line under the head has
-            // it: a full stop after a link stood off it by the link's
-            // rounding to the two-point grid.)
+            .child(div().h(px(m::TIGHT)).flex_shrink_0())
+            .child(hint_row)
+            .child(div().h(px(m::SECTION - 2.0)).flex_shrink_0())
             .child(with_link(olo_kit::words::tr("Kept folders land in: {}"), here));
     }
-    // (Two columns: the names and the labels under them in the first, as
-    // wide as the widest of them; how each stands and its places in the
-    // second, all from one edge, the dot between in a column of its own.
-    // A state set after its name started wherever the name's length put
-    // it, a point or two off the places under it: the review's near-edge.
-    // A name longer than the column is cut short, its whole in its path.)
+    // Sort kept folders alphabetically by leaf name so rows stay in a stable place
+    // rather than jumping as syncs finish (Opus's review).
     let leaf_of = |there: &str| there.trim_end_matches('/').rsplit('/').next().unwrap_or(there).to_owned();
-    let plain = style::ui_font(olo_kit::FontWeight::NORMAL);
-    let column = host.kept.iter().map(|k| f32::from(style::text_width(leaf_of(&k.there), style::PLAIN_SIZE, plain.clone())).ceil() + 1.0).fold(label_w, f32::max).min(NAME_MOST);
-    let dot_w = f32::from(style::text_width("·", style::PLAIN_SIZE, plain.clone())).ceil();
-    for (i, k) in host.kept.iter().enumerate() {
+    let bold_font = style::ui_font(olo_kit::FontWeight::BOLD);
+    let mut kept_sorted: Vec<&crate::hub::Kept> = host.kept.iter().collect();
+    kept_sorted.sort_by(|a, b| leaf_of(&a.there).to_lowercase().cmp(&leaf_of(&b.there).to_lowercase()).then_with(|| a.there.cmp(&b.there)));
+    let detail_col = label_w;
+    for (i, k) in kept_sorted.into_iter().enumerate() {
         let leaf = leaf_of(&k.there);
+        let leaf_w = (f32::from(style::text_width(leaf.clone(), style::PLAIN_SIZE, bold_font.clone())).ceil() + 1.0).min(NAME_MOST);
         let s = kept_stands(k);
-        let lamp = if s.busy { panels::busy_of(panels::LIGHT) } else { panels::light(s.light) };
-        let state = match &s.more {
-            Some(more) => format!("{}  ·  {more}", s.said),
-            None => s.said.clone(),
-        };
-        let said = div()
+        let lamp = if s.busy { panels::ring_of(s.light, panels::LIGHT) } else { panels::light(s.light) };
+        // Inline header: bold folder name followed directly by symmetric `·` and state
+        // (Opus #3/#4/#5 & Gemini #1). Conflict count is a clickable link to the folder.
+        let mut said = div()
             .flex_1()
             .min_w_0()
             .flex()
@@ -676,75 +714,95 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             .items_center()
             .gap(px(m::TIGHT))
             .child(lamp)
-            .child(div().w(px(column)).flex_shrink_0().child(StringView::new(leaf.clone()).cut(true)))
-            .child(div().w(px(dot_w)).flex_shrink_0().child(StringView::new("·").dim(true)))
-            .child(div().flex_1().min_w_0().child(StringView::new(state).dim(true).cut_words(true)));
-        // (A failure tried again; one gone there forgotten, as nothing of
-        // it runs to be stopped: Opus's look.)
+            .child(div().w(px(leaf_w)).flex_shrink_0().child(StringView::new(leaf.clone()).bold(true).cut(true)))
+            .child(div().flex_shrink_0().child(StringView::new("·").dim(true)));
+        if matches!(k.state, crate::hub::KeptState::InStep) && !k.conflicts.is_empty() {
+            let conf_label = olo_kit::words::count(k.conflicts.len() as u64, "1 conflict copy", "{n} conflict copies").to_string();
+            let on_conf = on_do.clone();
+            let there_conf = k.there.clone();
+            let conf_link = olo_kit::widgets::LinkButton::new(conf_label)
+                .size(style::PLAIN_SIZE)
+                .id(format!("host-kept-conflicts-{i}"))
+                .on_click(move |_, cx| on_conf(&HostDo::ShowKept(Some(there_conf.clone())), cx));
+            said = said
+                .child(div().flex_shrink_0().child(StringView::new(s.said.clone()).dim(true)))
+                .child(div().flex_shrink_0().child(StringView::new("·").dim(true)))
+                .child(div().flex_shrink_0().child(conf_link));
+            if let Some((at, _, _)) = k.last {
+                let ago = olo_kit::ago::ago(at, olo_kit::ago::long);
+                said = said.child(div().flex_1().min_w_0().child(StringView::new(format!("·  {ago}")).dim(true).cut_words(true)));
+            }
+        } else {
+            let state = match &s.more {
+                Some(more) => format!("{}  ·  {more}", s.said),
+                None => s.said.clone(),
+            };
+            said = said.child(div().flex_1().min_w_0().child(StringView::new(state).dim(true).cut_words(true)));
+        }
+        // Fixed button slots: Sync Now / Try Again on left, Forget… / Forget on right
+        // (Opus #2: never "Stop" next to "Sync Now").
         let mut actions = Vec::new();
+        let gone = k.state == crate::hub::KeptState::Gone;
         if matches!(k.state, crate::hub::KeptState::Failed(_)) {
             actions.push(button("Try Again", &format!("host-kept-again-{i}"), HostDo::RetryKept(k.there.clone()), reached));
+        } else if !gone {
+            let can_sync = reached && k.state != crate::hub::KeptState::Syncing;
+            actions.push(button("Sync Now", &format!("host-kept-sync-{i}"), HostDo::SyncKept(k.there.clone()), can_sync));
         }
-        let gone = k.state == crate::hub::KeptState::Gone;
-        actions.push(button(if gone { "Forget" } else { "Stop" }, &format!("host-kept-stop-{i}"), HostDo::StopKept(k.there.clone()), true));
+        actions.push(button(if gone { "Forget" } else { "Forget…" }, &format!("host-kept-stop-{i}"), HostDo::StopKept(k.there.clone(), !gone), true));
         let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(said).children(actions);
+        // Calm Here line: parent prefix in secondary text, only the folder leaf in link colour (Opus #3).
         let on_show = on_do.clone();
         let there = k.there.clone();
-        let here = olo_kit::widgets::LinkButton::new(olo_kit::tr!("Downloads\u{a0}▸ Rex\u{a0}▸ {}\u{a0}▸ {}", host.name, leaf).to_string())
-            .size(style::SMALL_SIZE)
-            .id(format!("host-kept-show-{i}"))
-            .on_click(move |_, cx| on_show(&HostDo::ShowKept(Some(there.clone())), cx));
-        // (Two points between the two places: the link's row is its
-        // whole height to the review, which the path under it crowded by
-        // a point and a half at 1.25× and 1.75×.)
+        let here_prefix = olo_kit::tr!("Downloads\u{a0}▸ Rex\u{a0}▸ {}\u{a0}▸", host.name).to_string();
+        let here_leaf =
+            olo_kit::widgets::LinkButton::new(leaf.clone()).size(style::SMALL_SIZE).id(format!("host-kept-show-{i}")).on_click(move |_, cx| on_show(&HostDo::ShowKept(Some(there.clone())), cx));
+        let here_row = div().w_full().flex().flex_row().items_center().gap(px(space)).child(StringView::new(here_prefix).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW)).child(here_leaf);
+        // Sync line: direction in primary text naming the host, modifiers dim, exclude globs in mono (Opus #7/#8).
+        let (dir_text, mods, excludes) = kept_mode_parts(k, &host.name);
+        let mut sync_row = div().w_full().flex().flex_row().items_center().gap(px(m::TIGHT)).child(StringView::new(dir_text).size(style::SMALL_SIZE).height(style::line_row(style::SMALL_SIZE)));
+        for m_word in mods {
+            sync_row = sync_row
+                .child(StringView::new("·").size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
+                .child(StringView::new(m_word).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)));
+        }
+        if !excludes.is_empty() {
+            sync_row = sync_row
+                .child(StringView::new("·").size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
+                .child(StringView::new(olo_kit::words::tr("excluding").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
+                .child(
+                    div().flex_1().min_w_0().child(StringView::new(excludes.join(", ")).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE)),
+                );
+        }
         let notes = div()
             .w_full()
             .pl(px(under))
-            .pr(px(short))
             .flex()
             .flex_col()
-            .child(labelled(&here_there[0], column, dot_w, m::LABEL_ROW, here.into_element()))
+            .child(labelled(&here_there[0], detail_col, m::LABEL_ROW, here_row.into_element()))
             .child(div().h(px(2.0)).flex_shrink_0())
             .child(labelled(
                 &here_there[1],
-                column,
-                dot_w,
+                detail_col,
                 style::line_row(MONO_SIZE),
-                // (On its label's baseline: centred in the same row, the paths'
-                // face sat a pixel off the label's line, the review said.)
                 StringView::new(k.there.clone()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE).into_element(),
-            ));
-        // (Each folder a section's step from the one before: a folder's
-        // lines read as one, the next apart, Opus's look.)
+            ))
+            .child(div().h(px(2.0)).flex_shrink_0())
+            .child(labelled(&here_there[2], detail_col, style::line_row(style::SMALL_SIZE), sync_row.into_element()));
         if i > 0 {
             files = files.child(div().h(px(m::SECTION - m::TIGHT)).flex_shrink_0());
         }
-        files = files.child(div().w_full().flex().flex_col().child(line).child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes));
+        files = files.child(div().w_full().flex().flex_col().child(line).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(notes));
     }
-    // (The whole page scrolls, its heading too, in the panel to its frame:
-    // the frame cuts what runs past it, and the bar, when the list runs
-    // long, sits against the frame in the gutter beside the column, whose
-    // buttons end where the other tabs' do: Opus's second look. The column
-    // set in by the reach and the pages' own inset, less the bar's breadth
-    // while it shows.)
+    // Equal 20 pt inset on all four sides (measured from the scrollbar's left
+    // edge when scrolled: both Opus #6 & Gemini #6).
     let scroll = FILES_SCROLL.with(|h| h.clone());
-    let inset = olo_kit::widgets::tabs::fill_reach() + m::SPACING;
-    let bar = if scroll.max_offset().height > px(0.5) { olo_kit::widgets::SCROLL_BAR } else { 0.0 };
+    let inset = 20.0;
     let files = olo_kit::widgets::ScrollView::new(&scroll)
         .border(false)
         .auto_hide(true)
         .child(
-            div()
-                .w_full()
-                .pl(px(inset))
-                .pr(px(inset - bar))
-                .pt(px(inset))
-                .pb(px(inset))
-                .flex()
-                .flex_col()
-                .child(section("Folders kept in step"))
-                .child(div().h(px(m::TIGHT)).flex_shrink_0())
-                .child(files),
+            div().w_full().pl(px(inset)).pr(px(inset)).pt(px(inset)).pb(px(inset)).flex().flex_col().child(section("Folders kept in step")).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(files),
         )
         .into_element();
 
@@ -930,5 +988,31 @@ mod tests {
         assert_eq!(said(&server_stands(&h)), (Light::Off, "Not known", None));
         h.conn = HostConnState::Connected;
         assert_eq!(said(&server_stands(&h)), (Light::On, "Running", Some("0.19.2")));
+
+        // Kept folders: direction summaries and conflict amber state.
+        use crate::hub::{Kept, KeptState};
+        use olo_protocol::RexSyncDirection as Dir;
+        let base_kept = Kept {
+            host_key: "k".into(),
+            there: "/home/dev/notes".into(),
+            mirror: false,
+            direction: Dir::Both,
+            shallow: false,
+            exclude: vec!["*.tmp".into()],
+            conflicts: vec!["plan.conflict-far-20261125-100000.md".into()],
+            state: KeptState::InStep,
+            last: None,
+        };
+        let ks = kept_stands(&base_kept);
+        assert_eq!(said(&ks), (Light::Waiting, "In step", Some("1 conflict copy")));
+        assert_eq!(kept_mode_parts(&base_kept, "dev-box"), ("Both ways".into(), vec![], vec!["*.tmp".into()]));
+        let to_host = Kept { direction: Dir::ToHost, mirror: true, shallow: true, exclude: vec![], conflicts: vec![], ..base_kept.clone() };
+        assert_eq!(said(&kept_stands(&to_host)), (Light::On, "In step", None));
+        assert_eq!(kept_mode_parts(&to_host, "dev-box"), ("To dev-box".into(), vec!["mirrored".into(), "top level only".into()], vec![]));
+        let syncing = Kept { state: KeptState::Syncing, conflicts: vec![], ..base_kept.clone() };
+        let ss = kept_stands(&syncing);
+        assert_eq!((said(&ss), ss.busy), ((Light::On, "Syncing…", None), true));
+        let gone = Kept { state: KeptState::Gone, conflicts: vec![], ..base_kept };
+        assert_eq!(said(&kept_stands(&gone)), (Light::Off, "Gone from the host", None));
     }
 }

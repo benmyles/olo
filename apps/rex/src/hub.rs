@@ -1105,9 +1105,43 @@ pub struct Kept {
     /// The folder there, whole.
     pub there: String,
     pub mirror: bool,
+    pub direction: olo_protocol::RexSyncDirection,
+    pub shallow: bool,
+    pub exclude: Vec<String>,
+    /// Conflict copies currently present in the folder (two-way sync).
+    pub conflicts: Vec<String>,
     pub state: KeptState,
     /// Its last sync: when, how many files it had, how much went.
     pub last: Option<(std::time::SystemTime, u64, u64)>,
+}
+
+impl Kept {
+    fn spec(&self) -> KeptSpec {
+        KeptSpec { there: self.there.clone(), mirror: self.mirror, direction: self.direction, shallow: self.shallow, exclude: self.exclude.clone() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct KeptSpec {
+    there: String,
+    mirror: bool,
+    direction: olo_protocol::RexSyncDirection,
+    shallow: bool,
+    exclude: Vec<String>,
+}
+
+impl KeptSpec {
+    fn folder(&self) -> olo_rex_client::sync::HostFolder {
+        olo_rex_client::sync::HostFolder { path: self.there.clone(), delete: self.mirror, shallow: self.shallow, exclude: self.exclude.clone(), ..Default::default() }
+    }
+}
+
+struct SyncOutcome {
+    files: u64,
+    bytes: u64,
+    changed: bool,
+    new_conflicts: Vec<olo_rex_sync::twoway::Conflict>,
+    all_conflicts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1147,6 +1181,120 @@ pub fn host_here(label: &str) -> Option<std::path::PathBuf> {
 pub fn kept_here(label: &str, there: &str) -> Option<std::path::PathBuf> {
     let leaf = there.trim_end_matches('/').rsplit('/').next().filter(|l| !l.is_empty() && *l != "." && *l != "..")?;
     Some(host_here(label)?.join(leaf))
+}
+
+/// Local stat cache and 3-way baseline paths for a kept folder.
+fn kept_cache_paths(here: &std::path::Path, there: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let base = olo_rex_client::sessions::Copied::cache_for(&here.to_string_lossy(), there);
+    (base.with_extension("kept.idx"), base.with_extension("baseline.idx"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SyncAsk {
+    List { json: bool },
+    Conflicts { path: Option<String>, json: bool },
+    Wait { path: String, json: bool },
+    Stop { path: String },
+    Keep { path: String, direction: olo_protocol::RexSyncDirection, mirror: bool, shallow: bool, exclude: Vec<String>, json: bool },
+}
+
+fn parse_sync_ask(args: &[String]) -> Result<SyncAsk, String> {
+    use olo_protocol::RexSyncDirection as Dir;
+    let Some(first) = args.first().map(String::as_str) else {
+        return Err("say which folder".into());
+    };
+    match first {
+        "ls" | "list" => {
+            let mut json = false;
+            for a in &args[1..] {
+                match a.as_str() {
+                    "--json" => json = true,
+                    other => return Err(format!("{other} isn't an option for `ls`")),
+                }
+            }
+            return Ok(SyncAsk::List { json });
+        }
+        "conflicts" => {
+            let (mut path, mut json) = (None, false);
+            for a in &args[1..] {
+                match a.as_str() {
+                    "--json" => json = true,
+                    other if other.starts_with('-') => return Err(format!("{other} isn't an option for `conflicts`")),
+                    p if path.is_none() => path = Some(p.to_owned()),
+                    other => return Err(format!("unexpected argument `{other}`")),
+                }
+            }
+            return Ok(SyncAsk::Conflicts { path, json });
+        }
+        "stop" | "rm" => {
+            if args.len() != 2 || args[1].starts_with('-') {
+                return Err("`stop` takes one folder path".into());
+            }
+            return Ok(SyncAsk::Stop { path: args[1].clone() });
+        }
+        "wait" => {
+            let (mut path, mut json) = (None, false);
+            for a in &args[1..] {
+                match a.as_str() {
+                    "--json" => json = true,
+                    other if other.starts_with('-') => return Err(format!("{other} isn't an option for `wait`")),
+                    p if path.is_none() => path = Some(p.to_owned()),
+                    other => return Err(format!("unexpected argument `{other}`")),
+                }
+            }
+            let Some(path) = path else { return Err("`wait` takes one folder path".into()) };
+            return Ok(SyncAsk::Wait { path, json });
+        }
+        _ => {}
+    }
+
+    let mut path: Option<String> = None;
+    let mut direction: Option<Dir> = None;
+    let mut mirror = false;
+    let mut shallow = false;
+    let mut exclude: Vec<String> = Vec::new();
+    let mut json = false;
+    let mut i = 0usize;
+    while i < args.len() {
+        let a = args[i].as_str();
+        let set_dir = |slot: &mut Option<Dir>, d: Dir| -> Result<(), String> {
+            if slot.is_some_and(|prev| prev != d) {
+                return Err("pick one direction (--from-host, --to-host, or --two-way)".into());
+            }
+            *slot = Some(d);
+            Ok(())
+        };
+        match a {
+            "--from-host" => set_dir(&mut direction, Dir::FromHost)?,
+            "--to-host" => set_dir(&mut direction, Dir::ToHost)?,
+            "--two-way" | "--both" => set_dir(&mut direction, Dir::Both)?,
+            "--mirror" => mirror = true,
+            "--shallow" => shallow = true,
+            "--json" => json = true,
+            "--exclude" | "-x" => {
+                i += 1;
+                let Some(pat) = args.get(i) else { return Err("--exclude takes a pattern".into()) };
+                exclude.push(pat.clone());
+            }
+            other if other.starts_with("--exclude=") => {
+                let pat = &other["--exclude=".len()..];
+                if pat.is_empty() {
+                    return Err("--exclude takes a pattern".into());
+                }
+                exclude.push(pat.to_owned());
+            }
+            other if other.starts_with('-') => return Err(format!("{other} isn't one of its options")),
+            p => {
+                if path.is_some() {
+                    return Err(format!("unexpected argument `{p}` (one folder at a time)"));
+                }
+                path = Some(p.to_owned());
+            }
+        }
+        i += 1;
+    }
+    let Some(path) = path else { return Err("say which folder".into()) };
+    Ok(SyncAsk::Keep { path, direction: direction.unwrap_or(Dir::FromHost), mirror, shallow, exclude, json })
 }
 
 /// A forward as Rex keeps it over an upgrade in place: its block is left
@@ -1918,24 +2066,37 @@ async fn sessions_stands(
 /// each state, more than the Files tab shows at once; `trouble`, one
 /// failed and one gone, for their buttons; else two in step).
 fn demo_kept(host_key: &str) -> Vec<Kept> {
-    let at = |there: &str, state: KeptState, ago: u64, files: u64| Kept {
+    use olo_protocol::RexSyncDirection as Dir;
+    let at = |there: &str, dir: Dir, mirror: bool, shallow: bool, exclude: &[&str], conflicts: &[&str], state: KeptState, ago: u64, files: u64| Kept {
         host_key: host_key.to_owned(),
         there: there.to_owned(),
-        mirror: false,
+        mirror,
+        direction: dir,
+        shallow,
+        exclude: exclude.iter().map(|s| (*s).to_owned()).collect(),
+        conflicts: conflicts.iter().map(|s| (*s).to_owned()).collect(),
         state,
         last: Some((std::time::SystemTime::now() - Duration::from_secs(ago), files, 48_000)),
     };
     match std::env::var("OLO_REX_DEMO_KEPT").ok().as_deref() {
         Some("none") => Vec::new(),
-        // (What needs the person: one that failed, one gone there.)
-        Some("trouble") => vec![at("/home/dev/src/site/public", KeptState::Failed("No space left on device".into()), 600, 40), at("/home/dev/old/build", KeptState::Gone, 3600, 0)],
-        Some("states") => vec![
-            at("/home/dev/src/app/dist", KeptState::InStep, 90, 12),
-            at("/home/dev/src/app/logs", KeptState::Syncing, 5, 3),
-            at("/home/dev/src/site/public", KeptState::Failed("No space left on device".into()), 600, 40),
-            at("/home/dev/old/build", KeptState::Gone, 3600, 0),
+        // (What needs the person: a conflict copy, one that failed, one gone there.)
+        Some("trouble") => vec![
+            at("/home/dev/old/build", Dir::FromHost, false, false, &[], &[], KeptState::Gone, 3600, 0),
+            at("/home/dev/notes", Dir::Both, false, false, &[], &["plan.conflict-far-20261125-100000.md"], KeptState::InStep, 120, 18),
+            at("/home/dev/src/site/public", Dir::FromHost, true, false, &[], &[], KeptState::Failed("dev-box is out of disk space".into()), 600, 40),
         ],
-        _ => vec![at("/home/dev/src/app/dist", KeptState::InStep, 90, 12), at("/home/dev/src/app/logs", KeptState::InStep, 300, 3)],
+        Some("states") => vec![
+            at("/home/dev/src/app/assets", Dir::ToHost, false, true, &[], &[], KeptState::Syncing, 5, 3),
+            at("/home/dev/src/app/dist", Dir::FromHost, true, false, &["*.map"], &[], KeptState::InStep, 90, 12),
+            at("/home/dev/notes", Dir::Both, false, false, &[], &["plan.conflict-far-20261125-100000.md", "todo.conflict-desktop-20261125-100112.md"], KeptState::InStep, 45, 18),
+            at("/home/dev/src/site/public", Dir::FromHost, false, false, &[], &[], KeptState::Failed("dev-box is out of disk space".into()), 600, 40),
+            at("/home/dev/old/build", Dir::FromHost, false, false, &[], &[], KeptState::Gone, 3600, 0),
+        ],
+        _ => vec![
+            at("/home/dev/src/app/dist", Dir::FromHost, false, false, &[], &[], KeptState::InStep, 90, 12),
+            at("/home/dev/notes", Dir::Both, false, false, &["*.tmp"], &[], KeptState::InStep, 300, 8),
+        ],
     }
 }
 
@@ -2549,27 +2710,43 @@ impl RexHub {
     /// stood where it was kept before, a new one waiting; runners started
     /// for those of connected hosts, those let go of stopped.
     fn follow_kept(&self, kept: &[olo_protocol::RexKept]) {
-        let (gone, connected) = {
+        let (stop, connected) = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let before = std::mem::take(&mut st.kept);
+            let mut changed_cfg: Vec<(String, String)> = Vec::new();
             st.kept = kept
                 .iter()
                 .map(|k| {
-                    before.iter().find(|b| b.host_key == k.host && b.there == k.there).cloned().map(|b| Kept { mirror: k.mirror, ..b }).unwrap_or(Kept {
-                        host_key: k.host.clone(),
-                        there: k.there.clone(),
-                        mirror: k.mirror,
-                        state: KeptState::Waiting,
-                        last: None,
-                    })
+                    before
+                        .iter()
+                        .find(|b| b.host_key == k.host && b.there == k.there)
+                        .cloned()
+                        .map(|b| {
+                            if b.mirror != k.mirror || b.direction != k.direction || b.shallow != k.shallow || b.exclude != k.exclude {
+                                changed_cfg.push((k.host.clone(), k.there.clone()));
+                            }
+                            Kept { mirror: k.mirror, direction: k.direction, shallow: k.shallow, exclude: k.exclude.clone(), ..b }
+                        })
+                        .unwrap_or(Kept {
+                            host_key: k.host.clone(),
+                            there: k.there.clone(),
+                            mirror: k.mirror,
+                            direction: k.direction,
+                            shallow: k.shallow,
+                            exclude: k.exclude.clone(),
+                            conflicts: Vec::new(),
+                            state: KeptState::Waiting,
+                            last: None,
+                        })
                 })
                 .collect();
-            let gone: Vec<(String, String)> =
+            let mut stop: Vec<(String, String)> =
                 before.iter().filter(|b| !st.kept.iter().any(|k| k.host_key == b.host_key && k.there == b.there)).map(|b| (b.host_key.clone(), b.there.clone())).collect();
+            stop.extend(changed_cfg);
             let connected: Vec<String> = st.kept.iter().map(|k| k.host_key.clone()).filter(|h| st.hosts.get(h).is_some_and(|h| h.conn_state == HostConnState::Connected)).collect();
-            (gone, connected)
+            (stop, connected)
         };
-        for (host, there) in gone {
+        for (host, there) in stop {
             self.inner.stop_keeping(&host, &there);
         }
         let _in_runtime = self.rt.enter();
@@ -3741,6 +3918,15 @@ impl RexHub {
     /// Again): `RexHubInner::retry_kept`.
     pub fn retry_kept(&self, host_key: &str, there: &str) {
         self.inner.retry_kept(host_key, there);
+    }
+
+    /// Trigger an immediate sync of a kept folder (the Host window's Sync Now).
+    pub fn sync_kept_now(&self, host_key: &str, there: &str) {
+        let inner = self.inner.clone();
+        let (hk, path) = (host_key.to_owned(), there.to_owned());
+        self.rt.spawn(async move {
+            inner.sync_kept_immediate(&hk, &path).await;
+        });
     }
 
     pub fn remove_forward(&self, forward_id: &str) {
@@ -5074,31 +5260,119 @@ impl RexHubInner {
     /// step (after a build: `make && olo sync wait dist`), `stop PATH`
     /// lets one go (what it brought stays).
     async fn bridge_sync(self: &Arc<Self>, host_key: &str, args: Vec<String>) -> bridge::BridgeResponse {
-        const USAGE: &str = "usage: olo sync PATH [--mirror] | olo sync ls | olo sync wait PATH | olo sync stop PATH";
+        use olo_protocol::RexSyncDirection as Dir;
+        const USAGE: &str = "\
+usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow] [--exclude PATTERN]… [--json]
+       olo sync ls [--json]
+       olo sync conflicts [PATH] [--json]
+       olo sync wait PATH [--json]
+       olo sync stop PATH";
         let fail = |why: String| bridge::BridgeResponse::err(format!("olo sync: {why}\n{USAGE}"));
         let label = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default();
         let shown =
             |there: &str| kept_here(&label, there).map(|p| format!("Downloads/Rex/{}/{}", label, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())).unwrap_or_default();
-        let words: Vec<&str> = args.iter().map(String::as_str).collect();
-        match words.as_slice() {
-            ["ls"] | ["list"] => {
-                let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                let lines: String = st
-                    .kept
+        let ask = match parse_sync_ask(&args) {
+            Ok(ask) => ask,
+            Err(why) => return fail(why),
+        };
+        let dir_arrow = |d: Dir| match d {
+            Dir::FromHost => "→",
+            Dir::ToHost => "←",
+            Dir::Both => "↔",
+        };
+        let dir_word = |d: Dir| match d {
+            Dir::FromHost => "from-host",
+            Dir::ToHost => "to-host",
+            Dir::Both => "both",
+        };
+        match ask {
+            SyncAsk::List { json } => {
+                let rows: Vec<Kept> = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().filter(|k| k.host_key == host_key).cloned().collect();
+                if json {
+                    let arr: Vec<serde_json::Value> = rows
+                        .iter()
+                        .map(|k| {
+                            json!({
+                                "there": k.there,
+                                "here": shown(&k.there),
+                                "direction": dir_word(k.direction),
+                                "mirror": k.mirror,
+                                "shallow": k.shallow,
+                                "exclude": k.exclude,
+                                "state": k.state.said(),
+                                "files": k.last.map(|(_, f, _)| f),
+                                "bytes": k.last.map(|(_, _, b)| b),
+                                "conflicts": k.conflicts,
+                            })
+                        })
+                        .collect();
+                    let out = serde_json::to_string_pretty(&arr).unwrap_or_else(|_| "[]".into());
+                    return bridge::BridgeResponse { ok: true, stdout: Some(format!("{out}\n")), ..Default::default() };
+                }
+                let lines: String = rows
                     .iter()
-                    .filter(|k| k.host_key == host_key)
                     .map(|k| {
+                        let mut tags: Vec<String> = Vec::new();
+                        if k.direction == Dir::ToHost {
+                            tags.push("to host".into());
+                        } else if k.direction == Dir::Both {
+                            tags.push("both ways".into());
+                        }
+                        if k.mirror && k.direction != Dir::Both {
+                            tags.push("mirrored".into());
+                        }
+                        if k.shallow {
+                            tags.push("shallow".into());
+                        }
+                        if !k.exclude.is_empty() {
+                            tags.push(format!("excluding {}", k.exclude.join(", ")));
+                        }
+                        let tag_str = if tags.is_empty() { String::new() } else { format!(" ({})", tags.join(", ")) };
+                        let conf_str = if k.conflicts.is_empty() { String::new() } else { format!(", {} conflict{}", k.conflicts.len(), if k.conflicts.len() == 1 { "" } else { "s" }) };
                         let last = k.last.map(|(at, files, sent)| {
                             let ago = at.elapsed().map(|d| d.as_secs()).unwrap_or(0);
                             format!(" ({files} file{}; last {ago} s ago, {} sent)", if files == 1 { "" } else { "s" }, olo_kit::files::format_size(sent))
                         });
-                        format!("{} → {}{}: {}{}\n", k.there, shown(&k.there), if k.mirror { " (mirrored)" } else { "" }, k.state.said(), last.unwrap_or_default())
+                        format!("{} {} {}{}: {}{}{}\n", k.there, dir_arrow(k.direction), shown(&k.there), tag_str, k.state.said(), conf_str, last.unwrap_or_default())
                     })
                     .collect();
                 bridge::BridgeResponse { ok: true, stdout: Some(if lines.is_empty() { "No folder of this host's is kept in step on the Olo desktop.\n".into() } else { lines }), ..Default::default() }
             }
-            ["stop", path] | ["rm", path] => {
-                let there = (*path).to_owned();
+            SyncAsk::Conflicts { path, json } => {
+                let targets: Vec<Kept> = {
+                    let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.kept.iter().filter(|k| k.host_key == host_key && path.as_deref().is_none_or(|p| k.there == p)).cloned().collect()
+                };
+                if let Some(p) = &path
+                    && targets.is_empty()
+                {
+                    return fail(format!("{p} isn't kept in step"));
+                }
+                let mut found: Vec<(String, String, String)> = Vec::new();
+                for k in targets {
+                    let Some(here) = kept_here(&label, &k.there) else { continue };
+                    let filter = k.spec().folder().options().filter;
+                    let here_scan = here.clone();
+                    let list = tokio::task::spawn_blocking(move || olo_rex_sync::twoway::list_conflicts(&here_scan, &filter)).await.ok().and_then(Result::ok).unwrap_or_default();
+                    let shown_here = shown(&k.there);
+                    // Keep cached conflict list on Kept in sync with disk.
+                    self.set_kept_conflicts(host_key, &k.there, list.clone());
+                    for rel in list {
+                        found.push((k.there.clone(), shown_here.clone(), rel));
+                    }
+                }
+                if json {
+                    let arr: Vec<serde_json::Value> = found.iter().map(|(t, h, rel)| json!({ "there": t, "here": h, "path": rel })).collect();
+                    let out = serde_json::to_string_pretty(&arr).unwrap_or_else(|_| "[]".into());
+                    return bridge::BridgeResponse { ok: true, stdout: Some(format!("{out}\n")), ..Default::default() };
+                }
+                if found.is_empty() {
+                    return bridge::BridgeResponse { ok: true, stdout: Some("No conflict copies.\n".into()), ..Default::default() };
+                }
+                let lines: String = found.iter().map(|(t, h, rel)| format!("{t}/{rel}  ({h}/{rel})\n")).collect();
+                bridge::BridgeResponse { ok: true, stdout: Some(lines), ..Default::default() }
+            }
+            SyncAsk::Stop { path: there } => {
                 let had = {
                     let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                     let before = st.kept.len();
@@ -5109,76 +5383,130 @@ impl RexHubInner {
                     return fail(format!("{there} isn't kept in step"));
                 }
                 self.stop_keeping(host_key, &there);
+                if let Some(here) = kept_here(&label, &there) {
+                    let (_, baseline) = kept_cache_paths(&here, &there);
+                    let _ = std::fs::remove_file(baseline);
+                }
                 let (hk, gone) = (host_key.to_owned(), there.clone());
                 olo_kit::settings::update(move |s| s.rex.kept.retain(|k| !(k.host == hk && k.there == gone)));
                 (self.notify)(HubNotice::StateChanged);
-                bridge::BridgeResponse { ok: true, stdout: Some(format!("{there} is no longer kept in step (what it brought stays in {}).\n", shown(&there))), ..Default::default() }
+                bridge::BridgeResponse { ok: true, stdout: Some(format!("{there} is no longer kept in step (files stay on both sides; desktop copy in {}).\n", shown(&there))), ..Default::default() }
             }
-            ["wait", path] => {
-                let there = (*path).to_owned();
-                let Some(mirror) = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().find(|k| k.host_key == host_key && k.there == there).map(|k| k.mirror) else {
+            SyncAsk::Wait { path: there, json } => {
+                let Some(spec) = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().find(|k| k.host_key == host_key && k.there == there).map(Kept::spec) else {
                     return fail(format!("{there} isn't kept in step: `olo sync {there}` keeps it"));
                 };
-                self.sync_now(host_key, &there, mirror, &shown(&there)).await
+                self.sync_now(host_key, &spec, &shown(&there), false, json).await
             }
-            [path] | [path, "--mirror"] | ["--mirror", path] if !path.starts_with('-') => {
-                let (there, mirror) = ((*path).to_owned(), words.contains(&"--mirror"));
+            SyncAsk::Keep { path: there, direction, mirror, shallow, exclude, json } => {
                 if !there.starts_with('/') {
                     return fail(format!("{there}: a whole path"));
                 }
                 if kept_here(&label, &there).is_none() {
                     return fail(format!("{there}: a folder"));
                 }
-                let new = {
+                let spec = KeptSpec { there: there.clone(), mirror, direction, shallow, exclude: exclude.clone() };
+                let (new, restart) = {
                     let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                     match st.kept.iter_mut().find(|k| k.host_key == host_key && k.there == there) {
                         Some(k) => {
+                            let changed = k.mirror != mirror || k.direction != direction || k.shallow != shallow || k.exclude != exclude;
                             k.mirror = mirror;
-                            false
+                            k.direction = direction;
+                            k.shallow = shallow;
+                            k.exclude = exclude.clone();
+                            (false, changed)
                         }
                         None => {
-                            st.kept.push(Kept { host_key: host_key.to_owned(), there: there.clone(), mirror, state: KeptState::Waiting, last: None });
-                            true
+                            st.kept.push(Kept {
+                                host_key: host_key.to_owned(),
+                                there: there.clone(),
+                                mirror,
+                                direction,
+                                shallow,
+                                exclude: exclude.clone(),
+                                conflicts: Vec::new(),
+                                state: KeptState::Waiting,
+                                last: None,
+                            });
+                            (true, false)
                         }
                     }
                 };
-                let (hk, kept) = (host_key.to_owned(), there.clone());
+                if restart {
+                    self.stop_keeping(host_key, &there);
+                }
+                let (hk, kept, excl) = (host_key.to_owned(), there.clone(), exclude);
                 olo_kit::settings::update(move |s| {
                     if let Some(k) = s.rex.kept.iter_mut().find(|k| k.host == hk && k.there == kept) {
                         k.mirror = mirror;
+                        k.direction = direction;
+                        k.shallow = shallow;
+                        k.exclude = excl;
                     } else {
-                        s.rex.kept.push(olo_protocol::RexKept { host: hk.clone(), there: kept.clone(), mirror });
+                        s.rex.kept.push(olo_protocol::RexKept { host: hk.clone(), there: kept.clone(), mirror, direction, shallow, exclude: excl });
                     }
                 });
+                // Run initial sync first (creating the remote dir if needed for
+                // --to-host / --two-way), then start the live watcher(s) so the
+                // host watch finds the folder in place.
+                let create_remote = direction != Dir::FromHost;
+                let mut answer = self.sync_now(host_key, &spec, &shown(&there), create_remote, json).await;
                 self.keep_folders_of(host_key);
-                let mut answer = self.sync_now(host_key, &there, mirror, &shown(&there)).await;
-                if answer.ok && new {
-                    answer.stdout = answer.stdout.map(|s| format!("{s}Kept in step from now on: what changes there is brought here as it changes (`olo sync stop {there}` lets it go).\n"));
+                if answer.ok && new && !json {
+                    let how = match direction {
+                        Dir::FromHost => "what changes there is brought here as it changes",
+                        Dir::ToHost => "what changes on the desktop is pushed here as it changes",
+                        Dir::Both => "changes flow both ways as they happen (conflicts kept side by side)",
+                    };
+                    answer.stdout = answer.stdout.map(|s| format!("{s}Kept in step from now on: {how} (`olo sync stop {there}` lets it go).\n"));
                 }
                 answer
             }
-            _ => fail("say which folder".into()),
         }
     }
 
     /// A kept folder synced now, under its lock, and said.
-    async fn sync_now(self: &Arc<Self>, host_key: &str, there: &str, mirror: bool, shown: &str) -> bridge::BridgeResponse {
+    async fn sync_now(self: &Arc<Self>, host_key: &str, spec: &KeptSpec, shown: &str, create_remote: bool, json: bool) -> bridge::BridgeResponse {
+        use olo_protocol::RexSyncDirection as Dir;
         let lock = {
             let mut keeping = self.keeping.lock().unwrap_or_else(|e| e.into_inner());
-            keeping.entry((host_key.to_owned(), there.to_owned())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(())))).1.clone()
+            keeping.entry((host_key.to_owned(), spec.there.clone())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(())))).1.clone()
         };
-        match self.sync_kept(host_key, there, mirror, &lock).await {
-            Ok((files, sent)) => {
-                self.set_kept(host_key, there, KeptState::InStep, Some((std::time::SystemTime::now(), files, sent)));
-                bridge::BridgeResponse {
-                    ok: true,
-                    stdout: Some(format!("{there} → {shown} on the Olo desktop: in step, {files} file{}, {} sent\n", if files == 1 { "" } else { "s" }, olo_kit::files::format_size(sent))),
-                    ..Default::default()
+        let arrow = match spec.direction {
+            Dir::FromHost => "→",
+            Dir::ToHost => "←",
+            Dir::Both => "↔",
+        };
+        match self.sync_kept(host_key, spec, create_remote, true, &lock).await {
+            Ok(out) => {
+                self.set_kept_done(host_key, &spec.there, out.files, out.bytes, out.all_conflicts.clone(), true);
+                if json {
+                    let body = json!({
+                        "there": spec.there,
+                        "here": shown,
+                        "files": out.files,
+                        "bytes": out.bytes,
+                        "new_conflicts": out.new_conflicts.iter().map(|c| json!({ "path": c.path, "copy": c.copy })).collect::<Vec<_>>(),
+                        "conflicts": out.all_conflicts,
+                    });
+                    return bridge::BridgeResponse { ok: true, stdout: Some(format!("{}\n", serde_json::to_string_pretty(&body).unwrap_or_default())), ..Default::default() };
                 }
+                let mut text = format!(
+                    "{} {arrow} {shown} on the Olo desktop: in step, {} file{}, {} sent\n",
+                    spec.there,
+                    out.files,
+                    if out.files == 1 { "" } else { "s" },
+                    olo_kit::files::format_size(out.bytes)
+                );
+                for c in &out.new_conflicts {
+                    text.push_str(&format!("  conflict copy kept: {} (for {})\n", c.copy, c.path));
+                }
+                bridge::BridgeResponse { ok: true, stdout: Some(text), ..Default::default() }
             }
             Err(why) => {
-                self.set_kept(host_key, there, KeptState::Failed(why.clone()), None);
-                bridge::BridgeResponse::err(format!("olo sync: {there}: {why}"))
+                self.set_kept(host_key, &spec.there, KeptState::Failed(why.clone()), None);
+                bridge::BridgeResponse::err(format!("olo sync: {}: {why}", spec.there))
             }
         }
     }
@@ -5317,15 +5645,15 @@ impl RexHubInner {
     /// its own (`keep`), started where one isn't running (as the host
     /// connects, and as the settings name a new one).
     fn keep_folders_of(self: &Arc<Self>, host_key: &str) {
-        let mine: Vec<(String, bool)> = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().filter(|k| k.host_key == host_key).map(|k| (k.there.clone(), k.mirror)).collect();
+        let mine: Vec<KeptSpec> = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().filter(|k| k.host_key == host_key).map(Kept::spec).collect();
         let mut keeping = self.keeping.lock().unwrap_or_else(|e| e.into_inner());
-        for (there, mirror) in mine {
-            let entry = keeping.entry((host_key.to_owned(), there.clone())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(()))));
+        for spec in mine {
+            let entry = keeping.entry((host_key.to_owned(), spec.there.clone())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(()))));
             if entry.0.as_ref().is_some_and(|t| !t.is_finished()) {
                 continue;
             }
             let (inner, hk, lock) = (self.clone(), host_key.to_owned(), entry.1.clone());
-            entry.0 = Some(tokio::spawn(async move { inner.keep(hk, there, mirror, lock).await }).abort_handle());
+            entry.0 = Some(tokio::spawn(async move { inner.keep(hk, spec, lock).await }).abort_handle());
         }
     }
 
@@ -5352,11 +5680,45 @@ impl RexHubInner {
         (self.notify)(HubNotice::StateChanged);
     }
 
-    /// One sync of a kept folder, under its lock: the host's folder
-    /// received here by the engine (its index kept beside the app's
-    /// cache), the state said as it goes.
-    async fn sync_kept(self: &Arc<Self>, host_key: &str, there: &str, mirror: bool, lock: &tokio::sync::Mutex<()>) -> Result<(u64, u64), String> {
-        use olo_rex_client::sync::{HostFolder, Stop, receive_from};
+    fn set_kept_conflicts(&self, host_key: &str, there: &str, conflicts: Vec<String>) {
+        let changed = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(k) = st.kept.iter_mut().find(|k| k.host_key == host_key && k.there == there) else { return };
+            if k.conflicts == conflicts {
+                false
+            } else {
+                k.conflicts = conflicts;
+                true
+            }
+        };
+        if changed {
+            (self.notify)(HubNotice::StateChanged);
+        }
+    }
+
+    fn set_kept_done(&self, host_key: &str, there: &str, files: u64, bytes: u64, conflicts: Vec<String>, stamp_last: bool) {
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(k) = st.kept.iter_mut().find(|k| k.host_key == host_key && k.there == there) else { return };
+            let prev_same = k.state == KeptState::InStep && k.conflicts == conflicts && !stamp_last && k.last.is_some();
+            if prev_same {
+                return;
+            }
+            k.state = KeptState::InStep;
+            k.conflicts = conflicts;
+            if stamp_last || k.last.is_none() {
+                k.last = Some((std::time::SystemTime::now(), files, bytes));
+            }
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// One sync of a kept folder, under its lock: direction-aware (`FromHost`,
+    /// `ToHost`, or `Both`), using cached indexes so idle/echo checks do zero
+    /// file reads and zero unnecessary UI churn.
+    async fn sync_kept(self: &Arc<Self>, host_key: &str, spec: &KeptSpec, create_remote: bool, show_syncing: bool, lock: &tokio::sync::Mutex<()>) -> Result<SyncOutcome, String> {
+        use olo_protocol::RexSyncDirection as Dir;
+        use olo_rex_client::sync::{Stop, receive_from, send_to, sync_both};
         let _held = lock.lock().await;
         let (endpoint, label) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -5364,87 +5726,254 @@ impl RexHubInner {
             (h.endpoint.clone(), h.label.clone())
         };
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else { return Err("the host isn't reached over SSH".into()) };
-        let here = kept_here(&label, there).ok_or("no folder here to keep it in")?;
+        let here = kept_here(&label, &spec.there).ok_or("no folder here to keep it in")?;
         std::fs::create_dir_all(&here).map_err(|e| e.to_string())?;
-        let cache = olo_rex_client::sessions::Copied::cache_for(&here.to_string_lossy(), there).with_extension("kept.idx");
-        self.set_kept(host_key, there, KeptState::Syncing, None);
-        let folder = HostFolder { path: there.to_owned(), delete: mirror, ..Default::default() };
-        let report = receive_from(&pool, &target, askpass, crate::link::ID, &folder, here, Some(cache), Stop::default()).await.map_err(|e| e.to_string())?;
-        if let Some(e) = report.errors.first() {
-            return Err(format!("{}: {}", e.path, e.reason));
+        let (cache, baseline) = kept_cache_paths(&here, &spec.there);
+        let folder = spec.folder();
+        match spec.direction {
+            Dir::FromHost => {
+                self.set_kept(host_key, &spec.there, KeptState::Syncing, None);
+                let report = receive_from(&pool, &target, askpass, crate::link::ID, &folder, here, Some(cache), Stop::default()).await.map_err(|e| e.to_string())?;
+                if let Some(e) = report.errors.first() {
+                    return Err(format!("{}: {}", e.path, e.reason));
+                }
+                let files = report.new + report.appended + report.patched + report.copied + report.same;
+                let changed = report.new + report.appended + report.patched + report.copied + report.removed > 0;
+                Ok(SyncOutcome { files, bytes: report.bytes_sent + report.bytes_received, changed, new_conflicts: Vec::new(), all_conflicts: Vec::new() })
+            }
+            Dir::ToHost => {
+                self.set_kept(host_key, &spec.there, KeptState::Syncing, None);
+                let source = Box::new(olo_rex_sync::wire::FolderSource { root: here, filter: folder.options().filter, cache_path: Some(cache) });
+                let report = send_to(&pool, &target, askpass, crate::link::ID, source, &folder, Stop::default()).await.map_err(|e| e.to_string())?;
+                if let Some(e) = report.errors.first() {
+                    return Err(format!("{}: {}", e.path, e.reason));
+                }
+                let files = report.new + report.appended + report.patched + report.copied + report.same;
+                let changed = report.new + report.appended + report.patched + report.copied + report.removed > 0;
+                Ok(SyncOutcome { files, bytes: report.bytes_sent + report.bytes_received, changed, new_conflicts: Vec::new(), all_conflicts: Vec::new() })
+            }
+            Dir::Both => {
+                if show_syncing {
+                    self.set_kept(host_key, &spec.there, KeptState::Syncing, None);
+                }
+                let inner_cb = self.clone();
+                let hk_cb = host_key.to_owned();
+                let there_cb = spec.there.clone();
+                let on_work: Option<Box<dyn FnOnce() + Send>> = if show_syncing { None } else { Some(Box::new(move || inner_cb.set_kept(&hk_cb, &there_cb, KeptState::Syncing, None))) };
+                let report = sync_both(&pool, &target, askpass, crate::link::ID, &label, &folder, here, cache, baseline, create_remote, Stop::default(), on_work).await.map_err(|e| e.to_string())?;
+                if let Some(e) = report.errors.first() {
+                    return Err(format!("{}: {}", e.path, e.reason));
+                }
+                if !report.conflicts.is_empty() {
+                    let count = report.conflicts.len();
+                    let body = if count == 1 {
+                        format!("Kept conflict copy {}.", report.conflicts[0].copy)
+                    } else {
+                        format!("Kept {count} conflict copies in {}.", spec.there.rsplit('/').next().unwrap_or(&spec.there))
+                    };
+                    (self.notify)(HubNotice::Attention {
+                        target: Target::Host(host_key.to_owned()),
+                        title: olo_kit::tr!("Sync conflict on {}", label).to_string(),
+                        body,
+                        kind: olo_kit::notify::NoteKind::Important,
+                    });
+                }
+                Ok(SyncOutcome { files: report.files, bytes: report.wire_bytes(), changed: report.changed(), new_conflicts: report.conflicts, all_conflicts: report.all_conflicts })
+            }
         }
-        let files = report.new + report.appended + report.patched + report.copied + report.same;
-        Ok((files, report.bytes_sent + report.bytes_received))
     }
 
-    /// A kept folder kept in step while its host is connected: its watch
-    /// started there first (`olo-rex-link sync watch`: nothing that
-    /// changes during the first sync goes unseen), a sync, then another
-    /// each time the watch says it changed. Its host gone, it waits (and
-    /// is started again as the host connects); the folder gone there, or
-    /// a watch that can't be had, it says so and stops.
-    async fn keep(self: Arc<Self>, host_key: String, there: String, mirror: bool, lock: Arc<tokio::sync::Mutex<()>>) {
+    /// Run an immediate sync of a kept folder (called by the Host window's Sync Now).
+    pub async fn sync_kept_immediate(self: &Arc<Self>, host_key: &str, there: &str) {
+        let Some(spec) = self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.iter().find(|k| k.host_key == host_key && k.there == there).map(Kept::spec) else {
+            return;
+        };
+        let lock = {
+            let mut keeping = self.keeping.lock().unwrap_or_else(|e| e.into_inner());
+            keeping.entry((host_key.to_owned(), there.to_owned())).or_insert_with(|| (None, Arc::new(tokio::sync::Mutex::new(())))).1.clone()
+        };
+        match self.sync_kept(host_key, &spec, spec.direction != olo_protocol::RexSyncDirection::FromHost, true, &lock).await {
+            Ok(out) => self.set_kept_done(host_key, there, out.files, out.bytes, out.all_conflicts, true),
+            Err(why) => self.set_kept(host_key, there, KeptState::Failed(why), None),
+        }
+    }
+
+    /// A kept folder kept in step while its host is connected: watches the
+    /// host (`FromHost`), this computer (`ToHost`), or both (`Both`) using
+    /// zero-polling Linux inotify, syncing whenever either watched side changes.
+    async fn keep(self: Arc<Self>, host_key: String, spec: KeptSpec, lock: Arc<tokio::sync::Mutex<()>>) {
+        use olo_protocol::RexSyncDirection as Dir;
+        use olo_rex_sync::watch::{DEFAULT_SETTLE_MS, WatchEvent, spawn_watch};
         use tokio::io::AsyncBufReadExt as _;
-        let (endpoint, helper) = {
+
+        let (endpoint, label, helper) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let h = st.hosts.get(&host_key);
-            (h.and_then(|h| h.endpoint.clone()), h.is_some_and(|h| matches!(h.helper, HostHelper::Used | HostHelper::Ready)))
+            (h.and_then(|h| h.endpoint.clone()), h.map(|h| h.label.clone()).unwrap_or_default(), h.is_some_and(|h| matches!(h.helper, HostHelper::Used | HostHelper::Ready)))
         };
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
-            self.set_kept(&host_key, &there, KeptState::Waiting, None);
+            self.set_kept(&host_key, &spec.there, KeptState::Waiting, None);
             return;
         };
         if !(helper && crate::link::syncs()) {
-            self.set_kept(&host_key, &there, KeptState::Waiting, None);
+            self.set_kept(&host_key, &spec.there, KeptState::Waiting, None);
             return;
         }
-        let watch = format!("{} sync watch {}", olo_rex_client::helper::file(crate::link::ID), olo_rex_client::provision::shell_word(&there));
-        let Ok(stream) = pool.exec_io(&target, askpass.clone(), &watch).await else {
-            self.set_kept(&host_key, &there, KeptState::Waiting, None);
-            return;
-        };
-        let mut lines = tokio::io::BufReader::new(stream).lines();
-        let mut first = true;
-        loop {
-            match lines.next_line().await {
-                Ok(Some(said)) if said == "watching" && first => first = false,
-                Ok(Some(said)) if said == "changed" && !first => {}
-                Ok(Some(said)) if said == "gone" => {
-                    self.set_kept(&host_key, &there, KeptState::Gone, None);
-                    return;
-                }
-                Ok(Some(said)) if said.starts_with("error: ") => {
-                    self.set_kept(&host_key, &there, KeptState::Failed(said.trim_start_matches("error: ").to_owned()), None);
-                    return;
-                }
-                Ok(Some(_)) => continue,
-                // (The host went away, or its helper ended: kept for when
-                // it is back.)
-                _ => {
-                    self.set_kept(&host_key, &there, KeptState::Waiting, None);
+        let folder = spec.folder();
+        let watch_remote = matches!(spec.direction, Dir::FromHost | Dir::Both);
+        let watch_local = matches!(spec.direction, Dir::ToHost | Dir::Both);
+
+        // Local watcher (for ToHost and Both): held for the life of this task
+        // so aborting the task closes the stop pipe and ends the watcher thread.
+        let (_local_guard, mut local_rx) = if watch_local {
+            let Some(here) = kept_here(&label, &spec.there) else {
+                self.set_kept(&host_key, &spec.there, KeptState::Failed("no folder here to keep it in".into()), None);
+                return;
+            };
+            if let Err(e) = std::fs::create_dir_all(&here) {
+                self.set_kept(&host_key, &spec.there, KeptState::Failed(e.to_string()), None);
+                return;
+            }
+            let (tx, rx) = tokio::sync::mpsc::channel::<WatchEvent>(8);
+            match spawn_watch(here, folder.options().filter, DEFAULT_SETTLE_MS, move |ev| tx.blocking_send(ev).is_ok()) {
+                Ok(handle) => (Some(handle), Some(rx)),
+                Err(e) => {
+                    self.set_kept(&host_key, &spec.there, KeptState::Failed(format!("watch: {e}")), None);
                     return;
                 }
             }
-            match self.sync_kept(&host_key, &there, mirror, &lock).await {
-                Ok((files, sent)) => self.set_kept(&host_key, &there, KeptState::InStep, Some((std::time::SystemTime::now(), files, sent))),
-                Err(why) => self.set_kept(&host_key, &there, KeptState::Failed(why), None),
+        } else {
+            (None, None)
+        };
+
+        // Remote watcher (for FromHost and Both).
+        let mut remote_lines = if watch_remote {
+            let watch_cmd = folder.watch_command(crate::link::ID);
+            let Ok(stream) = pool.exec_io(&target, askpass.clone(), &watch_cmd).await else {
+                self.set_kept(&host_key, &spec.there, KeptState::Waiting, None);
+                return;
+            };
+            Some(tokio::io::BufReader::new(stream).lines())
+        } else {
+            None
+        };
+
+        // Wait for each active watcher to announce "watching" before the first
+        // sync so no change occurring during the first sync is missed.
+        if let Some(lines) = &mut remote_lines {
+            match lines.next_line().await {
+                Ok(Some(said)) if said == "watching" => {}
+                Ok(Some(said)) if said == "gone" => {
+                    self.set_kept(&host_key, &spec.there, KeptState::Gone, None);
+                    return;
+                }
+                Ok(Some(said)) if said.starts_with("error: ") => {
+                    self.set_kept(&host_key, &spec.there, KeptState::Failed(said.trim_start_matches("error: ").to_owned()), None);
+                    return;
+                }
+                _ => {
+                    self.set_kept(&host_key, &spec.there, KeptState::Waiting, None);
+                    return;
+                }
+            }
+        }
+        if let Some(rx) = &mut local_rx {
+            match rx.recv().await {
+                Some(WatchEvent::Watching) => {}
+                Some(WatchEvent::Gone) => {
+                    self.set_kept(&host_key, &spec.there, KeptState::Failed("The folder on this computer was removed.".into()), None);
+                    return;
+                }
+                Some(WatchEvent::Error(why)) => {
+                    self.set_kept(&host_key, &spec.there, KeptState::Failed(why), None);
+                    return;
+                }
+                _ => return,
+            }
+        }
+
+        // Initial sync after watches are live.
+        match self.sync_kept(&host_key, &spec, false, false, &lock).await {
+            Ok(out) => self.set_kept_done(&host_key, &spec.there, out.files, out.bytes, out.all_conflicts, out.changed),
+            Err(why) => self.set_kept(&host_key, &spec.there, KeptState::Failed(why), None),
+        }
+
+        // Main event loop: sleep with zero CPU until either watcher reports a change.
+        loop {
+            let next_remote = async {
+                match &mut remote_lines {
+                    Some(lines) => lines.next_line().await,
+                    None => std::future::pending().await,
+                }
+            };
+            let next_local = async {
+                match &mut local_rx {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            };
+            let trigger = tokio::select! {
+                res = next_remote => match res {
+                    Ok(Some(said)) if said == "changed" => true,
+                    Ok(Some(said)) if said == "gone" => {
+                        self.set_kept(&host_key, &spec.there, KeptState::Gone, None);
+                        return;
+                    }
+                    Ok(Some(said)) if said.starts_with("error: ") => {
+                        self.set_kept(&host_key, &spec.there, KeptState::Failed(said.trim_start_matches("error: ").to_owned()), None);
+                        return;
+                    }
+                    Ok(Some(_)) => false,
+                    _ => {
+                        self.set_kept(&host_key, &spec.there, KeptState::Waiting, None);
+                        return;
+                    }
+                },
+                ev = next_local => match ev {
+                    Some(WatchEvent::Changed) => true,
+                    Some(WatchEvent::Gone) => {
+                        self.set_kept(&host_key, &spec.there, KeptState::Failed("The folder on this computer was removed.".into()), None);
+                        return;
+                    }
+                    Some(WatchEvent::Error(why)) => {
+                        self.set_kept(&host_key, &spec.there, KeptState::Failed(why), None);
+                        return;
+                    }
+                    Some(WatchEvent::Watching) => false,
+                    None => return,
+                },
+            };
+            if !trigger {
+                continue;
+            }
+            match self.sync_kept(&host_key, &spec, false, false, &lock).await {
+                Ok(out) => self.set_kept_done(&host_key, &spec.there, out.files, out.bytes, out.all_conflicts, out.changed),
+                Err(why) => self.set_kept(&host_key, &spec.there, KeptState::Failed(why), None),
             }
         }
     }
 
     /// A kept folder that failed kept in step again from the start (the
     /// Host window's Try Again): its runner ended, and a new one started,
-    /// which watches the folder there and syncs it at once.
+    /// which watches the folder and syncs it at once.
     pub fn retry_kept(self: &Arc<Self>, host_key: &str, there: &str) {
         self.stop_keeping(host_key, there);
         self.keep_folders_of(host_key);
     }
 
     /// A kept folder let go of from here (the Host window's Stop): as `olo
-    /// sync stop` does, what it brought staying.
+    /// sync stop` does, files staying on both sides.
     pub fn stop_kept(self: &Arc<Self>, host_key: &str, there: &str) {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).kept.retain(|k| !(k.host_key == host_key && k.there == there));
+        let label = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.kept.retain(|k| !(k.host_key == host_key && k.there == there));
+            st.hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default()
+        };
         self.stop_keeping(host_key, there);
+        if let Some(here) = kept_here(&label, there) {
+            let (_, baseline) = kept_cache_paths(&here, there);
+            let _ = std::fs::remove_file(baseline);
+        }
         let (hk, gone) = (host_key.to_owned(), there.to_owned());
         olo_kit::settings::update(move |s| s.rex.kept.retain(|k| !(k.host == hk && k.there == gone)));
         (self.notify)(HubNotice::StateChanged);
@@ -7607,6 +8136,26 @@ mod tests {
             .expect("scratch Rex test timed out")
         });
         res.expect("live GHOSTSNP -> RenderState pipeline failed");
+    }
+
+    #[test]
+    fn parse_sync_ask_covers_directions_filters_and_subcommands() {
+        use olo_protocol::RexSyncDirection as Dir;
+        let s = |v: &[&str]| v.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+        assert_eq!(parse_sync_ask(&s(&["ls", "--json"])), Ok(SyncAsk::List { json: true }));
+        assert_eq!(parse_sync_ask(&s(&["conflicts", "/home/dev/notes", "--json"])), Ok(SyncAsk::Conflicts { path: Some("/home/dev/notes".into()), json: true }));
+        assert_eq!(parse_sync_ask(&s(&["wait", "/home/dev/notes"])), Ok(SyncAsk::Wait { path: "/home/dev/notes".into(), json: false }));
+        assert_eq!(parse_sync_ask(&s(&["stop", "/home/dev/notes"])), Ok(SyncAsk::Stop { path: "/home/dev/notes".into() }));
+        assert_eq!(
+            parse_sync_ask(&s(&["/home/dev/notes", "--two-way", "--shallow", "--exclude", "target", "--exclude=*.tmp"])),
+            Ok(SyncAsk::Keep { path: "/home/dev/notes".into(), direction: Dir::Both, mirror: false, shallow: true, exclude: vec!["target".into(), "*.tmp".into()], json: false })
+        );
+        assert_eq!(
+            parse_sync_ask(&s(&["--to-host", "--mirror", "/home/dev/assets"])),
+            Ok(SyncAsk::Keep { path: "/home/dev/assets".into(), direction: Dir::ToHost, mirror: true, shallow: false, exclude: vec![], json: false })
+        );
+        assert!(parse_sync_ask(&s(&["/home/dev/a", "--to-host", "--from-host"])).is_err());
+        assert!(parse_sync_ask(&s(&["/home/dev/a", "--bogus"])).is_err());
     }
 }
 

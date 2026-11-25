@@ -210,6 +210,54 @@ fn a_folder_watched_says_when_it_changed() {
     }
 }
 
+/// `index`, `mutate`, `send --only` / `--only-file`, and `watch --shallow`:
+/// the pieces two-way sync builds on.
+#[test]
+fn index_mutate_and_only_work_together() {
+    let (src, dst, cache) = (scratch("tw-src"), scratch("tw-dst"), scratch("tw-cache"));
+    fs::create_dir_all(src.join("sub")).unwrap();
+    fs::write(src.join("a.txt"), b"alpha").unwrap();
+    fs::write(src.join("sub/b.txt"), b"beta").unwrap();
+    fs::write(src.join("skip.tmp"), b"ignored").unwrap();
+
+    // `index`: emits a valid framed index respecting --exclude and --shallow.
+    let out = Command::new(env!("CARGO_BIN_EXE_olo-rex-link")).args(["sync", "index", src.to_str().unwrap(), "--exclude", "*.tmp"]).env("XDG_CACHE_HOME", &cache).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let idx = olo_rex_sync::twoway::decode_index_frame(&out.stdout[..]).unwrap();
+    assert!(idx.entries.contains_key("a.txt"));
+    assert!(idx.entries.contains_key("sub/b.txt"));
+    assert!(!idx.entries.contains_key("skip.tmp"));
+
+    let out_shallow = Command::new(env!("CARGO_BIN_EXE_olo-rex-link")).args(["sync", "index", src.to_str().unwrap(), "--shallow", "--no-cache"]).env("XDG_CACHE_HOME", &cache).output().unwrap();
+    assert!(out_shallow.status.success());
+    let idx_s = olo_rex_sync::twoway::decode_index_frame(&out_shallow.stdout[..]).unwrap();
+    assert!(idx_s.entries.contains_key("a.txt"));
+    assert!(!idx_s.entries.contains_key("sub/b.txt"));
+
+    // `mutate`: copies a file to a conflict name, removes a file, creates a dir.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_olo-rex-link")).args(["sync", "mutate", src.to_str().unwrap()]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(br#"{"copy":[["a.txt","a.conflict-host-20261125-100000.txt"]],"remove":["skip.tmp"],"mkdir":[["fresh/dir",493]]}"#).unwrap();
+    let res = child.wait_with_output().unwrap();
+    assert!(res.status.success(), "{}", String::from_utf8_lossy(&res.stderr));
+    assert_eq!(fs::read(src.join("a.conflict-host-20261125-100000.txt")).unwrap(), b"alpha");
+    assert!(!src.join("skip.tmp").exists());
+    assert!(src.join("fresh/dir").is_dir());
+
+    // `send --only-file`: pulls only the named paths and unlinks the list file.
+    let only_file = cache.join("only.list");
+    fs::write(&only_file, b"sub/b.txt\0a.conflict-host-20261125-100000.txt\0").unwrap();
+    let (mut child, pipes) = helper(&["send", src.to_str().unwrap(), "--no-cache", "--only-file", only_file.to_str().unwrap()], &cache);
+    let got = receive(pipes, &dst, Options { scoped: true, ..Default::default() }).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(got.errors.is_empty(), "{:?}", got.errors);
+    assert!(!only_file.exists(), "--only-file should be unlinked");
+    assert_eq!(tree(&dst), vec![("a.conflict-host-20261125-100000.txt".to_owned(), b"alpha".to_vec()), ("sub/b.txt".to_owned(), b"beta".to_vec())]);
+
+    for d in [src, dst, cache] {
+        fs::remove_dir_all(d).unwrap();
+    }
+}
+
 /// A mistake in what it is asked is said, never a session begun.
 #[test]
 fn what_it_isnt_asked_right_it_says() {

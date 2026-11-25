@@ -2082,10 +2082,23 @@ pub struct RexRepo {
     pub setup: String,
 }
 
+/// Which way a host's folder is kept in step (`RexKept`).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RexSyncDirection {
+    /// From the host to this computer (default: `olo sync PATH`).
+    #[default]
+    FromHost,
+    /// From this computer to the host (`olo sync PATH --to-host`).
+    ToHost,
+    /// Both ways, with conflict copies where both sides changed (`olo sync PATH --two-way`).
+    Both,
+}
+
 /// A host's folder kept in step here (Rex, "Folders kept in step"): what
-/// changes there is brought here as it changes, into Downloads ▸ Rex ▸ the
-/// host's name ▸ the folder's name (where it goes is this computer's to
-/// say, never the host's).
+/// changes on the watched side(s) is synced between the host and
+/// Downloads ▸ Rex ▸ the host's name ▸ the folder's name (where it goes
+/// here is this computer's to say, never the host's).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct RexKept {
@@ -2093,8 +2106,16 @@ pub struct RexKept {
     pub host: String,
     /// The folder there, by its whole path.
     pub there: String,
-    /// What the host no longer has taken away here too (a mirror).
+    /// What the sender no longer has taken away on the other side too
+    /// (a mirror; in two-way sync deletions propagate from the 3-way
+    /// baseline either way).
     pub mirror: bool,
+    /// Which way changes flow: from the host, to the host, or both ways.
+    pub direction: RexSyncDirection,
+    /// Top-level files alone, without descending into subfolders.
+    pub shallow: bool,
+    /// Glob patterns passed over (e.g. `target`, `*.tmp`, `/.cache`).
+    pub exclude: Vec<String>,
 }
 
 impl Default for RexSettings {

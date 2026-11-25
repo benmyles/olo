@@ -759,6 +759,20 @@ pub fn well(inner: Element) -> Element {
     div().relative().w_full().child(back).child(div().relative().w_full().px(px(WELL_INSET)).py(px(5.0)).child(inner))
 }
 
+/// A single-line sunken command well matching a button's height (`m::CONTROL_H`),
+/// used beside Copy in empty states so the field and button sit flush.
+pub fn command_well(inner: Element) -> Element {
+    let back = canvas(|g, b| {
+        let p = theme::palette();
+        style::fill_rect(g, b, style::shade(&p, p.panel_background, 1.06));
+        style::sunken(g, b, &p, false);
+    })
+    .paint_key(0)
+    .absolute()
+    .inset_0();
+    div().relative().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().child(back).child(div().relative().w_full().px(px(WELL_INSET)).child(inner))
+}
+
 /// `lines`, each on a line of its own, in the fixed-width font.
 pub fn mono_lines(lines: Vec<String>) -> Element {
     div().flex().flex_col().w_full().children(lines.into_iter().map(|line| StringView::new(line).mono(true).size(COMMAND_SIZE).wrap(true)))

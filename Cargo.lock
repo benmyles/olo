@@ -8597,6 +8597,7 @@ dependencies = [
  "olo-net",
  "olo-protocol",
  "olo-rex-client",
+ "olo-rex-sync",
  "olo-rex-vt",
  "olo-sync",
  "olo-system",
