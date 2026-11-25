@@ -172,3 +172,126 @@ async fn what_is_carried_is_what_the_host_has() {
     assert!(!p.saved.credentials.contains_key("two"));
     assert_eq!(p.saved.credentials["three"].refresh.as_deref(), Some("r-three"));
 }
+
+/// Promoting a host from borrower (already holding lent `{ access: X, refresh: None }`)
+/// to keeper (receiving `{ access: X, refresh: Some(RT) }` with the exact same access token)
+/// MUST accept the refresh token, clear `signed_out`, and report `kept: true`; replaying an
+/// older carry after rotation MUST NOT overwrite the keeper's rotated refresh token.
+#[tokio::test(flavor = "multi_thread")]
+async fn promoting_borrower_to_keeper_with_same_access_token_keeps_refresh_and_resists_replay() {
+    let up = Upstreams::fake("http://127.0.0.1:9");
+    let mut saved = Saved::default();
+    let mut a = Account::new("claude-1".into(), "Work".into(), Provider::Claude);
+    a.created = 1;
+    a.kept_on = Some("old-host".into());
+    saved.accounts.push(a);
+    let exp = now() + 3600;
+    saved.credentials.insert("claude-1".into(), Credential { access: "access-X".into(), refresh: None, expires_at: Some(exp), account_id: None });
+
+    let desktop = Shared::new(saved, None, up.clone(), || {});
+    let ovh = Shared::new(Saved::default(), None, up, || {});
+    ovh.set_hosted();
+
+    // Step 1: OVH starts as a borrower while old-host is keeper -> receives lent access-X, refresh: None.
+    let status = ovh.carried(desktop.carry_to("ovh", "this computer")).unwrap();
+    assert_eq!(status["sign_ins"][0]["kept"], false);
+    assert_eq!(sign_in(&ovh, "claude-1"), ("access-X".into(), None, Some("old-host".into())));
+
+    // Simulate OVH previously failing renewal and marking signed_out.
+    ovh.pool.lock().unwrap().account_mut("claude-1").unwrap().signed_out = Some("No refresh token: sign in again.".into());
+
+    // Step 2: Account moves from old-host -> desktop -> OVH with the SAME access-X + refresh RT!
+    desktop.took_back_for("claude-1", Credential { access: "access-X".into(), refresh: Some("RT-1".into()), expires_at: Some(exp), account_id: None }, Some("ovh"));
+    let promote = desktop.carry_to("ovh", "this computer");
+    assert_eq!(desktop.unaccepted_handovers("ovh"), vec!["claude-1".to_owned()]);
+    let status = ovh.carried(promote.clone()).unwrap();
+    assert_eq!(status["sign_ins"][0]["kept"], true, "OVH must accept refresh token even when access matches");
+    assert_eq!(sign_in(&ovh, "claude-1"), ("access-X".into(), Some("RT-1".into()), None));
+    assert_eq!(ovh.pool.lock().unwrap().account("claude-1").unwrap().signed_out, None, "signed_out cleared on handover");
+
+    // Desktop accepts handover and drops its local refresh token.
+    assert!(desktop.handed_over("ovh", &status));
+    assert!(desktop.unaccepted_handovers("ovh").is_empty());
+    assert_eq!(sign_in(&desktop, "claude-1"), ("access-X".into(), None, Some("ovh".into())));
+
+    // Step 3: OVH rotates its refresh token to RT-2 / access-Y. Replaying the older carry must NOT clobber it!
+    ovh.pool.lock().unwrap().saved.credentials.insert("claude-1".into(), Credential { access: "access-Y".into(), refresh: Some("RT-2".into()), expires_at: Some(exp + 7200), account_id: None });
+    let _ = ovh.carried(promote).unwrap();
+    assert_eq!(sign_in(&ovh, "claude-1"), ("access-Y".into(), Some("RT-2".into()), None), "replay must not overwrite rotated keeper token");
+}
+
+/// When the keeper explicitly rejects lending with an auth error ("No refresh token: sign in again."):
+/// 1) `borrowed()` surfaces that auth error instead of claiming the host is unreachable;
+/// 2) if the desktop still holds the refresh token (unfinished handover), it triggers a host re-carry;
+/// 3) HTTP `serve()` returns 502 with the sign-in error instead of 429 "out of quota";
+/// 4) `borrow_ahead()` stops immediately once `drain.retire()` is called.
+#[tokio::test(flavor = "multi_thread")]
+async fn keeper_auth_error_surfaces_as_502_triggers_recarry_and_retired_skips_borrow_ahead() {
+    use olo_token_pool::gateway::Hosting;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct SpyHosting(Arc<Mutex<Vec<(String, String)>>>);
+    impl Hosting for SpyHosting {
+        fn list(&self) -> serde_json::Value {
+            json!({"hosts": []})
+        }
+        fn act(self: Arc<Self>, id: &str, what: &str) -> Result<(), String> {
+            self.0.lock().unwrap().push((id.to_owned(), what.to_owned()));
+            Ok(())
+        }
+    }
+
+    let up = Upstreams::fake("http://127.0.0.1:9");
+
+    // Case A: Desktop still holds refresh token (handover incomplete) -> triggers sync re-carry!
+    let mut saved = Saved::default();
+    let mut a = Account::new("c1".into(), "Work".into(), Provider::Claude);
+    a.kept_on = Some("ovh".into());
+    saved.accounts.push(a);
+    saved.credentials.insert("c1".into(), Credential { access: "expired".into(), refresh: Some("RT-kept-local".into()), expires_at: Some(now() - 10), account_id: None });
+    let desktop = Shared::new(saved, None, up.clone(), || {});
+    let actions: Arc<Mutex<Vec<(String, String)>>> = Default::default();
+    desktop.set_hosting(Some(Arc::new(SpyHosting(actions.clone()))));
+    let lend_calls = Arc::new(AtomicUsize::new(0));
+    let lc = lend_calls.clone();
+    desktop.set_lender(Some(Arc::new(move |_, _, _| {
+        lc.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Err("No refresh token: sign in again.".to_owned()) })
+    })));
+    let err = desktop.renewed("c1", Provider::Claude).await.unwrap_err().to_string();
+    assert!(err.contains("waiting for sync"), "{err}");
+    assert_eq!(actions.lock().unwrap().as_slice(), &[("ovh".to_owned(), "sync".to_owned())]);
+    assert_eq!(lend_calls.load(Ordering::SeqCst), 0, "should trigger re-carry instead of looping Ask::Lend");
+
+    // Case B: Retired draining copy never runs borrow_ahead.
+    desktop.drain.retire();
+    desktop.borrow_ahead().await;
+    assert_eq!(lend_calls.load(Ordering::SeqCst), 0);
+
+    // Case C: Normal borrower whose keeper explicitly returns "No refresh token: sign in again." ->
+    // HTTP gateway returns 502 with the actual keeper auth error, NOT 429 "out of quota".
+    let mut saved2 = Saved::default();
+    let mut a2 = Account::new("c2".into(), "Work".into(), Provider::Claude);
+    a2.kept_on = Some("ovh".into());
+    saved2.accounts.push(a2);
+    saved2.credentials.insert("c2".into(), Credential { access: "expired".into(), refresh: None, expires_at: Some(now() - 10), account_id: None });
+    let gw = Shared::new(saved2, None, up, || {});
+    gw.set_lender(Some(Arc::new(|_, _, _| Box::pin(async { Err("No refresh token: sign in again.".to_owned()) }))));
+    let port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    olo_token_pool::gateway::start(gw.clone(), port).unwrap();
+    let resp = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/claude/v1/messages"))
+        .header("content-type", "application/json")
+        .body(r#"{"model":"claude-sonnet-4-6","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = resp.text().await.unwrap();
+    assert_eq!(status, reqwest::StatusCode::BAD_GATEWAY, "must return 502, not 429 out-of-quota: {body}");
+    assert!(body.contains("No refresh token: sign in again"), "must surface keeper auth error: {body}");
+    assert!(!body.contains("out of quota"), "must never falsely claim out of quota: {body}");
+}

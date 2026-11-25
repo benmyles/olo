@@ -113,6 +113,23 @@ fn handed_to(a: &crate::model::Account, renewable: bool, host: &str, now: i64) -
     a.kept_on.is_none() && renewable && a.kept_for_host(now).is_none_or(|h| h == host)
 }
 
+/// Whether a keeper's reply describes a sign-in/auth problem on the keeper
+/// itself (as opposed to a transport/SSH reachability error).
+fn is_keeper_auth_error(why: &str) -> bool {
+    let low = why.to_ascii_lowercase();
+    ["no refresh token", "sign in again", "no such account", "no sign-in", "invalid_grant", "signed out", "unauthorized", "refused", "revoked", "token expired"]
+        .iter()
+        .any(|needle| low.contains(needle))
+}
+
+fn keeper_failure(keeper: &str, why: &str) -> String {
+    if is_keeper_auth_error(why) {
+        format!("Its sign-in kept on {keeper} could not be renewed ({}).", why.trim_end_matches('.'))
+    } else {
+        format!("Its sign-in is kept on {keeper}, which can’t be reached now.")
+    }
+}
+
 impl Shared {
     /// This pool is a Rex host's from now on.
     pub fn set_hosted(&self) {
@@ -161,20 +178,33 @@ impl Shared {
 
     /// The sign-in of an account kept on `keeper`, for `fresh`: the one
     /// there is while it does; a newer one from the keeper when it is
-    /// `due` (or was refused). The keeper out of reach: the one there
-    /// is, as long as it lasts, and then the account waits (an error
-    /// that isn't a refusal: it is not signed out).
+    /// `due` (or was refused). Transport errors leave the account waiting
+    /// (not signed out); explicit keeper auth errors are surfaced as such,
+    /// and if this desktop still holds the refresh token (an unfinished
+    /// handover), a re-carry to `keeper` is triggered immediately.
     pub(super) async fn borrowed(&self, id: &str, keeper: &str, current: Credential, due: bool, refused: bool) -> Result<Credential, Failure> {
         if !due {
             return Ok(current);
         }
         let lasts = current.expires_at.is_none_or(|t| t > now());
-        let waits = || Failure::Other(format!("Its sign-in is kept on {keeper}, which can’t be reached now."));
+        let default_waits = || format!("Its sign-in is kept on {keeper}, which can’t be reached now.");
         let lender = self.lender.lock().unwrap().clone();
-        let lately = self.asked.lock().unwrap().get(id).is_some_and(|at| at.elapsed() < ASKED_AGAIN_AFTER);
-        let (Some(lender), false) = (lender, lately) else {
-            return if lasts && !refused { Ok(current) } else { Err(waits()) };
-        };
+        let recent = self.asked.lock().unwrap().get(id).and_then(|(at, why)| (at.elapsed() < ASKED_AGAIN_AFTER).then(|| why.clone()));
+        if lender.is_none() || recent.is_some() {
+            return if lasts && !refused { Ok(current) } else { Err(Failure::Other(recent.unwrap_or_else(default_waits))) };
+        }
+        let lender = lender.unwrap();
+        // If this desktop still holds the refresh token for an account marked
+        // `kept_on == keeper`, handover never finished — trigger a re-carry so
+        // the keeper gets the refresh token instead of looping Ask::Lend!
+        if current.refresh.is_some() {
+            if let Some(hosting) = self.hosting() {
+                let _ = hosting.act(keeper, "sync");
+            }
+            let msg = format!("Its sign-in kept on {keeper} is waiting for sync to finish handing over credentials.");
+            self.asked.lock().unwrap().insert(id.to_owned(), (std::time::Instant::now(), msg.clone()));
+            return if lasts && !refused { Ok(current) } else { Err(Failure::Other(msg)) };
+        }
         match lender(keeper.to_owned(), id.to_owned(), BORROW_AHEAD + 600).await {
             Ok(mut newer) => {
                 // (Only what is used is kept here: never its refresh token.)
@@ -185,20 +215,25 @@ impl Shared {
                     self.touch();
                     return Ok(newer);
                 }
-                if lasts && !refused { Ok(current) } else { Err(waits()) }
+                if lasts && !refused { Ok(current) } else { Err(Failure::Other(default_waits())) }
             }
             Err(why) => {
                 tracing::info!("pool: asking {keeper} for a sign-in: {why}");
-                self.asked.lock().unwrap().insert(id.to_owned(), std::time::Instant::now());
-                if lasts && !refused { Ok(current) } else { Err(waits()) }
+                let msg = keeper_failure(keeper, &why);
+                self.asked.lock().unwrap().insert(id.to_owned(), (std::time::Instant::now(), msg.clone()));
+                if lasts && !refused { Ok(current) } else { Err(Failure::Other(msg)) }
             }
         }
     }
 
     /// A newer sign-in asked of the keeper for every account kept
     /// elsewhere whose own runs out within [`BORROW_AHEAD`]: with the
-    /// quotas' reading, so a request never waits for it.
+    /// quotas' reading, so a request never waits for it. Stopped once this
+    /// copy has handed over (`drain.retired`).
     pub async fn borrow_ahead(&self) {
+        if self.drain.retired() {
+            return;
+        }
         let due: Vec<(String, Provider)> = {
             let p = self.pool.lock().unwrap();
             let t = now();
@@ -211,6 +246,9 @@ impl Shared {
                 .collect()
         };
         for (id, provider) in due {
+            if self.drain.retired() {
+                break;
+            }
             let _ = self.fresh(&id, provider, None, BORROW_AHEAD).await;
         }
     }
@@ -279,11 +317,24 @@ impl Shared {
                 let ours = p.saved.credentials.get(&c.id).cloned();
                 let take = match (&c.credential, &ours) {
                     // A refresh token carried: this pool keeps it from now (a
-                    // handover, or signed in anew on the desktop), unless it
-                    // is the very one it has already.
-                    (Some(theirs), ours) if theirs.refresh.is_some() && kept_elsewhere.is_none() => {
-                        ours.as_ref().is_none_or(|o| o.refresh != theirs.refresh && o.access != theirs.access).then(|| theirs.clone())
-                    }
+                    // handover, or signed in anew on the desktop).
+                    // Always accept when we have no credential or only a lent
+                    // access token (`refresh: None`), even if `o.access == theirs.access`
+                    // (promoting a borrower host to keeper!). When we already
+                    // hold a refresh token as keeper, only replace on a genuinely
+                    // newer re-sign-in so a replay never overwrites a rotated token.
+                    (Some(theirs), ours) if theirs.refresh.is_some() && kept_elsewhere.is_none() => match ours {
+                        None => Some(theirs.clone()),
+                        Some(o) if o.refresh.is_none() => {
+                            let mut next = theirs.clone();
+                            if super::newer(o, theirs) {
+                                next.access = o.access.clone();
+                                next.expires_at = o.expires_at;
+                            }
+                            Some(next)
+                        }
+                        Some(o) => (o.refresh != theirs.refresh && o.access != theirs.access && theirs.expires_at.unwrap_or(i64::MAX) >= o.expires_at.unwrap_or(0)).then(|| theirs.clone()),
+                    },
                     // Lent: taken where this pool isn't the keeper, and it is newer.
                     (Some(theirs), ours) if kept_elsewhere.is_some() => {
                         let mut lent = theirs.clone();
@@ -466,6 +517,13 @@ impl Shared {
             self.touch();
             self.flush();
         }
+    }
+
+    /// Accounts marked `kept_on == Some(host)` that still hold a local
+    /// refresh token here (handover not yet accepted by `host`).
+    pub fn unaccepted_handovers(&self, host: &str) -> Vec<String> {
+        let p = self.pool.lock().unwrap();
+        p.saved.accounts.iter().filter(|a| a.kept_on.as_deref() == Some(host)).filter(|a| p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some())).map(|a| a.id.clone()).collect()
     }
 
     /// The accounts kept on `host`.

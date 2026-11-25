@@ -191,7 +191,7 @@ impl Hosts {
                     doing: live.doing,
                     error: live.error,
                     hopeless: live.hopeless,
-                    in_step: kept.wanted && kept.behind_since.is_none() && kept.carried.is_some(),
+                    in_step: kept.wanted && kept.behind_since.is_none() && kept.carried.is_some() && self.shared.unaccepted_handovers(id).is_empty(),
                     behind_since: kept.behind_since,
                     carried_at: kept.carried_at,
                     status: live.status,
@@ -287,6 +287,18 @@ impl Hosts {
         let carried = self.shared.carry_to(id, "this computer");
         let status = self.ask(&target, &Ask::Carry { carried }).await?;
         self.shared.handed_over(id, &status);
+        let unaccepted = self.shared.unaccepted_handovers(id);
+        if !unaccepted.is_empty() {
+            {
+                let mut st = self.state.lock().unwrap();
+                let kept = st.kept.entry(id.to_owned()).or_default();
+                kept.carried = None;
+                let live = st.live.entry(id.to_owned()).or_default();
+                (live.status, live.heard_at) = (Some(status), Some(now()));
+            }
+            self.save();
+            return Err(format!("{} did not accept {} handed-over sign-in(s); keeping local refresh tokens until sync succeeds.", self.name(id), unaccepted.len()));
+        }
         // (As it stands after the handover: nothing more to tell it.)
         let digest = Self::digest(&self.shared.carry_to(id, "this computer"));
         {
@@ -311,7 +323,7 @@ impl Hosts {
             .filter(|id| {
                 // (Asked without marking anything: what would be carried, were it.)
                 let now_is = Self::digest(&self.shared.would_carry(id, "this computer"));
-                self.stale(id) || self.state.lock().unwrap().kept.get(id).is_some_and(|k| k.carried != Some(now_is))
+                self.stale(id) || !self.shared.unaccepted_handovers(id).is_empty() || self.state.lock().unwrap().kept.get(id).is_some_and(|k| k.carried != Some(now_is))
             })
             .collect()
     }
@@ -329,10 +341,19 @@ impl Hosts {
     /// The accounts changed (or a host came to be known): every pool
     /// that doesn't have them is carried them, a moment after.
     pub fn carry_soon(self: &Arc<Self>) {
+        if self.shared.drain.retired() {
+            return;
+        }
         let hosts = self.clone();
         self.shared.spawn(async move {
             tokio::time::sleep(Duration::from_secs(2)).await;
+            if hosts.shared.drain.retired() {
+                return;
+            }
             for id in hosts.behind() {
+                if hosts.shared.drain.retired() {
+                    break;
+                }
                 hosts.clone().carry_and_say(id, false).await;
             }
         });
@@ -343,7 +364,7 @@ impl Hosts {
     /// Where the host's program isn't this Olo's (an upgrade of Olo),
     /// that is put there first: an upgrade reaches the hosts by itself.
     async fn carry_and_say(self: Arc<Self>, id: String, asked: bool) {
-        if self.state.lock().unwrap().live.get(&id).is_some_and(|l| l.doing.is_some()) {
+        if self.shared.drain.retired() || self.state.lock().unwrap().live.get(&id).is_some_and(|l| l.doing.is_some()) {
             return;
         }
         let stale = self.stale(&id);
@@ -377,7 +398,7 @@ impl Hosts {
             let hosts = self.clone();
             self.shared.spawn(async move {
                 tokio::time::sleep(Duration::from_secs(wait)).await;
-                if hosts.behind().contains(&id) {
+                if !hosts.shared.drain.retired() && hosts.behind().contains(&id) {
                     Box::pin(hosts.clone().carry_and_say(id, false)).await;
                 }
             });

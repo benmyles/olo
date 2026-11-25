@@ -158,6 +158,8 @@ impl Drain {
     pub fn retire(&self) {
         self.retired.store(true, Ordering::SeqCst);
         self.begin();
+        // Wake watchers even if `begin()` had already set `draining = true`.
+        self.stop.send_replace(true);
     }
 
     pub fn retired(&self) -> bool {

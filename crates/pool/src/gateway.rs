@@ -223,9 +223,9 @@ pub struct Shared {
     /// by itself (the desktop's pool does), and is given its accounts.
     hosted: std::sync::atomic::AtomicBool,
     /// Who brings a newer sign-in for an account kept elsewhere
-    /// (`hosted::Lender`), and when each was last asked and failed.
+    /// (`hosted::Lender`), and when each was last asked and failed (with why).
     lender: Mutex<Option<hosted::Lender>>,
-    asked: Mutex<HashMap<String, std::time::Instant>>,
+    asked: Mutex<HashMap<String, (std::time::Instant, String)>>,
     /// When each account's sign-in was last renewed here.
     lent: Mutex<HashMap<String, std::time::Instant>>,
     /// The pools on Rex hosts, as the gateway's `/pool/hosts` shows and
@@ -1047,7 +1047,7 @@ impl Shared {
         if self.drain.retired() {
             return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
         }
-        let (provider, org, credit, request) = {
+        let (provider, org, credit, request, had_pending) = {
             let mut p = self.pool.lock().unwrap();
             let a = p.account(id).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
             if a.redeeming.is_none() && p.saved.accounts.iter().any(|other| other.provider == a.provider && other.redeeming.is_some()) {
@@ -1060,7 +1060,7 @@ impl Shared {
             let t = now();
             match a.redeeming.clone() {
                 Some((cid, request)) => match a.credits.iter().find(|c| c.id == cid).cloned() {
-                    Some(c) => (a.provider, a.org.clone(), c, request),
+                    Some(c) => (a.provider, a.org.clone(), c, request, true),
                     None => {
                         // (Gone from what the provider lists: it was used.)
                         a.redeeming = None;
@@ -1083,10 +1083,26 @@ impl Shared {
                             .map(|(c, _)| c.clone()),
                     };
                     let c = chosen.ok_or_else(|| Claimed::NotNow("No reset credit to use for it now.".into()))?;
-                    (a.provider, a.org.clone(), c, crate::store::new_uuid())
+                    (a.provider, a.org.clone(), c, crate::store::new_uuid(), false)
                 }
             }
         };
+        // Renew/verify the sign-in BEFORE persisting `a.redeeming` so a sign-in
+        // failure never leaves a stranded pending reset claim on disk.
+        let cred = match self.fresh(id, provider, None, 60).await {
+            Ok(c) => c,
+            Err(e) => {
+                if let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+                    a.redeem_tried = Some(now());
+                }
+                return Err(Claimed::NotNow(e.to_string()));
+            }
+        };
+        // (Handed over while it waited: the copy now at work makes it, from
+        // the intent kept, if it's still wanted.)
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
         {
             let mut p = self.pool.lock().unwrap();
             if let Some(a) = p.account_mut(id) {
@@ -1095,12 +1111,11 @@ impl Shared {
             }
         }
         // (Kept before the provider is asked, or not asked.)
-        self.save_checked().await.map_err(Claimed::NotNow)?;
-        let cred = self.fresh(id, provider, None, 60).await.map_err(|e| Claimed::NotNow(e.to_string()))?;
-        // (Handed over while it waited: the copy now at work makes it, from
-        // the intent kept, if it's still wanted.)
-        if self.drain.retired() {
-            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        if let Err(e) = self.save_checked().await {
+            if !had_pending && let Some(a) = self.pool.lock().unwrap().account_mut(id) {
+                a.redeeming = None;
+            }
+            return Err(Claimed::NotNow(e));
         }
         let result = upstream::redeem(&self.client_for(id), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
         {
@@ -1388,12 +1403,28 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                 }
                 let s = shared.clone();
                 tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    let mut stop = s.drain.watch();
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+                        _ = stop.wait_for(|_| s.drain.retired()) => return,
+                    }
                     loop {
+                        if s.drain.retired() {
+                            break;
+                        }
                         s.sync(None).await;
+                        if s.drain.retired() {
+                            break;
+                        }
                         s.borrow_ahead().await;
+                        if s.drain.retired() {
+                            break;
+                        }
                         s.spend_expiring().await;
-                        tokio::time::sleep(Duration::from_secs(60)).await;
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(60)) => {}
+                            _ = stop.wait_for(|_| s.drain.retired()) => break,
+                        }
                     }
                 });
                 let mut listener = Some(listener);
@@ -1778,6 +1809,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
     let mut tried: HashMap<String, u64> = HashMap::new();
     // Tries the network failed (not counted against an account).
     let mut network_tries = 0;
+    let mut refresh_error: Option<String> = None;
     loop {
         // Choose, and count it as busy at once.
         let chosen = {
@@ -1814,10 +1846,17 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 c
             }
             Err((any, retry)) => {
-                // Every account out: a reset credit keeps things going.
+                // Every account out: a reset credit keeps things going if an
+                // account with a working sign-in can redeem one.
                 if any && let Some(id) = s.redeem_for(provider, &family, &tried).await {
                     tried.remove(&id);
                     continue;
+                }
+                // If unblocked accounts failed sign-in renewal (e.g., keeper
+                // couldn't lend/renew), surface the actual sign-in error as 502
+                // instead of claiming every account is out of quota (429).
+                if let Some(err) = refresh_error {
+                    return unavailable(provider, StatusCode::BAD_GATEWAY, &err, None);
                 }
                 return if any {
                     let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
@@ -1859,7 +1898,10 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 network_back().await;
                 continue;
             }
-            Err(_) => {
+            Err(e) => {
+                if let Failure::Other(why) = e {
+                    refresh_error.get_or_insert(why);
+                }
                 drop(finish);
                 tried.insert(id.clone(), revision);
                 continue;
@@ -1995,7 +2037,12 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     refreshed = true;
                     match s.fresh(&id, provider, Some(&cred), 0).await {
                         Ok(c) => cred = c,
-                        Err(_) => break None,
+                        Err(e) => {
+                            if let Failure::Other(why) = e {
+                                refresh_error.get_or_insert(why);
+                            }
+                            break None;
+                        }
                     }
                 }
                 Ok(r) => break Some(r),
@@ -2106,7 +2153,7 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
     let offer: Vec<&str> = offer.iter().map(String::as_str).collect();
     let mut tried: HashMap<String, u64> = HashMap::new();
     let mut network_tries = 0;
-    let mut refresh_failed = false;
+    let mut refresh_error: Option<String> = None;
     loop {
         let chosen = {
             let mut p = s.pool.lock().unwrap();
@@ -2134,8 +2181,8 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
                     tried.remove(&id);
                     continue;
                 }
-                if refresh_failed {
-                    return unavailable(provider, StatusCode::BAD_GATEWAY, "The sign-in service could not renew an account.", None);
+                if let Some(err) = refresh_error {
+                    return unavailable(provider, StatusCode::BAD_GATEWAY, &err, None);
                 }
                 return if any {
                     let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
@@ -2155,7 +2202,9 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
                 continue;
             }
             Err(e) => {
-                refresh_failed |= matches!(e, Failure::Other(_));
+                if let Failure::Other(why) = e {
+                    refresh_error.get_or_insert(why);
+                }
                 tried.insert(id, revision);
                 continue;
             }
@@ -2179,7 +2228,9 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
                                 continue;
                             }
                             Err(e) => {
-                                refresh_failed |= matches!(e, Failure::Other(_));
+                                if let Failure::Other(why) = e {
+                                    refresh_error.get_or_insert(why);
+                                }
                                 break None;
                             }
                         }
