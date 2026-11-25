@@ -26485,6 +26485,29 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     or Codex), not by address, since a host has other people on it;
     and it claims no reset credits by itself (the desktop's pool
     does: two pools would claim the same one).
+  - *Upgraded without a gap* (`host::Ask::Upgrade`, `host::hand_over`;
+    Ben, 2026-11-25: "when upgrading olo it seems to sever the token
+    pool connection and claude often does 'API Error: Connection lost
+    mid-response'"). The desktop's pool puts each release's program on
+    its hosts as it starts (`Hosts::put`), and stopped the one there
+    and restarted its service: every stream through it cut (the second
+    investigator found it; made to happen with a stand-in provider). Now
+    its script (`hosts::service_script`) asks the program there to
+    upgrade first: it starts the version its folder now links beside
+    itself with its listening sockets, the gateway's and the proxy's
+    (`Drain::for_a_copy`, as the desktop's pool hands over) and its
+    asking socket's name, retires, finishes what it has under way
+    (streams too) and then, being the service's own process, becomes its
+    keeper in place (`olo-pool-host keep`: systemd follows that pid, so
+    the service is never restarted; the new copy its child, the newer
+    ones given to it as their subreaper, signals passed on, ended as the
+    last ended). A copy that hands over in turn ends once finished
+    (`host::KEPT_ENV`). One from before `upgrade` (or none) is stopped
+    and the service restarted, as before: the one last cut. Tried with
+    two upgrades under streams (each arrived whole; the next request the
+    new copy's; the keeper and its child after; a SIGTERM ended all),
+    and the script on the rig's Fedora 44 under its user manager: the
+    unit's main pid and start unchanged, the keeper and the new copy.
   - *One pool renews each sign-in.* A provider's refresh token is
     spent once; renewed by two pools the second is refused, and a
     provider may end the whole sign-in for it. So each account has

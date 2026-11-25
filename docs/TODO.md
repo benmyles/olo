@@ -252,6 +252,12 @@ something nobody here has is in "Blocked", with what it waits for.
   every stream in flight run to its end on the old copy while the new one
   takes the new requests. Reproduce it first with a stand-in provider
   (never a real account), an upgrade in the middle of a long stream.
+  **Done** 2026-11-25: it was the pool's program on each Rex host
+  (`olo-pool-host`), stopped and its service restarted as the desktop's
+  pool put each release there; now it hands over to the new version
+  beside itself and finishes its streams, the service's process its
+  keeper (HACKING, the Token Pool, "Upgraded without a gap"). The one
+  there before this release is stopped once more, as before.
 
 - **Nothing may hold the desktop up, whatever the load: the GPU's
   resets, the desktop's place on the GPU, the kernel's own threads**

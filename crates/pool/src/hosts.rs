@@ -433,22 +433,7 @@ impl Hosts {
                 return Err(format!("The Token Pool couldn’t be put there: {}", last(&said)));
             }
         }
-        // Its service: the account's own unit where it has systemd
-        // (kept running while it is signed out, where the host lets
-        // it), else started now and again by Olo when found stopped.
-        let service = format!(
-            "set -e; d=\"$HOME\"/{DIR}; ln -sfn {name} \"$d/olo-pool-host\"; \
-             echo '{{\"do\":\"stop\"}}' | \"$d/olo-pool-host\" ctl > /dev/null 2>&1 || true; \
-             export XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"; \
-             if command -v systemctl > /dev/null 2>&1 && systemctl --user show-environment > /dev/null 2>&1; then \
-               u=\"${{XDG_CONFIG_HOME:-$HOME/.config}}/systemd/user\"; mkdir -p \"$u\"; \
-               printf '[Unit]\\nDescription=Olo Token Pool\\n\\n[Service]\\nExecStart=%s/olo-pool-host serve\\nRestart=on-failure\\nRestartSec=5\\n\\n[Install]\\nWantedBy=default.target\\n' \"$d\" > \"$u/{UNIT}\"; \
-               systemctl --user daemon-reload; systemctl --user enable {UNIT} > /dev/null 2>&1 || true; systemctl --user restart {UNIT}; \
-               loginctl enable-linger \"$(id -un)\" > /dev/null 2>&1 || true; \
-             else (setsid nohup \"$d/olo-pool-host\" serve > /dev/null 2>&1 &); fi; \
-             i=0; while [ $i -lt 40 ]; do if echo '{{\"do\":\"status\"}}' | \"$d/olo-pool-host\" ctl > /dev/null 2>&1; then echo running; exit 0; fi; i=$((i + 1)); sleep 0.25; done; \
-             echo 'it did not start'; exit 5"
-        );
+        let service = service_script(&name);
         let (ok, said) = self.run(&target, &format!("sh -c {}", word(&service)), None).await?;
         if !ok {
             return Err(format!("The Token Pool’s service couldn’t be started there: {}", last(&said)));
@@ -582,4 +567,56 @@ fn word(s: &str) -> String {
 
 fn last(said: &str) -> String {
     said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("the host said nothing").trim().to_owned()
+}
+
+/// The host's script that puts program `name` in its place and its service
+/// to work: the account's own unit where it has systemd (kept running while
+/// it is signed out, where the host lets it), else started now and again by
+/// Olo when found stopped. The program running there is asked first to hand
+/// over to the new one (`olo-pool-host`'s `upgrade`): nothing under way is
+/// cut, and the service isn't restarted; one from before (or none) is stopped
+/// and the service restarted, as it was.
+pub(crate) fn service_script(name: &str) -> String {
+    format!(
+        "set -e; d=\"$HOME\"/{DIR}; ln -sfn {name} \"$d/olo-pool-host\"; \
+             up=0; if echo '{{\"do\":\"upgrade\"}}' | \"$d/olo-pool-host\" ctl 2> /dev/null | grep -q '\"upgrading\"'; then up=1; \
+             else echo '{{\"do\":\"stop\"}}' | \"$d/olo-pool-host\" ctl > /dev/null 2>&1 || true; fi; \
+             export XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"; \
+             if command -v systemctl > /dev/null 2>&1 && systemctl --user show-environment > /dev/null 2>&1; then \
+               u=\"${{XDG_CONFIG_HOME:-$HOME/.config}}/systemd/user\"; mkdir -p \"$u\"; \
+               printf '[Unit]\\nDescription=Olo Token Pool\\n\\n[Service]\\nExecStart=%s/olo-pool-host serve\\nRestart=on-failure\\nRestartSec=5\\n\\n[Install]\\nWantedBy=default.target\\n' \"$d\" > \"$u/{UNIT}\"; \
+               systemctl --user daemon-reload; systemctl --user enable {UNIT} > /dev/null 2>&1 || true; [ $up = 1 ] || systemctl --user restart {UNIT}; \
+               loginctl enable-linger \"$(id -un)\" > /dev/null 2>&1 || true; \
+             elif [ $up = 0 ]; then (setsid nohup \"$d/olo-pool-host\" serve > /dev/null 2>&1 &); fi; \
+             i=0; while [ $i -lt 40 ]; do if echo '{{\"do\":\"status\"}}' | \"$d/olo-pool-host\" ctl > /dev/null 2>&1; then echo running; exit 0; fi; i=$((i + 1)); sleep 0.25; done; \
+             echo 'it did not start'; exit 5"
+    )
+}
+
+#[cfg(test)]
+mod service_tests {
+    use super::*;
+
+    /// The program there is asked to hand over before anything is stopped,
+    /// and the service restarted only where it couldn't (one from before
+    /// `upgrade`, or none running): a stream through the host was cut at
+    /// every upgrade of the desktop's pool (Ben, 2026-11-25).
+    #[test]
+    fn the_service_is_handed_over_before_it_is_stopped() {
+        let s = service_script("olo-pool-host-abc");
+        let (upgrade, stop, restart) = (s.find(r#"{"do":"upgrade"}"#).unwrap(), s.find(r#"{"do":"stop"}"#).unwrap(), s.find("systemctl --user restart").unwrap());
+        assert!(upgrade < stop && stop < restart, "{s}");
+        assert!(s.contains("[ $up = 1 ] || systemctl --user restart") && s.contains("elif [ $up = 0 ]; then (setsid nohup"), "{s}");
+        assert!(s.contains("ln -sfn olo-pool-host-abc"), "{s}");
+    }
+
+    /// The script, written to `OLO_POOL_SCRIPT_OUT` for a try on a host of
+    /// a test's own (the rig's Fedora 44): `OLO_POOL_SCRIPT_NAME` names the
+    /// program.
+    #[test]
+    #[ignore = "writes the service script for a try on a test host: OLO_POOL_SCRIPT_OUT, OLO_POOL_SCRIPT_NAME"]
+    fn the_service_script_for_a_test_host() {
+        let (Ok(out), Ok(name)) = (std::env::var("OLO_POOL_SCRIPT_OUT"), std::env::var("OLO_POOL_SCRIPT_NAME")) else { return };
+        std::fs::write(out, service_script(&name)).unwrap();
+    }
 }

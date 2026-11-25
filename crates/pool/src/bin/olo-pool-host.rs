@@ -13,6 +13,8 @@
 //! - `olo-pool-host put-back`: Claude Code and Codex there as they were
 //!   before the pool (as it is removed).
 //! - `olo-pool-host forget`: what the pool kept on the host, removed.
+//! - `olo-pool-host keep`: the service's own process once it has handed
+//!   over to a newer version (`host::hand_over`), following it.
 //! - `olo-pool-host --version`.
 
 use std::io::Read as _;
@@ -64,9 +66,68 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::SUCCESS
         }
         Some("serve") => serve(),
+        Some("keep") => keep(),
         _ => {
-            eprintln!("olo-pool-host serve | ctl | put-back | forget | --version");
+            eprintln!("olo-pool-host serve | ctl | put-back | forget | keep | --version");
             std::process::ExitCode::from(2)
+        }
+    }
+}
+
+/// The service's own process once it has handed over to a newer version
+/// (`host::hand_over`), in place (systemd follows its pid): it follows its
+/// children (the copy, and the newer ones each hands over to, given to it as
+/// their subreaper when the one before ends), passes the service's signals
+/// on to them, and ends once none is left, as the last of them ended, so
+/// systemd stops and restarts the service as it did. Asleep otherwise.
+fn keep() -> std::process::ExitCode {
+    // SAFETY: prctl, sigprocmask, signalfd, poll, read and waitpid with valid
+    // arguments, on this process and its own children; kill on its children.
+    unsafe {
+        libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        for s in [libc::SIGCHLD, libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+            libc::sigaddset(&mut set, s);
+        }
+        libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+        let signals = libc::signalfd(-1, &set, libc::SFD_CLOEXEC | libc::SFD_NONBLOCK);
+        let me = std::process::id();
+        let children = || -> Vec<i32> { std::fs::read_to_string(format!("/proc/{me}/task/{me}/children")).unwrap_or_default().split_whitespace().filter_map(|p| p.parse().ok()).collect() };
+        let mut last = 0;
+        loop {
+            loop {
+                let mut status = 0;
+                if libc::waitpid(-1, &mut status, libc::WNOHANG) <= 0 {
+                    break;
+                }
+                last = status;
+            }
+            let follow = children();
+            if follow.is_empty() || signals < 0 {
+                break;
+            }
+            let mut polled = libc::pollfd { fd: signals, events: libc::POLLIN, revents: 0 };
+            while libc::poll(&mut polled, 1, -1) < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+            loop {
+                let mut info: libc::signalfd_siginfo = std::mem::zeroed();
+                let size = std::mem::size_of::<libc::signalfd_siginfo>();
+                if libc::read(signals, (&raw mut info).cast(), size) != size as isize {
+                    break;
+                }
+                if let s @ (libc::SIGTERM | libc::SIGINT | libc::SIGHUP) = info.ssi_signo as i32 {
+                    for &p in &follow {
+                        libc::kill(p, s);
+                    }
+                }
+            }
+        }
+        if libc::WIFEXITED(last) {
+            std::process::ExitCode::from(libc::WEXITSTATUS(last) as u8)
+        } else if libc::WIFSIGNALED(last) {
+            std::process::ExitCode::from((128 + libc::WTERMSIG(last)) as u8)
+        } else {
+            std::process::ExitCode::SUCCESS
         }
     }
 }
