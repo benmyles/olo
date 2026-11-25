@@ -14,8 +14,41 @@
 //! left as it is). Run once (`--once`: a file it writes when done).
 
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+
+/// A name for a file made beside another a moment (the edit, the new
+/// link): its own, of a fixed length (a name of 240 bytes and more can't
+/// take a suffix), begun with a dot.
+fn beside(path: &Path, what: &str) -> PathBuf {
+    let mut bytes = [0u8; 8];
+    // SAFETY: getrandom into a buffer of ours (a failure leaves zeros and
+    // the pid tells two apart).
+    unsafe { libc::getrandom(bytes.as_mut_ptr().cast(), bytes.len(), 0) };
+    let tag: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    path.with_file_name(format!(".olo-move-{what}-{}-{tag}", std::process::id()))
+}
+
+/// `f` done in `dir`, opened to the account a moment if it won't let it
+/// make or rename what is in it (a folder of 0555: Go's module cache), and
+/// put back as it was, mode and time.
+fn in_folder<T>(dir: &Path, f: impl Fn() -> io::Result<T>) -> io::Result<T> {
+    match f() {
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+            let meta = std::fs::symlink_metadata(dir)?;
+            let mode = meta.permissions().mode() & 0o7777;
+            if mode & 0o200 != 0 {
+                return Err(e);
+            }
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode | 0o700))?;
+            let done = f();
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode));
+            let _ = set_times(dir, meta.atime(), meta.atime_nsec(), meta.mtime(), meta.mtime_nsec(), false);
+            done
+        }
+        other => other,
+    }
+}
 
 /// Whether the byte before a path can start one (not the middle of a word
 /// or of another path).
@@ -53,8 +86,12 @@ pub fn rewritten(text: &[u8], old: &[u8], new: &[u8]) -> Option<Vec<u8>> {
             out.extend_from_slice(new);
             from = end;
             changed = true;
+            // (On after it: a match inside the one replaced would start
+            // before what is already written.)
+            i = end;
+        } else {
+            i = at + 1;
         }
-        i = at + 1;
     }
     changed.then(|| {
         out.extend_from_slice(&text[from..]);
@@ -63,20 +100,35 @@ pub fn rewritten(text: &[u8], old: &[u8], new: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// A file rewritten whole beside itself and put in its place, its mode and
-/// times kept; a symlink's target edited, not the link. Line by line (a
-/// session's transcript may be hundreds of megabytes).
-fn rewrite_file(path: &Path, old: &str, new: &str) -> io::Result<bool> {
+/// times kept; a symlink's target edited, not the link, where it is in the
+/// home (`home`, by its real path: one elsewhere, the system's or another
+/// account's, is never edited). Line by line (a session's transcript may
+/// be hundreds of megabytes); private while it is written (it may hold
+/// secrets).
+/// What [`rewrite_file`] did.
+#[derive(Debug, PartialEq, Eq)]
+enum Rewrite {
+    Changed,
+    Same,
+    /// A link to a file outside the home: left as it is.
+    Outside,
+}
+
+fn rewrite_file(path: &Path, home: &Path, old: &str, new: &str) -> io::Result<Rewrite> {
     let real = std::fs::canonicalize(path)?;
+    if !real.starts_with(home) {
+        return Ok(Rewrite::Outside);
+    }
     let meta = std::fs::metadata(&real)?;
     if !meta.is_file() {
-        return Ok(false);
+        return Ok(Rewrite::Same);
     }
-    let name = real.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let temp = real.with_file_name(format!(".{name}.olo-move-fix"));
+    let temp = beside(&real, "fix");
     let mut changed = false;
-    {
+    let written = (|| -> io::Result<()> {
         let mut reader = BufReader::new(std::fs::File::open(&real)?);
-        let mut writer = BufWriter::new(std::fs::File::create(&temp)?);
+        let file = in_folder(real.parent().unwrap_or(home), || std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&temp))?;
+        let mut writer = BufWriter::new(file);
         let mut line = Vec::new();
         loop {
             line.clear();
@@ -91,19 +143,23 @@ fn rewrite_file(path: &Path, old: &str, new: &str) -> io::Result<bool> {
                 None => writer.write_all(&line)?,
             }
         }
-        writer.flush()?;
+        writer.flush()
+    })();
+    let parent = real.parent().unwrap_or(home);
+    if written.is_err() || !changed {
+        let _ = in_folder(parent, || std::fs::remove_file(&temp));
+        return written.map(|()| Rewrite::Same);
     }
-    if !changed {
-        std::fs::remove_file(&temp)?;
-        return Ok(false);
+    let put = std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(meta.permissions().mode() & 0o7777))
+        .and_then(|()| set_times(&temp, meta.atime(), meta.atime_nsec(), meta.mtime(), meta.mtime_nsec(), false))
+        .and_then(|()| in_folder(parent, || std::fs::rename(&temp, &real)));
+    if put.is_err() {
+        let _ = in_folder(parent, || std::fs::remove_file(&temp));
     }
-    std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(meta.permissions().mode() & 0o7777))?;
-    set_times(&temp, meta.atime(), meta.atime_nsec(), meta.mtime(), meta.mtime_nsec(), false)?;
-    std::fs::rename(&temp, &real)?;
-    Ok(true)
+    put.map(|()| Rewrite::Changed)
 }
 
-fn set_times(path: &Path, atime: i64, atime_ns: i64, mtime: i64, mtime_ns: i64, link: bool) -> io::Result<()> {
+pub(crate) fn set_times(path: &Path, atime: i64, atime_ns: i64, mtime: i64, mtime_ns: i64, link: bool) -> io::Result<()> {
     let c = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).map_err(io::Error::other)?;
     let times = [libc::timespec { tv_sec: atime, tv_nsec: atime_ns }, libc::timespec { tv_sec: mtime, tv_nsec: mtime_ns }];
     let flags = if link { libc::AT_SYMLINK_NOFOLLOW } else { 0 };
@@ -135,24 +191,35 @@ fn project_cwd(dir: &Path) -> Option<String> {
 }
 
 /// `from` moved into `to`, entry by entry: what `to` has already stays
-/// (the newer of two files with one name kept), `from` taken away once
-/// empty.
+/// (the newer of two files with one name in its place, the older beside it
+/// as `NAME.older`, which no agent reads; a file where the other has a
+/// folder beside it as `NAME.moved`), `from` taken away once empty: nothing
+/// lost.
 fn merge_into(from: &Path, to: &Path) -> io::Result<()> {
+    let when = |m: &std::fs::Metadata| (m.mtime(), m.mtime_nsec());
+    let aside = |there: &Path, tag: &str| -> PathBuf {
+        let name = there.file_name().and_then(|n| n.to_str()).unwrap_or("entry");
+        (0..)
+            .map(|n| there.with_file_name(if n == 0 { format!("{name}.{tag}") } else { format!("{name}.{tag}-{n}") }))
+            .find(|p| std::fs::symlink_metadata(p).is_err())
+            .unwrap_or_else(|| there.to_path_buf())
+    };
     for e in std::fs::read_dir(from)? {
         let e = e?;
         let there = to.join(e.file_name());
+        let mine = std::fs::symlink_metadata(e.path())?;
         match std::fs::symlink_metadata(&there) {
             Err(_) => std::fs::rename(e.path(), &there)?,
-            Ok(m) if m.is_dir() && e.file_type()?.is_dir() => merge_into(&e.path(), &there)?,
-            Ok(m) => {
-                if e.metadata()?.mtime() > m.mtime() {
-                    std::fs::rename(e.path(), &there)?;
-                }
+            Ok(m) if m.is_dir() && mine.is_dir() => merge_into(&e.path(), &there)?,
+            Ok(m) if m.is_dir() != mine.is_dir() => std::fs::rename(e.path(), aside(&there, "moved"))?,
+            Ok(m) if when(&mine) > when(&m) => {
+                std::fs::rename(&there, aside(&there, "older"))?;
+                std::fs::rename(e.path(), &there)?;
             }
+            Ok(_) => std::fs::rename(e.path(), aside(&there, "older"))?,
         }
     }
-    let _ = std::fs::remove_dir_all(from);
-    Ok(())
+    std::fs::remove_dir(from)
 }
 
 /// What `fix` did, and what it left to the person.
@@ -182,10 +249,11 @@ const KEYED: &[&str] = &[
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/history.jsonl",
-    ".claude/plugins/*.json",
+    ".claude/plugins/**/*.json",
     ".claude/projects/*/*.jsonl",
     ".claude/projects/*/sessions-index.json",
     ".claude/projects/*/*/subagents/*.jsonl",
+    ".claude/projects/*/memory/*.md",
     ".codex/config.toml",
     ".codex/hooks.json",
     ".codex/history.jsonl",
@@ -205,6 +273,16 @@ const KEYED: &[&str] = &[
     ".config/systemd/user/*.timer",
     ".config/systemd/user/*.socket",
     ".config/systemd/user/*.path",
+    ".config/systemd/user/*.d/*.conf",
+    ".config/containers/systemd/*.container",
+    ".config/containers/systemd/*.volume",
+    ".config/containers/systemd/*.network",
+    ".config/containers/systemd/*.kube",
+    ".config/containers/systemd/*.pod",
+    ".config/containers/systemd/*.image",
+    ".config/containers/systemd/*.build",
+    ".config/containers/systemd/*.d/*.conf",
+    ".gemini/antigravity-cli/annotations/*.pbtxt",
 ];
 
 /// Shell startup files: said where they name the old home, not edited
@@ -276,10 +354,17 @@ fn walk(home: &Path, each: &mut dyn FnMut(&Path, &std::fs::Metadata)) {
     }
 }
 
-/// The fix itself (`home` the destination's, now holding the moved files).
+/// The fix itself (`home` the destination's, now holding the moved files;
+/// `also`, folders of `/var/tmp` carried with it: their links into the old
+/// home and their git links made right too).
+#[cfg(test)]
 pub fn fix(home: &Path, old: &str, new: &str) -> Fixed {
+    fix_with(home, &[], old, new)
+}
+
+pub fn fix_with(home: &Path, also: &[PathBuf], old: &str, new: &str) -> Fixed {
     let mut done = Fixed::default();
-    let rel = |p: &Path| p.strip_prefix(home).unwrap_or(p).display().to_string();
+    let rel = |p: &Path| p.strip_prefix(home).map(|r| r.display().to_string()).unwrap_or_else(|_| p.display().to_string());
     // Claude Code's project folders first (their transcripts are then
     // rewritten where they are).
     let projects = home.join(".claude/projects");
@@ -308,19 +393,13 @@ pub fn fix(home: &Path, old: &str, new: &str) -> Fixed {
             }
         }
     }
-    for pattern in KEYED {
-        for path in expand(home, pattern) {
-            match rewrite_file(&path, old, new) {
-                Ok(true) => done.rewritten.push(rel(&path)),
-                Ok(false) => {}
-                Err(e) => done.failed.push(format!("{}: {e}", rel(&path))),
-            }
-        }
-    }
-    // Symlinks into the old home, git's worktree links: one walk.
+    // Symlinks into the old home first (a dotfile linked into a folder of
+    // the home's is only found as a file once its link leads there), with
+    // git's worktree links and own settings: one walk.
     let mut links = Vec::new();
     let mut gitdirs = Vec::new();
-    walk(home, &mut |path, meta| {
+    let mut each = |path: &Path, meta: &std::fs::Metadata| {
+        let parent = path.parent().unwrap_or(home);
         if meta.file_type().is_symlink() {
             if let Ok(target) = std::fs::read_link(path)
                 && let Some(t) = target.to_str()
@@ -330,28 +409,56 @@ pub fn fix(home: &Path, old: &str, new: &str) -> Fixed {
             }
         } else if meta.is_file() && path.file_name().is_some_and(|n| n == ".git") {
             gitdirs.push(path.to_path_buf());
-        } else if meta.is_file() && path.file_name().is_some_and(|n| n == "gitdir") && path.parent().and_then(Path::parent).is_some_and(|p| p.ends_with(".git/worktrees")) {
+        } else if meta.is_file() && path.file_name().is_some_and(|n| n == "gitdir") && parent.parent().is_some_and(|p| p.ends_with(".git/worktrees")) {
+            gitdirs.push(path.to_path_buf());
+        } else if meta.is_file()
+            && path.file_name().is_some_and(|n| n == "config")
+            && (parent.ends_with(".git") || parent.components().any(|c| c.as_os_str() == "modules") && parent.components().any(|c| c.as_os_str() == ".git"))
+        {
+            // (A repository's own settings: a remote in the old home, a
+            // worktree's path; a submodule's too.)
             gitdirs.push(path.to_path_buf());
         }
-    });
+    };
+    walk(home, &mut each);
+    for root in also {
+        walk(root, &mut each);
+    }
     for (path, target, meta) in links {
-        let temp = path.with_file_name(format!(".{}.olo-move-link", path.file_name().and_then(|n| n.to_str()).unwrap_or("link")));
-        let relinked = std::os::unix::fs::symlink(&target, &temp)
+        let temp = beside(&path, "link");
+        let parent = path.parent().unwrap_or(home).to_path_buf();
+        let relinked = in_folder(&parent, || std::os::unix::fs::symlink(&target, &temp))
             .and_then(|()| set_times(&temp, meta.atime(), meta.atime_nsec(), meta.mtime(), meta.mtime_nsec(), true))
-            .and_then(|()| std::fs::rename(&temp, &path));
+            .and_then(|()| in_folder(&parent, || std::fs::rename(&temp, &path)));
         match relinked {
             Ok(()) => done.relinked.push(rel(&path)),
             Err(e) => {
-                let _ = std::fs::remove_file(&temp);
+                let _ = in_folder(&parent, || std::fs::remove_file(&temp));
                 done.failed.push(format!("{}: {e}", rel(&path)));
             }
         }
     }
+    let real_home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
     for path in gitdirs {
-        match rewrite_file(&path, old, new) {
-            Ok(true) => done.worktrees.push(rel(&path)),
-            Ok(false) => {}
+        // (A git link of a folder of /var/tmp's is edited there: its own
+        // root stands for the home's.)
+        let within = also.iter().find(|r| path.starts_with(r)).and_then(|r| std::fs::canonicalize(r).ok()).unwrap_or_else(|| real_home.clone());
+        match rewrite_file(&path, &within, old, new) {
+            Ok(Rewrite::Changed) => done.worktrees.push(rel(&path)),
+            Ok(Rewrite::Same) => {}
+            Ok(Rewrite::Outside) => done.mentions.push(rel(&path)),
             Err(e) => done.failed.push(format!("{}: {e}", rel(&path))),
+        }
+    }
+    for pattern in KEYED {
+        for path in expand(home, pattern) {
+            match rewrite_file(&path, &real_home, old, new) {
+                Ok(Rewrite::Changed) => done.rewritten.push(rel(&path)),
+                Ok(Rewrite::Same) => {}
+                // (A link to a file outside the home: said, not edited.)
+                Ok(Rewrite::Outside) => done.mentions.push(rel(&path)),
+                Err(e) => done.failed.push(format!("{}: {e}", rel(&path))),
+            }
         }
     }
     for name in STARTUP {
@@ -366,17 +473,18 @@ pub fn fix(home: &Path, old: &str, new: &str) -> Fixed {
     done
 }
 
-/// `move fix --from OLD --to NEW [--once FILE]`.
+/// `move fix --from OLD --to NEW [--once FILE] [--also /var/tmp/NAME]…`.
 pub fn run(args: &[String]) -> i32 {
-    let (mut from, mut to, mut once) = (None, None, None);
+    let (mut from, mut to, mut once, mut also) = (None, None, None, Vec::new());
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match (a.as_str(), it.next()) {
             ("--from", Some(v)) => from = Some(v.clone()),
             ("--to", Some(v)) => to = Some(v.clone()),
             ("--once", Some(v)) => once = Some(PathBuf::from(v)),
+            ("--also", Some(v)) if Path::new(v).parent() == Some(Path::new("/var/tmp")) => also.push(PathBuf::from(v)),
             _ => {
-                eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE]");
+                eprintln!("usage: olo-rex-link move fix --from OLD --to NEW [--once FILE] [--also /var/tmp/NAME]...");
                 return 2;
             }
         }
@@ -399,9 +507,15 @@ pub fn run(args: &[String]) -> i32 {
         return 0;
     }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(&new));
-    let report = fix(&home, &old, &new).json().to_string();
-    if let Some(once) = once {
-        let _ = std::fs::write(once, &report);
+    let done = fix_with(&home, &also, &old, &new);
+    let report = done.json().to_string();
+    // (Kept, whole or not at all, only when nothing failed: a second run
+    // tries again what didn't go.)
+    if let Some(once) = once
+        && done.failed.is_empty()
+    {
+        let temp = once.with_extension(format!("{}.new", std::process::id()));
+        let _ = std::fs::write(&temp, &report).and_then(|()| std::fs::rename(&temp, &once));
     }
     println!("{report}");
     0
@@ -478,5 +592,64 @@ mod tests {
         assert_eq!(done.mentions, [".bashrc:1"]);
         assert_eq!(done.projects, ["-home-ubuntu-proj → -home-fedora-proj"]);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A dotfile linked into a folder of the old home's is found once its
+    /// link leads there, and edited where it points; one linked outside the
+    /// home is said, not edited; a link in a read-only folder is made
+    /// again there, the folder's mode put back; a match never runs into
+    /// the one before it.
+    #[test]
+    fn linked_dotfiles_are_made_right_where_they_point() {
+        let root = scratch("linked");
+        // (The destination's home as the source's links name it: the old
+        // home is `root/old`, which isn't there, the new `root/home`.)
+        let home = root.join("home");
+        let (old, new) = (root.join("old").display().to_string(), home.display().to_string());
+        std::fs::create_dir_all(home.join("dotfiles")).unwrap();
+        std::fs::create_dir_all(home.join("ro")).unwrap();
+        std::fs::write(home.join("dotfiles/gitconfig"), format!("[core]\n\texcludesFile = {old}/.gitignore\n")).unwrap();
+        std::os::unix::fs::symlink(format!("{old}/dotfiles/gitconfig"), home.join(".gitconfig")).unwrap();
+        std::fs::write(root.join("elsewhere.toml"), format!("dir = \"{old}/x\"\n")).unwrap();
+        std::fs::create_dir_all(home.join(".cargo")).unwrap();
+        std::os::unix::fs::symlink(root.join("elsewhere.toml"), home.join(".cargo/config.toml")).unwrap();
+        std::os::unix::fs::symlink(format!("{old}/dotfiles"), home.join("ro/link")).unwrap();
+        std::fs::set_permissions(home.join("ro"), std::fs::Permissions::from_mode(0o555)).unwrap();
+        let done = fix(&home, &old, &new);
+        assert!(done.failed.is_empty(), "{:?}", done.failed);
+        assert_eq!(std::fs::read_to_string(home.join("dotfiles/gitconfig")).unwrap(), format!("[core]\n\texcludesFile = {new}/.gitignore\n"));
+        assert_eq!(std::fs::read_link(home.join(".gitconfig")).unwrap(), PathBuf::from(format!("{new}/dotfiles/gitconfig")));
+        assert_eq!(std::fs::read_to_string(root.join("elsewhere.toml")).unwrap(), format!("dir = \"{old}/x\"\n"), "outside the home: left");
+        assert!(done.mentions.contains(&".cargo/config.toml".to_owned()), "{:?}", done.mentions);
+        assert_eq!(std::fs::read_link(home.join("ro/link")).unwrap(), PathBuf::from(format!("{new}/dotfiles")));
+        assert_eq!(std::fs::metadata(home.join("ro")).unwrap().permissions().mode() & 0o777, 0o555);
+        std::fs::set_permissions(home.join("ro"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(rewritten(b"/a+/a+/a+/x", b"/a+/a+", b"/b").map(|v| String::from_utf8(v).unwrap()), Some("/b/a+/x".to_owned()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Two project folders merged lose nothing: the newer of two files in
+    /// its place, the older beside it; a file where the other has a folder
+    /// beside it.
+    #[test]
+    fn merging_loses_nothing() {
+        let root = scratch("merge");
+        let (from, to) = (root.join("from"), root.join("to"));
+        for d in [&from, &to] {
+            std::fs::create_dir_all(d.join("sub")).unwrap();
+        }
+        std::fs::write(to.join("s.jsonl"), "theirs").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(from.join("s.jsonl"), "mine, newer").unwrap();
+        std::fs::write(from.join("sub/a"), "a").unwrap();
+        std::fs::write(from.join("x"), "a file").unwrap();
+        std::fs::create_dir_all(to.join("x")).unwrap();
+        merge_into(&from, &to).unwrap();
+        assert!(!from.exists());
+        assert_eq!(std::fs::read_to_string(to.join("s.jsonl")).unwrap(), "mine, newer");
+        assert_eq!(std::fs::read_to_string(to.join("s.jsonl.older")).unwrap(), "theirs");
+        assert_eq!(std::fs::read_to_string(to.join("sub/a")).unwrap(), "a");
+        assert_eq!(std::fs::read_to_string(to.join("x.moved")).unwrap(), "a file");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

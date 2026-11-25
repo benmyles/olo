@@ -106,6 +106,13 @@ impl std::fmt::Debug for CarriedAccount {
     }
 }
 
+/// Whether account `a` (with a refresh token here: `renewable`) is handed
+/// to `host` to keep: it is kept here, and not kept here for another host
+/// (a moving account's, for the host it moves to).
+fn handed_to(a: &crate::model::Account, renewable: bool, host: &str, now: i64) -> bool {
+    a.kept_on.is_none() && renewable && a.kept_for_host(now).is_none_or(|h| h == host)
+}
+
 impl Shared {
     /// This pool is a Rex host's from now on.
     pub fn set_hosted(&self) {
@@ -337,10 +344,14 @@ impl Shared {
     pub fn carry_to(&self, host: &str, from: &str) -> Carried {
         let handed: Vec<String> = {
             let mut p = self.pool.lock().unwrap();
-            let handed: Vec<String> = p.saved.accounts.iter().filter(|a| a.kept_on.is_none() && p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some())).map(|a| a.id.clone()).collect();
+            // (Never one kept here for another host: a moving account's,
+            // for the host it moves to.)
+            let now = crate::model::now();
+            let handed: Vec<String> = p.saved.accounts.iter().filter(|a| handed_to(a, p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()), host, now)).map(|a| a.id.clone()).collect();
             for id in &handed {
                 if let Some(a) = p.account_mut(id) {
                     a.kept_on = Some(host.to_owned());
+                    a.kept_for = None;
                 }
             }
             handed
@@ -361,8 +372,13 @@ impl Shared {
             .accounts
             .iter()
             .map(|a| {
-                // (One this pool still keeps would be handed to the host.)
-                let kept_on = a.kept_on.clone().or_else(|| p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()).then(|| host.to_owned()));
+                // (One this pool still keeps would be handed to the host,
+                // unless it is kept here for another.)
+                let kept_for = a.kept_for_host(crate::model::now()).map(str::to_owned);
+                let kept_on = a.kept_on.clone().or_else(|| match kept_for {
+                    Some(other) if other != host => Some(other),
+                    _ => p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()).then(|| host.to_owned()),
+                });
                 let credential = p.saved.credentials.get(&a.id).cloned().map(|mut c| {
                     if kept_on.as_deref() != Some(host) {
                         c.refresh = None;
@@ -414,15 +430,42 @@ impl Shared {
     /// An account's sign-in came back whole from the host that kept it
     /// ([`Self::give_back`] there): this pool keeps it again.
     pub fn took_back(&self, id: &str, credential: Credential) {
+        self.took_back_for(id, credential, None);
+    }
+
+    /// As [`Self::took_back`], kept here for host `for_host` alone (an
+    /// account moving to it, Rex's move: the next host carried to is never
+    /// another's).
+    pub fn took_back_for(&self, id: &str, credential: Credential, for_host: Option<&str>) {
         {
             let mut p = self.pool.lock().unwrap();
             p.saved.credentials.insert(id.to_owned(), credential);
             if let Some(a) = p.account_mut(id) {
                 a.kept_on = None;
+                a.kept_for = for_host.map(|h| (h.to_owned(), crate::model::now()));
             }
         }
         self.touch();
         self.flush();
+    }
+
+    /// What is kept here for a host that no longer has a pool let go of:
+    /// any host may have it again (Go Back, a move given up).
+    pub fn release_kept_for(&self, has_pool: &dyn Fn(&str) -> bool) {
+        let mut changed = false;
+        {
+            let mut p = self.pool.lock().unwrap();
+            for a in p.saved.accounts.iter_mut() {
+                if a.kept_for.as_ref().is_some_and(|(h, _)| !has_pool(h)) {
+                    a.kept_for = None;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.touch();
+            self.flush();
+        }
     }
 
     /// The accounts kept on `host`.
@@ -461,5 +504,28 @@ impl Shared {
         status["hosted"] = json!(self.is_hosted());
         status["version"] = json!(crate::host::VERSION);
         status
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A moving account's sign-in, taken back from its old host, is handed
+    /// to the host it moves to and to no other; a day later, or not kept
+    /// for anyone, to whichever is carried to.
+    #[test]
+    fn a_moving_accounts_sign_in_goes_only_where_it_moves() {
+        let mut a = crate::model::Account::new("a1".into(), "Work".into(), crate::model::Provider::Claude);
+        let now = 1_000_000;
+        a.kept_for = Some(("dest".into(), now - 60));
+        assert!(handed_to(&a, true, "dest", now));
+        assert!(!handed_to(&a, true, "third", now), "another host never gets it meanwhile");
+        assert!(handed_to(&a, true, "third", now + 24 * 3600), "a day on, anyone's");
+        a.kept_for = None;
+        assert!(handed_to(&a, true, "third", now));
+        assert!(!handed_to(&a, false, "dest", now), "nothing to keep without its refresh token");
+        a.kept_on = Some("dest".into());
+        assert!(!handed_to(&a, true, "dest", now), "kept on a host already");
     }
 }

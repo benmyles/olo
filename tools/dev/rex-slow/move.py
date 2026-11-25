@@ -4,11 +4,14 @@
 # the rig's containers on a network of their own (farhost.py), each set up
 # for Rex by its real setup code (the host test's setup, personal); the
 # source with stand-in agents (stand-ins/agent.sh: Claude Code, Codex and
-# agy keeping sessions as the real ones do) in a session with a shell, an
-# agent pane each and a work list pane (`tail -f`); then the move as the
-# app drives it, and what came out checked on the destination: every pane,
-# each agent in the session it was in with the move's message at its
-# prompt, the work list showing, the source stopped, the key taken away.
+# agy keeping sessions as the real ones do, two Claude Codes in one folder)
+# in a session with a shell, an agent pane each and a work list pane
+# (`tail -f`), data enough to be sent in parts, a dotfile linked into the
+# home, a folder of its own in /var/tmp and a second sign-in key; then the
+# move as the app drives it, and what came out checked on the destination:
+# every pane, each agent in the session it was in with the move's message at
+# its prompt, the work list showing, /var/tmp's folder, the dotfile made
+# right, the source stopped, the key taken away.
 #
 #   tools/dev/rex-slow/move.py [--keep]
 #
@@ -18,7 +21,7 @@
 # Scratch in $REX_SLOW_DIR (/var/tmp/olo-rex-slow by default); the
 # containers and their network are removed with it (--keep: kept till
 # Enter, to look at).
-import os, shlex, shutil, subprocess, sys
+import base64, os, shlex, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from farhost import D, FedoraHost, UbuntuHost, rig_network
@@ -47,10 +50,11 @@ def set_up(host, binary):
 
 
 def scenario(src):
-    """The source as a person's: stand-in agents, two projects, a work list, and a Rex session with a pane of each."""
+    """The source as a person's: stand-in agents (two Claude Codes in one folder), projects and data enough to be sent in parts, a dotfile linked into the home, a folder of its own in /var/tmp, a second sign-in key, a work list, and a Rex session with a pane of each."""
     agent = open(f"{HERE}/stand-ins/agent.sh").read()
+    key = "ssh-ed25519 " + base64.b64encode(b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20" + os.urandom(32)).decode() + " laptop"
     script = f"""set -e
-mkdir -p ~/.local/bin ~/proj-a ~/proj-b
+mkdir -p ~/.local/bin ~/proj-a ~/proj-b ~/data/a ~/data/b ~/dotfiles
 cat > ~/.local/bin/olo-stand-in-agent <<'AGENT'
 {agent}
 AGENT
@@ -58,12 +62,17 @@ chmod 755 ~/.local/bin/olo-stand-in-agent
 for a in claude codex agy; do ln -sf olo-stand-in-agent ~/.local/bin/$a; done
 printf 'first thing\\nsecond thing\\n' > ~/todo.txt
 echo 'print(1)' > ~/proj-a/main.py; echo 'fn main() {{}}' > ~/proj-b/main.rs
+head -c 3000000 /dev/urandom > ~/data/a/blob1; head -c 3000000 /dev/urandom > ~/data/b/blob2; head -c 2000000 /dev/urandom > ~/proj-b/big.bin
+printf '[core]\\n\\texcludesFile = %s/.gitignore_global\\n' "$HOME" > ~/dotfiles/gitconfig; ln -sf "$HOME/dotfiles/gitconfig" ~/.gitconfig
+mkdir -p /var/tmp/olo-rig-scratch && echo 'scratch notes' > /var/tmp/olo-rig-scratch/notes.txt
+echo '{key}' >> ~/.ssh/authorized_keys
 export PATH="$HOME/.local/bin:$PATH"
 rex new work --cwd ~ --window main -- bash -l > /dev/null
 sleep 1
 rex split -s work --cwd ~/proj-a --label claude-pane -- bash -lc 'exec claude --dangerously-skip-permissions' > /dev/null
 rex split -s work --cwd ~/proj-b --label codex-pane -- bash -lc 'exec codex --yolo' > /dev/null
 rex split -s work --cwd ~/proj-a --label agy-pane -- bash -lc 'exec agy' > /dev/null
+rex split -s work --cwd ~/proj-a --label claude-pane-2 -- bash -lc 'exec claude --model opus' > /dev/null
 rex split -s work --cwd ~ --label todo -- tail -f ~/todo.txt > /dev/null
 sleep 2
 rex block ls -s work 2> /dev/null | awk 'NR > 1 {{print $2, $3, $4}}'
@@ -103,6 +112,9 @@ if __name__ == "__main__":
                 "PATH": os.environ["PATH"], "HOME": home, "SSH_AUTH_SOCK": agent, "XDG_RUNTIME_DIR": run,
                 "OLO_REX_TEST_HOST": src.address, "OLO_REX_TEST_DEST": dst.address,
                 "OLO_REX_TEST_PEER": f"{dst.USER}@{dst.name}:22", "OLO_REX_TEST_HELPER_FILE": HELPER,
+                # (A small home sent in parts all the same, a mebibyte's
+                # share each.)
+                "OLO_REX_TEST_MOVE_EACH": "1048576",
             }
             r = subprocess.run([move_bin, "an_account_moves_whole", "--ignored", "--nocapture"], env=env, capture_output=True, text=True, timeout=1500)
             print((r.stdout + r.stderr)[-8000:], flush=True)

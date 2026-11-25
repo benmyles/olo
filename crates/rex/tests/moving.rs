@@ -10,13 +10,17 @@
 //!
 //! with an agent whose keys let both accounts in and a HOME whose
 //! known_hosts knows both. The move as the app drives it, step by step:
-//! looks, the source's sessions captured and each pane's agent and session
-//! found, the key, a way from the source, the first pass, the source
-//! stopped, the second pass, the source's lingering off, the destination
-//! made right, its units and crontab, the sessions made again there with
-//! each pane's command and each agent's message, the key taken away. Then
-//! checks what came out: every pane there, each agent in the session it
-//! was in, the message at its prompt, the work list showing, the source
+//! looks (the source's sized), the source's sessions captured and each
+//! pane's agent and session found, the key, a way from the source, the
+//! destination's own files kept aside, the first pass (the home in parts
+//! sent in parallel, a folder of /var/tmp with it), the panes read again,
+//! the source stopped, the second pass, the source's lingering off, the
+//! destination made right (keys, paths, labels, shell, link, units and
+//! crontab), the sessions made again there with each pane's command and
+//! each agent's message, the key taken away. Then checks what came out:
+//! every pane there, each agent in the session it was in (two Claude Codes
+//! in one folder each in its own), the message at its prompt, the work
+//! list showing, /var/tmp's folder, a linked dotfile made right, the source
 //! stopped. What it prints names neither host nor account.
 
 use std::collections::HashMap;
@@ -100,19 +104,65 @@ fn an_account_moves_whole() {
         let began = Instant::now();
         let step = |what: &str| println!("{:>6.1} s  {what}", began.elapsed().as_secs_f64());
 
-        // Look.
-        let from = migrate::Facts::read(&ran(&mut src, &migrate::look_command(id)).await).expect("the source's look");
+        // Look: each host, then what the source's home holds that goes.
         let to = migrate::Facts::read(&ran(&mut dst, &migrate::look_command(id)).await).expect("the destination's look");
-        step(&format!("looked: {} ({}) to {} ({})", from.system, from.machine, to.system, to.machine));
-        assert!(migrate::refusals(&from, &to, 0, 0).is_empty(), "{:?}", migrate::refusals(&from, &to, 0, 0));
-        let (sctrl, dctrl) = (control(&src).await, control(&dst).await);
-        let sessions = sctrl.session_list().await.expect("the source's sessions").payload;
-        let mut captured = Vec::new();
-        for s in &sessions {
-            captured.push(migrate::capture(&sctrl, &s.session_id).await.expect("a session captured"));
+        let plain = migrate::Facts::read(&ran(&mut src, &migrate::look_command(id)).await).expect("the source's look");
+        let excluded = migrate::excluded(&plain, &to, false);
+        let from = migrate::Facts::read(&ran(&mut src, &migrate::look_sized_command(id, &excluded)).await).expect("the source's look, sized");
+        step(&format!("looked: {} ({}) to {} ({}); {} files, {} in /var/tmp folders", from.system, from.machine, to.system, to.machine, from.home_files, from.var_tmp.len()));
+        assert!(migrate::refusals(&from, &to, true).is_empty(), "{:?}", migrate::refusals(&from, &to, true));
+        let var_tmp: Vec<String> = from.var_tmp.iter().map(|f| f.path.clone()).collect();
+        assert!(var_tmp.iter().any(|p| p == "/var/tmp/olo-rig-scratch"), "the account's folder in /var/tmp: {var_tmp:?}");
+
+        // Each session read, each pane's agent and session found (two
+        // Claude Codes in one folder told apart by their own records).
+        async fn read_panes(src: &mut Host, sctrl: &ControlClient, id: &str) -> (Vec<migrate::CapturedSession>, Vec<migrate::Pane>) {
+            let sessions = sctrl.session_list().await.expect("the source's sessions").payload;
+            let mut captured = Vec::new();
+            for s in &sessions {
+                captured.push(migrate::capture(sctrl, &s.session_id).await.expect("a session captured"));
+            }
+            let pids: Vec<u32> = captured.iter().flat_map(|c| c.panes.iter().filter_map(|p| p.pid)).collect();
+            let screens: HashMap<u32, Vec<String>> = captured.iter().flat_map(|c| c.panes.iter()).filter_map(|p| Some((p.pid?, migrate::fingerprint(&p.screen)))).collect();
+            let panes = migrate::Pane::read_all(&ran(src, &migrate::look_pane_command(id, &pids, &screens)).await).expect("the panes' look");
+            (captured, panes)
         }
-        let pids: Vec<u32> = captured.iter().flat_map(|c| c.panes.iter().filter_map(|p| p.pid)).collect();
-        let panes = migrate::Pane::read_all(&ran(&mut src, &migrate::look_pane_command(id, &pids)).await).expect("the panes' look");
+        let sctrl = control(&src).await;
+        let dctrl = control(&dst).await;
+        let (captured, panes) = read_panes(&mut src, &sctrl, id).await;
+        step(&format!("{} sessions, found: {:?}", captured.len(), panes.iter().filter_map(|p| p.agent.as_ref().map(|a| (a.agent.clone(), a.how.clone()))).collect::<Vec<_>>()));
+
+        // The key, a way from the source; the destination's own files kept aside.
+        let public = migrate::make_key(&mut src.runner, id, &from, id).await.expect("the key");
+        migrate::allow(&mut dst.runner, id, id, &public, &var_tmp).await.expect("the key let in");
+        let verified = dst.runner.pool.verified(&dst.runner.target).expect("the destination's key, as its connection checked it");
+        let (user, at) = peer.split_once('@').expect("USER@HOST:PORT");
+        let (peer_host, peer_port) = at.rsplit_once(':').expect("HOST:PORT");
+        let way = migrate::Way { user: user.into(), host: peer_host.into(), port: peer_port.parse().unwrap(), host_key: verified.key.clone() };
+        let way = migrate::reach(&mut src.runner, id, &from, &to, id, &[way]).await.expect("the source reaches the destination");
+        let kept = migrate::keep_destination(&mut dst.runner, id, id, &excluded).await.expect("the destination's own files kept aside");
+        step(&format!("the source reaches the destination with the move's key; {kept} of the destination's files kept aside"));
+
+        async fn finish(src: &mut Host, id: &str, from: &migrate::Facts, pass: u32) -> serde_json::Value {
+            let until = Instant::now() + Duration::from_secs(600);
+            loop {
+                let st = migrate::pass_status(&mut src.runner, id, from, id).await.expect("the copy's status");
+                if st["pass"] == pass && st["running"] == false && matches!(st["phase"].as_str(), Some("done" | "failed")) {
+                    return st;
+                }
+                assert!(Instant::now() < until, "the copy didn't end: {st}");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 1, &excluded, &var_tmp).await.expect("pass 1 started");
+        let p1 = finish(&mut src, id, &from, 1).await;
+        assert_eq!(p1["phase"], "done", "{p1}");
+        assert!(p1["parts"].as_u64().unwrap_or(0) > 2, "the home sent in parts: {p1}");
+        step(&format!("pass 1: {} files of {} in {} parts, {} bytes on the wire", p1["files"], p1["total_files"], p1["parts"], p1["sent"]));
+
+        // Read again just before the stop (the source went on working), then
+        // stopped, the second pass, its lingering off, its Quadlets masked.
+        let (captured, panes) = read_panes(&mut src, &sctrl, id).await;
         let path = |p: &str| -> String {
             match p.strip_prefix(&from.home) {
                 Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("{}{rest}", to.home),
@@ -128,87 +178,71 @@ fn an_account_moves_whole() {
             agents.extend(a);
             run_it.extend(it);
         }
-        let sessions_before: HashMap<String, String> = panes.iter().filter_map(|p| p.agent.as_ref()).filter_map(|a| Some((a.agent.clone(), a.session.clone()?))).collect();
-        step(&format!(
-            "{} sessions, {} panes, agents {:?} (found: {:?})",
-            captured.len(),
-            runs.len(),
-            agents.len(),
-            panes.iter().filter_map(|p| p.agent.as_ref().map(|a| (a.agent.clone(), a.how.clone()))).collect::<Vec<_>>()
-        ));
-
-        // The key, and a way from the source.
-        let public = migrate::make_key(&mut src.runner, id, &from, id).await.expect("the key");
-        migrate::allow(&mut dst.runner, id, id, &public).await.expect("the key let in");
-        let verified = dst.runner.pool.verified(&dst.runner.target).expect("the destination's key, as its connection checked it");
-        let (user, at) = peer.split_once('@').expect("USER@HOST:PORT");
-        let (peer_host, peer_port) = at.rsplit_once(':').expect("HOST:PORT");
-        let way = migrate::Way { user: user.into(), host: peer_host.into(), port: peer_port.parse().unwrap(), host_key: verified.key.clone() };
-        let way = migrate::reach(&mut src.runner, id, &from, &to, id, &[way]).await.expect("the source reaches the destination");
-        step("the source reaches the destination with the move's key");
-        let excluded = migrate::excluded(&from, &to, false);
-
-        async fn finish(src: &mut Host, id: &str, from: &migrate::Facts) -> serde_json::Value {
-            let until = Instant::now() + Duration::from_secs(600);
-            loop {
-                let st = migrate::pass_status(&mut src.runner, id, from, id).await.expect("the copy's status");
-                if st["running"] == false && matches!(st["phase"].as_str(), Some("done" | "failed")) {
-                    return st;
-                }
-                assert!(Instant::now() < until, "the copy didn't end: {st}");
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-        }
-        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 1, &excluded).await.expect("pass 1 started");
-        let p1 = finish(&mut src, id, &from).await;
-        assert_eq!(p1["phase"], "done", "{p1}");
-        step(&format!("pass 1: {} files, {} bytes on the wire", p1["files"], p1["sent"]));
-
-        // The source stopped, the second pass, lingering off.
+        // (Each agent pane's session, by its pane: two of one agent apart.)
+        let session_of: HashMap<String, String> = captured
+            .iter()
+            .flat_map(|c| c.panes.iter())
+            .filter_map(|cp| Some((cp.block_id.clone(), panes.iter().find(|p| Some(p.pid) == cp.pid)?.agent.as_ref()?.session.clone()?)))
+            .collect();
+        let claudes: Vec<&String> = captured.iter().flat_map(|c| c.panes.iter()).filter(|cp| cp.label.starts_with("claude")).filter_map(|cp| session_of.get(&cp.block_id)).collect();
+        assert_eq!(claudes.len(), 2, "two Claude Code panes, each with its session: {session_of:?}");
+        assert_ne!(claudes[0], claudes[1], "two Claude Code panes in one folder, each its own session");
         drop(sctrl);
         let left = migrate::stop_source(&mut src.runner, id, &from, id, &agents).await.expect("the source stopped");
         assert!(left.is_empty(), "left running: {left:?}");
         let crontab = migrate::saved_crontab(&mut src.runner, &from, id).await.expect("its crontab read");
         step(&format!("the source stopped{}", if crontab.is_some() { ", its crontab saved" } else { "" }));
-        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 2, &excluded).await.expect("pass 2 started");
-        let p2 = finish(&mut src, id, &from).await;
+        migrate::allow(&mut dst.runner, id, id, &public, &var_tmp).await.expect("the key's day put off");
+        migrate::start_pass(&mut src.runner, id, &from, &to, id, &way, 2, &excluded, &var_tmp).await.expect("pass 2 started");
+        let p2 = finish(&mut src, id, &from, 2).await;
         assert_eq!(p2["phase"], "done", "{p2}");
         step(&format!("pass 2: {} files, {} on the wire, {} gone", p2["files"], p2["sent"], p2["report"]["gone"]));
         migrate::linger_off(&mut src.runner, &from).await.expect("its lingering off");
+        migrate::mask_quadlets(&mut src.runner, &from).await.expect("its Quadlets masked");
 
-        // The destination made right, its units and crontab.
-        let fixed = migrate::fix_destination(&mut dst.runner, id, &from, &to, id).await.expect("the destination made right");
+        // The destination made right: keys, paths, labels, shell, link,
+        // units and crontab, the path; its agents' programs checked.
+        let added = migrate::merge_keys(&mut src.runner, &mut dst.runner, id, id).await.expect("the source's keys let in there");
+        let fixed = migrate::fix_destination(&mut dst.runner, id, &from, &to, id, &var_tmp).await.expect("the destination made right");
+        let label = migrate::relabel(&mut dst.runner, &to).await.expect("its labels");
+        let shell = migrate::login_shell(&mut dst.runner, &from, &to).await.expect("its login shell");
+        let linked = migrate::compat_link(&mut dst.runner, &from, &to).await.expect("the old home's path");
+        let failed = migrate::units_and_crontab(&mut dst.runner, &from, &to, id, crontab.as_deref()).await.expect("its units and crontab");
+        migrate::path_on(&mut dst.runner).await.expect("~/.local/bin on its shells' path");
+        let ran_agents: Vec<String> = panes.iter().filter_map(|p| p.agent.as_ref().map(|a| a.agent.clone())).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+        let broken = migrate::agents_broken(&mut dst.runner, &ran_agents).await.expect("its agents' programs");
         step(&format!(
-            "made right: {} rewritten, {} projects, {} relinked; mentions {:?}",
+            "made right: {added} keys added, {} rewritten, {} projects, {} relinked; labels {label:?}, shell {shell:?}, linked {linked}, units failed {failed:?}, agents broken {broken:?}",
             fixed["rewritten"].as_array().map_or(0, Vec::len),
             fixed["projects"].as_array().map_or(0, Vec::len),
-            fixed["relinked"].as_array().map_or(0, Vec::len),
-            fixed["mentions"]
+            fixed["relinked"].as_array().map_or(0, Vec::len)
         ));
-        migrate::units_and_crontab(&mut dst.runner, &from, &to, id, crontab.as_deref()).await.expect("its units and crontab");
-        migrate::path_on(&mut dst.runner).await.expect("~/.local/bin on its shells' path");
+        assert!(added >= 1, "the source's own sign-in key let in there");
+        assert!(broken.is_empty(), "the stand-ins run there: {broken:?}");
 
-        // The sessions made again, each pane's command, each agent's message.
+        // The sessions made again (a folder that isn't there: the home),
+        // each pane's command, each agent's message.
+        let cwds: Vec<String> = runs.values().map(|r| r.cwd.clone()).filter(|c| !c.is_empty()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+        let there = migrate::dirs_there(&mut dst.runner, &cwds).await.expect("the panes' folders there");
         let mut made_all = HashMap::new();
-        let mut new_sessions = Vec::new();
         for c in &captured {
-            let (sid, made) = migrate::rebuild(&dctrl, c, &runs).await.expect("a session made again");
-            new_sessions.push(sid.clone());
+            let (sid, made) = migrate::rebuild(&dctrl, c, &runs, &there).await.expect("a session made again");
             for (old, new) in made {
                 made_all.insert(old, (sid.clone(), new));
             }
         }
-        step(&format!("{} sessions made again there, {} panes", new_sessions.len(), made_all.len()));
-        let told = migrate::Told { from_label: "the old host", to_label: "the new host", from: from.clone(), to: to.clone(), when: "just now", linked: false, ..migrate::Told::default() };
+        step(&format!("{} panes made again there", made_all.len()));
+        let told = migrate::Told { from_label: "the old host", to_label: "the new host", from: from.clone(), to: to.clone(), when: "just now", linked, var_tmp: true, ..migrate::Told::default() };
         let message = migrate::message(&told);
         for (old, (sid, new)) in &made_all {
             let Some(run) = runs.get(old) else { continue };
             let Some(command) = &run.command else { continue };
-            // (Its shell ready first: the prompt's mark.)
             screen_with(&dctrl, sid, new, "$", 15).await;
             let text = migrate::command_text(command);
-            let enter = if run_it.get(old).copied().unwrap_or(false) { "\r" } else { "" };
-            dctrl.terminal_write(sid, new, &format!("{text}{enter}")).await.expect("its command typed");
+            // (What isn't run again is left typed as a comment: Enter never
+            // runs it by mistake.)
+            let typed = if run_it.get(old).copied().unwrap_or(false) { format!("{text}\r") } else { format!("# {text}") };
+            dctrl.terminal_write(sid, new, &typed).await.expect("its command typed");
         }
         for (old, (sid, new)) in &made_all {
             let Some(pane) = captured.iter().flat_map(|c| c.panes.iter()).find(|p| &p.block_id == old) else { continue };
@@ -219,18 +253,18 @@ fn an_account_moves_whole() {
         }
         step("each pane's command and each agent's message typed");
 
-        // What came out.
+        // What came out: each agent in its own session, the message at its
+        // prompt; the work list; /var/tmp's folder; the linked dotfile made
+        // right; the source stopped.
         for (old, (sid, new)) in &made_all {
             let Some(pane) = captured.iter().flat_map(|c| c.panes.iter()).find(|p| &p.block_id == old) else { continue };
-            let agent = pane.pid.and_then(|pid| panes.iter().find(|p| p.pid == pid)).and_then(|p| p.agent.clone());
             let screen = dctrl.terminal_format(sid, new, "text").await.map(|r| r.payload).unwrap_or_default();
-            match agent {
-                Some(a) => {
-                    let was = sessions_before.get(&a.agent).cloned().unwrap_or_default();
-                    assert!(screen.contains(&format!("session {was}")), "{} isn't back in its session {was}:\n{screen}", a.agent);
-                    assert!(screen.contains("[Olo] This session was moved"), "{}'s message isn't at its prompt:\n{screen}", a.agent);
-                    assert!(screen.contains(&format!("in {}", to.home)), "{} isn't in the new home:\n{screen}", a.agent);
-                    println!("  {}: back in its session, the message at its prompt", a.agent);
+            match session_of.get(old) {
+                Some(was) => {
+                    assert!(screen.contains(&format!("session {was}")), "{} isn't back in its session {was}:\n{screen}", pane.label);
+                    assert!(screen.contains("[Olo] This session was moved"), "{}'s message isn't at its prompt:\n{screen}", pane.label);
+                    assert!(screen.contains(&format!("in {}", to.home)), "{} isn't in the new home:\n{screen}", pane.label);
+                    println!("  {}: back in its own session, the message at its prompt", pane.label);
                 }
                 None if pane.label == "todo" => {
                     let screen = screen_with(&dctrl, sid, new, "second thing", 10).await;
@@ -240,14 +274,14 @@ fn an_account_moves_whole() {
                 None => {}
             }
         }
-        // The source stopped and kept so: Rex's socket disabled (nothing
-        // starts its server again), its server down (its drain said nothing
-        // of the account's was left).
-        // (Not by reaching it: a dial there may start a server of its own.)
+        let there_now = ran(&mut dst, "cat /var/tmp/olo-rig-scratch/notes.txt; echo; readlink ~/.gitconfig; cat ~/dotfiles/gitconfig").await;
+        assert!(there_now.contains("scratch notes"), "/var/tmp's folder came: {there_now}");
+        assert!(there_now.contains(&format!("{}/dotfiles/gitconfig", to.home)) && there_now.contains(&format!("{}/.gitignore_global", to.home)), "the linked dotfile made right: {there_now}");
+        println!("  /var/tmp's folder there; the linked dotfile names the new home");
         let state = ran(&mut src, "sh -c 'export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; echo socket=$(systemctl --user is-enabled rex.socket 2>&1); echo server=$(systemctl --user is-active rex.service 2>&1);'").await;
         assert!(state.contains("socket=disabled") && state.contains("server=inactive"), "the source isn't stopped: {state}");
         println!("  the source: Rex's socket disabled, its server down (and nothing of the account's left running, its drain said)");
-        migrate::clean_up(&mut src.runner, &mut dst.runner, id, &from, id).await.expect("the key taken away");
-        step("done: the key taken away, the source's folder gone");
+        migrate::clean_up(&mut src.runner, &mut dst.runner, id, &from, &to, id).await.expect("the key taken away");
+        step("done: the key taken away, both move folders gone");
     });
 }

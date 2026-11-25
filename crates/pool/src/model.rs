@@ -362,6 +362,13 @@ pub struct Account {
     /// provider's refresh token is spent once, by one pool.
     #[serde(default)]
     pub kept_on: Option<String>,
+    /// Kept here for a while for one host alone (by its id), and since when
+    /// (seconds): the sign-ins of a host whose account is moving, taken
+    /// back from it, for the host it moves to, never handed to another
+    /// meanwhile (Rex's move; a day at most, or until that host's pool is
+    /// gone).
+    #[serde(default)]
+    pub kept_for: Option<(String, i64)>,
 }
 
 impl Account {
@@ -466,7 +473,14 @@ impl Account {
             redeem_tried: None,
             recent: VecDeque::new(),
             kept_on: None,
+            kept_for: None,
         }
+    }
+
+    /// The host this account is kept here for, if it still is (a day at
+    /// most).
+    pub fn kept_for_host(&self, now: i64) -> Option<&str> {
+        self.kept_for.as_ref().filter(|(_, since)| now - since < 24 * 3600).map(|(h, _)| h.as_str())
     }
 
     /// Count a finished request.

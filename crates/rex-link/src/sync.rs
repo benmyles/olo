@@ -19,7 +19,9 @@
 //! only the files the sender names are looked at, nothing taken away: a
 //! root that is the whole home), `--no-cache` (no index
 //! kept between sessions: by default one is, under
-//! `~/.cache/olo/rex-sync/`, so an unchanged tree is read for nothing).
+//! `~/.cache/olo/rex-sync/`, so an unchanged tree is read for nothing),
+//! `--cache FILE` (kept there instead: a move's receiver keeps its own in
+//! the move's folder, where it is taken away with it).
 //! Status 0 when the session ended (what failed of its files the other
 //! side has in its report), 1 when it didn't, 2 for a mistake in what it
 //! was asked.
@@ -30,7 +32,7 @@ use std::path::{Path, PathBuf};
 use olo_rex_sync::index::Filter;
 use olo_rex_sync::wire::{FolderSource, Options, receive, send};
 
-const USAGE: &str = "usage: olo-rex-link sync watch ROOT [--exclude PATTERN]… [--settle MS]\n       olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--protect PATH]… [--shallow] [--scoped] [--no-cache]";
+const USAGE: &str = "usage: olo-rex-link sync watch ROOT [--exclude PATTERN]… [--settle MS]\n       olo-rex-link sync receive|send ROOT [--delete] [--keep-newer] [--exclude PATTERN]… [--protect PATH]… [--shallow] [--scoped] [--no-cache] [--cache FILE]";
 
 /// The helper's input and output, as the session's one stream.
 struct Stdio {
@@ -78,7 +80,7 @@ pub fn run(args: Vec<String>) -> ! {
         Some(home) if root.is_relative() => PathBuf::from(home).join(root),
         _ => root,
     };
-    let (mut options, mut filter, mut cached) = (Options::default(), Filter::default(), true);
+    let (mut options, mut filter, mut cached, mut cache_file) = (Options::default(), Filter::default(), true, None);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--delete" => options.delete_extra = true,
@@ -86,6 +88,7 @@ pub fn run(args: Vec<String>) -> ! {
             "--shallow" => filter.recursive = false,
             "--scoped" => options.scoped = true,
             "--no-cache" => cached = false,
+            "--cache" => cache_file = Some(PathBuf::from(it.next().unwrap_or_else(|| fail("--cache takes a file")))),
             "--exclude" => filter.exclude.push(it.next().unwrap_or_else(|| fail("--exclude takes a pattern"))),
             "--protect" => options.protect.push(it.next().unwrap_or_else(|| fail("--protect takes a path"))),
             other => fail(&format!("{other} isn't one of its options")),
@@ -100,7 +103,7 @@ pub fn run(args: Vec<String>) -> ! {
         _ => root,
     };
     options.filter = filter.clone();
-    let cache = if cached { cache_for(&root) } else { None };
+    let cache = if !cached { None } else { cache_file.or_else(|| cache_for(&root)) };
     let conn = Stdio { input: io::stdin(), output: io::stdout() };
     let ended = match side.as_str() {
         "receive" => receive(conn, &root, Options { cache_path: cache, ..options }).map(|_| ()),

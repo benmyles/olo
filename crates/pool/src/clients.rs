@@ -262,12 +262,25 @@ fn write_claude(path: &std::path::Path, mut v: Value) -> Result<(), String> {
     write_file(path, &bytes)
 }
 
+/// Whether `value` of setting `key` is one a pool of Olo's put there (its
+/// proxy on this computer's loopback, its certificate's file under Olo's
+/// settings anywhere, a moved home's old path's too): never kept as what
+/// the client had before it, to be put back.
+fn pools_own(key: &str, value: &str) -> bool {
+    match key {
+        "HTTPS_PROXY" => value.strip_prefix("http://127.0.0.1:").is_some_and(|p| p.parse::<u16>().is_ok()),
+        "NODE_EXTRA_CA_CERTS" | "SSL_CERT_FILE" => value.ends_with("/olo/pool-ca.pem") || value.ends_with("/olo/pool-ca-bundle.pem"),
+        "NO_PROXY" => value == NO_PROXY,
+        _ => false,
+    }
+}
+
 fn claude_on(manifest: &mut Manifest, port: u16) -> Result<(), String> {
     let (path, mut v) = claude_settings()?;
     let env = v["env"].as_object_mut().unwrap();
     let mut before = BTreeMap::new();
     for (k, val) in claude_env(port) {
-        before.insert(k.to_owned(), env.get(k).and_then(Value::as_str).map(str::to_owned));
+        before.insert(k.to_owned(), env.get(k).and_then(Value::as_str).filter(|was| !pools_own(k, was)).map(str::to_owned));
         env.insert(k.to_owned(), Value::String(val));
     }
     manifest.claude = Some(before);
@@ -363,7 +376,7 @@ fn codex_on(manifest: &mut Manifest, port: u16) -> Result<(), String> {
     let mut before = BTreeMap::new();
     let mut changes = Vec::new();
     for (k, v) in codex_env(port) {
-        before.insert(format!("env:{k}"), now.iter().find(|(nk, _)| nk == k).map(|(_, v)| v.clone()));
+        before.insert(format!("env:{k}"), now.iter().find(|(nk, _)| nk == k).map(|(_, v)| v.clone()).filter(|was| !pools_own(k, was)));
         changes.push((k.to_owned(), Some(v)));
     }
     edit_dotenv(&path, &changes)?;
@@ -410,6 +423,17 @@ fn codex_off(manifest: &mut Manifest) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a pool of Olo's put in a client's settings is never kept as
+    /// what the client had before it (a moved home brings the old one's).
+    #[test]
+    fn the_pools_own_settings_are_never_put_back() {
+        assert!(pools_own("HTTPS_PROXY", "http://127.0.0.1:17891"));
+        assert!(!pools_own("HTTPS_PROXY", "http://proxy.corp:3128"));
+        assert!(pools_own("NODE_EXTRA_CA_CERTS", "/home/ubuntu/.config/olo/pool-ca.pem"));
+        assert!(pools_own("SSL_CERT_FILE", "/home/ubuntu/.config/olo/pool-ca-bundle.pem"));
+        assert!(!pools_own("SSL_CERT_FILE", "/etc/ssl/certs/ca-bundle.crt"));
+    }
 
     #[test]
     fn on_off_and_the_old_way_moved_over() {

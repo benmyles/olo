@@ -22,18 +22,63 @@ pub fn look_command(helper_id: &str) -> String {
     format!("{} move look", crate::helper::file(helper_id))
 }
 
+/// The helper's command for the source's look with what its home holds
+/// that the copy brings (`excluded`: the move's exclusions), and its
+/// folders in `/var/tmp`.
+pub fn look_sized_command(helper_id: &str, excluded: &[String]) -> String {
+    let mut c = format!("{} move look --size", crate::helper::file(helper_id));
+    for e in excluded {
+        c.push_str(&format!(" --exclude {}", crate::provision::shell_word(e)));
+    }
+    c
+}
+
 /// The helper's command for each pane's programs, by the pids Rex's report
-/// gives.
-pub fn look_pane_command(helper_id: &str, pids: &[u32]) -> String {
+/// gives, with what each pane's screen shows ([`fingerprint`], by pid):
+/// two panes in one folder told apart by it.
+pub fn look_pane_command(helper_id: &str, pids: &[u32], screens: &std::collections::HashMap<u32, Vec<String>>) -> String {
     let mut c = format!("{} move look-pane", crate::helper::file(helper_id));
+    if !screens.is_empty() {
+        let json: serde_json::Map<String, serde_json::Value> = screens.iter().map(|(pid, lines)| (pid.to_string(), serde_json::json!(lines))).collect();
+        let hex: String = serde_json::Value::Object(json).to_string().bytes().map(|b| format!("{b:02x}")).collect();
+        c.push_str(&format!(" --screens {hex}"));
+    }
     for p in pids {
         c.push_str(&format!(" {p}"));
     }
     c
 }
 
+/// What tells a pane's screen from another's: its lines of real words (a
+/// message, an answer), not the agent's own frame and hints, the last
+/// first, a dozen at most and none longer than 120 characters (a command
+/// line holds them all, for many panes: sh's word is 128 KB at most).
+pub fn fingerprint(screen: &str) -> Vec<String> {
+    const CHROME: [&str; 11] = ["esc to", "shift+tab", "? for shortcuts", "ctrl+", "context left", "auto-accept", "bypass permissions", "press up to", "↑/↓", "enter to", "/help"];
+    let mut out: Vec<String> = Vec::new();
+    for line in screen.lines().rev() {
+        let line = line.trim_matches(|c: char| c.is_whitespace() || "│╭╮╰╯─━┃┌┐└┘▌▐●⏺•›❯>$#*-".contains(c));
+        let plain: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        let lower = plain.to_lowercase();
+        if plain.chars().count() < 24 || plain.split(' ').count() < 4 || CHROME.iter().any(|c| lower.contains(c)) || out.contains(&plain) {
+            continue;
+        }
+        out.push(plain.chars().take(120).collect());
+        if out.len() == 12 {
+            break;
+        }
+    }
+    out
+}
+
+/// The last line of `output` that reads as JSON (what a shell's startup
+/// printed before it, a `mesg` warning, isn't).
+fn last_json<T: serde::de::DeserializeOwned>(output: &str) -> Option<T> {
+    output.lines().rev().find_map(|l| serde_json::from_str(l.trim()).ok())
+}
+
 /// What a host says of itself for a move (the helper's `move look`).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Facts {
     /// `/etc/os-release`'s `ID` ("ubuntu", "fedora"), `ID_LIKE` and
@@ -92,12 +137,47 @@ pub struct Facts {
     /// Its clock (seconds since the epoch), to compare.
     pub now: u64,
     pub helper: String,
+    /// The services its Quadlets make (stopped and masked, not disabled).
+    pub quadlets: Vec<String>,
+    /// The login shells the system has (`/etc/shells`).
+    pub shells: Vec<String>,
+    /// Codex's daemon runs there.
+    pub codex_daemon: bool,
+    /// `/var/tmp`'s filesystem (beside `home_dev`: one room or two).
+    pub var_tmp_dev: Option<u64>,
+    /// With `--size`: what its home holds that the copy brings (room on
+    /// disk, files), its biggest folders, its own folders in `/var/tmp` and
+    /// how many of its files lie straight in `/var/tmp` (not carried).
+    pub home_bytes: u64,
+    pub home_files: u64,
+    pub big: Vec<Big>,
+    pub var_tmp: Vec<VarTmpFolder>,
+    pub var_tmp_loose: u64,
+}
+
+/// A folder of the home and the room it takes.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct Big {
+    pub path: String,
+    pub bytes: u64,
+}
+
+/// One of the account's folders in `/var/tmp`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct VarTmpFolder {
+    pub path: String,
+    pub bytes: u64,
+    pub files: u64,
+    /// Looked into only so far (a minute): bigger than it says.
+    pub more: bool,
 }
 
 impl Facts {
     /// What `move look` printed.
     pub fn read(output: &str) -> Result<Facts, String> {
-        let f: Facts = serde_json::from_str(output.trim()).map_err(|e| format!("the host's look didn't read: {e}"))?;
+        let f: Facts = last_json(output).ok_or_else(|| format!("the host's look didn't read: {}", output.lines().last().unwrap_or("nothing said").trim()))?;
         if f.user.is_empty() || f.home.is_empty() {
             return Err("the host didn't say who it is (no account or home)".into());
         }
@@ -114,14 +194,30 @@ impl Facts {
         self.machine == other.machine
     }
 
-    /// Whether `other` is this same account and home (a move to itself).
+    /// Whether `other` is this same account and home (a move to itself);
+    /// never by facts an older helper doesn't give.
     pub fn same_home(&self, other: &Facts) -> bool {
-        self.machine_id == other.machine_id && self.boot_id == other.boot_id && self.uid == other.uid && self.home_dev == other.home_dev && self.home_ino == other.home_ino
+        !self.machine_id.is_empty()
+            && self.home_dev.is_some()
+            && self.machine_id == other.machine_id
+            && self.boot_id == other.boot_id
+            && self.uid == other.uid
+            && self.home_dev == other.home_dev
+            && self.home_ino == other.home_ino
+    }
+
+    /// Room the account's folders in `/var/tmp` take.
+    pub fn var_tmp_bytes(&self) -> u64 {
+        self.var_tmp.iter().map(|f| f.bytes).sum()
+    }
+
+    pub fn var_tmp_files(&self) -> u64 {
+        self.var_tmp.iter().map(|f| f.files).sum()
     }
 }
 
 /// A pane's process as the helper's `move look-pane` says it.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Program {
     pub pid: u32,
@@ -140,7 +236,7 @@ pub struct Program {
 /// (`how`: "open", the file it holds; "written", Claude Code's transcript
 /// written since it started; "argv", its command line's; "guess", the
 /// newest of its folder; "none").
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct PaneAgent {
     pub agent: String,
@@ -153,7 +249,7 @@ pub struct PaneAgent {
 
 /// A pane: its process (as Rex's report gives it) and everything under it,
 /// parents first; the agent there, if one is.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Pane {
     pub pid: u32,
@@ -164,7 +260,7 @@ pub struct Pane {
 impl Pane {
     /// What `move look-pane` printed.
     pub fn read_all(output: &str) -> Result<Vec<Pane>, String> {
-        serde_json::from_str(output.trim()).map_err(|e| format!("the panes' look didn't read: {e}"))
+        last_json(output).ok_or_else(|| format!("the panes' look didn't read: {}", output.lines().last().unwrap_or("nothing said").trim()))
     }
 
     /// The agent's own session the pane holds open, anywhere in its tree:
@@ -205,6 +301,10 @@ pub fn excluded(from: &Facts, to: &Facts, bring_cache: bool) -> Vec<String> {
         "/.local/state/olo-rex/moved",
         "/.local/state/olo-rex/agent.sock",
         "/.local/state/rex",
+        // (Rex as each host's setup put it there, for its own machine; and
+        // Claude Code's record of each process of it that ran here.)
+        "/.local/bin/rex",
+        "/.claude/sessions",
         "/.local/share/olo/pool",
         "/.config/olo/pool.*",
         "/.config/olo/pool-ca*",
@@ -246,9 +346,11 @@ pub fn excluded(from: &Facts, to: &Facts, bring_cache: bool) -> Vec<String> {
 }
 
 /// Why a move from `from` to `to` can't be made, each a sentence for the
-/// person (none: it can). `bytes` and `files`: what the source's home
-/// holds that goes (its look's count).
-pub fn refusals(from: &Facts, to: &Facts, bytes: u64, files: u64) -> Vec<String> {
+/// person (none: it can): the same account, clocks apart, too little room
+/// there (bytes and files) for what the source's look measured of its home
+/// and, with `var_tmp`, its folders in `/var/tmp` (one room where `/var/tmp`
+/// is on the home's filesystem there, else each its own).
+pub fn refusals(from: &Facts, to: &Facts, var_tmp: bool) -> Vec<String> {
     let mut why = Vec::new();
     if from.same_home(to) {
         why.push("That's the same account on the same machine.".to_owned());
@@ -257,19 +359,31 @@ pub fn refusals(from: &Facts, to: &Facts, bytes: u64, files: u64) -> Vec<String>
     if from.now > 0 && to.now > 0 && apart > 60 {
         why.push(format!("The two hosts' clocks are {apart} seconds apart: set them right first (the copy tells changed files by their times)."));
     }
-    let needed = bytes + bytes / 10 + (1 << 30);
-    if to.free < needed {
-        why.push(format!("{} has {} free in its home; the move needs {}.", to.system_name_or_host(), size_words(to.free), size_words(needed)));
+    let need = |b: u64| b + b / 10 + (1 << 30);
+    let (tmp_bytes, tmp_files) = if var_tmp { (from.var_tmp_bytes(), from.var_tmp_files()) } else { (0, 0) };
+    let together = to.var_tmp_dev.is_some() && to.var_tmp_dev == to.home_dev;
+    let (home_bytes, home_files) = if together { (from.home_bytes + tmp_bytes, from.home_files + tmp_files) } else { (from.home_bytes, from.home_files) };
+    if to.free < need(home_bytes) {
+        let what = if together && tmp_bytes > 0 { "its home and its folders in /var/tmp" } else { "its home" };
+        why.push(format!("{} has {} free in its home; the move needs {} for {what}.", to.system_name_or_host(), size_words(to.free), size_words(need(home_bytes))));
     }
-    if to.free_inodes > 0 && to.free_inodes < files + 10_000 {
-        why.push(format!("{} has room for {} more files in its home; the move brings {files}.", to.system_name_or_host(), to.free_inodes));
+    if to.free_inodes > 0 && to.free_inodes < home_files + 10_000 {
+        why.push(format!("{} has room for {} more files in its home; the move brings {home_files}.", to.system_name_or_host(), to.free_inodes));
+    }
+    if !together && tmp_bytes > 0 {
+        if to.var_tmp_free < need(tmp_bytes) {
+            why.push(format!("{} has {} free in /var/tmp; your folders there need {}.", to.system_name_or_host(), size_words(to.var_tmp_free), size_words(need(tmp_bytes))));
+        }
+        if to.var_tmp_inodes > 0 && to.var_tmp_inodes < tmp_files + 10_000 {
+            why.push(format!("{} has room for {} more files in /var/tmp; your folders there have {tmp_files}.", to.system_name_or_host(), to.var_tmp_inodes));
+        }
     }
     why
 }
 
 impl Facts {
     fn system_name_or_host(&self) -> String {
-        if self.system_name.is_empty() { "The destination".to_owned() } else { format!("The destination ({})", self.system_name) }
+        "The new host".to_owned()
     }
 }
 
@@ -291,22 +405,29 @@ pub fn own_units(facts: &Facts) -> Vec<String> {
 }
 
 /// The source stopped, in the order that keeps it stopped (as the
-/// account, a POSIX shell's): its crontab saved in the move's folder and
-/// emptied; its own timers, paths and sockets (they start services), then
-/// its services, stopped and disabled, Rex's socket and server with them;
-/// the agents asked to end and given ten seconds (their screens first:
-/// Codex's live windows start its daemon again), then Codex's daemon by
-/// its pid file; tmux and screen; rootless containers. Lingering stays
-/// on (a detached second pass needs the account's systemd) and is turned
-/// off after it. `agents`: the agents' pids, as the panes' look found them.
-pub fn stop_script(from: &Facts, dir: &str, agents: &[u32]) -> String {
+/// account, a POSIX shell's): its crontab saved in the move's folder once
+/// (run again, the saved one stays) and emptied; its own timers, paths and
+/// sockets (they start services), then its services, a template's
+/// instances by their own names and its Quadlets' services, stopped and
+/// disabled, Rex's socket and server with them; the agents asked to end
+/// and given ten seconds (their screens first: Codex's live windows start
+/// its daemon again), then Codex's daemon by the helper (its pid file is
+/// JSON); tmux and screen; rootless containers. Lingering stays on (a
+/// detached second pass needs the account's systemd) and is turned off
+/// after it. `agents`: the agents' pids, as the panes' look found them;
+/// `helper`: the helper's command there.
+pub fn stop_script(from: &Facts, dir: &str, agents: &[u32], helper: &str) -> String {
     let units = own_units(from);
     let starters: Vec<&String> = units.iter().filter(|u| u.ends_with(".timer") || u.ends_with(".path") || u.ends_with(".socket")).collect();
-    let services: Vec<&String> = units.iter().filter(|u| u.ends_with(".service") || u.ends_with(".target")).collect();
+    // (A template's file, `worker@.service`, isn't a unit to stop: its
+    // instances are, by the names they were enabled by.)
+    let instances: Vec<&String> = from.enabled.iter().filter(|u| u.contains('@') && !u.contains("@.") && !(u.starts_with("rex.") || u.starts_with("olo-pool."))).collect();
+    let services: Vec<&String> = units.iter().filter(|u| (u.ends_with(".service") || u.ends_with(".target")) && !u.contains("@.")).chain(instances).chain(from.quadlets.iter()).collect();
     let words = |list: &[&String]| list.iter().map(|u| crate::provision::shell_word(u)).collect::<Vec<_>>().join(" ");
     let mut s = format!("d={}\nmkdir -p \"$d\"\n", crate::provision::shell_word(dir));
     if from.has("crontab") {
-        s.push_str("if crontab -l > \"$d/crontab\" 2> /dev/null; then crontab -r; else rm -f \"$d/crontab\"; fi\n");
+        s.push_str("if [ ! -e \"$d/crontab\" ] && [ ! -e \"$d/crontab.none\" ]; then if crontab -l > \"$d/crontab.new\" 2> /dev/null; then mv \"$d/crontab.new\" \"$d/crontab\"; else rm -f \"$d/crontab.new\"; : > \"$d/crontab.none\"; fi; fi\n");
+        s.push_str("[ -e \"$d/crontab\" ] && crontab -r 2> /dev/null\n");
     }
     if from.has("systemctl") {
         s.push_str("export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\n");
@@ -324,7 +445,7 @@ pub fn stop_script(from: &Facts, dir: &str, agents: &[u32]) -> String {
         let pids = agents.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
         s.push_str(&format!("kill -TERM {pids} 2> /dev/null\nn=0; while [ $n -lt 100 ] && kill -0 {pids} 2> /dev/null; do sleep 0.1; n=$((n + 1)); done\n"));
     }
-    s.push_str("p=\"$HOME/.codex/app-server-daemon/daemon.pid\"; [ -r \"$p\" ] && kill -TERM \"$(cat \"$p\")\" 2> /dev/null\n");
+    s.push_str(&format!("{helper} move codex-stop > /dev/null 2>&1\n"));
     if from.tmux {
         s.push_str("command -v tmux > /dev/null && tmux kill-server 2> /dev/null\n");
     }
@@ -373,6 +494,26 @@ pub fn rebuild_splits(layout: &crate::model::LayoutNode) -> (Vec<Split>, Vec<Opt
     let (mut splits, mut panes) = (Vec::new(), vec![None]);
     walk(layout, 0, &mut splits, &mut panes);
     (splits, panes)
+}
+
+/// `layout` with only the blocks `keep` says, each split whose one side
+/// has none left given wholly to the other; nothing left, `None`.
+pub fn only_terminals(layout: &crate::model::LayoutNode, keep: &dyn Fn(&str) -> bool) -> Option<crate::model::LayoutNode> {
+    match &layout.split {
+        Some(split) => match (only_terminals(&split.before, keep), only_terminals(&split.after, keep)) {
+            (Some(before), Some(after)) => {
+                let mut node = layout.clone();
+                if let Some(s) = node.split.as_mut() {
+                    *s.before = before;
+                    *s.after = after;
+                }
+                Some(node)
+            }
+            (Some(one), None) | (None, Some(one)) => Some(one),
+            (None, None) => None,
+        },
+        None => layout.block_id.as_deref().filter(|id| keep(id)).map(|_| layout.clone()),
+    }
 }
 
 /// What a move tells the agent in one pane ([`message`]).
@@ -495,6 +636,9 @@ pub struct CapturedPane {
 /// A session as the source had it, all a move needs to make it again.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, Deserialize)]
 pub struct CapturedSession {
+    /// Its id on the source (a window showing it shows its copy after).
+    #[serde(default)]
+    pub session_id: String,
     pub label: String,
     pub windows: Vec<CapturedWindow>,
     pub active_window: Option<usize>,
@@ -506,14 +650,17 @@ pub struct CapturedSession {
 pub async fn capture(client: &crate::control::ControlClient, session_id: &str) -> Result<CapturedSession, crate::error::RexError> {
     // (A session is read by a connection attached to it.)
     let view = client.session_attach(session_id).await?.payload.view;
-    let mut out = CapturedSession { label: view.label.clone(), ..CapturedSession::default() };
+    let mut out = CapturedSession { session_id: session_id.to_owned(), label: view.label.clone(), ..CapturedSession::default() };
     out.active_window = view.active_window_id.as_ref().and_then(|a| view.windows.iter().position(|w| &w.window_id == a));
     for w in &view.windows {
         let mut window = CapturedWindow { label: w.label.clone(), focused: w.focused_block_id.clone(), zoomed: w.zoomed_block_id.clone(), ..CapturedWindow::default() };
         for layer in &w.layers {
-            let (splits, panes) = match &layer.layout {
-                Some(layout) => rebuild_splits(layout),
-                None => (Vec::new(), layer.blocks.first().map(|b| vec![Some(b.block_id.clone())]).unwrap_or_default()),
+            // (Only its terminals made again: a forward's block is the
+            // app's, its room given to the pane beside it.)
+            let terminal = |id: &str| layer.blocks.iter().any(|b| b.block_id == id && (b.flavor.is_empty() || b.flavor.contains("terminal")));
+            let (splits, panes) = match layer.layout.as_ref().and_then(|l| only_terminals(l, &terminal)) {
+                Some(layout) => rebuild_splits(&layout),
+                None => (Vec::new(), layer.blocks.iter().find(|b| terminal(&b.block_id)).map(|b| vec![Some(b.block_id.clone())]).unwrap_or_default()),
             };
             window.layers.push(CapturedLayer {
                 floating: layer.layer_kind() == crate::model::LayerKind::Floating,
@@ -565,11 +712,14 @@ pub async fn rebuild(
     client: &crate::control::ControlClient,
     captured: &CapturedSession,
     runs: &std::collections::HashMap<String, PaneRun>,
+    there: &std::collections::HashSet<String>,
 ) -> Result<(String, std::collections::HashMap<String, String>), crate::error::RexError> {
     use serde_json::{Value, json};
+    // (A folder the destination hasn't: the home, which is where a shell
+    // with none starts.)
     let shell_in = |block: Option<&String>| -> Option<Value> {
         let run = block.and_then(|b| runs.get(b))?;
-        (!run.cwd.is_empty()).then(|| json!({ "cwd": run.cwd }))
+        (!run.cwd.is_empty() && there.contains(&run.cwd)).then(|| json!({ "cwd": run.cwd }))
     };
     let first = |window: &CapturedWindow| window.layers.first().and_then(|l| l.panes.first().cloned().flatten());
     let mut made: std::collections::HashMap<String, String> = std::collections::HashMap::new();
@@ -595,10 +745,12 @@ pub async fn rebuild(
         for (li, layer) in window.layers.iter().enumerate() {
             // (The first layer's first pane came with the window; a
             // floating layer is made with its own.)
+            let mut layer_id: Option<String> = None;
             let start = if li == 0 {
                 w.layers.first().and_then(|l| l.blocks.first()).map(|b| b.block_id.clone())
             } else {
                 let made_layer = client.session_new_layer(&sid, Some(&w.window_id), layer.bounds, shell_in(layer.panes.first().and_then(Option::as_ref))).await?.payload;
+                layer_id = made_layer["layer_id"].as_str().map(str::to_owned);
                 made_layer["block_ids"][0].as_str().or_else(|| made_layer["block_id"].as_str()).map(str::to_owned)
             };
             let Some(start) = start else { continue };
@@ -622,8 +774,21 @@ pub async fn rebuild(
                 }
             }
             if layer.minimized && li > 0 {
-                let view = client.session_view(&sid).await?.payload;
-                if let Some(id) = view.windows.iter().find(|x| x.window_id == w.window_id).and_then(|x| x.layers.get(li)).map(|l| l.layer_id.clone()) {
+                // (By the id it was made with; else the window's layer that
+                // holds its first pane.)
+                let id = match layer_id {
+                    Some(id) => Some(id),
+                    None => {
+                        let view = client.session_view(&sid).await?.payload;
+                        let first = blocks.first().cloned().flatten();
+                        view.windows
+                            .iter()
+                            .find(|x| x.window_id == w.window_id)
+                            .and_then(|x| x.layers.iter().find(|l| l.blocks.iter().any(|b| Some(&b.block_id) == first.as_ref())))
+                            .map(|l| l.layer_id.clone())
+                    }
+                };
+                if let Some(id) = id {
                     let _ = client.session_set_layer_state(&sid, &id, "minimized", false).await;
                 }
             }
@@ -676,10 +841,15 @@ pub async fn make_key<R: crate::provision::Runner>(source: &mut R, helper_id: &s
     out.lines().find(|l| l.starts_with("ssh-ed25519 ")).map(str::to_owned).ok_or_else(|| format!("the source's helper made no key: {out}"))
 }
 
-/// That key let into the destination's account (a day, only the helper's
-/// receive).
-pub async fn allow<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, id: &str, public: &str) -> Result<(), String> {
-    ran(dest, &format!("{} move allow {id} {}", crate::helper::file(helper_id), crate::provision::shell_word(public))).await.map(|_| ())
+/// That key let into the destination's account (a day from now, only the
+/// helper's receive; again before each pass, which puts its day off),
+/// writing the home and the folders of `/var/tmp` named in `var_tmp`.
+pub async fn allow<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, id: &str, public: &str, var_tmp: &[String]) -> Result<(), String> {
+    let mut c = format!("{} move allow {} {}", crate::helper::file(helper_id), crate::provision::shell_word(id), crate::provision::shell_word(public));
+    for root in var_tmp {
+        c.push_str(&format!(" --root {}", crate::provision::shell_word(root)));
+    }
+    ran(dest, &c).await.map(|_| ())
 }
 
 /// Where the source reaches the destination, and how (`send`'s and
@@ -724,20 +894,41 @@ pub async fn reach<R: crate::provision::Runner>(source: &mut R, helper_id: &str,
 /// A pass of the copy started on the source, detached (it goes on with
 /// the app gone); its pid.
 #[allow(clippy::too_many_arguments)]
-pub async fn start_pass<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str, way: &Way, pass: u32, excluded: &[String]) -> Result<u32, String> {
+#[allow(clippy::too_many_arguments)]
+pub async fn start_pass<R: crate::provision::Runner>(
+    source: &mut R,
+    helper_id: &str,
+    from: &Facts,
+    to: &Facts,
+    id: &str,
+    way: &Way,
+    pass: u32,
+    excluded: &[String],
+    var_tmp: &[String],
+) -> Result<u32, String> {
     let mut command = format!("{} move send {} {} --pass {pass} --detach", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)), way.words(&to.home));
     for e in excluded {
         command.push_str(&format!(" --exclude {}", crate::provision::shell_word(e)));
     }
-    let out = ran(source, &command).await?;
-    let v: serde_json::Value = out.lines().rev().find_map(|l| serde_json::from_str(l).ok()).unwrap_or_default();
-    v["started"].as_u64().map(|p| p as u32).ok_or_else(|| format!("the copy didn't start: {}", out.trim()))
+    for root in var_tmp {
+        command.push_str(&format!(" --also {}", crate::provision::shell_word(root)));
+    }
+    // (The rig's: a small home sent in parts all the same, to try them.)
+    if let Some(each) = std::env::var("OLO_REX_TEST_MOVE_EACH").ok().and_then(|e| e.parse::<u64>().ok()) {
+        command.push_str(&format!(" --each {each}"));
+    }
+    let out = source.run(false, &command, &mut |_| {}).await.map_err(|f| f.why)?;
+    let v: serde_json::Value = last_json(&out.output).unwrap_or_default();
+    if let Some(e) = v["error"].as_str() {
+        return Err(e.to_owned());
+    }
+    v["started"].as_u64().map(|p| p as u32).ok_or_else(|| format!("the copy didn't start: {}", out.output.trim()))
 }
 
 /// How the copy stands (its `status.json`, and whether it still runs).
 pub async fn pass_status<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, id: &str) -> Result<serde_json::Value, String> {
     let out = ran(source, &format!("{} move status {}", crate::helper::file(helper_id), crate::provision::shell_word(&move_dir(&from.home, id)))).await?;
-    serde_json::from_str(out.trim()).map_err(|e| format!("the copy's status didn't read: {e}"))
+    last_json(&out).ok_or_else(|| format!("the copy's status didn't read: {}", out.lines().last().unwrap_or("nothing said").trim()))
 }
 
 /// The source stopped and kept stopped ([`stop_script`]), then everything
@@ -745,10 +936,13 @@ pub async fn pass_status<R: crate::provision::Runner>(source: &mut R, helper_id:
 /// left, if anything (a process in `D`, one a root supervisor starts
 /// again).
 pub async fn stop_source<R: crate::provision::Runner>(source: &mut R, helper_id: &str, from: &Facts, id: &str, agents: &[u32]) -> Result<Vec<serde_json::Value>, String> {
-    ran(source, &format!("sh -c {}", crate::provision::shell_word(&stop_script(from, &move_dir(&from.home, id), agents)))).await?;
-    let out = source.run(false, &format!("{} move stop", crate::helper::file(helper_id)), &mut |_| {}).await.map_err(|f| f.why)?;
-    let v: serde_json::Value = out.output.lines().rev().find_map(|l| serde_json::from_str(l).ok()).unwrap_or_default();
-    Ok(v["left"].as_array().cloned().unwrap_or_default())
+    let helper = crate::helper::file(helper_id);
+    ran(source, &format!("sh -c {}", crate::provision::shell_word(&stop_script(from, &move_dir(&from.home, id), agents, &helper)))).await?;
+    let out = source.run(false, &format!("{helper} move stop"), &mut |_| {}).await.map_err(|f| f.why)?;
+    // (What it ended and what is left, said by the helper: no word of it
+    // isn't "nothing left", it is a stop that didn't run.)
+    let v: serde_json::Value = last_json(&out.output).ok_or_else(|| format!("the old host's helper didn't say what it stopped: {}", out.output.lines().last().unwrap_or("nothing said").trim()))?;
+    v["left"].as_array().cloned().ok_or_else(|| "the old host's helper didn't say what is left".to_owned())
 }
 
 /// The source's lingering turned off (after the second pass: a detached
@@ -772,26 +966,76 @@ pub async fn linger_off<R: crate::provision::Runner>(source: &mut R, from: &Fact
     Err("its lingering couldn't be turned off (a reboot would start what was stopped)".into())
 }
 
-/// A home whose path changed made right on the destination (`move fix`):
-/// what it rewrote, renamed, retargeted, and what it only names.
-pub async fn fix_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str) -> Result<serde_json::Value, String> {
+/// The source's Quadlets masked, after the last pass (masked before it,
+/// the destination would have them masked too): they start with the
+/// account's systemd, so a login there would start them again.
+pub async fn mask_quadlets<R: crate::provision::Runner>(source: &mut R, from: &Facts) -> Result<(), String> {
+    if from.quadlets.is_empty() || !from.has("systemctl") {
+        return Ok(());
+    }
+    let w = from.quadlets.iter().map(|u| crate::provision::shell_word(u)).collect::<Vec<_>>().join(" ");
+    ran(source, &format!("sh -c {}", crate::provision::shell_word(&format!("export XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"; systemctl --user mask {w} 2> /dev/null; true"))))
+        .await
+        .map(|_| ())
+}
+
+/// A home whose path changed made right on the destination (`move fix`,
+/// the folders of `/var/tmp` carried with it walked too): what it
+/// rewrote, renamed, retargeted, and what it only names.
+pub async fn fix_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str, var_tmp: &[String]) -> Result<serde_json::Value, String> {
     if from.home == to.home {
         return Ok(serde_json::json!({}));
     }
     let once = format!("{}/fixed.json", move_dir(&to.home, id));
-    let out = ran(
-        dest,
-        &format!(
-            "mkdir -p {} && {} move fix --from {} --to {} --once {}",
-            crate::provision::shell_word(&move_dir(&to.home, id)),
-            crate::helper::file(helper_id),
-            crate::provision::shell_word(&from.home),
-            crate::provision::shell_word(&to.home),
-            crate::provision::shell_word(&once)
-        ),
-    )
-    .await?;
-    serde_json::from_str(out.lines().last().unwrap_or_default()).map_err(|e| format!("the fix's report didn't read: {e}"))
+    let mut c = format!(
+        "mkdir -p -m 700 {} && {} move fix --from {} --to {} --once {}",
+        crate::provision::shell_word(&move_dir(&to.home, id)),
+        crate::helper::file(helper_id),
+        crate::provision::shell_word(&from.home),
+        crate::provision::shell_word(&to.home),
+        crate::provision::shell_word(&once)
+    );
+    for root in var_tmp {
+        c.push_str(&format!(" --also {}", crate::provision::shell_word(root)));
+    }
+    let out = ran(dest, &c).await?;
+    last_json(&out).ok_or_else(|| format!("the fix's report didn't read: {}", out.lines().last().unwrap_or("nothing said").trim()))
+}
+
+/// `text` with the old home's path the new one's wherever it is a whole
+/// path: not inside another (`/mnt/backup/home/ubuntu`), nor the start of
+/// a longer name (`/home/ubuntu2`).
+pub fn rewrite_home(text: &str, old: &str, new: &str) -> String {
+    let (old, new) = (old.trim_end_matches('/'), new.trim_end_matches('/'));
+    if old.is_empty() || old == new {
+        return text.to_owned();
+    }
+    let bytes = text.as_bytes();
+    let word = |b: u8| b.is_ascii_alphanumeric() || b"._-~$".contains(&b);
+    let mut out = String::with_capacity(text.len());
+    let mut from = 0;
+    let mut at = 0;
+    while let Some(off) = text[at..].find(old) {
+        let start = at + off;
+        let end = start + old.len();
+        let before = start.checked_sub(1).map(|i| bytes[i]);
+        let starts = match before {
+            None => true,
+            Some(b'/') => text[..start].ends_with("file://"),
+            Some(b) => !word(b),
+        };
+        let ends = bytes.get(end).is_none_or(|b| !(b.is_ascii_alphanumeric() || b"._-".contains(b)));
+        if starts && ends {
+            out.push_str(&text[from..start]);
+            out.push_str(new);
+            from = end;
+            at = end;
+        } else {
+            at = start + 1;
+        }
+    }
+    out.push_str(&text[from..]);
+    out
 }
 
 /// The crontab the source had, as its stop saved it (none: it had none).
@@ -802,31 +1046,38 @@ pub async fn saved_crontab<R: crate::provision::Runner>(source: &mut R, from: &F
 }
 
 /// The account's own units that were enabled on the source enabled (and
-/// started) on the destination; its crontab, as the source had it, made
-/// there, the old home's paths in it the new home's (`crontab` must be
-/// there: else it is kept in the move's folder, and Done says so).
-pub async fn units_and_crontab<R: crate::provision::Runner>(dest: &mut R, from: &Facts, to: &Facts, id: &str, crontab: Option<&str>) -> Result<(), String> {
+/// started) on the destination, and its Quadlets' services started; its
+/// crontab, as the source had it, made there, the old home's paths in it
+/// the new home's, after the destination's own lines where it had a crontab
+/// (that one kept in the move's folder for Go Back); `crontab` must be
+/// there, else the table is kept in the move's folder, and Done says so.
+/// What didn't start, by name.
+pub async fn units_and_crontab<R: crate::provision::Runner>(dest: &mut R, from: &Facts, to: &Facts, id: &str, crontab: Option<&str>) -> Result<Vec<String>, String> {
     let wanted: Vec<String> = from.enabled.iter().filter(|u| !(u.starts_with("rex.") || u.starts_with("olo-pool."))).cloned().collect();
-    let mut s = String::from("export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"\nsystemctl --user daemon-reload 2> /dev/null\n");
-    if !wanted.is_empty() {
-        let w = wanted.iter().map(|u| crate::provision::shell_word(u)).collect::<Vec<_>>().join(" ");
-        s.push_str(&format!("systemctl --user enable --now {w} 2>&1 || true\n"));
+    let dir = crate::provision::shell_word(&move_dir(&to.home, id));
+    let mut s = format!("d={dir}\nmkdir -p -m 700 \"$d\"\nexport XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"\nsystemctl --user daemon-reload 2> /dev/null\n");
+    for u in wanted.iter().map(|u| ("enable --now", u)).chain(from.quadlets.iter().map(|u| ("start", u))) {
+        let w = crate::provision::shell_word(u.1);
+        s.push_str(&format!("systemctl --user {} {w} > /dev/null 2>&1 || echo \"olo-failed: \"{w}\n", u.0));
     }
     if let Some(table) = crontab {
-        let table = String::from_utf8_lossy(&crate::sessions::rewritten(table.as_bytes().to_vec(), &from.home, &to.home)).into_owned();
-        let saved = format!("{}/crontab", move_dir(&to.home, id));
+        let table = rewrite_home(table, &from.home, &to.home);
         // (A delimiter no line of the table is.)
         let mut end = "OLO_MOVE_CRONTAB".to_owned();
         while table.lines().any(|l| l == end) {
             end.push('_');
         }
-        s.push_str(&format!("mkdir -p {}\ncat > {} <<'{end}'\n{}\n{end}\n", crate::provision::shell_word(&move_dir(&to.home, id)), crate::provision::shell_word(&saved), table.trim_end_matches('\n')));
+        s.push_str(&format!("cat > \"$d/crontab\" <<'{end}'\n{}\n{end}\n", table.trim_end_matches('\n')));
         if to.has("crontab") {
-            s.push_str(&format!("crontab {}\n", crate::provision::shell_word(&saved)));
+            // (The destination's own first, once: what it had stays, and
+            // Go Back puts it back as it was.)
+            s.push_str("[ -e \"$d/crontab.dest\" ] || crontab -l > \"$d/crontab.dest\" 2> /dev/null || : > \"$d/crontab.dest\"\n");
+            s.push_str("{ cat \"$d/crontab.dest\"; grep -vxF -f \"$d/crontab.dest\" \"$d/crontab\" 2> /dev/null || cat \"$d/crontab\"; } > \"$d/crontab.both\" && crontab \"$d/crontab.both\"\n");
         }
     }
     s.push_str("true\n");
-    ran(dest, &format!("sh -c {}", crate::provision::shell_word(&s))).await.map(|_| ())
+    let out = ran(dest, &format!("sh -c {}", crate::provision::shell_word(&s))).await?;
+    Ok(out.lines().filter_map(|l| l.strip_prefix("olo-failed: ")).map(|u| u.trim_matches('\'').to_owned()).collect())
 }
 
 /// `~/.local/bin` on the path of the account's shells on the destination,
@@ -838,11 +1089,234 @@ pub async fn path_on<R: crate::provision::Runner>(dest: &mut R) -> Result<(), St
     ran(dest, &format!("sh -c {}", crate::provision::shell_word(&script))).await.map(|_| ())
 }
 
-/// The move's key taken out of the destination, its folder off the source
-/// (its record kept on this computer).
-pub async fn clean_up<S: crate::provision::Runner, D: crate::provision::Runner>(source: &mut S, dest: &mut D, helper_id: &str, from: &Facts, id: &str) -> Result<(), String> {
-    ran(dest, &format!("{} move disallow {id}", crate::helper::file(helper_id))).await?;
-    ran(source, &format!("rm -rf {}", crate::provision::shell_word(&move_dir(&from.home, id)))).await.map(|_| ())
+/// Where the source keeps its record of a move: what was stopped there and
+/// how to start it again, its crontab as it was (the source's files all
+/// stay where they are: Ben, 2026-11-25, "we don't want to delete the
+/// original copy it should remain in place after the migration").
+pub fn moved_dir(home: &str, id: &str) -> String {
+    format!("{}/.local/state/olo-rex/moved/{id}", home.trim_end_matches('/'))
+}
+
+/// The move's key taken out of the destination and its folder there (the
+/// files it kept aside for Go Back with it); on the source, the move's
+/// folder (its key with it) given up but for what is the person's: its
+/// crontab as it was and a record of what was stopped (`moved_dir`), the
+/// source's own files left as they are. Each tried whatever became of the
+/// other.
+pub async fn clean_up<S: crate::provision::Runner, D: crate::provision::Runner>(source: &mut S, dest: &mut D, helper_id: &str, from: &Facts, to: &Facts, id: &str) -> Result<(), String> {
+    let mut failed = Vec::new();
+    if let Err(e) = ran(dest, &format!("{} move disallow {}", crate::helper::file(helper_id), crate::provision::shell_word(id))).await {
+        failed.push(format!("the new host kept the move's key: {e}"));
+    }
+    if let Err(e) = ran(dest, &format!("rm -rf {}", crate::provision::shell_word(&move_dir(&to.home, id)))).await {
+        failed.push(format!("the new host's move folder: {e}"));
+    }
+    let record = serde_json::json!({
+        "moved_to": to.user, "home_there": to.home, "system_there": to.system_name,
+        "stopped_units": from.enabled, "quadlets_masked": from.quadlets, "lingering_was": from.linger,
+        "again": "systemctl --user enable --now rex.socket (and the units above); loginctl enable-linger; crontab crontab (beside this file); systemctl --user unmask (the Quadlets above)",
+    });
+    let (dir, kept) = (crate::provision::shell_word(&move_dir(&from.home, id)), crate::provision::shell_word(&moved_dir(&from.home, id)));
+    let keep = format!(
+        "mkdir -p -m 700 {kept} && {{ [ -e {dir}/crontab ] && mv {dir}/crontab {kept}/crontab; true; }} && printf '%s\\n' {} > {kept}/record.json && rm -rf {dir}",
+        crate::provision::shell_word(&record.to_string())
+    );
+    if let Err(e) = ran(source, &format!("sh -c {}", crate::provision::shell_word(&keep))).await {
+        failed.push(format!("the old host's move folder: {e}"));
+    }
+    if failed.is_empty() { Ok(()) } else { Err(failed.join("; ")) }
+}
+
+/// Before the first copy, the destination's own files kept aside (hard
+/// links in the move's folder: Go Back puts them back), what the copy
+/// leaves alone passed over: how many.
+pub async fn keep_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, id: &str, excluded: &[String]) -> Result<u64, String> {
+    let mut c = format!("{} move keep {}", crate::helper::file(helper_id), crate::provision::shell_word(id));
+    for e in excluded {
+        c.push_str(&format!(" --exclude {}", crate::provision::shell_word(e)));
+    }
+    let out = dest.run(false, &c, &mut |_| {}).await.map_err(|f| f.why)?;
+    let v: serde_json::Value = last_json(&out.output).ok_or_else(|| format!("the new host's files weren't kept aside: {}", out.output.lines().last().unwrap_or("nothing said").trim()))?;
+    match v["failed"].as_array() {
+        Some(f) if !f.is_empty() => Err(format!("{} of the new host's files couldn't be kept aside: {}", f.len(), f.iter().take(3).filter_map(|x| x.as_str()).collect::<Vec<_>>().join("; "))),
+        _ => Ok(v["kept"].as_u64().unwrap_or(0)),
+    }
+}
+
+/// The keys that sign in to the source's account let into the
+/// destination's too (by kind and body, its own kept): how many were new
+/// there.
+pub async fn merge_keys<S: crate::provision::Runner, D: crate::provision::Runner>(source: &mut S, dest: &mut D, helper_id: &str, id: &str) -> Result<u64, String> {
+    let theirs = ran(source, "cat \"$HOME\"/.ssh/authorized_keys \"$HOME\"/.ssh/authorized_keys2 2> /dev/null; true").await?;
+    if theirs.trim().is_empty() {
+        return Ok(0);
+    }
+    let hex: String = theirs.bytes().map(|b| format!("{b:02x}")).collect();
+    let out = ran(dest, &format!("{} move add-keys {} {hex}", crate::helper::file(helper_id), crate::provision::shell_word(id))).await?;
+    Ok(last_json::<serde_json::Value>(&out).and_then(|v| v["added"].as_u64()).unwrap_or(0))
+}
+
+/// Where SELinux is on, the moved home labelled as the system would label
+/// it (copied files take their folder's label: `~/.ssh`'s keys, units,
+/// containers' storage need theirs): as the account, else as root where it
+/// may. What it said, if anything went wrong.
+pub async fn relabel<R: crate::provision::Runner>(dest: &mut R, to: &Facts) -> Result<Option<String>, String> {
+    if !(to.selinux && to.has("restorecon")) {
+        return Ok(None);
+    }
+    let home = crate::provision::shell_word(&to.home);
+    let mine = dest.run(false, &format!("restorecon -R {home} 2>&1 | tail -3"), &mut |_| {}).await.map_err(|f| f.why)?;
+    if mine.output.trim().is_empty() {
+        return Ok(None);
+    }
+    if to.admin {
+        let root = dest.run(true, &format!("restorecon -R {home} 2>&1 | tail -3"), &mut |_| {}).await.map_err(|f| f.why)?;
+        if root.ok() && root.output.trim().is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(root.output.trim().to_owned()));
+    }
+    Ok(Some(mine.output.trim().to_owned()))
+}
+
+/// The account's login shell on the destination what it was on the source
+/// (zsh, fish), installed there first where it isn't (with the system's
+/// packages), by root where the account may be: what is left to the
+/// person, if anything.
+pub async fn login_shell<R: crate::provision::Runner>(dest: &mut R, from: &Facts, to: &Facts) -> Result<Option<String>, String> {
+    let name = |p: &str| p.rsplit('/').next().unwrap_or(p).to_owned();
+    let (want, have) = (name(&from.shell), name(&to.shell));
+    if want.is_empty() || want == have || !matches!(want.as_str(), "zsh" | "fish" | "bash" | "dash" | "ksh" | "tcsh" | "nu" | "xonsh") {
+        return Ok(None);
+    }
+    if !to.admin {
+        return Ok(Some(format!("Its login shell there is {have}, not {want}: an administrator can change it (usermod -s).")));
+    }
+    let find = format!("command -v {want} 2> /dev/null || ls /usr/bin/{want} /bin/{want} 2> /dev/null | head -1");
+    let mut path = ran(dest, &format!("sh -c {}", crate::provision::shell_word(&find))).await.unwrap_or_default().trim().to_owned();
+    if path.is_empty() {
+        let install = if to.has("dnf") {
+            format!("dnf install -y {want}")
+        } else if to.has("apt-get") {
+            format!("DEBIAN_FRONTEND=noninteractive apt-get install -y {want}")
+        } else {
+            String::new()
+        };
+        if install.is_empty() {
+            return Ok(Some(format!("{want} isn't on the new host: its login shell there is {have}.")));
+        }
+        let done = dest.run(true, &install, &mut |_| {}).await.map_err(|f| f.why)?;
+        if !done.ok() {
+            return Ok(Some(format!("{want} couldn't be installed on the new host: its login shell there is {have}.")));
+        }
+        path = ran(dest, &format!("sh -c {}", crate::provision::shell_word(&find))).await.unwrap_or_default().trim().to_owned();
+    }
+    if path.is_empty() {
+        return Ok(Some(format!("{want} isn't on the new host: its login shell there is {have}.")));
+    }
+    let set = dest.run(true, &format!("usermod -s {} {}", crate::provision::shell_word(&path), crate::provision::shell_word(&to.user)), &mut |_| {}).await.map_err(|f| f.why)?;
+    Ok((!set.ok()).then(|| format!("Its login shell there couldn't be made {want}: {}", set.output.lines().last().unwrap_or("").trim())))
+}
+
+/// Where the home's path changed, the old path made to lead to the new one
+/// (a link, by root where the account may: what names the old home and
+/// wasn't rewritten, a script, a virtualenv, keeps working); never over
+/// anything there. Whether there is one now.
+pub async fn compat_link<R: crate::provision::Runner>(dest: &mut R, from: &Facts, to: &Facts) -> Result<bool, String> {
+    if from.home == to.home || !to.admin {
+        return Ok(false);
+    }
+    let (old, new) = (crate::provision::shell_word(&from.home), crate::provision::shell_word(&to.home));
+    let relabel = if to.selinux && to.has("restorecon") { format!("; restorecon -h {old} 2> /dev/null") } else { String::new() };
+    let script = format!("if [ -e {old} ] || [ -L {old} ]; then [ \"$(readlink {old})\" = {new} ]; else mkdir -p \"$(dirname {old})\" && ln -s {new} {old}{relabel}; fi");
+    let made = dest.run(true, &format!("sh -c {}", crate::provision::shell_word(&script)), &mut |_| {}).await.map_err(|f| f.why)?;
+    Ok(made.ok())
+}
+
+/// Which of the agents the source ran start on the destination (their
+/// programs came with the home: one built for another machine doesn't):
+/// those that don't.
+pub async fn agents_broken<R: crate::provision::Runner>(dest: &mut R, agents: &[String]) -> Result<Vec<String>, String> {
+    if agents.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut script = String::from("PATH=\"$HOME/.local/bin:$PATH\"\n");
+    for a in agents {
+        let w = crate::provision::shell_word(a);
+        script.push_str(&format!("if command -v {w} > /dev/null 2>&1 && timeout 30 {w} --version < /dev/null > /dev/null 2>&1; then :; else echo \"olo-broken: \"{w}; fi\n"));
+    }
+    let out = ran(dest, &format!("sh -c {}", crate::provision::shell_word(&script))).await?;
+    Ok(out.lines().filter_map(|l| l.strip_prefix("olo-broken: ")).map(str::to_owned).collect())
+}
+
+/// Which of `dirs` are folders on the destination.
+pub async fn dirs_there<R: crate::provision::Runner>(dest: &mut R, dirs: &[String]) -> Result<std::collections::HashSet<String>, String> {
+    if dirs.is_empty() {
+        return Ok(Default::default());
+    }
+    let mut script = String::new();
+    for d in dirs {
+        let w = crate::provision::shell_word(d);
+        script.push_str(&format!("[ -d {w} ] && printf '%s\\n' {w}\n"));
+    }
+    script.push_str("true\n");
+    let out = ran(dest, &format!("sh -c {}", crate::provision::shell_word(&script))).await?;
+    Ok(out.lines().map(str::to_owned).filter(|l| dirs.contains(l)).collect())
+}
+
+/// Go Back, on the source: what the move stopped started again (its
+/// lingering, its units and Quadlets, Rex's server, its crontab as it was
+/// saved).
+pub async fn restart_source<R: crate::provision::Runner>(source: &mut R, from: &Facts, id: &str) -> Result<(), String> {
+    let mut s = format!("d={}\nexport XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"\n", crate::provision::shell_word(&move_dir(&from.home, id)));
+    if from.linger {
+        s.push_str("loginctl enable-linger 2> /dev/null\n");
+    }
+    if !from.quadlets.is_empty() {
+        let w = from.quadlets.iter().map(|u| crate::provision::shell_word(u)).collect::<Vec<_>>().join(" ");
+        s.push_str(&format!("systemctl --user unmask {w} 2> /dev/null\n"));
+    }
+    s.push_str("systemctl --user daemon-reload 2> /dev/null\nsystemctl --user enable --now rex.socket 2> /dev/null\n");
+    let wanted: Vec<String> =
+        from.enabled.iter().filter(|u| !u.starts_with("rex.")).map(|u| crate::provision::shell_word(u)).chain(from.quadlets.iter().map(|u| crate::provision::shell_word(u))).collect();
+    if !wanted.is_empty() {
+        s.push_str(&format!("systemctl --user enable --now {} 2> /dev/null\n", wanted.join(" ")));
+    }
+    if from.has("crontab") {
+        s.push_str("[ -s \"$d/crontab\" ] && crontab \"$d/crontab\"\n");
+    }
+    s.push_str("true\n");
+    if from.linger {
+        let _ = source.run(true, &format!("loginctl enable-linger {}", crate::provision::shell_word(&from.user)), &mut |_| {}).await;
+    }
+    ran(source, &format!("sh -c {}", crate::provision::shell_word(&s))).await.map(|_| ())
+}
+
+/// Go Back, on the destination: its own files put back where the move
+/// replaced them, the keys the move added taken out, the units it enabled
+/// there disabled, its crontab as it was.
+pub async fn restore_destination<R: crate::provision::Runner>(dest: &mut R, helper_id: &str, from: &Facts, to: &Facts, id: &str) -> Result<(), String> {
+    let helper = crate::helper::file(helper_id);
+    let idw = crate::provision::shell_word(id);
+    let mut failed = Vec::new();
+    for c in [format!("{helper} move put-back {idw}"), format!("{helper} move take-keys {idw}")] {
+        if let Err(e) = ran(dest, &c).await {
+            failed.push(e);
+        }
+    }
+    let mut s = format!("d={}\nexport XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"\n", crate::provision::shell_word(&move_dir(&to.home, id)));
+    let wanted: Vec<String> = from.enabled.iter().filter(|u| !(u.starts_with("rex.") || u.starts_with("olo-pool."))).map(|u| crate::provision::shell_word(u)).collect();
+    if !wanted.is_empty() {
+        s.push_str(&format!("systemctl --user disable --now {} 2> /dev/null\n", wanted.join(" ")));
+    }
+    if to.has("crontab") {
+        s.push_str("if [ -e \"$d/crontab.dest\" ]; then if [ -s \"$d/crontab.dest\" ]; then crontab \"$d/crontab.dest\"; else crontab -r 2> /dev/null; fi; fi\n");
+    }
+    s.push_str("true\n");
+    if let Err(e) = ran(dest, &format!("sh -c {}", crate::provision::shell_word(&s))).await {
+        failed.push(e);
+    }
+    if failed.is_empty() { Ok(()) } else { Err(failed.join("; ")) }
 }
 
 /// A program a pane runs that only shows something (a list followed, a
@@ -850,9 +1324,15 @@ pub async fn clean_up<S: crate::provision::Runner, D: crate::provision::Runner>(
 /// not (`git push` running when the source was looked at is never run
 /// twice): its command line is left typed at the shell's prompt instead.
 pub fn only_shows(argv: &[String]) -> bool {
-    let name = argv.first().map(|a| a.rsplit('/').next().unwrap_or(a)).unwrap_or_default();
-    matches!(name, "tail" | "less" | "more" | "watch" | "htop" | "top" | "btop" | "glances" | "nvtop" | "journalctl" | "dmesg" | "man" | "olo-worklist")
-        || (name == "tail" && argv.iter().any(|a| a == "-f" || a == "-F"))
+    let base = |a: &String| a.rsplit('/').next().unwrap_or(a).to_owned();
+    let name = argv.first().map(base).unwrap_or_default();
+    // (Not `watch`: it runs its command again and again, whatever that is.)
+    if matches!(name.as_str(), "tail" | "less" | "more" | "htop" | "top" | "btop" | "glances" | "nvtop" | "journalctl" | "dmesg" | "man" | "olo-worklist") {
+        return true;
+    }
+    // (The work list beside an agent, Olo's own: its script shown by its
+    // interpreter.)
+    name.starts_with("python") && argv.iter().skip(1).find(|a| !a.starts_with('-')).is_some_and(|s| base(s) == "worklist") && argv.iter().any(|a| a == "show")
 }
 
 /// What each pane runs on the destination, by the source's block: in its
@@ -875,8 +1355,8 @@ pub fn pane_runs(captured: &CapturedSession, panes: &[Pane], path: &dyn Fn(&str)
                 let line = match &a.session {
                     Some(session) => resume_line(&a.agent, &a.argv, session, path),
                     // (An agent not yet in a session of its own: started
-                    // again as it was told, nothing to resume.)
-                    None => Some(std::iter::once(a.agent.clone()).chain(a.argv.iter().skip(1).filter(|w| w.starts_with('-')).map(|w| path(w))).collect()),
+                    // again with its own flags, nothing to resume.)
+                    None => fresh_line(&a.agent, &a.argv, path),
                 };
                 (line, true)
             }
@@ -1034,7 +1514,41 @@ const AGY: Flags = Flags {
 /// old `--resume` or `--continue`, a session id, a first prompt (it would
 /// be sent again), a way of running it that isn't its screen (`--print`).
 /// `None` for a program that isn't one of the three.
+/// The command line an agent with no session of its own comes back with:
+/// its program and its own flags (their values whole, the old home's paths
+/// the new home's), without what would put it in another session or take
+/// a first prompt.
+pub fn fresh_line(agent: &str, argv: &[String], path: &dyn Fn(&str) -> String) -> Option<Vec<String>> {
+    let mut line = vec![agent.to_owned()];
+    line.extend(kept_flags(agent, argv, path)?);
+    Some(line)
+}
+
 pub fn resume_line(agent: &str, argv: &[String], session: &str, path: &dyn Fn(&str) -> String) -> Option<Vec<String>> {
+    let kept = kept_flags(agent, argv, path)?;
+    let mut line = vec![agent.to_owned()];
+    match agent {
+        "claude" => {
+            line.extend(kept);
+            line.extend(["--resume".to_owned(), session.to_owned()]);
+        }
+        "codex" => {
+            line.push("resume".to_owned());
+            line.extend(kept);
+            line.push(session.to_owned());
+        }
+        _ => {
+            line.extend(kept);
+            line.extend(["--conversation".to_owned(), session.to_owned()]);
+        }
+    }
+    Some(line)
+}
+
+/// An agent's flags from its command line as its own program parses them
+/// (its values whole, the old home's paths the new home's), less those that
+/// put it in a session of their own and a first prompt.
+fn kept_flags(agent: &str, argv: &[String], path: &dyn Fn(&str) -> String) -> Option<Vec<String>> {
     let flags = match agent {
         "claude" => &CLAUDE,
         "codex" => &CODEX,
@@ -1091,28 +1605,13 @@ pub fn resume_line(agent: &str, argv: &[String], session: &str, path: &dyn Fn(&s
             }
         }
     }
-    let mut line = vec![agent.to_owned()];
-    match agent {
-        "claude" => {
-            line.extend(kept);
-            line.extend(["--resume".to_owned(), session.to_owned()]);
-        }
-        "codex" => {
-            line.push("resume".to_owned());
-            line.extend(kept);
-            line.push(session.to_owned());
-        }
-        _ => {
-            line.extend(kept);
-            line.extend(["--conversation".to_owned(), session.to_owned()]);
-        }
-    }
-    Some(line)
+    Some(kept)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     const UBUNTU: &str = r#"{"system":"ubuntu","system_like":"debian","system_name":"Ubuntu 26.04.1 LTS","machine":"x86_64","user":"ubuntu","uid":1000,"gid":1000,"home":"/home/ubuntu","shell":"/bin/bash","free":52428800000,"free_inodes":3000000,"var_tmp_free":1,"var_tmp_inodes":1,"admin":true,"groups":["ubuntu","sudo"],"tools":["crontab","sudo","git","bash","systemctl","tmux"],"selinux":false,"linger":true,"units":["backup.service","backup.timer","rex.socket"],"enabled":["backup.timer","rex.socket"],"listening":[8080],"other_logins":1,"mounts":[],"tmux":true,"screen":false,"machine_id":"aa","boot_id":"b1","home_dev":2049,"home_ino":131073,"ssh_port":22,"now":1795600000,"helper":"1"}"#;
     const FEDORA: &str = r#"{"system":"fedora","system_name":"Fedora Linux 44 (Cloud Edition)","machine":"aarch64","user":"fedora","uid":1000,"gid":1000,"home":"/home/fedora","shell":"/bin/bash","free":1073741824,"admin":true,"tools":["sudo","bash"],"selinux":true,"machine_id":"cc","boot_id":"b2","ssh_port":2222,"now":1795600003}"#;
@@ -1146,7 +1645,9 @@ mod tests {
         assert_eq!(panes[0].open_session().as_deref(), Some("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"));
         assert_eq!(panes[1].open_session().as_deref(), Some("3f2a7c1e-0000-4000-8000-123456789abc"));
         assert_eq!(panes[2].open_session(), None);
-        assert_eq!(look_pane_command("abc", &[41, 43]), r#""$HOME"/.local/share/olo/rex-link/olo-rex-link-abc-$(uname -m) move look-pane 41 43"#);
+        assert_eq!(look_pane_command("abc", &[41, 43], &Default::default()), r#""$HOME"/.local/share/olo/rex-link/olo-rex-link-abc-$(uname -m) move look-pane 41 43"#);
+        let screens = std::collections::HashMap::from([(41u32, vec!["a line".to_owned()])]);
+        assert!(look_pane_command("abc", &[41], &screens).contains(" --screens 7b22343122"), "hex-coded JSON");
     }
 
     /// Each agent comes back with its own flags and the session it was in:
@@ -1203,18 +1704,29 @@ mod tests {
     /// (bytes and files), each said as a sentence.
     #[test]
     fn a_move_is_refused_when_it_cant_work() {
-        let (from, mut to) = (Facts::read(UBUNTU).unwrap(), Facts::read(FEDORA).unwrap());
+        let (mut from, mut to) = (Facts::read(UBUNTU).unwrap(), Facts::read(FEDORA).unwrap());
         to.free = 100_000_000_000;
         to.free_inodes = 5_000_000;
-        assert!(refusals(&from, &to, 20_000_000_000, 300_000).is_empty());
-        let no_room = refusals(&from, &to, 95_000_000_000, 300_000);
-        assert_eq!(no_room, ["The destination (Fedora Linux 44 (Cloud Edition)) has 100.0 GB free in its home; the move needs 105.6 GB."]);
+        (from.home_bytes, from.home_files) = (20_000_000_000, 300_000);
+        assert!(refusals(&from, &to, true).is_empty());
+        from.home_bytes = 95_000_000_000;
+        assert_eq!(refusals(&from, &to, true), ["The new host has 100.0 GB free in its home; the move needs 105.6 GB for its home."]);
+        // (/var/tmp on the home's filesystem there: one room for both; on
+        // its own, its own.)
+        from.home_bytes = 60_000_000_000;
+        from.var_tmp = vec![VarTmpFolder { path: "/var/tmp/x".into(), bytes: 40_000_000_000, files: 10, more: false }];
+        (to.home_dev, to.var_tmp_dev) = (Some(1), Some(1));
+        assert_eq!(refusals(&from, &to, true).len(), 1, "together, 100 GB don't fit");
+        assert!(refusals(&from, &to, false).is_empty(), "without /var/tmp they do");
+        (to.var_tmp_dev, to.var_tmp_free) = (Some(2), 10_000_000_000);
+        assert!(refusals(&from, &to, true)[0].contains("free in /var/tmp"));
+        from.var_tmp.clear();
         to.free_inodes = 200_000;
-        assert_eq!(refusals(&from, &to, 1, 300_000).len(), 1);
+        assert_eq!(refusals(&from, &to, true).len(), 1);
         to.free_inodes = 0;
         to.now = from.now + 3600;
-        assert!(refusals(&from, &to, 1, 1)[0].starts_with("The two hosts' clocks are 3600 seconds apart"));
-        assert_eq!(refusals(&from, &from, 1, 1)[0], "That's the same account on the same machine.");
+        assert!(refusals(&from, &to, true)[0].starts_with("The two hosts' clocks are 3600 seconds apart"));
+        assert_eq!(refusals(&from, &from, true)[0], "That's the same account on the same machine.");
     }
 
     /// The source is stopped so it stays stopped: crontab saved and emptied,
@@ -1223,15 +1735,78 @@ mod tests {
     /// never the system's user units, never lingering.
     #[test]
     fn the_source_is_stopped_in_order() {
-        let from = Facts::read(UBUNTU).unwrap();
-        let s = stop_script(&from, "/home/ubuntu/.local/state/olo-rex/move/m1", &[801, 802]);
+        let mut from = Facts::read(UBUNTU).unwrap();
+        from.enabled.push("worker@1.service".into());
+        from.units.push("worker@.service".into());
+        from.quadlets = vec!["web.service".into()];
+        let s = stop_script(&from, "/home/ubuntu/.local/state/olo-rex/move/m1", &[801, 802], "HELPER");
         let at = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("{needle} in\n{s}"));
-        assert!(at("crontab -l > \"$d/crontab\"") < at("systemctl --user stop backup.timer"));
+        assert!(at("crontab -l > \"$d/crontab.new\"") < at("systemctl --user stop backup.timer"));
         assert!(at("systemctl --user stop backup.timer") < at("systemctl --user stop backup.service"));
+        assert!(s.contains("worker@1.service") && !s.contains("worker@.service") && s.contains("web.service"), "instances and Quadlets, never a template: {s}");
         assert!(at("stop rex.socket") < at("kill -TERM 801 802"));
-        assert!(at("kill -TERM 801 802") < at("daemon.pid"));
+        assert!(at("kill -TERM 801 802") < at("HELPER move codex-stop"));
         assert!(at("tmux kill-server") < at("stop rex.service"));
         assert!(!s.contains("dbus") && !s.contains("linger") && !s.contains("olo-pool"), "{s}");
+    }
+
+    /// The stop run again keeps the crontab it saved the first time (none
+    /// is there now: it was emptied), and says there was none when there
+    /// was none.
+    #[test]
+    fn a_stop_run_again_keeps_the_crontab() {
+        let from = Facts::read(UBUNTU).unwrap();
+        let dir = PathBuf::from(format!("/var/tmp/olo-rex-migrate-crontab-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // (A crontab of the test's own: a script answering as crontab does.)
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let table = dir.join("table");
+        std::fs::write(&table, "0 * * * * job\n").unwrap();
+        let fake = format!("#!/bin/sh\ncase \"$1\" in -l) [ -s {t} ] && cat {t} || {{ echo 'no crontab' >&2; exit 1; }};; -r) rm -f {t};; esac\n", t = table.display());
+        std::fs::write(bin.join("crontab"), fake).unwrap();
+        std::fs::set_permissions(bin.join("crontab"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let script: String = stop_script(&from, &dir.join("m").display().to_string(), &[], "true").lines().take(4).collect::<Vec<_>>().join("\n");
+        let run = || std::process::Command::new("sh").arg("-c").arg(&script).env("PATH", format!("{}:/usr/bin:/bin", bin.display())).status().unwrap();
+        assert!(run().success());
+        assert_eq!(std::fs::read_to_string(dir.join("m/crontab")).unwrap(), "0 * * * * job\n");
+        assert!(!table.exists(), "emptied");
+        assert!(run().success());
+        assert_eq!(std::fs::read_to_string(dir.join("m/crontab")).unwrap(), "0 * * * * job\n", "run again: kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The old home is rewritten only as a whole path: not inside another,
+    /// not the start of a longer name.
+    #[test]
+    fn a_crontab_names_the_new_home() {
+        let r = |t: &str| rewrite_home(t, "/home/ubuntu", "/home/fedora");
+        assert_eq!(r("0 * * * * /home/ubuntu/bin/x > /home/ubuntu/log"), "0 * * * * /home/fedora/bin/x > /home/fedora/log");
+        assert_eq!(r("/mnt/backup/home/ubuntu/x /home/ubuntu2 ~/home/ubuntu"), "/mnt/backup/home/ubuntu/x /home/ubuntu2 ~/home/ubuntu");
+        assert_eq!(r("HOME=/home/ubuntu file:///home/ubuntu/a"), "HOME=/home/fedora file:///home/fedora/a");
+    }
+
+    /// A pane's screen is told by its lines of words, the last first; the
+    /// agents' frames and hints aren't.
+    #[test]
+    fn a_screen_is_told_by_its_words() {
+        let screen =
+            "╭──────────╮\n│ > Refactor the parser so tokens keep their spans │\n╰──────────╯\n● I changed the parser's token type to carry its span\n  ? for shortcuts · esc to interrupt\nshort\n";
+        assert_eq!(fingerprint(screen), ["I changed the parser's token type to carry its span", "Refactor the parser so tokens keep their spans"]);
+    }
+
+    /// Only a layer's terminals are made again: a forward's block's room is
+    /// its neighbour's.
+    #[test]
+    fn a_forwards_block_isnt_made_again() {
+        let layout: crate::model::LayoutNode = serde_json::from_value(serde_json::json!({
+            "split": {"split_id": "s1", "direction": "horizontal", "ratio": 0.5, "before": {"block_id": "shell"}, "after": {"block_id": "forward"}}
+        }))
+        .unwrap();
+        let kept = only_terminals(&layout, &|id| id != "forward").unwrap();
+        assert_eq!(rebuild_splits(&kept), (vec![], vec![Some("shell".into())]));
+        assert!(only_terminals(&layout, &|_| false).is_none());
     }
 
     /// A window's panes made again as they were: a pane split right, its
@@ -1326,17 +1901,17 @@ mod tests {
         let mut dst = Scripted { ran: vec![], answers: vec![] };
         let public = block(make_key(&mut src, "abc", &from, "m1")).unwrap();
         assert_eq!(public, "ssh-ed25519 AAAAkey olo-move-m1");
-        block(allow(&mut dst, "abc", "m1", &public)).unwrap();
-        assert!(dst.ran[0].1.ends_with("move allow m1 'ssh-ed25519 AAAAkey olo-move-m1'"), "{:?}", dst.ran);
+        block(allow(&mut dst, "abc", "m1", &public, &["/var/tmp/scratch".to_owned()])).unwrap();
+        assert!(dst.ran[0].1.ends_with("move allow m1 'ssh-ed25519 AAAAkey olo-move-m1' --root /var/tmp/scratch"), "{:?}", dst.ran);
         let way = Way { user: "fedora".into(), host: "dest".into(), port: 22, host_key: "ssh-ed25519 HOSTKEY".into() };
         let refused = block(reach(&mut src, "abc", &from, &to, "m1", std::slice::from_ref(&way))).unwrap_err();
         assert_eq!(refused, "dest:22: connection refused");
-        let pid = block(start_pass(&mut src, "abc", &from, &to, "m1", &way, 1, &["/.cache".to_owned(), "/a b".to_owned()])).unwrap();
+        let pid = block(start_pass(&mut src, "abc", &from, &to, "m1", &way, 1, &["/.cache".to_owned(), "/a b".to_owned()], &["/var/tmp/scratch".to_owned()])).unwrap();
         assert_eq!(pid, 4242);
         let send = &src.ran.iter().find(|(_, c)| c.contains("move send")).unwrap().1;
         assert!(
             send.contains(
-                "move send /home/ubuntu/.local/state/olo-rex/move/m1 --to fedora@dest:22 --host-key 'ssh-ed25519 HOSTKEY' --there /home/fedora --pass 1 --detach --exclude /.cache --exclude '/a b'"
+                "move send /home/ubuntu/.local/state/olo-rex/move/m1 --to fedora@dest:22 --host-key 'ssh-ed25519 HOSTKEY' --there /home/fedora --pass 1 --detach --exclude /.cache --exclude '/a b' --also /var/tmp/scratch"
             ),
             "{send}"
         );
@@ -1344,16 +1919,30 @@ mod tests {
         assert!(left.is_empty());
         let n = src.ran.len();
         assert!(src.ran[n - 2].1.starts_with("sh -c ") && src.ran[n - 2].1.contains("kill -TERM 801") && src.ran[n - 1].1.ends_with("move stop"));
+        // (A stop that didn't answer isn't "nothing left".)
+        let mut mute = Scripted { ran: vec![], answers: vec![("move stop", 127, "sh: 1: olo-rex-link: not found\n".into())] };
+        assert!(block(stop_source(&mut mute, "abc", &from, "m1", &[])).is_err());
         block(linger_off(&mut src, &from)).unwrap();
         assert_eq!(src.ran.last().unwrap(), &(true, "loginctl disable-linger ubuntu".to_owned()), "by root once the account was refused");
-        block(units_and_crontab(&mut dst, &from, &to, "m1", Some("0 * * * * /home/ubuntu/bin/backup\n"))).unwrap();
+        let failed = block(units_and_crontab(&mut dst, &from, &to, "m1", Some("0 * * * * /home/ubuntu/bin/backup\n"))).unwrap();
+        assert!(failed.is_empty());
         let units = &dst.ran.last().unwrap().1;
         assert!(units.contains("enable --now backup.timer") && !units.contains("rex.socket"), "{units}");
         assert!(units.contains("0 * * * * /home/fedora/bin/backup") && units.contains("OLO_MOVE_CRONTAB"), "{units}");
-        assert!(!units.contains("crontab /home"), "the destination has no crontab program: kept in the move's folder");
-        block(clean_up(&mut src, &mut dst, "abc", &from, "m1")).unwrap();
-        assert!(dst.ran.last().unwrap().1.ends_with("move disallow m1"));
-        assert_eq!(src.ran.last().unwrap().1, "rm -rf /home/ubuntu/.local/state/olo-rex/move/m1");
+        assert!(!units.contains("crontab.both"), "the destination has no crontab program: kept in the move's folder");
+        block(clean_up(&mut src, &mut dst, "abc", &from, &to, "m1")).unwrap();
+        assert!(dst.ran.iter().any(|(_, c)| c.ends_with("move disallow m1")));
+        assert_eq!(dst.ran.last().unwrap().1, "rm -rf /home/fedora/.local/state/olo-rex/move/m1");
+        let kept = &src.ran.last().unwrap().1;
+        assert!(
+            kept.contains("moved/m1") && kept.contains("crontab") && kept.contains("record.json") && kept.contains("rm -rf /home/ubuntu/.local/state/olo-rex/move/m1"),
+            "the crontab and a record kept, the move's folder (its key) gone: {kept}"
+        );
+        // (Each tried whatever became of the other.)
+        let mut broken = Scripted { ran: vec![], answers: vec![("move disallow", 1, "refused\n".into())] };
+        let mut src2 = Scripted { ran: vec![], answers: vec![] };
+        assert!(block(clean_up(&mut src2, &mut broken, "abc", &from, &to, "m1")).is_err());
+        assert_eq!(src2.ran.len(), 1, "the source's key taken away all the same");
     }
 
     /// Each pane comes back running what it ran: an agent resumed in its
@@ -1398,5 +1987,13 @@ mod tests {
         assert_eq!(runs["b3"].command.as_deref(), Some(["git", "push"].map(String::from).as_slice()));
         assert_eq!(runs["b4"].command, None);
         assert_eq!(command_text(&["tail".into(), "-f".into(), "/home/fedora/my todo.txt".into()]), "tail -f '/home/fedora/my todo.txt'");
+        // (`watch` runs its command again and again: never run again; the
+        // work list's viewer is.)
+        assert!(!only_shows(&["watch".into(), "./deploy.sh".into()]));
+        assert!(only_shows(&["/usr/bin/python3".into(), "-I".into(), "/home/u/src/olo/tools/dev/worklist".into(), "show".into(), "/var/tmp/l".into()]));
+        // (An agent with no session comes back with its flags whole, not
+        // its session's.)
+        let none = |w: &[&str]| fresh_line("claude", &w.iter().map(|x| x.to_string()).collect::<Vec<_>>(), &path).unwrap();
+        assert_eq!(none(&["claude", "--model", "opus", "--permission-mode", "acceptEdits", "-c"]), ["claude", "--model", "opus", "--permission-mode", "acceptEdits"]);
     }
 }

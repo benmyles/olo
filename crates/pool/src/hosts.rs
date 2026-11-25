@@ -451,8 +451,10 @@ impl Hosts {
     /// The host's pool taken away: every sign-in it keeps given back
     /// first (none is lost with it: where one can't be, nothing is
     /// removed), then its service, the clients there as they were, its
-    /// files and its program.
-    async fn remove(&self, id: &str) -> Result<(), String> {
+    /// files and its program. `for_host`: the host its account moves to
+    /// (Rex's move), what it kept kept here for that host alone till it has
+    /// a pool of its own.
+    async fn remove(&self, id: &str, for_host: Option<&str>) -> Result<(), String> {
         let target = self.target(id)?;
         for account in self.shared.kept_on(id) {
             let answer = self
@@ -460,7 +462,7 @@ impl Hosts {
                 .await
                 .map_err(|why| format!("A sign-in kept there couldn’t be taken back ({why}). Nothing was removed."))?;
             let credential: Credential = serde_json::from_value(answer["credential"].clone()).map_err(|_| "A sign-in kept there couldn’t be taken back. Nothing was removed.".to_owned())?;
-            self.shared.took_back(&account, credential);
+            self.shared.took_back_for(&account, credential, for_host);
         }
         let gone = format!(
             "d=\"$HOME\"/{DIR}; export XDG_RUNTIME_DIR=\"${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}\"; \
@@ -511,11 +513,18 @@ impl Hosts {
     /// on the gateway's threads: how it goes shows in [`Self::list`].
     pub fn act(self: &Arc<Self>, id: &str, what: &str) -> Result<(), String> {
         self.target(id)?;
+        // (`move-to-DEST`: removed for an account moving to host DEST, what
+        // it keeps kept for that host.)
+        let moving_to = what.strip_prefix("move-to-").map(str::to_owned);
+        if let Some(dest) = &moving_to {
+            self.target(dest)?;
+        }
         let doing = match what {
             "install" => "Installing",
             "remove" => "Removing",
             "sync" => "Carrying the accounts",
             "look" => "Asking",
+            _ if moving_to.is_some() => "Removing",
             _ => return Err(format!("There is no “{what}” for a host’s pool.")),
         };
         if self.state.lock().unwrap().live.get(id).is_some_and(|l| l.doing.is_some()) {
@@ -530,8 +539,15 @@ impl Hosts {
         let (hosts, id, what) = (self.clone(), id.to_owned(), what.to_owned());
         self.shared.spawn(async move {
             let done = match what.as_str() {
-                "install" => hosts.install(&id).await,
-                "remove" => hosts.remove(&id).await,
+                "install" => {
+                    // (What was kept here for a host that has no pool now,
+                    // a move given up, anyone's again: this one's.)
+                    let kept: Vec<String> = hosts.state.lock().unwrap().kept.iter().filter(|(_, k)| k.wanted).map(|(h, _)| h.clone()).collect();
+                    hosts.shared.release_kept_for(&|h| h == id || kept.iter().any(|k| k == h));
+                    hosts.install(&id).await
+                }
+                "remove" => hosts.remove(&id, None).await,
+                w if w.starts_with("move-to-") => hosts.remove(&id, w.strip_prefix("move-to-")).await,
                 _ => hosts.look(&id).await,
             };
             hosts.live(&id, |l| (l.doing, l.error) = (None, done.err()));

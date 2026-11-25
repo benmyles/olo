@@ -96,7 +96,9 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     if agent == Agent::Antigravity {
         // (Its spinner in the last lines, not its banner's art above:
         // read from the end, nothing gathered.)
-        let spinning = || screen.lines().rev().take(8).any(|l| l.trim_start().chars().next().is_some_and(|c| ('\u{2800}'..='\u{28ff}').contains(&c)));
+        // (Its last eight lines with words: a screen given untrimmed ends
+        // in blank ones. U+2800 is braille's blank, a space, no spinner.)
+        let spinning = || screen.lines().rev().filter(|l| !l.trim().is_empty()).take(8).any(|l| l.trim_start().chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)));
         return if s.contains("↑/↓ navigate") {
             State::Blocked
         } else if s.contains("esc to cancel") || s.contains("press up to edit queued messages") || spinning() {
@@ -424,6 +426,11 @@ mod tests {
         assert!(!at_prompt(Agent::Antigravity, &queued));
         let spinner_only = agy(&format!("⠙  Generating...\n{AGY_RULE}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{AGY_RULE}\n? for shortcuts\n"));
         assert_eq!(classify(Agent::Antigravity, &spinner_only), State::Working);
+        // (A screen given untrimmed, its blank lines after: still
+        // working. Braille's blank, U+2800, is a space, no spinner.)
+        assert_eq!(classify(Agent::Antigravity, &format!("{spinner_only}\n\n\n\n\n\n\n\n\n\n")), State::Working);
+        let blank = agy(&format!("\u{2800}  notes\n{AGY_RULE}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{AGY_RULE}\n? for shortcuts\n"));
+        assert_eq!(classify(Agent::Antigravity, &blank), State::Idle);
         // (Braille art far above, in a banner, isn't a spinner.)
         let banner = format!("⣿⣿⣿ agy\n{}\n\n\n\n\n\n\n\n{}", "⣿⣿⣿⣿", agy_idle());
         assert_eq!(classify(Agent::Antigravity, &banner), State::Idle);

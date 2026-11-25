@@ -15,6 +15,8 @@
 mod fix;
 #[cfg(feature = "move")]
 mod moving;
+#[cfg(feature = "move")]
+mod panes;
 #[cfg(feature = "quic")]
 mod quic;
 #[cfg(feature = "sync")]

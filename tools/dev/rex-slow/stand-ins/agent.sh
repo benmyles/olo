@@ -10,6 +10,8 @@
 # Its arguments are in its session's start line, so a test sees the flags came back.
 set -u
 me=$(basename "$0")
+# (`--version`, as the real ones answer it: the move checks they start.)
+[ "${1:-}" = "--version" ] && { echo "stand-in $me 1.0"; exit 0; }
 id=""
 # (The resume among the agent's own flags, wherever it is: `claude
 # --dangerously-skip-permissions --resume ID`, `codex --yolo resume ID`.)
@@ -32,8 +34,16 @@ case "$me" in
 esac
 mkdir -p "$d"
 printf '{"type":"start","agent":"%s","session":"%s","cwd":"%s","pid":%s,"args":"%s"}\n' "$me" "$id" "$(pwd)" "$$" "$*" >> "$f"
-# (Codex and agy keep theirs open, as the real ones do.)
-case "$me" in codex|agy) exec 9>> "$f" ;; esac
+# (Codex and agy keep theirs open, as the real ones do; Claude Code keeps
+# a record of each process of it, the session it is in by its pid, checked
+# by its start: ~/.claude/sessions/PID.json.)
+case "$me" in
+  codex|agy) exec 9>> "$f" ;;
+  claude)
+    start=$(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20)
+    mkdir -p "$HOME/.claude/sessions"
+    printf '{"pid":%s,"sessionId":"%s","cwd":"%s","procStart":"%s","kind":"interactive"}\n' "$$" "$id" "$(pwd)" "$start" > "$HOME/.claude/sessions/$$.json" ;;
+esac
 echo "stand-in $me, session $id, in $(pwd)"
 while IFS= read -r -e -p "$me> " line; do
   printf '{"type":"user","text":"%s"}\n' "$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')" >> "$f"
