@@ -8,7 +8,7 @@ FROM registry.fedoraproject.org/fedora:44
 # and sshd through PAM, so a login has its runtime folder and the user
 # manager starts: without, user@.service failed, "Trying to run as user
 # instance, but $XDG_RUNTIME_DIR is not set".)
-RUN dnf -y install --setopt=install_weak_deps=False openssh-server systemd systemd-pam dbus-broker sudo procps-ng iproute curl tar gzip findutils which hostname && dnf clean all
+RUN dnf -y install --setopt=install_weak_deps=False openssh-server openssh-clients systemd systemd-pam dbus-broker sudo procps-ng iproute curl tar gzip findutils which hostname && dnf clean all
 RUN mkdir -p /etc/ssh/sshd_config.d && printf 'UsePAM yes\n' > /etc/ssh/sshd_config.d/50-rig.conf && grep -q '^Include /etc/ssh/sshd_config.d' /etc/ssh/sshd_config || sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
 # (A cloud image has no polkit; nothing here pulls it in, and if a later
 # image does, it is taken out again.)

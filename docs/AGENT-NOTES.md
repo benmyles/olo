@@ -2692,6 +2692,18 @@ the command takes it: an agent's shell may leave a pipe open, and
   `SSH_AUTH_SOCK` and `OLO_REX_TEST_SETUP=login|personal`, and the
   container is removed with it. It reaches the network (Rex's installer,
   dnf). Never the person's host for a test that changes it.
+- **An Ubuntu 26.04 host beside it, and hosts that reach each other**
+  (2026-11-25, for moving an account): `ubuntu-host/Containerfile`
+  (`olo-rig-ubuntu2604`, built the same way; `ubuntu`, polkit, git,
+  rsync, as Ubuntu's server image), `farhost.py`'s `UbuntuHost`; both are
+  `ContainerHost`s, and given `network=` (a `rig_network()`, a docker
+  network of the rig's own, removed with its `with`) they reach each
+  other by their `name` on port 22, while this computer reaches each at
+  its `address` (a local port: never what one host should use for the
+  other). Stand-in agents for a host (`stand-ins/agent.sh`, linked as
+  `claude`, `codex` and `agy` in its `~/.local/bin`): each keeps a session
+  where the real one keeps its own, takes a resume among its own flags
+  and writes its arguments into its session's first line.
 - **The rig can put the helper behind its slow link** (`Rig(helper=
   True)`, `try.py order|timed --helper`): the link runs it for the
   control connection, as sshd would, with the scratch server's own

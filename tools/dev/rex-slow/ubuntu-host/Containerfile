@@ -1,0 +1,19 @@
+# An Ubuntu 26.04 host for the Rex rig (tools/dev/rex-slow/farhost.py,
+# UbuntuHost): as a cloud image has it, sshd and systemd, logind's PAM
+# module, the system bus and polkit, an account of its own that may use
+# sudo without a password (a cloud image's `ubuntu`); nothing of Rex's
+# until something sets it up. With rsync and git, as Ubuntu's server
+# image has them.
+FROM docker.io/library/ubuntu:26.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -q && apt-get install -y -q --no-install-recommends openssh-server systemd systemd-sysv libpam-systemd dbus polkitd sudo ca-certificates curl tar gzip zstd rsync git procps iproute2 less \
+ && rm -rf /var/lib/apt/lists/*
+RUN (id -u ubuntu > /dev/null 2>&1 || useradd -m -s /bin/bash ubuntu) \
+ && usermod -aG sudo ubuntu \
+ && echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-ubuntu \
+ && chmod 440 /etc/sudoers.d/90-ubuntu \
+ && mkdir -p -m 700 /home/ubuntu/.ssh && chown ubuntu:ubuntu /home/ubuntu/.ssh \
+ && systemctl enable ssh \
+ && rm -f /run/nologin /var/run/nologin
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

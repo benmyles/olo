@@ -21,6 +21,7 @@ pub mod data;
 pub mod error;
 pub mod helper;
 pub mod manage;
+pub mod migrate;
 pub mod model;
 pub mod plain;
 pub mod provision;
