@@ -2780,13 +2780,13 @@ impl RexHub {
     /// The host stays saved and its sessions go on on its server:
     /// Connect brings them back. Not this computer's own server, which
     /// Rex is nothing without.
-    pub fn disconnect_host(&self, host_key: &str) {
+    fn detach_host(&self, host_key: &str) -> Option<(olo_rex_client::SshTarget, Arc<olo_rex_client::SshSessionPool>)> {
         if host_key == "local" {
-            return;
+            return None;
         }
         let endpoint = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let Some(host) = st.hosts.get_mut(host_key) else { return };
+            let host = st.hosts.get_mut(host_key)?;
             // (The loop that keeps it connected ends at its next look:
             // it is no longer the one the host names.)
             if let Some(retry) = host.retry.take() {
@@ -2816,11 +2816,27 @@ impl RexHub {
                 let_go.push(host_key.to_owned());
             }
         }
-        if let Some(RexEndpoint::Ssh { target, pool, .. }) = endpoint {
-            self.rt.spawn(async move { pool.close(&target).await });
-        }
         self.inner.write_palette_index();
         (self.notify)(HubNotice::StateChanged);
+        match endpoint {
+            Some(RexEndpoint::Ssh { target, pool, .. }) => Some((target, pool)),
+            _ => None,
+        }
+    }
+
+    pub fn disconnect_host(&self, host_key: &str) {
+        if let Some((target, pool)) = self.detach_host(host_key) {
+            self.rt.spawn(async move { pool.close(&target).await });
+        }
+    }
+
+    /// Like [`Self::disconnect_host`], waiting for the host's SSH sessions to
+    /// finish closing before returning (so a caller that immediately opens a
+    /// fresh SSH command on the same pool doesn't race with `pool.close`).
+    pub async fn disconnect_host_and_wait(&self, host_key: &str) {
+        if let Some((target, pool)) = self.detach_host(host_key) {
+            pool.close(&target).await;
+        }
     }
 
     fn remove_host_as(&self, host_key: &str, tell_server: bool, tell_desktop: bool) {

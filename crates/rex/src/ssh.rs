@@ -762,6 +762,18 @@ impl SshSessionPool {
         Ok((link, channel))
     }
 
+    /// Drops `stale` from the primary slot if it is still the cached handle
+    /// there (leaving a fresher handle made by another task untouched).
+    async fn drop_stale(&self, target: &SshTarget, stale: &Arc<Handle<SshClientHandler>>) {
+        let slot = self.sessions.lock().await.get(target).cloned();
+        if let Some(slot) = slot {
+            let mut session = slot.lock().await;
+            if session.as_ref().is_some_and(|h| Arc::ptr_eq(h, stale)) {
+                *session = None;
+            }
+        }
+    }
+
     /// A session channel on the host (what a command there is run on).
     /// Everything Rex has on a host goes over one SSH connection, each
     /// stream to its server a session of it, and an SSH server opens
@@ -779,7 +791,18 @@ impl SshSessionPool {
         match handle.channel_open_session().await {
             Ok(channel) => return Ok(channel),
             Err(e) if sessions_full(&e) => {}
-            Err(e) => return Err(failed(e)),
+            Err(_) => {
+                // (A cached handle closed between reuse and channel open —
+                // e.g. an idle connection the server dropped during a long
+                // copy: drop that stale handle and reconnect once.)
+                self.drop_stale(target, &handle).await;
+                let fresh = self.get_or_connect(target, askpass.clone()).await?;
+                match fresh.channel_open_session().await {
+                    Ok(channel) => return Ok(channel),
+                    Err(e) if sessions_full(&e) => {}
+                    Err(e) => return Err(failed(e)),
+                }
+            }
         }
         // (One at a time: two things asked at once of a full connection
         // make one further connection between them, not two.)

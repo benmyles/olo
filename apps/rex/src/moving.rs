@@ -252,14 +252,18 @@ where
     crate::ui::move_changed();
 }
 
-/// A host of the hub's reached over SSH: its name here and where it is.
+/// A host of the hub's reached over SSH: its name here and where it is
+/// (falls back to its saved address when disconnected or held after a stop).
 fn ssh_host(hub: &RexHub, key: &str) -> Option<(String, SshTarget)> {
     let target = {
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         let host = st.hosts.get(key).filter(|h| !h.is_local)?;
         match &host.endpoint {
             Some(RexEndpoint::Ssh { target, .. }) => (host.label.clone(), target.clone()),
-            _ => return None,
+            _ => match crate::setup::address(&host.endpoint_raw) {
+                crate::setup::Address::Ssh(target) => (host.label.clone(), target),
+                _ => return None,
+            },
         }
     };
     Some((target.0, hub.with_agent(target.1)))
@@ -396,6 +400,17 @@ pub fn cancel(hub: &Arc<RexHub>) {
         });
         crate::ui::move_changed();
         return;
+    }
+    if !j.finished {
+        // (If the move failed after taking the pool off or disconnecting the
+        // source, put both back before forgetting the journal.)
+        if j.plan.had_pool && j.has("pool_off") {
+            let _ = crate::pool::act(&j.source, "install");
+        }
+        if crate::hub::let_go().iter().any(|h| h == &j.source) {
+            crate::hub::set_let_go(crate::hub::let_go().into_iter().filter(|h| *h != j.source).collect());
+            hub.connect_host(&j.source);
+        }
     }
     if !j.finished
         && j.has("allowed")
@@ -636,11 +651,9 @@ async fn run(hub: &Arc<RexHub>, mv: &Move, turn: u64, stop: &AtomicBool) -> Resu
             done("pool_off");
         }
         // (Held: never connected to again while the move goes on, nor at
-        // Rex's start.)
-        let mut held = crate::hub::let_go();
-        held.push(j0.source.clone());
-        crate::hub::set_let_go(held);
-        hub.disconnect_host(&j0.source);
+        // Rex's start. Wait for the host's SSH sessions to finish closing
+        // before running stop_source on the same pool.)
+        hub.disconnect_host_and_wait(&j0.source).await;
         let agents: Vec<u32> = plan.panes.iter().filter_map(|p| p.agent.as_ref().map(|a| a.pid)).collect();
         match migrate::stop_source(&mut s, crate::link::ID, &from, &id, &agents).await {
             Ok(left) if left.is_empty() => {}

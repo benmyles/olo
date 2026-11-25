@@ -192,8 +192,23 @@ fn an_account_moves_whole() {
         assert_eq!(claudes.len(), 2, "two Claude Code panes, each with its session: {session_of:?}");
         assert_ne!(claudes[0], claudes[1], "two Claude Code panes in one folder, each its own session");
         drop(sctrl);
+        // Mirror `hub.disconnect_host_and_wait`: close the SSH pool completely
+        // before running `stop_source`, and open a separate SSH connection to
+        // verify `stop_source` never kills SSH sessions.
+        src.runner.pool.close(&src.runner.target).await;
+        let other_ssh = Arc::new(SshSessionPool::default());
+        let other_target = src.runner.target.clone();
+        let other_handle = tokio::spawn({
+            let other_ssh = other_ssh.clone();
+            let other_target = other_target.clone();
+            async move { other_ssh.exec(&other_target, Some(Arc::new(Nobody)), "sleep 8 && echo ssh-survived", &mut |_| {}).await }
+        });
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let left = migrate::stop_source(&mut src.runner, id, &from, id, &agents).await.expect("the source stopped");
         assert!(left.is_empty(), "left running: {left:?}");
+        let other_ran = other_handle.await.expect("other ssh task").expect("other ssh session survived stop_source");
+        assert!(other_ran.ok() && other_ran.output.contains("ssh-survived"), "other SSH session should NOT be stopped: {other_ran:?}");
+        other_ssh.close(&other_target).await;
         let crontab = migrate::saved_crontab(&mut src.runner, &from, id).await.expect("its crontab read");
         step(&format!("the source stopped{}", if crontab.is_some() { ", its crontab saved" } else { "" }));
         migrate::allow(&mut dst.runner, id, id, &public, var_tmp).await.expect("the key's day put off");

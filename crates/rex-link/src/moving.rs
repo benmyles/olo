@@ -1769,6 +1769,7 @@ fn fatal_dest_error(stderr: &str) -> bool {
         "no space left on device",
         "read-only file system",
         "disk quota exceeded",
+        "input/output error",
         "mkstemp",
         "isn't somewhere this move may write",
         "not something a move's key may ask",
@@ -2132,8 +2133,8 @@ async fn send_part(s: std::sync::Arc<Sending>, ssh: PathBuf, rsync: PathBuf, par
                         }
                         break;
                     }
-                    23 if s.pass == 1 && !fatal_dest_error(&err_text) => {
-                        // (Live Pass 1: unreadable or mid-change source file; Pass 2 checks cleanly.)
+                    23 if !fatal_dest_error(&err_text) => {
+                        // (Live source: unreadable or mid-change source file; fatal destination errors still abort above.)
                         let msg = err_text.lines().find(|l| !l.trim().is_empty()).unwrap_or("some files could not be read").trim();
                         res.warnings.push(msg.to_owned());
                         break;
@@ -2259,16 +2260,51 @@ pub(crate) fn all_procs() -> Vec<Proc> {
 
 /// What stopping leaves alone of the account's: the account's own
 /// systemd and what it keeps for it (its PAM half, its bus: `systemctl
-/// --user` must still answer, to put things back), and what is gone
-/// already (a zombie).
+/// --user` must still answer, to put things back), standard system user
+/// daemons (ssh-agent, gpg-agent, accessibility/audio), SSH sessions
+/// (`under_sshd`), and what is gone already (a zombie).
 fn spared_kind(p: &Proc) -> bool {
-    p.user_manager || p.comm == "(sd-pam)" || matches!(p.comm.as_str(), "dbus-broker" | "dbus-broker-lau" | "dbus-daemon") || p.state == 'Z'
+    p.user_manager
+        || p.comm == "(sd-pam)"
+        || matches!(
+            p.comm.as_str(),
+            "dbus-broker"
+                | "dbus-broker-lau"
+                | "dbus-daemon"
+                | "sshd"
+                | "sshd-session"
+                | "ssh-agent"
+                | "gpg-agent"
+                | "dirmngr"
+                | "keyboxd"
+                | "at-spi-bus-laun"
+                | "pipewire"
+                | "wireplumber"
+                | "pulseaudio"
+        )
+        || p.state == 'Z'
+}
+
+/// Whether `pid` is an SSH server session (`sshd` / `sshd-session`) or a
+/// live descendant of one: a move stops Rex, agents, services and
+/// background work on the old host, never SSH logins or connections to it.
+fn under_sshd(procs: &[Proc], mut pid: i32) -> bool {
+    let mut seen = HashSet::new();
+    while pid > 1 && seen.insert(pid) {
+        let Some(p) = procs.iter().find(|p| p.pid == pid) else { break };
+        if matches!(p.comm.as_str(), "sshd" | "sshd-session") {
+            return true;
+        }
+        pid = p.ppid;
+    }
+    false
 }
 
 /// The processes stopping would end: the account's, but `keep` (this
-/// helper's own line of parents and those spared) and the spared kinds.
+/// helper's own line of parents and those spared), active SSH sessions
+/// (`under_sshd`), and the spared kinds.
 fn to_stop(procs: &[Proc], uid: u32, keep: &HashSet<i32>) -> Vec<i32> {
-    procs.iter().filter(|p| p.uid == uid && !keep.contains(&p.pid) && !spared_kind(p)).map(|p| p.pid).collect()
+    procs.iter().filter(|p| p.uid == uid && !keep.contains(&p.pid) && !spared_kind(p) && !under_sshd(procs, p.pid)).map(|p| p.pid).collect()
 }
 
 /// This process and its parents, up to the first not the account's (sshd's
@@ -3062,8 +3098,9 @@ mod tests {
         assert_eq!(asked(&command_for(&ask)), Some(Asked::Forget { root: "/home/f".into() }));
     }
 
-    /// Stopping spares this process's own line of parents and the
-    /// account's systemd, and ends the rest of the account's.
+    /// Stopping spares this process's own line of parents, the account's
+    /// systemd and session daemons, and any other SSH login sessions (and
+    /// their children), and ends Rex, agents, and stray background work.
     #[test]
     fn stopping_spares_its_own_line() {
         let p = |pid, ppid, uid, comm: &str, state, user_manager| Proc { pid, ppid, uid, comm: comm.into(), state, user_manager };
@@ -3073,17 +3110,24 @@ mod tests {
             p(600, 500, 1000, "sshd-session", 'S', false),
             p(601, 600, 1000, "sh", 'S', false),
             p(602, 601, 1000, "olo-rex-link", 'R', false),
+            // Another live SSH session and its shell/command: must NOT be stopped.
+            p(650, 500, 1000, "sshd-session", 'S', false),
+            p(651, 650, 1000, "bash", 'S', false),
+            p(652, 651, 1000, "vim", 'S', false),
             p(700, 1, 1000, "systemd", 'S', true),
             p(701, 700, 1000, "(sd-pam)", 'S', false),
             p(702, 700, 1000, "dbus-broker", 'S', false),
+            p(703, 700, 1000, "ssh-agent", 'S', false),
+            p(704, 700, 1000, "at-spi-bus-laun", 'S', false),
             p(800, 700, 1000, "rex", 'S', false),
             p(801, 800, 1000, "claude", 'S', false),
             p(802, 800, 1000, "defunct", 'Z', false),
+            p(803, 700, 1000, "python3", 'S', false),
             p(900, 1, 1001, "bash", 'S', false),
         ];
         let keep = own_line(&procs, 602);
         assert_eq!(keep, HashSet::from([602, 601, 600, 500]));
-        assert_eq!(to_stop(&procs, 1000, &keep), vec![800, 801]);
+        assert_eq!(to_stop(&procs, 1000, &keep), vec![800, 801, 803]);
     }
 
     /// What a host says of itself is read from its own files: its system

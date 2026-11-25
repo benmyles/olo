@@ -1308,19 +1308,11 @@ pub fn render_move_panel(mv: &crate::moving::Move, phase: f32, on_do: impl Fn(&M
                 there.push(secondary(olo_kit::tr!("Your sign-ins in the Token Pool move to {}.", to).to_string()).into_element());
             }
             // On the old host: when it stops, and what stops with it.
-            let mut after = vec![
+            let after = vec![
                 body(olo_kit::tr!("You can keep using {} while your files are copied. Then it stops for good, after a last copy of what changed; its files are kept.", from).to_string())
                     .into_element(),
-                secondary(olo_kit::words::tr("Stopped with it: sessions, services, timers, crontab and the Rex server.").to_string()).into_element(),
+                secondary(olo_kit::words::tr("Stopped with it: Rex, agents, services, timers and crontab (SSH stays up).").to_string()).into_element(),
             ];
-            if plan.from.other_logins > 0 {
-                after.push(
-                    StringView::new(olo_kit::tr!("Someone is signed in to {} with a terminal: what they run is stopped too.", from).to_string())
-                        .color(style::c(theme::palette().warning))
-                        .wrap(true)
-                        .into_element(),
-                );
-            }
             col()
                 .child(title(olo_kit::tr!("Move {} to {}", from, to).into()))
                 .child(group(true, olo_kit::words::tr("Hosts").to_string(), hosts))

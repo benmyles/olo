@@ -482,7 +482,7 @@ pub fn stop_script(from: &Facts, dir: &str, agents: &[u32], helper: &str) -> Str
         s.push_str("podman stop -a -t 10 > /dev/null 2>&1\n");
     }
     if from.has("systemctl") {
-        s.push_str("systemctl --user stop rex.service 2> /dev/null; systemctl --user disable rex.service 2> /dev/null\n");
+        s.push_str("systemctl --user stop rex.socket rex.service 2> /dev/null; systemctl --user disable rex.socket rex.service 2> /dev/null\n");
     }
     s.push_str("true\n");
     s
@@ -857,7 +857,14 @@ async fn ran<R: crate::provision::Runner>(host: &mut R, command: &str) -> Result
     let ran = host.run(false, command, &mut |_| {}).await.map_err(|f| f.why)?;
     match ran.status {
         Some(0) => Ok(ran.output),
-        _ => Err(ran.output.lines().last().unwrap_or("it ended badly").to_owned()),
+        status => {
+            let last = ran.output.lines().rev().find(|l| !l.trim().is_empty()).map(str::trim);
+            Err(match (last, status) {
+                (Some(line), _) => line.to_owned(),
+                (None, None) => "the SSH connection closed before the command finished".to_owned(),
+                (None, Some(code)) => format!("command exited with status {code}"),
+            })
+        }
     }
 }
 
@@ -1435,7 +1442,7 @@ pub fn pane_runs(captured: &CapturedSession, panes: &[Pane], path: &dyn Fn(&str)
 }
 
 fn is_shell(name: &str) -> bool {
-    matches!(name.trim_start_matches('-'), "bash" | "zsh" | "fish" | "sh" | "dash" | "ksh" | "tcsh" | "csh" | "nu" | "xonsh")
+    matches!(name.trim_start_matches('-'), "bash" | "zsh" | "fish" | "sh" | "dash" | "ksh" | "tcsh" | "csh" | "nu" | "xonsh" | "brush")
 }
 
 /// A command line as a shell takes it: each word quoted where it must be.
@@ -1809,7 +1816,7 @@ mod tests {
         assert!(s.contains("worker@1.service") && !s.contains("worker@.service") && s.contains("web.service"), "instances and Quadlets, never a template: {s}");
         assert!(at("stop rex.socket") < at("kill -TERM 801 802"));
         assert!(at("kill -TERM 801 802") < at("HELPER move codex-stop"));
-        assert!(at("tmux kill-server") < at("stop rex.service"));
+        assert!(at("tmux kill-server") < at("stop rex.socket rex.service"));
         assert!(!s.contains("dbus") && !s.contains("linger") && !s.contains("olo-pool"), "{s}");
     }
 
@@ -2032,6 +2039,7 @@ mod tests {
                 CapturedPane { block_id: "b2".into(), pid: Some(20), foreground: Some(20), cwd: "/home/ubuntu".into(), ..CapturedPane::default() },
                 CapturedPane { block_id: "b3".into(), pid: Some(30), foreground: Some(31), cwd: "/home/ubuntu/proj-b".into(), ..CapturedPane::default() },
                 CapturedPane { block_id: "b4".into(), pid: Some(40), foreground: Some(40), cwd: "/home/ubuntu".into(), ..CapturedPane::default() },
+                CapturedPane { block_id: "b5".into(), pid: Some(50), foreground: Some(50), cwd: "/home/ubuntu".into(), ..CapturedPane::default() },
             ],
             ..CapturedSession::default()
         };
@@ -2052,6 +2060,7 @@ mod tests {
             Pane { pid: 20, tree: vec![prog(20, &["tail", "-f", "/home/ubuntu/todo.txt"])], agent: None },
             Pane { pid: 30, tree: vec![prog(30, &["bash"]), prog(31, &["git", "push"])], agent: None },
             Pane { pid: 40, tree: vec![prog(40, &["bash", "-l"])], agent: None },
+            Pane { pid: 50, tree: vec![prog(50, &["-brush"])], agent: None },
         ];
         let path = |p: &str| p.replace("/home/ubuntu", "/home/fedora");
         let (runs, agents, run_it) = pane_runs(&captured, &panes, &path);
@@ -2061,6 +2070,7 @@ mod tests {
         assert_eq!((run_it["b1"], run_it["b2"], run_it["b3"]), (true, true, false), "a viewer runs again; git push is only typed");
         assert_eq!(runs["b3"].command.as_deref(), Some(["git", "push"].map(String::from).as_slice()));
         assert_eq!(runs["b4"].command, None);
+        assert_eq!(runs["b5"].command, None);
         assert_eq!(command_text(&["tail".into(), "-f".into(), "/home/fedora/my todo.txt".into()]), "tail -f '/home/fedora/my todo.txt'");
         // (`watch` runs its command again and again: never run again; the
         // work list's viewer is.)
