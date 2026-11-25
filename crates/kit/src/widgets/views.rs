@@ -22,6 +22,8 @@ pub struct StringView {
     size: f32,
     /// The size of the text it sits beside, whose baseline it's drawn on.
     beside: Option<f32>,
+    /// On a paragraph's line this tall ([`StringView::line`]).
+    line: Option<f32>,
 }
 
 impl StringView {
@@ -38,6 +40,7 @@ impl StringView {
             cut_words: false,
             size: style::PLAIN_SIZE,
             beside: None,
+            line: None,
         }
     }
 
@@ -48,6 +51,18 @@ impl StringView {
     /// 11: the layout review's "near-level").
     pub fn beside(mut self, size: f32) -> Self {
         self.beside = Some(size);
+        self
+    }
+
+    /// `points` tall, its words where a paragraph's line that tall has
+    /// them (`style::paragraph_baseline`): a label beside a paragraph (a
+    /// value that may wrap, set `points` lower than its row's top as the
+    /// label is), on its first line at every scale. Centred, About Olo's
+    /// labels stood a point below their values at 1× and 2× (level at
+    /// 1.5×). [`LinkButton::line`](super::LinkButton::line) for a link.
+    pub fn line(mut self, points: f32) -> Self {
+        self.line = Some(points);
+        self.height = points;
         self
     }
 
@@ -163,14 +178,15 @@ impl IntoElement for StringView {
             .h(px(self.height));
         }
         let w = f32::from(style::text_width(self.text.clone(), size, font.clone())).ceil();
-        let (text, dim, color, height, beside) = (self.text, self.dim, self.color, self.height, self.beside);
-        let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, mono, beside.map(f32::to_bits)));
+        let (text, dim, color, height, beside, line) = (self.text, self.dim, self.color, self.height, self.beside, self.line);
+        let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, mono, beside.map(f32::to_bits), line.map(f32::to_bits)));
         canvas(move |g, b| {
             let p = theme::palette();
             let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
-            let r = match beside {
-                Some(of) => style::label_on_baseline(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, font.clone(), ink),
-                None => style::label(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, font.clone(), ink),
+            let r = match (line, beside) {
+                (Some(h), _) => style::label_on_baseline(g, b.left(), style::paragraph_baseline(g, b.top(), h, size, font.clone()), style::Align::Left, text.clone(), size, font.clone(), ink),
+                (None, Some(of)) => style::label_on_baseline(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, font.clone(), ink),
+                (None, None) => style::label(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, font.clone(), ink),
             };
             g.agent(agent::Node::label(text.clone(), r));
         })

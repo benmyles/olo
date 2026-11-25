@@ -174,6 +174,44 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **About Olo, what its reviewers found there before Check Now's row**
+  (2026-11-25, Astra 6.2 and Opus 5.5 over three rounds):
+  - Words left in English in other languages: "Both title tabs still say
+    'About Olo Desktop,' and both uptime rows say '2 days, 5 hours' beside
+    a translated label" (Astra; `uptime_text` isn't through the words
+    layer, nor, it seems, a panel's window title); French "En marche :"
+    "reads oddly. Use 'Allumé depuis :'" (Opus).
+  - "The availability message identifies '2026.11.24 (update 2),' while
+    the Release field says '2026.11.24 (installed).' The shared date makes
+    it hard to tell which update is already installed. Include the
+    installed revision in the field" (Astra; Opus: "Make the difference
+    stand out").
+  - "'Not running under olo-session.' gives an internal session name as
+    the only explanation for the disabled controls. Use wording that
+    explains what the session enables, such as 'Updates and restart
+    require an Olo session'" (Astra; Opus: "Nothing explains why the
+    Software Update controls are greyed").
+  - The facts well: "Machine / Processor / Memory / Kernel / Uptime sit
+    about 34 pt apart … Bring the well down to a 22–24 pt pitch"; "The
+    info well isn't sunken … Either give it the real sunken-well bevel …
+    or accept that it's a frame" (Opus).
+  - "Disabled buttons in dark mode: the fill is darker than the panel, so
+    they look like sunken wells … keep the raised fill and bevel and dim
+    only the label" (Opus: the kit's, every window's).
+  - "The ring's leftmost edge is about 2 pt inside the boxes' left edge …
+    line it up with the box edge or move it to the 13.5 pt text inset"
+    (Opus).
+  - "The release picker ends well short of Install… Widen the picker to
+    leave about the same gap before Install… as after it" (Astra; Opus:
+    "acceptable"): a pop-up that can fill its row is the kit's to give.
+  - Not taken, with why: "Update & Restart" for "Upgrade & Restart" (Opus:
+    one word for one action; Olo's word for taking a newer release is
+    Upgrade, in Deskbar's tray and the session's own); a default frame on
+    Upgrade & Restart (Return must never start an install and a restart;
+    a frame that doesn't take Return would mislead); Restart Olo's right
+    edge on the column's rather than the box's (Astra; Opus asked for the
+    box's); a Stop while it installs (it can't stop halfway).
+
 - **Tracker: a folder opens in the window it is opened from, and its
   columns are sized one by one, per folder** (Ben, 2026-11-25: "in
   tracker when opening a folder it shouldn't open it in a new window it

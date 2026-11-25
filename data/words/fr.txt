@@ -2225,8 +2225,8 @@ Vérifier rapidement que les sauvegardes choisies sont complètes : tout ce qu
 Checked
 Vérifié
 
-Checked {}
-Vérifié {}
+Checked {}.
+Vérifié {}.
 
 Checking for updates…
 Recherche de mises à jour…
@@ -8169,9 +8169,6 @@ Olo recherche une version plus récente toutes les heures.
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo recherche une version plus récente deux minutes après son démarrage, puis toutes les heures.
 
-Olo restarts once it's installed.
-Olo redémarre une fois l’installation terminée.
-
 Olo saying its name
 Olo qui dit son nom
 
@@ -10037,6 +10034,9 @@ Serveur Rex
 Rex Server on {}
 Serveur Rex sur {}
 
+Rex Settings…
+Réglages de Rex…
+
 Rex adds these entries to {} as {}:
 Rex ajoute ces entrées à {} en tant que {} :
 
@@ -10430,6 +10430,9 @@ Rechercher : mots, program:, level:, since:
 
 Searching…
 Recherche…
+
+Second
+Deuxième
 
 Second folder
 Deuxième dossier
@@ -13220,6 +13223,9 @@ Mise à jour…
 
 Upgrade
 Mettre à niveau
+
+Upgrade & Restart
+Mettre à jour et redémarrer
 
 Upgrade Fedora
 Mettre à niveau Fedora

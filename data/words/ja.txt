@@ -2218,8 +2218,8 @@ Check the backups chosen are whole, quickly: everything they need there, the sto
 Checked
 確認済み
 
-Checked {}
-確認：{}
+Checked {}.
+{}に確認しました。
 
 Checking for updates…
 アップデートを確認中…
@@ -8143,9 +8143,6 @@ Oloは1時間ごとに新しいリリースを確認します。
 Olo looks for a newer release two minutes after it starts, then every hour.
 Oloは起動の2分後、その後は1時間ごとに新しいリリースを確認します。
 
-Olo restarts once it's installed.
-インストール完了後、Oloが再起動します。
-
 Olo saying its name
 Oloが名前を読み上げる音
 
@@ -10009,6 +10006,9 @@ Rexサーバー
 Rex Server on {}
 {}のRexサーバー
 
+Rex Settings…
+Rexの設定…
+
 Rex adds these entries to {} as {}:
 Rexは{1}として{0}に次の項目を追加します：
 
@@ -10401,6 +10401,9 @@ Search: words, program:, level:, since:
 
 Searching…
 検索中…
+
+Second
+2台目
 
 Second folder
 2番目のフォルダー
@@ -13188,6 +13191,9 @@ Updating…
 
 Upgrade
 アップグレード
+
+Upgrade & Restart
+アップグレードして再起動
 
 Upgrade Fedora
 Fedoraをアップグレード

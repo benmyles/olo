@@ -2225,8 +2225,8 @@ Check the backups chosen are whole, quickly: everything they need there, the sto
 Checked
 जाँचा गया
 
-Checked {}
-{} जाँचा गया
+Checked {}.
+{} जाँचा गया।
 
 Checking for updates…
 अपडेट जाँचे जा रहे हैं…
@@ -8169,9 +8169,6 @@ Olo हर घंटे नया संस्करण खोजता है�
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo शुरू होने के दो मिनट बाद और फिर हर घंटे नया संस्करण खोजता है।
 
-Olo restarts once it's installed.
-इंस्टॉल होते ही Olo रीस्टार्ट होता है।
-
 Olo saying its name
 Olo के नाम की आवाज़
 
@@ -10037,6 +10034,9 @@ Rex सर्वर
 Rex Server on {}
 {} पर Rex सर्वर
 
+Rex Settings…
+Rex सेटिंग…
+
 Rex adds these entries to {} as {}:
 Rex {1} के रूप में {0} में ये प्रविष्टियाँ जोड़ता है:
 
@@ -10430,6 +10430,9 @@ Search: words, program:, level:, since:
 
 Searching…
 खोजा जा रहा है…
+
+Second
+दूसरा
 
 Second folder
 दूसरा फ़ोल्डर
@@ -13220,6 +13223,9 @@ Updating…
 
 Upgrade
 अपग्रेड करें
+
+Upgrade & Restart
+अपग्रेड और रीस्टार्ट करें
 
 Upgrade Fedora
 Fedora अपग्रेड करें

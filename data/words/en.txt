@@ -737,7 +737,7 @@ Check for Updates
 Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Checked
-Checked {}
+Checked {}.
 Checking for updates…
 Checking out {} of {} files
 Checking sudo on {}…
@@ -2712,7 +2712,6 @@ Olo is up to date.
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo looks for a newer release every hour.
 Olo looks for a newer release two minutes after it starts, then every hour.
-Olo restarts once it's installed.
 Olo saying its name
 Olo's Choice
 Olo's boot splash
@@ -3334,6 +3333,7 @@ Rewriting index.db…
 Rex
 Rex Server
 Rex Server on {}
+Rex Settings…
 Rex adds these entries to {} as {}:
 Rex and Olo on this host.
 Rex and Olo there:
@@ -3465,6 +3465,7 @@ Search: name, command, user:, state:, kind:
 Search: names, CVEs, kind:, severity:, repo:
 Search: words, program:, level:, since:
 Searching…
+Second
 Second folder
 Secondary click (three: middle)
 Section
@@ -4394,6 +4395,7 @@ Updates
 Updates are downloaded and wait for the computer to restart: they’re installed then.
 Updating…
 Upgrade
+Upgrade & Restart
 Upgrade Fedora
 Upgrade Olo
 Upgrade to Fedora {}

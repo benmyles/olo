@@ -305,7 +305,7 @@ impl Panel {
             Panel::Tracker => (300, 222),
             Panel::Windows => (760, 420),
             Panel::Workspaces => (360, 230),
-            Panel::About => (444, 392),
+            Panel::About => (crate::about::window_width(), 392),
         }
     }
 

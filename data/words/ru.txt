@@ -2239,8 +2239,8 @@ Check the backups chosen are whole, quickly: everything they need there, the sto
 Checked
 Проверено
 
-Checked {}
-Проверено {}
+Checked {}.
+Проверено {}.
 
 Checking for updates…
 Поиск обновлений…
@@ -8221,9 +8221,6 @@ Olo проверяет наличие новых выпусков каждый �
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo проверяет наличие новых выпусков через две минуты после запуска, а затем каждый час.
 
-Olo restarts once it's installed.
-После установки Olo перезапустится.
-
 Olo saying its name
 Голос произносит «Olo»
 
@@ -10093,6 +10090,9 @@ Rex Server
 Rex Server on {}
 Сервер Rex на {}
 
+Rex Settings…
+Настройки Rex…
+
 Rex adds these entries to {} as {}:
 Rex добавит эти записи в {} от имени {}:
 
@@ -10488,6 +10488,9 @@ Search: words, program:, level:, since:
 
 Searching…
 Поиск…
+
+Second
+Вторая
 
 Second folder
 Вторая папка
@@ -13284,6 +13287,9 @@ Updating…
 
 Upgrade
 Обновить
+
+Upgrade & Restart
+Обновить и перезапустить
 
 Upgrade Fedora
 Обновить Fedora

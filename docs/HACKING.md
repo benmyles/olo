@@ -3171,7 +3171,10 @@ it.
   the options come from data: names a person or a service makes run
   past any window that holds them as boxes),
   `TextControl` (label, divider,
-  the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
+  the sunken well around a `TextField`), `StringView` (`dim`, `bold`;
+  `line(height)` a label beside a paragraph, on its first line's
+  baseline as `LinkButton::line` is: About Olo's labels beside values
+  that may wrap, which centred stood a point low at 1× and 2×),
   `BBox` (etched frame, bold label in its top line, `content_width`,
   `action` for a `LinkButton` at the top line's end, `grow` for a box
   with a list in it: it takes the height the window's designed size

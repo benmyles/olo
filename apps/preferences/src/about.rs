@@ -84,6 +84,30 @@ impl State {
             *update.lock().unwrap() = test_update();
             return State { facts, update, chosen: None, _watch: None, restarted: None, error: None, ticking: false };
         }
+        // (Pictures of the update's states: `OLO_PREFS_DEMO_UPDATE=newer`,
+        // the tests' release, a newer one out; `current`, none newer;
+        // `installing`, the newer one going in; `first`, not looked yet;
+        // this machine's own facts.
+        // A build from source has no release, so shows none of them.)
+        if let Some(demo) = std::env::var("OLO_PREFS_DEMO_UPDATE").ok() {
+            let mut u = test_update();
+            match demo.as_str() {
+                "current" => {
+                    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                    u.heard = serde_json::json!({ "at": now.saturating_sub(300), "newer": false });
+                }
+                "installing" => u.available = serde_json::json!({ "installing": { "version": "v2026.11.24.2", "doing": "downloading", "fraction": 0.42 } }),
+                "first" => u.heard = serde_json::json!({}),
+                _ => {}
+            }
+            *update.lock().unwrap() = u;
+            let (out, proxy) = (facts.clone(), olo_kit::proxy());
+            std::thread::spawn(move || {
+                *out.lock().unwrap() = Some(gather());
+                proxy.send(Msg::Redraw);
+            });
+            return State { facts, update, chosen: None, _watch: None, restarted: None, error: None, ticking: false };
+        }
         let (out, proxy) = (facts.clone(), olo_kit::proxy());
         std::thread::spawn(move || {
             *out.lock().unwrap() = Some(gather());
@@ -279,6 +303,21 @@ pub fn uptime_text(d: Duration) -> String {
     parts.join(", ")
 }
 
+/// How long until what the window says of time changes: its uptime
+/// (to the second in its first hour, the minute in its first day, the
+/// hour after), and how long ago Olo looked for a release (to the minute
+/// in the first hour, the hour after). Woken then, not each second.
+fn next_change(up: Duration, looked_ago: Option<Duration>) -> Duration {
+    let until = |d: Duration, step: u64| Duration::from_secs(step) - Duration::from_nanos((d.as_nanos() % (u128::from(step) * 1_000_000_000)) as u64);
+    let uptime = match up.as_secs() {
+        0..3600 => until(up, 1),
+        3600..86400 => until(up, 60),
+        _ => until(up, 3600),
+    };
+    let looked = looked_ago.map(|ago| if ago.as_secs() < 3600 { until(ago, 60) } else { until(ago, 3600) });
+    uptime.min(looked.unwrap_or(Duration::MAX)).max(Duration::from_millis(20))
+}
+
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let dark = theme::palette().mode == olo_kit::palette::ThemeMode::Dark;
     let word_w = brand::wordmark_width(30.0, dark);
@@ -300,30 +339,41 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     };
     ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(icon).child(div().flex().flex_col().pt(px(6.0)).child(title).child(StringView::new(version_line(&st.update.lock().unwrap())).dim(true))));
     let facts = st.facts.lock().unwrap().clone();
+    let up = facts.as_ref().and_then(|f| f.uptime).map(|(d, at)| d + at.elapsed());
     let rows = ui.collect(|ui| {
         let Some(f) = facts else {
             ui.note("Looking…");
             return;
         };
         let uptime = f.uptime.map(|(d, at)| uptime_text(d + at.elapsed())).unwrap_or_default();
+        // (Each value a paragraph that may wrap, its label on its first
+        // line: the same top, the line as tall as the paragraph's.)
+        let top = (m::CONTROL_HEIGHT - style::line_row(style::PLAIN_SIZE)) / 2.0;
+        let line = style::PLAIN_SIZE * style::LINE_HEIGHT;
         for (label, value) in [("Machine:", &f.machine), ("Processor:", &f.processor), ("Memory:", &f.memory), ("Kernel:", &f.kernel), ("Uptime:", &uptime)] {
             // The label right-aligned in its column, as BeOS's.
             ui.add(
                 div()
                     .flex()
                     .flex_row()
-                    .child(div().w(px(90.0)).flex_shrink_0().flex().justify_end().pr(px(m::LABEL_GAP)).child(StringView::new(label)))
+                    .min_h(px(m::CONTROL_HEIGHT))
+                    .child(div().w(px(90.0)).flex_shrink_0().flex().justify_end().pr(px(m::LABEL_GAP)).pt(px(top)).child(StringView::new(label).line(line)))
                     // (A long name wraps, under itself: a ThinkPad's model,
                     // a kernel's build.)
-                    .child(div().flex_1().min_w(px(0.0)).pt(px((m::CONTROL_HEIGHT - style::line_row(style::PLAIN_SIZE)) / 2.0)).child(StringView::new(value.clone()).wrap(true))),
+                    .child(div().flex_1().min_w(px(0.0)).pt(px(top)).child(StringView::new(value.clone()).wrap(true))),
             );
         }
     });
     ui.add(BBox::plain().children(rows));
-    // Uptime counts seconds.
+    // The uptime, and how long ago Olo looked, as they change.
     if !st.ticking {
         st.ticking = true;
-        ui.cx.after_do(Duration::from_secs(1), |v, cx| {
+        let looked = st.update.lock().unwrap().heard["at"].as_u64().map(|at| {
+            let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+            now.saturating_sub(Duration::from_secs(at))
+        });
+        let wait = up.map_or(Duration::from_secs(1), |up| next_change(up, looked));
+        ui.cx.after_do(wait, |v, cx| {
             if let Some(st) = state_of(v) {
                 st.ticking = false;
             }
@@ -356,20 +406,82 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             .gap(px(m::SPACING))
             .child(StringView::new(note).dim(true))
             // (Not while a release installs: a restart halfway through.)
-            .child(Button::new("Restart Olo").enabled(pid.is_some() && !settling && !st.update.lock().unwrap().available["installing"].is_object()).on_click(restart_now)),
+            .child(Button::new("Restart Olo").min_width(update_button()).enabled(pid.is_some() && !settling && !st.update.lock().unwrap().available["installing"].is_object()).on_click(restart_now)),
     );
 }
 
 /// The width of the box's buttons: one column, whichever is there.
-const UPDATE_BUTTON: f32 = 88.0;
+fn update_button() -> f32 {
+    // (One column of buttons, as wide as its widest in the language shown:
+    // Check Now under Upgrade & Restart, Install… under it, and Restart Olo
+    // below the box as wide. Measured once for each language: the box is
+    // drawn again each second the window is open, for its uptime.)
+    thread_local! {
+        static KEPT: std::cell::Cell<Option<(&'static str, f32)>> = const { std::cell::Cell::new(None) };
+    }
+    let code = olo_kit::words::current().code;
+    KEPT.with(|kept| match kept.get() {
+        Some((of, width)) if of == code => width,
+        _ => {
+            let width = UPDATE_BUTTONS.iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(88.0, f32::max);
+            kept.set(Some((code, width)));
+            width
+        }
+    })
+}
+
+const UPDATE_BUTTONS: [&str; 4] = ["Check Now", "Upgrade & Restart", "Install…", "Restart Olo"];
+
+/// The window's width: its widest row in the language shown (each state's
+/// words, a release's title as long as they come, the release menu), the
+/// column of buttons beside it, 444 at least. Wider than English's where a
+/// language needs it: German's "Aktualisieren und neu starten" left its
+/// headline 444 points, cut short; widened by the column alone, a hair
+/// from its button.
+pub fn window_width() -> u32 {
+    let font = style::ui_font(olo_kit::FontWeight::NORMAL);
+    let w = |s: &str| f32::from(style::text_width(s.to_owned(), style::PLAIN_SIZE, font.clone())).ceil();
+    let tr = |s: &'static str| olo_kit::words::tr(s).to_string();
+    let release = "Olo 2026.12.31 (update 20)";
+    let doing = ["Downloading", "Unpacking", "Putting it in place"].iter().map(|d| w(&olo_kit::tr!("{}, {}%", tr(d), 100))).fold(0.0, f32::max);
+    let installing = w(&olo_kit::tr!("Installing {}…", release)) + m::SPACING + doing;
+    let menu = w(&tr("Release:")) + m::LABEL_GAP + w(&olo_kit::tr!("{} (installed)", release)) + 2.0 * m::CONTROL_PAD + olo_kit::widgets::MENU_MARK_ROOM;
+    let rows = [
+        olo_kit::tr!("{} is available.", release).to_string(),
+        tr("Olo is up to date."),
+        tr("Looking for a newer release…"),
+        tr("Couldn't check for a newer release."),
+        tr("The last install didn't go through."),
+        tr("Olo looks for a newer release every hour."),
+        tr("The first look is two minutes after it starts."),
+        olo_kit::tr!("Checked {}.", olo_kit::words::count(59, "1 minute ago", "{n} minutes ago")).to_string(),
+    ];
+    // (Each row's words beside the column of buttons, but what installs and
+    // how far: no button beside that, the box's whole width.)
+    let text = rows.iter().map(|r| w(r)).fold(menu, f32::max) + m::SPACING + update_button();
+    (2.0 * (m::WINDOW_INSET + m::BOX_INSET) + text.max(installing)).max(444.0).ceil() as u32
+}
 
 /// What the status part of Software Update says: a line and its detail
 /// under it (two lines in every state, so nothing below moves as it
 /// changes; Opus's review, 2026-11-24), and its button; or an install's
 /// bar.
 enum Status {
-    Line { title: String, detail: String, action: Option<(&'static str, &'static str)> },
-    Installing { title: String, detail: String, fraction: f32 },
+    /// Two rows: what there is (and its action: Upgrade & Restart), then
+    /// the check (when Olo last looked, or why it couldn't) beside Check
+    /// Now, the same row in every state (each row's words go with its
+    /// button: the restart note beside Check Again read as one sentence).
+    Line {
+        title: String,
+        action: Option<(&'static str, &'static str)>,
+        checked: String,
+        can_check: bool,
+    },
+    Installing {
+        title: String,
+        detail: String,
+        fraction: f32,
+    },
 }
 
 /// Software Update: whether there's newer (and installing it), and the
@@ -388,7 +500,7 @@ fn software_update(ui: &mut Ui, st: &mut State) {
         }
         // (A release chosen by its tag says its tag: named by the list.)
         let named = |v: &str| releases.and_then(|rs| rs.iter().find(|r| r.tag == v || r.version == v)).map_or_else(|| v.to_owned(), |r| r.title.clone());
-        let check = Some(("Check Now", "check"));
+        let checked = u.heard["at"].as_u64().map(|at| olo_kit::tr!("Checked {}.", ago(at)).to_string()).unwrap_or_default();
         let installing = u.available["installing"].clone();
         let status = if busy {
             let doing = match installing["doing"].as_str() {
@@ -403,57 +515,76 @@ fn software_update(ui: &mut Ui, st: &mut State) {
                 fraction,
             }
         } else if let Some(failed) = u.available["failed"].as_str() {
-            Status::Line { title: olo_kit::words::tr("The last install didn't go through.").into(), detail: failed.to_owned(), action: check }
+            Status::Line { title: olo_kit::words::tr("The last install didn't go through.").into(), action: None, checked: failed.to_owned(), can_check: true }
         } else if u.heard["asking"].as_bool() == Some(true) {
-            Status::Line { title: olo_kit::words::tr("Looking for a newer release…").into(), detail: String::new(), action: None }
+            Status::Line { title: olo_kit::words::tr("Looking for a newer release…").into(), action: None, checked, can_check: false }
         } else if let Some(e) = u.heard["error"].as_str() {
-            Status::Line { title: olo_kit::words::tr("Couldn't check for a newer release.").into(), detail: e.to_owned(), action: check }
+            Status::Line { title: olo_kit::words::tr("Couldn't check for a newer release.").into(), action: None, checked: e.to_owned(), can_check: true }
         } else if u.heard["newer"].as_bool() == Some(true) {
             Status::Line {
                 title: olo_kit::tr!("{} is available.", u.heard["title"].as_str().unwrap_or("A newer release")),
-                detail: olo_kit::words::tr("Olo restarts once it's installed.").into(),
                 // (Not the window's default: Return in About starting a
-                // 900 MB install was one key from an accident.)
-                action: Some(("Upgrade", "release")),
+                // 900 MB install was one key from an accident. Restart in
+                // its name: what it does when it's done.)
+                action: Some(("Upgrade & Restart", "release")),
+                // (And a look for one newer still: Ben, 2026-11-25, "we
+                // should still have a Check Again button or something in
+                // case i want to see if there's a newer release
+                // available".)
+                checked,
+                can_check: true,
             }
-        } else if let Some(at) = u.heard["at"].as_u64() {
-            Status::Line { title: olo_kit::words::tr("Olo is up to date.").into(), detail: olo_kit::tr!("Checked {}", ago(at)), action: check }
+        } else if u.heard["at"].is_u64() {
+            Status::Line { title: olo_kit::words::tr("Olo is up to date.").into(), action: None, checked, can_check: true }
         } else {
             Status::Line {
                 title: olo_kit::words::tr("Olo looks for a newer release every hour.").into(),
-                detail: olo_kit::words::tr("The first look is two minutes after it starts.").into(),
-                action: check,
+                action: None,
+                checked: olo_kit::words::tr("The first look is two minutes after it starts.").into(),
+                can_check: true,
             }
         };
-        // (Its two lines' height in every state, the bar's too: the rows
-        // below stay where they are.)
-        let tall = px(2.0 * style::line_row(style::PLAIN_SIZE) + m::TIGHT);
+        // Two rows, each a control's height, a button at the end of each
+        // where it has one (Upgrade & Restart, Check Now under it, Install…
+        // under that in the next row: one column of buttons, rows at the
+        // box's pitch); while it installs, what and how far in the first,
+        // the bar in the second: the rows below stay where they are in
+        // every state.
+        let column = update_button();
+        let row = |ui: &mut Ui, words: StringView, button: Option<(&'static str, &'static str)>, on: bool| {
+            let mut line = div().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w(px(0.0)).child(words));
+            line = match button {
+                Some((label, choice)) => {
+                    let tell = ui.on_click_view(move |_, cx| {
+                        if let Some(pid) = session_pid() {
+                            let _ = tell_session(pid, choice);
+                        }
+                        cx.notify();
+                    });
+                    line.child(Button::new(label).min_width(column).enabled(can && on).on_click(tell))
+                }
+                None => line.child(div().w(px(column)).flex_shrink_0()),
+            };
+            ui.add(line);
+        };
         match status {
             // (No button while it installs: it can't be stopped halfway.)
-            Status::Installing { title, detail, fraction } => ui.add(div().h(tall).child(StatusBar::new(fraction).label(title).trailing(detail))),
-            Status::Line { title, detail, action } => {
-                // (Two lines whatever they say; the button at the first's height.)
-                let text = div()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .flex()
-                    .flex_col()
-                    .child(StringView::new(title).cut(true))
-                    .child(StringView::new(if detail.is_empty() { " ".to_owned() } else { detail }).dim(true).cut(true));
-                let mut line = div().h(tall).flex().flex_row().items_start().gap(px(m::SPACING)).child(text);
-                line = match action {
-                    Some((label, choice)) => {
-                        let tell = ui.on_click_view(move |_, cx| {
-                            if let Some(pid) = session_pid() {
-                                let _ = tell_session(pid, choice);
-                            }
-                            cx.notify();
-                        });
-                        line.child(Button::new(label).min_width(UPDATE_BUTTON).enabled(can).on_click(tell))
-                    }
-                    None => line.child(div().w(px(UPDATE_BUTTON)).flex_shrink_0()),
-                };
-                ui.add(line);
+            Status::Installing { title, detail, fraction } => {
+                ui.add(
+                    div()
+                        .h(px(m::CONTROL_HEIGHT))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .child(div().flex_1().min_w(px(0.0)).child(StringView::new(title).cut(true)))
+                        .child(StringView::new(detail)),
+                );
+                ui.add(div().h(px(m::CONTROL_HEIGHT)).flex().flex_col().justify_center().child(StatusBar::new(fraction)));
+            }
+            Status::Line { title, action, checked, can_check } => {
+                row(ui, StringView::new(title).cut(true), action, true);
+                row(ui, StringView::new(if checked.is_empty() { " ".to_owned() } else { checked }).dim(true).cut(true), Some(("Check Now", "check")), can_check);
             }
         }
         // The release to have: the installed one marked; another chosen,
@@ -509,7 +640,7 @@ fn software_update(ui: &mut Ui, st: &mut State) {
                         .items_center()
                         .gap(px(m::SPACING))
                         .child(div().flex_1().min_w(px(0.0)).child(chooser))
-                        .child(Button::new("Install…").min_width(UPDATE_BUTTON).enabled(can && !is_installed && !busy).on_click(install)),
+                        .child(Button::new("Install…").min_width(column).enabled(can && !is_installed && !busy).on_click(install)),
                 );
             }
             Some(Ok(_)) => ui.note("Olo has no releases yet."),
@@ -521,6 +652,21 @@ fn software_update(ui: &mut Ui, st: &mut State) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The window wakes when what it says of time next changes: each second
+    /// in the uptime's first hour, at the next minute in its first day, the
+    /// next hour after; sooner where "Checked … ago." changes first.
+    #[test]
+    fn it_wakes_when_its_words_change() {
+        let s = |n: u64| Duration::from_secs(n);
+        let ms = |n: u64| Duration::from_millis(n);
+        assert_eq!(next_change(s(65) + ms(300), None), ms(700));
+        assert_eq!(next_change(s(2 * 3600 + 30), None), s(30));
+        assert_eq!(next_change(s(3 * 86400 + 600), None), s(3000));
+        assert_eq!(next_change(s(3 * 86400 + 600), Some(s(5 * 60 + 15))), s(45));
+        assert_eq!(next_change(s(3 * 86400 + 600), Some(s(2 * 3600 + 100))), s(3000));
+        assert_eq!(next_change(s(3 * 86400), None), s(3600), "just changed: the next is a step away");
+    }
 
     #[test]
     fn uptime() {

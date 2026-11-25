@@ -2218,8 +2218,8 @@ Check the backups chosen are whole, quickly: everything they need there, the sto
 Checked
 확인됨
 
-Checked {}
-{} 확인됨
+Checked {}.
+{} 확인함.
 
 Checking for updates…
 업데이트 확인 중…
@@ -8143,9 +8143,6 @@ Olo가 매시간 새 릴리스를 확인합니다.
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo가 시작 2분 후와 그 이후 매시간 새 릴리스를 확인합니다.
 
-Olo restarts once it's installed.
-설치가 끝나면 Olo가 재시작됩니다.
-
 Olo saying its name
 Olo가 자기 이름을 말하는 소리
 
@@ -10009,6 +10006,9 @@ Rex 서버
 Rex Server on {}
 {}의 Rex 서버
 
+Rex Settings…
+Rex 설정…
+
 Rex adds these entries to {} as {}:
 Rex가 {1} 권한으로 {0}에 다음 항목을 추가합니다:
 
@@ -10401,6 +10401,9 @@ Search: words, program:, level:, since:
 
 Searching…
 검색하는 중…
+
+Second
+두 번째
 
 Second folder
 두 번째 폴더
@@ -13188,6 +13191,9 @@ Updating…
 
 Upgrade
 업그레이드
+
+Upgrade & Restart
+업그레이드 후 재시작
 
 Upgrade Fedora
 Fedora 업그레이드

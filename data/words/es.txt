@@ -2225,8 +2225,8 @@ Comprobar rápidamente que las copias elegidas están completas: todo lo que nec
 Checked
 Comprobado
 
-Checked {}
-Comprobado {}
+Checked {}.
+Comprobado {}.
 
 Checking for updates…
 Buscando actualizaciones…
@@ -8169,9 +8169,6 @@ Olo busca una versión más reciente cada hora.
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo busca una versión más reciente dos minutos después de arrancar y luego cada hora.
 
-Olo restarts once it's installed.
-Olo se reinicia una vez instalada.
-
 Olo saying its name
 Olo diciendo su nombre
 
@@ -10037,6 +10034,9 @@ Servidor Rex
 Rex Server on {}
 Servidor Rex en {}
 
+Rex Settings…
+Ajustes de Rex…
+
 Rex adds these entries to {} as {}:
 Rex añade estas entradas a {} como {}:
 
@@ -10430,6 +10430,9 @@ Buscar: palabras, program:, level:, since:
 
 Searching…
 Buscando…
+
+Second
+Segunda
 
 Second folder
 Segunda carpeta
@@ -13220,6 +13223,9 @@ Actualizando…
 
 Upgrade
 Actualizar
+
+Upgrade & Restart
+Actualizar y reiniciar
 
 Upgrade Fedora
 Actualizar Fedora

@@ -2225,8 +2225,8 @@ Controleer snel of de gekozen back-ups intact zijn. Olo kijkt of alle gegevens a
 Checked
 Gecontroleerd
 
-Checked {}
-Gecontroleerd: {}
+Checked {}.
+{} gecontroleerd.
 
 Checking for updates…
 Updates zoeken…
@@ -8169,9 +8169,6 @@ Olo controleert elk uur op een nieuwere versie.
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo controleert twee minuten na het starten op een nieuwere versie en daarna elk uur.
 
-Olo restarts once it's installed.
-Olo herstart zodra de installatie klaar is.
-
 Olo saying its name
 Olo spreekt zijn naam uit
 
@@ -10037,6 +10034,9 @@ Rex-server
 Rex Server on {}
 Rex-server op {}
 
+Rex Settings…
+Rex-instellingen…
+
 Rex adds these entries to {} as {}:
 Rex voegt deze vermeldingen toe aan {} als {}:
 
@@ -10430,6 +10430,9 @@ Zoeken: woorden, program:, level:, since:
 
 Searching…
 Bezig met zoeken…
+
+Second
+Tweede
 
 Second folder
 Tweede map
@@ -13220,6 +13223,9 @@ Bijwerken…
 
 Upgrade
 Upgraden
+
+Upgrade & Restart
+Upgraden en herstarten
 
 Upgrade Fedora
 Fedora upgraden

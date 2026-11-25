@@ -2218,8 +2218,8 @@ Check the backups chosen are whole, quickly: everything they need there, the sto
 Checked
 已检查
 
-Checked {}
-上次检查：{}
+Checked {}.
+上次检查：{}。
 
 Checking for updates…
 正在检查更新…
@@ -8143,9 +8143,6 @@ Olo 每小时检查一次新版本。
 Olo looks for a newer release two minutes after it starts, then every hour.
 Olo 在启动两分钟后检查新版本，之后每小时检查一次。
 
-Olo restarts once it's installed.
-安装完成后 Olo 将自动重启。
-
 Olo saying its name
 Olo 读出自己的名字
 
@@ -10009,6 +10006,9 @@ Rex 服务器
 Rex Server on {}
 {} 上的 Rex 服务器
 
+Rex Settings…
+Rex 设置…
+
 Rex adds these entries to {} as {}:
 Rex 将以 {1} 身份向 {0} 添加以下条目：
 
@@ -10401,6 +10401,9 @@ Search: words, program:, level:, since:
 
 Searching…
 正在搜索…
+
+Second
+第二块
 
 Second folder
 第 2 个文件夹
@@ -13188,6 +13191,9 @@ Updating…
 
 Upgrade
 升级
+
+Upgrade & Restart
+升级并重启
 
 Upgrade Fedora
 升级 Fedora
