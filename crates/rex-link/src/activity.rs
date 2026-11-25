@@ -167,6 +167,103 @@ fn modified_within(p: &Path, secs: u64) -> bool {
     std::fs::metadata(p).ok().and_then(|m| m.modified().ok()).and_then(|t| SystemTime::now().duration_since(t).ok()).is_some_and(|d| d.as_secs() <= secs)
 }
 
+fn file_modified_since(p: &Path, since: Option<SystemTime>) -> bool {
+    let Some(s) = since else { return false };
+    let Ok(mtime) = std::fs::metadata(p).and_then(|m| m.modified()) else { return false };
+    let grace = s.checked_sub(Duration::from_secs(5)).unwrap_or(s);
+    mtime >= grace
+}
+
+/// Read the trailing `max_bytes` of a file (aligned to the next newline when
+/// starting mid-file) for fast O(1) tail status inspection.
+fn read_tail_text(path: &Path, max_bytes: u64) -> String {
+    let Ok(mut f) = File::open(path) else { return String::new() };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let from = len.saturating_sub(max_bytes);
+    if f.seek(SeekFrom::Start(from)).is_err() {
+        return String::new();
+    }
+    let mut raw = Vec::new();
+    let _ = f.read_to_end(&mut raw);
+    let slice = if from > 0 {
+        match raw.iter().position(|&b| b == b'\n') {
+            Some(nl) => &raw[nl + 1..],
+            None => &raw[..],
+        }
+    } else {
+        &raw[..]
+    };
+    String::from_utf8_lossy(slice).into_owned()
+}
+
+/// Parse an ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SS[.fff]Z`) into epoch ms.
+fn parse_iso_ms(ts: &str) -> Option<u64> {
+    let b = ts.as_bytes();
+    if b.len() < 19 || b[4] != b'-' || b[7] != b'-' || (b[10] != b'T' && b[10] != b' ') || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let y: i64 = ts.get(0..4)?.parse().ok()?;
+    let mo: i64 = ts.get(5..7)?.parse().ok()?;
+    let d: i64 = ts.get(8..10)?.parse().ok()?;
+    let hh: i64 = ts.get(11..13)?.parse().ok()?;
+    let mm: i64 = ts.get(14..16)?.parse().ok()?;
+    let ss: i64 = ts.get(17..19)?.parse().ok()?;
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || hh > 23 || mm > 59 || ss > 60 {
+        return None;
+    }
+    // Howard Hinnant's civil-to-days algorithm (UTC).
+    let y_adj = y - i64::from(mo <= 2);
+    let era = y_adj.div_euclid(400);
+    let yoe = y_adj.rem_euclid(400);
+    let doy = (153 * (mo + if mo > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let secs = days * 86_400 + hh * 3600 + mm * 60 + ss;
+    if secs < 0 {
+        return None;
+    }
+    let mut ms = (secs as u64) * 1000;
+    if b.get(19) == Some(&b'.') {
+        let frac: String = ts[20..].chars().take_while(|c| c.is_ascii_digit()).take(3).collect();
+        if let Ok(mut f) = frac.parse::<u64>() {
+            match frac.len() {
+                1 => f *= 100,
+                2 => f *= 10,
+                _ => {}
+            }
+            ms += f;
+        }
+    }
+    Some(ms)
+}
+
+/// Extract the earliest timestamp from the first few JSONL lines of a transcript.
+fn first_timestamp_ms(path: &Path) -> Option<u64> {
+    let f = File::open(path).ok()?;
+    let mut reader = io::BufReader::new(f);
+    let mut line = String::new();
+    for _ in 0..8 {
+        line.clear();
+        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+            break;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        for key in ["timestamp", "created_at"] {
+            if let Some(ts) = v[key].as_str()
+                && let Some(ms) = parse_iso_ms(ts)
+            {
+                return Some(ms);
+            }
+        }
+        if let Some(ts) = v.pointer("/payload/timestamp").and_then(|s| s.as_str())
+            && let Some(ms) = parse_iso_ms(ts)
+        {
+            return Some(ms);
+        }
+    }
+    None
+}
+
 /// Detect an agent process from argv/comm/exe OR explicit `OLO_ACTIVITY_AGENT`
 /// env var (used by stand-ins in automated rig tests alongside real agents).
 fn detect_agent(pid: i32, comm: &str, env: &HashMap<String, String>) -> Option<(String, Vec<String>)> {
@@ -328,7 +425,171 @@ fn strip_xml_request(s: &str) -> &str {
 // Native subagent discovery: Claude Code, Codex, Antigravity CLI
 // ---------------------------------------------------------------------------
 
-fn discover_claude_subagents(places: &Places, cwd: &str, session_id: &str, watch_dirs: &mut Vec<PathBuf>) -> Vec<SubagentInfo> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TailState {
+    Active,
+    Waiting,
+    Done,
+    Failed,
+    Unknown,
+}
+
+/// Extract XML-like tag text (`<tag>VALUE</tag>`) without allocations beyond the match.
+fn extract_xml_tag<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = text.find(&open)? + open.len();
+    let rest = &text[start..];
+    let end = rest.find(&close)?;
+    Some(rest[..end].trim())
+}
+
+/// Scan the parent Claude Code transcript for `<task-notification>` completion
+/// notices (`<task-id>AGENT_ID</task-id>` + `<status>completed|failed|killed</status>`).
+fn claude_parent_task_states(parent_jsonl: &Path) -> HashMap<String, &'static str> {
+    let mut out = HashMap::new();
+    let Ok(f) = File::open(parent_jsonl) else { return out };
+    let reader = io::BufReader::new(f);
+    for line in reader.lines().map_while(Result::ok) {
+        if !line.contains("<task-notification>") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        let text = v["content"].as_str().or_else(|| v.pointer("/attachment/prompt").and_then(|s| s.as_str())).or_else(|| v.pointer("/message/content").and_then(|s| s.as_str()));
+        let Some(t) = text else { continue };
+        if let Some(tid) = extract_xml_tag(t, "task-id")
+            && !tid.is_empty()
+        {
+            let status = extract_xml_tag(t, "status").unwrap_or("completed").to_ascii_lowercase();
+            let mapped = if matches!(status.as_str(), "failed" | "error") { "failed" } else { "done" };
+            out.insert(tid.to_owned(), mapped);
+        }
+    }
+    out
+}
+
+/// Inspect the tail of a Claude Code JSONL transcript to determine whether a
+/// subagent is currently executing a tool/API turn, waiting for user input,
+/// finished (`end_turn`), or errored — instead of guessing from file mtime.
+fn claude_tail_state(jsonl: &Path) -> TailState {
+    let tail = read_tail_text(jsonl, 64 * 1024);
+    for line in tail.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else { continue };
+        let ty = v["type"].as_str().unwrap_or("");
+        match ty {
+            // Skip internal telemetry & request blobs that don't reflect turn completion.
+            "api-request-blob"
+            | "api-request-shape"
+            | "attachment"
+            | "data-flow-records"
+            | "data-flow-incomplete"
+            | "progress"
+            | "last-prompt"
+            | "custom-title"
+            | "agent-name"
+            | "mode"
+            | "permission-mode"
+            | "session-owner"
+            | "atis-latch"
+            | "file-history-snapshot"
+            | "file-history-delta"
+            | "tools-used"
+            | "derived-from"
+            | "cost-state"
+            | "queue-operation" => continue,
+            "api-request" => return TailState::Active,
+            "system" => {
+                let sub = v["subtype"].as_str().unwrap_or("");
+                if sub == "api_error" || v.get("error").is_some_and(|e| !e.is_null()) {
+                    return TailState::Failed;
+                }
+                continue;
+            }
+            "user" => {
+                // A user turn (initial prompt or tool_result) at the very tail means
+                // the model is currently thinking / generating its next response.
+                return TailState::Active;
+            }
+            "assistant" => {
+                if v["isApiErrorMessage"].as_bool().unwrap_or(false) {
+                    return TailState::Failed;
+                }
+                let stop = v.pointer("/message/stop_reason").and_then(|s| s.as_str());
+                match stop {
+                    Some("end_turn" | "stop_sequence" | "max_tokens") => return TailState::Done,
+                    Some("tool_use") => {
+                        let asks_user = v
+                            .pointer("/message/content")
+                            .and_then(|c| c.as_array())
+                            .is_some_and(|arr| arr.iter().any(|b| b["type"].as_str() == Some("tool_use") && matches!(b["name"].as_str(), Some("AskUserQuestion" | "ExitPlanMode"))));
+                        return if asks_user { TailState::Waiting } else { TailState::Active };
+                    }
+                    None => {
+                        // Streaming chunk or mid-turn assistant entry without stop_reason yet.
+                        let has_tool = v.pointer("/message/content").and_then(|c| c.as_array()).is_some_and(|arr| arr.iter().any(|b| b["type"].as_str() == Some("tool_use")));
+                        return if has_tool { TailState::Active } else { TailState::Active };
+                    }
+                    Some(_) => return TailState::Active,
+                }
+            }
+            _ => continue,
+        }
+    }
+    TailState::Unknown
+}
+
+fn resolve_claude_state(jsonl: &Path, meta_finished: Option<bool>, parent_status: Option<&'static str>, parent_started: Option<SystemTime>) -> &'static str {
+    if let Some(st) = parent_status {
+        return st;
+    }
+    let tail = claude_tail_state(jsonl);
+    if let Some(fin) = meta_finished {
+        if fin {
+            return if tail == TailState::Failed { "failed" } else { "done" };
+        }
+        return match tail {
+            TailState::Waiting => "waiting",
+            TailState::Failed => "failed",
+            _ => "working",
+        };
+    }
+    // Real Claude Code omits `"finished"` while a subagent is running and writes
+    // `"finished": true` once it completes. Guard against ancient orphaned files
+    // from an earlier crashed session by checking whether the file was touched
+    // during the live parent process's run (or recently).
+    let live_window = file_modified_since(jsonl, parent_started) || modified_within(jsonl, 1800);
+    match tail {
+        TailState::Failed => "failed",
+        TailState::Done => "done",
+        TailState::Waiting => {
+            if live_window {
+                "waiting"
+            } else {
+                "done"
+            }
+        }
+        TailState::Active => {
+            if live_window {
+                "working"
+            } else {
+                "done"
+            }
+        }
+        TailState::Unknown => {
+            if modified_within(jsonl, 120) {
+                "working"
+            } else {
+                "done"
+            }
+        }
+    }
+}
+
+fn discover_claude_subagents(places: &Places, cwd: &str, session_id: &str, parent_started: Option<SystemTime>, watch_dirs: &mut Vec<PathBuf>) -> Vec<SubagentInfo> {
     let proj_dir = places.claude.join("projects").join(project_name(cwd));
     let sub_dir = proj_dir.join(session_id).join("subagents");
     if proj_dir.is_dir() {
@@ -342,6 +603,9 @@ fn discover_claude_subagents(places: &Places, cwd: &str, session_id: &str, watch
         return Vec::new();
     }
     watch_dirs.push(sub_dir.clone());
+    let parent_jsonl = proj_dir.join(format!("{session_id}.jsonl"));
+    let parent_states = claude_parent_task_states(&parent_jsonl);
+
     let Ok(rd) = std::fs::read_dir(&sub_dir) else { return Vec::new() };
     let mut out = Vec::new();
     for entry in rd.flatten() {
@@ -354,18 +618,8 @@ fn discover_claude_subagents(places: &Places, cwd: &str, session_id: &str, watch
         let agent_type = meta.as_ref().and_then(|m| m["agentType"].as_str()).unwrap_or("Subagent");
         let desc = meta.as_ref().and_then(|m| m["description"].as_str()).filter(|s| !s.is_empty()).map(str::to_owned).unwrap_or_else(|| first_prompt_snippet(&jsonl));
         let finished = meta.as_ref().and_then(|m| m["finished"].as_bool());
-        let state = match finished {
-            Some(true) => "done",
-            Some(false) => "working",
-            None => {
-                if modified_within(&jsonl, 30) {
-                    "working"
-                } else {
-                    "done"
-                }
-            }
-        };
-        let started_ms = std::fs::metadata(&jsonl).ok().and_then(|m| m.created().ok().or_else(|| m.modified().ok())).map_or(0, system_time_ms);
+        let state = resolve_claude_state(&jsonl, finished, parent_states.get(agent_id).copied(), parent_started);
+        let started_ms = first_timestamp_ms(&jsonl).or_else(|| std::fs::metadata(&jsonl).ok().and_then(|m| m.created().ok().or_else(|| m.modified().ok())).map(system_time_ms)).unwrap_or(0);
         out.push(SubagentInfo {
             id: format!("claude-sub:{agent_id}"),
             kind: "claude".into(),
@@ -383,7 +637,7 @@ fn discover_claude_subagents(places: &Places, cwd: &str, session_id: &str, watch
     out
 }
 
-fn discover_codex_subagents(parent_session_id: &str, rollouts: &HashMap<String, PathBuf>) -> Vec<SubagentInfo> {
+fn discover_codex_subagents(parent_session_id: &str, parent_started: Option<SystemTime>, rollouts: &HashMap<String, PathBuf>, watch_dirs: &mut Vec<PathBuf>) -> Vec<SubagentInfo> {
     let mut out = Vec::new();
     for (tid, path) in rollouts {
         if tid == parent_session_id {
@@ -407,6 +661,9 @@ fn discover_codex_subagents(parent_session_id: &str, rollouts: &HashMap<String, 
         if parent != Some(parent_session_id) {
             continue;
         }
+        if let Some(dir) = path.parent() {
+            watch_dirs.push(dir.to_path_buf());
+        }
         let nickname = payload["agent_nickname"]
             .as_str()
             .or_else(|| payload.pointer("/source/subagent/thread_spawn/agent_nickname").and_then(|x| x.as_str()))
@@ -420,15 +677,8 @@ fn discover_codex_subagents(parent_session_id: &str, rollouts: &HashMap<String, 
             .map(|p| p.trim_start_matches("/root/").to_owned())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| first_prompt_snippet(path));
-        let done = codex_rollout_finished(path);
-        let state = if done {
-            "done"
-        } else if modified_within(path, 30) {
-            "working"
-        } else {
-            "done"
-        };
-        let started_ms = file_mtime_ms(path);
+        let state = codex_rollout_state(path, parent_started);
+        let started_ms = first_timestamp_ms(path).unwrap_or_else(|| file_mtime_ms(path));
         out.push(SubagentInfo {
             id: format!("codex-sub:{tid}"),
             kind: "codex".into(),
@@ -446,51 +696,201 @@ fn discover_codex_subagents(parent_session_id: &str, rollouts: &HashMap<String, 
     out
 }
 
-fn codex_rollout_finished(path: &Path) -> bool {
-    let Ok(mut f) = File::open(path) else { return false };
-    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let from = len.saturating_sub(16 * 1024);
-    if f.seek(SeekFrom::Start(from)).is_err() {
-        return false;
-    }
-    let mut tail = String::new();
-    let _ = f.read_to_string(&mut tail);
+fn codex_rollout_state(path: &Path, parent_started: Option<SystemTime>) -> &'static str {
+    let tail = read_tail_text(path, 64 * 1024);
+    let live_window = file_modified_since(path, parent_started) || modified_within(path, 1800);
+    let mut completed_calls: HashSet<String> = HashSet::new();
+    let mut saw_any = false;
     for line in tail.lines().rev() {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-        if v["type"].as_str() == Some("event_msg") {
-            let et = v.pointer("/payload/type").and_then(|s| s.as_str()).unwrap_or("");
-            if matches!(et, "task_complete" | "turn_aborted" | "task_failed") {
-                return true;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else { continue };
+        saw_any = true;
+        match v["type"].as_str().unwrap_or("") {
+            "event_msg" => {
+                let et = v.pointer("/payload/type").and_then(|s| s.as_str()).unwrap_or("");
+                match et {
+                    "task_failed" | "error" => return "failed",
+                    "exec_approval_request" | "apply_patch_approval_request" | "request_user_input" => {
+                        return if live_window { "waiting" } else { "done" };
+                    }
+                    "task_complete" | "turn_aborted" => return "done",
+                    "task_started" => return if live_window { "working" } else { "done" },
+                    _ => {}
+                }
             }
-            if et == "task_started" {
-                return false;
+            "response_item" => {
+                let payload = &v["payload"];
+                match payload["type"].as_str().unwrap_or("") {
+                    "function_call_output" | "custom_tool_call_output" => {
+                        if let Some(cid) = payload["call_id"].as_str() {
+                            completed_calls.insert(cid.to_owned());
+                        }
+                    }
+                    "function_call" | "custom_tool_call" => {
+                        let cid = payload["call_id"].as_str().unwrap_or("");
+                        if cid.is_empty() || !completed_calls.contains(cid) {
+                            return if live_window { "working" } else { "done" };
+                        }
+                    }
+                    "message" if payload["role"].as_str() == Some("user") => {
+                        return if live_window { "working" } else { "done" };
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    if saw_any && (file_modified_since(path, parent_started) || modified_within(path, 120)) { "working" } else { "done" }
+}
+
+fn agy_transcript_state(path: &Path, parent_started: Option<SystemTime>, killed_by_parent: bool) -> &'static str {
+    if killed_by_parent {
+        return "done";
+    }
+    let tail = read_tail_text(path, 64 * 1024);
+    let live_window = file_modified_since(path, parent_started) || modified_within(path, 1800);
+    let mut pending_tools: usize = 0;
+    let mut asking = false;
+    let mut last_type = String::new();
+    let mut last_status = String::new();
+    for line in tail.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else { continue };
+        let ty = v["type"].as_str().unwrap_or("");
+        if matches!(ty, "" | "SYSTEM_MESSAGE" | "CHECKPOINT") {
+            continue;
+        }
+        let st = v["status"].as_str().unwrap_or("").to_ascii_uppercase();
+        last_type = ty.to_owned();
+        last_status = st.clone();
+        match ty {
+            "USER_INPUT" => {
+                pending_tools = 0;
+                asking = false;
+            }
+            "PLANNER_RESPONSE" => {
+                if let Some(calls) = v["tool_calls"].as_array()
+                    && !calls.is_empty()
+                {
+                    pending_tools = calls.len();
+                    asking = calls.iter().any(|c| c["name"].as_str() == Some("ask_question"));
+                } else {
+                    pending_tools = 0;
+                    asking = false;
+                }
+            }
+            "GENERIC" | "TOOL_RESPONSE" => {
+                if st != "RUNNING" {
+                    pending_tools = pending_tools.saturating_sub(1);
+                }
+            }
+            _ => {}
+        }
+    }
+    if asking && live_window {
+        return "waiting";
+    }
+    match last_type.as_str() {
+        "PLANNER_RESPONSE" => {
+            if matches!(last_status.as_str(), "ERROR" | "FAILED") {
+                "failed"
+            } else if pending_tools > 0 {
+                if live_window { "working" } else { "done" }
+            } else if last_status == "DONE" {
+                "done"
+            } else if live_window {
+                "working"
+            } else {
+                "done"
+            }
+        }
+        "GENERIC" | "TOOL_RESPONSE" => {
+            if last_status == "RUNNING" {
+                if live_window { "working" } else { "done" }
+            } else if matches!(last_status.as_str(), "ERROR" | "FAILED") {
+                if modified_within(path, 120) { "working" } else { "failed" }
+            } else if live_window {
+                // Tool result just returned; planner is generating the next step.
+                "working"
+            } else {
+                "done"
+            }
+        }
+        "USER_INPUT" => {
+            if live_window {
+                "working"
+            } else {
+                "done"
+            }
+        }
+        _ => {
+            if modified_within(path, 60) {
+                "working"
+            } else {
+                "done"
             }
         }
     }
-    false
 }
 
-fn discover_agy_subagents(places: &Places, parent_transcript: &Path, watch_dirs: &mut Vec<PathBuf>) -> Vec<SubagentInfo> {
+/// Infer live state for a running tmux- or shell-launched child agent from its
+/// transcript when available; defaults to `"working"` because the PID is alive.
+fn infer_live_agent_state(kind: &str, transcript: Option<&Path>, started: Option<SystemTime>) -> &'static str {
+    let Some(path) = transcript else { return "working" };
+    match kind {
+        "claude" => resolve_claude_state(path, None, None, started),
+        "codex" => codex_rollout_state(path, started),
+        "agy" => agy_transcript_state(path, started, false),
+        _ => "working",
+    }
+}
+
+fn discover_agy_subagents(places: &Places, parent_transcript: &Path, parent_started: Option<SystemTime>, watch_dirs: &mut Vec<PathBuf>) -> Vec<SubagentInfo> {
     let Ok(f) = File::open(parent_transcript) else { return Vec::new() };
     let reader = io::BufReader::new(f);
     let mut pending_roles: Vec<(String, String)> = Vec::new();
     let mut found: Vec<(String, String, String)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut killed: HashSet<String> = HashSet::new();
 
     for line in reader.lines().map_while(Result::ok) {
-        if !line.contains("invoke_subagent") && !line.contains("conversationId") && !line.contains("conversation_id") {
+        if !line.contains("invoke_subagent") && !line.contains("manage_subagents") && !line.contains("conversationId") && !line.contains("conversation_id") {
             continue;
         }
         let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
         if let Some(calls) = v["tool_calls"].as_array() {
             for call in calls {
-                if call["name"].as_str() == Some("invoke_subagent") {
-                    let role = clean_agy_arg(call.pointer("/args/Role").and_then(|s| s.as_str()))
-                        .or_else(|| clean_agy_arg(call.pointer("/args/TypeName").and_then(|s| s.as_str())))
-                        .unwrap_or_else(|| "Subagent".into());
-                    let prompt = clean_agy_arg(call.pointer("/args/Prompt").and_then(|s| s.as_str())).unwrap_or_default();
-                    let desc: String = prompt.lines().next().unwrap_or("").chars().take(96).collect();
-                    pending_roles.push((role, desc));
+                match call["name"].as_str() {
+                    Some("invoke_subagent") => {
+                        let role = clean_agy_arg(call.pointer("/args/Role").and_then(|s| s.as_str()))
+                            .or_else(|| clean_agy_arg(call.pointer("/args/TypeName").and_then(|s| s.as_str())))
+                            .unwrap_or_else(|| "Subagent".into());
+                        let prompt = clean_agy_arg(call.pointer("/args/Prompt").and_then(|s| s.as_str())).unwrap_or_default();
+                        let desc: String = prompt.lines().next().unwrap_or("").chars().take(96).collect();
+                        pending_roles.push((role, desc));
+                    }
+                    Some("manage_subagents") => {
+                        let act = clean_agy_arg(call.pointer("/args/Action").and_then(|s| s.as_str())).unwrap_or_default();
+                        if act == "kill_all" {
+                            for (id, _, _) in &found {
+                                killed.insert(id.clone());
+                            }
+                        } else if act == "kill" {
+                            if let Some(ids_raw) = call.pointer("/args/ConversationIds") {
+                                for id in extract_uuids(&ids_raw.to_string()) {
+                                    killed.insert(id);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -515,8 +915,8 @@ fn discover_agy_subagents(places: &Places, parent_transcript: &Path, watch_dirs:
         if log_dir.is_dir() {
             watch_dirs.push(log_dir);
         }
-        let state = if modified_within(&child_path, 20) { "working" } else { "done" };
-        let started_ms = file_mtime_ms(&child_path);
+        let state = agy_transcript_state(&child_path, parent_started, killed.contains(&id));
+        let started_ms = first_timestamp_ms(&child_path).unwrap_or_else(|| file_mtime_ms(&child_path));
         out.push(SubagentInfo {
             id: format!("agy-sub:{id}"),
             kind: "agy".into(),
@@ -894,13 +1294,17 @@ fn scan_once(panes: &[PaneQuery], places: &Places) -> (ActivitySnapshot, Vec<Pat
         }
 
         // 1. Native subagents (Claude Code, Codex, Antigravity CLI).
-        if let (Some(kind), Some(sid)) = (top_kind.as_deref(), top_session.as_deref()) {
+        let parent_started = (top_start > 0).then(|| started_at(top_start)).flatten();
+        let effective_sid = top_session
+            .clone()
+            .or_else(|| if top_kind.as_deref() == Some("claude") { top_transcript.as_ref().and_then(|p| p.file_stem()?.to_str().map(str::to_owned)).filter(|s| uuid(s)) } else { None });
+        if let (Some(kind), Some(sid)) = (top_kind.as_deref(), effective_sid.as_deref()) {
             match kind {
-                "claude" => subs.extend(discover_claude_subagents(places, &top_cwd, sid, &mut watch_dirs)),
-                "codex" => subs.extend(discover_codex_subagents(sid, &rollouts)),
+                "claude" => subs.extend(discover_claude_subagents(places, &top_cwd, sid, parent_started, &mut watch_dirs)),
+                "codex" => subs.extend(discover_codex_subagents(sid, parent_started, &rollouts, &mut watch_dirs)),
                 "agy" => {
                     if let Some(tp) = &top_transcript {
-                        subs.extend(discover_agy_subagents(places, tp, &mut watch_dirs));
+                        subs.extend(discover_agy_subagents(places, tp, parent_started, &mut watch_dirs));
                     }
                 }
                 _ => {}
@@ -947,14 +1351,16 @@ fn scan_once(panes: &[PaneQuery], places: &Places) -> (ActivitySnapshot, Vec<Pat
                 .filter(|s| !s.is_empty())
                 .or_else(|| (!tp.title.is_empty() && tp.title != tp.session).then(|| tp.title.clone()))
                 .unwrap_or_else(|| friendly_folder(&cwd, &places.home));
-            let started_ms = started_at(st).map_or(0, system_time_ms);
+            let child_started = started_at(st);
+            let started_ms = child_started.map_or(0, system_time_ms);
+            let state = infer_live_agent_state(&kind, transcript.as_deref(), child_started);
             subs.push(SubagentInfo {
                 id: format!("tmux:{}:{}:{}", tp.socket, tp.session, tp.pane_id),
                 kind,
                 origin: "tmux".into(),
                 name,
                 description,
-                state: "working".into(),
+                state: state.into(),
                 pid: Some(apid),
                 transcript: transcript.map(|p| p.display().to_string()),
                 tmux: Some(TmuxTarget {
@@ -1005,14 +1411,16 @@ fn scan_once(panes: &[PaneQuery], places: &Places) -> (ActivitySnapshot, Vec<Pat
             }
             let name = nice_agent_label(&kind, &args, &env);
             let description = env.get("OLO_ACTIVITY_DESC").cloned().filter(|s| !s.is_empty()).unwrap_or_else(|| friendly_folder(&cwd, &places.home));
-            let started_ms = started_at(st).map_or(0, system_time_ms);
+            let child_started = started_at(st);
+            let started_ms = child_started.map_or(0, system_time_ms);
+            let state = infer_live_agent_state(&kind, transcript.as_deref(), child_started);
             subs.push(SubagentInfo {
                 id: format!("proc:{pid}:{st}"),
                 kind,
                 origin: "shell".into(),
                 name,
                 description,
-                state: "working".into(),
+                state: state.into(),
                 pid: Some(pid),
                 transcript: transcript.map(|p| p.display().to_string()),
                 tmux: None,
@@ -1443,59 +1851,128 @@ mod tests {
     #[test]
     fn discovers_native_claude_codex_and_agy_subagents() {
         let places = scratch("native");
-        // 1. Claude native subagent
+        let now = Some(SystemTime::now());
+        // 1. Claude native subagents: running (missing `finished` + tool_use), waiting (AskUserQuestion), failed (parent task-notification), done (end_turn + finished)
         let c_sid = "11111111-0000-4000-8000-000000000010";
         let proj = places.claude.join("projects").join(project_name("/w/app"));
         let sub_dir = proj.join(c_sid).join("subagents");
         std::fs::create_dir_all(&sub_dir).unwrap();
-        std::fs::write(sub_dir.join("agent-abc123.meta.json"), r#"{"agentType":"Explore","description":"Find parser bugs","finished":false}"#).unwrap();
-        std::fs::write(sub_dir.join("agent-abc123.jsonl"), "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Find parser bugs\"}}\n").unwrap();
-        let mut wd = Vec::new();
-        let c_subs = discover_claude_subagents(&places, "/w/app", c_sid, &mut wd);
-        assert_eq!(c_subs.len(), 1);
-        assert_eq!(c_subs[0].name, "Explore");
-        assert_eq!(c_subs[0].description, "Find parser bugs");
-        assert_eq!(c_subs[0].state, "working");
-        assert!(c_subs[0].tmux.is_none());
-
-        // 2. Codex native subagent
-        let p_tid = "01a1fd2c-8322-7a50-8bcb-babba41cf8b0";
-        let s_tid = "01a20010-44cc-7e41-840d-7c28016d197d";
-        let rdir = places.codex.join("sessions/2026/11/25");
-        std::fs::create_dir_all(&rdir).unwrap();
-        let rfile = rdir.join(format!("rollout-2026-11-25T10-00-00-{s_tid}.jsonl"));
         std::fs::write(
-            &rfile,
-            format!(
-                "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{s_tid}\",\"session_id\":\"{p_tid}\",\"parent_thread_id\":\"{p_tid}\",\"agent_nickname\":\"Newton\",\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"parent_thread_id\":\"{p_tid}\",\"agent_nickname\":\"Newton\",\"agent_path\":\"/root/fast_build\"}}}}}}}}}}\n"
-            ),
+            proj.join(format!("{c_sid}.jsonl")),
+            "{\"type\":\"queue-operation\",\"operation\":\"enqueue\",\"content\":\"<task-notification>\\n<task-id>fail99</task-id>\\n<status>failed</status>\\n</task-notification>\"}\n",
         )
         .unwrap();
-        let rollouts = codex_rollouts(&places);
-        let x_subs = discover_codex_subagents(p_tid, &rollouts);
-        assert_eq!(x_subs.len(), 1);
-        assert_eq!(x_subs[0].name, "Newton");
-        assert_eq!(x_subs[0].description, "fast_build");
+        // Running Claude subagent (real Claude Code omits `finished` while running, and appends telemetry after tool_use)
+        std::fs::write(sub_dir.join("agent-abc123.meta.json"), r#"{"agentType":"Explore","description":"Find parser bugs"}"#).unwrap();
+        std::fs::write(
+            sub_dir.join("agent-abc123.jsonl"),
+            "{\"type\":\"user\",\"timestamp\":\"2026-11-25T10:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"Find parser bugs\"}}\n\
+             {\"type\":\"assistant\",\"timestamp\":\"2026-11-25T10:00:02Z\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Bash\",\"input\":{\"command\":\"sleep 60\"}}]}}\n\
+             {\"type\":\"attachment\",\"attachment\":{\"type\":\"deferred_tools_record\"}}\n",
+        )
+        .unwrap();
+        // Waiting Claude subagent (AskUserQuestion)
+        std::fs::write(sub_dir.join("agent-wait01.meta.json"), r#"{"agentType":"Plan","description":"Clarify layout"}"#).unwrap();
+        std::fs::write(
+            sub_dir.join("agent-wait01.jsonl"),
+            "{\"type\":\"assistant\",\"timestamp\":\"2026-11-25T10:00:05Z\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t2\",\"name\":\"AskUserQuestion\",\"input\":{}}]}}\n",
+        )
+        .unwrap();
+        // Failed via parent task-notification
+        std::fs::write(sub_dir.join("agent-fail99.meta.json"), r#"{"agentType":"general-purpose","description":"Build release"}"#).unwrap();
+        std::fs::write(sub_dir.join("agent-fail99.jsonl"), "{\"type\":\"user\",\"timestamp\":\"2026-11-25T10:00:06Z\",\"message\":{\"role\":\"user\",\"content\":\"Build\"}}\n").unwrap();
+        // Completed via meta finished=true + end_turn
+        std::fs::write(sub_dir.join("agent-done02.meta.json"), r#"{"agentType":"Explore","description":"Audit icons","finished":true}"#).unwrap();
+        std::fs::write(
+            sub_dir.join("agent-done02.jsonl"),
+            "{\"type\":\"assistant\",\"timestamp\":\"2026-11-25T10:00:08Z\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"All good.\"}]}}\n",
+        )
+        .unwrap();
 
-        // 3. AGY native subagent
+        let mut wd = Vec::new();
+        let c_subs = discover_claude_subagents(&places, "/w/app", c_sid, now, &mut wd);
+        assert_eq!(c_subs.len(), 4);
+        let state_of = |id: &str| c_subs.iter().find(|s| s.id == id).unwrap().state.as_str();
+        assert_eq!(state_of("claude-sub:abc123"), "working");
+        assert_eq!(state_of("claude-sub:wait01"), "waiting");
+        assert_eq!(state_of("claude-sub:fail99"), "failed");
+        assert_eq!(state_of("claude-sub:done02"), "done");
+        assert!(c_subs[0].tmux.is_none());
+
+        // 2. Codex native subagents (working on task_started vs done on task_complete vs failed on task_failed)
+        let p_tid = "01a1fd2c-8322-7a50-8bcb-babba41cf8b0";
+        let s_work = "01a20010-44cc-7e41-840d-7c28016d197d";
+        let s_done = "01a20010-44cc-7e41-840d-7c28016d197e";
+        let s_fail = "01a20010-44cc-7e41-840d-7c28016d197f";
+        let rdir = places.codex.join("sessions/2026/11/25");
+        std::fs::create_dir_all(&rdir).unwrap();
+        let write_codex = |tid: &str, nick: &str, tail: &str| {
+            let f = rdir.join(format!("rollout-2026-11-25T10-00-00-{tid}.jsonl"));
+            std::fs::write(
+                &f,
+                format!(
+                    "{{\"type\":\"session_meta\",\"timestamp\":\"2026-11-25T10:00:00Z\",\"payload\":{{\"id\":\"{tid}\",\"session_id\":\"{p_tid}\",\"parent_thread_id\":\"{p_tid}\",\"agent_nickname\":\"{nick}\",\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"parent_thread_id\":\"{p_tid}\",\"agent_nickname\":\"{nick}\",\"agent_path\":\"/root/fast_build\"}}}}}}}}}}\n{tail}\n"
+                ),
+            )
+            .unwrap();
+        };
+        write_codex(s_work, "Newton", r#"{"type":"event_msg","payload":{"type":"task_started"}}"#);
+        write_codex(s_done, "Curie", r#"{"type":"event_msg","payload":{"type":"task_complete"}}"#);
+        write_codex(s_fail, "Euler", r#"{"type":"event_msg","payload":{"type":"task_failed"}}"#);
+        let rollouts = codex_rollouts(&places);
+        let x_subs = discover_codex_subagents(p_tid, now, &rollouts, &mut wd);
+        assert_eq!(x_subs.len(), 3);
+        let xstate = |tid: &str| x_subs.iter().find(|s| s.id == format!("codex-sub:{tid}")).unwrap().state.as_str();
+        assert_eq!(xstate(s_work), "working");
+        assert_eq!(xstate(s_done), "done");
+        assert_eq!(xstate(s_fail), "failed");
+
+        // 3. AGY native subagents (working on RUNNING tool, waiting on ask_question, done on final PLANNER_RESPONSE without tool_calls)
         let a_parent = "22222222-0000-4000-8000-000000000001";
-        let a_child = "22222222-0000-4000-8000-000000000002";
+        let a_work = "22222222-0000-4000-8000-000000000002";
+        let a_done = "22222222-0000-4000-8000-000000000003";
+        let a_wait = "22222222-0000-4000-8000-000000000004";
         let p_logs = places.agy_brain().join(a_parent).join(".system_generated/logs");
-        let c_logs = places.agy_brain().join(a_child).join(".system_generated/logs");
+        for id in [a_work, a_done, a_wait] {
+            std::fs::create_dir_all(places.agy_brain().join(id).join(".system_generated/logs")).unwrap();
+        }
         std::fs::create_dir_all(&p_logs).unwrap();
-        std::fs::create_dir_all(&c_logs).unwrap();
         std::fs::write(
             p_logs.join("transcript.jsonl"),
             format!(
-                "{{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[{{\"name\":\"invoke_subagent\",\"args\":{{\"Role\":\"\\\"Code Reviewer\\\"\",\"Prompt\":\"\\\"Inspect carry diff\\\"\"}}}}]}}\n{{\"type\":\"GENERIC\",\"content\":\"Launched conversationId: {a_child}\"}}\n"
+                "{{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[{{\"name\":\"invoke_subagent\",\"args\":{{\"Role\":\"\\\"Code Reviewer\\\"\",\"Prompt\":\"\\\"Inspect diff\\\"\"}}}},{{\"name\":\"invoke_subagent\",\"args\":{{\"Role\":\"\\\"Tester\\\"\",\"Prompt\":\"\\\"Run suite\\\"\"}}}},{{\"name\":\"invoke_subagent\",\"args\":{{\"Role\":\"\\\"Designer\\\"\",\"Prompt\":\"\\\"Ask user\\\"\"}}}}]}}\n\
+                 {{\"type\":\"GENERIC\",\"content\":\"Launched conversationId: {a_work}\"}}\n\
+                 {{\"type\":\"GENERIC\",\"content\":\"Launched conversationId: {a_done}\"}}\n\
+                 {{\"type\":\"GENERIC\",\"content\":\"Launched conversationId: {a_wait}\"}}\n"
             ),
         )
         .unwrap();
-        std::fs::write(c_logs.join("transcript.jsonl"), "{\"type\":\"USER_INPUT\",\"content\":\"Inspect carry diff\"}\n").unwrap();
-        let a_subs = discover_agy_subagents(&places, &p_logs.join("transcript.jsonl"), &mut wd);
-        assert_eq!(a_subs.len(), 1);
-        assert_eq!(a_subs[0].name, "Code Reviewer");
-        assert_eq!(a_subs[0].description, "Inspect carry diff");
+        std::fs::write(
+            places.agy_brain().join(a_work).join(".system_generated/logs/transcript.jsonl"),
+            "{\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"created_at\":\"2026-11-25T10:00:00Z\",\"content\":\"Inspect diff\"}\n\
+             {\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"tool_calls\":[{\"name\":\"run_command\",\"args\":{}}]}\n\
+             {\"type\":\"GENERIC\",\"status\":\"RUNNING\",\"content\":\"Running build...\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            places.agy_brain().join(a_done).join(".system_generated/logs/transcript.jsonl"),
+            "{\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"created_at\":\"2026-11-25T10:00:00Z\",\"content\":\"Run suite\"}\n\
+             {\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"All tests passed.\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            places.agy_brain().join(a_wait).join(".system_generated/logs/transcript.jsonl"),
+            "{\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"created_at\":\"2026-11-25T10:00:00Z\",\"content\":\"Ask user\"}\n\
+             {\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"tool_calls\":[{\"name\":\"ask_question\",\"args\":{}}]}\n",
+        )
+        .unwrap();
+
+        let a_subs = discover_agy_subagents(&places, &p_logs.join("transcript.jsonl"), now, &mut wd);
+        assert_eq!(a_subs.len(), 3);
+        let astate = |id: &str| a_subs.iter().find(|s| s.id == format!("agy-sub:{id}")).unwrap().state.as_str();
+        assert_eq!(astate(a_work), "working");
+        assert_eq!(astate(a_done), "done");
+        assert_eq!(astate(a_wait), "waiting");
 
         let _ = std::fs::remove_dir_all(&places.home);
     }

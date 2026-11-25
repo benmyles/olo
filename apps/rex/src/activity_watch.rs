@@ -73,22 +73,16 @@ impl ViewTarget {
         }
     }
 
-    pub fn status_bar_text(&self, updated: Option<&str>) -> String {
+    pub fn status_bar_text(&self, _updated: Option<&str>) -> String {
         match self {
-            Self::PaneTranscript { title, .. } => match updated {
-                Some(ts) if !ts.is_empty() => format!("{title} · transcript · updated {ts}"),
-                _ => format!("{title} · transcript"),
-            },
+            Self::PaneTranscript { title, .. } => format!("{title} · transcript"),
             Self::SubagentTranscript { sub, .. } => {
                 let kind = match sub.origin {
                     SubagentOrigin::Tmux => "tmux",
                     SubagentOrigin::Native => "subagent",
                     SubagentOrigin::Shell => "shell",
                 };
-                match updated {
-                    Some(ts) if !ts.is_empty() => format!("{} · {kind} · transcript · updated {ts}", sub.name),
-                    _ => format!("{} · {kind} · transcript", sub.name),
-                }
+                format!("{} · {kind} · transcript", sub.name)
             }
             Self::SubagentTmux { sub, target, .. } => {
                 format!("{} · tmux {} × {} · read-only", sub.name, target.cols, target.rows)
@@ -113,13 +107,17 @@ pub struct TranscriptSession {
     pub streaming: bool,
     pub error: Option<String>,
     /// Entries manually toggled by the user (for normal rows, means expanded;
-    /// for failed tool rows which open by default, `collapsed_errors` records user collapse).
+    /// for failed/running tool rows which open by default, `collapsed_errors`
+    /// and `collapsed_running` record explicit user collapse).
     pub expanded: HashSet<usize>,
     pub collapsed_errors: HashSet<usize>,
+    pub collapsed_running: HashSet<usize>,
     /// Single collapsed entry temporarily expanded to reveal the active Find match;
     /// automatically folds back when Find steps to another entry or closes.
     pub find_auto_expanded: Option<usize>,
     pub follow: bool,
+    /// Number of new transcript entries received while paused (`!follow`).
+    pub paused_unseen: usize,
     pub search_query: String,
     pub matches: Vec<SearchMatch>,
     pub match_idx: Option<usize>,
@@ -138,8 +136,10 @@ impl TranscriptSession {
             error: None,
             expanded: HashSet::new(),
             collapsed_errors: HashSet::new(),
+            collapsed_running: HashSet::new(),
             find_auto_expanded: None,
             follow: true,
+            paused_unseen: 0,
             search_query: String::new(),
             matches: Vec::new(),
             match_idx: None,
@@ -556,6 +556,32 @@ fn apply_watcher_line(hub: &RexHub, host_key: &str, line: &str) {
     if mgr.by_block.len() != before {
         changed = true;
     }
+    // Keep any currently open subagent transcript or tmux viewer's live state
+    // (working -> waiting -> done / failed) synchronized in real time!
+    if let Some(tr) = mgr.transcript.clone() {
+        let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
+        if let ViewTarget::SubagentTranscript { parent, sub } = &mut g.target
+            && let Some(pa) = mgr.by_block.get(parent)
+            && let Some(fresh) = pa.subagents.iter().find(|s| s.id == sub.id)
+            && fresh != sub
+        {
+            *sub = fresh.clone();
+            g.generation += 1;
+            changed = true;
+        }
+    }
+    if let Some(tm) = mgr.tmux.clone() {
+        let mut g = tm.lock().unwrap_or_else(|e| e.into_inner());
+        if let ViewTarget::SubagentTmux { parent, sub, .. } = &mut g.target
+            && let Some(pa) = mgr.by_block.get(parent)
+            && let Some(fresh) = pa.subagents.iter().find(|s| s.id == sub.id)
+            && fresh != sub
+        {
+            *sub = fresh.clone();
+            g.generation += 1;
+            changed = true;
+        }
+    }
     drop(mgr);
     if changed {
         crate::ui::activity_changed();
@@ -570,6 +596,7 @@ pub fn pane_activity(bk: &BlockKey) -> Option<PaneActivity> {
     manager().lock().unwrap_or_else(|e| e.into_inner()).by_block.get(bk).cloned()
 }
 
+#[allow(dead_code)]
 pub fn subagents_for(bk: &BlockKey) -> Vec<SubagentInfo> {
     manager().lock().unwrap_or_else(|e| e.into_inner()).by_block.get(bk).map(|p| p.subagents.clone()).unwrap_or_default()
 }
@@ -829,8 +856,13 @@ fn apply_tail_frame(sess: &Arc<Mutex<TranscriptSession>>, line: &str) {
         TailFrame::Lines { lines } => {
             g.loading = false;
             g.streaming = true;
+            let before = g.doc.entries.len();
             for l in &lines {
                 g.doc.push_line(l);
+            }
+            let added = g.doc.entries.len().saturating_sub(before);
+            if !g.follow && added > 0 {
+                g.paused_unseen = g.paused_unseen.saturating_add(added);
             }
             if !g.search_query.is_empty() {
                 g.recompute_search();
@@ -839,6 +871,9 @@ fn apply_tail_frame(sess: &Arc<Mutex<TranscriptSession>>, line: &str) {
         TailFrame::Reset => {
             g.doc.clear();
             g.expanded.clear();
+            g.collapsed_errors.clear();
+            g.collapsed_running.clear();
+            g.paused_unseen = 0;
             g.matches.clear();
             g.match_idx = None;
         }
@@ -1056,6 +1091,7 @@ fn run_local_tmux_pty(viewer: Arc<Mutex<TmuxViewer>>, tmux: TmuxTarget, stop_fla
 
 fn demo_transcript_doc(agent: &str) -> TranscriptDoc {
     let mut doc = TranscriptDoc::new(agent);
+    doc.model = "opus-5.5".into();
     doc.entries = vec![
         TranscriptEntry::Message {
             id: 1,
@@ -1084,6 +1120,16 @@ fn demo_transcript_doc(agent: &str) -> TranscriptDoc {
         },
         TranscriptEntry::ToolCall {
             id: 4,
+            call_id: Some("tu_edit".into()),
+            name: "Edit".into(),
+            summary: "activity.rs".into(),
+            input: "{\n  \"file_path\": \"crates/rex-link/src/activity.rs\",\n  \"old_string\": \"let state = if modified_within(&jsonl, 30) { \\\"working\\\" } else { \\\"done\\\" };\",\n  \"new_string\": \"let state = resolve_claude_state(&jsonl, finished, parent_status, parent_started);\"\n}".into(),
+            output: Some("Updated crates/rex-link/src/activity.rs".into()),
+            status: ToolStatus::Ok,
+            timestamp: "14:52:14".into(),
+        },
+        TranscriptEntry::ToolCall {
+            id: 5,
             call_id: Some("tu_2".into()),
             name: "Bash".into(),
             summary: "jato test -p olo-rex-link --features quic,sync,move activity".into(),
@@ -1093,7 +1139,7 @@ fn demo_transcript_doc(agent: &str) -> TranscriptDoc {
             timestamp: "14:52:16".into(),
         },
         TranscriptEntry::ToolCall {
-            id: 5,
+            id: 6,
             call_id: Some("tu_err".into()),
             name: "Bash".into(),
             summary: "tmux -S /tmp/tmux-1000/stale list-panes".into(),
@@ -1103,26 +1149,26 @@ fn demo_transcript_doc(agent: &str) -> TranscriptDoc {
             timestamp: "14:52:17".into(),
         },
         TranscriptEntry::Message {
-            id: 6,
+            id: 7,
             speaker: Speaker::Assistant,
             label: agent.into(),
             timestamp: "14:52:18".into(),
             segments: vec![
-                BodySegment::Text("Stale tmux sockets fail fast without stalling discovery. Live sockets attach with `ignore-size` so the subagent’s pane geometry never changes:".into()),
+                BodySegment::Text("## Summary\n- Stale tmux sockets fail fast without stalling discovery.\n- Live sockets attach with `ignore-size` so the subagent’s **pane geometry** never changes:".into()),
                 BodySegment::Code {
                     lang: "rust".into(),
                     code: "pub fn tmux_attach_command(target: &TmuxTarget) -> String {\n    format!(\n        \"tmux -S {} attach -r -f ignore-size -t {}\",\n        shell_word(&target.socket),\n        shell_word(&target.target),\n    )\n}".into(),
                 },
-                BodySegment::Text("While Activity is hidden, the host watcher closes cleanly and uses zero CPU. Native Claude, Codex, and Antigravity subagents stream live over inotify.".into()),
+                BodySegment::Text("While Activity is hidden, the host watcher closes cleanly and uses zero CPU. Native Claude, Codex, and Antigravity subagents stream live over `inotify`.".into()),
             ],
         },
         TranscriptEntry::ToolCall {
-            id: 7,
+            id: 8,
             call_id: Some("tu_3".into()),
             name: "Bash".into(),
             summary: "python3 tools/dev/rex-slow/try.py activity".into(),
             input: "{\n  \"command\": \"/usr/bin/python3 tools/dev/rex-slow/try.py activity\"\n}".into(),
-            output: None,
+            output: Some("Checking Activity sidebar at 2× light…\nChecking Activity sidebar at 2× dark…\nStreaming transcript frames over inotify (0 dropped)".into()),
             status: ToolStatus::Running,
             timestamp: "14:52:21".into(),
         },
@@ -1185,7 +1231,7 @@ fn ensure_demo_loaded(hub: &Arc<RexHub>) {
             origin: SubagentOrigin::Tmux,
             name: "agy-reviewer".into(),
             description: "Visual QA of 2× light and dark shots".into(),
-            state: SubagentState::Working,
+            state: SubagentState::Waiting,
             pid: Some(41201),
             transcript: Some("/home/you/.gemini/antigravity-cli/brain/c22183c1/transcript.jsonl".into()),
             tmux: Some(TmuxTarget { socket: "/tmp/tmux-1000/default".into(), session: "agy-reviewer".into(), target: "agy-reviewer:0.0".into(), cols: 120, rows: 36, pty_cols: 120, pty_rows: 37 }),
@@ -1304,8 +1350,9 @@ fn open_demo_subagent_transcript(parent: BlockKey, sub: SubagentInfo) {
     sess.doc = demo_transcript_doc(&label);
     sess.loading = false;
     sess.streaming = true;
-    // Start scrolled at top with Follow paused so the Follow toggle matches viewport position.
+    // Start scrolled at top with Follow paused so the status bar shows Paused + Jump to Live.
     sess.follow = false;
+    sess.paused_unseen = 2;
     sess.expanded.insert(4);
     manager().lock().unwrap_or_else(|e| e.into_inner()).transcript = Some(Arc::new(Mutex::new(sess)));
     crate::ui::activity_changed();

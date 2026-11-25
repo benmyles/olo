@@ -1,6 +1,11 @@
-//! Styled live-streaming Transcript view (`render_transcript_view`), harmonized
-//! in-panel Find bar (`render_transcript_find_bar`), and bounded safe read-only
-//! `tmux attach -r -f ignore-size` viewer (`render_tmux_viewer`).
+//! Terminal-themed live-streaming Transcript view (`render_transcript_view`),
+//! harmonized in-panel Find bar (`render_transcript_find_bar`), and bounded safe
+//! read-only `tmux attach -r -f ignore-size` viewer (`render_tmux_viewer`).
+//!
+//! Styled directly from the active [`TerminalTheme`] (`background`, `foreground`,
+//! and contrast-verified ANSI 16 accents reserved for meaning: speaker identity,
+//! state, diff signs, and Find highlights) while keeping all chrome in Olo's
+//! native BeOS palette and UI sans font.
 
 use std::{collections::HashSet, rc::Rc, sync::Arc};
 
@@ -9,14 +14,18 @@ use olo_kit::{
     SharedString, Styled as _, TextRun, WindowCx, canvas, control_canvas, div, icons, metrics as m, point, px, relative, size, style, styled_text, theme, tip,
     widgets::{Button, ScrollView, Segment, SegmentedControl, StringView, TextControl, TextField, agent_marks},
 };
-use olo_rex_client::activity::{BodySegment, MatchField, SearchMatch, Speaker, SubagentState, ToolStatus, TranscriptEntry, format_code_lang, format_tool_input, parse_inline_code};
-use olo_rex_vt::TerminalTheme;
+use olo_rex_client::activity::{
+    BodySegment, DiffLine, InlineKind, InlineSpan, MatchField, SearchMatch, Speaker, SubagentState, ToolCategory, ToolStatus, TranscriptEntry, classify_tool, extract_tool_diff, format_code_lang,
+    format_tool_input, friendly_tool_name, parse_inline_markdown,
+};
+use olo_rex_vt::{Rgb, TerminalTheme};
 use olo_sync::Mutex;
 
 use crate::{
     activity_watch::{TmuxViewer, TranscriptSession, ViewTarget},
     settings,
     terminal_pane::{self, Metrics, PanePaintArgs},
+    themes::{hsla, legible, mix},
 };
 
 /// Actions emitted by the Transcript / read-only Tmux viewer header and body.
@@ -26,21 +35,124 @@ pub enum TranscriptDo {
     ShowTranscript,
     ToggleExpand(usize),
     ToggleFollow,
+    JumpToLive,
     ToggleFind,
     Close,
 }
 
-const STREAM_MAX_W: f32 = 760.0;
-const PROSE_MAX_W: f32 = 560.0;
-/// Shared horizontal inset inside the stream column: every speaker name, prose
-/// line, event label, and well text line aligns on this exact left edge, while
-/// 8-pt disclosure latches hang cleanly in the `0..TEXT_INSET` margin.
-const TEXT_INSET: f32 = 14.0;
-/// Fixed width for event row labels (`Thinking`, `Read`, `Bash`, `Edit`, …) so
-/// every tool argument starts on one aligned column down the page.
-const LABEL_COL_W: f32 = 64.0;
-const EVENT_ROW_H: f32 = 22.0;
+/// Comfortable prose measure (~90 characters) while tool rows, code, and diffs keep full width.
+const PROSE_MAX_W: f32 = 540.0;
+/// Shared horizontal gutter inside the stream: disclosure triangles hang in
+/// `0..LATCH_W` while speaker names, prose, tool labels, and all text inside
+/// expanded wells align to the exact same `x = m::SPACING + LATCH_W` axis.
+const LATCH_W: f32 = 14.0;
+const LABEL_COL_W: f32 = 72.0;
+const EVENT_ROW_H: f32 = 24.0;
 const MONO_SIZE: f32 = style::SMALL_SIZE;
+
+/// Contrast-verified Waiting orange on Olo's panel chrome (`>= 4.5:1` in light & dark).
+pub fn waiting_chrome_color(p: &olo_theme::Palette) -> Hsla {
+    let raw = p.hue(olo_theme::Hue::Orange);
+    if p.mode == olo_theme::ThemeMode::Dark {
+        style::c(olo_theme::mix(raw, p.panel_text, 0.22))
+    } else {
+        // Darken light-mode orange clearly against the cool light-grey panel background.
+        style::c(olo_theme::mix(raw, p.panel_text, 0.44))
+    }
+}
+
+/// Semantic palette derived from the active [`TerminalTheme`]:
+/// - One contrast-verified secondary text role (`>= 4.6:1` against `bg`).
+/// - ANSI hues reserved strictly for meaning (speakers, state, diff signs, Find hits),
+///   each verified `>= 4.5:1` against `bg` and falling back toward `fg` if weak.
+#[derive(Clone, Copy)]
+struct TailPalette {
+    key: u64,
+    bg_rgba: olo_theme::Rgba,
+    bg: Hsla,
+    fg: Hsla,
+    secondary: Hsla,
+    surface: Hsla,
+    surface_border: Hsla,
+    rule: Hsla,
+    red: Hsla,
+    green: Hsla,
+    blue: Hsla,
+    cyan: Hsla,
+    code_pill_bg: Hsla,
+    diff_add_bg: Hsla,
+    diff_del_bg: Hsla,
+    diff_add_sign: Hsla,
+    diff_del_sign: Hsla,
+    err_well_bg: Hsla,
+    find_hit_bg: Hsla,
+    find_hit_ink: Hsla,
+    find_act_bg: Hsla,
+    find_act_ink: Hsla,
+}
+
+impl TailPalette {
+    fn from_theme(t: &TerminalTheme) -> Self {
+        let bg = t.background;
+        let fg = t.foreground;
+        let is_light = t.is_light();
+        let pal = t.palette_256();
+        let pick = |norm: usize, bright: usize| -> Rgb {
+            let raw = if is_light { pal[norm] } else { pal[bright] };
+            legible(raw, bg, 4.6)
+        };
+        let red_rgb = pick(1, 9);
+        let green_rgb = pick(2, 10);
+        let blue_rgb = pick(4, 12);
+        let cyan_rgb = pick(6, 14);
+
+        let surface_rgb = if is_light { mix(fg, bg, 0.04) } else { mix(fg, bg, 0.055) };
+        let border_rgb = mix(fg, bg, if is_light { 0.16 } else { 0.15 });
+        let rule_rgb = mix(fg, bg, if is_light { 0.13 } else { 0.12 });
+        // Single contrast-verified secondary text role (>= 4.6:1 at 1×, 1.5×, and 2×).
+        let secondary_rgb = legible(mix(fg, bg, if is_light { 0.62 } else { 0.65 }), bg, 4.7);
+
+        let code_pill_rgb = mix(fg, bg, if is_light { 0.075 } else { 0.11 });
+        // Subtle ~12% diff wash so successful edits stay calm beneath the conversation.
+        let diff_add_rgb = mix(pal[2], surface_rgb, if is_light { 0.11 } else { 0.13 });
+        let diff_del_rgb = mix(pal[1], surface_rgb, if is_light { 0.11 } else { 0.13 });
+        let diff_add_sign_rgb = legible(if is_light { pal[2] } else { pal[10] }, diff_add_rgb, 4.8);
+        let diff_del_sign_rgb = legible(if is_light { pal[1] } else { pal[9] }, diff_del_rgb, 4.8);
+        // Subtle error tint on failed blocks; neutral outline + 2pt red left accent rail.
+        let err_well_rgb = mix(pal[1], surface_rgb, if is_light { 0.055 } else { 0.095 });
+
+        let find_hit_bg_rgb = mix(pal[3], bg, if is_light { 0.34 } else { 0.40 });
+        let find_hit_ink_rgb = legible(fg, find_hit_bg_rgb, 4.6);
+        let find_act_bg_rgb = if is_light { pal[3] } else { pal[11] };
+        let find_act_ink_rgb = legible(Rgb::new(16, 18, 22), find_act_bg_rgb, 4.6);
+
+        let key = style::key((bg.r, bg.g, bg.b, fg.r, fg.g, fg.b, pal[1].r, pal[2].g, pal[4].b, pal[6].g, is_light));
+        Self {
+            key,
+            bg_rgba: [bg.r, bg.g, bg.b, 255],
+            bg: hsla(bg),
+            fg: hsla(fg),
+            secondary: hsla(secondary_rgb),
+            surface: hsla(surface_rgb),
+            surface_border: hsla(border_rgb),
+            rule: hsla(rule_rgb),
+            red: hsla(red_rgb),
+            green: hsla(green_rgb),
+            blue: hsla(blue_rgb),
+            cyan: hsla(cyan_rgb),
+            code_pill_bg: hsla(code_pill_rgb),
+            diff_add_bg: hsla(diff_add_rgb),
+            diff_del_bg: hsla(diff_del_rgb),
+            diff_add_sign: hsla(diff_add_sign_rgb),
+            diff_del_sign: hsla(diff_del_sign_rgb),
+            err_well_bg: hsla(err_well_rgb),
+            find_hit_bg: hsla(find_hit_bg_rgb),
+            find_hit_ink: hsla(find_hit_ink_rgb),
+            find_act_bg: hsla(find_act_bg_rgb),
+            find_act_ink: hsla(find_act_ink_rgb),
+        }
+    }
+}
 
 pub fn subagent_mark(state: SubagentState) -> agent_marks::AgentMark {
     match state {
@@ -64,16 +176,14 @@ pub fn subagent_state_word(state: SubagentState) -> (&'static str, Option<olo_th
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HeaderStatus {
     Working,
+    Waiting,
     Done,
     Failed,
 }
 
 /// Shared BeOS `STRIP_HEIGHT (34 pt)` viewer header strip:
-/// - Leading edge: `Back` + icon + bold agent name / regular em-dash task title.
-/// - Trailing edge: status readout (`● Working`, `Done`, `● Failed`, plus
-///   `· Read-only` in Terminal mode), `Find` & `Follow` (transcript only), and
-///   `Transcript | Terminal` ALWAYS pinned at the far right edge (`12 pt` inset)
-///   so switching modes never shifts the control under the pointer.
+/// - Leading group (identity + state): `Back` + icon + title + 12 pt gap + live status (`● Working`, `● Waiting`, `Done`, `● Failed`).
+/// - Trailing group (actions): `Find` (transcript only), plus `16 pt` gap + `Transcript | Terminal` ONLY when the view actually has a terminal.
 #[allow(clippy::too_many_arguments)]
 fn viewer_header(
     icon_name: &'static str,
@@ -85,7 +195,6 @@ fn viewer_header(
     has_transcript: bool,
     has_terminal: bool,
     find_open: Option<bool>,
-    follow: Option<bool>,
     on_do: Arc<dyn Fn(&TranscriptDo, &mut WindowCx)>,
 ) -> Element {
     let head_bg = canvas(|g, b| {
@@ -111,7 +220,16 @@ fn viewer_header(
     .h(px(m::CONTROL_HEIGHT))
     .flex_shrink_0();
 
-    // Agent name bold + " — task" regular weight, fitted cleanly on one line.
+    // Measure natural title width so the status indicator sits 12 pt right after
+    // the title (grouped with identity on the left rather than crowding Find).
+    let title_nat_w = if let Some((lead, rest)) = title.split_once(" — ") {
+        let w1 = f32::from(style::text_width(lead.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD)));
+        let w2 = f32::from(style::text_width(format!(" — {rest}"), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL)));
+        (w1 + w2).ceil() + 2.0
+    } else {
+        f32::from(style::text_width(title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD))).ceil() + 2.0
+    };
+
     let title_for_paint = title.clone();
     let title_el = canvas(move |g, b| {
         let p = theme::palette();
@@ -135,6 +253,7 @@ fn viewer_header(
     let p = theme::palette();
     let (dot_color, word, word_color, bold_word) = match status {
         HeaderStatus::Working => (Some(p.success), olo_kit::words::tr("Working"), None, false),
+        HeaderStatus::Waiting => (Some(p.hue(olo_theme::Hue::Orange)), olo_kit::words::tr("Waiting"), Some(waiting_chrome_color(&p)), true),
         HeaderStatus::Done => (None, olo_kit::words::tr("Done"), None, false),
         HeaderStatus::Failed => (Some(p.failure), olo_kit::words::tr("Failed"), Some(style::c(p.failure)), true),
     };
@@ -165,30 +284,25 @@ fn viewer_header(
         None => status_inner,
     };
 
-    let cb_seg = on_do.clone();
-    let mode_switch_raw = SegmentedControl::new("rex-viewer-mode", [Segment::new("Transcript").enabled(has_transcript), Segment::new("Terminal").enabled(has_terminal)], if is_tmux { 1 } else { 0 })
-        .on_choose(move |idx: &usize, cx| {
-            if *idx == 0 {
-                cb_seg(&TranscriptDo::ShowTranscript, cx);
-            } else {
-                cb_seg(&TranscriptDo::ShowTerminal, cx);
-            }
-        });
-    let mode_switch = if !has_terminal { tip::on(mode_switch_raw.into_element(), "rex-viewer-no-term", "Transcript only — no terminal") } else { mode_switch_raw.into_element() };
-
-    // Pin `Transcript | Terminal` ALWAYS at the trailing right edge so switching
-    // between Transcript and Terminal never moves the control under the pointer!
-    let mut controls = div().flex().flex_row().items_center().gap(px(8.0)).flex_shrink_0();
+    let mut controls = div().flex().flex_row().items_center().gap(px(12.0)).flex_shrink_0();
     if let Some(is_find) = find_open {
         let cb_find = on_do.clone();
         controls = controls.child(Button::new(olo_kit::words::tr("Find").to_string()).id("rex-tr-find").min_width(0.0).pushed(is_find).on_click(move |_, cx| cb_find(&TranscriptDo::ToggleFind, cx)));
     }
-    if let Some(is_following) = follow {
-        let cb_follow = on_do.clone();
-        controls = controls
-            .child(Button::new(olo_kit::words::tr("Follow").to_string()).id("rex-tr-follow").min_width(0.0).pushed(is_following).on_click(move |_, cx| cb_follow(&TranscriptDo::ToggleFollow, cx)));
+    // Show Transcript | Terminal switch ONLY when both modes exist (never render
+    // a one-sided control with a pale disabled Terminal button).
+    if has_terminal {
+        let cb_seg = on_do.clone();
+        let mode_switch = SegmentedControl::new("rex-viewer-mode", [Segment::new("Transcript").enabled(has_transcript), Segment::new("Terminal").enabled(true)], if is_tmux { 1 } else { 0 })
+            .on_choose(move |idx: &usize, cx| {
+                if *idx == 0 {
+                    cb_seg(&TranscriptDo::ShowTranscript, cx);
+                } else {
+                    cb_seg(&TranscriptDo::ShowTerminal, cx);
+                }
+            });
+        controls = controls.child(mode_switch);
     }
-    controls = controls.child(mode_switch);
 
     div()
         .relative()
@@ -202,14 +316,34 @@ fn viewer_header(
         .px(px(m::SPACING))
         .child(head_bg)
         .child(back_btn)
-        .child(div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(icon_el).child(div().flex_1().min_w_0().child(title_el)))
-        .child(status_el)
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(12.0))
+                .child(
+                    div()
+                        .min_w_0()
+                        .max_w(px(title_nat_w + 16.0 + m::TIGHT))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(m::TIGHT))
+                        .child(icon_el)
+                        .child(div().flex_1().min_w_0().w(px(title_nat_w)).child(title_el)),
+                )
+                .child(status_el),
+        )
         .child(controls)
 }
 
-/// Compact up/down BeOS push button (`24 × 24`) matching `CONTROL_HEIGHT` for
-/// stepping through Transcript Find matches.
-fn step_triangle_button(id: &'static str, name: &'static str, up: bool, enabled: bool, on_click: impl Fn(&mut WindowCx) + 'static) -> Element {
+/// Compact joined up/down BeOS push button (`24 × 24`) matching `CONTROL_HEIGHT`
+/// for stepping through Transcript Find matches (`join_left` / `join_right` share
+/// the middle hairline seamlessly).
+fn step_triangle_button(id: &'static str, name: &'static str, up: bool, enabled: bool, join_right: bool, join_left: bool, on_click: impl Fn(&mut WindowCx) + 'static) -> Element {
     let cb = Rc::new(on_click);
     let mut el = control_canvas(move |g, r, s| {
         let p = theme::palette();
@@ -226,7 +360,14 @@ fn step_triangle_button(id: &'static str, name: &'static str, up: bool, enabled:
         };
         let inner = style::inset(g, r, 1.0);
         style::vgradient(g, inner, t0, t1);
-        style::frame_rect(g, r, style::shade(&p, bg, 1.55));
+        let frame = style::shade(&p, bg, 1.55);
+        style::hline(g, r.left(), r.right(), r.top(), frame);
+        style::hline_above(g, r.left(), r.right(), r.bottom(), frame);
+        if !join_left {
+            style::vline(g, r.left(), r.top(), r.bottom(), frame);
+        }
+        style::vline_left_of(g, r.right(), r.top(), r.bottom(), frame);
+        let _ = join_right;
         if down {
             style::bevel(g, inner, style::shade(&p, base, 1.3), style::shade(&p, base, 1.05));
         } else {
@@ -247,7 +388,7 @@ fn step_triangle_button(id: &'static str, name: &'static str, up: bool, enabled:
         }
         g.agent(olo_kit::agent::Node { role: "Button", name: Some(name.into()), bounds: r, enabled: s.enabled, clickable: s.enabled, focused: s.focused, ..Default::default() });
     })
-    .paint_key(style::key((id, up, enabled)))
+    .paint_key(style::key((id, up, enabled, join_left, join_right)))
     .id(SharedString::from(id))
     .w(px(m::CONTROL_HEIGHT))
     .h(px(m::CONTROL_HEIGHT))
@@ -263,7 +404,7 @@ fn step_triangle_button(id: &'static str, name: &'static str, up: bool, enabled:
 }
 
 /// Harmonized `STRIP_HEIGHT (34 pt)` Find bar placed directly under the
-/// Transcript header: field aligned left under `Back`, compact ▲/▼ steppers,
+/// Transcript header: field aligned left under `Back`, joined ▲▼ stepper pair,
 /// secondary match counter (`1 of 3` / `Not found`), and trailing `Done`.
 pub fn render_transcript_find_bar(
     cx: &WindowCx,
@@ -287,6 +428,14 @@ pub fn render_transcript_find_bar(
     .absolute()
     .inset_0();
 
+    let steppers = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .flex_shrink_0()
+        .child(step_triangle_button("rex-tr-find-prev", "Previous Match", true, found, true, false, move |cx| back(&true, cx)))
+        .child(step_triangle_button("rex-tr-find-next", "Next Match", false, found, false, true, move |cx| next(&false, cx)));
+
     div()
         .relative()
         .w_full()
@@ -308,22 +457,25 @@ pub fn render_transcript_find_bar(
             }
         })
         .child(div().w(px(220.0)).flex_shrink_0().child(TextControl::new(cx, field)))
-        .child(step_triangle_button("rex-tr-find-prev", "Previous Match", true, found, move |cx| back(&true, cx)))
-        .child(step_triangle_button("rex-tr-find-next", "Next Match", false, found, move |cx| next(&false, cx)))
+        .child(steppers)
         .child(div().pl(px(2.0)).flex_1().min_w_0().child(StringView::new(said).size(style::SMALL_SIZE).dim(true).cut(true).height(m::CONTROL_HEIGHT)))
         .child(Button::new(olo_kit::words::tr("Done").to_string()).id("rex-tr-find-done").min_width(0.0).on_click(move |_, cx| done(&(), cx)))
 }
 
-/// Render the authentic BeOS/Olo live-streaming conversation transcript view.
+/// Render the terminal-themed live-streaming conversation transcript tail.
+/// Live / Paused state and `Jump to Live` live in the window status bar so the
+/// transcript viewport keeps one steady height without shifting on toggle.
+#[allow(clippy::too_many_arguments)]
 pub fn render_transcript_view(
     session: &Arc<Mutex<TranscriptSession>>,
     scroll: &ScrollHandle,
+    active_theme: &TerminalTheme,
     find_open: bool,
     find_bar: Option<Element>,
     on_do: impl Fn(&TranscriptDo, &mut WindowCx) + 'static,
 ) -> Element {
     let on_do: Arc<dyn Fn(&TranscriptDo, &mut WindowCx)> = Arc::new(on_do);
-    let (target, title, agent_label, loading, streaming, error, truncated, follow, entries, expanded, collapsed_errors, matches, active_match_idx, agent_json) = {
+    let (target, title, agent_label, model, loading, streaming, error, truncated, entries, expanded, collapsed_errors, collapsed_running, matches, active_match_idx, agent_json) = {
         let g = session.lock().unwrap_or_else(|e| e.into_inner());
         let mut exp: HashSet<usize> = g.expanded.clone();
         if let Some(auto_id) = g.find_auto_expanded {
@@ -333,29 +485,32 @@ pub fn render_transcript_view(
             g.target.clone(),
             g.target.title(),
             g.doc.agent_label.clone(),
+            g.doc.model.clone(),
             g.loading,
             g.streaming,
             g.error.clone(),
             g.doc.truncated,
-            g.follow,
             g.doc.entries.clone(),
             exp,
             g.collapsed_errors.clone(),
+            g.collapsed_running.clone(),
             g.matches.clone(),
             g.match_idx,
             g.agent_json(),
         )
     };
 
-    let p = theme::palette();
-    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let tp = TailPalette::from_theme(active_theme);
+    let agent_icon = if target.has_terminal() { "terminal" } else { "text" };
+
     let hdr_status = if error.is_some() {
         HeaderStatus::Failed
     } else if let ViewTarget::SubagentTranscript { sub, .. } = &target {
         match sub.state {
             SubagentState::Failed => HeaderStatus::Failed,
+            SubagentState::Waiting => HeaderStatus::Waiting,
             SubagentState::Done => HeaderStatus::Done,
-            SubagentState::Working | SubagentState::Waiting => HeaderStatus::Working,
+            SubagentState::Working => HeaderStatus::Working,
         }
     } else if streaming {
         HeaderStatus::Working
@@ -363,17 +518,18 @@ pub fn render_transcript_view(
         HeaderStatus::Done
     };
 
-    let header = viewer_header("text", title, hdr_status, false, None, false, true, target.has_terminal(), Some(find_open), Some(follow), on_do.clone());
+    let header = viewer_header(agent_icon, title, hdr_status, false, None, false, true, target.has_terminal(), Some(find_open), on_do.clone());
 
-    let mut stream_col = div().w_full().max_w(px(STREAM_MAX_W)).flex().flex_col().px(px(20.0)).pt(px(16.0)).pb(px(24.0));
+    // Content outer left edge matches the toolbar's `Back` and Find field (`m::SPACING = 12 pt`).
+    let mut stream_col = div().w_full().flex().flex_col().px(px(m::SPACING)).pt(px(12.0)).pb(px(24.0));
 
     if truncated {
         stream_col = stream_col.child(
             div()
                 .w_full()
-                .pl(px(TEXT_INSET))
-                .pb(px(10.0))
-                .child(StringView::new(olo_kit::words::tr("Showing the latest 1 MB of a long transcript.").to_owned()).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW)),
+                .pl(px(LATCH_W))
+                .pb(px(8.0))
+                .child(StringView::new(olo_kit::words::tr("Showing the latest 1 MB of a long transcript.").to_owned()).size(style::SMALL_SIZE).color(tp.secondary).height(m::LABEL_ROW)),
         );
     }
 
@@ -386,20 +542,16 @@ pub fn render_transcript_view(
                 .flex_col()
                 .items_center()
                 .gap(px(6.0))
-                .child(StringView::new(olo_kit::words::tr("Transcript unavailable").to_owned()).bold(true))
-                .child(StringView::new(err).size(style::SMALL_SIZE).dim(true).wrap(true)),
+                .child(StringView::new(olo_kit::words::tr("Transcript unavailable").to_owned()).bold(true).color(tp.red))
+                .child(StringView::new(err).size(style::SMALL_SIZE).color(tp.secondary).wrap(true)),
         );
     } else if entries.is_empty() {
         let note = if loading { olo_kit::words::tr("Loading transcript…") } else { olo_kit::words::tr("Waiting for the agent’s first turn…") };
-        stream_col = stream_col.child(div().w_full().py(px(m::SECTION)).flex().items_center().justify_center().child(StringView::new(note.to_owned()).dim(true)));
+        stream_col = stream_col.child(div().w_full().py(px(m::SECTION)).flex().items_center().justify_center().child(StringView::new(note.to_owned()).color(tp.secondary)));
     } else {
         let mut active_turn: Option<Speaker> = None;
         let mut prev_ts: Option<String> = None;
-        // Track whether the previous block inside the current turn ended with a well or prose
-        // so we enforce exact two-value intra-turn rhythm:
-        // - 4 pt between a latch row and its own well
-        // - 12 pt between every other pair of blocks (prose/well, well/row, prose/row, row/prose)
-        // - 0 pt between consecutive collapsed latch rows (tight 22 pt pitch).
+        let mut shown_model = false;
         let mut prev_block_kind: Option<BlockKind> = None;
 
         for entry in &entries {
@@ -415,13 +567,19 @@ pub fn render_transcript_view(
                 let starts_new_turn = active_turn != Some(kind) || kind == Speaker::User;
                 if starts_new_turn {
                     if active_turn.is_some() {
-                        stream_col = stream_col.child(turn_separator(&p, dark));
+                        stream_col = stream_col.child(turn_separator(&tp));
                     }
                     let (speaker_name, ts_for_turn) = match entry {
                         TranscriptEntry::Message { label, timestamp, .. } => (label.clone(), timestamp.clone()),
                         _ => (agent_label.clone(), entry_ts.to_owned()),
                     };
-                    stream_col = stream_col.child(render_speaker_line(speaker_name, ts_for_turn));
+                    let model_tag = if kind == Speaker::Assistant && !shown_model && !model.is_empty() {
+                        shown_model = true;
+                        Some(model.clone())
+                    } else {
+                        None
+                    };
+                    stream_col = stream_col.child(render_speaker_line(&tp, kind, agent_icon, speaker_name, model_tag, ts_for_turn));
                     active_turn = Some(kind);
                     prev_block_kind = None;
                 }
@@ -435,55 +593,77 @@ pub fn render_transcript_view(
                 prev_ts = Some(entry_ts.to_owned());
             }
 
-            // Failed tool rows open by default (capped to 6 lines unless user explicitly toggled).
+            // Failed tools and currently Running tools auto-expand so errors and live
+            // streaming output are visible right away (user can still toggle either).
             let is_failed_tool = matches!(entry, TranscriptEntry::ToolCall { status: ToolStatus::Error, .. });
-            let is_open = if is_failed_tool { !collapsed_errors.contains(&eid) || expanded.contains(&eid) } else { expanded.contains(&eid) };
+            let is_running_tool = matches!(entry, TranscriptEntry::ToolCall { status: ToolStatus::Running, .. });
+            let is_open = if is_failed_tool {
+                !collapsed_errors.contains(&eid) || expanded.contains(&eid)
+            } else if is_running_tool {
+                !collapsed_running.contains(&eid) || expanded.contains(&eid)
+            } else {
+                expanded.contains(&eid)
+            };
             let user_expanded_full = expanded.contains(&eid);
 
             let (el, end_kind) = match entry {
                 TranscriptEntry::Message { segments, .. } => {
-                    let top_gap = if prev_block_kind.is_some() { 12.0 } else { 0.0 };
-                    (render_message_body(&p, dark, eid, segments, top_gap, &matches, active_match_idx), BlockKind::ProseOrWell)
+                    let top_gap = if prev_block_kind.is_some() { 10.0 } else { 0.0 };
+                    (render_message_body(&tp, eid, segments, top_gap, &matches, active_match_idx), BlockKind::ProseOrWell)
                 }
                 TranscriptEntry::Thinking { summary, text, .. } => {
-                    let top_gap = if matches!(prev_block_kind, Some(BlockKind::ProseOrWell)) { 12.0 } else { 0.0 };
+                    let top_gap = if matches!(prev_block_kind, Some(BlockKind::ProseOrWell)) { 10.0 } else { 0.0 };
                     let kind = if is_open { BlockKind::ProseOrWell } else { BlockKind::CollapsedRow };
-                    (render_thinking_item(&p, dark, eid, summary, text, is_open, top_gap, &matches, active_match_idx, on_do.clone()), kind)
+                    (render_thinking_item(&tp, eid, summary, text, is_open, top_gap, &matches, active_match_idx, on_do.clone()), kind)
                 }
                 TranscriptEntry::ToolCall { name, summary, input, output, status, .. } => {
-                    let top_gap = if matches!(prev_block_kind, Some(BlockKind::ProseOrWell)) { 12.0 } else { 0.0 };
-                    let has_well = is_open && (!format_tool_input(name, summary, input).is_empty() || output.as_deref().is_some_and(|s| !s.trim().is_empty()));
+                    let top_gap = if matches!(prev_block_kind, Some(BlockKind::ProseOrWell)) { 10.0 } else { 0.0 };
+                    let has_well =
+                        is_open && (extract_tool_diff(name, input).is_some() || !format_tool_input(name, summary, input).is_empty() || output.as_deref().is_some_and(|s| !s.trim().is_empty()));
                     let kind = if has_well { BlockKind::ProseOrWell } else { BlockKind::CollapsedRow };
+                    let cap_lines = if is_failed_tool && !user_expanded_full {
+                        Some(8)
+                    } else if is_running_tool && !user_expanded_full {
+                        Some(6)
+                    } else {
+                        None
+                    };
                     (
-                        render_tool_item(
-                            &p,
-                            dark,
-                            eid,
-                            name,
-                            summary,
-                            input,
-                            output.as_deref(),
-                            *status,
-                            duration,
-                            is_open,
-                            is_failed_tool && !user_expanded_full,
-                            top_gap,
-                            &matches,
-                            active_match_idx,
-                            on_do.clone(),
-                        ),
+                        render_tool_item(&tp, eid, name, summary, input, output.as_deref(), *status, duration, is_open, cap_lines, is_running_tool, top_gap, &matches, active_match_idx, on_do.clone()),
                         kind,
                     )
                 }
-                TranscriptEntry::Divider { label, timestamp, .. } => (render_divider(&p, dark, label, timestamp), BlockKind::ProseOrWell),
+                TranscriptEntry::Divider { label, timestamp, .. } => (render_divider(&tp, label, timestamp), BlockKind::ProseOrWell),
             };
             stream_col = stream_col.child(el);
             prev_block_kind = Some(end_kind);
         }
     }
 
-    let body_wrap = div().w_full().flex().flex_col().items_center().child(stream_col);
-    let scroller = ScrollView::new(scroll).vertical(true).auto_hide(false).border(false).background(p.document_background).child(body_wrap);
+    let scroll_for_cb = scroll.clone();
+    let sess_scroll = session.clone();
+    let last_y = Rc::new(std::cell::Cell::new(f32::from(scroll.offset().y)));
+    let scroller = ScrollView::new(scroll)
+        .vertical(true)
+        .auto_hide(false)
+        .border(false)
+        .background(tp.bg_rgba)
+        .on_scroll(move |off, _| {
+            let cur_y = f32::from(off.y);
+            let prev_y = last_y.replace(cur_y);
+            let max_y = f32::from(scroll_for_cb.max_offset().height);
+            // Offset y is 0 at top and -max_y at bottom; moving toward 0 means scrolling UP into history.
+            if max_y > 24.0 && cur_y > prev_y + 1.0 && -cur_y < max_y - 20.0 {
+                let mut g = sess_scroll.lock().unwrap_or_else(|e| e.into_inner());
+                if g.follow {
+                    g.follow = false;
+                    g.generation += 1;
+                    drop(g);
+                    crate::ui::activity_changed();
+                }
+            }
+        })
+        .child(stream_col);
 
     let container_mark = canvas(|g, b| {
         olo_kit::review::container(g, b);
@@ -492,13 +672,14 @@ pub fn render_transcript_view(
     .absolute()
     .inset_0();
 
-    // Disable Follow automatically whenever the user scrolls up manually.
+    // Disable Follow automatically whenever the user wheels up into history.
     let sess_wheel = session.clone();
     let body_box = div()
         .relative()
         .flex_1()
         .min_h_0()
         .w_full()
+        .bg(tp.bg)
         .on_scroll_wheel(move |e: &olo_kit::ScrollWheelEvent, _| {
             let dy = f32::from(e.delta.pixel_delta(px(18.0)).y);
             if dy > 0.5 {
@@ -544,12 +725,11 @@ fn elapsed_seconds(prev: &str, curr: &str) -> Option<String> {
     if b > a && b - a < 3600 { Some(format!("{}s", b - a)) } else { None }
 }
 
-/// Extract an exit code (e.g. `exit status 1` or `exited with code 2`) from stderr/output.
 fn extract_exit_code(output: Option<&str>) -> Option<i32> {
     let text = output?;
     for line in text.lines().rev() {
         let lower = line.to_ascii_lowercase();
-        for prefix in ["exit status ", "exited with code ", "exit code "] {
+        for prefix in ["command exited with code ", "exit status ", "exited with code ", "exit code "] {
             if let Some(pos) = lower.find(prefix) {
                 let rest = lower[pos + prefix.len()..].trim();
                 let digits: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '-').collect();
@@ -562,29 +742,65 @@ fn extract_exit_code(output: Option<&str>) -> Option<i32> {
     None
 }
 
-/// Cap default-opened error output to 6 lines (+ `"…"` when longer).
-fn cap_error_lines(s: &str, max_lines: usize) -> String {
+fn cap_head_lines(s: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = s.lines().collect();
     if lines.len() <= max_lines { s.to_owned() } else { format!("{}\n…", lines[..max_lines].join("\n")) }
 }
 
-/// Turn separator starting at the wells' & latches' exact outer left edge (`0`, not indented).
-fn turn_separator(p: &olo_theme::Palette, dark: bool) -> Element {
-    let rule_c = if dark { style::c(olo_theme::mix(p.document_background, p.panel_text, 0.16)) } else { style::shade(p, p.panel_background, 1.24) };
-    div().w_full().pt(px(16.0)).pb(px(12.0)).child(
+fn cap_tail_lines(s: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    if lines.len() <= max_lines { s.to_owned() } else { format!("…\n{}", lines[lines.len() - max_lines..].join("\n")) }
+}
+
+fn turn_separator(tp: &TailPalette) -> Element {
+    let rule_c = tp.rule;
+    let key = style::key(("tr-turn-sep", tp.key));
+    div().w_full().pt(px(14.0)).pb(px(10.0)).child(
         canvas(move |g, b| {
             style::hline(g, b.left(), b.right(), b.top(), rule_c);
         })
-        .paint_key(style::key(("tr-turn-sep", dark)))
+        .paint_key(key)
         .w_full()
         .h(px(1.0)),
     )
 }
 
-fn render_speaker_line(speaker: String, timestamp: String) -> Element {
-    let mut row = div().w_full().pl(px(TEXT_INSET)).pb(px(4.0)).flex().flex_row().items_center().gap(px(8.0)).child(StringView::new(speaker).bold(true).size(style::PLAIN_SIZE + 1.0).height(18.0));
+/// Clean speaker heading without stray vertical bars:
+/// - User: bold ANSI blue `You` on the body column (`LATCH_W`).
+/// - Assistant/subagent: crisp 16 pt icon inline before bold ANSI cyan name,
+///   mono model tag, and UI-sans timestamp on the right edge.
+fn render_speaker_line(tp: &TailPalette, speaker: Speaker, icon_name: &'static str, name: String, model: Option<String>, timestamp: String) -> Element {
+    let accent = match speaker {
+        Speaker::User => tp.blue,
+        Speaker::Assistant => tp.cyan,
+        Speaker::System => tp.secondary,
+    };
+    let spk_size = style::PLAIN_SIZE + 1.0;
+
+    let mut row = div().w_full().pl(px(LATCH_W)).pb(px(4.0)).flex().flex_row().items_center();
+
+    if speaker == Speaker::Assistant {
+        let icon_el = canvas(move |g, b| {
+            let text_mid = style::baseline_at(g, b.center().y, spk_size) - px(spk_size * style::CAP_HEIGHT / 2.0);
+            let icon_b = style::snap_centred(g, point(b.left() + px(8.0), text_mid), 16.0, 16.0);
+            icons::paint(g, icon_b, icon_name);
+        })
+        .paint_key(style::key(("tr-spk-icon", icon_name)))
+        .w(px(16.0))
+        .h(px(20.0))
+        .mr(px(6.0))
+        .flex_shrink_0();
+        row = row.child(icon_el);
+    }
+
+    row = row.child(StringView::new(name).bold(true).size(spk_size).color(accent).height(20.0));
+
+    if let Some(m) = model {
+        row = row.child(div().pl(px(8.0)).child(StringView::new(m).mono(true).size(style::SMALL_SIZE).beside(spk_size).color(tp.secondary).height(20.0)));
+    }
+    row = row.child(div().flex_1());
     if !timestamp.is_empty() {
-        row = row.child(StringView::new(timestamp).size(style::SMALL_SIZE).beside(style::PLAIN_SIZE + 1.0).dim(true).height(18.0));
+        row = row.child(StringView::new(timestamp).size(style::SMALL_SIZE).beside(spk_size).color(tp.secondary).height(20.0));
     }
     row
 }
@@ -593,25 +809,39 @@ fn field_match_ranges(matches: &[SearchMatch], active_idx: Option<usize>, entry_
     matches.iter().enumerate().filter(|(_, m)| m.entry_id == entry_id && m.field == field).map(|(i, m)| (m.start, m.end, active_idx == Some(i))).collect()
 }
 
-/// Build an inline-styled paragraph or code block with optional `` `inline code` ``
-/// formatting (backticks stripped) AND exact per-character Find highlight spans
-/// (no whole-block tint, no horizontal shift, crisp contrast in light & dark).
+/// Render a slice of pre-parsed inline markdown text (`plain[slice_start..slice_end]`)
+/// with shifted span and Find-match ranges so split heading/bullet/paragraph blocks
+/// preserve exact Find highlight byte offsets.
 #[allow(clippy::too_many_arguments)]
-fn render_rich_text(raw: &str, is_mono: bool, strip_inline_backticks: bool, font_size: f32, base_ink: Hsla, dark: bool, field_matches: &[(usize, usize, bool)]) -> Element {
-    let (plain, code_spans) = if strip_inline_backticks { parse_inline_code(raw) } else { (raw.to_owned(), Vec::new()) };
-    if plain.is_empty() {
+fn render_rich_slice(
+    tp: &TailPalette,
+    plain: &str,
+    md_spans: &[InlineSpan],
+    is_mono: bool,
+    font_size: f32,
+    base_ink: Hsla,
+    field_matches: &[(usize, usize, bool)],
+    slice_start: usize,
+    slice_end: usize,
+) -> Element {
+    let sub = &plain[slice_start..slice_end];
+    if sub.is_empty() {
         return div().into();
     }
-
-    let mut bounds: Vec<usize> = vec![0, plain.len()];
-    for &(s, e) in &code_spans {
-        if s <= plain.len() && e <= plain.len() && s < e {
+    let sub_len = sub.len();
+    let mut bounds: Vec<usize> = vec![0, sub_len];
+    for sp in md_spans {
+        let s = sp.start.saturating_sub(slice_start).min(sub_len);
+        let e = sp.end.saturating_sub(slice_start).min(sub_len);
+        if s < e {
             bounds.push(s);
             bounds.push(e);
         }
     }
-    for &(s, e, _) in field_matches {
-        if s <= plain.len() && e <= plain.len() && s < e {
+    for &(ms, me, _) in field_matches {
+        let s = ms.saturating_sub(slice_start).min(sub_len);
+        let e = me.saturating_sub(slice_start).min(sub_len);
+        if s < e {
             bounds.push(s);
             bounds.push(e);
         }
@@ -619,11 +849,10 @@ fn render_rich_text(raw: &str, is_mono: bool, strip_inline_backticks: bool, font
     bounds.sort_unstable();
     bounds.dedup();
 
-    let (hit_bg, hit_ink) = if dark { (style::c([118, 86, 20, 255]), style::c([244, 246, 250, 255])) } else { (style::c([255, 241, 166, 255]), style::c(theme::palette().panel_text)) };
-    let (act_bg, act_ink) = if dark { (style::c([242, 182, 44, 255]), style::c([20, 22, 26, 255])) } else { (style::c([246, 186, 42, 255]), style::c([20, 20, 20, 255])) };
-
-    let ui_f = style::ui_font(FontWeight::NORMAL);
-    let mono_f = style::mono_font(FontWeight::NORMAL);
+    let ui_reg = style::ui_font(FontWeight::NORMAL);
+    let ui_bold = style::ui_font(FontWeight::BOLD);
+    let mono_reg = style::mono_font(FontWeight::NORMAL);
+    let mono_bold = style::mono_font(FontWeight::BOLD);
 
     let mut runs = Vec::with_capacity(bounds.len().saturating_sub(1));
     for w in bounds.windows(2) {
@@ -631,62 +860,257 @@ fn render_rich_text(raw: &str, is_mono: bool, strip_inline_backticks: bool, font
         if b <= a {
             continue;
         }
-        let in_code = is_mono || code_spans.iter().any(|&(cs, ce)| a >= cs && b <= ce);
-        let active_hit = field_matches.iter().any(|&(ms, me, act)| act && a >= ms && b <= me);
-        let any_hit = active_hit || field_matches.iter().any(|&(ms, me, _)| a >= ms && b <= me);
+        let ga = slice_start + a;
+        let gb = slice_start + b;
+        let in_code = is_mono || md_spans.iter().any(|sp| sp.kind == InlineKind::Code && ga >= sp.start && gb <= sp.end);
+        let in_bold = md_spans.iter().any(|sp| sp.kind == InlineKind::Bold && ga >= sp.start && gb <= sp.end);
+        let in_heading = md_spans.iter().any(|sp| sp.kind == InlineKind::Heading && ga >= sp.start && gb <= sp.end);
+        let in_quote = md_spans.iter().any(|sp| sp.kind == InlineKind::Quote && ga >= sp.start && gb <= sp.end);
+        let in_bullet = md_spans.iter().any(|sp| sp.kind == InlineKind::Bullet && ga >= sp.start && gb <= sp.end);
+        let active_hit = field_matches.iter().any(|&(ms, me, act)| act && ga >= ms && gb <= me);
+        let any_hit = active_hit || field_matches.iter().any(|&(ms, me, _)| ga >= ms && gb <= me);
 
         let (color, background_color) = if active_hit {
-            (act_ink, Some(act_bg))
+            (tp.find_act_ink, Some(tp.find_act_bg))
         } else if any_hit {
-            (hit_ink, Some(hit_bg))
+            (tp.find_hit_ink, Some(tp.find_hit_bg))
+        } else if in_code && !is_mono {
+            // Foreground mono on subtle chip (cyan reserved for speaker identity).
+            (tp.fg, Some(tp.code_pill_bg))
+        } else if in_heading {
+            (tp.fg, None)
+        } else if in_bullet || in_quote {
+            (tp.secondary, None)
         } else {
             (base_ink, None)
         };
+
         let (font, size) = if in_code {
-            let sz = if is_mono { font_size } else { (font_size - 1.0).max(10.0) };
-            (mono_f.clone(), Some(px(sz)))
+            let sz = if is_mono { font_size } else { (font_size - 0.5).max(10.0) };
+            let f = if in_bold || in_heading { mono_bold.clone() } else { mono_reg.clone() };
+            (f, Some(px(sz)))
+        } else if in_heading || in_bold {
+            // Headings stay at body size, bold (terminal-markdown convention so speakers outrank headings).
+            (ui_bold.clone(), Some(px(font_size)))
         } else {
-            (ui_f.clone(), Some(px(font_size)))
+            (ui_reg.clone(), Some(px(font_size)))
         };
         runs.push(TextRun { len: b - a, font, color, background_color, underline: None, strikethrough: None, size });
     }
 
-    div().w_full().line_height(relative(style::LINE_HEIGHT)).text_size(px(font_size)).child(styled_text(plain, runs))
+    div().w_full().line_height(relative(style::LINE_HEIGHT)).text_size(px(font_size)).child(styled_text(sub.to_owned(), runs))
 }
 
-/// Authentic single BeOS sunken well (`style::sunken`) sitting clearly darker
-/// than `document_background` in both light and dark modes — never nested inside
-/// a second outline, with text aligned to the shared `+TEXT_INSET` vertical axis.
-fn sunken_well(p: &olo_theme::Palette, dark: bool, top_gap: f32, caption: Option<String>, body: Element) -> Element {
-    let well_bg = if dark {
-        // Noticeably darker recessed fill than dark document_background.
-        olo_theme::mix([0, 0, 0, 255], p.document_background, 0.56)
-    } else {
-        olo_theme::mix(p.panel_background, p.document_background, 0.42)
-    };
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MdBlockKind {
+    Heading,
+    Bullet,
+    Normal,
+}
+
+/// Render plain or inline-markdown text (`code` chips, `**bold**`, body-size bold
+/// headings with clean bottom breathing room, hanging-indent `•` bullets, quotes,
+/// and exact Find highlight spans).
+fn render_rich_text(tp: &TailPalette, raw: &str, is_mono: bool, parse_md: bool, font_size: f32, base_ink: Hsla, field_matches: &[(usize, usize, bool)]) -> Element {
+    let (plain, md_spans) = if parse_md { parse_inline_markdown(raw) } else { (raw.to_owned(), Vec::new()) };
+    if plain.is_empty() {
+        return div().into();
+    }
+    let has_structure = parse_md && md_spans.iter().any(|sp| matches!(sp.kind, InlineKind::Heading | InlineKind::Bullet));
+    if !has_structure {
+        return render_rich_slice(tp, &plain, &md_spans, is_mono, font_size, base_ink, field_matches, 0, plain.len());
+    }
+
+    let mut blocks: Vec<(usize, usize, MdBlockKind)> = Vec::new();
+    let mut chunk_start: Option<usize> = None;
+    let mut chunk_end: usize = 0;
+    let mut pos = 0usize;
+    for raw_line in plain.split('\n') {
+        let line_start = pos;
+        let line_end = pos + raw_line.len();
+        pos = (line_end + 1).min(plain.len());
+        let is_heading = !raw_line.is_empty() && md_spans.iter().any(|sp| sp.kind == InlineKind::Heading && sp.start == line_start && sp.end == line_end);
+        let is_bullet = raw_line.starts_with("• ");
+        if is_heading || is_bullet {
+            if let Some(cs) = chunk_start.take() {
+                blocks.push((cs, chunk_end, MdBlockKind::Normal));
+            }
+            blocks.push((line_start, line_end, if is_heading { MdBlockKind::Heading } else { MdBlockKind::Bullet }));
+        } else {
+            if chunk_start.is_none() {
+                chunk_start = Some(line_start);
+            }
+            chunk_end = line_end;
+        }
+    }
+    if let Some(cs) = chunk_start {
+        blocks.push((cs, chunk_end, MdBlockKind::Normal));
+    }
+
+    let mut col = div().w_full().flex().flex_col();
+    for (idx, (mut s, mut e, kind)) in blocks.into_iter().enumerate() {
+        while s < e && plain.as_bytes()[s] == b'\n' {
+            s += 1;
+        }
+        while e > s && plain.as_bytes()[e - 1] == b'\n' {
+            e -= 1;
+        }
+        if s >= e {
+            continue;
+        }
+        match kind {
+            MdBlockKind::Heading => {
+                let el = render_rich_slice(tp, &plain, &md_spans, is_mono, font_size, base_ink, field_matches, s, e);
+                let mut wrap = div().w_full().pb(px(5.0)).child(el);
+                if idx > 0 {
+                    wrap = wrap.pt(px(6.0));
+                }
+                col = col.child(wrap);
+            }
+            MdBlockKind::Bullet => {
+                // Hanging indent: `•` sits on the body column, text begins 14 pt in
+                // so wrapped lines stay aligned cleanly under the bullet text.
+                let bullet_prefix = "• ".len();
+                let text_start = (s + bullet_prefix).min(e);
+                let text_el = render_rich_slice(tp, &plain, &md_spans, is_mono, font_size, base_ink, field_matches, text_start, e);
+                let glyph = div().w(px(14.0)).flex_shrink_0().line_height(relative(style::LINE_HEIGHT)).text_size(px(font_size)).child(styled_text(
+                    "•".to_owned(),
+                    vec![TextRun {
+                        len: "•".len(),
+                        font: style::ui_font(FontWeight::NORMAL),
+                        color: tp.secondary,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                        size: Some(px(font_size)),
+                    }],
+                ));
+                col = col.child(div().w_full().pb(px(2.0)).flex().flex_row().items_start().child(glyph).child(div().flex_1().min_w_0().child(text_el)));
+            }
+            MdBlockKind::Normal => {
+                let el = render_rich_slice(tp, &plain, &md_spans, is_mono, font_size, base_ink, field_matches, s, e);
+                col = col.child(el);
+            }
+        }
+    }
+    col
+}
+
+/// Terminal-themed recessed surface well with a crisp neutral 1-pt outline and
+/// optional 2.5-pt left rail. All inner text aligns to `LATCH_W` from the well's
+/// left edge so prose, filepath headers, diff signs, and output share one column.
+fn terminal_well(tp: &TailPalette, top_gap: f32, accent_rail: Option<Hsla>, is_error: bool, caption: Option<String>, raw_padded: bool, body: Element) -> Element {
+    let fill = if is_error { tp.err_well_bg } else { tp.surface };
+    let border = tp.surface_border;
+    let key = style::key(("tr-term-well", tp.key, is_error, accent_rail.map(|c| style::ink_key(Some(c)))));
     let frame = canvas(move |g, b| {
-        let pal = theme::palette();
-        style::fill_rect(g, b, style::c(well_bg));
-        style::sunken(g, b, &pal, false);
+        style::fill_rect(g, b, fill);
+        style::frame_rect(g, b, border);
+        if let Some(rail) = accent_rail {
+            let strip = Bounds::new(point(b.left() + px(1.0), b.top() + px(1.0)), size(px(2.5), (b.size.height - px(2.0)).max(px(0.0))));
+            style::fill_rect(g, strip, rail);
+        }
     })
-    .paint_key(style::key(("tr-sunken-well", dark)))
+    .paint_key(key)
     .absolute()
     .inset_0();
 
-    let mut inner = div().relative().w_full().flex().flex_col().gap(px(4.0)).pl(px(TEXT_INSET)).pr(px(12.0)).py(px(8.0));
+    let mut inner = div().relative().w_full().flex().flex_col().gap(px(4.0)).py(px(8.0));
+    if !raw_padded {
+        inner = inner.pl(px(LATCH_W)).pr(px(12.0));
+    }
     if let Some(cap) = caption
         && !cap.is_empty()
     {
-        inner = inner.child(StringView::new(cap).size(style::SMALL_SIZE).dim(true).height(14.0));
+        let cap_el = StringView::new(cap).size(style::SMALL_SIZE).color(tp.secondary).height(15.0);
+        inner = inner.child(if raw_padded { div().pl(px(LATCH_W)).pr(px(12.0)).child(cap_el) } else { div().child(cap_el) });
     }
     inner = inner.child(body);
     div().relative().w_full().mt(px(top_gap)).child(frame).child(inner)
 }
 
-fn render_message_body(p: &olo_theme::Palette, dark: bool, eid: usize, segments: &[BodySegment], top_gap: f32, matches: &[SearchMatch], active_match_idx: Option<usize>) -> Element {
-    let ink = style::c(p.panel_text);
-    // Exact 12 pt spacing between prose and code wells inside a reply.
-    let mut col = div().w_full().flex().flex_col().gap(px(12.0));
+/// Render unified diff lines with code text in `tp.fg`, hue ONLY on `-`/`+` signs,
+/// subtle ~12% background washes extending cleanly from the block's left rail, and
+/// `-`/`+` aligned to the exact same `LATCH_W` body column as filepath and Output.
+fn render_diff_lines(tp: &TailPalette, lines: &[DiffLine]) -> Element {
+    let mut col = div().w_full().flex().flex_col();
+    for line in lines.iter().take(120) {
+        let is_hunk = matches!(line, DiffLine::Hunk(_));
+        match line {
+            DiffLine::Hunk(h) => {
+                let run = TextRun { len: h.len(), font: style::mono_font(FontWeight::BOLD), color: tp.fg, background_color: None, underline: None, strikethrough: None, size: Some(px(MONO_SIZE)) };
+                col = col.child(div().w_full().pl(px(LATCH_W)).pr(px(12.0)).pb(px(5.0)).line_height(relative(1.36)).text_size(px(MONO_SIZE)).child(styled_text(h.clone(), vec![run])));
+            }
+            DiffLine::Remove(r) => {
+                let sign = "- ";
+                let full = format!("{sign}{r}");
+                let runs = vec![
+                    TextRun {
+                        len: sign.len(),
+                        font: style::mono_font(FontWeight::BOLD),
+                        color: tp.diff_del_sign,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                        size: Some(px(MONO_SIZE)),
+                    },
+                    TextRun { len: r.len(), font: style::mono_font(FontWeight::NORMAL), color: tp.fg, background_color: None, underline: None, strikethrough: None, size: Some(px(MONO_SIZE)) },
+                ];
+                // Band sits strictly inside the well's 2.5pt left rail and 1pt right outline;
+                // text starts at `3.5 + (LATCH_W - 3.5) = LATCH_W`.
+                col =
+                    col.child(
+                        div().w_full().pl(px(3.5)).pr(px(1.0)).child(
+                            div().w_full().pl(px(LATCH_W - 3.5)).pr(px(11.0)).py(px(1.0)).bg(tp.diff_del_bg).line_height(relative(1.36)).text_size(px(MONO_SIZE)).child(styled_text(full, runs)),
+                        ),
+                    );
+            }
+            DiffLine::Add(a) => {
+                let sign = "+ ";
+                let full = format!("{sign}{a}");
+                let runs = vec![
+                    TextRun {
+                        len: sign.len(),
+                        font: style::mono_font(FontWeight::BOLD),
+                        color: tp.diff_add_sign,
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                        size: Some(px(MONO_SIZE)),
+                    },
+                    TextRun { len: a.len(), font: style::mono_font(FontWeight::NORMAL), color: tp.fg, background_color: None, underline: None, strikethrough: None, size: Some(px(MONO_SIZE)) },
+                ];
+                col =
+                    col.child(
+                        div().w_full().pl(px(3.5)).pr(px(1.0)).child(
+                            div().w_full().pl(px(LATCH_W - 3.5)).pr(px(11.0)).py(px(1.0)).bg(tp.diff_add_bg).line_height(relative(1.36)).text_size(px(MONO_SIZE)).child(styled_text(full, runs)),
+                        ),
+                    );
+            }
+            DiffLine::Context(c) => {
+                let full = format!("  {c}");
+                let run = TextRun {
+                    len: full.len(),
+                    font: style::mono_font(FontWeight::NORMAL),
+                    color: tp.secondary,
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                    size: Some(px(MONO_SIZE)),
+                };
+                col = col.child(div().w_full().pl(px(LATCH_W)).pr(px(12.0)).py(px(1.0)).line_height(relative(1.36)).text_size(px(MONO_SIZE)).child(styled_text(full, vec![run])));
+            }
+        }
+        let _ = is_hunk;
+    }
+    if lines.len() > 120 {
+        col = col.child(div().pl(px(LATCH_W)).pr(px(12.0)).child(StringView::new(format!("… {} more diff lines", lines.len() - 120)).size(style::SMALL_SIZE).color(tp.secondary).height(16.0)));
+    }
+    col
+}
+
+fn render_message_body(tp: &TailPalette, eid: usize, segments: &[BodySegment], top_gap: f32, matches: &[SearchMatch], active_match_idx: Option<usize>) -> Element {
+    let mut col = div().w_full().flex().flex_col().gap(px(10.0));
     if top_gap > 0.0 {
         col = col.pt(px(top_gap));
     }
@@ -694,39 +1118,57 @@ fn render_message_body(p: &olo_theme::Palette, dark: bool, eid: usize, segments:
         let seg_hits = field_match_ranges(matches, active_match_idx, eid, MatchField::MessageSegment(seg_idx));
         match seg {
             BodySegment::Text(text) => {
-                let prose = render_rich_text(text.trim(), false, true, style::PLAIN_SIZE, ink, dark, &seg_hits);
-                col = col.child(div().w_full().max_w(px(PROSE_MAX_W + TEXT_INSET)).pl(px(TEXT_INSET)).child(prose));
+                let prose = render_rich_text(tp, text.trim(), false, true, style::PLAIN_SIZE, tp.fg, &seg_hits);
+                col = col.child(div().w_full().max_w(px(PROSE_MAX_W + LATCH_W)).pl(px(LATCH_W)).child(prose));
             }
             BodySegment::Code { lang, code } => {
                 let cleaned = code.trim_end_matches('\n');
                 let cap = format_code_lang(lang);
-                let code_el = render_rich_text(cleaned, true, false, MONO_SIZE, ink, dark, &seg_hits);
-                col = col.child(sunken_well(p, dark, 0.0, (!cap.is_empty()).then_some(cap), code_el));
+                let is_diff = matches!(lang.trim().to_ascii_lowercase().as_str(), "diff" | "patch") && seg_hits.is_empty();
+                if is_diff {
+                    let parsed: Vec<DiffLine> = cleaned
+                        .lines()
+                        .map(|l| {
+                            if l.starts_with("@@") || l.starts_with("+++") || l.starts_with("---") {
+                                DiffLine::Hunk(l.to_owned())
+                            } else if let Some(r) = l.strip_prefix('+') {
+                                DiffLine::Add(r.to_owned())
+                            } else if let Some(r) = l.strip_prefix('-') {
+                                DiffLine::Remove(r.to_owned())
+                            } else {
+                                DiffLine::Context(l.to_owned())
+                            }
+                        })
+                        .collect();
+                    col = col.child(terminal_well(tp, 0.0, None, false, (!cap.is_empty()).then_some(cap), true, render_diff_lines(tp, &parsed)));
+                } else {
+                    let code_el = render_rich_text(tp, cleaned, true, false, MONO_SIZE, tp.fg, &seg_hits);
+                    col = col.child(terminal_well(tp, 0.0, None, false, (!cap.is_empty()).then_some(cap), false, code_el));
+                }
             }
         }
     }
     col
 }
 
-/// Drawn BeOS 8-pt disclosure latch (`style::latch`) hanging in the `0..TEXT_INSET`
-/// left margin of every event row.
-fn event_latch(open: bool, dark: bool) -> Element {
+/// Drawn BeOS 8-pt disclosure latch (`style::latch`) hanging cleanly in `0..LATCH_W`,
+/// always neutral secondary grey across Thinking and every tool row.
+fn event_latch(tp: &TailPalette, open: bool) -> Element {
+    let tint = tp.secondary;
+    let key = style::key(("tr-latch", tp.key, open));
     canvas(move |g, b| {
-        let p = theme::palette();
-        let ink = if dark { style::c(olo_theme::mix(p.panel_text, p.document_background, 0.30)) } else { style::secondary_text(&p) };
         let r = Bounds::new(point(b.left(), b.top()), size(px(10.0), b.size.height));
-        style::latch(g, r, open, ink);
+        style::latch(g, r, open, tint);
     })
-    .paint_key(style::key(("tr-latch", open, dark)))
-    .w(px(TEXT_INSET))
+    .paint_key(key)
+    .w(px(LATCH_W))
     .h(px(EVENT_ROW_H))
     .flex_shrink_0()
 }
 
 #[allow(clippy::too_many_arguments)]
 fn render_thinking_item(
-    p: &olo_theme::Palette,
-    dark: bool,
+    tp: &TailPalette,
     eid: usize,
     summary: &str,
     text: &str,
@@ -748,11 +1190,16 @@ fn render_thinking_item(
             cb(&TranscriptDo::ToggleExpand(eid), cx);
             cx.stop_propagation();
         })
-        .child(event_latch(open, dark))
-        .child(div().w(px(LABEL_COL_W)).flex_shrink_0().child(StringView::new(olo_kit::words::tr("Thinking").to_owned()).bold(true).size(style::SMALL_SIZE).dim(true).cut(true).height(EVENT_ROW_H)));
+        .child(event_latch(tp, open))
+        .child(
+            div()
+                .w(px(LABEL_COL_W))
+                .flex_shrink_0()
+                .child(StringView::new(olo_kit::words::tr("Thinking").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.secondary).cut(true).height(EVENT_ROW_H)),
+        );
 
     if !open && !summary.is_empty() {
-        header = header.child(div().flex_1().min_w_0().child(StringView::new(summary.to_owned()).size(style::SMALL_SIZE).dim(true).cut(true).height(EVENT_ROW_H)));
+        header = header.child(div().flex_1().min_w_0().child(StringView::new(summary.to_owned()).size(style::SMALL_SIZE).color(tp.secondary).cut(true).height(EVENT_ROW_H)));
     }
 
     let mut col = div().w_full().flex().flex_col();
@@ -762,18 +1209,15 @@ fn render_thinking_item(
     col = col.child(header);
     if open {
         let hits = field_match_ranges(matches, active_match_idx, eid, MatchField::ThinkingText);
-        // Expanded Thinking stays quieter (secondary ink), matches prose size & 16 pt line
-        // spacing, and wraps at the 560 pt prose cap inside the full-width sunken well.
-        let body = render_rich_text(text.trim(), false, true, style::PLAIN_SIZE, style::secondary_text(p), dark, &hits);
-        col = col.child(sunken_well(p, dark, 4.0, None, div().w_full().max_w(px(PROSE_MAX_W)).child(body)));
+        let body = render_rich_text(tp, text.trim(), false, true, style::PLAIN_SIZE - 0.5, tp.secondary, &hits);
+        col = col.child(terminal_well(tp, 3.0, Some(tp.surface_border), false, None, false, div().w_full().max_w(px(PROSE_MAX_W)).child(body)));
     }
     col
 }
 
 #[allow(clippy::too_many_arguments)]
 fn render_tool_item(
-    p: &olo_theme::Palette,
-    dark: bool,
+    tp: &TailPalette,
     eid: usize,
     name: &str,
     summary: &str,
@@ -782,12 +1226,16 @@ fn render_tool_item(
     status: ToolStatus,
     duration: Option<String>,
     open: bool,
-    cap_err_preview: bool,
+    cap_lines: Option<usize>,
+    is_running_tail: bool,
     top_gap: f32,
     matches: &[SearchMatch],
     active_match_idx: Option<usize>,
     on_do: Arc<dyn Fn(&TranscriptDo, &mut WindowCx)>,
 ) -> Element {
+    let cat = classify_tool(name);
+    let badge_label = friendly_tool_name(name);
+
     let cb = on_do.clone();
     let mut header = div()
         .w_full()
@@ -800,51 +1248,43 @@ fn render_tool_item(
             cb(&TranscriptDo::ToggleExpand(eid), cx);
             cx.stop_propagation();
         })
-        .child(event_latch(open, dark))
-        .child(div().w(px(LABEL_COL_W)).flex_shrink_0().child(StringView::new(name.to_owned()).bold(true).size(style::SMALL_SIZE).cut(true).height(EVENT_ROW_H)))
-        .child(div().flex_1().min_w_0().child(StringView::new(summary.to_owned()).mono(true).size(style::SMALL_SIZE).dim(true).cut(true).height(EVENT_ROW_H)));
+        .child(event_latch(tp, open))
+        // Tool names stay foreground bold; hue is reserved for state, speakers, diff signs, and Find.
+        .child(div().w(px(LABEL_COL_W)).flex_shrink_0().child(StringView::new(badge_label).bold(true).size(style::SMALL_SIZE).color(tp.fg).cut(true).height(EVENT_ROW_H)))
+        .child(div().flex_1().min_w_0().child(StringView::new(summary.to_owned()).mono(true).size(style::SMALL_SIZE).color(tp.fg).cut(true).height(EVENT_ROW_H)));
 
-    // Right column: quiet duration when finished; green live dot + "Running · Xs"
-    // while running; red dot + "Failed · exit N" on error (using exact `p.failure`).
     match status {
         ToolStatus::Running => {
-            let live_dot = canvas(|g, b| {
-                let pal = theme::palette();
-                style::dot(g, b.center(), 6.0, style::c(pal.success));
+            let dot_c = tp.green;
+            let live_dot = canvas(move |g, b| {
+                style::dot(g, b.center(), 6.0, dot_c);
             })
-            .paint_key(907)
+            .paint_key(style::key(("tr-live-dot", tp.key)))
             .w(px(8.0))
             .h(px(EVENT_ROW_H))
             .flex_shrink_0();
-            let running_label = match duration {
-                Some(d) => format!("{} · {d}", olo_kit::words::tr("Running")),
-                None => olo_kit::words::tr("Running…").to_owned(),
-            };
-            header = header.child(div().w(px(8.0))).child(live_dot).child(div().w(px(4.0))).child(StringView::new(running_label).size(style::SMALL_SIZE).dim(true).height(EVENT_ROW_H));
-        }
-        ToolStatus::Error => {
-            let err_dot = canvas(|g, b| {
-                let pal = theme::palette();
-                style::dot(g, b.center(), 6.0, style::c(pal.failure));
-            })
-            .paint_key(908)
-            .w(px(8.0))
-            .h(px(EVENT_ROW_H))
-            .flex_shrink_0();
-            let fail_label = match extract_exit_code(output) {
-                Some(code) => format!("{} · exit {code}", olo_kit::words::tr("Failed")),
-                None => olo_kit::words::tr("Failed").to_owned(),
-            };
             header = header
                 .child(div().w(px(8.0)))
-                .child(err_dot)
+                .child(live_dot)
                 .child(div().w(px(4.0)))
-                .child(StringView::new(fail_label).bold(true).size(style::SMALL_SIZE).color(style::c(p.failure)).height(EVENT_ROW_H));
+                .child(StringView::new(olo_kit::words::tr("Running").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.green).height(EVENT_ROW_H));
+            if let Some(d) = duration {
+                header = header.child(StringView::new(format!(" · {d}")).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
+            }
+        }
+        ToolStatus::Error => {
+            // Red ONLY on the word "Failed"; exit code in regular secondary UI sans (no redundant red dot).
+            header = header.child(div().w(px(8.0))).child(StringView::new(olo_kit::words::tr("Failed").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.red).height(EVENT_ROW_H));
+            if let Some(code) = extract_exit_code(output) {
+                header = header.child(StringView::new(format!(" · exit {code}")).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
+            }
         }
         ToolStatus::Ok => {
-            if let Some(dur) = duration {
-                header = header.child(div().w(px(8.0))).child(StringView::new(dur).size(style::SMALL_SIZE).dim(true).height(EVENT_ROW_H));
-            }
+            let ok_text = match duration {
+                Some(dur) => format!("✓ {dur}"),
+                None => "✓".to_owned(),
+            };
+            header = header.child(div().w(px(8.0))).child(StringView::new(ok_text).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
         }
     }
 
@@ -854,21 +1294,34 @@ fn render_tool_item(
     }
     col = col.child(header);
     if open {
-        let input_rows = format_tool_input(name, summary, raw_input);
+        let diff_lines = extract_tool_diff(name, raw_input);
+        let input_rows = if diff_lines.is_some() { Vec::new() } else { format_tool_input(name, summary, raw_input) };
         let out_clean = output.map(|s| s.trim_end_matches('\n')).filter(|s| !s.is_empty());
-        let has_in = !input_rows.is_empty();
+        let has_in = diff_lines.is_some() || !input_rows.is_empty();
         let has_out = out_clean.is_some();
-        let ink = style::c(p.panel_text);
 
         if has_in || has_out {
+            // Use raw-padded inner layout whenever a diff is shown so diff bands
+            // extend cleanly to the left rail while every text line aligns to `LATCH_W`.
+            let use_raw = diff_lines.is_some();
+            let wrap_pad = |el: Element| -> Element { if use_raw { div().w_full().pl(px(LATCH_W)).pr(px(12.0)).child(el) } else { el } };
             let mut inner = div().w_full().flex().flex_col().gap(px(6.0));
-            if has_in {
+            if let Some(dlines) = &diff_lines {
+                let in_hits = field_match_ranges(matches, active_match_idx, eid, MatchField::ToolInput);
+                if in_hits.is_empty() {
+                    inner = inner.child(render_diff_lines(tp, dlines));
+                } else {
+                    let flat = olo_rex_client::activity::tool_input_display_text(name, summary, raw_input);
+                    inner = inner.child(wrap_pad(render_rich_text(tp, &flat, true, false, MONO_SIZE, tp.fg, &in_hits)));
+                }
+            } else if !input_rows.is_empty() {
                 let in_hits = field_match_ranges(matches, active_match_idx, eid, MatchField::ToolInput);
                 if in_hits.is_empty() {
                     let mut kv_col = div().w_full().flex().flex_col().gap(px(3.0));
                     for (k, v) in &input_rows {
                         if k.is_empty() {
-                            kv_col = kv_col.child(render_rich_text(v, true, false, MONO_SIZE, ink, dark, &[]));
+                            let prefix_val = if cat == ToolCategory::Shell { format!("$ {v}") } else { v.clone() };
+                            kv_col = kv_col.child(render_rich_text(tp, &prefix_val, true, false, MONO_SIZE, tp.fg, &[]));
                         } else {
                             kv_col = kv_col.child(
                                 div()
@@ -877,46 +1330,58 @@ fn render_tool_item(
                                     .flex_row()
                                     .items_start()
                                     .gap(px(8.0))
-                                    .child(StringView::new(format!("{k}:")).size(MONO_SIZE).dim(true).height(15.0))
-                                    .child(div().flex_1().min_w_0().child(render_rich_text(v, true, false, MONO_SIZE, ink, dark, &[]))),
+                                    .child(StringView::new(format!("{k}:")).size(style::SMALL_SIZE).color(tp.secondary).height(15.0))
+                                    .child(div().flex_1().min_w_0().child(render_rich_text(tp, v, true, false, MONO_SIZE, tp.fg, &[]))),
                             );
                         }
                     }
-                    inner = inner.child(kv_col);
+                    inner = inner.child(wrap_pad(kv_col));
                 } else {
                     let flat = olo_rex_client::activity::tool_input_display_text(name, summary, raw_input);
-                    inner = inner.child(render_rich_text(&flat, true, false, MONO_SIZE, ink, dark, &in_hits));
+                    inner = inner.child(wrap_pad(render_rich_text(tp, &flat, true, false, MONO_SIZE, tp.fg, &in_hits)));
                 }
             }
             if has_in && has_out {
-                let sep_c = if dark { style::c(olo_theme::mix(p.document_background, p.panel_text, 0.16)) } else { style::shade(p, p.panel_background, 1.24) };
-                inner = inner.child(canvas(move |g, b| style::hline(g, b.left(), b.right(), b.top(), sep_c)).paint_key(style::key(("tr-well-sep", dark))).w_full().h(px(1.0)));
-                inner = inner.child(StringView::new(olo_kit::words::tr("Output").to_owned()).size(style::SMALL_SIZE).dim(true).height(14.0));
+                let sep_c = tp.rule;
+                let sep_key = style::key(("tr-well-sep", tp.key));
+                inner = inner.child(wrap_pad(canvas(move |g, b| style::hline(g, b.left(), b.right(), b.top(), sep_c)).paint_key(sep_key).w_full().h(px(1.0))));
+                inner = inner.child(wrap_pad(div().child(StringView::new(olo_kit::words::tr("Output").to_owned()).size(style::SMALL_SIZE).color(tp.secondary).height(15.0))));
             }
             if let Some(out) = out_clean {
                 let out_hits = field_match_ranges(matches, active_match_idx, eid, MatchField::ToolOutput);
-                let shown_out = if cap_err_preview && out_hits.is_empty() { cap_error_lines(out, 6) } else { out.to_owned() };
-                inner = inner.child(render_rich_text(&shown_out, true, false, MONO_SIZE, ink, dark, &out_hits));
+                let shown_out = match cap_lines {
+                    Some(n) if out_hits.is_empty() => {
+                        if is_running_tail {
+                            cap_tail_lines(out, n)
+                        } else {
+                            cap_head_lines(out, n)
+                        }
+                    }
+                    _ => out.to_owned(),
+                };
+                inner = inner.child(wrap_pad(render_rich_text(tp, &shown_out, true, false, MONO_SIZE, tp.fg, &out_hits)));
             }
-            // 4 pt gap directly under its own latch row!
-            col = col.child(sunken_well(p, dark, 4.0, None, inner));
+            // Error gets the one red 2pt left bar; running/normal blocks use a quiet neutral rail.
+            let rail = if status == ToolStatus::Error { Some(tp.red) } else { Some(tp.surface_border) };
+            col = col.child(terminal_well(tp, 3.0, rail, status == ToolStatus::Error, None, use_raw, inner));
         }
     }
     col
 }
 
-fn render_divider(p: &olo_theme::Palette, dark: bool, label: &str, timestamp: &str) -> Element {
-    let line_c = if dark { style::c(olo_theme::mix(p.document_background, p.panel_text, 0.16)) } else { style::shade(p, p.panel_background, 1.24) };
+fn render_divider(tp: &TailPalette, label: &str, timestamp: &str) -> Element {
+    let line_c = tp.rule;
+    let key = style::key(("tr-div-rule", tp.key));
     let rule = move || {
         canvas(move |g, b| {
             style::hline(g, b.left(), b.right(), b.center().y, line_c);
         })
-        .paint_key(903)
+        .paint_key(key)
         .flex_1()
         .h(px(14.0))
     };
     let text = if timestamp.is_empty() { label.to_owned() } else { format!("{label} · {timestamp}") };
-    div().w_full().flex().flex_row().items_center().gap(px(m::TIGHT)).py(px(8.0)).child(rule()).child(StringView::new(text).size(style::SMALL_SIZE).dim(true).height(14.0)).child(rule())
+    div().w_full().flex().flex_row().items_center().gap(px(m::TIGHT)).py(px(8.0)).child(rule()).child(StringView::new(text).size(style::SMALL_SIZE).color(tp.secondary).height(14.0)).child(rule())
 }
 
 /// Render the bounded safe read-only `tmux attach -r -f ignore-size` viewer:
@@ -949,8 +1414,9 @@ pub fn render_tmux_viewer(
     } else if let ViewTarget::SubagentTmux { sub, .. } = &target {
         match sub.state {
             SubagentState::Failed => HeaderStatus::Failed,
+            SubagentState::Waiting => HeaderStatus::Waiting,
             SubagentState::Done => HeaderStatus::Done,
-            SubagentState::Working | SubagentState::Waiting => HeaderStatus::Working,
+            SubagentState::Working => HeaderStatus::Working,
         }
     } else {
         HeaderStatus::Working
@@ -965,7 +1431,6 @@ pub fn render_tmux_viewer(
         true,
         target.has_transcript(),
         true,
-        None,
         None,
         on_do,
     );
@@ -989,7 +1454,7 @@ pub fn render_tmux_viewer(
     let mut ro_theme = active_theme.clone();
     let fg = ro_theme.foreground;
     let bg = ro_theme.background;
-    ro_theme.cursor = Some(olo_rex_vt::Rgb { r: ((fg.r as u16 + bg.r as u16) / 2) as u8, g: ((fg.g as u16 + bg.g as u16) / 2) as u8, b: ((fg.b as u16 + bg.b as u16) / 2) as u8 });
+    ro_theme.cursor = Some(Rgb { r: ((fg.r as u16 + bg.r as u16) / 2) as u8, g: ((fg.g as u16 + bg.g as u16) / 2) as u8, b: ((fg.b as u16 + bg.b as u16) / 2) as u8 });
 
     let (cols, rows) = remote_dims;
     let pad = settings::PADDING;
@@ -1060,10 +1525,8 @@ pub fn render_tmux_viewer(
     let need_v = box_h + 24.0 > canvas_h;
 
     let body = if !need_h && !need_v {
-        // Fits comfortably: center the bounded remote screen in the panel canvas!
         div().size_full().bg(style::c(p.panel_background)).flex().items_center().justify_center().child(framed_pane)
     } else {
-        // Larger than viewport: pin 12 pt top-left with scrollbars so nothing is clipped!
         let stage = div().p(px(12.0)).flex_shrink_0().child(framed_pane);
         ScrollView::new(scroll).vertical(need_v).horizontal(need_h).auto_hide(false).border(false).background(p.panel_background).child(stage).into_element()
     };
@@ -1091,9 +1554,4 @@ pub fn render_tmux_viewer(
 pub fn paint_disclosure(g: &mut olo_kit::Painter, center: Point<Pixels>, expanded: bool, ink: Hsla) {
     let r = Bounds::new(point(center.x - px(5.0), center.y - px(5.0)), size(px(10.0), px(10.0)));
     style::latch(g, r, expanded, ink);
-}
-
-/// Return bounds of the disclosure hit target at the left of a parent Activity row.
-pub fn disclosure_hit_rect(row_bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-    Bounds::new(point(row_bounds.left(), row_bounds.top()), size(px(m::WINDOW_INSET + 4.0), px(38.0)))
 }

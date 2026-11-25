@@ -174,6 +174,55 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Rex: Cmd+click any file or folder in terminal opens/reveals in Tracker
+  (any accessible remote path like `/var/tmp`), paste local paths as
+  `rex://local/...` with agent skill/tooling to access them, and status bar
+  error `×` dismiss button** (Ben, 2026-11-25: "tried cmd+clicking on a
+  folder in a rex terminal and got an error ... it should have opened in
+  tracker via the remote tracker support we already built ... any remote
+  location for which the user has permissions to access, not just the
+  user's home dir, i.e. /var/tmp folders should work ... make all cmd+click
+  work like that in rex terminal -- don't open quick look even if it's a
+  file, instead go to that file in tracker and then i can press space on it
+  to quick look if i want"; "also when an error appears at the bottom of
+  the screen in the status bar there needs to be an x button icon or
+  something to dismiss it too"; "and also if i paste a local file location
+  it should automatically convert that to like a rex url to my desktop if
+  such a thing exists and if not add it e.g. `rex://local/home/<user>/...` or
+  something like that ... and the skills and tooling need to tell agents
+  how to access those local files").
+
+- **Manage Host window: clear remote sync status (Rex, Olo bridge,
+  bridge skills, desktop commands, helper services) and seamless Update
+  button** (Ben, 2026-11-25: "after upgrading olo and receiving rex and
+  olo bridge changes it's not clear to me if they automatically sync to
+  the remote rex hosts or not including the bridge skills, any helper
+  services etc. please show the status of this clearly in the manage
+  host window and if some things do require a manual 'update' please put
+  a button there or something and make sure it'll work seamlessly").
+
+- **Phone service: self-heal Bluetooth `br-connection-busy` stuck state**
+  (Ben, 2026-11-25: "sometimes the phone app is still getting stuck with
+  the br connection busy error. the only thing that seemed to fix it was
+  manually disconnecting the phone in olo bluetooth prefs then
+  reconnecting. the phone service should monitor the connection and try
+  doing that itself to self-heal (with backoff and periodic retries if
+  it doesn't work)").
+
+- **Phone app: show replies sent from the phone (iMessage / MAP `sent`
+  folder sync)** (Ben, 2026-11-25: "when i get an imessage on my phone it
+  is correctly showing up in the phone app to see what the person sent me
+  but i am not seeing my replies in the phone app. is there a way it can
+  see them maybe it needs to sync or something?").
+
+- **Auto-tiling: dragging a window shows hotspots to lock it into a
+  specific slot while remaining unlocked windows auto-tile around it**
+  (Ben, 2026-11-25: "when i'm in auto-tiling mode and drag a window it
+  should still show me the hotspots so that i can drag to a specific spot
+  and 'lock that one window into it' and then the other windows not locked
+  in to a spot still tile the remaining space around it based on the
+  tiling algo selected").
+
 - **About Olo, what its reviewers found there before Check Now's row**
   (2026-11-25, Astra 6.2 and Opus 5.5 over three rounds):
   - Words left in English in other languages: "Both title tabs still say
