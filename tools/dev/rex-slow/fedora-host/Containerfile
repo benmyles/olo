@@ -1,0 +1,23 @@
+# A Fedora 44 host for the Rex rig (tools/dev/rex-slow/farhost.py,
+# FedoraHost): as a cloud image has it, sshd and systemd, an account of
+# its own that may use sudo without a password (a cloud image's
+# `fedora`), and no polkit, so the account can't turn on its own
+# lingering. Nothing of Rex's: the rig sets it up as a person would.
+FROM registry.fedoraproject.org/fedora:44
+# (As a real one has: the system bus, logind's PAM module for sessions,
+# and sshd through PAM, so a login has its runtime folder and the user
+# manager starts: without, user@.service failed, "Trying to run as user
+# instance, but $XDG_RUNTIME_DIR is not set".)
+RUN dnf -y install --setopt=install_weak_deps=False openssh-server systemd systemd-pam dbus-broker sudo procps-ng iproute curl tar gzip findutils which hostname && dnf clean all
+RUN mkdir -p /etc/ssh/sshd_config.d && printf 'UsePAM yes\n' > /etc/ssh/sshd_config.d/50-rig.conf && grep -q '^Include /etc/ssh/sshd_config.d' /etc/ssh/sshd_config || sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
+# (A cloud image has no polkit; nothing here pulls it in, and if a later
+# image does, it is taken out again.)
+RUN if rpm -q polkit > /dev/null 2>&1; then dnf -y remove polkit; fi
+RUN useradd -m -G wheel fedora \
+ && echo 'fedora ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/90-fedora \
+ && chmod 440 /etc/sudoers.d/90-fedora \
+ && mkdir -m 700 /home/fedora/.ssh && chown fedora:fedora /home/fedora/.ssh \
+ && systemctl enable sshd \
+ && rm -f /run/nologin /var/run/nologin
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

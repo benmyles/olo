@@ -2676,6 +2676,22 @@ the command takes it: an agent's shell may leave a pipe open, and
   and `OLO_REX_TEST_SUDO=1`: cargo under a scratch HOME looks for its
   registry and toolchain there. The test of root's login fails at its
   root step there, as it must.
+- **A Fedora 44 host of the rig's own** (2026-11-25): a container
+  (`tools/dev/rex-slow/fedora-host/Containerfile`, built with `sudo
+  docker build -f Containerfile -t olo-rig-fedora44 .` in that folder;
+  `farhost.py`'s `FedoraHost`, or `farhost.py fedora` to keep one for a
+  run by hand), systemd its first process, `fedora` with password-less
+  sudo, no polkit, as a cloud image has it. It must have what a real
+  host has for a login to get its runtime folder: `systemd-pam`
+  (pam_systemd, a weak dependency of systemd's), sshd through PAM, and
+  dbus-broker (without, `loginctl` had no bus and user@.service failed,
+  "Trying to run as user instance, but $XDG_RUNTIME_DIR is not set").
+  The setup's host test runs against it as the sudo one does (below):
+  `/var/tmp`'s script starts the container, copies its `known_hosts`
+  into a scratch HOME, runs the test binary with `OLO_REX_TEST_HOST`,
+  `SSH_AUTH_SOCK` and `OLO_REX_TEST_SETUP=login|personal`, and the
+  container is removed with it. It reaches the network (Rex's installer,
+  dnf). Never the person's host for a test that changes it.
 - **The rig can put the helper behind its slow link** (`Rig(helper=
   True)`, `try.py order|timed --helper`): the link runs it for the
   control connection, as sshd would, with the scratch server's own

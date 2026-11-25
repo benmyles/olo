@@ -15610,6 +15610,9 @@ vor {} · Klicken Sie auf einen Graphen für einen anderen Moment
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {} kann dort sudo ohne Passwort nutzen, daher meldet sich Rex als {}@{} an und führt diese Schritte mit sudo aus. Nichts wird geändert, bevor sudo funktioniert.
 
+{} can’t be set up from here
+{} kann von hier aus nicht eingerichtet werden
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} kann sudo auf {} nicht ohne Passwort nutzen, daher braucht die Verwaltung des Servers eine Anmeldung als root oder ein Konto, das es kann. Wählen Sie einen Schlüssel, den root dort akzeptiert. Falls keiner funktioniert, fügen Sie Ihren öffentlichen Schlüssel dort zu /root/.ssh/authorized_keys hinzu und versuchen Sie es erneut.
 

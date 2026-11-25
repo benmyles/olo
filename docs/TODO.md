@@ -174,6 +174,74 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Tracker: a folder opens in the window it is opened from, and its
+  columns are sized one by one, per folder** (Ben, 2026-11-25: "in
+  tracker when opening a folder it shouldn't open it in a new window it
+  should take you to that folder in the current window you open it
+  from. also change how the column resizing works so that columns can
+  be independently resized and don't all change as one and remember the
+  size for specific folders where their column width is resized").
+  (BeOS's Tracker opened a window a folder; Ben wants one window that
+  goes to the folder, as a modern file manager does. A way to a new
+  window stays: the File menu's, a modifier on the open.)
+
+- **Rex's Add Host confirm list, from the looks of 2026-11-25** (there
+  before that change; their words):
+  - Opus: "Heading sizes are flat. The window title, the group headers
+    and the step titles are all the same size (≈12 pt). Only weight and
+    a rule separate them. Make the window title 2 pt larger than the
+    group headers, so the eye starts at the top instead of on the first
+    dark well."
+  - Opus: "Paragraphs start with a lowercase name. 'alice can use sudo…'
+    and 'alice can't use sudo…' read as typos."
+  - Opus: "Awkward copy: 'Rex signs in as alice@build.example.com, as it
+    will to connect.' Change it to '…, the account it will connect
+    as.'"
+  - Astra and Opus: "The installer pipeline leaves `sh` (or `sh'`)
+    alone on the last line with room for it beside the pipe above.
+    Keep the pipe and its command together"; "wrap only at the well's
+    real width. Never break between `|` and the command that follows
+    it."
+  - Opus: "Early line break in step 2: the description breaks before
+    'to /etc/rex/accounts.jsonc:' with about 70 pt of the line still
+    empty."
+  - Opus: a 1920 × 1080 screen at 1.5× is 1280 × 720 points, under the
+    800 Olo lays out for: the sudo list (749 points) has its buttons
+    off it there. (Its fix, the sudo wrapper out of each well, undoes
+    the round before's must-fix: show what runs, as it runs. With the
+    item below.)
+
+- **Rex's setup: a confirm list of six steps or more scrolls the whole
+  window on a 1280 × 800 screen** (2026-11-25, a Fedora host's plan with
+  a stray copy of Rex besides: 933 points at 1×). Its steps should
+  shrink and scroll between the heading and the buttons, but a scroll
+  view brings no height of its own to a window that fits its content
+  (tried: `flex_1` and `flex_shrink` round it, `min_h_0`: the window
+  shrank to its heading and buttons). Wants the kit: a list as tall as
+  its content in a fitted window, shrinking only past the room; or the
+  list laid out again (each step's command folded under it).
+
+- **Rex: move an account from one host to another, whole and working**
+  (Ben, 2026-11-25: "i want the ability to migrate a rex user from one
+  host to another, and it should copy all the user's home dir files
+  including agent settings/logs/auth/state etc and just work
+  seamlessly. as part of it the migrate process should make sure all of
+  that users processes are stopped first then do a machine to machine
+  copy (don't go via the user's desktop) and it should handle/update
+  anything that might need to be updated to keep working seamlessly on
+  the new host server. it should also start back up the agent sessions
+  on the new host including custom terminal panes like the todo list
+  etc and put a message pre-entered into each agent's tui explaining
+  that it was just migrated to a new rex host and any instructions/hints
+  about what it should check or do to keep continuing with its work. and
+  so for the user the action session should then move to the new server
+  in the rex client and all be as seamless as possible. make sure your
+  plan for this is reviewd by neon 4 and then have it review your impl
+  and make sure you test it for real e.g. in containers/vms or
+  something"). The plan to Gemini 4 Neon before building, the build to it
+  after; tried for real between two hosts (containers or VMs of the
+  rig's own), never the person's.
+
 - **An upgrade of Olo cuts the Token Pool's answers mid-stream** (Ben,
   2026-11-25: "when upgrading olo it seems to sever the token pool
   connection and claude often does \"● API Error: Connection lost
@@ -3487,6 +3555,21 @@ something nobody here has is in "Blocked", with what it waits for.
   " | olo" is the agent's own title, not Terminal's.)
 
 ## Done, waiting for Ben to try or confirm
+
+- **Rex sets hosts up on Fedora 44 as on Ubuntu, and says so of any
+  other system** (Ben, 2026-11-25: "trying to setup a host and it just
+  says … every step ran and it still needs: keep your rex server
+  running"; "this server runs fedora 44 not ubuntu are we assuming it's
+  ubuntu? we should support both ubuntu and fedora and if it is neither
+  of them then say we can't set it up automatically"; "and we should
+  detect the right one"; "if there is stuff that we need to install on
+  the fedora host that's fine too"). The cause: a Fedora cloud image
+  has no polkit, so the account couldn't turn on its own lingering and
+  `rex server install` left it off; root now turns it on (with sudo),
+  one more step. Nothing had to be installed. Other systems are refused
+  by name. Tried for real on a Fedora 44 host of the rig's own, login
+  and personal servers set up from nothing. **To try**: Add Host's set
+  up again on that host (it plans the one root step).
 
 - **Left from the reviews of the Kernel tab** (2026-11-20). Done
   2026-11-24 (30309407b and the review batch after it): a dark look's

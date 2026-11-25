@@ -30127,6 +30127,35 @@ Modes, Shared Server, Login Server and Remote Access).
   changed in place, a member put in or taken out, and everything else
   left (`olo_rex_client::accounts`, a small reader of JSON with
   comments that keeps where things are).
+- **Ubuntu and Fedora** (`provision::SYSTEMS`, by `/etc/os-release`'s
+  `ID`; Ben, 2026-11-25: "we should support both ubuntu and fedora and
+  if it is neither of them then say we can't set it up automatically";
+  "we should detect the right one"): Rex's installer adds its
+  repository to apt or dnf on either, so the steps are the same. Any
+  other system is refused as it is looked at, by its name
+  (`PRETTY_NAME`): `plan`'s refusal is `Failed::cant`, and the window
+  says what the host is, not that something failed (`Stage::Cant`:
+  "HOST can't be set up from here", Back alone, both looks: Try Again
+  was its default and could change nothing). The same for no systemd,
+  no curl nor wget, root's own account.
+- **Lingering, by root where the account can't** (`Facts::polkit`: an
+  account turns on its own lingering through polkit; a Fedora cloud
+  image has none, and `rex server install` then enabled its unit and
+  left lingering off, so the same step was planned after every run:
+  "Every step ran, and it still needs: Keep your Rex server running",
+  Ben, 2026-11-25). Without polkit, or where the account's own step ran
+  and lingering is off still, root's step "Allow alice's programs to
+  keep running" (`loginctl enable-linger`) goes with root's other steps
+  before the account's "Have alice's Rex server start by itself" (both
+  looks: the two had read as one). An account's commands run in `sh`
+  with its runtime folder defaulted where the SSH session has none
+  (`provision::as_account`: a session without logind's, `UsePAM no`, a
+  container), as the pool's host script does. Tried end to end on the
+  rig's Fedora 44 (`tools/dev/rex-slow/fedora-host`, `farhost.py`'s
+  `FedoraHost`: a container as a cloud image has it, sshd and systemd,
+  `fedora` with sudo, no polkit) through the real code: the host test
+  `a_host_is_set_up_from_nothing_and_needs_nothing_after`, login and
+  personal, every step done and nothing left (AGENT-NOTES says how).
 - **The address is an account's, never root's**
   (`setup::address`): `ssh://you@host`, said under the field if it
   isn't. Root is asked for only to set a server up, and reached one of

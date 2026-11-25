@@ -15610,6 +15610,9 @@ other: {n} हफ़्ते
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {} वहाँ बिना पासवर्ड के sudo इस्तेमाल कर सकता है, इसलिए Rex {}@{} के रूप में लॉगिन करता है और इन्हें sudo से चलाता है। sudo के काम करने तक कुछ नहीं बदलता।
 
+{} can’t be set up from here
+{} को यहाँ से सेट अप नहीं किया जा सकता
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} {} पर बिना पासवर्ड के sudo इस्तेमाल नहीं कर सकता, इसलिए इसके सर्वर की देखभाल के लिए root का अपना लॉगिन चाहिए, या ऐसा खाता जो कर सके। ऐसी कुंजी चुनें जिसे वहाँ root स्वीकार करे। कोई भी न चले, तो उस मशीन पर अपनी सार्वजनिक कुंजी /root/.ssh/authorized_keys में जोड़ें और फिर कोशिश करें।
 

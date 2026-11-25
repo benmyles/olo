@@ -109,7 +109,7 @@ fn asked<'a>(ran: &crate::provision::Ran, builds: &'a [Build]) -> Result<Result<
 }
 
 fn failed(e: crate::error::RexError) -> Failed {
-    Failed { refused: matches!(e, crate::error::RexError::SshRefused(_)), why: e.to_string() }
+    Failed { refused: matches!(e, crate::error::RexError::SshRefused(_)), why: e.to_string(), ..Failed::default() }
 }
 
 /// Asks the host whether it has the helper of build `id` (one command

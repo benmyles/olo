@@ -15499,6 +15499,9 @@ other: {n}주
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {}은(는) 그 호스트에서 암호 없이 sudo를 쓸 수 있으므로, Rex가 {}@{}로 로그인해 이 단계를 sudo로 실행합니다. sudo가 될 때까지 아무것도 변경하지 않습니다.
 
+{} can’t be set up from here
+{}은(는) 여기에서 설정할 수 없습니다
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {}은(는) {}에서 암호 없이 sudo를 쓸 수 없으므로, 서버를 관리하려면 root 자체 로그인이나 sudo를 쓸 수 있는 계정이 필요합니다. 호스트의 root가 허용하는 키를 선택하세요. 맞는 키가 없으면 그 컴퓨터의 /root/.ssh/authorized_keys에 공개 키를 추가한 뒤 다시 시도하세요.
 

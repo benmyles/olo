@@ -149,3 +149,75 @@ if __name__ == "__main__":
             print("the far host says:", repr(far.ran("echo home=$HOME; rex --timeout 5s ls 2>&1 | head -3")[:300]))
     finally:
         r.__exit__()
+
+
+class FedoraHost:
+    """A far host that is a Fedora 44 machine of the rig's own: a container (fedora-host/Containerfile, built as
+    `olo-rig-fedora44` with `sudo docker build -f Containerfile -t olo-rig-fedora44 .` in that folder), with sshd and
+    systemd, the account `fedora` that may use sudo without a password and no polkit, as a cloud image's; nothing of
+    Rex's until something sets it up. Removed with the `with`: each run starts from nothing.
+
+        from farhost import FedoraHost
+        with FedoraHost() as far:
+            far.address              # ssh://fedora@127.0.0.1:PORT
+            far.agent                # SSH_AUTH_SOCK holding the one key it lets in
+            far.ran("rpm -q rex")    # a command there, as fedora
+
+    It reaches the network as the host would (Rex's installer, dnf)."""
+    IMAGE = "olo-rig-fedora44"
+
+    def __init__(self):
+        self.dir = f"{D}/fedora"; self.agent = f"{self.dir}/agent.sock"; self.procs = []
+        self.name = f"olo-rig-fedora-{os.getpid()}"
+    def __enter__(self):
+        try:
+            return self.begin()
+        except BaseException:
+            self.__exit__()
+            raise
+    def begin(self):
+        quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.makedirs(self.dir, exist_ok=True); os.chmod(self.dir, 0o700)
+        if not os.path.exists(f"{self.dir}/client_key"):
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "olo-rex-rig", "-f", f"{self.dir}/client_key"], check=True, **quiet)
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0)); self.port = s.getsockname()[1]
+        # (systemd as its first process, as on a machine: privileged, its own /run.)
+        subprocess.run(["sudo", "-n", "docker", "run", "-d", "--rm", "--name", self.name, "--privileged", "--tmpfs", "/run", "--tmpfs", "/tmp",
+                        "-p", f"127.0.0.1:{self.port}:22", self.IMAGE], check=True, **quiet)
+        key = open(f"{self.dir}/client_key.pub").read()
+        subprocess.run(["sudo", "-n", "docker", "exec", "-i", self.name, "sh", "-c",
+                        "cat > /home/fedora/.ssh/authorized_keys && chown fedora:fedora /home/fedora/.ssh/authorized_keys && chmod 600 /home/fedora/.ssh/authorized_keys"],
+                       input=key, text=True, check=True, capture_output=True)
+        if os.path.exists(self.agent): os.remove(self.agent)
+        self.procs.append(started(subprocess.Popen(["ssh-agent", "-D", "-a", self.agent], start_new_session=True, **quiet)))
+        end = time.monotonic() + 60
+        while time.monotonic() < end:
+            if os.path.exists(self.agent) and "ready" in self.ran("echo ready", timeout=10): break
+            time.sleep(0.5)
+        else:
+            raise SystemExit(f"the Fedora host's sshd didn't let the rig in: {self.ran('true')[-300:]}")
+        subprocess.run(["ssh-add", "-q", f"{self.dir}/client_key"], env=dict(os.environ, SSH_AUTH_SOCK=self.agent), check=True, **quiet)
+        self.address = f"ssh://fedora@127.0.0.1:{self.port}"
+        return self
+    def __exit__(self, *exc):
+        subprocess.run(["sudo", "-n", "docker", "rm", "-f", self.name], capture_output=True)
+        for p in self.procs:
+            try: os.killpg(p.pid, signal.SIGTERM)
+            except OSError: pass
+    def ran(self, command, timeout=30):
+        """A command on the Fedora host, as fedora."""
+        try:
+            out = subprocess.run(["ssh", "-p", str(self.port), "-i", f"{self.dir}/client_key", "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none",
+                                  "-o", f"UserKnownHostsFile={self.dir}/known_hosts", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-F", "/dev/null",
+                                  "fedora@127.0.0.1", command], capture_output=True, text=True, timeout=timeout)
+            return out.stdout + out.stderr
+        except subprocess.TimeoutExpired:
+            return ""
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["fedora"]:
+    # A Fedora host for a test run by hand: its address and agent printed, kept until Enter (or the end of stdin).
+    with FedoraHost() as far:
+        print(json.dumps({"address": far.address, "agent": far.agent}), flush=True)
+        sys.stdin.read()

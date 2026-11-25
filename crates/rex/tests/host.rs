@@ -805,3 +805,35 @@ fn roots_commands_run_with_sudo_where_the_account_may() {
     assert_ne!(ran.output.trim(), "0");
     println!("sudo: root's commands ran as root, from root's home");
 }
+
+/// A host set up from nothing, as Add Host sets one up: looked at,
+/// planned, every step carried out (root's with sudo, as the account),
+/// and looked at again, with nothing left and the account's server kept
+/// running while it is logged out. `OLO_REX_TEST_SETUP` names the mode
+/// (`login`, `personal`, `shared`). It changes the host: a host of the
+/// test's own, never anyone's (the rig's Fedora 44, `farhost.py fedora`:
+/// a cloud image's, no polkit, so root turns lingering on; it looped on
+/// "Every step ran, and it still needs: Keep your Rex server running").
+#[test]
+#[ignore = "changes the host: OLO_REX_TEST_HOST, a host of the test's own, and OLO_REX_TEST_SETUP"]
+fn a_host_is_set_up_from_nothing_and_needs_nothing_after() {
+    let mode = match std::env::var("OLO_REX_TEST_SETUP").as_deref() {
+        Ok("login") => provision::ServerMode::Login,
+        Ok("personal") => provision::ServerMode::Personal,
+        Ok("shared") => provision::ServerMode::Shared,
+        other => panic!("OLO_REX_TEST_SETUP is login, personal or shared, not {other:?}"),
+    };
+    let mut host = OverSsh { root_by: provision::RootBy::Sudo, ..host() };
+    assert!(block(provision::can_sudo(&mut host)), "the account may use sudo without a password");
+    let (facts, steps) = block(provision::needs(&mut host, mode)).unwrap();
+    println!("{} ({}), polkit {}, lingering {}: {:#?}", facts.distro, facts.distro_name, facts.polkit, facts.linger, shown(&steps, &facts.user));
+    let outcome = block(provision::set_up(&mut host, mode, &steps, &std::sync::atomic::AtomicBool::new(false), &mut |at, line| {
+        if let Some(line) = line {
+            println!("  {}: {line}", at + 1);
+        }
+    }));
+    assert_eq!(outcome, provision::Outcome::Done, "every step done and nothing left");
+    let (after, left) = block(provision::needs(&mut host, mode)).unwrap();
+    assert!(left.is_empty() && after.linger && after.own_server_stays(), "after: lingering {}, own {:?}, left {:?}", after.linger, after.own, shown(&left, &after.user));
+    println!("set up: {} steps, then nothing left; lingering on, the account's server kept", steps.len());
+}

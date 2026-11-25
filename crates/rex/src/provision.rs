@@ -121,8 +121,10 @@ pub enum AccountsSeen {
 pub struct Facts {
     /// `uname -s`.
     pub os: String,
-    /// `/etc/os-release`'s `ID`.
+    /// `/etc/os-release`'s `ID` ("ubuntu", "fedora": [`SYSTEMS`]).
     pub distro: String,
+    /// Its `PRETTY_NAME` ("Fedora Linux 44 (Cloud Edition)").
+    pub distro_name: String,
     pub user: String,
     pub uid: u32,
     pub groups: Vec<String>,
@@ -144,6 +146,10 @@ pub struct Facts {
     pub own: Unit,
     /// The account's units run while it is logged out.
     pub linger: bool,
+    /// polkit is installed (its D-Bus service: it starts on demand), which
+    /// is what lets an account turn on its own lingering. Without it (a
+    /// cloud image's Fedora) only root can.
+    pub polkit: bool,
     /// The `rex` account's shell, if there is such an account.
     pub rex_shell: Option<String>,
     pub fetch: Option<Fetch>,
@@ -153,7 +159,8 @@ pub struct Facts {
 /// The script a host answers with: `key=value` lines, read by
 /// [`Facts::parse`]. POSIX sh; it changes nothing.
 pub const PROBE: &str = r#"os=$(uname -s); printf 'os=%s\n' "$os"
-[ -r /etc/os-release ] && . /etc/os-release; printf 'distro=%s\n' "${ID:-}"
+[ -r /etc/os-release ] && . /etc/os-release; printf 'distro=%s\n' "${ID:-}"; printf 'distro_name=%s\n' "${PRETTY_NAME:-${NAME:-}}"
+[ -e /usr/share/dbus-1/system-services/org.freedesktop.PolicyKit1.service ] && echo polkit=1
 printf 'user=%s\n' "$(id -un)"; printf 'uid=%s\n' "$(id -u)"; printf 'groups=%s\n' "$(id -Gn)"
 rex=$(command -v rex 2>/dev/null); [ -z "$rex" ] && [ -x "$HOME/.local/bin/rex" ] && rex="$HOME/.local/bin/rex"
 printf 'rex=%s\n' "$rex"
@@ -188,6 +195,8 @@ impl Facts {
             match key.trim() {
                 "os" => facts.os = value.to_owned(),
                 "distro" => facts.distro = value.to_owned(),
+                "distro_name" => facts.distro_name = value.to_owned(),
+                "polkit" => facts.polkit = value == "1",
                 "user" => {
                     facts.user = value.to_owned();
                     seen_user = true;
@@ -357,6 +366,13 @@ fn installer(fetch: Fetch, options: &str) -> String {
     if options.is_empty() { format!("{get} | sh") } else { format!("{get} | sh -s -- {options}") }
 }
 
+/// The systems Rex sets itself up on, by `/etc/os-release`'s `ID`, and as
+/// they are said (Ben, 2026-11-25: "we should support both ubuntu and
+/// fedora and if it is neither of them then say we can't set it up
+/// automatically"). Rex's installer adds its repository to apt or dnf on
+/// either; the steps are the same.
+pub const SYSTEMS: [(&str, &str); 2] = [("ubuntu", "Ubuntu"), ("fedora", "Fedora")];
+
 /// What `facts`' host needs done for Rex to run there in `mode` and for
 /// this account to use it: nothing, if it is so already. Or why it can't
 /// be done from here.
@@ -366,6 +382,11 @@ fn installer(fetch: Fetch, options: &str) -> String {
 pub fn plan(mode: ServerMode, facts: &Facts) -> Result<Vec<Step>, String> {
     if facts.os != "Linux" {
         return Err(format!("This sets Rex up on Linux. That machine runs {}: see Rex's documentation for it.", if facts.os.is_empty() { "something else" } else { &facts.os }));
+    }
+    if !SYSTEMS.iter().any(|(id, _)| *id == facts.distro) {
+        let runs = [&facts.distro_name, &facts.distro].into_iter().find(|n| !n.is_empty()).map_or("a Linux Rex doesn’t know", |n| n.as_str());
+        let systems = SYSTEMS.iter().map(|(_, name)| *name).collect::<Vec<_>>().join(" and ");
+        return Err(format!("It runs {runs}. Rex sets itself up on {systems}; on other systems, Rex’s documentation says how to set it up by hand."));
     }
     if facts.uid == 0 {
         return Err("Connect as an account of your own, not as root: root is asked for only to set the server up.".into());
@@ -377,9 +398,38 @@ pub fn plan(mode: ServerMode, facts: &Facts) -> Result<Vec<Step>, String> {
     // that needs it is set up; else the one found, or the account's own
     // install).
     let rex_then = if mode == ServerMode::Personal || (facts.packaged && !facts.bare) { facts.rex.clone().unwrap_or_else(|| "~/.local/bin/rex".into()) } else { "/usr/bin/rex".to_owned() };
+    // (`rex server install` enables the unit and turns lingering on as the
+    // account. Where the account can't (no polkit: a cloud image's Fedora;
+    // or it ran and lingering is off still), root turns it on: the step
+    // was planned again after every run, "Every step ran, and it still
+    // needs: Keep your Rex server running", Ben, 2026-11-25.)
+    // (Root's lingering goes with root's other steps, before the account's:
+    // after them it made a second group of root's, the confirm list's
+    // picture showed. It doesn't wait on the unit: either order holds.)
     let own_server = |steps: &mut Vec<Step>| {
         if facts.systemd && !facts.own_server_stays() {
-            steps.push(user("Keep your Rex server running", "It starts when the machine starts, and stays while you are logged out.", format!("{rex_then} server install")));
+            if !facts.linger && (!facts.polkit || facts.own.enabled) {
+                let at = steps.iter().position(|s| !s.root).unwrap_or(steps.len());
+                // (Its own words, the account named, and the account's own
+                // step said apart from it: both looks, 2026-11-25, read the
+                // two as one.)
+                let user = &facts.user;
+                let why = if facts.polkit {
+                    format!("Even after {user} logs out, which {user} couldn’t allow alone here.")
+                } else {
+                    format!("Even after {user} logs out. This machine has no polkit, so {user} can’t allow it alone.")
+                };
+                steps.insert(at, root(&format!("Allow {user}’s programs to keep running"), &why, format!("loginctl enable-linger {}", shell_word(user))));
+            }
+            if !facts.own.enabled {
+                let roots = !facts.linger && (!facts.polkit || facts.own.enabled);
+                let what = if roots {
+                    "It starts with the machine, or when Rex first connects.".to_owned()
+                } else {
+                    format!("It starts with the machine, or when Rex first connects, and keeps running after {} logs out.", facts.user)
+                };
+                steps.push(user(&format!("Have {}’s Rex server start by itself", facts.user), &what, format!("{rex_then} server install")));
+            }
         }
     };
     if mode == ServerMode::Personal {
@@ -491,17 +541,21 @@ impl Ran {
 }
 
 /// Why something on a host wasn't done.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Failed {
     /// The host let nobody in as the one asked for with the keys offered
     /// (root, nearly always: another key may do, [`OverSsh::root_key`]).
     pub refused: bool,
+    /// The host was looked at, and it can't be set up from here: what it is
+    /// (another system than [`SYSTEMS`], no systemd, root's own account),
+    /// not a fault ([`plan`]'s refusal).
+    pub cant: bool,
     pub why: String,
 }
 
 impl From<String> for Failed {
     fn from(why: String) -> Failed {
-        Failed { refused: false, why }
+        Failed { why, ..Failed::default() }
     }
 }
 
@@ -548,6 +602,18 @@ pub fn by_sudo(command: &str) -> String {
     format!("sudo -n -H sh -c {}", shell_word(&format!("cd && {command}")))
 }
 
+/// `command` as the account runs it: in `sh`, whatever its login shell,
+/// with `XDG_RUNTIME_DIR` its runtime folder where the SSH session didn't
+/// set it and the folder is there (the user manager running: lingering on,
+/// or another session), so `systemctl --user` reaches the user manager. A
+/// session without logind's (`UsePAM no`, a container, some images) has
+/// none, and `rex server install` failed there: "needs systemd's user
+/// manager for your account, but it could not be reached" (the rig's Fedora
+/// 44, 2026-11-25). The pool's host script does the same.
+pub fn as_account(command: &str) -> String {
+    format!("sh -c {}", shell_word(&format!("[ -n \"${{XDG_RUNTIME_DIR:-}}\" ] || {{ d=/run/user/$(id -u); [ -d \"$d\" ] && export XDG_RUNTIME_DIR=\"$d\"; }}; {command}")))
+}
+
 /// Whether the account that connects may run commands as root with sudo,
 /// without a password (`sudo -n true`; an account that is root itself
 /// needn't). Asked only where root's work is to be done: a sudo refused
@@ -573,11 +639,11 @@ impl Runner for OverSsh {
         let (target, command) = match (root, self.root_by) {
             (true, RootBy::Login) => (self.target.as_root(self.root_key.clone()), command.to_owned()),
             (true, RootBy::Sudo) => (self.target.clone(), by_sudo(command)),
-            (false, _) => (self.target.clone(), command.to_owned()),
+            (false, _) => (self.target.clone(), as_account(command)),
         };
         self.pool.exec(&target, self.askpass.clone(), &command, said).await.map_err(|e| match e {
-            crate::error::RexError::SshRefused(who) => Failed { refused: true, why: format!("{who} let nobody in with the keys offered") },
-            other => Failed { refused: false, why: other.to_string() },
+            crate::error::RexError::SshRefused(who) => Failed { refused: true, cant: false, why: format!("{who} let nobody in with the keys offered") },
+            other => Failed { why: other.to_string(), ..Failed::default() },
         })
     }
 
@@ -626,7 +692,7 @@ pub async fn carry_out(runner: &mut impl Runner, step: &Step, said: &mut (dyn Fn
 /// account: how it stands, and the steps (none: it is as it should be).
 pub async fn needs(runner: &mut impl Runner, mode: ServerMode) -> Result<(Facts, Vec<Step>), Failed> {
     let facts = probe(runner, false).await?;
-    let steps = plan(mode, &facts)?;
+    let steps = plan(mode, &facts).map_err(|why| Failed { cant: true, why, ..Failed::default() })?;
     Ok((facts, steps))
 }
 
@@ -719,8 +785,11 @@ mod tests {
     /// A host as the real one answered (2026-11-22, an Ubuntu machine
     /// with a copy of Rex in /usr/local/bin and nothing else), and then
     /// as it answered once set up.
-    const BARE: &str = "os=Linux\ndistro=ubuntu\nuser=alice\nuid=1001\ngroups=alice\nrex=/usr/local/bin/rex\nversion=rex 0.1.0-snapshot.2506\nbare=1\nsystemd=1\nunit.rex.service=inactive,not-found\nunit.rex.socket=inactive,not-found\nunit.rex-login-server.service=inactive,not-found\nunit.rex-login-server.socket=inactive,not-found\nown=inactive,disabled\nlinger=no\nrexshell=\nfetch=curl\n";
-    const LOGIN: &str = "os=Linux\ndistro=ubuntu\nuser=alice\nuid=1001\ngroups=alice\nrex=/usr/bin/rex\nversion=rex 0.1.0-snapshot.2506\npackaged=1\nsystemd=1\nunit.rex.service=inactive,disabled\nunit.rex.socket=inactive,disabled\nunit.rex-login-server.service=active,enabled\nunit.rex-login-server.socket=inactive,disabled\nown=active,enabled\nlinger=yes\nrexshell=/usr/sbin/nologin\nfetch=curl\n";
+    const BARE: &str = "os=Linux\ndistro=ubuntu\nuser=alice\nuid=1001\ngroups=alice\nrex=/usr/local/bin/rex\nversion=rex 0.1.0-snapshot.2506\nbare=1\nsystemd=1\nunit.rex.service=inactive,not-found\nunit.rex.socket=inactive,not-found\nunit.rex-login-server.service=inactive,not-found\nunit.rex-login-server.socket=inactive,not-found\nown=inactive,disabled\nlinger=no\npolkit=1\nrexshell=\nfetch=curl\n";
+    const LOGIN: &str = "os=Linux\ndistro=ubuntu\nuser=alice\nuid=1001\ngroups=alice\nrex=/usr/bin/rex\nversion=rex 0.1.0-snapshot.2506\npackaged=1\nsystemd=1\nunit.rex.service=inactive,disabled\nunit.rex.socket=inactive,disabled\nunit.rex-login-server.service=active,enabled\nunit.rex-login-server.socket=inactive,disabled\nown=active,enabled\nlinger=yes\npolkit=1\nrexshell=/usr/sbin/nologin\nfetch=curl\n";
+    /// A Fedora cloud image's: Rex's package, the login server, sudo for its
+    /// account, and no polkit (an account can't turn its own lingering on).
+    const FEDORA: &str = "os=Linux\ndistro=fedora\ndistro_name=Fedora Linux 44 (Cloud Edition)\nuser=fedora\nuid=1000\ngroups=fedora wheel\nrex=/usr/bin/rex\nversion=rex 0.1.0-preview.23\npackaged=1\nsystemd=1\nunit.rex.service=inactive,disabled\nunit.rex.socket=inactive,disabled\nunit.rex-login-server.service=active,enabled\nunit.rex-login-server.socket=inactive,disabled\nown=inactive,disabled\nlinger=no\nrexshell=/usr/sbin/nologin\nfetch=curl\n";
 
     fn listed(facts: &str, account: &str, uid: u32) -> String {
         let mut file = Accounts::parse(crate::accounts::EMPTY).unwrap();
@@ -753,7 +822,7 @@ mod tests {
         assert!(Facts::parse("bash: no such thing\n").is_err());
         assert!(Facts::parse(&BARE.replace("uid=1001", "uid=many")).is_err());
         // No Rex at all, nothing to say of a mode.
-        let none = Facts::parse("os=Linux\ndistro=debian\nuser=bob\nuid=1000\ngroups=bob\nrex=\nsystemd=1\nfetch=wget\n").unwrap();
+        let none = Facts::parse("os=Linux\ndistro=ubuntu\nuser=bob\nuid=1000\ngroups=bob\nrex=\nsystemd=1\nfetch=wget\n").unwrap();
         assert_eq!((none.rex.clone(), none.mode(), none.channel(), none.fetch), (None, None, None, Some(Fetch::Wget)));
     }
 
@@ -804,7 +873,7 @@ mod tests {
         let for_login = plan(ServerMode::Login, &bare).unwrap();
         assert_eq!(
             for_login.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(),
-            ["Install Rex’s package", "Remove the other copy of Rex", "Allow alice to sign in", "Start the login server", "Keep your Rex server running"]
+            ["Install Rex’s package", "Remove the other copy of Rex", "Allow alice to sign in", "Start the login server", "Have alice’s Rex server start by itself"]
         );
         // The accounts step shows what it adds, and where; the others, commands.
         let lists: Vec<&Step> = all.iter().filter(|s| s.adds_to().is_some()).collect();
@@ -902,7 +971,7 @@ mod tests {
 
     #[test]
     fn what_cant_be_done_from_here_is_said() {
-        let none = "os=Linux\ndistro=debian\nuser=bob\nuid=1000\ngroups=bob\nrex=\nsystemd=1\n";
+        let none = "os=Linux\ndistro=ubuntu\nuser=bob\nuid=1000\ngroups=bob\nrex=\nsystemd=1\npolkit=1\n";
         // No Rex and nothing to fetch it with.
         assert!(plan(ServerMode::Personal, &Facts::parse(none).unwrap()).unwrap_err().contains("curl nor wget"));
         // With wget, and no channel to keep.
@@ -914,9 +983,53 @@ mod tests {
         // Another system; root as the account; no systemd for a server that needs it (the personal one still can).
         assert!(plan(ServerMode::Personal, &Facts::parse("os=FreeBSD\nuser=bob\nuid=1001\n").unwrap()).unwrap_err().contains("FreeBSD"));
         assert!(plan(ServerMode::Login, &Facts::parse(&BARE.replace("uid=1001", "uid=0").replace("user=alice", "user=root")).unwrap()).unwrap_err().contains("not as root"));
-        let alpine = "os=Linux\ndistro=alpine\nuser=bob\nuid=1000\ngroups=bob\nrex=/usr/bin/rex\nversion=rex 0.1.0\nfetch=wget\n";
-        assert!(plan(ServerMode::Login, &Facts::parse(alpine).unwrap()).unwrap_err().contains("systemd"));
-        assert_eq!(plan(ServerMode::Personal, &Facts::parse(alpine).unwrap()).unwrap(), []);
+        let fedora_bare = "os=Linux\ndistro=fedora\nuser=bob\nuid=1000\ngroups=bob\nrex=/usr/bin/rex\nversion=rex 0.1.0\nfetch=wget\n";
+        assert!(plan(ServerMode::Login, &Facts::parse(fedora_bare).unwrap()).unwrap_err().contains("systemd"));
+        assert_eq!(plan(ServerMode::Personal, &Facts::parse(fedora_bare).unwrap()).unwrap(), []);
+        // A system other than Ubuntu and Fedora: said by its name, set up by hand.
+        let alpine = "os=Linux\ndistro=alpine\ndistro_name=Alpine Linux v3.22\nuser=bob\nuid=1000\ngroups=bob\nrex=/usr/bin/rex\nfetch=wget\n";
+        for mode in [ServerMode::Personal, ServerMode::Login] {
+            let why = plan(mode, &Facts::parse(alpine).unwrap()).unwrap_err();
+            assert!(why.contains("Ubuntu and Fedora") && why.contains("Alpine Linux v3.22") && why.contains("by hand"), "{why}");
+        }
+        assert!(
+            plan(ServerMode::Personal, &Facts::parse(&alpine.replace("distro_name=Alpine Linux v3.22\n", "").replace("distro=alpine", "distro=debian")).unwrap()).unwrap_err().contains("runs debian")
+        );
+    }
+
+    /// Lingering where the account can't turn it on itself (no polkit, a
+    /// Fedora cloud image's; or `rex server install` ran and it is off
+    /// still): root's step, with sudo or root's login, after the account's.
+    /// It was planned again after every run, "Every step ran, and it still
+    /// needs: Keep your Rex server running" (Ben, 2026-11-25).
+    #[test]
+    fn lingering_is_roots_where_the_account_cant_turn_it_on() {
+        let fedora = Facts::parse(FEDORA).unwrap();
+        assert_eq!((fedora.distro_name.as_str(), fedora.polkit), ("Fedora Linux 44 (Cloud Edition)", false));
+        let ours = |facts: &Facts| shown(&plan(ServerMode::Login, facts).unwrap()).into_iter().filter(|s| s.contains("server install") || s.contains("linger")).collect::<Vec<_>>();
+        // No polkit: root's lingering, with root's other steps, then the account's unit.
+        assert_eq!(ours(&fedora), ["root: loginctl enable-linger fedora", "user: /usr/bin/rex server install"]);
+        let groups = |steps: &[Step]| steps.windows(2).filter(|w| w[0].root != w[1].root).count() + 1;
+        assert_eq!(groups(&plan(ServerMode::Login, &fedora).unwrap()), 2, "root's, then the account's");
+        // A personal server, no Rex yet: root's lingering first, then the account's two.
+        let personal = Facts::parse(&FEDORA.replace("rex=/usr/bin/rex\n", "rex=\n").replace("packaged=1\n", "")).unwrap();
+        assert_eq!(
+            shown(&plan(ServerMode::Personal, &personal).unwrap()),
+            ["root: loginctl enable-linger fedora", "user: curl -fsSL https://pkgs.superlogical.com/rex/install.sh | sh -s -- --user", "user: ~/.local/bin/rex server install"]
+        );
+        // The unit there, lingering off: root's alone (it was the account's step again, for good).
+        let ran = Facts::parse(&FEDORA.replace("own=inactive,disabled", "own=active,enabled")).unwrap();
+        assert_eq!(ours(&ran), ["root: loginctl enable-linger fedora"]);
+        // With polkit (Ubuntu's): the account's step turns it on; root's only if it ran and didn't.
+        let ubuntu = Facts::parse(&FEDORA.replace("distro=fedora", "distro=ubuntu").replace("linger=no", "linger=no\npolkit=1")).unwrap();
+        assert_eq!(ours(&ubuntu), ["user: /usr/bin/rex server install"]);
+        let ubuntu_ran = Facts::parse(&FEDORA.replace("distro=fedora", "distro=ubuntu").replace("linger=no", "linger=no\npolkit=1").replace("own=inactive,disabled", "own=active,enabled")).unwrap();
+        assert_eq!(ours(&ubuntu_ran), ["root: loginctl enable-linger fedora"]);
+        // Done: nothing.
+        let done = Facts::parse(&FEDORA.replace("own=inactive,disabled", "own=active,enabled").replace("linger=no", "linger=yes")).unwrap();
+        assert!(ours(&done).is_empty());
+        // A name that isn't plain, quoted.
+        assert_eq!(shell_word("o'brien"), "'o'\\''brien'");
     }
 
     #[test]
@@ -950,7 +1063,7 @@ mod tests {
     impl Runner for Host {
         async fn run(&mut self, root: bool, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
             if root && self.no_root {
-                return Err(Failed { refused: true, why: "root@host let nobody in with the keys offered".into() });
+                return Err(Failed { refused: true, why: "root@host let nobody in with the keys offered".into(), ..Failed::default() });
             }
             if !root && command == "sudo -n true" {
                 self.ran.push((root, command.to_owned()));
@@ -999,6 +1112,10 @@ mod tests {
         let mut host = Host::default();
         assert!(!block(can_sudo(&mut host)));
         assert_eq!(by_sudo("systemctl enable --now 'rex.socket'"), "sudo -n -H sh -c 'cd && systemctl enable --now '\\''rex.socket'\\'''");
+        // As the account: in sh, its runtime folder defaulted where the session has none.
+        let mine = as_account("/usr/bin/rex server install");
+        assert!(mine.starts_with("sh -c '") && mine.ends_with("; /usr/bin/rex server install'"), "{mine}");
+        assert!(mine.contains("d=/run/user/$(id -u)") && mine.contains("export XDG_RUNTIME_DIR="), "{mine}");
         assert_eq!(RootBy::default(), RootBy::Login);
     }
 
@@ -1069,7 +1186,7 @@ mod tests {
         let failing = [root("", "", "apt-get install rex"), root("", "", "systemctl enable --now rex-login-server.service")];
         assert_eq!(
             block(set_up(&mut host, ServerMode::Login, &failing, &AtomicBool::new(false), &mut |_, _| {})),
-            Outcome::Failed { at: 0, failed: Failed { refused: false, why: "E: Unable to locate package rex".into() } }
+            Outcome::Failed { at: 0, failed: Failed { why: "E: Unable to locate package rex".into(), ..Failed::default() } }
         );
         assert_eq!(host.ran.len(), 1);
 
@@ -1101,7 +1218,11 @@ mod tests {
             outcome,
             Outcome::Failed {
                 at: 0,
-                failed: Failed { refused: false, why: "loading accounts file: /etc/rex/accounts.jsonc: unexpected end of input\nrex-login-server.service: Failed with result 'exit-code'.".into() }
+                failed: Failed {
+                    refused: false,
+                    cant: false,
+                    why: "loading accounts file: /etc/rex/accounts.jsonc: unexpected end of input\nrex-login-server.service: Failed with result 'exit-code'.".into()
+                }
             }
         );
         assert_eq!(
@@ -1111,7 +1232,7 @@ mod tests {
         // No log to be had: what systemctl said stands.
         let mut host = Host { says: vec![BARE.to_owned()], wont_start: Some(says), ..Default::default() };
         let outcome = block(set_up(&mut host, ServerMode::Login, &start, &AtomicBool::new(false), &mut |_, _| {}));
-        assert_eq!(outcome, Outcome::Failed { at: 0, failed: Failed { refused: false, why: says.into() } });
+        assert_eq!(outcome, Outcome::Failed { at: 0, failed: Failed { why: says.into(), ..Failed::default() } });
         // A step that starts no service asks no log.
         let mut host = Host { says: vec![BARE.to_owned()], fails: Some("E: Unable to locate package rex"), journal: Some("unrelated"), ..Default::default() };
         block(set_up(&mut host, ServerMode::Login, &[root("", "", "apt-get install rex")], &AtomicBool::new(false), &mut |_, _| {}));
@@ -1122,7 +1243,7 @@ mod tests {
     fn a_step_that_fails_says_why_in_its_own_words() {
         let mut host = Host { fails: Some("E: Unable to locate package rex"), ..Default::default() };
         let why = block(carry_out(&mut host, &root("", "", "apt-get install rex"), &mut |_| {})).unwrap_err();
-        assert_eq!(why, Failed { refused: false, why: "E: Unable to locate package rex".into() });
+        assert_eq!(why, Failed { why: "E: Unable to locate package rex".into(), ..Failed::default() });
         assert_eq!(failure(&Ran { status: Some(3), output: String::new() }), "it ended with status 3");
         assert_eq!(failure(&Ran { status: None, output: "half\n".into() }), "the connection ended before it finished (half)");
         // The probe, asked through a runner.

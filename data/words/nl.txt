@@ -15610,6 +15610,9 @@ Instellingen voor {}…
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {} kan daar sudo gebruiken zonder wachtwoord, dus meldt Rex zich aan als {}@{} en voert dit uit met sudo. Er verandert niets totdat sudo werkt.
 
+{} can’t be set up from here
+{} kan niet van hieruit worden ingesteld
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} kan sudo op {} niet zonder wachtwoord gebruiken, dus het beheer van de server vraagt de eigen aanmelding van root, of een account dat het wel kan. Kies een sleutel die root daar accepteert. Werkt er geen, voeg dan uw publieke sleutel toe aan /root/.ssh/authorized_keys op die machine en probeer het opnieuw.
 

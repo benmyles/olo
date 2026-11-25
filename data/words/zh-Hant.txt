@@ -15499,6 +15499,9 @@ other: {n} 週
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {} 在該主機可以免密碼使用 sudo，因此 Rex 會以 {}@{} 身分登入，並以 sudo 執行這些步驟。sudo 可用之前不會變更任何內容。
 
+{} can’t be set up from here
+無法從這裡設定 {}
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} 在 {} 上無法免密碼使用 sudo，因此管理其伺服器需要 root 本身登入，或可以這樣做的帳號。請選擇該主機的 root 接受的金鑰。若都無法使用，請將您的公開金鑰加入該機器的 /root/.ssh/authorized_keys，然後再試一次。
 

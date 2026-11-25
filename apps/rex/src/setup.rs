@@ -55,6 +55,11 @@ pub enum Stage {
     /// do); `said`, what the host said, in its own words (or nothing).
     /// `icon`: the alert's (something stopped; or only: look at this).
     Failed { what: String, why: String, said: String, icon: &'static str },
+    /// The host was looked at, and it can't be set up from here (another
+    /// system than Ubuntu and Fedora, no systemd): `what`, in a few words;
+    /// `why`, what it is and what to do. Only Back: trying again changes
+    /// nothing (both looks, 2026-11-25: Try Again was its default button).
+    Cant { what: String, why: String },
     /// The host is as it should be, and added.
     Done,
 }
@@ -189,6 +194,12 @@ fn could_not_look(setup: &Setup, failed: &Failed) -> Stage {
             icon: "key",
         };
     }
+    // (Looked at, and it can't be set up from here: another system than
+    // Ubuntu and Fedora, no systemd for a server that needs it. Said as
+    // what it is, not as a fault.)
+    if failed.cant {
+        return Stage::Cant { what: olo_kit::tr!("{} can’t be set up from here", setup.host()).into(), why: olo_kit::words::of(failed.why.clone()).into() };
+    }
     Stage::Failed { what: olo_kit::tr!("Couldn’t look at {}", setup.host()).into(), why: String::new(), said: failed.why.clone(), icon: "stop" }
 }
 
@@ -238,7 +249,7 @@ pub fn go(hub: &Arc<RexHub>) {
         // so.)
         let reached = if steps.iter().any(|s| s.root) {
             match provision::Runner::run(&mut runner, true, "true", &mut |_| {}).await {
-                Ok(ran) if !ran.ok() => Err(Failed { refused: false, why: ran.output.trim().to_owned() }),
+                Ok(ran) if !ran.ok() => Err(Failed { why: ran.output.trim().to_owned(), ..Failed::default() }),
                 Ok(_) => Ok(()),
                 Err(failed) => Err(failed),
             }
@@ -419,6 +430,7 @@ pub fn demo(named: &str) -> Option<Setup> {
         version: Some("rex 0.1.0-snapshot.2506".into()),
         bare: true,
         systemd: true,
+        polkit: true,
         fetch: Some(provision::Fetch::Curl),
         ..Default::default()
     };
@@ -461,7 +473,23 @@ pub fn demo(named: &str) -> Option<Setup> {
             what: "Couldn’t start the login server".into(),
             why: "Steps 1 to 3 are done. Try Again carries on from step 4.".into(),
             said: "Job for rex-login-server.service failed because the control process exited with error code.\nSee \"systemctl status rex-login-server.service\" and \"journalctl -xeu rex-login-server.service\" for details.".into(), icon: "stop" },
-        "refused" => could_not_look(&Setup { name: String::new(), target: target.clone(), mode: ServerMode::Login, stage: Stage::Looking, root_key: None, root_by }, &Failed { refused: true, why: String::new() }),
+        // A Fedora cloud image's, with nothing of Rex's yet: no polkit, so
+        // root turns lingering on.
+        "confirm-fedora" => {
+            let fedora = provision::Facts { distro: "fedora".into(), distro_name: "Fedora Linux 44 (Cloud Edition)".into(), polkit: false, rex: None, version: None, bare: false, ..bare.clone() };
+            let steps = provision::plan(ServerMode::Login, &fedora).ok()?;
+            Stage::Confirm { ends_sessions: provision::ends_sessions(&steps), steps }
+        }
+        // Another system: said, not set up.
+        "unsupported" => {
+            let other = provision::Facts { distro: "debian".into(), distro_name: "Debian GNU/Linux 13 (trixie)".into(), ..bare.clone() };
+            let why = provision::plan(ServerMode::Login, &other).err()?;
+            could_not_look(
+                &Setup { name: String::new(), target: target.clone(), mode: ServerMode::Login, stage: Stage::Looking, root_key: None, root_by },
+                &provision::Failed { cant: true, why, ..Default::default() },
+            )
+        }
+        "refused" => could_not_look(&Setup { name: String::new(), target: target.clone(), mode: ServerMode::Login, stage: Stage::Looking, root_key: None, root_by }, &Failed { refused: true, ..Failed::default() }),
         _ => return None,
     };
     Some(Setup { name: "build".into(), target, mode: ServerMode::Login, stage, root_key: None, root_by })
@@ -494,7 +522,7 @@ mod tests {
 
     #[test]
     fn every_stage_can_be_pictured() {
-        for named in ["looking", "confirm", "confirm-ends", "root", "key", "nokeys", "working", "stopping", "failed", "failed-later", "refused"] {
+        for named in ["looking", "confirm", "confirm-ends", "confirm-fedora", "unsupported", "root", "key", "nokeys", "working", "stopping", "failed", "failed-later", "refused"] {
             let setup = demo(named).unwrap_or_else(|| panic!("no demo of {named}"));
             assert_eq!((setup.host(), setup.root().as_str(), setup.root_by), ("build.example.com", "root@build.example.com", RootBy::Login));
             // (Each with root's work done through sudo, as the account.)

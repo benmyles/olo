@@ -951,6 +951,14 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
             }
             frame.child(gap(m::SPACING)).child(buttons().child(button("Back", SetupDo::Back)).child(button("Try Again", SetupDo::Again).default(true))).into_element()
         }
+        // (What the host is, said, with the one way on: back.)
+        Stage::Cant { what, why } => AlertFrame::new("info")
+            .child(alert_title(what.clone()))
+            .child(gap(m::TIGHT))
+            .child(body(why.clone()))
+            .child(gap(m::SPACING))
+            .child(buttons().child(button("Back", SetupDo::Back).default(true)))
+            .into_element(),
         Stage::Done => col(),
     }
 }

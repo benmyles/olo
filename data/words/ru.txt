@@ -15832,6 +15832,9 @@ other: {n} недели
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {} может использовать sudo там без пароля, поэтому Rex входит как {}@{} и выполняет это через sudo. Ничего не меняется, пока sudo не сработает.
 
+{} can’t be set up from here
+{} нельзя настроить отсюда
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} не может использовать sudo на {} без пароля, поэтому для управления сервером нужен вход самого root или учётная запись, которая это может. Выберите ключ, который принимает root на этом узле. Если ни один не подходит, добавьте открытый ключ в /root/.ssh/authorized_keys на той машине и попробуйте снова.
 

@@ -15499,6 +15499,9 @@ other: {n} 周
 {} can use sudo there without a password, so Rex signs in as {}@{} and runs these with sudo. Nothing is changed until sudo works.
 {} 在那里可以免密码使用 sudo，因此 Rex 以 {}@{} 身份登录，并用 sudo 运行这些步骤。sudo 可用之前不会做任何更改。
 
+{} can’t be set up from here
+无法从这里设置 {}
+
 {} can’t use sudo on {} without a password, so looking after its server needs root’s own login, or an account that can. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 {} 在 {} 上无法免密码使用 sudo，因此管理其服务器需要 root 本身登录，或一个可以这样做的账户。请选择远程主机 root 接受的密钥。若均不可用，请将公钥添加到该机器的 /root/.ssh/authorized_keys 后重试。
 
