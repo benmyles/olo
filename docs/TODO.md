@@ -341,6 +341,24 @@ something nobody here has is in "Blocked", with what it waits for.
   the build to it after; tried for real between two hosts (containers or
   VMs of the rig's own: an Ubuntu one to a Fedora one), never the
   person's.
+  **Going** (2026-11-25): the plan reviewed twice by Neon and by the
+  lead, each finding checked in the code (its third version's decisions
+  kept beside the work while it is built: the copy Olo's own, the
+  helper's, not rsync; the Token Pool by its own hand-back; sessions
+  found by what runs, not argv alone; the message typed at an idle
+  prompt and Keep It Going held while it stands; lingering off only after
+  the second pass; `.cache` left out unless asked). Built and tried host
+  to host: the helper's `move` (key, allow, receive, send over its own
+  SSH connection with the host key pinned, two passes, status, stop, a
+  native look at a host and at its panes, the fix of a home whose path
+  changed), each agent's resume line from its real options, what never
+  moves, the refusals, the source's stop script. Being built: the
+  engine for a whole home (protected paths, root-anchored excludes,
+  files changing mid-copy, hard links, sparse files, folders' modes, one
+  filesystem, nothing dropped silently: a subagent), then the move's
+  orchestration and journal, the Move window, Rex following, Neon's look
+  at the build, and the whole move for real between the rig's Ubuntu and
+  Fedora hosts.
 
 - **An upgrade of Olo cuts the Token Pool's answers mid-stream** (Ben,
   2026-11-25: "when upgrading olo it seems to sever the token pool

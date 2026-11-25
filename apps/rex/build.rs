@@ -28,7 +28,11 @@ const HOSTS: [(&str, &str); 2] = [("x86_64-unknown-linux-musl", "x86_64"), ("aar
 fn main() {
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_owned();
-    for changed in ["crates/rex-link/src", "crates/rex-link/Cargo.toml", "crates/rex-sync/src", "crates/rex-sync/Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
+    // (The helper's own code, the engine's, and russh's (vendored, the
+    // helper's own SSH connection when it moves an account).)
+    for changed in
+        ["crates/rex-link/src", "crates/rex-link/Cargo.toml", "crates/rex-sync/src", "crates/rex-sync/Cargo.toml", "vendor/russh/src", "vendor/russh/Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
+    {
         println!("cargo:rerun-if-changed={}", root.join(changed).display());
     }
     println!("cargo:rerun-if-env-changed=OLO_REX_LINK_SKIP");
@@ -91,9 +95,11 @@ fn wrappers(out: &Path, triple: &str) -> Option<(PathBuf, PathBuf)> {
 fn build(root: &Path, target: &Path, out: &Path, triple: &str, quic: bool) -> bool {
     let mut cargo = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
     cargo.current_dir(root).args(["build", "--release", "--locked", "-p", "olo-rex-link", "--bin", "olo-rex-link", "--target", triple, "--target-dir"]).arg(target);
-    // (And keeping files in step, `sync`: its engine's zstd is C too.)
+    // (And keeping files in step, `sync`: its engine's zstd is C too; and
+    // moving an account, `move`: the engine, and russh's ciphers, C as
+    // the link's are.)
     if quic {
-        cargo.args(["--features", "quic,sync"]);
+        cargo.args(["--features", "quic,sync,move"]);
     }
     // (What this build was told is not for that one: its flags, its
     // target folder, the profile it is built in.)

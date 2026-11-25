@@ -124,9 +124,24 @@ pub fn enabled(provider: Provider, port: u16) -> bool {
 }
 
 /// Whether `provider`'s client is pointed at the pool's proxy on `port`
-/// (turned off or not).
+/// (turned off or not), with this home's certificate: settings that name
+/// another home's (an account moved to a host where its home has another
+/// path) keep the proxy's address but not a certificate that is there.
 pub fn pointed(provider: Provider, port: u16) -> bool {
-    through_proxy(provider, port)
+    through_proxy(provider, port) && our_certificate(provider)
+}
+
+fn our_certificate(provider: Provider) -> bool {
+    match provider {
+        Provider::Claude => {
+            let ours = crate::authority::cert_path().display().to_string();
+            read_json(&claude_dir().join("settings.json")).is_ok_and(|v| v["env"]["NODE_EXTRA_CA_CERTS"].as_str() == Some(ours.as_str()))
+        }
+        Provider::Codex => {
+            let ours = crate::authority::bundle_path().display().to_string();
+            read_dotenv(&codex_dir().join(".env")).iter().any(|(k, v)| k == "SSL_CERT_FILE" && *v == ours)
+        }
+    }
 }
 
 fn through_proxy(provider: Provider, port: u16) -> bool {
@@ -155,7 +170,9 @@ fn the_old_way(provider: Provider) -> bool {
 /// through). Blocks on the disk.
 pub fn set(provider: Provider, on: bool, port: u16) -> Result<(), String> {
     let mut manifest = read_manifest();
-    if !on || (through_proxy(provider, port) && !the_old_way(provider)) {
+    // (On, and pointed already with this home's certificate: only
+    // unpaused. Pointed with another's: pointed again.)
+    if !on || (pointed(provider, port) && !the_old_way(provider)) {
         if on {
             manifest.paused.remove(key(provider));
         } else if through_proxy(provider, port) || manifest.paused.contains(key(provider)) {
@@ -436,6 +453,22 @@ mod tests {
             assert!(enabled(p, 4000) && !paused(p));
         }
         assert_eq!((std::fs::read(claude.join("settings.json")).unwrap(), std::fs::read(codex.join(".env")).unwrap()), (s1, e1));
+        // Another home's certificate named (an account moved to a host
+        // where its home is another path): not pointed, and on again
+        // points it at this home's, what was there before the pool kept.
+        let claude_set = std::fs::read_to_string(claude.join("settings.json")).unwrap();
+        let ours = config.join("olo/pool-ca.pem").display().to_string();
+        std::fs::write(claude.join("settings.json"), claude_set.replace(&ours, "/home/elsewhere/.config/olo/pool-ca.pem")).unwrap();
+        let codex_set = std::fs::read_to_string(codex.join(".env")).unwrap();
+        let bundle = config.join("olo/pool-ca-bundle.pem").display().to_string();
+        assert!(codex_set.contains(&bundle), "{codex_set}");
+        std::fs::write(codex.join(".env"), codex_set.replace(&bundle, "/home/elsewhere/.config/olo/pool-ca-bundle.pem")).unwrap();
+        for p in [Provider::Claude, Provider::Codex] {
+            assert!(through_proxy(p, 4000) && !pointed(p, 4000));
+            set(p, true, 4000).unwrap();
+            assert!(pointed(p, 4000) && enabled(p, 4000));
+        }
+        assert_eq!((std::fs::read_to_string(claude.join("settings.json")).unwrap(), std::fs::read_to_string(codex.join(".env")).unwrap()), (claude_set, codex_set));
         // Put back: exactly as it was, key order and all.
         for p in [Provider::Claude, Provider::Codex] {
             put_back(p).unwrap();

@@ -20,6 +20,9 @@ quic = ["dep:tokio", "dep:quinn", "dep:rustls", "dep:rcgen", "dep:sha2"]
 # (olo-rex-sync, whose zstd is C: built for hosts where zig compiles it,
 # as `quic`'s ciphers are).
 sync = ["dep:olo-rex-sync", "dep:libc"]
+# (Moving an account to another host: its key made here, the copy over
+# an SSH connection of the helper's own.)
+move = ["sync", "dep:russh", "dep:tokio"]
 
 [dependencies]
 serde.workspace = true
@@ -34,6 +37,7 @@ rcgen = { version = "0.14", optional = true, default-features = false, features 
 sha2 = { version = "0.11", optional = true }
 olo-rex-sync = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
+russh = { version = "0.65", optional = true, default-features = false, features = ["aws-lc-rs"] }
 
 # For `tests/server.rs` alone: the helper in front of a real Rex server
 # of the test's own, spoken to as the app speaks to it. (The app's Rex

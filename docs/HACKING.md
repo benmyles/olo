@@ -28836,12 +28836,76 @@ the world": quinn, rustls with aws-lc, rcgen).
   ends when its input closes. At rest it costs nothing: asleep in
   `poll`, no time-out unless a change is settling (measured, ten
   seconds: no CPU, no wakeups).
+- *Moving an account* (`olo-rex-link move …`, `src/moving.rs`, its
+  `move` feature: `sync`'s, and russh): the host's part in moving an
+  account's home from one host to another, machine to machine
+  (`olo_rex_client::migrate` drives it; TODO, "Rex: move an account").
+  Nothing of the host's is used for it (no rsync, tar, zstd or
+  ssh-keygen: Fedora's cloud image has none of them): `move look` (the
+  host and account as JSON: system, machine, account, home and its
+  room, `/var/tmp`'s, groups, tools on the path, SELinux, lingering,
+  the account's own units and those enabled, the TCP ports it listens
+  on, other logins, mounts under the home, tmux and screen, machine and
+  boot ids, the SSH port it was reached on from `$SSH_CONNECTION`), `move
+  look-pane PID…` (each pane's process tree: command lines whole, a
+  newline in an argument too; folders; start times read after the
+  name's last bracket; the agents' session files held open, agy's
+  `.db-wal` too), `move key DIR` (an ed25519 key made in Rust, in the
+  move's folder, 0600), `move allow ID LINE` and `move disallow ID` (that
+  key let into the destination's `authorized_keys` for a day,
+  `restrict,expiry-time="YYYYMMDDHHMM"`, able to run only the helper's
+  own resolved path with `move receive`, by its comment taken out; the
+  file rewritten whole beside itself and renamed, its mode kept), `move
+  receive` (that key's forced command: the ask in
+  `SSH_ORIGINAL_COMMAND`'s last word, hex-coded JSON: `hello`, the
+  engine's receiving side `--scoped` into the home or the account's own
+  folder of `/var/tmp`, never `--delete`, or `forget`: paths the first
+  pass put there that the source no longer has), `move send DIR --to
+  USER@HOST[:PORT] --host-key KEY --there ROOT [--pass N] [--exclude
+  P]… [--detach]` (its own SSH connection with the move's key, the
+  destination's host key pinned as the app's own connection checked it
+  (`SshSessionPool::verified`): never trusted on first sight; the
+  engine on a blocking thread over the channel; detached, a session of
+  its own, its log, pid and `status.json` (phase, files and bytes of
+  the total, what went on the wire, the report) in DIR, twice a second;
+  a second pass takes away there what the first's index had and this
+  one's hasn't), `move status DIR`, `move stop [--spare PID]…` (every
+  process of the account but its own line of parents, the account's
+  systemd, its PAM half and its bus: TERM, three seconds, KILL, three
+  rounds; what is left said). Tried host to host between the rig's
+  Ubuntu and Fedora containers (tools/dev/rex-slow, `UbuntuHost`,
+  `FedoraHost`, `rig_network`): a wrong host key refused, 311 files in
+  1.3 s, the second pass two files and 112 taken away.
+- *A move's client side* (`olo_rex_client::migrate`): `Facts` and
+  `Pane` read the helper's looks; `excluded` (what never moves, each
+  pattern from the home's root: the destination's `authorized_keys`,
+  each host's own Olo, Rex and Token Pool state, the move's own, `.cache`
+  unless asked; Codex's database where the home's path changes, its
+  daemon's packages where the system or machine does), `refusals` (the
+  same home by machine id, boot id, uid and the home's device and inode;
+  clocks over a minute apart; too little room, bytes or files), `stop_script`
+  (crontab saved and emptied, the account's own timers, paths and
+  sockets before its services, Rex's socket, the agents before Codex's
+  daemon, tmux, screen, rootless containers, Rex's server; never the
+  system's user units; lingering left on for the second pass),
+  `resume_line` (each agent's command line from its real options:
+  `claude <flags> --resume ID`, `codex resume <flags> ID`, `agy <flags>
+  --conversation ID`; its own flags kept with their values' paths
+  rewritten, an old resume or continue, a session id, a first prompt or
+  `--print` never), `capture` and `rebuild` (a session's windows, layers
+  and splits as `rebuild_splits` orders them: each split of a pane
+  already made, the old pane keeping the first side, its ratio set at
+  once; labels, the pane in front, zoom last, the window in front), and
+  `message` (what each agent finds typed at its prompt, not sent: one
+  line, no `@`, only what is true of that move and pane).
 - *Built for hosts* with TLS in it: its ciphers are C (aws-lc),
   compiled by zig as the pool's host program's are (`apps/rex/
   build.rs`; without zig the helper is built without the link, as it
   was). The helper is 4.6 MB for x86_64 and 3.3 MB for aarch64 with it
   (0.7 MB without): 2.4 s to put on the real test host. With keeping
-  files in step too (zstd, BLAKE3: 2026-11-24) 5.6 MB and 4.1 MB.
+  files in step too (zstd, BLAKE3: 2026-11-24) 5.6 MB and 4.1 MB; with
+  moving an account too (russh, 2026-11-25) 7.7 MB and 5.9 MB (about a
+  second more to put on a host, once a release).
 - *Measured* on the real test host, over the internet (release of the
   helper, the client's tests `typing_over_the_link_is_timed` and
   `a_request_beside_a_flood_is_timed` with `OLO_REX_TEST_HELPER_FILE`

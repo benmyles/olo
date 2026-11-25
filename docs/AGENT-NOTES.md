@@ -875,7 +875,9 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 Learned measuring catalogs as data (2026-11-20):
 
-- **A copy of `target/release` is free here** (`cp -a --reflink=always
+- **A copy of `target/release` is free here** (on the person's laptop:
+  btrfs; the dev server's disk is ext4, where `--reflink=always` fails,
+  "Operation not supported": copy plainly there, a binary or two) (`cp -a --reflink=always
   target/release /var/tmp/YOURS/target/release`, with
   `target/.rustc_info.json`: btrfs shares the 33 GB) and cargo takes it
   as fresh (`CARGO_TARGET_DIR=/var/tmp/YOURS/target cargo build
@@ -2692,6 +2694,25 @@ the command takes it: an agent's shell may leave a pipe open, and
   `SSH_AUTH_SOCK` and `OLO_REX_TEST_SETUP=login|personal`, and the
   container is removed with it. It reaches the network (Rex's installer,
   dnf). Never the person's host for a test that changes it.
+- **Testing your own change while a subagent edits a crate yours
+  builds on** (2026-11-25: the engine agent mid-edit in `crates/rex-sync`,
+  the Rex client depending on it, its build broken for an hour): a
+  worktree at HEAD with only your changed files copied in (`git worktree
+  add --detach /var/tmp/YOURS HEAD`, then each file of `git status` but
+  the agent's crate; the lock file's lines for the agent's new
+  dependencies taken out), the suites run there with `--locked`; commit
+  in the main tree only your paths (`git add` each), which is what the
+  worktree tested. jato's cache makes its first build quick.
+- **The dev server's `sleep`, `cat` and the rest are one program**
+  (uutils' coreutils, multi-call): a copy of `/bin/sleep` under another
+  name refuses to run ("coreutils: unknown program"). For a test
+  process with an odd name, a `bash` that writes its own
+  `/proc/self/comm` and waits (`printf NAME > /proc/self/comm; sleep 30
+  & wait`). Its `/bin/sh` is dash (no `exec -a`).
+- **`docker cp` into a rig container's `/tmp` writes nowhere**: it is a
+  tmpfs the container mounts (`--tmpfs /tmp`); copy through `/opt` and
+  install as the account (`docker exec -u USER`), or `~/.local` is
+  root's and the account can't write under it.
 - **An Ubuntu 26.04 host beside it, and hosts that reach each other**
   (2026-11-25, for moving an account): `ubuntu-host/Containerfile`
   (`olo-rig-ubuntu2604`, built the same way; `ubuntu`, polkit, git,

@@ -8667,6 +8667,7 @@ dependencies = [
  "olo-rex-sync",
  "quinn",
  "rcgen",
+ "russh",
  "rustls",
  "serde",
  "serde_json",

@@ -321,6 +321,8 @@ struct SshClientHandler {
     fixed: bool,
     /// The host's agent relay, where it has one.
     agent: AgentCell,
+    /// The host's key once it was checked, where it went.
+    verified: KeyCell,
 }
 
 /// A forwarded agent connection (a program on the host asks its
@@ -400,8 +402,17 @@ impl client::Handler for SshClientHandler {
             PublicKeyOrCertificate::Certificate(cert) => russh::keys::PublicKey::from(cert.public_key().clone()),
         };
 
+        let verified = |pubkey: &russh::keys::PublicKey| {
+            if let Ok(key) = pubkey.to_openssh() {
+                let key = key.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+                *self.verified.lock().unwrap_or_else(|e| e.into_inner()) = Some(Verified { hostname: self.host.clone(), port: self.port, key });
+            }
+        };
         match check_known_hosts(&self.host, self.port, &pubkey) {
-            Ok(true) => Ok(true),
+            Ok(true) => {
+                verified(&pubkey);
+                Ok(true)
+            }
             Ok(false) => {
                 let fp = pubkey.fingerprint(russh::keys::HashAlg::Sha256).to_string();
                 let kt = pubkey.algorithm().to_string();
@@ -410,6 +421,7 @@ impl client::Handler for SshClientHandler {
                     let ok = ask.ask(move |ui| ui.confirm_host_key(&host, port, &fp, &kt, false)).await.map_err(io::Error::other)?;
                     if ok {
                         learn_known_hosts(&self.host, self.port, &pubkey)?;
+                        verified(&pubkey);
                     }
                     Ok(ok)
                 } else {
@@ -544,6 +556,8 @@ pub struct SshSessionPool {
     /// Where each host's SSH connection went (none: through a proxy):
     /// where its link goes too.
     peers: std::sync::Mutex<HashMap<SshTarget, PeerCell>>,
+    /// Each host's key as its connection checked it ([`Self::verified`]).
+    keys: std::sync::Mutex<HashMap<SshTarget, KeyCell>>,
 }
 
 /// A command's channel, closed if it is let go of before the command
@@ -563,6 +577,21 @@ impl Drop for CloseWhenLetGo {
 /// Where a host's SSH connection went, and how long it took to open
 /// (its round trip).
 type PeerCell = Arc<std::sync::Mutex<Option<(std::net::IpAddr, Duration)>>>;
+
+/// A host as its SSH connection found it: the name and port it went to
+/// (its `~/.ssh/config` alias resolved) and the host's key as it was
+/// checked (known, or accepted by the person), in OpenSSH's form
+/// (`ssh-ed25519 AAAA…`). What another machine is told to trust of it
+/// (a move from one host to another pins it; never trusted on first
+/// sight there).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Verified {
+    pub hostname: String,
+    pub port: u16,
+    pub key: String,
+}
+
+type KeyCell = Arc<std::sync::Mutex<Option<Verified>>>;
 
 /// Whether the helper's own link is to be used, by its round trip and
 /// the SSH connection's: not where the network carries UDP to the host
@@ -621,6 +650,16 @@ impl SshSessionPool {
 
     fn peer_cell(&self, target: &SshTarget) -> PeerCell {
         self.peers.lock().unwrap_or_else(|e| e.into_inner()).entry(target.clone()).or_default().clone()
+    }
+
+    fn key_cell(&self, target: &SshTarget) -> KeyCell {
+        self.keys.lock().unwrap_or_else(|e| e.into_inner()).entry(target.clone()).or_default().clone()
+    }
+
+    /// The host as its connection found it (where it went, its key as it
+    /// was checked): `None` before a connection to it was made.
+    pub fn verified(&self, target: &SshTarget) -> Option<Verified> {
+        self.keys.lock().unwrap_or_else(|e| e.into_inner()).get(target).and_then(|c| c.lock().unwrap_or_else(|e| e.into_inner()).clone())
     }
 
     /// Whether the host's streams go over the helper's own link (UDP)
@@ -762,7 +801,7 @@ impl SshSessionPool {
             )));
         }
         tracing::info!("ssh: {}'s connection has all the sessions its server allows; opening another", target.display());
-        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target)).await?);
+        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target), self.key_cell(target)).await?);
         list.push(handle.clone());
         handle.channel_open_session().await.map_err(failed)
     }
@@ -1082,7 +1121,7 @@ impl SshSessionPool {
         if let Some(handle) = session.as_ref().filter(|h| !h.is_closed()) {
             return Ok(handle.clone());
         }
-        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target)).await?);
+        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target), self.key_cell(target)).await?);
         *session = Some(handle.clone());
         Ok(handle)
     }
@@ -1273,7 +1312,7 @@ fn compresses(said: Option<bool>, knob: Option<bool>, opened_in: Option<Duration
     said.or(knob).unwrap_or_else(|| opened_in.is_none_or(|took| took >= FAR))
 }
 
-async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell, peer: PeerCell) -> Result<Handle<SshClientHandler>, RexError> {
+async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell, peer: PeerCell, verified: KeyCell) -> Result<Handle<SshClientHandler>, RexError> {
     let resolved = resolve_ssh_config(target)?;
     let mut config = client::Config::default();
     // A small write goes when it is written. russh leaves Nagle's
@@ -1325,6 +1364,7 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
         came: (std::time::Instant::now(), 0),
         fixed: window_knob.is_some(),
         agent,
+        verified,
     };
     // (A key nobody could be asked about is its own error: what to do
     // about it is another thing than for a host that can't be reached.)

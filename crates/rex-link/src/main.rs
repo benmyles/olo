@@ -11,6 +11,10 @@
 //! reads. Nothing is written while the gate is locked: a server
 //! that stops reading stops only what goes to it.
 
+#[cfg(feature = "move")]
+mod fix;
+#[cfg(feature = "move")]
+mod moving;
 #[cfg(feature = "quic")]
 mod quic;
 #[cfg(feature = "sync")]
@@ -96,6 +100,17 @@ fn main() {
         #[cfg(not(feature = "sync"))]
         {
             eprintln!("olo-rex-link: built without keeping files in step");
+            std::process::exit(126);
+        }
+    }
+    // (`move`: an account moved to another host, where it was built with
+    // keeping files in step.)
+    if args.first().is_some_and(|a| a == "move") {
+        #[cfg(feature = "move")]
+        moving::run(args.split_off(1));
+        #[cfg(not(feature = "move"))]
+        {
+            eprintln!("olo-rex-link: built without moving an account");
             std::process::exit(126);
         }
     }

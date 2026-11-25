@@ -88,13 +88,18 @@ pub fn shared_server(comm: &str, exe: &str, args: &[String]) -> bool {
 /// prompt, dialogs and status line are). Antigravity's words are its
 /// own: "esc to cancel" is under its field while it works (Claude
 /// Code's is under a question), and a question of its has "↑/↓
-/// Navigate" under its answers.
+/// Navigate" under its answers; working with a message queued, its last
+/// line is "Press up to edit queued messages" and only its spinner (a
+/// braille figure at a line's start, above its field) says it works.
 pub fn classify(agent: Agent, screen: &str) -> State {
     let s = screen.to_lowercase();
     if agent == Agent::Antigravity {
+        // (Its spinner in the last lines, not its banner's art above:
+        // read from the end, nothing gathered.)
+        let spinning = || screen.lines().rev().take(8).any(|l| l.trim_start().chars().next().is_some_and(|c| ('\u{2800}'..='\u{28ff}').contains(&c)));
         return if s.contains("↑/↓ navigate") {
             State::Blocked
-        } else if s.contains("esc to cancel") {
+        } else if s.contains("esc to cancel") || s.contains("press up to edit queued messages") || spinning() {
             State::Working
         } else {
             State::Idle
@@ -412,6 +417,16 @@ mod tests {
         assert_eq!(classify(Agent::Antigravity, &agy_idle()), State::Idle);
         assert_eq!(classify(Agent::Antigravity, &agy_working()), State::Working);
         assert_eq!(classify(Agent::Antigravity, &agy_asking()), State::Blocked);
+        // (Working with a message queued: no "esc to cancel", its spinner
+        // and the queue's line say so; Keep It Going mustn't type then.)
+        let queued = agy(&format!("⣯  Generating...\n{AGY_RULE}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{AGY_RULE}\nPress up to edit queued messages\n"));
+        assert_eq!(classify(Agent::Antigravity, &queued), State::Working);
+        assert!(!at_prompt(Agent::Antigravity, &queued));
+        let spinner_only = agy(&format!("⠙  Generating...\n{AGY_RULE}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{AGY_RULE}\n? for shortcuts\n"));
+        assert_eq!(classify(Agent::Antigravity, &spinner_only), State::Working);
+        // (Braille art far above, in a banner, isn't a spinner.)
+        let banner = format!("⣿⣿⣿ agy\n{}\n\n\n\n\n\n\n\n{}", "⣿⣿⣿⣿", agy_idle());
+        assert_eq!(classify(Agent::Antigravity, &banner), State::Idle);
         // Keep It Going types at its prompt, and nowhere else: not into
         // a question (whose chosen answer begins with ">" too), nor
         // while it works.
@@ -431,5 +446,21 @@ mod tests {
         // (A line a person typed that ends in a question isn't one of
         // its questions: no first answer under it.)
         assert_eq!(approvable(&agy(&format!("{AGY_RULE}\n> shall we go on?\n{AGY_RULE}\n? for shortcuts\n"))), None);
+    }
+
+    /// What reading agy's screen costs (`perf stat` around this, release,
+    /// for a change to `classify`: Rex reads each agent's screen after
+    /// every pause in its output).
+    #[test]
+    #[ignore = "a measurement, run by hand"]
+    fn classify_cost() {
+        let screens = [agy_idle(), agy_working(), agy_asking()];
+        let mut working = 0;
+        for i in 0..200_000 {
+            if classify(Agent::Antigravity, std::hint::black_box(&screens[i % 3])) == State::Working {
+                working += 1;
+            }
+        }
+        assert_eq!(working, 66_667);
     }
 }

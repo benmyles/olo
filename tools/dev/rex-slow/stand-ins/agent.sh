@@ -6,7 +6,7 @@
 # it (bash's readline), writing each line sent to its session.
 #   claude [FLAGS] [--resume ID]        ~/.claude/projects/PROJECT/ID.jsonl (PROJECT: the folder, each character but a letter or digit as -)
 #   codex [FLAGS] [resume ID]           ~/.codex/sessions/YYYY/MM/DD/rollout-STAMP-ID.jsonl, kept open
-#   agy [FLAGS] [--resume ID]           ~/.gemini/antigravity-cli/conversations/ID.db, kept open
+#   agy [FLAGS] [--conversation ID]     ~/.gemini/antigravity-cli/conversations/ID.db, kept open (--resume, -r alike)
 # Its arguments are in its session's start line, so a test sees the flags came back.
 set -u
 me=$(basename "$0")
@@ -17,7 +17,7 @@ args=("$@")
 for ((i = 0; i < ${#args[@]}; i++)); do
   next=${args[$((i + 1))]:-}
   case "$me:${args[$i]}" in
-    claude:--resume | agy:--resume) id=$next ;;
+    claude:--resume | agy:--resume | agy:--conversation | agy:-r | agy:-conversation) id=$next ;;
     codex:resume) [ "$next" != --last ] && id=$next ;;
   esac
 done
