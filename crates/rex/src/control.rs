@@ -25,8 +25,9 @@ use crate::{
     error::RexError,
     model::{
         ActionResult, AttachResponse, BlobReadResponse, BootstrapResponse, CONTROL_SUBPROTOCOL, ClientIdentity, ConnectedClient, ControlEvent, ControlEventEnvelope, DataConnectResponse,
-        DataTicketRequest, DirListing, DownloadBeginResponse, HostRecord, HostsListResponse, InputMode, KeyEvent, KeymapAction, KeymapLayer, KeymapResponse, PortsSnapshot, ProgramStatusRecord,
-        REX_API_MIN_REVISION, REX_API_REVISION, ServerStatus, ServerVersion, SessionSummary, SessionView, TailscaleStatus, TerminalProcessSnapshot, TunnelInfo, UploadBeginResponse, WelcomeMessage,
+        DataTicketRequest, DirListing, DownloadBeginResponse, HostRecord, HostsListResponse, InputMode, KeyEvent, KeymapAction, KeymapLayer, KeymapResponse, ListedBlocks, PortsSnapshot,
+        ProgramStatusRecord, REX_API_MIN_REVISION, REX_API_REVISION, ServerStatus, ServerVersion, SessionSummary, SessionView, TailscaleStatus, TerminalProcessSnapshot, TunnelInfo,
+        UploadBeginResponse, WelcomeMessage,
     },
 };
 
@@ -631,6 +632,12 @@ impl ControlClient {
 
     pub async fn session_view(&self, session_id: &str) -> Result<RpcResult<SessionView>, RexError> {
         self.call("session.view", Some(json!({ "session_id": session_id }))).await
+    }
+
+    /// Every block of the session, those in no window too (a forward's
+    /// tunnel, which `session_view` leaves out).
+    pub async fn session_list_blocks(&self, session_id: &str) -> Result<RpcResult<ListedBlocks>, RexError> {
+        self.call("session.list_blocks", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_set_label(&self, session_id: &str, label: &str) -> Result<RpcResult<Value>, RexError> {

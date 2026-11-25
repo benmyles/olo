@@ -4942,7 +4942,13 @@ impl RexHubInner {
                     (ctrl, ep, sid)
                 };
                 if want != 0 && std::net::TcpListener::bind(("127.0.0.1", want)).is_err() {
-                    return fail(format!("port {want} of the Olo desktop is taken by another program there: --port N, or --any-port"));
+                    // (Rex's own, made with `rex forward new` and outliving
+                    // what made it, was "another program": an agent's
+                    // report, 2026-11-24. Said by name and how to close it.)
+                    return fail(match self.forward_at(want, host_key).await {
+                        Some(which) => format!("port {want} of the Olo desktop is taken by {which}; or --port N, --any-port"),
+                        None => format!("port {want} of the Olo desktop is taken by another program there: --port N, or --any-port"),
+                    });
                 }
                 match self.create_forward(host_key, &ctrl, ep, &sid, host, port, want, Made::Agent).await {
                     Ok(at) => json!({ "ok": true, "stdout": format!("{}\n", address_here(url.as_deref(), at.port())) }),
@@ -4950,6 +4956,97 @@ impl RexHubInner {
                 }
             }
         }
+    }
+
+    /// The forwards' blocks this Rex made on `host_key`'s server and lost
+    /// (it ended without closing them: a crash; an upgrade in place takes
+    /// its own up again, `resuming`), closed as the host connects, and
+    /// those the server has no more forgotten (`forwards::lost_and_gone`).
+    /// An earlier Rex's forward stayed on a host's server, its port there
+    /// in `rex forward ls` with no one behind it (an agent's report,
+    /// 2026-11-24). Another desktop's Rex's are left: it comes back for
+    /// its own. A `session.list_blocks` a session with such a block, as a
+    /// host connects.
+    async fn close_lost_forwards(&self, host_key: &str, ctrl: &ControlClient, resuming: &[String]) {
+        let made = crate::forwards::made_blocks();
+        if !made.iter().any(|m| m.host_key == host_key) {
+            return;
+        }
+        let (here, sessions, hosts): (Vec<String>, Vec<String>, Vec<String>) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            (
+                st.forwards.iter().filter(|f| f.host_key == host_key).map(|f| f.handle.block_id.clone()).collect(),
+                st.hosts.get(host_key).map(|h| h.session_summaries.iter().map(|s| s.session_id.clone()).collect()).unwrap_or_default(),
+                st.hosts.keys().cloned().collect(),
+            )
+        };
+        let mut asked: HashMap<String, Option<HashMap<String, Option<String>>>> = HashMap::new();
+        for m in made.iter().filter(|m| m.host_key == host_key) {
+            if asked.contains_key(&m.session_id) {
+                continue;
+            }
+            // (A session the host has no more holds none of its blocks.)
+            let blocks = if !sessions.contains(&m.session_id) {
+                Some(HashMap::new())
+            } else {
+                ctrl.session_list_blocks(&m.session_id).await.ok().map(|r| r.payload.blocks.into_iter().filter_map(|b| Some((b.block_id?, b.owner))).collect())
+            };
+            asked.insert(m.session_id.clone(), blocks);
+        }
+        let (lost, gone) = crate::forwards::lost_and_gone(&made, host_key, ctrl.client_id(), &here, resuming, &|s| asked.get(s).cloned().flatten());
+        let mut done: Vec<String> = gone.iter().map(|m| m.block_id.clone()).collect();
+        for m in lost {
+            if ctrl.block_close(&m.session_id, &m.block_id).await.is_ok() {
+                tracing::info!(host = host_key, block = m.block_id.as_str(), "closed a forward this Rex had lost");
+                done.push(m.block_id.clone());
+            }
+        }
+        // (And those of hosts this Rex has no more: their forwards closed
+        // as the host went.)
+        if !done.is_empty() || made.iter().any(|m| !hosts.contains(&m.host_key)) {
+            crate::forwards::change_made(|made| made.retain(|m| !done.contains(&m.block_id) && hosts.contains(&m.host_key)));
+        }
+    }
+
+    /// The Rex forward whose client listens at `port` (127.0.0.1 or every
+    /// address) of this computer, said for a host's `olo forward` that found
+    /// the port taken (`asker`, the host asking): one made with `rex
+    /// forward new`, or by another Rex, in a session of a server this Rex
+    /// is connected to, by its short id (as `rex forward ls` shows it: its
+    /// block's id's last six), what it reaches and how to close it. None
+    /// where none says so. Asked only when a port is taken: a
+    /// `session.list_blocks` a session and a `tunnel.info` a forward, two
+    /// seconds at most in all.
+    async fn forward_at(&self, port: u16, asker: &str) -> Option<String> {
+        let servers: Vec<(String, String, bool, ControlClient, Vec<(String, String)>)> = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts
+                .iter()
+                // (A session by its name where it has one, else its id: as
+                // `rex forward close -s` takes it.)
+                .filter_map(|(key, h)| {
+                    let sessions = h.session_summaries.iter().map(|s| (s.session_id.clone(), if s.label.is_empty() { s.session_id.clone() } else { s.label.clone() })).collect();
+                    Some((key.clone(), h.label.clone(), h.is_local, h.control.clone()?, sessions))
+                })
+                .collect()
+        };
+        let look = async {
+            for (key, label, local, ctrl, sessions) in &servers {
+                for (sid, session) in sessions {
+                    let Ok(listed) = ctrl.session_list_blocks(sid).await else { continue };
+                    for b in listed.payload.blocks.iter().filter(|b| b.flavor.starts_with("com.superlogical.tunnel.dial")) {
+                        let Some(bid) = &b.block_id else { continue };
+                        let Ok(info) = ctrl.tunnel_info(sid, bid).await else { continue };
+                        if listens_at(info.payload.client_address.as_deref()) != Some(port) {
+                            continue;
+                        }
+                        return Some(forward_said(bid, info.payload.target.as_deref(), session, label, *local, key == asker));
+                    }
+                }
+            }
+            None
+        };
+        tokio::time::timeout(Duration::from_secs(2), look).await.ok().flatten()
     }
 
     /// What a host's `olo sync` asks, done: `olo sync PATH [--mirror]` keeps
@@ -5182,6 +5279,11 @@ impl RexHubInner {
     ) -> Result<SocketAddr, String> {
         let handle = start_local_forward(ctrl.clone(), ep, session_id.into(), remote_host.clone(), remote_port, local_port).await.map_err(|e| e.to_string())?;
         let local_addr = handle.local_addr;
+        // (Written down until the server has it no more: one this Rex
+        // loses, ending without closing it, is closed as the host next
+        // connects, `close_lost_forwards`.)
+        let block = crate::forwards::MadeBlock { host_key: host_key.into(), session_id: session_id.into(), block_id: handle.block_id.clone(), owner: ctrl.client_id().map(str::to_owned) };
+        crate::forwards::change_made(|made| made.push(block));
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if !st.hosts.get(host_key).and_then(|h| h.control.as_ref()).is_some_and(|c| c.same_connection(ctrl)) {
@@ -5341,6 +5443,10 @@ impl RexHubInner {
             *saved = rest;
             mine
         };
+        // (Those this Rex made and lost, all but these: closed.)
+        let resuming: Vec<String> = mine.iter().map(|f| f.block_id.clone()).collect();
+        let (inner, lost_ctrl, host) = (self.clone(), ctrl.clone(), host_key.to_owned());
+        tokio::spawn(async move { inner.close_lost_forwards(&host, &lost_ctrl, &resuming).await });
         for f in mine {
             let (inner, ctrl, ep) = (self.clone(), ctrl.clone(), ep.clone());
             tokio::spawn(async move {
@@ -6908,6 +7014,36 @@ pub fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// The port a forward's client says it listens at ("127.0.0.1:5176",
+/// "[::1]:5176", "0.0.0.0:5176"), if it says one.
+fn listens_at(address: Option<&str>) -> Option<u16> {
+    address?.rsplit_once(':')?.1.parse().ok().filter(|p| *p != 0)
+}
+
+/// A Rex forward as an agent is told of it, holding a port it wanted: by
+/// its short id (a block's id's last six, as `rex forward ls` shows it),
+/// what it reaches, where it is and how to close it: there with `rex
+/// forward close` where it is in a session of the asking host's own
+/// server, else the person, in Rex on the Olo desktop.
+fn forward_said(block_id: &str, target: Option<&str>, session: &str, server: &str, local: bool, asker_s: bool) -> String {
+    let short = &block_id[block_id.len().saturating_sub(6)..];
+    let to = target.filter(|t| !t.is_empty()).map(|t| format!(" to {t}")).unwrap_or_default();
+    let session = format!(" -s {}", shell_word(session));
+    if asker_s {
+        format!("Rex forward {short}{to}, of this host's own Rex: `rex forward close {short}{session}` here closes it")
+    } else if local {
+        format!("Rex forward {short}{to}, of the Olo desktop's own Rex: the person can close it there (`rex forward close {short}{session}`)")
+    } else {
+        format!("Rex forward {short}{to}, on {server}: `rex forward close {short}{session}` there closes it")
+    }
+}
+
+/// `s` as one word of a shell command: as it is where it is plain, else
+/// in single quotes.
+fn shell_word(s: &str) -> String {
+    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:/@".contains(c)) { s.to_owned() } else { format!("'{}'", s.replace('\'', "'\\''")) }
+}
+
 #[cfg(test)]
 mod tests {
     /// How long a copy has left, at its pace so far: nothing in its
@@ -6920,6 +7056,31 @@ mod tests {
         assert_eq!(super::time_left(100, 1000, s(60)).as_deref(), Some("about 9 minutes left"));
         assert_eq!(super::time_left(1, 1000, s(10)).as_deref(), Some("about 3 hours left"));
         assert_eq!(super::time_left(1000, 1000, s(60)), None, "done");
+    }
+
+    /// A forward holding a port an agent wanted: the port its client says
+    /// it listens at, and how it is said (by its short id, where it is,
+    /// how to close it).
+    #[test]
+    fn a_forward_holding_a_port_is_said_by_name() {
+        assert_eq!(super::listens_at(Some("127.0.0.1:5176")), Some(5176));
+        assert_eq!(super::listens_at(Some("[::1]:5176")), Some(5176));
+        assert_eq!(super::listens_at(Some("127.0.0.1:0")), None);
+        assert_eq!(super::listens_at(None), None);
+        let id = "block:01a20c79-0250-7c7e-b2a8-6a5bc2cda661";
+        assert_eq!(
+            super::forward_said(id, Some("localhost:5176"), "work", "build", false, true),
+            "Rex forward cda661 to localhost:5176, of this host's own Rex: `rex forward close cda661 -s work` here closes it"
+        );
+        assert_eq!(
+            super::forward_said(id, None, "my work", "This computer", true, false),
+            "Rex forward cda661, of the Olo desktop's own Rex: the person can close it there (`rex forward close cda661 -s 'my work'`)"
+        );
+        assert_eq!(
+            super::forward_said(id, Some("db:5432"), "session:01ab", "build", false, false),
+            "Rex forward cda661 to db:5432, on build: `rex forward close cda661 -s session:01ab` there closes it"
+        );
+        assert_eq!(super::shell_word("it's"), "'it'\\''s'");
     }
 
     /// What Passwords answers a host's asking for the keys is said as

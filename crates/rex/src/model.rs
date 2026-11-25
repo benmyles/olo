@@ -309,6 +309,29 @@ impl LayoutNode {
     }
 }
 
+/// One of `session.list_blocks`' blocks: every block of a session, those in
+/// no window too (a forward's tunnel).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ListedBlock {
+    #[serde(default)]
+    pub block_id: Option<String>,
+    #[serde(default)]
+    pub creator_name: String,
+    #[serde(default)]
+    pub flavor: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub owner: Option<String>,
+}
+
+/// `session.list_blocks`' answer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListedBlocks {
+    #[serde(default, deserialize_with = "list_or_empty")]
+    pub blocks: Vec<ListedBlock>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BlockInfo {
     pub block_id: String,

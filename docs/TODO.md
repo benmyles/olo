@@ -174,6 +174,17 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **An upgrade of Olo cuts the Token Pool's answers mid-stream** (Ben,
+  2026-11-25: "when upgrading olo it seems to sever the token pool
+  connection and claude often does \"● API Error: Connection lost
+  mid-response. The response above may be incomplete.\""). A response
+  being streamed through the pool when the upgrade reloads in place is
+  cut: find what ends the connection (the pool's own handover to its new
+  copy, the session's reload of it, or what it relays through), and make
+  every stream in flight run to its end on the old copy while the new one
+  takes the new requests. Reproduce it first with a stand-in provider
+  (never a real account), an upgrade in the middle of a long stream.
+
 - **Nothing may hold the desktop up, whatever the load: the GPU's
   resets, the desktop's place on the GPU, the kernel's own threads**
   (Ben, 2026-11-20: "something is really broken my desktop is lagging
@@ -3093,6 +3104,11 @@ something nobody here has is in "Blocked", with what it waits for.
     new`, Rex's own, outliving the screen that made it. Where the
     desktop's Rex holds the port, name the forward and how to close it
     ("taken by Rex forward 46666e; `rex fwd close 46666e`").
+    **Done** 2026-11-25: such a forward found among the connected
+    servers' sessions' blocks by the address its client listens at, and
+    said by its short id, what it reaches and how to close it
+    (`hub::forward_at`). Unit-tested; not made to happen on the rig (its
+    far host's `rex forward new` would listen on this same computer).
   - *The bridge's forwards from before `olo forward` left listening*:
     after the upgrade to the release with `olo forward`, `rex fwd list`
     showed one of the old bridge's forwards at a free port (127.0.0.1
@@ -3109,6 +3125,11 @@ something nobody here has is in "Blocked", with what it waits for.
     to take it up, so orphans can't all be closed: mark each forward
     with the installation that made it, and close at connect the
     orphans that are this one's and not among its saved.)
+    **Done** 2026-11-25: each block Rex makes written down with the client
+    that made it; as its host connects, those of its own it lost (not
+    running, not being taken up, no one's or its old client's) closed,
+    another desktop's left (`hub::close_lost_forwards`); on the rig, a
+    forward lost to a SIGKILL closed as the app came back.
   - (And, not Olo's: agy in its stream mode denies a command outside its
     list and ends its turn with an empty answer. Olo's helpers run agy
     on its own screen in tmux, where a denial is asked; nothing to do.)

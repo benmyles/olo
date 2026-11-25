@@ -10,6 +10,84 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+/// A forward's block this Rex made on a host's server, as it is written
+/// down (`made.json` in Rex's state folder) until the server has it no
+/// more: so that one this Rex lost (it ended without closing it, a crash,
+/// not an upgrade, which takes its own up again) is closed as the host
+/// next connects, and no other's is (another desktop's Rex, away, comes
+/// back for its own: they can't all be closed).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MadeBlock {
+    pub host_key: String,
+    pub session_id: String,
+    pub block_id: String,
+    /// The client of this Rex's that made it (its id on that server): after
+    /// a crash the server may list it as that client's still, away, not
+    /// as no one's.
+    #[serde(default)]
+    pub owner: Option<String>,
+}
+
+/// Where the forwards' blocks this Rex made are written.
+fn made_path() -> std::path::PathBuf {
+    olo_xdg::state_dir().join("rex").join("forwards-made.json")
+}
+
+/// (One at a time: two forwards made at once each write the list.)
+static MADE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// The forwards' blocks this Rex made, as written.
+pub fn made_blocks() -> Vec<MadeBlock> {
+    let _one = MADE.lock().unwrap_or_else(|e| e.into_inner());
+    std::fs::read(made_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// The list changed by `change`, written again (atomically).
+pub fn change_made(change: impl FnOnce(&mut Vec<MadeBlock>)) {
+    let _one = MADE.lock().unwrap_or_else(|e| e.into_inner());
+    let path = made_path();
+    let mut made: Vec<MadeBlock> = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    change(&mut made);
+    let Ok(bytes) = serde_json::to_vec_pretty(&made) else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let new = path.with_extension("json.new");
+    if std::fs::write(&new, bytes).is_ok() {
+        let _ = std::fs::rename(&new, &path);
+    }
+}
+
+/// Of the blocks this Rex made on `host_key`'s server (`made`), as the
+/// host connects: which to close, lost by this Rex (none is a forward
+/// running here, `here`, or being taken up again after an upgrade,
+/// `resuming`; the server lists it as no one's, or as the client of this
+/// Rex's that made it, not `me`, today's: gone, or away after a crash),
+/// and which to forget (the server has it no more). Another client's is
+/// left (another desktop's Rex comes back for its own). `listed`: the
+/// session's blocks the server has, by id, with their owners; a session
+/// not asked (`None`) leaves its blocks as they are.
+pub fn lost_and_gone<'a>(
+    made: &'a [MadeBlock],
+    host_key: &str,
+    me: Option<&str>,
+    here: &[String],
+    resuming: &[String],
+    listed: &dyn Fn(&str) -> Option<std::collections::HashMap<String, Option<String>>>,
+) -> (Vec<&'a MadeBlock>, Vec<&'a MadeBlock>) {
+    let (mut lost, mut gone) = (Vec::new(), Vec::new());
+    for m in made.iter().filter(|m| m.host_key == host_key && !here.contains(&m.block_id) && !resuming.contains(&m.block_id)) {
+        let Some(blocks) = listed(&m.session_id) else { continue };
+        match blocks.get(&m.block_id) {
+            None => gone.push(m),
+            Some(None) => lost.push(m),
+            Some(Some(owner)) if m.owner.as_deref() == Some(owner.as_str()) && me != Some(owner.as_str()) => lost.push(m),
+            Some(Some(_)) => {}
+        }
+    }
+    (lost, gone)
+}
+
 /// What the command says of itself (`olo forward --help`), and after a
 /// mistake.
 pub const USAGE: &str = "\
@@ -283,6 +361,34 @@ mod tests {
         assert_eq!(address_here(Some("http://127.0.0.1:8000/a"), 8000), "http://127.0.0.1:8000/a");
         assert_eq!(address_here(Some("https://app.test/x"), 40002), "https://localhost:40002/x");
         assert_eq!(address_here(Some("http://[::1]:9000/"), 9000), "http://localhost:9000/");
+    }
+
+    #[test]
+    fn a_forward_this_rex_lost_is_closed_and_no_other() {
+        let m = |host: &str, session: &str, block: &str| MadeBlock { host_key: host.into(), session_id: session.into(), block_id: block.into(), owner: Some("client:old".into()) };
+        let made = vec![
+            m("far", "s1", "lost"),
+            m("far", "s1", "away"),
+            m("far", "s1", "mine-now"),
+            m("far", "s1", "running"),
+            m("far", "s1", "resuming"),
+            m("far", "s1", "gone"),
+            m("far", "s1", "taken"),
+            m("far", "s2", "unasked"),
+            m("other", "s1", "elsewhere"),
+        ];
+        let listed = |session: &str| -> Option<std::collections::HashMap<String, Option<String>>> {
+            (session == "s1").then(|| {
+                [("lost", None), ("away", Some("client:old")), ("mine-now", Some("client:new")), ("running", None), ("resuming", None), ("taken", Some("client:another"))]
+                    .into_iter()
+                    .map(|(b, o)| (b.to_owned(), o.map(str::to_owned)))
+                    .collect()
+            })
+        };
+        let (lost, gone) = lost_and_gone(&made, "far", Some("client:new"), &["running".into()], &["resuming".into()], &listed);
+        let ids = |v: Vec<&MadeBlock>| v.into_iter().map(|m| m.block_id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(lost), ["lost", "away"], "no one's, or the old client's of this Rex; not running here, not being taken up again");
+        assert_eq!(ids(gone), ["gone"], "the server has it no more");
     }
 
     #[test]

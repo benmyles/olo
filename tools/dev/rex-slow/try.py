@@ -510,6 +510,42 @@ exit 0
             if "olo forward" in fwd("ls"): break
         closed = fwd("close", str(here))
         check("forward: closed", closed == f"closed {here}\n" and r.wait(lambda: reached(here) is None, 5, every=0.1), closed)
+        # Lost to a crash (SIGKILL: nothing saved, nothing closed): its block is left on the host's server with
+        # no one behind it; the app started again closes it as the host connects, as this Rex's own
+        # (`close_lost_forwards`), and leaves the rest. (One of before `olo forward` was left so, listening.)
+        forwards = lambda: json.loads(r.rex("forward", "ls", "--all", "--json") or "{}").get("forwards", [])
+        # (Another client's forward, lost too: a `rex forward new` of the rig's, killed. Not this Rex's: left.)
+        cmd, env = r.scratch("rex", "forward", "new", "-L", f"0:localhost:{far_port}")
+        other = subprocess.Popen(cmd, env=env, cwd=D, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        theirs = r.wait(lambda: [b.get("block_id") for b in forwards()], 10) or []
+        other.kill(); other.wait()
+        before_ids = {b.get("block_id") for b in forwards()}
+        lost = free()
+        made = fwd(str(far_port), "--port", str(lost))
+        mine = r.wait(lambda: [b.get("block_id") for b in forwards() if b.get("block_id") not in before_ids], 10)
+        os.kill(r.win["pid"], signals.SIGKILL)
+        ended = r.wait(lambda: not any(w["id"] == r.win["id"] for w in r.windows()), 15, every=0.2)
+        left = {b.get("block_id"): b.get("state") for b in forwards()}
+        r.start_app(trust=False)
+        # (The app's far client again: this computer's own connection answers that a port of its own is here
+        # already; the far one makes a forward, closed again at once.)
+        def far_client():
+            apps = [c["client_id"] for c in first(r.far.ran(f"{rex} client ls --json 2>/dev/null")).get("clients", []) if c.get("info", {}).get("kind") == "app" and c.get("connection_state") == "connected"]
+            for c in apps:
+                client[0] = c
+                out = fwd(str(far_port), "--any-port").strip()
+                if out.startswith("localhost:") and out != f"localhost:{far_port}":
+                    fwd("close", out.split(":")[1])
+                    return c
+            return None
+        back = r.wait(far_client, 60, every=1)
+        closed_lost = r.wait(lambda: mine and not any(b.get("block_id") in mine for b in forwards()), 60, every=0.5)
+        now = {b.get("block_id") for b in forwards()}
+        check("forward: lost to a crash, closed as the app comes back, and no other",
+              made == f"localhost:{lost}\n" and mine and ended and all(m in left for m in mine) and back and closed_lost and theirs and set(theirs) <= now,
+              {"made": made, "mine": mine, "theirs": theirs, "ended": bool(ended), "left": left, "back": back, "now": sorted(now)})
+        for b in theirs: r.rex("forward", "close", "--all")
+        r.win = next((w for w in r.windows() if w.get("title") == "Rex"), r.win)
         server.close()
         # `olo send`: files and folders of the host's saved here, in the app's Downloads ▸ Rex ▸ far, by the engine
         # through the host's helper; sent again, only what changed goes.

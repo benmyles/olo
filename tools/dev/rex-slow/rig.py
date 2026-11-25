@@ -122,16 +122,25 @@ class Rig:
         if self.look: self.ts("look", self.name, self.look)
         time.sleep(1.2)
         self.rex("new", "typing", "--json", "--", "sh", "-c", PROGRAMS.get(self.program, self.program))
+        self.agent = agent
+        self.start_app()
+        # (Its place once it has settled: a first window is sized after it opens.)
+        time.sleep(1.0)
+        self.win = next((w for w in self.windows() if w["id"] == self.win["id"]), self.win)
+        return self.ready()
+    def start_app(self, trust=True):
+        """The app started in the session, its window found (as `begin` starts it, and again after a test ended
+        it); the far host's key trusted at its question (`trust`: a first start, after which the app knows it)."""
         # (The app's Passwords is never the person's: a socket of the rig's own, where a test may put a stand-in
         # (`keychain`), and where nothing answers otherwise. Rex asks Passwords for a host's SSH agent.)
-        self.ts("run", self.name, f"REX_SERVER_SOCKET={D}/link.sock", f"XDG_STATE_HOME={D}/state", f"SSH_AUTH_SOCK={agent}", f"OLO_KEYCHAIN_SOCKET={D}/keychain.sock", *self.env, self.bin)
+        self.ts("run", self.name, f"REX_SERVER_SOCKET={D}/link.sock", f"XDG_STATE_HOME={D}/state", f"SSH_AUTH_SOCK={self.agent}", f"OLO_KEYCHAIN_SOCKET={D}/keychain.sock", *self.env, self.bin)
         self.win = None
         for _ in range(80):
             time.sleep(0.25)
             w = [x for x in self.windows() if x.get("title") == "Rex"]
             if w: self.win = w[0]; break
         assert self.win, "the app's window didn't open"
-        if self.far:
+        if self.far and trust:
             # The far host's key is new to the app: trusted, as a person would at its question.
             asked = self.wait(lambda: next((w for w in self.windows() if w.get("title") == "SSH Authentication"), None), 30)
             if asked:
@@ -147,9 +156,7 @@ class Rig:
                     self.ts("click", self.name, str(int(asked["content"]["x"] + button["x"] + button["width"] / 2)), str(int(asked["content"]["y"] + button["y"] + button["height"] / 2)))
                     if self.wait(gone, 5): break
                 assert gone(), f"the question about the far host's key was clicked and is still there; pictured in {self.shot('far-question')}"
-        # (Its place once it has settled: a first window is sized after it opens.)
-        time.sleep(1.0)
-        self.win = next((w for w in self.windows() if w["id"] == self.win["id"]), self.win)
+    def ready(self):
         # The pane is there once the host's snapshot has come over the link: until then the window says it is
         # connecting, on a ground of another colour. (A point low in the window's content, watched for a change.)
         from PIL import Image

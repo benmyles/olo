@@ -29261,7 +29261,13 @@ Rex server, as every Rex client offers its own
   one for 127.0.0.1, and `olo open`'s forwards keep it too now, where
   they made every page 127.0.0.1's). A port taken here is said, by
   whom where it's a forward (this host's: `olo forward close N`; another
-  host's), never another one quietly chosen. `olo forward ls [--json]`
+  host's; one of Rex's own made with `rex forward new` or by another
+  Rex, found among every connected server's sessions' blocks,
+  `session.list_blocks`, by the address its client says it listens at,
+  `tunnel.info`: by its short id, a block's id's last six as `rex
+  forward ls` shows it, what it reaches and how to close it,
+  `hub::forward_at`, two seconds at most, asked only then), never
+  another one quietly chosen. `olo forward ls [--json]`
   lists the host's forwards here (the port, what it reaches, how it
   stands, who made it: `forwards::Made`, the person's, a page's or
   `olo forward`'s), `olo forward close PORT… | --all` closes those made
@@ -29291,7 +29297,19 @@ Rex server, as every Rex client offers its own
   olo-session upgrades it) and the forward back at its port, through
   its one block, nothing orphaned; closed. And the client's own test
   (`remote_forwards`): a block left by one client taken up by another
-  at the same port, one stopped not.
+  at the same port, one stopped not. *Lost to a crash*, a forward's
+  block stays on the server with no one behind it (an earlier Rex's
+  stayed so, listening, `rex forward ls` warning of it): each block Rex
+  makes is written down (`forwards::MadeBlock`, with the client that
+  made it, in `forwards-made.json` in Rex's state folder) until the
+  server has it no more, and as its host connects Rex closes those of
+  its own it lost (`hub::close_lost_forwards`, `forwards::lost_and_gone`:
+  not running here, not being taken up after an upgrade, listed as no
+  one's or as the old client's that made it, which after a crash may
+  be away, not gone). Another desktop's Rex's are left: it comes back
+  for its own. On the rig, Rex killed (`SIGKILL`) with a forward made
+  and started again: the block closed as the far host connected, the
+  rest left.
 - *Files a host sends* (`olo send PATH… [--mirror]`, `rex do olo.send`,
   `hub::bridge_send`; Ben: "an easy way to e.g. download/sync the
   release artifacts locally … and also of course the coding agents
