@@ -73,8 +73,14 @@ if [ "$OLO_BRIDGE_CMD" = screen ]; then
 	fi
 	case "$on" in
 	host)
-		if helper && "$link" screen --help >/dev/null 2>&1; then
-			exec "$link" screen "$@"
+		# (Only a helper that has `screen`: one from before takes the
+		# word for a program to run in front of the Rex server, and a
+		# host may well have a program called screen. Known by what it
+		# says of itself, not by whether the asking succeeded.)
+		if helper; then
+			case "$("$link" screen --help 2>/dev/null)" in
+			"usage: olo screen"*) exec "$link" screen "$@" ;;
+			esac
 		fi
 		echo "olo screen: this host's helper has no screens of its own yet (it comes with Olo's next upgrade of this host: connect from an upgraded Olo desktop); \`olo screen --on desktop …\` asks the desktop's" >&2
 		exit 69
