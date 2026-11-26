@@ -16,12 +16,19 @@
 //! its wallpapers (1.6 GB the screens do without). Its programs find
 //! their data beside them (`olo_xdg::data_dirs`). Chrome is put in the
 //! home folder by Olo's own `olo-chrome` (Google's package unpacked
-//! there: no root, nothing outside the home).
+//! there: no root, nothing outside the home). And a font with emoji,
+//! where the host has none (a server seldom has; every emoji is a box
+//! then, in Olo's windows and on a page): Noto Color Emoji, from its
+//! makers' repository at one commit, checked against the SHA-256 written
+//! here, into the account's fonts (`~/.local/share/fonts/olo-screens`),
+//! where fontconfig finds it for Olo's programs and Chrome alike.
 //!
 //! ```text
-//! olo-rex-link screen install [--tag TAG | --from ARCHIVE] [--no-chrome]
+//! olo-rex-link screen install [--tag TAG | --from ARCHIVE] [--again] [--no-chrome] [--no-emoji-font]
 //!     Olo put here (the newest release; the one tagged TAG; ARCHIVE, a
-//!     file or a URL with its .sha256 beside it), or brought up to it,
+//!     file or a URL with its .sha256 beside it), or brought up to it
+//!     (nothing fetched where that release is here already, unless
+//!     `--again`),
 //!     and Chrome: a line of JSON for each step as it goes, then what
 //!     `status` says (status 3: it is put, and this host lacks something
 //!     its screens need, which `missing` and `how` say)
@@ -30,7 +37,9 @@
 //!     "bytes", "chrome": VERSION|null, "missing": [libraries its
 //!     programs need that this host hasn't], "older": {library:
 //!     [versions of its symbols they need that this host's hasn't]},
-//!     "software_drawing": true|false, "default": "host"|"desktop"}
+//!     "software_drawing": true|false, "emoji_font": true|false (none:
+//!     every emoji is a box, on Olo's windows and on a page), "default":
+//!     "host"|"desktop"}
 //! olo-rex-link screen default [host|desktop]
 //!     where `olo screen` goes on this host when it isn't said
 //!     (`--on host`, `--on desktop`, `OLO_SCREENS_ON`); none: says it
@@ -69,11 +78,30 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--no-chrome]   Olo and Chrome put on this host for screens here
+const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--no-chrome] [--no-emoji-font]
+                                            Olo and Chrome put on this host for screens here (and a font with emoji, if it has none)
        olo screen status                    what is here, as JSON
        olo screen default [host|desktop]    where `olo screen` goes on this host when it isn't said
        olo screen remove                    Olo taken off this host again
        olo screen --on host COMMAND…        olo-screen's own commands, on this host (start, run, look, tree, click, …)";
+
+/// Noto Color Emoji (SIL Open Font License 1.1), as its makers' own
+/// repository has it at one commit (the release "unicode 18.0" of
+/// 2026-09-24): 10.7 MB. What is fetched is refused unless it is this.
+const EMOJI_FONT: &str = "NotoColorEmoji.ttf";
+const EMOJI_FONT_URL: &str = "https://raw.githubusercontent.com/googlefonts/noto-emoji/e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e/2D/fonts/NotoColorEmoji.ttf";
+const EMOJI_FONT_SHA256: &str = "15671215ab769fdc7162a045d56fd7d7e477c51b04e6b3c761d914d8fdd6cc44";
+
+/// The account's own fonts (fontconfig's `<dir prefix="xdg">fonts</dir>`).
+fn account_fonts() -> PathBuf {
+    std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home().join(".local/share")).join("fonts")
+}
+
+/// Where a font put here for the screens goes: a folder of its own
+/// among the account's fonts, so `remove` knows what is Olo's.
+fn screens_fonts() -> PathBuf {
+    account_fonts().join("olo-screens")
+}
 
 fn home() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
@@ -276,14 +304,27 @@ fn install(args: &[String]) -> ! {
     }
     let ask = olo_release::Install { from: option(args, "--from"), tag: option(args, "--tag"), retire: Vec::new(), without: vec!["olo-wallpapers-".into()] };
     let mut told = Told { doing: "", last: None };
-    let (changed, version) = match olo_release::install(&prefix, &ask, &AtomicBool::new(false), &mut |doing, done, all| told.tell(doing, done, all)) {
-        Ok(done) => done,
-        Err(e) => {
-            say(json!({ "error": e }));
-            std::process::exit(1);
-        }
+    // The release asked for is the one here already: nothing is fetched
+    // (600 MB, to find every program the same). `--again` fetches it
+    // all the same; an archive given is always put.
+    let here = olo_release::installed_in(&prefix).version.filter(|_| prefix.join("bin/olo-screen").is_file());
+    let wanted = match (&ask.from, &ask.tag, args.iter().any(|a| a == "--again")) {
+        (None, Some(tag), false) => olo_release::by_tag(tag).ok().map(|r| r.version),
+        (None, None, false) => olo_release::latest().ok().map(|r| r.version),
+        _ => None,
     };
-    say(json!({ "installed": version, "changed": changed.len() }));
+    if here.is_some() && here == wanted {
+        say(json!({ "installed": here, "changed": 0, "was": true }));
+    } else {
+        let (changed, version) = match olo_release::install(&prefix, &ask, &AtomicBool::new(false), &mut |doing, done, all| told.tell(doing, done, all)) {
+            Ok(done) => done,
+            Err(e) => {
+                say(json!({ "error": e }));
+                std::process::exit(1);
+            }
+        };
+        say(json!({ "installed": version, "changed": changed.len() }));
+    }
     // Chrome, by Olo's own launcher: Google's package, unpacked in the
     // home folder. What it says is passed on as it comes.
     if !args.iter().any(|a| a == "--no-chrome") {
@@ -292,6 +333,22 @@ fn install(args: &[String]) -> ! {
             Ok(s) if s.success() => {}
             Ok(s) => say(json!({ "error": format!("Chrome wasn't put here (olo-chrome --olo-install: {s}); Olo is, and `olo screen install` again tries Chrome again") })),
             Err(e) => say(json!({ "error": format!("Chrome wasn't put here (olo-chrome: {e})") })),
+        }
+    }
+    // A font with emoji, where this host has none.
+    if !args.iter().any(|a| a == "--no-emoji-font") && !emoji_font() {
+        let put = (|| {
+            let fetched = olo_release::fetch_file(EMOJI_FONT, EMOJI_FONT_URL, EMOJI_FONT_SHA256, &olo_release::cache_dir(), &AtomicBool::new(false), &mut |got, of| told.tell("emoji font", got, of))?;
+            let dir = screens_fonts();
+            std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            let (tmp, to) = (dir.join(format!(".{EMOJI_FONT}.new")), dir.join(EMOJI_FONT));
+            std::fs::copy(&fetched, &tmp).and_then(|_| std::fs::rename(&tmp, &to)).map_err(|e| format!("{}: {e}", to.display()))?;
+            let _ = std::fs::remove_file(&fetched);
+            Ok::<_, String>(to)
+        })();
+        match put {
+            Ok(to) => say(json!({ "emoji_font": to })),
+            Err(e) => say(json!({ "error": format!("a font with emoji wasn't put here ({e}); emoji are boxes until one is: `olo screen install` again tries again") })),
         }
     }
     let now = status();
@@ -333,6 +390,8 @@ fn remove() -> ! {
     if let Err(e) = std::fs::remove_dir_all(&prefix) {
         fail(format_args!("{}: {e}", prefix.display()));
     }
+    // (And the font put here with it, in its folder of its own.)
+    let _ = std::fs::remove_dir_all(screens_fonts());
     println!("Olo is off this host ({})", prefix.display());
     std::process::exit(0);
 }
@@ -376,6 +435,7 @@ fn status() -> serde_json::Value {
         "missing": missing,
         "older": older,
         "software_drawing": software,
+        "emoji_font": emoji_font(),
         "default": default_now(),
     });
     if installed.is_none() {
@@ -387,6 +447,27 @@ fn status() -> serde_json::Value {
             json!("Mesa's EGL and software renderer aren't here: on Fedora, `sudo dnf install mesa-libEGL mesa-dri-drivers`; on Debian or Ubuntu, `sudo apt install libegl-mesa0 libgl1-mesa-dri`");
     }
     v
+}
+
+/// Whether this host has a font with emoji, as far as a file's name
+/// says (Noto Color Emoji, Twemoji, Apple Color Emoji…), among the
+/// system's fonts and the account's. A server often has none, and then
+/// every emoji is a box, in Olo's windows and on a page in Chrome alike.
+fn emoji_font() -> bool {
+    let mut todo: Vec<(PathBuf, u32)> = [PathBuf::from("/usr/share/fonts"), PathBuf::from("/usr/local/share/fonts"), account_fonts(), home().join(".fonts")].into_iter().map(|d| (d, 0)).collect();
+    while let Some((dir, depth)) = todo.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                if depth < 4 {
+                    todo.push((entry.path(), depth + 1));
+                }
+            } else if name.contains("emoji") && [".ttf", ".otf", ".ttc"].iter().any(|x| name.ends_with(x)) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Of the versions a program `needs` of each library's symbols, those

@@ -22925,6 +22925,23 @@ installed and ready to use").
   system with an older C library, where the loader would say "version
   `GLIBC_2.43' not found" of every program). `install` ends with
   status 3 where anything is lacking, Olo put all the same.
+- **A font with emoji.** A server seldom has one (the dev server: none),
+  and every emoji is then a box, in Olo's windows and on a page in
+  Chrome alike. `status` says (`emoji_font`: a font file with "emoji"
+  in its name among the system's fonts or the account's), and `install`
+  puts one where there is none: Noto Color Emoji (OFL 1.1, 10.7 MB),
+  from its makers' repository at one commit, refused unless its SHA-256
+  is the one written in `screens.rs`, into
+  `~/.local/share/fonts/olo-screens`, where fontconfig finds it for
+  Olo's programs and for Chrome. (Not carried in Olo's release: a
+  desktop has its system's, and the release needn't grow by 10 MB for
+  hosts.) `remove` takes that folder away with Olo. Tried on the dev
+  server: StyledEdit and a page in Chrome drew a rocket, a tick, a
+  warning sign and a flag in colour where each had drawn boxes.
+- **Nothing is fetched twice.** `install` asks GitHub which release is
+  meant (the newest, or `--tag`) and, where that one is here already,
+  fetches nothing (0.1 s; `--again` to fetch it all the same; before,
+  600 MB came down to find every program the same).
 - **Which screens `olo screen` means** on a host
   (`apps/rex/src/bridge_olo.sh`): `--on host` or `--on desktop` first
   of its arguments, else `OLO_SCREENS_ON`, else the host's default

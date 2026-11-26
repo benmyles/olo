@@ -481,12 +481,6 @@ impl Tab {
         (!parts.is_empty()).then(|| parts.join("; "))
     }
 
-    /// A coding agent runs in its foreground now (looked at, not as last
-    /// reported: Auto Approve's Return goes only to one).
-    fn agent_running(&self) -> bool {
-        self.agent().is_some()
-    }
-
     /// The agent in its foreground, if one is.
     fn agent(&self) -> Option<agent::Agent> {
         let shared = &self.session.shared;
