@@ -214,6 +214,16 @@ pub fn tail_of(screen: &str, lines: usize) -> Vec<String> {
 /// an upgrade, still waiting), is not: the service is never handed back.
 fn asker_is_a_later_build(pid: i32) -> bool {
     use std::os::unix::fs::MetadataExt as _;
+    // (The helper itself, by its file's name, as it is built and as it
+    // is put on a host: `olo-rex-link`, `olo-rex-link-ID-ARCH`. Another
+    // program that speaks to the socket is no build of this one, however
+    // new its file: a test's own request ended the service it was
+    // asking, 2026-11-26.)
+    let Ok(theirs_at) = std::fs::read_link(format!("/proc/{pid}/exe")) else { return false };
+    let name = theirs_at.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if !name.trim_end_matches(" (deleted)").starts_with("olo-rex-link") {
+        return false;
+    }
     // (Through /proc's own links: a file taken off the disk since, as an
     // upgrade's tidying does, is still read.)
     let (Ok(mine), Ok(theirs)) = (std::fs::metadata("/proc/self/exe"), std::fs::metadata(format!("/proc/{pid}/exe"))) else { return false };

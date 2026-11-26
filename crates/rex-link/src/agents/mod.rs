@@ -25,7 +25,7 @@ pub mod wire;
 
 pub use events::{SubagentEvent, SubagentEventLog};
 pub use model::{AgentCli, DesktopPolicy, NativeSubagent, SubagentRegistry, TreeRow, new_subagent_id, now_unix_ms, screen_target_name, to_unix_ms};
-pub use spec::{Answer, ApproveSpec, SendPayload, StartSpec, WatchSpec, ctrl_byte, parse_send_payload, sanitize_paste_text, special_key, start_usage};
+pub use spec::{Answer, ApproveSpec, Pressed, SendPayload, StartSpec, WatchSpec, ctrl_byte, parse_send_payload, pressed_key, sanitize_paste_text, special_key, start_usage};
 pub use state::{Activity, ScreenClassification, SubagentLiveState, approval_to_json, classify_screen_rich, effective_state, summary_json};
 
 #[cfg(test)]
@@ -35,6 +35,24 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// The keys the server's encoder presses: those xterm's bytes can't
+    /// say. The rest are their bytes.
+    #[test]
+    fn the_keys_that_bytes_cannot_say() {
+        let press = |raw: &str| pressed_key(raw).map(|p| (p.key, p.mods));
+        assert_eq!(press("Ctrl+Enter"), Some(("enter", "ctrl".to_owned())));
+        assert_eq!(press("shift+return"), Some(("enter", "shift".to_owned())));
+        assert_eq!(press("C-M-S-Enter"), Some(("enter", "ctrl+alt+shift".to_owned())));
+        assert_eq!(press("Ctrl+Tab"), Some(("tab", "ctrl".to_owned())));
+        assert_eq!(press("Shift+Backspace"), Some(("backspace", "shift".to_owned())));
+        assert_eq!(press("Shift+Escape"), Some(("escape", "shift".to_owned())));
+        for theirs in ["Enter", "Alt+Enter", "Tab", "Shift+Tab", "Escape", "Backspace", "Ctrl+Backspace", "Alt+m", "Ctrl+Shift+Up", "F5", "x", "-", "^C"] {
+            assert_eq!(press(theirs), None, "{theirs}");
+        }
+        // (And its bytes are still there, for a server with no such word.)
+        assert_eq!(special_key("Ctrl+Enter").unwrap(), "\r");
+    }
 
     /// A turn's end is an end, whatever the agent left running (ShiftUp's
     /// item 24). The screen is Claude Code's after a turn that started a

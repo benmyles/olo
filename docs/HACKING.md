@@ -19985,6 +19985,25 @@ and dropped Ctrl and Shift on an arrow; it reads its pane's modes from
 Ghostty (`dec_mode(1)`, `kitty_keyboard_flags`), and leaves to the Rex
 server's key event what it doesn't encode. Tried on the rig: ⌥← twice
 in bash through Rex goes back two words.
+**The kitty keyboard protocol in Rex is the server's to encode.**
+Terminal has an encoder of its own for it (`view::kitty_key`); a Rex
+pane's terminal is the Rex server's, which has the protocol and the
+program's flags as they stand, so for a program that asked for it
+(`kitty_keyboard_flags() != 0`) Rex sends the server a key event
+(`hub.send_rex_key`) for every key the legacy table can't say:
+`term_keys::kitty_encodes(Key, flags)`, a key of the table with a
+modifier, Escape, and all of the table under flag 8. It had sent the
+table's bytes for all of them, so Ctrl+Enter and Shift+Enter reached
+Claude Code as a Return (Ben, 2026-11-26: "ctrl+enter doens't seem to
+work (at least in claude code) in a rex terminal"; Claude Code writes
+`CSI ? u`, `CSI > 5 u` and `CSI > 4 ; 2 m` to a Rex pane at its start).
+A program that asked nothing gets the table's bytes, as before. Tried
+with real key presses in a headless Rex on a scratch server
+(`REX_SERVER_SOCKET`, `tsession --home`), a program in the pane that
+pushes the flags and shows its bytes: Ctrl+Enter `CSI 13;5u`,
+Shift+Enter `CSI 13;2u`, Alt+Enter `CSI 13;3u`, Shift+Tab `CSI 9;2u`,
+Escape `CSI 27u`. `olo agent send --key` presses the same keys through
+the server (`agents::pressed_key`, `block.event`).
 
 **Colours** (`src/colors.rs`, View ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light

@@ -111,6 +111,29 @@ pub fn bytes(k: Key, modes: Modes) -> Option<Vec<u8>> {
     })
 }
 
+/// Whether a key is the kitty keyboard protocol's to encode, for a
+/// program that asked for it (`flags`: what it pushed, not 0): not this
+/// table's, which is xterm's and cannot say what the protocol exists to
+/// say. Ctrl+Enter and Shift+Enter are a bare Return here, where the
+/// protocol has `CSI 13;5u` and `CSI 13;2u`; Escape is `CSI 27u`; Ctrl
+/// and Alt with a letter have forms of their own. So: Escape, any key
+/// of this table pressed with a modifier, and, where the program asked
+/// to be told every key as an escape code (flag 8), every key of this
+/// table. A terminal with the protocol's encoder (Rex's server, which
+/// knows the program's flags as they stand) sends those itself; text
+/// typed is text either way.
+///
+/// (Ben, 2026-11-26: "ctrl+enter doens't seem to work (at least in
+/// claude code) in a rex terminal". Claude Code pushes flags 5 at its
+/// start, read from what it writes to a Rex pane, and Rex sent it a
+/// Return.)
+pub fn kitty_encodes(k: Key, flags: u8) -> bool {
+    if flags == 0 || bytes(k, Modes { app_cursor: false, kitty: true }).is_none() {
+        return false;
+    }
+    k.ctrl || k.alt || k.shift || k.name == "escape" || flags & 8 != 0
+}
+
 /// A one-character key's character.
 pub fn single(name: &str) -> Option<char> {
     let mut chars = name.chars();
@@ -140,4 +163,50 @@ fn ctrl_byte(k: Key) -> Option<u8> {
         '8' | '?' => 0x7f,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the kitty keyboard protocol encodes, for a program that
+    /// asked for it: the keys whose modifiers xterm's table drops.
+    #[test]
+    fn the_protocols_keys_are_the_ones_xterm_cannot_say() {
+        let key = |name: &'static str, shift: bool, ctrl: bool, alt: bool| Key { name, shift, ctrl, alt };
+        // Nothing, for a program that didn't ask.
+        assert!(!kitty_encodes(key("enter", false, true, false), 0));
+        // Claude Code's flags (5): Enter with a modifier, Tab with one, Escape, Ctrl and Alt with a letter.
+        for k in [
+            key("enter", false, true, false),
+            key("enter", true, false, false),
+            key("enter", false, false, true),
+            key("tab", true, false, false),
+            key("tab", false, true, false),
+            key("escape", false, false, false),
+            key("backspace", true, false, false),
+            key("c", false, true, false),
+            key("m", false, false, true),
+            key("up", false, true, false),
+        ] {
+            assert!(kitty_encodes(k, 5), "{k:?}");
+        }
+        // A plain Return, Tab, Backspace or arrow is the same either way; text is text.
+        for k in [
+            key("enter", false, false, false),
+            key("tab", false, false, false),
+            key("backspace", false, false, false),
+            key("up", false, false, false),
+            key("a", false, false, false),
+            key("a", true, false, false),
+            key("space", true, false, false),
+        ] {
+            assert!(!kitty_encodes(k, 5), "{k:?}");
+        }
+        // Asked to be told every key as an escape code (8): the plain ones too, never text.
+        assert!(kitty_encodes(key("enter", false, false, false), 13));
+        assert!(!kitty_encodes(key("a", false, false, false), 13));
+        // And what this table sends for Ctrl+Enter, which is why: a Return.
+        assert_eq!(bytes(key("enter", false, true, false), Modes::default()), Some(b"\r".to_vec()));
+    }
 }

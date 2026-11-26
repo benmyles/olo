@@ -304,18 +304,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Ctrl+Enter does nothing in a Rex terminal** (Ben, 2026-11-26, for
-  later: "ctrl+enter doens't seem to work (at least in claude code) in
-  a rex terminal"). To find first, not guessed: what Rex sends for it
-  (a pane's keys are encoded from the modes its program asked for, read
-  from Ghostty: `ui.rs`'s key path, the `key_cost` test beside it), and
-  what Claude Code asks for and expects there (the kitty keyboard
-  protocol's `CSI 13;5u`, or xterm's modifyOtherKeys `CSI 27;5;13~`; a
-  plain Return, which is what a terminal sends with neither, is a
-  submit, not a new line). Then the same for Shift+Enter and Alt+Enter,
-  in Rex and in Olo's Terminal, with each agent (Claude Code, Codex,
-  Antigravity), read from the program's own screen; and `olo agent send
-  --key Ctrl+Enter`, which should send what the keyboard does.
 - **Agent Screens on the Rex host itself** (Ben, 2026-11-26: "there
   should be an option for agents on a rex host to use olo agent screens
   on the host itself without having to use them on the user's desktop
@@ -11248,6 +11236,9 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Ctrl+Enter does nothing in a Rex terminal**~~ (done 2026-11-26; Ben: "ctrl+enter doens't seem to work (at least in claude code) in a rex terminal"). Found, not guessed: Claude Code asks a Rex pane for the kitty keyboard protocol at its start (it writes `CSI ? u`, then `CSI > 5 u`, and xterm's `CSI > 4 ; 2 m` beside: read from what it wrote there), the Rex server's own encoder has the protocol (Ctrl+Enter `CSI 13;5u`, Shift+Enter `CSI 13;2u`, Escape `CSI 27u`: asked of a scratch server with `rex send-key`), and Olo's Rex sent its keys as bytes from xterm's table, where Enter with any modifier is a Return. Rex now hands the server the keys that table can't say for a program that asked for the protocol (`term_keys::kitty_encodes`: a key of the table with a modifier, Escape, and every key of it under flag 8); a program that asked nothing gets what it always got. Pressed for real in a headless Rex on a scratch server, the program in the pane showing its bytes: Enter `\r`, Ctrl+Enter `CSI 13;5u`, Shift+Enter `CSI 13;2u`, Alt+Enter `CSI 13;3u`, Ctrl+Shift+Enter `CSI 13;6u`, Shift+Tab `CSI 9;2u`, Escape `CSI 27u`; and without the protocol `\r`, `\r`, `\r`, `ESC \r`, `CSI Z`, `ESC`, as before. `olo agent send --key` presses the same keys through the server too (`pressed_key`, `block.event`): `--key Ctrl+Enter` is `CSI 13;5u` to Claude Code, xterm's `CSI 27;5;13~` to a program that asked nothing.
+  - Olo's own Terminal already had the protocol (`view::kitty_code`, `csi_u`: its own encoder over alacritty's modes); the gap was Rex's alone, which sent what Terminal's legacy table sends and left the protocol to nobody.
 
 - ~~**After `olo agent` became the host's own: what running it for real found**~~ (done 2026-11-26, updates 8 and 9; each in its commit with its measurements).
   - Olo's own helpers run on it (Ben: "when you use subagents for review/qa please use the new olo/rex native subagent support you built"; "make sure you have an olo agents watch going whenever you're running olo agents"): `tools/dev/agents` starts each reviewer, investigator and worker as a child tab of the lead's tab, reads, answers and stops it through `olo agent`, and waits on `olo agent watch`; tmux only with no Rex pane. CLAUDE.md, the olo-agents, olo-debug-help and bridge skills and HACKING say so.

@@ -3054,11 +3054,23 @@ impl RexWindow {
         let hub = app().hub.clone();
 
         // (What the pane's program asked of its keys.)
-        let modes = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map_or_else(Default::default, |b| {
+        let (modes, kitty_flags) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map_or_else(Default::default, |b| {
             let b = b.lock().unwrap_or_else(|e| e.into_inner());
-            olo_kit::term_keys::Modes { app_cursor: b.terminal.dec_mode(1), kitty: b.terminal.kitty_keyboard_flags() != 0 }
+            let flags = b.terminal.kitty_keyboard_flags();
+            (olo_kit::term_keys::Modes { app_cursor: b.terminal.dec_mode(1), kitty: flags != 0 }, flags)
         });
-        if let Some(bytes) = encode_terminal_special_key(k, modes).filter(|_| !cmd) {
+        // A program that asked for the kitty keyboard protocol is told
+        // its keys by the server's own encoder, which has the protocol
+        // and the program's flags as they stand: sent as bytes from
+        // here, Ctrl+Enter reached Claude Code as a Return (Ben,
+        // 2026-11-26; `term_keys::kitty_encodes`).
+        if !cmd && !k.modifiers.platform && olo_kit::term_keys::kitty_encodes(olo_kit::term_keys::Key::of(k), kitty_flags) {
+            let rex_ev = keymap::to_rex_key_event(e, false);
+            for t in targets {
+                hub.send_rex_key(&t, rex_ev.clone());
+            }
+            cx.stop_propagation();
+        } else if let Some(bytes) = encode_terminal_special_key(k, modes).filter(|_| !cmd) {
             for t in targets {
                 hub.send_input(&t, bytes.clone());
             }

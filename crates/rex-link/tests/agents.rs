@@ -713,8 +713,12 @@ fn a_helper_put_there_later_takes_over_and_is_not_handed_back() {
     let Some(rig) = Rig::start("upgrade") else { return };
     let started = rig.json(&["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
     let first = rig.service_pid().expect("a service");
-    // The same build asking again changes nothing.
+    // The same build asking again changes nothing; nor does another
+    // program asking, however new its file (this test's own, built after
+    // the helper more often than not): only the helper is a build of it.
     assert_eq!(rig.service_pid(), Some(first));
+    let raw = rig.raw(json!({ "proto": 1, "op": "ping" }));
+    assert_eq!(raw["data"]["pid"], json!(first), "answered, not handed over: {raw}");
 
     // "An upgrade": the helper again, another file, written now.
     let later = rig.dir.join("later").join("olo-rex-link");
@@ -739,6 +743,43 @@ fn a_helper_put_there_later_takes_over_and_is_not_handed_back() {
     assert_eq!(listed["subagents"][0]["id"], started["id"]);
     assert_eq!(ask(&later, &["ping"])["pid"].as_i64().unwrap() as i32, second, "never handed back to an earlier build");
     rig.json(&["stop", "steady", "--force", "--json"]);
+}
+
+/// A key its bytes can't say is pressed as the keyboard would press it:
+/// through the server's own encoder, by what the program asked of its
+/// keys. Ctrl+Enter to a program on the kitty keyboard protocol (Claude
+/// Code pushes its flags at its start) is `CSI 13;5u`; to one that
+/// asked nothing, xterm's `CSI 27;5;13~`; a plain Return, Alt with a
+/// letter and Escape are their bytes either way.
+#[test]
+fn a_key_is_pressed_as_the_keyboard_would_press_it() {
+    let Some(rig) = Rig::start("keys") else { return };
+    rig.stand_in("claude");
+    rig.start_child("claude", "typist", &[]);
+    let pressed = |key: &str| -> Vec<u8> {
+        let before = rig.keys("typist").len();
+        rig.json(&["send", "typist", "--key", key, "--json"]);
+        rig.wait(&format!("the key {key}"), || rig.keys("typist").len() > before);
+        // (All of it: a sequence comes in one write, read a moment after its first byte.)
+        std::thread::sleep(Duration::from_millis(80));
+        rig.keys("typist")[before..].to_vec()
+    };
+    // A program that asked nothing of its keys.
+    assert_eq!(pressed("Enter"), b"\r");
+    assert_eq!(pressed("Ctrl+Enter"), b"\x1b[27;5;13~");
+    assert_eq!(pressed("Alt+m"), b"\x1bm");
+    // It asks for the kitty keyboard protocol, as Claude Code does.
+    rig.show("typist", "\x1b[>1u ready for keys\n");
+    rig.wait("its screen", || rig.olo(&["read", "typist"]).1.contains("ready for keys"));
+    assert_eq!(pressed("Ctrl+Enter"), b"\x1b[13;5u");
+    assert_eq!(pressed("Shift+Enter"), b"\x1b[13;2u");
+    assert_eq!(pressed("C-S-Enter"), b"\x1b[13;6u");
+    assert_eq!(pressed("Ctrl+Tab"), b"\x1b[9;5u");
+    assert_eq!(pressed("Enter"), b"\r");
+    assert_eq!(pressed("Alt+m"), b"\x1bm");
+    assert_eq!(pressed("Escape"), b"\x1b");
+    assert_eq!(pressed("Ctrl+Shift+Up"), b"\x1b[1;6A");
+    rig.json(&["stop", "typist", "--force", "--json"]);
 }
 
 /// What a watcher is and isn't told: two questions one after the other

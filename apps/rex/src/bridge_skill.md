@@ -119,6 +119,7 @@ model or reasoning effort is used.
   `olo agent send <ID|NAME> --file /var/tmp/prompt.md --enter --json`
   `olo agent send <ID|NAME> --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
   `--key` takes any key with any modifier a terminal can send, joined by `+` or `-`: `--key Alt+m` (what tmux sends for `M-m`), `--key Ctrl+Shift+Up`, `--key Alt+Enter`, `--key Shift+Tab`, `--key F5`, `--key C-M-c`; several `--key`s go one after another.
+  A key that plain bytes can't say is pressed as the keyboard would press it, by what the agent asked of its keys: `--key Ctrl+Enter` and `--key Shift+Enter` (a new line in Claude Code's field, not a send), `--key Ctrl+Tab`, `--key Shift+Backspace`.
   Refuses to type text while an approval/question dialog is active (use `olo agent approve` for approvals, or pass `--force`). Always strips bracketed-paste escapes and returns a pre-write `cursor`.
 - **Stop & archive launched tabs cleanly**:
   `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`

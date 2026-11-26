@@ -976,6 +976,17 @@ impl Service {
             if i > 0 {
                 tokio::time::sleep(Duration::from_millis(35)).await;
             }
+            // (A key its bytes can't say: pressed and let go through the
+            // server's own encoder, as its keyboard would; its bytes only
+            // where the server has no such word.)
+            if let Some(press) = spec.post_presses.get(i).and_then(Option::as_ref) {
+                let event = |action: &str| json!({ "session_id": entry.session_id, "block_id": entry.block_id, "event": { "type": "key", "payload": { "key": press.key, "mods": press.mods, "action": action } } });
+                if self.rex.call("block.event", event("press")).await.is_ok() {
+                    let _ = self.rex.call("block.event", event("release")).await;
+                    total += 1;
+                    continue;
+                }
+            }
             total += key.len();
             if let Err(e) = write(key.clone()).await {
                 return err(e, 1);
