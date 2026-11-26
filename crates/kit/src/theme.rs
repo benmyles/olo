@@ -67,6 +67,7 @@ fn initial() -> Appearance {
     let settings = olo_protocol::socket_path().and_then(|_| settings());
     if let Some(s) = &settings {
         olo_kit_base::keys::set(&s.keyboard.profile);
+        crate::tip::set_delay(s.tip_delay_ms);
     }
     // (The words' language with the look: before any window is made.)
     olo_kit_base::words::start(settings.as_ref().map_or("", |s| s.language.as_str()));
@@ -131,6 +132,8 @@ pub(crate) fn init() {
 /// changed.
 fn look(settings: olo_protocol::Settings) {
     olo_kit_base::keys::set(&settings.keyboard.profile);
+    // (How long a tip waits: the desktop's, for every program at once.)
+    crate::tip::set_delay(settings.tip_delay_ms);
     let a = settings.appearance;
     tracing::debug!("look: {:?}", a.effective_theme);
     // (The icons can change with the colours as they are: the person

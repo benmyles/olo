@@ -4430,7 +4430,7 @@ impl RexWindow {
                 }
                 let new_session = cx.msg(WinMsg::CreateSession(hk_new, None));
                 row = row.child(row_label).child(GlyphButton::new("New Session", Glyph::Plus).id(format!("rex-new-session-{hk}")).enabled(connected).on_click(move |_, cx| new_session(&(), cx)));
-                let mut group = div().w_full().flex_shrink_0().flex().flex_col().child(olo_kit::tip::on(row, tip_key, tip));
+                let mut group = div().w_full().flex_shrink_0().flex().flex_col().child(olo_kit::tip::on_row(row, tip_key, tip));
                 for (sid, slabel, sact, shelp, unread) in sessions {
                     let is_active = self.active_host == hk && self.active_session.as_deref() == Some(sid.as_str());
                     let hk_sel = hk.clone();
@@ -4445,7 +4445,7 @@ impl RexWindow {
                         olo_kit::tip::retext(cx, tip_key.clone(), words);
                     }
                     let tipped = move |row: Element| match doing {
-                        Some(words) => olo_kit::tip::on(row, tip_key, words),
+                        Some(words) => olo_kit::tip::on_row(row, tip_key, words),
                         None => row,
                     };
                     group = group.child(tipped(sidebar_row(slabel, badge, sact, shelp, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))).on_mouse_down(
@@ -4728,7 +4728,7 @@ impl RexWindow {
                         let tip_key = format!("rex-sub-{}", child.row.entry.id);
                         let tip_text = format!("{} ({}) — Click to open terminal", child_title, child.row.entry.what());
                         olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
-                        let sub_el = olo_kit::tip::on(
+                        let sub_el = olo_kit::tip::on_row(
                             sidebar_native_child_row(
                                 child.clone(),
                                 child_icon_act,

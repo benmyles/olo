@@ -1805,6 +1805,11 @@ impl OutputConfig {
 /// The rotations a display can have, clockwise degrees.
 pub const ROTATIONS: [u16; 4] = [0, 90, 180, 270];
 
+/// A tip's wait where nothing says otherwise (`Settings::tip_delay_ms`),
+/// and the longest it may be set to.
+pub const TIP_DELAY_MS: u32 = 1000;
+pub const TIP_DELAY_MOST_MS: u32 = 3000;
+
 /// Everything Preferences can change live in app_server. Persisted by
 /// app_server in `$XDG_CONFIG_HOME/olo/app_server.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1825,6 +1830,13 @@ pub struct Settings {
     /// notch (three lines, 48 points): every program alike, Chrome
     /// included, as app_server scales the wheel before it's sent on.
     pub wheel_speed: f64,
+    /// How long the pointer rests on something before its tip shows, in
+    /// milliseconds, in every program of Olo's (`olo_kit::tip`). One
+    /// second, as macOS waits (its `NSInitialToolTipDelay`, by Macworld
+    /// and Apple's own forum; nothing of Apple's says so in writing):
+    /// Ben, 2026-11-26, "research what the default delay is in macos
+    /// and use that as olo's default". It was half a second, fixed.
+    pub tip_delay_ms: u32,
     /// Mice with settings of their own, or following their model's
     /// profile, by `mice::key` ("046d:40b1"); the rest follow
     /// `mouse_speed` and `touchpad.mouse_accel_profile`.
@@ -3357,6 +3369,7 @@ impl Default for Settings {
             keyboard: KeyboardSettings::default(),
             mouse_speed: 0.0,
             wheel_speed: 1.0,
+            tip_delay_ms: TIP_DELAY_MS,
             mice: Default::default(),
             tab_font_size: 12.0,
             tab_title_chars: 100,

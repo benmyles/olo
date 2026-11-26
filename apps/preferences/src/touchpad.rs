@@ -468,8 +468,19 @@ fn every_mouse(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>, none: bool) {
         ui.check("Left-handed (swap the buttons)", s.touchpad.left_handed, |s, v| s.touchpad.left_handed = v);
         ui.check("Press both buttons for a middle click", s.touchpad.middle_emulation, |s, v| s.touchpad.middle_emulation = v);
     });
-    ui.bbox("Focus", |ui| {
+    // What is the pointer's, whichever device moves it: where the focus
+    // goes, and how long it rests on something before its tooltip shows
+    // (Ben, 2026-11-26: "add a pref to be able to change it
+    // system-wide"). One box, "Pointer" (it was "Focus", of the one
+    // check box): a box of the tips' own, with a slider, stood 111
+    // points past the window with mice connected, and 50 in the other
+    // column (the lint's fixture: both columns are near the screen's
+    // height then); and the two pointer-wide settings stood apart
+    // (Opus 5.5's look). A row with a menu is 30 points.
+    ui.bbox("Pointer", |ui| {
         ui.check("Focus follows the pointer", s.focus_follows_mouse, |s, v| s.focus_follows_mouse = v);
+        tips(ui);
+        ui.note("Both are for every program, and for the touchpad too.");
     });
 }
 
@@ -480,6 +491,40 @@ fn wheel(ui: &mut Ui) {
         ui.slider("wheel-speed", speed, 0.25..=3.0, |sl| sl.step(0.05).label("Scrolling speed").value_text(format!("{speed:.2}×")).limits("Slow", "Fast"), |s, v| s.wheel_speed = v as f64);
         ui.note("A notch scrolls as far in Chrome and other programs as in Olo’s apps.");
     });
+}
+
+/// The waits a tooltip's menu offers, in milliseconds, with their
+/// names: closer together where a difference is felt (0.2 to 0.5 s is
+/// more than twice as long; 2 to 3 s is hardly another wait).
+const TIP_WAITS: [(u32, &str); 8] =
+    [(200, "0.2 seconds"), (300, "0.3 seconds"), (500, "0.5 seconds"), (700, "0.7 seconds"), (1000, "1 second"), (1500, "1.5 seconds"), (2000, "2 seconds"), (3000, "3 seconds")];
+
+/// The choice nearest a wait of `ms`.
+fn tip_choice(ms: u32) -> usize {
+    (0..TIP_WAITS.len()).min_by_key(|&i| TIP_WAITS[i].0.abs_diff(ms)).unwrap_or(0)
+}
+
+/// How long the pointer rests on something before its tooltip shows,
+/// in every program of Olo's: a row with a menu.
+fn tips(ui: &mut Ui) {
+    let chosen = tip_choice(ui.s.tip_delay_ms);
+    let names = TIP_WAITS.iter().map(|(_, name)| olo_kit::words::of_text(*name)).collect();
+    let label = olo_kit::words::of_text("Tooltips show after:");
+    // (Its menu under Acceleration's, a box up: one divider for both.)
+    // (Written only as the choice changes: a wait set elsewhere to what
+    // is between two of them stays as it is until another is chosen.)
+    ui.menu(
+        "tip-delay",
+        names,
+        chosen,
+        |f| f.label(label).divider(130.0),
+        |s, i| {
+            let to = i.min(TIP_WAITS.len() - 1);
+            if tip_choice(s.tip_delay_ms) != to {
+                s.tip_delay_ms = TIP_WAITS[to].0;
+            }
+        },
+    );
 }
 
 /// A mouse: what it is, how it's set up, what is known about it.
@@ -596,5 +641,25 @@ fn model_status(trained: Option<&olo_protocol::touchpad::PalmModel>, on: bool, k
                 format!("{:.0}", m.fingers_lost * 100.0)
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tip_tests {
+    use super::{TIP_WAITS, tip_choice};
+
+    /// The default wait is one of the menu's choices; every choice is
+    /// its own nearest; a wait between two goes to the nearer, one past
+    /// either end to that end; the longest is the most a wait may be.
+    #[test]
+    fn the_tooltips_menu_offers_the_default_and_takes_any_wait() {
+        assert_eq!(TIP_WAITS[tip_choice(olo_protocol::TIP_DELAY_MS)], (olo_protocol::TIP_DELAY_MS, "1 second"));
+        for (i, (ms, _)) in TIP_WAITS.iter().enumerate() {
+            assert_eq!(tip_choice(*ms), i);
+        }
+        let ms = |of: u32| TIP_WAITS[tip_choice(of)].0;
+        assert_eq!((ms(1100), ms(590), ms(0), ms(9000)), (1000, 500, 200, 3000));
+        assert_eq!(TIP_WAITS.last().unwrap().0, olo_protocol::TIP_DELAY_MOST_MS);
+        assert!(TIP_WAITS.windows(2).all(|w| w[0].0 < w[1].0));
     }
 }

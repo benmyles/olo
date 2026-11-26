@@ -1988,6 +1988,33 @@ agents read `minimized` on its `MenuItem` node.
 
 ### Tips (`olo_kit::tip`)
 
+**How long a tip waits is the desktop's setting**
+(`Settings::tip_delay_ms`, Preferences ▸ Touchpad & Mouse ▸ Mouse ▸
+Pointer, "Tooltips show after": a menu of eight waits from 0.2 to 3
+seconds, closer together where a difference is felt; in one box with
+"Focus follows the pointer", the two settings that are the pointer's
+whichever device moves it, with a note that says so: "Both are for
+every program, and for the touchpad too."; a box of its own with a
+slider stood 111 points past the window once mice were connected, the
+layout lint's fixture), followed by
+every program with its look (`theme`'s watch of the settings calls
+`tip::set_delay`; a change is in force at the next tip, nothing
+restarted). One second by default, as macOS waits (its
+`NSInitialToolTipDelay`, by Macworld and Apple's forum; nothing of
+Apple's says so in writing): Ben, 2026-11-26, "add a pref to be able
+to change it system-wide … research what the default delay is in
+macos and use that as olo's default". It was half a second, a constant.
+**A row of a list always waits** (`tip::on_row`): a tip shows at once
+where another was showing a moment ago, which suits a bar of controls
+looked along for what each is, and not rows, crossed on the way to
+something else or read one after another, where a tip sprang up under
+each row the pointer passed and covered the next (Ben, the same day,
+of the agents in Rex's sidebar: "the tooltips … are not waiting the
+500ms delay they appear immediately"; measured by pictures: on the
+released build the next row's tip was there 297 ms after the pointer
+came from its neighbour's, with `on_row` not at 311 ms and there
+after the wait). Rex's hosts, sessions and agents are rows.
+
 A tip is a popup of its own, never drawn inside the window (in a
 window smaller than what it says, it would be cut at the edge).
 `tip::on(element, key, text)` gives an element one, about the thing

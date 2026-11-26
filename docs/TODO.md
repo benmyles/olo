@@ -13,30 +13,30 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Five small things Ben asked for, 2026-11-26 evening** (the two of
-  About Olo done the same evening: the session sets right what it had
-  heard of the release it now runs, `upgrade::settle_heard`, and About
-  doesn't offer the installed one; "Upgrade & Reload", "Reload Olo" in
-  every language. Left, in this order):
-  - *Rex's Host window opens with a text cursor*: "when launching that
-    host manage window the cursor stays as a text entry cursor until i
-    move the mouse out of the window and back in" (the pointer's shape
-    is the terminal pane's under where the window opens; a new window
-    under a still pointer isn't told the pointer is in it).
-  - *About Olo still offers the release just installed*: "when in
-    about olo and i do the upgrade to new release there, when it comes
-    back it still says the release i just installed is available with
-    the upgrade and restart button".
-  - *"Restart" there says "Reload"*: "restart makes it sound like we
-    will restart the whole computer".
-  - *A tip over an agent in Rex's sidebar shows at once*: "the tooltips
-    when hovering over an agent are not waiting the 500ms delay they
-    appear immediately (hovering over it in the sidebar on the left)".
-  - *A setting for how long a tip waits, system-wide*: "please also add
-    a pref to be able to change it system-wide. also research what the
-    default delay is in macos and use that as olo's default (it may be
-    500ms i'm not sure)". It is a constant now (`crates/kit/src/tip.rs`,
-    `DELAY`, 500 ms).
+- ~~**Five small things Ben asked for, 2026-11-26 evening**~~ All done
+  the same evening (About Olo's stale offer and "Reload"; the pointer's
+  shape in a window opened under it; a row's tip always waits; the
+  tips' wait a desktop setting, one second by default). From the one
+  round of looks at the last two, not done, in the reviewers' words:
+  Opus 5.5, "'Upgrade & Reload' should be 'Update & Reload' … the box
+  is titled 'Software Update'; the line beside the button says
+  '(update 2) is available'; only the button says 'Upgrade'" (Olo's
+  word everywhere else is Upgrade, and Ben asked for the one word
+  changed: his to say); "give the slider its own tip … that uses the
+  new value as soon as it changes … 'Rest the pointer on the slider to
+  try it.'" (the control is a menu now; a way to feel the wait from
+  the pane is still wanted); "Every picture shows the renamed buttons
+  greyed out, so their real look hasn't been seen" (a test session
+  has no olo-session over it). Gemini 4 Neon, of the tab as it was
+  before: "The center gap between the left and right columns of group
+  boxes looks noticeably narrower (about 14–16 logical px) than the
+  outer left/right margins … (about 24–26 logical px)"; "the
+  `Adaptive` dropdown sits floating partway across the box … its right
+  edge stops well short of aligning with the `Mouse speed` slider's
+  right edge". And of the Mouse tab with mice connected (the lint's
+  fixture): both columns are then near the smallest screen's height,
+  with no room for another row; the tab wants laying out again before
+  anything more goes in it.
 - **Token Pool, left of "usage credits come last"** (fixed
   2026-11-26; HACKING, Gateway): (1) *the desktop's pool doesn't claim
   a reset for a host that is out*: a host's pool claims none itself,

@@ -56,8 +56,22 @@ use olo_kit_base::metrics as m;
 
 use crate::{card::Card, style, theme};
 
+/// How long the pointer rests before a tip shows, in milliseconds: the
+/// desktop's setting (`Settings::tip_delay_ms`, Preferences ▸ Mouse &
+/// Touchpad), followed with the look (`theme`'s watch of the settings);
+/// its default until that has been heard, and outside Olo.
+static DELAY_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(olo_protocol::TIP_DELAY_MS);
+
+/// The wait is `ms` from now (the desktop's setting, as it is or as it
+/// was just changed), no more than the most it may be.
+pub fn set_delay(ms: u32) {
+    DELAY_MS.store(ms.min(olo_protocol::TIP_DELAY_MOST_MS), std::sync::atomic::Ordering::Relaxed);
+}
+
 /// How long the pointer rests before a tip shows.
-const DELAY: Duration = Duration::from_millis(500);
+fn delay() -> Duration {
+    Duration::from_millis(u64::from(DELAY_MS.load(std::sync::atomic::Ordering::Relaxed)))
+}
 /// A tip hidden this recently: the next shows at once.
 const AGAIN: Duration = Duration::from_millis(500);
 /// The widest a tip grows before it wraps.
@@ -146,6 +160,8 @@ impl View for TipView {
 struct Place {
     at: Bounds<Pixels>,
     side: TipPlace,
+    /// It always waits for the pointer to rest on it ([`on_row`]).
+    rests: bool,
 }
 
 /// The tip showing.
@@ -235,14 +251,27 @@ fn tips<'a>(cx: &'a mut WindowCx) -> &'a mut Tips {
 /// rested on it, not after a press on it), by `key` (its id: what tells
 /// it from the window's other tips).
 pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
-    on_side(element, key.into(), crate::words::of(text), TipPlace::Below, Reach::default())
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Below, Reach::default(), false)
+}
+
+/// [`on`] for a row of a list: its tip always waits for the pointer to
+/// rest on the row, the whole wait, and never shows "at once because
+/// another was showing a moment ago". Controls in a bar are looked along
+/// for what each is, and their tips follow the pointer once the first
+/// has shown; rows are crossed on the way to something else, or read
+/// one after another, and a tip that springs up under each as the
+/// pointer passes covers the next rows (Ben, 2026-11-26, of the agents
+/// in Rex's sidebar: "the tooltips when hovering over an agent are not
+/// waiting the 500ms delay they appear immediately").
+pub fn on_row(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Below, Reach::default(), true)
 }
 
 /// [`on`], the tip above the element: for what is at a window's foot
 /// (a status bar's marks), where a tip under it would lie on the
 /// window's frame. Below it where there is no room above.
 pub fn on_above(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
-    on_side(element, key.into(), crate::words::of(text), TipPlace::Above, Reach::default())
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Above, Reach::default(), false)
 }
 
 /// [`on_above`], the tip placed over more than the element: one of a
@@ -250,7 +279,7 @@ pub fn on_above(element: Element, key: impl Into<SharedString>, text: impl Into<
 /// tip of each begins or ends where the row does, not where the mark
 /// under the pointer is), and clear of what stands over the row.
 pub fn on_above_of(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>, over: Reach) -> Element {
-    on_side(element, key.into(), crate::words::of(text), TipPlace::Above, over)
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Above, over, false)
 }
 
 /// What a tip above an element is placed over besides it
@@ -264,7 +293,7 @@ pub struct Reach {
     pub above: f32,
 }
 
-fn on_side(element: Element, key: SharedString, text: SharedString, side: TipPlace, over: Reach) -> Element {
+fn on_side(element: Element, key: SharedString, text: SharedString, side: TipPlace, over: Reach, rests: bool) -> Element {
     use olo_interface::InteractiveElement as _;
     let (rested, pressed_key) = (key.clone(), key.clone());
     element
@@ -278,7 +307,7 @@ fn on_side(element: Element, key: SharedString, text: SharedString, side: TipPla
             // ends where that ends: begun there, most of it lay
             // outside the window.)
             let side = if side == TipPlace::Above && place.center().x > cx.viewport_size().width / 2.0 { TipPlace::AboveEnd } else { side };
-            hover_body(cx, rested.clone(), Body::text(text.clone()), at, Place { at: place, side }, *hovered)
+            hover_body(cx, rested.clone(), Body::text(text.clone()), at, Place { at: place, side, rests }, *hovered)
         })
         .on_any_mouse_down(move |_, cx| pressed(cx, pressed_key.clone()))
 }
@@ -287,7 +316,7 @@ fn on_side(element: Element, key: SharedString, text: SharedString, side: TipPla
 /// window, whose tip says `text` and which is at `anchor` (in the
 /// window).
 pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>, hovered: bool) {
-    hover_body(cx, key.into(), Body::text(crate::words::of(text)), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
+    hover_body(cx, key.into(), Body::text(crate::words::of(text)), anchor, Place { at: anchor, side: TipPlace::Below, rests: false }, hovered);
 }
 
 /// [`hover`], the tip a card: `card` (shared, so it isn't copied as the
@@ -295,7 +324,7 @@ pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<Sh
 /// it: it stays while the pointer is on it, and goes once the pointer
 /// has left it (and isn't back on the widget).
 pub fn hover_card(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card>, anchor: Bounds<Pixels>, hovered: bool) {
-    hover_body(cx, key.into(), Body::Card(card), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
+    hover_body(cx, key.into(), Body::Card(card), anchor, Place { at: anchor, side: TipPlace::Below, rests: false }, hovered);
 }
 
 /// [`hover_card`], the card opening beside `beside` (in the window) at
@@ -305,7 +334,7 @@ pub fn hover_card(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card
 /// ([`SWITCH`]) while the card lingers, so it isn't swapped for theirs.
 #[allow(clippy::too_many_arguments)]
 pub fn hover_card_beside(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card>, anchor: Bounds<Pixels>, beside: Bounds<Pixels>, side: TipPlace, hovered: bool) {
-    hover_body(cx, key.into(), Body::Card(card), anchor, Place { at: beside, side }, hovered);
+    hover_body(cx, key.into(), Body::Card(card), anchor, Place { at: beside, side, rests: false }, hovered);
 }
 
 /// The key of the window's tip showing, if one is (a card the pointer
@@ -390,7 +419,7 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
     // A card lingering, this widget on the pointer's way to it: this
     // one's shows only if the pointer rests here.
     let passing = tips_now.lingering.is_some() && tips_now.shown.as_ref().is_some_and(|s| s.card && s.window == parent && on_the_way(s.anchor, s.side, anchor));
-    let again = !passing && (tips_now.shown.is_some() || tips_now.hidden_at.is_some_and(|t| t.elapsed() < AGAIN));
+    let again = at_once(place.rests, passing, tips_now.shown.is_some(), tips_now.hidden_at.map(|t| t.elapsed()));
     if !passing {
         hide(cx);
     }
@@ -398,7 +427,7 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
         show(cx, key, text, anchor, place);
         return;
     }
-    wait(cx, parent, key, text, anchor, place, if passing { SWITCH } else { DELAY });
+    wait(cx, parent, key, text, anchor, place, if passing && !place.rests { SWITCH } else { delay() });
 }
 
 /// The pointer left something of `parent` and no tip shows or waits:
@@ -415,11 +444,19 @@ fn resume(cx: &mut WindowCx, parent: WindowId, was_showing: bool) {
     if tips_now.pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
         return;
     }
-    if was_showing || tips_now.hidden_at.is_some_and(|t| t.elapsed() < AGAIN) {
+    if at_once(place.rests, false, was_showing, tips_now.hidden_at.map(|t| t.elapsed())) {
         show(cx, key, body, anchor, place);
         return;
     }
-    wait(cx, parent, key, body, anchor, place, DELAY);
+    wait(cx, parent, key, body, anchor, place, delay());
+}
+
+/// Whether a tip shows the moment the pointer comes to its widget, not
+/// after the wait: when another is showing or was a moment ago (`shown`,
+/// `hidden` how long since), unless the pointer is only passing on its
+/// way to a card (`passing`), and never a row's (`rests`: [`on_row`]).
+fn at_once(rests: bool, passing: bool, shown: bool, hidden: Option<Duration>) -> bool {
+    !rests && !passing && (shown || hidden.is_some_and(|ago| ago < AGAIN))
 }
 
 /// `key`'s tip shows in `after`, unless the pointer leaves it first.
@@ -484,7 +521,7 @@ pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into
         return;
     }
     hide(cx);
-    show(cx, key, text, anchor, Place { at: anchor, side: TipPlace::Below });
+    show(cx, key, text, anchor, Place { at: anchor, side: TipPlace::Below, rests: false });
 }
 
 /// The widget `key` of the window was pressed: its tip goes, and doesn't
@@ -698,6 +735,29 @@ fn tip_size(text: &str) -> (f32, f32) {
 
 #[cfg(test)]
 mod tests {
+    /// A bar's control follows another's tip at once; a row of a list
+    /// waits for the pointer to rest on it whatever showed a moment ago.
+    #[test]
+    fn a_rows_tip_always_waits() {
+        use std::time::Duration;
+        let a_moment = Some(Duration::from_millis(100));
+        // (A control: at once while another shows, or did a moment ago.)
+        assert!(super::at_once(false, false, true, None));
+        assert!(super::at_once(false, false, false, a_moment));
+        assert!(!super::at_once(false, false, false, Some(Duration::from_millis(600))));
+        assert!(!super::at_once(false, false, false, None));
+        assert!(!super::at_once(false, true, true, a_moment), "passing on the way to a card");
+        // (A row: never.)
+        assert!(!super::at_once(true, false, true, a_moment));
+        assert!(!super::at_once(true, false, false, a_moment));
+        // (The wait is the desktop's, within its most.)
+        super::set_delay(250);
+        assert_eq!(super::delay(), Duration::from_millis(250));
+        super::set_delay(999_999);
+        assert_eq!(super::delay(), Duration::from_millis(u64::from(olo_protocol::TIP_DELAY_MOST_MS)));
+        super::set_delay(olo_protocol::TIP_DELAY_MS);
+    }
+
     use super::*;
 
     /// A thing inside another, to a point: a widget's name in its widget.

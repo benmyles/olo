@@ -394,6 +394,7 @@ impl Panel {
                 settings.touchpad = from.touchpad.clone();
                 settings.mouse_speed = from.mouse_speed;
                 settings.focus_follows_mouse = from.focus_follows_mouse;
+                settings.tip_delay_ms = from.tip_delay_ms;
             }
             // What the General tab shows; and on Revert the hosts, as the
             // pane opened with them. Never the hosts by Defaults: there is
