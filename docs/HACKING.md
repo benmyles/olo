@@ -22727,6 +22727,30 @@ buses started 64 at once, then 384 programs connecting to one; a silent
 program beside one that calls): both failed before. A start takes what
 it took (3 ms alone, 200 starts each). Nothing that waits for a bus to
 say "ready" waits without an end (`tests/common`).
+
+Nothing the bus routes waits for who it is for. busd wrote each message
+to its recipient's socket from the task that routes them: a program
+that had stopped reading, its socket full, held that write, and since
+the bus's own answers are routed by one task, the first signal the bus
+sent to everyone after that (a name's new owner, at every connect)
+stopped the bus answering anybody. Each peer has a queue of its own and
+a task that writes it out in order (`peer/outbox.rs`); one more than 64
+MB behind is disconnected, as dbus-daemon and dbus-broker let such a
+program go (`tests/start.rs`: a program that asks for every signal and
+reads nothing, 16 MB sent, then 80). It costs 3,800 instructions a call
+(88,200 to 92,000 of the bus's own, `perf stat` over 40,000 calls,
+three runs each; the wall time the same within its noise, 72 µs to the
+bus and 90 µs to a peer, quiet). A call is kept for its `NoReply` from
+before it is sent, and a peer is out of the list before its calls are
+answered for it: kept after the send, a call whose recipient went in
+between was kept for nobody. And a program may watch the bus
+(`BecomeMonitor`: dbus-monitor, busctl monitor): busd never answered it
+(the answer was for a peer that had just stopped being one) and
+panicked at the next signal if it had asked for only some
+(`Monitor::interested` unwrapped a destination signals don't have),
+which ended the task that serves the bus's own name
+(`tests/monitor.rs`). The second investigator read these three out of
+the code after the first was found (2026-11-26).
 tsession's sessions use it too, when built.
 
 An Electron app (Slack, VS Code, Discord) finds its running copy through

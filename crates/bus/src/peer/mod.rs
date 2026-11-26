@@ -3,6 +3,8 @@ use event_listener::{Event, EventListener};
 pub use stream::*;
 mod monitor;
 pub use monitor::*;
+mod outbox;
+pub use outbox::*;
 
 use anyhow::Result;
 use tracing::trace;
@@ -18,6 +20,7 @@ use crate::{fdo, match_rules::MatchRules, name_registry::NameRegistry};
 #[derive(Debug)]
 pub struct Peer {
     conn: Connection,
+    outbox: Outbox,
     unique_name: OwnedUniqueName,
     match_rules: MatchRules,
     greeted: bool,
@@ -45,7 +48,7 @@ impl Peer {
         let conn = Connection::from(&messages);
         trace!("created: {:?}", conn);
 
-        let peer = Self { conn, unique_name, match_rules: MatchRules::default(), greeted: false, canceled_event: Event::new() };
+        let peer = Self { outbox: Outbox::new(conn.clone()), conn, unique_name, match_rules: MatchRules::default(), greeted: false, canceled_event: Event::new() };
         let stream = Stream::for_peer(&peer, messages);
         Ok((peer, stream))
     }
@@ -56,7 +59,8 @@ impl Peer {
     pub async fn new_us(messages: MessageStream) -> (Self, Stream) {
         let unique_name = OwnedUniqueName::try_from(fdo::BUS_NAME).unwrap();
 
-        let peer = Self { conn: Connection::from(&messages), unique_name, match_rules: MatchRules::default(), greeted: true, canceled_event: Event::new() };
+        let conn = Connection::from(&messages);
+        let peer = Self { outbox: Outbox::new(conn.clone()), conn, unique_name, match_rules: MatchRules::default(), greeted: true, canceled_event: Event::new() };
         let stream = Stream::for_peer(&peer, messages);
         (peer, stream)
     }
@@ -67,6 +71,12 @@ impl Peer {
 
     pub fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    /// What is sent to it goes here ([`Outbox::send`]), never straight
+    /// to its connection.
+    pub fn outbox(&self) -> &Outbox {
+        &self.outbox
     }
 
     pub fn listen_cancellation(&self) -> EventListener {

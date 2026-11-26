@@ -15,6 +15,7 @@ use super::Peer;
 #[derive(Debug)]
 pub struct Monitor {
     conn: Connection,
+    outbox: super::Outbox,
     unique_name: OwnedUniqueName,
     match_rules: MatchRules,
 }
@@ -24,6 +25,12 @@ impl Monitor {
         &self.conn
     }
 
+    /// What it is shown goes here, after what was on its way to it as a
+    /// peer (the peer's own queue, kept).
+    pub fn outbox(&self) -> &super::Outbox {
+        &self.outbox
+    }
+
     pub fn unique_name(&self) -> &OwnedUniqueName {
         &self.unique_name
     }
@@ -31,8 +38,14 @@ impl Monitor {
     /// # Panics
     ///
     /// Same as [`MatchRules::matches`].
+    ///
+    /// Olo: a message to nobody in particular (every broadcast signal)
+    /// has no destination. busd unwrapped it here, for a monitor with
+    /// rules: the first signal after one began to watch (`dbus-monitor
+    /// "type='signal'"`) ended the task that serves the bus's own name,
+    /// and the bus answered nobody from then on.
     pub fn interested(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
-        if self.match_rules.is_empty() || msg.header().destination().unwrap() == &BusName::from(&self.unique_name) {
+        if self.match_rules.is_empty() || msg.header().destination() == Some(&BusName::from(&self.unique_name)) {
             return true;
         }
         self.match_rules.matches(msg, name_registry)
@@ -52,6 +65,6 @@ impl Monitor {
     }
 
     pub(super) fn new(peer: Peer, match_rules: MatchRules) -> Self {
-        Self { conn: peer.conn().clone(), unique_name: peer.unique_name().clone(), match_rules }
+        Self { conn: peer.conn().clone(), outbox: peer.outbox().clone(), unique_name: peer.unique_name().clone(), match_rules }
     }
 }

@@ -193,14 +193,27 @@ impl Peers {
                         if let (message::Type::MethodReturn | message::Type::Error, Some(serial), BusName::Unique(caller)) = (msg.message_type(), msg.header().reply_serial(), dest) {
                             self.pending.lock().unwrap().remove(&(unique_name.clone(), caller.to_owned().into(), serial.get()));
                         }
-                        match self.send_msg(msg.clone(), dest.clone()).await {
-                            Ok(to) => self.expect_answer(&msg, to, &unique_name),
-                            Err(e) => {
-                                debug!("{}", e);
-                                // Olo: a call to a name nobody has is answered
-                                // at once, as other brokers answer it (busd left
-                                // the caller waiting out its own timeout: GLib's
-                                // is 25 s, a GTK app's start held up that long).
+                        // Olo: a call is kept (for `NoReply`, should who
+                        // has it go without answering) from before it is
+                        // sent. Kept after, a recipient that went in
+                        // between had already answered for what it had:
+                        // the call was kept for nobody, and its caller
+                        // waited for good.
+                        let to = self.owner_of(dest).await;
+                        let kept = to.as_ref().and_then(|to| self.expect_answer(&msg, to, &unique_name));
+                        let sent = match &to {
+                            Some(to) => self.send_msg_to_unique_name(msg.clone(), to.as_ref()).await,
+                            None => Err(anyhow::anyhow!("unknown destination: {dest}")),
+                        };
+                        if let Err(e) = sent {
+                            debug!("{}", e);
+                            // Olo: a call to a name nobody has is answered
+                            // at once, as other brokers answer it (busd left
+                            // the caller waiting out its own timeout: GLib's
+                            // is 25 s, a GTK app's start held up that long).
+                            // Once: not where its recipient's going has
+                            // answered it meanwhile (the kept call is gone).
+                            if kept.is_none_or(|key| self.pending.lock().unwrap().remove(&key).is_some()) {
                                 self.answer_unknown(&msg, dest).await;
                             }
                         }
@@ -211,13 +224,17 @@ impl Peers {
             };
         }
 
-        // Olo: the calls it had and never answered are answered for it, and
-        // its own calls need no answer now.
-        self.answer_for(&unique_name).await;
-
         // Stream is done means the peer disconnected or it became a monitor. Remove it from the
         // list of peers.
-        if self.peers_mut().await.remove(&unique_name).is_none() {
+        let was_peer = self.peers_mut().await.remove(&unique_name).is_some();
+
+        // Olo: the calls it had and never answered are answered for it, and
+        // its own calls need no answer now. After it is out of the list,
+        // so that no call is sent to it once its calls have been answered
+        // (a call is kept before it is sent: above).
+        self.answer_for(&unique_name).await;
+
+        if !was_peer {
             // This means peer was turned into a monitor. `Monitoring` iface will emit the signals.
             return Ok(());
         }
@@ -251,13 +268,15 @@ impl Peers {
         }
     }
 
-    /// A call `msg` from `caller`, delivered to `to`, kept until it's
-    /// answered, unless no answer is wanted.
-    fn expect_answer(&self, msg: &Message, to: OwnedUniqueName, caller: &OwnedUniqueName) {
+    /// A call `msg` from `caller`, about to be sent to `to`, kept until
+    /// it's answered, unless no answer is wanted; what it is kept by.
+    fn expect_answer(&self, msg: &Message, to: &OwnedUniqueName, caller: &OwnedUniqueName) -> Option<(OwnedUniqueName, OwnedUniqueName, u32)> {
         if msg.message_type() != message::Type::MethodCall || msg.primary_header().flags().contains(message::Flags::NoReplyExpected) {
-            return;
+            return None;
         }
-        self.pending.lock().unwrap().insert((to, caller.clone(), msg.primary_header().serial_num().get()), msg.clone());
+        let key = (to.clone(), caller.clone(), msg.primary_header().serial_num().get());
+        self.pending.lock().unwrap().insert(key.clone(), msg.clone());
+        Some(key)
     }
 
     /// `gone` went: each call it had and never answered gets the bus's
@@ -288,24 +307,27 @@ impl Peers {
         }
     }
 
-    /// Sends `msg` on to `destination`; who it went to.
-    async fn send_msg(&self, msg: Message, destination: BusName<'_>) -> Result<OwnedUniqueName> {
-        trace!("Forwarding message: {:?}, destination: {}", msg, destination);
-        let to: OwnedUniqueName = match destination {
-            BusName::Unique(dest) => dest.to_owned().into(),
-            BusName::WellKnown(name) => match self.name_registry().await.lookup(name.clone()) {
-                Some(dest) => dest,
-                None => bail!("unknown destination: {}", name),
-            },
-        };
-        self.send_msg_to_unique_name(msg, to.as_ref()).await?;
-        Ok(to)
+    /// Who has `destination` now: itself if it is a connection's own
+    /// name, else whoever has that name; None if nobody has.
+    async fn owner_of(&self, destination: &BusName<'_>) -> Option<OwnedUniqueName> {
+        match destination {
+            BusName::Unique(dest) => Some(dest.to_owned().into()),
+            BusName::WellKnown(name) => self.name_registry().await.lookup(name.clone()),
+        }
     }
 
+    /// `msg` to the peer `destination`, and to the monitors. Into each
+    /// one's queue (`Outbox`): nothing here waits for a recipient.
+    ///
+    /// Olo: one that has become a monitor is no peer, and is sent what
+    /// is for it as a monitor is (`Monitor::interested`). busd found no
+    /// peer and dropped it: `BecomeMonitor` was never answered, and
+    /// dbus-monitor and busctl waited on it for good.
     async fn send_msg_to_unique_name(&self, msg: Message, destination: UniqueName<'_>) -> Result<()> {
-        let conn = self.peers.read().await.get(destination.as_str()).map(|peer| peer.conn().clone());
-        match conn {
-            Some(conn) => conn.send(&msg).await.context("failed to send message")?,
+        let to = self.peers.read().await.get(destination.as_str()).map(|peer| peer.outbox().clone());
+        match to {
+            Some(to) => to.send(&msg).context("failed to send message")?,
+            None if self.monitors.read().await.contains_key(destination.as_str()) => {}
             None => bail!("no peer for destination `{destination}`"),
         }
         let name_registry = self.name_registry().await;
@@ -323,8 +345,8 @@ impl Peers {
                 continue;
             }
 
-            if let Err(e) = peer.conn().send(&msg).await.context("failed to send message") {
-                warn!("Error sending message: {}", e);
+            if let Err(e) = peer.outbox().send(&msg).context("failed to send message") {
+                debug!("Error sending message: {}", e);
             }
         }
 
@@ -343,8 +365,8 @@ impl Peers {
                 continue;
             }
 
-            if let Err(e) = monitor.conn().send(&msg).await.context("failed to send message") {
-                warn!("Error sending message: {}", e);
+            if let Err(e) = monitor.outbox().send(&msg).context("failed to send message") {
+                debug!("Error sending message: {}", e);
             }
         }
     }
