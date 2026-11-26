@@ -96,9 +96,29 @@ something nobody here has is in "Blocked", with what it waits for.
     Try Again (each needs what it was asked with kept); keep Manage Host
     window height fixed across current/failed states if bottom button
     row shifts.
-  - Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
-    message headers/timestamps/rules to the prose width (~560 pt) and
-    align sender icons in the left gutter with `Back`.
+  - ~~Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
+    message headers/timestamps/rules to the prose width (~560 pt)~~
+    Done 2026-11-26, another way: a turn's time follows its name and a
+    tool's result follows its preview, at every width (a capped column,
+    tried first, both reviewers took for "a pane that failed to resize").
+    Left of that round, all there before it: aligning sender icons in
+    the gutter with `Back` (a 16 pt icon in a 14 pt gutter: the text
+    axis would have to move); at 1.25× and 1.75× the layout review's
+    "error seam: a line … and what it borders … are 1 device px apart"
+    between the tab strip's foot and the transcript's header (377.6,
+    59.2 to 1690.4, 60.0 over 224, 60.8: the header's top isn't on the
+    line's device pixel), and "a band 34 tall over one 34 tall"; in a
+    pane 690 pt wide "error crowded" between the Summary's two bullets.
+    Gemini 4 Neon: "Diff highlight bands paint over and wash out the
+    Edit well's vertical borders"; in dark, "active `Transcript` is
+    darker/sunken than inactive `Terminal`" where the sidebar's active
+    segment is the lighter; "`Schema Diff` runs to within about 3–4
+    points of the bold amber `Waiting`"; the tree's trunk line "passes
+    directly behind/through the ▾ disclosure triangle next to `API
+    Audit`". Opus 5.5: "a hover band across the whole row … so a
+    duration can be traced back to its row" (less needed now), and "the
+    empty ground at wide widths is the place for a detail pane for the
+    opened call".
   - Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
     dark popup menus stronger border contrast and drop shadow so they
     separate cleanly from dark panels behind them. As measured

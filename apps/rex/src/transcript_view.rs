@@ -776,7 +776,14 @@ fn turn_separator(tp: &TailPalette) -> Element {
 /// Clean speaker heading without stray vertical bars:
 /// - User: bold ANSI blue `You` on the body column (`LATCH_W`).
 /// - Assistant/subagent: crisp 16 pt icon inline before bold ANSI cyan name,
-///   mono model tag, and UI-sans timestamp on the right edge.
+///   and its mono model tag.
+/// - The turn's time after them, on the same line ("You  14:52:10",
+///   "Claude Code  claude-opus-5-5 · 14:52:12"). It stood at the pane's
+///   right edge: in a wide window 1,500 points from the name it is the
+///   time of, and no nearer in any. (Capping the whole stream at a
+///   measure was tried first, 2026-11-26: both reviewers took the empty
+///   ground beside it for a pane that had failed to resize. Opus 5.5:
+///   "putting the metadata next to what it describes".)
 fn render_speaker_line(tp: &TailPalette, speaker: Speaker, icon_name: &'static str, name: String, model: Option<String>, timestamp: String) -> Element {
     let accent = match speaker {
         Speaker::User => tp.blue,
@@ -803,14 +810,17 @@ fn render_speaker_line(tp: &TailPalette, speaker: Speaker, icon_name: &'static s
 
     row = row.child(StringView::new(name).bold(true).size(spk_size).color(accent).height(20.0));
 
+    let model_shown = model.is_some();
     if let Some(m) = model {
         row = row.child(div().pl(px(8.0)).child(StringView::new(m).mono(true).size(style::SMALL_SIZE).beside(spk_size).color(tp.secondary).height(20.0)));
     }
-    row = row.child(div().flex_1());
     if !timestamp.is_empty() {
-        row = row.child(StringView::new(timestamp).size(style::SMALL_SIZE).beside(spk_size).color(tp.secondary).height(20.0));
+        // (After a model's name, the dot the sidebar's lines have; after
+        // a name alone, the gap the model's name has.)
+        let said = if model_shown { format!("· {timestamp}") } else { timestamp };
+        row = row.child(div().pl(px(if model_shown { 6.0 } else { 10.0 })).flex_shrink_0().child(StringView::new(said).size(style::SMALL_SIZE).beside(spk_size).color(tp.secondary).height(20.0)));
     }
-    row
+    row.child(div().flex_1())
 }
 
 fn field_match_ranges(matches: &[SearchMatch], active_idx: Option<usize>, entry_id: usize, field: MatchField) -> Vec<(usize, usize, bool)> {
@@ -1224,6 +1234,18 @@ fn render_thinking_item(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// How wide a tool's preview is when nothing cuts it: its characters at
+/// the small monospace's one advance (a row's worth of arithmetic, where
+/// laying the line out for every row of a long transcript at each
+/// drawing would not be); a line with other than ASCII in it is measured
+/// as it is drawn.
+fn summary_width(summary: &str) -> f32 {
+    let font = style::mono_font(FontWeight::NORMAL);
+    let wide =
+        if summary.is_ascii() { f32::from(style::text_width("0", style::SMALL_SIZE, font)) * summary.len() as f32 } else { f32::from(style::text_width(summary.to_owned(), style::SMALL_SIZE, font)) };
+    wide.ceil() + 2.0
+}
+
 fn render_tool_item(
     tp: &TailPalette,
     eid: usize,
@@ -1259,7 +1281,13 @@ fn render_tool_item(
         .child(event_latch(tp, open))
         // Tool names stay foreground bold; hue is reserved for state, speakers, diff signs, and Find.
         .child(div().w(px(LABEL_COL_W)).flex_shrink_0().child(StringView::new(badge_label).bold(true).size(style::SMALL_SIZE).color(tp.fg).cut(true).height(EVENT_ROW_H)))
-        .child(div().flex_1().min_w_0().child(StringView::new(summary.to_owned()).mono(true).size(style::SMALL_SIZE).color(tp.fg).cut(true).height(EVENT_ROW_H)));
+        // (As wide as what it says and no wider, cut where the row ends:
+        // how it went and how long it took follow it, as far on as a time
+        // is from its name (13 points of ground between their ink), and
+        // always show. They stood at the pane's right edge, a window's
+        // width from a short command.)
+        .child(div().min_w_0().w(px(summary_width(summary))).child(StringView::new(summary.to_owned()).mono(true).size(style::SMALL_SIZE).color(tp.fg).cut(true).height(EVENT_ROW_H)));
+    let after = |row: Element, el: StringView| row.child(div().flex_shrink_0().child(el));
 
     match status {
         ToolStatus::Running => {
@@ -1271,20 +1299,18 @@ fn render_tool_item(
             .w(px(8.0))
             .h(px(EVENT_ROW_H))
             .flex_shrink_0();
-            header = header
-                .child(div().w(px(8.0)))
-                .child(live_dot)
-                .child(div().w(px(4.0)))
-                .child(StringView::new(olo_kit::words::tr("Running").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.green).height(EVENT_ROW_H));
+            header = header.child(div().w(px(8.0)).flex_shrink_0()).child(live_dot).child(div().w(px(4.0)).flex_shrink_0());
+            header = after(header, StringView::new(olo_kit::words::tr("Running").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.green).height(EVENT_ROW_H));
             if let Some(d) = duration {
-                header = header.child(StringView::new(format!(" · {d}")).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
+                header = after(header, StringView::new(format!(" · {d}")).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
             }
         }
         ToolStatus::Error => {
             // Red ONLY on the word "Failed"; exit code in regular secondary UI sans (no redundant red dot).
-            header = header.child(div().w(px(8.0))).child(StringView::new(olo_kit::words::tr("Failed").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.red).height(EVENT_ROW_H));
+            header =
+                after(header.child(div().w(px(8.0)).flex_shrink_0()), StringView::new(olo_kit::words::tr("Failed").to_owned()).bold(true).size(style::SMALL_SIZE).color(tp.red).height(EVENT_ROW_H));
             if let Some(code) = extract_exit_code(output) {
-                header = header.child(StringView::new(format!(" · exit {code}")).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
+                header = after(header, StringView::new(format!(" · exit {code}")).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
             }
         }
         ToolStatus::Ok => {
@@ -1292,9 +1318,12 @@ fn render_tool_item(
                 Some(dur) => format!("✓ {dur}"),
                 None => "✓".to_owned(),
             };
-            header = header.child(div().w(px(8.0))).child(StringView::new(ok_text).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
+            header = after(header.child(div().w(px(8.0)).flex_shrink_0()), StringView::new(ok_text).size(style::SMALL_SIZE).color(tp.secondary).height(EVENT_ROW_H));
         }
     }
+    // (What is left of the row is the row's still: a click anywhere on
+    // it opens the call.)
+    let header = header.child(div().flex_1());
 
     let mut col = div().w_full().flex().flex_col();
     if top_gap > 0.0 {
