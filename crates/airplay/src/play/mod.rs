@@ -668,42 +668,53 @@ fn keep(shared: &Shared, control: &Mutex<Control>, options: &Options, older: boo
         if shared.stopping() {
             return;
         }
-        let lost = |e: pairing::Error| {
-            if !shared.stopping() {
-                shared.over(State::Left, Some(format!("the session was lost: {e}")));
-            }
-        };
-        if fed.elapsed() >= options.feedback {
-            fed = Instant::now();
-            if let Err(e) = control.step("POST", Some("/feedback"), None) {
-                return lost(e);
-            }
-        }
-        if older {
-            let info = match control.rtsp.http.exchange("GET /playback-info HTTP/1.1", &[("User-Agent", AGENT)], &[]) {
-                Ok(answer) if answer.status >= 400 => return shared.over(State::Failed, Some(format!("the receiver doesn't say how the play goes ({})", answer.status))),
-                Ok(answer) => pl::read(&answer.body),
-                Err(e) => return lost(e),
-            };
-            let get = |key: &str| info.as_ref().and_then(|i| pl::at(i, &[key])).and_then(pl::seconds);
-            if let Some(error) = info.as_ref().and_then(|i| pl::at(i, &["error"])) {
-                return shared.over(State::Failed, Some(format!("the receiver's player gave an error ({})", brief(error))));
-            }
-            match get("duration") {
-                // (It says how long the film is only while it has one.)
-                Some(duration) => {
-                    shared.started.store(true, Relaxed);
-                    let rate = get("rate").unwrap_or(1.0);
-                    shared.set(|now| {
-                        (now.position, now.duration, now.rate, now.learnt) = (get("position").or(Some(0.0)), Some(duration), rate, Instant::now());
-                        now.state = if rate > 0.0 { State::Playing } else { State::Paused };
-                    });
+        // What this asking came to. Said only once the connection is let
+        // go: whoever hears that the film is over may drop the play at
+        // once, and its goodbye (`Drop`: TEARDOWN, if the connection is
+        // free) found the connection still held by this thread on its
+        // way out, so none was said (one run in some under load:
+        // `the_older_way_from_a_place_in_the_film`, 2026-11-26).
+        let went = (|| {
+            let lost = |e: pairing::Error| (!shared.stopping()).then(|| (State::Left, Some(format!("the session was lost: {e}"))));
+            if fed.elapsed() >= options.feedback {
+                fed = Instant::now();
+                if let Err(e) = control.step("POST", Some("/feedback"), None) {
+                    return Err(lost(e));
                 }
-                None if shared.started.load(Relaxed) => return shared.over(State::Ended, None),
-                None => {}
             }
-        }
+            if older {
+                let info = match control.rtsp.http.exchange("GET /playback-info HTTP/1.1", &[("User-Agent", AGENT)], &[]) {
+                    Ok(answer) if answer.status >= 400 => return Err(Some((State::Failed, Some(format!("the receiver doesn't say how the play goes ({})", answer.status))))),
+                    Ok(answer) => pl::read(&answer.body),
+                    Err(e) => return Err(lost(e)),
+                };
+                let get = |key: &str| info.as_ref().and_then(|i| pl::at(i, &[key])).and_then(pl::seconds);
+                if let Some(error) = info.as_ref().and_then(|i| pl::at(i, &["error"])) {
+                    return Err(Some((State::Failed, Some(format!("the receiver's player gave an error ({})", brief(error))))));
+                }
+                match get("duration") {
+                    // (It says how long the film is only while it has one.)
+                    Some(duration) => {
+                        shared.started.store(true, Relaxed);
+                        let rate = get("rate").unwrap_or(1.0);
+                        shared.set(|now| {
+                            (now.position, now.duration, now.rate, now.learnt) = (get("position").or(Some(0.0)), Some(duration), rate, Instant::now());
+                            now.state = if rate > 0.0 { State::Playing } else { State::Paused };
+                        });
+                    }
+                    None if shared.started.load(Relaxed) => return Err(Some((State::Ended, None))),
+                    None => {}
+                }
+            }
+            Ok(())
+        })();
         drop(control);
+        match went {
+            Ok(()) => {}
+            Err(Some((state, why))) => return shared.over(state, why),
+            // (Lost while stopping: nothing to say.)
+            Err(None) => return,
+        }
         if !shared.started.load(Relaxed) && begun.elapsed() >= options.start {
             let why = match sent.as_ref().map(|sent| sent()) {
                 Some(0) => "the receiver never came for the film (is a firewall on this computer in its way?)",

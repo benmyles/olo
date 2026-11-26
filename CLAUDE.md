@@ -200,7 +200,10 @@ are universal and non-negotiable:
   to the live service: tests and pictures have a Rex server and an
   agents folder of their own (every `tsession` is given both), and a
   dialog in a script is put away by its Cancel, never by a key whose
-  meaning you haven't read. The service here is replaced only by a
+  meaning you haven't read. The same of the host's Token Pool
+  (`olo-pool-host`, 127.0.0.1:17891 and 17892, which their requests and
+  yours go through): every `tsession` has port 0 for it, and
+  `olo-pool`'s demo listens on ports of its own. The service here is replaced only by a
   release's own step (`tools/dev/host-upgrade`), and only after a note
   in their file with the time (`/var/tmp/shiftup/
   olo-agent-needs-answers.md`); `~/.local/state/olo/host-upgrade.hold`

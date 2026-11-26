@@ -706,6 +706,38 @@ it a thousand times at once with a deadline (1.3% hung), then the same
 under `strace -f -e trace=sendmsg,recvmsg`: the bytes were the same in
 a good start and a stuck one up to the `Hello` read and never answered.
 
+### Two builds compared need the same data, and a timing its own program
+
+A build kept somewhere else (`cp --reflink` into `/var/tmp`, for a
+before and after) finds no `data/` beside it: it draws with the
+system's fonts and no icons, and every pixel of text differs from the
+tree's build for that alone. Give both `OLO_DATA=…/olo/data`
+(`tsession run NAME OLO_DATA=… PROGRAM`); the first comparison of the
+layout fix was all font (2026-11-26). And take the noise out first: the
+build before against itself (clocks, a chart by the hour: Token Pool,
+Kache, Weather). `tools/dev/kit-compare` runs one window at a time in
+one session; for many at once, a session a window, as
+`at_once.py` does for the Rex rig.
+
+`jato test … -- --nocapture` gave one `--ignored` cost test's printed
+time three runs running, to the tenth of a microsecond: a kept result
+said again, not three runs. To time a test, run its own program
+(`jato test --release -p PKG --no-run`, then the file it names under
+`target/release/build/PKG/*/out/`, with `NAME --ignored --nocapture`).
+
+### A port the computer has one of is a live service too
+
+Token Pool's gateway and proxy are 127.0.0.1:17891 and 17892 on every
+computer that has a pool, and on a Rex host the agents there (yours
+too: `HTTPS_PROXY` in your own shell is the proxy) send every request
+through them. An `olo-pool` started from the tree, its demo too, tried
+to listen on both: here it failed ("Address already in use", in the log
+of every picture's Token Pool), and on a computer with no pool running
+it would have been the pool. Fenced since 2026-11-26 (HACKING, "Every
+session gets its own…"). Look for it with `ss -ltnp` before and after a
+test of anything that listens, and read a test program's log for what
+it tried.
+
 ### Nothing is committed while a push-then-publish runs
 
 `tools/publish-release.sh` publishes at HEAD as it is when its turn
@@ -726,6 +758,76 @@ a thread and wait for it on a channel (`recv_timeout`), as
 `crates/bus/tests/common` does. And a wrapper's "done" is not the
 run's: `cmd | grep … ; echo done` ends 0 whatever `cmd` did; write its
 exit after it (`echo "exit $?"`) and read that.
+
+### A race shown: the test on one processor, and a run that ran it
+
+(2026-11-26.) AirPlay's `the_older_way_from_a_place_in_the_film` failed
+once in a whole workspace's tests on a busy machine ("TEARDOWN" missing
+from what the stand-in receiver was asked). Two things about showing
+such a thing:
+
+- **Check the run ran the test.** A crate has several test programs
+  (its library's, its binary's, `tests/*.rs`); a name given to the
+  wrong one runs nothing and passes. Twelve "passes" of the binary's
+  program said nothing: `1 passed` in the output is what counts, not
+  the status.
+- **`taskset -c N PROGRAM TEST`, a hundred times.** With every thread of
+  the test on one processor, a thread that wakes another is often put
+  aside at once, so a window of a few instructions is hit most runs:
+  96 of 150 before the fix, 0 of 150 after; free on 64 processors it
+  was one in hundreds. (The cause: the thread that asks the receiver
+  how the film goes said "ended" while still holding the connection;
+  whoever heard dropped the play, whose goodbye takes the connection
+  only if it is free.) What says "it's over" lets go of what the
+  listener will want first.
+
+### A helper for hosts, tried by hand
+
+(2026-11-26.) The helpers a build of Rex carries
+(`target/PROFILE/build/olo-rex/HASH/out/olo-rex-link-x86_64`, the newest
+`out` by its time) are data there, not programs: copy one (`cp
+--reflink=auto`) and `chmod +x` it to run it. `target/debug/olo-rex-link`
+is the workspace's build of the same program with none of its features
+(`jato build --workspace` puts it back so: "built without screens of
+this host's own"): `jato build -p olo-rex-link --features
+agents,screens` for one that has its commands, or the carried copy,
+which is what a host gets. And a clean-up that ends programs by their
+command line (`kill` of whatever's `cmdline` holds a word) ends the
+shell that typed the word too: the same trap as `pkill -f`, by hand.
+
+### What was unit-tested "for want of a Chrome" can be tried now
+
+(2026-11-26.) The dev server has Chrome since a host's own screens: in
+the trial account (below), `olo-chrome --olo-install` once, then a
+page served by `python3 -m http.server` on 127.0.0.1 opened with
+`screen run NAME olo-chrome URL` and driven with `tree`, `set`,
+`select`, `click`. The first thing tried so had never worked (Chrome's
+own sign-in on a screen's profile: the setting written was one Chrome
+overwrites as it starts), which only a live Chrome could show: a
+setting written into another program's file is tested against that
+program, read back after it has started, not against what was
+written. Where a note says "not tried live (no Chrome here)", try it.
+A page that stands in for a framework is small: a field whose value is
+written back each frame from the page's own state, which only `input`
+events change; a header `position: sticky`; a `keydown` handler that
+takes `/`.
+
+### A host's own screens, tried without touching the host
+
+(2026-11-26.) An account of its own for the trial, as a test session
+has: `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` and `XDG_RUNTIME_DIR`
+(mode 700) under `/var/tmp`, `OLO_HOST_DESKTOP` for where Olo goes,
+the fences of `tsession` (`REX_SERVER_SOCKET`, `OLO_REX_AGENTS_DIR`,
+`OLO_POOL_PORT=0`, `OLO_POOL_PROXY_PORT=0`), and
+`DBUS_SESSION_BUS_ADDRESS` unset (a screen asks the session bus for
+the accessibility bus, which would start one on the account's). A
+prefix of the tree's own programs: copies of `target/debug/olo-*` in
+`PREFIX/bin`, `PREFIX/share/olo` a folder of links to `data/*` (not
+the wallpapers) with a `version` file. What a screen runs is found by
+each process's program (`readlink /proc/PID/exe` under the trial's
+folder), which is also how to see none is left. Its pictures name the
+machine (Tracker's disk, a terminal's prompt and title): crop or mask
+before one leaves it.
 
 ## Measuring
 

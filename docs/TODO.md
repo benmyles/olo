@@ -103,11 +103,12 @@ something nobody here has is in "Blocked", with what it waits for.
     tried first, both reviewers took for "a pane that failed to resize").
     Left of that round, all there before it: aligning sender icons in
     the gutter with `Back` (a 16 pt icon in a 14 pt gutter: the text
-    axis would have to move); at 1.25× and 1.75× the layout review's
+    axis would have to move); ~~at 1.25× and 1.75× the layout review's
     "error seam: a line … and what it borders … are 1 device px apart"
-    between the tab strip's foot and the transcript's header (377.6,
-    59.2 to 1690.4, 60.0 over 224, 60.8: the header's top isn't on the
-    line's device pixel), and "a band 34 tall over one 34 tall"; in a
+    between the tab strip's foot and the transcript's header~~ (gone
+    the same day with the layout rounding fix: a node's place is its
+    cumulative place rounded; the live lint has no seam at any scale);
+    "a band 34 tall over one 34 tall"; in a
     pane 690 pt wide "error crowded" between the Summary's two bullets.
     Gemini 4 Neon: "Diff highlight bands paint over and wash out the
     Edit well's vertical borders"; in dark, "active `Transcript` is
@@ -119,16 +120,97 @@ something nobody here has is in "Blocked", with what it waits for.
     duration can be traced back to its row" (less needed now), and "the
     empty ground at wide widths is the place for a detail pane for the
     opened call".
-  - Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
-    dark popup menus stronger border contrast and drop shadow so they
-    separate cleanly from dark panels behind them. As measured
-    2026-11-26 (Classic dark, 2×): the outline (6, 10, 12) against the
-    panel (24, 43, 54) is 1.2:1 and the menu's lifted ground (42, 60,
-    71) 1.3:1, with the light edge (78, 93, 104) on its top and left
-    only; a menu drawn in its window can have a shadow there.
+  - ~~Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
+    dark popup menus stronger border contrast … so they separate cleanly
+    from dark panels behind them.~~ Done 2026-11-26: in dark looks a
+    menu's right side and foot have an inner line of their own, a step
+    dimmer than the top and left (1.5 to 1 against the menu's ground,
+    the near edge 1.7 to 1; against the nearly black outline beside it,
+    2.6 to 1), and a separator runs from the frame's inner line to its
+    inner line at every scale (at 1.5× each end stood a pixel short).
+    Left: a shadow (a popup is a surface of its own, with no room round
+    it: app_server's to draw). From its one round, there before: Gemini
+    4 Neon, "the `⇧` on `Keyboard Shortcuts` renders with noticeably
+    thinner, fainter strokes than `⌘` and `/`, and the three glyphs sit
+    tightly crowded together"; "`Close` sits slightly low in the bottom
+    slot" (more room above the last item than under it). Opus 5.5: "If
+    the light direction must read here … brighten the dark look's
+    top/left line by one step instead" (it recommends the even rim).
     ~~`Menu::app_items` grouping: separate `About <App>` onto its own
     top group above `Settings…` + `Keyboard Shortcuts`~~ Done 2026-11-26
     (a separator under About, in every app's first menu).
+- **A line under a check box's label, a pixel off it at 1.25× and
+  1.75×** (came with the layout rounding fix, 2026-11-26; the live lint
+  with `--review --scales 1.25,1.75`: "“sav, sv2” (x 214) and “Viewer”
+  under it (x 215) almost line up on the left" in Preferences ▸ Default
+  Apps; "“From the network” (x 196) and “Automatically” under it (x
+  197)" in Network ▸ Ethernet; "“Gateway” (x 44) and “Claude Code uses
+  the pool” under it (x 45)" and "“/workspace/olo · since …” (x 44) and
+  “Codex uses the pool” under it (x 45)" in Token Pool ▸ Machines). The
+  label is drawn in its control's canvas `MARK_SIZE + MARK_GAP` (18
+  points: 22.5 px at 1.25×, 31.5 at 1.75×) from the canvas's rounded
+  edge; the line beside or under it is put by layout the same 18 points
+  from an edge that isn't rounded until after (HACKING, "A node's place
+  is its cumulative place rounded"). The kit's own `described`
+  (buttons.rs) has the same `pl(width + MARK_GAP)`. Not the cure:
+  lengths snapped to device pixels where a style becomes layout (tried
+  and taken out, 2026-11-26; HACKING has the numbers: 7 errors and 23
+  more notes, since 6 + 6 points and 12 points stop being the same
+  pixels). Two ways left, neither small: (1) the control's drawing is
+  told how far its true place is from its rounded one (`place` in
+  crates/interface/src/window.rs sums rounded places; taffy keeps the
+  true ones, `unrounded_layout`), and puts its label where layout
+  would, `round(18 pt + that)`; a drawing kept and moved by whole
+  pixels must then be made again when that part of a pixel changes
+  (a centred form in a window being resized: every other step), for
+  the canvases that asked for it only, and `place` runs for every
+  node of every layout, so measure it; (2) a check box, radio button
+  and light with a label become a row laid out (mark, gap, label)
+  instead of one canvas: three nodes for one, its focus ring, press
+  and agent node on the row.
+- **Found beside the layout rounding fix, all there before it** (one
+  round of both reviewers on its before and after, 2026-11-26; both
+  reviews whole in `/var/tmp/olo-site-reviews/layout-rounding-*.md` on
+  the dev server):
+  - *Sizes off the 4-point grid, which a scale of 1.25 or 1.75 still
+    splits a pixel over*: Rex's tab strip and the header under it, 34
+    points each, come to 42 and 43 pixels at 1.25× (the layout review:
+    "a band 34 tall over one 34 tall … make them one height");
+    `STRIP_HEIGHT` is the kit's, and 36 or 32 would be whole. Token
+    ~~Pool's rule under an account stands in a spacer 6 points high (the
+    white between a selected account's tint and the rule: 2 pixels at
+    1×, 3 at 1.25×; both reviewers: "should meet the horizontal divider
+    line flush", "end the band exactly on the rule").~~ Done 2026-11-26:
+    the rule is the next row's own top edge. Speed Test's rows
+    "step 22, 23, 22, 23 px, because 18pt is 22.5 px at 1.25x" (Opus
+    5.5). Token Pool at 1.25×: "rows at x 57 are 21 px apart, but
+    “Weekly” to “Today: …” is 22" (the layout review).
+  - *Speed Test* (Opus 5.5): "The four result boxes look like web
+    cards … Nothing else in these crops is rounded"; "Four headline
+    numbers of equal size … an airport code is as loud as the result";
+    "The value columns start at four different places" (199, 229, 183
+    and 179 px); "At rest, the progress bar is an empty white sunken
+    strip. It reads as an empty text field"; "The charts use status
+    colours for data … An orange trace makes a healthy 11 ms look like
+    a warning"; "The charts have no scale". Gemini 4 Neon: the card
+    titles are "vertically centred against the taller right-hand
+    readout … rather than baseline-aligned".
+  - *Preferences ▸ Rex* (Opus 5.5): "The help line in the Notifications
+    group floats" (23 points under its checkboxes, 11 under the field
+    in the next group); "The help text is too loud in size and too
+    faint in colour".
+  - *Token Pool* (Opus 5.5): "The usage bars are the heaviest thing in
+    each account"; "Uneven spacing in “34k out · 1 failed” … the red
+    text is joined on as a separate piece". Gemini 4 Neon: "the
+    `5-hour` bar looks about 1 device pixel thinner vertically than the
+    `Weekly` bar" at 1.25×.
+  - *Rex* (Opus 5.5): "Two bold labels sit one above the other" (the
+    active tab's name over the transcript's title); "The tab glyphs
+    don't match" (the + heavier than the × and the tree mark). Gemini 4
+    Neon: the active tab's fill "a slightly lighter grey than the
+    header bar beneath it".
+  - *Weather* (both): "The Ask button's default ring (≈3pt) sticks out
+    on three sides"; lay the button out by its ring.
 - **Left of the reviews' findings on the kit and Rex** (Opus 5.5,
   2026-11-24). Done 2026-11-24: an alert's question in bold, its
   explanation 8 points under it (`alert::message`); dimmed buttons keep
@@ -328,62 +410,69 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Agent Screens on the Rex host itself** (Ben, 2026-11-26: "there
-  should be an option for agents on a rex host to use olo agent screens
-  on the host itself without having to use them on the user's desktop
-  (although that should also remain an option). the host's olo agent
-  screens should use software rendering and provide a full olo desktop
-  for the agent and it should also have chrome installed and ready to
-  use"). Today an agent on a host gets a screen on the person's desktop
-  through the bridge (`olo screen …` from the host, the `olo-rex-bridge`
-  skill; a child's `--desktop screens=…` says which), so it needs the
-  desktop connected and awake, and it draws there.
-  **What is known to work, 2026-11-26** (found taking the README's
-  pictures on a dev server with no GPU): `olo-screen start` there
-  brings up a whole Olo desktop drawn in software (Deskbar, Tracker's
-  desktop, every app of the pictures, an agent's screen within a
-  screen), by itself since that day (app_server takes Mesa's software
-  device where there is no render node; before, only with
-  `OLO_HEADLESS_RENDERER=software` set). It was a release's own
-  programs in a folder, with `OLO_DATA` pointing at the data (a build
-  not installed finds none beside it). Chrome was put in the home by
-  Olo's own launcher (`olo-chrome`, its Download button: Google's rpm
-  unpacked under the account, no root) and showed a page from a server
-  on the same machine. A server lacks an emoji font (every emoji a
-  box) and may lack Mesa's software drivers. And the screen's bus lost
-  one program's first words in seventy under load until the same day
-  (HACKING, "Agent Screens"): a screen on a busy host would have had a
-  program hang at start now and then. To do:
-  - *A desktop of the host's own*: app_server run headless on the host,
-    drawn in software (what `tools/dev/tsession` does on the dev server
-    with no GPU: the olo-dev-server skill has what it takes), one for
-    each screen an agent asks for, with the whole of Olo in it (Deskbar,
-    Tracker, the apps, the palette), not a bare surface: so Olo itself
-    is put on the host (the release's archive, without wallpapers,
-    under the account as the helper is; what a host with no Fedora needs
-    of libraries, to find: the release's programs link Fedora 44's).
-  - *The same commands*: `olo-screen` and `olo screen …` unchanged for
-    the agent (start, look, the tree, click, type, menu), with where it
-    is chosen once: `--on host` or `--on desktop`, a default by host
-    (Preferences ▸ Rex ▸ Hosts, and the Host window), and for a child
-    by its policy (`olo agent start --desktop …` gains the host's own
-    beside `screens=`). The desktop's stays as it is.
-  - *Chrome there and ready*: installed with the rest (Chrome for
-    Testing or the distribution's, as a Wayland client, never X11), a
-    profile of the screen's own, opened by `olo-screen run chrome URL`;
-    said in the skill, with how a page on the host's own ports is
-    reached (no forward needed: it is the same machine).
+- **Agent Screens on the Rex host itself: what is left** (Ben,
+  2026-11-26: "there should be an option for agents on a rex host to use
+  olo agent screens on the host itself without having to use them on
+  the user's desktop (although that should also remain an option). the
+  host's olo agent screens should use software rendering and provide a
+  full olo desktop for the agent and it should also have chrome
+  installed and ready to use"). **Done 2026-11-26** (HACKING, "Agent
+  Screens of a host's own"): Olo put on a host by its helper from the
+  release (`olo screen install`: under the account, without wallpapers,
+  Chrome with it), `olo screen --on host …` with the same commands, a
+  default by host (`olo screen default host`), what the host lacks said
+  (`olo screen status`), the desktop's screens as before; at rest a
+  screen costs no processor time, about 250 MB each. Left:
   - *Seen from the desktop*: the person can look at a host's screen from
     Rex (a pane or a window that shows it, read-only unless they take
     it), since "what a person can see and do, an agent can read" runs
-    both ways; and each screen is listed with what it costs.
-  - *Measured*: a software-drawn desktop at rest must cost nothing (no
-    frames when nothing changes), and its memory a screen is said
-    (thirty agents with a screen each is the case to size for); stopped
-    when its agent ends, and after a time unused.
-  - With `olo agent` already the host's own (2026-11-26), this is what
-    is left for an agent on a host to need nothing of the desktop.
-
+    both ways; each screen listed with what it costs. Until then an
+    agent's `look` is the only way to see one.
+  - *Chosen on the desktop*: a default by host in Preferences ▸ Rex ▸
+    Hosts and the Host window (which writes the host's
+    `~/.config/olo/screens-on`), with Install there and its progress
+    (the helper's lines of JSON are made for it), and what `status`
+    says of the host (missing libraries with the packages that have
+    them, by system: Rex's setup can install them where it has sudo).
+  - *A child's policy*: `olo agent start --desktop …` names the
+    desktop's screens a child may use; the host's own need none of the
+    desktop, and a child has them as it has any program here. A start
+    says "this child's screens are the host's" with `--env
+    OLO_SCREENS_ON=host` (in the skill), or the host's default does. To
+    decide: whether that deserves a word of its own (`--screens host`),
+    and whether a host's owner should be able to refuse a child the
+    host's screens (memory, on a small host).
+  - *Kept up to date*: the desktop, connecting after an upgrade, has
+    the host's Olo brought to the same release (it does so for the
+    helper); `tools/dev/host-upgrade` does it on the dev server.
+  - *Stopped when unused*: done for a screen whose agent ended (it ends
+    with the Rex tab that started it, unless `--keep`). Left: one kept
+    with `--keep` or started from no tab and then left alone for days
+    (to decide whether anything should stop it; `olo screen list` has
+    them, and `stats` when each was last used). Thirty agents with a
+    screen each is the case to size for (about 7.5 GB at rest).
+  - *Other systems*: the release is linked on Fedora 44. On a host with
+    an older C library its programs won't load (`status` says which
+    versions are lacking, `older`): a release linked against an older
+    one, or the libraries carried with it, is what such a host would
+    need. An aarch64 host has no release to install.
+  - ~~*A font with emoji* on a host that has none (every emoji a box)~~
+    Done 2026-11-26: `status` says (`emoji_font`), and `screen install`
+    puts Noto Color Emoji among the account's fonts where there is
+    none (one commit of its makers' repository, its SHA-256 written in
+    the helper). Left: a newer one, when Unicode has more (the commit
+    and the checksum are in `screens.rs`).
+  - *The accessibility bus*: `tree` of a GTK or Qt program reads the
+    account's AT-SPI bus, which a server may not have (`at-spi2-core`).
+    Olo's own apps are read without it, and so is a page in Chrome
+    (through Olo's extension: read and driven on the dev server with no
+    session bus at all, 2026-11-26). To check for the rest on a bare
+    host, and say in `status`.
+  - *Videos* work there as they are (tried 2026-11-26, no GPU:
+    `history --export` of a screen's actions in under a second, and a
+    live `record-video` whose frame showed what was typed): the skill
+    says to send one to the desktop to show what was done. Nothing
+    left but to say so here.
 - **The website and README.md, made anew: done but for what waits on
   GitHub** (Ben, 2026-11-26: "completely refresh the website and the
   README.md with all new screenshots and covering the huge ecosystem of
@@ -3658,7 +3747,9 @@ something nobody here has is in "Blocked", with what it waits for.
     types (a click, the keys alone), then refused with what it holds
     (`set_not_kept`: a password's, none said, or the keyboard gone on
     to a code's next box can't be told). Tried live on a kit app's
-    field (kept, no second try); not on a page (no Chrome here).
+    field (kept, no second try), and on a page 2026-11-26 (Chrome on a
+    host's own screen: a field whose value the page writes back each
+    frame from its own state kept "4821", the page saying it had it).
   - *`click --name` chose a heading over the field of the same name*:
     prefer what can be acted on (a field, a button, a link) on a tie, or
     refuse and list the matches.
@@ -3672,8 +3763,10 @@ something nobody here has is in "Blocked", with what it waits for.
     1.16.0); `click` and `set` wheel it out from under, else refuse
     naming the layer; `tree` marks it `under=…`. `tree.js`'s part tried
     in a headless Chromium (`tests/tree-covered.html`: PASS, and FAIL
-    without the check); olo-screen's wheeling unit-tested, not tried on
-    a live page.
+    without the check); olo-screen's wheeling unit-tested, and tried on
+    a live page 2026-11-26 (a button scrolled under a header that
+    stays: `tree` had it `under="sticky header"`, `click` wheeled it 96
+    points clear and pressed it, and the page said so).
   - *`select` on a native select types into whatever has the keyboard*:
     when the select hadn't it, the keys went to the page's "/" shortcut,
     another select, a search box. Make sure the select has the keyboard
@@ -3682,7 +3775,9 @@ something nobody here has is in "Blocked", with what it waits for.
     its list opened, has the keyboard (`keys_reach`: not the page, which
     lies over it and takes text, nor nothing); clicked twice, then
     refused naming what kept it, nothing typed. The value was read back
-    already. Unit-tested; not on a live page (no Chrome here).
+    already. Unit-tested, and tried on a live page 2026-11-26 (a page
+    whose `/` goes to its search box: `select … Violet` chose Violet,
+    the page said so, and the search box had nothing).
   - *Olo's Chrome on a fresh screen's profile*: a "What's New" tab in
     front of the page asked for, and after a Google sign-in Chrome's
     "Sign in to Chrome?" sheet, which took the keys meant for the page;
@@ -3690,7 +3785,16 @@ something nobody here has is in "Blocked", with what it waits for.
     both off for screens' profiles (Chrome's policies or flags).
     **Done** 2026-11-24: `signin.allowed` off in a screen's profile and
     What's New turned off at its launch (`olo-chrome`); unit-tested, not
-    tried against a live Chrome (none on the dev server).
+    tried against a live Chrome (none on the dev server). Tried
+    2026-11-26, and the sign-in half hadn't worked: Chrome 158 still
+    offered "Sign in to Chrome?" in its bar, the profile's file reading
+    `"allowed": true`. Chrome starts with `signin.allowed` made what
+    `signin.allowed_on_next_startup` says. Both are written now, for a
+    screen's profile set up before too (which was also never looked at
+    again once its screen had been stopped: the lock an ended Chrome
+    leaves was taken for a running one). After: no offer, a plain
+    profile button, both settings off in the file with Chrome running.
+    No What's New tab came either time.
   - *`olo-screen look NAME /abs/path.png` from a host*: a path of the
     host's was taken as the desktop's, and failed ("app_server: No such
     file or directory"); a bare name landed in the bridge's shared

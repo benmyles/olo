@@ -576,7 +576,16 @@ fn a_follower_is_told_everything_and_then_each_change() {
 
     // One that starts is said, with whose child it is.
     let started = rig.start_child("agy", "later", &[]);
-    let said = next();
+    // (The next it hears of the new one: the one from before may have
+    // something said of it first, its first look at its screen coming
+    // just then. Taking the very next frame for the new child's failed
+    // three runs in four with the computer quick, and passed with it
+    // busy, where the first child had settled before anyone followed.)
+    let mut said = next();
+    while said["agent"]["id"] != started["id"] {
+        assert_eq!(said["agent"]["name"], "before", "{said}");
+        said = next();
+    }
     assert_eq!((&said["t"], &said["agent"]["id"], &said["agent"]["cli"]), (&json!("agent"), &started["id"], &json!("agy")), "{said}");
     assert_eq!(said["agent"]["desktop_policy"]["mode"], "none");
     // How it stands, as that changes.
@@ -602,6 +611,34 @@ fn a_follower_is_told_everything_and_then_each_change() {
     // The follower's input closing ends it.
     drop(follow.stdin.take());
     assert_eq!(follow.wait().unwrap().code(), Some(0));
+}
+
+/// A following that is asked to end (its input closed) says it was
+/// asked to: 0, never "the service went away, follow again" (75). The
+/// closing ends its reading of the service at once, and the two raced
+/// to say why it ended; with many at once the reading often won.
+#[test]
+fn a_following_asked_to_end_says_it_was_asked() {
+    use std::io::BufRead as _;
+    let Some(rig) = Rig::start("unfollow") else { return };
+    rig.json(&["start", "--command", "--name", "there", "--json", "--", "sleep", "300"]);
+    for round in 0..4 {
+        let mut following: Vec<_> = (0..24)
+            .map(|_| {
+                let mut f = rig.helper().args(["agent", "follow"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+                // (Following: its first frame is here.)
+                let mut frames = std::io::BufReader::new(f.stdout.take().unwrap()).lines();
+                assert!(frames.next().is_some_and(|l| l.is_ok_and(|l| l.contains("snapshot"))));
+                (f, frames)
+            })
+            .collect();
+        for (f, _) in &mut following {
+            drop(f.stdin.take());
+        }
+        let codes: Vec<Option<i32>> = following.iter_mut().map(|(f, _)| f.wait().unwrap().code()).collect();
+        assert!(codes.iter().all(|c| *c == Some(0)), "round {round}: {codes:?}");
+    }
+    rig.json(&["stop", "there", "--force", "--json"]);
 }
 
 /// A feedback survey drawn over a child's screen is set aside by the
@@ -818,6 +855,29 @@ fn a_key_is_pressed_as_the_keyboard_would_press_it() {
     assert_eq!(pressed("Alt+m"), b"\x1bm");
     assert_eq!(pressed("Escape"), b"\x1b");
     assert_eq!(pressed("Ctrl+Shift+Up"), b"\x1b[1;6A");
+    // A character by itself is that one key: no Return after it, and not
+    // pasted (a program that takes pastes would get it between its
+    // paste marks, as it gets `send`'s text).
+    rig.show("typist", "\x1b[?2004h takes pastes\n");
+    rig.wait("its screen", || rig.olo(&["read", "typist"]).1.contains("takes pastes"));
+    assert_eq!(pressed("0"), b"0");
+    assert_eq!(pressed("y"), b"y");
+    assert_eq!(pressed("Shift+y"), b"Y");
+    // Into a question it is an answer by its number: refused as text
+    // is, with nothing reaching the program, unless it is meant.
+    rig.show("typist", &asking("rm -rf build", 0));
+    rig.wait("its question", || rig.json(&["status", "typist", "--json"])["state"] == "waiting_approval");
+    let before = rig.keys("typist").len();
+    let (code, out, err) = rig.olo(&["send", "typist", "--key", "2", "--json"]);
+    assert_eq!(code, 1, "a character key into a question: {out}{err}");
+    assert!(format!("{out}{err}").contains("refusing to press a character key") && format!("{out}{err}").contains("--force"), "{out}{err}");
+    assert_eq!(rig.keys("typist").len(), before, "the refused key reached it");
+    // (A key that types nothing still goes, as before.)
+    assert_eq!(pressed("Down"), b"\x1b[B");
+    let before = rig.keys("typist").len();
+    rig.json(&["send", "typist", "--force", "--key", "2", "--json"]);
+    rig.wait("the forced key", || rig.keys("typist").len() > before);
+    assert_eq!(rig.keys("typist")[before..], *b"2");
     rig.json(&["stop", "typist", "--force", "--json"]);
 }
 

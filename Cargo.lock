@@ -8667,6 +8667,7 @@ dependencies = [
  "libc",
  "memchr",
  "olo-agent-screen",
+ "olo-release",
  "olo-rex-client",
  "olo-rex-sync",
  "quinn",

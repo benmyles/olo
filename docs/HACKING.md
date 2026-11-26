@@ -6297,6 +6297,20 @@ machine). To see a
 test's notifications, run its own centre:
 `$T run NAME olo-notifications --bus unix:path=/var/tmp/olo-dev/NAME/bus`.
 
+And every session is fenced off from what the computer has one of. Rex:
+a server socket nothing listens on and an agents folder of its own
+(`REX_SERVER_SOCKET`, `OLO_REX_AGENTS_DIR`; "Leave the host's agents
+alone too"). Token Pool: `OLO_POOL_PORT=0` and `OLO_POOL_PROXY_PORT=0`.
+The pool is one a computer, on 127.0.0.1:17891 with its proxy on 17892,
+and agents' requests go through it (on a Rex host, `olo-pool-host`'s):
+port 0 is no pool to whoever asks one (the palette's /ask and the
+assistants, which spend the person's accounts; Rex), and any free port
+to an `olo-pool` started in the session, which would otherwise take the
+real ports wherever they were free and be the computer's pool with
+nothing behind it. `olo-pool`'s demo (`OLO_POOL_DEMO`) sets the same
+for itself, whatever it is told (2026-11-26; `run NAME OLO_POOL_PORT=N
+…` for a pool of a test's own, as the Rex rig does).
+
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). What apps keep between runs and their caches are
@@ -10291,6 +10305,26 @@ again. The profile row's Save As… and Delete are as wide as their
 words (`Button::min_width`): at the kit's least width they left the
 menu six points short of "Mac (Customized)".
 
+## A menu's frame (crates/kit/src/menu.rs)
+
+BeOS's: the menu's colour in a dark outline, a light inner line on its
+top and left. In a dark look the ground is a step lighter than the
+window's, the outline nearly black, and the right side and foot have an
+inner line of their own, a step dimmer than the near one (`FAR_EDGE`:
+(71, 86, 97) beside (78, 93, 104) in Classic dark): a nearly black line
+on a dark panel or list is no edge (1.2 to 1), and a menu's far sides
+ran into what was under them (Opus 5.5 on Token Pool, 2026-11-25). The
+near lines own the two corners where they meet the far ones. A
+separator runs from the frame's inner line to its inner line, two lines
+in on device pixels as the frame is (`style::inset(g, b, 2.0)`), not two
+points in: at 1.5× a line is one pixel and a point one and a half, and
+each end stood a pixel short. A highlighted row runs from outline to
+outline, over the inner lines on both sides alike. Measured at 1, 1.25,
+1.5, 1.75 and 2× (2026-11-26): no pixel of ground between a separator's
+end and the frame's line on either side; the corners each one colour;
+the last item's highlight clear of the foot's line. The light look is as
+it was but for the separator's ends at 1.5×.
+
 ## Menus in groups (the window menu, Deskbar's; every menu of Olo's)
 
 Ben, 2026-11-18: "group the 3 zoom options under a "Zoom ->" parent and
@@ -10900,6 +10934,62 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - Right-aligned labels: `style::label` rounds their left edge down, so
     they never run past their anchor.
   - The review measures a text field by its frame.
+- **A node's place is its cumulative place rounded** (2026-11-26; the
+  layout engine itself, `vendor/taffy/src/compute/mod.rs`,
+  `round_layout`). Layout is worked out in device pixels and rounded:
+  a size is the difference of two rounded edges, each rounded from where
+  it is in the window. Taffy rounded a node's offset in its parent by
+  itself, though, and whoever draws sums those offsets down the tree:
+  wherever two of them each ended on half a pixel (0.5 + 0.5 is 1, but
+  1 + 1 is 2), a node stood a pixel past the end of what it follows, or
+  a pixel into it. Under every tab strip at 1.25× and 1.75×: a 26-point
+  menu bar (32.5 px), then a column whose strip is 34 points (42.5 px);
+  the strip ended at row 75 and the pane began at 76. An offset is now
+  the difference of the node's rounded place and its parent's, so the
+  sum is the same number its neighbours' sizes were cut to
+  (`what_follows_a_row_begins_where_it_ends_at_every_scale`, five
+  scales, rows of even and odd heights). What it changed, 27 windows of
+  20 apps at 1, 1.25, 1.5, 1.75 and 2×, the build before against the
+  build after, pixel for pixel (noise taken out by the build before
+  against itself): at 1× and 2× a block here and there one pixel up or
+  down (a centred line of words: Telegram's "Choose a chat…",
+  Preferences' notes), each whole and unchanged in itself; at 1.25× and
+  1.75× most windows, by a pixel. The layout review on the same 135
+  window-and-scales: 16 findings gone (the seams under Rex's and
+  Tracker's strips, Token Pool's "almost line up" and "uneven rows",
+  Weather's "almost level"), none new there. The whole live lint after
+  (`ui-lint --review --scales 1.25,1.75`, every app it runs, the commit
+  before against the commit after): 5 errors before (Tracker's seam at
+  1.75×) and none after; 23 notes before and 28 after. What came: a
+  line laid out under a check box's or a light's label stands a pixel
+  off that label at 1.25× and 1.75× in three places (Default Apps'
+  "sav, sv2" over "Viewer"; Network ▸ Ethernet's "From the network"
+  over "Automatically"; Token Pool ▸ Machines, which the lint didn't
+  run until that day). Why: the label is drawn in the control's canvas,
+  18 points (`MARK_SIZE + MARK_GAP`: 22.5 px at 1.25×) from the
+  canvas's *rounded* left edge; the line under it is put by layout 18
+  points from its parent's *true* left edge, rounded after. Where the
+  parent stands on half a pixel the two round apart. Before, both were
+  rounded from the same rounded edge, and agreed, while things outside
+  the parent did not. **Lengths on whole device pixels are not the
+  cure: tried and taken out** the same day (every length a style gives
+  layout rounded to the nearest pixel, as a border's width is; every
+  app's live lint with its review at 1, 1.25, 1.5, 1.75 and 2×, the
+  tree against the tree with it): those notes went, and Software
+  Updates' two, but 0 errors and 44 notes became 7 errors and 67
+  notes. Parts rounded each by itself don't add up to their sum
+  rounded (6 and 6 points are 8 and 8 pixels at 1.25×, 12 points are
+  15): whatever is lined up by two different sums parts by a pixel
+  (twelve new "almost line up" in Token Pool), and a row of fixed parts
+  no longer fits what holds it (a Splitter a pixel past its window in
+  Phone and Telegram at 1.25× and 1.75×). Layout keeps true lengths,
+  and rounds places: what is at one true place is at one pixel. What
+  is left is for a control's drawing to know its true place (TODO). A
+  layout pass costs what it did
+  (1,801 nodes, one changed, release: 124 to 131 µs before and after,
+  five runs each; `rounding_cost`). The 4-point grid above still holds
+  for what is *drawn* from a size (a divider at a column's edge): this
+  is only where nodes are put.
   `tools/dev/ui-lint --review --scales 1,1.25,1.5,1.75,2` checks every
   app at all five.
 - **Clients draw at the device size.** The Interface Kit asks app_server for
@@ -22778,6 +22868,140 @@ Chrome opens in half a second with no match rule refused; `tree` reads
 GNOME Calculator's buttons on a screen with its own bus; the bus ends
 with the screen.
 
+### Agent Screens of a host's own (crates/rex-link/src/screens.rs)
+
+An agent on a Rex host had its screens on the person's desktop, asked
+through Rex (`olo screen …`, the bridge): the desktop had to be
+connected and awake, and the screen drew there. It can have them on the
+host itself (Ben, 2026-11-26: "there should be an option for agents on a
+rex host to use olo agent screens on the host itself without having to
+use them on the user's desktop (although that should also remain an
+option). the host's olo agent screens should use software rendering and
+provide a full olo desktop for the agent and it should also have chrome
+installed and ready to use").
+
+- **A screen there is a screen**: `olo-screen`'s, a headless
+  `olo-session` with Deskbar, Tracker's desktop and every app, on a bus
+  of its own. Nothing of it is special to a host but where it draws:
+  app_server takes Mesa's software device by itself where there is no
+  render node (above). So what a host needs is Olo itself.
+- **Olo on a host** is the release, put under the account and nowhere
+  else, in a prefix of its own: `~/.local/share/olo/desktop` (`bin`,
+  `share/olo`). Not `~/.local`: a host isn't an Olo desktop, its
+  `~/.local/bin` is the account's, and the desktop commands' `olo-screen`
+  there must go on meaning what it means. The helper puts it
+  (`olo-rex-link screen install`, feature `screens`, in the helper built
+  with zig): `olo_release::install`, which is `olo-release install`'s own
+  code moved into the library (the release found on GitHub, each file
+  checked against its SHA-256, unpacked, each program that differs
+  renamed into place), with one thing more, `Install::without`: parts
+  left out by how their files' names begin. A host goes without
+  `olo-wallpapers-` (1.6 GB; its desktop's ground is the plain colour).
+  A part left out is told to `fetch` as one it has, so it is never asked
+  for. 601 MB to download, 1.9 GB on disk, 78 programs. `olo screen
+  install` again brings it up to the newest; `remove` takes it off, never
+  from under a screen that runs.
+- **Its data is found beside it**: `olo_xdg::data_dirs` looks in
+  `PREFIX/share/olo` for a program run from `PREFIX/bin` (before, only
+  the tree, `~/.local/share/olo` and `/usr/share/olo`: an Olo in any
+  other place drew with the system's fonts and no icons unless
+  `OLO_DATA` said where).
+- **Chrome** is put in the home folder by Olo's own launcher with no
+  window: `olo-chrome --olo-install` (Google's package for the machine,
+  checked and unpacked under `~/.local/share/olo/chrome`, as its
+  Download button does; a line of JSON a step). `screen install` runs it
+  last; `--no-chrome` leaves it.
+- **What the host lacks is said, not found out by a program that won't
+  start**: `olo screen status` reads each program's own headers for the
+  libraries it asks its loader for (`screens::Linked`: the ELF's
+  dynamic section, in Rust; nothing is run) and looks for each where
+  this host's loader looks (`/etc/ld.so.conf` and the usual folders),
+  and for Mesa's EGL and its software renderer. `missing` is empty on a
+  Fedora 44 host set up by Rex. The release's programs are linked on
+  Fedora 44, and a library can be there and too old: `older` has, by
+  library, the versions of its symbols the programs need that the
+  host's hasn't (`DT_VERNEED` of each program against `DT_VERDEF` of
+  the library found: `{"libc.so.6": ["GLIBC_2.42", "GLIBC_2.43"]}` on a
+  system with an older C library, where the loader would say "version
+  `GLIBC_2.43' not found" of every program). `install` ends with
+  status 3 where anything is lacking, Olo put all the same.
+- **A font with emoji.** A server seldom has one (the dev server: none),
+  and every emoji is then a box, in Olo's windows and on a page in
+  Chrome alike. `status` says (`emoji_font`: a font file with "emoji"
+  in its name among the system's fonts or the account's), and `install`
+  puts one where there is none: Noto Color Emoji (OFL 1.1, 10.7 MB),
+  from its makers' repository at one commit, refused unless its SHA-256
+  is the one written in `screens.rs`, into
+  `~/.local/share/fonts/olo-screens`, where fontconfig finds it for
+  Olo's programs and for Chrome. (Not carried in Olo's release: a
+  desktop has its system's, and the release needn't grow by 10 MB for
+  hosts.) `remove` takes that folder away with Olo. Tried on the dev
+  server: StyledEdit and a page in Chrome drew a rocket, a tick, a
+  warning sign and a flag in colour where each had drawn boxes.
+- **Nothing is fetched twice.** `install` asks GitHub which release is
+  meant (the newest, or `--tag`) and, where that one is here already,
+  fetches nothing (0.1 s; `--again` to fetch it all the same; before,
+  600 MB came down to find every program the same).
+- **Which screens `olo screen` means** on a host
+  (`apps/rex/src/bridge_olo.sh`): `--on host` or `--on desktop` first
+  of its arguments, else `OLO_SCREENS_ON`, else the host's default
+  (`olo screen default host|desktop`, one word in
+  `~/.config/olo/screens-on`), else the desktop's as it always was.
+  `install`, `status`, `default` and `remove` are the host's own
+  whichever is asked. The host's are `exec`ed straight to the helper,
+  which `exec`s the prefix's `olo-screen` with the prefix's programs
+  first on the path: no Rex server, no desktop and no service is asked.
+  Where the desktop can't be asked (status 69) a screen command says the
+  other way.
+- **A screen ends with the tab that started it.** On the desktop a
+  screen left running is seen by the person, in Agent Screens; on a host
+  nobody sees one, and a screen left by every agent that ever wanted a
+  page is a quarter of a gigabyte each, with Chrome the better part of
+  one, for ever. So `start` from a Rex tab leaves a keeper (`screen
+  keep-until NAME PID BEGAN`, the helper again) that stops the screen
+  when the tab's own program ends: the agent, or the shell. The tab is
+  known by `REX_BLOCK`; its program is the furthest of the helper's
+  parents that was started with the same one (`/proc/PID/environ`: a
+  command an agent runs is several shells down from the agent, and may
+  be in a session of its own, so the session's leader is not it). The
+  keeper waits on the process itself (`pidfd_open`, then `poll`: no
+  timer, and a number given to another process later is never taken for
+  it; BEGAN, its start time, is checked once the descriptor is held),
+  in the screen's process group, so a screen stopped first takes its
+  keeper with it; it stops the screen through `olo-screen stop` in a
+  group of its own, since `stop` ends the screen's. `start --keep`
+  leaves none, and outside a Rex tab there is no program to go by: such
+  a screen stays until it is stopped. (Tried on the dev server: a
+  screen started from a shell with a `REX_BLOCK` of its own ran while
+  the shell did, and was stopped when it ended, nothing of it left.)
+- **Measured** on the dev server (64 processors, no GPU, software
+  drawing), an account of its own. Putting Olo there with the static
+  helper a host has, from GitHub: 16 s in all (601 MB downloaded,
+  checked, unpacked, 75 programs and the data placed); Chrome after, 7 s
+  (460 MB in the home). A screen starts in 0.23 s to 0.31 s. At rest for
+  12 s its processes took 0 ticks of processor time (nothing is drawn
+  when nothing changes, in software as on a GPU). One screen alone
+  holds 407 MB (proportional set size: app_server 108, Tracker 88,
+  Deskbar 82, the notification centre and the portal 46 each), and with
+  three running each holds about 250 MB, the programs' own pages being
+  shared: thirty screens are about 7.5 GB before what runs on them.
+  With Chrome on a still page of a server on the same machine (20 s
+  after it loaded, over 30 s): 26 ticks, 0.9% of one processor, 25 of
+  them Chrome's own and 1 app_server's; 867 MB in all, 466 of it
+  Chrome. On that screen `tree` read the page (its heading, button and
+  paragraph), `click --role Button --name "Press me"` pressed the
+  button, and the page said so.
+- **Tests**: `crates/rex-link/tests/screens.rs` (where `olo screen`
+  goes, each way of saying it; the helper with an Olo made up for the
+  test; never removed under a running screen; a screen ended with its
+  tab's program and not before, kept with `--keep` or from no tab),
+  `a_release_is_installed_under_a_prefix_without_a_part_left_out` in
+  olo-release, and the helper's `a_programs_libraries_are_read_from_its_headers`.
+- **Not yet** (TODO): the person watching a host's screen from Rex; a
+  default by host in Preferences ▸ Rex and the Host window; a child's
+  policy naming the host's screens; a host's Olo brought up to date by
+  the desktop when it connects.
+
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 
 Agents on a screen get the passwords the person chose, and only those:
@@ -30803,7 +31027,14 @@ agents through the night, could not move to it.
 - *Small things the move needed*: `send --key` takes any key with any
   modifier a terminal can send (`special_key`: `Alt+m` is the escape and
   the letter, what tmux sends for `M-m`; `Ctrl+Shift+Up` is xterm's
-  form); a feedback survey drawn over a screen (Claude Code's "How is
+  form), and a character by itself, as that one key and nothing after
+  it (`--key 0`, `--key y`: no Return, no paste; it was refused, and a
+  box that takes one key and must be given no text couldn't be answered
+  in a tab: Claude Code's "1 to review · 2 to send · 0 to dismiss" over
+  a drafted feedback report, whose only key anyone may press is its 0;
+  the ShiftUp lead's item 25, 2026-11-26. Into a question a character
+  is an answer by its number, so it is refused there as text is, without
+  `--force`: `spec::key_types`); a feedback survey drawn over a screen (Claude Code's "How is
   Claude doing this session?", Antigravity's "How's the CLI experience
   so far?", which hid a permission prompt for 25 minutes) is set aside
   by the service with the survey's own key (`olo_agent_screen::

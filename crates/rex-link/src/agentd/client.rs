@@ -369,10 +369,19 @@ fn follow(server: &Path, paths: &Paths) -> i32 {
             _ => continue,
         };
         // The input closing ends it: the service is told by its side closing.
+        // (And this side is told it was asked to, before the closing:
+        // the closing ends the reading below at once, and whichever of
+        // the two threads came first said why the command ended. With
+        // the computer busy the reading did, and a following that was
+        // asked to end said "the service went away, follow again": 75
+        // for 0, one run in a few of the tests under load, 2026-11-26.)
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let told = asked.clone();
         std::thread::spawn(move || {
             let mut sink = [0u8; 256];
             let mut stdin = std::io::stdin().lock();
             while stdin.read(&mut sink).is_ok_and(|n| n > 0) {}
+            told.store(true, std::sync::atomic::Ordering::SeqCst);
             let _ = to_service.shutdown(std::net::Shutdown::Both);
             std::process::exit(0);
         });
@@ -383,7 +392,7 @@ fn follow(server: &Path, paths: &Paths) -> i32 {
                 return 0;
             }
         }
-        return AGAIN;
+        return if asked.load(std::sync::atomic::Ordering::SeqCst) { 0 } else { AGAIN };
     }
     AGAIN
 }

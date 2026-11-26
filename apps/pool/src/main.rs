@@ -460,6 +460,22 @@ fn follow_clients(shared: std::sync::Arc<olo_token_pool::gateway::Shared>) {
 
 fn main() -> std::process::ExitCode {
     olo_crash::install();
+    // The demo (made-up accounts, for pictures and the lint) is no pool:
+    // it listens on ports of its own, any that are free, never the
+    // gateway's and the proxy's. Where no pool ran, a demo took 17891 and
+    // 17892 and was this computer's pool to every agent whose requests
+    // go through them, with nothing behind it; where one ran (a Rex
+    // host's), it only failed to ("Can't listen on 127.0.0.1:17891:
+    // Address already in use", in every picture's log, 2026-11-26).
+    if aggregate::demo_enabled() {
+        // SAFETY: before any thread (the crash handler starts none: it
+        // sets signal handlers, and is every program's first line, which
+        // crates/crash/tests/every_program.rs holds each to).
+        unsafe {
+            std::env::set_var("OLO_POOL_PORT", "0");
+            std::env::set_var("OLO_POOL_PROXY_PORT", "0");
+        }
+    }
     if std::env::var_os(ui::KEEPER_ENV).is_some() {
         return keeper();
     }

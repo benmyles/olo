@@ -481,6 +481,108 @@ mod tests {
         }
     }
 
+    /// What follows a row begins where the row ends, to the device pixel,
+    /// however deep each is and whatever the scale: a node's place summed
+    /// down the tree is the edge its neighbour's size was cut to. Rex at
+    /// 1.25x and 1.75x: a menu bar 26 points high, then a column whose tab
+    /// strip is 34 points and whose pane follows it. The strip ended at
+    /// device row 75 and the pane began at 76 (two offsets that each end
+    /// on half a pixel, rounded each by itself), a row of the window's
+    /// ground between them; the layout review's "seam".
+    ///
+    /// The same sizes as shares, too, which end on any part of a pixel,
+    /// not only a half, as whatever layout divides can (shares of a
+    /// little more than a window that is whole pixels itself, as windows
+    /// are, so that none ends on half a pixel but for what a float loses,
+    /// which no rounding puts the same way twice).
+    #[test]
+    fn what_follows_a_row_begins_where_it_ends_at_every_scale() {
+        for (scale, shares) in [1.0, 1.25, 1.5, 1.75, 2.0].into_iter().flat_map(|scale| [(scale, false), (scale, true)]) {
+            for (bar, strip) in [(26.0, 34.0), (25.0, 33.0), (26.0, 13.0), (31.0, 17.0)] {
+                let mut layout: Layout<u32> = Layout::new();
+                let rem = px(16.0);
+                let mut add = |element: crate::Element, children: &[LayoutId]| {
+                    let id = layout.add(&style(element), rem, scale, None);
+                    layout.set_children(id, children);
+                    id
+                };
+                let (wide, tall) = if shares { (800.0, 600.0) } else { (801.0, 601.0) };
+                let high = |points: f32| if shares { crate::relative(points / 601.3) } else { px(points).into() };
+                let menu = add(div().w_full().h(high(bar)).flex_shrink_0(), &[]);
+                let tabs = add(div().w_full().h(high(strip)).flex_shrink_0(), &[]);
+                let header = add(div().w_full().h(high(strip)).flex_shrink_0(), &[]);
+                let body = add(div().w_full().flex_1(), &[]);
+                let view = add(div().size_full().flex().flex_col(), &[header, body]);
+                let pane = add(div().flex_1().w_full().flex().flex_col(), &[view]);
+                let centre = add(div().flex_1().flex().flex_col(), &[tabs, pane]);
+                let side = add(div().w(if shares { crate::relative(13.0 * bar / 801.3) } else { px(13.0 * bar).into() }).h_full().flex_shrink_0(), &[]);
+                let row = add(div().flex_1().w_full().flex(), &[side, centre]);
+                let root = add(div().size_full().flex().flex_col(), &[menu, row]);
+                let available = size(AvailableSpace::Definite(px(wide)), AvailableSpace::Definite(px(tall)));
+                layout.compute(root, available, scale, |_, _, _| Size::default());
+                // (In device pixels, summed down the tree as `place` sums them.)
+                let at = |chain: &[LayoutId]| {
+                    let (mut x, mut y) = (0.0, 0.0);
+                    for id in chain {
+                        let b = layout.placed(*id, scale).0;
+                        (x, y) = (x + b.origin.x.0 * scale, y + b.origin.y.0 * scale);
+                    }
+                    let b = layout.placed(*chain.last().unwrap(), scale).0;
+                    (x.round(), y.round(), (x + b.size.width.0 * scale).round(), (y + b.size.height.0 * scale).round())
+                };
+                let (tabs_at, header_at, body_at) = (at(&[root, row, centre, tabs]), at(&[root, row, centre, pane, view, header]), at(&[root, row, centre, pane, view, body]));
+                let (side_at, centre_at) = (at(&[root, row, side]), at(&[root, row, centre]));
+                let why = format!("at {scale}x, a bar {bar} and rows {strip} points high{}", if shares { ", as shares of the window" } else { "" });
+                assert_eq!(header_at.1, tabs_at.3, "the header's top and the strip's foot, {why}");
+                assert_eq!(body_at.1, header_at.3, "the body's top and the header's foot, {why}");
+                assert_eq!(centre_at.0, side_at.2, "the centre's left and the side's right, {why}");
+                assert_eq!(body_at.3, (tall * scale).round(), "the body's foot and the window's, {why}");
+                assert_eq!(centre_at.2, (wide * scale).round(), "the centre's right and the window's, {why}");
+            }
+        }
+    }
+
+    /// What laying out and rounding a window's worth of nodes costs (a
+    /// column of 300 rows, each a row of five boxes in a box: 1,801
+    /// nodes, one row changed each time, as a list does when a row's
+    /// text changes): `jato test --release -p olo-interface
+    /// rounding_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn rounding_cost() {
+        let scale = 1.25;
+        let mut layout: Layout<u32> = Layout::new();
+        let rem = px(16.0);
+        let mut rows = Vec::new();
+        let mut first = None;
+        for _ in 0..300 {
+            let mut cells = Vec::new();
+            for c in 0..5 {
+                let cell = layout.add(&style(div().w(px(13.0 + c as f32)).h(px(17.0)).flex_shrink_0()), rem, scale, None);
+                cells.push(cell);
+            }
+            first.get_or_insert(cells[0]);
+            let inner = layout.add(&style(div().flex().gap(px(3.0))), rem, scale, None);
+            layout.set_children(inner, &cells);
+            let row = layout.add(&style(div().w_full().h(px(21.0)).flex_shrink_0().flex()), rem, scale, None);
+            layout.set_children(row, &[inner]);
+            rows.push(row);
+        }
+        let root = layout.add(&style(div().size_full().flex().flex_col()), rem, scale, None);
+        layout.set_children(root, &rows);
+        let available = size(AvailableSpace::Definite(px(801.0)), AvailableSpace::Definite(px(601.0)));
+        layout.compute(root, available, scale, |_, _, _| Size::default());
+        let cell = first.unwrap();
+        let rounds = 2000;
+        let t = std::time::Instant::now();
+        for i in 0..rounds {
+            layout.set_style(cell, &style(div().w(px(13.0 + (i % 2) as f32)).h(px(17.0)).flex_shrink_0()), rem, scale);
+            layout.compute(root, available, scale, |_, _, _| Size::default());
+            std::hint::black_box(layout.placed(cell, scale));
+        }
+        println!("1,801 nodes, one changed: {:.1} µs a layout", t.elapsed().as_secs_f64() * 1e6 / f64::from(rounds));
+    }
+
     /// A flex-column item with `w_full().max_w(554)` measures its wrapped
     /// child's height at its clamped width (554 minus padding = 540), not at
     /// the column's full width (2000). Without clamping `child.size.cross` in

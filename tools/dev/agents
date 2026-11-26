@@ -1179,7 +1179,13 @@ def watch(stuck_min, only=None, at_most=None, among=None):
                 again = second_time(n, question)
                 alerts.append((n, f"asks you (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)" + (f": {again}" if again else ""), "\n".join(question)))
             elif st == "exited" and m.get("seen_state") != "exited":
-                alerts.append((n, "has exited", screen(n, 40)))
+                # (One whose result is written has ended as it should: a
+                # look's front door ends its session once the review is
+                # kept, and a watcher that came by just after was told
+                # "has exited", the word for a program that died, which
+                # a minder's rules hand back as a failure, 2026-11-26.)
+                result = next((f for f in (m.get("kept"), done_file(n)) if f and os.path.exists(f)), None)
+                alerts.append((n, f"is DONE ({result})", "") if result else (n, "has exited", screen(n, 40)))
             elif st == "idle":
                 # (A moment to start; and a turn that's really over, not
                 # the gap between two steps.)

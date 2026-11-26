@@ -11,9 +11,10 @@
 //!     Olo's releases, the newest first, and which is installed, as JSON
 //!     ({"releases": [{"tag", "title", "version", "published", "installed"}],
 //!     "installed": VERSION})
-//! olo-release install --prefix PREFIX [--retire NAME]… [--from ARCHIVE | --tag TAG]
+//! olo-release install --prefix PREFIX [--retire NAME]… [--without PART]… [--from ARCHIVE | --tag TAG]
 //!     the newest release (or the one tagged TAG, an older one too; or
-//!     ARCHIVE, a file or a URL, its .sha256 beside it) downloaded,
+//!     ARCHIVE, a file or a URL, its .sha256 beside it; without the
+//!     parts whose files' names begin PART: `olo-wallpapers-`) downloaded,
 //!     checked, unpacked and put in place under PREFIX: one
 //!     JSON object a line as it goes ({"doing": "downloading", "fraction":
 //!     0.42}), then what it installed ({"installed": [programs], "version"})
@@ -34,7 +35,7 @@ use serde_json::json;
 
 const USAGE: &str = "olo-release latest --prefix PREFIX
 olo-release list --prefix PREFIX
-olo-release install --prefix PREFIX [--retire NAME]... [--from ARCHIVE | --tag TAG]";
+olo-release install --prefix PREFIX [--retire NAME]... [--without PART]... [--from ARCHIVE | --tag TAG]";
 
 fn option(args: &[String], flag: &str) -> Option<String> {
     args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
@@ -118,49 +119,18 @@ impl Progress {
     }
 }
 
-/// `install`: the release fetched, checked, unpacked and put in place.
+/// `install`: the release fetched, checked, unpacked and put in place
+/// (`olo_release::install`), said as it goes.
 fn install(prefix: &std::path::Path, args: &[String]) -> Result<(), String> {
-    let retire: Vec<String> = args.windows(2).filter(|p| p[0] == "--retire").map(|p| p[1].clone()).collect();
-    let installed = olo_release::installed_in(prefix);
-    // The newest release (its checksum file and commit known: recorded
-    // as it's installed), or the archive given.
-    let (source, release) = match (option(args, "--from"), option(args, "--tag")) {
-        (Some(given), _) => (olo_release::find(Some(&given))?, None),
-        (None, Some(tag)) => {
-            let r = olo_release::by_tag(&tag)?;
-            (r.source.clone(), Some(r))
-        }
-        (None, None) => {
-            let r = olo_release::latest()?;
-            (r.source.clone(), Some(r))
-        }
+    let ask = olo_release::Install {
+        from: option(args, "--from"),
+        tag: option(args, "--tag"),
+        retire: args.windows(2).filter(|p| p[0] == "--retire").map(|p| p[1].clone()).collect(),
+        // (A host's screens: `--without olo-wallpapers-`.)
+        without: args.windows(2).filter(|p| p[0] == "--without").map(|p| p[1].clone()).collect(),
     };
-    let stop = AtomicBool::new(false);
     let mut p = Progress { doing: "", last: None };
-    // (Bytes across all the files: the archive, and the parts it hasn't.)
-    let total: u64 = release.as_ref().map_or(0, |r| r.download_bytes(&installed));
-    let mut before = 0u64;
-    let mut current = (0usize, 0u64);
-    let archives = olo_release::fetch(&source, &installed.sums, &stop, &mut |file, _, got, of| {
-        if file != current.0 {
-            before += current.1;
-            current = (file, 0);
-        }
-        current.1 = of;
-        let (done, all) = if total > 0 { (before + got, total) } else { (got, of) };
-        p.tell("downloading", done, all);
-    })?;
-    let stage = olo_release::cache_dir().join("upgrade");
-    let mut unpacking = Progress { doing: "", last: None };
-    let olo = olo_release::unpack(&archives, &stage, &stop, Box::new(move |done, all| unpacking.tell("unpacking", done, all)))?;
-    let version = olo_release::version_of(&olo);
-    let changed = olo_release::place_prefix(&olo, prefix, &retire, release.as_ref(), &mut |done, all| p.tell("installing", done, all))?;
-    // What was downloaded, only kept until it's in place: 2 GB in the
-    // cache otherwise.
-    let _ = std::fs::remove_dir_all(&stage);
-    for a in archives.iter().filter(|a| a.starts_with(olo_release::cache_dir())) {
-        let _ = std::fs::remove_file(a);
-    }
+    let (changed, version) = olo_release::install(prefix, &ask, &AtomicBool::new(false), &mut |doing, done, all| p.tell(doing, done, all))?;
     say(json!({ "installed": changed, "version": version }));
     Ok(())
 }

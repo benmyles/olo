@@ -765,6 +765,9 @@ pub struct SendPayload {
     /// For each of `post_keys`: the key as the terminal's own encoder is
     /// asked to press it, where its bytes can't say it ([`pressed_key`]).
     pub post_presses: Vec<Option<Pressed>>,
+    /// One of the keys types a character ([`key_types`]): into a
+    /// question it is an answer, refused without `force` as text is.
+    pub types: bool,
     pub force: bool,
     pub as_json: bool,
     pub verify_delivery: bool,
@@ -781,6 +784,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
     let mut text_parts: Vec<String> = Vec::new();
     let mut post_keys: Vec<String> = Vec::new();
     let mut post_presses: Vec<Option<Pressed>> = Vec::new();
+    let mut types = false;
 
     if let Some(v) = raw_obj
         && v.get("args").is_none()
@@ -799,12 +803,14 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
             post_keys.push(ctrl_byte(c)?);
         }
         if let Some(k) = v.get("key").and_then(Value::as_str) {
+            types |= key_types(k);
             post_presses.push(pressed_key(k));
             post_keys.push(special_key(k)?);
         }
         if let Some(ks) = v.get("keys").and_then(Value::as_array) {
             for k in ks {
                 if let Some(ks_str) = k.as_str() {
+                    types |= key_types(ks_str);
                     post_presses.push(pressed_key(ks_str));
                     post_keys.push(special_key(ks_str)?);
                 }
@@ -829,6 +835,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                 "--key" => {
                     i += 1;
                     let k = args.get(i).ok_or("--key requires a key name (e.g. Enter, Escape, Tab, Up, Down)")?;
+                    types |= key_types(k);
                     post_presses.push(pressed_key(k));
                     post_keys.push(special_key(k)?);
                 }
@@ -846,6 +853,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                     post_keys.push(ctrl_byte(&s["--ctrl=".len()..])?);
                 }
                 s if s.starts_with("--key=") => {
+                    types |= key_types(&s["--key=".len()..]);
                     post_presses.push(pressed_key(&s["--key=".len()..]));
                     post_keys.push(special_key(&s["--key=".len()..])?);
                 }
@@ -874,7 +882,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
     if paste && add_enter {
         verify_delivery = true;
     }
-    Ok(SendPayload { target, body, paste, enter: add_enter, post_keys, post_presses, force, as_json, verify_delivery })
+    Ok(SendPayload { target, body, paste, enter: add_enter, post_keys, post_presses, types, force, as_json, verify_delivery })
 }
 
 /// How a permission question is answered: by what a choice means,
@@ -1054,7 +1062,7 @@ pub fn special_key(raw: &str) -> Result<String, String> {
     let name = key.to_ascii_lowercase();
     let unknown = || {
         format!(
-            "unknown key `{raw}` (try Enter, Escape, Tab, Space, Backspace, Delete, Insert, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1 to F12 or a single character, with Alt+, Ctrl+ or Shift+ before it: Alt+m, Ctrl+C, Shift+Tab, Ctrl+Shift+Up)"
+            "unknown key `{raw}` (try Enter, Escape, Tab, Space, Backspace, Delete, Insert, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1 to F12 or a single character, alone or with Alt+, Ctrl+ or Shift+ before it: 0, y, Alt+m, Ctrl+C, Shift+Tab, Ctrl+Shift+Up)"
         )
     };
     // xterm's number for the modifiers held: 1, and 1 for Shift, 2 for Alt, 4 for Ctrl.
@@ -1110,11 +1118,30 @@ pub fn special_key(raw: &str) -> Result<String, String> {
         return Ok(format!("{esc}{}", ctrl_byte(&ch.to_string())?));
     }
     let ch = if shift { ch.to_uppercase().next().unwrap_or(ch) } else { ch };
-    if !alt && !shift {
-        // (A bare letter isn't a key's name here: say what is.)
+    // By itself too: that one key pressed, and nothing after it (no
+    // Return, no paste). It was refused ("a bare letter isn't a key's
+    // name"), and a box that takes one key and must be given no text
+    // could not be answered in a tab: Claude Code's "1 to review · 2 to
+    // send · 0 to dismiss", whose only key anyone may press is its 0
+    // (the ShiftUp lead's item 25, 2026-11-26). Into a question it is
+    // an answer, and wants `--force` as text does ([`key_types`]).
+    if ch.is_control() {
         return Err(unknown());
     }
     Ok(format!("{esc}{ch}"))
+}
+
+/// Whether `--key RAW` types a character of its own: one printable
+/// character with nothing held, or Shift alone (`0`, `y`, `Shift+y`). A
+/// named key, a control or an Alt chord is no character.
+pub fn key_types(raw: &str) -> bool {
+    let given = raw.trim();
+    if given.starts_with('^') && given.chars().count() == 2 {
+        return false;
+    }
+    let (alt, ctrl, _shift, key) = key_parts(given);
+    let mut chars = key.chars();
+    matches!((chars.next(), chars.next()), (Some(ch), None) if !alt && !ctrl && !ch.is_control())
 }
 
 /// Parsed options for `olo agent watch [<ID|NAME>... | --all] [--since CURSOR] ...`.

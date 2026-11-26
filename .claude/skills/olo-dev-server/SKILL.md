@@ -147,6 +147,23 @@ screenshot), open it in Olo's Viewer on your own screen there and look
 (`olo screen run NAME olo-viewer PATH`, `olo screen look NAME`); stop
 the screen and delete the picture's copy here when done.
 
+## A screen on the server itself
+
+Since 2026-11-26 an agent on a Rex host can have an Agent Screen on the
+host, with no desktop asked (HACKING, "Agent Screens of a host's own"):
+`olo screen status` says whether Olo is on the server
+(`~/.local/share/olo/desktop`), `olo screen install` puts it and Chrome
+there (16 s on this server, no root), and `olo screen --on host start
+NAME` is a whole Olo desktop drawn in software, Chrome included, driven
+with the same commands. It is the released Olo, not the tree's: use it
+for what an agent needs a browser or a GUI for (a page of a server here,
+a program to drive). Olo's own changes are still tried in test sessions
+(`tools/dev/tsession`: the tree's builds, fenced from the host's
+services). To try the feature itself without touching the account,
+AGENT-NOTES has the way ("A host's own screens, tried without touching
+the host"). A screen's pictures name the machine: crop or mask them
+before they leave it.
+
 ## Privacy, here as anywhere
 
 The server's name, address and accounts never go into the repository,
