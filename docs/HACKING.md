@@ -1990,7 +1990,19 @@ agents read `minimized` on its `MenuItem` node.
 
 A tip is a popup of its own, never drawn inside the window (in a
 window smaller than what it says, it would be cut at the edge).
-`tip::on(element, key, text)` gives an element one;
+`tip::on(element, key, text)` gives an element one, about the thing
+`key` names. A tip is about a thing, not a place in the tree: its
+element carries the key as its `hover_key`
+(`InteractiveElement::hover_key`), and where the element that comes to
+stand in its place under a still pointer is about another thing (a
+list's row for another item, as the list changes), the pointer has left
+the one and come over the other, and `on_hover` hears both. Without
+that, a node taken over by another row kept "the pointer is here" and
+the old row never heard it leave: its tip stayed up over the list for
+an item no longer in it (Ben, 2026-11-26, of Rex's Activity: "some
+phantom tooltip appearing for an agent i don't see in the list at
+all"). Rex's `OLO_REX_DEMO_CHILD_ENDS=SECONDS` ends a child under a
+resting pointer, for its picture;
 `tip::hover(cx, key, text, anchor, hovered)` is the same for a drawing
 that follows the pointer itself (`WindowKind::Tip`: an xdg_popup
 with no grab and an empty input region, so it takes no clicks; a
@@ -6310,6 +6322,13 @@ comes out of the speaker ("out": the samples' loudness times both
 volumes; "clipped" where a stream louder than its samples' room goes
 to a card with its own volume). That is how a sound of a set loudness
 (the start-up chime) is tested.
+
+**A computer with no GPU draws in software by itself** (2026-11-26):
+where `/dev/dri` has no render node (a server), a headless app_server
+takes Mesa's software EGL device unasked and says so ("no GPU render
+node in /dev/dri: drawing in software"); an agent's screen started
+there (`olo-screen start`) is a whole desktop, as on a computer with a
+GPU. Before, it refused unless the variable below was set.
 
 **Test desktops draw in software.** A test session and everything
 started in it draw on the processors, not on the person's GPU:
@@ -17072,6 +17091,47 @@ by (the first with neither a release nor a tag), and each still names
 the commit its release was built from; drafts and pre-releases are
 neither counted nor deleted. So the list a desktop can go back through
 (`olo_release::list`) is three long.
+Last, where the computer it runs on is itself a Rex host with Olo's
+pieces on it (the dev server), it puts the release's own there
+(`tools/dev/host-upgrade [--dry-run]`; Ben, 2026-11-26: "as you build
+the new releases please upgrade the services, skills etc on this rex
+host automatically for me so that the agents working on stuff relying on
+olo agent fixes etc get it as soon as they're ready"): the helper the
+release's Rex carries, under the very name that Rex looks for (the
+app's `OLO_REX_LINK_ID`, FNV-1a over both machines' helpers as
+`apps/rex/build.rs` takes it: the upgraded desktop finds it there and
+puts nothing again); the skill's `SKILL.md`, `olo` and `olo.lua`, and
+the desktop commands' `olo`, from the release's source, their stamps
+left as the desktop wrote them (a desktop of an earlier release that
+connects meanwhile sees its own stamp and leaves the newer files be;
+the upgraded one sees a stamp not its own and writes its own once);
+and the agents service, which is asked to retire so the new helper's
+starts (children are the server's tabs and go on; a `watch` in flight
+is asked again by its own command). A service hands over by itself to
+an asker running a later-written file of the helper
+(`asker_is_a_later_build`: before, only a change of protocol took over,
+and on a host whose agents never rest an upgrade that spoke the same
+never took effect), and is never handed back to an earlier one.
+`OLO_NO_HOST_UPGRADE=1` leaves the host be, and so does a hold: while
+`~/.local/state/olo/host-upgrade.hold` is there (anyone's file, its
+words saying why), nothing on the host is replaced. On a host where
+other agents work, a replacement of the service is said to their lead
+before it is made (2026-11-26, after a build of the tree served this
+host's live socket for two minutes: AGENT-NOTES has all of it).
+**Which service is a host's, and what may take it**: its socket is the
+account's (`/run/user/UID/olo-rex-agents/KEY.sock`, KEY the Rex server's
+socket) and what it keeps is under the home (`~/.local/state/olo/
+rex-agents/KEY`), never where `XDG_STATE_HOME` points, so everyone who
+finds the socket finds the same registry; a home that isn't the
+account's own (by /etc/passwd) has a socket of its own beside it
+(`KEY-HOME.sock`); `OLO_REX_AGENTS_DIR` puts all of it in one folder
+(tests, and every `tsession`, which also has `REX_SERVER_SOCKET` at a
+socket nothing listens on). A running service hands over only to a
+helper put beside its own file, written later; never to a build
+elsewhere, nor to a program that isn't the helper. A registry that is
+there and can't be read ends the service's start with its file named
+(`olo agent` exits 69): never an empty list. Rex's demo runs no
+helper.
 Its log is `publish.log` there, its last line "published URL",
 "dry run: …" or "failed: WHY". Why a container: Olo's programs link
 the system's libraries and glibc, and a release built on another
@@ -19080,7 +19140,15 @@ is on the alternate one, the modes it set (cursor keys, mouse reporting,
 bracketed paste, kitty keyboard flags…), cursor shape and title. Images
 (kitty, sixel, iTerm2) come back as kitty graphics: each image sent once
 under the program's id, then put row by row in its cells; olo-termd
-keeps them zlib-compressed (`Store::pack`). The PTY comes along (SCM_RIGHTS) so Terminal can see the
+keeps them zlib-compressed (`Store::pack`). A tab's first cell holds
+the tab itself (alacritty keeps it there, so that a copy has a tab, not
+spaces): the replay writes it as a tab and goes straight back to the
+cell after it (pushed as a character it moved the new cursor on by a
+tab's width, and the rest of the row was rebuilt that far right: `ls`'s
+columns after every reload, until 2026-11-26), and the view draws
+nothing for it (`draws_nothing`: handed to the font it was a missing
+glyph's box in any font with no glyph for a tab; 4.5 to 5.2 µs for a
+screen of 16,080 cells, asked only of rows that changed). The PTY comes along (SCM_RIGHTS) so Terminal can see the
 foreground program and its working directory. olo-termd answers the
 program's questions (device attributes) only while no Terminal is
 attached.
@@ -19951,6 +20019,25 @@ and dropped Ctrl and Shift on an arrow; it reads its pane's modes from
 Ghostty (`dec_mode(1)`, `kitty_keyboard_flags`), and leaves to the Rex
 server's key event what it doesn't encode. Tried on the rig: ⌥← twice
 in bash through Rex goes back two words.
+**The kitty keyboard protocol in Rex is the server's to encode.**
+Terminal has an encoder of its own for it (`view::kitty_key`); a Rex
+pane's terminal is the Rex server's, which has the protocol and the
+program's flags as they stand, so for a program that asked for it
+(`kitty_keyboard_flags() != 0`) Rex sends the server a key event
+(`hub.send_rex_key`) for every key the legacy table can't say:
+`term_keys::kitty_encodes(Key, flags)`, a key of the table with a
+modifier, Escape, and all of the table under flag 8. It had sent the
+table's bytes for all of them, so Ctrl+Enter and Shift+Enter reached
+Claude Code as a Return (Ben, 2026-11-26: "ctrl+enter doens't seem to
+work (at least in claude code) in a rex terminal"; Claude Code writes
+`CSI ? u`, `CSI > 5 u` and `CSI > 4 ; 2 m` to a Rex pane at its start).
+A program that asked nothing gets the table's bytes, as before. Tried
+with real key presses in a headless Rex on a scratch server
+(`REX_SERVER_SOCKET`, `tsession --home`), a program in the pane that
+pushes the flags and shows its bytes: Ctrl+Enter `CSI 13;5u`,
+Shift+Enter `CSI 13;2u`, Alt+Enter `CSI 13;3u`, Shift+Tab `CSI 9;2u`,
+Escape `CSI 27u`. `olo agent send --key` presses the same keys through
+the server (`agents::pressed_key`, `block.event`).
 
 **Colours** (`src/colors.rs`, View ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light
@@ -22625,6 +22712,52 @@ costs nothing measurable: `cargo run --release -p olo-bus --example
 calls -- ADDRESS` times calls through a running bus (about 110 µs to
 the bus and 140 µs to a peer here, before and after, 20,000 each), and
 the bus stays at 7.5 MB through 400,000.
+
+And what a program says first is heard. A client sends its `Hello` in
+the same write as the end of its handshake, so the bus has read it by
+the time the peer's connection is made, and the connection's reader
+hands it on at once, on a thread of its own. busd made the peer's
+stream of messages after that (`MessageStream::from(&conn)`), and zbus
+drops what nobody is listening for: whenever the reader ran first the
+`Hello` was lost and its sender waited for ever, a program that hung as
+it started, the bus's own services' client among them (such a bus never
+said "ready": a screen's session gave up on it after 3 s and shared the
+person's). With the machine busy that was one start in seventy (19 of
+1,500 buses started 96 at once; a test sat 25 minutes on one,
+2026-11-26). A peer is made with its stream now (`Peer::new`, zbus's
+`build_message_stream`, which listens before the connection reads): 0 of
+4,500. And the handshake is done before the list of peers is locked,
+not under the lock as busd had it: a program that connected and said
+nothing more held the list for good, and with it every other program's
+connecting and messages. `crates/bus/tests/start.rs` has both (384
+buses started 64 at once, then 384 programs connecting to one; a silent
+program beside one that calls): both failed before. A start takes what
+it took (3 ms alone, 200 starts each). Nothing that waits for a bus to
+say "ready" waits without an end (`tests/common`).
+
+Nothing the bus routes waits for who it is for. busd wrote each message
+to its recipient's socket from the task that routes them: a program
+that had stopped reading, its socket full, held that write, and since
+the bus's own answers are routed by one task, the first signal the bus
+sent to everyone after that (a name's new owner, at every connect)
+stopped the bus answering anybody. Each peer has a queue of its own and
+a task that writes it out in order (`peer/outbox.rs`); one more than 64
+MB behind is disconnected, as dbus-daemon and dbus-broker let such a
+program go (`tests/start.rs`: a program that asks for every signal and
+reads nothing, 16 MB sent, then 80). It costs 3,800 instructions a call
+(88,200 to 92,000 of the bus's own, `perf stat` over 40,000 calls,
+three runs each; the wall time the same within its noise, 72 µs to the
+bus and 90 µs to a peer, quiet). A call is kept for its `NoReply` from
+before it is sent, and a peer is out of the list before its calls are
+answered for it: kept after the send, a call whose recipient went in
+between was kept for nobody. And a program may watch the bus
+(`BecomeMonitor`: dbus-monitor, busctl monitor): busd never answered it
+(the answer was for a peer that had just stopped being one) and
+panicked at the next signal if it had asked for only some
+(`Monitor::interested` unwrapped a destination signals don't have),
+which ended the task that serves the bus's own name
+(`tests/monitor.rs`). The second investigator read these three out of
+the code after the first was found (2026-11-26).
 tsession's sessions use it too, when built.
 
 An Electron app (Slack, VS Code, Discord) finds its running copy through
@@ -30479,7 +30612,17 @@ connected to, is off). The port a pane's program listens on and
   22-pt latch event rows with a fixed 64-pt label column and single BeOS
   sunken wells (`4 pt` below their own latch row, `12 pt` between all other
   blocks; failed tool rows open by default with stderr and exit code;
-  redundant Bash JSON input is omitted). In-panel Find counts every
+  redundant Bash JSON input is omitted). What says when and how a
+  thing went stands beside the thing: a turn's time after its name
+  ("You  14:52:10", "Claude Code  claude-opus-5-5 · 14:52:12"), a tool's
+  result after its preview ("jato test -p olo-rex  ✓ 2s"), the same 13
+  points of ground between their ink at every scale; a preview too long
+  for its row is cut and its result still shows (`summary_width`: its
+  characters at the monospace's one advance, not a line laid out for
+  every row). They stood at the pane's right edge, a window's width
+  from what they were of; a column capped at a measure, tried first,
+  both reviewers took for a pane that had failed to resize
+  (2026-11-26). In-panel Find counts every
   occurrence across prose, thinking, and code wells, highlights exact
   matched characters inline via `styled_text` (no block tint or layout
   shift), and auto-expands only the active match's collapsed item. Structured
@@ -30690,7 +30833,9 @@ agents through the night, could not move to it.
   its service, and from then on it goes straight. A host reached without
   SSH has no helper put on it yet (TODO).
 - *Cost* (release, 2026-11-26, `perf stat --no-scale`, `tools/dev/cost`;
-  thirty stand-in children on a scratch server): **at rest** with thirty
+  thirty stand-in children on a scratch server: `tools/dev/agentd-cost`
+  does all of it in two minutes, and is what a change to the service is
+  measured with, before and after): **at rest** with thirty
   children at their prompts, and the same with a watcher waiting: 0.0%
   of a core, 0 wakeups a second, no instruction counted in ten seconds.
   Thirty children each redrawing ten times a second (never a pause: one

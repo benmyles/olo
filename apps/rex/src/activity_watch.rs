@@ -471,7 +471,21 @@ pub async fn run_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &
 /// [`run_host_link`], waited for as long as `within` (a host's agents
 /// service asked something that takes its time: a watch, a stop that
 /// saves a long scrollback).
+/// Whether Olo's helper may be run on a host at all: never by the
+/// demo (`OLO_REX_DEMO`), whose hosts and children are made up. Its
+/// "This computer" is the computer it runs on, and what it asked of its
+/// made-up children went to that computer's real agents service: a stop
+/// asked from a picture's script reached a host where four agents were
+/// hours into their work, and the asking itself took the service from
+/// them (2026-11-26).
+fn may_ask_hosts() -> bool {
+    !crate::server::demo_mode()
+}
+
 pub async fn run_host_link_within(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], stdin_payload: Option<&str>, within: std::time::Duration) -> Option<String> {
+    if !may_ask_hosts() {
+        return None;
+    }
     let is_local = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| h.is_local);
     if is_local {
         let helper = local_helper_path()?;
@@ -508,6 +522,9 @@ pub async fn run_host_link_within(state: &Arc<Mutex<crate::hub::HubState>>, host
 /// closed when this is let go of, which ends it there. Whether it said
 /// anything at all.
 pub async fn follow_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], mut said: impl FnMut(&str)) -> bool {
+    if !may_ask_hosts() {
+        return false;
+    }
     let is_local = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| h.is_local);
     let mut any = false;
     if is_local {

@@ -2183,10 +2183,12 @@ fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
 }
 
 /// Whether this is the Deskbar of an agent's screen (`OLO_SCREEN`): a
-/// desktop nobody sits at.
+/// desktop nobody sits at. (`OLO_DESKBAR_DEMO_PERSON=1`: a screen that
+/// stands for a person's desktop, for the README's pictures, which are
+/// taken on one, tools/dev/readme-shots: its Deskbar is as a person's.)
 fn on_an_agents_screen() -> bool {
     static AGENTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *AGENTS.get_or_init(|| std::env::var_os("OLO_SCREEN").is_some_and(|s| !s.is_empty()))
+    *AGENTS.get_or_init(|| std::env::var_os("OLO_SCREEN").is_some_and(|s| !s.is_empty()) && std::env::var_os("OLO_DESKBAR_DEMO_PERSON").is_none_or(|v| v != "1"))
 }
 
 /// The live widgets this Deskbar shows of those the person set: none on

@@ -16,7 +16,9 @@ keep this skill and that section current together.
 ## What it needs
 
 The first server was Ubuntu 26.04 in a VM: 32 processors, 125 GB, no
-GPU (QEMU's display only). `setup.sh` is Fedora's (dnf); on another
+GPU (QEMU's display only); the second Fedora 44, 64 processors, 251 GB,
+btrfs, no GPU either (on Fedora `tools/setup.sh` installs what's
+needed, and `cp --reflink=always` of a build is free). `setup.sh` is Fedora's (dnf); on another
 system install the same by its own packages:
 
 - **Rust**: `rustup` (the tree's `rust-toolchain.toml` pins a nightly
@@ -81,6 +83,24 @@ and take advantage of the hardware". Headless sessions are cheap here:
   three agents' stand-ins in 25 s, from about 90).
 - `tools/dev/ui-lint --jobs N` and `tsession review` per scale run side
   by side; the test suites are already parallel.
+
+## The README's and the site's pictures
+
+`tools/dev/readme-shots [SCENE…]` takes them on an Agent Screen of its
+own (a whole desktop at 3840 × 2160, drawn in software where there is
+no GPU), from a release's own build rather than a second workspace
+build:
+
+    mkdir /var/tmp/YOURS-build
+    (cd /var/tmp/olo-release/target/release && for f in *; do [ -f "$f" ] && [ -x "$f" ] && cp --reflink=always "$f" /var/tmp/YOURS-build/; done)
+    cp target/debug/olo-WHAT-YOU-CHANGED /var/tmp/YOURS-build/     # dev builds laid over
+    OLO_SHOTS_BUILD=/var/tmp/YOURS-build OLO_SHOTS_OUT=/var/tmp/YOURS-out /usr/bin/python3 tools/dev/readme-shots desktop
+
+Look at each picture in `OLO_SHOTS_OUT` before it replaces one in
+`docs/img`. The tool keeps the computer's name off the desktop
+(`OLO_TRACKER_DEMO_VOLUME`) and the host's Rex server and agents
+service out of reach; check each picture for anything else of the
+machine's all the same (a shell prompt, a path, a process list).
 
 ## Releases
 

@@ -47,9 +47,13 @@ something nobody here has is in "Blocked", with what it waits for.
   16 pt above and below (`WINDOW_INSET`, both); the question's ink
   starts 19 pt down (its line's 3 pt of leading) and a plain button ends
   16 pt up, the default button's ring 13 pt up. So it is the line's
-  leading and the default ring, not the margins: to fix in the alert's
-  own message and button row (the frame is every dialog's, whose first
-  row may be a field), compared before and after across the alerts.
+  leading and the default ring, not the margins. Done 2026-11-26 in the
+  alert's own message and button row (`MESSAGE_RISE`, `DEFAULT_RING`;
+  the frame, every dialog's, is as it was, and an alert is as tall as it
+  was): measured after in Rex's stop alert, the question's ink 16.00 pt
+  down at 2× (15.00 at 1×, 16.67 at 1.5×: a pixel of hinting either
+  way; 19 before) and the default button's ring 16.00 pt up (16.67 at
+  1.5×; 13 before).
   ~~Also from Opus 5.5 R3 on Rex's Stop Subagents alert (2026-11-26):
   re-centre alerts horizontally on their parent window's frame~~ Done
   2026-11-26, and it wasn't a centring: that alert had no parent at all
@@ -92,9 +96,29 @@ something nobody here has is in "Blocked", with what it waits for.
     Try Again (each needs what it was asked with kept); keep Manage Host
     window height fixed across current/failed states if bottom button
     row shifts.
-  - Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
-    message headers/timestamps/rules to the prose width (~560 pt) and
-    align sender icons in the left gutter with `Back`.
+  - ~~Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
+    message headers/timestamps/rules to the prose width (~560 pt)~~
+    Done 2026-11-26, another way: a turn's time follows its name and a
+    tool's result follows its preview, at every width (a capped column,
+    tried first, both reviewers took for "a pane that failed to resize").
+    Left of that round, all there before it: aligning sender icons in
+    the gutter with `Back` (a 16 pt icon in a 14 pt gutter: the text
+    axis would have to move); at 1.25× and 1.75× the layout review's
+    "error seam: a line … and what it borders … are 1 device px apart"
+    between the tab strip's foot and the transcript's header (377.6,
+    59.2 to 1690.4, 60.0 over 224, 60.8: the header's top isn't on the
+    line's device pixel), and "a band 34 tall over one 34 tall"; in a
+    pane 690 pt wide "error crowded" between the Summary's two bullets.
+    Gemini 4 Neon: "Diff highlight bands paint over and wash out the
+    Edit well's vertical borders"; in dark, "active `Transcript` is
+    darker/sunken than inactive `Terminal`" where the sidebar's active
+    segment is the lighter; "`Schema Diff` runs to within about 3–4
+    points of the bold amber `Waiting`"; the tree's trunk line "passes
+    directly behind/through the ▾ disclosure triangle next to `API
+    Audit`". Opus 5.5: "a hover band across the whole row … so a
+    duration can be traced back to its row" (less needed now), and "the
+    empty ground at wide widths is the place for a detail pane for the
+    opened call".
   - Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
     dark popup menus stronger border contrast and drop shadow so they
     separate cleanly from dark panels behind them. As measured
@@ -304,18 +328,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Ctrl+Enter does nothing in a Rex terminal** (Ben, 2026-11-26, for
-  later: "ctrl+enter doens't seem to work (at least in claude code) in
-  a rex terminal"). To find first, not guessed: what Rex sends for it
-  (a pane's keys are encoded from the modes its program asked for, read
-  from Ghostty: `ui.rs`'s key path, the `key_cost` test beside it), and
-  what Claude Code asks for and expects there (the kitty keyboard
-  protocol's `CSI 13;5u`, or xterm's modifyOtherKeys `CSI 27;5;13~`; a
-  plain Return, which is what a terminal sends with neither, is a
-  submit, not a new line). Then the same for Shift+Enter and Alt+Enter,
-  in Rex and in Olo's Terminal, with each agent (Claude Code, Codex,
-  Antigravity), read from the program's own screen; and `olo agent send
-  --key Ctrl+Enter`, which should send what the keyboard does.
 - **Agent Screens on the Rex host itself** (Ben, 2026-11-26: "there
   should be an option for agents on a rex host to use olo agent screens
   on the host itself without having to use them on the user's desktop
@@ -325,7 +337,23 @@ something nobody here has is in "Blocked", with what it waits for.
   use"). Today an agent on a host gets a screen on the person's desktop
   through the bridge (`olo screen …` from the host, the `olo-rex-bridge`
   skill; a child's `--desktop screens=…` says which), so it needs the
-  desktop connected and awake, and it draws there. To do:
+  desktop connected and awake, and it draws there.
+  **What is known to work, 2026-11-26** (found taking the README's
+  pictures on a dev server with no GPU): `olo-screen start` there
+  brings up a whole Olo desktop drawn in software (Deskbar, Tracker's
+  desktop, every app of the pictures, an agent's screen within a
+  screen), by itself since that day (app_server takes Mesa's software
+  device where there is no render node; before, only with
+  `OLO_HEADLESS_RENDERER=software` set). It was a release's own
+  programs in a folder, with `OLO_DATA` pointing at the data (a build
+  not installed finds none beside it). Chrome was put in the home by
+  Olo's own launcher (`olo-chrome`, its Download button: Google's rpm
+  unpacked under the account, no root) and showed a page from a server
+  on the same machine. A server lacks an emoji font (every emoji a
+  box) and may lack Mesa's software drivers. And the screen's bus lost
+  one program's first words in seventy under load until the same day
+  (HACKING, "Agent Screens"): a screen on a busy host would have had a
+  program hang at start now and then. To do:
   - *A desktop of the host's own*: app_server run headless on the host,
     drawn in software (what `tools/dev/tsession` does on the dev server
     with no GPU: the olo-dev-server skill has what it takes), one for
@@ -11248,6 +11276,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A build of the tree served this host's live agents service for two minutes**~~ (2026-11-26, 10:15:25 to 10:17:46 UTC; the ShiftUp lead: "we cannot watch or reach them. Please put it back now"). Put back at once (the registry on disk was untouched), and the five things that met are each closed, with tests: Escape takes Cancel in an alert wherever it stands (it took the first button, and Rex's stop alert's first is the stop; a picture's script pressed it); Rex's demo runs no helper; a service hands over only to a helper put beside its own file; what a service keeps is found from the home and another home has another socket; every `tsession` has a Rex server socket nothing listens on and an agents folder of its own. As their lead asked: a registry that can't be read is a failure (69), never an empty list; a replacement of the service there is said in their file first; and `~/.local/state/olo/host-upgrade.hold` holds it. AGENT-NOTES has the whole of it.
+
+- ~~**Ctrl+Enter does nothing in a Rex terminal**~~ (done 2026-11-26; Ben: "ctrl+enter doens't seem to work (at least in claude code) in a rex terminal"). Found, not guessed: Claude Code asks a Rex pane for the kitty keyboard protocol at its start (it writes `CSI ? u`, then `CSI > 5 u`, and xterm's `CSI > 4 ; 2 m` beside: read from what it wrote there), the Rex server's own encoder has the protocol (Ctrl+Enter `CSI 13;5u`, Shift+Enter `CSI 13;2u`, Escape `CSI 27u`: asked of a scratch server with `rex send-key`), and Olo's Rex sent its keys as bytes from xterm's table, where Enter with any modifier is a Return. Rex now hands the server the keys that table can't say for a program that asked for the protocol (`term_keys::kitty_encodes`: a key of the table with a modifier, Escape, and every key of it under flag 8); a program that asked nothing gets what it always got. Pressed for real in a headless Rex on a scratch server, the program in the pane showing its bytes: Enter `\r`, Ctrl+Enter `CSI 13;5u`, Shift+Enter `CSI 13;2u`, Alt+Enter `CSI 13;3u`, Ctrl+Shift+Enter `CSI 13;6u`, Shift+Tab `CSI 9;2u`, Escape `CSI 27u`; and without the protocol `\r`, `\r`, `\r`, `ESC \r`, `CSI Z`, `ESC`, as before. `olo agent send --key` presses the same keys through the server too (`pressed_key`, `block.event`): `--key Ctrl+Enter` is `CSI 13;5u` to Claude Code, xterm's `CSI 27;5;13~` to a program that asked nothing.
+  - Olo's own Terminal already had the protocol (`view::kitty_code`, `csi_u`: its own encoder over alacritty's modes); the gap was Rex's alone, which sent what Terminal's legacy table sends and left the protocol to nobody.
+
+- ~~**After `olo agent` became the host's own: what running it for real found**~~ (done 2026-11-26, updates 8 and 9; each in its commit with its measurements).
+  - Olo's own helpers run on it (Ben: "when you use subagents for review/qa please use the new olo/rex native subagent support you built"; "make sure you have an olo agents watch going whenever you're running olo agents"): `tools/dev/agents` starts each reviewer, investigator and worker as a child tab of the lead's tab, reads, answers and stops it through `olo agent`, and waits on `olo agent watch`; tmux only with no Rex pane. CLAUDE.md, the olo-agents, olo-debug-help and bridge skills and HACKING say so.
+  - ShiftUp's item 24: a turn that ended with a shell of the agent's own still running read as `working` and was never told (the Rex server's word for the pane was taken over the agent's own screen). `done`, `waiting_question` or `idle` now, told at once; checked on this host with a child of our own.
+  - A helper put on a busy host never took effect (only a change of protocol took the service over): a service hands over to a later-written build, never back. And this host upgrades itself with each release (Ben: "please upgrade the services, skills etc on this rex host automatically for me"): `tools/dev/host-upgrade`, the publisher's last step.
+  - A phantom tip in Activity for a child that had ended (Ben's picture): a node taken over by another row kept "the pointer is here"; `hover_key`.
+  - An alert asked for by a menu's command stood mid-screen with no parent (`WindowParams::opener`); Rex's error banner has Try Again; About has a group of its own in every first menu; a child at work is said by what it is doing, not its footer.
+  - The desktop had the same fault as item 24, for every pane and not only a child: a pane's activity took the Rex server's word first, and Claude Code goes on saying it works while a shell of its own runs. Done the same day: where the server says a pane works, the agent's own screen is asked whether a turn is on (`BlockRuntime::turn_is_over`: at its prompt, nothing saying so), and such a pane is at rest. A look costs 48.2 µs with it, 47.5 µs where the server was silent and the screen was read already (release, `activity_cost`), seven times a second at most while a pane has output.
+  - Left: frame times of the hover change on a computer with a GPU (`tools/dev/bench --apps rex`: this dev server has none); a child's row could say Done or Waiting from its host's service, which knows its transcript, where the pane's own reading says only at rest (the service's word is in each frame the desktop follows, `AgentView::state`, and is not kept).
 
 - ~~**Auto Approve answers every permission question, whatever its shape**~~ (done 2026-11-26; Ben, of a Rex pane where Claude Code's "Read outside the working directories" sat with no countdown: "auto approve in rex terminal doesn't seem to work"; "when it's on it should auto approve everything after a 30s countdown"). The question began "Allow this" (Auto Approve knew "Do you want to" and "Would you like to"), and its first answer, under the mark, is a yes that is kept ("Yes, and keep allowing any reads…"): the yes for this once is the fourth. Auto Approve in Rex and in Terminal now reads questions with the one reader the agents service uses (`olo_agent_screen::approvable_for` over `parse_approval`: each agent's questions, their answers by what they mean) and answers with the yes that keeps nothing, wherever it stands: the mark is moved down to it when the time comes and Return sent only once it is seen there (`Ask::down`, `Do::Down`, `Pending::moved`). Never a yes kept in settings or one that switches mode; a mark someone moved is theirs. Tested from Ben's picture of the dialog (`auto_approve_answers_a_read_outside_with_its_yes_for_this_once`) and through Rex's watcher (`a_question_whose_yes_is_further_down_is_answered_with_it`).
   - A folder to trust is answered too, and a plan never (Ben, the same day, of the two that were left for him to say: "i see folder trust under blocked i want folder trust auto approved. plans should not be though"): `olo_agent_screen::trust_ask`, with the yes wherever it stands (Claude Code 2.1.332 puts its mark on "No, exit" above it, Antigravity on the yes: each read from the program, started in a new folder; Codex's "Yes, continue"), a mark seen and where the agent put it, the countdown saying "Trust FOLDER?". Tests: `auto_approve_trusts_a_folder_and_never_approves_a_plan` (the screens as drawn) and Rex's `a_folder_to_trust_is_answered_and_a_plan_is_not` (the countdown, the mark moved, Return once seen).

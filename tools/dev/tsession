@@ -359,7 +359,20 @@ def start(name, args):
         if m and i and ready:
             e = {"WAYLAND_DISPLAY": m.group(1), "OLO_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
                  "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"],
-                 "OLO_PHONE_DIR": env["OLO_PHONE_DIR"], "OLO_TEST_DESKTOP": name, "pid": p.pid}
+                 "OLO_PHONE_DIR": env["OLO_PHONE_DIR"], "OLO_TEST_DESKTOP": name, "pid": p.pid,
+                 # Rex in a test session reaches neither the person's Rex
+                 # server nor the agents service of this account: a
+                 # server's socket that nothing listens on (give
+                 # REX_SERVER_SOCKET=… to `run` for a scratch server of
+                 # the test's own), and the service's socket and state in
+                 # the session's own folder. Without these a headless
+                 # Rex, its demo too, spoke to the real ones: its helper
+                 # found the account's socket by the runtime folder and
+                 # kept its state by XDG_STATE_HOME, the session's, and a
+                 # service came up on the live socket with nothing in it,
+                 # under four agents hours into their work (2026-11-26).
+                 "REX_SERVER_SOCKET": "unix://" + os.path.join(d, "no-rex-server.sock"),
+                 "OLO_REX_AGENTS_DIR": os.path.join(d, "rex-agents")}
             if home:
                 e["HOME"] = os.path.abspath(home)
             e.update(own)

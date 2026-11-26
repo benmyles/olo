@@ -357,6 +357,21 @@ fn confidence_rank(c: Option<&str>) -> u8 {
 }
 
 impl SubagentRegistry {
+    /// What a service reads as it starts: the registry at `path`, an
+    /// empty one where there is none yet, and an error where one is
+    /// there and can't be read (damaged, or another version's): never
+    /// an empty one in its place, which would say of every child that
+    /// it isn't (ShiftUp's lead, 2026-11-26: "An empty list where there
+    /// were children must not be an answer a parent can get").
+    pub fn read_from(path: &Path) -> Result<Self, String> {
+        let raw = match std::fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => return Err(format!("the registry at {} can't be read: {e}", path.display())),
+        };
+        serde_json::from_str::<Self>(&raw).map_err(|e| format!("the registry at {} can't be read: {e} (it is left as it is; nothing is listed from another)", path.display()))
+    }
+
     pub fn load_from(path: &Path) -> Self {
         let Ok(raw) = std::fs::read_to_string(path) else {
             return Self::default();

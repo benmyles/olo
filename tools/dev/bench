@@ -167,6 +167,14 @@ def tsession(*args, quiet=True):
     r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env)
     if not quiet:
         print(r.stdout, end="")
+    # (A session that didn't start is said, with why: unsaid, the bench
+    # went on to read the session's files and ended in a traceback about
+    # one that wasn't there. On a computer with no GPU it can't start at
+    # all: the bench draws on the GPU, as the person's session does, and
+    # frames drawn in software would be measured against nothing.)
+    if args and args[0] == "start" and r.returncode != 0:
+        why = (r.stdout + r.stderr).strip().splitlines()[-1:] or ["no word of why"]
+        sys.exit(f"bench: its session didn't start: {why[0]}\nbench: it draws on the GPU (TSESSION_GPU=1): on a computer without one, measure with tools/dev/cost and the app's own timings instead")
     return r.stdout
 
 
@@ -295,7 +303,9 @@ def source_fixtures():
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     rs = os.path.join(docs, "long.rs")
     if not os.path.exists(rs):
-        one = open(os.path.join(repo, "crates", "ui", "src", "editor", "mod.rs")).read()
+        # (The kit's editor: it was crates/ui until the kits were renamed,
+        # and a home with no fixtures yet ended the bench at its start.)
+        one = open(os.path.join(repo, "crates", "kit", "src", "editor", "mod.rs")).read()
         lines = one.count("\n")
         with open(rs, "w") as f:
             for _ in range(100000 // lines + 1):

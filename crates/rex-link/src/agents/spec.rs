@@ -762,6 +762,9 @@ pub struct SendPayload {
     pub paste: bool,
     pub enter: bool,
     pub post_keys: Vec<String>,
+    /// For each of `post_keys`: the key as the terminal's own encoder is
+    /// asked to press it, where its bytes can't say it ([`pressed_key`]).
+    pub post_presses: Vec<Option<Pressed>>,
     pub force: bool,
     pub as_json: bool,
     pub verify_delivery: bool,
@@ -777,6 +780,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
     let mut verify_delivery = false;
     let mut text_parts: Vec<String> = Vec::new();
     let mut post_keys: Vec<String> = Vec::new();
+    let mut post_presses: Vec<Option<Pressed>> = Vec::new();
 
     if let Some(v) = raw_obj
         && v.get("args").is_none()
@@ -791,14 +795,17 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
             text_parts.push(t.to_owned());
         }
         if let Some(c) = v.get("ctrl").and_then(Value::as_str) {
+            post_presses.push(None);
             post_keys.push(ctrl_byte(c)?);
         }
         if let Some(k) = v.get("key").and_then(Value::as_str) {
+            post_presses.push(pressed_key(k));
             post_keys.push(special_key(k)?);
         }
         if let Some(ks) = v.get("keys").and_then(Value::as_array) {
             for k in ks {
                 if let Some(ks_str) = k.as_str() {
+                    post_presses.push(pressed_key(ks_str));
                     post_keys.push(special_key(ks_str)?);
                 }
             }
@@ -816,11 +823,13 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                 "--ctrl" => {
                     i += 1;
                     let c = args.get(i).ok_or("--ctrl requires a key (e.g. c, d, z)")?;
+                    post_presses.push(None);
                     post_keys.push(ctrl_byte(c)?);
                 }
                 "--key" => {
                     i += 1;
                     let k = args.get(i).ok_or("--key requires a key name (e.g. Enter, Escape, Tab, Up, Down)")?;
+                    post_presses.push(pressed_key(k));
                     post_keys.push(special_key(k)?);
                 }
                 "--text" => {
@@ -832,8 +841,14 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
                     text_parts.extend(args[i + 1..].iter().cloned());
                     break;
                 }
-                s if s.starts_with("--ctrl=") => post_keys.push(ctrl_byte(&s["--ctrl=".len()..])?),
-                s if s.starts_with("--key=") => post_keys.push(special_key(&s["--key=".len()..])?),
+                s if s.starts_with("--ctrl=") => {
+                    post_presses.push(None);
+                    post_keys.push(ctrl_byte(&s["--ctrl=".len()..])?);
+                }
+                s if s.starts_with("--key=") => {
+                    post_presses.push(pressed_key(&s["--key=".len()..]));
+                    post_keys.push(special_key(&s["--key=".len()..])?);
+                }
                 s if s.starts_with("--text=") => text_parts.push(s["--text=".len()..].to_owned()),
                 s if s.starts_with('-') => return Err(format!("unknown send option `{s}`")),
                 s => {
@@ -859,7 +874,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
     if paste && add_enter {
         verify_delivery = true;
     }
-    Ok(SendPayload { target, body, paste, enter: add_enter, post_keys, force, as_json, verify_delivery })
+    Ok(SendPayload { target, body, paste, enter: add_enter, post_keys, post_presses, force, as_json, verify_delivery })
 }
 
 /// How a permission question is answered: by what a choice means,
@@ -969,22 +984,40 @@ pub fn ctrl_byte(raw: &str) -> Result<String, String> {
     Ok((byte as char).to_string())
 }
 
-/// A key by its name, as a terminal sends it: `Enter`, `Escape`, `Tab`,
-/// `Up`, `F5`, a single character; with any of Alt (`Alt+m`, `M-m`,
-/// `Meta+`, `Option+`), Ctrl (`Ctrl+c`, `C-c`, `^C`) and Shift before it,
-/// joined by `+` or `-` (`Ctrl+Shift+Up`, `Alt+Enter`). Alt is the
-/// escape before the key (what tmux sends for `M-m`); a named key with
-/// modifiers is xterm's form (`ESC [ 1 ; 5 A` for Ctrl+Up).
-pub fn special_key(raw: &str) -> Result<String, String> {
-    let given = raw.trim();
-    if given.is_empty() {
-        return Err("empty --key".into());
-    }
-    if let Some(rest) = given.strip_prefix('^').filter(|r| r.chars().count() == 1) {
-        return ctrl_byte(rest);
-    }
-    // The modifiers before the key. (A lone `-` or `+` is the key
-    // itself; `C-`, `M-` and `S-` are modifiers only with something after.)
+/// A key the terminal's own encoder presses: its name and modifiers as
+/// the Rex server takes them (`block.event`, a key).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pressed {
+    pub key: &'static str,
+    pub mods: String,
+}
+
+/// A key whose bytes ([`special_key`], xterm's table) can't say what was
+/// asked: Enter with Ctrl or Shift (a bare Return there), Tab with Ctrl,
+/// Backspace with Shift, Escape with either. Those are pressed through
+/// the Rex server's encoder instead, which sends what its keyboard
+/// would for what the program asked of its keys: `CSI 13;5u` for
+/// Ctrl+Enter to a program on the kitty keyboard protocol (Claude Code),
+/// xterm's `CSI 27;5;13~` to one that isn't. (Rex's own keyboard had the
+/// same gap: Ben, 2026-11-26, "ctrl+enter doens't seem to work (at least
+/// in claude code) in a rex terminal".) None: its bytes say it.
+pub fn pressed_key(raw: &str) -> Option<Pressed> {
+    let (alt, ctrl, shift, key) = key_parts(raw.trim());
+    let key = match key.to_ascii_lowercase().as_str() {
+        "enter" | "return" | "cr" if ctrl || shift => "enter",
+        "tab" if ctrl => "tab",
+        "backspace" | "bs" if shift => "backspace",
+        "esc" | "escape" if ctrl || shift => "escape",
+        _ => return None,
+    };
+    let mods: Vec<&str> = [(ctrl, "ctrl"), (alt, "alt"), (shift, "shift")].into_iter().filter(|(held, _)| *held).map(|(_, name)| name).collect();
+    Some(Pressed { key, mods: mods.join("+") })
+}
+
+/// The modifiers before a key's name (Alt, Ctrl, Shift) and the name.
+/// (A lone `-` or `+` is the key itself; `C-`, `M-` and `S-` are
+/// modifiers only with something after.)
+fn key_parts(given: &str) -> (bool, bool, bool, &str) {
     let (mut alt, mut ctrl, mut shift) = (false, false, false);
     let mut key = given;
     while let Some(at) = key.char_indices().skip(1).find(|(_, c)| matches!(c, '+' | '-')).map(|(i, _)| i) {
@@ -1000,6 +1033,24 @@ pub fn special_key(raw: &str) -> Result<String, String> {
         }
         key = rest;
     }
+    (alt, ctrl, shift, key)
+}
+
+/// A key by its name, as a terminal sends it: `Enter`, `Escape`, `Tab`,
+/// `Up`, `F5`, a single character; with any of Alt (`Alt+m`, `M-m`,
+/// `Meta+`, `Option+`), Ctrl (`Ctrl+c`, `C-c`, `^C`) and Shift before it,
+/// joined by `+` or `-` (`Ctrl+Shift+Up`, `Alt+Enter`). Alt is the
+/// escape before the key (what tmux sends for `M-m`); a named key with
+/// modifiers is xterm's form (`ESC [ 1 ; 5 A` for Ctrl+Up).
+pub fn special_key(raw: &str) -> Result<String, String> {
+    let given = raw.trim();
+    if given.is_empty() {
+        return Err("empty --key".into());
+    }
+    if let Some(rest) = given.strip_prefix('^').filter(|r| r.chars().count() == 1) {
+        return ctrl_byte(rest);
+    }
+    let (alt, ctrl, shift, key) = key_parts(given);
     let name = key.to_ascii_lowercase();
     let unknown = || {
         format!(

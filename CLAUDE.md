@@ -194,6 +194,23 @@ are universal and non-negotiable:
   `target/release` and offers the build.) `tools/install-session.sh` is
   only for a first install, or when the login-screen entry or udev rules
   change.
+- **Leave the host's agents alone too.** Other agents work on this
+  host through its agents service (`olo agent`: the ShiftUp lead's
+  builders, hours into their work). Nothing built from the tree speaks
+  to the live service: tests and pictures have a Rex server and an
+  agents folder of their own (every `tsession` is given both), and a
+  dialog in a script is put away by its Cancel, never by a key whose
+  meaning you haven't read. The service here is replaced only by a
+  release's own step (`tools/dev/host-upgrade`), and only after a note
+  in their file with the time (`/var/tmp/shiftup/
+  olo-agent-needs-answers.md`); `~/.local/state/olo/host-upgrade.hold`
+  holds it, theirs to put there or yours. After any replacement, check
+  and write there: the service's build, their children, the cursor.
+  (2026-11-26: a build of the tree served the live socket with an empty
+  registry for 2 min 21 s; their lead: "We cannot watch or reach them.
+  Please put it back now … Tell us in this file whenever the service
+  here is about to be replaced, before it is." AGENT-NOTES has what
+  met and what closed it.)
 - **Build with Jato.** Every build and test goes through `jato`
   (`jato build -p`, `jato test -p`, `jato build --release`): it keeps
   the builds it has made (Ben, 2026-11-24: "for builds moving forward
@@ -213,7 +230,14 @@ are universal and non-negotiable:
   latest release and the two before it: the script deletes the older
   ones once the new one is up (`tools/release-prune.sh`; Ben,
   2026-11-26: "for the releases in github let's just keep latest + 2
-  previous ones").
+  previous ones"). And it upgrades this computer as a Rex host: the
+  release's helper (`olo agent`, the agents service), skill and `olo`
+  command are put here as its last step (`tools/dev/host-upgrade`; Ben,
+  the same day: "as you build the new releases please upgrade the
+  services, skills etc on this rex host automatically for me so that
+  the agents working on stuff relying on olo agent fixes etc get it as
+  soon as they're ready"). That is this host's own pieces only: the
+  desktop's session is still never touched.
 - **Build what you change, in dev, while you work.** While editing,
   build and test only the packages you change, in the dev profile
   (optimized too): `jato build -p`, `jato test -p`, pictures from dev

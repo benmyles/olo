@@ -25,7 +25,7 @@ pub mod wire;
 
 pub use events::{SubagentEvent, SubagentEventLog};
 pub use model::{AgentCli, DesktopPolicy, NativeSubagent, SubagentRegistry, TreeRow, new_subagent_id, now_unix_ms, screen_target_name, to_unix_ms};
-pub use spec::{Answer, ApproveSpec, SendPayload, StartSpec, WatchSpec, ctrl_byte, parse_send_payload, sanitize_paste_text, special_key, start_usage};
+pub use spec::{Answer, ApproveSpec, Pressed, SendPayload, StartSpec, WatchSpec, ctrl_byte, parse_send_payload, pressed_key, sanitize_paste_text, special_key, start_usage};
 pub use state::{Activity, ScreenClassification, SubagentLiveState, approval_to_json, classify_screen_rich, effective_state, summary_json};
 
 #[cfg(test)]
@@ -35,6 +35,47 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// The keys the server's encoder presses: those xterm's bytes can't
+    /// say. The rest are their bytes.
+    #[test]
+    fn the_keys_that_bytes_cannot_say() {
+        let press = |raw: &str| pressed_key(raw).map(|p| (p.key, p.mods));
+        assert_eq!(press("Ctrl+Enter"), Some(("enter", "ctrl".to_owned())));
+        assert_eq!(press("shift+return"), Some(("enter", "shift".to_owned())));
+        assert_eq!(press("C-M-S-Enter"), Some(("enter", "ctrl+alt+shift".to_owned())));
+        assert_eq!(press("Ctrl+Tab"), Some(("tab", "ctrl".to_owned())));
+        assert_eq!(press("Shift+Backspace"), Some(("backspace", "shift".to_owned())));
+        assert_eq!(press("Shift+Escape"), Some(("escape", "shift".to_owned())));
+        for theirs in ["Enter", "Alt+Enter", "Tab", "Shift+Tab", "Escape", "Backspace", "Ctrl+Backspace", "Alt+m", "Ctrl+Shift+Up", "F5", "x", "-", "^C"] {
+            assert_eq!(press(theirs), None, "{theirs}");
+        }
+        // (And its bytes are still there, for a server with no such word.)
+        assert_eq!(special_key("Ctrl+Enter").unwrap(), "\r");
+    }
+
+    /// A turn's end is an end, whatever the agent left running (ShiftUp's
+    /// item 24). The screen is Claude Code's after a turn that started a
+    /// shell in the background and ended with a question, read from one
+    /// (2026-11-26): Rex still calls the pane working, for the shell.
+    #[test]
+    fn a_turn_that_ended_with_a_shell_still_running_has_ended() {
+        let named = format!("{} probe24 ─", "─".repeat(86));
+        let rule = "─".repeat(96);
+        let ended = format!("● QUESTION: is this seen?\n\n✻ Cooked for 9s · 1 shell still running\n\n{named}\n❯ \n{rule}\n  ⏵⏵ auto mode on · 1 shell · ← 1 agent · ↓ to manage\n");
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Working, &ended, true);
+        assert_eq!(cls.state, SubagentLiveState::Idle, "at its prompt with no turn on: not working, whatever Rex says of the pane");
+        // With its transcript's word that the turn ended, it is done; with a question read there, it asks.
+        assert_eq!(effective_state(&cls, Some("done"), None, true).0, SubagentLiveState::Done);
+        assert_eq!(effective_state(&cls, Some("waiting"), None, true).0, SubagentLiveState::WaitingQuestion);
+        // In a turn (its footer says so), with the same shell: working, by its own screen.
+        let turning = format!("✢ Fermenting… (37s · ↓ 3.0k tokens)\n\n{named}\n❯ \n{rule}\n  ⏵⏵ auto mode on · 1 shell · esc to interrupt · ← 1 agent · ↓ to manage\n");
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Working, &turning, true);
+        assert_eq!((cls.state, cls.summary.as_deref()), (SubagentLiveState::Working, Some("✢ Fermenting… (37s · ↓ 3.0k tokens)")));
+        // A screen that isn't its prompt and says nothing of itself: Rex's word still stands.
+        let unknown = "Compiling olo v0.1.0\n   Building [=====>   ] 12/40\n";
+        assert_eq!(classify_screen_rich(AgentCli::Claude, Activity::Working, unknown, true).state, SubagentLiveState::Working);
+    }
 
     /// An agent at work is said by what it is doing, the line over its
     /// field, never by its footer; whatever stands in the rule over the

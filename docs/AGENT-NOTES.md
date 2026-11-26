@@ -686,6 +686,36 @@ demand gets, ask systemd's user manager
 down, read the code that starts its children. And when writing a
 Doctor check, try its fix and look again: the finding must be gone.
 
+### zbus drops what nobody listens for
+
+A `zbus::Connection`'s reader hands each message to the streams that
+exist then, and drops it where there is none (`set_await_active(false)`,
+`connection/mod.rs`): a `MessageStream::from(&conn)` made after
+`build()` has missed whatever was read first, and with a client that
+sends in the same write as its handshake (every D-Bus client's `Hello`)
+that is its first message, whenever the reader's thread runs first. For
+a server's side of a connection, `Builder::build_message_stream()` (the
+`bus-impl` feature) makes the stream before the reader starts. `olo-bus`
+lost one `Hello` in seventy with the machine busy until it did
+(2026-11-26; HACKING, "Agent Screens", `crates/bus/tests/start.rs`).
+How it was found, for the next hang at start: the stuck process's
+stacks (`gdb -batch -ex "thread apply all bt" -p PID`: all parked, so
+not a lock), its sockets (`ss -x -a -p`: one connection, nothing queued
+either way, so each side waits for the other), then a loop that starts
+it a thousand times at once with a deadline (1.3% hung), then the same
+under `strace -f -e trace=sendmsg,recvmsg`: the bytes were the same in
+a good start and a stuck one up to the `Hello` read and never answered.
+
+### A test that waits for a program's line waits with an end
+
+`read_line` on a child's stdout has no deadline: a program that never
+prints it holds the test, and `jato test --workspace` behind it, for
+good (25 minutes before it was looked at, 2026-11-26). Read the line on
+a thread and wait for it on a channel (`recv_timeout`), as
+`crates/bus/tests/common` does. And a wrapper's "done" is not the
+run's: `cmd | grep … ; echo done` ends 0 whatever `cmd` did; write its
+exit after it (`echo "exit $?"`) and read that.
+
 ## Measuring
 
 - **Which programs have a maker's libraries loaded: `/proc/PID/maps`.**
@@ -882,9 +912,10 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 Learned measuring catalogs as data (2026-11-20):
 
-- **A copy of `target/release` is free here** (on the person's laptop:
-  btrfs; the dev server's disk is ext4, where `--reflink=always` fails,
-  "Operation not supported": copy plainly there, a binary or two) (`cp -a --reflink=always
+- **A copy of `target/release` is free here** (on the person's laptop
+  and the Fedora dev server: btrfs; the first dev server's disk is ext4,
+  where `--reflink=always` fails, "Operation not supported": copy
+  plainly there, a binary or two) (`cp -a --reflink=always
   target/release /var/tmp/YOURS/target/release`, with
   `target/.rustc_info.json`: btrfs shares the 33 GB) and cargo takes it
   as fresh (`CARGO_TARGET_DIR=/var/tmp/YOURS/target cargo build
@@ -2501,6 +2532,60 @@ their host's"):
   measuring script that started its server with `&` and then waited for
   thirty starts never came back. Wait for the numbers you started
   (`pids+=($!)`, `wait "${pids[@]}"`).
+- **A build of mine became a host's live agents service for 2 min 21 s
+  (2026-11-26, 10:15:25 to 10:17:46 UTC), under four of another lead's
+  agents hours into their work.** Five things met; each is closed, and
+  each is a thing to look for again:
+  1. A picture's script pressed Escape (`tsession key NAME 1`) on Rex's
+     "Stop 2 subagents?" alert to put it away. Escape took an alert's
+     first button whatever it said, and that alert's first is the
+     stop. **Escape now takes Cancel wherever it stands** (`escape_of`).
+     Put a dialog away in a script by its Cancel, and know what a key
+     does before a script presses it.
+  2. Rex's **demo** has a "This computer" that is the computer it runs
+     on: the stop went to the real host's helper. The demo now runs no
+     helper at all (`activity_watch::may_ask_hosts`).
+  3. The service handed over to "a later build", and any newer
+     `olo-rex-link` file counted: the tree's debug build did. **Only a
+     helper put beside the running one** takes over now.
+  4. A test session has the account's runtime folder and a state
+     folder of its own (`XDG_STATE_HOME`), and the service found its
+     socket by the one and its registry by the other: it came up on the
+     live socket over an empty folder. **State is found from the home**
+     now, and another home has another socket (`wire::Paths`).
+  5. Nothing in a test session kept Rex from the account's own Rex
+     server and service. **Every `tsession` now has `REX_SERVER_SOCKET`
+     at a socket nothing listens on and `OLO_REX_AGENTS_DIR` in its own
+     folder**; a test that needs a server gives its own to `run`.
+  Put right by retiring the wrong service and asking once through the
+  installed helper from the real environment (`~/.local/share/olo/
+  rex-link/olo-rex-link-ID-ARCH agent retire`, then `… agent list`):
+  the registry on disk was untouched, because the wrong service kept
+  its own. `olo agent ping` and `readlink /proc/PID/exe` say which
+  build serves; `tr '\0' '\n' < /proc/PID/environ` what it was started
+  with. **On a host where others' agents run: nothing built from the
+  tree speaks to the live socket; a replacement of the service is said
+  in their file before it happens; and `~/.local/state/olo/
+  host-upgrade.hold` (anyone's, any words) holds it.**
+- **A node keeps "the pointer is here" when another element takes it
+  over** (the phantom tip, 2026-11-26). The tree matches elements to
+  nodes by place where they have no key of their own, so a list's row
+  for an item that went is given the next item's element, `hovered` and
+  all, and the first row's `on_hover` never hears `false` (only a node
+  destroyed under the pointer did: `left_behind`). What is tied to what
+  a row is about, not where it stands (a tip, a card, a preview), must
+  say so: `hover_key`. To see it: the pointer resting, then the list
+  changed by something other than the pointer (`tsession touch` moves
+  the pointer for hover too; Rex's `OLO_REX_DEMO_CHILD_ENDS` doesn't).
+- **Rex's word for a pane isn't the agent's turn.** The Rex server says
+  a pane is working while a shell the agent left in the background
+  still runs (Claude Code with a dev server: "1 shell" in its footer,
+  no "esc to interrupt"), so anything that takes that word for "the
+  model is in a turn" misses the turn's end. The agent's own screen is
+  what says it (at its prompt, nothing saying a turn is on). Reproduced
+  with a child of one's own in a minute: `olo agent start claude …
+  --prompt 'run sleep 900 in the background, then answer and end your
+  turn'`, then `status --json` (ShiftUp's item 24).
 - **The helpers are Rex's own subagents now** (2026-11-26; Ben: "when
   you use subagents for review/qa please use the new olo/rex native
   subagent support you built"). `tools/dev/agents` starts each as a child
@@ -2529,6 +2614,15 @@ their host's"):
   - Its first message is short and names the brief's file: a page of
     rules isn't sent as a command's argument through a tab's command
     line.
+  - A choice's digit can't be pressed in a child tab: `olo agent send`
+    pastes its text where the program takes pastes (a pasted "1"
+    answers nothing), refuses text while a child asks leave, and takes
+    no bare character for a `--key`. The tool answers as the service
+    does, by what the choice means (`olo agent approve --once |
+    --session | --no`), and moves the mark down for a choice of no such
+    kind (`choose`). The first approval a child tab asked for went
+    unanswered until this was so: a minder said yes three times to
+    nobody.
 - **An agent's shell has a proxy on its own loopback, and Podman hands
   it to every container** (`HTTPS_PROXY=http://127.0.0.1:PORT` in a
   Claude Code session here; Podman's `--http-proxy` is on by default).
@@ -3306,7 +3400,36 @@ rex"). How to set one up and work on it is the `olo-dev-server` skill
 (`.claude/skills/olo-dev-server`), kept current with this section. What
 this one is, and what differs:
 
-- **Ubuntu 26.04 in a VM** (32 processors, 125 GB): `setup.sh` is
+- **A second one since** (seen 2026-11-26): Fedora 44, 64 processors,
+  251 GB, btrfs under `/home` and `/var/tmp` (so `cp --reflink=always`
+  works there and a copy of a build is free), no GPU either, `perf`
+  under sudo the same. What is said of Ubuntu and ext4 below is the
+  first one's; check which you are on (`/etc/os-release`, `stat -f -c
+  %T /var/tmp`) before trusting either.
+- **The README's and the site's pictures are taken here too**
+  (`tools/dev/readme-shots`): an Agent Screen draws in software where
+  there is no render node (the tool sets what `tsession` sets), 3840 ×
+  2160, a whole desktop with Deskbar and Tracker's. From a release's
+  own build, no second workspace build: `OLO_SHOTS_BUILD=DIR` (a folder
+  of `/var/tmp/olo-release/target/release`'s programs, reflinked, with
+  dev builds of what you changed laid over), `OLO_SHOTS_OUT=DIR` to
+  look before anything in `docs/img` is replaced. The tool gives the
+  screen this tree's data (`OLO_DATA`: a build made elsewhere finds no
+  icons, wallpaper or fonts beside it, and its desktop is bare), a name
+  of its own for the desktop's disk (`OLO_TRACKER_DEMO_VOLUME`: the
+  disk's name is the computer's, which is nobody's to publish), and no
+  Rex server or agents service but its own. The desktop scene took
+  about a minute, all eighteen scenes (31 pictures) about twenty. Three
+  things a server lacks that a picture shows the want of: an emoji
+  font (every emoji a box: `OLO_SHOTS_EMOJI_FONT`, the file out of
+  `dnf download google-noto-color-emoji-fonts` unpacked with `rpm2cpio
+  | cpio -idm`, nothing installed); a person (Deskbar on an agent's
+  screen shows no live widgets, by design: `OLO_DESKBAR_DEMO_PERSON=1`,
+  which the tool sets); accounts (Integrations' Google accounts are a
+  made-up file taken for signed in, `OLO_PREFS_DEMO_GOOGLE=signed`).
+  `place(w, x, y)` with no size gives a window the size it had when it
+  opened, not the one it has: pass its frame's (`tuck`).
+- **Ubuntu 26.04 in a VM** (the first: 32 processors, 125 GB): `setup.sh` is
   Fedora's (dnf), so what Olo needs came from apt: Mesa's software
   Vulkan (`mesa-vulkan-drivers`, lavapipe), Python's imaging
   (`python3-pil`), Olo's fonts (`fonts-urw-base35`, `fonts-noto-core`,

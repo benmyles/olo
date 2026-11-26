@@ -1,0 +1,230 @@
+#!/usr/bin/python3
+"""Put a release's own pieces on this Rex host, as the desktop does when
+it connects after an upgrade: Olo's helper (`olo-rex-link`, which is
+`olo agent` and the agents service), the skill for agents with its `olo`
+command, and the desktop commands' `olo`. For a host whose desktop can't
+be upgraded just now (Ben, 2026-11-26: "as you build the new releases
+please upgrade the services, skills etc on this rex host automatically
+for me so that the agents working on stuff relying on olo agent fixes
+etc get it as soon as they're ready (i'll be stepping away for a while
+and won't be able to upgrade my desktop for a bit)").
+
+    tools/dev/host-upgrade [--dry-run] [--work DIR]
+
+DIR: where the release was built (tools/publish-release.sh's work folder:
+/var/tmp/olo-release, or OLO_RELEASE_WORK). tools/publish-release.sh runs
+this as its last step, once the release is published (OLO_NO_HOST_UPGRADE=1
+has it leave the host alone); run by hand, it installs what was last
+built there. Only on a host that has Olo's pieces already (its helper's
+folder): it upgrades, it never sets a host up.
+
+What it does, each as the desktop's own install does it
+(apps/rex/src/bridge.rs, link.rs, build.rs):
+
+1. The helper the release's Rex carries for this machine, under the
+   name that Rex will look for (`olo-rex-link-ID-ARCH` in
+   ~/.local/share/olo/rex-link: ID is the app's own, of both machines'
+   helpers), so the desktop finds it there when it is upgraded and puts
+   nothing again. The newest by its time, which is the one `olo` runs.
+2. The skill's files (~/.claude/skills/olo-rex-bridge: SKILL.md, olo,
+   olo.lua) and the desktop commands' own `olo` (~/.local/share/olo/
+   rex-commands), from the release's source. Their stamps (`.olo-skill`,
+   `.olo-commands`) are left as the desktop wrote them: a desktop of an
+   earlier release that connects meanwhile sees its own stamp and leaves
+   the newer files be, and the upgraded desktop sees a stamp that isn't
+   its own and writes its own once.
+3. The agents service: the one running is asked to retire (it finishes
+   what it is doing and writes down what it knows; the children are the
+   Rex server's tabs and go on, and a `watch` in flight is asked again by
+   its own command), and the new helper's starts. From 2026-11-26 a
+   service hands over by itself to an asker of a later build; one from
+   before must be told, and an asker of the old build may start the old
+   one again in that moment, so it is asked until the service is the new
+   helper's.
+
+A hold: while ~/.local/state/olo/host-upgrade.hold is there, nothing is
+replaced (its words say why and whose it is); --even-if-held goes ahead
+all the same. Whoever has agents at work on the host may put it there.
+
+It prints what it did, and its last line is "host-upgrade: done: …",
+"host-upgrade: nothing to do: …" or "host-upgrade: failed: WHY" (exit 1).
+"""
+import glob
+import json
+import os
+import platform
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser("~")
+LINKS = os.path.join(HOME, ".local/share/olo/rex-link")
+SKILL = os.path.join(HOME, ".claude/skills/olo-rex-bridge")
+COMMANDS = os.path.join(HOME, ".local/share/olo/rex-commands")
+HOLD = os.path.join(HOME, ".local/state/olo/host-upgrade.hold")
+# (The order the app's build.rs takes them in for its ID.)
+MACHINES = ["x86_64", "aarch64"]
+
+
+def fail(why):
+    print(f"host-upgrade: failed: {why}")
+    sys.exit(1)
+
+
+def fnv(parts):
+    """FNV-1a over bytes, as apps/rex/build.rs names the helper's build
+    and bridge.rs stamps the skill."""
+    h = 0xCBF29CE484222325
+    for part in parts:
+        for byte in part:
+            h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{h:016x}"
+
+
+def put(path, data, mode, dry):
+    """`data` at `path`, whole or not at all; whether it changed."""
+    try:
+        if open(path, "rb").read() == data and (os.stat(path).st_mode & 0o777) == mode:
+            return False
+    except OSError:
+        pass
+    if not dry:
+        tmp = f"{path}.tmp.{os.getpid()}"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    return True
+
+
+def asked(helper, *args, timeout=60):
+    try:
+        r = subprocess.run([helper, "agent", *args], capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, str(e)
+    try:
+        return json.loads(r.stdout), r.stderr.strip()
+    except ValueError:
+        return None, (r.stderr or r.stdout).strip()
+
+
+def service(helper):
+    """The running service's process and the file it runs, asked through
+    `helper` (which starts one if none runs): (pid, exe) or (None, why)."""
+    said, err = asked(helper, "ping")
+    if not said or "pid" not in said:
+        # (None answers just now, whatever `ping` said of it: it starts
+        # none, and a service that has just handed over to this very
+        # asking is gone by the time the answer is read. A command that
+        # starts one starts this helper's, so the new build is the one
+        # running from this moment, not whichever an asker of an old
+        # build starts first, and nobody waits a second for a service
+        # (the upgrades of 09:43 and 10:50, 2026-11-26).)
+        asked(helper, "list", "--fast", "--json")
+        said, err = asked(helper, "ping")
+    if not said or "pid" not in said:
+        return None, err or "no answer"
+    pid = int(said["pid"])
+    try:
+        return pid, os.readlink(f"/proc/{pid}/exe").removesuffix(" (deleted)")
+    except OSError as e:
+        return None, str(e)
+
+
+def main():
+    args = sys.argv[1:]
+    dry = "--dry-run" in args
+    work = os.environ.get("OLO_RELEASE_WORK", "/var/tmp/olo-release")
+    if "--work" in args:
+        work = args[args.index("--work") + 1]
+    if not os.path.isdir(LINKS):
+        print(f"host-upgrade: nothing to do: this host has none of Olo's helper ({LINKS}); the desktop sets a host up")
+        return
+    # Held: whoever has agents at work on this host says so with a file,
+    # and nothing here is replaced while it is there (its words are why).
+    # (2026-11-26: a service replaced under four agents hours into their
+    # work, for 2 min 21 s, by a build of mine; their lead asked to be
+    # told before the service is replaced. A hold is how they say no.)
+    if os.path.exists(HOLD) and "--even-if-held" not in args:
+        why = " ".join(open(HOLD).read().split())[:200]
+        print(f"host-upgrade: nothing to do: held by {HOLD} ({why or 'no word of why'}): remove it, or --even-if-held")
+        return
+    machine = platform.machine()
+    if machine not in MACHINES:
+        fail(f"no helper is built for {machine}")
+    src = os.path.join(work, "src")
+    outs = sorted(glob.glob(os.path.join(work, "target/release/build/olo-rex/*/out")), key=os.path.getmtime)
+    outs = [o for o in outs if os.path.isfile(os.path.join(o, f"olo-rex-link-{machine}"))]
+    if not outs or not os.path.isdir(src):
+        fail(f"no release built in {work} (tools/publish-release.sh builds it there)")
+    out = outs[-1]
+    carried = [open(os.path.join(out, f"olo-rex-link-{m}"), "rb").read() for m in MACHINES]
+    mine = carried[MACHINES.index(machine)]
+    if not mine:
+        fail(f"the release's Rex carries no helper for {machine} (its build said why)")
+    build = fnv(carried)
+    commit = subprocess.run(["git", "-C", src, "rev-parse", "--short=9", "HEAD"], capture_output=True, text=True).stdout.strip() or "?"
+    helper = os.path.join(LINKS, f"olo-rex-link-{build}-{machine}")
+    did = []
+
+    # 1. The helper.
+    new_helper = put(helper, mine, 0o755, dry)
+    if new_helper:
+        did.append(f"the helper {os.path.basename(helper)}")
+    elif not dry:
+        # (There already: still the newest by its time, the one `olo` runs.)
+        newest = max(glob.glob(os.path.join(LINKS, f"olo-rex-link-*-{machine}")), key=os.path.getmtime)
+        if newest != helper:
+            os.utime(helper)
+            did.append(f"the helper {os.path.basename(helper)} made the newest again")
+    if not dry:
+        r = subprocess.run([helper, "agent", "--protocol"], capture_output=True, text=True)
+        if r.returncode or not r.stdout.strip().isdigit():
+            fail(f"the helper put there doesn't answer ({helper} agent --protocol: {(r.stderr or r.stdout).strip()})")
+
+    # 2. The skill, and the desktop commands' own olo.
+    read = lambda name: open(os.path.join(src, "apps/rex/src", name), "rb").read()
+    skill, olo, lua, shim = read("bridge_skill.md"), read("bridge_olo.sh"), read("bridge_olo.lua"), read("bridge_shim.sh")
+    if os.path.isfile(os.path.join(SKILL, "SKILL.md")):
+        changed = [name for name, data, mode in (("SKILL.md", skill, 0o644), ("olo", olo, 0o755), ("olo.lua", lua, 0o644)) if put(os.path.join(SKILL, name), data, mode, dry)]
+        if changed:
+            did.append(f"the skill's {', '.join(changed)}")
+    if os.path.isfile(os.path.join(COMMANDS, "olo")):
+        changed = [name for name, data, mode in (("olo", olo, 0o755), ("olo.lua", lua, 0o644), ("olo-desktop-command", shim, 0o755)) if put(os.path.join(COMMANDS, name), data, mode, dry)]
+        if changed:
+            did.append(f"the desktop commands' {', '.join(changed)}")
+
+    # 3. The service.
+    if dry:
+        pid, exe = service(max(glob.glob(os.path.join(LINKS, f"olo-rex-link-*-{machine}")), key=os.path.getmtime))
+        print(f"host-upgrade: dry run for release {commit} (helper {build}): would put " + ("; ".join(did) or "nothing") + f"; the service is pid {pid} running {os.path.basename(exe or '?')}")
+        return
+    pid, exe = service(helper)
+    for attempt in range(1, 13):
+        if pid is None:
+            # (No Rex server here, or it can't be asked: nothing runs to be upgraded.)
+            print(f"host-upgrade: the agents service couldn't be asked ({exe}): it starts from the new helper at the next `olo agent`")
+            break
+        if exe == helper:
+            break
+        was = pid
+        asked(helper, "retire")
+        until = time.time() + 30
+        while os.path.exists(f"/proc/{was}") and time.time() < until:
+            time.sleep(0.05)
+        pid, exe = service(helper)
+        if exe == helper:
+            did.append(f"the agents service (pid {was} retired, pid {pid} is the new helper's" + (f", asked {attempt} times" if attempt > 1 else "") + ")")
+            break
+    else:
+        fail(f"the agents service is still pid {pid} running {exe} after 12 askings: an asker of the old build starts it again each time; `{helper} agent retire` and look")
+    if not did:
+        print(f"host-upgrade: nothing to do: this host has release {commit}'s helper ({build}), skill and commands, and its service is the helper's (pid {pid})")
+        return
+    for line in did:
+        print(f"host-upgrade: put {line}")
+    print(f"host-upgrade: done: this host has release {commit}'s helper ({build}), skill and commands" + (f"; the agents service is pid {pid}" if pid else ""))
+
+
+if __name__ == "__main__":
+    main()

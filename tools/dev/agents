@@ -175,7 +175,7 @@ SAVES = ("settings.json", "always allow access", "auto mode")
 # allowed. No `rm`, `cp`, `mv`, `kill`: an agent's own files are made
 # with its file tool, and those four come to you, or to the minder.)
 READING = ["ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "sort", "uniq", "cut", "tr", "diff", "cmp", "stat", "file", "du", "df", "which", "command -v",
-        "echo", "printf", "pwd", "date", "true", "test", "basename", "dirname", "realpath", "readlink", "nl", "tac", "column", "jq", "xxd", "od", "sha256sum",
+        "echo", "printf", "pwd", "date", "true", "test", "[", "basename", "dirname", "realpath", "readlink", "nl", "tac", "column", "jq", "xxd", "od", "sha256sum",
         "sed -n", "awk", "id", "uname", "nproc", "free", "uptime", "cd", "mkdir", "touch", "sleep"]
 CARGO = ["cargo build", "cargo check", "cargo test", "cargo clippy", "cargo fmt -p", "cargo ui-lint", "cargo metadata", "cargo tree", "cargo doc", "cargo bench",
          "cargo run", "cargo --version", "cargo -V", "rustc --version", "rustc -V", "rustc --print", "rustup show",
@@ -271,10 +271,13 @@ def child(name):
 def press(name, key):
     """A key pressed in it (named as tmux names keys)."""
     if via(name) == "rex":
-        if re.fullmatch(r"[0-9A-Za-z]", key):
-            olo("send", child(name), "--text", key, check=True)
-        else:
-            olo("send", child(name), "--key", OLO_KEYS.get(key, key), check=True)
+        # (As a key, never as text: text is pasted where the program
+        # takes pastes, and a pasted "1" answers no question; and text is
+        # refused while a child asks leave. A choice's own key is meant
+        # (`--force`): which choice may be taken is this tool's to decide,
+        # and it has, before it presses. The first approval of a child
+        # tab went unanswered twice over, 2026-11-26.)
+        olo("send", child(name), "--force", "--key", OLO_KEYS.get(key, key), check=True)
     else:
         tmux("send-keys", "-t", f"={name}:0.0", key, check=True)
 
@@ -399,7 +402,12 @@ def state(name):
         if not said:
             return "gone"
         if said.get("state") == "exited" or said.get("running") is False:
-            return "exited"
+            # (The service keeps a child it has stopped, as exited, where
+            # tmux forgets a session it killed: one this tool has ended
+            # already is gone, not to be ended and announced again at
+            # every `list` and `watch`. A minder was told twenty times
+            # that a helper's session had been closed, 2026-11-26.)
+            return "gone" if (meta(name) or {}).get("ended") else "exited"
     else:
         if tmux("has-session", "-t", f"={name}").returncode:
             return "gone"
@@ -1246,10 +1254,14 @@ def latest(name):
 
 
 def peek(name, lines):
-    s = screen(name, lines)
+    # (Its last `lines` lines that say something: taken of a longer
+    # stretch, since a screen's foot is mostly blank. Claude Code's last
+    # forty lines were its spinner and its empty field, and a look at
+    # work read as one doing nothing, 2026-11-26.)
+    s = screen(name, max(lines * 6, 240))
     if s is None:
         sys.exit(f"agents: no {name}")
-    print("\n".join(l for l in s.splitlines() if l.strip()))
+    print("\n".join([l for l in s.splitlines() if l.strip()][-lines:]))
     print(f"--- {name}: {state(name)}")
     seen(name)
 
@@ -1303,6 +1315,33 @@ def say(name, text, now=False):
     print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until the step it is on ends (`agents say {name} --now …` delivers at once)"))
 
 
+def choose(name, pick, choices):
+    """Take `pick`, one of the `choices` a question shows (its key and
+    its words). In tmux: its own key, a digit. In a child tab a digit
+    can't be pressed (text there is pasted where the program takes
+    pastes, and refused while a child asks leave), so it is taken as the
+    service takes an answer: by what the choice means (`olo agent
+    approve`, which sees its mark on that very choice before Return and
+    Escapes otherwise), and, for a choice that is none of its kinds, by
+    moving the mark down to it from the first and confirming."""
+    if via(name) != "rex":
+        press(name, pick[0])
+        return
+    words = pick[1]
+    kind = ("--once" if words.startswith("Yes") and "always" not in words and "auto mode" not in words
+            else "--session" if words.startswith("Yes") and "in this conversation" in words
+            else "--no" if words.startswith("No") else None)
+    if kind:
+        r = olo("approve", child(name), kind, "--json")
+        if r.returncode == 0:
+            return
+        print(f"agents: olo agent approve {kind} didn't take ({(r.stderr or r.stdout).strip()[:200]}): moving to the choice instead", file=sys.stderr)
+    for _ in range([c[0] for c in choices].index(pick[0])):
+        press(name, "Down")
+        time.sleep(0.15)
+    press(name, "C-m")
+
+
 def answer(name, how):
     """Answer what it asks: y, p, no, or the number of a choice."""
     refuse_nested()
@@ -1331,7 +1370,7 @@ def answer(name, how):
     if any(x in pick[1] for x in SAVES):
         sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
     before = screen(name, 400) or ""
-    press(name, pick[0])
+    choose(name, pick, choices)
     # (Whether it took: its screen moves on. The same question again after
     # that is a second asking, not this one left up: an agent that ran a
     # script asked to run it again, and the minder took it for an answer

@@ -83,9 +83,9 @@ impl Bus {
             .serve_at(fdo::Monitoring::PATH, monitoring)?
             .build()
             .await?;
-        let peer_conn = connection::Builder::authenticated_socket(peer_socket, guid.clone())?.p2p().build().await?;
+        let peer_messages = connection::Builder::authenticated_socket(peer_socket, guid.clone())?.p2p().build_message_stream().await?;
 
-        peers.add_us(peer_conn).await;
+        peers.add_us(peer_messages).await;
         trace!("Self-dial connection created.");
 
         Ok(Self { listener, inner: Inner { address, peers, guid, next_id: 0, auth_mechanism, _self_conn: service_conn } })

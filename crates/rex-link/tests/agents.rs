@@ -704,6 +704,123 @@ fn a_later_build_takes_over_and_kept_children_are_adopted() {
     rig.json(&["stop", "steady", "--force", "--json"]);
 }
 
+/// An upgrade that speaks the same protocol takes over too: a helper put
+/// beside the running one on the host, after it, is asked through at
+/// once, the children there as before. An asker from before the upgrade
+/// (a watcher still waiting) never takes the service back; and a build
+/// somewhere else, however new, never takes it at all: a source tree's
+/// debug build asked through from a test session was handed a host's
+/// live service, 2026-11-26.
+#[test]
+fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
+    let Some(rig) = Rig::start("upgrade") else { return };
+    // A host's helpers, in the folder they are kept in.
+    let kept = rig.dir.join("rex-link");
+    std::fs::create_dir_all(&kept).unwrap();
+    let (first_build, later_build) = (kept.join("olo-rex-link-0001-x86_64"), kept.join("olo-rex-link-0002-x86_64"));
+    std::fs::copy(HELPER, &first_build).unwrap();
+    let ask = |helper: &Path, args: &[&str]| -> Value {
+        let mut cmd = Command::new(helper);
+        cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work")).env("REX_BLOCK", &rig.lead_block);
+        Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
+        let out = cmd.arg("agent").args(args).output().expect("the helper");
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}: {}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    };
+    let pid = |helper: &Path| ask(helper, &["ping"])["pid"].as_i64().unwrap() as i32;
+    let started = ask(&first_build, &["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
+    let first = pid(&first_build);
+    assert_eq!(std::fs::read_link(format!("/proc/{first}/exe")).unwrap(), first_build);
+    // The same build asking again changes nothing; nor does another
+    // program asking, however new its file; nor the helper from
+    // somewhere else (the build this test was made with, in its tree).
+    assert_eq!(pid(&first_build), first);
+    let raw = rig.raw(json!({ "proto": 1, "op": "ping" }));
+    assert_eq!(raw["data"]["pid"], json!(first), "answered, not handed over: {raw}");
+    let elsewhere = rig.dir.join("tree").join("olo-rex-link");
+    std::fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
+    std::fs::copy(HELPER, &elsewhere).unwrap();
+    assert_eq!(pid(&elsewhere), first, "a build that isn't beside it is answered, and takes nothing");
+    assert_eq!(rig.service_pid(), Some(first));
+
+    // "An upgrade": the helper again, beside the first, written now.
+    std::fs::copy(HELPER, &later_build).unwrap();
+    let listed = ask(&later_build, &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"], "the child is there, asked of the later build: {listed}");
+    rig.wait("the first service to end", || !Path::new(&format!("/proc/{first}")).exists());
+    let second = pid(&later_build);
+    assert_ne!(second, first);
+    assert_eq!(std::fs::read_link(format!("/proc/{second}/exe")).unwrap(), later_build, "the service is the later build's");
+
+    // The earlier build asking (a watcher from before): answered by the later one, which stays.
+    let listed = ask(&first_build, &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"]);
+    assert_eq!(pid(&later_build), second, "never handed back to an earlier build");
+    ask(&later_build, &["stop", "steady", "--force", "--json"]);
+}
+
+/// A registry that is there and can't be read is a failure, said with
+/// its file's name: never an empty list, which would say of every child
+/// that it isn't. It is left as it is.
+#[test]
+fn a_registry_that_cant_be_read_is_said_not_emptied() {
+    let Some(rig) = Rig::start("damaged") else { return };
+    rig.json(&["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
+    let registry = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path().join("registry.json")).find(|p| p.is_file()).expect("its registry");
+    // The service gone, and its registry damaged (half a write, another version's).
+    let pid = rig.service_pid().unwrap();
+    rig.helper().args(["agent", "retire"]).output().unwrap();
+    rig.wait("the service to end", || !Path::new(&format!("/proc/{pid}")).exists());
+    let was = std::fs::read_to_string(&registry).unwrap();
+    std::fs::write(&registry, &was[..was.len() / 2]).unwrap();
+    let (code, out, err) = rig.olo(&["list", "--json"]);
+    assert_eq!(code, 69, "{out}\n{err}");
+    assert!(err.contains("registry") && err.contains("can't be read"), "{err}");
+    assert!(!out.contains("\"subagents\":[]"), "never an empty list: {out}");
+    assert_eq!(std::fs::read_to_string(&registry).unwrap(), &was[..was.len() / 2], "left as it is");
+    // Put right, it is read again, the child with it.
+    std::fs::write(&registry, &was).unwrap();
+    let listed = rig.json(&["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["name"], "steady");
+    rig.json(&["stop", "steady", "--force", "--json"]);
+}
+
+/// A key its bytes can't say is pressed as the keyboard would press it:
+/// through the server's own encoder, by what the program asked of its
+/// keys. Ctrl+Enter to a program on the kitty keyboard protocol (Claude
+/// Code pushes its flags at its start) is `CSI 13;5u`; to one that
+/// asked nothing, xterm's `CSI 27;5;13~`; a plain Return, Alt with a
+/// letter and Escape are their bytes either way.
+#[test]
+fn a_key_is_pressed_as_the_keyboard_would_press_it() {
+    let Some(rig) = Rig::start("keys") else { return };
+    rig.stand_in("claude");
+    rig.start_child("claude", "typist", &[]);
+    let pressed = |key: &str| -> Vec<u8> {
+        let before = rig.keys("typist").len();
+        rig.json(&["send", "typist", "--key", key, "--json"]);
+        rig.wait(&format!("the key {key}"), || rig.keys("typist").len() > before);
+        // (All of it: a sequence comes in one write, read a moment after its first byte.)
+        std::thread::sleep(Duration::from_millis(80));
+        rig.keys("typist")[before..].to_vec()
+    };
+    // A program that asked nothing of its keys.
+    assert_eq!(pressed("Enter"), b"\r");
+    assert_eq!(pressed("Ctrl+Enter"), b"\x1b[27;5;13~");
+    assert_eq!(pressed("Alt+m"), b"\x1bm");
+    // It asks for the kitty keyboard protocol, as Claude Code does.
+    rig.show("typist", "\x1b[>1u ready for keys\n");
+    rig.wait("its screen", || rig.olo(&["read", "typist"]).1.contains("ready for keys"));
+    assert_eq!(pressed("Ctrl+Enter"), b"\x1b[13;5u");
+    assert_eq!(pressed("Shift+Enter"), b"\x1b[13;2u");
+    assert_eq!(pressed("C-S-Enter"), b"\x1b[13;6u");
+    assert_eq!(pressed("Ctrl+Tab"), b"\x1b[9;5u");
+    assert_eq!(pressed("Enter"), b"\r");
+    assert_eq!(pressed("Alt+m"), b"\x1bm");
+    assert_eq!(pressed("Escape"), b"\x1b");
+    assert_eq!(pressed("Ctrl+Shift+Up"), b"\x1b[1;6A");
+    rig.json(&["stop", "typist", "--force", "--json"]);
+}
+
 /// What a watcher is and isn't told: two questions one after the other
 /// are two events; a cursor from before the log began again is said so;
 /// text that was already on the screen isn't the text waited for; a

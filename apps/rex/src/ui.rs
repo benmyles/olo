@@ -3054,11 +3054,23 @@ impl RexWindow {
         let hub = app().hub.clone();
 
         // (What the pane's program asked of its keys.)
-        let modes = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map_or_else(Default::default, |b| {
+        let (modes, kitty_flags) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map_or_else(Default::default, |b| {
             let b = b.lock().unwrap_or_else(|e| e.into_inner());
-            olo_kit::term_keys::Modes { app_cursor: b.terminal.dec_mode(1), kitty: b.terminal.kitty_keyboard_flags() != 0 }
+            let flags = b.terminal.kitty_keyboard_flags();
+            (olo_kit::term_keys::Modes { app_cursor: b.terminal.dec_mode(1), kitty: flags != 0 }, flags)
         });
-        if let Some(bytes) = encode_terminal_special_key(k, modes).filter(|_| !cmd) {
+        // A program that asked for the kitty keyboard protocol is told
+        // its keys by the server's own encoder, which has the protocol
+        // and the program's flags as they stand: sent as bytes from
+        // here, Ctrl+Enter reached Claude Code as a Return (Ben,
+        // 2026-11-26; `term_keys::kitty_encodes`).
+        if !cmd && !k.modifiers.platform && olo_kit::term_keys::kitty_encodes(olo_kit::term_keys::Key::of(k), kitty_flags) {
+            let rex_ev = keymap::to_rex_key_event(e, false);
+            for t in targets {
+                hub.send_rex_key(&t, rex_ev.clone());
+            }
+            cx.stop_propagation();
+        } else if let Some(bytes) = encode_terminal_special_key(k, modes).filter(|_| !cmd) {
             for t in targets {
                 hub.send_input(&t, bytes.clone());
             }
@@ -8490,7 +8502,10 @@ fn sidebar_native_child_row(
 
     let depth = child.row.depth.clamp(1, 4);
     let indent = (depth as f32) * CHILD_INDENT;
-    let left = ACTIVITY_FOLD_W + indent + ROW_ICON + 4.0;
+    // (Its name as far from its icon as a top row's is: with 4 points a
+    // child's mark crowded its name, and the gap differed by level, Opus
+    // 5.5's look of 2026-11-26.)
+    let left = ACTIVITY_FOLD_W + indent + ROW_ICON + m::TIGHT;
     let title = child.row.entry.display_title();
     let command = child.command;
     // (A command of the asker's own runs; it is no agent at work or at rest.)

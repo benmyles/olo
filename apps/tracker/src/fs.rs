@@ -369,8 +369,14 @@ pub fn display_name(path: &Path) -> String {
     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
 }
 
-/// The boot volume's name, as BeOS showed it on the desktop.
+/// The boot volume's name, as BeOS showed it on the desktop: the
+/// computer's. (`OLO_TRACKER_DEMO_VOLUME=NAME` gives it another, for
+/// pictures taken on a computer whose own name isn't theirs to show:
+/// tools/dev/readme-shots on a dev server.)
 pub fn volume_label() -> String {
+    if let Some(name) = std::env::var("OLO_TRACKER_DEMO_VOLUME").ok().filter(|n| !n.trim().is_empty()) {
+        return name.trim().to_owned();
+    }
     fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty() && s != "localhost").unwrap_or_else(|| "System".into())
 }
 

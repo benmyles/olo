@@ -208,6 +208,36 @@ pub fn tail_of(screen: &str, lines: usize) -> Vec<String> {
     screen.lines().rev().filter(|l| !l.trim().is_empty()).take(lines).map(str::to_owned).collect::<Vec<_>>().into_iter().rev().collect()
 }
 
+/// Whether the process that asks runs another file of the helper than
+/// this service does, written later (a build put on the host since this
+/// one started). The same file, or an earlier one (a watcher from before
+/// an upgrade, still waiting), is not: the service is never handed back.
+fn asker_is_a_later_build(pid: i32) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    // (The helper itself, by its file's name, as it is built and as it
+    // is put on a host: `olo-rex-link`, `olo-rex-link-ID-ARCH`. Another
+    // program that speaks to the socket is no build of this one, however
+    // new its file: a test's own request ended the service it was
+    // asking, 2026-11-26.)
+    let Ok(theirs_at) = std::fs::read_link(format!("/proc/{pid}/exe")) else { return false };
+    let name = theirs_at.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if !name.trim_end_matches(" (deleted)").starts_with("olo-rex-link") {
+        return false;
+    }
+    // (And put beside this one: an upgrade, in the folder a host's
+    // helpers are kept in. A build somewhere else is not one: the debug
+    // build of a source tree, asked through from a test session, was
+    // handed the live service of a host with agents at work, 2026-11-26.)
+    let Ok(mine_at) = std::fs::read_link("/proc/self/exe") else { return false };
+    if mine_at.parent() != theirs_at.parent() {
+        return false;
+    }
+    // (Through /proc's own links: a file taken off the disk since, as an
+    // upgrade's tidying does, is still read.)
+    let (Ok(mine), Ok(theirs)) = (std::fs::metadata("/proc/self/exe"), std::fs::metadata(format!("/proc/{pid}/exe"))) else { return false };
+    (mine.dev(), mine.ino()) != (theirs.dev(), theirs.ino()) && (theirs.mtime(), theirs.mtime_nsec()) > (mine.mtime(), mine.mtime_nsec())
+}
+
 impl Service {
     pub fn lock(&self) -> MutexGuard<'_, State> {
         self.st.lock().unwrap_or_else(|e| e.into_inner())
@@ -609,7 +639,6 @@ impl Service {
             }
             return;
         }
-        self.tell(&entry, cls.state, cls.summary.clone());
         if self.text_watchers.load(std::sync::atomic::Ordering::Relaxed) > 0 {
             self.changed.notify_waiters();
         }
@@ -633,6 +662,15 @@ impl Service {
             live.check_gen = live.check_gen.wrapping_add(1);
             if unstarted || cls.state == SubagentLiveState::Working { None } else { Some(live.check_gen) }
         };
+        // Followers are told what its screen says now that it differs
+        // from what it said (it works, it asks): at once, before it is
+        // settled with its transcript below. Not at every reading of a
+        // screen that says the same: that took back what had been
+        // settled (done, by its transcript, told as at rest again by
+        // the next look at the same screen), and a follower that shows
+        // the state it is told (the desktop's rows) would have said At
+        // rest of a child that was done.
+        self.tell(&entry, cls.state, cls.summary.clone());
         // (A question come or gone: who waits on that looks at once.)
         if cls.folder_trust.is_some() || cls.approval.is_some() || cls.state == SubagentLiveState::Exited || cls.state == SubagentLiveState::Working {
             self.changed.notify_waiters();
@@ -1067,8 +1105,13 @@ impl Service {
         };
         // An asker of a later build: its own service takes over. This
         // one finishes what it is doing, writes down what it knows and
-        // ends; the children are the server's and go on.
-        if req.proto > PROTO {
+        // ends; the children are the server's and go on. Later by what
+        // it speaks, or by its file: a helper put on the host after this
+        // one was (an upgrade that speaks the same) is asked through at
+        // once, and a service that had no such word ran the old build for
+        // as long as anything kept it busy: on a host whose agents never
+        // rest, for good (2026-11-26).
+        if req.proto > PROTO || peer_pid.is_some_and(asker_is_a_later_build) {
             let _ = write.write_all(format!("\n{}", said(&Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) })).as_bytes()).await;
             self.retire.notify_one();
             return;
@@ -1212,7 +1255,15 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         eprintln!("olo agents: the Rex server wouldn't say what happens in its sessions: {e}");
         return 69;
     }
-    let reg = SubagentRegistry::load_from(&paths.registry);
+    let reg = match SubagentRegistry::read_from(&paths.registry) {
+        Ok(reg) => reg,
+        Err(why) => {
+            // (Said, and no service: whoever asks is told it can't be
+            // asked, with this word, and is never told "no children".)
+            eprintln!("olo agents: {why}");
+            return 69;
+        }
+    };
     let log = load_events(&paths, reg.event_seq);
     let _ = std::fs::remove_file(&paths.socket);
     let listener = match UnixListener::bind(&paths.socket) {

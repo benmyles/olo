@@ -406,8 +406,12 @@ fn read(
     *legacy.lock().unwrap() = backs_up.filter(|a| !listed.iter().any(|l| l.address.eq_ignore_ascii_case(a))).and_then(|a| legacy_client().map(|c| (a, c.id)));
     proxy.send(Msg::Redraw);
     let unchecked: Vec<Account> = accounts_.lock().unwrap().iter().flatten().filter(|(_, s)| *s == Stands::Checking).map(|(a, _)| a.clone()).collect();
+    // (Pictures and the lint: `OLO_PREFS_DEMO_GOOGLE=signed` takes every
+    // account listed (`OLO_GOOGLE_ACCOUNTS`, made-up ones) for signed in
+    // and asks Google and the keyring nothing.)
+    let demo = std::env::var("OLO_PREFS_DEMO_GOOGLE").ok().as_deref() == Some("signed");
     for a in unchecked {
-        let now = match accounts::token(&a.address, true, "Olo Preferences") {
+        let now = match if demo { Ok(String::new()) } else { accounts::token(&a.address, true, "Olo Preferences") } {
             Ok(_) => Stands::Signed,
             Err(accounts::NoToken::NotConnected) => Stands::Failed(olo_kit::words::tr("Its sign-in isn’t in the keyring: sign in again.").into()),
             Err(accounts::NoToken::Network(e)) => Stands::Failed(sentence(&e)),

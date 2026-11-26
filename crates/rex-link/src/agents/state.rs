@@ -166,6 +166,19 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
     // 6. Fallback to Rex activity — an unrecognised Blocked dialog fails VISIBLE as WaitingQuestion
     //    (unless the screen is still completely blank at startup), never hanging forever as `working` (`H2`)!
     let (state, summary) = match activity {
+        // The pane is said to be at work, and the agent's own screen says
+        // its turn is over: it stands at its prompt with nothing that
+        // says a turn is on. The screen is right. Rex's word for a pane
+        // also counts a shell of the agent's own left running (Claude
+        // Code with a dev server in the background: "1 shell" in its
+        // footer, and no "esc to interrupt"), so a child whose turn had
+        // ended with a question read as `working` for as long as its
+        // server ran, and no `done` was ever told: one sat seven minutes
+        // unseen (ShiftUp's lead, 2026-11-26, item 24: "A turn's end is
+        // an event, whatever is still running … 'working' should mean
+        // the model is in a turn"). What it still has running is said
+        // beside the state (`waiting_on`, `background_shells`).
+        Activity::Working if olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some("at prompt".into())),
         Activity::Working => (SubagentLiveState::Working, doing_line(screen_text)),
         Activity::Blocked => {
             if screen_text.trim().is_empty() {

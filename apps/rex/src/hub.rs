@@ -573,6 +573,15 @@ impl BlockRuntime {
 
     pub fn recompute_activity(&mut self) -> AgentActivity {
         if let Some((act, _)) = AgentActivity::from_records(&self.program_statuses) {
+            // The server's word that it works is its program's own, and
+            // Claude Code goes on saying so while a shell it started is
+            // still running, its turn long over: a pane read Working for
+            // as long as its dev server ran, and what it had asked sat
+            // unseen (the same word misled the hosts' agents service:
+            // ShiftUp's item 24, 2026-11-26). An agent whose screen we
+            // read says itself whether a turn is on: at its prompt, with
+            // nothing saying so, it is at rest.
+            let act = if act == AgentActivity::Working && self.turn_is_over() { AgentActivity::Idle } else { act };
             self.agent_activity = act;
             return act;
         }
@@ -601,6 +610,16 @@ impl BlockRuntime {
             }
         };
         self.agent_activity
+    }
+
+    /// Whether its agent's own screen says no turn is on: one of the
+    /// agents whose screens are read (`olo_agent_screen`), standing at
+    /// its prompt with nothing that says it works or asks.
+    fn turn_is_over(&self) -> bool {
+        let screen = self.screen_bottom(ACTIVITY_LOOK);
+        let (name, exe, args) = self.agent_program();
+        which_agent(name.as_deref(), &exe, &args, &screen)
+            .is_some_and(|agent| olo_agent_screen::classify(agent, &screen) == olo_agent_screen::State::Idle && olo_agent_screen::at_prompt(agent, &screen))
     }
 
     /// The bottom of its screen, as text: where an agent's prompt, its
@@ -2558,6 +2577,20 @@ impl RexHub {
         // without touching any real Rex server socket or user files.
         if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") {
             hub.populate_demo_workspace();
+            // (`OLO_REX_DEMO_CHILD_ENDS=SECONDS`: the child "Unit Tests"
+            // ends that long after the start, as a child stopped on its
+            // host does: its row goes from every list while whatever the
+            // pointer was doing goes on. For the pictures of what a row's
+            // going leaves behind: a tip stayed up for a child nowhere in
+            // the list, 2026-11-26.)
+            if let Some(after) = std::env::var("OLO_REX_DEMO_CHILD_ENDS").ok().and_then(|s| s.parse::<u64>().ok()) {
+                let (state, notify) = (hub.state.clone(), hub.notify.clone());
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(after));
+                    state.lock().unwrap_or_else(|e| e.into_inner()).subagents.entries.retain(|e| e.title != "Unit Tests");
+                    notify(HubNotice::StateChanged);
+                });
+            }
             if std::env::var_os("OLO_REX_FILES_SOCKET").is_some() {
                 crate::files_sock::spawn(hub.rt.handle(), hub.state.clone());
             }
@@ -9281,6 +9314,59 @@ mod tests {
         assert_eq!(moved_before(&ids, 2, 2), None);
         assert_eq!(moved_before(&ids, 4, 0), None);
         assert_eq!(moved_before(&ids, 0, 4), None);
+    }
+
+    /// The server's word that a pane works is believed until the agent's
+    /// own screen says its turn is over: Claude Code goes on reporting
+    /// work while a shell it started still runs (its screen as it drew
+    /// it, 2026-11-26: "1 shell" in its footer, no "esc to interrupt").
+    #[test]
+    fn a_turn_that_is_over_is_not_work_whatever_the_server_says() {
+        let working = || vec![ProgramStatusRecord { state: "working".into(), ..Default::default() }];
+        let rule = "─".repeat(96);
+        let mut b = BlockRuntime::new(100, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
+        b.program_statuses = working();
+        // In a turn: its footer says so.
+        b.terminal.vt_write(format!("Claude Code\r\n✢ Fermenting… (37s)\r\n{rule}\r\n❯ \r\n{rule}\r\n  ⏵⏵ auto mode on · 1 shell · esc to interrupt").as_bytes());
+        assert_eq!(b.recompute_activity(), AgentActivity::Working);
+        // Its turn over, the shell still running: at its prompt, nothing saying a turn is on.
+        let mut b = BlockRuntime::new(100, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
+        b.program_statuses = working();
+        b.terminal
+            .vt_write(format!("Claude Code\r\n● QUESTION: is this seen?\r\n✻ Cooked for 9s · 1 shell still running\r\n{rule}\r\n❯ \r\n{rule}\r\n  ⏵⏵ auto mode on · 1 shell · ← 1 agent").as_bytes());
+        assert_eq!(b.recompute_activity(), AgentActivity::Idle);
+        // A program whose screen isn't read (no agent of ours): the server's word stands.
+        let mut b = BlockRuntime::new(100, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
+        b.program_statuses = working();
+        b.terminal.vt_write(b"make: building\r\n$ ");
+        assert_eq!(b.recompute_activity(), AgentActivity::Working);
+        // What the server says that isn't work is the server's to say.
+        let mut b = BlockRuntime::new(100, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
+        b.program_statuses = vec![ProgramStatusRecord { state: "done".into(), ..Default::default() }];
+        assert_eq!(b.recompute_activity(), AgentActivity::Done);
+    }
+
+    /// What a look at a pane's activity costs (`cargo test --release -p
+    /// olo-rex activity_cost -- --ignored --nocapture`): made every
+    /// `GUESS_AFTER` (150 ms) while a pane has output, so at most seven
+    /// times a second a pane. With the server saying it works, its screen
+    /// is read too now, to hear the agent say its turn is over.
+    #[test]
+    #[ignore]
+    fn activity_cost() {
+        let rule = "─".repeat(116);
+        let screen = format!("Claude Code\r\n● Read 6 files\r\n\r\n✢ Fermenting… (37s · ↓ 3.0k tokens)\r\n{rule}\r\n❯ \r\n{rule}\r\n  ⏵⏵ auto mode on · 1 shell · esc to interrupt");
+        let n = 20_000u32;
+        for (what, records) in [("the server silent (as before)", Vec::new()), ("the server saying it works", vec![ProgramStatusRecord { state: "working".into(), ..Default::default() }])] {
+            let mut b = BlockRuntime::new(120, 40, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
+            b.terminal.vt_write(screen.as_bytes());
+            b.program_statuses = records;
+            let t = Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(b.recompute_activity());
+            }
+            println!("a look with {what}: {:.1} µs", t.elapsed().as_secs_f64() * 1e6 / f64::from(n));
+        }
     }
 
     #[test]

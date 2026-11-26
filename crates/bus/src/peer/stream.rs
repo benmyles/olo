@@ -20,9 +20,11 @@ pub struct Stream {
 type StreamInner = dyn TryStream<Ok = Message, Error = Error, Item = Result<Message>> + Send;
 
 impl Stream {
-    pub fn for_peer(peer: &Peer) -> Self {
+    /// `messages`: the peer's connection's own stream, the one made
+    /// with it (`Peer::new`: none after it would have its first words).
+    pub fn for_peer(peer: &Peer, messages: MessageStream) -> Self {
         let unique_name = peer.unique_name().clone();
-        let stream = MessageStream::from(peer.conn()).map_err(Into::into).and_then(move |msg| {
+        let stream = messages.map_err(Into::into).and_then(move |msg| {
             let unique_name = unique_name.clone();
             async move {
                 let header = msg.header();
