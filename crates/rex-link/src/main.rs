@@ -14,6 +14,8 @@
 #[cfg(feature = "move")]
 mod activity;
 #[cfg(feature = "move")]
+mod agent;
+#[cfg(feature = "move")]
 mod fix;
 #[cfg(feature = "sync")]
 mod fs_op;
@@ -137,6 +139,16 @@ fn main() {
         #[cfg(not(feature = "move"))]
         {
             eprintln!("olo-rex-link: built without activity support");
+            std::process::exit(126);
+        }
+    }
+    // (`agent`: atomic folder pre-trust & single-pass batch inspection for `olo agent`.)
+    if args.first().is_some_and(|a| a == "agent") {
+        #[cfg(feature = "move")]
+        agent::run(args.split_off(1));
+        #[cfg(not(feature = "move"))]
+        {
+            eprintln!("olo-rex-link: built without agent support");
             std::process::exit(126);
         }
     }

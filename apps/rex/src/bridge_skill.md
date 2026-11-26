@@ -34,27 +34,37 @@ model or reasoning effort is used.
 
 - **Launch a new or resumed subagent tab** (`olo agent start`):
   - New session:
-    `olo agent start claude --model claude-opus-5-5 --effort max --title "API Audit" --permission-mode acceptEdits --prompt "Review crates/api" --json`
-    `olo agent start codex --model gpt-5.4-codex --effort high --title "Tests" --approval on-request --sandbox workspace-write --prompt "Add unit tests" --json`
-    `olo agent start agy --model gemini-4-neon --effort xhigh --title "UI Check" --mode accept-edits --prompt "Inspect layout" --json`
+    `olo agent start claude --model claude-opus-5-5 --effort max --name api-audit --title "API Audit" --trust --permission-mode acceptEdits --prompt "Review crates/api" --json`
+    `olo agent start codex --model gpt-5.4-codex --effort high --name tests --title "Tests" --approval on-request --sandbox workspace-write --prompt "Add unit tests" --json`
+    `olo agent start agy --model gemini-4-neon --effort xhigh --name ui-check --title "UI Check" --mode accept-edits --prompt "Inspect layout" --json`
   - Resume or fork an existing session (`--model` and `--effort` still required):
-    `olo agent start claude --model claude-opus-5-5 --effort max --resume SESSION_ID` (or `--continue`, `--fork`)
+    `olo agent start claude --model claude-opus-5-5 --effort max --resume SESSION_ID` (or `--continue`, `--fork`, `--session-id UUID`)
     `olo agent start codex --model gpt-5.4-codex --effort high --resume SESSION_ID` (or `--continue`/`--last`, `--fork`)
-    `olo agent start agy --model gemini-4-neon --effort xhigh --resume SESSION_ID` (or `--continue`)
-  - Full CLI options supported: `--title`, `--role`, `--cwd`, `--prompt` / `--prompt-file PATH`, `--env K=V`, `--parent WINDOW_ID`, `--focus`, `--close-on-exit`, `--permission-mode`, `--approval`/`-a`, `--sandbox`/`-s`, `--mode`, `--full-auto`, `--approve-for-me`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--allowed-tools`, `--disallowed-tools`, `--add-dir`, `--worktree [NAME]`, `--agent`, `--name`, `--profile`, `--config/-c K=V`, `--settings`, `--system-prompt`, `--append-system-prompt`, `--mcp-config`, `--project`, `--new-project`, `--remote-agent`, `--remote-control`, `--search`, `--enable`, `--disable`, `--image`, `--no-alt-screen`, `--no-daemon`, plus `-- EXTRA_CLI_ARGS…` verbatim passthrough.
-- **List your subagent tree**: `olo agent list [--tree] [--all] [--json]`
-- **Inspect live status**: `olo agent status ID [--json]` (returns `working`, `waiting_question`, `waiting_approval`, `idle`, `done`, `error`, `exited`, plus summary and recent output)
-- **Read terminal output / scrollback**: `olo agent read ID [--lines 80] [--scrollback] [--ansi] [--json]`
-- **Event-driven watch (zero polling)**:
-  `olo agent watch ID --on question,approval,idle,done,error,exit [--match TEXT] [--regex PAT] [--timeout 600] [--json]`
-  Wakes immediately when the child asks a question, needs approval, goes idle/done, exits, or matches your text/regex.
-- **Send input reliably** (text, paste, control chars, special keys):
-  `olo agent send ID "Yes, go ahead" --enter`
-  `olo agent send ID --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
-- **Stop & close launched tabs cleanly**:
-  `olo agent stop ID [--force] [--tree] [--keep-tab] [--json]`
-  Gracefully interrupts and closes the child tab (`--tree` stops all nested descendants too; `--force` closes immediately).
-- **Focus a child tab in Rex**: `olo agent focus ID`
+    `olo agent start agy --model gemini-4-neon --effort xhigh --resume SESSION_ID` (or `--continue`, `--stream`)
+  - Isolation & trust:
+    - `--desktop none|screens=NAME,…|inherit` (default **`none`** for all children: server-side blocks `op`, `olo screen`, `olo open`, clipboard, and desktop commands, and strips `DISPLAY`, `WAYLAND_DISPLAY`, `OLO_SOCKET`, `OLO_SESSION`, `REX_SESSION`; use `--desktop screens=qa-1` for screen-only QA walkers).
+    - `--trust`: for Claude Code, atomically pre-trusts `--cwd` and every `--add-dir` in `~/.claude.json` and auto-confirms any first-run folder-trust prompt.
+    - `--unset-env KEY` (repeatable): unsets additional environment variables before launch.
+    - `--approve-for-me`: **Codex-only** (off by default; never enabled automatically; rejected on `claude` and `agy`). Passes Codex's own `--approve-for-me` flag to route Codex approvals through Codex's automated review.
+  - Full CLI options supported: `--name` (unique among live children; accepted as target everywhere), `--title`, `--role`, `--cwd`, `--prompt` / `--prompt-file PATH`, `--env K=V`, `--unset-env K`, `--parent WINDOW_ID`, `--focus`, `--close-on-exit`, `--permission-mode`, `--approval`/`-a`, `--sandbox`/`-s`, `--mode`, `--full-auto`, `--approve-for-me` (Codex-only), `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--allowed-tools`, `--disallowed-tools` (variadic), `--add-dir`, `--worktree [NAME]`, `--agent`, `--session-id UUID`, `--profile`, `--config/-c K=V`, `--settings JSON_OR_FILE`, `--strict-mcp-config`, `--system-prompt`, `--append-system-prompt`, `--mcp-config`, `--project`, `--new-project`, `--remote-agent`, `--remote-control`, `--search`, `--enable`, `--disable`, `--image`, `--no-alt-screen`, `--no-daemon`, `--print`, `--stream`, `--input-format`, `--output-format`, plus `-- EXTRA_CLI_ARGS…` verbatim passthrough.
+- **List your subagent tree**: `olo agent list [--tree] [--all] [--parent WIN|NAME] [--fast] [--json]` (with `--all`, includes exited children and their persisted `cli_session_id` even after a Rex server restart; returns monotonic event `cursor`)
+- **Inspect rich live status**: `olo agent status <ID|NAME> [--json]` (returns `state`, `cli_session_id`, `transcript_path`, `pid`, full verbatim `last_message`, structured `approval` with untruncated command & typed choices, `error`, `last_output_at`, `last_state_change_at`, `quiet_secs`, `state_age_secs`, `background_shells`, `waiting_on`, `usage`, `cursor`, and recent `tail`)
+- **Read terminal output / scrollback**: `olo agent read <ID|NAME> [--lines 80] [--scrollback] [--ansi] [--json]`
+- **Event-driven watch (zero polling, multi-agent & cursor-safe)**:
+  `olo agent watch [<ID|NAME>… | --all] [--since CURSOR] [--parent WIN] [--on question,approval,idle,done,error,exit] [--match TEXT] [--regex PAT] [--timeout 600] [--json]`
+  Wakes immediately on stability-confirmed events across one, several, or `--all` children without ever missing an event between back-to-back watches (`--since CURSOR`), and returns full `last_message`, `cli_session_id`, structured `approval`, and `cursor`.
+- **Approve or deny a pending tool approval safely**:
+  `olo agent approve <ID|NAME> --once | --no [--reason TEXT] [--json]`
+  Never selects persistent (`don't ask again` / `always allow`) or mode-switching options; navigates directly to the single-use `once` or `no` option and verifies the prompt dismissed.
+- **Send input reliably** (text, file paste, control chars, special keys, delivery verification):
+  `olo agent send <ID|NAME> "Yes, go ahead" --enter`
+  `olo agent send <ID|NAME> --file /var/tmp/prompt.md --enter --json`
+  `olo agent send <ID|NAME> --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
+- **Stop & archive launched tabs cleanly**:
+  `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`
+  Gracefully interrupts and closes the child tab (`--save PATH` archives full scrollback to `PATH` before closing; `--tree` stops all nested descendants too; `--force` closes immediately; keeps `cli_session_id` in registry for `list --all` and `--resume`).
+- **Prune exited child records**: `olo agent prune [--all] [--json]`
+- **Focus a child tab in Rex**: `olo agent focus <ID|NAME>`
 
 ## Desktop integration commands
 
@@ -210,9 +220,11 @@ Underneath it is Rex's own `rex do`, which you can use directly
 `rex do olo.agent.list --args '{"json":true}'`,
 `rex do olo.agent.status --args '{"target":"ID","json":true}'`,
 `rex do olo.agent.read --args '{"target":"ID","lines":80}'`,
-`rex do olo.agent.watch --args '{"target":"ID","on":"question,approval,idle,exit"}'`,
+`rex do olo.agent.watch --args '{"all":true,"since":0,"on":"question,approval,done,error,exit"}'`,
 `rex do olo.agent.send --args '{"target":"ID","text":"yes","enter":true}'`,
-`rex do olo.agent.stop --args '{"target":"ID"}'`,
+`rex do olo.agent.approve --args '{"target":"ID","once":true}'`,
+`rex do olo.agent.stop --args '{"target":"ID","save":"/var/tmp/out.txt"}'`,
+`rex do olo.agent.prune --args '{"json":true}'`,
 `rex do olo.agent.focus --args '{"target":"ID"}'`,
 `rex do olo.open target=URL`, `rex do olo.get --args '{"args":["rex://local/PATH"]}'`,
 `rex do olo.ls --args '{"args":["rex://local/PATH"]}'`, `rex do olo.op --args '{"args":[…]}'`,

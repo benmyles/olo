@@ -430,11 +430,11 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
         },
         ActionSpec {
             id: "olo.agent.watch",
-            title: "Wait for an Event or Pattern on a Nested Subagent Tab",
+            title: "Wait for an Event or Pattern on One or All Nested Subagent Tabs",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "watch", "wait", "alert", "question", "approval"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"on":{"type":"string"},"match":{"type":"string"},"regex":{"type":"string"},"timeout":{"type":"integer"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"targets":{"type":"array","items":{"type":"string"}},"all":{"type":"boolean"},"since":{"type":"integer"},"parent":{"type":"string"},"on":{"type":"string"},"match":{"type":"string"},"regex":{"type":"string"},"timeout":{"type":"integer"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {
@@ -447,13 +447,29 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             ),
         },
         ActionSpec {
+            id: "olo.agent.approve",
+            title: "Approve Once or Reject an Active Tool Approval Dialog on a Nested Subagent Tab",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "approve", "deny", "permission", "once"],
+            args_schema: Some(
+                json!({"type":"object","properties":{"target":{"type":"string"},"once":{"type":"boolean"},"no":{"type":"boolean"},"reason":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+            ),
+        },
+        ActionSpec {
             id: "olo.agent.stop",
             title: "Stop and Close a Launched Nested Subagent Tab",
             category: "Olo Bridge",
-            keywords: &["agent", "subagent", "stop", "close", "kill"],
+            keywords: &["agent", "subagent", "stop", "close", "kill", "save"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"force":{"type":"boolean"},"tree":{"type":"boolean"},"keep_tab":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"force":{"type":"boolean"},"tree":{"type":"boolean"},"keep_tab":{"type":"boolean"},"save":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
             ),
+        },
+        ActionSpec {
+            id: "olo.agent.prune",
+            title: "Prune Exited Subagent Records from This Session’s Registry",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "prune", "clean", "exited"],
+            args_schema: Some(json!({"type":"object","properties":{"all":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}})),
         },
         ActionSpec {
             id: "olo.agent.focus",

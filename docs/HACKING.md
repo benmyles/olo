@@ -30380,6 +30380,30 @@ connected to, is off). The port a pane's program listens on and
   `activity.open:<id>`, `activity.open.transcript:<id>`,
   `activity.open.terminal:<id>`, and `activity.fold:<block_id>`, plus
   `activity-subagents`, `agent-transcript`, and `agent-tmux-ro` agent nodes.
+- **Native child-tab orchestration (`olo agent`, `apps/rex/src/subagents.rs`,
+  `crates/agent-screen`, `crates/rex-link/src/agent.rs`, 2026-11-26)**:
+  Agents launch child `claude`, `codex`, and `agy` sessions as real nested
+  Rex tabs (always requiring explicit `--model` and `--effort`; `--approve-for-me`
+  is strictly Codex-only, off by default, and rejected on `claude`/`agy`).
+  Supports `--name` (unique live target accepted everywhere), `--trust`
+  (atomic `flock`-locked `~/.claude.json` pre-trust via `olo-rex-link agent trust`
+  plus 15 s event-driven dialog dismissal), server-enforced `--desktop
+  none|screens=NAME,…|inherit` isolation (default `none`, stripping desktop env
+  vars and refusing `olo.op`/`olo.screen`/`olo.open`/clipboard/bridge calls
+  server-side in `handle_client_perform`, plus `--unset-env`), complete Claude
+  and Antigravity flags (`--session-id`, `--settings`, `--strict-mcp-config`,
+  variadic `--disallowed-tools`/`--allowed-tools`, `--add-dir`, `--mode`,
+  `--stream`), single-pass batched host inspection (`olo-rex-link agent inspect`)
+  returning verbatim unwrapped `last_message`, `cli_session_id`,
+  `transcript_path`, untruncated `pending_tool`, `background_shells`, and
+  `waiting_on`, structured `approval` + `olo agent approve --once|--no`
+  (never selecting persistent or mode-switching choices, verifying dismissal),
+  250 ms stability-confirmed O(1) dirty-block transition tracking feeding a
+  monotonic cursor ring (`olo agent watch --all --since CURSOR`), separated
+  bracketed-paste + Enter delivery verification (`olo agent send --file`),
+  `olo agent stop --save PATH` scrollback archival, exited-child session ID
+  retention across Rex server restarts (`list --all` + `olo agent prune`),
+  and `~/.local/bin/olo` symlink installation with `readlink -f` resolution.
 
 *Where the keyboard is*: every pane's head is on the panel's ground
 (the chosen tab's face, which opens onto them: with the focused head

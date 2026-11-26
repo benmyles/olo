@@ -249,9 +249,12 @@ pub fn local_helper_path() -> Option<PathBuf> {
 }
 
 /// Ensure the remote host has this build's `olo-rex-link` installed before invoking it.
-async fn ensure_remote_helper(hub: &Arc<RexHub>, host_key: &str) -> Result<(olo_rex_client::SshTarget, Arc<olo_rex_client::SshSessionPool>, Option<Arc<dyn olo_rex_client::SshAskpass>>), String> {
+async fn ensure_remote_helper(
+    state: &Arc<Mutex<crate::hub::HubState>>,
+    host_key: &str,
+) -> Result<(olo_rex_client::SshTarget, Arc<olo_rex_client::SshSessionPool>, Option<Arc<dyn olo_rex_client::SshAskpass>>), String> {
     let (target, pool, askpass, ready) = {
-        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        let st = state.lock().unwrap_or_else(|e| e.into_inner());
         let Some(h) = st.hosts.get(host_key) else { return Err("Host not found.".into()) };
         if !matches!(h.conn_state, HostConnState::Connected) {
             return Err("Host is not connected.".into());
@@ -270,7 +273,7 @@ async fn ensure_remote_helper(hub: &Arc<RexHub>, host_key: &str) -> Result<(olo_
             Ok(Err(kind)) => return Err(format!("No helper build for {kind}")),
             Err(e) => return Err(e.why),
         }
-        let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(h) = st.hosts.get_mut(host_key) {
             h.helper_current = Some(true);
             h.helper_sync_err = None;
@@ -366,7 +369,7 @@ pub fn open_pane_transcript(hub: &Arc<RexHub>, bk: &BlockKey, title: String) {
     let agent = {
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         st.subagents
-            .by_block(&bk.host_key, &bk.session_id, &bk.block_id)
+            .by_block(&bk.host_key, Some(&bk.session_id), &bk.block_id)
             .map(|s| s.cli.display_name().to_owned())
             .or_else(|| st.blocks.get(bk).and_then(|br| br.lock().unwrap_or_else(|e| e.into_inner()).program_title()))
             .unwrap_or_else(|| "Agent".into())
@@ -433,7 +436,7 @@ fn start_transcript_stream(hub: &Arc<RexHub>, bk: BlockKey, target: ViewTarget, 
                 }
                 let _ = child.kill().await;
             } else {
-                let Ok((target, pool, askpass)) = ensure_remote_helper(&hub_clone, &bk.host_key).await else {
+                let Ok((target, pool, askpass)) = ensure_remote_helper(&hub_clone.state, &bk.host_key).await else {
                     set_transcript_err(&sess_clone, "Host helper is not ready.");
                     return;
                 };
@@ -459,6 +462,46 @@ fn start_transcript_stream(hub: &Arc<RexHub>, bk: BlockKey, target: ViewTarget, 
     session.lock().unwrap_or_else(|e| e.into_inner()).abort = Some(abort);
 }
 
+/// Runs `olo-rex-link <args...>` on `host_key` (locally or over SSH via the
+/// deployed remote helper), piping optional `stdin_payload` and returning stdout.
+pub async fn run_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], stdin_payload: Option<&str>) -> Option<String> {
+    let is_local = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| h.is_local);
+    if is_local {
+        let helper = local_helper_path()?;
+        let mut child = tokio::process::Command::new(&helper).args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true).spawn().ok()?;
+        if let Some(mut stdin) = child.stdin.take() {
+            if let Some(payload) = stdin_payload {
+                let _ = stdin.write_all(payload.as_bytes()).await;
+            }
+            let _ = stdin.shutdown().await;
+        }
+        let out = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait_with_output()).await.ok()?.ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        let (target, pool, askpass) = ensure_remote_helper(state, host_key).await.ok()?;
+        let mut cmd = olo_rex_client::helper::file(crate::link::ID);
+        for a in args {
+            cmd.push(' ');
+            cmd.push_str(&shell_escape_arg(a));
+        }
+        let mut stream = pool.exec_io(&target, askpass, &cmd).await.ok()?;
+        if let Some(payload) = stdin_payload {
+            stream.write_all(payload.as_bytes()).await.ok()?;
+        }
+        let _ = stream.shutdown().await;
+        let mut buf = String::new();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), stream.read_to_string(&mut buf)).await;
+        Some(buf)
+    }
+}
+
+fn shell_escape_arg(s: &str) -> String {
+    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b'/' | b':' | b'=' | b'+')) {
+        return s.to_owned();
+    }
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 async fn resolve_pane_transcript_once(hub: &Arc<RexHub>, bk: &BlockKey, is_local: bool) -> Option<String> {
     let (queries, _) = pane_queries_for_host(hub, &bk.host_key);
     let one: Vec<PaneQuery> = queries.into_iter().filter(|q| q.block_id == bk.block_id).collect();
@@ -476,7 +519,7 @@ async fn resolve_pane_transcript_once(hub: &Arc<RexHub>, bk: &BlockKey, is_local
         let out = child.wait_with_output().await.ok()?;
         String::from_utf8_lossy(&out.stdout).into_owned()
     } else {
-        let (target, pool, askpass) = ensure_remote_helper(hub, &bk.host_key).await.ok()?;
+        let (target, pool, askpass) = ensure_remote_helper(&hub.state, &bk.host_key).await.ok()?;
         let cmd = format!("{} activity once", olo_rex_client::helper::file(crate::link::ID));
         let mut stream = pool.exec_io(&target, askpass, &cmd).await.ok()?;
         stream.write_all(payload.as_bytes()).await.ok()?;

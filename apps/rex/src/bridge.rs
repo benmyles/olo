@@ -67,6 +67,25 @@ pub fn ensure_local_bin_dir() -> Option<PathBuf> {
     };
     write_if_changed("olo", SKILL_OLO, true);
     write_if_changed("olo.lua", SKILL_LUA, false);
+    // Expose `olo` on standard user PATH (`~/.local/bin/olo`) when missing or already an Olo symlink,
+    // so non-interactive subshells and scripts find `olo` without needing the full skill path.
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        let local_bin = home.join(".local/bin");
+        let link = local_bin.join("olo");
+        let target = dir.join("olo");
+        let replace = match std::fs::symlink_metadata(&link) {
+            Err(_) => true,
+            Ok(meta) if meta.file_type().is_symlink() => std::fs::read_link(&link).ok().is_some_and(|cur| {
+                let s = cur.to_string_lossy();
+                s.contains("olo-rex-bridge") || s.contains("rex-commands") || s.contains("state/olo/rex/bin")
+            }),
+            Ok(_) => false,
+        };
+        if replace && std::fs::create_dir_all(&local_bin).is_ok() {
+            let _ = std::fs::remove_file(&link);
+            let _ = symlink(&target, &link);
+        }
+    }
     Some(dir)
 }
 
@@ -754,7 +773,7 @@ pub const OLD_SHIMS: &str = r#"rm -rf "$HOME/.local/share/olo-rex-bridge""#;
 /// Takes the skill for agents off a host (what
 /// [`generate_remote_skill_install_script`] put there; the skill that
 /// Rex's own `rex skill setup` installs is Rex's, and stays).
-pub const REMOVE_SKILL: &str = r#"rm -rf "$HOME/.claude/skills/olo-rex-bridge""#;
+pub const REMOVE_SKILL: &str = r#"rm -rf "$HOME/.claude/skills/olo-rex-bridge"; if [ -L "$HOME/.local/bin/olo" ] && [ ! -e "$HOME/.local/bin/olo" ]; then rm -f "$HOME/.local/bin/olo"; fi"#;
 
 /// What a host answered [`PRESENT`]: whether the old shims are there,
 /// and the skill.
@@ -787,6 +806,10 @@ cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/olo"
 cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/olo.lua"
 {SKILL_LUA}OLO_SKILL_EOF
 chmod +x "$SKILL_DIR/olo"
+mkdir -p "$HOME/.local/bin"
+if [ ! -e "$HOME/.local/bin/olo" ] || [ -L "$HOME/.local/bin/olo" ]; then
+  ln -sf "$SKILL_DIR/olo" "$HOME/.local/bin/olo"
+fi
 echo '{stamp}' > "$SKILL_DIR/.olo-skill"
 if command -v rex >/dev/null 2>&1; then
   rex skill setup 2>/dev/null || true
@@ -854,6 +877,10 @@ cat <<'OLO_COMMANDS_EOF' > "$DIR/olo.lua"
 cat <<'OLO_COMMANDS_EOF' > "$DIR/olo-desktop-command"
 {SHIM}OLO_COMMANDS_EOF
 chmod +x "$DIR/olo" "$DIR/olo-desktop-command"
+mkdir -p "$HOME/.local/bin"
+if [ ! -e "$HOME/.local/bin/olo" ] || [ -L "$HOME/.local/bin/olo" ]; then
+  ln -sf "$DIR/olo" "$HOME/.local/bin/olo"
+fi
 {links}LINE='{line}'
 for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
   case $rc in "$HOME/.profile") ;; *) [ -f "$rc" ] || continue ;; esac
@@ -874,7 +901,7 @@ echo "Installed Olo's desktop commands in $DIR"
 
 /// Takes the desktop commands off a host: their folder, and the line of
 /// theirs in each shell's startup (nothing else of those files).
-pub const REMOVE_COMMANDS: &str = r#"rm -rf "$HOME/.local/share/olo/rex-commands"; for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do [ -f "$rc" ] && sed -i '/# Olo Rex: desktop commands$/d' "$rc"; done; rm -f "$HOME/.config/fish/conf.d/olo-rex.fish""#;
+pub const REMOVE_COMMANDS: &str = r#"rm -rf "$HOME/.local/share/olo/rex-commands"; if [ -L "$HOME/.local/bin/olo" ] && [ ! -e "$HOME/.local/bin/olo" ]; then rm -f "$HOME/.local/bin/olo"; fi; for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do [ -f "$rc" ] && sed -i '/# Olo Rex: desktop commands$/d' "$rc"; done; rm -f "$HOME/.config/fish/conf.d/olo-rex.fish""#;
 
 /// Check if a local directory path is safe to open in Olo Tracker.
 pub fn open_folder_in_tracker(path: &Path) {
@@ -1104,6 +1131,15 @@ mod present_tests {
             .unwrap();
         let lua = home.join(".claude/skills/olo-rex-bridge/olo.lua");
         assert_eq!(String::from_utf8_lossy(&said.stdout), format!("rex: --timeout 60s do {}\ncmd=screen argc=6\n[type]\n[agent]\n[two words]\n[it's \"quoted\" $HOME]\n[]\n[a\nb]\n", lua.display()));
+        // Running via the `~/.local/bin/olo` symlink resolves symlinks (`readlink -f`) and finds `olo.lua`.
+        let via_path = std::process::Command::new(home.join(".local/bin/olo"))
+            .args(["agent", "watch", "--all", "--since", "0"])
+            .env("HOME", &home)
+            .env("OLO_BRIDGE_REX", &rex)
+            .env("TMPDIR", home.join("tmp"))
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&via_path.stdout), format!("rex: --timeout 3600s do {}\ncmd=agent argc=4\n[watch]\n[--all]\n[--since]\n[0]\n", lua.display()));
         // (Every action the skill names is one the app offers, and it
         // names every one the app offers.)
         let offered: Vec<&str> = crate::keymap::bridge_catalog().iter().map(|a| a.id).collect();

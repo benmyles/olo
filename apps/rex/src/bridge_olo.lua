@@ -77,6 +77,20 @@ local asked = ({
         f:close()
         rest[#rest + 1] = "--prompt"
         rest[#rest + 1] = body
+      elseif (sub == "send" or sub == "input") and (x == "--file" or x:match("^%-%-file=")) then
+        local path = x:match("^%-%-file=(.*)$")
+        if not path then
+          i = i + 1
+          path = args[i]
+        end
+        if not path then fail("--file requires a file path", 2) end
+        local f = io.open(path, "rb")
+        if not f then fail("couldn't read send file " .. path, 1) end
+        local body = f:read("a")
+        f:close()
+        rest[#rest + 1] = "--text"
+        rest[#rest + 1] = body
+        rest[#rest + 1] = "--paste"
       else
         rest[#rest + 1] = x
       end
@@ -94,20 +108,22 @@ local asked = ({
       wait = "olo.agent.watch",
       send = "olo.agent.send",
       input = "olo.agent.send",
+      approve = "olo.agent.approve",
       stop = "olo.agent.stop",
       close = "olo.agent.stop",
       kill = "olo.agent.stop",
+      prune = "olo.agent.prune",
       focus = "olo.agent.focus",
     }
     local act = map[sub]
     if not act then
-      fail("usage: olo agent <start|list|status|read|watch|send|stop|focus> [ARGS…]", 2)
+      fail("usage: olo agent <start|list|status|read|watch|send|approve|stop|prune|focus> [ARGS…]", 2)
     end
     return act, { args = rest, cwd = os.getenv("PWD") or "" }
   end,
 })[cmd]
 if not asked then
-  fail("usage: olo agent <start|list|status|read|watch|send|stop|focus> … | olo open URL | olo get rex://local/PATH [DEST] | olo ls rex://local/PATH | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
+  fail("usage: olo agent <start|list|status|read|watch|send|approve|stop|prune|focus> … | olo open URL | olo get rex://local/PATH [DEST] | olo ls rex://local/PATH | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 
@@ -207,9 +223,9 @@ local printed = {}
 -- (`op`'s: whether it may replace a file with something in it, and the
 -- mode it gives one, as `op` itself would here.)
 local force, mode = false, "600"
--- (A screen's picture or fetched desktop file: saved there, over one there
--- before, readable by the user.)
-if cmd == "screen" or cmd == "get" or cmd == "fetch" then force, mode = true, "644" end
+-- (A screen's picture, fetched desktop file, or saved subagent scrollback: saved there,
+-- over one there before, readable by the user.)
+if cmd == "screen" or cmd == "get" or cmd == "fetch" or cmd == "agent" then force, mode = true, "644" end
 if cmd == "op" then
   for i, x in ipairs(args) do
     if x == "--" then break end

@@ -8,7 +8,11 @@
 # Part of Olo's skill for agents, and of the desktop commands (xdg-open
 # and the rest, beside it). Its status is 69 where the desktop couldn't
 # be asked.
-here=$(dirname "$0")
+self=$0
+if command -v readlink >/dev/null 2>&1; then
+	resolved=$(readlink -f "$self" 2>/dev/null) && [ -n "$resolved" ] && self=$resolved
+fi
+here=$(dirname "$self")
 OLO_BRIDGE_CMD=${1:-}
 [ $# -gt 0 ] && shift
 i=0
