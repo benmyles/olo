@@ -112,12 +112,14 @@ def service(helper):
     """The running service's process and the file it runs, asked through
     `helper` (which starts one if none runs): (pid, exe) or (None, why)."""
     said, err = asked(helper, "ping")
-    if (not said or "pid" not in said) and "no agents service" in (err or ""):
-        # (None runs just now: `ping` starts none. A command that does
-        # starts this helper's, so the new build is the one running from
-        # this moment, not whichever an asker of an old build starts
-        # first. The first upgrade found it so: something had just
-        # retired the service, 2026-11-26.)
+    if not said or "pid" not in said:
+        # (None answers just now, whatever `ping` said of it: it starts
+        # none, and a service that has just handed over to this very
+        # asking is gone by the time the answer is read. A command that
+        # starts one starts this helper's, so the new build is the one
+        # running from this moment, not whichever an asker of an old
+        # build starts first, and nobody waits a second for a service
+        # (the upgrades of 09:43 and 10:50, 2026-11-26).)
         asked(helper, "list", "--fast", "--json")
         said, err = asked(helper, "ping")
     if not said or "pid" not in said:
