@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use olo_rex_link::agents::wire::{PROTO, Paths, Request, Response, server_socket};
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: olo agent <start|list|status|read|watch|send|approve|stop|prune|focus> [ARGS…]";
+const USAGE: &str = "usage: olo agent <start|list|status|read|watch|send|approve|mind|escalate|stop|prune|focus> [ARGS…]";
 
 /// 69: what can't be done from here (no Rex server, no service); 75:
 /// try again (the service ended while it answered).
@@ -90,8 +90,10 @@ pub fn run(mut args: Vec<String>) -> i32 {
         }
         "ping" | "retire" => {
             // (Never starts one: says whether one is there.)
-            let req = Request { proto: PROTO, op: sub.clone(), ..Default::default() };
+            let req = Request { proto: PROTO, op: sub.clone(), args: rest.clone(), ..Default::default() };
             match UnixStream::connect(&paths.socket).map(|stream| exchange(stream, &req)) {
+                // (A service that is held says why it stays.)
+                Ok(Asked::Answer(answer)) if !answer.ok => print_answer(answer),
                 Ok(Asked::Answer(answer)) => {
                     println!("{}", answer.data);
                     0
@@ -148,38 +150,42 @@ impl std::fmt::Display for Refused {
 
 /// The files a command names are this side's to read: `start
 /// --prompt-file PATH` is `--prompt` with what the file says, `send
-/// --file PATH` is its text sent whole as a paste. Nothing after `--` is
-/// touched.
+/// --file PATH` is its text sent whole as a paste, and a minder's rules
+/// (`start … --rules PATH`, `mind … --rules PATH`) are `--rules-text`
+/// with what the file says. Nothing after `--` is touched.
 fn with_files(sub: &str, args: Vec<String>) -> Result<Vec<String>, Refused> {
-    let (flag, what) = match sub {
-        "start" | "spawn" => ("--prompt-file", "prompt"),
-        "send" | "input" => ("--file", "send"),
+    // (The flag, what it is in a refusal, and what it becomes: the text
+    // after these, and these after the text.)
+    type Named = (&'static str, &'static str, &'static [&'static str], &'static [&'static str]);
+    const RULES: [Named; 2] = [("--rules", "rules", &["--rules-text"], &[]), ("--rules-file", "rules", &["--rules-text"], &[])];
+    let named: Vec<Named> = match sub {
+        "start" | "spawn" => [("--prompt-file", "prompt", &["--prompt"][..], &[][..])].into_iter().chain(RULES).collect(),
+        "mind" | "minder" => RULES.to_vec(),
+        "send" | "input" => vec![("--file", "send", &["--text"], &["--paste"])],
         _ => return Ok(args),
     };
     let mut out = Vec::with_capacity(args.len() + 2);
     let mut it = args.into_iter();
-    while let Some(arg) = it.next() {
+    'args: while let Some(arg) = it.next() {
         if arg == "--" {
             out.push(arg);
             out.extend(it);
             break;
         }
-        let path = if arg == flag {
-            Some(it.next().ok_or_else(|| Refused(format!("{flag} requires a file path"), 2))?)
-        } else {
-            arg.strip_prefix(flag).and_then(|rest| rest.strip_prefix('=')).map(str::to_owned)
-        };
-        let Some(path) = path else {
-            out.push(arg);
-            continue;
-        };
-        let body = std::fs::read(&path).map_err(|e| Refused(format!("couldn't read {what} file {path}: {e}"), 1))?;
-        let body = String::from_utf8_lossy(&body).into_owned();
-        if sub == "start" || sub == "spawn" {
-            out.extend(["--prompt".to_owned(), body]);
-        } else {
-            out.extend(["--text".to_owned(), body, "--paste".to_owned()]);
+        for (flag, what, before, after) in &named {
+            let path = if arg == *flag {
+                Some(it.next().ok_or_else(|| Refused(format!("{flag} requires a file path"), 2))?)
+            } else {
+                arg.strip_prefix(flag).and_then(|rest| rest.strip_prefix('=')).map(str::to_owned)
+            };
+            let Some(path) = path else { continue };
+            let body = std::fs::read(&path).map_err(|e| Refused(format!("couldn't read {what} file {path}: {e}"), 1))?;
+            out.extend(before.iter().map(|s| (*s).to_owned()));
+            out.push(String::from_utf8_lossy(&body).into_owned());
+            out.extend(after.iter().map(|s| (*s).to_owned()));
+            continue 'args;
         }
+        out.push(arg);
     }
     Ok(out)
 }
@@ -281,7 +287,22 @@ fn start_service(server: &Path, paths: &Paths) -> std::io::Result<std::process::
     // for itself or its children reaches it (where an agent's files are
     // is read from that agent's own process, `agent::places_for_pid`).
     command.env_clear();
-    for name in ["HOME", "USER", "LOGNAME", "PATH", "LANG", "LC_ALL", "TMPDIR", "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "REX_SERVER_SOCKET", "OLO_REX_AGENTS_DIR"] {
+    for name in [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "TMPDIR",
+        "XDG_RUNTIME_DIR",
+        "XDG_STATE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "REX_SERVER_SOCKET",
+        "OLO_REX_AGENTS_DIR",
+        "OLO_REX_AGENTS_MINDER_REPORTS_MS",
+    ] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);
         }

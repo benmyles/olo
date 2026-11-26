@@ -2994,6 +2994,7 @@ impl RexHub {
             session_confidence: None,
             add_dirs: Vec::new(),
             command: Vec::new(),
+            minds: None,
         });
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-diff1a".into(),
@@ -3025,6 +3026,7 @@ impl RexHub {
             session_confidence: None,
             add_dirs: Vec::new(),
             command: Vec::new(),
+            minds: None,
         });
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-tests2".into(),
@@ -3056,6 +3058,7 @@ impl RexHub {
             session_confidence: None,
             add_dirs: Vec::new(),
             command: Vec::new(),
+            minds: None,
         });
 
         if command_child {
@@ -3097,6 +3100,7 @@ impl RexHub {
                 session_confidence: None,
                 add_dirs: Vec::new(),
                 command: vec!["tail".into(), "-f".into(), "/var/tmp/olo/build.log".into()],
+                minds: None,
             });
         }
 

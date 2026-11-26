@@ -1539,6 +1539,51 @@ and the app's tree can still be read when its window has stopped (as it
 last was), so "it answers" proves nothing: read something only the
 window's own thread can have drawn since.
 
+### A minder, tried with a real model, and what only that showed (2026-11-26)
+
+`olo agent start … --minder` passed every test with stand-ins and with
+Claude Code itself against the made-up API, and the first trial with a
+real model (Opus 5.5 at max minding a stand-in on a scratch server:
+`tools/dev/minder-trial`, the tests' rig in Python with the real
+`claude` on the minder's PATH and the stand-in on the agent's) still
+found a fault none of them could: **a real minder is slow next to an agent**.
+It took 3 to 7 s over a plain yes or no and 28 s over a question it
+read the screen for; the events of those seconds were then told to it
+one by one, each already stale, and it told the parent "it is waiting"
+about a question dismissed half a minute before, after the agent had
+exited. Its own transcript showed it had done everything right (the
+cursor of each answer passed to the next watch):
+`~/.claude/projects/<its folder, slashes as dashes>/*.jsonl`, the
+`tool_use` commands and their `tool_result`s in order, is where a
+helper's own account of what it ran and was told is. The fix is the
+service's (HACKING, "A minder for a child": told what stands, answers
+what it was told), and the second trial was clean. So: what an agent
+does with a tool is tried with a real one before the tool is called
+done; a scripted model does what the script's author already thought
+of.
+
+Three smaller things from the same work:
+- **Claude Code can be held to one command with nothing asked**
+  (2.1.332): `--tools Bash --permission-mode dontAsk --allowed-tools
+  "Bash(/whole/path/cmd *)" --strict-mcp-config`. The command runs with
+  no leave, anything else in the shell is refused at once and the
+  refusal goes back to the model as the tool's result (the agent never
+  stands at a question). `agents_live.rs` proves it against the made-up
+  API: the test to run again when Claude Code changes.
+- **What a test hands a shell goes in single quotes.** A test's
+  `escalate "…asked to run \`git push origin main\`…"` had its
+  backticks run by the stand-in's `sh -c`: a real `git push`, in a
+  scratch folder that was no repository ("fatal: not a git repository"),
+  by luck.
+- **A trial's commands carry `PWD` as well as a folder.** The helper
+  takes the asking folder from `PWD`; the trial set `cwd=` only, so its
+  stand-in "claude" was recorded in this repository's folder, and the
+  service, looking for that agent's conversation, took the newest
+  Claude Code transcript of that folder: this session's own, whose last
+  message the minder was then shown as its agent's. The tests set both
+  (`.env("PWD", …)`). That the service takes a conversation by folder at
+  all is ShiftUp's item 33 for agy, and is in the TODO for both.
+
 ### Two builds are measured from the same place (2026-11-26)
 
 A release build copied to `/var/tmp` (or built into a target folder of

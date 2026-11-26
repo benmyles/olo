@@ -288,6 +288,11 @@ pub struct NativeSubagent {
     /// line may hold a prompt and is nobody's to show.
     #[serde(default)]
     pub command: Vec<String>,
+    /// The agent this one is the minder of, by its id (`agents::minder`):
+    /// it reaches that agent and no other, and what that agent asks is
+    /// its to answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minds: Option<String>,
 }
 
 impl NativeSubagent {
@@ -592,6 +597,11 @@ impl SubagentRegistry {
             changed = true;
         }
         changed
+    }
+
+    /// The minder of the agent `id`, if it has one that runs.
+    pub fn minder_of(&self, id: &str) -> Option<&NativeSubagent> {
+        self.entries.iter().rev().find(|e| e.exited_at.is_none() && e.minds.as_deref() == Some(id))
     }
 
     pub fn by_window(&self, host_key: &str, session_id: &str, window_id: &str) -> Option<&NativeSubagent> {

@@ -56,6 +56,10 @@ What it does, each as the desktop's own install does it
 A hold: while ~/.local/state/olo/host-upgrade.hold is there, nothing is
 replaced (its words say why and whose it is); --even-if-held goes ahead
 all the same. Whoever has agents at work on the host may put it there.
+The agents service keeps to it too (2026-11-26): while it is there a
+running service is handed to no later build of the helper (a desktop
+that upgraded and connected is answered by the one that runs) and
+`olo-rex-link agent retire` is refused without `--even-if-held`.
 
 It prints what it did, and its last line is "host-upgrade: done: …",
 "host-upgrade: nothing to do: …" or "host-upgrade: failed: WHY" (exit 1).
@@ -219,7 +223,9 @@ def main():
         if exe == helper:
             break
         was = pid
-        asked(helper, "retire")
+        # (A service that is held keeps to the hold itself: it is ended
+        # only by one who says they know of it, as this was told to be.)
+        asked(helper, "retire", *(["--even-if-held"] if "--even-if-held" in args else []))
         until = time.time() + 30
         while os.path.exists(f"/proc/{was}") and time.time() < until:
             time.sleep(0.05)

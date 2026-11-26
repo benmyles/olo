@@ -1226,3 +1226,78 @@ fn live_mock_api_error_midstream_drop_and_recovery() {
         let _ = rig.run_olo_json(&["agent", "stop", "err-claude", "--force", "--json"]).await;
     });
 }
+
+/// A minder as Claude Code itself runs it (`agents::minder`): started
+/// with what the service starts a minder with, its one command runs with
+/// no leave asked, anything else in its shell is refused with none asked
+/// either (it has no one to ask), and what it escalates is on the
+/// parent's own watch. The model's part is the made-up API's: what a
+/// minder decides is not what is tried here, what it can do is.
+#[test]
+fn live_mock_api_a_minder_has_its_one_command_and_nothing_else() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("claude") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("minder").await;
+        rig.mock.clear_queues();
+        // The agent minded: a command of the lead's, so that nothing asks the API but the minder.
+        let started = rig.run_olo_json(&["agent", "start", "--command", "--name", "worker", "--json", "--", "sleep", "600"]).await;
+        let worker = started["id"].as_str().unwrap().to_owned();
+        let service = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("service.log").exists()).expect("the service's folder");
+        let mind = service.join("minders").join(&worker).join("mind").display().to_string();
+
+        // What the "model" does with its turn: its command, something that isn't its to run, its command again, and done.
+        let said = "MINDER_SAYS worker asks what the rules do not cover";
+        rig.mock.push("claude", MockReply::RunCommand { command: format!("{mind} status --json"), reason: "How it stands".into() });
+        rig.mock.push("claude", MockReply::RunCommand { command: "sh -c \"printf '%s_%s\\n' RAN OTHER\"".into(), reason: "Not a minder's to run".into() });
+        rig.mock.push("claude", MockReply::RunCommand { command: format!("{mind} escalate '{said}' --json"), reason: "Tell the parent".into() });
+        rig.mock.push("claude", MockReply::Text("MINDER_TURN_DONE".into()));
+
+        let rules = "Approve `cargo test`.\nEscalate everything else, word for word.";
+        let mut args: Vec<String> = ["agent", "mind", "worker", "--with", "claude:claude-opus-5-5:max", "--rules-text", rules, "--json"].iter().map(|s| (*s).to_owned()).collect();
+        args.extend(rig.cli_env_args("claude"));
+        for (name, value) in [
+            ("REX_SERVER_SOCKET", rig.sock.display().to_string()),
+            ("OLO_REX_AGENTS_DIR", rig.dir.join("agents").display().to_string()),
+            ("XDG_RUNTIME_DIR", rig.dir.display().to_string()),
+            ("XDG_STATE_HOME", rig.dir.display().to_string()),
+        ] {
+            args.extend(["--env".to_owned(), format!("{name}={value}")]);
+        }
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let minded = rig.run_olo_json(&refs).await;
+        let minder = minded["minder"]["id"].as_str().unwrap().to_owned();
+        let from = minded["cursor"].to_string();
+
+        // What it escalated reaches the parent: so its command ran twice, and what lay between didn't stop it.
+        let heard = rig.run_olo_json(&["agent", "watch", "--all", "--since", &from, "--on", "escalation", "--timeout", "40", "--json"]).await;
+        assert_eq!((&heard["event"], &heard["name"], &heard["summary"]), (&json!("escalation"), &json!("worker"), &json!(said)), "{heard}");
+        // Its turn ends: it comes to rest having asked leave for nothing.
+        let rested = rig.run_olo_json(&["agent", "watch", &minder, "--since", &from, "--on", "idle,done,approval,question,error,exit", "--timeout", "40", "--json"]).await;
+        assert!(matches!(rested["state"].as_str(), Some("idle" | "done")), "the minder asked, failed or ended: {rested}");
+        let (code, out, _) = rig.run_olo(&["agent", "watch", &minder, "--since", &from, "--on", "approval,question", "--timeout", "2", "--json"]).await;
+        assert_eq!(code, 124, "a minder asked leave of someone: {out}");
+
+        let bodies: Vec<String> = rig.mock.requests().into_iter().map(|r| r.body).collect();
+        let any = |what: &str| bodies.iter().any(|b| b.contains(what));
+        // Its standing instructions and the parent's rules are its system's; it was told to begin.
+        assert!(
+            any("You are a minder. Your whole job is one other agent") && any("Escalate everything else, word for word.") && any("Begin minding"),
+            "what the minder was told isn't in what it sent the API"
+        );
+        // Its command ran with no leave: how the agent stands came back to the model.
+        assert!(any(&format!("\\\"id\\\":\\\"{worker}\\\"")) && any("\\\"state\\\":\\\"working\\\""), "`mind status` didn't run");
+        // The other command never ran (its words together are only ever a shell's doing), and the refusal went back to the model as a tool's result.
+        assert!(!any("RAN_OTHER"), "a minder ran a command that isn't its own");
+        assert!(bodies.iter().filter(|b| b.contains("tool_result")).count() >= 3, "three tools' results went back to the model: {}", bodies.len());
+
+        // What it did is kept for the parent, and both are stopped together.
+        let of = rig.run_olo_json(&["agent", "mind", "worker", "--json"]).await;
+        let did: Vec<&str> = of["answered"].as_array().unwrap().iter().filter_map(|a| a["did"].as_str()).collect();
+        assert_eq!(did, ["escalate"], "{of}");
+        let stopped = rig.run_olo_json(&["agent", "stop", "worker", "--tree", "--force", "--json"]).await;
+        assert_eq!(stopped["stopped"].as_array().unwrap().len(), 2, "{stopped}");
+    });
+}

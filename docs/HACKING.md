@@ -31310,6 +31310,127 @@ agents through the night, could not move to it.
   the desktop's own unset) is set in front of its program (`env K=V …`:
   a Rex tab takes no environment of its own), and a test reads it from
   the child's own `/proc/PID/environ`, as ShiftUp's launcher does.
+- *A minder for a child* (`agents/minder.rs`; `olo agent start …
+  --minder`, `olo agent mind`, `olo agent escalate`; Ben, 2026-11-26:
+  "often when subagents need an approval or have a question it takes a
+  long time for parent agents to notice and respond because they are
+  busy with something else … allow parent agents, when starting an olo
+  rex agent (also with the ability to add/change it for a running
+  agent), to attach an approval/minder agent specifically for each
+  agent where the parent agent can choose to use a more powerful model
+  … and give it context and instructions on what to approve/deny and
+  how to steer that specific agent it is minding … and also giving …
+  the minder the ability to message the parent when something needs
+  escalation"). A minder is an agent of its own whose whole job is one
+  other agent: a child tab of the agent it minds (the person sees it
+  there, titled "Minder of …"; `stop --tree` on the agent stops both),
+  with the model and effort the parent chose (`--minder
+  claude:MODEL:EFFORT`) and the parent's own rules (`--rules FILE`,
+  read by the asking command; `--rules-text`). What the parent types:
+  `start … --minder … --rules …` (both begin together; the answer has
+  `minder`), `mind NAME --with … --rules …` for one that runs (or to
+  put another in its place), `mind NAME --rules …` (the same minder
+  begun anew with them), `mind NAME --off`, and `mind NAME` (who minds
+  it, the rules, and `answered`: every `approve`, `send` and `escalate`
+  of the minder's with its time, kept in
+  `<service>/minders/<agent>/answers.jsonl`).
+  - *What it is told.* Its standing instructions (`minder::brief`: the
+    one agent, its one command, the loop, what it never does) with the
+    parent's rules set in them, as Claude Code's `--append-system-prompt`
+    (a long watch that is summed up never loses the rules); its prompt
+    is only "begin" (`minder::begin`). Silent rules mean escalate, never
+    guess.
+  - *What it can do is the service's to hold*, not the minder's to
+    remember. An agent whose record has `minds` (`NativeSubagent`) may
+    ask `watch`, `status`, `read`, `approve`, `send` and `escalate`,
+    each of the one agent it minds (`Service::resolve`: its parent tab,
+    which no other child may name), and nothing else (`agent_op`:
+    status 69), whatever pane it says it is. Its yes is for this once
+    (`approve --session` is refused it). Its Claude Code is started so
+    that it never asks leave, having no one to ask: `--tools Bash` (the
+    shell its one tool), `--permission-mode dontAsk` (what isn't allowed
+    is refused, not asked), `--allowed-tools "Bash(<mind> *)"`,
+    `--strict-mcp-config`, in one trusted folder shared by every minder
+    (`<service>/minders`). `<mind>` is a script the service writes
+    beside the rules (`minder::script`): `mind watch|status|read|
+    approve|send|escalate …`, each run of the helper with the agent's
+    id put in, so the minder never names the agent and one rule lets it
+    work.
+  - *Escalation is an event, not typing.* `olo agent escalate "TEXT"`
+    (a minder's is about its agent; any other child's about itself)
+    writes an event beside the child's states (`event: "escalation"`,
+    `SubagentEventLog::push_beside`: always new, the child's own last
+    state left standing) and the parent's `watch` returns it at once;
+    `escalation` is among a watch's default events. While a child has a
+    minder that runs, its `waiting_approval` and `waiting_question`
+    wake no watch but the minder's (`Service::minders_own`, at both
+    places a watch finds something: the log, and how the child stands
+    now); they stay in the log, so with the minder off or gone they are
+    told from where the parent's cursor was.
+  - *It is told what stands, and answers what it was told.* A real
+    minder takes seconds to judge (below) and an agent asks again in
+    less. Told each event in turn, one that fell behind reported "it is
+    waiting" of a question long gone, after its agent had exited (the
+    first trial); and `approve` answers whatever is on the screen, so a
+    late yes would have been a yes to a later question. So a minder's
+    watch answers with the last thing written of its agent
+    (`last_state_of`) and passes over what came before it, and
+    `approve` from a minder is refused unless the dialog on the screen
+    is the one it was last told of by `watch` or `status` (`State::told`,
+    by the dialog's key): "what it asks now isn't what you were last
+    told of: nothing was answered. Look again". The parent's own watch
+    is unchanged: every event once, in order.
+  - *How it ends.* When its agent exits, the minder's watch says so; its
+    next `escalate` is its report and its last word (the service stops
+    it half a second after), and one that says nothing is stopped when
+    its time is up (`MINDER_REPORTS`, three minutes). A minder that ends
+    by itself while its agent runs is said to the parent (an escalation,
+    "Its minder ended (…)") and the agent's asking is the parent's
+    again; one stopped by the parent or the service (`--off`, another
+    put in its place, `stop`) is not said (`State::let_go`).
+  - *Tried.* `tests/agents.rs` (stand-ins, the minder's part played from
+    inside its tab so the service knows it by its process): started with
+    its agent, alone told what it asks, its yes and its no typed as the
+    parent's are, eleven things refused it (twice each: as itself, and
+    saying it is the lead's pane), its escalation the first thing the
+    parent hears, its report ending it, attached and changed and taken
+    off, the one that ends by itself, the one that outlives its agent,
+    the one that fell behind. `tests/agents_live.rs`: Claude Code itself
+    (2.1.332) started as a minder is, the model's part played by the
+    made-up API: its command runs with no leave asked and its output
+    goes back to the model, another command is refused with none asked
+    (it never ran), its escalation reaches the parent, and it comes to
+    rest never having asked anyone anything. And with a real model,
+    by hand (`tools/dev/minder-trial`, two minutes, Opus 5.5 at max
+    minding a stand-in; the third run's figures, from the question
+    drawn to the answer typed or told): a yes to what its rules allow
+    (6.3 s, its own start in it), a no with the rule's own words to
+    what they refuse (3.1 s), a question answered from the rules
+    (3.3 s), what they don't cover escalated word for word with nothing
+    typed and the agent left waiting (19.7 s), "finished" told to the
+    parent (9.7 s), and its report 3.4 s after the agent's exit, the
+    service stopping it half a second later. Over three runs a plain
+    yes or no took 3 to 7 s, and once 28 s went on a question it read
+    the screen for: a minder is quick next to a busy parent and slow
+    next to an agent, which is why it is told what stands.
+  - Only Claude Code minds for now (each program needs its own way to
+    be held to one command without asking). A minder has its agent's
+    `--env` and `--minder-env`; one attached later has what `mind …
+    --env` gives it, and that isn't kept for the next.
+- *The service keeps to the hold* (`Service::held`). While
+  `~/.local/state/olo/host-upgrade.hold` is there (beside the services'
+  folder: whoever has agents at work on a host puts it there, its words
+  say why), a running service is handed to no later build: an asker of
+  one that speaks the same is answered by the service that runs (said
+  once in its log), one that speaks what it doesn't is told why it
+  can't be answered (69), and `agent retire` is refused without
+  `--even-if-held` (`tools/dev/host-upgrade --even-if-held` passes it).
+  Before, the hold held only that tool, and a desktop that upgraded and
+  connected replaced the service of a host with twenty agents at work,
+  twenty minutes before the time their lead had been given (2026-11-26,
+  20:25 UTC). A service that has ended by itself (no child alive,
+  nothing asked) is started again by whichever build asks next: the
+  hold holds one that runs.
 - *Built for every host.* The helper's `agents` feature is all Rust
   (tokio, a WebSocket client, a regex): it is in the helper built
   without zig too (`apps/rex/build.rs`), where the features that need a

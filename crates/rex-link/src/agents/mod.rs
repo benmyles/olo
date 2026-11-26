@@ -18,6 +18,7 @@
 //! own machinery, so the desktop carries none of that.
 
 pub mod events;
+pub mod minder;
 pub mod model;
 pub mod spec;
 pub mod state;
@@ -373,6 +374,7 @@ mod tests {
             session_confidence: Some("record".into()),
             add_dirs: Vec::new(),
             command: Vec::new(),
+            minds: None,
         };
         reg.register(mk("sa-1", "builder-a", "w2", "w1", "11111111-2222-3333-4444-555555555555"));
         let live: HashSet<String> = ["w1", "w2"].into_iter().map(str::to_owned).collect();

@@ -3,10 +3,11 @@
 //! answered here, on the host, through the host's own Rex server.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use olo_rex_link::agents::minder;
 use olo_rex_link::agents::wire::{Frame, Request, Response};
 use olo_rex_link::agents::{
     AgentCli, ApproveSpec, DesktopPolicy, NativeSubagent, ScreenClassification, StartSpec, SubagentEvent, SubagentLiveState, WatchSpec, approval_to_json, effective_state, new_subagent_id,
@@ -63,6 +64,11 @@ impl Service {
     pub async fn agent_op(self: &Arc<Self>, req: &Request, peer_pid: Option<i32>) -> Response {
         let raw = raw_of(req);
         let caller = self.caller(req, peer_pid).await;
+        // A minder has the few commands that are of the agent it minds;
+        // nothing else is its to ask, whatever it was told or tried.
+        if caller.child.as_ref().is_some_and(|c| c.minds.is_some()) && !matches!(req.op.as_str(), "status" | "read" | "tail" | "watch" | "wait" | "send" | "input" | "approve" | "escalate") {
+            return Response::err(&req.op, "a minder watches, reads, answers and escalates for the one agent it minds: this isn't its to ask", 69);
+        }
         match req.op.as_str() {
             "start" | "spawn" => self.start(req, &raw, &caller).await,
             "list" | "ls" => self.list(&raw, &caller).await,
@@ -74,10 +80,12 @@ impl Service {
             "stop" | "close" | "kill" => self.stop(req, &raw, &caller).await,
             "prune" => self.prune(&raw, &caller),
             "focus" => self.focus(&raw, &caller).await,
+            "mind" | "minder" => self.mind(req, &raw, &caller).await,
+            "escalate" => self.escalate(&raw, &caller).await,
             other => Response {
                 ok: false,
                 stdout: String::new(),
-                stderr: format!("olo agent: unknown command `{other}`\nusage: olo agent <start|list|status|read|watch|send|approve|stop|prune|focus> [ARGS…]\n"),
+                stderr: format!("olo agent: unknown command `{other}`\nusage: olo agent <start|list|status|read|watch|send|approve|mind|escalate|stop|prune|focus> [ARGS…]\n"),
                 code: 2,
                 data: Value::Null,
             },
@@ -164,7 +172,40 @@ impl Service {
     }
 
     fn resolve(&self, caller: &Caller, target: &str) -> Result<NativeSubagent, String> {
+        // A minder names one agent: the one it minds (its parent tab,
+        // which no other child may reach), and no other.
+        if let Some(minded) = caller.child.as_ref().and_then(|c| c.minds.as_deref()) {
+            let it = self.entry(minded).ok_or_else(|| "the agent this minder minds is no longer known".to_owned())?;
+            let t = target.trim();
+            if t == it.id || t == it.window_id || it.name.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(t)) {
+                return Ok(it);
+            }
+            return Err(format!("a minder reaches the agent it minds (`{}`) and no other: not `{t}`", it.name.as_deref().unwrap_or(&it.id)));
+        }
         self.lock().reg.resolve_target_scoped(HOST, caller.session.as_deref(), caller.window.as_deref(), caller.child.is_some(), target)
+    }
+
+    /// Whether what `ev` says a child asks (leave, a question) is for
+    /// another to answer than `caller`: the child has a minder that
+    /// runs, and the caller isn't it. `reg`: the registry, under the
+    /// lock the log is read under.
+    fn minders_own(reg: &olo_rex_link::agents::SubagentRegistry, caller: &Caller, id: &str, state: SubagentLiveState) -> bool {
+        matches!(state, SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion)
+            && reg.minder_of(id).is_some_and(|m| caller.child.as_ref().map(|c| c.id.as_str()) != Some(m.id.as_str()))
+    }
+
+    /// What a minder did for its agent, kept beside its rules: a line
+    /// each, for `olo agent mind NAME` to say.
+    fn minder_did(&self, caller: &Caller, what: &str, said: Value) {
+        let Some(minded) = caller.child.as_ref().and_then(|c| c.minds.clone()) else { return };
+        use std::io::Write as _;
+        let line = json!({ "at_ms": now_unix_ms(), "did": what, "said": said }).to_string();
+        let dir = self.paths.dir.join("minders").join(&minded);
+        if std::fs::create_dir_all(&dir).is_ok()
+            && let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("answers.jsonl"))
+        {
+            let _ = writeln!(f, "{line}");
+        }
     }
 
     fn entry(&self, id: &str) -> Option<NativeSubagent> {
@@ -178,11 +219,255 @@ impl Service {
     // ---- start ----
 
     async fn start(self: &Arc<Self>, req: &Request, raw: &Value, caller: &Caller) -> Response {
-        let err = |msg: String, code: i32| Response::err("start", msg, code);
-        let mut spec = match StartSpec::parse(Some(raw)) {
+        let spec = match StartSpec::parse(Some(raw)) {
+            Ok(s) => s,
+            Err(e) => return Response::err("start", e, 2),
+        };
+        // (Its minder's rules read before anything is started: a file
+        // that isn't there is said now, not after the child runs.)
+        let minder = match (&spec.minder, spec.rules.is_some() || spec.rules_file.is_some()) {
+            (None, true) => return Response::err("start", "`--rules` are a minder's: say which with `--minder claude:MODEL:EFFORT`", 2),
+            (None, false) => None,
+            (Some(who), _) => match self.rules_given(req, spec.rules.as_deref(), spec.rules_file.as_deref()) {
+                Ok(rules) => Some((who.clone(), rules.unwrap_or_default())),
+                Err(e) => return Response::err("start", e, 2),
+            },
+        };
+        let mut answer = self.start_spec(req, spec.clone(), caller).await;
+        if let (true, Some((who, rules))) = (answer.ok, minder)
+            && let Some(child) = answer.data["id"].as_str().and_then(|id| self.entry(id))
+        {
+            let from = answer.data["cursor"].as_u64().unwrap_or_else(|| self.cursor());
+            let mut env = spec.env.clone();
+            env.extend(spec.minder_env.iter().cloned());
+            match self.attach_minder(req, caller, &child, &who, &rules, from, env, spec.unset_env.clone()).await {
+                Ok(minder) => {
+                    if !spec.json {
+                        answer.stdout.push_str(&format!("{}  its minder ({})  tab={}\n", minder["id"].as_str().unwrap_or_default(), who.describe(), minder["window_id"].as_str().unwrap_or_default()));
+                    }
+                    answer.data["minder"] = minder;
+                }
+                // (The child runs: said, and its asking comes to the
+                // parent as it would with no minder.)
+                Err(e) => {
+                    answer.stderr.push_str(&format!("olo agent start: `{}` runs, but its minder couldn't be started: {e}\n", child.name.as_deref().unwrap_or(&child.id)));
+                    answer.data["minder_error"] = json!(e);
+                }
+            }
+            if spec.json {
+                answer.stdout = format!("{}\n", answer.data);
+            }
+        }
+        answer
+    }
+
+    /// The parent's rules for a minder: its words (`--rules-text`), or a
+    /// file's (`--rules`, from the folder it was asked in); none given,
+    /// none.
+    fn rules_given(&self, req: &Request, text: Option<&str>, file: Option<&str>) -> Result<Option<String>, String> {
+        match (text, file) {
+            (Some(_), Some(_)) => Err("`--rules FILE` or `--rules-text TEXT`, not both".into()),
+            (Some(text), None) => Ok(Some(text.to_owned())),
+            (None, Some(file)) => {
+                let path = if file.starts_with('/') || req.cwd.trim().is_empty() { PathBuf::from(file) } else { Path::new(req.cwd.trim()).join(file) };
+                match std::fs::read_to_string(&path) {
+                    Ok(text) if text.len() <= 64 << 10 => Ok(Some(text)),
+                    Ok(_) => Err(format!("the rules in {} are over 64 KB: a minder reads them at every question", path.display())),
+                    Err(e) => Err(format!("the rules couldn't be read ({}): {e}", path.display())),
+                }
+            }
+            (None, None) => Ok(None),
+        }
+    }
+
+    /// Starts a minder for `child` (`agents::minder`): its own folder
+    /// with the parent's rules and its one command, then the agent
+    /// itself, a child tab of the one it minds, started so that the
+    /// command needs no leave. What it is, for the asker.
+    #[allow(clippy::too_many_arguments)]
+    async fn attach_minder(
+        self: &Arc<Self>,
+        req: &Request,
+        caller: &Caller,
+        child: &NativeSubagent,
+        who: &minder::MinderSpec,
+        rules: &str,
+        from: u64,
+        env: Vec<(String, String)>,
+        unset_env: Vec<String>,
+    ) -> Result<Value, String> {
+        if child.minds.is_some() {
+            return Err("a minder isn't minded".into());
+        }
+        if child.exited_at.is_some() {
+            return Err("it has exited".into());
+        }
+        let dir = self.paths.dir.join("minders").join(&child.id);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let helper = std::env::current_exe().map_err(|e| format!("the helper's own path: {e}"))?;
+        let command = dir.join(minder::COMMAND);
+        let write = |path: &Path, text: &str, mode: u32| -> Result<(), String> {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::write(path, text).and_then(|()| std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))).map_err(|e| format!("{}: {e}", path.display()))
+        };
+        write(&dir.join("rules.md"), rules, 0o600)?;
+        write(&command, &minder::script(&helper.to_string_lossy(), &child.id), 0o700)?;
+        let its_name = child.name.clone().unwrap_or_else(|| child.id.clone());
+        let what = if child.cli.is_agent() { format!("{}, {}", child.cli.display_name(), child.model) } else { "a command".to_owned() };
+        let spec = StartSpec {
+            cli: Some(who.cli),
+            model: Some(who.model.clone()),
+            effort: Some(who.effort.clone()),
+            name: Some(format!("{its_name}-minder")),
+            title: Some(format!("Minder of {}", child.display_title())),
+            role: Some("minder".to_owned()),
+            parent_window: Some(child.window_id.clone()),
+            // (One folder for every minder: Claude Code is told once
+            // that it is trusted, not once a minder.)
+            cwd: Some(self.paths.dir.join("minders").display().to_string()),
+            trust: true,
+            // Its one command and nothing else, in the shell or out of
+            // it: no other tool, no server's tools, and no asking.
+            permission_mode: Some(minder::CLAUDE_MODE.to_owned()),
+            allowed_tools: vec![minder::allowed_tool(&command.to_string_lossy())],
+            strict_mcp_config: true,
+            extra: minder::CLAUDE_TOOLS.iter().map(|s| (*s).to_owned()).collect(),
+            append_system_prompt: Some(minder::brief(&its_name, &what, &command.to_string_lossy(), from, rules)),
+            prompt: Some(minder::begin(&its_name, &command.to_string_lossy(), from)),
+            env,
+            unset_env,
+            desktop: DesktopPolicy::None,
+            close_on_exit: true,
+            json: true,
+            minds: Some(child.id.clone()),
+            ..StartSpec::default()
+        };
+        let started = self.start_spec(req, spec, caller).await;
+        if !started.ok {
+            return Err(started.stderr.trim().trim_start_matches("olo agent start: ").to_owned());
+        }
+        Ok(json!({
+            "id": started.data["id"], "name": started.data["name"], "window_id": started.data["window_id"],
+            "cli": who.cli.binary(), "model": who.model, "effort": who.effort,
+            "rules": dir.join("rules.md").display().to_string(),
+        }))
+    }
+
+    /// `olo agent mind NAME …`: a minder attached to a running agent or
+    /// put in another's place (`--with`), given new rules (`--rules`:
+    /// a minder begun anew with them; what the one before answered is
+    /// kept), ended (`--off`), or told of (nothing more).
+    async fn mind(self: &Arc<Self>, req: &Request, raw: &Value, caller: &Caller) -> Response {
+        let err = |msg: String, code: i32| Response::err("mind", msg, code);
+        let spec = match minder::MindSpec::parse(&args_of(raw).unwrap_or_default()) {
             Ok(s) => s,
             Err(e) => return err(e, 2),
         };
+        let it = match self.resolve(caller, &spec.target) {
+            Ok(e) => e,
+            Err(e) => return err(e, 1),
+        };
+        let its_name = it.name.clone().unwrap_or_else(|| it.id.clone());
+        let dir = self.paths.dir.join("minders").join(&it.id);
+        let now = self.lock().reg.minder_of(&it.id).cloned();
+        let told = |m: &NativeSubagent| json!({ "id": m.id, "name": m.name, "window_id": m.window_id, "cli": m.cli.binary(), "model": m.model, "effort": m.effort });
+        // Told of: who minds it, by what rules, and what was answered.
+        if !spec.off && spec.with.is_none() && spec.rules.is_none() && spec.rules_file.is_none() {
+            let rules = std::fs::read_to_string(dir.join("rules.md")).ok();
+            let answered: Vec<Value> = std::fs::read_to_string(dir.join("answers.jsonl")).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+            let payload = json!({ "ok": true, "id": it.id, "name": it.name, "minder": now.as_ref().map(&told), "rules": rules, "answered": answered });
+            let stdout = if spec.json {
+                format!("{payload}\n")
+            } else {
+                let mut out = match &now {
+                    Some(m) => format!("{its_name} is minded by {} ({}:{}:{})\n", m.name.as_deref().unwrap_or(&m.id), m.cli.binary(), m.model, m.effort),
+                    None => format!("{its_name} has no minder\n"),
+                };
+                for a in answered.iter().rev().take(20).rev() {
+                    out.push_str(&format!("  {}  {}\n", a["did"].as_str().unwrap_or_default(), a["said"]));
+                }
+                out
+            };
+            return Response::ok(stdout, payload);
+        }
+        if it.exited_at.is_some() {
+            return err(format!("`{its_name}` has exited"), 1);
+        }
+        if spec.off {
+            let Some(m) = now else { return err(format!("`{its_name}` has no minder"), 1) };
+            self.stop_tabs(&m, true, true, false).await;
+            let payload = json!({ "ok": true, "id": it.id, "name": it.name, "minder": Value::Null, "stopped": m.id, "cursor": self.cursor() });
+            return Response::ok(if spec.json { format!("{payload}\n") } else { format!("{its_name} is no longer minded (its asking comes to you)\n") }, payload);
+        }
+        // A minder, new or in another's place; or new rules for the one
+        // it has, which is the same minder begun anew with them.
+        let who = match (&spec.with, &now) {
+            (Some(who), _) => who.clone(),
+            (None, Some(m)) => minder::MinderSpec { cli: m.cli, model: m.model.clone(), effort: m.effort.clone() },
+            (None, None) => return err(format!("`{its_name}` has no minder to give rules to: say which with `--with claude:MODEL:EFFORT`"), 2),
+        };
+        let rules = match self.rules_given(req, spec.rules.as_deref(), spec.rules_file.as_deref()) {
+            Ok(Some(rules)) => rules,
+            // (None given with `--with`: those it had, if it had any.)
+            Ok(None) => std::fs::read_to_string(dir.join("rules.md")).unwrap_or_default(),
+            Err(e) => return err(e, 2),
+        };
+        if let Some(old) = &now {
+            self.stop_tabs(old, true, true, false).await;
+        }
+        let from = self.cursor();
+        match self.attach_minder(req, caller, &it, &who, &rules, from, spec.env.clone(), Vec::new()).await {
+            Ok(minder) => {
+                let payload = json!({ "ok": true, "id": it.id, "name": it.name, "minder": minder, "replaced": now.as_ref().map(|m| m.id.clone()), "cursor": from });
+                let stdout = if spec.json { format!("{payload}\n") } else { format!("{its_name} is minded by {} ({})\n", payload["minder"]["id"].as_str().unwrap_or_default(), who.describe()) };
+                Response::ok(stdout, payload)
+            }
+            Err(e) => err(format!("`{its_name}`'s minder couldn't be started: {e}"), 1),
+        }
+    }
+
+    /// `olo agent escalate "TEXT"`: something for the parent, on the
+    /// parent's own watch at once (`event: escalation`), never typed
+    /// into its pane. A minder's is of the agent it minds; any other
+    /// child's is of itself (a child that needs its parent says so).
+    async fn escalate(self: &Arc<Self>, raw: &Value, caller: &Caller) -> Response {
+        let err = |msg: String, code: i32| Response::err("escalate", msg, code);
+        let args = args_of(raw).unwrap_or_default();
+        let json_out = args.iter().any(|a| a == "--json");
+        let text = args.iter().filter(|a| !a.starts_with("--")).cloned().collect::<Vec<_>>().join(" ");
+        let text = text.trim();
+        if text.is_empty() {
+            return err("usage: olo agent escalate \"TEXT\" [--json]   (what the parent needs to know, on its own watch at once)".into(), 2);
+        }
+        let Some(child) = &caller.child else {
+            return err("only a child has a parent to tell: this was asked from a tab that isn't one".into(), 69);
+        };
+        let about = match child.minds.as_deref() {
+            Some(minded) => match self.entry(minded) {
+                Some(it) => it,
+                None => return err("the agent this minder minds is no longer known".into(), 1),
+            },
+            None => child.clone(),
+        };
+        // (How it stands as it is said: an event has a state.)
+        let state = if about.exited_at.is_some() { SubagentLiveState::Exited } else { self.look(&about, false).await.cls.state };
+        let said: String = text.chars().take(4000).collect();
+        let mut event = self.event_of(&about, state, Some(said.clone()), String::new());
+        event.event = minder::ESCALATION.to_owned();
+        event.last_message = Some(said.clone());
+        let seq = self.record_beside(event);
+        self.minder_did(caller, "escalate", json!(said));
+        // (A minder's word once its agent has ended is its report, and
+        // its last: it is stopped when this has been answered.)
+        if child.minds.is_some() && about.exited_at.is_some() {
+            self.end_minder_in(child.clone(), Duration::from_millis(500));
+        }
+        let payload = json!({ "ok": true, "cursor": seq, "id": about.id, "name": about.name, "event": minder::ESCALATION });
+        Response::ok(if json_out { format!("{payload}\n") } else { format!("told its parent (cursor={seq})\n") }, payload)
+    }
+
+    async fn start_spec(self: &Arc<Self>, req: &Request, mut spec: StartSpec, caller: &Caller) -> Response {
+        let err = |msg: String, code: i32| Response::err("start", msg, code);
         // A child's own child has no more of the desktop than it has.
         if let Some(cc) = &caller.child {
             match cc.desktop_policy.restrict_to(&spec.desktop) {
@@ -334,6 +619,7 @@ impl Service {
             exited_by_sync: false,
             add_dirs: spec.add_dirs.clone(),
             command: if cli == AgentCli::Command { raw_argv.clone() } else { Vec::new() },
+            minds: spec.minds.clone(),
         };
         if let Err(e) = self.begin(entry.clone()).await {
             return err(format!("the new tab couldn't be watched: {e}"), 1);
@@ -508,8 +794,17 @@ impl Service {
             let info = inspected.get(&row.entry.id);
             let (state, _, _) = effective_state(&cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
             let kids = self.lock().reg.direct_children(HOST, &sid, &row.entry.window_id, &live_windows).len();
-            items.push(summary_json(&row.entry, state, cls.summary.as_deref(), row.depth, kids));
-            let what = if row.entry.cli.is_agent() { format!("{} ({}, effort={})", row.entry.cli.binary(), row.entry.model, row.entry.effort) } else { "command".to_owned() };
+            let mut item = summary_json(&row.entry, state, cls.summary.as_deref(), row.depth, kids);
+            let minder = self.lock().reg.minder_of(&row.entry.id).map(|m| m.id.clone());
+            item["minder"] = json!(minder);
+            items.push(item);
+            let what = if row.entry.minds.is_some() {
+                format!("minder, {} ({}, effort={})", row.entry.cli.binary(), row.entry.model, row.entry.effort)
+            } else if row.entry.cli.is_agent() {
+                format!("{} ({}, effort={})", row.entry.cli.binary(), row.entry.model, row.entry.effort)
+            } else {
+                "command".to_owned()
+            };
             text.push_str(&format!(
                 "{}{}{}  {}  {}  [{}]{}\n",
                 row.menu_prefix(),
@@ -581,6 +876,7 @@ impl Service {
         let tail = tail_of(&screen, 8);
 
         let mut payload = summary_json(&entry, state, cls.summary.as_deref(), 1, 0);
+        payload["minder"] = json!(self.lock().reg.minder_of(&entry.id).map(|m| m.id.clone()));
         if let Some(p) = looked.pid {
             payload["pid"] = json!(p);
         }
@@ -591,6 +887,17 @@ impl Service {
         payload["aborted"] = json!(aborted);
         payload["last_message"] = json!(last_message);
         payload["approval"] = json!(cls.approval.as_ref().map(|ap| approval_to_json(ap, &pending)));
+        // (A minder that looks is told what stands asked: that is the
+        // question it may answer.)
+        if let Some(me) = caller.child.as_ref().filter(|c| c.minds.is_some()) {
+            let key = super::service::subkey(&cls);
+            let mut st = self.lock();
+            if key.is_empty() {
+                st.told.remove(&me.id)
+            } else {
+                st.told.insert(me.id.clone(), key)
+            };
+        }
         payload["error"] = json!(error);
         payload["last_output_at"] = json!(looked.last_output_at);
         payload["last_state_change_at"] = json!(looked.last_state_change_at);
@@ -685,10 +992,17 @@ impl Service {
     // ---- watch ----
 
     async fn watch(self: &Arc<Self>, raw: &Value, caller: &Caller) -> Response {
-        let spec = match WatchSpec::parse(Some(raw)) {
+        let mut spec = match WatchSpec::parse(Some(raw)) {
             Ok(s) => s,
             Err(e) => return Response::err("watch", e, 2),
         };
+        // (All of a minder's is the one agent it minds.)
+        if spec.all
+            && let Some(minded) = caller.child.as_ref().and_then(|c| c.minds.clone())
+        {
+            spec.all = false;
+            spec.targets = vec![minded];
+        }
         let regex = match spec.regex_pat.as_deref().map(regex::Regex::new) {
             Some(Ok(re)) => Some(re),
             Some(Err(e)) => return Response::err("watch", format!("invalid --regex `{}`: {e}", spec.regex_pat.as_deref().unwrap_or_default()), 2),
@@ -715,7 +1029,7 @@ impl Service {
 
         // A cursor from before the log began again, or older than what
         // the log still holds: said, never silently wrong.
-        let (since_floor, had_gap) = {
+        let (mut since_floor, had_gap) = {
             let st = self.lock();
             let latest = st.log.latest_seq();
             match spec.since {
@@ -811,6 +1125,8 @@ impl Service {
             live_ids.contains(&ev.id) || scope_parent.as_deref().is_some_and(|p| ev.parent_window_id == p || ev.ancestor_windows.iter().any(|a| a == p))
         };
         let wants_done = spec.events.iter().any(|e| e == "done");
+        // (The asker, where it is a minder.)
+        let minding = caller.child.as_ref().filter(|c| c.minds.is_some()).map(|c| c.id.clone());
 
         loop {
             let changed = self.changed.notified();
@@ -819,8 +1135,46 @@ impl Service {
 
             // 1. What was written down after the cursor: nothing between
             //    one watch and the next is lost.
-            let queued = self.lock().log.find_since(since_floor, |ev| event_in_scope(ev, &live_ids) && spec.matches_state(ev.state));
+            // (What a minder has for the parent is an event of its own
+            // kind; what a minded child asks is its minder's to answer,
+            // and wakes no other watch while that minder runs. Left in
+            // the log: with the minder gone it is told from here.)
+            let queued = {
+                let st = self.lock();
+                let wanted = |ev: &SubagentEvent| {
+                    event_in_scope(ev, &live_ids)
+                        && if ev.event == minder::ESCALATION { spec.wants_escalations() } else { spec.matches_state(ev.state) && !Self::minders_own(&st.reg, caller, &ev.id, ev.state) }
+                };
+                let found = st.log.find_since(since_floor, wanted);
+                // A minder is told what stands, never what has passed:
+                // one that took a while over the last question would
+                // else be told, one by one, of questions long answered
+                // or gone (a real one reported "it is waiting" of an
+                // agent that had exited, 2026-11-26). The last thing
+                // written of its agent is what stands; what came before
+                // it is passed over.
+                match found {
+                    Some(ev) if minding.is_some() && ev.event != minder::ESCALATION => match st.log.last_state_of(&ev.id).filter(|last| last.seq > ev.seq).cloned() {
+                        Some(last) if wanted(&last) => Some(last),
+                        Some(last) => {
+                            since_floor = last.seq;
+                            None
+                        }
+                        None => Some(ev),
+                    },
+                    found => found,
+                }
+            };
             if let Some(ev) = queued {
+                // (What it asks, by its key: the one question this
+                // minder may now answer.)
+                if let Some(me) = &minding {
+                    let mut st = self.lock();
+                    match ev.state {
+                        SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion => st.told.insert(me.clone(), ev.dedupe_key.clone()),
+                        _ => st.told.remove(me),
+                    };
+                }
                 return answer(&ev, None, had_gap);
             }
 
@@ -848,7 +1202,7 @@ impl Service {
                         if cls.state != SubagentLiveState::Idle {
                             baseline_idle.remove(&entry.id);
                         }
-                        if spec.matches_state(cls.state) {
+                        if spec.matches_state(cls.state) && !Self::minders_own(&self.lock().reg, caller, &entry.id, cls.state) {
                             let name = cls.state.as_str().to_owned();
                             candidate = Some((entry.clone(), cls, name, None));
                             break;
@@ -933,6 +1287,7 @@ impl Service {
             Ok(e) => e,
             Err(e) => return err(e, 1),
         };
+        self.minder_did(caller, "send", raw.get("args").cloned().unwrap_or(Value::Null));
         let before = self.look(&entry, true).await;
         if before.cls.state == SubagentLiveState::Exited {
             return err(format!("subagent `{}` has already exited", entry.id), 1);
@@ -1049,9 +1404,24 @@ impl Service {
             Ok(e) => e,
             Err(e) => return err(e, 1),
         };
+        // (A minder's yes is for this once: one that is kept answers
+        // questions its rules were never asked about.)
+        if caller.child.as_ref().is_some_and(|c| c.minds.is_some()) && spec.answer == olo_rex_link::agents::Answer::Session {
+            return err("a minder's yes is for this once (`--once`): one that is kept is the parent's to give".into(), 69);
+        }
+        self.minder_did(caller, "approve", raw.get("args").cloned().unwrap_or(Value::Null));
         let pre_cursor = self.cursor();
         // (As the server shows it this moment.)
         let cls = self.look(&entry, true).await.cls;
+        // A minder answers the question it was last told of and no
+        // other: what is on the screen now may have come since it
+        // judged, and a yes would be a yes to that.
+        if let Some(me) = caller.child.as_ref().filter(|c| c.minds.is_some()) {
+            let now = super::service::subkey(&cls);
+            if cls.approval.is_some() && self.lock().told.get(&me.id) != Some(&now) {
+                return err("what it asks now isn't what you were last told of: nothing was answered. Look again (`status --json` says what stands asked), judge that, then answer".into(), 1);
+            }
+        }
         let Some(ap) = cls.approval else {
             return err(format!("`{}` has no active approval prompt (current state: {})", entry.id, cls.state.as_str()), 1);
         };
@@ -1283,6 +1653,9 @@ impl Service {
             targets.extend(under.into_iter().map(|r| r.entry));
         }
         targets.push(entry.clone());
+        // (A minder stopped here is stopped by one who may: its end
+        // isn't news to the parent.)
+        self.lock().let_go.extend(targets.iter().filter(|t| t.minds.is_some() && t.exited_at.is_none()).map(|t| t.id.clone()));
         if !force {
             // Twice, a moment apart: an agent takes the first as "stop
             // what you're doing" and the second as "leave".

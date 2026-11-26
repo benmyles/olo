@@ -9281,6 +9281,7 @@ mod activity_tests {
                     session_confidence: None,
                     add_dirs: Vec::new(),
                     command: Vec::new(),
+                    minds: None,
                 },
             },
             bk: BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: format!("b-{id}") },

@@ -69,6 +69,17 @@ pub struct StartSpec {
     /// `--command`: not an agent, the command after `--` as it is
     /// (`AgentCli::Command`; no model, no effort).
     pub command: bool,
+    /// `--minder CLI:MODEL:EFFORT`: a minder of its own, started with it
+    /// (`agents::minder`), with the parent's rules for it (`--rules FILE`
+    /// or `--rules-text TEXT`) and what its own environment has besides
+    /// the child's (`--minder-env K=V`).
+    pub minder: Option<super::minder::MinderSpec>,
+    pub rules: Option<String>,
+    pub rules_file: Option<String>,
+    pub minder_env: Vec<(String, String)>,
+    /// Set by the service alone, never asked for: the agent this one is
+    /// the minder of (its id).
+    pub minds: Option<String>,
 }
 
 fn looks_like_tool_token(tok: &str) -> bool {
@@ -196,6 +207,17 @@ impl StartSpec {
             output_format: str_opt("output_format").or_else(|| stream.then(|| "stream-json".into())),
             extra: str_vec("extra").into_iter().chain(str_vec("command")).collect(),
             command: cli == Some(AgentCli::Command) || matches!(v.get("command"), Some(Value::Array(_))),
+            minder: match str_opt("minder") {
+                Some(m) => Some(super::minder::MinderSpec::parse(&m)?),
+                None => None,
+            },
+            rules: raw_str_opt("rules_text"),
+            rules_file: str_opt("rules"),
+            minder_env: match v.get("minder_env").and_then(Value::as_object) {
+                Some(obj) => obj.iter().map(|(k, val)| (k.clone(), val.as_str().map(str::to_owned).unwrap_or_else(|| val.to_string()))).collect(),
+                None => Vec::new(),
+            },
+            minds: None,
         })
     }
 
@@ -268,6 +290,17 @@ impl StartSpec {
                     };
                     validate_env_name("--env", k)?;
                     s.env.push((k.to_owned(), v.to_owned()));
+                }
+                "--minder" => s.minder = Some(super::minder::MinderSpec::parse(&next(&mut i, flag, inline)?)?),
+                "--rules" | "--rules-file" => s.rules_file = Some(next(&mut i, flag, inline)?),
+                "--rules-text" => s.rules = Some(next(&mut i, flag, inline)?),
+                "--minder-env" => {
+                    let kv = next(&mut i, flag, inline)?;
+                    let Some((k, v)) = kv.split_once('=') else {
+                        return Err(format!("--minder-env expects KEY=VALUE, got `{kv}`"));
+                    };
+                    validate_env_name("--minder-env", k)?;
+                    s.minder_env.push((k.to_owned(), v.to_owned()));
                 }
                 "--command" => {
                     s.command = true;
@@ -1270,17 +1303,27 @@ impl WatchSpec {
         }
         // Validate every `--on` event name so typos fail loudly instead of hanging forever (`L6`).
         for ev in &events {
-            if !matches!(ev.as_str(), "any" | "question" | "waiting_question" | "approval" | "waiting_approval" | "waiting" | "idle" | "done" | "error" | "failed" | "exit" | "exited" | "closed") {
-                return Err(format!("unknown --on event `{ev}`; expected question|approval|waiting|idle|done|error|exit|any"));
+            if !matches!(
+                ev.as_str(),
+                "any" | "question" | "waiting_question" | "approval" | "waiting_approval" | "waiting" | "idle" | "done" | "error" | "failed" | "exit" | "exited" | "closed" | "escalation"
+            ) {
+                return Err(format!("unknown --on event `{ev}`; expected question|approval|waiting|idle|done|error|exit|escalation|any"));
             }
         }
         if events.is_empty() && match_text.is_none() && regex_pat.is_none() {
-            events = vec!["question".into(), "approval".into(), "idle".into(), "done".into(), "error".into(), "exit".into()];
+            events = vec!["question".into(), "approval".into(), "idle".into(), "done".into(), "error".into(), "exit".into(), "escalation".into()];
         }
         if timeout_secs == 0 || timeout_secs > 3600 {
             return Err(format!("--timeout must be between 1 and 3600 seconds (got {timeout_secs})"));
         }
         Ok(Self { targets, all, parent, since, events, match_text, regex_pat, timeout_secs, json })
+    }
+
+    /// Whether what a minder has for the parent is among what is waited
+    /// for (`escalation`: so unless other events alone were named; with
+    /// `any`, and with none named).
+    pub fn wants_escalations(&self) -> bool {
+        self.events.iter().any(|ev| matches!(ev.as_str(), "any" | "escalation"))
     }
 
     pub fn matches_state(&self, state: SubagentLiveState) -> bool {
@@ -1317,5 +1360,5 @@ impl WatchSpec {
 }
 
 pub fn start_usage() -> String {
-    "usage: olo agent start <claude|codex|agy> --model <MODEL> --effort <EFFORT> [--name NAME] [--trust] [--desktop none|screens=NAME,…|inherit] [--unset-env K]... [--session-id UUID] [--resume ID | --continue] [--fork] [--title TITLE] [--role ROLE] [--cwd DIR] [--prompt TEXT | --prompt-file PATH] [--permission-mode MODE | --approval POLICY | --sandbox MODE | --mode MODE | --full-auto] [--settings JSON_OR_FILE] [--strict-mcp-config] [--disallowed-tools TOOLS...] [--add-dir DIR]... [--env K=V]... [--parent WIN] [--focus] [--close-on-exit] [--json] [-- EXTRA_CLI_ARGS...]\n\nNote: --approve-for-me is Codex-only (off by default, never enabled automatically). Default desktop policy for children is `--desktop none`.\n\nA command of your own in a child tab (no agent): olo agent start --command [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]... [--unset-env K]... [--desktop …] [--parent WIN] [--close-on-exit] [--focus] [--json] -- CMD [ARG…]".into()
+    "usage: olo agent start <claude|codex|agy> --model <MODEL> --effort <EFFORT> [--name NAME] [--trust] [--desktop none|screens=NAME,…|inherit] [--unset-env K]... [--session-id UUID] [--resume ID | --continue] [--fork] [--title TITLE] [--role ROLE] [--cwd DIR] [--prompt TEXT | --prompt-file PATH] [--permission-mode MODE | --approval POLICY | --sandbox MODE | --mode MODE | --full-auto] [--settings JSON_OR_FILE] [--strict-mcp-config] [--disallowed-tools TOOLS...] [--add-dir DIR]... [--env K=V]... [--parent WIN] [--focus] [--close-on-exit] [--minder claude:MODEL:EFFORT [--rules FILE | --rules-text TEXT]] [--json] [-- EXTRA_CLI_ARGS...]\n\nA minder (--minder): an agent of its own, a child tab of this one, that answers what this one asks at once by your rules and tells you what they don't cover (an `escalation` on your own `olo agent watch`). For one that runs already: olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE.\n\nNote: --approve-for-me is Codex-only (off by default, never enabled automatically). Default desktop policy for children is `--desktop none`.\n\nA command of your own in a child tab (no agent): olo agent start --command [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]... [--unset-env K]... [--desktop …] [--parent WIN] [--close-on-exit] [--focus] [--json] -- CMD [ARG…]".into()
 }

@@ -339,5 +339,7 @@ pub fn summary_json(entry: &NativeSubagent, state: SubagentLiveState, summary: O
         "children": children,
         // (What a command child runs; an agent's own command line isn't shown.)
         "command": (!entry.command.is_empty()).then_some(&entry.command),
+        // (The agent this one is the minder of.)
+        "minds": entry.minds,
     })
 }

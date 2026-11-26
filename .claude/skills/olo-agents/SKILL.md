@@ -105,6 +105,17 @@ once their results are read.
 
 Without a minder (one quick look, say), the waiting is yours: below.
 
+**Rex has minders of its own now** (2026-11-26; the `olo-rex-bridge`
+skill, "Give a child a minder"): `olo agent start … --minder
+claude:claude-opus-5-5:max --rules FILE` starts a child with an agent
+whose whole job is that child (held by the service to it alone, told
+what stands, its escalations on your own `olo agent watch`), and `olo
+agent mind NAME …` attaches, changes or ends one. Use it for a child
+you start with `olo agent start` yourself, with the lists of
+`minder.md` as its rules. `tools/dev/agents` and its front doors don't
+start one yet (docs/TODO.md): for them the Agent tool's minder above is
+still the rule.
+
 ## When
 
 - The task splits into pieces in different crates that don't depend on

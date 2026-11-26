@@ -114,6 +114,28 @@ impl SubagentEventLog {
         self.next_seq
     }
 
+    /// Written down beside what happened to the child, not as a state
+    /// of its own: what its minder has for the parent (`escalation`).
+    /// Always a new event (two alike are two), and what was last said of
+    /// the child's own state stands, so that state isn't said again
+    /// after it.
+    pub fn push_beside(&mut self, mut ev: SubagentEvent) -> u64 {
+        self.next_seq += 1;
+        ev.seq = self.next_seq;
+        self.events.push_back(ev);
+        while self.events.len() > MAX_EVENT_LOG {
+            self.events.pop_front();
+        }
+        self.next_seq
+    }
+
+    /// The last thing written of the child `id` itself (how it stood:
+    /// not what was said beside it): what stands of it, as far as the
+    /// log knows.
+    pub fn last_state_of(&self, id: &str) -> Option<&SubagentEvent> {
+        self.events.iter().rev().find(|e| e.id == id && e.event != super::minder::ESCALATION)
+    }
+
     /// Finds the earliest event strictly after `since` matching `predicate`.
     pub fn find_since<F>(&self, since: u64, mut predicate: F) -> Option<SubagentEvent>
     where

@@ -147,6 +147,27 @@ pub struct State {
     doing: usize,
     /// Since when nothing has been asked and no child lives.
     idle_since: Option<Instant>,
+    /// Minders stopped by the one who may stop them (its agent's parent,
+    /// or the service once its agent has ended): of their end the
+    /// parent isn't told, it knows.
+    pub let_go: HashSet<String>,
+    /// By minder: the question of its agent's it was last told of (a
+    /// watch's answer, a status), by its key ([`subkey`]). A minder
+    /// answers that question and no other: `approve` answers what is on
+    /// the screen, and a minder that took a while would else say yes to
+    /// a question that came after the one it judged.
+    pub told: HashMap<String, String>,
+}
+
+/// How long a minder has, once the agent it minded has ended, to tell
+/// the parent what it did before it is stopped (its report ends it
+/// sooner: `escalate`).
+pub const MINDER_REPORTS: Duration = Duration::from_secs(180);
+
+/// [`MINDER_REPORTS`], or what a test of it set in its place
+/// (`OLO_REX_AGENTS_MINDER_REPORTS_MS`).
+fn minder_reports() -> Duration {
+    std::env::var("OLO_REX_AGENTS_MINDER_REPORTS_MS").ok().and_then(|v| v.parse().ok()).map_or(MINDER_REPORTS, Duration::from_millis)
 }
 
 /// A child as it stands, read now or as last read.
@@ -178,6 +199,9 @@ pub struct Service {
     idle: Notify,
     /// Set to end the service once what it has is written.
     retire: Notify,
+    /// Said in the log once: a later build asked while the service was
+    /// held.
+    said_held: std::sync::atomic::AtomicBool,
 }
 
 fn exited(summary: String) -> ScreenClassification {
@@ -241,6 +265,29 @@ fn asker_is_a_later_build(pid: i32) -> bool {
 impl Service {
     pub fn lock(&self) -> MutexGuard<'_, State> {
         self.st.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The account's hold on this host's own pieces:
+    /// `~/.local/state/olo/host-upgrade.hold`, beside the folder the
+    /// services' own are in. `tools/dev/host-upgrade` keeps to it, and
+    /// so does the service: the lead of the agents at work here asked
+    /// to be told before the service is replaced, and a desktop that
+    /// upgraded and connected replaced it unasked twenty minutes before
+    /// the time it had been given (2026-11-26, 20:25 UTC: its helper,
+    /// put beside this one, was "a later build" and was handed the
+    /// service).
+    fn hold_file(&self) -> PathBuf {
+        self.paths.dir.parent().and_then(|p| p.parent()).unwrap_or(&self.paths.dir).join("host-upgrade.hold")
+    }
+
+    /// The hold's own words, while it is there: this service is then
+    /// handed to no later build and retired by no one who doesn't say
+    /// they know of it. (A service that is running: one that has ended
+    /// by itself, with no child alive and nothing asked, is started
+    /// again by whichever build asks next.)
+    fn held(&self) -> Option<String> {
+        let words = std::fs::read_to_string(self.hold_file()).ok()?;
+        Some(words.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(240).collect())
     }
 
     // ---- The server's sessions ----
@@ -474,6 +521,30 @@ impl Service {
 
     // ---- What happens to a child ----
 
+    /// [`record`](Self::record) for what isn't a state of the child's:
+    /// what its minder (or the child itself) has for the parent. Always
+    /// written, as a new event.
+    pub fn record_beside(&self, event: SubagentEvent) -> u64 {
+        let seq = {
+            let mut st = self.lock();
+            let seq = st.log.push_beside(event.clone());
+            let mut event = event;
+            event.seq = seq;
+            st.reg.event_seq = seq;
+            if let Ok(mut line) = serde_json::to_string(&event) {
+                use std::io::Write as _;
+                line.push('\n');
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.paths.events) {
+                    let _ = f.write_all(line.as_bytes());
+                }
+            }
+            seq
+        };
+        self.save.notify_one();
+        self.changed.notify_waiters();
+        seq
+    }
+
     /// Writes an event down and tells who waits: in that order. An event
     /// a watcher has been told is in the log's file already (one line
     /// appended, there whatever becomes of this process), so a service
@@ -573,7 +644,7 @@ impl Service {
     }
 
     /// A child's program ended (`code`), or its tab closed (none).
-    pub fn exit(&self, id: &str, code: Option<i32>) {
+    pub fn exit(self: &Arc<Self>, id: &str, code: Option<i32>) {
         let moved: Vec<String>;
         let entry = {
             let mut st = self.lock();
@@ -615,10 +686,53 @@ impl Service {
         event.error = error;
         self.record(event);
         self.tell_entry(id);
+        self.minding_ends(&entry, code);
         for child in &moved {
             self.tell_entry(child);
         }
         self.idle.notify_one();
+    }
+
+    /// What a child's end means for minding. A minder whose agent still
+    /// runs: the parent is told (an escalation on that agent), and what
+    /// the agent asks reaches the parent's watch again by itself (no
+    /// minder is there for it). An agent that had a minder: the minder
+    /// hears the exit on its own watch and reports; if it is still there
+    /// three minutes on, it is stopped, so none is left minding nothing.
+    fn minding_ends(self: &Arc<Self>, ended: &NativeSubagent, code: Option<i32>) {
+        if let Some(minded) = ended.minds.as_deref() {
+            if self.lock().let_go.remove(&ended.id) {
+                return;
+            }
+            let it = self.lock().reg.entries.iter().rev().find(|e| e.id == minded && e.exited_at.is_none()).cloned();
+            if let Some(it) = it {
+                let how = match code {
+                    Some(code) => format!("exited (code {code})"),
+                    None => "its tab was closed".to_owned(),
+                };
+                let state = self.lock().live.get(&it.id).and_then(|l| l.last_state).unwrap_or(SubagentLiveState::Working);
+                let mut event = self.event_of(&it, state, Some(format!("Its minder ended ({how}): what it asks comes to you again.")), String::new());
+                event.event = olo_rex_link::agents::minder::ESCALATION.to_owned();
+                self.record_beside(event);
+            }
+            return;
+        }
+        let Some(minder) = self.lock().reg.minder_of(&ended.id).cloned() else { return };
+        self.end_minder_in(minder, minder_reports());
+    }
+
+    /// Stops a minder whose agent has ended, `after` that long (if it
+    /// is still there then): its report made, or its time to make one
+    /// over.
+    pub fn end_minder_in(self: &Arc<Self>, minder: NativeSubagent, after: Duration) {
+        let service = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(after).await;
+            let still = service.lock().reg.entries.iter().any(|e| e.id == minder.id && e.exited_at.is_none());
+            if still {
+                service.stop_tabs(&minder, true, true, false).await;
+            }
+        });
     }
 
     /// Reads a child's screen and, where its state differs from what was
@@ -823,7 +937,7 @@ impl Service {
 
     /// What a child's terminal is: its process, its size, what its
     /// program has said of itself.
-    async fn learn(&self, entry: &NativeSubagent) {
+    async fn learn(self: &Arc<Self>, entry: &NativeSubagent) {
         let (process, size, status) = tokio::join!(
             self.rex.terminal(&entry.session_id, &entry.block_id, "process", json!({})),
             self.rex.terminal(&entry.session_id, &entry.block_id, "size", json!({})),
@@ -1112,9 +1226,30 @@ impl Service {
         // as long as anything kept it busy: on a host whose agents never
         // rest, for good (2026-11-26).
         if req.proto > PROTO || peer_pid.is_some_and(asker_is_a_later_build) {
-            let _ = write.write_all(format!("\n{}", said(&Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) })).as_bytes()).await;
-            self.retire.notify_one();
-            return;
+            match self.held() {
+                None => {
+                    let _ = write.write_all(format!("\n{}", said(&Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) })).as_bytes()).await;
+                    self.retire.notify_one();
+                    return;
+                }
+                // Held (`held`): this service stays the one that
+                // serves. A later build that speaks as this one does is
+                // answered by it like any asker; one that speaks what
+                // this one doesn't is told why it can't be.
+                Some(why) if req.proto > PROTO => {
+                    let msg = format!(
+                        "this host's agents service is held at the build it runs, and a later Olo's `olo agent` speaks what that build doesn't: it is answered once the hold is lifted ({}: {why})",
+                        self.hold_file().display()
+                    );
+                    let _ = write.write_all(format!("\n{}", said(&Response::err(&req.op, msg, 69))).as_bytes()).await;
+                    return;
+                }
+                Some(why) => {
+                    if !self.said_held.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!("a later build of the helper asked, and was answered by this one, not handed the service: held ({}: {why})", self.hold_file().display());
+                    }
+                }
+            }
         }
         if req.op == "follow" {
             // (Asked for before the picture is taken: nothing between the two is missed.)
@@ -1175,6 +1310,13 @@ impl Service {
     async fn answer(self: &Arc<Self>, req: &Request, peer_pid: Option<i32>) -> Response {
         match req.op.as_str() {
             "ping" => Response::ok(String::new(), json!({ "ok": true, "proto": PROTO, "pid": std::process::id(), "cursor": self.lock().log.latest_seq() })),
+            // (Held: only one that says it knows of the hold ends this
+            // service; `tools/dev/host-upgrade --even-if-held`.)
+            "retire" if !req.args.iter().any(|a| a == "--even-if-held") && self.held().is_some() => Response::err(
+                "retire",
+                format!("this host's agents service is held at the build it runs ({}: {}); `retire --even-if-held` ends it all the same", self.hold_file().display(), self.held().unwrap_or_default()),
+                69,
+            ),
             "retire" => {
                 self.retire.notify_one();
                 Response::ok(String::new(), json!({ "ok": true }))
@@ -1281,13 +1423,14 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     let service = Arc::new(Service {
         rex,
         paths: paths.clone(),
-        st: Mutex::new(State { reg, log, live: HashMap::new(), sessions: HashMap::new(), clients: 0, doing: 0, idle_since: None }),
+        st: Mutex::new(State { reg, log, live: HashMap::new(), sessions: HashMap::new(), clients: 0, doing: 0, idle_since: None, let_go: HashSet::new(), told: HashMap::new() }),
         changed: Notify::new(),
         frames,
         text_watchers: AtomicUsize::new(0),
         save: Notify::new(),
         idle: Notify::new(),
         retire: Notify::new(),
+        said_held: std::sync::atomic::AtomicBool::new(false),
     });
     tokio::spawn(service.clone().writer());
     service.reconcile().await;

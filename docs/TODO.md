@@ -73,65 +73,62 @@ something nobody here has is in "Blocked", with what it waits for.
   last account answers*, the client is told that account's figures,
   not the pool's whole standing (accounts out until when, resets
   left): a report of the pool itself would say more.
-- **Minder agents for `olo agent`** (Ben, 2026-11-26 evening): "often
-  when subagents need an approval or have a question it takes a long
-  time for parent agents to notice and respond because they are busy
-  with something else. i was thinking that one way to handle this could
-  be to allow parent agents, when starting an olo rex agent (also with
-  the ability to add/change it for a running agent), to attach an
-  approval/minder agent specifically for each agent where the parent
-  agent can choose to use a more powerful model, e.g. fable 5.2, and
-  give it context and instructions on what to approve/deny and how to
-  steer that specific agent it is minding (i think calling this feature
-  a minder agent makes more sense) and also giving it the minder the
-  ability to message the parent when something needs escalation. please
-  design this functionality elegantly with easy to use ergonomics for
-  the parent agent and build it and update the skills etc. that agents
-  running under rex get to cover it".
-  *The design (2026-11-26, to build):*
-  - A minder is an agent of its own, a child tab of the agent it minds,
-    whose whole job is that one agent: it waits on it (`olo agent
-    watch NAME`), answers what it asks at once by the parent's written
-    rules (`approve`, `send`), and tells the parent what the rules
-    don't cover. The person sees it under the minded child in Rex's
-    tree and Activity, marked as its minder, and can read and answer
-    it like any agent.
-  - At start: `olo agent start … --minder CLI:MODEL:EFFORT --rules
-    FILE` (or `--rules-text "…"`): the child and its minder begin
-    together. For one running: `olo agent mind NAME --with
-    CLI:MODEL:EFFORT --rules FILE` attaches a minder, or replaces the
-    one it has; `olo agent mind NAME --rules FILE` gives the same
-    minder new rules (it is told, its conversation kept); `olo agent
-    mind NAME --off` ends it; `olo agent mind NAME` says how it is
-    minded and what its minder has done (each answer it gave, with
-    the question).
-  - The rules are the parent's own words: what to approve, what to
-    refuse, how to steer, when to tell me. The service wraps them in
-    the minder's standing instructions (the one agent it minds, the
-    exact commands, what it never does: no persistent approvals, no
-    stopping the agent unless the rules say, nothing but that agent).
-  - Escalation is an event on the parent's own watch, not typing into
-    its pane: the minder runs `olo agent escalate "TEXT"`, and the
-    parent's `olo agent watch` returns `{"event":"escalation",
-    "name":"api-audit","text":…}` at once. While a child is minded,
-    its `approval` and `question` events are its minder's alone (the
-    parent's watch isn't woken by them); everything else reaches the
-    parent as before.
-  - Enforced by the service, not by the minder's good manners: an
-    agent started as a minder may `watch`, `status`, `read`,
-    `approve`, `send` to the one agent it minds, and `escalate`;
-    nothing else (it starts no agents, reaches no other tab). Its own
-    CLI is started so that those commands need no leave (nobody would
-    answer it), and nothing else is allowed it.
-  - When the minded agent ends, its minder is told, reports once to
-    the parent (an escalation: what it answered, what it refused) and
-    ends. A minder that fails or exits while its agent runs is an
-    `escalation` too ("its minder ended"), and the child's questions
-    reach the parent again.
-  - The skills: the bridge's own (`olo agent` section) and Olo's
-    `olo-agents`; `tools/dev/agents` and its front doors take
-    `--minder` in place of the Agent-tool minder Olo's own rules use
-    now.
+- **Minders, what is left** (built 2026-11-26: HACKING, "A minder for
+  a child"; Ben's ask is quoted there):
+  - Olo's own helpers still have the Agent tool's minder (CLAUDE.md, "A
+    minder answers the helpers"): `tools/dev/agents` and its front doors
+    (`agy-help`, `agy-look`, `opus-look`) could start each helper with
+    `--minder claude:claude-opus-5-5:max --rules` (the lists of
+    `.claude/skills/olo-agents/minder.md` as the rules) once this
+    host's service has the feature. A change to a rule of Ben's: his to
+    say.
+  - Only Claude Code minds. Codex and Antigravity each need their own
+    way to be held to one command with nothing asked.
+  - In Rex a minder is a child tab titled "Minder of …" (role
+    `minder`): no mark of its own in the tree or Activity, and a minded
+    agent doesn't show that it is minded. A design, with the reviewers.
+  - `mind NAME --rules` begins the minder anew (its conversation isn't
+    kept); a minder attached later has only the `--env` of that
+    command.
+  - A held service that has ended by itself is started again by
+    whichever build asks next (the hold holds one that runs).
+- **The ShiftUp lead's items 26 to 33** (`/var/tmp/shiftup/olo-agent-
+  needs.md`, 2026-11-26 21:10 and 22:08 UTC; "Ben, today … 'just
+  rewrite the launchers/tools/scripts to work properly with olo rex
+  agents instead of trying to build all that custom'"; no hurry on any
+  but 26 and 29, they say, and 33 cost them a turn in another agent's
+  conversation). In their words, shortened:
+  - 33: "A new agy's `cli_session_id` names another live agy's
+    conversation, after its first turn too … Please report a new agy's
+    own conversation in `cli_session_id`, the one its process holds
+    open, or none until it has one. Never report another agent's."
+    (The same of a Claude child with no conversation of its own yet:
+    the trial of 2026-11-26 was shown this session's last message as
+    its stand-in's, AGENT-NOTES. A conversation is never taken by
+    folder.)
+  - 29: "`approve copyweb no` aborted ('approval dialog changed during
+    navigation') on a box whose countdown line is redrawn every second:
+    a dialog's identity is its call and its choices, never its
+    countdown."
+  - 26: "A Claude Code agent whose turn ended with its own background
+    Bash still running … had `waiting_on: someone` and
+    `background_shells: []` … list each such shell, with its command,
+    its output file and when it last wrote, and say `waiting_on:
+    own_run`."
+  - 27: "`start agy --resume ID --prompt …` reports `done` 1.4 s after
+    the start, carrying the old conversation's last message, before the
+    prompt is read … tell no turn's end until the prompt's own turn has
+    ended."
+  - 28: "In `approval`: when the box opened, and when its CLI will
+    refuse it by itself (Claude Code 2.1.332's 'will automatically
+    block this request in M:SS')."
+  - 30: "Claude Code's feedback-draft box ('1 to review · 2 to send · 0
+    to dismiss') in `status` like `survey`, or set aside by the service
+    with its 0, never its 2."
+  - 31: "`list` keeps every live child through a handover (it did at
+    20:25), said in the guide."
+  - 32: "a Claude agent's `summary` reads Claude Code's effort hint
+    ('◈ max · /effort')."
 - **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
   "currently we have under manager rex server a limits tab for applying
   tweaks to the host but they really belong in manage host. please move

@@ -117,6 +117,8 @@ impl Rig {
             .env("XDG_CONFIG_HOME", dir.join("st"))
             .env("REX_SERVER_SOCKET", sock)
             .env("OLO_REX_AGENTS_DIR", dir.join("agents"))
+            // (How long a minder has to report once its agent has ended: three seconds here, of three minutes.)
+            .env("OLO_REX_AGENTS_MINDER_REPORTS_MS", "3000")
             .env_remove("REX_SESSION")
             .env_remove("REX_BLOCK")
             .env_remove("SSH_AUTH_SOCK");
@@ -781,6 +783,31 @@ fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
 
     // "An upgrade": the helper again, beside the first, written now.
     std::fs::copy(HELPER, &later_build).unwrap();
+    // Held (the account's hold on this host's pieces, beside the
+    // services' folder): the later build is answered by the service
+    // that runs, which stays; and it isn't retired by one who doesn't
+    // say they know of the hold.
+    let hold = rig.dir.join("host-upgrade.hold");
+    std::fs::write(&hold, "Held by this test:\nagents are at work here.\n").unwrap();
+    let listed = ask(&later_build, &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"], "answered while held: {listed}");
+    assert_eq!(pid(&later_build), first, "held: the later build was handed the service");
+    let retire = |more: &[&str]| {
+        let mut cmd = Command::new(&later_build);
+        Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
+        let out = cmd.args(["agent", "retire"]).args(more).output().expect("the helper");
+        (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stderr).into_owned())
+    };
+    let (code, said) = retire(&[]);
+    assert!(code == 69 && said.contains("is held at the build it runs") && said.contains("Held by this test: agents are at work here.") && said.contains("--even-if-held"), "{code}: {said}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(pid(&first_build), first, "held: it was retired all the same");
+    assert!(
+        std::fs::read_to_string(rig.dir.join("agents").read_dir().unwrap().flatten().next().unwrap().path().join("service.log")).unwrap().contains("not handed the service: held"),
+        "said once in its log"
+    );
+    // The hold lifted: the next asking of the later build takes over.
+    std::fs::remove_file(&hold).unwrap();
     let listed = ask(&later_build, &["list", "--json"]);
     assert_eq!(listed["subagents"][0]["id"], started["id"], "the child is there, asked of the later build: {listed}");
     rig.wait("the first service to end", || !Path::new(&format!("/proc/{first}")).exists());
@@ -792,6 +819,11 @@ fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
     let listed = ask(&first_build, &["list", "--json"]);
     assert_eq!(listed["subagents"][0]["id"], started["id"]);
     assert_eq!(pid(&later_build), second, "never handed back to an earlier build");
+    // (Held again: one who says they know of the hold retires it.)
+    std::fs::write(&hold, "Held again.\n").unwrap();
+    assert_eq!(retire(&["--even-if-held"]).0, 0);
+    rig.wait("the service retired by one who knows of the hold to end", || !Path::new(&format!("/proc/{second}")).exists());
+    std::fs::remove_file(&hold).unwrap();
     ask(&later_build, &["stop", "steady", "--force", "--json"]);
 }
 
@@ -1085,4 +1117,355 @@ fn what_a_child_is_started_with_is_in_its_environment() {
     let (code, _, err) = rig.olo(&["start", "--command", "--env", "BAD NAME=1", "--", "true"]);
     assert_eq!(code, 2, "{err}");
     rig.json(&["stop", "guarded", "--force", "--json"]);
+}
+
+/// The minder's side of a test: its folder in the service's own, its
+/// command there, and a command run in its tab (as its agent would run
+/// it: the service knows it by its process).
+struct Minding<'a> {
+    rig: &'a Rig,
+    /// The stand-in's name (`STAND_IN_NAME`), which a test gives it.
+    stand_in: String,
+    dir: PathBuf,
+}
+
+impl<'a> Minding<'a> {
+    /// The fifo a minder's stand-in will listen on, made before it starts.
+    fn expect(rig: &Rig, stand_in: &str) {
+        assert!(Command::new("mkfifo").arg(rig.staged(stand_in, "fifo")).status().unwrap().success());
+    }
+
+    fn of(rig: &'a Rig, stand_in: &str, minded_id: &str) -> Self {
+        rig.wait("the minder's stand-in to listen", || rig.staged(stand_in, "ready").exists());
+        let service = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("minders").is_dir()).expect("the service's folder has its minders'");
+        Self { rig, stand_in: stand_in.to_owned(), dir: service.join("minders").join(minded_id) }
+    }
+
+    fn env(&self) -> String {
+        format!("OLO_REX_AGENTS_DIR={} REX_SERVER_SOCKET={}", self.rig.dir.join("agents").display(), self.rig.sock.display())
+    }
+
+    /// A command run in the minder's tab: what it printed.
+    fn run(&self, command: &str) -> String {
+        let _ = std::fs::remove_file(self.rig.staged(&self.stand_in, "ran"));
+        self.rig.tell(&self.stand_in, &format!("run {command}"));
+        self.rig.wait("the command in the minder's tab", || self.rig.staged(&self.stand_in, "ran").exists());
+        std::fs::read_to_string(self.rig.staged(&self.stand_in, "out")).unwrap()
+    }
+
+    /// Its own command (`mind …`), answered in JSON.
+    fn mind(&self, args: &str) -> Value {
+        let out = self.run(&format!("{} {} {args}", self.env(), self.dir.join("mind").display()));
+        serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("mind {args}: {e}\n{out}\n{}", self.rig.said()))
+    }
+
+    /// The service's command asked directly from its tab (what it has no leave for): what was said, with the status.
+    fn olo(&self, args: &str) -> String {
+        self.run(&format!("{} {HELPER} agent {args}; echo status=$?", self.env()))
+    }
+}
+
+/// A minder (`agents::minder`): started with its agent, it alone is told
+/// what the agent asks, and answers it; it reaches that agent and nothing
+/// else; what it escalates is on the parent's own watch; and its report
+/// once the agent has ended is its last word.
+#[test]
+fn a_minder_answers_for_its_agent_and_tells_the_parent() {
+    let Some(rig) = Rig::start("minder") else { return };
+    rig.stand_in("claude");
+    let other = rig.start_child("claude", "other", &[]);
+    Minding::expect(&rig, "minds-worker");
+    let rules = "Approve `cargo test`.\nRefuse any push, and say to open a pull request instead.";
+    let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", rules, "--minder-env", "STAND_IN_NAME=minds-worker"]);
+    let worker_id = started["id"].as_str().unwrap();
+    let minder = Minding::of(&rig, "minds-worker", worker_id);
+    assert_eq!(
+        (&started["minder"]["name"], &started["minder"]["cli"], &started["minder"]["model"], &started["minder"]["effort"]),
+        (&json!("worker-minder"), &json!("claude"), &json!("stand-in-big"), &json!("max")),
+        "{started}"
+    );
+
+    // What it is: a child tab of the agent it minds, said so wherever either is listed; its rules and its one command in its folder.
+    let listed = rig.json(&["list", "--all", "--json"]);
+    let row = |name: &str| listed["subagents"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap_or_else(|| panic!("{name} isn't listed: {listed}")).clone();
+    assert_eq!((&row("worker-minder")["parent_window_id"], &row("worker-minder")["minds"], &row("worker-minder")["role"]), (&started["window_id"], &started["id"], &json!("minder")), "{listed}");
+    assert_eq!((&row("worker")["minder"], &row("other")["minder"]), (&started["minder"]["id"], &Value::Null), "{listed}");
+    assert_eq!(std::fs::read_to_string(minder.dir.join("rules.md")).unwrap(), rules);
+    assert_eq!(std::fs::metadata(minder.dir.join("mind")).unwrap().permissions().mode() & 0o777, 0o700);
+    // What it was started with: the shell its one tool, its command the one thing allowed there, nothing asked; the parent's rules in its standing instructions.
+    let line = minder.run("tr '\\0' '\\n' < /proc/$PPID/cmdline");
+    let args: Vec<&str> = line.lines().collect();
+    let after = |flag: &str| args.iter().position(|a| *a == flag).and_then(|i| args.get(i + 1)).copied().unwrap_or_else(|| panic!("no {flag} in {args:?}"));
+    assert_eq!((after("--model"), after("--effort"), after("--permission-mode"), after("--tools")), ("stand-in-big", "max", "dontAsk", "Bash"), "{args:?}");
+    assert_eq!(after("--allowed-tools"), format!("Bash({} *)", minder.dir.join("mind").display()));
+    assert!(args.contains(&"--strict-mcp-config"), "{args:?}");
+    let told = line.split("--append-system-prompt\n").nth(1).unwrap_or_default();
+    assert!(told.starts_with("You are a minder. Your whole job is one other agent, \"worker\" (Claude Code, stand-in)") && told.contains(&format!("----\n{rules}\n----")), "{told}");
+    assert!(args.last().unwrap().starts_with("Begin minding \"worker\" now. Run: ") && args.last().unwrap().contains(&format!("watch --since {}", started["cursor"])), "{args:?}");
+
+    // The agent asks leave. Its minder is told; the parent's watch is not woken by it.
+    let mut cursor = started["cursor"].as_u64().unwrap();
+    rig.show("worker", &asking("cargo test", 0));
+    let asked = minder.mind(&format!("watch --since {cursor} --on question,approval,idle,error,exit --timeout 15 --json"));
+    assert_eq!((&asked["name"], &asked["event"]), (&json!("worker"), &json!("waiting_approval")), "{asked}");
+    assert!(asked["approval"]["command"].as_str().unwrap().contains("cargo test"), "{asked}");
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &cursor.to_string(), "--on", "approval,question,escalation", "--timeout", "2", "--json"]);
+    assert_eq!(code, 124, "the parent was woken by what is its minder's to answer: {out}");
+    let (code, out, _) = rig.olo(&["watch", "worker", "--on", "approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "…nor by how it stands now: {out}");
+    // (The parent can still see it, and answer it itself, if it looks.)
+    assert_eq!(rig.status("worker")["state"], "waiting_approval");
+
+    // The minder says yes, once: typed into the agent as the parent's own yes is.
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    let approved = minder.mind("approve --once --json");
+    assert!(gone.join().unwrap(), "{approved}");
+    assert_eq!((&approved["chosen_label"], &approved["dismissed"]), (&json!("Yes"), &json!(true)), "{approved}");
+    assert_eq!(&rig.keys("worker")[before..], b"\r");
+    cursor = asked["cursor"].as_u64().unwrap();
+
+    // What isn't a minder's: any other agent, and anything but watching, reading, answering and escalating, whatever pane it says it is.
+    for refused in [
+        "stop worker --force",
+        "list --all --json",
+        "start --command -- true",
+        "prune",
+        "mind worker --off",
+        "focus worker",
+        "status other",
+        "read other",
+        "send other hello",
+        "approve other --once",
+        "watch other --timeout 1",
+    ] {
+        for as_lead in [false, true] {
+            let said = if as_lead { minder.run(&format!("REX_BLOCK={} {} {HELPER} agent {refused}; echo status=$?", rig.lead_block, minder.env())) } else { minder.olo(refused) };
+            assert!(!said.contains("status=0") && !said.contains("status=124"), "a minder did `{refused}`: {said}");
+        }
+    }
+    assert!(minder.olo("stop worker --force").contains("status=69"));
+    // (Nor a yes that is kept, even for its own agent.)
+    assert!(minder.olo("approve worker --session").contains("status=69"));
+    assert_eq!((&rig.status("worker")["running"], &rig.status("other")["running"]), (&json!(true), &json!(true)));
+    assert_eq!(other["name"], "other");
+
+    // What the rules don't cover goes up: an event on the parent's own watch, about the agent, in the minder's words.
+    rig.show("worker", &asking("git push origin main", 0));
+    let asked = minder.mind(&format!("watch --since {cursor} --on question,approval,idle,error,exit --timeout 15 --json"));
+    assert!(asked["approval"]["command"].as_str().unwrap().contains("git push"), "{asked}");
+    let lead_from = cursor;
+    cursor = asked["cursor"].as_u64().unwrap();
+    let before = rig.keys("worker").len();
+    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("git push origin main", 2));
+    let gone = rig.when_typed("worker", b"\r", working());
+    let refused = minder.mind("approve --no --reason 'No pushes: open a pull request instead.' --json");
+    assert!(moved.join().unwrap() && gone.join().unwrap(), "{refused}");
+    assert_eq!(refused["chosen_label"], "No", "{refused}");
+    assert!(rig.keys("worker")[before..].starts_with(b"\x1b[B\x1b[B"), "down to No, never Return on Yes: {:?}", String::from_utf8_lossy(&rig.keys("worker")[before..]));
+    // (Its words whole, as a shell gives them: nothing in them is run.)
+    let said = "worker asked to push to main ($HOME, \"quoted\"). Refused by your rule; it was told to open a pull request.";
+    let up = minder.mind(&format!("escalate '{said}' --json"));
+    assert_eq!((&up["event"], &up["name"]), (&json!("escalation"), &json!("worker")), "{up}");
+    let heard = rig.json(&["watch", "--all", "--since", &lead_from.to_string(), "--timeout", "15", "--json"]);
+    assert_eq!(
+        (&heard["event"], &heard["name"], &heard["summary"], &heard["cursor"]),
+        (&json!("escalation"), &json!("worker"), &json!(said), &up["cursor"]),
+        "the first thing the parent hears since before the question: {heard}"
+    );
+    // (Once: the next watch from there has nothing; and a watch for other things alone isn't woken by it.)
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &heard["cursor"].to_string(), "--on", "escalation,approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "{out}");
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &lead_from.to_string(), "--on", "approval,question", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "{out}");
+
+    // Asked of: who minds it, by what rules, and what was answered, in order.
+    let of = rig.json(&["mind", "worker", "--json"]);
+    assert_eq!((&of["minder"]["id"], &of["rules"]), (&started["minder"]["id"], &json!(rules)), "{of}");
+    let did: Vec<&str> = of["answered"].as_array().unwrap().iter().filter_map(|a| a["did"].as_str()).collect();
+    assert_eq!(did, ["approve", "approve", "escalate"], "{of}");
+    assert_eq!(of["answered"][2]["said"], said);
+    let (code, out, _) = rig.olo(&["mind", "worker"]);
+    assert!(code == 0 && out.starts_with("worker is minded by worker-minder (claude:stand-in-big:max)\n") && out.contains("escalate"), "{out}");
+
+    // The agent ends. Its minder hears it and reports; that is its last word: it is stopped at once, well before its time is up.
+    rig.tell("worker", "exit 0");
+    let ended = minder.mind(&format!("watch --since {cursor} --on question,approval,idle,error,exit --timeout 15 --json"));
+    assert_eq!((&ended["name"], &ended["state"]), (&json!("worker"), &json!("exited")), "{ended}");
+    let reported = Instant::now();
+    let report = minder.mind("escalate 'worker has ended. Approved: cargo test. Refused: a push.' --json");
+    let heard = rig.json(&["watch", "--all", "--since", &ended["cursor"].to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!((&heard["event"], &heard["state"], &heard["cursor"]), (&json!("escalation"), &json!("exited"), &report["cursor"]), "{heard}");
+    let minder_id = started["minder"]["id"].as_str().unwrap();
+    rig.wait("the minder to be stopped after its report", || rig.status(minder_id)["running"] == false);
+    assert!(reported.elapsed() < Duration::from_millis(2500), "stopped by its report, not by its time running out: {:?}", reported.elapsed());
+    // (Its end isn't news: nothing more is said of it to the parent.)
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &heard["cursor"].to_string(), "--on", "escalation", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "{out}");
+}
+
+/// A minder for an agent that runs already (`olo agent mind`): attached,
+/// its rules changed, taken off; one that ends by itself is said to the
+/// parent, whose own the agent's asking is again; and one whose agent has
+/// ended doesn't outlive it.
+#[test]
+fn a_minder_is_attached_changed_and_taken_off() {
+    let Some(rig) = Rig::start("minding") else { return };
+    rig.stand_in("claude");
+    let env = |name: &str| -> Vec<String> {
+        vec![
+            "--env".into(),
+            format!("STAND_IN_DIR={}", rig.dir.join("stage").display()),
+            "--env".into(),
+            format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display()),
+            "--env".into(),
+            format!("STAND_IN_NAME={name}"),
+        ]
+    };
+    let mind = |args: &[&str], stand_in: &str| -> Value {
+        Minding::expect(&rig, stand_in);
+        let env = env(stand_in);
+        let all: Vec<&str> = ["mind"].into_iter().chain(args.iter().copied()).chain(env.iter().map(String::as_str)).chain(["--json"]).collect();
+        rig.json(&all)
+    };
+
+    // Rules with no minder to follow them: said, and nothing started.
+    let (code, _, err) = rig.olo(&["start", "claude", "--model", "m", "--effort", "e", "--name", "nobody", "--rules-text", "Approve everything."]);
+    assert!(code == 2 && err.contains("--minder"), "{err}");
+    let (code, _, err) = rig.olo(&["start", "claude", "--model", "m", "--effort", "e", "--name", "nobody", "--minder", "claude:m:e", "--rules", "no-such-file.md"]);
+    assert!(code != 0 && err.contains("no-such-file.md"), "{err}");
+    assert!(rig.json(&["list", "--all", "--json"])["subagents"].as_array().unwrap().is_empty());
+
+    let started = rig.start_child("claude", "worker", &[]);
+    let worker_id = started["id"].as_str().unwrap().to_owned();
+    let (code, _, err) = rig.olo(&["mind", "worker", "--rules-text", "Approve cargo test."]);
+    assert!(code == 2 && err.contains("--with"), "rules for a minder it doesn't have: {err}");
+    let (code, _, err) = rig.olo(&["mind", "worker", "--off"]);
+    assert!(code == 1 && err.contains("no minder"), "{err}");
+    assert_eq!(rig.json(&["mind", "worker", "--json"])["minder"], Value::Null);
+
+    // Attached to it as it runs, the rules from a file (read where it was asked).
+    std::fs::write(rig.dir.join("work/rules.md"), "Approve `cargo test`.\n").unwrap();
+    let first = mind(&["worker", "--with", "claude:stand-in-big:max", "--rules", "rules.md"], "m1");
+    let m1 = Minding::of(&rig, "m1", &worker_id);
+    assert_eq!((&first["minder"]["name"], &first["replaced"]), (&json!("worker-minder"), &Value::Null), "{first}");
+    assert_eq!(std::fs::read_to_string(m1.dir.join("rules.md")).unwrap(), "Approve `cargo test`.\n");
+    let from = first["cursor"].as_u64().unwrap();
+    rig.show("worker", &asking("cargo test", 0));
+    let asked = m1.mind(&format!("watch --since {from} --timeout 15 --json"));
+    assert_eq!(asked["event"], "waiting_approval", "{asked}");
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval,escalation", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "{out}");
+
+    // New rules: the same minder begun anew with them (the one before stopped, and its end not said: the parent asked for it).
+    let second = mind(&["worker", "--rules-text", "Approve nothing."], "m2");
+    let m2 = Minding::of(&rig, "m2", &worker_id);
+    assert_eq!((&second["replaced"], &second["minder"]["model"], &second["minder"]["effort"]), (&first["minder"]["id"], &json!("stand-in-big"), &json!("max")), "{second}");
+    assert_ne!(second["minder"]["id"], first["minder"]["id"]);
+    assert_eq!(std::fs::read_to_string(m2.dir.join("rules.md")).unwrap(), "Approve nothing.");
+    assert!(m2.run("tr '\\0' '\\n' < /proc/$PPID/cmdline").contains("----\nApprove nothing.\n----"));
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &from.to_string(), "--on", "approval,escalation", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "a minder put in another's place was said to have ended, or the question came to the parent between them: {out}");
+    // (What stands asked is the new minder's to answer: it is told how the agent stands.)
+    assert_eq!(m2.mind("status --json")["state"], "waiting_approval");
+
+    // A minder that ends by itself, its agent still running: the parent is told, and what the agent asks is the parent's again, from where it was.
+    rig.tell("m2", "exit 3");
+    let heard = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
+    assert_eq!((&heard["event"], &heard["name"]), (&json!("escalation"), &json!("worker")), "{heard}");
+    assert!(heard["summary"].as_str().unwrap().starts_with("Its minder ended (exited (code 3))"), "{heard}");
+    assert_eq!(rig.json(&["mind", "worker", "--json"])["minder"], Value::Null);
+    let now_mine = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    assert!(now_mine["approval"]["command"].as_str().unwrap().contains("cargo test"), "{now_mine}");
+
+    // Taken off: stopped, nothing said of its end, and the asking the parent's again.
+    let third = mind(&["worker", "--with", "claude:stand-in-big:high"], "m3");
+    let _m3 = Minding::of(&rig, "m3", &worker_id);
+    assert_eq!(std::fs::read_to_string(m1.dir.join("rules.md")).unwrap(), "Approve nothing.", "no rules given: those it had");
+    let (code, out, _) = rig.olo(&["watch", "worker", "--on", "approval", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "{out}");
+    let off = rig.json(&["mind", "worker", "--off", "--json"]);
+    assert_eq!((&off["stopped"], &off["minder"]), (&third["minder"]["id"], &Value::Null), "{off}");
+    rig.wait("the minder taken off to be gone", || rig.status(third["minder"]["id"].as_str().unwrap())["running"] == false);
+    let (code, out, _) = rig.olo(&["watch", "--all", "--since", &heard["cursor"].to_string(), "--on", "escalation", "--timeout", "1", "--json"]);
+    assert_eq!(code, 124, "{out}");
+    assert_eq!(rig.json(&["watch", "worker", "--on", "approval", "--timeout", "15", "--json"])["state"], "waiting_approval");
+
+    // A minder whose agent has ended and that says nothing: stopped when its time is up, not left minding nothing.
+    let fourth = mind(&["worker", "--with", "claude:stand-in-big:max"], "m4");
+    let fourth = fourth["minder"]["id"].as_str().unwrap();
+    let _m4 = Minding::of(&rig, "m4", &worker_id);
+    let ended = Instant::now();
+    rig.tell("worker", "exit 0");
+    rig.wait_state("worker", "exited");
+    std::thread::sleep(Duration::from_millis(1200));
+    assert_eq!(rig.status(fourth)["running"], true, "it has three seconds to report");
+    rig.wait("the minder of an agent that ended to be stopped", || rig.status(fourth)["running"] == false);
+    assert!(ended.elapsed() > Duration::from_millis(2800), "{:?}", ended.elapsed());
+    // (And an agent that has ended takes no minder.)
+    let (code, _, err) = rig.olo(&["mind", "worker", "--with", "claude:m:e"]);
+    assert!(code == 1 && err.contains("exited"), "{err}");
+}
+
+/// A minder that fell behind (a real one takes seconds to judge, an agent
+/// asks again in less): it hears what stands, not each thing that passed;
+/// and its yes is for the question it was told of, never for one that
+/// came since.
+#[test]
+fn a_minder_that_fell_behind_answers_only_what_stands() {
+    let Some(rig) = Rig::start("behind") else { return };
+    rig.stand_in("claude");
+    Minding::expect(&rig, "m");
+    let started = rig.start_child("claude", "worker", &["--minder", "claude:stand-in-big:max", "--rules-text", "Approve cargo test.", "--minder-env", "STAND_IN_NAME=m"]);
+    let minder = Minding::of(&rig, "m", started["id"].as_str().unwrap());
+    let from = started["cursor"].as_u64().unwrap();
+    let cursor = || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    // (A screen shown and written down as the agent's state.)
+    let shown = |screen: &str| {
+        let before = cursor();
+        rig.show("worker", screen);
+        rig.wait("the agent's new state to be written down", || cursor() > before);
+        cursor()
+    };
+    let watch =
+        |since: u64, on: &str, secs: u32| minder.run(&format!("{} {} watch --since {since} --on {on} --timeout {secs} --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    let event = |said: &str| -> Value { serde_json::from_str(said.lines().next().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}: {said}")) };
+
+    // Two questions, one after the other, while the minder looks away: it is told the one that stands.
+    shown(&asking("cargo test", 0));
+    let push = shown(&asking("git push origin main", 0));
+    let told = event(&watch(from, "question,approval,idle,error,exit", 15));
+    assert!(told["approval"]["command"].as_str().unwrap().contains("git push"), "told a question that had passed: {told}");
+    assert_eq!(told["cursor"], push);
+
+    // While it judges that one, another takes its place. Its yes is not a yes to that: nothing is typed.
+    shown(&asking("rm -rf build", 0));
+    let before = rig.keys("worker").len();
+    let said = minder.run(&format!("{} {} approve --once --json; echo status=$?", minder.env(), minder.dir.join("mind").display()));
+    assert!(said.contains("isn't what you were last told of") && said.contains("status=1"), "{said}");
+    assert_eq!(rig.keys("worker").len(), before, "something was typed into the agent");
+    assert_eq!(rig.status("worker")["state"], "waiting_approval");
+    // It looks again, is told what stands asked, and answers that.
+    let stands = minder.mind("status --json");
+    assert!(stands["approval"]["command"].as_str().unwrap().contains("rm -rf build"), "{stands}");
+    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("rm -rf build", 2));
+    let gone = rig.when_typed("worker", b"\r", working());
+    let refused = minder.mind("approve --no --reason 'Not in the rules.' --json");
+    assert!(moved.join().unwrap() && gone.join().unwrap());
+    assert_eq!((&refused["chosen_label"], &refused["dismissed"]), (&json!("No"), &json!(true)), "{refused}");
+
+    // What stands is rest: the questions that passed are not told to one that waits for questions…
+    let rested = shown(&idle("Done with the build."));
+    assert!(watch(push, "approval,question", 1).contains("status=124"));
+    // …and one that waits for anything hears the rest alone, then nothing more of what was before it.
+    let told = event(&watch(push, "question,approval,idle,error,exit", 15));
+    assert_eq!((&told["state"], &told["cursor"]), (&json!("idle"), &json!(rested)), "{told}");
+    assert!(watch(rested, "question,approval,idle,error,exit", 1).contains("status=124"));
+
+    // The parent, whose watch it also is, still hears each thing in turn once the minder is off: nothing was dropped from the log.
+    rig.json(&["mind", "worker", "--off", "--json"]);
+    let first = rig.json(&["watch", "worker", "--since", &from.to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    assert!(first["approval"]["command"].as_str().unwrap().contains("cargo test"), "{first}");
+    let second = rig.json(&["watch", "worker", "--since", &first["cursor"].to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    assert!(second["approval"]["command"].as_str().unwrap().contains("git push"), "{second}");
 }

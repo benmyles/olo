@@ -32,7 +32,7 @@ bar, and allowing the person to click straight in and interact at any
 time).
 
 **While any child of yours runs, keep a watch going on them.** One
-`olo agent watch --all --since CURSOR --on question,approval,idle,done,error,exit --timeout 90 --json`
+`olo agent watch --all --since CURSOR --on question,approval,escalation,idle,done,error,exit --timeout 90 --json`
 as a background command of your harness (so its return wakes you),
 from the moment you start the first child until the last has ended:
 
@@ -51,6 +51,71 @@ from the moment you start the first child until the last has ended:
   `tools/dev/agents` and its front doors), its own `watch` is this watch
   (it waits on `olo agent watch`): keep that one going instead.
 
+**Give a child a minder when you will be busy** (`--minder`). A child
+that asks leave or asks a question waits for as long as you are in the
+middle of something else. A minder is an agent of its own whose whole
+job is that one child: it waits on it, answers what it asks at once by
+rules you write, steers it, and tells you what your rules don't cover.
+It is a child tab of the child it minds (the person sees it there), and
+you choose its model and effort: a stronger one than the child's where
+its judgment matters.
+
+    olo agent start agy --model gemini-4-neon --effort xhigh --name ui-check \
+        --prompt-file brief.md \
+        --minder claude:claude-fable-5-2:high --rules ui-check-rules.md --json
+
+- **The rules are your words**, a file (`--rules FILE`) or a string
+  (`--rules-text`): what to approve (name the commands or kinds: "cargo
+  build and test, read-only git, reading files under the repository"),
+  what to refuse and what to tell the child instead, how to steer it
+  ("when it rests without having run the tests, tell it to run them";
+  "when it has finished, ask for its summary in /var/tmp/x/answer.md"),
+  and what you want to hear of. Give it the context it needs to judge:
+  what the child was asked, what it may touch. Where the rules are
+  silent a minder does not guess: it escalates, the question word for
+  word, and leaves the child waiting for you.
+- **What changes for your watch.** A minded child's `approval` and
+  `question` no longer wake it: they are its minder's. `idle`, `done`,
+  `error` and `exit` still do, and so does a new event,
+  **`escalation`**: what the minder has for you (`"event":
+  "escalation"`, `name` the child it is about, `summary` the minder's
+  words). It is among the events a watch waits for by default; if you
+  name them yourself, add it:
+  `olo agent watch --all --since CURSOR --on escalation,idle,done,error,exit --timeout 90 --json`.
+  You can still look at the child (`status`, `read`) and answer it
+  yourself (`approve`, `send`) whenever you like.
+- **For a child that runs already**, or to change what one has:
+  `olo agent mind NAME --with claude:MODEL:EFFORT --rules FILE` attaches
+  a minder (or puts another in its place); `olo agent mind NAME --rules
+  FILE` gives the one it has new rules (the same minder, begun anew
+  with them); `olo agent mind NAME --off` ends it, and the child's
+  asking is yours again; `olo agent mind NAME [--json]` says who minds
+  it, by what rules, and everything the minder answered (`answered`:
+  each `approve`, `send` and `escalate`, with its time), to check its
+  work.
+- **What a minder can do is held by the service, not by its good
+  sense.** It reaches the one child it minds and nothing else: it can
+  watch it, read it, say yes once or no (never a yes that is kept), type
+  to it, and escalate. It cannot start, stop or list anything, reach
+  another child, or run any other program: the shell is its only tool
+  and its one command the only thing allowed in it. It is told what
+  stands, not each thing that passed while it thought, and its yes or
+  no is for the question it was last told of: one that took a while
+  never answers a question that came since. (A minder at a high effort
+  answers a plain yes or no in some 3 to 7 seconds.)
+- **How it ends.** When the child exits, its minder tells you once what
+  it approved, refused and passed up (an `escalation`), and is stopped.
+  `stop --tree` on the child stops both. If the minder itself dies
+  while the child runs, you are told (an `escalation` saying so) and the
+  child's asking comes to your watch again.
+- A minder runs Claude Code (`claude:MODEL:EFFORT`) for now. It has the
+  child's `--env`; `--minder-env K=V` gives it more (`mind … --env K=V`
+  for one attached later).
+- **A child can tell its parent something itself**:
+  `olo agent escalate "TEXT"`, from inside any child's tab, is an
+  `escalation` on the parent's watch at once. Say so in a child's brief
+  where you want to hear of something without it stopping to ask.
+
 **It works with no Olo desktop connected.** Every `olo agent` command
 is answered by this host's own agents service (Olo's helper here, which
 `olo` runs: `olo-rex-link agent`), through this host's Rex server. The
@@ -60,7 +125,11 @@ the moment a desktop connects it shows every one of them, under the tab
 that started it. The service starts by itself at the first command and
 ends when nothing is left for it to do; if it is ever killed, the next
 command starts another that knows every child (and `watch --since`
-goes on from the same cursor). After a restart of this host's Rex
+goes on from the same cursor). The same through an upgrade, when a
+later build of the helper takes the service over: `list` has every live
+child the moment after, with its name, its state and its conversation's
+id, so nothing of yours needs a reading of a child's process to know it
+is still there. After a restart of this host's Rex
 server, `list --all` has each child as exited with its conversation's
 id, to take up again with `start --resume`.
 
@@ -108,7 +177,7 @@ model or reasoning effort is used.
   agent's screen.
 - **Read terminal output / scrollback**: `olo agent read <ID|NAME> [--lines 80] [--scrollback] [--ansi] [--json]` (note: `--scrollback` still caps output to `--lines`, 80 by default; pass `--lines 2000` for deeper history).
 - **Event-driven watch (zero polling, multi-agent & cursor-safe)**:
-  `olo agent watch [<ID|NAME>… | --all] [--since CURSOR] [--parent WIN] [--on question,approval,idle,done,error,exit] [--match TEXT] [--regex PAT] [--timeout 90] [--json]`
+  `olo agent watch [<ID|NAME>… | --all] [--since CURSOR] [--parent WIN] [--on question,approval,escalation,idle,done,error,exit] [--match TEXT] [--regex PAT] [--timeout 90] [--json]`
   Always pass `--since CURSOR` (from `start`, `list`, `send`, `approve`, or the prior `watch`) and keep `--timeout` under your shell tool timeout (e.g. `90` seconds), looping on exit code **124** (`{"ok":false,"event":"timeout","cursor":...,"code":124}`). Exit codes: `0` event, `124` timeout, `2` usage/validation error, `69` it can't be done from here (no Rex server on this host; or a child asking what isn't its to ask), `75` the service ended while it did something that must not be done twice (`start`, `send`, `approve`, `stop`: look with `list` before asking again; `watch`, `list`, `status` and `read` simply ask the next service). `--on idle` matches both `idle` and `done`; `--on done` matches strictly `done`. If the event cursor resets (e.g. after a fresh start), `watch` returns `{"ok":true,"event":"reset","cursor":...}` immediately; if events were evicted from the 2000-event ring buffer, `gap:true` is set.
 - **Approve or deny a pending tool approval safely**:
   `olo agent approve <ID|NAME> --once | --session | --no [--reason TEXT] [--json]`
@@ -122,6 +191,10 @@ model or reasoning effort is used.
   A key that plain bytes can't say is pressed as the keyboard would press it, by what the agent asked of its keys: `--key Ctrl+Enter` and `--key Shift+Enter` (a new line in Claude Code's field, not a send), `--key Ctrl+Tab`, `--key Shift+Backspace`.
   A single character is a key too: `--key 0`, `--key y` press that one key and nothing else (no Return, no paste), for a box that takes one key and must be given no text (Claude Code's "1 to review · 2 to send · 0 to dismiss").
   Refuses to type text, or to press a character key, while an approval/question dialog is active: there a character is an answer by its number (use `olo agent approve` for approvals, or pass `--force`). Always strips bracketed-paste escapes and returns a pre-write `cursor`.
+- **A minder for a child, and a word to the parent** (above):
+  `olo agent start … --minder claude:MODEL:EFFORT [--rules FILE | --rules-text TEXT] [--minder-env K=V]…`
+  `olo agent mind <ID|NAME> [--with claude:MODEL:EFFORT] [--rules FILE | --rules-text TEXT] [--env K=V]… [--off] [--json]`
+  `olo agent escalate "TEXT" [--json]` (from a child's own tab)
 - **Stop & archive launched tabs cleanly**:
   `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`
   Gracefully interrupts (double Ctrl-C) and closes the child tab (`--save PATH` archives full scrollback to `PATH` before closing; `--tree` stops all nested descendants bottom-up; `--force` closes immediately; `--force` and `--keep-tab` cannot be combined; keeps `cli_session_id` in registry for `list --all` and `--resume`).
