@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::moving::{Proc, all_procs};
-use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, project_name, sessions_in, start_ticks, started_at, uuid};
+use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, codex_threads, project_name, sessions_in, start_ticks, started_at, uuid};
 
 const USAGE: &str = "usage: olo-rex-link agent <trust PATH...|inspect>";
 
@@ -48,64 +48,90 @@ pub fn run(args: Vec<String>) -> ! {
 // ---------------------------------------------------------------------------
 
 fn trust_claude_paths(claude_json: &Path, paths: &[String]) -> io::Result<Vec<String>> {
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
     if paths.is_empty() {
         return Ok(Vec::new());
     }
-    if let Some(parent) = claude_json.parent() {
+    // Follow existing symlink so we never clobber a symlinked `~/.claude.json` with a plain file.
+    let target_path = if std::fs::symlink_metadata(claude_json).is_ok_and(|m| m.file_type().is_symlink()) {
+        std::fs::canonicalize(claude_json).unwrap_or_else(|_| claude_json.to_path_buf())
+    } else {
+        claude_json.to_path_buf()
+    };
+    if let Some(parent) = target_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let lock_path = claude_json.with_file_name(".claude.json.olo-trust.lock");
-    let lock_file = OpenOptions::new().create(true).write(true).truncate(false).open(&lock_path)?;
+    let lock_path = target_path.with_file_name(".claude.json.olo-trust.lock");
+    let lock_file = OpenOptions::new().create(true).write(true).truncate(false).mode(0o600).open(&lock_path)?;
     // SAFETY: `lock_file` holds a valid file descriptor; exclusive flock serializes concurrent trust edits.
     unsafe {
         libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX);
     }
 
-    let mut root: Value = std::fs::read_to_string(claude_json).ok().and_then(|s| serde_json::from_str(&s).ok()).filter(|v: &Value| v.is_object()).unwrap_or_else(|| json!({}));
-
-    let projects = root.as_object_mut().expect("object").entry("projects").or_insert_with(|| json!({}));
-    if !projects.is_object() {
-        *projects = json!({});
-    }
-    let proj_map = projects.as_object_mut().expect("projects object");
-
     let mut trusted = Vec::new();
-    for raw in paths {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let expanded = expand_tilde(trimmed);
-        let canonical = std::fs::canonicalize(&expanded).unwrap_or_else(|_| expanded.clone());
-        for candidate in [expanded.display().to_string(), canonical.display().to_string()] {
-            if candidate.is_empty() {
+    let res = (|| -> io::Result<Vec<String>> {
+        // Retry merge up to 3 times if an independent Claude process modified the file while we read it.
+        for attempt in 0..3 {
+            let meta_before = std::fs::metadata(&target_path).ok();
+            let orig_mode = meta_before.as_ref().map(|m| m.permissions().mode() & 0o777).unwrap_or(0o600);
+            let mtime_before = meta_before.as_ref().and_then(|m| m.modified().ok());
+
+            let mut root: Value = std::fs::read_to_string(&target_path).ok().and_then(|s| serde_json::from_str(&s).ok()).filter(|v: &Value| v.is_object()).unwrap_or_else(|| json!({}));
+
+            let projects = root.as_object_mut().expect("object").entry("projects").or_insert_with(|| json!({}));
+            if !projects.is_object() {
+                *projects = json!({});
+            }
+            let proj_map = projects.as_object_mut().expect("projects object");
+
+            trusted.clear();
+            for raw in paths {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let expanded = expand_tilde(trimmed);
+                let canonical = std::fs::canonicalize(&expanded).unwrap_or_else(|_| expanded.clone());
+                for candidate in [expanded.display().to_string(), canonical.display().to_string()] {
+                    if candidate.is_empty() {
+                        continue;
+                    }
+                    let entry = proj_map.entry(candidate.clone()).or_insert_with(|| json!({}));
+                    if !entry.is_object() {
+                        *entry = json!({});
+                    }
+                    entry.as_object_mut().expect("project entry").insert("hasTrustDialogAccepted".into(), Value::Bool(true));
+                    if !trusted.contains(&candidate) {
+                        trusted.push(candidate);
+                    }
+                }
+            }
+
+            let mtime_after = std::fs::metadata(&target_path).ok().and_then(|m| m.modified().ok());
+            if attempt < 2 && mtime_before.is_some() && mtime_after != mtime_before {
                 continue;
             }
-            let entry = proj_map.entry(candidate.clone()).or_insert_with(|| json!({}));
-            if !entry.is_object() {
-                *entry = json!({});
-            }
-            entry.as_object_mut().expect("project entry").insert("hasTrustDialogAccepted".into(), Value::Bool(true));
-            if !trusted.contains(&candidate) {
-                trusted.push(candidate);
-            }
-        }
-    }
 
-    let encoded = serde_json::to_string_pretty(&root).map_err(|e| io::Error::other(e.to_string()))?;
-    let tmp = claude_json.with_file_name(format!(".claude.json.olo-tmp.{}", std::process::id()));
-    {
-        let mut f = OpenOptions::new().create(true).write(true).truncate(true).open(&tmp)?;
-        f.write_all(encoded.as_bytes())?;
-        f.write_all(b"\n")?;
-        let _ = f.sync_all();
-    }
-    std::fs::rename(&tmp, claude_json)?;
+            let encoded = serde_json::to_string_pretty(&root).map_err(|e| io::Error::other(e.to_string()))?;
+            let tmp = target_path.with_file_name(format!(".claude.json.olo-tmp.{}.{}", std::process::id(), attempt));
+            {
+                let mut f = OpenOptions::new().create(true).write(true).truncate(true).mode(orig_mode).open(&tmp)?;
+                f.write_all(encoded.as_bytes())?;
+                f.write_all(b"\n")?;
+                let _ = f.sync_all();
+            }
+            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(orig_mode));
+            std::fs::rename(&tmp, &target_path)?;
+            break;
+        }
+        Ok(trusted)
+    })();
+
     // SAFETY: releases exclusive flock on valid fd before drop.
     unsafe {
         libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN);
     }
-    Ok(trusted)
+    res
 }
 
 fn expand_tilde(raw: &str) -> PathBuf {
@@ -119,10 +145,38 @@ fn expand_tilde(raw: &str) -> PathBuf {
     }
 }
 
-fn run_trust(paths: &[String]) -> i32 {
-    let places = Places::here();
-    let claude_json = places.home.join(".claude.json");
-    match trust_claude_paths(&claude_json, paths) {
+fn run_trust(args: &[String]) -> i32 {
+    let mut home_override: Option<PathBuf> = None;
+    let mut config_dir_override: Option<PathBuf> = None;
+    let mut paths: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--home" {
+            i += 1;
+            if let Some(h) = args.get(i) {
+                home_override = Some(PathBuf::from(h));
+            }
+        } else if let Some(h) = args[i].strip_prefix("--home=") {
+            home_override = Some(PathBuf::from(h));
+        } else if args[i] == "--claude-config-dir" {
+            i += 1;
+            if let Some(d) = args.get(i) {
+                config_dir_override = Some(PathBuf::from(d));
+            }
+        } else if let Some(d) = args[i].strip_prefix("--claude-config-dir=") {
+            config_dir_override = Some(PathBuf::from(d));
+        } else {
+            paths.push(args[i].clone());
+        }
+        i += 1;
+    }
+    let claude_json = if let Some(cfg_dir) = config_dir_override.or_else(|| std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).filter(|p| !p.as_os_str().is_empty())) {
+        cfg_dir.join(".claude.json")
+    } else {
+        let home = home_override.unwrap_or_else(|| Places::here().home);
+        home.join(".claude.json")
+    };
+    match trust_claude_paths(&claude_json, &paths) {
         Ok(trusted) => {
             println!("{}", json!({ "ok": true, "trusted": trusted }));
             0
@@ -160,7 +214,7 @@ struct InspectItemRequest {
     started_at: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct PendingToolInfo {
     tool: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -186,6 +240,8 @@ struct InspectItemResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     cli_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    session_confidence: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_message: Option<String>,
@@ -194,6 +250,8 @@ struct InspectItemResult {
     transcript_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pending_tool: Option<PendingToolInfo>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pending_tools: Vec<PendingToolInfo>,
     background_shells: Vec<BackgroundShellInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     waiting_on: Option<&'static str>,
@@ -209,6 +267,40 @@ fn read_cwd(pid: i32) -> String {
 
 fn read_exe(pid: i32) -> String {
     std::fs::read_link(format!("/proc/{pid}/exe")).map(|p| p.display().to_string()).unwrap_or_default()
+}
+
+/// Resolves `Places` (`HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`) from `/proc/<pid>/environ`
+/// when available so subagents launched with custom `HOME` / config dirs still resolve their
+/// real transcripts and session IDs.
+fn places_for_pid(pid: Option<i32>, fallback: &Places) -> Places {
+    let Some(p) = pid else {
+        return Places { home: fallback.home.clone(), claude: fallback.claude.clone(), codex: fallback.codex.clone() };
+    };
+    let Ok(raw) = std::fs::read(format!("/proc/{p}/environ")) else {
+        return Places { home: fallback.home.clone(), claude: fallback.claude.clone(), codex: fallback.codex.clone() };
+    };
+    let mut env_home: Option<PathBuf> = None;
+    let mut env_claude: Option<PathBuf> = None;
+    let mut env_codex: Option<PathBuf> = None;
+    for entry in raw.split(|&b| b == 0) {
+        if let Some(eq) = entry.iter().position(|&b| b == b'=') {
+            let k = &entry[..eq];
+            let v = String::from_utf8_lossy(&entry[eq + 1..]);
+            if v.is_empty() {
+                continue;
+            }
+            match k {
+                b"HOME" => env_home = Some(PathBuf::from(v.as_ref())),
+                b"CLAUDE_CONFIG_DIR" => env_claude = Some(PathBuf::from(v.as_ref())),
+                b"CODEX_HOME" => env_codex = Some(PathBuf::from(v.as_ref())),
+                _ => {}
+            }
+        }
+    }
+    let home = env_home.unwrap_or_else(|| fallback.home.clone());
+    let claude = env_claude.unwrap_or_else(|| home.join(".claude"));
+    let codex = env_codex.unwrap_or_else(|| home.join(".codex"));
+    Places { home, claude, codex }
 }
 
 fn read_tail_text(path: &Path, max_bytes: u64) -> String {
@@ -289,7 +381,20 @@ fn find_background_shells(agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) ->
         let cmd = argv.join(" ");
         // Skip internal MCP/language/helper daemons that belong to the CLI itself.
         let low = cmd.to_ascii_lowercase();
-        if low.contains("olo-rex-link") || low.contains("ripgrep") || low.contains("app-server") || (p.comm == "sleep" && argv.len() == 2) {
+        if low.contains("olo-rex-link")
+            || low.contains("ripgrep")
+            || low.contains("app-server")
+            || low.contains("mcp-server")
+            || low.contains("modelcontextprotocol")
+            || low.contains("language-server")
+            || low.contains("rust-analyzer")
+            || low.contains("pyright")
+            || low.contains("gopls")
+            || low.contains("clangd")
+            || low.contains("tsserver")
+            || low.contains("playwright-mcp")
+            || (p.comm == "sleep" && argv.len() == 2)
+        {
             continue;
         }
         // Skip wrapper shells whose direct child is already in the list (keep the leaf command).
@@ -304,21 +409,31 @@ fn find_background_shells(agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) ->
     out
 }
 
-fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc>, by_ppid: &HashMap<i32, Vec<&'a Proc>>) -> Option<(&'a Proc, Vec<String>)> {
+/// Finds the primary agent process (preferring the leaf agent process when behind a wrapper script)
+/// AND returns all matching `(pid, start_ticks)` in the pane's process tree so Claude's PID record
+/// and open FDs are checked across wrappers as well as children.
+fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc>, by_ppid: &HashMap<i32, Vec<&'a Proc>>) -> Option<(&'a Proc, Vec<String>, Vec<(i32, u64)>)> {
     if item.shell_pid > 0 {
         let mut candidates: Vec<&Proc> = Vec::new();
         if let Some(&root) = by_pid.get(&item.shell_pid) {
             candidates.push(root);
         }
         candidates.extend(collect_descendants(item.shell_pid, by_ppid));
+        let mut matches: Vec<(&Proc, Vec<String>)> = Vec::new();
         for p in candidates {
             let argv = read_argv(p.pid);
             let exe = read_exe(p.pid);
             if let Some((kind, args)) = agent_of(&argv, &p.comm, &exe)
                 && kind == item.cli
             {
-                return Some((p, args));
+                matches.push((p, args));
             }
+        }
+        if !matches.is_empty() {
+            let pids: Vec<(i32, u64)> = matches.iter().map(|(p, _)| (p.pid, start_ticks(p.pid))).collect();
+            // Prefer the deepest/leaf matching agent process (avoids shell wrapper scripts).
+            let (leaf, args) = matches.pop().unwrap();
+            return Some((leaf, args, pids));
         }
     }
     // Fallback when shell_pid wasn't known: match by known_session_id in argv across all processes.
@@ -332,7 +447,8 @@ fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc
                 if let Some((kind, args)) = agent_of(&argv, &p.comm, &exe)
                     && kind == item.cli
                 {
-                    return Some((p, args));
+                    let pids = vec![(p.pid, start_ticks(p.pid))];
+                    return Some((p, args, pids));
                 }
             }
         }
@@ -340,10 +456,12 @@ fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc
     None
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_session_and_transcript(
     places: &Places,
     cli: &str,
     pid: Option<i32>,
+    agent_pids: &[(i32, u64)],
     start: u64,
     cwd: &str,
     args: &[String],
@@ -351,33 +469,85 @@ fn resolve_session_and_transcript(
     known_transcript: Option<&str>,
     started_at_unix: i64,
     rollouts: &HashMap<String, PathBuf>,
-) -> (Option<String>, Option<PathBuf>) {
-    let mut sid = known_sid.filter(|s| !s.is_empty()).map(str::to_owned);
-    if sid.is_none()
-        && cli == "claude"
-        && let Some(p) = pid
-    {
-        sid = claude_record(places, p, start);
+    codex_open: &mut Option<Vec<(String, String)>>,
+    taken: &mut HashSet<String>,
+) -> (Option<String>, Option<PathBuf>, &'static str) {
+    let mut sid: Option<String> = None;
+    let mut confidence: &'static str = "none";
+
+    // 1. Surest evidence first: Claude's own per-PID session record (checked across all agent PIDs in tree).
+    if cli == "claude" {
+        for &(p, st) in agent_pids {
+            if let Some(rec) = claude_record(places, p, st) {
+                sid = Some(rec);
+                confidence = "record";
+                break;
+            }
+        }
     }
-    if sid.is_none() {
-        sid = argv_session(cli, args);
+
+    // 2. Open file descriptors for `agy` (`conversations/<UUID>.db*`, `presence/<UUID>.lock`, `brain/<UUID>/`)
+    //    and `codex` (`sessions/...-<UUID>.jsonl`) across all agent PIDs in the pane tree!
+    if sid.is_none() && cli == "agy" {
+        let conv_dir = places.agy();
+        let brain_dir = places.agy_brain();
+        let presence_dir = places.home.join(".gemini/antigravity-cli/presence");
+        for &(p, _) in agent_pids {
+            let Ok(rd) = std::fs::read_dir(format!("/proc/{p}/fd")) else { continue };
+            for entry in rd.flatten() {
+                let Ok(target) = std::fs::read_link(entry.path()) else { continue };
+                if target.starts_with(&conv_dir)
+                    && let Some(name) = target.file_name().and_then(|n| n.to_str())
+                {
+                    for suf in [".db", ".db-wal", ".db-shm"] {
+                        if let Some(stem) = name.strip_suffix(suf)
+                            && uuid(stem)
+                        {
+                            sid = Some(stem.to_owned());
+                            confidence = "open";
+                            break;
+                        }
+                    }
+                } else if target.starts_with(&presence_dir)
+                    && let Some(name) = target.file_name().and_then(|n| n.to_str())
+                    && let Some(stem) = name.strip_suffix(".lock")
+                    && uuid(stem)
+                {
+                    sid = Some(stem.to_owned());
+                    confidence = "open";
+                } else if target.starts_with(&brain_dir)
+                    && let Ok(rel) = target.strip_prefix(&brain_dir)
+                    && let Some(first) = rel.components().next().and_then(|c| c.as_os_str().to_str())
+                    && uuid(first)
+                {
+                    sid = Some(first.to_owned());
+                    confidence = "open";
+                }
+                if sid.is_some() {
+                    break;
+                }
+            }
+            if sid.is_some() {
+                break;
+            }
+        }
     }
-    // Agy open .db file descriptor reveals exact conversation UUID immediately!
-    if sid.is_none()
-        && cli == "agy"
-        && let Some(p) = pid
-        && let Ok(rd) = std::fs::read_dir(format!("/proc/{p}/fd"))
-    {
-        for entry in rd.flatten() {
-            if let Ok(target) = std::fs::read_link(entry.path())
-                && target.starts_with(places.agy())
-                && let Some(name) = target.file_name().and_then(|n| n.to_str())
-            {
-                for suf in [".db", ".db-wal", ".db-shm"] {
-                    if let Some(stem) = name.strip_suffix(suf)
-                        && uuid(stem)
-                    {
-                        sid = Some(stem.to_owned());
+
+    if sid.is_none() && cli == "codex" {
+        let codex_sessions = places.codex.join("sessions");
+        for &(p, _) in agent_pids {
+            let Ok(rd) = std::fs::read_dir(format!("/proc/{p}/fd")) else { continue };
+            for entry in rd.flatten() {
+                let Ok(t) = std::fs::read_link(entry.path()) else { continue };
+                if t.extension().is_some_and(|ex| ex == "jsonl")
+                    && t.starts_with(&codex_sessions)
+                    && let Some(stem) = t.file_stem().and_then(|s| s.to_str())
+                    && stem.len() >= 36
+                {
+                    let maybe = &stem[stem.len() - 36..];
+                    if uuid(maybe) {
+                        sid = Some(maybe.to_owned());
+                        confidence = "open";
                         break;
                     }
                 }
@@ -388,17 +558,42 @@ fn resolve_session_and_transcript(
         }
     }
 
+    // 3. Explicit CLI argv session id (`--resume`, `--session-id`, `--conversation`), skipping if forked!
+    let is_fork_argv = args.iter().any(|a| a == "--fork-session" || a == "fork");
+    if sid.is_none() && !is_fork_argv {
+        if let Some(a_sid) = argv_session(cli, args) {
+            sid = Some(a_sid);
+            confidence = "argv";
+        }
+    }
+
+    // 4. Caller-known session ID (when not superseded by surer record/open evidence).
+    if sid.is_none()
+        && let Some(ks) = known_sid.filter(|s| !s.is_empty())
+    {
+        sid = Some(ks.to_owned());
+        confidence = "known";
+    }
+
+    if let Some(ref s) = sid {
+        taken.insert(s.clone());
+    }
+
     if let Some(tp) = known_transcript.filter(|s| !s.is_empty()) {
         let p = PathBuf::from(tp);
-        if p.exists() {
-            return (sid, Some(p));
+        // Only trust cached transcript if it matches any newly discovered `sid`!
+        let matches_sid = sid.as_deref().is_none_or(|s| tp.contains(s));
+        if p.exists() && matches_sid {
+            return (sid, Some(p), confidence);
         }
     }
 
     let since = if start > 0 {
         started_at(start).map(|t| t.checked_sub(Duration::from_secs(3)).unwrap_or(t))
     } else if started_at_unix > 0 {
-        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(started_at_unix.saturating_sub(3) as u64))
+        // Accept both Unix milliseconds (>= 10_000_000_000) and legacy Unix seconds.
+        let secs = if started_at_unix >= 10_000_000_000 { (started_at_unix / 1000) as u64 } else { started_at_unix as u64 };
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(secs.saturating_sub(3)))
     } else {
         None
     };
@@ -411,9 +606,12 @@ fn resolve_session_and_transcript(
                 if p.exists() { Some(p) } else { None }
             } else {
                 sessions_in(&proj, ".jsonl", since).into_iter().find_map(|c| {
-                    if sid.is_none() {
-                        sid = Some(c.id);
+                    if taken.contains(&c.id) {
+                        return None;
                     }
+                    taken.insert(c.id.clone());
+                    sid = Some(c.id);
+                    confidence = "written";
                     c.file
                 })
             }
@@ -424,59 +622,53 @@ fn resolve_session_and_transcript(
                 && p.exists()
             {
                 Some(p.clone())
-            } else if let Some(p) = pid
-                && let Ok(rd) = std::fs::read_dir(format!("/proc/{p}/fd"))
-            {
-                rd.flatten().find_map(|e| {
-                    let t = std::fs::read_link(e.path()).ok()?;
-                    if t.extension().is_some_and(|ex| ex == "jsonl") && t.starts_with(places.codex.join("sessions")) {
-                        if sid.is_none() {
-                            // rollout-YYYY-MM-DDTHH-MM-SS-<uuid>.jsonl
-                            if let Some(stem) = t.file_stem().and_then(|s| s.to_str())
-                                && stem.len() >= 36
-                            {
-                                let maybe = &stem[stem.len() - 36..];
-                                if uuid(maybe) {
-                                    sid = Some(maybe.to_owned());
-                                }
-                            }
-                        }
-                        Some(t)
-                    } else {
-                        None
-                    }
-                })
             } else {
-                None
+                // Ask Codex's app-server daemon for open threads in `cwd` (excludes already-taken IDs!).
+                let threads = codex_open.get_or_insert_with(|| codex_threads(places));
+                let mut from_daemon: Option<PathBuf> = None;
+                for (tid, tcwd) in threads.iter() {
+                    if tcwd == cwd && !taken.contains(tid) {
+                        taken.insert(tid.clone());
+                        sid = Some(tid.clone());
+                        confidence = "daemon";
+                        from_daemon = rollouts.get(tid).filter(|p| p.exists()).cloned();
+                        break;
+                    }
+                }
+                from_daemon.or_else(|| {
+                    // Fallback: newest untaken rollout written since this child started.
+                    let mut best: Option<(SystemTime, String, PathBuf)> = None;
+                    for (rid, rpath) in rollouts {
+                        if taken.contains(rid) {
+                            continue;
+                        }
+                        let Ok(mtime) = std::fs::metadata(rpath).and_then(|m| m.modified()) else { continue };
+                        if since.is_some_and(|s| mtime < s) {
+                            continue;
+                        }
+                        if best.as_ref().is_none_or(|(b, ..)| mtime > *b) {
+                            best = Some((mtime, rid.clone(), rpath.clone()));
+                        }
+                    }
+                    best.map(|(_, rid, rpath)| {
+                        taken.insert(rid.clone());
+                        sid = Some(rid);
+                        confidence = "guess";
+                        rpath
+                    })
+                })
             }
         }
         "agy" => {
             if let Some(ref id) = sid {
                 let p = places.agy_brain().join(id).join(".system_generated/logs/transcript.jsonl");
                 if p.exists() { Some(p) } else { None }
-            } else if let Some(p) = pid {
-                // First check `/proc/<pid>/fd` for an open file under `~/.gemini/antigravity-cli/brain/<UUID>/`.
-                let from_fd = std::fs::read_dir(format!("/proc/{p}/fd")).ok().and_then(|rd| {
-                    let brain = places.agy_brain();
-                    rd.flatten().find_map(|e| {
-                        let t = std::fs::read_link(e.path()).ok()?;
-                        let rel = t.strip_prefix(&brain).ok()?;
-                        let first = rel.components().next()?.as_os_str().to_str()?;
-                        if uuid(first) {
-                            let tr = brain.join(first).join(".system_generated/logs/transcript.jsonl");
-                            if tr.exists() {
-                                sid = Some(first.to_owned());
-                                return Some(tr);
-                            }
-                        }
-                        None
-                    })
-                });
-                from_fd.or_else(|| {
-                    since.and_then(|s| newest_agy_transcript(&places.agy_brain(), Some(s))).map(|(id, p)| {
-                        sid = Some(id);
-                        p
-                    })
+            } else if pid.is_some() {
+                since.and_then(|s| newest_agy_transcript(&places.agy_brain(), Some(s), taken)).map(|(id, p)| {
+                    taken.insert(id.clone());
+                    sid = Some(id);
+                    confidence = "guess";
+                    p
                 })
             } else {
                 None
@@ -485,16 +677,16 @@ fn resolve_session_and_transcript(
         _ => None,
     };
 
-    (sid, transcript)
+    (sid, transcript, confidence)
 }
 
-fn newest_agy_transcript(brain: &Path, since: Option<SystemTime>) -> Option<(String, PathBuf)> {
+fn newest_agy_transcript(brain: &Path, since: Option<SystemTime>, taken: &HashSet<String>) -> Option<(String, PathBuf)> {
     let rd = std::fs::read_dir(brain).ok()?;
     let mut best: Option<(SystemTime, String, PathBuf)> = None;
     for entry in rd.flatten() {
         let name = entry.file_name();
         let Some(id) = name.to_str() else { continue };
-        if !uuid(id) {
+        if !uuid(id) || taken.contains(id) {
             continue;
         }
         let p = entry.path().join(".system_generated/logs/transcript.jsonl");
@@ -515,6 +707,7 @@ struct TranscriptInspection {
     last_message: Option<String>,
     error: Option<String>,
     pending_tool: Option<PendingToolInfo>,
+    pending_tools: Vec<PendingToolInfo>,
 }
 
 fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
@@ -522,7 +715,7 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
     let tail = read_tail_text(path, 512 * 1024);
     let mut state: &'static str = "unknown";
     let mut error: Option<String> = None;
-    let mut pending_tool: Option<PendingToolInfo> = None;
+    let mut pending_tools: Vec<PendingToolInfo> = Vec::new();
     let mut completed_tool_ids: HashSet<String> = HashSet::new();
 
     // Collect entries in order so we can join multi-line chunks of the same assistant message.id.
@@ -591,7 +784,15 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
                 }
             }
             "user" => {
-                state = "working";
+                let raw_txt = extract_claude_text(v).unwrap_or_default();
+                let is_meta = v["isMeta"].as_bool().unwrap_or(false) || raw_txt.contains("<local-command-") || raw_txt.contains("<command-name>");
+                if raw_txt.contains("[Request interrupted by user") {
+                    state = "aborted";
+                } else if is_meta {
+                    state = "idle";
+                } else {
+                    state = "working";
+                }
                 break;
             }
             "assistant" => {
@@ -600,18 +801,17 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
                     error = extract_claude_text(v).or_else(|| Some("API Error".into()));
                     break;
                 }
-                if pending_tool.is_none()
+                if pending_tools.is_empty()
                     && let Some(arr) = v.pointer("/message/content").and_then(Value::as_array)
                 {
-                    for b in arr.iter().rev() {
+                    for b in arr {
                         if b["type"].as_str() == Some("tool_use") {
                             let tid = b["id"].as_str().unwrap_or("");
                             if tid.is_empty() || !completed_tool_ids.contains(tid) {
                                 let tool = b["name"].as_str().unwrap_or("tool").to_owned();
                                 let input = b.get("input").cloned();
                                 let command = input.as_ref().and_then(|i| i["command"].as_str().or_else(|| i["file_path"].as_str()).or_else(|| i["path"].as_str())).map(str::to_owned);
-                                pending_tool = Some(PendingToolInfo { tool, command, arguments: input });
-                                break;
+                                pending_tools.push(PendingToolInfo { tool, command, arguments: input });
                             }
                         }
                     }
@@ -622,7 +822,7 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
                         break;
                     }
                     Some("tool_use") => {
-                        let asks_user = pending_tool.as_ref().is_some_and(|t| matches!(t.tool.as_str(), "AskUserQuestion" | "ExitPlanMode"));
+                        let asks_user = pending_tools.iter().any(|t| matches!(t.tool.as_str(), "AskUserQuestion" | "ExitPlanMode"));
                         state = if asks_user { "waiting" } else { "working" };
                         break;
                     }
@@ -665,7 +865,8 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
     parts.reverse();
     let last_message = (!parts.is_empty()).then(|| parts.join("\n"));
 
-    TranscriptInspection { state, last_message, error, pending_tool }
+    let pending_tool = pending_tools.first().cloned();
+    TranscriptInspection { state, last_message, error, pending_tool, pending_tools }
 }
 
 fn extract_claude_text(v: &Value) -> Option<String> {
@@ -695,7 +896,7 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
     let mut state: &'static str = "unknown";
     let mut last_message: Option<String> = None;
     let mut error: Option<String> = None;
-    let mut pending_tool: Option<PendingToolInfo> = None;
+    let mut pending_tools: Vec<PendingToolInfo> = Vec::new();
     let mut pending_count = 0usize;
 
     for line in tail.lines() {
@@ -713,11 +914,11 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
             "USER_INPUT" => {
                 state = "working";
                 pending_count = 0;
-                pending_tool = None;
+                pending_tools.clear();
                 error = None;
             }
             "PLANNER_RESPONSE" => {
-                if let Some(txt) = v["modified_response"].as_str().or_else(|| v["response"].as_str()).map(str::trim).filter(|s| !s.is_empty()) {
+                if let Some(txt) = v["modified_response"].as_str().or_else(|| v["response"].as_str()).or_else(|| v["content"].as_str()).map(str::trim).filter(|s| !s.is_empty()) {
                     last_message = Some(txt.to_owned());
                 }
                 if let Some(calls) = v["tool_calls"].as_array()
@@ -725,9 +926,10 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
                 {
                     pending_count = calls.len();
                     let asking = calls.iter().any(|c| c["name"].as_str() == Some("ask_question"));
-                    if let Some(last_call) = calls.last() {
-                        let tool = last_call["name"].as_str().unwrap_or("tool").to_owned();
-                        let args = last_call.get("arguments").cloned().or_else(|| last_call.get("args").cloned());
+                    pending_tools.clear();
+                    for call in calls {
+                        let tool = call["name"].as_str().unwrap_or("tool").to_owned();
+                        let args = call.get("arguments").cloned().or_else(|| call.get("args").cloned());
                         let command = args.as_ref().and_then(|a| {
                             a.as_str()
                                 .and_then(|s| serde_json::from_str::<Value>(s).ok())
@@ -738,7 +940,7 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
                                 .and_then(Value::as_str)
                                 .map(str::to_owned)
                         });
-                        pending_tool = Some(PendingToolInfo { tool, command, arguments: args });
+                        pending_tools.push(PendingToolInfo { tool, command, arguments: args });
                     }
                     state = if asking { "waiting" } else { "working" };
                 } else if st == "ERROR" || st == "FAILED" {
@@ -746,7 +948,7 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
                     error = v["error"].as_str().map(str::to_owned).or_else(|| Some("Antigravity turn failed".into()));
                 } else {
                     pending_count = 0;
-                    pending_tool = None;
+                    pending_tools.clear();
                     state = "done";
                 }
             }
@@ -754,7 +956,7 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
                 if st != "RUNNING" {
                     pending_count = pending_count.saturating_sub(1);
                     if pending_count == 0 {
-                        pending_tool = None;
+                        pending_tools.clear();
                     }
                 }
                 state = "working";
@@ -767,7 +969,8 @@ fn inspect_agy_transcript(path: &Path) -> TranscriptInspection {
         }
     }
 
-    TranscriptInspection { state, last_message, error, pending_tool }
+    let pending_tool = pending_tools.first().cloned();
+    TranscriptInspection { state, last_message, error, pending_tool, pending_tools }
 }
 
 fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
@@ -775,7 +978,7 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
     let mut state: &'static str = "unknown";
     let mut last_message: Option<String> = None;
     let mut error: Option<String> = None;
-    let mut pending_tool: Option<PendingToolInfo> = None;
+    let mut pending_tools: Vec<PendingToolInfo> = Vec::new();
     let mut completed_calls: HashSet<String> = HashSet::new();
 
     let mut parsed: Vec<Value> = Vec::new();
@@ -815,6 +1018,22 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
         }
     }
 
+    // Collect all uncompleted function calls in order for H14 screen-matching.
+    for v in &parsed {
+        if v["type"].as_str() == Some("response_item") {
+            let p = &v["payload"];
+            if matches!(p["type"].as_str(), Some("function_call" | "custom_tool_call")) {
+                let cid = p["call_id"].as_str().unwrap_or("");
+                if cid.is_empty() || !completed_calls.contains(cid) {
+                    let tool = p["name"].as_str().unwrap_or("tool").to_owned();
+                    let args_val = p["arguments"].as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()).or_else(|| p.get("arguments").cloned());
+                    let command = args_val.as_ref().and_then(|a| a["cmd"].as_str().or_else(|| a["command"].as_str())).map(str::to_owned);
+                    pending_tools.push(PendingToolInfo { tool, command, arguments: args_val });
+                }
+            }
+        }
+    }
+
     for v in parsed.iter().rev() {
         match v["type"].as_str().unwrap_or("") {
             "event_msg" => {
@@ -829,8 +1048,12 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
                         state = "waiting";
                         break;
                     }
-                    "task_complete" | "turn_aborted" => {
+                    "task_complete" => {
                         state = "done";
+                        break;
+                    }
+                    "turn_aborted" => {
+                        state = "aborted";
                         break;
                     }
                     "task_started" => {
@@ -846,10 +1069,6 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
                     "function_call" | "custom_tool_call" => {
                         let cid = p["call_id"].as_str().unwrap_or("");
                         if cid.is_empty() || !completed_calls.contains(cid) {
-                            let tool = p["name"].as_str().unwrap_or("tool").to_owned();
-                            let args_val = p["arguments"].as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()).or_else(|| p.get("arguments").cloned());
-                            let command = args_val.as_ref().and_then(|a| a["cmd"].as_str().or_else(|| a["command"].as_str())).map(str::to_owned);
-                            pending_tool = Some(PendingToolInfo { tool, command, arguments: args_val });
                             state = "working";
                             break;
                         }
@@ -865,7 +1084,8 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
         }
     }
 
-    TranscriptInspection { state, last_message, error, pending_tool }
+    let pending_tool = pending_tools.first().cloned();
+    TranscriptInspection { state, last_message, error, pending_tool, pending_tools }
 }
 
 fn run_inspect() -> i32 {
@@ -891,23 +1111,52 @@ fn run_inspect() -> i32 {
     }
     let need_codex = req.items.iter().any(|i| i.cli == "codex");
     let rollouts = if need_codex { codex_rollouts(&places) } else { HashMap::new() };
+    let mut codex_open: Option<Vec<(String, String)>> = None;
+    let mut taken: HashSet<String> = HashSet::new();
+
+    for item in &req.items {
+        if let Some(ref ks) = item.known_session_id
+            && !ks.is_empty()
+        {
+            taken.insert(ks.clone());
+        }
+    }
 
     let mut results = Vec::with_capacity(req.items.len());
     for item in &req.items {
         let found = find_agent_proc(item, &by_pid, &by_ppid);
-        let (pid, start, proc_cwd, args) = match found {
-            Some((p, args)) => (Some(p.pid), start_ticks(p.pid), read_cwd(p.pid), args),
-            None => (None, 0, String::new(), Vec::new()),
+        let (pid, start, proc_cwd, args, agent_pids) = match found {
+            Some((p, args, pids)) => (Some(p.pid), start_ticks(p.pid), read_cwd(p.pid), args, pids),
+            None => (None, 0, String::new(), Vec::new(), Vec::new()),
         };
         let cwd = if !proc_cwd.is_empty() { proc_cwd } else { item.cwd.clone() };
-        let (cli_session_id, transcript_path) =
-            resolve_session_and_transcript(&places, &item.cli, pid, start, &cwd, &args, item.known_session_id.as_deref(), item.known_transcript.as_deref(), item.started_at, &rollouts);
+        let item_places = places_for_pid(pid, &places);
+        let item_rollouts = if item.cli == "codex" && item_places.codex != places.codex { Some(codex_rollouts(&item_places)) } else { None };
+        let active_rollouts = item_rollouts.as_ref().unwrap_or(&rollouts);
+        let mut custom_codex_open: Option<Vec<(String, String)>> = None;
+        let active_codex_open = if item_places.codex != places.codex { &mut custom_codex_open } else { &mut codex_open };
+
+        let (cli_session_id, transcript_path, session_confidence) = resolve_session_and_transcript(
+            &item_places,
+            &item.cli,
+            pid,
+            &agent_pids,
+            start,
+            &cwd,
+            &args,
+            item.known_session_id.as_deref(),
+            item.known_transcript.as_deref(),
+            item.started_at,
+            active_rollouts,
+            active_codex_open,
+            &mut taken,
+        );
 
         let inspected = match transcript_path.as_deref() {
             Some(p) if item.cli == "claude" => inspect_claude_transcript(p),
             Some(p) if item.cli == "agy" => inspect_agy_transcript(p),
             Some(p) if item.cli == "codex" => inspect_codex_transcript(p),
-            _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None },
+            _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None, pending_tools: Vec::new() },
         };
 
         let background_shells = pid.map(|p| find_background_shells(p, &by_ppid)).unwrap_or_default();
@@ -916,7 +1165,7 @@ fn run_inspect() -> i32 {
             None
         } else if has_active_task {
             Some("own_run")
-        } else if matches!(inspected.state, "done" | "waiting") {
+        } else if matches!(inspected.state, "done" | "waiting" | "aborted" | "idle") {
             Some("someone")
         } else {
             None
@@ -927,11 +1176,13 @@ fn run_inspect() -> i32 {
             pid,
             alive: pid.is_some(),
             cli_session_id,
+            session_confidence: (session_confidence != "none").then_some(session_confidence),
             transcript_path: transcript_path.map(|p| p.display().to_string()),
             last_message: inspected.last_message,
             transcript_state: inspected.state,
             transcript_error: inspected.error,
             pending_tool: inspected.pending_tool,
+            pending_tools: inspected.pending_tools,
             background_shells,
             waiting_on,
         });
@@ -1003,11 +1254,11 @@ mod tests {
         assert_eq!(r_tool.pending_tool.as_ref().unwrap().tool, "Bash");
         assert_eq!(r_tool.pending_tool.as_ref().unwrap().command.as_deref(), Some("cargo test --workspace -- --nocapture"));
 
-        // 4. Agy prefers transcript_full.jsonl when present
+        // 4. Agy prefers transcript_full.jsonl when present and reads `content` (agy 1.5.17 schema)
         let agy_compact = dir.join("transcript.jsonl");
         let agy_full = dir.join("transcript_full.jsonl");
-        std::fs::write(&agy_compact, "{\"type\":\"PLANNER_RESPONSE\",\"response\":\"short...\"}\n").unwrap();
-        std::fs::write(&agy_full, "{\"type\":\"PLANNER_RESPONSE\",\"response\":\"DONE: full untruncated antigravity reply\\nwith multiple lines\"}\n").unwrap();
+        std::fs::write(&agy_compact, "{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"short...\"}\n").unwrap();
+        std::fs::write(&agy_full, "{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"DONE: full untruncated antigravity reply\\nwith multiple lines\"}\n").unwrap();
         let r_agy = inspect_agy_transcript(&agy_compact);
         assert_eq!(r_agy.state, "done");
         assert_eq!(r_agy.last_message.as_deref(), Some("DONE: full untruncated antigravity reply\nwith multiple lines"));

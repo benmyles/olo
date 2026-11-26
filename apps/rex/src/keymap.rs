@@ -376,48 +376,96 @@ pub fn action_catalog() -> Vec<ActionSpec> {
 /// client hasn't said it offers; not commands of the person's, and in
 /// no palette.
 pub fn bridge_catalog() -> Vec<ActionSpec> {
-    // (`args`: the command's own arguments, in order.)
-    let command = || Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}}},"required":["args"]}));
+    // (`args`: the command's own arguments, in order; omitted when empty because
+    // Rex's Lua 5.1 encodes an empty table as `{}` rather than `[]`.)
+    let command = || Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}}}}));
+    let start_schema = {
+        let mut props = serde_json::Map::new();
+        props.insert("cli".into(), json!({ "type": "string", "enum": ["claude", "codex", "agy"] }));
+        for k in [
+            "model",
+            "effort",
+            "name",
+            "desktop",
+            "resume",
+            "session_id",
+            "title",
+            "role",
+            "cwd",
+            "parent",
+            "prompt",
+            "permission_mode",
+            "approval",
+            "mode",
+            "add_dir",
+            "agent",
+            "profile",
+            "settings",
+            "system_prompt",
+            "append_system_prompt",
+            "project",
+            "input_format",
+            "output_format",
+        ] {
+            props.insert(k.into(), json!({ "type": "string" }));
+        }
+        for k in [
+            "trust",
+            "continue",
+            "last",
+            "fork",
+            "full_auto",
+            "approve_for_me",
+            "dangerously_skip_permissions",
+            "allow_dangerously_skip_permissions",
+            "strict_mcp_config",
+            "new_project",
+            "remote_agent",
+            "remote_control",
+            "search",
+            "no_alt_screen",
+            "no_daemon",
+            "print",
+            "stream",
+            "focus",
+            "close_on_exit",
+            "json",
+        ] {
+            props.insert(k.into(), json!({ "type": "boolean" }));
+        }
+        for k in ["unset_env", "allowed_tools", "disallowed_tools", "add_dirs", "configs", "mcp_configs", "image", "extra", "args"] {
+            props.insert(k.into(), json!({ "type": "array", "items": { "type": "string" } }));
+        }
+        props.insert("env".into(), json!({ "type": "object" }));
+        props.insert("sandbox".into(), json!({}));
+        props.insert("worktree".into(), json!({}));
+        json!({ "type": "object", "properties": props })
+    };
     vec![
         ActionSpec {
             id: "olo.agent.start",
             title: "Launch a Native Nested Subagent Tab in Rex",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "tab", "claude", "codex", "agy", "spawn"],
-            args_schema: Some(json!({
-                "type": "object",
-                "properties": {
-                    "cli": { "type": "string", "enum": ["claude", "codex", "agy"] },
-                    "model": { "type": "string" },
-                    "effort": { "type": "string" },
-                    "resume": { "type": "string" },
-                    "continue": { "type": "boolean" },
-                    "fork": { "type": "boolean" },
-                    "title": { "type": "string" },
-                    "role": { "type": "string" },
-                    "cwd": { "type": "string" },
-                    "prompt": { "type": "string" },
-                    "permission_mode": { "type": "string" },
-                    "approval": { "type": "string" },
-                    "sandbox": { "type": "string" },
-                    "mode": { "type": "string" },
-                    "args": { "type": "array", "items": { "type": "string" } }
-                }
-            })),
+            args_schema: Some(start_schema),
         },
         ActionSpec {
             id: "olo.agent.list",
             title: "List Nested Subagent Tabs in This Rex Session",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "list", "tree"],
-            args_schema: Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}},"all":{"type":"boolean"},"tree":{"type":"boolean"},"json":{"type":"boolean"}}})),
+            args_schema: Some(
+                json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}},"all":{"type":"boolean"},"fast":{"type":"boolean"},"parent":{"type":"string"},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
+            ),
         },
         ActionSpec {
             id: "olo.agent.status",
             title: "Inspect a Nested Subagent Tab’s Live Status",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "status", "state"],
-            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}})),
+            args_schema: Some(
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
+            ),
         },
         ActionSpec {
             id: "olo.agent.read",
@@ -425,7 +473,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "read", "tail", "output"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"lines":{"type":"integer"},"scrollback":{"type":"boolean"},"ansi":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"lines":{"type":"integer"},"scrollback":{"type":"boolean"},"ansi":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {
@@ -434,7 +482,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "watch", "wait", "alert", "question", "approval"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"targets":{"type":"array","items":{"type":"string"}},"all":{"type":"boolean"},"since":{"type":"integer"},"parent":{"type":"string"},"on":{"type":"string"},"match":{"type":"string"},"regex":{"type":"string"},"timeout":{"type":"integer"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"targets":{"type":"array","items":{"type":"string"}},"all":{"type":"boolean"},"since":{"type":"integer"},"parent":{"type":"string"},"on":{},"match":{"type":"string"},"regex":{"type":"string"},"timeout":{"type":"integer"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {
@@ -443,7 +491,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "send", "input", "keys", "ctrl"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"text":{"type":"string"},"enter":{"type":"boolean"},"paste":{"type":"boolean"},"ctrl":{"type":"string"},"key":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"text":{"type":"string"},"enter":{"type":"boolean"},"paste":{"type":"boolean"},"verify":{"type":"boolean"},"force":{"type":"boolean"},"ctrl":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {
@@ -452,7 +500,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "approve", "deny", "permission", "once"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"once":{"type":"boolean"},"no":{"type":"boolean"},"reason":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"once":{"type":"boolean"},"no":{"type":"boolean"},"reason":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {
@@ -461,7 +509,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "stop", "close", "kill", "save"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"force":{"type":"boolean"},"tree":{"type":"boolean"},"keep_tab":{"type":"boolean"},"save":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"force":{"type":"boolean"},"tree":{"type":"boolean"},"keep_tab":{"type":"boolean"},"save":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {
@@ -469,14 +517,14 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             title: "Prune Exited Subagent Records from This Session’s Registry",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "prune", "clean", "exited"],
-            args_schema: Some(json!({"type":"object","properties":{"all":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}})),
+            args_schema: Some(json!({"type":"object","properties":{"all":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}})),
         },
         ActionSpec {
             id: "olo.agent.focus",
             title: "Focus a Nested Subagent Tab in Rex",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "focus", "switch"],
-            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}}})),
+            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"}}})),
         },
         ActionSpec {
             id: "olo.open",
@@ -529,7 +577,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             title: "Run a Command on the Olo Desktop",
             category: "Olo Bridge",
             keywords: &["run", "exec", "command", "desktop"],
-            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}},"required":["args"]})),
+            args_schema: Some(json!({"type":"object","properties":{"id":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}}})),
         },
         ActionSpec {
             id: "olo.run.poll",

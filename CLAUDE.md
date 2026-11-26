@@ -276,12 +276,10 @@ are universal and non-negotiable:
   blocked (Ben, 2026-11-24: "keep in there for me an up to date todo
   list of the work (just a brief 1 line entry for each one and check
   them off as you go"; "a rule asking you to do it by default on new
-  sessions"). Each time you start a UX/visual design review, also keep
-  the work board updated with the most relevant 3–6 screenshots via
-  `@img PATH [CAPTION]` (rendered inline with Kitty graphics by
-  `tools/dev/worklist`, e.g. 1–2 crisp contact-sheet strips covering the
-  key states/themes) so the person can follow along live (Ben,
-  2026-11-25).
+  sessions"). Keep it text-only — never embed screenshots (`@img`) in
+  the right-pane progress board (Ben, 2026-11-26: "remove the
+  screenshots from the right pane progress board for me please they're
+  too intrusive").
 - **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
   Gemini 4 Neon at xhigh in the Antigravity CLI (`agy`) but Opus's

@@ -59,9 +59,14 @@ pub fn ensure_local_bin_dir() -> Option<PathBuf> {
     let write_if_changed = |name: &str, body: &str, exec: bool| {
         let path = dir.join(name);
         if std::fs::read_to_string(&path).ok().as_deref() != Some(body) {
-            let _ = std::fs::write(&path, body);
-        }
-        if exec {
+            let tmp = dir.join(format!(".{name}.tmp.{}", std::process::id()));
+            if std::fs::write(&tmp, body).is_ok() {
+                if exec {
+                    let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
+                }
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        } else if exec {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
     };
@@ -233,7 +238,7 @@ const KEPT_FOR: Duration = Duration::from_secs(300);
 pub struct Calls {
     /// [`ANSWER_WITHIN`] (shorter in a test).
     within: Duration,
-    running: std::sync::Mutex<HashMap<String, (Instant, tokio::task::JoinHandle<BridgeResponse>)>>,
+    running: Arc<std::sync::Mutex<HashMap<String, (Instant, tokio::task::JoinHandle<BridgeResponse>)>>>,
     files: std::sync::Mutex<HashMap<String, (Instant, Arc<Vec<u8>>)>>,
 }
 
@@ -268,16 +273,33 @@ impl Calls {
             Ok(Ok(response)) => self.with_files(response),
             Ok(Err(e)) => json!(BridgeResponse::err(format!("Olo Bridge: the command failed here: {e}"))),
             Err(_) => {
-                let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
-                // (One nobody asked after again is stopped.)
-                running.retain(|_, (since, work)| {
-                    let keep = since.elapsed() < KEPT_FOR;
-                    if !keep {
-                        work.abort();
+                // Cancel abandoned pending calls (e.g. a caller killed by its harness tool timeout)
+                // after 3 * ANSWER_WITHIN (24s in prod) with no follow-up `olo.wait`!
+                let orphan_ttl = (self.within * 3).max(Duration::from_secs(2));
+                {
+                    let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+                    running.retain(|_, (since, work)| {
+                        let keep = since.elapsed() < orphan_ttl;
+                        if !keep {
+                            work.abort();
+                        }
+                        keep
+                    });
+                    running.insert(id.clone(), (Instant::now(), work));
+                }
+                // Schedule a single zero-polling timer to reap `id` if nobody calls `olo.wait` within `orphan_ttl`.
+                let running_arc = self.running.clone();
+                let id_check = id.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(orphan_ttl + Duration::from_millis(250)).await;
+                    let mut running = running_arc.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some((since, _)) = running.get(&id_check)
+                        && since.elapsed() >= orphan_ttl
+                        && let Some((_, handle)) = running.remove(&id_check)
+                    {
+                        handle.abort();
                     }
-                    keep
                 });
-                running.insert(id.clone(), (Instant::now(), work));
                 json!({ "pending": id })
             }
         }
@@ -405,7 +427,17 @@ fn pictures_named(out: &str) -> Vec<String> {
 /// `olo-screen`). (`OLO_REX_BRIDGE_BIN`: looked for in that folder
 /// first, for the rig's stand-ins.)
 fn program(name: &str) -> Option<PathBuf> {
-    std::env::var_os("OLO_REX_BRIDGE_BIN").map(|dir| PathBuf::from(dir).join(name)).filter(|p| p.is_file()).or_else(|| olo_xdg::find_program(name))
+    if let Some(dir) = std::env::var_os("OLO_REX_BRIDGE_BIN") {
+        let candidate = PathBuf::from(dir).join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    olo_xdg::find_program(name).filter(|p| {
+        let s = p.to_string_lossy();
+        // Never recursively invoke our own Rex bridge shims!
+        !s.contains("rex-commands/") && !s.contains("state/olo/rex/bin/")
+    })
 }
 
 /// Callback used by the bridge to request an ephemeral `-L` port forward on a remote
@@ -799,18 +831,21 @@ pub fn generate_remote_skill_install_script() -> String {
         r#"set -eu
 SKILL_DIR="$HOME/.claude/skills/olo-rex-bridge"
 mkdir -p "$SKILL_DIR"
-cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/SKILL.md"
+cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/.SKILL.md.tmp.$$"
 {SKILL}OLO_SKILL_EOF
-cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/olo"
+mv -f "$SKILL_DIR/.SKILL.md.tmp.$$" "$SKILL_DIR/SKILL.md"
+cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/.olo.tmp.$$"
 {SKILL_OLO}OLO_SKILL_EOF
-cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/olo.lua"
+chmod +x "$SKILL_DIR/.olo.tmp.$$"
+mv -f "$SKILL_DIR/.olo.tmp.$$" "$SKILL_DIR/olo"
+cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/.olo.lua.tmp.$$"
 {SKILL_LUA}OLO_SKILL_EOF
-chmod +x "$SKILL_DIR/olo"
+mv -f "$SKILL_DIR/.olo.lua.tmp.$$" "$SKILL_DIR/olo.lua"
 mkdir -p "$HOME/.local/bin"
 if [ ! -e "$HOME/.local/bin/olo" ] || [ -L "$HOME/.local/bin/olo" ]; then
   ln -sf "$SKILL_DIR/olo" "$HOME/.local/bin/olo"
 fi
-echo '{stamp}' > "$SKILL_DIR/.olo-skill"
+echo '{stamp}' > "$SKILL_DIR/.olo-skill.tmp.$$" && mv -f "$SKILL_DIR/.olo-skill.tmp.$$" "$SKILL_DIR/.olo-skill"
 if command -v rex >/dev/null 2>&1; then
   rex skill setup 2>/dev/null || true
 fi
@@ -870,13 +905,17 @@ pub fn install_commands_script() -> String {
         r#"set -eu
 DIR="$HOME/{COMMANDS_DIR}"
 mkdir -p "$DIR"
-cat <<'OLO_COMMANDS_EOF' > "$DIR/olo"
+cat <<'OLO_COMMANDS_EOF' > "$DIR/.olo.tmp.$$"
 {SKILL_OLO}OLO_COMMANDS_EOF
-cat <<'OLO_COMMANDS_EOF' > "$DIR/olo.lua"
+chmod +x "$DIR/.olo.tmp.$$"
+mv -f "$DIR/.olo.tmp.$$" "$DIR/olo"
+cat <<'OLO_COMMANDS_EOF' > "$DIR/.olo.lua.tmp.$$"
 {SKILL_LUA}OLO_COMMANDS_EOF
-cat <<'OLO_COMMANDS_EOF' > "$DIR/olo-desktop-command"
+mv -f "$DIR/.olo.lua.tmp.$$" "$DIR/olo.lua"
+cat <<'OLO_COMMANDS_EOF' > "$DIR/.olo-desktop-command.tmp.$$"
 {SHIM}OLO_COMMANDS_EOF
-chmod +x "$DIR/olo" "$DIR/olo-desktop-command"
+chmod +x "$DIR/.olo-desktop-command.tmp.$$"
+mv -f "$DIR/.olo-desktop-command.tmp.$$" "$DIR/olo-desktop-command"
 mkdir -p "$HOME/.local/bin"
 if [ ! -e "$HOME/.local/bin/olo" ] || [ -L "$HOME/.local/bin/olo" ]; then
   ln -sf "$DIR/olo" "$HOME/.local/bin/olo"
@@ -890,7 +929,7 @@ if [ -d "$HOME/.config/fish" ]; then
   mkdir -p "$HOME/.config/fish/conf.d"
   printf '{fish}' > "$HOME/.config/fish/conf.d/olo-rex.fish"
 fi
-echo '{stamp}' > "$DIR/.olo-commands"
+echo '{stamp}' > "$DIR/.olo-commands.tmp.$$" && mv -f "$DIR/.olo-commands.tmp.$$" "$DIR/.olo-commands"
 echo "Installed Olo's desktop commands in $DIR"
 "#,
         line = COMMANDS_LINE.replace('\'', "'\\''"),
@@ -938,6 +977,14 @@ mod tests {
         assert!(!screen_opens_addresses(&args(&["set", "qa", "--name", "URL", "http://localhost:5176/"])));
         assert!(!screen_opens_addresses(&args(&["wait", "qa", "--text", "http://localhost:5176"])));
         assert!(!screen_opens_addresses(&args(&[])));
+    }
+
+    #[test]
+    fn install_heredocs_have_trailing_newlines_and_no_terminator_collisions() {
+        for (name, body) in [("SKILL", SKILL), ("SKILL_OLO", SKILL_OLO), ("SKILL_LUA", SKILL_LUA), ("SHIM", SHIM)] {
+            assert!(body.ends_with('\n'), "{name} must end with a trailing newline for install heredoc");
+            assert!(!body.lines().any(|l| l == "OLO_SKILL_EOF" || l == "OLO_COMMANDS_EOF"), "{name} must not contain heredoc terminator line");
+        }
     }
 
     /// A host's `look NAME PATH`: PATH taken out of what the desktop runs,
@@ -1139,7 +1186,7 @@ mod present_tests {
             .env("TMPDIR", home.join("tmp"))
             .output()
             .unwrap();
-        assert_eq!(String::from_utf8_lossy(&via_path.stdout), format!("rex: --timeout 3600s do {}\ncmd=agent argc=4\n[watch]\n[--all]\n[--since]\n[0]\n", lua.display()));
+        assert_eq!(String::from_utf8_lossy(&via_path.stdout), format!("rex: --timeout 3660s do {}\ncmd=agent argc=4\n[watch]\n[--all]\n[--since]\n[0]\n", lua.display()));
         // (Every action the skill names is one the app offers, and it
         // names every one the app offers.)
         let offered: Vec<&str> = crate::keymap::bridge_catalog().iter().map(|a| a.id).collect();

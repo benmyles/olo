@@ -91,30 +91,89 @@ pub fn shared_server(comm: &str, exe: &str, args: &[String]) -> bool {
 /// Navigate" under its answers; working with a message queued, its last
 /// line is "Press up to edit queued messages" and only its spinner (a
 /// braille figure at a line's start, above its field) says it works.
+///
+/// Scoped to each CLI's bottom chrome / dialog region so ordinary output
+/// prose (e.g. `"Do you want to keep the old API?"` or `"esc to cancel"`
+/// in docs or test logs) is never misclassified as `Blocked` or `Working`.
 pub fn classify(agent: Agent, screen: &str) -> State {
-    let s = screen.to_lowercase();
+    let non_empty: Vec<&str> = screen.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let tail_joined = |n: usize| -> String {
+        let start = non_empty.len().saturating_sub(n);
+        non_empty[start..].join("\n").to_ascii_lowercase()
+    };
     if agent == Agent::Antigravity {
-        // (Its spinner in the last lines, not its banner's art above:
-        // read from the end, nothing gathered.)
-        // (Its last eight lines with words: a screen given untrimmed ends
-        // in blank ones. U+2800 is braille's blank, a space, no spinner.)
-        let spinning = || screen.lines().rev().filter(|l| !l.trim().is_empty()).take(8).any(|l| l.trim_start().chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)));
-        return if s.contains("↑/↓ navigate") {
+        // Check only the bottom 8 non-empty chrome lines (banner art / scrollback prose ignored).
+        let bottom8 = tail_joined(8);
+        let spinning = || non_empty.iter().rev().take(8).any(|l| l.chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)));
+        return if bottom8.contains("↑/↓ navigate") || parse_approval(agent, screen).is_some() {
             State::Blocked
-        } else if s.contains("esc to cancel") || s.contains("press up to edit queued messages") || spinning() {
+        } else if bottom8.contains("esc to cancel") || bottom8.contains("press up to edit queued messages") || spinning() {
             State::Working
         } else {
             State::Idle
         };
     }
-    const ASKING: [&str; 9] = ["do you want to", "would you like to", "allow command?", "enter to select", "enter to confirm", "esc to cancel", "❯ 1. yes", "› 1. yes", "(y/n)"];
-    if ASKING.iter().any(|a| s.contains(a)) {
+    if parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
+        return State::Blocked;
+    }
+    let bottom6 = tail_joined(6);
+    let bottom10 = tail_joined(10);
+    // Genuine working indicator in Claude Code / Codex status footer.
+    if bottom6.contains("esc to interrupt") {
+        return State::Working;
+    }
+    // Check chooser/dialog chrome strictly within the bottom region so prose never triggers Blocked.
+    let has_dialog_mark = bottom10.contains("❯ 1. ") || bottom10.contains("› 1. ") || bottom6.contains("❯ 1.") || bottom6.contains("› 1.");
+    let has_footer_chrome = bottom6.contains("enter to select") || bottom6.contains("enter to confirm") || bottom6.contains("press enter to continue") || bottom6.contains("esc to cancel");
+    let has_non_prompt_chooser_mark = {
+        let lines: Vec<&str> = screen.lines().collect();
+        let prompt_idxs = prompt_line_indices(agent, &lines);
+        let start = lines.len().saturating_sub(14);
+        lines.iter().enumerate().skip(start).any(|(i, l)| {
+            !prompt_idxs.contains(&i) && {
+                let t = l.trim_start();
+                t.starts_with('❯') || t.starts_with('›')
+            }
+        })
+    };
+    if has_dialog_mark
+        || (has_footer_chrome && has_non_prompt_chooser_mark)
+        || bottom6.contains("allow command?")
+        || non_empty.last().is_some_and(|l| {
+            let low = l.to_ascii_lowercase();
+            low.ends_with("(y/n)") || low.ends_with("[y/n]")
+        })
+    {
         State::Blocked
-    } else if s.contains("esc to interrupt") {
-        State::Working
     } else {
         State::Idle
     }
+}
+
+/// Returns line indices in `lines` that correspond to the agent's own chat input prompt
+/// (as opposed to chooser cursor lines like `❯ 1. Yes` or `❯ No, exit`).
+fn prompt_line_indices(agent: Agent, lines: &[&str]) -> Vec<usize> {
+    let rule = |l: &str| {
+        let t = l.trim();
+        t.contains("────") && (t.starts_with('─') || t.ends_with('─'))
+    };
+    let numbered = |s: &str| s.split_once('.').is_some_and(|(n, rest)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) && rest.starts_with(' '));
+    let mut out = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let t = l.trim_start();
+        let is_prompt = match agent {
+            Agent::Claude => (t.starts_with('❯') && lines[..i].iter().rev().find(|l| !l.trim().is_empty()).is_some_and(|l| rule(l))) || t.starts_with("│ >") || t.starts_with("│ ❯"),
+            Agent::Codex => t.strip_prefix('›').is_some_and(|rest| !numbered(rest.trim_start())),
+            Agent::Antigravity => {
+                let ruled = |l: Option<&&str>| l.is_some_and(|l| rule(l));
+                t.starts_with('>') && ruled(lines[..i].iter().rev().find(|l| !l.trim().is_empty())) && ruled(lines[i + 1..].iter().find(|l| !l.trim().is_empty()))
+            }
+        };
+        if is_prompt {
+            out.push(i);
+        }
+    }
+    out
 }
 
 /// `agent`'s own prompt is on `screen`, waiting for a message: what Keep
@@ -195,7 +254,8 @@ pub fn approvable(screen: &str) -> Option<Ask> {
     }
     let first = rest[at].trim();
     let chosen = marks.iter().find_map(|mark| first.strip_prefix(*mark))?.trim_start();
-    if !chosen.to_lowercase().starts_with("1. yes") || rest.iter().any(|l| l.to_lowercase().contains("keep planning")) {
+    let chosen_label = chosen.strip_prefix("1. ").or_else(|| chosen.strip_prefix("1.\t"))?;
+    if classify_choice_kind(chosen_label) != ChoiceKind::Once || rest.iter().any(|l| l.to_lowercase().contains("keep planning")) {
         return None;
     }
     use std::hash::{Hash, Hasher};
@@ -289,15 +349,17 @@ pub struct ApprovalPrompt {
     pub selected_index: Option<usize>,
 }
 
-/// Claude Code's startup folder-trust safety dialog.
+/// Startup folder-trust safety dialog (Claude Code workspace/`--add-dir` trust or Codex directory trust).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolderTrustPrompt {
     pub folder: Option<String>,
-    /// 0-based index of the currently highlighted choice (`❯`).
+    /// True when Claude Code is asking about a secondary `--add-dir` directory rather than the primary workspace.
+    pub is_add_dir: bool,
+    /// 0-based index of the currently highlighted choice (`❯` / `›`).
     pub selected_index: usize,
-    /// 0-based index of `"Yes, I trust this folder"`.
+    /// 0-based index of `"Yes, I trust this folder"` / `"Yes, add it"` / `"Yes, continue"`.
     pub trust_index: usize,
-    /// True when the cursor is already on `"Yes, I trust this folder"`.
+    /// True when the cursor is already on the trust choice.
     pub selected_trust: bool,
 }
 
@@ -309,42 +371,136 @@ pub struct UsageInfo {
     pub limit_reached: bool,
 }
 
-fn classify_choice_kind(label: &str) -> ChoiceKind {
-    let lower = label.trim().to_ascii_lowercase();
-    if lower.contains("switch to auto") || lower.contains("auto-accept") || lower.contains("auto mode") {
+/// Normalizes Unicode apostrophes/quotes, strips zero-width characters, and collapses whitespace
+/// so choice matching handles typographic punctuation like Claude Code's `don’t ask again` (U+2019).
+fn normalize_choice_text(label: &str) -> String {
+    let replaced: String = label
+        .chars()
+        .filter(|c| !matches!(c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}' | '\u{00AD}'))
+        .map(|c| match c {
+            '\u{2018}' | '\u{2019}' | '\u{02BC}' | '\u{2032}' | '`' => '\'',
+            '\u{201C}' | '\u{201D}' => '"',
+            '\u{00A0}' => ' ',
+            other => other.to_ascii_lowercase(),
+        })
+        .collect();
+    replaced.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Strips a single trailing parenthetical shortcut hint such as `(y)`, `(1)`, `(enter)`.
+fn strip_trailing_shortcut(s: &str) -> &str {
+    let t = s.trim();
+    if let Some(open) = t.rfind('(')
+        && t.ends_with(')')
+    {
+        let inside = &t[open + 1..t.len() - 1];
+        if !inside.is_empty() && inside.len() <= 10 && inside.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '+' | '-' | '/')) {
+            return t[..open].trim_end();
+        }
+    }
+    t
+}
+
+pub fn classify_choice_kind(label: &str) -> ChoiceKind {
+    let lower = normalize_choice_text(label);
+    if lower.is_empty() {
+        return ChoiceKind::Other;
+    }
+    if lower.contains("switch to auto")
+        || lower.contains("auto-accept")
+        || lower.contains("auto mode")
+        || lower.contains("shift+tab")
+        || lower.contains("bypass permission")
+        || lower.contains("full-auto")
+    {
         return ChoiceKind::SwitchMode;
     }
-    if lower.contains("persist to settings") || lower.contains("settings.json") || lower.contains("don't ask again") || lower.contains("dont ask again") {
+    if lower.contains("persist to settings")
+        || lower.contains("settings.json")
+        || lower.contains("don't ask")
+        || lower.contains("dont ask")
+        || lower.contains("do not ask")
+        || lower.contains("remember")
+        || lower.contains("all future")
+        || lower.contains("for future")
+    {
         return ChoiceKind::DontAskAgain;
     }
-    if lower.contains("always allow") {
+    if lower.contains("always allow") || lower.contains("always approve") || lower.contains("always run") {
         if lower.contains("this conversation") || lower.contains("this session") {
             return ChoiceKind::AllowSession;
         }
         return ChoiceKind::DontAskAgain;
     }
-    if lower.contains("allow all edits") || lower.contains("during this session") || lower.contains("in this session") {
+    if lower.contains("allow all")
+        || lower.contains("allow reading")
+        || lower.contains("allow edits")
+        || lower.contains("during this session")
+        || lower.contains("in this session")
+        || lower.contains("for this session")
+        || lower.contains("this conversation")
+        || lower.contains("rest of this session")
+        || lower.contains("for commands that start with")
+        || lower.contains("for commands in")
+    {
         return ChoiceKind::AllowSession;
     }
-    if lower == "no" || lower.starts_with("no,") || lower.starts_with("no ") || lower.starts_with("no(") || lower.contains("cancel") {
+    if lower == "no" || lower.starts_with("no,") || lower.starts_with("no ") || lower.starts_with("no(") || lower.contains("cancel") || lower.starts_with("deny") || lower.starts_with("reject") {
         return ChoiceKind::No;
     }
-    if lower == "yes" || lower.starts_with("yes,") || lower.starts_with("yes ") || lower.starts_with("yes(") {
+    // Strict allowlist for single-use `Once`: NEVER classify unknown `"Yes, and ..."` or
+    // standing-permission phrasing as `Once`.
+    let clean = strip_trailing_shortcut(&lower).trim_end_matches('.');
+    if matches!(
+        clean,
+        "yes"
+            | "y"
+            | "yes, proceed"
+            | "yes, continue"
+            | "yes, run"
+            | "yes, run command"
+            | "yes, run this command"
+            | "yes, run tool"
+            | "yes, run once"
+            | "yes, once"
+            | "yes, allow once"
+            | "yes, allow this once"
+            | "yes, approve once"
+            | "yes, this time"
+            | "yes, allow"
+            | "yes, allow this"
+            | "yes, allow this tool"
+            | "yes, allow this command"
+            | "allow once"
+            | "approve once"
+            | "run once"
+            | "run command"
+            | "proceed"
+    ) {
         return ChoiceKind::Once;
     }
     ChoiceKind::Other
 }
 
-/// Detects Claude Code's folder-trust dialog and reports exact cursor & trust indices.
+/// Detects Claude Code's startup folder-trust / `--add-dir` trust dialog or Codex's
+/// directory-trust safety dialog and reports exact cursor & trust indices.
 pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
-    let lower = screen.to_ascii_lowercase();
-    if !lower.contains("trust this folder") && !lower.contains("is this a project you created or one you trust") {
+    let lower = normalize_choice_text(screen);
+    let is_add_dir = lower.contains("adding a new directory") && (lower.contains("yes, add") || lower.contains("is this a directory you created or one you trust"));
+    let is_codex_trust = lower.contains("do you trust the contents of this directory") && lower.contains("yes, continue");
+    let is_folder_trust = is_add_dir
+        || is_codex_trust
+        || lower.contains("trust this folder")
+        || lower.contains("is this a project you created or one you trust")
+        || lower.contains("is this a directory you created or one you trust");
+    if !is_folder_trust {
         return None;
     }
     let lines: Vec<&str> = screen.lines().collect();
     let mut folder: Option<String> = None;
     for (i, l) in lines.iter().enumerate() {
-        if l.to_ascii_lowercase().contains("accessing workspace") {
+        let lt = l.to_ascii_lowercase();
+        if lt.contains("accessing workspace") || lt.contains("adding a new directory") {
             for next in &lines[i + 1..] {
                 let t = next.trim();
                 if t.is_empty() {
@@ -354,6 +510,14 @@ pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
                     folder = Some(t.to_owned());
                 }
                 break;
+            }
+        } else if is_codex_trust
+            && folder.is_none()
+            && let Some(pos) = lt.find("you are in ")
+        {
+            let rest = l[pos + "you are in ".len()..].trim().trim_end_matches('.');
+            if rest.starts_with('/') || rest.starts_with('~') {
+                folder = Some(rest.to_owned());
             }
         }
     }
@@ -366,14 +530,21 @@ pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
             None => (false, trimmed),
         };
         let rest_clean = rest.split_once(". ").filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).map(|(_, r)| r.trim_start()).unwrap_or(rest);
-        let rl = rest_clean.to_ascii_lowercase();
-        if rl.starts_with("yes, i trust") || rl.starts_with("yes, trust") || rl.starts_with("no, exit") || rl.starts_with("no, i don't trust") {
+        let rl = normalize_choice_text(rest_clean);
+        if rl.starts_with("yes, i trust")
+            || rl.starts_with("yes, trust")
+            || rl.starts_with("yes, add")
+            || (is_codex_trust && rl.starts_with("yes, continue"))
+            || rl.starts_with("no, exit")
+            || rl.starts_with("no, quit")
+            || rl.starts_with("no, i don't trust")
+        {
             choices.push((marked, rest_clean.to_owned()));
         }
     }
     let trust_index = choices.iter().position(|(_, c)| c.to_ascii_lowercase().starts_with("yes"))?;
     let selected_index = choices.iter().position(|(m, _)| *m).unwrap_or(0);
-    Some(FolderTrustPrompt { folder, selected_index, trust_index, selected_trust: selected_index == trust_index })
+    Some(FolderTrustPrompt { folder, is_add_dir, selected_index, trust_index, selected_trust: selected_index == trust_index })
 }
 
 /// Parses a structured tool-approval prompt across Claude Code, Codex, and Antigravity (`agy`).
@@ -403,14 +574,43 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
         Some((selected, num, label.trim().to_owned()))
     };
 
-    let q_idx = lines.iter().enumerate().rposition(|(i, l)| {
-        let t = l.trim().to_ascii_lowercase();
+    let is_known_question = |q: &str| -> bool {
+        let t = q.trim().to_ascii_lowercase();
+        t.ends_with('?') && (t.starts_with("do you want to ") || t.starts_with("would you like to ") || t.starts_with("run this command") || t.starts_with("allow "))
+    };
+
+    // Match single-line OR 2-line wrapped approval question headers (e.g. long edit file paths).
+    let (q_start_idx, q_idx, question_text) = lines.iter().enumerate().rev().find_map(|(i, l)| {
+        let trimmed = l.trim();
+        if !trimmed.ends_with('?') {
+            return None;
+        }
         let first_under = || lines[i + 1..].iter().find(|nl| !nl.trim().is_empty()).and_then(|nl| parse_numbered(nl)).is_some_and(|(_, num, _)| num == 1);
-        t.ends_with('?') && (t.starts_with("do you want to ") || t.starts_with("would you like to ") || t.starts_with("run this command") || t.starts_with("allow ") || (navigated && first_under()))
+        if is_known_question(trimmed) || (navigated && first_under()) {
+            return Some((i, i, trimmed.to_owned()));
+        }
+        // Try joining with the preceding non-empty line for wrapped questions (`Do you want to make this edit to` / `path/to/file.rs?`).
+        if let Some((pi, prev)) = lines[..i].iter().enumerate().rev().find(|(_, pl)| !pl.trim().is_empty()) {
+            let joined = format!("{} {}", prev.trim(), trimmed);
+            if is_known_question(&joined) {
+                return Some((pi, i, joined));
+            }
+        }
+        None
     })?;
 
     let rest = &lines[q_idx + 1..];
-    let first_choice_rel = rest.iter().position(|l| parse_numbered(l).is_some_and(|(_, num, _)| num == 1))?;
+    // Find `1. ...` strictly belonging to the chooser (not a numbered line inside a command preview:
+    // require it to be the last `1. ` block or followed by another choice + cursor mark).
+    let first_choice_rel = rest.iter().enumerate().rev().find_map(|(idx, l)| {
+        let (_, num, _) = parse_numbered(l)?;
+        if num != 1 {
+            return None;
+        }
+        // Confirm at least one choice in this trailing block has a live cursor mark.
+        let has_cursor = rest[idx..].iter().take(12).any(|cl| parse_numbered(cl).is_some_and(|(sel, _, _)| sel));
+        has_cursor.then_some(idx)
+    })?;
     if rest[..first_choice_rel].iter().map(|l| l.trim()).any(|l| l.ends_with('?') && !l.starts_with("Reason:")) {
         return None;
     }
@@ -418,13 +618,23 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
         return None;
     }
 
-    // Collect consecutive numbered choices (allowing wrapped continuation lines indented under a choice).
+    // Collect numbered choices in ascending order (supporting skipped numbers like agy's `1, 2, 4`
+    // and both indented AND column-0 wrapped continuation lines, while NEVER absorbing another numbered line).
     let mut choices: Vec<ApprovalChoice> = Vec::new();
-    let mut expected_num = 1u32;
+    let mut last_num = 0u32;
+    let mut wrap_lines_for_last = 0u8;
     let footer_marker = |l: &str| {
         let tl = l.trim().to_ascii_lowercase();
-        tl.starts_with("esc to cancel") || tl.starts_with("press enter to confirm") || tl.starts_with("↑/↓ navigate") || tl.starts_with("enter to select") || tl.starts_with("tab to amend")
+        tl.starts_with("esc to cancel")
+            || tl.starts_with("press enter to confirm")
+            || tl.starts_with("press enter to continue")
+            || tl.starts_with("↑/↓ navigate")
+            || tl.starts_with("enter to select")
+            || tl.starts_with("tab to amend")
+            || tl.starts_with("ctrl+")
     };
+    let is_rule_or_chrome =
+        |t: &str| t.starts_with('─') || t.starts_with('╌') || t.starts_with('═') || t.starts_with('━') || t.starts_with('❯') || t.starts_with('›') || t.starts_with("> ") || t.starts_with("? for ");
     for line in &rest[first_choice_rel..] {
         let t = line.trim();
         if t.is_empty() || footer_marker(t) {
@@ -433,19 +643,25 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
             }
             continue;
         }
-        if let Some((selected, num, label)) = parse_numbered(line)
-            && num == expected_num
-        {
-            let kind = classify_choice_kind(&label);
-            let idx = choices.len();
-            choices.push(ApprovalChoice { index: idx, number: Some(num), label, selected, kind });
-            expected_num += 1;
+        if let Some((selected, num, label)) = parse_numbered(line) {
+            if (choices.is_empty() && num == 1) || (!choices.is_empty() && num > last_num && num <= last_num + 3) {
+                let kind = classify_choice_kind(&label);
+                let idx = choices.len();
+                choices.push(ApprovalChoice { index: idx, number: Some(num), label, selected, kind });
+                last_num = num;
+                wrap_lines_for_last = 0;
+            } else if !choices.is_empty() {
+                // Out-of-order numbered line: NEVER merge into previous choice!
+                break;
+            }
         } else if let Some(last) = choices.last_mut()
-            && (line.starts_with("    ") || line.starts_with('\t'))
+            && !is_rule_or_chrome(t)
+            && wrap_lines_for_last < 3
         {
             last.label.push(' ');
             last.label.push_str(t);
             last.kind = classify_choice_kind(&last.label);
+            wrap_lines_for_last += 1;
         } else if !choices.is_empty() {
             break;
         }
@@ -460,16 +676,16 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     // Must have a live cursor mark on one of the choices (prevents stale scrollback false positives).
     let selected_index = choices.iter().position(|c| c.selected)?;
 
-    // Extract tool name, full command/arguments, and folded-line indicator from the dialog body above `q_idx`
+    // Extract tool name, full command/arguments, and folded-line indicator from the dialog body above `q_start_idx`
     // (and between `q_idx` and `first_choice_rel` for Codex).
-    let dialog_start = lines[..q_idx]
+    let dialog_start = lines[..q_start_idx]
         .iter()
         .rposition(|l| {
             let t = l.trim();
             t.starts_with("────────") && t.chars().all(|c| c == '─')
         })
-        .unwrap_or_else(|| q_idx.saturating_sub(24));
-    let header_slice = &lines[dialog_start..q_idx];
+        .unwrap_or_else(|| q_start_idx.saturating_sub(24));
+    let header_slice = &lines[dialog_start..q_start_idx];
     let between_slice = &rest[..first_choice_rel];
 
     let mut tool: Option<String> = None;
@@ -573,7 +789,7 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     }
 
     if tool.is_none() {
-        let ql = lines[q_idx].to_ascii_lowercase();
+        let ql = question_text.to_ascii_lowercase();
         if ql.contains("command") {
             tool = Some("Bash".into());
         } else if ql.contains("edit") {
@@ -587,15 +803,15 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
 
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    for l in &lines[q_idx.saturating_sub(12)..] {
+    for l in &lines[q_start_idx.saturating_sub(12)..] {
         l.chars().filter(|c| c.is_alphanumeric()).map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
     }
 
-    Some(ApprovalPrompt { key: h.finish(), question: lines[q_idx].trim().to_owned(), tool, command, folded_lines, choices, selected_index: Some(selected_index) })
+    Some(ApprovalPrompt { key: h.finish(), question: question_text, tool, command, folded_lines, choices, selected_index: Some(selected_index) })
 }
 
 /// Detects whether a genuine interactive question / non-approval chooser is active on screen
-/// (never fires on transient `"esc to cancel"` or blank repaint frames).
+/// (never fires on transient `"esc to cancel"`, idle prompt lines, or prose mentioning `"enter to confirm"`).
 pub fn parse_question(agent: Agent, screen: &str) -> Option<String> {
     if let Some(trust) = parse_folder_trust(screen) {
         return Some(match trust.folder {
@@ -607,44 +823,92 @@ pub fn parse_question(agent: Agent, screen: &str) -> Option<String> {
         return None;
     }
     let lines: Vec<&str> = screen.lines().collect();
-    let navigated = screen.contains("↑/↓ Navigate");
-    let has_chooser_footer = {
-        let sl = screen.to_ascii_lowercase();
-        navigated || sl.contains("enter to select") || sl.contains("enter to confirm")
-    };
+    let non_empty: Vec<&str> = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let bottom8 = non_empty[non_empty.len().saturating_sub(8)..].join("\n").to_ascii_lowercase();
+    let navigated = bottom8.contains("↑/↓ navigate");
+    let has_chooser_footer = navigated || bottom8.contains("enter to select") || bottom8.contains("enter to confirm") || bottom8.contains("press enter to continue");
     if !has_chooser_footer {
         return None;
     }
-    // Confirm there is a visible cursor mark on a non-prompt chooser line.
-    let has_mark = lines.iter().any(|l| {
+    // Evaluate prompt lines against the WHOLE screen and exclude them so Claude's own `❯`
+    // prompt never counts as a chooser cursor mark.
+    let prompt_idxs = prompt_line_indices(agent, &lines);
+    let dialog_top = lines.len().saturating_sub(18);
+    let has_mark = lines.iter().enumerate().skip(dialog_top).any(|(i, l)| {
+        if prompt_idxs.contains(&i) {
+            return false;
+        }
         let t = l.trim_start();
-        (t.starts_with('❯') || t.starts_with('›') || (navigated && t.starts_with("> "))) && !at_prompt(agent, l)
+        t.starts_with('❯') || t.starts_with('›') || (navigated && t.starts_with("> "))
     });
     if !has_mark {
         return None;
     }
-    lines.iter().rev().map(|l| l.trim()).find(|l| l.ends_with('?')).map(str::to_owned).or_else(|| Some("waiting for choice".into()))
+    lines[dialog_top..].iter().rev().map(|l| l.trim()).find(|l| l.ends_with('?')).map(str::to_owned).or_else(|| Some("waiting for choice".into()))
 }
 
-/// Detects an API / stream mid-response error that ended a turn without a normal Stop hook
-/// (e.g. Claude Code's `"API Error: Connection lost mid-response"`).
+/// Detects an API / stream mid-response error that ended the CURRENT turn without a normal Stop hook
+/// (e.g. Claude Code's `"API Error: Connection lost mid-response"` or Codex's `"■ ..."`).
+/// Stops scanning at prior turn boundaries so a stale error from an earlier turn never poisons
+/// a later healthy turn.
 pub fn parse_api_error(agent: Agent, screen: &str) -> Option<String> {
     if classify(agent, screen) == State::Working {
         return None;
     }
-    let tail: Vec<&str> = screen.lines().rev().map(str::trim).filter(|l| !l.is_empty()).take(18).collect();
-    for line in tail {
+    let lines: Vec<&str> = screen.lines().collect();
+    let prompt_idxs = prompt_line_indices(agent, &lines);
+    let mut seen_non_chrome = 0usize;
+    for (idx, raw) in lines.iter().enumerate().rev() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Skip horizontal rules & prompt input box / footer chrome.
+        if line.chars().all(|c| matches!(c, '─' | '╌' | '═' | '━' | '╭' | '╮' | '╰' | '╯')) {
+            continue;
+        }
+        // If we cross back to a non-empty user turn line (`› ...`, `❯ ...`, `> ...`) that is NOT
+        // the live empty prompt box / placeholder, any error above it belonged to an earlier turn!
+        let is_user_turn_line = (line.starts_with('❯') || line.starts_with('›') || line.starts_with("> ")) && {
+            let body = line.trim_start_matches(['❯', '›', '>', ' ', '\u{a0}']).trim();
+            let bl = body.to_ascii_lowercase();
+            !body.is_empty() && !bl.starts_with("ask ") && !bl.starts_with("try \"") && !bl.starts_with("accept-edits mode") && !bl.starts_with("auto mode") && !bl.starts_with("plan mode")
+        };
+        if is_user_turn_line {
+            break;
+        }
+        if prompt_idxs.contains(&idx) {
+            continue;
+        }
+        let low_raw = line.to_ascii_lowercase();
+        if low_raw.contains("? for shortcuts") || low_raw.contains("← for agents") || low_raw.contains("shift+tab to cycle") || low_raw.starts_with("gpt-") {
+            continue;
+        }
+        // Codex's turn-completion summary or a non-error assistant reply means the current turn succeeded!
+        if agent == Agent::Codex && (low_raw.contains("worked for ") || (line.starts_with("• ") && !low_raw.contains("error") && !low_raw.contains("failed") && !low_raw.contains("interrupted"))) {
+            break;
+        }
+        seen_non_chrome += 1;
+        if seen_non_chrome > 12 {
+            break;
+        }
+        if let Some(after_sq) = line.strip_prefix("■ ").map(str::trim).filter(|s| !s.is_empty()) {
+            // Skip Codex's expected user-denial notice ("Conversation interrupted - tell the model what to do differently")
+            // if a turn isn't failed; wait: when an API/stream error actually happens, Codex prints "■ stream disconnected" / "■ unexpected status".
+            // Keep real errors (including stream/API failures), and still report genuine unrecovered interrupts only when it's the current turn's tail!
+            return Some(after_sq.to_owned());
+        }
         let l = line.trim_start_matches(['⎿', '●', '•', '✗', '✕', '⚠', ' ']).trim();
         let low = l.to_ascii_lowercase();
         if l.starts_with('>') || l.starts_with('❯') || l.starts_with('›') || l.starts_with('+') || l.starts_with('-') {
             continue;
         }
         if low.starts_with("api error:")
+            || low.starts_with("api error (")
             || low.contains("connection lost mid-response")
             || low.contains("stream disconnected")
-            || low.contains("api error (")
             || low.contains("overloaded_error")
-            || low.contains("request timed out")
+            || (low.starts_with("error:") && low.contains("timed out"))
         {
             return Some(l.to_owned());
         }
@@ -652,9 +916,9 @@ pub fn parse_api_error(agent: Agent, screen: &str) -> Option<String> {
     None
 }
 
-/// Parses usage percentage and rate-limit banners from an agent's live screen.
+/// Parses usage percentage and rate-limit banners from an agent's live screen footer/status bar.
 pub fn parse_usage(screen: &str) -> Option<UsageInfo> {
-    let tail: Vec<&str> = screen.lines().rev().map(str::trim).filter(|l| !l.is_empty()).take(15).collect();
+    let tail: Vec<&str> = screen.lines().rev().map(str::trim).filter(|l| !l.is_empty()).take(6).collect();
     for line in tail {
         let low = line.to_ascii_lowercase();
         let is_limit_hit = low.contains("you've hit your limit")
@@ -969,5 +1233,57 @@ mod tests {
         let hit_scr = format!("{rule}\n❯ \n{rule}\n  You've hit your limit · resets 5pm\n");
         let uh = parse_usage(&hit_scr).expect("limit hit parsed");
         assert!(uh.limit_reached);
+    }
+
+    #[test]
+    fn audit_hardening_parsers_edge_cases() {
+        // 1. Zero-width characters & NBSP inside "don't ask again" must NEVER be `Once`.
+        assert_eq!(classify_choice_kind("Yes, and don\u{200B}\u{2019}t\u{00A0}ask again for: env"), ChoiceKind::DontAskAgain);
+        assert_eq!(classify_choice_kind("Yes, and something brand new"), ChoiceKind::Other);
+
+        // 2. Column-0 wrapped choice continuations (real `agy` narrow terminal wrapping!) & skipped numbers `1, 2, 4`.
+        let agy_col0_wrap = "Command\n────────────────────\nRequesting permission for:\n   echo DENIED_CMD_agy\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with\n'echo DENIED_CMD_agy'\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend\nesc to cancel\n";
+        let ap = parse_approval(Agent::Antigravity, agy_col0_wrap).expect("col-0 wrapped agy approval");
+        assert_eq!(ap.choices.len(), 3);
+        assert_eq!(ap.choices[0].kind, ChoiceKind::Once);
+        assert_eq!(ap.choices[1].kind, ChoiceKind::AllowSession);
+        assert_eq!(ap.choices[2].kind, ChoiceKind::No);
+        assert_eq!(ap.choices[2].number, Some(4));
+
+        // 3. 2-line wrapped Claude edit question.
+        let wrapped_q = "Edit file\n────────────────────\nDo you want to make this edit to\ncrates/rex-link/src/agent.rs?\n ❯ 1. Yes\n   2. Yes, allow all edits during this session (shift+tab)\n   3. No\n Esc to cancel\n";
+        let ap_wq = parse_approval(Agent::Claude, wrapped_q).expect("2-line wrapped edit question");
+        assert_eq!(ap_wq.question, "Do you want to make this edit to crates/rex-link/src/agent.rs?");
+        assert_eq!(ap_wq.choices.len(), 3);
+
+        // 4. Codex directory trust prompt detected as FolderTrustPrompt (not ApprovalPrompt, not Working).
+        let codex_trust = "You are in /var/tmp/repo\n\nDo you trust the contents of this directory? Working with untrusted contents comes with higher risk of prompt injection.\n\n› 1. Yes, continue\n  2. No, quit\n\nPress enter to continue\n";
+        let ct = parse_folder_trust(codex_trust).expect("codex trust");
+        assert_eq!(ct.folder.as_deref(), Some("/var/tmp/repo"));
+        assert!(!ct.is_add_dir);
+        assert!(ct.selected_trust);
+        assert!(parse_approval(Agent::Codex, codex_trust).is_none());
+        assert_eq!(classify(Agent::Codex, codex_trust), State::Blocked);
+
+        // 5. Ordinary prose containing "Do you want to", "esc to cancel", "enter to confirm", "(y/n)"
+        //    must NEVER falsely classify as Blocked or Working or parse_question!
+        let claude_prose =
+            "● Do you want to keep the old API? Use (y/n) or press Enter to confirm; esc to cancel.\n\n────────────────────────────────\n❯ \n────────────────────────────────\n  ? for shortcuts\n";
+        assert_eq!(classify(Agent::Claude, claude_prose), State::Idle);
+        assert_eq!(parse_question(Agent::Claude, claude_prose), None);
+
+        let agy_prose = "● Docs mention esc to cancel and ↑/↓ Navigate in old examples.\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\n────────────────────────────────\n> Accept-edits mode\n────────────────────────────────\n? for shortcuts\n";
+        assert_eq!(classify(Agent::Antigravity, agy_prose), State::Idle);
+
+        // 6. Stale Codex `■ Conversation interrupted` from a prior turn must NEVER poison a later healthy turn!
+        let codex_stale_err = "■ Conversation interrupted - tell the model what to do differently.\n\n› Follow-up task\n\n• TURN2_FOLLOWUP_codex_OK\n\n  Worked for 1s\n\n› Ask Codex to do anything\n  gpt-5.4-codex · /var/tmp/work\n";
+        assert_eq!(parse_api_error(Agent::Codex, codex_stale_err), None);
+        // Active error at tail of current turn IS still detected!
+        let codex_live_err = "› Run broken request\n■ stream disconnected before completion: 529 overloaded\n\n› Ask Codex to do anything\n  gpt-5.4-codex · /var/tmp/work\n";
+        assert_eq!(parse_api_error(Agent::Codex, codex_live_err).as_deref(), Some("stream disconnected before completion: 529 overloaded"));
+
+        // 7. `parse_usage` ignores ordinary output lines more than 6 lines above the bottom.
+        let fake_usage = "Test output: used 30% of the session quota\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n";
+        assert!(parse_usage(fake_usage).is_none());
     }
 }

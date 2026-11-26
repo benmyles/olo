@@ -18,9 +18,19 @@ OLO_BRIDGE_CMD=${1:-}
 i=0
 for a in "$@"; do i=$((i + 1)); export "OLO_BRIDGE_ARG_$i=$a"; done
 OLO_BRIDGE_ARGC=$i
-OLO_BRIDGE_DIR="${TMPDIR:-/var/tmp}/olo-rex-bridge"
+uid=$(id -u 2>/dev/null || echo 0)
+OLO_BRIDGE_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/var/tmp}}/olo-rex-bridge-${uid}"
 export OLO_BRIDGE_CMD OLO_BRIDGE_ARGC OLO_BRIDGE_DIR
-mkdir -p "$OLO_BRIDGE_DIR" 2> /dev/null || true
+if [ -L "$OLO_BRIDGE_DIR" ]; then
+	echo "olo: refusing symlink bridge dir $OLO_BRIDGE_DIR" >&2
+	exit 1
+fi
+mkdir -p -m 0700 "$OLO_BRIDGE_DIR" 2> /dev/null || true
+chmod 0700 "$OLO_BRIDGE_DIR" 2> /dev/null || true
+if [ ! -d "$OLO_BRIDGE_DIR" ] || [ ! -O "$OLO_BRIDGE_DIR" ]; then
+	echo "olo: bridge dir $OLO_BRIDGE_DIR is not owned by uid $uid" >&2
+	exit 1
+fi
 # op's standard input, kept for olo.lua to send where the command takes
 # it (`-`: `op item create -`, `op item delete -`; `op inject` without
 # -i; a file given to `op item edit`, never a pipe: an agent's shell may
@@ -63,9 +73,13 @@ if [ "$OLO_BRIDGE_CMD" = run ]; then
 	trap - INT TERM HUP
 	exit "$rc"
 fi
-# `olo agent watch`: event-driven wait that may span minutes; allow up to 3600s.
+# `olo agent watch`: event-driven wait up to 3600s; give outer rex timeout a 60s margin so inner timeout JSON always flushes.
 if [ "$OLO_BRIDGE_CMD" = agent ] && { [ "${1:-}" = watch ] || [ "${1:-}" = wait ]; }; then
-	exec ${OLO_BRIDGE_REX:-rex} --timeout 3600s do "$here/olo.lua"
+	exec ${OLO_BRIDGE_REX:-rex} --timeout 3660s do "$here/olo.lua"
+fi
+# `olo agent stop`: allow up to 300s so `--save` with large scrollback completes cleanly.
+if [ "$OLO_BRIDGE_CMD" = agent ] && { [ "${1:-}" = stop ] || [ "${1:-}" = close ] || [ "${1:-}" = kill ]; }; then
+	exec ${OLO_BRIDGE_REX:-rex} --timeout 300s do "$here/olo.lua"
 fi
 # (OLO_BRIDGE_REX: another way to say `rex`, for Olo's own tests.)
 exec ${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"

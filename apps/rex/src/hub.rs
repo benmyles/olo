@@ -165,8 +165,16 @@ pub struct BlockRuntime {
     pub last_state_change_at: u64,
     /// Last observed subagent state for O(1) dirty-block transition tracking.
     pub subagent_last_state: Option<crate::subagents::SubagentLiveState>,
-    /// Monotonic generation counter cancelling superseded 250ms stability checks.
+    /// Last observed subagent sub-state key (approval key / question hash) so same-state A->B transitions are never dropped (`H5`).
+    pub subagent_last_key: Option<String>,
+    /// True once the child has been observed working (or received input) so initial startup `Idle` frames are suppressed (`H9`).
+    pub subagent_seen_working: bool,
+    /// Exit code reported by `InlineApc::ChildExited` when the child process exits while its tab remains open (`H4`).
+    pub subagent_child_exit_code: Option<i32>,
+    /// Monotonic generation counter cancelling superseded 250ms stability checks (`H6`).
     subagent_check_gen: u64,
+    /// Cached screen classification keyed by `(received_bytes, agent_activity)` to avoid redundant VT formatting (`H17`).
+    subagent_cls_cache: Option<(u64, AgentActivity, crate::subagents::ScreenClassification, String)>,
     /// What its agent is doing as Keep It Going and Auto Approve see it
     /// (the person's choice of them is `help`, by the pane's key), and
     /// the timer for the next thing either waits for, and the one that
@@ -306,7 +314,11 @@ impl BlockRuntime {
             last_output_at: crate::subagents::now_unix_ms(),
             last_state_change_at: crate::subagents::now_unix_ms(),
             subagent_last_state: None,
+            subagent_last_key: None,
+            subagent_seen_working: false,
+            subagent_child_exit_code: None,
             subagent_check_gen: 0,
+            subagent_cls_cache: None,
             watch: Watch::new(Instant::now()),
             mouse: None,
             mouse_held: None,
@@ -1981,11 +1993,12 @@ struct RexHubInner {
     /// time into a folder: the runner's, and an agent's `olo sync wait`),
     /// by its host and its path there.
     keeping: Mutex<HashMap<(String, String), (Option<tokio::task::AbortHandle>, Arc<tokio::sync::Mutex<()>>)>>,
-    /// Event-driven wakeups for `olo agent watch` whenever terminal output,
-    /// program status, or session window state changes (zero polling).
+    /// Event-driven wakeups for `olo agent watch` whenever a child subagent transitions state or exits (zero polling).
     subagent_events: Arc<tokio::sync::Notify>,
     /// Monotonic cursor-addressed ring buffer of confirmed child subagent events.
     subagent_log: Mutex<crate::subagents::SubagentEventLog>,
+    /// Active `--match`/`--regex` watcher count: when > 0, debounced output ticks also wake text watchers (`H17`).
+    subagent_text_watchers: std::sync::atomic::AtomicUsize,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -2521,6 +2534,8 @@ impl RexHub {
         }
 
         let is_demo = std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1");
+        let loaded_subagents = if is_demo { crate::subagents::SubagentRegistry::default() } else { crate::subagents::SubagentRegistry::load() };
+        let start_seq = loaded_subagents.event_seq;
         let state = Arc::new(Mutex::new(HubState {
             hosts,
             host_order,
@@ -2538,7 +2553,7 @@ impl RexHub {
             sessions_window: olo_rex_client::sessions::Window::default(),
             git_cache: GitCache::new(),
             local_bin_dir,
-            subagents: if is_demo { crate::subagents::SubagentRegistry::default() } else { crate::subagents::SubagentRegistry::load() },
+            subagents: loaded_subagents,
             quick_look_cache: HashMap::new(),
         }));
 
@@ -2554,7 +2569,8 @@ impl RexHub {
             agent_socks: Mutex::new(HashMap::new()),
             keeping: Mutex::new(HashMap::new()),
             subagent_events: Arc::new(tokio::sync::Notify::new()),
-            subagent_log: Mutex::new(crate::subagents::SubagentEventLog::default()),
+            subagent_log: Mutex::new(crate::subagents::SubagentEventLog::with_start_seq(start_seq)),
+            subagent_text_watchers: std::sync::atomic::AtomicUsize::new(0),
         });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
@@ -2848,7 +2864,7 @@ impl RexHub {
         );
         st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-sub-2".into() }, Arc::new(Mutex::new(br_sub2)));
 
-        let now_s = crate::subagents::now_unix();
+        let now_ms = crate::subagents::now_unix_ms() as i64;
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-audit1".into(),
             name: Some("api-audit".into()),
@@ -2869,9 +2885,15 @@ impl RexHub {
             transcript_path: None,
             desktop_policy: crate::subagents::DesktopPolicy::None,
             stream_mode: false,
-            started_at: now_s - 95,
+            started_at: now_ms - 95_000,
             exited_at: None,
+            exit_code: None,
             last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
         });
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-diff1a".into(),
@@ -2893,9 +2915,15 @@ impl RexHub {
             transcript_path: None,
             desktop_policy: crate::subagents::DesktopPolicy::None,
             stream_mode: false,
-            started_at: now_s - 42,
+            started_at: now_ms - 42_000,
             exited_at: None,
+            exit_code: None,
             last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
         });
         st.subagents.register(crate::subagents::NativeSubagent {
             id: "sa-tests2".into(),
@@ -2917,9 +2945,15 @@ impl RexHub {
             transcript_path: None,
             desktop_policy: crate::subagents::DesktopPolicy::None,
             stream_mode: false,
-            started_at: now_s - 180,
+            started_at: now_ms - 180_000,
             exited_at: None,
+            exit_code: None,
             last_pid: None,
+            created_rev: 0,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: None,
+            add_dirs: Vec::new(),
         });
 
         // The remote example owns a separate tab, screen and focus just like a connected host.
@@ -7427,6 +7461,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             if !h.control.as_ref().is_some_and(|c| c.same_connection(ctrl)) {
                 return;
             }
+            let view_rev = view.revision;
             if !install_view(&mut h.session_summaries, &mut h.sessions, view) {
                 return;
             }
@@ -7439,11 +7474,16 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             let theme = st.active_theme.clone();
             let live_ids: HashSet<String> = blocks.iter().map(|b| b.block_id.clone()).collect();
             st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id && !live_ids.contains(&bk.block_id)));
-            let (sub_changed, exited_list) = st.subagents.sync_live_windows(host_key, &session_id, &live_windows);
-            if sub_changed {
-                st.subagents.save();
-            }
-            newly_exited = exited_list;
+            let (sub_changed, exited_list) = st.subagents.sync_live_windows(host_key, &session_id, &live_windows, view_rev);
+            let exited_with_ancestors: Vec<(crate::subagents::NativeSubagent, Vec<String>)> = exited_list
+                .into_iter()
+                .map(|e| {
+                    let anc = st.subagents.ancestor_windows(&e.host_key, &e.session_id, &e.window_id);
+                    (e, anc)
+                })
+                .collect();
+            let save_snap = sub_changed.then(|| st.subagents.clone());
+            newly_exited = (exited_with_ancestors, save_snap);
 
             for b in &blocks {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: b.block_id.clone() };
@@ -7477,32 +7517,44 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         for (bk, br, pre_ticket) in to_attach {
             self.spawn_block_data_stream(ctrl.clone(), ep.clone(), bk, br, pre_ticket);
         }
-        if !newly_exited.is_empty() {
-            let mut log = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
-            let ts = crate::subagents::now_unix_ms();
-            for e in newly_exited {
-                log.push(crate::subagents::SubagentEvent {
-                    seq: 0,
-                    timestamp_ms: ts,
-                    host_key: e.host_key.clone(),
-                    session_id: e.session_id.clone(),
-                    parent_window_id: e.parent_window_id.clone(),
-                    id: e.id.clone(),
-                    name: e.name.clone(),
-                    window_id: e.window_id.clone(),
-                    cli_session_id: e.effective_session_id().map(str::to_owned),
-                    event: "exited".into(),
-                    state: crate::subagents::SubagentLiveState::Exited,
-                    summary: Some("tab closed".into()),
-                    last_message: None,
-                    approval: None,
-                    error: None,
-                    tail: Vec::new(),
-                });
-            }
+        let (exited_entries, save_snap) = newly_exited;
+        if let Some(snap) = save_snap {
+            snap.save();
+        }
+        if !exited_entries.is_empty() {
+            let new_seq = {
+                let mut log = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
+                let ts = crate::subagents::now_unix_ms();
+                for (e, ancestors) in exited_entries {
+                    log.push(crate::subagents::SubagentEvent {
+                        seq: 0,
+                        timestamp_ms: ts,
+                        host_key: e.host_key.clone(),
+                        session_id: e.session_id.clone(),
+                        parent_window_id: e.parent_window_id.clone(),
+                        ancestor_windows: ancestors,
+                        id: e.id.clone(),
+                        name: e.name.clone(),
+                        window_id: e.window_id.clone(),
+                        block_id: e.block_id.clone(),
+                        resume_id: e.resume_id.clone(),
+                        cli_session_id: e.effective_session_id().map(str::to_owned),
+                        event: "exited".into(),
+                        state: crate::subagents::SubagentLiveState::Exited,
+                        summary: Some("tab closed".into()),
+                        last_message: None,
+                        approval: None,
+                        error: None,
+                        tail: Vec::new(),
+                        dedupe_key: "exited".into(),
+                    });
+                }
+                log.latest_seq()
+            };
+            self.persist_event_seq(new_seq);
+            self.subagent_events.notify_waiters();
         }
         self.write_palette_index();
-        self.subagent_events.notify_waiters();
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -7783,9 +7835,6 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     }
                     (result, guess)
                 };
-                if !live.is_empty() {
-                    inner.subagent_events.notify_waiters();
-                }
                 if guess {
                     // What an agent is doing there, looked at while the
                     // chunks come (every so often, not with each) and
@@ -7808,7 +7857,10 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                 notify(HubNotice::StateChanged);
                             }
                             helper.record_subagent_transition(&bk);
-                            helper.subagent_events.notify_waiters();
+                            // Wake text/regex watchers ONLY when at least one `--match`/`--regex` watch is active (`H17`).
+                            if helper.subagent_text_watchers.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+                                helper.subagent_events.notify_waiters();
+                            }
                             // (Keep It Going's and Auto Approve's look,
                             // where the pane has either on.)
                             helper.agent_look(&bk);
@@ -7844,7 +7896,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
 
     fn handle_inline_apc(&self, bk: &BlockKey, apc: InlineApc) {
         let (title, body) = match apc {
-            InlineApc::ChildExited { exit_code } => ("Process exited".to_owned(), format!("Exit code {exit_code}")),
+            InlineApc::ChildExited { exit_code } => {
+                // H4: if this pane is a registered child subagent whose process exited naturally
+                // while the tab remained open, mark it Exited, free its `--name`, and emit `exited`!
+                self.record_subagent_child_exit(bk, exit_code);
+                ("Process exited".to_owned(), format!("Exit code {exit_code}"))
+            }
             InlineApc::Unknown(val) => {
                 let Some(title) = val.get("title").and_then(Value::as_str) else { return };
                 (title.to_owned(), val.get("body").and_then(Value::as_str).unwrap_or("").to_owned())
@@ -7852,6 +7909,59 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             _ => return,
         };
         self.pane_attention(bk, &title, body, olo_kit::notify::NoteKind::Information);
+    }
+
+    fn record_subagent_child_exit(&self, bk: &BlockKey, exit_code: i32) {
+        let (exited_entry, ancestors, save_snap) = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(br) = st.blocks.get(bk) {
+                br.lock().unwrap_or_else(|e| e.into_inner()).subagent_child_exit_code = Some(exit_code);
+            }
+            let Some(entry) = st.subagents.by_block(&bk.host_key, Some(&bk.session_id), &bk.block_id).cloned() else {
+                return;
+            };
+            let ancestors = st.subagents.ancestor_windows(&entry.host_key, &entry.session_id, &entry.window_id);
+            let changed = st.subagents.mark_exited_with_code(&entry.host_key, &entry.session_id, &entry.window_id, Some(exit_code));
+            if !changed {
+                return;
+            }
+            (entry, ancestors, st.subagents.clone())
+        };
+        save_snap.save();
+        let new_seq = {
+            let mut log = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
+            log.push(crate::subagents::SubagentEvent {
+                seq: 0,
+                timestamp_ms: crate::subagents::now_unix_ms(),
+                host_key: exited_entry.host_key.clone(),
+                session_id: exited_entry.session_id.clone(),
+                parent_window_id: exited_entry.parent_window_id.clone(),
+                ancestor_windows: ancestors,
+                id: exited_entry.id.clone(),
+                name: exited_entry.name.clone(),
+                window_id: exited_entry.window_id.clone(),
+                block_id: exited_entry.block_id.clone(),
+                resume_id: exited_entry.resume_id.clone(),
+                cli_session_id: exited_entry.effective_session_id().map(str::to_owned),
+                event: "exited".into(),
+                state: crate::subagents::SubagentLiveState::Exited,
+                summary: Some(format!("exited (code {exit_code})")),
+                last_message: None,
+                approval: None,
+                error: (exit_code != 0).then(|| format!("process exited with code {exit_code}")),
+                tail: Vec::new(),
+                dedupe_key: "exited".into(),
+            })
+        };
+        self.persist_event_seq(new_seq);
+        self.subagent_events.notify_waiters();
+    }
+
+    fn persist_event_seq(&self, seq: u64) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if seq > st.subagents.event_seq {
+            st.subagents.event_seq = seq;
+        }
     }
 
     fn pane_attention(&self, bk: &BlockKey, title: &str, body: String, kind: olo_kit::notify::NoteKind) {
@@ -8260,23 +8370,44 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
     }
 
     async fn handle_client_perform(self: &Arc<Self>, host_key: &str, action: String, args: Option<Value>, session_id: Option<String>, block_id: Option<String>) -> Option<Value> {
-        if action.starts_with("olo.") {
-            // Server-side per-child desktop isolation policy (`--desktop none|screens=NAME,…|inherit`):
-            // default for every child subagent tab is `none`, refusing `op`, `screen`, `open`,
-            // clipboard, file bridge, and desktop commands even if the host allows them.
-            if let Some(ref bid) = block_id {
-                let child_deny = {
-                    let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                    st.subagents.by_block(host_key, session_id.as_deref(), bid).and_then(|child| child.desktop_policy.check_action(&action, args.as_ref()).err())
-                };
-                if let Some(reason) = child_deny {
-                    return Some(json!({
-                        "ok": false,
-                        "stderr": format!("olo: {reason}\n"),
-                        "data": { "code": 69 }
-                    }));
+        // C1: Server-side per-child desktop isolation policy (`--desktop none|screens=NAME,…|inherit`).
+        // Runs BEFORE BOTH `olo.*` AND catch-all `request_action` (`agent.auto_approve_toggle`,
+        // `olo.passwords.fill`, etc.) using a strict allow-list, checks `by_block_any` (even if
+        // `exited_at` was set), AND fails closed when `block_id` is missing/empty/spoofed in a
+        // session that holds any restricted child!
+        let child_deny: Option<String> = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let clean_bid = block_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
+            if let Some(bid) = clean_bid {
+                if let Some(child) = st.subagents.by_block_any(host_key, session_id.as_deref(), bid) {
+                    child.desktop_policy.check_action(&action, args.as_ref()).err()
+                } else {
+                    // Verify `bid` is actually a known live block in this host/session when restricted children exist!
+                    let is_live_block = st.hosts.get(host_key).is_some_and(|h| match session_id.as_deref().filter(|s| !s.is_empty()) {
+                        Some(sid) => h.sessions.get(sid).is_some_and(|v| v.find_block(bid).is_some()),
+                        None => h.sessions.values().any(|v| v.find_block(bid).is_some()),
+                    });
+                    if !is_live_block && st.subagents.has_restricted_children(host_key, session_id.as_deref()) && crate::subagents::DesktopPolicy::None.check_action(&action, args.as_ref()).is_err() {
+                        Some(format!("action `{action}` refused: unknown pane `block_id` `{bid}` in session with restricted child subagents"))
+                    } else {
+                        None
+                    }
                 }
+            } else if st.subagents.has_restricted_children(host_key, session_id.as_deref()) && crate::subagents::DesktopPolicy::None.check_action(&action, args.as_ref()).is_err() {
+                Some(format!("action `{action}` refused: missing `REX_BLOCK` pane attribution in session with restricted child subagents"))
+            } else {
+                None
             }
+        };
+        if let Some(reason) = child_deny {
+            return Some(json!({
+                "ok": false,
+                "stderr": format!("olo: {reason}\n"),
+                "data": { "code": 69 }
+            }));
+        }
+
+        if action.starts_with("olo.") {
             let (is_local, policy) = {
                 let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 let is_local = st.hosts.get(host_key).is_some_and(|h| h.is_local);
@@ -8496,29 +8627,49 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
             "olo.agent.status" => {
                 let (inner, hk) = (self.clone(), host_key.to_owned());
-                self.bridge_calls.answer(async move { inner.agent_status(&hk, args.as_ref(), session_id).await }).await
+                self.bridge_calls.answer(async move { inner.agent_status(&hk, args.as_ref(), session_id, block_id).await }).await
             }
-            "olo.agent.read" => self.agent_read(host_key, args.as_ref(), session_id).await,
+            "olo.agent.read" => self.agent_read(host_key, args.as_ref(), session_id, block_id).await,
             "olo.agent.watch" => {
                 let (inner, hk) = (self.clone(), host_key.to_owned());
                 self.bridge_calls.answer(async move { inner.agent_watch(&hk, args.as_ref(), session_id, block_id).await }).await
             }
             "olo.agent.send" => {
                 let (inner, hk) = (self.clone(), host_key.to_owned());
-                self.bridge_calls.answer(async move { inner.agent_send(&hk, args.as_ref(), session_id).await }).await
+                self.bridge_calls.answer(async move { inner.agent_send(&hk, args.as_ref(), session_id, block_id).await }).await
             }
             "olo.agent.approve" => {
                 let (inner, hk) = (self.clone(), host_key.to_owned());
-                self.bridge_calls.answer(async move { inner.agent_approve(&hk, args.as_ref(), session_id).await }).await
+                self.bridge_calls.answer(async move { inner.agent_approve(&hk, args.as_ref(), session_id, block_id).await }).await
             }
             "olo.agent.stop" => {
                 let (inner, hk) = (self.clone(), host_key.to_owned());
-                self.bridge_calls.answer(async move { inner.agent_stop(&hk, args.as_ref(), session_id).await }).await
+                self.bridge_calls.answer(async move { inner.agent_stop(&hk, args.as_ref(), session_id, block_id).await }).await
             }
-            "olo.agent.prune" => self.agent_prune(host_key, args.as_ref(), session_id).await,
-            "olo.agent.focus" => self.agent_focus(host_key, args.as_ref(), session_id).await,
+            "olo.agent.prune" => self.agent_prune(host_key, args.as_ref(), session_id, block_id).await,
+            "olo.agent.focus" => self.agent_focus(host_key, args.as_ref(), session_id, block_id).await,
             _ => json!(bridge::BridgeResponse::err(format!("unknown agent action `{action}`"))),
         }
+    }
+
+    /// Identifies the caller's `(session_id, window_id, caller_child_entry)` from `block_id` for
+    /// strict subtree authorization (`C3`) and grandchild policy attenuation (`C2`).
+    fn caller_context(&self, host_key: &str, session_id: Option<&str>, block_id: Option<&str>) -> (Option<String>, Option<String>, Option<crate::subagents::NativeSubagent>) {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let bid = block_id.map(str::trim).filter(|s| !s.is_empty());
+        if let Some(b) = bid
+            && let Some(child) = st.subagents.by_block_any(host_key, session_id, b)
+        {
+            return (Some(child.session_id.clone()), Some(child.window_id.clone()), Some(child.clone()));
+        }
+        let sid = session_id.filter(|s| !s.is_empty()).map(str::to_owned).or_else(|| {
+            bid.and_then(|b| st.hosts.get(host_key).and_then(|h| h.sessions.iter().find(|(_, v)| v.windows.iter().any(|w| w.all_blocks().any(|bl| bl.block_id == b))).map(|(k, _)| k.clone())))
+        });
+        let win = sid.as_deref().and_then(|s| {
+            let view = st.hosts.get(host_key)?.sessions.get(s)?;
+            bid.and_then(|b| view.windows.iter().find(|w| w.all_blocks().any(|bl| bl.block_id == b)).map(|w| w.window_id.clone())).or_else(|| view.active_window_id.clone())
+        });
+        (sid, win, None)
     }
 
     fn resolve_session_and_parent(
@@ -8532,16 +8683,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let h = st.hosts.get(host_key).ok_or_else(|| format!("unknown Rex host `{host_key}`"))?;
         let ctrl = h.control.clone().ok_or_else(|| "Rex host is not connected".to_owned())?;
         let ep = h.endpoint.clone().ok_or_else(|| "Rex host endpoint unavailable".to_owned())?;
-        // Resolve session: explicit `session_id` -> session owning `block_id` -> first session summary.
-        let sid = session_id
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .or_else(|| block_id.filter(|s| !s.is_empty()).and_then(|bid| h.sessions.iter().find(|(_, v)| v.windows.iter().any(|w| w.all_blocks().any(|b| b.block_id == bid))).map(|(k, _)| k.clone())))
+        let clean_bid = block_id.map(str::trim).filter(|s| !s.is_empty());
+        let caller_child = clean_bid.and_then(|b| st.subagents.by_block_any(host_key, session_id, b)).cloned();
+
+        // Resolve session: caller child's session -> explicit `session_id` -> session owning `block_id` -> first session summary.
+        let sid = caller_child
+            .as_ref()
+            .map(|c| c.session_id.clone())
+            .or_else(|| session_id.filter(|s| !s.is_empty()).map(str::to_owned))
+            .or_else(|| clean_bid.and_then(|bid| h.sessions.iter().find(|(_, v)| v.windows.iter().any(|w| w.all_blocks().any(|b| b.block_id == bid))).map(|(k, _)| k.clone())))
             .or_else(|| h.session_summaries.first().map(|s| s.session_id.clone()))
             .ok_or_else(|| "no active Rex session found for this host".to_owned())?;
         let view = h.sessions.get(&sid).ok_or_else(|| format!("Rex session `{sid}` is not loaded"))?;
         let parent_win = if let Some(p) = explicit_parent.filter(|s| !s.is_empty()) {
-            if view.windows.iter().any(|w| w.window_id == p) {
+            let resolved = if view.windows.iter().any(|w| w.window_id == p) {
                 p.to_owned()
             } else if let Some(w) = view.windows.iter().find(|w| w.all_blocks().any(|b| b.block_id == p)) {
                 w.window_id.clone()
@@ -8549,8 +8704,18 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 sub.window_id
             } else {
                 return Err(format!("parent tab `{p}` not found in session `{sid}`"));
+            };
+            // C3: A child subagent may ONLY pass `--parent` for itself or one of its own descendants!
+            if let Some(ref cc) = caller_child
+                && resolved != cc.window_id
+                && !st.subagents.is_strict_descendant(host_key, &sid, &cc.window_id, &resolved)
+            {
+                return Err(format!("`--parent {p}` refused: child subagent `{}` may only attach under itself or its own descendants", cc.id));
             }
-        } else if let Some(bid) = block_id.filter(|s| !s.is_empty()) {
+            resolved
+        } else if let Some(ref cc) = caller_child {
+            cc.window_id.clone()
+        } else if let Some(bid) = clean_bid {
             view.windows
                 .iter()
                 .find(|w| w.all_blocks().any(|b| b.block_id == bid))
@@ -8561,24 +8726,29 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         } else {
             view.active_window_id.clone().or_else(|| view.windows.first().map(|w| w.window_id.clone())).ok_or_else(|| "session has no open tabs".to_owned())?
         };
-        let parent_cwd =
-            block_id.filter(|s| !s.is_empty()).and_then(|bid| st.blocks.get(&BlockKey { host_key: host_key.to_owned(), session_id: sid.clone(), block_id: bid.to_owned() })).and_then(|br| {
-                let pwd = br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone();
-                (!pwd.is_empty()).then_some(pwd)
-            });
+        let parent_cwd = clean_bid.and_then(|bid| st.blocks.get(&BlockKey { host_key: host_key.to_owned(), session_id: sid.clone(), block_id: bid.to_owned() })).and_then(|br| {
+            let pwd = br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone();
+            (!pwd.is_empty()).then_some(pwd)
+        });
         Ok((ctrl, ep, sid, parent_win, parent_cwd))
     }
 
+    /// Lock-free screen classification (`H17`) with per-block `(received_bytes, activity)` caching
+    /// and natural-exit detection (`H4`): NEVER holds `state` or `block` mutex while classifying!
     fn live_subagent_rich(&self, entry: &crate::subagents::NativeSubagent) -> (crate::subagents::ScreenClassification, String, u64, u64, Option<i32>) {
-        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let alive =
-            entry.exited_at.is_none() && st.hosts.get(&entry.host_key).and_then(|h| h.sessions.get(&entry.session_id)).is_some_and(|s| s.windows.iter().any(|w| w.window_id == entry.window_id));
-        if !alive {
+        // 1. Brief state lock: check window existence & clone block Arc, then release state lock immediately.
+        let (alive_win, br_opt) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let alive =
+                entry.exited_at.is_none() && st.hosts.get(&entry.host_key).and_then(|h| h.sessions.get(&entry.session_id)).is_some_and(|s| s.windows.iter().any(|w| w.window_id == entry.window_id));
+            let bk = BlockKey { host_key: entry.host_key.clone(), session_id: entry.session_id.clone(), block_id: entry.block_id.clone() };
+            (alive, st.blocks.get(&bk).cloned())
+        };
+        if !alive_win {
             let cls = crate::subagents::classify_screen_rich(entry.cli, AgentActivity::Idle, "", false);
             return (cls, String::new(), 0, 0, entry.last_pid);
         }
-        let bk = BlockKey { host_key: entry.host_key.clone(), session_id: entry.session_id.clone(), block_id: entry.block_id.clone() };
-        let Some(br) = st.blocks.get(&bk) else {
+        let Some(br) = br_opt else {
             let cls = crate::subagents::ScreenClassification {
                 state: crate::subagents::SubagentLiveState::Working,
                 summary: Some("starting".into()),
@@ -8589,14 +8759,59 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             };
             return (cls, String::new(), 0, 0, entry.last_pid);
         };
-        let g = br.lock().unwrap_or_else(|e| e.into_inner());
-        let screen = g.terminal.format(olo_rex_vt::FormatKind::Plain, false, true).unwrap_or_default();
-        let mut cls = crate::subagents::classify_screen_rich(entry.cli, g.agent_activity, &screen, true);
-        if cls.summary.is_none() {
-            cls.summary = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone()));
+
+        // 2. Brief block lock: check natural exit (`H4`), check classification cache (`H17`), or copy screen text, then release block lock!
+        enum Snap {
+            Exited(i32, u64, u64, Option<i32>),
+            Cached(crate::subagents::ScreenClassification, String, u64, u64, Option<i32>),
+            Classify { bytes: u64, activity: AgentActivity, screen: String, fallback_summary: Option<String>, last_out: u64, last_chg: u64, pid: Option<i32> },
         }
-        let pid = g.process.as_ref().and_then(|p| p.child.as_ref().or(p.foreground.as_ref())).map(|p| p.pid as i32).filter(|&p| p > 0).or(entry.last_pid);
-        (cls, screen, g.last_output_at, g.last_state_change_at, pid)
+        let snap = {
+            let g = br.lock().unwrap_or_else(|e| e.into_inner());
+            let pid = g.process.as_ref().and_then(|p| p.child.as_ref().or(p.foreground.as_ref())).map(|p| p.pid as i32).filter(|&p| p > 0).or(entry.last_pid);
+            let exit_code = g.subagent_child_exit_code.or_else(|| g.process.as_ref().and_then(|p| p.last_exit.as_ref()).map(|le| le.exit_code));
+            if let Some(code) = exit_code {
+                Snap::Exited(code, g.last_output_at, g.last_state_change_at, pid)
+            } else if let Some((cached_bytes, cached_act, ref cached_cls, ref cached_screen)) = g.subagent_cls_cache
+                && cached_bytes == g.received_bytes
+                && cached_act == g.agent_activity
+            {
+                Snap::Cached(cached_cls.clone(), cached_screen.clone(), g.last_output_at, g.last_state_change_at, pid)
+            } else {
+                let screen = g.terminal.format(olo_rex_vt::FormatKind::Plain, false, true).unwrap_or_default();
+                let fallback_summary = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone()));
+                Snap::Classify { bytes: g.received_bytes, activity: g.agent_activity, screen, fallback_summary, last_out: g.last_output_at, last_chg: g.last_state_change_at, pid }
+            }
+        };
+
+        match snap {
+            Snap::Exited(code, last_out, last_chg, pid) => {
+                let cls = crate::subagents::ScreenClassification {
+                    state: crate::subagents::SubagentLiveState::Exited,
+                    summary: Some(format!("exited (code {code})")),
+                    approval: None,
+                    folder_trust: None,
+                    api_error: None,
+                    usage: None,
+                };
+                (cls, String::new(), last_out, last_chg, pid)
+            }
+            Snap::Cached(cls, screen, last_out, last_chg, pid) => (cls, screen, last_out, last_chg, pid),
+            Snap::Classify { bytes, activity, screen, fallback_summary, last_out, last_chg, pid } => {
+                // 3. Classify completely OFF all locks (`H17`)!
+                let mut cls = crate::subagents::classify_screen_rich(entry.cli, activity, &screen, true);
+                if cls.summary.is_none() {
+                    cls.summary = fallback_summary;
+                }
+                {
+                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                    if g.received_bytes == bytes && g.agent_activity == activity {
+                        g.subagent_cls_cache = Some((bytes, activity, cls.clone(), screen.clone()));
+                    }
+                }
+                (cls, screen, last_out, last_chg, pid)
+            }
+        }
     }
 
     /// Runs a single batched `olo-rex-link agent inspect` call on `host_key` for all given
@@ -8641,30 +8856,62 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             return HashMap::new();
         };
         let mut map = HashMap::new();
-        let mut any_changed = false;
+        let mut save_snap: Option<crate::subagents::SubagentRegistry> = None;
         if let Some(arr) = parsed.get("items").and_then(Value::as_array) {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut any_changed = false;
             for item in arr {
                 let Some(id) = item.get("id").and_then(Value::as_str) else { continue };
                 let sid = item.get("cli_session_id").and_then(Value::as_str);
+                let conf = item.get("session_confidence").and_then(Value::as_str);
                 let tp = item.get("transcript_path").and_then(Value::as_str);
                 let pid = item.get("pid").and_then(Value::as_i64).map(|p| p as i32);
-                if st.subagents.update_discovered(id, sid, tp, pid) {
+                if st.subagents.update_discovered(id, sid, conf, tp, pid) {
                     any_changed = true;
                 }
                 map.insert(id.to_owned(), item.clone());
             }
             if any_changed {
-                st.subagents.save();
+                save_snap = Some(st.subagents.clone());
             }
+        }
+        // M16: Persist off the global state lock!
+        if let Some(snap) = save_snap {
+            snap.save();
         }
         map
     }
 
+    fn pending_tools_from_info(info: Option<&Value>) -> Vec<Value> {
+        if let Some(arr) = info.and_then(|v| v.get("pending_tools")).and_then(Value::as_array)
+            && !arr.is_empty()
+        {
+            return arr.clone();
+        }
+        if let Some(pt) = info.and_then(|v| v.get("pending_tool")).filter(|v| !v.is_null()) {
+            return vec![pt.clone()];
+        }
+        Vec::new()
+    }
+
+    fn classification_subkey(cls: &crate::subagents::ScreenClassification) -> String {
+        if let Some(ref ap) = cls.approval {
+            format!("ap:{}", ap.key)
+        } else if let Some(ref tr) = cls.folder_trust {
+            format!("trust:{}:{}", tr.folder.as_deref().unwrap_or(""), tr.selected_index)
+        } else if let Some(ref err) = cls.api_error {
+            format!("err:{err}")
+        } else if cls.state == crate::subagents::SubagentLiveState::WaitingQuestion {
+            format!("q:{}", cls.summary.as_deref().unwrap_or(""))
+        } else {
+            String::new()
+        }
+    }
+
     /// O(1) dirty-block subagent state tracker: called only when a block receives output or
-    /// status updates. Returns immediately for non-child panes; for child subagents, debounces
-    /// non-working transitions by 250 ms before recording them in `subagent_log` so `watch --all
-    /// --since` never fires on transient repaints and never misses a confirmed event.
+    /// status updates. Edge-detects on `(state, subkey)` (`H5`), suppresses startup `Idle` (`H9`),
+    /// re-checks `subagent_check_gen` after `inspect` to prevent out-of-order events (`H6`), and
+    /// notifies watchers ONLY on confirmed state changes (`H17`).
     fn record_subagent_transition(self: &Arc<Self>, bk: &BlockKey) {
         let entry = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -8677,30 +8924,43 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             st.blocks.get(bk).cloned()
         };
         let Some(br) = br else { return };
-        let next_gen = {
+        let subkey = Self::classification_subkey(&cls);
+        let (next_gen, suppress_startup_idle) = {
             let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-            if g.subagent_last_state == Some(cls.state) {
+            if cls.state == crate::subagents::SubagentLiveState::Working {
+                g.subagent_seen_working = true;
+            }
+            // H9: Suppress spurious Idle during the first 15s of a freshly started child before it ever worked.
+            let age_ms = (crate::subagents::now_unix_ms() as i64).saturating_sub(crate::subagents::to_unix_ms(entry.started_at));
+            let suppress = cls.state == crate::subagents::SubagentLiveState::Idle && !g.subagent_seen_working && age_ms < 15_000;
+            if g.subagent_last_state == Some(cls.state) && g.subagent_last_key.as_deref() == Some(subkey.as_str()) {
                 return;
             }
             g.subagent_last_state = Some(cls.state);
+            g.subagent_last_key = Some(subkey.clone());
             g.last_state_change_at = crate::subagents::now_unix_ms();
             g.subagent_check_gen = g.subagent_check_gen.wrapping_add(1);
-            g.subagent_check_gen
+            (g.subagent_check_gen, suppress)
         };
-        if matches!(cls.state, crate::subagents::SubagentLiveState::Working) {
+        if suppress_startup_idle || matches!(cls.state, crate::subagents::SubagentLiveState::Working) {
             return;
         }
+        // Wake internal listeners (e.g. `--trust` auto-confirm or `approve` dismissal wait) right away on dialog transitions!
+        if cls.folder_trust.is_some() || cls.approval.is_some() || cls.state == crate::subagents::SubagentLiveState::Exited {
+            self.subagent_events.notify_waiters();
+        }
         let target_state = cls.state;
+        let target_key = subkey;
         let inner = self.clone();
         let bk = bk.clone();
         let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
         rt.spawn(async move {
             tokio::time::sleep(Duration::from_millis(250)).await;
-            let still_same_gen = {
+            let same_gen = || {
                 let st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.blocks.get(&bk).is_some_and(|b| b.lock().unwrap_or_else(|e| e.into_inner()).subagent_check_gen == next_gen)
             };
-            if !still_same_gen {
+            if !same_gen() {
                 return;
             }
             let Some(fresh_entry) = ({
@@ -8710,25 +8970,41 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 return;
             };
             let (cls2, screen2, _, _, _) = inner.live_subagent_rich(&fresh_entry);
-            if cls2.state != target_state {
+            if cls2.state != target_state || Self::classification_subkey(&cls2) != target_key {
                 return;
             }
             // Inspect transcript once on confirmed notable state so `last_message`, `cli_session_id`,
             // and untruncated `approval` commands are attached right inside the event!
             let inspected = inner.inspect_subagents_on_host(&fresh_entry.host_key, std::slice::from_ref(&fresh_entry)).await;
+            // H6: Re-check generation AFTER slow `inspect` so superseded stale events are NEVER logged out of order!
+            if !same_gen() {
+                return;
+            }
             let info = inspected.get(&fresh_entry.id);
-            let latest_entry = {
+            let (latest_entry, ancestors) = {
                 let st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.subagents.by_block(&bk.host_key, Some(&bk.session_id), &bk.block_id).cloned().unwrap_or(fresh_entry)
+                let ent = st.subagents.by_block(&bk.host_key, Some(&bk.session_id), &bk.block_id).cloned().unwrap_or(fresh_entry);
+                let anc = st.subagents.ancestor_windows(&ent.host_key, &ent.session_id, &ent.window_id);
+                (ent, anc)
             };
             let last_message = info.and_then(|v| v.get("last_message")).and_then(Value::as_str).map(str::to_owned);
-            let tx_err = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str).map(str::to_owned);
-            let pending_tool = info.and_then(|v| v.get("pending_tool"));
-            let approval = cls2.approval.as_ref().map(|ap| crate::subagents::approval_to_json(ap, pending_tool));
-            let error = cls2.api_error.clone().or(tx_err);
-            let final_state = if error.is_some() && cls2.state != crate::subagents::SubagentLiveState::WaitingApproval { crate::subagents::SubagentLiveState::Error } else { cls2.state };
+            let tx_state = info.and_then(|v| v.get("transcript_state")).and_then(Value::as_str);
+            let tx_err = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str);
+            let pending_tools = Self::pending_tools_from_info(info);
+            let approval = cls2.approval.as_ref().map(|ap| crate::subagents::approval_to_json(ap, &pending_tools));
+            let (final_state, error, _aborted) = crate::subagents::effective_state(&cls2, tx_state, tx_err, true);
             let tail: Vec<String> = screen2.lines().rev().filter(|l| !l.trim().is_empty()).take(10).map(str::to_owned).collect::<Vec<_>>().into_iter().rev().collect();
-            {
+            let dedupe_key = if !target_key.is_empty() {
+                target_key
+            } else if let Some(ref lm) = last_message {
+                use std::hash::{Hash as _, Hasher as _};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                lm.hash(&mut h);
+                format!("msg:{:x}", h.finish())
+            } else {
+                format!("gen:{next_gen}")
+            };
+            let new_seq = {
                 let mut log = inner.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
                 log.push(crate::subagents::SubagentEvent {
                     seq: 0,
@@ -8736,9 +9012,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     host_key: latest_entry.host_key.clone(),
                     session_id: latest_entry.session_id.clone(),
                     parent_window_id: latest_entry.parent_window_id.clone(),
+                    ancestor_windows: ancestors,
                     id: latest_entry.id.clone(),
                     name: latest_entry.name.clone(),
                     window_id: latest_entry.window_id.clone(),
+                    block_id: latest_entry.block_id.clone(),
+                    resume_id: latest_entry.resume_id.clone(),
                     cli_session_id: latest_entry.effective_session_id().map(str::to_owned),
                     event: final_state.as_str().to_owned(),
                     state: final_state,
@@ -8747,8 +9026,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     approval,
                     error,
                     tail,
+                    dedupe_key,
                 });
-            }
+                log.latest_seq()
+            };
+            inner.persist_event_seq(new_seq);
             inner.subagent_events.notify_waiters();
         });
     }
@@ -8756,10 +9038,36 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
     async fn agent_start(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> bridge::BridgeResponse {
         let err_resp =
             |msg: String, code: i32| bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent start: {msg}\n")), data: Some(json!({ "code": code })), carried: Vec::new() };
-        let spec = match crate::subagents::StartSpec::parse(raw) {
+        let mut spec = match crate::subagents::StartSpec::parse(raw) {
             Ok(s) => s,
             Err(e) => return err_resp(e, 2),
         };
+        // C2: Enforce monotonic desktop privilege attenuation when a child launches a grandchild!
+        let (_, _, caller_child) = self.caller_context(host_key, session_id.as_deref(), block_id.as_deref());
+        if let Some(ref cc) = caller_child {
+            match cc.desktop_policy.restrict_to(&spec.desktop) {
+                Ok(capped) => spec.desktop = capped,
+                Err(e) => return err_resp(e, 69),
+            }
+        }
+        // M9: Resolve relative `--cwd` and `--add-dir` paths against caller's working directory (`raw["cwd"]` or pane cwd).
+        let caller_pwd = raw.and_then(|v| v.get("cwd")).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+        let resolve_rel = |p: &str, base: Option<&str>| -> String {
+            if p.starts_with('/') || p.starts_with('~') {
+                p.to_owned()
+            } else if let Some(b) = base {
+                Path::new(b).join(p).display().to_string()
+            } else {
+                p.to_owned()
+            }
+        };
+        if let Some(ref c) = spec.cwd.clone() {
+            spec.cwd = Some(resolve_rel(c, caller_pwd.as_deref()));
+        }
+        for d in &mut spec.add_dirs {
+            *d = resolve_rel(d, spec.cwd.as_deref().or(caller_pwd.as_deref()));
+        }
+
         let (cli, model, effort, raw_argv) = match spec.build_command() {
             Ok(v) => v,
             Err(e) => return err_resp(e, 2),
@@ -8777,10 +9085,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             {
                 return err_resp(format!("a live child named `{name}` already exists under this parent (choose a unique `--name` or stop it first)"), 2);
             }
+            // M21: Refuse resuming a session that another live child is already running unless `--fork`!
+            if !spec.fork
+                && let Some(ref rid) = spec.resume
+                && let Some(other) = st.subagents.live_using_session_id(host_key, rid)
+            {
+                return err_resp(format!("session `{rid}` is already running in live child `{}` (stop it first or pass `--fork`)", other.id), 2);
+            }
             live
         };
 
-        let cwd = spec.cwd.clone().or(parent_cwd);
+        // M26: Take the start cursor BEFORE creating the window so fast-exiting children (`--close-on-exit`) are never missed by `watch --since`!
+        let start_cursor = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq();
+
+        let cwd = spec.cwd.clone().or(parent_cwd).or(caller_pwd);
         let title = spec.effective_title(cli);
 
         // Item #1: Pre-trust workspace & `--add-dir` paths atomically in `~/.claude.json` BEFORE spawning Claude!
@@ -8795,9 +9113,19 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 }
             }
             if !trust_paths.is_empty() {
-                let mut link_args: Vec<&str> = Vec::with_capacity(2 + trust_paths.len());
+                let home_override = spec.env.iter().rev().find(|(k, _)| k == "HOME").map(|(_, v)| v.as_str()).filter(|v| !v.is_empty());
+                let claude_cfg_override = spec.env.iter().rev().find(|(k, _)| k == "CLAUDE_CONFIG_DIR").map(|(_, v)| v.as_str()).filter(|v| !v.is_empty());
+                let mut link_args: Vec<&str> = Vec::with_capacity(6 + trust_paths.len());
                 link_args.push("agent");
                 link_args.push("trust");
+                if let Some(h) = home_override {
+                    link_args.push("--home");
+                    link_args.push(h);
+                }
+                if let Some(cd) = claude_cfg_override {
+                    link_args.push("--claude-config-dir");
+                    link_args.push(cd);
+                }
                 for p in &trust_paths {
                     link_args.push(p.as_str());
                 }
@@ -8805,10 +9133,10 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
         }
 
-        // Item #11: Wrap argv with `env -u ...` for desktop isolation & `--unset-env`.
+        // Item #11: Wrap argv with `env -u ... K=V ...` for desktop isolation & `--env`/`--unset-env`.
         let argv = spec.wrap_with_env_isolation(raw_argv.clone());
 
-        // Build Rex shell options matching local/remote environment + desktop policy
+        // Build Rex shell options matching local/remote environment + desktop policy (`H15`).
         let mut opts = json!({
             "command": argv,
             "interactive": true,
@@ -8831,7 +9159,8 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         env_map.insert("BROWSER".into(), json!(open_bin.to_string_lossy()));
                     }
                 }
-            } else if let Some(agent) = self.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).get(host_key) {
+            } else if inherit_desktop && let Some(agent) = self.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).get(host_key) {
+                // H15: Pass SSH_AUTH_SOCK ONLY to `--desktop inherit` children, NEVER to `none` or `screens`!
                 env_map.insert("SSH_AUTH_SOCK".into(), json!(agent));
             }
         }
@@ -8859,6 +9188,10 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         };
         let new_bid = new_win.focused_block_id.clone().or_else(|| new_win.all_blocks().next().map(|b| b.block_id.clone())).unwrap_or_default();
 
+        // H13: On `--fork`, leave `cli_session_id` empty until discovery finds the NEW forked session UUID!
+        let initial_cli_sid = if spec.fork { spec.session_id.clone() } else { spec.session_id.clone().or_else(|| spec.resume.clone()) };
+        let initial_conf = initial_cli_sid.as_ref().map(|_| "argv".to_owned());
+
         let entry = crate::subagents::NativeSubagent {
             id: crate::subagents::new_subagent_id(),
             name: spec.name.clone(),
@@ -8875,28 +9208,37 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             role: spec.role.clone(),
             cwd: cwd.clone(),
             resume_id: spec.resume.clone(),
-            cli_session_id: spec.session_id.clone().or_else(|| spec.resume.clone()),
+            cli_session_id: initial_cli_sid,
             transcript_path: None,
             desktop_policy: spec.desktop.clone(),
             stream_mode: spec.print_mode,
-            started_at: crate::subagents::now_unix(),
+            started_at: crate::subagents::now_unix_ms() as i64,
             exited_at: None,
+            exit_code: None,
             last_pid: None,
+            created_rev: view.revision,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: initial_conf,
+            add_dirs: spec.add_dirs.clone(),
         };
-        {
+        let save_snap = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             st.subagents.register(entry.clone());
-            st.subagents.save();
-        }
+            st.subagents.clone()
+        };
+        // M16: Persist registry off the global state lock!
+        save_snap.save();
         self.ingest_session(host_key, &ctrl, &ep, view, &[]).await;
 
-        // Fallback event-driven folder-trust confirmation (max 15s, zero polling) in case Claude
-        // still renders a first-run workspace safety prompt (e.g. symlinked path / fresh config).
-        if spec.trust && cli == crate::subagents::AgentCli::Claude {
+        // Fallback event-driven folder-trust confirmation (max 15s, zero polling) for Claude Code & Codex (`M5`):
+        // navigates exact measured delta and ONLY confirms folders matching the child's own `cwd` or `add_dirs`!
+        if spec.trust && matches!(cli, crate::subagents::AgentCli::Claude | crate::subagents::AgentCli::Codex) {
             let (inner, ctrl_w, ent_w) = (self.clone(), ctrl.clone(), entry.clone());
             tokio::spawn(async move {
                 let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
                 let mut attempts = 0u8;
+                let allowed_dirs: Vec<String> = ent_w.cwd.iter().chain(ent_w.add_dirs.iter()).map(|d| d.trim_end_matches('/').to_owned()).collect();
                 loop {
                     let notified = inner.subagent_events.notified();
                     let (cls, _, _, _, _) = inner.live_subagent_rich(&ent_w);
@@ -8904,22 +9246,28 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         break;
                     }
                     if let Some(trust) = cls.folder_trust {
-                        if attempts >= 3 {
+                        let folder_allowed = match trust.folder.as_deref().map(|f| f.trim_end_matches('/')) {
+                            Some(f) => allowed_dirs.iter().any(|a| a == f),
+                            None => !trust.is_add_dir,
+                        };
+                        if !folder_allowed || attempts >= 4 {
                             break;
                         }
                         attempts += 1;
-                        if trust.selected_trust {
-                            let _ = ctrl_w.terminal_write(&ent_w.session_id, &ent_w.block_id, "\r").await;
-                        } else {
-                            let _ = ctrl_w.terminal_write(&ent_w.session_id, &ent_w.block_id, "\x1b[B").await;
-                            tokio::time::sleep(Duration::from_millis(60)).await;
-                            let _ = ctrl_w.terminal_write(&ent_w.session_id, &ent_w.block_id, "\r").await;
+                        let delta = trust.trust_index as isize - trust.selected_index as isize;
+                        let key = if delta > 0 { "\x1b[B" } else { "\x1b[A" };
+                        for _ in 0..delta.unsigned_abs() {
+                            let _ = ctrl_w.terminal_write(&ent_w.session_id, &ent_w.block_id, key).await;
+                            tokio::time::sleep(Duration::from_millis(50)).await;
                         }
+                        if delta != 0 {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
+                        let _ = ctrl_w.terminal_write(&ent_w.session_id, &ent_w.block_id, "\r").await;
                         tokio::time::sleep(Duration::from_millis(250)).await;
                         continue;
                     }
-                    if attempts > 0 {
-                        // Trust prompt dismissed cleanly!
+                    if attempts > 0 && cls.state == crate::subagents::SubagentLiveState::Working {
                         break;
                     }
                     tokio::select! {
@@ -8930,7 +9278,6 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             });
         }
 
-        let cursor = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq();
         let payload = json!({
             "ok": true,
             "id": entry.id,
@@ -8944,9 +9291,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             "title": title,
             "role": entry.role,
             "cwd": cwd,
+            "resume_id": entry.resume_id,
             "cli_session_id": entry.effective_session_id(),
             "desktop": entry.desktop_policy.describe(),
-            "cursor": cursor,
+            "started_at": crate::subagents::to_unix_ms(entry.started_at),
+            "cursor": start_cursor,
             "command": raw_argv,
         });
         let stdout = if spec.json { format!("{payload}\n") } else { format!("{}  {} ({}, effort={})  tab={}  {}\n", entry.id, cli.binary(), model, effort, entry.window_id, title) };
@@ -8990,10 +9339,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             Err(e) => return bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent list: {e}\n")), data: Some(json!({ "code": 1 })), carried: Vec::new() },
         };
 
+        let (_, _, caller_child) = self.caller_context(host_key, session_id.as_deref(), block_id.as_deref());
+        let caller_is_child = caller_child.is_some();
         let (mut rows, exited, live_windows) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let live: HashSet<String> = st.hosts.get(host_key).and_then(|h| h.sessions.get(&sid)).map(|s| s.windows.iter().map(|w| w.window_id.clone()).collect()).unwrap_or_default();
-            let rows = if all && explicit_parent.is_none() {
+            let rows = if all && explicit_parent.is_none() && !caller_is_child {
                 let mut collected = Vec::new();
                 if let Some(sess) = st.hosts.get(host_key).and_then(|h| h.sessions.get(&sid)) {
                     for w in &sess.windows {
@@ -9007,12 +9358,17 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 st.subagents.descendants_tree(host_key, &sid, &caller_win, &live)
             };
             let exited = if all {
-                let mut ex = st.subagents.exited_entries(host_key, Some(&sid), explicit_parent.as_ref().map(|_| caller_win.as_str()));
-                if ex.is_empty() && explicit_parent.is_none() {
-                    // Also surface exited children from a previous Rex server session on the same host (Item #9).
-                    ex = st.subagents.exited_entries(host_key, None, None);
+                if caller_is_child {
+                    // C3: A child subagent only sees its own exited descendants (never siblings/parents!).
+                    st.subagents.exited_entries(host_key, Some(&sid), None).into_iter().filter(|e| st.subagents.is_strict_descendant(host_key, &sid, &caller_win, &e.window_id)).collect()
+                } else {
+                    let mut ex = st.subagents.exited_entries(host_key, Some(&sid), explicit_parent.as_ref().map(|_| caller_win.as_str()));
+                    if ex.is_empty() && explicit_parent.is_none() {
+                        // Also surface exited children from a previous Rex server session on the same host (Item #9).
+                        ex = st.subagents.exited_entries(host_key, None, None);
+                    }
+                    ex
                 }
-                ex
             } else {
                 Vec::new()
             };
@@ -9020,26 +9376,34 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         };
 
         // Single-pass batched host inspection for all live children (Item #6 & #10: 1 round-trip for 40 children!).
-        if !fast && !rows.is_empty() {
+        let inspected = if !fast && !rows.is_empty() {
             let live_entries: Vec<crate::subagents::NativeSubagent> = rows.iter().map(|r| r.entry.clone()).collect();
-            let _ = self.inspect_subagents_on_host(host_key, &live_entries).await;
+            let map = self.inspect_subagents_on_host(host_key, &live_entries).await;
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             for row in &mut rows {
                 if let Some(updated) = st.subagents.by_window(host_key, &sid, &row.entry.window_id) {
                     row.entry = updated.clone();
                 }
             }
-        }
+            map
+        } else {
+            HashMap::new()
+        };
 
         let mut items = Vec::with_capacity(rows.len() + exited.len());
         let mut text = String::new();
         for row in &rows {
             let (cls, _, _, _, _) = self.live_subagent_rich(&row.entry);
+            // M22: Apply the exact same `effective_state()` as `status` so `list` and `status` never disagree!
+            let info = inspected.get(&row.entry.id);
+            let tx_state = info.and_then(|v| v.get("transcript_state")).and_then(Value::as_str);
+            let tx_err = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str);
+            let (eff_state, _, _) = crate::subagents::effective_state(&cls, tx_state, tx_err, true);
             let kids = {
                 let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.subagents.direct_children(host_key, &sid, &row.entry.window_id, &live_windows).len()
             };
-            items.push(crate::subagents::summary_json(&row.entry, cls.state, cls.summary.as_deref(), row.depth, kids));
+            items.push(crate::subagents::summary_json(&row.entry, eff_state, cls.summary.as_deref(), row.depth, kids));
             let tail = cls.summary.as_deref().map(|s| format!(" — {s}")).unwrap_or_default();
             let name_col = row.entry.name.as_deref().map(|n| format!(" ({n})")).unwrap_or_default();
             text.push_str(&format!(
@@ -9051,7 +9415,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 row.entry.cli.binary(),
                 row.entry.model,
                 row.entry.effort,
-                cls.state.as_str(),
+                eff_state.as_str(),
                 tail
             ));
         }
@@ -9073,15 +9437,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() }
     }
 
-    fn resolve_agent_target(&self, host_key: &str, session_id: Option<&str>, target: &str) -> Result<crate::subagents::NativeSubagent, String> {
+    fn resolve_agent_target_for_caller(&self, host_key: &str, session_id: Option<&str>, block_id: Option<&str>, target: &str) -> Result<crate::subagents::NativeSubagent, String> {
+        let (eff_sid, caller_win, caller_child) = self.caller_context(host_key, session_id, block_id);
         let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        st.subagents
-            .resolve_target(host_key, session_id, target)
-            .or_else(|| st.subagents.resolve_target(host_key, None, target))
-            .ok_or_else(|| format!("subagent `{target}` not found (run `olo agent list --all` to see active and exited child tabs)"))
+        st.subagents.resolve_target_scoped(host_key, eff_sid.as_deref().or(session_id), caller_win.as_deref(), caller_child.is_some(), target)
     }
 
-    async fn agent_status(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> bridge::BridgeResponse {
+    async fn agent_status(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> bridge::BridgeResponse {
         let mut target: Option<String> = None;
         let mut as_json = false;
         if let Some(v) = raw {
@@ -9101,13 +9463,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let Some(target) = target else {
             return bridge::BridgeResponse { ok: false, stdout: None, stderr: Some("usage: olo agent status <ID|NAME> [--json]\n".into()), data: Some(json!({ "code": 2 })), carried: Vec::new() };
         };
-        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+        let entry = match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), &target) {
             Ok(e) => e,
             Err(e) => return bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent status: {e}\n")), data: Some(json!({ "code": 1 })), carried: Vec::new() },
         };
         let inspected = self.inspect_subagents_on_host(host_key, std::slice::from_ref(&entry)).await;
         let info = inspected.get(&entry.id);
-        let entry = self.resolve_agent_target(host_key, Some(&entry.session_id), &entry.id).unwrap_or(entry);
+        let entry = self.resolve_agent_target_for_caller(host_key, Some(&entry.session_id), block_id.as_deref(), &entry.id).unwrap_or(entry);
         let (cls, screen, last_output_at, last_state_change_at, pid) = self.live_subagent_rich(&entry);
         let now_ms = crate::subagents::now_unix_ms();
         let quiet_secs = if last_output_at > 0 { now_ms.saturating_sub(last_output_at) / 1000 } else { 0 };
@@ -9115,19 +9477,12 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
 
         let last_message = info.and_then(|v| v.get("last_message")).and_then(Value::as_str).map(str::to_owned);
         let tx_state = info.and_then(|v| v.get("transcript_state")).and_then(Value::as_str);
-        let tx_error = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str).map(str::to_owned);
-        let pending_tool = info.and_then(|v| v.get("pending_tool"));
+        let tx_error = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str);
+        let pending_tools = Self::pending_tools_from_info(info);
         let bg_shells = info.and_then(|v| v.get("background_shells")).cloned().unwrap_or_else(|| json!([]));
         let waiting_on = info.and_then(|v| v.get("waiting_on")).and_then(Value::as_str).map(str::to_owned);
-        let error = cls.api_error.clone().or(tx_error);
-        let effective_state = if error.is_some() && !matches!(cls.state, crate::subagents::SubagentLiveState::Exited | crate::subagents::SubagentLiveState::WaitingApproval) {
-            crate::subagents::SubagentLiveState::Error
-        } else if tx_state == Some("end_turn") && cls.state == crate::subagents::SubagentLiveState::Idle {
-            crate::subagents::SubagentLiveState::Done
-        } else {
-            cls.state
-        };
-        let approval_val = cls.approval.as_ref().map(|ap| crate::subagents::approval_to_json(ap, pending_tool));
+        let (effective_state, error, aborted) = crate::subagents::effective_state(&cls, tx_state, tx_error, cls.state != crate::subagents::SubagentLiveState::Exited);
+        let approval_val = cls.approval.as_ref().map(|ap| crate::subagents::approval_to_json(ap, &pending_tools));
         let usage_val = cls.usage.as_ref().map(|u| json!({ "line": u.line, "percent": u.percent, "limit_reached": u.limit_reached }));
         let tail: Vec<&str> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(8).collect::<Vec<_>>().into_iter().rev().collect();
         let cursor = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq();
@@ -9136,6 +9491,8 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         if let Some(p) = pid {
             payload["pid"] = json!(p);
         }
+        payload["exit_code"] = json!(entry.exit_code);
+        payload["aborted"] = json!(aborted);
         payload["last_message"] = json!(last_message);
         payload["approval"] = json!(approval_val);
         payload["error"] = json!(error);
@@ -9175,7 +9532,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() }
     }
 
-    async fn agent_read(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+    async fn agent_read(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> Value {
         let mut target: Option<String> = None;
         let mut lines: usize = 80;
         let mut scrollback = false;
@@ -9217,7 +9574,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let Some(target) = target else {
             return json!({ "ok": false, "stderr": "usage: olo agent read <ID|NAME> [--lines N] [--scrollback] [--ansi] [--json]\n", "data": { "code": 2 } });
         };
-        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+        let entry = match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), &target) {
             Ok(e) => e,
             Err(e) => return json!({ "ok": false, "stderr": format!("olo agent read: {e}\n"), "data": { "code": 1 } }),
         };
@@ -9249,14 +9606,33 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         json!({ "ok": true, "stdout": stdout, "data": payload })
     }
 
-    async fn agent_approve(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> bridge::BridgeResponse {
+    fn reset_child_transition_edge(&self, entry: &crate::subagents::NativeSubagent, clear_seen_working: bool) {
+        let bk = BlockKey { host_key: entry.host_key.clone(), session_id: entry.session_id.clone(), block_id: entry.block_id.clone() };
+        if let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
+            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+            g.subagent_last_state = None;
+            g.subagent_last_key = None;
+            g.subagent_cls_cache = None;
+            if clear_seen_working {
+                g.subagent_seen_working = false;
+            }
+        }
+        self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).reset_child_dedupe(&entry.id);
+    }
+
+    fn block_supports_bracketed_paste(&self, entry: &crate::subagents::NativeSubagent) -> bool {
+        let bk = BlockKey { host_key: entry.host_key.clone(), session_id: entry.session_id.clone(), block_id: entry.block_id.clone() };
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).is_some_and(|br| br.lock().unwrap_or_else(|e| e.into_inner()).terminal.bracketed_paste_mode())
+    }
+
+    async fn agent_approve(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> bridge::BridgeResponse {
         let err_resp =
             |msg: String, code: i32| bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent approve: {msg}\n")), data: Some(json!({ "code": code })), carried: Vec::new() };
         let spec = match crate::subagents::ApproveSpec::parse(raw) {
             Ok(s) => s,
             Err(e) => return err_resp(e, 2),
         };
-        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &spec.target) {
+        let entry = match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), &spec.target) {
             Ok(e) => e,
             Err(e) => return err_resp(e, 1),
         };
@@ -9267,12 +9643,19 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let Some(ctrl) = ctrl else {
             return err_resp("Rex host is not connected".into(), 69);
         };
+        let pre_cursor = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq();
         let (cls, _, _, _, _) = self.live_subagent_rich(&entry);
         let Some(ap) = cls.approval else {
             return err_resp(format!("`{}` has no active approval prompt (current state: {})", entry.id, cls.state.as_str()), 1);
         };
+        let orig_key = ap.key;
         let want = if spec.once { olo_agent_screen::ChoiceKind::Once } else { olo_agent_screen::ChoiceKind::No };
-        let Some(choice) = ap.choices.iter().find(|c| c.kind == want) else {
+        let matching: Vec<&olo_agent_screen::ApprovalChoice> = ap.choices.iter().filter(|c| c.kind == want).collect();
+        if spec.once && matching.len() > 1 {
+            let labels: Vec<&str> = matching.iter().map(|c| c.label.as_str()).collect();
+            return err_resp(format!("ambiguous `once` choices in active dialog ({}); refusing to pick automatically", labels.join("; ")), 1);
+        }
+        let Some(choice) = matching.into_iter().next().cloned() else {
             let avail: Vec<String> = ap.choices.iter().map(|c| format!("{} [{}]", c.label, c.kind.as_str())).collect();
             return err_resp(format!("no safe `{}` choice found in active dialog (choices: {})", want.as_str(), avail.join("; ")), 1);
         };
@@ -9283,24 +9666,42 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             if let Err(e) = ctrl.terminal_write(&entry.session_id, &entry.block_id, step_key).await {
                 return err_resp(format!("failed to navigate approval dialog: {e}"), 1);
             }
-            tokio::time::sleep(Duration::from_millis(40)).await;
+            tokio::time::sleep(Duration::from_millis(45)).await;
         }
+        // M4: After moving the cursor, re-parse the screen and verify we actually landed on the exact
+        // intended choice label & kind BEFORE pressing Enter! If not, abort safely with Escape!
         if delta != 0 {
-            tokio::time::sleep(Duration::from_millis(40)).await;
+            let verify_deadline = tokio::time::Instant::now() + Duration::from_millis(350);
+            let mut verified = false;
+            while tokio::time::Instant::now() < verify_deadline {
+                tokio::time::sleep(Duration::from_millis(55)).await;
+                let (chk, _, _, _, _) = self.live_subagent_rich(&entry);
+                let Some(cur) = chk.approval else {
+                    return err_resp("approval dialog disappeared before confirmation".into(), 1);
+                };
+                if cur.key != orig_key {
+                    let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\x1b").await;
+                    return err_resp("approval dialog changed during navigation; aborted safely".into(), 1);
+                }
+                if cur.selected_index == Some(choice.index) && cur.choices.get(choice.index).is_some_and(|c| c.kind == want && c.label == choice.label) {
+                    verified = true;
+                    break;
+                }
+            }
+            if !verified {
+                let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\x1b").await;
+                return err_resp(format!("cursor did not land on `{}` (`{}`); sent Escape instead of Enter", choice.label, want.as_str()), 1);
+            }
         }
+        // Reset transition edge BEFORE pressing Enter so an immediate follow-up dialog B is never dropped (`H5`).
+        self.reset_child_transition_edge(&entry, false);
         if let Err(e) = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\r").await {
             return err_resp(format!("failed to confirm approval dialog: {e}"), 1);
         }
-        if !spec.once
-            && let Some(ref reason) = spec.reason
-            && !reason.trim().is_empty()
-        {
-            tokio::time::sleep(Duration::from_millis(140)).await;
-            let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, reason).await;
-            tokio::time::sleep(Duration::from_millis(60)).await;
-            let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\r").await;
-        }
-        // Verify event-driven that the approval dialog dismissed within 2s (retrying Enter once at 700ms).
+
+        // C5: Verify event-driven that `orig_key` dismissed within 2s.
+        // A DIFFERENT dialog key counts as dismissed (NEVER retry Enter onto an unreviewed next dialog!).
+        // Never retry after observing a dialog-free frame in between!
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         let retry_at = tokio::time::Instant::now() + Duration::from_millis(700);
         let mut retried = false;
@@ -9308,9 +9709,17 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         loop {
             let notified = self.subagent_events.notified();
             let (now_cls, _, _, _, _) = self.live_subagent_rich(&entry);
-            if now_cls.approval.is_none() {
-                dismissed = true;
-                break;
+            match now_cls.approval.as_ref() {
+                None => {
+                    dismissed = true;
+                    break;
+                }
+                Some(cur) if cur.key != orig_key => {
+                    // Original dialog dismissed and a brand-new dialog replaced it!
+                    dismissed = true;
+                    break;
+                }
+                Some(_) => {}
             }
             let now_t = tokio::time::Instant::now();
             if now_t >= deadline {
@@ -9323,13 +9732,61 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     if !retried && tokio::time::Instant::now() >= retry_at {
                         retried = true;
                         let (chk, _, _, _, _) = self.live_subagent_rich(&entry);
-                        if chk.approval.as_ref().is_some_and(|cur| cur.selected_index == Some(choice.index)) {
+                        if let Some(cur) = chk.approval.as_ref()
+                            && cur.key == orig_key
+                            && cur.selected_index == Some(choice.index)
+                            && cur.choices.get(choice.index).is_some_and(|c| c.kind == want && c.label == choice.label)
+                        {
                             let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\r").await;
                         }
                     }
                 }
             }
         }
+
+        // C4: Only AFTER the approval dialog is confirmed dismissed (and NO new approval dialog is open),
+        // wait event-driven for the prompt/reason field and send sanitized `--no --reason` as a bracketed paste!
+        if dismissed
+            && !spec.once
+            && let Some(ref raw_reason) = spec.reason
+        {
+            let clean_reason = crate::subagents::sanitize_paste_text(raw_reason).trim().to_owned();
+            if !clean_reason.is_empty() {
+                let reason_deadline = tokio::time::Instant::now() + Duration::from_millis(1200);
+                let safe_to_paste = loop {
+                    let notified = self.subagent_events.notified();
+                    let (chk, scr, _, _, _) = self.live_subagent_rich(&entry);
+                    if chk.approval.is_some() || chk.folder_trust.is_some() {
+                        // A new dialog appeared — NEVER type reason text into it!
+                        break false;
+                    }
+                    let at_input =
+                        olo_agent_screen::at_prompt(entry.cli.screen_agent(), &scr) || scr.to_ascii_lowercase().contains("tell ") || scr.to_ascii_lowercase().contains("what to do differently");
+                    if at_input {
+                        break true;
+                    }
+                    if tokio::time::Instant::now() >= reason_deadline {
+                        // Still no dialog up; safe to paste if not blocked.
+                        break chk.approval.is_none() && chk.folder_trust.is_none();
+                    }
+                    tokio::select! {
+                        _ = notified => {}
+                        _ = tokio::time::sleep(Duration::from_millis(60)) => {}
+                    }
+                };
+                if safe_to_paste {
+                    let payload_str = if self.block_supports_bracketed_paste(&entry) { format!("\x1b[200~{clean_reason}\x1b[201~") } else { clean_reason };
+                    let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, &payload_str).await;
+                    tokio::time::sleep(Duration::from_millis(80)).await;
+                    // Re-check right before Enter that no new approval popped!
+                    let (chk2, _, _, _, _) = self.live_subagent_rich(&entry);
+                    if chk2.approval.is_none() && chk2.folder_trust.is_none() {
+                        let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\r").await;
+                    }
+                }
+            }
+        }
+
         let payload = json!({
             "ok": dismissed,
             "id": entry.id,
@@ -9337,6 +9794,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             "chosen_label": choice.label,
             "chosen_kind": choice.kind.as_str(),
             "dismissed": dismissed,
+            "cursor": pre_cursor,
         });
         let stdout = if spec.json {
             format!("{payload}\n")
@@ -9383,7 +9841,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         } else {
             let mut entries = Vec::with_capacity(spec.targets.len());
             for t in &spec.targets {
-                match self.resolve_agent_target(host_key, session_id.as_deref(), t) {
+                match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), t) {
                     Ok(e) => entries.push(e),
                     Err(e) => return bridge::BridgeResponse::err(format!("olo agent watch: {e}\n")),
                 }
@@ -9394,33 +9852,27 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
 
         let started = Instant::now();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(spec.timeout_secs);
-        let since_floor = spec.since.unwrap_or_else(|| self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq());
 
-        let format_event_resp = |ev: &crate::subagents::SubagentEvent, matched_line: Option<String>| {
-            let payload = json!({
-                "ok": true,
-                "cursor": ev.seq,
-                "id": ev.id,
-                "name": ev.name,
-                "window_id": ev.window_id,
-                "cli_session_id": ev.cli_session_id,
-                "event": ev.event,
-                "state": ev.state.as_str(),
-                "summary": ev.summary,
-                "last_message": ev.last_message,
-                "approval": ev.approval,
-                "error": ev.error,
-                "matched_line": matched_line,
-                "elapsed_ms": started.elapsed().as_millis() as u64,
-                "tail": ev.tail,
-            });
-            let stdout = if spec.json {
-                format!("{payload}\n")
+        // H8 & M12: Check cursor reset (e.g. stale cursor after reload > latest_seq) and ring-buffer gap!
+        let (since_floor, had_gap) = {
+            let log = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
+            let latest = log.latest_seq();
+            if let Some(req_since) = spec.since {
+                if req_since > latest {
+                    let payload = json!({
+                        "ok": true,
+                        "event": "reset",
+                        "cursor": latest,
+                        "requested_since": req_since,
+                        "elapsed_ms": started.elapsed().as_millis() as u64,
+                    });
+                    let stdout = if spec.json { format!("{payload}\n") } else { format!("cursor reset (requested={req_since}, current={latest})\n") };
+                    return bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() };
+                }
+                (req_since, log.has_gap(req_since))
             } else {
-                let detail = matched_line.or_else(|| ev.summary.clone()).unwrap_or_default();
-                format!("{}  event={}  state={}  cursor={}  {}\n", ev.id, ev.event, ev.state.as_str(), ev.seq, detail)
-            };
-            bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() }
+                (latest, false)
+            }
         };
 
         let active_entries_in_scope = || -> Vec<crate::subagents::NativeSubagent> {
@@ -9436,6 +9888,74 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
         };
 
+        // H11: Snapshot baseline screen lines for `--match`/`--regex` so echoed prompt text already on screen NEVER fires!
+        let check_text = spec.match_text.is_some() || compiled_re.is_some();
+        struct TextWatchGuard<'a>(&'a std::sync::atomic::AtomicUsize, bool);
+        impl Drop for TextWatchGuard<'_> {
+            fn drop(&mut self) {
+                if self.1 {
+                    self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+        if check_text {
+            self.subagent_text_watchers.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        let _text_guard = TextWatchGuard(&self.subagent_text_watchers, check_text);
+
+        let initial_entries = active_entries_in_scope();
+        let mut baseline_lines: HashMap<String, HashSet<String>> = HashMap::new();
+        // H9: Without `--since`, record any child that is ALREADY `Idle` at call time (with its screen fingerprint)
+        // so `send ... && watch` doesn't immediately return the stale pre-send Idle state!
+        let mut baseline_idle_fp: HashMap<String, u64> = HashMap::new();
+        if check_text || spec.since.is_none() {
+            for e in &initial_entries {
+                let (cls, scr, _, _, _) = self.live_subagent_rich(e);
+                if check_text {
+                    baseline_lines.insert(e.id.clone(), scr.lines().map(str::trim).map(str::to_owned).collect());
+                }
+                if spec.since.is_none() && cls.state == crate::subagents::SubagentLiveState::Idle {
+                    // Only suppress stale Idle when NOT explicitly asking `--on done` (which may match an already-Done child via H10).
+                    let only_done = spec.events.len() == 1 && spec.events[0] == "done";
+                    if !only_done {
+                        baseline_idle_fp.insert(e.id.clone(), olo_agent_screen::fingerprint(&scr));
+                    }
+                }
+            }
+        }
+
+        let format_event_resp = |ev: &crate::subagents::SubagentEvent, matched_line: Option<String>, gap: bool| {
+            let mut payload = json!({
+                "ok": true,
+                "cursor": ev.seq,
+                "id": ev.id,
+                "name": ev.name,
+                "window_id": ev.window_id,
+                "block_id": ev.block_id,
+                "resume_id": ev.resume_id,
+                "cli_session_id": ev.cli_session_id,
+                "event": ev.event,
+                "state": ev.state.as_str(),
+                "summary": ev.summary,
+                "last_message": ev.last_message,
+                "approval": ev.approval,
+                "error": ev.error,
+                "matched_line": matched_line,
+                "elapsed_ms": started.elapsed().as_millis() as u64,
+                "tail": ev.tail,
+            });
+            if gap {
+                payload["gap"] = json!(true);
+            }
+            let stdout = if spec.json {
+                format!("{payload}\n")
+            } else {
+                let detail = matched_line.or_else(|| ev.summary.clone()).unwrap_or_default();
+                format!("{}  event={}  state={}  cursor={}  {}\n", ev.id, ev.event, ev.state.as_str(), ev.seq, detail)
+            };
+            bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() }
+        };
+
         let event_in_scope = |ev: &crate::subagents::SubagentEvent, live_ids: &HashSet<String>| -> bool {
             if ev.host_key != host_key {
                 return false;
@@ -9448,8 +9968,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             {
                 return false;
             }
-            live_ids.contains(&ev.id) || scope_parent.as_deref() == Some(ev.parent_window_id.as_str())
+            // M11: Also check `ancestor_windows` so exited grandchildren under `scope_parent` are NEVER dropped!
+            live_ids.contains(&ev.id) || scope_parent.as_deref().is_some_and(|p| ev.parent_window_id == p || ev.ancestor_windows.iter().any(|a| a == p))
         };
+
+        let wants_done_only = spec.events.iter().any(|e| e == "done");
 
         loop {
             let notified = self.subagent_events.notified();
@@ -9462,65 +9985,100 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 log.find_since(since_floor, |ev| event_in_scope(ev, &live_ids) && spec.matches_state(ev.state))
             };
             if let Some(ev) = queued {
-                return format_event_resp(&ev, None);
+                return format_event_resp(&ev, None, had_gap);
             }
 
-            // 2. Check live screens: always for `--match`/`--regex`, and for state predicates when `--since` wasn't supplied.
+            // 2. Check live screens: for `--match`/`--regex` (delta-only `H11`), and for state predicates when `--since` wasn't supplied.
             let check_live_state = spec.since.is_none();
-            let check_text = spec.match_text.is_some() || compiled_re.is_some();
             if check_live_state || check_text {
                 let mut candidate: Option<(crate::subagents::NativeSubagent, crate::subagents::ScreenClassification, String, Option<String>)> = None;
                 for entry in &current_entries {
                     let (cls, screen, _, _, _) = self.live_subagent_rich(entry);
-                    if let Some((ev_name, matched_line)) = spec.check(cls.state, &screen, compiled_re.as_ref()) {
-                        let is_text_match = ev_name == "match" || ev_name == "regex";
-                        if is_text_match || check_live_state {
+                    if check_text {
+                        let base = baseline_lines.entry(entry.id.clone()).or_default();
+                        let new_lines: Vec<String> = screen.lines().map(str::trim).filter(|l| !l.is_empty() && !base.contains(*l)).map(str::to_owned).collect();
+                        if let Some((ev_name, matched_line)) = spec.check_new_lines(&new_lines, compiled_re.as_ref()) {
                             candidate = Some((entry.clone(), cls, ev_name, matched_line));
                             break;
                         }
                     }
+                    if check_live_state {
+                        // H9: Skip unchanged stale Idle that was already present when `watch` was called.
+                        if cls.state == crate::subagents::SubagentLiveState::Idle
+                            && let Some(&old_fp) = baseline_idle_fp.get(&entry.id)
+                            && olo_agent_screen::fingerprint(&screen) == old_fp
+                        {
+                            continue;
+                        }
+                        // If child moved away from baseline Idle (e.g. started Working), clear baseline suppression!
+                        if cls.state != crate::subagents::SubagentLiveState::Idle {
+                            baseline_idle_fp.remove(&entry.id);
+                        }
+                        if spec.matches_state(cls.state) {
+                            let ev_name = cls.state.as_str().to_owned();
+                            candidate = Some((entry.clone(), cls, ev_name, None));
+                            break;
+                        }
+                        // H10: `--on done` on a child that is already `Idle` on screen — check transcript to see if it's already `Done`!
+                        if wants_done_only && cls.state == crate::subagents::SubagentLiveState::Idle {
+                            let inspected = self.inspect_subagents_on_host(host_key, std::slice::from_ref(entry)).await;
+                            let info = inspected.get(&entry.id);
+                            let tx_state = info.and_then(|v| v.get("transcript_state")).and_then(Value::as_str);
+                            let tx_err = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str);
+                            let (eff, _, _) = crate::subagents::effective_state(&cls, tx_state, tx_err, true);
+                            if spec.matches_state(eff) {
+                                candidate = Some((entry.clone(), cls, eff.as_str().to_owned(), None));
+                                break;
+                            }
+                        }
+                    }
                 }
                 if let Some((entry, cls1, ev_name, matched_line)) = candidate {
-                    // Stability confirmation (250 ms) for non-exited state matches to eliminate transient repaint glitches (Item #4).
-                    let confirmed = if cls1.state == crate::subagents::SubagentLiveState::Exited || ev_name == "match" || ev_name == "regex" {
+                    let is_text_match = ev_name == "match" || ev_name == "regex";
+                    let confirmed = if cls1.state == crate::subagents::SubagentLiveState::Exited || is_text_match {
                         true
                     } else {
                         tokio::time::sleep(Duration::from_millis(250)).await;
-                        let (cls2, screen2, _, _, _) = self.live_subagent_rich(&entry);
-                        spec.check(cls2.state, &screen2, compiled_re.as_ref()).is_some_and(|(e2, _)| e2 == ev_name)
+                        let (cls2, _, _, _, _) = self.live_subagent_rich(&entry);
+                        cls2.state == cls1.state
                     };
                     if confirmed {
                         let inspected = self.inspect_subagents_on_host(host_key, std::slice::from_ref(&entry)).await;
                         let info = inspected.get(&entry.id);
-                        let latest_entry = self.resolve_agent_target(host_key, Some(&entry.session_id), &entry.id).unwrap_or(entry);
+                        let latest_entry = self.resolve_agent_target_for_caller(host_key, Some(&entry.session_id), block_id.as_deref(), &entry.id).unwrap_or(entry);
                         let (cls_final, screen_final, _, _, _) = self.live_subagent_rich(&latest_entry);
                         let last_message = info.and_then(|v| v.get("last_message")).and_then(Value::as_str).map(str::to_owned);
-                        let tx_err = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str).map(str::to_owned);
-                        let pending_tool = info.and_then(|v| v.get("pending_tool"));
-                        let approval = cls_final.approval.as_ref().map(|ap| crate::subagents::approval_to_json(ap, pending_tool));
-                        let error = cls_final.api_error.clone().or(tx_err);
+                        let tx_state = info.and_then(|v| v.get("transcript_state")).and_then(Value::as_str);
+                        let tx_err = info.and_then(|v| v.get("transcript_error")).and_then(Value::as_str);
+                        let pending_tools = Self::pending_tools_from_info(info);
+                        let approval = cls_final.approval.as_ref().map(|ap| crate::subagents::approval_to_json(ap, &pending_tools));
+                        let (final_state, error, _) = crate::subagents::effective_state(&cls_final, tx_state, tx_err, cls_final.state != crate::subagents::SubagentLiveState::Exited);
                         let tail: Vec<String> = screen_final.lines().rev().filter(|l| !l.trim().is_empty()).take(10).map(str::to_owned).collect::<Vec<_>>().into_iter().rev().collect();
-                        let mut ev = crate::subagents::SubagentEvent {
-                            seq: 0,
+                        // H7 & H11: Return synthesized live/text event WITHOUT pushing into shared `subagent_log`!
+                        let cur_seq = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq();
+                        let ev = crate::subagents::SubagentEvent {
+                            seq: cur_seq,
                             timestamp_ms: crate::subagents::now_unix_ms(),
                             host_key: latest_entry.host_key.clone(),
                             session_id: latest_entry.session_id.clone(),
                             parent_window_id: latest_entry.parent_window_id.clone(),
+                            ancestor_windows: Vec::new(),
                             id: latest_entry.id.clone(),
                             name: latest_entry.name.clone(),
                             window_id: latest_entry.window_id.clone(),
+                            block_id: latest_entry.block_id.clone(),
+                            resume_id: latest_entry.resume_id.clone(),
                             cli_session_id: latest_entry.effective_session_id().map(str::to_owned),
-                            event: ev_name,
-                            state: cls_final.state,
+                            event: if is_text_match { ev_name } else { final_state.as_str().to_owned() },
+                            state: final_state,
                             summary: cls_final.summary,
                             last_message,
                             approval,
                             error,
                             tail,
+                            dedupe_key: String::new(),
                         };
-                        let seq = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).push(ev.clone());
-                        ev.seq = seq;
-                        return format_event_resp(&ev, matched_line);
+                        return format_event_resp(&ev, matched_line, had_gap);
                     }
                 }
             }
@@ -9549,7 +10107,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         }
     }
 
-    async fn agent_send(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> bridge::BridgeResponse {
+    async fn agent_send(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> bridge::BridgeResponse {
         let err_resp =
             |msg: String, code: i32| bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent send: {msg}\n")), data: Some(json!({ "code": code })), carried: Vec::new() };
         let cli_args: Vec<String> =
@@ -9558,7 +10116,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             Ok(v) => v,
             Err(e) => return err_resp(e, 2),
         };
-        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &spec.target) {
+        let entry = match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), &spec.target) {
             Ok(e) => e,
             Err(e) => return err_resp(e, 1),
         };
@@ -9570,11 +10128,36 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             return err_resp("Rex host is not connected".into(), 69);
         };
 
-        let (_, before_screen, before_out_at, _, _) = self.live_subagent_rich(&entry);
-        let mut total_bytes = 0usize;
+        let (before_cls, before_screen, before_out_at, _, _) = self.live_subagent_rich(&entry);
+        // H4: Refuse writing into an exited child!
+        if before_cls.state == crate::subagents::SubagentLiveState::Exited {
+            return err_resp(format!("subagent `{}` has already exited", entry.id), 1);
+        }
+        // C6: Refuse sending text into an active approval/question/trust dialog unless `--force` is passed!
+        if !spec.body.is_empty()
+            && !spec.force
+            && (before_cls.approval.is_some()
+                || before_cls.folder_trust.is_some()
+                || before_cls.state == crate::subagents::SubagentLiveState::WaitingApproval
+                || before_cls.state == crate::subagents::SubagentLiveState::WaitingQuestion)
+        {
+            return err_resp(
+                format!("refusing to type text into `{}` while a {} dialog is active (use `olo agent approve` to answer approvals, or pass `--force`)", entry.id, before_cls.state.as_str()),
+                1,
+            );
+        }
 
-        if !spec.body.is_empty() {
-            let chunk = if spec.paste { format!("\x1b[200~{}\x1b[201~", spec.body) } else { spec.body.clone() };
+        // H9: Capture pre-write cursor & reset transition edge so subsequent `watch --since CURSOR` never misses the next completion!
+        let pre_cursor = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner()).latest_seq();
+        self.reset_child_transition_edge(&entry, !spec.body.is_empty());
+
+        let mut total_bytes = 0usize;
+        let clean_body = crate::subagents::sanitize_paste_text(&spec.body);
+        if !clean_body.is_empty() {
+            // H18 & C6: Always use bracketed paste when the terminal enabled mode 2004 (prevents raw key interpretation),
+            // with ESC & `\x1b[201~` already stripped!
+            let use_bracketed = self.block_supports_bracketed_paste(&entry);
+            let chunk = if use_bracketed { format!("\x1b[200~{clean_body}\x1b[201~") } else { clean_body.clone() };
             total_bytes += chunk.len();
             if let Err(e) = ctrl.terminal_write(&entry.session_id, &entry.block_id, &chunk).await {
                 return err_resp(format!("{e}"), 1);
@@ -9590,24 +10173,37 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 return err_resp(format!("{e}"), 1);
             }
         }
-        if !spec.post_keys.is_empty() {
-            total_bytes += spec.post_keys.len();
-            if let Err(e) = ctrl.terminal_write(&entry.session_id, &entry.block_id, &spec.post_keys).await {
+        // M18: Send each special/control key separately 35 ms apart so `--key Escape --key Enter` never merges into Alt+Enter!
+        for (idx, k) in spec.post_keys.iter().enumerate() {
+            if idx > 0 {
+                tokio::time::sleep(Duration::from_millis(35)).await;
+            }
+            total_bytes += k.len();
+            if let Err(e) = ctrl.terminal_write(&entry.session_id, &entry.block_id, k).await {
                 return err_resp(format!("{e}"), 1);
             }
         }
 
-        // Event-driven delivery verification for submitted pastes (up to 3s, 1 safe Enter retry at 800ms).
+        // C6: Safe event-driven delivery verification for submitted pastes (up to 3s, 1 guarded Enter retry at 800ms
+        // ONLY when NO dialog is active AND the pasted text is still sitting unsubmitted in the input box!).
         let mut delivered = true;
-        if spec.verify_delivery {
+        if spec.verify_delivery && !clean_body.is_empty() {
             delivered = false;
             let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
             let retry_at = tokio::time::Instant::now() + Duration::from_millis(800);
             let mut retried = false;
-            let first_line = spec.body.lines().next().map(str::trim).filter(|s| s.len() >= 4);
+            let first_line = clean_body.lines().next().map(str::trim).filter(|s| s.len() >= 4);
             loop {
                 let notified = self.subagent_events.notified();
                 let (cls, screen, out_at, _, _) = self.live_subagent_rich(&entry);
+                let dialog_up = cls.approval.is_some()
+                    || cls.folder_trust.is_some()
+                    || matches!(cls.state, crate::subagents::SubagentLiveState::WaitingApproval | crate::subagents::SubagentLiveState::WaitingQuestion);
+                if dialog_up {
+                    // Prompt clearly submitted and triggered a tool/question dialog — DO NOT send retry Enter!
+                    delivered = true;
+                    break;
+                }
                 let still_in_input = first_line.is_some_and(|fl| {
                     screen.lines().rev().take(6).any(|l| {
                         let t = l.trim();
@@ -9628,25 +10224,38 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     _ = tokio::time::sleep_until(wake) => {
                         if !retried && tokio::time::Instant::now() >= retry_at {
                             retried = true;
-                            let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\r").await;
+                            let (chk_cls, chk_screen, _, _, _) = self.live_subagent_rich(&entry);
+                            let chk_dialog = chk_cls.approval.is_some()
+                                || chk_cls.folder_trust.is_some()
+                                || matches!(chk_cls.state, crate::subagents::SubagentLiveState::WaitingApproval | crate::subagents::SubagentLiveState::WaitingQuestion);
+                            let chk_still = first_line.is_some_and(|fl| {
+                                chk_screen.lines().rev().take(6).any(|l| {
+                                    let t = l.trim();
+                                    (t.starts_with('❯') || t.starts_with('>') || t.starts_with('›')) && t.contains(fl)
+                                })
+                            });
+                            if !chk_dialog && chk_still {
+                                let _ = ctrl.terminal_write(&entry.session_id, &entry.block_id, "\r").await;
+                            }
                         }
                     }
                 }
             }
         }
 
-        let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "bytes": total_bytes, "delivered": delivered });
+        let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "bytes": total_bytes, "delivered": delivered, "cursor": pre_cursor });
         let stdout = if spec.as_json { format!("{payload}\n") } else { format!("Sent {} bytes to {} (delivered={}).\n", total_bytes, entry.id, delivered) };
         bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() }
     }
 
-    async fn agent_stop(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> bridge::BridgeResponse {
+    async fn agent_stop(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> bridge::BridgeResponse {
         let mut target: Option<String> = None;
         let mut force = false;
         let mut tree = false;
         let mut keep_tab = false;
         let mut as_json = false;
         let mut save_path: Option<String> = None;
+        let caller_cwd = raw.and_then(|v| v.get("cwd")).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
         if let Some(v) = raw {
             if let Some(arr) = v.get("args").and_then(Value::as_array) {
                 let strs: Vec<String> = arr.iter().map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| x.to_string())).collect();
@@ -9687,7 +10296,17 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 carried: Vec::new(),
             };
         };
-        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+        // M10: `--force --keep-tab` is contradictory (force skips Ctrl-C, keep-tab skips close).
+        if force && keep_tab {
+            return bridge::BridgeResponse {
+                ok: false,
+                stdout: None,
+                stderr: Some("olo agent stop: `--force` and `--keep-tab` cannot be combined\n".into()),
+                data: Some(json!({ "code": 2 })),
+                carried: Vec::new(),
+            };
+        }
+        let entry = match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), &target) {
             Ok(e) => e,
             Err(e) => return bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent stop: {e}\n")), data: Some(json!({ "code": 1 })), carried: Vec::new() },
         };
@@ -9696,11 +10315,22 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         if entry.cli_session_id.is_none() || entry.transcript_path.is_none() {
             let _ = self.inspect_subagents_on_host(host_key, std::slice::from_ref(&entry)).await;
         }
-        let entry = self.resolve_agent_target(host_key, Some(&entry.session_id), &entry.id).unwrap_or(entry);
+        let entry = self.resolve_agent_target_for_caller(host_key, Some(&entry.session_id), block_id.as_deref(), &entry.id).unwrap_or(entry);
+
+        // Resolve relative `--save` path against caller's cwd so `saved_path` in JSON is already exact (`M10`).
+        let resolved_save = save_path.map(|p| {
+            if p.starts_with('/') {
+                p
+            } else if let Some(ref base) = caller_cwd {
+                Path::new(base).join(&p).display().to_string()
+            } else {
+                p
+            }
+        });
 
         // Item #14: Archive full scrollback before Ctrl-C / closing when `--save PATH` is given.
         let mut carried = Vec::new();
-        if let Some(ref dest) = save_path {
+        if let Some(ref dest) = resolved_save {
             let ctrl = {
                 let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.hosts.get(host_key).and_then(|h| h.control.clone())
@@ -9726,7 +10356,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     "stopped": stopped,
                     "cli_session_id": entry.effective_session_id(),
                     "transcript_path": entry.transcript_path,
-                    "saved_path": save_path,
+                    "saved_path": resolved_save,
                 });
                 let stdout = if as_json { format!("{payload}\n") } else { format!("Stopped {} subagent tab(s).\n", stopped.len()) };
                 bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried }
@@ -9753,6 +10383,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             }
             if let Some(own) = st.subagents.by_window(host_key, session_id, window_id) {
                 targets.push(own.clone());
+            } else if live.contains(window_id)
+                && let Some(any_own) = st.subagents.entries.iter().rev().find(|e| e.host_key == host_key && e.session_id == session_id && e.window_id == window_id)
+            {
+                // Even if an entry was already marked exited (e.g. natural process exit), close its surviving tab!
+                targets.push(any_own.clone());
             }
             (ctrl, ep, targets)
         };
@@ -9760,6 +10395,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             return Ok(Vec::new());
         }
         if !force {
+            // M10: Send double Ctrl-C with a brief pause so Claude Code & Codex exit cleanly instead of ignoring a single ^C.
+            for ent in &targets {
+                let _ = ctrl.terminal_write(session_id, &ent.block_id, "\x03").await;
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
             for ent in &targets {
                 let _ = ctrl.terminal_write(session_id, &ent.block_id, "\x03").await;
             }
@@ -9773,39 +10413,54 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             stopped.push(ent.id.clone());
         }
         if !keep_tab {
-            {
+            let (newly_marked, save_snap) = {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                let mut changed = false;
+                let mut marked: Vec<(crate::subagents::NativeSubagent, Vec<String>)> = Vec::new();
                 for ent in &targets {
-                    changed |= st.subagents.mark_exited(host_key, session_id, &ent.window_id);
+                    let anc = st.subagents.ancestor_windows(&ent.host_key, &ent.session_id, &ent.window_id);
+                    if st.subagents.mark_exited(host_key, session_id, &ent.window_id) {
+                        marked.push((ent.clone(), anc));
+                    }
                 }
-                if changed {
-                    st.subagents.save();
-                }
+                let snap = (!marked.is_empty()).then(|| st.subagents.clone());
+                (marked, snap)
+            };
+            if let Some(snap) = save_snap {
+                snap.save();
             }
-            {
-                let mut log = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
-                let ts = crate::subagents::now_unix_ms();
-                for ent in &targets {
-                    log.push(crate::subagents::SubagentEvent {
-                        seq: 0,
-                        timestamp_ms: ts,
-                        host_key: ent.host_key.clone(),
-                        session_id: ent.session_id.clone(),
-                        parent_window_id: ent.parent_window_id.clone(),
-                        id: ent.id.clone(),
-                        name: ent.name.clone(),
-                        window_id: ent.window_id.clone(),
-                        cli_session_id: ent.effective_session_id().map(str::to_owned),
-                        event: "exited".into(),
-                        state: crate::subagents::SubagentLiveState::Exited,
-                        summary: Some("stopped".into()),
-                        last_message: None,
-                        approval: None,
-                        error: None,
-                        tail: Vec::new(),
-                    });
-                }
+            // H7: Push `exited` events ONLY for entries where `mark_exited` actually transitioned them!
+            if !newly_marked.is_empty() {
+                let new_seq = {
+                    let mut log = self.subagent_log.lock().unwrap_or_else(|e| e.into_inner());
+                    let ts = crate::subagents::now_unix_ms();
+                    for (ent, anc) in newly_marked {
+                        log.push(crate::subagents::SubagentEvent {
+                            seq: 0,
+                            timestamp_ms: ts,
+                            host_key: ent.host_key.clone(),
+                            session_id: ent.session_id.clone(),
+                            parent_window_id: ent.parent_window_id.clone(),
+                            ancestor_windows: anc,
+                            id: ent.id.clone(),
+                            name: ent.name.clone(),
+                            window_id: ent.window_id.clone(),
+                            block_id: ent.block_id.clone(),
+                            resume_id: ent.resume_id.clone(),
+                            cli_session_id: ent.effective_session_id().map(str::to_owned),
+                            event: "exited".into(),
+                            state: crate::subagents::SubagentLiveState::Exited,
+                            summary: Some("stopped".into()),
+                            last_message: None,
+                            approval: None,
+                            error: None,
+                            tail: Vec::new(),
+                            dedupe_key: "exited".into(),
+                        });
+                    }
+                    log.latest_seq()
+                };
+                self.persist_event_seq(new_seq);
+                self.subagent_events.notify_waiters();
             }
             if let Ok(v) = ctrl.session_view(session_id).await {
                 self.ingest_session(host_key, &ctrl, &ep, v.payload, &[]).await;
@@ -9814,7 +10469,11 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         Ok(stopped)
     }
 
-    async fn agent_prune(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+    async fn agent_prune(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> Value {
+        let (_, _, caller_child) = self.caller_context(host_key, session_id.as_deref(), block_id.as_deref());
+        if caller_child.is_some() {
+            return json!({ "ok": false, "stderr": "olo agent prune: refused from child subagent tab\n", "data": { "code": 69 } });
+        }
         let mut all = false;
         let mut as_json = false;
         if let Some(v) = raw {
@@ -9831,20 +10490,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 as_json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
             }
         }
-        let pruned = {
+        let (pruned, save_snap) = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let n = st.subagents.prune_exited(host_key, if all { None } else { session_id.as_deref() });
-            if n > 0 {
-                st.subagents.save();
-            }
-            n
+            (n, (n > 0).then(|| st.subagents.clone()))
         };
+        if let Some(snap) = save_snap {
+            snap.save();
+        }
         let payload = json!({ "ok": true, "pruned": pruned });
         let stdout = if as_json { format!("{payload}\n") } else { format!("Pruned {pruned} exited subagent record(s).\n") };
         json!({ "ok": true, "stdout": stdout, "data": payload })
     }
 
-    async fn agent_focus(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+    async fn agent_focus(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> Value {
         let target = raw.and_then(|v| {
             v.get("target")
                 .or_else(|| v.get("id"))
@@ -9855,7 +10514,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let Some(target) = target else {
             return json!({ "ok": false, "stderr": "usage: olo agent focus <ID|NAME>\n", "data": { "code": 2 } });
         };
-        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+        let entry = match self.resolve_agent_target_for_caller(host_key, session_id.as_deref(), block_id.as_deref(), &target) {
             Ok(e) => e,
             Err(e) => return json!({ "ok": false, "stderr": format!("olo agent focus: {e}\n"), "data": { "code": 1 } }),
         };
@@ -10763,6 +11422,7 @@ mod tests {
                 keeping: Mutex::new(HashMap::new()),
                 subagent_events: Arc::new(tokio::sync::Notify::new()),
                 subagent_log: Mutex::new(crate::subagents::SubagentEventLog::default()),
+                subagent_text_watchers: std::sync::atomic::AtomicUsize::new(0),
             });
             inner.ingest_session("local", &ctrl, &ep, att.payload.view, &[]).await;
 
@@ -10799,9 +11459,15 @@ mod tests {
                         transcript_path: Some("/var/tmp/fake-transcript.jsonl".into()),
                         desktop_policy: desktop,
                         stream_mode: false,
-                        started_at: crate::subagents::now_unix(),
+                        started_at: crate::subagents::now_unix_ms() as i64,
                         exited_at: None,
+                        exit_code: None,
                         last_pid: None,
+                        created_rev: view.revision,
+                        seen_live: true,
+                        exited_by_sync: false,
+                        session_confidence: Some("record".into()),
+                        add_dirs: Vec::new(),
                     };
                     inner.state.lock().unwrap().subagents.register(entry.clone());
                     inner.ingest_session("local", &ctrl, &ep, view, &[]).await;
@@ -10812,12 +11478,17 @@ mod tests {
             let c_none = make_child("builder-1", crate::subagents::DesktopPolicy::None, "11111111-2222-3333-4444-555555555555", "Builder 1").await;
             let c_qa = make_child("qa-1", crate::subagents::DesktopPolicy::parse("screens=qa-1").unwrap(), "22222222-3333-4444-5555-666666666666", "QA 1").await;
 
-            // 1. Server-side desktop isolation enforcement (Item #11)
+            // 1. Server-side desktop isolation enforcement (Item #11 + C1)
             let deny_op = inner.handle_client_perform("local", "olo.op".into(), Some(json!({"args": ["read", "op://V/I/f"]})), Some(sid.clone()), Some(c_none.block_id.clone())).await.unwrap();
             assert_eq!(deny_op["ok"], json!(false));
             assert_eq!(deny_op["data"]["code"], json!(69));
             let deny_screen = inner.handle_client_perform("local", "olo.screen".into(), Some(json!({"args": ["tree", "qa-1"]})), Some(sid.clone()), Some(c_none.block_id.clone())).await.unwrap();
             assert_eq!(deny_screen["ok"], json!(false));
+            // C1: missing/empty/unknown block_id and catch-all actions MUST also be refused!
+            let deny_noblock = inner.handle_client_perform("local", "olo.op".into(), Some(json!({"args": ["whoami"]})), Some(sid.clone()), None).await.unwrap();
+            assert_eq!(deny_noblock["ok"], json!(false));
+            let deny_toggle = inner.handle_client_perform("local", "agent.auto_approve_toggle".into(), None, Some(sid.clone()), Some(c_none.block_id.clone())).await.unwrap();
+            assert_eq!(deny_toggle["ok"], json!(false));
             // Scoped QA child: `olo.op` refused, `olo.screen tree other` refused!
             let qa_deny_op = inner.handle_client_perform("local", "olo.op".into(), Some(json!({"args": ["whoami"]})), Some(sid.clone()), Some(c_qa.block_id.clone())).await.unwrap();
             assert_eq!(qa_deny_op["ok"], json!(false));
@@ -10833,8 +11504,9 @@ mod tests {
                 let br = inner.state.lock().unwrap().blocks.get(&bk).unwrap().clone();
                 let mut g = br.lock().unwrap();
                 g.terminal.vt_write(b"\x1b[2J\x1b[HCommand\r\nRequesting permission for:\r\n   cargo test -p api\r\nRun this command?\r\n> 1. Yes, run command\r\n  2. Yes, and always allow in this conversation\r\n  3. No, cancel\r\n");
+                g.received_bytes += 200;
             }
-            let st_resp = inner.agent_status("local", Some(&json!({"args": ["builder-1", "--json"]})), Some(sid.clone())).await;
+            let st_resp = inner.agent_status("local", Some(&json!({"args": ["builder-1", "--json"]})), Some(sid.clone()), Some(parent_bid.clone())).await;
             assert!(st_resp.ok, "{st_resp:?}");
             let st_data = st_resp.data.unwrap();
             assert_eq!(st_data["state"], json!("waiting_approval"));
@@ -10857,14 +11529,16 @@ mod tests {
             let cursor1 = w1_data["cursor"].as_u64().unwrap();
             assert!(cursor1 >= 1);
 
-            // 3. `olo agent send` paste + Enter (Item #13)
-            let send_resp = inner.agent_send("local", Some(&json!({"args": ["builder-1", "hello\nworld", "--enter", "--json"]})), Some(sid.clone())).await;
+            // 3. `olo agent send` refused while approval dialog is up (`C6`), allowed with `--force`!
+            let send_refused = inner.agent_send("local", Some(&json!({"args": ["builder-1", "hello\nworld", "--enter", "--json"]})), Some(sid.clone()), Some(parent_bid.clone())).await;
+            assert!(!send_refused.ok, "send without --force MUST refuse while approval dialog is active");
+            let send_resp = inner.agent_send("local", Some(&json!({"args": ["builder-1", "hello\nworld", "--enter", "--force", "--json"]})), Some(sid.clone()), Some(parent_bid.clone())).await;
             assert!(send_resp.ok, "{send_resp:?}");
 
             // 4. `olo agent stop --save PATH` carries scrollback file and preserves `cli_session_id` in `list --all` (Items #9, #14)
             let save_to = dir.join("saved-scrollback.txt");
             let stop_resp = inner
-                .agent_stop("local", Some(&json!({"args": ["builder-1", "--force", "--save", save_to.to_string_lossy(), "--json"]})), Some(sid.clone()))
+                .agent_stop("local", Some(&json!({"args": ["builder-1", "--force", "--save", save_to.to_string_lossy(), "--json"]})), Some(sid.clone()), Some(parent_bid.clone()))
                 .await;
             assert!(stop_resp.ok, "{stop_resp:?}");
             assert_eq!(stop_resp.carried.len(), 1);
@@ -10887,7 +11561,7 @@ mod tests {
             assert!(subs.iter().any(|s| s["name"] == "builder-1" && s["state"] == "exited" && s["cli_session_id"] == "11111111-2222-3333-4444-555555555555"));
 
             // `prune` cleans exited entries cleanly!
-            let pr = inner.agent_prune("local", Some(&json!({"args": ["--json"]})), Some(sid.clone())).await;
+            let pr = inner.agent_prune("local", Some(&json!({"args": ["--json"]})), Some(sid.clone()), Some(parent_bid.clone())).await;
             assert_eq!(pr["data"]["pruned"], json!(1));
 
             // 5. 40-child `list` batch scaling check (Item #10): register 40 children and time single-pass `list`!
@@ -10927,9 +11601,15 @@ mod tests {
                         transcript_path: None,
                         desktop_policy: crate::subagents::DesktopPolicy::None,
                         stream_mode: false,
-                        started_at: crate::subagents::now_unix(),
+                        started_at: crate::subagents::now_unix_ms() as i64,
                         exited_at: None,
+                        exit_code: None,
                         last_pid: None,
+                        created_rev: 0,
+                        seen_live: true,
+                        exited_by_sync: false,
+                        session_confidence: None,
+                        add_dirs: Vec::new(),
                     });
                 }
             }
@@ -10947,6 +11627,8 @@ mod tests {
 
 #[cfg(test)]
 mod reconnect_tests;
+#[cfg(test)]
+mod subagent_fuzz_tests;
 
 /// What Passwords' answer to a host's asking for the SSH keys offered
 /// it: how many, or why none could be had, as a person reads it.
