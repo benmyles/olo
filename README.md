@@ -176,6 +176,12 @@ olo-screen click agent --role Button --name Save
   and covered-element checks), and GTK/Qt windows via AT-SPI. Every
   action settles and returns focused state, window list, visible tree and
   screenshot. Passwords and passkeys can be shared read-only per screen.
+- **On a Rex host itself, too.** An agent working on a far host needn't
+  borrow your desktop for a page or a GUI: `olo screen install` there
+  puts Olo and Chrome under its account (no root), and `olo screen --on
+  host start` is a whole Olo desktop of the host's own, drawn in software
+  where there is no GPU. It costs no processor time at rest, and is
+  stopped when the agent's tab ends.
 
 ### Terminal built for coding work
 

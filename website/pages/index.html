@@ -101,6 +101,7 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
         <ul>
           <li><b>Watch live and Take Control</b>: zero-copy GPU viewing, <span class="keys"><kbd>⌘</kbd> <kbd>K</kbd></span> to take over while locking out agent actions, full action History, frame-tile Recorder scrubbing and hardware-encoded MP4 video export.</li>
           <li><b>Structured, not just pixels</b>: Olo kit trees, Chrome DOM across cross-origin iframes with covered-element checks, and AT-SPI. Share specific Passwords entries and passkeys read-only per screen.</li>
+          <li><b>On a Rex host itself, too</b>: <code>olo screen install</code> puts Olo and Chrome under an agent's account on a far host, with no root; <code>olo screen --on host</code> is then a whole Olo desktop there, drawn in software where there is no GPU, stopped when the agent's tab ends.</li>
         </ul>
 <pre><span class="p">$ </span>olo-screen start
 <span class="p">$ </span>olo-screen run agent olo-styled-edit notes.md
