@@ -48,15 +48,24 @@ something nobody here has is in "Blocked", with what it waits for.
   layout (offset ~25 pt right when content grows past provisional width).
 - **Dark-mode raised controls & link blue contrast** (Opus 5.5 & Gemini 4
   Neon looks at Rex's Host window, 2026-11-25):
-  - In dark mode, raised push-button faces are currently a shade darker than
-    the panel (`control_background` vs `panel_background`), so they look
-    pressed in; raise them one step lighter than the panel desktop-wide.
-  - In dark mode, `LinkButton` blue (`Set Up This Host’s Account…`) is dim
-    against the dark slate panel; lighten link blue in dark themes so it
-    clears 4.5:1 like surrounding text.
-  - Consider replacing the inline `"Set Up This Host’s Account…"` header
-    link in Manage Host / Account windows with a native button, and adding
-    confirmation (`Remove…`) when `Remove` sits directly beside `Update`.
+  - ~~In dark mode, raised push-button faces are a shade darker than the
+    panel~~ Measured 2026-11-26 in the Host window's dark picture at 2×
+    (Classic): a button's face runs from (66, 85, 99) at its top to
+    (36, 56, 71) at its foot over a panel of (24, 43, 54): lighter than
+    the panel through its whole height, 1.9:1 to 1.2:1. Every theme's
+    dark control is lighter than its panel, and a test keeps it so
+    (`looks::tests::a_dark_looks_controls_are_lighter_than_its_panel`).
+    Nothing to change; if a face still reads as pressed in, it is its
+    gloss's dark foot, to look at with the reviewers' own picture.
+  - ~~In dark mode, `LinkButton` blue is dim~~ Measured the same day: the
+    link's ink is (93, 146, 237), 4.73:1 on the panel (the sentence
+    beside it 5.83:1); `LinkButton` makes its blue readable at 4.5:1 on
+    the panel (`olo_theme::readable`) in every theme.
+  - Kept, as they are: the header's link to the Account window (a link
+    in a sentence that names what it opens; the window's buttons are
+    what act on this host), and Remove beside Update without a question
+    (host_panel's own rule: "What is done is done at the click, over
+    SSH, and is as easily undone: only Remove All… asks first").
   - Rex status-bar error banner (Opus 5.5 R2, 2026-11-25): add optional
     retryable action callback (`Try Again` button on the detail well row)
     for actions that can be re-run directly; keep Manage Host window
@@ -221,6 +230,88 @@ something nobody here has is in "Blocked", with what it waits for.
   Never a sign-in, and nothing of another kind (history, caches).
 
 ## Not started (highest priority first)
+
+- **Agent Screens on the Rex host itself** (Ben, 2026-11-26: "there
+  should be an option for agents on a rex host to use olo agent screens
+  on the host itself without having to use them on the user's desktop
+  (although that should also remain an option). the host's olo agent
+  screens should use software rendering and provide a full olo desktop
+  for the agent and it should also have chrome installed and ready to
+  use"). Today an agent on a host gets a screen on the person's desktop
+  through the bridge (`olo screen …` from the host, the `olo-rex-bridge`
+  skill; a child's `--desktop screens=…` says which), so it needs the
+  desktop connected and awake, and it draws there. To do:
+  - *A desktop of the host's own*: app_server run headless on the host,
+    drawn in software (what `tools/dev/tsession` does on the dev server
+    with no GPU: the olo-dev-server skill has what it takes), one for
+    each screen an agent asks for, with the whole of Olo in it (Deskbar,
+    Tracker, the apps, the palette), not a bare surface: so Olo itself
+    is put on the host (the release's archive, without wallpapers,
+    under the account as the helper is; what a host with no Fedora needs
+    of libraries, to find: the release's programs link Fedora 44's).
+  - *The same commands*: `olo-screen` and `olo screen …` unchanged for
+    the agent (start, look, the tree, click, type, menu), with where it
+    is chosen once: `--on host` or `--on desktop`, a default by host
+    (Preferences ▸ Rex ▸ Hosts, and the Host window), and for a child
+    by its policy (`olo agent start --desktop …` gains the host's own
+    beside `screens=`). The desktop's stays as it is.
+  - *Chrome there and ready*: installed with the rest (Chrome for
+    Testing or the distribution's, as a Wayland client, never X11), a
+    profile of the screen's own, opened by `olo-screen run chrome URL`;
+    said in the skill, with how a page on the host's own ports is
+    reached (no forward needed: it is the same machine).
+  - *Seen from the desktop*: the person can look at a host's screen from
+    Rex (a pane or a window that shows it, read-only unless they take
+    it), since "what a person can see and do, an agent can read" runs
+    both ways; and each screen is listed with what it costs.
+  - *Measured*: a software-drawn desktop at rest must cost nothing (no
+    frames when nothing changes), and its memory a screen is said
+    (thirty agents with a screen each is the case to size for); stopped
+    when its agent ends, and after a time unused.
+  - With `olo agent` already the host's own (2026-11-26), this is what
+    is left for an agent on a host to need nothing of the desktop.
+
+- **The website and README.md, made anew** (Ben, 2026-11-26: "add a
+  todo to completely refresh the website and the README.md with all new
+  screenshots and covering the huge ecosystem of apps and features with
+  a highlight on the AI stuff and rex client + integrations. use neon 4
+  as your copywriter"). Both were last written on 2026-11-17 (`website/`,
+  its pages and templates; README.md, 302 lines), before Rex, the agents'
+  work and most of what is below. To do:
+  - *What to say, first*: a list of everything Olo has now, read from
+    the code and HACKING, not from the old pages: the desktop
+    (app_server, Deskbar, tiling and its layouts, workspaces, themes,
+    fractional scaling, the login screen, the Installer and upgrades in
+    place), every app under `apps/` (56 folders: which are apps a person
+    opens, which are services), and each one's best two or three
+    features.
+  - *The highlight*: the AI side and Rex. Rex as the client of a Rex
+    server on any host (sessions that outlive the desktop, panes, the
+    Hosts and Ports windows, moving an account host to host, synced
+    folders, Tracker over `rex://`); agents in it (Activity, a tab's
+    children and `olo agent` with no desktop needed, transcripts, Keep It
+    Going and Auto Approve, Agent Sessions carried to a host); the
+    desktop for agents (Agent Screens and `olo-screen`, the structured
+    tree every window gives, the Rex bridge: a browser, a password, a
+    screen for an agent on a far host; `olo run`); the Token Pool; and
+    the integrations (Preferences ▸ Integrations, Slack, Telegram, Phone,
+    Calendar's accounts, Passwords and 1Password, Chrome).
+  - *All new pictures*: every screenshot taken again from the current
+    build, headless (`tsession`), each app in its best state with real
+    looking content, light and dark, at 2× for the page (and the tiling
+    layouts, the login screen, the Installer); none kept from before. The
+    website's pictures zoom (2026-11-16): keep that.
+  - *The words*: Gemini 4 Neon at xhigh as the copywriter (a helper in
+    tmux, `tools/dev/agents`, with a brief: the list above, the pictures,
+    Olo's voice from the old pages and the Olo Book, who it is for). It
+    drafts; every claim is checked against the code before it is kept
+    ("Before telling the person how something works … read the code that
+    does it"), and what Olo doesn't do yet is not said.
+  - *The page itself*: looked at as everything else is (both reviewers,
+    at phone width too), and the README's install steps tried as written.
+  LFS: new pictures in the repository need the budget raised first (see
+  "GitHub's LFS budget is used up", below); the website's own may be
+  served from its `static/` without LFS, to check.
 
 - **`olo agent` on a host reached without SSH** (left of the agents
   service, 2026-11-26). The service is Olo's helper, which the app puts
@@ -11074,7 +11165,7 @@ people.
 ## Done (most recently finished first)
 
 - ~~**Auto Approve answers every permission question, whatever its shape**~~ (done 2026-11-26; Ben, of a Rex pane where Claude Code's "Read outside the working directories" sat with no countdown: "auto approve in rex terminal doesn't seem to work"; "when it's on it should auto approve everything after a 30s countdown"). The question began "Allow this" (Auto Approve knew "Do you want to" and "Would you like to"), and its first answer, under the mark, is a yes that is kept ("Yes, and keep allowing any reads…"): the yes for this once is the fourth. Auto Approve in Rex and in Terminal now reads questions with the one reader the agents service uses (`olo_agent_screen::approvable_for` over `parse_approval`: each agent's questions, their answers by what they mean) and answers with the yes that keeps nothing, wherever it stands: the mark is moved down to it when the time comes and Return sent only once it is seen there (`Ask::down`, `Do::Down`, `Pending::moved`). Never a yes kept in settings or one that switches mode; a mark someone moved is theirs. Tested from Ben's picture of the dialog (`auto_approve_answers_a_read_outside_with_its_yes_for_this_once`) and through Rex's watcher (`a_question_whose_yes_is_further_down_is_answered_with_it`).
-  - Left for Ben to say: a plan waiting to be approved ("No, keep planning") and a folder to trust are still not answered (a mode and a trust, not leave to go on). If "everything" means those too: the plan's "Yes, and manually approve edits", and the folder's "Yes, I trust this folder".
+  - A folder to trust is answered too, and a plan never (Ben, the same day, of the two that were left for him to say: "i see folder trust under blocked i want folder trust auto approved. plans should not be though"): `olo_agent_screen::trust_ask`, with the yes wherever it stands (Claude Code 2.1.332 puts its mark on "No, exit" above it, Antigravity on the yes: each read from the program, started in a new folder; Codex's "Yes, continue"), a mark seen and where the agent put it, the countdown saying "Trust FOLDER?". Tests: `auto_approve_trusts_a_folder_and_never_approves_a_plan` (the screens as drawn) and Rex's `a_folder_to_trust_is_answered_and_a_plan_is_not` (the countdown, the mark moved, Return once seen).
 
 - ~~**`olo agent` is the host's own: every command with no Olo desktop connected, the desktop following and never in the middle; a child tab that runs a command of one's own; keys with any modifier; surveys set aside; a question answered by what a choice means**~~ (done 2026-11-26; HACKING, Rex, "The children of a tab are their host's"; ShiftUp's needs 19 to 23). Ben: "the desktop shouldn't need to be running or connected for the subagents to work, and when the desktop reconnects all the agents should just appear. the desktop shouldn't be 'in the middle' of anything".
   - The engine moved out of the app to the host: the agents service (`olo-rex-link agent serve`, `crates/rex-link/src/agentd`) speaks to the host's own Rex server, starts each child as a tab, reads its screen from the server itself (the engine the desktop draws, never a second emulator), types into it, closes it, and numbers what happens (`watch --since`). `olo agent` there asks it over a socket of the account's (`bridge_olo.sh` runs the helper; no `rex do`, no desktop). What the two sides agree on is one library (`olo_rex_link::agents`: the children and their tree, what is asked, how a child stands, the events, the wire).

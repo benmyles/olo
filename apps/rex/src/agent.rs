@@ -368,6 +368,42 @@ mod tests {
         assert!(w.pending.is_none());
     }
 
+    /// A folder to trust counts down and is answered with its yes (Ben,
+    /// 2026-11-26: "i want folder trust auto approved"): Claude Code's
+    /// mark starts on "No, exit", so it is moved down one first and
+    /// Return sent once it is seen on the yes. A plan never counts down.
+    #[test]
+    fn a_folder_to_trust_is_answered_and_a_plan_is_not() {
+        let trust = |on_yes: bool| {
+            let (no, yes) = if on_yes { ("  ", "❯ ") } else { ("❯ ", "  ") };
+            format!(
+                "{}\n Accessing workspace:\n /var/tmp/new\n Quick safety check: Is this a project you created or one you trust?\n {no}No, exit\n {yes}Yes, I trust this folder\n Enter to confirm · Esc to cancel\n",
+                "─".repeat(40)
+            )
+        };
+        let t0 = Instant::now();
+        let help = Help { auto_approve: true, ..Help::default() };
+        let after = Duration::from_secs(30);
+        let mut w = Watch::new(t0);
+        assert!(w.looked(Some(Agent::Claude), &trust(false), &help, after, t0), "it counts down");
+        assert_eq!(w.counting(t0).map(|(q, left)| (q.to_owned(), left.as_secs())), Some(("Trust /var/tmp/new?".into(), 30)));
+        assert_eq!(w.due(&help, &trust(false), KEEP_GOING_QUIET, "", t0 + after - Duration::from_secs(1), 1_000), None, "not before its time");
+        assert_eq!(w.due(&help, &trust(false), KEEP_GOING_QUIET, "", t0 + after, 1_000), Some(Do::Down(1)));
+        assert!(!w.looked(Some(Agent::Claude), &trust(true), &help, after, t0 + after), "the same question with its mark moved");
+        let soon = t0 + after + Duration::from_millis(350);
+        assert_eq!(w.due(&help, &trust(true), KEEP_GOING_QUIET, "", soon, 1_000), Some(Do::Return));
+        assert_eq!(w.approved, 1);
+        // With Auto Approve off, nothing.
+        let mut w = Watch::new(t0);
+        assert!(!w.looked(Some(Agent::Claude), &trust(false), &Help::default(), after, t0));
+        // A plan to choose a mode for is the person's, on or off.
+        let plan = " Would you like to proceed?\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n";
+        let mut w = Watch::new(t0);
+        assert!(!w.looked(Some(Agent::Claude), plan, &help, after, t0));
+        assert!(w.pending.is_none());
+        assert_eq!(w.due(&help, plan, KEEP_GOING_QUIET, "", t0 + after, 1_000), None);
+    }
+
     /// A question Auto Approve may answer is answered Yes once its time
     /// has come, if it is still the one asked; not before.
     #[test]

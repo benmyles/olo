@@ -63,12 +63,22 @@ USERNS=()
 if $DOCKER --version 2>/dev/null | grep -qi podman && [ "$(id -u)" != 0 ]; then
     USERNS=(--userns=keep-id)
 fi
+# Podman gives a container the caller's proxy settings (HTTPS_PROXY and
+# the rest) unless told not to. One on this computer's own loopback (an
+# agent's session has one: http://127.0.0.1:PORT) is nobody inside a
+# container, where 127.0.0.1 is the container: dnf there "could not
+# connect … via 127.0.0.1" and the check of step 5 ended the script with
+# no word of why (2026-11-26). Such a proxy isn't passed on.
+NOPROXY=()
+if $DOCKER --version 2>/dev/null | grep -qi podman && env | grep -iE '^(https?|all|ftp)_proxy=' | grep -qE '://(127\.[0-9.]+|localhost|\[::1\])[:/]'; then
+    NOPROXY=(--http-proxy=false)
+fi
 # The container sees the tree at its own path (paths in the programs are
 # the tree's), the release's target folder over its target/, and Jato.
 in_image() {
     # (The checkout is a worktree: its .git names the repository's own,
     # which it must see, read-only, to say what commit it is.)
-    $DOCKER run --rm "${USERNS[@]}" --user "$(id -u):$(id -g)" \
+    $DOCKER run --rm "${USERNS[@]}" "${NOPROXY[@]}" --user "$(id -u):$(id -g)" \
         -v "$ROOT:$ROOT" -v "$WORK/target:$ROOT/target" -v "$REPO/.git:$REPO/.git:ro" -v "$HOME/.cargo/registry:/home/builder/.cargo/registry" \
         -v "$(command -v jato):/usr/local/bin/jato:ro" -v "$WORK/jato:/jato" -e JATO_CACHE_DIR=/jato -e HOME=/home/builder \
         "$@" -w "$ROOT" "$IMAGE" sh -c "git config --global --add safe.directory '$ROOT'; git config --global --add safe.directory '$REPO'; $IN"
@@ -107,14 +117,19 @@ say "$(grep -E '^version .* unpacked' "$LOG" | tail -1)"
 step "5. every program's libraries, on Fedora 44 and 45"
 cat > "$WORK/ldd-check.sh" <<'EOF'
 set -e
-dnf -y -q install libinput libseat libdisplay-info libxkbcommon mesa-libgbm mesa-libEGL libdrm pixman freetype harfbuzz fontconfig pipewire-libs elfutils-libelf pam vulkan-loader sqlite-libs openssl-libs zstd tar > /dev/null 2>&1
+# (What dnf says when it can't is said: thrown away, a mirror it couldn't
+# reach ended the publish with no word of why.)
+dnf -y -q install libinput libseat libdisplay-info libxkbcommon mesa-libgbm mesa-libEGL libdrm pixman freetype harfbuzz fontconfig pipewire-libs elfutils-libelf pam vulkan-loader sqlite-libs openssl-libs zstd tar > /tmp/dnf.log 2>&1 || { echo "couldn't install the libraries to check against: $(tail -2 /tmp/dnf.log | tr '\n' ' ')"; exit 3; }
 mkdir -p /x && cd /x && zstd -dc /dist/$ARCHIVE | tar -xf -
 n=0; for b in olo/bin/*; do out=$(ldd "$b" 2>&1 | grep "not found" || true); if [ -n "$out" ]; then echo "$b: $out"; n=$((n+1)); fi; done
 echo "missing: $n of $(ls olo/bin | wc -l), $(ldd --version | head -1)"
 EOF
 for v in 44 45; do
-    out=$($DOCKER run --rm -e "ARCHIVE=$(basename "$ARCHIVE")" -v "$DIST:/dist:ro" -v "$WORK/ldd-check.sh:/c.sh:ro" "registry.fedoraproject.org/fedora:$v" sh /c.sh 2>&1 | tail -20)
+    # (A check that couldn't run is said as that, not as a library missing,
+    # and never ends the script unsaid.)
+    out=$($DOCKER run --rm "${NOPROXY[@]}" -e "ARCHIVE=$(basename "$ARCHIVE")" -v "$DIST:/dist:ro" -v "$WORK/ldd-check.sh:/c.sh:ro" "registry.fedoraproject.org/fedora:$v" sh /c.sh 2>&1 | tail -20) || true
     echo "$out" >> "$LOG"
+    echo "$out" | grep -q "^missing: " || fail "the check on Fedora $v couldn't run: $(echo "$out" | tail -2 | tr '\n' ' ')"
     echo "$out" | grep -q "^missing: 0 of" || fail "on Fedora $v a program lacks a library: $(echo "$out" | grep -v '^missing' | head -3)"
     say "Fedora $v: $(echo "$out" | grep '^missing')"
 done

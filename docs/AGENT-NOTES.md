@@ -2501,6 +2501,28 @@ their host's"):
   measuring script that started its server with `&` and then waited for
   thirty starts never came back. Wait for the numbers you started
   (`pids+=($!)`, `wait "${pids[@]}"`).
+- **An agent's shell has a proxy on its own loopback, and Podman hands
+  it to every container** (`HTTPS_PROXY=http://127.0.0.1:PORT` in a
+  Claude Code session here; Podman's `--http-proxy` is on by default).
+  Inside a container 127.0.0.1 is the container, so anything that
+  fetches there fails: the release's check on plain Fedora ("dnf …
+  Could not connect to server … via 127.0.0.1"), which threw dnf's
+  words away and ended `tools/publish-release.sh` at step 5 with no
+  "failed:" line (2026-11-26; its wrapper's "exit 0" was mine, an
+  `echo` after it: read the script's own last line, never the task's
+  status). The script now passes no loopback proxy on
+  (`--http-proxy=false`) and says why a check couldn't run. The network
+  itself is reachable without the proxy (`curl --noproxy '*'`). For any
+  container of your own that needs the network: `--http-proxy=false`.
+- **Reading each agent's real question costs a minute, and beats a
+  remembered one**: started in a new folder under `/var/tmp` in a tmux
+  server of its own (`tmux -L NAME new-session -d … claude`, the
+  shell's `CLAUDE*`, `CODEX*` and `AI_AGENT` unset, then `capture-pane
+  -p`), Claude Code 2.1.332 drew its folder trust with the mark on
+  "No, exit" and the yes under it, unnumbered; Antigravity with the
+  mark on "Yes, I trust this folder"; Codex 0.172 asked nothing in a
+  folder that is no repository. Killed with `tmux -L NAME kill-server`,
+  nothing answered, so no agent's settings are touched.
 - **A test session's app runs in the person's own home** (`tsession`
   without `--home`: only what apps keep between runs is the session's).
   Rex, started there for a picture, repointed `~/.local/bin/olo` at the

@@ -19749,10 +19749,19 @@ the agent's mode. Where that yes isn't under the mark (`Ask::down`:
 the read outside has it fourth), the mark is moved down to it when the
 time comes, the screen read again, and Return sent only once the mark
 is seen to stand on it (`Pending::moved`; one that doesn't come to
-stand there is given up as the person's). Not a
-plan waiting to be approved ("No, keep planning") nor a folder to
-trust (neither is leave to go on: a mode, a trust, are the person's),
+stand there is given up as the person's). **A folder to trust is
+answered too**, with its yes (Ben, 2026-11-26: "i want folder trust
+auto approved. plans should not be though"; `trust_ask` over
+`parse_folder_trust`: "Yes, I trust this folder", Codex's "Yes,
+continue", "Yes, add it" for a folder added; the countdown says "Trust
+FOLDER?"). Claude Code draws it with the mark on "No, exit" and the
+yes under it, Antigravity with the mark on the yes (both read from the
+programs that day, each started in a new folder), so for Claude Code
+the mark is moved down one first, as above. Not a
+plan waiting to be approved ("No, keep planning": a mode to choose is
+the person's, on or off),
 not when the mark stands on another answer (someone moved it), not
+where no mark is seen at all, not
 another question's answers under words that ask
 (but for Codex's "Reason: Do you want to …?" between its question and
 its answers: Codex tells its model to give its reason for a command as

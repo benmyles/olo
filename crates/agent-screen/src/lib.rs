@@ -319,13 +319,21 @@ pub fn approvable(screen: &str) -> Option<Ask> {
 /// mean), answered with the yes that keeps nothing: the one for this
 /// once, wherever it stands; where a question has none, the one for this
 /// conversation alone. Never a yes that is kept in settings or switches
-/// the agent's mode, and never a question that isn't leave to go on (a
-/// folder to trust, a plan to choose a mode for).
+/// the agent's mode, and never a plan to choose a mode for (Ben, the same
+/// day, of the two left unanswered: "i want folder trust auto approved.
+/// plans should not be though").
+///
+/// A folder to trust is answered too, with its yes ([`trust_ask`]): the
+/// agent can't begin without it, and whoever turned Auto Approve on for
+/// a pane has said yes to what it does there.
 ///
 /// The mark must stand where the agent put it (the first answer) or on
 /// that yes already: anywhere else, someone moved it and it is theirs.
 /// [`Ask::down`] says how far below the mark the yes is.
 pub fn approvable_for(agent: Agent, screen: &str) -> Option<Ask> {
+    if let Some(trust) = parse_folder_trust(screen) {
+        return trust_ask(&trust);
+    }
     let asked = parse_approval(agent, screen)?;
     let of_kind = |kind: ChoiceKind| -> Vec<usize> { asked.choices.iter().filter(|c| c.kind == kind).map(|c| c.index).collect() };
     let (once, session) = (of_kind(ChoiceKind::Once), of_kind(ChoiceKind::AllowSession));
@@ -343,6 +351,28 @@ pub fn approvable_for(agent: Agent, screen: &str) -> Option<Ask> {
         _ => return None,
     };
     Some(Ask { key: asked.key, question: asked.question, down })
+}
+
+/// A folder an agent asks to trust before it begins, as Auto Approve
+/// answers it: with its yes ("Yes, I trust this folder"; Codex's "Yes,
+/// continue"; "Yes, add it" for a folder added), wherever it stands.
+/// Claude Code puts the mark on "No, exit" above it, Antigravity on the
+/// yes (both read from the programs, 2026-11-26). As for any question:
+/// a mark must be seen, on the first answer or on the yes; anywhere
+/// else it was moved, and is theirs.
+fn trust_ask(trust: &FolderTrustPrompt) -> Option<Ask> {
+    use std::hash::{Hash, Hasher};
+    if !trust.marked {
+        return None;
+    }
+    let down = match trust.selected_index {
+        at if at == trust.trust_index => 0,
+        0 => trust.trust_index,
+        _ => return None,
+    };
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    ("trust", &trust.folder, trust.is_add_dir).hash(&mut h);
+    Some(Ask { key: h.finish(), question: trust.question.clone(), down })
 }
 
 /// What the screen shows, for telling a change: its text with the
@@ -474,6 +504,13 @@ pub struct FolderTrustPrompt {
     pub trust_index: usize,
     /// True when the cursor is already on the trust choice.
     pub selected_trust: bool,
+    /// A mark was seen on one of its choices (without one,
+    /// `selected_index` is the first by default and nothing is known of
+    /// where Return would land).
+    pub marked: bool,
+    /// The question as it is said to the person where it counts down
+    /// ("Trust /var/tmp/new?").
+    pub question: String,
 }
 
 /// Usage or rate-limit notice parsed from an agent's screen footer/status.
@@ -674,8 +711,14 @@ pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
         }
     }
     let trust_index = choices.iter().position(|(_, c)| c.to_ascii_lowercase().starts_with("yes"))?;
+    let marked = choices.iter().any(|(m, _)| *m);
     let selected_index = choices.iter().position(|(m, _)| *m).unwrap_or(0);
-    Some(FolderTrustPrompt { folder, is_add_dir, selected_index, trust_index, selected_trust: selected_index == trust_index })
+    let question = match &folder {
+        Some(folder) if is_add_dir => format!("Add and trust {folder}?"),
+        Some(folder) => format!("Trust {folder}?"),
+        None => "Trust this folder?".to_owned(),
+    };
+    Some(FolderTrustPrompt { folder, is_add_dir, selected_index, trust_index, selected_trust: selected_index == trust_index, marked, question })
 }
 
 /// Parses a structured tool-approval prompt across Claude Code, Codex, and Antigravity (`agy`).
@@ -1490,6 +1533,47 @@ mod tests {
         assert!(parse_approval(Agent::Claude, add_dir_screen).is_none());
     }
 
+    /// A folder to trust is answered with its yes (Ben, 2026-11-26: "i
+    /// want folder trust auto approved. plans should not be though"),
+    /// as each agent draws the question (Claude Code 2.1.332 and
+    /// Antigravity read from the programs that day, each started in a
+    /// new folder; Codex's from its own test above).
+    #[test]
+    fn auto_approve_trusts_a_folder_and_never_approves_a_plan() {
+        let rule = "─".repeat(60);
+        // Claude Code: the mark starts on "No, exit"; the yes is one down.
+        let claude = format!(
+            "{rule}\n Accessing workspace:\n /var/tmp/olo-agents-try/trust/claude-new\n Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open\n source project, or work from your team). If not, take a moment to review what's in this folder first.\n Claude Code'll be able to read, edit, and execute files here.\n Security guide\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel\n"
+        );
+        let ask = approvable_for(Agent::Claude, &claude).expect("a folder to trust is answered");
+        assert_eq!((ask.down, ask.question.as_str()), (1, "Trust /var/tmp/olo-agents-try/trust/claude-new?"));
+        assert_eq!(classify(Agent::Claude, &claude), State::Blocked);
+        // The mark moved down to the yes: Return is right, and it is the same question still.
+        let on_yes = claude.replace(" ❯ No, exit\n   Yes, I trust this folder", "   No, exit\n ❯ Yes, I trust this folder");
+        let there = approvable_for(Agent::Claude, &on_yes).unwrap();
+        assert_eq!((there.down, there.key), (0, ask.key));
+        // No mark seen (a screen half drawn): nothing is known of where Return would land.
+        let unmarked = claude.replace(" ❯ No, exit", "   No, exit");
+        assert!(approvable_for(Agent::Claude, &unmarked).is_none());
+        // Antigravity: the mark is on the yes from the start.
+        let agy = "Accessing workspace:\n/var/tmp/olo-agents-try/trust/agy-new\nDo you trust the contents of this project?\nAntigravity CLI requires permission to read, edit, and execute files here.\n> Yes, I trust this folder\n  No, exit\n  ↑/↓ Navigate · enter Confirm\n\n   auto · Gemini 4 Neon · xhigh\n";
+        let ask = approvable_for(Agent::Antigravity, agy).expect("Antigravity's folder to trust");
+        assert_eq!((ask.down, ask.question.as_str()), (0, "Trust /var/tmp/olo-agents-try/trust/agy-new?"));
+        assert_eq!(classify(Agent::Antigravity, agy), State::Blocked);
+        // Someone moved its mark to the no: theirs.
+        let on_no = agy.replace("> Yes, I trust this folder\n  No, exit", "  Yes, I trust this folder\n> No, exit");
+        assert!(approvable_for(Agent::Antigravity, &on_no).is_none());
+        // Codex: "Yes, continue" under the mark.
+        let codex = "> You are in /var/tmp/new\n\n  Do you trust the contents of this directory? Working with untrusted contents comes with higher risk of prompt injection.\n\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue\n";
+        assert_eq!(approvable_for(Agent::Codex, codex).map(|a| (a.down, a.question)), Some((0, "Trust /var/tmp/new?".to_owned())));
+        // A folder added to a running Claude Code.
+        let added = format!("{rule}\n Adding a new directory:\n /var/tmp/other\n Is this a directory you created or one you trust?\n ❯ 1. Yes, add it\n   2. No\n Enter to confirm · Esc to cancel\n");
+        assert_eq!(approvable_for(Agent::Claude, &added).map(|a| (a.down, a.question)), Some((0, "Add and trust /var/tmp/other?".to_owned())));
+        // A plan waiting on a mode is never answered, whatever is on.
+        let plan = " Would you like to proceed?\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n";
+        assert!(approvable_for(Agent::Claude, plan).is_none());
+    }
+
     /// Claude Code's read outside the working directories, as 2.1.332
     /// draws it (Ben's picture of a pane where Auto Approve never counted
     /// down, 2026-11-26): Auto Approve may answer it, with its yes for
@@ -1550,9 +1634,9 @@ mod tests {
         // A question with no yes for this once: the yes for this conversation, never the kept one.
         let session_only = "Command\n────────────────────\nRequesting permission for:\n   curl example.com\nRun this command?\n> 1. Yes, and always allow for commands that start with 'curl' (Persist to settings.json)\n  2. Yes, and always allow in this conversation\n  3. No, cancel\n  ↑/↓ Navigate\n";
         assert_eq!(approvable_for(Agent::Antigravity, session_only).map(|a| a.down), Some(1));
-        // What isn't leave to go on is never answered: a folder to trust, a plan to choose a mode for.
+        // A plan to choose a mode for is never answered (a folder to trust is: its own test).
         let trust = "────────────────────\n Accessing workspace:\n /var/tmp/new\n Quick safety check: Is this a project you created or one you trust?\n ❯ 1. Yes, I trust this folder\n   2. No, exit\n Enter to confirm · Esc to cancel\n";
-        assert!(approvable_for(Agent::Claude, trust).is_none());
+        assert_eq!(approvable_for(Agent::Claude, trust).map(|a| a.down), Some(0));
         let plan = " Would you like to proceed?\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n";
         assert!(approvable_for(Agent::Claude, plan).is_none());
     }

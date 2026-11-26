@@ -1035,6 +1035,22 @@ mod tests {
         THEMES.iter().flat_map(|t| [ThemeMode::Light, ThemeMode::Dark].map(|m| (format!("{} {m:?}", t.id), palette(t.id, m))))
     }
 
+    /// In a dark look a raised control stands off its panel by being
+    /// lighter than it, never darker (which reads as pressed in: Opus
+    /// 5.5's and Gemini 4 Neon's looks at Rex's Host window,
+    /// 2026-11-25), and a menu's edge tells it from the panel behind.
+    #[test]
+    fn a_dark_looks_controls_are_lighter_than_its_panel() {
+        let mut wrong = Vec::new();
+        for (name, p) in every().filter(|(_, p)| p.mode == ThemeMode::Dark) {
+            let (panel, control) = (crate::luminance(p.panel_background), crate::luminance(p.control_background));
+            if control <= panel {
+                wrong.push(format!("{name}: control {:?} is no lighter than panel {:?}", p.control_background, p.panel_background));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
     #[test]
     fn ids_are_unique_and_known() {
         for (i, t) in THEMES.iter().enumerate() {
