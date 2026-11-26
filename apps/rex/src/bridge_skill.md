@@ -275,9 +275,14 @@ model or reasoning effort is used.
     --keep` for one that must outlive the tab that started it (another
     agent's to go on with), which then stays until it is stopped.
     The person has all of this in Rex too (the Host window's Screens
-    tab: Install, Update, Remove, what the host lacks, the screens that
-    run, and which screens `olo screen` means here by default).
-    The person can't watch a host's screen from their desktop yet: show
+    tab: Install, Update, Remove, what the host lacks, which screens
+    `olo screen` means here by default, and a list of this host's
+    screens, where they can look at one of yours as it is now, a
+    picture, and stop it: give a screen a title that says what it is
+    for, `olo screen --on host rename NAME "TITLE"`, since that list
+    shows it).
+    The person can't watch a host's screen live from their desktop yet,
+    nor take it over: show
     what you did with a picture (`look`), or all of it as a video of
     its actions with the waits between them cut (`olo screen --on host
     history NAME --export OUT.mp4`, made in under a second with no GPU),

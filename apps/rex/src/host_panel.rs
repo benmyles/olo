@@ -35,7 +35,7 @@ use olo_kit::{
     widgets::{Button, RadioButton, StringView, TabView, button_width, separator},
 };
 
-use crate::host::Shown;
+use crate::host::{ScreenDo, Shown};
 use crate::hub::{HostConnState, HostHelper, HostOp, HostStands, HostThing};
 use crate::panels::{self, Light};
 
@@ -65,6 +65,193 @@ const NAME_MOST: f32 = 120.0;
 thread_local! {
     /// The Files tab's list's scroller (one Host window at a time).
     static FILES_SCROLL: olo_kit::ScrollHandle = olo_kit::ScrollHandle::new();
+}
+
+/// How many of a host's screens the Screens tab's list has room for:
+/// never fewer (a list of one row reads as a field), and past them it
+/// scrolls; the window keeps its height.
+const SCREENS_SHOWN: usize = 3;
+
+/// One of a host's screens as the Screens tab's list has it: what the
+/// host said of it, and what is being done to it from here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreenLine {
+    pub row: crate::host_screens::ScreenRow,
+    pub doing: Option<ScreenDo>,
+}
+
+/// The list's rows: the host's screens as last heard (running first),
+/// each with what this window is doing to it.
+pub fn screen_lines(host: &HostStands, shown: &Shown) -> Vec<ScreenLine> {
+    host.screens.as_ref().filter(|s| s.installed.is_some()).map_or(Vec::new(), |s| s.rows.iter().map(|row| ScreenLine { row: row.clone(), doing: shown.screen_doing(&row.name) }).collect())
+}
+
+/// "Screens on this host": the host's screens as a list in a well
+/// (its name, the title it was given, when it was started, how it
+/// stands with its light), Look at Screen and Stop Screen under it for
+/// the one chosen (a running one; opening a row looks at it), and
+/// under them one line's room for what couldn't be done last (kept
+/// when nothing failed: the window doesn't move when something does).
+/// There in every state, empty where Olo isn't on the host yet: a
+/// finished install fills a list in, it doesn't add a section, and the
+/// tab isn't half empty on a new host. Opus 5.5's look.
+pub fn screens_section(
+    cx: &olo_kit::Cx<crate::ui::RexWindow>,
+    list: &olo_kit::widgets::ListModel,
+    lines: &[ScreenLine],
+    host: &HostStands,
+    shown: &Shown,
+    on_do: impl Fn(&HostDo, &mut WindowCx) + 'static,
+) -> Option<Element> {
+    use olo_kit::widgets::{Column, ColumnListView};
+    // (An empty list says how screens come to be, where they can: not
+    // where Olo isn't there yet, nor where none can run.)
+    let can_run = host.screens.as_ref().is_some_and(|s| s.installed.is_some() && s.lacking().is_none());
+    let none = if can_run { "No screens yet. Agents on the host start them." } else { "No screens." };
+    let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
+    let reached = host.conn == HostConnState::Connected && host.ssh;
+    // (The last column fills what is left of the rows' width: 494
+    // points beside the scroll bar, as the row's own node says it,
+    // read on the rig. The four declared come to 492: more
+    // than its room and the list scrolls sideways, its bar over the
+    // third row, which the lint doesn't see; 496 did, at every scale.
+    // The first column's width keeps the second's words well clear of
+    // the second button's under the list (34 points): at 132 they
+    // stood 2 points apart, which read as a column that missed. The
+    // lint's, at 1.5×.)
+    // (The title is the one column of prose, and the widest: it was
+    // the narrowest but one, "Preview of the docs" 8 points from the
+    // time after it beside a column of short names half empty. Gemini 4
+    // Neon's look.)
+    // (Opus 5.5 measured the same: a name is 50 points, a time 52, and
+    // Title "gets the rest … and any width added later"; a screen
+    // started before today says its day, "Yesterday", "Nov 24", which
+    // fits where its time did.)
+    // (Status is wider than its words need, so its heading stands
+    // clear of where the count over it begins, "3 screens  ·  2
+    // running" at the heading's right: 4 points apart read as an edge
+    // that missed. The lint's, at 1.5×.)
+    // (And a name's column is 100 points, not 110: at 110 "Title"
+    // began where an empty list's centred words do, to a point, at
+    // four scales. The lint's.)
+    let columns = vec![Column::new("Screen", 100.0), Column::new("Title", 208.0), Column::new("Started", 80.0), Column::new("Status", 104.0)];
+    let opened = {
+        let (on_do, lines) = (on_do.clone(), lines.to_vec());
+        move |row: &usize, cx: &mut WindowCx| {
+            if let Some(line) = lines.get(*row).filter(|l| l.row.running && l.doing.is_none()) {
+                on_do(&HostDo::ScreenLook(line.row.name.clone()), cx);
+            }
+        }
+    };
+    let view = ColumnListView::new(cx, "rex-host-screens", list, columns, lines.len(), |v: &crate::ui::RexWindow, cell, g| {
+        let Some(line) = v.host_screen_lines.get(cell.row) else { return };
+        match cell.column {
+            0 => cell.text(g, line.row.name.clone()),
+            1 => cell.text(g, line.row.title.clone().unwrap_or_default()),
+            2 => cell.text(g, line.row.started_said()),
+            _ => match (line.doing, line.row.running) {
+                (Some(ScreenDo::Stop), _) => panels::ring_cell(g, cell, &olo_kit::words::tr("Stopping…")),
+                (_, true) => panels::lit_cell(g, cell, Light::On, &olo_kit::words::tr(line.row.said())),
+                (_, false) => panels::lit_cell(g, cell, Light::Off, &olo_kit::words::tr(line.row.said())),
+            },
+        }
+    })
+    .row_key(|v: &crate::ui::RexWindow, row| {
+        v.host_screen_lines.get(row).map_or(0, |l| style::key((&l.row.name, &l.row.title, l.row.size, l.row.running, l.row.archived, l.row.started, l.doing.map(|d| d as u8))))
+    })
+    .empty_text(none)
+    .on_open(opened)
+    .on_select(cx.msg_with(|_: &()| crate::ui::WinMsg::HostChosen));
+    let tall = olo_kit::widgets::list_height(lines.len().clamp(SCREENS_SHOWN, SCREENS_SHOWN), m::LIST_ROW, true);
+    let view = div().w_full().h(px(tall)).child(view);
+
+    // (The one chosen, where it runs and nothing is being done to it.)
+    let chosen = list.state().single().and_then(|i| lines.get(i));
+    let free = chosen.filter(|l| l.row.running && l.doing.is_none() && reached).map(|l| l.row.name.clone());
+    let wide = ["Look at Screen", "Stop Screen"].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
+    let button = |label: &'static str, id: &'static str, tip: &'static str, what: Option<HostDo>| {
+        let on_do = on_do.clone();
+        Button::new(label).id(id).min_width(wide).tip(tip).enabled(what.is_some()).on_click(move |_, cx| {
+            if let Some(what) = &what {
+                on_do(what, cx);
+            }
+        })
+    };
+    // (How many there are and how many run: "6 screens  ·  3 running",
+    // since three rows show of six and the count alone said "3". A row
+    // being stopped isn't one that runs: the count is the green lights'.)
+    let running = lines.iter().filter(|l| l.row.running && l.doing != Some(ScreenDo::Stop)).count();
+    let all = olo_kit::words::count(lines.len() as u64, "1 screen", "{n} screens").to_string();
+    let count: String = match (lines.len(), running) {
+        (0, _) => String::new(),
+        (_, 0) => all,
+        (_, n) => format!("{all}  ·  {}", olo_kit::words::count(n as u64, "1 running", "{n} running")),
+    };
+    let actions = div()
+        .w_full()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::SPACING))
+        .child(button("Look at Screen", "host-screen-look", "Shows a picture of the screen as it is now.", free.clone().map(HostDo::ScreenLook)))
+        .child(button("Stop Screen", "host-screen-stop", "Quits everything running on the screen. The screen stays in the list, stopped.", free.map(HostDo::ScreenStop)))
+        .child(div().flex_1());
+    // Under them, what couldn't be done last: one line with the down
+    // light, its first half ("Couldn’t stop agent-2") in the ink the
+    // section above gives "Couldn’t remove", the reason in the words'
+    // own. Its room is there when nothing failed too, so the window and
+    // the buttons at its foot don't move by a few points when something
+    // does (they did, by 4 to 5: Opus 5.5's look).
+    let row = style::line_row(style::PLAIN_SIZE);
+    let failed: Element = match &shown.screen_failed {
+        Some((_, what, why)) => {
+            let p = olo_kit::theme::palette();
+            let err_red = style::c(olo_theme::readable(p.failure, p.panel_background, 5.5));
+            div()
+                .w_full()
+                .min_h(px(row))
+                .flex()
+                .flex_row()
+                .items_start()
+                .gap(px(m::TIGHT))
+                .child(div().h(px(row)).flex().items_center().child(panels::light(Light::Down)))
+                // (On the line's own height: at its default, a control's,
+                // the line stood 7 points taller than the room kept for it.)
+                .child(StringView::new(format!("{what}:")).color(err_red).height(row))
+                .child(div().flex_1().min_w_0().child(StringView::new(why.clone()).wrap(true)))
+                .into_element()
+        }
+        None => div().w_full().h(px(row)).flex_shrink_0().into_element(),
+    };
+    // (The section's heading as the others': its words, a rule; how
+    // many run at its right, in the heading's own row.)
+    let head = div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .w_full()
+                .flex()
+                .flex_row()
+                .items_center()
+                .child(div().flex_1().min_w_0().child(StringView::new("Screens on this host").bold(true).height(m::LABEL_ROW)))
+                .child(StringView::new(count).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW)),
+        )
+        .child(div().h(px(2.0)).flex_shrink_0())
+        .child(separator());
+    let section = div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .child(head)
+        .child(div().h(px(m::SPACING - 2.0)).flex_shrink_0())
+        .child(view)
+        .child(div().h(px(m::SPACING)).flex_shrink_0())
+        .child(actions)
+        .child(div().h(px(m::TIGHT)).flex_shrink_0())
+        .child(failed);
+    Some(section.into_element())
 }
 
 /// How far under the head its note begins: so that the state's words
@@ -108,6 +295,12 @@ pub enum HostDo {
     /// Where an agent's screen opens there when it doesn't say: on the
     /// host itself (`true`), or on this computer.
     ScreensDefault(bool),
+    /// Olo being put on the host for its screens, stopped where it is.
+    ScreensCancel,
+    /// One of the host's screens stopped, by its name.
+    ScreenStop(String),
+    /// A picture of one of the host's screens as it is now, shown here.
+    ScreenLook(String),
     /// A kept folder (by its path there) let go of: `true` asks to confirm
     /// first (`Forget…`), `false` forgets immediately (gone folders).
     StopKept(String, bool),
@@ -276,7 +469,7 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
     // again meanwhile shows it still.)
     if thing == HostThing::Screens && host.screens_doing.is_some() && shown.doing(thing) != Some(HostOp::Remove) {
         let word = if shown.doing(thing) == Some(HostOp::Update) || host.screens.as_ref().is_some_and(|s| s.installed.is_some()) { "Being updated…" } else { "Being installed…" };
-        return Stands { busy: true, more: host.screens_doing.clone(), ..stands(Light::Waiting, word) };
+        return Stands { busy: true, more: host.screens_doing.as_ref().map(|(words, _)| words.clone()), keeps_note: true, ..stands(Light::Waiting, word) };
     }
     if let Some(op) = shown.doing(thing) {
         let word = match op {
@@ -393,7 +586,13 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
                     // screens running an update waits: said before it is
                     // pressed, not after it is refused.)
                     (_, None) if host.this_olo.as_ref().zip(s.committed).is_some_and(|((mine, _), theirs)| theirs < *mine) => {
-                        let waits = s.running_said().map(|running| format!("{running} {}", olo_kit::words::tr("Update once they are stopped.")));
+                        // (Their names are the list's, under it, where
+                        // the host listed them: said once.)
+                        let waits = match s.running_said() {
+                            Some(_) if !s.rows.is_empty() => Some(olo_kit::words::tr("Update once the running screens below are stopped.").to_string()),
+                            Some(running) => Some(format!("{running} {}", olo_kit::words::tr("Update once they are stopped."))),
+                            None => None,
+                        };
                         on_its_own(Stands {
                             more: host.this_olo.as_ref().and_then(|(_, mine)| s.update_said(mine)),
                             which: waits,
@@ -401,7 +600,9 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
                             ..installed(stands(Light::Waiting, "Update available"))
                         })
                     }
-                    (what, None) => on_its_own(Stands { more: what, which: s.running_said(), ..installed(stands(Light::On, "Installed")) }),
+                    // (Which run: the list under it says, where the host
+                    // listed them; said here of a helper that doesn't.)
+                    (what, None) => on_its_own(Stands { more: what, which: s.running_said().filter(|_| s.rows.is_empty()), ..installed(stands(Light::On, "Installed")) }),
                 },
             }
         }
@@ -433,7 +634,7 @@ fn section(title: &'static str) -> Element {
 
 /// The window's content for `host`: `managed` whether its Rex server
 /// can be looked after from here.
-pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do: impl Fn(&HostDo, &mut WindowCx) + 'static) -> Element {
+pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, screens_list: Option<Element>, on_do: impl Fn(&HostDo, &mut WindowCx) + 'static) -> Element {
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
@@ -455,6 +656,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         "Forget…",
         "Forget",
         "Copy",
+        "Look",
+        "Stop",
     ]
     .iter()
     .map(|l| button_width(l, false))
@@ -481,7 +684,9 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // status line (description + sync policy on its own line), replaced in place
     // by a sunken monospace well on raw command errors or an Olo prose sentence
     // on gateway errors so the window keeps one height across every state.
-    let body = |s: &Stands, actions: Vec<Button>, note: String, policy: String, path: Option<&str>| {
+    // (`slot`: something of the state's own that isn't words, in the
+    // place its sentence would take: an install's bar.)
+    let body = |s: &Stands, actions: Vec<Button>, slot: Option<Element>, note: String, policy: String, path: Option<&str>| {
         let p = olo_kit::theme::palette();
         // Regular-weight error labels need slightly higher contrast in light mode to match
         // bold error headlines optically at 1× and 2× (Gemini Round 2 review).
@@ -495,7 +700,17 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         }
         let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(said).children(actions);
         let mut block = div().w_full().flex().flex_col().child(line);
+        // (A bar is its status line's: 5 points under the row, 10 over
+        // the description, which stays where it was to a point; and it
+        // runs to the left edge of the button beside the line, which
+        // it ended 25 points short of, at nothing. Set midway it stood
+        // nearer the description, 9 points against 8, and read as that
+        // paragraph's rule: both reviewers.)
+        let barred = slot.is_some();
         let mut notes = div().w_full().pl(px(under)).flex().flex_col();
+        if let Some(slot) = slot {
+            notes = notes.child(div().w_full().pr(px(wide)).child(slot)).child(div().h(px(10.0)).flex_shrink_0());
+        }
         if let Some(host_said) = &s.host_said {
             // Verbatim command stderr in the sunken monospace well replaces line 1 (with
             // 4 pt clearance under the action buttons) while keeping line 2 (sync policy)
@@ -534,12 +749,13 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                 .child(div().h(px(4.0)).flex_shrink_0())
                 .child(div().w_full().pr(px(short)).child(StringView::new(path.to_owned()).mono(true).size(MONO_SIZE).dim(true).cut(true).height(style::line_row(MONO_SIZE))));
         }
-        block = block.child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0()).child(notes);
+        block = block.child(div().h(px(if barred { 5.0 } else { m::TIGHT + 2.0 })).flex_shrink_0()).child(notes);
         block
     };
-    let block = |title: &'static str, s: &Stands, actions: Vec<Button>, note: String, policy: String, path: Option<&str>| {
-        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, note, policy, path)).into_element()
+    let block_with = |title: &'static str, s: &Stands, actions: Vec<Button>, slot: Option<Element>, note: String, policy: String, path: Option<&str>| {
+        div().w_full().flex().flex_col().child(section(title)).child(div().h(px(m::TIGHT)).flex_shrink_0()).child(body(s, actions, slot, note, policy, path)).into_element()
     };
+    let block = |title: &'static str, s: &Stands, actions: Vec<Button>, note: String, policy: String, path: Option<&str>| block_with(title, s, actions, None, note, policy, path);
     let reached = host.conn == HostConnState::Connected && host.ssh;
     let connected = host.conn == HostConnState::Connected;
     let busy = !shown.doing.is_empty();
@@ -971,15 +1187,20 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         Some((op, true)) => scr_actions.push(button("Try Again", "host-screens-again", HostDo::Change(HostThing::Screens, op), reached)),
         Some((HostOp::Install, false)) => scr_actions.push(button("Install", "host-screens-install", HostDo::Change(HostThing::Screens, HostOp::Install), reached)),
         Some((HostOp::Update, false)) => {
-            scr_actions.push(button("Update", "host-screens-update", HostDo::Change(HostThing::Screens, HostOp::Update), reached));
+            // (Greyed while screens run there, as its line says: it
+            // looked ready beside "Update once … are stopped".)
+            let none_run = host.screens.as_ref().is_some_and(|s| s.running.is_empty());
+            scr_actions.push(button("Update", "host-screens-update", HostDo::Change(HostThing::Screens, HostOp::Update), reached && none_run));
             scr_actions.push(button("Remove", "host-screens-remove", HostDo::Change(HostThing::Screens, HostOp::Remove), reached));
         }
         Some((HostOp::Remove, false)) => scr_actions.push(button("Remove", "host-screens-remove", HostDo::Change(HostThing::Screens, HostOp::Remove), reached)),
-        // (Not known yet what is there, or being put there: no button
-        // that guesses it or repeats the one just pressed. Both
-        // reviewers, of a greyed Install beside "Asking…" that became
-        // Remove as the host answered, and beside "Being installed…"
-        // where it read as stuck.)
+        // (Being put there: the one thing to do is to stop it. Not a
+        // greyed copy of the button just pressed, which read as stuck:
+        // both reviewers.)
+        None if host.screens_doing.is_some() => scr_actions.push(button("Cancel", "host-screens-cancel", HostDo::ScreensCancel, reached)),
+        // (Not known yet what is there, or being taken off: no button
+        // that guesses it. Both reviewers, of a greyed Install beside
+        // "Asking…" that became Remove as the host answered.)
         None if host.screens.is_none() || scr_s.busy => {}
         None => scr_actions.push(button(if olo_there { "Remove" } else { "Install" }, "host-screens-wait", HostDo::Check, false)),
     }
@@ -989,10 +1210,19 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // once it was there, was two figures that disagreed. And the host's
     // copy isn't called a desktop, which `--on desktop` below means
     // this computer by. The same under every state. A reviewer's.)
-    let screens_block = block(
-        "Agent Screens on this host",
+    // (How far putting it there is: the kit's bar, in the place a
+    // state's sentence takes, over the description. A reviewer's: "a
+    // 600 MB job … shows up only as a dim number inside a sentence".)
+    // (Filled in the neutral slate of every meter: the palette's blue
+    // is a choice's, and this window's lights have green and amber.)
+    let putting = host.screens_doing.as_ref().map(|(_, far)| olo_kit::widgets::StatusBar::new(*far).bar_height(8.0).color(style::neutral_bar(&olo_kit::theme::palette())).into_element());
+    let screens_block = block_with(
+        // ("Agent Screens": with "Screens on this host" two sections
+        // down, "Agent Screens on this host" read as the list's heading.)
+        "Agent Screens",
         &scr_s,
         scr_actions,
+        putting,
         olo_kit::words::tr("Puts Olo and Chrome on this host so agents’ screens can run on it.").into(),
         olo_kit::words::tr("Updates when you choose: a 600 MB download, 2.2 GB on the host.").into(),
         Some("~/.local/share/olo/desktop"),
@@ -1008,6 +1238,9 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let could_run = olo_there && host.screens.as_ref().is_some_and(|s| s.lacking().is_none());
     let host_note = match &host.screens {
         Some(s) if !s.helper => "Needs the typing helper first.",
+        // (While it is being put there, Install is Cancel: no note that
+        // names a button that isn't there. Gemini 4 Neon's look.)
+        Some(s) if s.installed.is_none() && host.screens_doing.is_some() => "You can choose this once Agent Screens are installed.",
         Some(s) if s.installed.is_none() => "Install Agent Screens above to choose this.",
         Some(s) if s.lacking().is_some() => "Agent Screens can’t run on this host.",
         _ => "Keeps working with this computer off. You can’t watch it from here.",
@@ -1067,7 +1300,13 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                 .child(div().ml(px(-space - 1.0)).child(said("."))),
         )
         .into_element();
-    let screens = vec![screens_block, where_block];
+    // The host's screens, last: a list in a well as the window's other
+    // lists are, built by the window (`screens_section`), which keeps
+    // its rows and which is chosen. There only where Olo is.
+    let mut screens = vec![screens_block, where_block];
+    if let Some(list) = screens_list {
+        screens.push(list);
+    }
 
     // (Every tab's page laid out, the panel as tall as the taller of Rex's
     // and Olo's, so the window keeps its height and its foot its place
@@ -1207,6 +1446,21 @@ mod tests {
         assert_eq!((s.there, s.behind, s.which.clone()), (false, false, None), "not Remove All's, nor Update All's");
         h.screens = Some(ScreensThere { running: vec!["review".into()], ..all.clone() });
         assert_eq!(of(&h, &shown).which.as_deref(), Some("1 screen running: review."));
+        // (Where the host listed its screens, the list under the line
+        // says which run: once. The list's rows, running first as the
+        // host's answer was read, each with what is being done to it.)
+        use crate::host_screens::ScreenRow;
+        let row = |name: &str, running| ScreenRow { name: name.into(), running, ..Default::default() };
+        h.screens = Some(ScreensThere { running: vec!["review".into()], rows: vec![row("review", true), row("notes", false)], ..all.clone() });
+        assert_eq!(of(&h, &shown).which, None);
+        shown.screen_doing.push(("review".into(), ScreenDo::Stop));
+        let lines = screen_lines(&h, &shown);
+        assert_eq!(lines.iter().map(|l| (l.row.name.as_str(), l.doing)).collect::<Vec<_>>(), [("review", Some(ScreenDo::Stop)), ("notes", None)]);
+        shown.screen_doing.clear();
+        // (No list where Olo isn't there: nothing to list.)
+        let none = HostStands { screens: Some(ScreensThere { helper: true, software: true, rows: vec![row("left-over", false)], ..Default::default() }), ..h.clone() };
+        assert!(screen_lines(&none, &shown).is_empty());
+        h.screens = Some(ScreensThere { running: vec!["review".into()], ..all.clone() });
         // This Olo's release is the later: an update, the version alone on the line.
         // (What is there and what updating brings; and with a screen
         // running, that the update waits for it, before it is pressed.)
@@ -1227,9 +1481,9 @@ mod tests {
 
         // Being put there: the hub's own word of how far, whatever the window was doing.
         h.screens = Some(ScreensThere { helper: true, software: true, ..Default::default() });
-        h.screens_doing = Some("Downloading Olo, 42%".into());
+        h.screens_doing = Some(("Downloading Olo".into(), 0.21));
         let s = of(&h, &shown);
-        assert_eq!((said(&s), s.busy, s.can), ((Light::Waiting, "Being installed…", Some("Downloading Olo, 42%")), true, None));
+        assert_eq!((said(&s), s.busy, s.can), ((Light::Waiting, "Being installed…", Some("Downloading Olo")), true, None));
         h.screens = Some(all.clone());
         assert_eq!(said(&of(&h, &shown)).1, "Being updated…");
         h.screens_doing = None;
