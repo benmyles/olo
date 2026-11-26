@@ -129,6 +129,48 @@ something nobody here has is in "Blocked", with what it waits for.
     ~~`Menu::app_items` grouping: separate `About <App>` onto its own
     top group above `Settings…` + `Keyboard Shortcuts`~~ Done 2026-11-26
     (a separator under About, in every app's first menu).
+- **Found beside the layout rounding fix, all there before it** (one
+  round of both reviewers on its before and after, 2026-11-26; both
+  reviews whole in `/var/tmp/olo-site-reviews/layout-rounding-*.md` on
+  the dev server):
+  - *Sizes off the 4-point grid, which a scale of 1.25 or 1.75 still
+    splits a pixel over*: Rex's tab strip and the header under it, 34
+    points each, come to 42 and 43 pixels at 1.25× (the layout review:
+    "a band 34 tall over one 34 tall … make them one height");
+    `STRIP_HEIGHT` is the kit's, and 36 or 32 would be whole. Token
+    Pool's rule under an account stands in a spacer 6 points high (the
+    white between a selected account's tint and the rule: 2 pixels at
+    1×, 3 at 1.25×; both reviewers: "should meet the horizontal divider
+    line flush", "end the band exactly on the rule"). Speed Test's rows
+    "step 22, 23, 22, 23 px, because 18pt is 22.5 px at 1.25x" (Opus
+    5.5). Token Pool at 1.25×: "rows at x 57 are 21 px apart, but
+    “Weekly” to “Today: …” is 22" (the layout review).
+  - *Speed Test* (Opus 5.5): "The four result boxes look like web
+    cards … Nothing else in these crops is rounded"; "Four headline
+    numbers of equal size … an airport code is as loud as the result";
+    "The value columns start at four different places" (199, 229, 183
+    and 179 px); "At rest, the progress bar is an empty white sunken
+    strip. It reads as an empty text field"; "The charts use status
+    colours for data … An orange trace makes a healthy 11 ms look like
+    a warning"; "The charts have no scale". Gemini 4 Neon: the card
+    titles are "vertically centred against the taller right-hand
+    readout … rather than baseline-aligned".
+  - *Preferences ▸ Rex* (Opus 5.5): "The help line in the Notifications
+    group floats" (23 points under its checkboxes, 11 under the field
+    in the next group); "The help text is too loud in size and too
+    faint in colour".
+  - *Token Pool* (Opus 5.5): "The usage bars are the heaviest thing in
+    each account"; "Uneven spacing in “34k out · 1 failed” … the red
+    text is joined on as a separate piece". Gemini 4 Neon: "the
+    `5-hour` bar looks about 1 device pixel thinner vertically than the
+    `Weekly` bar" at 1.25×.
+  - *Rex* (Opus 5.5): "Two bold labels sit one above the other" (the
+    active tab's name over the transcript's title); "The tab glyphs
+    don't match" (the + heavier than the × and the tree mark). Gemini 4
+    Neon: the active tab's fill "a slightly lighter grey than the
+    header bar beneath it".
+  - *Weather* (both): "The Ask button's default ring (≈3pt) sticks out
+    on three sides"; lay the button out by its ring.
 - **Left of the reviews' findings on the kit and Rex** (Opus 5.5,
   2026-11-24). Done 2026-11-24: an alert's question in bold, its
   explanation 8 points under it (`alert::message`); dimmed buttons keep

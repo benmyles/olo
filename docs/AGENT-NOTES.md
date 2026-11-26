@@ -706,6 +706,49 @@ it a thousand times at once with a deadline (1.3% hung), then the same
 under `strace -f -e trace=sendmsg,recvmsg`: the bytes were the same in
 a good start and a stuck one up to the `Hello` read and never answered.
 
+### Two builds compared need the same data, and a timing its own program
+
+A build kept somewhere else (`cp --reflink` into `/var/tmp`, for a
+before and after) finds no `data/` beside it: it draws with the
+system's fonts and no icons, and every pixel of text differs from the
+tree's build for that alone. Give both `OLO_DATA=…/olo/data`
+(`tsession run NAME OLO_DATA=… PROGRAM`); the first comparison of the
+layout fix was all font (2026-11-26). And take the noise out first: the
+build before against itself (clocks, a chart by the hour: Token Pool,
+Kache, Weather). `tools/dev/kit-compare` runs one window at a time in
+one session; for many at once, a session a window, as
+`at_once.py` does for the Rex rig.
+
+`jato test … -- --nocapture` gave one `--ignored` cost test's printed
+time three runs running, to the tenth of a microsecond: a kept result
+said again, not three runs. To time a test, run its own program
+(`jato test --release -p PKG --no-run`, then the file it names under
+`target/release/build/PKG/*/out/`, with `NAME --ignored --nocapture`).
+
+### A port the computer has one of is a live service too
+
+Token Pool's gateway and proxy are 127.0.0.1:17891 and 17892 on every
+computer that has a pool, and on a Rex host the agents there (yours
+too: `HTTPS_PROXY` in your own shell is the proxy) send every request
+through them. An `olo-pool` started from the tree, its demo too, tried
+to listen on both: here it failed ("Address already in use", in the log
+of every picture's Token Pool), and on a computer with no pool running
+it would have been the pool. Fenced since 2026-11-26 (HACKING, "Every
+session gets its own…"). Look for it with `ss -ltnp` before and after a
+test of anything that listens, and read a test program's log for what
+it tried.
+
+### Nothing is committed while a push-then-publish runs
+
+`tools/publish-release.sh` publishes at HEAD as it is when its turn
+comes, and refuses a HEAD that isn't on origin/main. Chained after
+`tools/dev/push` in one background command (the push's checks take
+minutes), a commit made meanwhile is that HEAD: the push sends the
+commit it began with, and the publisher stops ("HEAD … isn't on
+origin/main: push it first"; update 13, 2026-11-26: four minutes lost,
+nothing wrong published). Commit before starting the chain or after it
+ends; work that waits goes on outside the repository, or uncommitted.
+
 ### A test that waits for a program's line waits with an end
 
 `read_line` on a child's stdout has no deadline: a program that never

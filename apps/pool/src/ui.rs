@@ -492,7 +492,14 @@ fn neutral_machine_icon(is_local: bool, size_pt: f32) -> Element {
         let top = if dark { style::c([0xb6, 0xc5, 0xd8, 0xff]) } else { style::c([0x84, 0x95, 0xab, 0xff]) };
         let edge = if dark { style::c([0x3b, 0x4b, 0x5c, 0xff]) } else { style::c([0x3b, 0x47, 0x56, 0xff]) };
         let slot = if dark { style::c([0x1d, 0x2c, 0x38, 0xff]) } else { style::c([0xea, 0xef, 0xf5, 0xff]) };
-        let r = style::snap(g, b);
+        // The icon's own square, on device pixels, in the middle of the
+        // box it is given: a line's height (below), so that it stands on
+        // the same middle as the words beside it at every scale. It was
+        // a box of its own size (14 points: 17.5 px at 1.25x), centred
+        // in the row by layout, and its shape was cut from whatever that
+        // box rounded to: a pixel off its label one way or the other as
+        // the row moved (two low at 1.25x, Opus 5.5, 2026-11-26).
+        let r = style::snap_centred(g, b.center(), size_pt, size_pt);
         if is_local {
             // Crisp desktop tower centred in `r`
             let w = (f32::from(r.size.width) * 0.64).round().max(8.0);
@@ -527,7 +534,7 @@ fn neutral_machine_icon(is_local: bool, size_pt: f32) -> Element {
     })
     .paint_key(style::key(("mach", is_local, size_pt.to_bits())))
     .w(px(size_pt))
-    .h(px(size_pt))
+    .h(px(DETAIL_ROW))
     .flex_shrink_0()
     .into_element()
 }

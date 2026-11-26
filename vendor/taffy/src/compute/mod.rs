@@ -212,11 +212,24 @@ pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
         let unrounded_layout = tree.get_unrounded_layout(node_id);
         let mut layout = unrounded_layout;
 
+        // Olo: where it is in its parent is the difference of the two
+        // rounded places, not its own offset rounded. Taffy rounded the
+        // offset by itself while a size is the difference of two rounded
+        // edges (below): summed down the tree, as whoever draws must sum
+        // them, the places then disagreed with the sizes wherever two
+        // offsets each ended on half a pixel (0.5 + 0.5 is 1; 1 + 1 is 2),
+        // and a node stood a pixel past the end of what it follows. At
+        // 1.25x a 26-point bar (32.5 px) over a column whose first row is
+        // 34 points (42.5 px): the row ended at 75 and the next began at
+        // 76, a pixel's seam under every tab strip. Now every node's
+        // place, summed, is its cumulative place rounded, the same number
+        // its neighbours' sizes were cut to.
+        let (parent_x, parent_y) = (cumulative_x, cumulative_y);
         let cumulative_x = cumulative_x + unrounded_layout.location.x;
         let cumulative_y = cumulative_y + unrounded_layout.location.y;
 
-        layout.location.x = round(unrounded_layout.location.x);
-        layout.location.y = round(unrounded_layout.location.y);
+        layout.location.x = round(cumulative_x) - round(parent_x);
+        layout.location.y = round(cumulative_y) - round(parent_y);
         layout.size.width = round(cumulative_x + unrounded_layout.size.width) - round(cumulative_x);
         layout.size.height = round(cumulative_y + unrounded_layout.size.height) - round(cumulative_y);
         layout.scrollbar_size.width = round(unrounded_layout.scrollbar_size.width);

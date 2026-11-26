@@ -88,6 +88,9 @@ def env_for_screens(run_dir=RUN):
     # every tsession: a build of the tree served the live socket once,
     # 2026-11-26).
     env.update(REX_SERVER_SOCKET="unix://" + os.path.join(WORK, "no-rex-server.sock"), OLO_REX_AGENTS_DIR=os.path.join(WORK, "rex-agents"))
+    # Nor the computer's Token Pool (as every tsession: port 0 is no pool
+    # to who asks, and any free port to a pool started on the screen).
+    env.update(OLO_POOL_PORT="0", OLO_POOL_PROXY_PORT="0")
     # This tree's data (icons, fonts, wallpapers), whatever build is
     # pictured: a build made somewhere else finds none beside it, and
     # its desktop comes up with no icons, no wallpaper and the system's
