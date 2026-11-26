@@ -3419,7 +3419,16 @@ this one is, and what differs:
   of its own for the desktop's disk (`OLO_TRACKER_DEMO_VOLUME`: the
   disk's name is the computer's, which is nobody's to publish), and no
   Rex server or agents service but its own. The desktop scene took
-  about a minute.
+  about a minute, all eighteen scenes (31 pictures) about twenty. Three
+  things a server lacks that a picture shows the want of: an emoji
+  font (every emoji a box: `OLO_SHOTS_EMOJI_FONT`, the file out of
+  `dnf download google-noto-color-emoji-fonts` unpacked with `rpm2cpio
+  | cpio -idm`, nothing installed); a person (Deskbar on an agent's
+  screen shows no live widgets, by design: `OLO_DESKBAR_DEMO_PERSON=1`,
+  which the tool sets); accounts (Integrations' Google accounts are a
+  made-up file taken for signed in, `OLO_PREFS_DEMO_GOOGLE=signed`).
+  `place(w, x, y)` with no size gives a window the size it had when it
+  opened, not the one it has: pass its frame's (`tuck`).
 - **Ubuntu 26.04 in a VM** (the first: 32 processors, 125 GB): `setup.sh` is
   Fedora's (dnf), so what Olo needs came from apt: Mesa's software
   Vulkan (`mesa-vulkan-drivers`, lavapipe), Python's imaging

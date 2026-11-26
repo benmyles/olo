@@ -23,8 +23,32 @@ crop of it), lossless. Apps that would show this computer's own
 (the journal, processes, devices, accounts) are left out or run on their
 demo data. Look at every picture before committing it.
 
-Build first: `cargo build --release --workspace`. Run with
-/usr/bin/python3 (it has PIL).
+Build first: `jato build --release --workspace`, or picture a release's
+own build (OLO_SHOTS_BUILD, below). Run with /usr/bin/python3 (it has
+PIL).
+
+What the pictures show is nobody's: each app runs on its demo (Rex's
+hosts and agents, Token Pool's accounts, Calendar's and To-Do's month,
+Phone's people, Telegram's chats, Weather's place, the Speed Test's
+line, Doctor's findings, Kache's builds, the Installer's computer), the
+Google accounts in Integrations are made up and taken for signed in
+(`OLO_GOOGLE_ACCOUNTS`' file in the sample home, `OLO_PREFS_DEMO_GOOGLE=
+signed`), and the desktop's disk has a name of the pictures' own
+(`OLO_TRACKER_DEMO_VOLUME`). Deskbar is as a person's
+(`OLO_DESKBAR_DEMO_PERSON=1`: on an agent's screen it shows no live
+widgets). A picture of windows alone is cropped to them and a margin of
+wallpaper (`shot_of`), clear of the desktop's icons and Deskbar. Apps
+that can only show this computer's own (Activity Monitor's processes
+and hardware, the Log Viewer's journal, OS Updates' packages) have no
+picture.
+
+In the environment:
+  OLO_SHOTS_BUILD=DIR       the build pictured (default target/release)
+  OLO_SHOTS_OUT=DIR         where the pictures go (default docs/img)
+  OLO_SHOTS_EMOJI_FONT=FILE an emoji font for the screen, where the
+                            computer has none (a server)
+  OLO_SHOTS_SOFTWARE=1      draw on the processors (by itself where
+                            there is no GPU)
 """
 
 import json
@@ -70,6 +94,10 @@ def env_for_screens(run_dir=RUN):
     # fonts. And the desktop's disk by a name of the pictures' own, not
     # this computer's (a dev server's name is nobody's to publish).
     env.update(OLO_DATA=os.path.join(ROOT, "data"), OLO_TRACKER_DEMO_VOLUME="Olo")
+    # And its Deskbar as a person's: an agent's screen shows no live
+    # widgets and no seconds (nobody sits at it), and these pictures are
+    # of a person's desktop.
+    env.update(OLO_DESKBAR_DEMO_PERSON="1")
     env.update(software())
     # (Nor the person's coding agents' settings: Terminal's settings for
     # agents write hooks where these point.)
@@ -306,43 +334,6 @@ def desktop_windows():
     return tracker, edit, term, calc
 
 
-def scene_desktop():
-    close_all()
-    widgets(DESKBAR_WIDGETS)
-    look("light", wallpaper=DESKTOP_WALLPAPER)
-    desktop_windows()
-    settle(4)
-    shot("olo-desktop")
-    look("dark", wallpaper=DESKTOP_WALLPAPER)
-    settle(3)
-    shot("olo-desktop-dark")
-
-
-THEMES = [("classic", "light"), ("classic", "dark"), ("platinum", "light"), ("platinum", "dark")]
-
-
-def scene_themes():
-    """The desktop in each of the two themes, light and dark, two by
-    two, in the Themes panel's order."""
-    from PIL import Image
-
-    close_all()
-    widgets(DESKBAR_WIDGETS)
-    look("light")
-    desktop_windows()
-    tiles = []
-    for icons, mode in THEMES:
-        look(mode, icons)
-        settle(3)
-        tiles.append(grab(f"theme-{icons}-{mode}").resize((SIZE[0] // 2, SIZE[1] // 2), Image.LANCZOS))
-    gap = 16
-    sheet = Image.new("RGB", (SIZE[0] + gap, SIZE[1] + gap), (128, 128, 128))
-    for i, t in enumerate(tiles):
-        sheet.paste(t, ((i % 2) * (SIZE[0] // 2 + gap), (i // 2) * (SIZE[1] // 2 + gap)))
-    save(sheet, "olo-themes")
-    look("light")
-
-
 def scene_tracker():
     """Tracker: the Pictures folder as icons, the home folder under it,
     and Quick Look on a tall picture beside them (Quick Look sizes itself
@@ -368,7 +359,7 @@ def scene_tracker():
     settle(2)
     place(wait_for(by_app("olo.tracker", "Poster.jpg")), 1020, 100)
     settle(2)
-    shot("olo-tracker")
+    both_looks("olo-tracker", lambda n: shot(n))
 
 
 def scene_features():
@@ -384,6 +375,11 @@ def scene_features():
     type_text("term")
     settle(1.5)
     shot("olo-palette")
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    settle(3)
+    shot("olo-palette-dark")
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    settle(3)
     key("Esc")
     settle(1)
     ipc({"type": "overview", "show": True})
@@ -425,37 +421,6 @@ def scene_apps():
     look("light", wallpaper=DESKTOP_WALLPAPER)
 
 
-def scene_terminal():
-    """Terminal: three tabs, the front one at work. Each tab is the same
-    plain shell (`--tab -e`: a tab opened with ⌘T runs the login shell,
-    whose prompt and title name this computer's person), titled by an
-    escape sequence as a program would."""
-    close_all()
-    widgets([])
-    look("dark", wallpaper=DESKTOP_WALLPAPER)
-    term = terminal()
-    place(term, 330, 210, 1180, 600)
-    settle(1.5)
-
-    def title(text):
-        type_text(f" printf '\\e]0;{text}\\a'; clear\n")
-        settle(0.8)
-
-    title("Home")
-    type_text("ls -F --color=always\n")
-    for name, folder in (("Documents", "Documents"), ("Pictures", "Pictures")):
-        run("olo-terminal", "--tab", "-w", os.path.join(HOME, folder), "-e", "bash", "--norc", "--noprofile", "-i")
-        settle(2)
-        activate(term)
-        title(name)
-    type_text("ls -lgo --color=always\n")
-    settle(0.8)
-    type_text("for c in 4 3 4 3 4; do printf '\\e[4%dm      \\e[0m ' $c; done; echo; echo Olo blue and Olo yellow\n")
-    settle(2)
-    shot("olo-terminal")
-    look("light", wallpaper=DESKTOP_WALLPAPER)
-
-
 def scene_styled_edit():
     """StyledEdit with the welcome document, beside its Markdown."""
     close_all()
@@ -483,48 +448,6 @@ def scene_preferences():
     activate(backgrounds)
     settle(2)
     shot("olo-preferences")
-
-
-def scene_activity():
-    """Activity Monitor: its graphs (not its processes: they're this
-    computer's)."""
-    close_all()
-    widgets([])
-    look("light", wallpaper=DESKTOP_WALLPAPER)
-    run("olo-activity", env={"OLO_ACTIVITY_HELPER": "off"})
-    a = wait_for(by_app("olo.activity"))
-    place(a, 60, 60, 1300, 960)
-    settle(12)
-    # (Its graphs; the busiest programs under them are this computer's.)
-    shot("olo-activity", crop=(40, 40, 1340, 520))
-
-
-def scene_weather():
-    """Weather, on its demo forecast."""
-    close_all()
-    widgets([])
-    look("light", wallpaper=DESKTOP_WALLPAPER)
-    run("olo-weather", env={"OLO_WEATHER_DEMO": "1"})
-    w = wait_for(by_app("olo.weather"))
-    place(w, 160, 80, 1500, 920)
-    settle(5)
-    shot("olo-weather")
-
-
-def scene_doctor():
-    """Olo Doctor (its demo findings) and the Speed Test (made-up
-    results): nothing of this computer's."""
-    close_all()
-    widgets([])
-    look("light", wallpaper=DESKTOP_WALLPAPER)
-    run("olo-doctor", env={"OLO_DOCTOR_DEMO": "1"})
-    d = wait_for(by_app("olo.doctor"))
-    place(d, 60, 70)
-    run("olo-speedtest", env={"OLO_SPEEDTEST_DEMO": "1"})
-    s = wait_for(by_app("olo.speedtest"))
-    place(s, 1000, 260)
-    settle(6)
-    shot("olo-doctor")
 
 
 def scene_installer():
@@ -799,21 +722,269 @@ def debug(name):
         grab(f"debug-{name}").save(os.path.join(WORK, f"debug-{name}-kept.png"))
 
 
+# Left of the desktop's icons and Deskbar: a picture of windows alone
+# ends here (their column begins at about 1640 points of the 1920).
+CLEAR = 1630
+
+
+def frame_of(w):
+    """Where a window is now, tab and border included (points)."""
+    return next((x["frame"] for x in windows() if x["id"] == w["id"]), w["frame"])
+
+
+def shot_of(name, *ws, pad=44, width=None):
+    """The picture cropped to these windows and a margin of wallpaper
+    round them (no Deskbar, no desktop icons: the window is the subject)."""
+    fs = [frame_of(w) for w in ws]
+    x0, y0 = max(0, min(f["x"] for f in fs) - pad), max(0, min(f["y"] for f in fs) - pad)
+    x1, y1 = min(CLEAR, max(f["x"] + f["width"] for f in fs) + pad), min(H, max(f["y"] + f["height"] for f in fs) + pad)
+    shot(name, crop=(x0, y0, x1 - x0, y1 - y0), width=width)
+
+
+def tuck(w, right=CLEAR - 44, bottom=None):
+    """A window moved so that its right edge (and its foot) stand at
+    these: whatever size it chose for itself, it ends inside the picture."""
+    f = frame_of(w)
+    bottom = H - 44 if bottom is None else bottom
+    # (`place` takes where its content begins: 12 in and 30 down from
+    # the frame's corner, its border and its tab; and its size as it is
+    # now, not as it was when it opened.)
+    place(w, right - f["width"] + 12, bottom - f["height"] + 30, f["width"], f["height"])
+
+
+def one(app, *cmd, env=None, at=(100, 70), size=(), title=None):
+    """A program started and its window placed: the window."""
+    run(*cmd, env=env)
+    w = wait_for(by_app(app, title))
+    place(w, at[0], at[1], *size)
+    return w
+
+
+def both_looks(name, take, wallpaper=None):
+    """`take(NAME)` in light, then in dark as NAME-dark; light again after."""
+    wallpaper = wallpaper or DESKTOP_WALLPAPER
+    look("light", wallpaper=wallpaper)
+    settle(3)
+    take(name)
+    look("dark", wallpaper=wallpaper)
+    settle(3)
+    take(f"{name}-dark")
+    look("light", wallpaper=wallpaper)
+
+
+def scene_rex():
+    """Rex on its demo (made-up hosts, sessions and agents: nobody's):
+    its panes, then an agent's children and its transcript."""
+    close_all()
+    widgets([])
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(120, 80), size=(1500, 880))
+    settle(6)
+    shot_of("olo-rex", w)
+    close_all()
+    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_ACTIVITY": "transcript"}, at=(120, 80), size=(1500, 880))
+    settle(6)
+    shot_of("olo-rex-agents", w)
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def scene_pool():
+    """Token Pool on its demo: the accounts, and the machines beside
+    (two pictures of the one window, a gutter between)."""
+    from PIL import Image
+
+    close_all()
+    widgets([])
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    w = one("olo.pool", "olo-pool", env={"OLO_POOL_DEMO": "1", "OLO_POOL_DEMO_HOSTS": "1"}, at=(200, 90), size=(720, 800))
+    settle(5)
+    f = frame_of(w)
+    around = (f["x"] - 44, f["y"] - 44, f["width"] + 88, f["height"] + 88)
+    tiles = [grab("pool-accounts", around)]
+    screen("click", "--window", w["id"], "--role", "Tab", "--name", "Machines")
+    settle(3)
+    tiles.append(grab("pool-machines", around))
+    gap = 16
+    sheet = Image.new("RGB", (sum(t.width for t in tiles) + gap, max(t.height for t in tiles)), (128, 128, 128))
+    sheet.paste(tiles[0], (0, 0))
+    sheet.paste(tiles[1], (tiles[0].width + gap, 0))
+    save(sheet, "olo-token-pool")
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def scene_calendar_todo():
+    """Calendar's week and To-Do's day, each on its made-up month."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    cal = one("olo.calendar", "olo-calendar", env={"OLO_CALENDAR_DEMO": "1"}, at=(40, 70), size=(900, 600))
+    todo = one("olo.todo", "olo-todo", env={"OLO_TODO_DEMO": "1", "OLO_TODO_DIR": os.path.join(WORK, "todo")}, at=(560, 380), size=(930, 620))
+    settle(5)
+    screen("click", "--window", cal["id"], "--role", "Tab", "--name", "Week")
+    tuck(todo)
+    settle(2)
+    activate(todo)
+    both_looks("olo-calendar-todo", lambda n: shot_of(n, cal, todo))
+
+
+def scene_phone():
+    """Phone on its demo (made-up people and numbers)."""
+    close_all()
+    widgets([])
+    w = one("olo.phone", "olo-phone", env={"OLO_PHONE_DEMO": "1"}, at=(200, 100), size=(1100, 760))
+    settle(5)
+    both_looks("olo-phone", lambda n: shot_of(n, w))
+
+
+def scene_doctor_kache():
+    """Olo Doctor (its demo findings) and Kache (its demo): nothing of
+    this computer's."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    d = one("olo.doctor", "olo-doctor", env={"OLO_DOCTOR_DEMO": "1"}, at=(40, 70))
+    k = one("olo.kache", "olo-kache", env={"OLO_KACHE_DEMO": "1"}, at=(620, 250), size=(930, 760))
+    settle(7)
+    tuck(k)
+    settle(1)
+    activate(k)
+    settle(2)
+    shot_of("olo-doctor-kache", d, k)
+
+
+def scene_weather_speedtest():
+    """Weather on its demo forecast, the Speed Test on made-up results."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    w = one("olo.weather", "olo-weather", env={"OLO_WEATHER_DEMO": "1"}, at=(40, 70), size=(1100, 720))
+    t = one("olo.speedtest", "olo-speedtest", env={"OLO_SPEEDTEST_DEMO": "1"}, at=(700, 200))
+    settle(7)
+    tuck(t)
+    settle(1)
+    activate(t)
+    settle(2)
+    shot_of("olo-weather-speedtest", w, t)
+
+
+GOOGLE_SCOPES = ["openid", "email", "https://mail.google.com/", "https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/drive.file"]
+# Made-up accounts for Preferences ▸ Integrations (nobody's: example.org).
+GOOGLE_ACCOUNTS = [
+    {"address": "ada@example.org", "services": ["mail", "calendar", "diskbackup"], "scopes": GOOGLE_SCOPES},
+    {"address": "ada.lovelace@work.example.org", "services": ["mail", "calendar"], "scopes": GOOGLE_SCOPES},
+]
+
+
+def scene_integrations():
+    """Preferences ▸ Integrations with two made-up Google accounts, and
+    Preferences ▸ AI."""
+    close_all()
+    widgets([])
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    os.makedirs(os.path.join(HOME, ".config", "olo"), exist_ok=True)
+    with open(os.path.join(HOME, ".config", "olo", "google-accounts.json"), "w") as f:
+        json.dump(GOOGLE_ACCOUNTS, f)
+    run("olo-preferences", "integrations", env={"OLO_PREFS_DEMO_GOOGLE": "signed"})
+    i = wait_for(by_app("olo.preferences", "Integrations"))
+    run("olo-preferences", "ai")
+    a = wait_for(by_app("olo.preferences", "AI"))
+    place(i, 40, 70)
+    place(a, 400, 470)
+    settle(5)
+    activate(a)
+    settle(2)
+    shot_of("olo-integrations", i, a)
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def scene_rex_host():
+    """Rex's Hosts and Ports and a host's own window, on its demo."""
+    close_all()
+    widgets([])
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_OPEN": "app.hosts,host.manage:dev-box"})
+    settle(8)
+    ws = [w for w in windows() if w["app_id"] == "olo.rex"]
+    for w in ws:
+        print(f"  rex window: {w['title']!r} {w['frame']}")
+    main = next((w for w in ws if w["title"] == "Rex"), None)
+    others = [w for w in ws if w is not main]
+    # (Its main window below the picture's foot: the two beside it are
+    # the subject.)
+    if main:
+        place(main, 40, 1010)
+    for n, w in enumerate(others):
+        place(w, 60 + n * 640, 70 + n * 30)
+    settle(3)
+    shot_of("olo-rex-host", *(others or ws))
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def scene_desktop():
+    """The desktop: Rex (its demo), Tracker with a picture's preview,
+    Calendar, and Deskbar with its live widgets."""
+    close_all()
+    widgets(DESKBAR_WIDGETS)
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    cal = one("olo.calendar", "olo-calendar", env={"OLO_CALENDAR_DEMO": "1"}, at=(1075, 450), size=(820, 590))
+    run("olo-tracker", HOME)
+    tracker = wait_for(by_app("olo.tracker", "Home"))
+    place(tracker, 60, 715, 800, 330)
+    rex = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(40, 60), size=(1020, 600))
+    settle(4)
+    activate(tracker)
+    type_text("Pic")
+    settle(1)
+    key("Right")
+    settle(1.5)
+    activate(rex)
+    both_looks("olo-desktop", lambda n: shot(n))
+
+
+SIX_THEMES = [("classic", "light"), ("platinum", "light"), ("beos", "light"), ("amiga", "light"), ("aqua", "light"), ("tokyo-night", "dark")]
+
+
+def scene_themes():
+    """The same desktop in six of the themes, three by two."""
+    from PIL import Image
+
+    close_all()
+    widgets(DESKBAR_WIDGETS)
+    look("light")
+    desktop_windows()
+    tiles = []
+    for icons, mode in SIX_THEMES:
+        look(mode, icons)
+        settle(4)
+        tiles.append(grab(f"theme-{icons}-{mode}").resize((SIZE[0] // 3, SIZE[1] // 3), Image.LANCZOS))
+    gap = 12
+    tw, th = SIZE[0] // 3, SIZE[1] // 3
+    sheet = Image.new("RGB", (3 * tw + 2 * gap, 2 * th + gap), (128, 128, 128))
+    for i, t in enumerate(tiles):
+        sheet.paste(t, ((i % 3) * (tw + gap), (i // 3) * (th + gap)))
+    save(sheet, "olo-themes")
+    look("light")
+
+
 SCENES = {
-    "terminal-agents": scene_terminal_agents,
     "desktop": scene_desktop,
-    "themes": scene_themes,
+    "rex": scene_rex,
+    "rex-host": scene_rex_host,
+    "agents": scene_agents,
+    "terminal-agents": scene_terminal_agents,
+    "pool": scene_pool,
+    "integrations": scene_integrations,
     "tracker": scene_tracker,
     "features": scene_features,
-    "apps": scene_apps,
-    "terminal": scene_terminal,
-    "styled-edit": scene_styled_edit,
+    "themes": scene_themes,
     "preferences": scene_preferences,
-    "activity": scene_activity,
-    "weather": scene_weather,
-    "doctor": scene_doctor,
+    "phone": scene_phone,
+    "calendar-todo": scene_calendar_todo,
+    "apps": scene_apps,
+    "styled-edit": scene_styled_edit,
+    "doctor-kache": scene_doctor_kache,
+    "weather-speedtest": scene_weather_speedtest,
     "installer": scene_installer,
-    "agents": scene_agents,
 }
 
 
@@ -841,6 +1012,19 @@ def start():
     for old in ("house.jpg", "holiday.png"):
         if os.path.exists(os.path.join(HOME, "Pictures", old)):
             os.remove(os.path.join(HOME, "Pictures", old))
+    # Emoji, on a computer with no font for them (a server: Fedora
+    # Workstation has Noto Color Emoji, a minimal install none, and every
+    # emoji in a chat is a box): OLO_SHOTS_EMOJI_FONT, a font file, put
+    # among the sample home's own fonts. (`dnf download
+    # google-noto-color-emoji-fonts`, then `rpm2cpio … | cpio -idm`, gets
+    # the file without installing anything.)
+    emoji = os.environ.get("OLO_SHOTS_EMOJI_FONT")
+    if emoji:
+        fonts = os.path.join(HOME, ".local", "share", "fonts")
+        os.makedirs(fonts, exist_ok=True)
+        shutil.copy(emoji, fonts)
+    elif "emoji" not in subprocess.run(["fc-list"], capture_output=True, text=True).stdout.lower():
+        print("readme-shots: this computer has no emoji font: emoji will be boxes (OLO_SHOTS_EMOJI_FONT=FILE gives the screen one)", file=sys.stderr)
     # (`--size` is in points.)
     out = screen("start", "--size", f"{W}x{H}", "--scale", str(SCALE), check=True)
     print(out.strip()[:200])
@@ -876,7 +1060,7 @@ A desktop in the spirit of **BeOS**, written in Rust for Wayland.
 - **Tracker**, spatial folders with columns, lists and icons
 - **Deskbar**, with live widgets for the processor, network and memory
 - **StyledEdit**, **Terminal**, **DeskCalc** and the **Viewer**
-- Light, dark and night modes, and two themes (Classic and Platinum)
+- Light, dark and night modes, five looks and twenty-three colour schemes
 
 ## Shortcuts
 
