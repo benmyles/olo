@@ -6,6 +6,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-26
 
+### Rex: a transcript's times and results beside what they are of
+
+*13:42* — Before (above), a turn's time and a tool's result stood at the pane's right edge, a window's width from the name and command they belong to. After (below), each follows what it is of: You 14:52:10; a command, then its check and how long it took. A capped column was tried first and both reviewers took it for a pane that had failed to resize.
+
+![Rex: a transcript's times and results beside what they are of](2026-11-26/134211-rex-a-transcript-s-times-and-results-beside-what.png)
+
 ### Alerts stand over their window; Rex's error banner has Try Again
 
 *09:04* — An alert asked for by a menu's command stood in the middle of the screen with no parent: it opens over the window it was asked from now, centred across it. The error banner at Rex's foot offers Try Again at its right edge, under the close box.
