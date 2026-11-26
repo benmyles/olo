@@ -6,6 +6,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-26
 
+### Rex's Host window: a Screens tab
+
+*19:33* — A host's own Agent Screens from the desktop: Olo and Chrome put on the host, updated and removed here (its line says what is there, what it lacks, which screens run, and how far an install is), and where screens open by default. One round of both reviewers' looks: one structure in every state, both sizes by name, the host's copy never called a desktop, a greyed choice that says why.
+
+![Rex's Host window: a Screens tab](2026-11-26/193343-rex-s-host-window-a-screens-tab.png)
+
 ### An Agent Screen on a Rex host itself
 
 *16:15* — A whole Olo desktop of the host's own, drawn in software on a server with no GPU, with no desktop asked: `olo screen install` put Olo and Chrome under the account, `olo screen --on host start` started it, and Chrome shows a page served from the same machine, its button pressed through the tree (`click --role Button --name "Press me"`). The machine's name, under Tracker's disk, is painted out.
