@@ -759,6 +759,59 @@ a thread and wait for it on a channel (`recv_timeout`), as
 run's: `cmd | grep … ; echo done` ends 0 whatever `cmd` did; write its
 exit after it (`echo "exit $?"`) and read that.
 
+### A race shown: the test on one processor, and a run that ran it
+
+(2026-11-26.) AirPlay's `the_older_way_from_a_place_in_the_film` failed
+once in a whole workspace's tests on a busy machine ("TEARDOWN" missing
+from what the stand-in receiver was asked). Two things about showing
+such a thing:
+
+- **Check the run ran the test.** A crate has several test programs
+  (its library's, its binary's, `tests/*.rs`); a name given to the
+  wrong one runs nothing and passes. Twelve "passes" of the binary's
+  program said nothing: `1 passed` in the output is what counts, not
+  the status.
+- **`taskset -c N PROGRAM TEST`, a hundred times.** With every thread of
+  the test on one processor, a thread that wakes another is often put
+  aside at once, so a window of a few instructions is hit most runs:
+  96 of 150 before the fix, 0 of 150 after; free on 64 processors it
+  was one in hundreds. (The cause: the thread that asks the receiver
+  how the film goes said "ended" while still holding the connection;
+  whoever heard dropped the play, whose goodbye takes the connection
+  only if it is free.) What says "it's over" lets go of what the
+  listener will want first.
+
+### A helper for hosts, tried by hand
+
+(2026-11-26.) The helpers a build of Rex carries
+(`target/PROFILE/build/olo-rex/HASH/out/olo-rex-link-x86_64`, the newest
+`out` by its time) are data there, not programs: copy one (`cp
+--reflink=auto`) and `chmod +x` it to run it. `target/debug/olo-rex-link`
+is the workspace's build of the same program with none of its features
+(`jato build --workspace` puts it back so: "built without screens of
+this host's own"): `jato build -p olo-rex-link --features
+agents,screens` for one that has its commands, or the carried copy,
+which is what a host gets. And a clean-up that ends programs by their
+command line (`kill` of whatever's `cmdline` holds a word) ends the
+shell that typed the word too: the same trap as `pkill -f`, by hand.
+
+### A host's own screens, tried without touching the host
+
+(2026-11-26.) An account of its own for the trial, as a test session
+has: `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` and `XDG_RUNTIME_DIR`
+(mode 700) under `/var/tmp`, `OLO_HOST_DESKTOP` for where Olo goes,
+the fences of `tsession` (`REX_SERVER_SOCKET`, `OLO_REX_AGENTS_DIR`,
+`OLO_POOL_PORT=0`, `OLO_POOL_PROXY_PORT=0`), and
+`DBUS_SESSION_BUS_ADDRESS` unset (a screen asks the session bus for
+the accessibility bus, which would start one on the account's). A
+prefix of the tree's own programs: copies of `target/debug/olo-*` in
+`PREFIX/bin`, `PREFIX/share/olo` a folder of links to `data/*` (not
+the wallpapers) with a `version` file. What a screen runs is found by
+each process's program (`readlink /proc/PID/exe` under the trial's
+folder), which is also how to see none is left. Its pictures name the
+machine (Tracker's disk, a terminal's prompt and title): crop or mask
+before one leaves it.
+
 ## Measuring
 
 - **Which programs have a maker's libraries loaded: `/proc/PID/maps`.**

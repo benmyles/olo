@@ -1,6 +1,6 @@
 ---
 name: olo-rex-bridge
-description: From a Rex session on this host: start, watch, answer and stop subagents as child tabs of your own tab (`olo agent`: Claude Code, Codex, Antigravity or a command of your own; it needs no desktop, and is the way to run any subagent, reviewer or helper here), and use the person's Olo desktop - open a link or a local server's page in their browser, reach a server of this host's there at the port it answers on here, read a secret from their Olo Passwords, and see and drive graphical apps on a screen of your own there (Olo Agent Screens). Use when a task on this host needs a browser, a GUI, a password or the person's eyes on something.
+description: From a Rex session on this host: start, watch, answer and stop subagents as child tabs of your own tab (`olo agent`: Claude Code, Codex, Antigravity or a command of your own; it needs no desktop, and is the way to run any subagent, reviewer or helper here), and use the person's Olo desktop - open a link or a local server's page in their browser, reach a server of this host's there at the port it answers on here, read a secret from their Olo Passwords, and see and drive graphical apps on a screen of your own (Olo Agent Screens: on their desktop, or on this host itself with no desktop asked, Chrome included). Use when a task on this host needs a browser, a GUI, a password or the person's eyes on something.
 ---
 
 # The Olo desktop, from this host
@@ -120,7 +120,8 @@ model or reasoning effort is used.
   `olo agent send <ID|NAME> --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
   `--key` takes any key with any modifier a terminal can send, joined by `+` or `-`: `--key Alt+m` (what tmux sends for `M-m`), `--key Ctrl+Shift+Up`, `--key Alt+Enter`, `--key Shift+Tab`, `--key F5`, `--key C-M-c`; several `--key`s go one after another.
   A key that plain bytes can't say is pressed as the keyboard would press it, by what the agent asked of its keys: `--key Ctrl+Enter` and `--key Shift+Enter` (a new line in Claude Code's field, not a send), `--key Ctrl+Tab`, `--key Shift+Backspace`.
-  Refuses to type text while an approval/question dialog is active (use `olo agent approve` for approvals, or pass `--force`). Always strips bracketed-paste escapes and returns a pre-write `cursor`.
+  A single character is a key too: `--key 0`, `--key y` press that one key and nothing else (no Return, no paste), for a box that takes one key and must be given no text (Claude Code's "1 to review · 2 to send · 0 to dismiss").
+  Refuses to type text, or to press a character key, while an approval/question dialog is active: there a character is an answer by its number (use `olo agent approve` for approvals, or pass `--force`). Always strips bracketed-paste escapes and returns a pre-write `cursor`.
 - **Stop & archive launched tabs cleanly**:
   `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`
   Gracefully interrupts (double Ctrl-C) and closes the child tab (`--save PATH` archives full scrollback to `PATH` before closing; `--tree` stops all nested descendants bottom-up; `--force` closes immediately; `--force` and `--keep-tab` cannot be combined; keeps `cli_session_id` in registry for `list --all` and `--resume`).
@@ -230,6 +231,43 @@ model or reasoning effort is used.
   host among the program's arguments (a browser's address) is reached
   through a forward, as for `olo open`; what you `type` or `set` into a
   page is sent as you wrote it, addresses too.
+- **A screen of your own on this host itself**: the same Agent Screens
+  with no desktop asked or needed: a headless Olo desktop of this
+  host's own, drawn here (in software where the host has no GPU), with
+  Deskbar, Tracker, Terminal, every Olo app and Chrome. The same
+  commands, after `--on host`:
+  - `olo screen status`: whether Olo is on this host (`installed`), what
+    its programs lack here (`missing`: libraries to have installed;
+    `older`: libraries too old for it, which only a newer system cures;
+    `software_drawing`), Chrome's version, and where `olo screen` goes
+    when it isn't said (`default`).
+  - `olo screen install`: puts Olo here, under the account and nowhere
+    else (`~/.local/share/olo/desktop`: about 600 MB downloaded from
+    Olo's releases and checked, 1.9 GB on disk; nothing needs root),
+    and Chrome (Google's own, unpacked under `~/.local/share/olo/chrome`).
+    A line of JSON for each step, then what `status` says. Run again
+    later, it brings both up to the newest.
+  - `olo screen --on host start NAME`, then `run NAME olo-chrome
+    http://localhost:5173` (a server of this host's needs no forward: it
+    is the same machine), `tree NAME`, `click`, `type`, `key`, `wait`,
+    `look NAME [PATH]`, `stop NAME`: as above.
+  - `olo screen default host` makes the host's the ones `olo screen …`
+    (and `olo-screen …`) means here when it isn't said, `--on desktop`
+    the other; `OLO_SCREENS_ON=host` does it for one shell and what it
+    starts. `olo screen remove` takes Olo off the host again.
+  - A screen at rest takes no processor time and about 250 MB of memory,
+    more with what runs on it (Chrome most): stop it when you are done.
+    One started from a Rex tab is stopped by itself when that tab's
+    program ends (you, or the shell: what ran on it ends, the screen is
+    kept as a stopped one and starts again as it was); `start NAME
+    --keep` for one that must outlive the tab that started it (another
+    agent's to go on with), which then stays until it is stopped.
+    The person can't watch a host's screen from their desktop yet: show
+    what you did with a picture (`look`).
+  Use the host's when the work is the host's own (a server here, a page
+  to test, a program to drive) or the desktop is away; the desktop's
+  when the person should watch or take over, or the task needs what is
+  theirs (their sign-ins, their Passwords).
 - Also `olo notify TITLE [BODY]` (a notification on the desktop, which
   leads back to this pane), `olo clipboard TEXT` (copied there) and
   `olo paste` (what is copied there, as text).

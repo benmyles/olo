@@ -29,6 +29,11 @@ agents = ["dep:tokio", "dep:tungstenite", "dep:tokio-tungstenite", "dep:futures-
 # an SSH connection of the helper's own; Codex's daemon asked which
 # conversations it has open, over its control socket's WebSocket.)
 move = ["sync", "agents", "dep:russh"]
+# `olo-rex-link screen`: Agent Screens of the host's own (`src/screens.rs`):
+# Olo's release fetched from GitHub, checked and unpacked under the
+# account (olo-release: TLS and zstd, C both, so built where zig is, as
+# `quic` and `sync` are), and its `olo-screen` run.
+screens = ["dep:olo-release", "dep:libc"]
 
 [dependencies]
 serde.workspace = true
@@ -45,6 +50,7 @@ rustls = { version = "0.23", optional = true, default-features = false, features
 rcgen = { version = "0.14", optional = true, default-features = false, features = ["aws_lc_rs"] }
 sha2 = { version = "0.11", optional = true }
 olo-rex-sync = { workspace = true, optional = true }
+olo-release = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 russh = { version = "0.65", optional = true, default-features = false, features = ["aws-lc-rs"] }
 tungstenite = { version = "0.30", optional = true, default-features = false, features = ["handshake"] }
@@ -84,6 +90,12 @@ required-features = ["agents"]
 [[test]]
 name = "agents_live"
 required-features = ["agents"]
+
+# Agent Screens of a host's own: where `olo screen` goes on a host, and
+# the helper's `screen` with an Olo made up for the test.
+[[test]]
+name = "screens"
+required-features = ["screens"]
 
 # The helper's side of a session keeping files in step, driven as the
 # app drives it.

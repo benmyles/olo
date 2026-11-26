@@ -144,7 +144,17 @@ mod tests {
         assert_eq!(key("Ctrl+F2"), "\x1b[1;5Q");
         assert_eq!(key("F12"), "\x1b[24~");
         // What isn't a key says what is.
-        assert!(special_key("m").unwrap_err().contains("Alt+m"));
+        // A character by itself is that key (it was refused: a box that
+        // takes one key and no text couldn't be answered in a tab).
+        assert_eq!(key("m"), "m");
+        assert_eq!(key("0"), "0");
+        assert_eq!(key("Shift+y"), "Y");
+        assert_eq!(key("é"), "é");
+        assert!(special_key("\u{7}").is_err());
+        assert!(special_key("ab").unwrap_err().contains("alone or with"));
+        for (name, types) in [("0", true), ("y", true), ("Shift+y", true), ("Enter", false), ("Alt+m", false), ("Ctrl+c", false), ("^C", false), ("F5", false), ("Up", false)] {
+            assert_eq!(super::spec::key_types(name), types, "{name}");
+        }
         assert!(special_key("Hyper+x").is_err());
         assert!(special_key("F13").is_err());
         assert!(special_key("").is_err());

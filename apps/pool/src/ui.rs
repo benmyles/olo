@@ -24,9 +24,7 @@ use std::{
 use olo_kit::{
     AppCx, Bounds, Child, ClickEvent, Corner, Cx, Element, Hsla, InteractiveElement as _, IntoElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Pixels, Proxy, ScrollHandle, SharedString,
     Styled as _, View, WindowHandle, WindowOptions, canvas, div, icons, menu, metrics as m, palette as olo_theme, point, px, size, style, theme,
-    widgets::{
-        self, Button, CheckBox, Graph, LIGHT, Light, MenuField, ScrollView, Series, StringView, TabView, TextControl, TextField, TextFieldEvent, button_width, level_bar, light, separator, text_field,
-    },
+    widgets::{self, Button, CheckBox, Graph, LIGHT, Light, MenuField, ScrollView, Series, StringView, TabView, TextControl, TextField, TextFieldEvent, button_width, level_bar, light, text_field},
 };
 use olo_token_pool::{
     activity::Activity,
@@ -55,6 +53,11 @@ const PROCESS_POLL_EVERY: Duration = Duration::from_secs(2);
 const HOSTS_POLL_EVERY: Duration = Duration::from_secs(30);
 const GRAPH_HEIGHT: f32 = 152.0;
 const DETAIL_ROW: f32 = 16.0;
+/// An account's or a host's row: the room above and below its words.
+/// (Eight points, and the three on each side of the rule between rows
+/// that a separator of the kit's had: the rule is the row's own now,
+/// [`under_rule`].)
+const ROW_PAD: f32 = 11.0;
 const RECENT_TABLE_LIMIT: usize = 60;
 
 /// Time spans for the Activity chart: (label, minutes, bucket minutes, grid seconds).
@@ -484,6 +487,21 @@ fn live_details(o: &LiveReq, now_ms: i64) -> String {
 /// Crisp 16pt/14pt neutral-slate machine glyph (`is_local`: desktop tower; remote: stacked server nodes).
 /// Uses the neutral slate ramp (#5E6E84 light / #8C9DB3 dark) so list rows never introduce red/green/blue
 /// colour noise or disappear into dark backgrounds.
+/// A row of a list under the rule that parts it from the row before: one
+/// line, the row's own top edge. A chosen row's tint runs up to the rule
+/// on both sides of it. Between rows stood the kit's separator, a groove
+/// in six points of the list's ground: a tinted row ended three points
+/// short of the rule, a strip of white between them (two pixels at 1x,
+/// three at 1.25x; both reviewers, 2026-11-26: "should meet the
+/// horizontal divider line flush", "end the band exactly on the rule").
+fn under_rule(p: &olo_kit::palette::Palette, row: Element) -> Element {
+    // (The groove's dark line by day, as it was. By night that is the
+    // list's own darkness, 1.0 to 1, and it was the groove's light line
+    // that showed: a step of the list's words into its ground.)
+    let rule = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.list_background, p.list_item_text, 0.16)) } else { style::shade(p, p.panel_background, 1.2) };
+    div().w_full().border_t_1().border_color(rule).child(row).into_element()
+}
+
 fn neutral_machine_icon(is_local: bool, size_pt: f32) -> Element {
     canvas(move |g, b| {
         let p = theme::palette();
@@ -1009,9 +1027,10 @@ impl PoolWindow {
             if accounts.is_empty() {
                 continue;
             }
-            if any {
-                list = list.child(separator());
-            }
+            // (A group after another has its band's own top edge for the
+            // rule between them, as a row has: the last row's tint runs
+            // to it. A separator of the kit's stood here too.)
+            let after_another = any;
             any = true;
             // Tinted 22pt group header row with provider colour swatch aligned to checkbox column
             list = list.child(
@@ -1021,6 +1040,7 @@ impl PoolWindow {
                     .px(px(10.0))
                     .bg(group_bg)
                     .border_b_1()
+                    .border_t(px(if after_another { 1.0 } else { 0.0 }))
                     .border_color(style::c(p.control_border))
                     .flex()
                     .flex_row()
@@ -1030,13 +1050,11 @@ impl PoolWindow {
                     .child(StringView::new(prov.client()).size(style::SMALL_SIZE).bold(true).height(DETAIL_ROW)),
             );
             for (idx, account) in accounts.iter().enumerate() {
-                if idx > 0 {
-                    list = list.child(separator());
-                }
                 let pending = account.kept_on.as_deref().and_then(|hid| unaccepted.get(hid)).map(Vec::as_slice).unwrap_or(&[]);
                 let rollup = account_rollup(pool, account, hosts);
                 let is_sel = sel_id == Some(account.id.as_str());
-                list = list.child(self.account_row(account, hosts, pending, &rollup, is_sel, wide, narrow, p, cx));
+                let row = self.account_row(account, hosts, pending, &rollup, is_sel, wide, narrow, p, cx);
+                list = list.child(if idx > 0 { under_rule(p, row) } else { row });
             }
         }
         if !any {
@@ -1267,7 +1285,7 @@ impl PoolWindow {
         let mut row = div()
             .w_full()
             .px(px(10.0))
-            .py(px(8.0))
+            .py(px(ROW_PAD))
             .flex()
             .flex_row()
             .items_start()
@@ -1720,12 +1738,10 @@ impl PoolWindow {
             );
         } else {
             for (idx, h) in ordered_hosts.iter().enumerate() {
-                if idx > 0 {
-                    host_list = host_list.child(separator());
-                }
                 let kept = kept_names(pool, Some(&h.id));
                 let is_sel = sel_host == Some(h.id.as_str());
-                host_list = host_list.child(self.remote_host_row(h, &kept, is_sel, wide, narrow, compact_h, p, cx));
+                let row = self.remote_host_row(h, &kept, is_sel, wide, narrow, compact_h, p, cx);
+                host_list = host_list.child(if idx > 0 { under_rule(p, row) } else { row });
             }
         }
         let hosts_well = div().flex_1().min_h_0().child(ScrollView::new(&self.hosts_scroll).background(p.list_background).child(host_list));
@@ -2110,7 +2126,7 @@ impl PoolWindow {
         let mut row = div()
             .w_full()
             .px(px(10.0))
-            .py(px(8.0))
+            .py(px(ROW_PAD))
             .flex()
             .flex_row()
             .items_start()

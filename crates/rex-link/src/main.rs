@@ -29,6 +29,8 @@ mod panes;
 mod procs;
 #[cfg(feature = "quic")]
 mod quic;
+#[cfg(feature = "screens")]
+mod screens;
 #[cfg(feature = "sync")]
 mod sync;
 #[cfg(feature = "sync")]
@@ -154,6 +156,17 @@ fn main() {
         #[cfg(not(feature = "agents"))]
         {
             eprintln!("olo-rex-link: built without agent support");
+            std::process::exit(126);
+        }
+    }
+    // (`screen`: Agent Screens of this host's own: Olo put here, and its
+    // `olo-screen` run.)
+    if args.first().is_some_and(|a| a == "screen") {
+        #[cfg(feature = "screens")]
+        screens::run(args.split_off(1));
+        #[cfg(not(feature = "screens"))]
+        {
+            eprintln!("olo-rex-link: built without screens of this host's own");
             std::process::exit(126);
         }
     }
