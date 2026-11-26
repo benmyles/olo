@@ -30845,7 +30845,14 @@ agents through the night, could not move to it.
 - *Small things the move needed*: `send --key` takes any key with any
   modifier a terminal can send (`special_key`: `Alt+m` is the escape and
   the letter, what tmux sends for `M-m`; `Ctrl+Shift+Up` is xterm's
-  form); a feedback survey drawn over a screen (Claude Code's "How is
+  form), and a character by itself, as that one key and nothing after
+  it (`--key 0`, `--key y`: no Return, no paste; it was refused, and a
+  box that takes one key and must be given no text couldn't be answered
+  in a tab: Claude Code's "1 to review · 2 to send · 0 to dismiss" over
+  a drafted feedback report, whose only key anyone may press is its 0;
+  the ShiftUp lead's item 25, 2026-11-26. Into a question a character
+  is an answer by its number, so it is refused there as text is, without
+  `--force`: `spec::key_types`); a feedback survey drawn over a screen (Claude Code's "How is
   Claude doing this session?", Antigravity's "How's the CLI experience
   so far?", which hid a permission prompt for 25 minutes) is set aside
   by the service with the survey's own key (`olo_agent_screen::

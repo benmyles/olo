@@ -938,11 +938,11 @@ impl Service {
             return err(format!("subagent `{}` has already exited", entry.id), 1);
         }
         // Text is never typed into a question: answered by `approve`, or forced.
-        if !spec.body.is_empty() && !spec.force && entry.cli.is_agent() && dialog_up(&before.cls) {
-            return err(
-                format!("refusing to type text into `{}` while a {} dialog is active (use `olo agent approve` to answer approvals, or pass `--force`)", entry.id, before.cls.state.as_str()),
-                1,
-            );
+        // Nor a key that types a character (`--key 1`): there it is an
+        // answer by its number, with none of what `approve` checks.
+        if (!spec.body.is_empty() || spec.types) && !spec.force && entry.cli.is_agent() && dialog_up(&before.cls) {
+            let what = if spec.body.is_empty() { "press a character key in" } else { "type text into" };
+            return err(format!("refusing to {what} `{}` while a {} dialog is active (use `olo agent approve` to answer approvals, or pass `--force`)", entry.id, before.cls.state.as_str()), 1);
         }
         // (From before the typing: a watch from this cursor has what follows it.)
         let pre_cursor = self.cursor();
