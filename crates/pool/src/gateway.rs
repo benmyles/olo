@@ -709,6 +709,23 @@ impl Shared {
         !self.paused(provider) && self.serves(provider)
     }
 
+    /// Whether the pool has more to draw from for `provider`'s `family`
+    /// than the account `serving` (none given: than the one it would
+    /// choose now): another account with allowance, or a reset credit to
+    /// claim (`told::more`). While it has, its clients are told nothing
+    /// is used.
+    pub fn more_to_draw(&self, provider: Provider, family: &str, serving: Option<&str>) -> bool {
+        let p = self.pool.lock().unwrap();
+        let chosen = match serving {
+            Some(id) => Some(id.to_owned()),
+            None => {
+                let sticky = p.sticky.get(&(provider, family.to_owned())).cloned();
+                p.pick(provider, family, sticky.as_deref(), &HashMap::new(), &[]).map(|a| a.id.clone())
+            }
+        };
+        crate::told::more(&p.saved.accounts, provider, family, chosen.as_deref(), now(), |a| p.saved.credentials.contains_key(&a.id))
+    }
+
     /// Whether the pool serves `provider`'s requests now: it has an
     /// account for it that's on and signed in. (If not, the proxy lets
     /// the client through on its own sign-in.)
@@ -3160,6 +3177,12 @@ fn respond(mut r: crate::relay::Answer, finish: Finish, method: &Method) -> Resp
     if let Ok(v) = HeaderValue::from_str(&finish.name) {
         out.insert(HeaderName::from_static("x-olo-pool-account"), v);
     }
+    // What the client is told of its usage: nothing used, for as long as
+    // the pool has more to draw from than the account that answered
+    // (`told`). The pool's own reading of this answer is done: `serve`.
+    if finish.shared.as_ref().is_some_and(|s| s.more_to_draw(finish.provider, &model_family(&finish.model), Some(&finish.id))) {
+        crate::told::headers(finish.provider, &mut out);
+    }
     let finish = Arc::new(Mutex::new(finish));
     {
         let mut f = finish.lock().unwrap();
@@ -3210,6 +3233,18 @@ enum Decode {
     Br(Box<brotli_decompressor::DecompressorWriter<Vec<u8>>>),
     Zstd(Box<zstd::stream::write::Decoder<'static, Vec<u8>>>),
     Unread,
+}
+
+/// A whole body as it reads once its `content-encoding` is undone (none:
+/// as it is); None where the pool can't read that coding.
+pub(crate) fn decoded(coding: &str, body: &[u8]) -> Option<Vec<u8>> {
+    let mut decode = Decode::of(coding);
+    if matches!(decode, Decode::Unread) {
+        return None;
+    }
+    let mut out = decode.push(body).into_owned();
+    out.extend(decode.finish()?);
+    Some(out)
 }
 
 impl Decode {

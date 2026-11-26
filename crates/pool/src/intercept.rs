@@ -346,10 +346,52 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     // request, so turning a client off or on needs no restart of it.
     let answer = match pooled(host, &path) {
         Some((provider, rest)) if shared.routes(provider) => crate::gateway::serve(shared, provider, rest, query, parts.method, parts.headers, parts.extensions, body).await,
-        _ => through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, parts.extensions, body).await,
+        _ => {
+            // (A usage report asked by a client the pool serves: what it
+            // is told of its usage, as its answers' headers are. `told`.)
+            let report = crate::told::is_report(host, &path).filter(|p| parts.method == Method::GET && shared.routes(*p));
+            let answer = through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, parts.extensions, body).await;
+            match report {
+                Some(provider) => told(&shared, provider, answer).await,
+                None => answer,
+            }
+        }
     };
     let (parts, body) = answer.into_parts();
     Response::from_parts(parts, Body::new(crate::drain::Counted { inner: body, underway }))
+}
+
+/// The most of a usage report read to say it anew (they are a few KB).
+const REPORT_MOST: usize = 1 << 20;
+
+/// A usage report's answer as the client is told it: with every meter at
+/// nothing used, for as long as the pool has more to draw from than the
+/// account it would choose now (`Shared::more_to_draw`); else, and where
+/// it isn't a report the pool can read (not a 2xx, too big, a coding or
+/// a shape it doesn't know), as it came.
+async fn told(shared: &Shared, provider: Provider, answer: Response) -> Response {
+    if !answer.status().is_success() || !shared.more_to_draw(provider, "", None) {
+        return answer;
+    }
+    let (mut parts, body) = answer.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, REPORT_MOST).await else {
+        // (Cut short or past the most: nothing whole to hand on.)
+        return (StatusCode::BAD_GATEWAY, "The usage report didn’t arrive whole.").into_response();
+    };
+    let coding = parts.headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+    let said = crate::gateway::decoded(&coding, &bytes)
+        .and_then(|plain| serde_json::from_slice::<serde_json::Value>(&plain).ok())
+        .and_then(|mut report| crate::told::report(provider, &mut report).then(|| report.to_string()));
+    match said {
+        Some(text) => {
+            // (Said plain: its coding and its length were the other's.)
+            parts.headers.remove("content-encoding");
+            parts.headers.remove("transfer-encoding");
+            parts.headers.insert("content-length", text.len().into());
+            Response::from_parts(parts, Body::from(text))
+        }
+        None => Response::from_parts(parts, Body::from(bytes)),
+    }
 }
 
 /// Hop-by-hop headers, which belong to one connection, not the request.

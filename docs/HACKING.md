@@ -26839,7 +26839,38 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   and when the pool turns to one. Codex has no such answers (its limit
   is a 429 or a meter at 100%). `tests/gateway.rs`,
   `usage_credits_come_after_another_account_and_a_reset`, walks the
-  whole order against a stand-in Claude, and fails without this. `/pool/status`
+  whole order against a stand-in Claude, and fails without this.
+  **What a client is told of its usage** (`told.rs`; Ben, 2026-11-26:
+  "always reports to the clients full usage when there remain
+  additional accounts or resets to draw from (for both claude and
+  codex)"). A client sees one account's meters, the one that answered
+  it, and takes them for all there is: "Approaching weekly limit",
+  "Now using usage credits", an agent that paces itself or stops, with
+  the pool's other accounts untouched. So for as long as the pool has
+  more to draw from than the account that answered (`told::more`,
+  `Shared::more_to_draw`: another account with allowance for the model
+  asked for, or a reset credit that can be used), what goes back says
+  nothing is used: an answer's headers (`told::headers`, in the
+  gateway's `respond`: Claude's `anthropic-ratelimit-unified-*`
+  utilizations at 0, its statuses "allowed", no threshold passed, not
+  on credits; Codex's `x-codex-*-used-percent` at 0) and a usage
+  report asked through the proxy by a client the pool serves
+  (`told::report`, in `intercept::told`: Claude's `/api/oauth/usage`,
+  each `limits[].percent` and each window's `utilization`; ChatGPT's
+  `/backend-api/wham/usage`, each window's `used_percent`; read
+  whatever its `content-encoding`, said plain). When each meter
+  resets, and everything that isn't a share used, is as the provider
+  said. When the account that answers is the last, with no reset
+  behind it, the client is told how it really stands, as before. The
+  pool's own reading is of the provider's answer, before any of it:
+  its meters, its choice and its window are never what a client was
+  told. Not told so yet: a Codex socket's own `codex.rate_limits`
+  events, which pass byte for byte in frames the pool only reads
+  (compressed with a context kept from message to message: one changed
+  or left out breaks every one after; TODO). `tests/intercept.rs`,
+  `a_client_is_told_nothing_is_used_while_the_pool_has_more`, through
+  the proxy as the clients come, for both providers, the last account,
+  and a reset. `/pool/status`
   is the state without sign-ins. Its own `/claude/v1/*` and
   `/codex/v1/*` remain for programs pointed at it by address (Olo's AI
   features).

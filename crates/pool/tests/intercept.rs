@@ -1239,3 +1239,125 @@ async fn a_turn_that_ends_after_a_handover_is_booked() {
     // (The old copy's own books aren't the ones saved.)
     old.drain.finished();
 }
+
+/// What a client is told of its usage (Ben, 2026-11-26: "always reports
+/// to the clients full usage when there remain additional accounts or
+/// resets to draw from (for both claude and codex)"). A stand-in Claude
+/// and ChatGPT whose answers say an account is nearly out: 93% of its
+/// 5 hours with a warning, 81% of Codex's week; and whose usage reports
+/// say the same, Claude's compressed as the real one's is.
+///
+/// With another account behind the one that answers, the client is told
+/// nothing is used, in the answer's headers and in the report, each
+/// reset left as it came. With the answering account the last (the other
+/// turned off), it is told how that one really stands. And the pool's
+/// own reading is the provider's either way.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_is_told_nothing_is_used_while_the_pool_has_more() {
+    use std::io::Write as _;
+    let limits = |r: axum::http::response::Builder| {
+        r.header("anthropic-ratelimit-unified-status", "allowed_warning")
+            .header("anthropic-ratelimit-unified-5h-utilization", "0.93")
+            .header("anthropic-ratelimit-unified-5h-reset", (now() + 1800).to_string())
+            .header("anthropic-ratelimit-unified-representative-claim", "five_hour")
+    };
+    let fake = Router::new()
+        .route("/v1/messages", post(move || async move { limits(Response::builder()).header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#)).unwrap() }))
+        .route(
+            "/backend-api/codex/responses",
+            post(|| async {
+                Response::builder()
+                    .header("content-type", "application/json")
+                    .header("x-codex-primary-used-percent", "81")
+                    .header("x-codex-primary-window-minutes", "10080")
+                    .header("x-codex-primary-reset-after-seconds", "3600")
+                    .body(Body::from(r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#))
+                    .unwrap()
+            }),
+        )
+        .route(
+            "/api/oauth/usage",
+            get(|| async {
+                let report = json!({"five_hour": {"utilization": 93.0, "resets_at": "2026-11-27T02:00:00Z"}, "limits": [{"kind": "session", "group": "session", "percent": 93, "resets_at": "2026-11-27T02:00:00Z"}]});
+                let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                gz.write_all(report.to_string().as_bytes()).unwrap();
+                Response::builder().header("content-type", "application/json").header("content-encoding", "gzip").body(Body::from(gz.finish().unwrap())).unwrap()
+            }),
+        )
+        .route("/backend-api/wham/usage", get(|| async { axum::Json(json!({"plan_type": "pro", "rate_limit": {"allowed": true, "limit_reached": false, "primary_window": {"used_percent": 81, "limit_window_seconds": 604800, "reset_after_seconds": 3600}}})) }));
+    let up = serve(fake).await;
+    let mut saved = Saved::default();
+    for (id, provider, created) in [("claude-a", Provider::Claude, 1), ("claude-b", Provider::Claude, 2), ("codex-a", Provider::Codex, 1), ("codex-b", Provider::Codex, 2)] {
+        let mut a = account(id, provider);
+        a.created = created;
+        saved.accounts.push(a);
+        saved.credentials.insert(id.into(), Credential { access: id.into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
+    }
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+    let authority = Arc::new(Authority::ephemeral());
+    let s = shared.clone();
+    let proxy = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s.serves(p)), intercept::Who::Anyone).await.unwrap();
+    let client = reqwest::Client::builder()
+        .proxy(reqwest::Proxy::https(format!("http://{proxy}")).unwrap())
+        .add_root_certificate(reqwest::Certificate::from_pem(authority.cert_pem.as_bytes()).unwrap())
+        .build()
+        .unwrap();
+    let told = |client: reqwest::Client| async move {
+        let h = |r: &reqwest::Response, k: &str| r.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_owned);
+        let claude = client.post("https://api.anthropic.com/v1/messages").header("authorization", "Bearer theirs").json(&json!({"model": "claude-opus-5-5", "messages": []})).send().await.unwrap();
+        let claude = (
+            claude.status().as_u16(),
+            h(&claude, "x-olo-pool-account"),
+            h(&claude, "anthropic-ratelimit-unified-5h-utilization"),
+            h(&claude, "anthropic-ratelimit-unified-status"),
+            h(&claude, "anthropic-ratelimit-unified-5h-reset").is_some(),
+        );
+        let codex = client.post("https://chatgpt.com/backend-api/codex/responses").header("authorization", "Bearer theirs").json(&json!({"model": "gpt-5-codex"})).send().await.unwrap();
+        let codex = (codex.status().as_u16(), h(&codex, "x-olo-pool-account"), h(&codex, "x-codex-primary-used-percent"), h(&codex, "x-codex-primary-reset-after-seconds"));
+        let report = client.get("https://api.anthropic.com/api/oauth/usage").header("authorization", "Bearer theirs").header("accept-encoding", "gzip").send().await.unwrap();
+        let coding = h(&report, "content-encoding");
+        let bytes = report.bytes().await.unwrap();
+        // (As the client reads it: undone if it is said to be compressed.)
+        let text = match coding.as_deref() {
+            Some("gzip") => {
+                let mut out = String::new();
+                std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&bytes[..]), &mut out).unwrap();
+                out
+            }
+            _ => String::from_utf8(bytes.to_vec()).unwrap(),
+        };
+        let report: Value = serde_json::from_str(&text).unwrap();
+        let chatgpt: Value = client.get("https://chatgpt.com/backend-api/wham/usage").header("authorization", "Bearer theirs").send().await.unwrap().json().await.unwrap();
+        (claude, codex, report, chatgpt)
+    };
+    // Another account behind each: nothing used, told four ways.
+    let (claude, codex, report, chatgpt) = told(client.clone()).await;
+    assert_eq!(claude, (200, Some("claude-a".into()), Some("0".into()), Some("allowed".into()), true));
+    assert_eq!(codex, (200, Some("codex-a".into()), Some("0".into()), Some("3600".into())));
+    assert_eq!((report["five_hour"]["utilization"].as_f64(), report["limits"][0]["percent"].as_f64(), report["five_hour"]["resets_at"].as_str()), (Some(0.0), Some(0.0), Some("2026-11-27T02:00:00Z")));
+    assert_eq!(
+        (chatgpt["rate_limit"]["primary_window"]["used_percent"].as_f64(), chatgpt["rate_limit"]["primary_window"]["reset_after_seconds"].as_i64(), chatgpt["plan_type"].as_str()),
+        (Some(0.0), Some(3600), Some("pro"))
+    );
+    // (The pool's own reading: the provider's.)
+    let p = shared.snapshot();
+    assert_eq!(p.account("claude-a").unwrap().windows.iter().find(|w| w.name == "five_hour").map(|w| w.used), Some(93.0));
+    assert_eq!(p.account("codex-a").unwrap().windows.iter().find(|w| w.name == "primary_window").map(|w| w.used), Some(81.0));
+    // The answering account the last (the other turned off): as it is.
+    {
+        let mut p = shared.pool.lock().unwrap();
+        for id in ["claude-b", "codex-b"] {
+            p.account_mut(id).unwrap().enabled = false;
+        }
+    }
+    let (claude, codex, report, chatgpt) = told(client.clone()).await;
+    assert_eq!(claude, (200, Some("claude-a".into()), Some("0.93".into()), Some("allowed_warning".into()), true));
+    assert_eq!(codex, (200, Some("codex-a".into()), Some("81".into()), Some("3600".into())));
+    assert_eq!((report["five_hour"]["utilization"].as_f64(), report["limits"][0]["percent"].as_f64()), (Some(93.0), Some(93.0)));
+    assert_eq!(chatgpt["rate_limit"]["primary_window"]["used_percent"].as_f64(), Some(81.0));
+    // A reset to claim on the last one: more to draw from again.
+    shared.pool.lock().unwrap().account_mut("claude-a").unwrap().credits =
+        vec![olo_token_pool::model::ResetCredit { id: "g".into(), remaining: 1, usable: true, expires_at: Some(now() + 86400), ..Default::default() }];
+    let (claude, _, report, _) = told(client).await;
+    assert_eq!((claude.2.as_deref(), claude.3.as_deref(), report["five_hour"]["utilization"].as_f64()), (Some("0"), Some("allowed"), Some(0.0)));
+}

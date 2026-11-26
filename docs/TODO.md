@@ -57,14 +57,22 @@ something nobody here has is in "Blocked", with what it waits for.
   state's demo: `OLO_POOL_DEMO=credits`). (5) no look by the
   reviewers yet at the card's new sentence: with the next Token Pool
   change's batch.
-- **Token Pool reports full usage while it has more to draw from**
-  (Ben, 2026-11-26 evening): "change the way token pool works so that
-  it always reports to the clients full usage when there remain
-  additional accounts or resets to draw from (for both claude and
-  codex)". (And of the Claude CLI's own notice, "Now using usage
-  credits": "claude cli is not out of usage, ignore the usage stats
-  for the claude cli they are wrong -- we have resets and they will be
-  applied automatically.")
+- ~~**Token Pool reports full usage while it has more to draw from**~~
+  Done 2026-11-26 (HACKING, Gateway, "What a client is told of its
+  usage"): answers' headers and the usage reports, for Claude and
+  Codex. Left: (1) *a Codex socket's `codex.rate_limits` events* still
+  say the answering account's own figures: the socket's frames pass
+  byte for byte, compressed with a context kept from message to
+  message, so one can't be changed or left out as it passes; it wants
+  the pool to speak the socket itself on both sides (inflate, change,
+  deflate anew), or the extension left out of the offer, which is not
+  as Codex sends it. (2) *The report is the client's own account's*,
+  asked with its own sign-in as before, with its figures set to
+  nothing: where that sign-in has gone stale the client gets no report
+  at all; the pool could answer it from its own meters. (3) *When the
+  last account answers*, the client is told that account's figures,
+  not the pool's whole standing (accounts out until when, resets
+  left): a report of the pool itself would say more.
 - **Minder agents for `olo agent`** (Ben, 2026-11-26 evening): "often
   when subagents need an approval or have a question it takes a long
   time for parent agents to notice and respond because they are busy
@@ -80,6 +88,50 @@ something nobody here has is in "Blocked", with what it waits for.
   design this functionality elegantly with easy to use ergonomics for
   the parent agent and build it and update the skills etc. that agents
   running under rex get to cover it".
+  *The design (2026-11-26, to build):*
+  - A minder is an agent of its own, a child tab of the agent it minds,
+    whose whole job is that one agent: it waits on it (`olo agent
+    watch NAME`), answers what it asks at once by the parent's written
+    rules (`approve`, `send`), and tells the parent what the rules
+    don't cover. The person sees it under the minded child in Rex's
+    tree and Activity, marked as its minder, and can read and answer
+    it like any agent.
+  - At start: `olo agent start … --minder CLI:MODEL:EFFORT --rules
+    FILE` (or `--rules-text "…"`): the child and its minder begin
+    together. For one running: `olo agent mind NAME --with
+    CLI:MODEL:EFFORT --rules FILE` attaches a minder, or replaces the
+    one it has; `olo agent mind NAME --rules FILE` gives the same
+    minder new rules (it is told, its conversation kept); `olo agent
+    mind NAME --off` ends it; `olo agent mind NAME` says how it is
+    minded and what its minder has done (each answer it gave, with
+    the question).
+  - The rules are the parent's own words: what to approve, what to
+    refuse, how to steer, when to tell me. The service wraps them in
+    the minder's standing instructions (the one agent it minds, the
+    exact commands, what it never does: no persistent approvals, no
+    stopping the agent unless the rules say, nothing but that agent).
+  - Escalation is an event on the parent's own watch, not typing into
+    its pane: the minder runs `olo agent escalate "TEXT"`, and the
+    parent's `olo agent watch` returns `{"event":"escalation",
+    "name":"api-audit","text":…}` at once. While a child is minded,
+    its `approval` and `question` events are its minder's alone (the
+    parent's watch isn't woken by them); everything else reaches the
+    parent as before.
+  - Enforced by the service, not by the minder's good manners: an
+    agent started as a minder may `watch`, `status`, `read`,
+    `approve`, `send` to the one agent it minds, and `escalate`;
+    nothing else (it starts no agents, reaches no other tab). Its own
+    CLI is started so that those commands need no leave (nobody would
+    answer it), and nothing else is allowed it.
+  - When the minded agent ends, its minder is told, reports once to
+    the parent (an escalation: what it answered, what it refused) and
+    ends. A minder that fails or exits while its agent runs is an
+    `escalation` too ("its minder ended"), and the child's questions
+    reach the parent again.
+  - The skills: the bridge's own (`olo agent` section) and Olo's
+    `olo-agents`; `tools/dev/agents` and its front doors take
+    `--minder` in place of the Agent-tool minder Olo's own rules use
+    now.
 - **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
   "currently we have under manager rex server a limits tab for applying
   tweaks to the host but they really belong in manage host. please move
