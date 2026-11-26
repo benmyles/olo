@@ -229,7 +229,9 @@ fn status(port: u16, as_json: bool) -> std::process::ExitCode {
         } else if a["enabled"] == false {
             "paused".into()
         } else if let Some(u) = a["blocked_until"].as_i64() {
-            format!("out of quota until {}", clock(u))
+            // (Answered from usage credits by its provider: the last
+            // the pool turns to.)
+            if a["paid_until"].as_i64().is_some() { format!("out of quota until {}, its usage credits the last resort", clock(u)) } else { format!("out of quota until {}", clock(u)) }
         } else {
             "ready".into()
         };

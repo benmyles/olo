@@ -687,6 +687,12 @@ pub fn demo_data() -> DemoData {
         req(1_200, "claude-opus-5-5", "Claude Code", Outcome::Completed, 200, 2_900, 24_000, 1_100),
         req(420, "claude-opus-5-5", "Claude Code", Outcome::Completed, 200, 3_400, 44_400, 2_050),
     ]);
+    // (`OLO_POOL_DEMO=credits`: its 5-hour allowance out, its provider
+    // answering it from usage credits: the last the pool turns to.)
+    if mode == "credits" {
+        claude_personal.windows[0].used = 100.0;
+        claude_personal.now_paid("", false, t + 3_120, "five_hour");
+    }
 
     // Account 3: Codex Team, sign-in kept on `build` (handover pending)
     let mut codex_team = Account::new("acc-x1".into(), "Team Plus".into(), Provider::Codex);

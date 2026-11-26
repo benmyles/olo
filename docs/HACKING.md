@@ -26773,7 +26773,46 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   before anything is passed back; a network failure is a 502 and never
   replayed. With none left, a 429 shaped as the provider's with a
   `retry-after` of the soonest reset (the clients are set to retry ten
-  times). `x-olo-pool-account` names who answered. `/pool/status`
+  times). `x-olo-pool-account` names who answered.
+  **Usage credits come last** (Ben, 2026-11-26: "instead of switching
+  to another account or using a reset token pool is letting the clients
+  use usage credits first"). An account whose allowance is out and
+  that has usage credits (Claude's "overage": paid for beyond the plan)
+  isn't refused: Claude answers 200, its headers saying
+  `anthropic-ratelimit-unified-status: rejected` with
+  `…-overage-status: allowed`, which is how Claude Code itself tells
+  ("Now using usage credits": `isUsingOverage` in its 2.1.332, read
+  from the program). The pool took only a 429 for a meter running out,
+  so such an account stayed the one chosen, every request after paid
+  for, other accounts unused and resets unclaimed (most likely the
+  5-hour meter, which the usage report of these plans doesn't list:
+  nothing else told the pool). Now an answer given so
+  (`upstream::paid_by_credits`) goes back, since it is answered and
+  paid for, and marks the account (`Account::paid`, or `model_paid` for
+  a model's own meter: until the meter named resets, the meter marked
+  used up as a refusal marks it, so a reset that clears it can be
+  claimed): it is blocked as one that is out (`schedule::blocked_until`),
+  and the order is always **another account, then a reset credit, then
+  usage credits** (`schedule::pick_paid`, tried only once `pick` finds
+  none and `redeem_for` claimed nothing; never one that refuses
+  outright, a cooldown). The mark goes when its time is up, when a
+  reset is claimed here, when the provider's report lists the meter as
+  not used up (a reset claimed by another pool of the same accounts:
+  `Account::paid_settled`), or at the first answer that comes within
+  the allowance again. A host's pool claims no reset itself: where one
+  waits that would let the request through, it spends no credits
+  ahead of it and answers that all are out and a reset waits for the
+  desktop's pool (which doesn't yet claim for a host that is out:
+  TODO). One answer is paid for each time an account tips over, with
+  those under way beside it: Claude says so only in the answer. The
+  window's card says of such an account "Out of quota until …" and "Its
+  usage credits are used only when no other account can serve and no
+  reset can be claimed."; `/pool/status` has `paid_until` and
+  `model_paid`; the log says when an account begins to be answered so
+  and when the pool turns to one. Codex has no such answers (its limit
+  is a 429 or a meter at 100%). `tests/gateway.rs`,
+  `usage_credits_come_after_another_account_and_a_reset`, walks the
+  whole order against a stand-in Claude, and fails without this. `/pool/status`
   is the state without sign-ins. Its own `/claude/v1/*` and
   `/codex/v1/*` remain for programs pointed at it by address (Olo's AI
   features).

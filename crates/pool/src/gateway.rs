@@ -141,6 +141,13 @@ impl Pool {
         })
     }
 
+    /// The account to use when none has allowance left and no reset
+    /// could be claimed: one its provider answers from usage credits
+    /// (`schedule::pick_paid`), of those not tried for this request.
+    fn pick_paid<'a>(&'a self, provider: Provider, family: &str, sticky: Option<&str>, tried: &HashMap<String, u64>) -> Option<&'a Account> {
+        schedule::pick_paid(&self.saved.accounts, provider, family, sticky, now(), |a| self.saved.credentials.contains_key(&a.id) && tried.get(&a.id) != Some(&self.reset_revision(&a.id)))
+    }
+
     pub fn busy(&self, id: &str) -> bool {
         self.in_flight.get(id).is_some_and(|&n| n > 0)
     }
@@ -1135,12 +1142,16 @@ impl Shared {
                         let provider = a.provider;
                         if a.windows.iter().any(|w| w.models.is_empty() && credit.clears(provider, w)) {
                             a.cooldown_until = None;
+                            // (Its allowance is back: no longer answered
+                            // from usage credits.)
+                            a.paid = None;
                         }
                         for w in a.windows.iter_mut().filter(|w| credit.clears(provider, w)) {
                             w.used = 0.0;
                         }
                         for family in a.windows.iter().filter(|w| credit.clears(provider, w)).flat_map(|w| w.models.clone()).collect::<Vec<_>>() {
                             a.model_cooldowns.remove(&family);
+                            a.model_paid.remove(&family);
                         }
                         if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
                             c.remaining = c.remaining.saturating_sub(1);
@@ -1342,6 +1353,10 @@ impl Shared {
                     // The report is the truth; a rejection's per-model
                     // window stays until it resets.
                     let t = now();
+                    // (An allowance the report shows back, a reset claimed
+                    // by another pool of these accounts: no longer taken
+                    // as answered from usage credits.)
+                    a.paid_settled(Some(&windows), t);
                     a.windows.retain(|w| w.name.starts_with("model:") && w.resets_at.is_some_and(|r| r > t));
                     a.merge_windows(windows);
                     if plan.is_some() {
@@ -1533,6 +1548,10 @@ pub fn status_json(p: &Pool) -> Value {
                 "email": a.email, "plan": a.plan, "signed_out": a.signed_out,
                 "reset_credits": a.credits.iter().map(|c| json!({"remaining": c.remaining, "usable": c.usable, "expires_at": c.expires_at})).collect::<Vec<_>>(),
                 "blocked_until": schedule::blocked_until(a, "", t),
+                // (Its allowance out, its provider answering from usage
+                // credits until then: the last the pool turns to.)
+                "paid_until": a.paid_until("", t),
+                "model_paid": a.model_paid.iter().filter(|(_, p)| p.until > t).map(|(family, p)| (family.clone(), p.until)).collect::<std::collections::BTreeMap<_, _>>(),
                 "windows": a.windows, "today": a.today.1, "total": a.total,
                 "in_flight": p.in_flight.get(&a.id).copied().unwrap_or(0),
                 "last_used": a.last_used, "synced": a.synced, "recent": a.recent,
@@ -1810,13 +1829,18 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
     // Tries the network failed (not counted against an account).
     let mut network_tries = 0;
     let mut refresh_error: Option<String> = None;
+    // No account has allowance left and no reset could be claimed: the
+    // request goes to one its provider answers from usage credits, the
+    // last the pool turns to (never before another account or a reset).
+    let mut on_credits = false;
     loop {
         // Choose, and count it as busy at once.
         let chosen = {
             let mut p = s.pool.lock().unwrap();
             let t = now();
             let sticky = p.sticky.get(&(provider, family.clone())).cloned();
-            let pick = p.pick(provider, &family, sticky.as_deref(), &tried, &[]).map(|a| (a.id.clone(), a.name.clone()));
+            let pick =
+                if on_credits { p.pick_paid(provider, &family, sticky.as_deref(), &tried) } else { p.pick(provider, &family, sticky.as_deref(), &tried, &[]) }.map(|a| (a.id.clone(), a.name.clone()));
             match pick {
                 Some((id, name)) => {
                     p.sticky.insert((provider, family.clone()), id.clone());
@@ -1848,9 +1872,32 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             Err((any, retry)) => {
                 // Every account out: a reset credit keeps things going if an
                 // account with a working sign-in can redeem one.
-                if any && let Some(id) = s.redeem_for(provider, &family, &tried).await {
+                if any
+                    && !on_credits
+                    && let Some(id) = s.redeem_for(provider, &family, &tried).await
+                {
                     tried.remove(&id);
                     continue;
+                }
+                // Nothing with allowance, no reset to claim: an account
+                // its provider answers from usage credits, if there is
+                // one (the next turn of the loop finds it, or none).
+                // (A host's pool claims no reset itself, the desktop's
+                // does: where one waits that would let this request
+                // through, usage credits aren't spent ahead of it. The
+                // client is told all are out, and that a reset waits.)
+                let reset_waits = any && s.is_hosted() && {
+                    let p = s.pool.lock().unwrap();
+                    let t = now();
+                    p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.claim_for(&family, t).is_some())
+                };
+                if any && !on_credits && !reset_waits {
+                    let waiting = s.pool.lock().unwrap().pick_paid(provider, &family, None, &tried).map(|a| a.name.clone());
+                    if let Some(name) = waiting {
+                        tracing::info!("pool: no {} account has allowance left for {family} and no reset could be claimed: {name} answers from its usage credits", provider.client());
+                        on_credits = true;
+                        continue;
+                    }
                 }
                 // If unblocked accounts failed sign-in renewal (e.g., keeper
                 // couldn't lend/renew), surface the actual sign-in error as 502
@@ -1859,7 +1906,14 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     return unavailable(provider, StatusCode::BAD_GATEWAY, &err, None);
                 }
                 return if any {
-                    let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
+                    let msg = if reset_waits {
+                        format!(
+                            "Every {} account in the pool is out of quota for now. A reset credit waits: Token Pool on your desktop claims it (this host’s pool claims none itself).",
+                            provider.client()
+                        )
+                    } else {
+                        format!("Every {} account in the pool is out of quota for now.", provider.client())
+                    };
                     unavailable(provider, StatusCode::TOO_MANY_REQUESTS, &msg, retry)
                 } else {
                     let msg = format!("There are no {} accounts in the pool to use (open Token Pool to add one).", provider.client());
@@ -2081,7 +2135,12 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         let status = r.status();
         finish.status = status.as_u16();
         let t = now();
-        let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
+        let (mut windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
+        // An answer given although the account's allowance is out: paid
+        // for from its usage credits. It goes back (it is answered, and
+        // paid for), and the account is left for another from the next
+        // request on, or for a reset that clears its meter.
+        let paid = upstream::paid_by_credits(r.headers(), provider, &family, status.as_u16(), t, &mut windows);
         // (Handed over: what it says told the copy at work too.)
         if s.drain.retired() && (!windows.is_empty() || rejection.is_some()) {
             let (cooldown, model_cooldown) = match &rejection {
@@ -2089,7 +2148,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 Some(rej) => (Some(rej.until), None),
                 None => (None, None),
             };
-            s.tell_late(&Late::Seen { id: id.clone(), at: t, windows: windows.clone(), cooldown, model_cooldown });
+            let paid = paid.as_ref().map(|p| (family.clone(), p.model_only, p.until, p.meter.clone()));
+            s.tell_late(&Late::Seen { id: id.clone(), at: t, windows: windows.clone(), cooldown, model_cooldown, paid });
         }
         {
             let mut p = s.pool.lock().unwrap();
@@ -2107,6 +2167,22 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     } else {
                         a.cooldown_until = Some(rej.until);
                     }
+                }
+                if current && let Some(paid) = &paid {
+                    // (Said once as it begins, not at each answer of an
+                    // account the pool went to knowing so.)
+                    if a.paid_until(&family, t).is_none() {
+                        tracing::info!("pool: {} answered a {family} request from its usage credits (its {} is used up): left for another account or a reset from here on", a.name, paid.meter);
+                    }
+                    a.now_paid(&family, paid.model_only, paid.until, &paid.meter);
+                }
+                // (An answer within its allowance, by Claude's own word:
+                // what said it was answered from usage credits no longer
+                // holds. A reset made elsewhere, seen at its first use.)
+                let within = r.headers().get("anthropic-ratelimit-unified-status").and_then(|v| v.to_str().ok()).is_some_and(|s| matches!(s.trim(), "allowed" | "allowed_warning"));
+                if current && paid.is_none() && status.is_success() && within {
+                    a.paid = None;
+                    a.model_paid.remove(&family);
                 }
             }
         }
@@ -2708,7 +2784,7 @@ impl Shared {
                     });
                 }
                 if self.drain.retired() {
-                    self.tell_late(&Late::Seen { id: turns.id.clone(), at: now(), windows: windows.clone(), cooldown: None, model_cooldown: None });
+                    self.tell_late(&Late::Seen { id: turns.id.clone(), at: now(), windows: windows.clone(), cooldown: None, model_cooldown: None, paid: None });
                 }
                 a.merge_windows(windows);
             }
@@ -2744,7 +2820,7 @@ impl Shared {
                 return;
             }
             if self.drain.retired() {
-                self.tell_late(&Late::Seen { id: turns.id.clone(), at: t, windows: windows.clone(), cooldown: Some(until), model_cooldown: None });
+                self.tell_late(&Late::Seen { id: turns.id.clone(), at: t, windows: windows.clone(), cooldown: Some(until), model_cooldown: None, paid: None });
             }
             if let Some(a) = p.account_mut(&turns.id) {
                 a.merge_windows(windows);
@@ -2779,6 +2855,10 @@ pub(crate) enum Late {
         windows: Vec<crate::model::Window>,
         cooldown: Option<i64>,
         model_cooldown: Option<(String, i64)>,
+        /// Answered from usage credits (`upstream::Paid`): the request's
+        /// family, whether its own meter alone, until when, the meter.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        paid: Option<(String, bool, i64, String)>,
     },
 }
 
@@ -2814,7 +2894,7 @@ impl Shared {
                         p.served.pop_front();
                     }
                 }
-                Late::Seen { id, at, windows, cooldown, model_cooldown } => {
+                Late::Seen { id, at, windows, cooldown, model_cooldown, paid } => {
                     if p.reset_at.get(&id).is_some_and(|&r| r > at) {
                         return;
                     }
@@ -2824,6 +2904,9 @@ impl Shared {
                         if let Some((family, until)) = model_cooldown {
                             let kept = a.model_cooldowns.entry(family).or_insert(until);
                             *kept = (*kept).max(until);
+                        }
+                        if let Some((family, model_only, until, meter)) = paid {
+                            a.now_paid(&family, model_only, until, &meter);
                         }
                     }
                 }
@@ -3317,7 +3400,7 @@ mod tests {
         saved.accounts.push(Account::new("a".into(), "a".into(), Provider::Codex));
         let s = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
         let window = |used: f64| crate::model::Window { name: "primary_window".into(), label: String::new(), used, resets_at: Some(now() + 3600), models: vec![] };
-        let seen = |at: i64, used: f64| Late::Seen { id: "a".into(), at, windows: vec![window(used)], cooldown: Some(now() + 600), model_cooldown: None };
+        let seen = |at: i64, used: f64| Late::Seen { id: "a".into(), at, windows: vec![window(used)], cooldown: Some(now() + 600), model_cooldown: None, paid: None };
         s.pool.lock().unwrap().reset_at.insert("a".into(), now() - 10);
         s.book_late(seen(now() - 60, 100.0));
         let p = s.snapshot();

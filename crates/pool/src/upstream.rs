@@ -569,6 +569,21 @@ pub struct Rejection {
     pub model_only: bool,
 }
 
+/// An answer given although the account's own allowance had run out:
+/// paid for from its usage credits (what Claude's headers call overage:
+/// money beyond the plan), from then until the meter that ran out
+/// (`meter`) resets. Whether only this model's own meter ran out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Paid {
+    pub until: i64,
+    pub model_only: bool,
+    pub meter: String,
+}
+
+/// How long an account its provider serves from usage credits is taken
+/// to go on so, where its answer names no reset.
+pub const PAID_UNKNOWN: i64 = 3600;
+
 fn header_num(h: &axum::http::HeaderMap, name: &str) -> Option<f64> {
     h.get(name)?.to_str().ok()?.trim().parse::<f64>().ok().filter(|v| v.is_finite())
 }
@@ -632,13 +647,23 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
     }
     let reset = header_num(h, "anthropic-ratelimit-unified-reset").map(|v| v as i64).filter(|&v| v > now);
     let until = reset.or_else(|| retry_after(h, now)).unwrap_or(now + 60);
-    // Claude names the meter that ran out; a per-model one leaves the
-    // account's other models usable.
+    let (model_only, _) = meter_out(h, p, family, until, &mut out);
+    (out, Some(Rejection { until, model_only }))
+}
+
+/// The meter Claude says ran out (`representative-claim`), marked used up
+/// until `until` in `out`: whether it is `family`'s own alone (a
+/// per-model one leaves the account's other models usable), and its name
+/// among the windows.
+fn meter_out(h: &axum::http::HeaderMap, p: Provider, family: &str, until: i64, out: &mut Vec<Window>) -> (bool, String) {
     let claim = h.get("anthropic-ratelimit-unified-representative-claim").and_then(|v| v.to_str().ok()).unwrap_or("");
     let model_only = p == Provider::Claude && !family.is_empty() && (claim == "seven_day_overage_included" || claude_models(claim).iter().any(|m| m == family));
     if model_only && claim == "seven_day_overage_included" {
-        out.push(Window { name: format!("model:{family}/seven_day"), label: format!("Weekly {}", words(family)), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
-    } else if p == Provider::Claude && (claim.starts_with("five_hour") || claim.starts_with("seven_day")) {
+        let name = format!("model:{family}/seven_day");
+        out.push(Window { name: name.clone(), label: format!("Weekly {}", words(family)), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
+        return (true, name);
+    }
+    if p == Provider::Claude && (claim.starts_with("five_hour") || claim.starts_with("seven_day")) {
         // (The meter it names is used up until then, whatever its row said
         // a moment before: so the card says what stopped it, and a reset
         // credit that clears it can be used.)
@@ -650,7 +675,42 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
             None => out.push(Window { name: claim.to_owned(), label: claude_label(claim), used: 100.0, resets_at: Some(until), models: claude_models(claim) }),
         }
     }
-    (out, Some(Rejection { until, model_only }))
+    (model_only, claim.to_owned())
+}
+
+/// Whether an answer that was given (`status`: not a refusal) was paid
+/// for from the account's usage credits, its own allowance being out:
+/// Claude says a meter ran out (`…-unified-status: rejected`) and answers
+/// all the same. It is how Claude Code itself tells (2.1.332:
+/// `isUsingOverage`, status "rejected" with `…-overage-status` "allowed"
+/// or "allowed_warning"; its "Now using usage credits"). The meter is
+/// marked used up in `out` as a refusal marks it, so that the account is
+/// left for another, or for a reset credit that clears it.
+///
+/// The pool took only a 429 for a meter running out: an account whose
+/// provider went on answering from usage credits stayed the one chosen,
+/// every request after paid for, with other accounts unused and reset
+/// credits unclaimed (Ben, 2026-11-26: "instead of switching to another
+/// account or using a reset token pool is letting the clients use usage
+/// credits first").
+pub fn paid_by_credits(h: &axum::http::HeaderMap, p: Provider, family: &str, status: u16, now: i64, out: &mut Vec<Window>) -> Option<Paid> {
+    if p != Provider::Claude || !(200..400).contains(&status) {
+        return None;
+    }
+    if h.get("anthropic-ratelimit-unified-status").and_then(|v| v.to_str().ok()).map(str::trim) != Some("rejected") {
+        return None;
+    }
+    let claim = h.get("anthropic-ratelimit-unified-representative-claim").and_then(|v| v.to_str().ok()).unwrap_or("");
+    // Until the meter it names resets: as the answer says, else as that
+    // meter's own row does, else the soonest of those used up.
+    let until = header_num(h, "anthropic-ratelimit-unified-reset")
+        .map(|v| v as i64)
+        .filter(|&v| v > now)
+        .or_else(|| out.iter().find(|w| w.name == claim).and_then(|w| w.resets_at).filter(|&r| r > now))
+        .or_else(|| out.iter().filter(|w| w.used >= 99.5).filter_map(|w| w.resets_at).filter(|&r| r > now).min())
+        .unwrap_or(now + PAID_UNKNOWN);
+    let (model_only, meter) = meter_out(h, p, family, until, out);
+    Some(Paid { until, model_only, meter })
 }
 
 #[cfg(test)]
@@ -810,6 +870,53 @@ mod tests {
         h.insert("anthropic-ratelimit-unified-representative-claim", "five_hour".parse().unwrap());
         h.insert("anthropic-ratelimit-unified-reset", "7000".parse().unwrap());
         assert_eq!(header_windows(&h, Provider::Claude, "fable", 429, 1000).1, Some(Rejection { until: 7000, model_only: false }));
+        // An answer given all the same (200), the week used up: paid for
+        // from usage credits. No refusal (it was served), and the week is
+        // marked used up until its reset, as a refusal marks it.
+        let mut paid = axum::http::HeaderMap::new();
+        for (k, v) in [
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-overage-status", "allowed"),
+            ("anthropic-ratelimit-unified-representative-claim", "seven_day"),
+            ("anthropic-ratelimit-unified-reset", "9000"),
+            ("anthropic-ratelimit-unified-7d-utilization", "0.97"),
+            ("anthropic-ratelimit-unified-7d-reset", "9000"),
+        ] {
+            paid.insert(k, v.parse().unwrap());
+        }
+        let (mut w, r) = header_windows(&paid, Provider::Claude, "opus", 200, 1000);
+        assert_eq!((r, w[0].used), (None, 97.0));
+        assert_eq!(paid_by_credits(&paid, Provider::Claude, "opus", 200, 1000, &mut w), Some(Paid { until: 9000, model_only: false, meter: "seven_day".into() }));
+        assert_eq!((w.len(), w[0].name.as_str(), w[0].used, w[0].resets_at), (1, "seven_day", 100.0, Some(9000)));
+        // (A meter the answer's rows don't carry: the 5-hour one, named
+        // by the claim alone. Its reset from the answer's own.)
+        paid.insert("anthropic-ratelimit-unified-representative-claim", "five_hour".parse().unwrap());
+        paid.insert("anthropic-ratelimit-unified-reset", "4000".parse().unwrap());
+        let (mut w, _) = header_windows(&paid, Provider::Claude, "opus", 200, 1000);
+        assert_eq!(paid_by_credits(&paid, Provider::Claude, "opus", 200, 1000, &mut w), Some(Paid { until: 4000, model_only: false, meter: "five_hour".into() }));
+        assert!(w.iter().any(|w| w.name == "five_hour" && w.used == 100.0 && w.resets_at == Some(4000)));
+        // (Fable's own week: the account's other models go on.)
+        paid.insert("anthropic-ratelimit-unified-representative-claim", "seven_day_overage_included".parse().unwrap());
+        let (mut w, _) = header_windows(&paid, Provider::Claude, "fable", 200, 1000);
+        assert_eq!(paid_by_credits(&paid, Provider::Claude, "fable", 200, 1000, &mut w), Some(Paid { until: 4000, model_only: true, meter: "model:fable/seven_day".into() }));
+        // (No reset named anywhere: an hour, then looked at again.)
+        paid.remove("anthropic-ratelimit-unified-reset");
+        paid.remove("anthropic-ratelimit-unified-7d-reset");
+        paid.insert("anthropic-ratelimit-unified-representative-claim", "five_hour".parse().unwrap());
+        let (mut w, _) = header_windows(&paid, Provider::Claude, "opus", 200, 1000);
+        assert_eq!(paid_by_credits(&paid, Provider::Claude, "opus", 200, 1000, &mut w).map(|p| p.until), Some(1000 + PAID_UNKNOWN));
+        // Within its allowance, a warning near its end, a refusal, another
+        // provider's: not paid for from credits.
+        let mut within = axum::http::HeaderMap::new();
+        for status in ["allowed", "allowed_warning"] {
+            within.insert("anthropic-ratelimit-unified-status", status.parse().unwrap());
+            within.insert("anthropic-ratelimit-unified-overage-status", "allowed".parse().unwrap());
+            assert_eq!(paid_by_credits(&within, Provider::Claude, "opus", 200, 1000, &mut Vec::new()), None, "{status}");
+        }
+        within.insert("anthropic-ratelimit-unified-status", "rejected".parse().unwrap());
+        assert_eq!(paid_by_credits(&within, Provider::Claude, "opus", 429, 1000, &mut Vec::new()), None, "a refusal is a rejection, not an answer");
+        assert_eq!(paid_by_credits(&within, Provider::Codex, "gpt-5-codex", 200, 1000, &mut Vec::new()), None);
+        assert_eq!(paid_by_credits(&axum::http::HeaderMap::new(), Provider::Claude, "opus", 200, 1000, &mut Vec::new()), None);
         // A 429 that isn't a meter running out: not the account's.
         let mut h = axum::http::HeaderMap::new();
         h.insert("anthropic-ratelimit-unified-status", "allowed".parse().unwrap());

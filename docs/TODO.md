@@ -37,6 +37,34 @@ something nobody here has is in "Blocked", with what it waits for.
     default delay is in macos and use that as olo's default (it may be
     500ms i'm not sure)". It is a constant now (`crates/kit/src/tip.rs`,
     `DELAY`, 500 ms).
+- **Token Pool, left of "usage credits come last"** (fixed
+  2026-11-26; HACKING, Gateway): (1) *the desktop's pool doesn't claim
+  a reset for a host that is out*: a host's pool claims none itself,
+  and now answers "every account is out, a reset credit waits" rather
+  than spend credits ahead of it; the desktop's pool claims only when
+  a request of its own is turned away, so a host waits until then or
+  until the reset is used by hand in the window. The desktop should
+  look at its hosts' pools (it reaches them; they can't reach it) and
+  claim where one is out. (2) *a switch for "never use usage
+  credits"*: the last resort spends money when nothing else can
+  serve, as the account's own setting at its provider allows; some
+  will want the pool to stop instead. (3) Claude's
+  `anthropic-ratelimit-unified-overage-in-use: true` on an answer
+  whose status isn't "rejected" (a model that needs usage credits
+  whatever the allowance) isn't taken as paid: not seen yet, to look
+  at when one is. (4) the card's Today row stands 22 px from the row
+  over it where the rest stand 21, at 1.25× (the review's, in the new
+  state's demo: `OLO_POOL_DEMO=credits`). (5) no look by the
+  reviewers yet at the card's new sentence: with the next Token Pool
+  change's batch.
+- **Token Pool reports full usage while it has more to draw from**
+  (Ben, 2026-11-26 evening): "change the way token pool works so that
+  it always reports to the clients full usage when there remain
+  additional accounts or resets to draw from (for both claude and
+  codex)". (And of the Claude CLI's own notice, "Now using usage
+  credits": "claude cli is not out of usage, ignore the usage stats
+  for the claude cli they are wrong -- we have resets and they will be
+  applied automatically.")
 - **Minder agents for `olo agent`** (Ben, 2026-11-26 evening): "often
   when subagents need an approval or have a question it takes a long
   time for parent agents to notice and respond because they are busy

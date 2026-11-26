@@ -305,6 +305,15 @@ pub struct ResetCredit {
     pub gives_back_weekly: bool,
 }
 
+/// An account answered from usage credits (`Account::paid`): until
+/// when, and the meter that ran out (its window's name: what the
+/// provider's usage report is looked in for, to see it has come back).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaidFor {
+    pub until: i64,
+    pub meter: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Account {
     /// Random, stable.
@@ -325,6 +334,16 @@ pub struct Account {
     /// The same, for one model family (its own meter ran out).
     #[serde(default)]
     pub model_cooldowns: BTreeMap<String, i64>,
+    /// Its own allowance is out and its provider goes on answering it
+    /// from usage credits (Claude's "overage": paid for beyond the
+    /// plan), until the meter that ran out resets. Not chosen while
+    /// another account can serve or a reset credit can be claimed: the
+    /// last the pool turns to (`schedule::pick_paid`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paid: Option<PaidFor>,
+    /// The same, for one model family (its own meter ran out).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_paid: BTreeMap<String, PaidFor>,
     /// Why it needs signing in again, when its provider refused it.
     #[serde(default)]
     pub signed_out: Option<String>,
@@ -461,6 +480,8 @@ impl Account {
             windows: Vec::new(),
             cooldown_until: None,
             model_cooldowns: BTreeMap::new(),
+            paid: None,
+            model_paid: BTreeMap::new(),
             signed_out: None,
             total: Usage::default(),
             today: (String::new(), Usage::default()),
@@ -499,6 +520,39 @@ impl Account {
         while self.recent.len() > RECENT {
             self.recent.pop_front();
         }
+    }
+
+    /// Until when its provider answers `family`'s requests from usage
+    /// credits (`paid`, the account's or the family's own), if it does
+    /// now.
+    pub fn paid_until(&self, family: &str, now: i64) -> Option<i64> {
+        let live = |p: &PaidFor| (p.until > now).then_some(p.until);
+        self.paid.as_ref().and_then(live).into_iter().chain(self.model_paid.get(family).and_then(live)).max()
+    }
+
+    /// It is answered from usage credits from now (what an answer's
+    /// headers said: `upstream::Paid`), the account or `family` alone.
+    pub fn now_paid(&mut self, family: &str, model_only: bool, until: i64, meter: &str) {
+        let mark = PaidFor { until, meter: meter.to_owned() };
+        if model_only {
+            self.model_paid.insert(family.to_owned(), mark);
+        } else {
+            self.paid = Some(mark);
+        }
+    }
+
+    /// The marks of being answered from usage credits that no longer
+    /// hold, put away: those run out (`now`), and those whose meter the
+    /// provider's own report (`reported`: the account's windows as just
+    /// read) lists as not used up, an allowance come back (a reset
+    /// credit claimed by another pool of the same accounts, or by the
+    /// person). A meter the report doesn't list is left to its time.
+    pub fn paid_settled(&mut self, reported: Option<&[Window]>, now: i64) {
+        let holds = |p: &PaidFor| p.until > now && !reported.is_some_and(|ws| ws.iter().any(|w| w.name == p.meter && !w.exhausted(now)));
+        if self.paid.as_ref().is_some_and(|p| !holds(p)) {
+            self.paid = None;
+        }
+        self.model_paid.retain(|_, p| holds(p));
     }
 
     /// Fold in windows newly reported (by name), keeping a known reset

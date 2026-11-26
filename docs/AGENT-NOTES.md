@@ -902,6 +902,28 @@ were blank); and a session as big as the smallest screen in points
 times the scale (1280 × 800), or the window is taller than its screen
 and its Frame scrolls it.
 
+### What a provider's client does with its headers is in the client: read it there (2026-11-26)
+
+Whether Claude answers an account from usage credits isn't in any
+document: it is in Claude Code, which decides its own "Now using usage
+credits" from the answer's headers. The program installed here
+(`readlink -f "$(command -v claude)"`, a 400 MB ELF with its JavaScript
+inside as text) can be searched with Python's `mmap` and `find` for a
+header's name (`unified-overage-status`), then read around the hit:
+`isUsingOverage = status === "rejected" && (overageStatus ===
+"allowed" || overageStatus === "allowed_warning")`, the header names
+(`…-overage-in-use`, `…-overage-disabled-reason`), the claims it knows
+(`five_hour`, `seven_day`, `seven_day_overage_included`). `grep -o`
+with a long context refuses ("exceeds complexity limits"), and
+`strings` loses the minified lines. The same for Codex's binary. It
+settled in ten minutes what the Token Pool had wrong: it took only a
+429 for a meter running out.
+
+The live pool's own state can be read without touching it:
+`curl -s http://127.0.0.1:17891/pool/status` (each account's meters,
+what blocks it, the last 50 requests and who answered each). Never
+print its accounts' names or addresses into anything kept; number them.
+
 ### The dev server has a host's own screens (since 2026-11-26)
 
 `olo screen install` was run on the dev server's own account that day

@@ -1219,7 +1219,18 @@ impl PoolWindow {
             body = body.child(StringView::new(why.clone()).size(style::SMALL_SIZE).color(sec).wrap(true));
         } else {
             if let Some(until) = schedule::blocked_until(account, "", t) {
-                body = body.child(StringView::new(format!("Out of quota until {} (in {})", clock(until), span(until - t))).size(style::SMALL_SIZE).color(style::c(p.warning)));
+                // (Four points taller than the card's small rows, its words
+                // two lower: the rows under it stand 21 px apart at 1×, and
+                // at its default height this one stood 23 from the line
+                // over it, at the small rows' own 19. The review's, of the
+                // first demo to show an account that is out.)
+                body = body.child(StringView::new(format!("Out of quota until {} (in {})", clock(until), span(until - t))).size(style::SMALL_SIZE).color(style::c(p.warning)).height(DETAIL_ROW + 4.0));
+                // (Its provider goes on answering it, from usage credits:
+                // said, with when the pool turns to them. Never first:
+                // Ben, 2026-11-26.)
+                if account.paid_until("", t).is_some() {
+                    body = body.child(StringView::new("Its usage credits are used only when no other account can serve and no reset can be claimed.").size(style::SMALL_SIZE).color(sec).wrap(true));
+                }
             }
             for w in &account.windows {
                 body = body.child(inline_quota_row(p, w, t, narrow));

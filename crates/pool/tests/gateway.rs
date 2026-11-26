@@ -233,6 +233,158 @@ async fn redeems_a_credit_when_all_are_out() {
     assert_eq!((a.redeeming.is_none(), a.cooldown_until), (true, None));
 }
 
+/// Usage credits come last (Ben, 2026-11-26: "instead of switching to
+/// another account or using a reset token pool is letting the clients
+/// use usage credits first"). Claude goes on answering an account whose
+/// allowance is out when it has usage credits: 200, its headers saying
+/// the meter is "rejected" and overage "allowed". The pool took only a
+/// 429 for a meter running out, so such an account stayed the one chosen
+/// and every request after was paid for.
+///
+/// "a" is chosen first and answers so. That one answer goes back (it is
+/// answered, and paid for); from the next request on "b" serves. When
+/// "b" is refused, "a"'s reset credit is claimed before any credits are
+/// spent. With the reset spent and both out again, and only then, the
+/// request goes to "a" on its credits. And when "a" refuses too, the
+/// client is told every account is out.
+#[tokio::test(flavor = "multi_thread")]
+async fn usage_credits_come_after_another_account_and_a_reset() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    // How each account answers now: 0 within its allowance, 1 from usage
+    // credits, 2 refused. And how many answers were paid for from credits.
+    let state = Arc::new([AtomicUsize::new(1), AtomicUsize::new(0)]);
+    let (paid_for, resets) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let (s1, s2, n1, n2) = (state.clone(), state.clone(), paid_for.clone(), resets.clone());
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move |h: HeaderMap| {
+                let (state, paid_for) = (s1.clone(), n1.clone());
+                async move {
+                    let who = if token(&h) == "a" { 0 } else { 1 };
+                    let limits = |status: &str| {
+                        Response::builder()
+                            .header("anthropic-ratelimit-unified-status", status)
+                            .header("anthropic-ratelimit-unified-overage-status", "allowed")
+                            .header("anthropic-ratelimit-unified-representative-claim", "five_hour")
+                            .header("anthropic-ratelimit-unified-reset", (now() + 3600).to_string())
+                    };
+                    match state[who].load(Ordering::SeqCst) {
+                        0 => limits("allowed").header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#)).unwrap(),
+                        1 => {
+                            paid_for.fetch_add(1, Ordering::SeqCst);
+                            limits("rejected").header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#)).unwrap()
+                        }
+                        _ => limits("rejected").status(429).body(Body::from("{}")).unwrap(),
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/organizations/{org}/reset_rate_limits",
+            post(move |axum::extract::Path(org): axum::extract::Path<String>| {
+                let (state, resets) = (s2.clone(), n2.clone());
+                async move {
+                    assert_eq!(org, "org-a");
+                    resets.fetch_add(1, Ordering::SeqCst);
+                    state[0].store(0, Ordering::SeqCst);
+                    axum::Json(json!({"result": "reset"}))
+                }
+            }),
+        )
+        .route("/api/oauth/usage", get(|| async { axum::Json(json!({"seven_day": {"utilization": 40.0, "resets_at": now() + 90000}})) }));
+    // (Both with allowance as far as the pool knows; "a" first, the older.)
+    let (shared, addr, _) = out_of_quota(&["a", "b"], &[("a", "g1")], fake).await;
+    shared.pool.lock().unwrap().saved.accounts.iter_mut().for_each(|a| a.windows[0].used = 10.0);
+    let paid_until = |id: &str| shared.snapshot().account(id).unwrap().paid_until("opus", now());
+    // 1. "a" answers, from its usage credits: once, and the pool knows.
+    assert_eq!(ask_claude(addr).await, (200, "a".into()));
+    assert_eq!(paid_for.load(Ordering::SeqCst), 1);
+    assert!(paid_until("a").is_some_and(|until| until > now() + 3000), "{:?}", paid_until("a"));
+    assert!(shared.snapshot().account("a").unwrap().windows.iter().any(|w| w.name == "five_hour" && w.used >= 100.0), "the meter that ran out is marked so");
+    // 2. From here on "b", which has allowance: nothing more paid for.
+    for _ in 0..3 {
+        assert_eq!(ask_claude(addr).await, (200, "b".into()));
+    }
+    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (1, 0));
+    // 3. "b" is refused: "a"'s reset is claimed, before any credits. "a"
+    // answers within its allowance again, and is no longer taken as paid.
+    state[1].store(2, Ordering::SeqCst);
+    assert_eq!(ask_claude(addr).await, (200, "a".into()));
+    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (1, 1));
+    assert_eq!(paid_until("a"), None);
+    // 4. "a" runs out again, its reset spent: its first answer from
+    // credits (as in 1), then, "b" still refused and nothing to claim,
+    // the last resort: "a" on its credits.
+    state[0].store(1, Ordering::SeqCst);
+    assert_eq!(ask_claude(addr).await, (200, "a".into()));
+    assert_eq!(paid_for.load(Ordering::SeqCst), 2);
+    assert!(paid_until("a").is_some());
+    assert_eq!(ask_claude(addr).await, (200, "a".into()));
+    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (3, 1), "on credits only once nothing else could serve");
+    // 5. "b" has allowance again: back to "b" at once, though "a" was the
+    // one in use.
+    state[1].store(0, Ordering::SeqCst);
+    {
+        let mut p = shared.pool.lock().unwrap();
+        let b = p.account_mut("b").unwrap();
+        b.cooldown_until = None;
+        b.windows.iter_mut().for_each(|w| w.used = 10.0);
+    }
+    assert_eq!(ask_claude(addr).await, (200, "b".into()));
+    assert_eq!(paid_for.load(Ordering::SeqCst), 3);
+    // 5b. On a host's pool, which claims no reset itself: "b" refused
+    // again and a reset credit there for "a" that the desktop's pool is
+    // to claim. No usage credits are spent ahead of it: the client is
+    // told all are out, and that a reset waits. With no reset anywhere,
+    // the last resort as before.
+    state[1].store(2, Ordering::SeqCst);
+    shared.set_hosted();
+    {
+        let mut p = shared.pool.lock().unwrap();
+        let a = p.account_mut("a").unwrap();
+        a.credits = vec![olo_token_pool::model::ResetCredit {
+            id: "g2".into(),
+            expires_at: Some(now() + 86400),
+            remaining: 1,
+            usable: true,
+            program: Some("cedar_ember".into()),
+            clears: vec!["five_hour".into()],
+            ..Default::default()
+        }];
+    }
+    // (A host's pool answers through its proxy alone, which hands the
+    // request to the gateway so.)
+    let through_the_proxy = || async {
+        let mut h = HeaderMap::new();
+        h.insert("content-type", "application/json".parse().unwrap());
+        h.insert("authorization", "Bearer the-clients-own".parse().unwrap());
+        let body = axum::body::Bytes::from(json!({"model": "claude-opus-5-5", "messages": []}).to_string());
+        let r = gateway::serve(shared.clone(), Provider::Claude, "messages".into(), None, axum::http::Method::POST, h, axum::http::Extensions::new(), body).await;
+        let (status, who) = (r.status().as_u16(), r.headers().get("x-olo-pool-account").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned());
+        let said = axum::body::to_bytes(r.into_body(), 1 << 20).await.map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        (status, who, (), said)
+    };
+    let (status, _, _, said) = through_the_proxy().await;
+    assert!(status == 429 && said.contains("reset credit waits"), "{status}: {said}");
+    assert_eq!((paid_for.load(Ordering::SeqCst), resets.load(Ordering::SeqCst)), (3, 1), "neither credits spent nor a reset claimed by a host's pool");
+    shared.pool.lock().unwrap().account_mut("a").unwrap().credits.clear();
+    let (status, who, ..) = through_the_proxy().await;
+    assert_eq!((status, who.as_str()), (200, "a"));
+    assert_eq!(paid_for.load(Ordering::SeqCst), 4);
+    // 6. Both refuse outright ("a"'s credits ran out too): the client is
+    // told every account is out.
+    state[0].store(2, Ordering::SeqCst);
+    state[1].store(2, Ordering::SeqCst);
+    let (status, _, _, said) = through_the_proxy().await;
+    assert!(status == 429 && said.contains("out of quota") && !said.contains("reset credit waits"), "{status}: {said}");
+    assert_eq!(paid_for.load(Ordering::SeqCst), 4);
+    // (And the status says which account is answered from credits.)
+    let status: Value = reqwest::get(format!("http://{addr}/pool/status")).await.unwrap().json().await.unwrap();
+    let a = status["accounts"].as_array().unwrap().iter().find(|a| a["id"] == "a").unwrap().clone();
+    assert!(a["paid_until"].as_i64().is_some_and(|until| until > now()), "{a}");
+}
+
 /// Quota by model (Ben, 2026-11-08: "make sure too that token pooler
 /// switches accounts when the model in use is the one that the limit hits
 /// like it needs to be quota-model aware"). "a"'s report says its Fable
