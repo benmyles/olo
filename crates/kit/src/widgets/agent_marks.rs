@@ -76,8 +76,15 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, name: &str, marks: Marks) {
             // By the clock, so each time it's drawn shows where it is
             // now; and drawn again ten times a second while it turns
             // (it alone: what it's drawn in).
+            // (By a clock that starts with the program, in `f64`: it was
+            // the seconds since 1970 as an `f32`, which at 1.8 billion
+            // is good to 128 s. The ring stood still for two minutes at
+            // a time, then jumped, while its ten paints a second went
+            // on changing nothing: no frame, 40 wakeups a second in Rex
+            // and Terminal whenever an agent worked. 2026-11-26.)
+            static SINCE: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
             let ring = point(r.right() - px(4.0), r.top() + px(4.0));
-            let turn = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f32() % 1000.0) * 5.0;
+            let turn = ring_turn(SINCE.get_or_init(std::time::Instant::now).elapsed());
             mark(g, ring, 4.0, rim, rim, Glyph::None, rim);
             working_ring(g, ring, turn, rim, style::c(p.keyboard_navigation), p.mode == olo_theme::ThemeMode::Dark);
             g.paint_again_within(0.1);
@@ -308,6 +315,15 @@ fn blend(a: Hsla, b: Hsla, t: f32) -> Hsla {
     Rgba { r: l(a.r, b.r), g: l(a.g, b.g), b: l(a.b, b.b), a: l(a.a, b.a) }.into()
 }
 
+/// How far round the working ring is, in radians, `since` the first one
+/// was drawn: five radians a second (a turn in a second and a quarter),
+/// reckoned in `f64` and brought within a turn before it is an `f32`, so
+/// a program that has run for months still turns it by what a tenth of
+/// a second is worth.
+fn ring_turn(since: std::time::Duration) -> f32 {
+    ((since.as_secs_f64() * 5.0) % std::f64::consts::TAU) as f32
+}
+
 /// The mark of an agent at work, centred near `centre`: a ring, faint all
 /// the way round, with a strong head and a tail fading behind it, turned
 /// to `turn` (radians, clockwise). Busy at whatever moment it is seen,
@@ -376,6 +392,26 @@ fn working_ring(g: &mut Painter, centre: Point<Pixels>, turn: f32, rim: Hsla, st
             if run.is_none() {
                 run = here.map(|of| (col, of));
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ring turns between two paints a tenth of a second apart,
+    /// however long the program has run: by half a radian, as near as
+    /// an `f32` says it. (From the seconds since 1970 as an `f32` it
+    /// was the same angle for 128 s on end.)
+    #[test]
+    fn the_working_ring_turns_between_two_paints() {
+        for begun in [0.0, 1.0, 1_000.0, 86_400.0 * 400.0, 1_795_724_416.0] {
+            let at = |more: f64| ring_turn(std::time::Duration::from_secs_f64(begun + more));
+            let (a, b) = (at(0.0), at(0.1));
+            assert!((0.0..std::f32::consts::TAU).contains(&a), "{begun}: {a}");
+            let by = (b - a).rem_euclid(std::f32::consts::TAU);
+            assert!((by - 0.5).abs() < 0.01, "after {begun} s: turned by {by}");
         }
     }
 }

@@ -882,6 +882,18 @@ showed that nothing else had:
   are no nodes for cells. A check that looked for a node named
   "review" found none with the row on the screen.
 
+And of measuring Rex "at rest" in its demo: it isn't at rest. The
+demo's first tab has an agent at work (two, with the Activity list), so
+its working ring is drawn ten times a second: 10 frames a second and
+about 150 wakeups in software drawing, by design. (Until 2026-11-26
+that read as "0 frames, 40 wakeups a second": the ring's angle came
+from the seconds since 1970 as an `f32`, which stands still for 128 s
+at 1.8 billion, so every repaint was the same picture. A count of
+frames that is nought beside a count of wakeups that isn't is a
+repaint that changes nothing: look for what is painted again, with
+`OLO_FRAME_PHASES=1` in the app's log, "paint (1 of 92 nodes)".) For
+Rex truly at rest, choose the demo's `server-logs` tab: 0 wakeups.
+
 And of the picture script (`/var/tmp` scratch, each state a session of
 its own): a window that fits its content has its frame for good only a
 moment after it first shows, so ask for the frame until two looks a
