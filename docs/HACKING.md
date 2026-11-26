@@ -17739,34 +17739,44 @@ phone that does each: `--tell set asleep`, `classic-gatt`, `deaf`,
   phone out of reach (`BUSY_SOON`); a phone that closes the channel
   within 10 s of its coming three times running, further and further
   apart (`hangs`, `HELD_UP`).
-- **BlueZ stuck busy with a phone that isn't connected is told to let
-  go** (Ben, 2026-11-17: "after leaving the room and coming back it says
-  my phone is out of reach and doesn't seem to have auto reconnected").
-  Out of reach, the link dropped; BlueZ's own reconnecting tried its
-  hands-free side, which failed ("Host is down"), and BlueZ 5.87 never
-  ended that connecting (profiles/audio/hfp-hf.c's `connect_cb`, on an
-  error, never calls `btd_service_connecting_complete`), so the
-  device's pending list stood for good and every asking after was
-  refused `org.bluez.Error.InProgress: br-connection-busy`
-  (src/device.c's `device_connect_profiles`: `pending || connect ||
-  browse`): 52 minutes and counting, the service asking every 5
-  minutes, each refusal unlogged (the same as the last), with the
-  phone back in the room. Now three busy answers running with the phone
-  not connected (no connecting takes six seconds: a page times out in
-  five) have the next asking begin with `Profiles::unstick`, the
-  device's `Disconnect`, which on a device that isn't connected only
-  drops what's pending, answers an unanswered Connect and cancels a
-  lookup (`device_request_disconnect`), and the asking after it pages
-  the phone afresh; no more than every 2 minutes (`UNSTICK_AFTER`,
-  `UNSTICK_EVERY`), and once a spell of busy answers
-  (`tried_unstick`), said in the log. A failure the same as the last is
-  logged again every 10 minutes with how many times it has been
-  (`SAY_AGAIN`), so a service that keeps trying never reads as one that
-  stopped. The stand-in plays it: `--tell set stuck yes` (refused busy
-  until `Disconnect`; `--tell unstuck` counts), `--tell set in-reach
-  yes` (not connected, but connected by the next asking, as a phone
-  back in the room). BlueZ's own fix is upstream's to make (the failure
-  passed to `btd_service_connecting_complete` in `connect_cb`).
+- **BlueZ stuck busy (`br-connection-busy`) self-heals whether the phone
+  reports connected or disconnected** (Ben, 2026-11-17 & 2026-11-25:
+  "sometimes the phone app is still getting stuck with the br connection
+  busy error. the only thing that seemed to fix it was manually
+  disconnecting the phone in olo bluetooth prefs then reconnecting").
+  Out of reach, or with an LE bearer still up while classic ACL/HFP/MAP
+  is wedged, BlueZ 5.87 leaves the device's pending list stuck and
+  refuses every subsequent `ConnectProfile` with either
+  `org.bluez.Error.InProgress: br-connection-busy` or
+  `org.bluez.Error.Failed: br-connection-busy`. Now `is_connection_busy`
+  matches both errors regardless of `Device1.Connected`; after three
+  busy answers running (`UNSTICK_AFTER`), and provided no hands-free
+  call is active (`call_here.is_none()`), `Profiles::unstick` calls
+  `Device1.Disconnect`, waits `UNSTICK_SETTLE` (2 s), calls
+  `Device1.Connect`, and retries `open(Channel::Messages)`. If it stays
+  busy, self-heal retries with exponential backoff (`UNSTICK_BACKOFF`:
+  60 s, 2 min, 5 min, 10 min, 15 min) instead of giving up after one
+  attempt, and `Request::Reconnect` resets immediately when stuck. The
+  stand-in plays all three modes: `--tell set stuck yes`,
+  `--tell set stuck-failed yes`, and `--tell set stuck-cycles N`
+  (`--tell unstuck` counts).
+- **Outgoing replies sent from the phone sync via MAP `sent` and MNS**
+  (Ben, 2026-11-25): `map::Listed` parses `recipient_addressing` and
+  `recipient_name`, `BMessage` parses `BENV` recipient vCards (`to_names`),
+  `Mas::send` returns its handle to avoid duplicates, and `olo-phoned`
+  reads `telecom/msg/sent` on session open (`SENT = 60`), on untold
+  checks, on explicit reconnect, and alongside incoming messages (zero
+  idle polling), while also handling MNS `NewMessage` in
+  `TELECOM/MSG/SENT`, `SendingSuccess`, and `MessageShift` into `sent`.
+  Synced outgoing replies land on the right (`outgoing: true, read: true`)
+  without firing unread counts, notifications, or OTP extraction, fetch
+  full bodies when subjects are truncated (both iOS 128-byte and Android
+  24-char previews), and deduplicate against replies sent from Olo by
+  handle or `(conversation, text, ±180 s)`. Note: Apple's iOS Bluetooth
+  MAP server historically returns an empty `telecom/msg/sent` folder over
+  Bluetooth (unlike Android), in which case `list_sent` cleanly returns
+  empty with zero impact on inbox syncing. The stand-in plays phone-side
+  replies with `--tell reply NAME TO TEXT…`.
 - **Its other notifications are taken over low energy only.** BlueZ
   shows an iPhone's characteristics over the classic link too, with
   `org.bluez.Bearer.LE1`'s `Connected` false, and takes a subscription

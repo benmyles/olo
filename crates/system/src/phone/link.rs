@@ -556,15 +556,21 @@ impl Profiles {
         let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
     }
 
-    /// Cancel BlueZ's outstanding device request while both bearers are
-    /// down. This releases its device-level queue. A resolving external
-    /// profile can hold its SDP search until the callback runs.
-    pub fn unstick(&self, phone: &str) -> Result<()> {
-        // The cached observation used to schedule this check can be seconds old.
-        let reply = self.conn.call_method(Some(DEST), phone, Some("org.freedesktop.DBus.Properties"), "Get", &(DEVICE, "Connected"))?;
-        let connected: OwnedValue = reply.body().deserialize()?;
-        if bool::try_from(&*connected).ok() == Some(false) {
-            self.conn.call_method(Some(DEST), phone, Some(DEVICE), "Disconnect", &())?;
+    /// Reset a stuck `br-connection-busy` Bluetooth device state by disconnecting
+    /// the device (whether BlueZ currently reports `Connected=true` on a wedged
+    /// bearer/LE link or `Connected=false` with a stranded page/SDP request),
+    /// waiting briefly for BlueZ to finish tearing down the ACL/profile state,
+    /// and reconnecting the device before profile opening resumes.
+    pub fn unstick(&self, phone: &str, settle: Duration) -> Result<()> {
+        self.conn.call_method(Some(DEST), phone, Some(DEVICE), "Disconnect", &())?;
+        if !settle.is_zero() {
+            std::thread::sleep(settle);
+        }
+        // Reconnect the device link (matching manual Disconnect + Connect in Bluetooth Prefs).
+        // Ignore non-fatal errors here so the immediately following `open(Channel::Messages)`
+        // still gets to report its authoritative result.
+        if let Err(e) = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "Connect", &()) {
+            tracing::debug!("phone: reconnect after disconnect: {e}");
         }
         Ok(())
     }

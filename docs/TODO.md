@@ -199,20 +199,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Phone service: self-heal Bluetooth `br-connection-busy` stuck state**
-  (Ben, 2026-11-25: "sometimes the phone app is still getting stuck with
-  the br connection busy error. the only thing that seemed to fix it was
-  manually disconnecting the phone in olo bluetooth prefs then
-  reconnecting. the phone service should monitor the connection and try
-  doing that itself to self-heal (with backoff and periodic retries if
-  it doesn't work)").
-
-- **Phone app: show replies sent from the phone (iMessage / MAP `sent`
-  folder sync)** (Ben, 2026-11-25: "when i get an imessage on my phone it
-  is correctly showing up in the phone app to see what the person sent me
-  but i am not seeing my replies in the phone app. is there a way it can
-  see them maybe it needs to sync or something?").
-
 - **Auto-tiling: dragging a window shows hotspots to lock it into a
   specific slot while remaining unlocked windows auto-tile around it**
   (Ben, 2026-11-25: "when i'm in auto-tiling mode and drag a window it
@@ -11052,6 +11038,11 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Phone service: self-heal Bluetooth `br-connection-busy` stuck state & sync outgoing replies sent from the phone**~~ (done 2026-11-26, commit after 7e0e4b4ea):
+  - Bluetooth `br-connection-busy` self-heal (`crates/system/src/phone/link.rs`, `apps/phone/src/service.rs`): matches both `org.bluez.Error.Failed: br-connection-busy` and `org.bluez.Error.InProgress` regardless of whether `Device1.Connected` is true (wedged ACL/LE bearer) or false; automatically runs `Device1.Disconnect`, waits 2 s (`UNSTICK_SETTLE`), runs `Device1.Connect`, and retries MAP profile opening (never disconnecting during an active hands-free call), repeating with exponential backoff (`60s → 2m → 5m → 10m → 15m`) if it stays stuck, and resetting immediately on manual `Reconnect`.
+  - Outgoing replies sync (`crates/system/src/phone/map.rs`, `apps/phone/src/service.rs`): parses `recipient_addressing` / `recipient_name` in MAP listings and `BENV` recipient vCards in bMessages; syncs `telecom/msg/sent` on session open, untold checks, explicit reconnect, and alongside incoming messages (zero idle polling); handles live MNS `NewMessage` in `TELECOM/MSG/SENT`, `SendingSuccess`, and `MessageShift` into `sent`; stores `Mas::send` handles and deduplicates outgoing replies by handle or `(conversation, text, ±180 s)`; keeps outgoing replies read and silent without firing unread badges or OTP offers; fetches full bodies for both iOS 128-byte and Android 24-char truncated previews.
+  - Verified end-to-end against `phone-standin` on a live private `olo-bus` (all 26 unit tests + all 5 e2e tests in `apps/phone/tests/service.rs`, including connected `Failed: br-connection-busy`, two-cycle persistent `br-connection-busy` recovery, live `TELECOM/MSG/SENT` replies, quiet long replies, and zero duplication of Olo-sent replies).
 
 - ~~**Rex native nested subagent tabs, reusable Olo Kit `TabStrip` tree button & `Menu::tree` / `Menu::detail_status` popover, multi-level Activity tree, `olo agent` CLI/actions, and removal of legacy auto-detection**~~ (done 2026-11-26, commit after 766be99ce):
   - Reusable Olo Kit (`crates/kit`): `TabStrip` supports nested child tabs (`StripTab::{children_count, child_active}`, `TabStrip::tree_open(Option<usize>)`, `StripAction::TreeMenu(index, anchor)`) with a pixel-snapped flush-left 8×8 `├`/`└` hierarchy button 6 pt left of `×` and 4 distinct BeOS states (rest, high-contrast child-active accent, raised hover bevel, sunken pressed/open bevel), flush popover anchoring on top and side strips, aligned side-strip `+ New Tab`, `Menu::tree(depth, is_last, guides)` continuous 1 px BeOS tree guides, `Menu::detail` / `Menu::detail_status` aligned two-column metadata/status layout, crisp 1 px dark-mode popup outer frames, and consistent near-black `!` on warning orange in `agent_marks`.

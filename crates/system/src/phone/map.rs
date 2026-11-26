@@ -60,8 +60,19 @@ pub struct Listed {
     pub sender_name: String,
     /// A telephone number or an address.
     pub sender: String,
+    /// Who an outgoing (`sent` / `outbox`) message was sent to.
+    pub recipient_name: String,
+    /// A recipient telephone number or address (or `;`-separated list).
+    pub recipient: String,
     pub read: bool,
     pub sent: bool,
+}
+
+/// Whether a MAP folder path (`"TELECOM/MSG/SENT"`, `"sent"`, `"outbox"`, …)
+/// names an outgoing folder.
+pub fn folder_is_sent(folder: &str) -> bool {
+    let f = folder.trim().trim_end_matches('/').to_ascii_lowercase();
+    matches!(f.as_str(), "sent" | "outbox") || f.ends_with("/sent") || f.ends_with("/outbox")
 }
 
 /// A handle is the phone's word for a message: up to 16 hexadecimal
@@ -115,6 +126,8 @@ pub fn listing(xml: &[u8]) -> Vec<Listed> {
                 datetime: get("datetime"),
                 sender_name: get("sender_name"),
                 sender: get("sender_addressing"),
+                recipient_name: get("recipient_name"),
+                recipient: get("recipient_addressing"),
                 read: get("read") == "yes",
                 sent: get("sent") == "yes",
             }
@@ -130,8 +143,8 @@ pub enum Event {
     New { handle: String, folder: String },
     /// One was read, deleted or moved on the phone; one sent got through
     /// or didn't; the phone's memory filled: `kind` is the phone's word
-    /// ("ReadStatusChanged", "MessageDeleted", "SendingSuccess", …).
-    Other { kind: String, handle: String },
+    /// ("ReadStatusChanged", "MessageDeleted", "SendingSuccess", "MessageShift", …).
+    Other { kind: String, handle: String, folder: String },
 }
 
 /// The events in a report (one, as phones send them).
@@ -140,12 +153,12 @@ pub fn event(xml: &[u8]) -> Vec<Event> {
         .into_iter()
         .filter_map(|a| {
             let get = |k: &str| a.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()).unwrap_or_default();
-            let (kind, handle) = (get("type"), get("handle"));
+            let (kind, handle, folder) = (get("type"), get("handle"), get("folder"));
             match kind.as_str() {
-                "NewMessage" if is_handle(&handle) => Some(Event::New { handle, folder: get("folder") }),
+                "NewMessage" if is_handle(&handle) => Some(Event::New { handle, folder }),
                 // (A new message with no handle to fetch it by is nothing.)
                 "NewMessage" | "" => None,
-                _ => Some(Event::Other { kind, handle }),
+                _ => Some(Event::Other { kind, handle, folder }),
             }
         })
         .collect()
@@ -161,8 +174,9 @@ pub struct BMessage {
     /// Who sent it: a name, and a telephone number or an address.
     pub from_name: String,
     pub from: String,
-    /// Who it's to (their numbers or addresses).
+    /// Who it's to (their numbers or addresses, and optional names from vCards).
     pub to: Vec<String>,
+    pub to_names: Vec<String>,
     pub text: String,
 }
 
@@ -221,6 +235,7 @@ impl BMessage {
                     if in_envelope {
                         if !who.is_empty() {
                             m.to.push(who);
+                            m.to_names.push(name);
                         }
                     } else {
                         (m.from_name, m.from) = (name, who);
@@ -386,7 +401,10 @@ mod tests {
         </MAP-msg-listing>"#;
         let l = listing(xml);
         assert_eq!(l.len(), 2);
-        assert_eq!((l[0].handle.as_str(), l[0].subject.as_str(), l[0].sender_name.as_str(), l[0].sender.as_str(), l[0].read), ("20000100001", "Hello & welcome", "Jamie", "+1-987-6543210", true));
+        assert_eq!(
+            (l[0].handle.as_str(), l[0].subject.as_str(), l[0].sender_name.as_str(), l[0].sender.as_str(), l[0].recipient.as_str(), l[0].read),
+            ("20000100001", "Hello & welcome", "Jamie", "+1-987-6543210", "+1-0123-456789", true)
+        );
         assert_eq!((l[1].subject.as_str(), l[1].datetime.as_str(), l[1].read, l[1].sent), ("Your Acme code is 482913", "20261116T221500-0800", false, false));
         assert_eq!(listing(b"<MAP-msg-listing version=\"1.0\"/>"), []);
         assert_eq!(listing(b"not xml <msg"), []);
@@ -394,8 +412,10 @@ mod tests {
         let report = br#"<MAP-event-report version = "1.0"><event type = "NewMessage" handle = "12345678" folder = "TELECOM/MSG/INBOX" old_folder = "" msg_type = "SMS_GSM" /></MAP-event-report>"#;
         assert_eq!(event(report), [Event::New { handle: "12345678".into(), folder: "TELECOM/MSG/INBOX".into() }]);
         let read = br#"<MAP-event-report version="1.1"><event type="ReadStatusChanged" handle="12345678" folder="TELECOM/MSG/INBOX" read_status="yes"/></MAP-event-report>"#;
-        assert_eq!(event(read), [Event::Other { kind: "ReadStatusChanged".into(), handle: "12345678".into() }]);
+        assert_eq!(event(read), [Event::Other { kind: "ReadStatusChanged".into(), handle: "12345678".into(), folder: "TELECOM/MSG/INBOX".into() }]);
         assert_eq!(event(br#"<MAP-event-report><event type="NewMessage" handle="x y"/></MAP-event-report>"#), []);
+        assert!(folder_is_sent("TELECOM/MSG/SENT") && folder_is_sent("telecom/msg/outbox") && folder_is_sent("sent"));
+        assert!(!folder_is_sent("TELECOM/MSG/INBOX") && !folder_is_sent(""));
     }
 
     #[test]

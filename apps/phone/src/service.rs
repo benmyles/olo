@@ -71,8 +71,13 @@ const JUST: i64 = 5 * 60;
 /// A phone calendar's reminder this near (seconds) to one Calendar
 /// here shows of the same event is the same reminder.
 const REMINDED_WITHIN: i64 = 120;
-/// How much of the phone's inbox is read as a session opens.
+/// How much of the phone's inbox and sent folders are read as a session opens.
 const INBOX: u16 = 60;
+const SENT: u16 = 60;
+/// Window (seconds) within which an outgoing message appearing in MAP `sent`
+/// with the same text is treated as the same reply we already recorded when
+/// sending from Olo (in case the phone assigned a new handle moving outbox → sent).
+const OUTGOING_DEDUP_SECS: i64 = 180;
 /// How often a phone that hasn't allowed this computer is tried.
 const ALLOW_EVERY: Duration = Duration::from_secs(10);
 /// How long the phone's owner is waited for so (and, an iPhone,
@@ -116,11 +121,41 @@ const SILENT: [u64; 4] = [30, 120, 300, 900];
 /// How many times in a row BlueZ, busy with the phone, is asked again in
 /// three seconds; past that, as a phone out of reach.
 const BUSY_SOON: usize = 5;
-/// After this many busy answers with the phone disconnected, try one
-/// device-level cancellation. A fresh page can still fail or collide
-/// with another client. Keep the normal backoff through that busy spell.
+/// After this many `br-connection-busy` answers in a row, reset the stuck
+/// BlueZ device state (`Disconnect`, settle briefly, `Connect`) and retry.
+/// If it remains busy, repeat with exponential backoff (never giving up
+/// permanently, and never disconnecting while an active call is on).
 const UNSTICK_AFTER: usize = 3;
-const UNSTICK_EVERY: Duration = Duration::from_secs(120);
+const UNSTICK_SETTLE: Duration = Duration::from_secs(2);
+const UNSTICK_BACKOFF: [u64; 5] = [60, 120, 300, 600, 900];
+
+fn is_connection_busy(why: &str) -> bool {
+    why.contains("br-connection-busy") || why.contains("InProgress")
+}
+
+fn unstick_backoff(tries: usize) -> u64 {
+    UNSTICK_BACKOFF[tries.saturating_sub(1).min(UNSTICK_BACKOFF.len() - 1)]
+}
+
+fn first_party(s: &str) -> &str {
+    s.split(';').map(str::trim).find(|p| !p.is_empty()).unwrap_or("")
+}
+
+fn counterpart<'a>(row: &'a Listed, outgoing: bool) -> (&'a str, &'a str) {
+    if outgoing { (first_party(&row.recipient), first_party(&row.recipient_name)) } else { (row.sender.trim(), row.sender_name.trim()) }
+}
+
+fn matches_existing_outgoing(existing: &Message, text: &str, at: i64, subject_may_be_cut: bool) -> bool {
+    if !existing.outgoing || (existing.at - at).abs() > OUTGOING_DEDUP_SECS {
+        return false;
+    }
+    let a = existing.text.trim();
+    let b = text.trim();
+    if a == b {
+        return true;
+    }
+    subject_may_be_cut && !b.is_empty() && a.starts_with(b)
+}
 /// A failure the same as the last is logged again after this, with how
 /// many times it has been (else a service that keeps trying, and keeps
 /// failing alike, says nothing: its log read as if it had stopped).
@@ -187,8 +222,11 @@ enum Ev {
 
 /// What a session's thread is asked.
 enum Cmd {
-    /// Fetch the message with this handle (it has just come).
-    Fetch(String),
+    /// Fetch the message with this handle (it has just come, in `folder`).
+    Fetch {
+        handle: String,
+        folder: String,
+    },
     /// Fetch the text of the message with this handle whole (what there
     /// is of it is its listing's, which may be only its beginning).
     Whole(String),
@@ -199,8 +237,10 @@ enum Cmd {
         answer: Option<mpsc::Sender<Reply>>,
     },
     MarkRead(Vec<String>),
-    /// Look in: the newest of the inbox.
+    /// Look in: the newest of the inbox and sent folders.
     Check,
+    /// Re-read the phone's `sent` folder (explicit refresh while connected).
+    CheckSent,
     /// Ask again to be told of messages.
     Notify,
     Close,
@@ -221,20 +261,36 @@ enum FromSession {
     NoChannel(String),
     /// The phone's owner hasn't allowed this computer.
     NotAllowed,
-    /// The session is open: the newest of the inbox.
-    Up(Vec<Listed>),
+    /// The session is open: the newest of the inbox and sent folders.
+    Up {
+        inbox: Vec<Listed>,
+        sent: Vec<Listed>,
+    },
     /// The phone took the channel and said nothing in `FIRST_ANSWER`.
     Silent,
-    /// Looked in on: the newest of the inbox now.
-    Listed(Vec<Listed>),
-    /// A message that came: as its listing has it, and whole.
-    Came(Listed, BMessage),
+    /// Looked in on: the newest of the inbox and sent folders now.
+    Listed {
+        inbox: Vec<Listed>,
+        sent: Vec<Listed>,
+    },
+    /// Re-read of the sent folder alone.
+    SentListed(Vec<Listed>),
+    /// A message that came: as its listing has it, whole, whether it is
+    /// outgoing (from the phone's `sent`/`outbox`), and a recent tail of
+    /// `sent` fetched alongside an incoming message.
+    Came {
+        row: Listed,
+        whole: BMessage,
+        outgoing: bool,
+        sent_tail: Vec<Listed>,
+    },
     /// A message's text whole (`None`: the phone wouldn't give it).
     Whole(String, Option<String>),
     Contacts(Vec<pbap::Contact>),
     Sent {
         to: String,
         text: String,
+        handle: Option<String>,
         done: Result<(), String>,
         note: Option<NoteId>,
         answer: Option<mpsc::Sender<Reply>>,
@@ -352,12 +408,12 @@ struct Service {
     said_why: String,
     why_times: usize,
     why_said_at: Option<Instant>,
-    /// BlueZ is to let go of what it's stuck on with the phone before the
-    /// next asking (`UNSTICK_AFTER`), and when it last was.
+    /// BlueZ is to reset a stuck `br-connection-busy` device state before
+    /// the next asking (`UNSTICK_AFTER`), when it last did, and how many
+    /// self-heal attempts have run in this busy spell.
     unstick: bool,
     unstuck_at: Option<Instant>,
-    /// A recovery was already tried in this run of busy answers.
-    tried_unstick: bool,
+    unstick_tries: usize,
     /// Keep a user-requested failure visible until the phone works again.
     report_retries: bool,
     /// While a channel is being opened: when to give up on it
@@ -495,9 +551,9 @@ pub fn when(at: &str) -> Option<i64> {
 /// none at all, or as long as phones give. An iPhone gives a message's
 /// first 128 bytes whatever is asked for (Ben's, 2026-11-17: "call us
 /// using Contac"; cut where a character ends, so up to three fewer); an
-/// Android, the 255 asked for.
-fn may_be_cut(subject: &str) -> bool {
-    subject.is_empty() || subject.len() >= 125
+/// Android phone may give a short subject preview (24+ characters).
+fn may_be_cut_for(subject: &str, android: bool) -> bool {
+    subject.is_empty() || subject.len() >= 125 || (android && subject.chars().count() >= 24)
 }
 
 /// Whether the phone came (its messages are worth asking for now) or
@@ -519,6 +575,17 @@ fn came_or_went(old: Option<&link::Phone>, new: Option<&link::Phone>) -> (bool, 
 
 fn just_came(at: &str, now: i64) -> bool {
     when(at).is_none_or(|t| (now - t) <= JUST && (t - now) <= 60)
+}
+
+/// Read the phone's `sent` folder, if it exposes one. Some phones (notably
+/// iOS over Bluetooth MAP) return an empty listing or refuse the folder; a
+/// refusal is treated as empty so inbox sync is never disrupted.
+fn list_sent(mas: &mut Mas<Stream>, most: u16) -> obex::Result<Vec<Listed>> {
+    match mas.listing("sent", most) {
+        Ok(rows) => Ok(rows),
+        Err(obex::Error::Refused(_)) => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
 }
 
 /// One session with the phone's messages, on a thread of its own: from
@@ -544,22 +611,36 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
         Err(e) => return said(down(e)),
     };
     // Told of messages as they come (the phone connects back), and what
-    // the inbox has now.
-    let opened = mas.notify(true).and_then(|()| mas.listing("inbox", INBOX));
+    // the inbox and sent folders have now.
+    let opened = mas.notify(true).and_then(|()| {
+        let inbox = mas.listing("inbox", INBOX)?;
+        let sent = list_sent(&mut mas, SENT)?;
+        Ok((inbox, sent))
+    });
     match opened {
-        Ok(listed) => said(FromSession::Up(listed)),
+        Ok((inbox, sent)) => said(FromSession::Up { inbox, sent }),
         Err(e) => return said(down(e)),
     }
     patient.set(paced(ANSWER));
     for cmd in cmds {
         let done = match cmd {
-            Cmd::Fetch(handle) => (|| {
+            Cmd::Fetch { handle, folder } => (|| {
                 // (Its listing's row has when it came; the message
                 // whole has all of its text, which an Android's row
                 // doesn't.)
-                let row = mas.listing("inbox", 12)?.into_iter().find(|m| m.handle == handle).unwrap_or(Listed { handle: handle.clone(), ..Default::default() });
-                let whole = mas.message(&handle)?;
-                said(FromSession::Came(row, whole));
+                let from_sent = map::folder_is_sent(&folder);
+                let rows = if from_sent { list_sent(&mut mas, 12)? } else { mas.listing("inbox", 12)? };
+                let row = rows.into_iter().find(|m| m.handle == handle).unwrap_or(Listed { handle: handle.clone(), sent: from_sent, ..Default::default() });
+                let whole = match mas.message(&handle) {
+                    Ok(w) => w,
+                    Err(obex::Error::Refused(_)) if from_sent => BMessage::default(),
+                    Err(e) => return Err(e),
+                };
+                let outgoing = from_sent || row.sent || map::folder_is_sent(&whole.folder);
+                // When an incoming message arrives, also catch up recent `sent`
+                // entries for phones that don't emit MNS events on user replies.
+                let sent_tail = if !outgoing { list_sent(&mut mas, 12).unwrap_or_default() } else { Vec::new() };
+                said(FromSession::Came { row, whole, outgoing, sent_tail });
                 Ok(())
             })(),
             Cmd::Whole(handle) => match mas.message(&handle) {
@@ -578,10 +659,14 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
             Cmd::Send { to, text, note, answer } => {
                 let done = match BMessage::outgoing(&[to.as_str()], &text) {
                     None => Err(olo_kit::words::en("That isn't a telephone number or an address.").to_owned()),
-                    Some(b) => mas.send(&b).map(|_| ()).map_err(|e| e.to_string()),
+                    Some(b) => mas.send(&b).map_err(|e| e.to_string()),
                 };
                 let broke = done.is_err() && !mas_alive(&mut mas);
-                said(FromSession::Sent { to, text, done, note, answer });
+                let (handle, done) = match done {
+                    Ok(handle) => (handle, Ok(())),
+                    Err(e) => (None, Err(e)),
+                };
+                said(FromSession::Sent { to, text, handle, done, note, answer });
                 if broke { Err(obex::Error::Malformed("the link went")) } else { Ok(()) }
             }
             Cmd::MarkRead(handles) => handles.iter().try_for_each(|h| mas.mark_read(h).or_else(|e| if matches!(e, obex::Error::Refused(_)) { Ok(()) } else { Err(e) })),
@@ -589,10 +674,14 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
             // nothing, and the session is over.)
             Cmd::Check => {
                 patient.set(paced(FIRST_ANSWER));
-                let listed = mas.listing("inbox", 12).map(|listed| said(FromSession::Listed(listed)));
+                let listed = mas.listing("inbox", 12).and_then(|inbox| {
+                    let sent = list_sent(&mut mas, 12)?;
+                    Ok((inbox, sent))
+                });
                 patient.set(paced(ANSWER));
-                listed
+                listed.map(|(inbox, sent)| said(FromSession::Listed { inbox, sent }))
             }
+            Cmd::CheckSent => list_sent(&mut mas, SENT).map(|sent| said(FromSession::SentListed(sent))),
             // (Refused: it's told already, or won't be; the looking in
             // goes on.)
             Cmd::Notify => mas.notify(true).or_else(|e| if matches!(e, obex::Error::Refused(_)) { Ok(()) } else { Err(e) }),
@@ -681,7 +770,7 @@ pub fn run() -> ! {
         why_said_at: None,
         unstick: false,
         unstuck_at: None,
-        tried_unstick: false,
+        unstick_tries: 0,
         report_retries: false,
         opening_until: None,
         let_go: false,
@@ -982,7 +1071,7 @@ impl Service {
             (self.tries, self.busy, self.hangs, self.silent) = (0, 0, 0, 0);
             (self.retry_at, self.paged_at, self.unstuck_at) = (None, None, None);
             self.lost_at = phone.as_ref().filter(|p| !p.bredr_connected.unwrap_or(p.connected)).map(|_| Instant::now());
-            (self.unstick, self.tried_unstick, self.let_go, self.report_retries) = (false, false, false, false);
+            (self.unstick, self.unstick_tries, self.let_go, self.report_retries) = (false, 0, false, false);
             self.state.trouble.clear();
             (self.threads, self.contacts, self.seen, self.whole) = (Vec::new(), Vec::new(), HashSet::new(), HashSet::new());
             self.codes.clear();
@@ -1505,8 +1594,9 @@ impl Service {
         let (tx, generation, path) = (self.tx.clone(), self.generation, phone.path.clone());
         let let_go = std::mem::take(&mut self.let_go);
         let unstick = std::mem::take(&mut self.unstick);
+        self.opening_until = Some(Instant::now() + OPEN_ANSWER + if unstick { Duration::from_secs(15) } else { Duration::ZERO });
         let _ = std::thread::Builder::new().name("phone-open".into()).spawn(move || {
-            if unstick && let Err(e) = profiles.unstick(&path) {
+            if unstick && let Err(e) = profiles.unstick(&path, paced(UNSTICK_SETTLE)) {
                 tracing::info!("phone: Bluetooth wasn't let go of what it's stuck on: {e}");
             }
             if let_go {
@@ -1560,10 +1650,17 @@ impl Service {
                 (self.told, self.check_at) = (true, None);
                 opened.stream.patience(Duration::ZERO);
                 let _ = std::thread::Builder::new().name("phone-events".into()).spawn(move || {
-                    let _ = map::serve_notifications(opened.stream, |event| {
-                        if let map::Event::New { handle, .. } = event {
-                            let _ = cmds.send(Cmd::Fetch(handle));
+                    let _ = map::serve_notifications(opened.stream, |event| match event {
+                        map::Event::New { handle, folder } => {
+                            let _ = cmds.send(Cmd::Fetch { handle, folder });
                         }
+                        map::Event::Other { kind, handle, folder }
+                            if map::is_handle(&handle) && (kind.eq_ignore_ascii_case("SendingSuccess") || (kind.eq_ignore_ascii_case("MessageShift") && map::folder_is_sent(&folder))) =>
+                        {
+                            let folder = if folder.is_empty() { "TELECOM/MSG/SENT".into() } else { folder };
+                            let _ = cmds.send(Cmd::Fetch { handle, folder });
+                        }
+                        _ => {}
                     });
                 });
             }
@@ -1684,19 +1781,30 @@ impl Service {
                 // soon; otherwise further and further apart.)
                 // (Busy for good, it's asked as a phone out of reach is:
                 // not every three seconds for ever.)
-                let busy = why.contains("InProgress") || why.contains("no channel came");
+                let conn_busy = is_connection_busy(&why);
+                let busy = conn_busy || why.contains("no channel came");
                 self.busy = if busy { self.busy + 1 } else { 0 };
-                if !busy {
-                    self.tried_unstick = false;
+                if !conn_busy {
+                    self.unstick_tries = 0;
                 }
                 let connected = self.phone.as_ref().is_some_and(|p| p.connected);
-                // A disconnected phone can have a stranded device request.
-                // Allow one attempt to clear it per busy spell, with the
-                // same cooldown when the person requests another try.
-                let stuck = why.contains("InProgress") && !connected && self.busy >= UNSTICK_AFTER;
-                if stuck && !self.tried_unstick && self.unstuck_at.is_none_or(|at| at.elapsed() >= UNSTICK_EVERY) {
-                    tracing::info!("phone: Bluetooth has said it's busy with the phone {} times running, the phone not connected: told to let go of what it's stuck on, and asked again", self.busy);
-                    (self.unstick, self.tried_unstick, self.unstuck_at) = (true, true, Some(Instant::now()));
+                // When BlueZ gets wedged in `br-connection-busy` (either while
+                // Connected=true on a stale classic ACL/LE bearer or while
+                // Connected=false with a stranded page/SDP request), recover
+                // automatically via Device1.Disconnect + settle + Device1.Connect,
+                // repeating with exponential backoff if it stays stuck. Never
+                // disconnect while an active hands-free call is in progress.
+                let stuck = conn_busy && self.busy >= UNSTICK_AFTER && self.call_here.is_none();
+                let unstick_wait = paced(Duration::from_secs(unstick_backoff(self.unstick_tries)));
+                if stuck && self.unstuck_at.is_none_or(|at| at.elapsed() >= unstick_wait) {
+                    self.unstick_tries += 1;
+                    tracing::info!(
+                        "phone: Bluetooth has said it's busy with the phone {} times running ({}): told to let go of what it's stuck on, and asked again (attempt {})",
+                        self.busy,
+                        if connected { "connected" } else { "not connected" },
+                        self.unstick_tries
+                    );
+                    (self.unstick, self.unstuck_at) = (true, Some(Instant::now()));
                 }
                 let wait = if busy && (self.busy <= BUSY_SOON || self.unstick) { 3 } else { self.away_wait() };
                 self.tries += 1;
@@ -1719,27 +1827,10 @@ impl Service {
                         self.why_said_at = Some(Instant::now());
                     }
                 }
-                // Why, where there's something to say: the phone there
-                // and still not spoken to (Bluetooth's own word for it);
-                // or asked for by hand and not there, which is said as
-                // what to look at on the phone, whichever of Bluetooth's
-                // names its not answering had (a page timed out, "Host
-                // is down", its low-energy try given up:
-                // "le-connection-abort-by-local", which the notice
-                // showed as it came, 2026-11-20). The log has the name.
-                // (The phone there, over low energy, and answering no
-                // classic page, which its messages need: Ben's sat so
-                // for a day behind "br-connection-page-timeout",
-                // 2026-11-20, with nothing changed on it and this
-                // computer shown as connected there. Why a phone doesn't
-                // answer isn't known from here (the page went out as it
-                // should: the second investigator read the controller's
-                // trace), so nothing is asked of the person: said as it
-                // is, and that Olo goes on trying. For a few hours this
-                // told them to turn Bluetooth on in the phone's
-                // Settings, which was a guess.)
                 let unanswered = why.contains("page-timeout") || why.contains("Host is down");
-                self.state.trouble = if connected && unanswered {
+                self.state.trouble = if conn_busy && (connected || self.unstick || self.unstick_tries > 0 || self.report_retries) {
+                    olo_kit::en!("Bluetooth is busy with “{}”. Reconnecting automatically…", self.state.name)
+                } else if connected && unanswered {
                     olo_kit::en!("“{}” is connected, but its messages aren’t answering. Olo keeps trying.", self.state.name)
                 } else if connected {
                     olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.'))
@@ -1760,10 +1851,10 @@ impl Service {
                 let since = *self.allow_since.get_or_insert_with(Instant::now);
                 self.retry_at = Some(Instant::now() + if since.elapsed() < ALLOW_FOR { ALLOW_EVERY } else { ALLOW_LATER });
             }
-            FromSession::Up(listed) => {
+            FromSession::Up { inbox, sent } => {
                 (self.tries, self.retry_at, self.silent, self.busy) = (0, None, 0, 0);
-                (self.report_retries, self.tried_unstick, self.unstick) = (false, false, false);
-                tracing::info!("phone: its messages are open ({} in its inbox)", listed.len());
+                (self.report_retries, self.unstick_tries, self.unstick, self.unstuck_at) = (false, 0, false, None);
+                tracing::info!("phone: its messages are open ({} in inbox, {} in sent)", inbox.len(), sent.len());
                 self.state.link = Link::Ready;
                 self.state.trouble.clear();
                 self.said_why.clear();
@@ -1775,7 +1866,8 @@ impl Service {
                         let _ = cmds.send(Cmd::Send { to: h.to, text: h.text, note: h.note, answer: h.answer });
                     }
                 }
-                self.take_listed(listed);
+                self.take_listed(inbox, false);
+                self.take_listed(sent, true);
                 // Its contacts (names for numbers): asked for now, and
                 // again while they haven't come.
                 self.contacts_tries = 0;
@@ -1785,8 +1877,9 @@ impl Service {
             // Looked in on: what it didn't tell of is taken as what it
             // tells of is. A phone that hasn't connected back to tell is
             // asked to once more, and looked in on often.
-            FromSession::Listed(listed) => {
-                self.take_listed(listed);
+            FromSession::Listed { inbox, sent } => {
+                self.take_listed(inbox, false);
+                self.take_listed(sent, true);
                 self.count();
                 if !self.told && !self.asked_again {
                     self.asked_again = true;
@@ -1796,25 +1889,43 @@ impl Service {
                 }
                 self.check_at = (!self.told).then(|| Instant::now() + paced(CHECK_UNTOLD));
             }
-            FromSession::Came(row, whole) => {
+            FromSession::SentListed(sent) => {
+                self.take_listed(sent, true);
+                self.count();
+            }
+            FromSession::Came { row, whole, outgoing, sent_tail } => {
+                if !sent_tail.is_empty() {
+                    self.take_listed(sent_tail, true);
+                }
                 if self.seen.contains(&row.handle) {
+                    self.count();
                     return;
                 }
                 let row = Listed {
                     sender: if row.sender.is_empty() { whole.from.clone() } else { row.sender },
                     sender_name: if row.sender_name.is_empty() { whole.from_name.clone() } else { row.sender_name },
-                    read: false,
+                    recipient: if row.recipient.is_empty() { whole.to.first().cloned().unwrap_or_default() } else { row.recipient },
+                    recipient_name: if row.recipient_name.is_empty() { whole.to_names.first().cloned().unwrap_or_default() } else { row.recipient_name },
+                    read: outgoing,
+                    sent: outgoing,
                     ..row
                 };
+                if counterpart(&row, outgoing).0.is_empty() {
+                    self.seen.insert(row.handle);
+                    self.count();
+                    return;
+                }
                 let text = if whole.text.is_empty() {
                     row.subject.clone()
                 } else {
                     self.whole.insert(row.handle.clone());
                     whole.text
                 };
-                let (ti, mi) = self.keep(&row, text);
+                let kept = self.keep(&row, text, outgoing);
                 self.count();
-                self.came(ti, mi);
+                if !outgoing && let Some((ti, mi)) = kept {
+                    self.came(ti, mi);
+                }
             }
             FromSession::Whole(handle, text) => self.whole_came(handle, text),
             FromSession::Contacts(contacts) => {
@@ -1826,13 +1937,19 @@ impl Service {
                 self.contacts_at = None;
                 self.name_threads();
             }
-            FromSession::Sent { to, text, done, note, answer } => {
+            FromSession::Sent { to, text, handle, done, note, answer } => {
                 if done.is_ok() {
                     // (An iPhone keeps nothing of what was sent through
-                    // it: kept here.)
+                    // it: kept here. Keeping the handle when the phone
+                    // gives one avoids duplicating it if `sent` syncs.)
                     let at = now() as i64;
                     let ti = self.thread_for(&to, "");
-                    self.threads[ti].messages.push(Message { handle: String::new(), text, at, outgoing: true, read: true });
+                    let handle = handle.unwrap_or_default();
+                    if !handle.is_empty() {
+                        self.seen.insert(handle.clone());
+                        self.whole.insert(handle.clone());
+                    }
+                    self.threads[ti].messages.push(Message { handle, text, at, outgoing: true, read: true });
                     self.count();
                     // (Kept at once: what was sent is nowhere else.)
                     self.keep_for_next_run();
@@ -1860,23 +1977,39 @@ impl Service {
         }
     }
 
-    /// What a listing of the inbox has that's new here: one that has
-    /// just come is fetched whole and told of, the rest is kept as what
-    /// there was; and what may be only a message's beginning is asked
-    /// for whole.
-    fn take_listed(&mut self, listed: Vec<Listed>) {
+    /// What a listing of the inbox or sent folder has that's new here: an
+    /// incoming message that has just come is fetched whole and told of, the
+    /// rest is kept as what there was (outgoing replies from `sent` are kept
+    /// read and silent, deduplicated against replies sent from Olo); and what
+    /// may be only a message's beginning is asked for whole.
+    fn take_listed(&mut self, listed: Vec<Listed>, from_sent: bool) {
         let now_s = now() as i64;
-        let mut fresh = Vec::new();
+        let mut fresh: Vec<(String, String)> = Vec::new();
         // What a listing has of a message may be only its
         // beginning: those are asked for whole, once each (the
         // ones kept from before too, the newest first).
         let mut cut = Vec::new();
+        let android = self.state.kind == Kind::Android;
         // (Oldest first, as conversations keep them.)
         for row in listed.into_iter().rev() {
-            let may_be_cut = may_be_cut(&row.subject) && !self.whole.contains(&row.handle);
+            let outgoing = from_sent || row.sent;
+            let may_be_cut = may_be_cut_for(&row.subject, android) && !self.whole.contains(&row.handle);
             if self.seen.contains(&row.handle) {
                 if may_be_cut {
                     cut.push(row.handle);
+                }
+                continue;
+            }
+            if outgoing {
+                // If the phone omitted `recipient_addressing` in the listing,
+                // fetch the full bMessage so `BENV` gives us the counterpart.
+                if counterpart(&row, true).0.is_empty() {
+                    fresh.push((row.handle, "sent".into()));
+                } else {
+                    let inserted = self.keep(&row, row.subject.clone(), true).is_some();
+                    if inserted && may_be_cut {
+                        cut.push(row.handle);
+                    }
                 }
                 continue;
             }
@@ -1884,17 +2017,17 @@ impl Service {
             // there to be told) is fetched whole and told of; the
             // rest is what there was.
             if !row.read && when(&row.datetime).is_some() && just_came(&row.datetime, now_s) {
-                fresh.push(row.handle);
+                fresh.push((row.handle, "inbox".into()));
             } else {
-                self.keep(&row, row.subject.clone());
+                self.keep(&row, row.subject.clone(), false);
                 if may_be_cut {
                     cut.push(row.handle);
                 }
             }
         }
         if let Some(cmds) = &self.session {
-            for handle in fresh {
-                let _ = cmds.send(Cmd::Fetch(handle));
+            for (handle, folder) in fresh {
+                let _ = cmds.send(Cmd::Fetch { handle, folder });
             }
             for handle in cut.into_iter().rev() {
                 let _ = cmds.send(Cmd::Whole(handle));
@@ -1958,14 +2091,31 @@ impl Service {
     }
 
     /// Keep a message that came, in its conversation: where it is.
-    fn keep(&mut self, row: &Listed, text: String) -> (usize, usize) {
+    /// Returns `None` if an outgoing message matches a reply we already
+    /// recorded when sending from Olo (avoiding duplicates when the phone
+    /// assigns a fresh handle moving outbox → sent).
+    fn keep(&mut self, row: &Listed, text: String, outgoing: bool) -> Option<(usize, usize)> {
         self.seen.insert(row.handle.clone());
-        let ti = self.thread_for(&row.sender, &row.sender_name);
+        let (addr, named) = counterpart(row, outgoing);
+        let (addr, named) = (addr.to_owned(), named.to_owned());
+        let ti = self.thread_for(&addr, &named);
         let at = when(&row.datetime).unwrap_or_else(|| now() as i64);
         let t = &mut self.threads[ti];
+        if outgoing {
+            let cut = may_be_cut_for(&text, self.state.kind == Kind::Android);
+            if let Some(existing) = t.messages.iter_mut().find(|m| matches_existing_outgoing(m, &text, at, cut)) {
+                if existing.handle.is_empty() && !row.handle.is_empty() {
+                    existing.handle = row.handle.clone();
+                }
+                if !row.handle.is_empty() {
+                    self.whole.insert(row.handle.clone());
+                }
+                return None;
+            }
+        }
         let mi = t.messages.iter().position(|m| m.at > at).unwrap_or(t.messages.len());
-        t.messages.insert(mi, Message { handle: row.handle.clone(), text, at, outgoing: false, read: row.read });
-        (ti, mi)
+        t.messages.insert(mi, Message { handle: row.handle.clone(), text, at, outgoing, read: outgoing || row.read });
+        Some((ti, mi))
     }
 
     /// How many conversations and unread messages there are, said.
@@ -2118,14 +2268,25 @@ impl Service {
                     self.contacts_tries = 0;
                     self.ask_contacts();
                 }
-                if self.phone.is_some() && self.state.profiles && self.state.link != Link::Ready {
-                    (self.report_retries, self.tried_unstick) = (true, false);
-                    if self.session.is_none() && !self.opening {
-                        self.open();
-                    }
-                    if self.opening || self.session.is_some() {
-                        self.state.link = Link::Connecting;
-                        self.state.trouble.clear();
+                if self.phone.is_some() && self.state.profiles {
+                    if self.state.link == Link::Ready {
+                        if let Some(cmds) = &self.session {
+                            let _ = cmds.send(Cmd::CheckSent);
+                        }
+                    } else {
+                        self.report_retries = true;
+                        self.unstick_tries = 0;
+                        if self.busy > 0 && self.call_here.is_none() {
+                            self.unstick = true;
+                            self.unstuck_at = Some(Instant::now());
+                        }
+                        if self.session.is_none() && !self.opening {
+                            self.open();
+                        }
+                        if self.opening || self.session.is_some() {
+                            self.state.link = Link::Connecting;
+                            self.state.trouble.clear();
+                        }
                     }
                 }
                 Reply { ok: true, state: Some(self.state.clone()), ..Default::default() }
@@ -2626,7 +2787,7 @@ impl Service {
             for t in &self.threads {
                 (&t.key, &t.name, t.messages.len()).hash(&mut h);
                 for m in &t.messages {
-                    (&m.handle, m.read, m.at, m.text.len()).hash(&mut h);
+                    (&m.handle, m.outgoing, m.read, m.at, m.text.len()).hash(&mut h);
                 }
             }
             h.finish()
@@ -2878,7 +3039,48 @@ mod tests {
         assert!(!just_came("20260812T100200Z", now), "from the future");
         assert!(just_came("", now), "one that doesn't say when is new to us");
         // A listing's text that may be only a message's beginning.
-        assert!(may_be_cut("") && may_be_cut(&"a".repeat(128)) && may_be_cut(&"é".repeat(63)) && may_be_cut(&"a".repeat(255)));
-        assert!(!may_be_cut("Are you still coming on Saturday?") && !may_be_cut(&"a".repeat(124)));
+        assert!(may_be_cut_for("", false) && may_be_cut_for(&"a".repeat(128), false) && may_be_cut_for(&"é".repeat(63), false) && may_be_cut_for(&"a".repeat(255), false));
+        assert!(!may_be_cut_for("Are you still coming on Saturday?", false) && !may_be_cut_for(&"a".repeat(124), false));
+        assert!(may_be_cut_for(&"a".repeat(24), true) && !may_be_cut_for("Short reply", true));
+    }
+
+    #[test]
+    fn br_connection_busy_detection_and_backoff() {
+        assert!(is_connection_busy("org.bluez.Error.Failed: br-connection-busy"));
+        assert!(is_connection_busy("org.bluez.Error.InProgress: br-connection-busy"));
+        assert!(is_connection_busy("org.bluez.Error.InProgress: Operation already in progress"));
+        assert!(!is_connection_busy("org.bluez.Error.Failed: br-connection-page-timeout"));
+        assert!(!is_connection_busy("no channel came"));
+
+        assert_eq!(unstick_backoff(0), 60);
+        assert_eq!(unstick_backoff(1), 60);
+        assert_eq!(unstick_backoff(2), 120);
+        assert_eq!(unstick_backoff(3), 300);
+        assert_eq!(unstick_backoff(4), 600);
+        assert_eq!(unstick_backoff(5), 900);
+        assert_eq!(unstick_backoff(99), 900);
+    }
+
+    #[test]
+    fn outgoing_counterpart_and_dedup() {
+        let row = Listed {
+            handle: "30000001".into(),
+            sender: "+15550000000".into(),
+            sender_name: "Me".into(),
+            recipient: "+15550100142; +15550100117".into(),
+            recipient_name: "Mira Kovač; Tomas Lind".into(),
+            sent: true,
+            ..Default::default()
+        };
+        assert_eq!(counterpart(&row, true), ("+15550100142", "Mira Kovač"));
+        assert_eq!(counterpart(&row, false), ("+15550000000", "Me"));
+
+        let sent_from_olo = Message { handle: String::new(), text: "See you at the lake house on Saturday around noon!".into(), at: 1_786_528_800, outgoing: true, read: true };
+        let incoming = Message { outgoing: false, ..sent_from_olo.clone() };
+        assert!(matches_existing_outgoing(&sent_from_olo, "See you at the lake house on Saturday around noon!", 1_786_528_820, false));
+        assert!(matches_existing_outgoing(&sent_from_olo, "See you at the lake house", 1_786_528_820, true));
+        assert!(!matches_existing_outgoing(&sent_from_olo, "See you at the lake house", 1_786_528_820, false));
+        assert!(!matches_existing_outgoing(&sent_from_olo, "See you at the lake house on Saturday around noon!", 1_786_529_500, false));
+        assert!(!matches_existing_outgoing(&incoming, "See you at the lake house on Saturday around noon!", 1_786_528_800, false));
     }
 }

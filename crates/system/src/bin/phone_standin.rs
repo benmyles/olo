@@ -68,6 +68,7 @@ enum Error {
     InvalidArguments(String),
     AuthenticationRejected(String),
     InProgress(String),
+    Failed(String),
 }
 
 enum Job {
@@ -76,8 +77,8 @@ enum Job {
     Shown,
     /// Open a channel of `uuid` to whoever registered that profile.
     Open(String),
-    /// Tell whoever asked that message `handle` came.
-    Tell(String),
+    /// Tell whoever asked that message `handle` came in `folder`.
+    Tell(String, String),
     /// Say that the device's properties changed.
     Changed,
     /// Pair: the agent is asked whether the code matches; yes pairs.
@@ -199,12 +200,12 @@ struct World {
     /// to connect one of its profiles, BlueZ pages it and it connects, as
     /// a real phone back in the room that doesn't connect by itself.
     in_reach: bool,
-    /// BlueZ stuck connecting it (`--tell set stuck yes`): as BlueZ 5.87
-    /// after its hands-free side's connecting failed and never said so,
-    /// every connecting asked for after is refused "br-connection-busy"
-    /// until it's told to let go (`Disconnect`, the phone not connected),
-    /// which `unstuck` counts.
-    stuck: bool,
+    /// BlueZ stuck connecting it (`--tell set stuck yes`,
+    /// `--tell set stuck-failed yes`, `--tell set stuck-cycles N`): every
+    /// connecting asked for is refused `"br-connection-busy"` until
+    /// `Disconnect` clears each cycle, which `unstuck` counts.
+    stuck_left: u32,
+    stuck_failed: bool,
     unstuck: u32,
     /// Its hands-free side is connected (or won't be), and its calls.
     hands_free: bool,
@@ -380,8 +381,8 @@ impl Device {
         }
         // (BlueZ's first look: anything pending with the device, and it's
         // busy.)
-        if w.stuck {
-            return Err(Error::InProgress("br-connection-busy".into()));
+        if w.stuck_left > 0 {
+            return Err(if w.stuck_failed { Error::Failed("br-connection-busy".into()) } else { Error::InProgress("br-connection-busy".into()) });
         }
         // Paged, in reach: connected.
         if w.paired && !w.connected && w.in_reach {
@@ -444,6 +445,9 @@ impl Device {
     async fn connect(&self) -> Result<(), Error> {
         let waited = {
             let mut w = self.0.lock().expect("world");
+            if w.stuck_left > 0 {
+                return Err(if w.stuck_failed { Error::Failed("br-connection-busy".into()) } else { Error::InProgress("br-connection-busy".into()) });
+            }
             if w.paired {
                 w.connected = true;
                 let _ = w.jobs.send(Job::Changed);
@@ -464,10 +468,10 @@ impl Device {
 
     fn disconnect(&self) {
         let mut w = self.0.lock().expect("world");
-        // (Not connected, what it was stuck on is dropped, as BlueZ's
-        // `device_request_disconnect` drops it.)
-        if !w.connected && w.stuck {
-            w.stuck = false;
+        // Device1.Disconnect drops a wedged ACL or stranded pending request
+        // whether BlueZ reported Connected=true or Connected=false.
+        if w.stuck_left > 0 {
+            w.stuck_left -= 1;
             w.unstuck += 1;
         }
         w.connected = false;
@@ -904,7 +908,16 @@ impl Told {
     fn receive(&self, name: &str, from: &str, text: &str) -> String {
         let w = self.0.lock().expect("world");
         let handle = w.phone.receive(name, from, text, &now());
-        let _ = w.jobs.send(Job::Tell(handle.clone()));
+        let _ = w.jobs.send(Job::Tell(handle.clone(), "TELECOM/MSG/INBOX".into()));
+        handle
+    }
+
+    /// A reply sent directly on the phone (lands in `sent` and notifies MNS
+    /// unless `quiet` is on).
+    fn reply(&self, name: &str, to: &str, text: &str) -> String {
+        let w = self.0.lock().expect("world");
+        let handle = w.phone.send_on_phone(name, to, text, &now());
+        let _ = w.jobs.send(Job::Tell(handle.clone(), "TELECOM/MSG/SENT".into()));
         handle
     }
 
@@ -955,7 +968,19 @@ impl Told {
             "connected" => w.connected = on,
             "paired" => w.paired = on,
             "in-reach" => w.in_reach = on,
-            "stuck" => w.stuck = on,
+            "stuck" => {
+                w.stuck_left = u32::from(on);
+                w.stuck_failed = false;
+            }
+            "stuck-failed" => {
+                w.stuck_left = u32::from(on);
+                w.stuck_failed = on;
+            }
+            "stuck-cycles" => {
+                let n = value.parse::<u32>().map_err(|_| Error::InvalidArguments(format!("not a count: {value}")))?;
+                w.stuck_left = n;
+                w.stuck_failed = n > 0;
+            }
             _ => return Err(Error::InvalidArguments(format!("nothing called {key}"))),
         }
         let _ = w.jobs.send(Job::Changed);
@@ -1073,7 +1098,8 @@ fn main() {
         asked: 0,
         acquired: 0,
         in_reach: false,
-        stuck: false,
+        stuck_left: 0,
+        stuck_failed: false,
         unstuck: 0,
         jobs: tx,
     }));
@@ -1195,13 +1221,13 @@ fn main() {
                     hand_over(&uuid, Box::new(move |link| drop(p.serve_contacts(link))));
                 }
             }
-            Job::Tell(handle) => {
+            Job::Tell(handle, folder) => {
                 let w = world.lock().expect("world");
                 let (connected, quiet) = (w.connected, w.quiet);
                 drop(w);
                 if phone.notifying() && connected && !quiet {
                     let p = phone.clone();
-                    hand_over(map::MNS_UUID, Box::new(move |link| drop(p.tell(link, &handle))));
+                    hand_over(map::MNS_UUID, Box::new(move |link| drop(p.tell_folder(link, &handle, &folder))));
                 }
             }
             // The code on both: the agent is asked; its yes pairs the
@@ -1408,6 +1434,7 @@ fn told(address: &str, words: &[String]) -> i32 {
     };
     match words.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["receive", name, from, text @ ..] if !text.is_empty() => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Receive", &(*name, *from, text.join(" ").as_str()))),
+        ["reply", name, to, text @ ..] if !text.is_empty() => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Reply", &(*name, *to, text.join(" ").as_str()))),
         ["set", key, value] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Set", &(*key, *value))),
         ["soliciting"] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Soliciting", &()).and_then(|m| m.body().deserialize::<bool>()) {
             Ok(on) => {

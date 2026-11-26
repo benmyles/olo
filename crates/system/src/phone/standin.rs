@@ -29,10 +29,23 @@ pub struct Message {
     pub read: bool,
 }
 
+/// An outgoing message kept in the phone's MAP `sent` folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentMessage {
+    pub handle: String,
+    pub to_name: String,
+    pub to: String,
+    pub text: String,
+    pub datetime: String,
+}
+
 /// What the stand-in has and what was done to it.
 #[derive(Debug, Default)]
 pub struct State {
     pub inbox: Vec<Message>,
+    /// Outgoing messages exposed in MAP `telecom/msg/sent` (replies sent from the phone,
+    /// plus messages sent via OBEX `outbox` on Android).
+    pub sent_folder: Vec<SentMessage>,
     /// vCards, as it serves them (the owner's own first).
     pub contacts: String,
     /// Its owner has turned on Show Notifications, and Sync Contacts.
@@ -95,19 +108,34 @@ impl Phone {
         handle
     }
 
+    /// A reply sent directly on the phone; stored in `sent_folder` and returned by handle.
+    pub fn send_on_phone(&self, to_name: &str, to: &str, text: &str, datetime: &str) -> String {
+        let mut s = self.0.lock().unwrap();
+        s.next += 1;
+        let handle = format!("{:08X}", 0x3000_0000u64 + s.next);
+        s.sent_folder.push(SentMessage { handle: handle.clone(), to_name: to_name.into(), to: to.into(), text: text.into(), datetime: datetime.into() });
+        handle
+    }
+
     /// Whether its client asked to be told of messages.
     pub fn notifying(&self) -> bool {
         self.0.lock().unwrap().notifying
     }
 
     /// Tell the client's Notification Server (on `link`, a channel to
-    /// it) that message `handle` came.
-    pub fn tell<L: Read + Write>(&self, link: L, handle: &str) -> obex::Result<()> {
+    /// it) that message `handle` came in `folder`.
+    pub fn tell_folder<L: Read + Write>(&self, link: L, handle: &str, folder: &str) -> obex::Result<()> {
         let mut c = Client::connect(link, &map::MNS)?;
-        let report = format!("<MAP-event-report version=\"1.0\"><event type=\"NewMessage\" handle=\"{handle}\" folder=\"TELECOM/MSG/INBOX\" old_folder=\"\" msg_type=\"SMS_GSM\"/></MAP-event-report>");
+        let report = format!("<MAP-event-report version=\"1.0\"><event type=\"NewMessage\" handle=\"{handle}\" folder=\"{folder}\" old_folder=\"\" msg_type=\"SMS_GSM\"/></MAP-event-report>");
         c.put(map::kind::EVENT, None, &Params::new().byte(map::tag::MAS_INSTANCE, 0), report.as_bytes())?;
         c.disconnect();
         Ok(())
+    }
+
+    /// Tell the client's Notification Server (on `link`, a channel to
+    /// it) that message `handle` came in inbox.
+    pub fn tell<L: Read + Write>(&self, link: L, handle: &str) -> obex::Result<()> {
+        self.tell_folder(link, handle, "TELECOM/MSG/INBOX")
     }
 
     /// Serve one session of its messages on `link`, to its end.
@@ -158,21 +186,42 @@ impl Phone {
                                 }
                                 text[..end].to_owned()
                             };
-                            let rows: String = if name.eq_ignore_ascii_case("sent") && android {
-                                s.sent
-                                    .iter()
-                                    .rev()
-                                    .take(most)
-                                    .enumerate()
-                                    .map(|(i, (to, text))| {
-                                        format!(
-                                            "<msg handle=\"{:08X}\" subject=\"{}\" datetime=\"20261116T120000\" recipient_addressing=\"{}\" type=\"SMS_GSM\" read=\"yes\" sent=\"yes\"/>\n",
-                                            0x3000_0000 + i,
-                                            xml(&subject(text)),
-                                            xml(&to.join(";"))
-                                        )
-                                    })
-                                    .collect()
+                            let rows: String = if name.eq_ignore_ascii_case("sent") {
+                                if !s.sent_folder.is_empty() {
+                                    s.sent_folder
+                                        .iter()
+                                        .rev()
+                                        .take(most)
+                                        .map(|m| {
+                                            format!(
+                                                "<msg handle=\"{}\" subject=\"{}\" datetime=\"{}\" recipient_name=\"{}\" recipient_addressing=\"{}\" type=\"SMS_GSM\" size=\"{}\" read=\"yes\" sent=\"yes\"/>\n",
+                                                m.handle,
+                                                xml(&subject(&m.text)),
+                                                m.datetime,
+                                                xml(&m.to_name),
+                                                xml(&m.to),
+                                                m.text.len(),
+                                            )
+                                        })
+                                        .collect()
+                                } else if android {
+                                    s.sent
+                                        .iter()
+                                        .rev()
+                                        .take(most)
+                                        .enumerate()
+                                        .map(|(i, (to, text))| {
+                                            format!(
+                                                "<msg handle=\"{:08X}\" subject=\"{}\" datetime=\"20261116T120000\" recipient_addressing=\"{}\" type=\"SMS_GSM\" read=\"yes\" sent=\"yes\"/>\n",
+                                                0x3000_0000 + i,
+                                                xml(&subject(text)),
+                                                xml(&to.join(";"))
+                                            )
+                                        })
+                                        .collect()
+                                } else {
+                                    String::new()
+                                }
                             } else if name.eq_ignore_ascii_case("inbox") {
                                 s.inbox
                                     .iter()
@@ -198,24 +247,33 @@ impl Phone {
                             drop(s);
                             server.send(&Params::new(), body.as_bytes())?;
                         }
-                        Some("x-bt/message") => match s.inbox.iter().find(|m| m.handle == name) {
-                            Some(m) => {
+                        Some("x-bt/message") => {
+                            let body_opt = if let Some(m) = s.inbox.iter().find(|m| m.handle == name) {
                                 let who = if m.from.contains('@') { format!("EMAIL:{}", m.from) } else { format!("TEL:{}", m.from) };
                                 let msg = format!("BEGIN:MSG\r\n{}\r\nEND:MSG\r\n", m.text.replace('\n', "\r\n"));
-                                let body = format!(
+                                Some(format!(
                                     "BEGIN:BMSG\r\nVERSION:1.0\r\nSTATUS:{}\r\nTYPE:SMS_GSM\r\nFOLDER:TELECOM/MSG/INBOX\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN:{}\r\n{who}\r\nEND:VCARD\r\nBEGIN:BENV\r\nBEGIN:BBODY\r\nCHARSET:UTF-8\r\nLENGTH:{}\r\n{msg}END:BBODY\r\nEND:BENV\r\nEND:BMSG\r\n",
                                     if m.read { "READ" } else { "UNREAD" },
                                     m.from_name,
                                     msg.len()
-                                );
-                                drop(s);
-                                server.send(&Params::new(), body.as_bytes())?;
+                                ))
+                            } else if let Some(m) = s.sent_folder.iter().find(|m| m.handle == name) {
+                                let who = if m.to.contains('@') { format!("EMAIL:{}", m.to) } else { format!("TEL:{}", m.to) };
+                                let msg = format!("BEGIN:MSG\r\n{}\r\nEND:MSG\r\n", m.text.replace('\n', "\r\n"));
+                                Some(format!(
+                                    "BEGIN:BMSG\r\nVERSION:1.0\r\nSTATUS:READ\r\nTYPE:SMS_GSM\r\nFOLDER:TELECOM/MSG/SENT\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN:\r\nEND:VCARD\r\nBEGIN:BENV\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN:{}\r\n{who}\r\nEND:VCARD\r\nBEGIN:BBODY\r\nCHARSET:UTF-8\r\nLENGTH:{}\r\n{msg}END:BBODY\r\nEND:BENV\r\nEND:BMSG\r\n",
+                                    m.to_name,
+                                    msg.len()
+                                ))
+                            } else {
+                                None
+                            };
+                            drop(s);
+                            match body_opt {
+                                Some(body) => server.send(&Params::new(), body.as_bytes())?,
+                                None => server.refuse(code::NOT_FOUND)?,
                             }
-                            None => {
-                                drop(s);
-                                server.refuse(code::NOT_FOUND)?;
-                            }
-                        },
+                        }
                         _ => {
                             drop(s);
                             server.refuse(code::BAD_REQUEST)?;
@@ -242,7 +300,17 @@ impl Phone {
                         Some("x-bt/message") if name.eq_ignore_ascii_case("outbox") && path == ["telecom", "msg"] => match BMessage::parse(&body) {
                             Some(m) if !m.to.is_empty() && m.kind == "SMS_GSM" => {
                                 s.next += 1;
-                                answer = answer.text(id::NAME, &format!("{:08X}", 0x3000_0000u64 + s.next));
+                                let handle = format!("{:08X}", 0x3000_0000u64 + s.next);
+                                answer = answer.text(id::NAME, &handle);
+                                if s.android {
+                                    s.sent_folder.push(SentMessage {
+                                        handle,
+                                        to_name: m.to_names.first().cloned().unwrap_or_default(),
+                                        to: m.to.join(";"),
+                                        text: m.text.clone(),
+                                        datetime: "20261116T120000".into(),
+                                    });
+                                }
                                 s.sent.push((m.to, m.text));
                                 true
                             }

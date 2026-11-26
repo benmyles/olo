@@ -336,6 +336,24 @@ fn a_flaky_phone() {
     assert!(log.contains("told to let go of what it's stuck on"), "the log never said so");
     tell(&["set", "in-reach", "no"]);
 
+    // Connected, and BlueZ wedged with `org.bluez.Error.Failed: br-connection-busy`
+    // (Ben's iPhone, 2026-11-25: classic ACL/profile stuck while Device1.Connected
+    // remained true). Self-heals via Disconnect + settle + Connect automatically.
+    tell(&["set", "stuck-failed", "yes"]);
+    tell(&["hang-up"]);
+    wait_for("the state never left ready after hang-up", || published()["link"] != "ready");
+    ready_within(30, "a connected phone wedged on Failed: br-connection-busy never self-healed");
+    assert_eq!(count("unstuck"), 2);
+
+    // Persistent `br-connection-busy` requiring two Disconnect + Connect cycles
+    // with backoff before BlueZ clears: retries automatically instead of giving up
+    // after one attempt.
+    tell(&["set", "stuck-cycles", "2"]);
+    tell(&["hang-up"]);
+    wait_for("the state never left ready for two-cycle recovery", || published()["link"] != "ready");
+    ready_within(35, "a phone requiring two br-connection-busy recovery cycles never self-healed");
+    assert_eq!(count("unstuck"), 4);
+
     // A phone that doesn't tell of the messages that come: its inbox is
     // looked in on (every 2 s here), and the message found and told of.
     tell(&["set", "quiet", "yes"]);
@@ -609,5 +627,103 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     wait_for("the state never said no phone is paired", || published()["link"] == "not-paired" && published()["conversations"] == 0);
     drop(_service);
     drop(bluez);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Replies sent directly on the phone sync into Olo's conversations (both live
+/// via MAP Notification Server events in `TELECOM/MSG/SENT` and on connect/sync
+/// from the MAP `sent` folder), appear as outgoing & read without firing unread
+/// badges or OTP detection, fetch long bodies whole, and never duplicate replies
+/// sent from Olo itself.
+#[test]
+fn outgoing_replies_sent_from_the_phone() {
+    let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
+    let _one = BUS.lock().unwrap_or_else(|e| e.into_inner());
+    let phone = PathBuf::from(env!("CARGO_BIN_EXE_olo-phone"));
+    let standin = phone.with_file_name("phone-standin");
+    if !standin.exists() {
+        return;
+    }
+    let dir = Path::new("/var/tmp").join(format!("olo-phone-sent-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("run")).unwrap();
+    let (run, state, socket) = (dir.join("run"), dir.join("state"), dir.join("run/olo-phone.sock"));
+    let tell = |words: &[&str]| {
+        let out = Command::new(&standin).args(["--address", &address, "--tell"]).args(words).output().unwrap();
+        assert!(out.status.success(), "{words:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    let _bluez = Ended(Command::new(&standin).args(["--address", &address, "--android"]).spawn().unwrap());
+    wait_for("the android stand-in never took its name", || {
+        zbus::blocking::connection::Builder::address(address.as_str())
+            .and_then(|b| b.build())
+            .and_then(|c| zbus::blocking::fdo::DBusProxy::new(&c).and_then(|d| Ok(d.name_has_owner("org.bluez".try_into().unwrap())?)))
+            .unwrap_or(false)
+    });
+    let _service = Ended(
+        Command::new(env!("CARGO_BIN_EXE_olo-phoned"))
+            .env("DBUS_SESSION_BUS_ADDRESS", &address)
+            .env("OLO_PHONE_BLUEZ", &address)
+            .env("OLO_PHONE_DIR", &run)
+            .env("OLO_PHONE_SETTINGS", run.join("phone.json"))
+            .env("OLO_PHONE_PACE", "30")
+            .env("XDG_STATE_HOME", &state)
+            .env_remove("OLO_SCREEN")
+            .stderr(std::fs::File::create(dir.join("phoned.log")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let published = || std::fs::read_to_string(run.join("olo-phone.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or(Value::Null);
+    let olo_phone = |args: &[&str]| {
+        let out = Command::new(&phone).args(args).env("OLO_PHONE_DIR", &run).env_remove("OLO_SCREEN").stderr(Stdio::piped()).output().unwrap();
+        (out.status.success(), String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    };
+    let start = Instant::now();
+    while published()["link"] != "ready" || published()["contacts"] != true {
+        assert!(start.elapsed() < Duration::from_secs(25), "android stand-in never connected: {}", published());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // 1. Live reply typed on the phone (including text that resembles an OTP
+    //    code): delivered via MNS TELECOM/MSG/SENT, appears as outgoing & read,
+    //    never increments unread, never fires browser OTP offers.
+    let mine = browser(&socket, None, json!([{"tab": 11, "host": "login.acmebank.example", "title": "Sign in", "focused": true, "active": true, "front": true, "age": 10}]), 1500, false);
+    std::thread::sleep(Duration::from_millis(400));
+    tell(&["reply", "Mira Kovač", "+15550100142", "On my way! My confirmation code is 654321."]);
+    wait_for("live reply from phone never appeared in conversation", || olo_phone(&["--read", "Mira Kovač"]).1.contains("you: On my way! My confirmation code is 654321."));
+    assert_eq!(heard(mine), [] as [Value; 0], "outgoing reply must never trigger OTP extraction");
+    assert_eq!(published()["unread"].as_u64(), Some(0), "outgoing reply must stay read");
+    let (_, read_json) = olo_phone(&["--read", "Mira Kovač", "--json"]);
+    let read_val: Value = serde_json::from_str(&read_json).unwrap();
+    let last = read_val["messages"].as_array().unwrap().last().unwrap();
+    assert_eq!((last["outgoing"].as_bool(), last["read"].as_bool()), (Some(true), Some(true)));
+
+    // 2. Long reply sent on the phone while `quiet` (no MNS event): synced from
+    //    `sent` on reconnect and fetched whole (beyond Android's 24-char subject).
+    tell(&["set", "quiet", "yes"]);
+    let long_reply = "Yes, definitely coming on Saturday — I will bring extra jackets, coffee, and the board games we talked about last weekend.";
+    tell(&["reply", "Mira Kovač", "+15550100142", long_reply]);
+    tell(&["hang-up"]);
+    wait_for("long sent reply never synced whole on reconnect", || olo_phone(&["--read", "Mira Kovač"]).1.contains(long_reply));
+    assert_eq!(published()["unread"].as_u64(), Some(0));
+
+    // 3. Reply sent from Olo on Android (where Put outbox also adds to `sent`):
+    //    must appear ONCE even after a reconnect/re-sync of `sent`.
+    assert_eq!(olo_phone(&["--send", "Mira Kovač", "Sent from Olo desktop"]).0, true);
+    tell(&["hang-up"]);
+    let start = Instant::now();
+    while published()["link"] != "ready" {
+        assert!(start.elapsed() < Duration::from_secs(20), "never reconnected after hang-up");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Wait briefly for `sent` listing to settle.
+    std::thread::sleep(Duration::from_millis(400));
+    let (_, read_json) = olo_phone(&["--read", "Mira Kovač", "--json"]);
+    let read_val: Value = serde_json::from_str(&read_json).unwrap();
+    let matches = read_val["messages"].as_array().unwrap().iter().filter(|m| m["text"].as_str() == Some("Sent from Olo desktop")).count();
+    assert_eq!(matches, 1, "message sent from Olo must not be duplicated by sent sync: {read_json}");
+
+    drop(_service);
+    drop(_bluez);
     let _ = std::fs::remove_dir_all(&dir);
 }
