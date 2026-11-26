@@ -555,7 +555,7 @@ pub fn paint(g: &mut Painter, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
                 shapes.push(Shape::Rect(x, y, w, line_px.max(0.5), style.fg));
             }
             let c = cell.c;
-            if c == ' ' || c == '\0' {
+            if draws_nothing(c) {
                 continue;
             }
             used[col] = true;
@@ -725,7 +725,7 @@ pub fn paint(g: &mut Painter, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
             (true, _) => {
                 g.paint_quad(olo_kit::fill(r, cursor_color));
                 let c = cell.c;
-                if !spacer(cell) && c != ' ' && c != '\0' && !is_box(c) && preedit.is_none_or(str::is_empty) {
+                if !spacer(cell) && !draws_nothing(c) && !is_box(c) && preedit.is_none_or(str::is_empty) {
                     let st = style_of(cell, bg_default);
                     let text: String = std::iter::once(c).chain(cell.zerowidth().into_iter().flatten().copied()).collect();
                     let run = TextRun { len: text.len(), font: font_for(st), color: background, background_color: None, underline: None, strikethrough: None, size: None };
@@ -1515,9 +1515,46 @@ impl Mouse {
     }
 }
 
+/// A cell's character with nothing to draw: a space, a cell never
+/// written, and a tab (alacritty keeps the tab in the first cell it
+/// crossed, so that a copy has it: `Term::put_tab`), or any other control
+/// character. A tab was handed to the font as a letter: nothing in a
+/// font that has an empty glyph for it (Noto Sans Mono), a missing
+/// glyph's box after every `ls` column in one that has none.
+fn draws_nothing(c: char) -> bool {
+    c == ' ' || c.is_control()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tabs_cell_draws_nothing() {
+        assert!(draws_nothing('\t') && draws_nothing(' ') && draws_nothing('\0') && draws_nothing('\u{7f}'));
+        assert!(!draws_nothing('a') && !draws_nothing('─') && !draws_nothing('界'));
+    }
+
+    /// What asking it of every cell of a full screen costs (240 × 67,
+    /// a 4K window's worth), against asking only for a space or an empty
+    /// cell as before: `jato test --release -p olo-terminal
+    /// draws_nothing_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn draws_nothing_cost() {
+        let screen: Vec<char> = "~/src/olo $ ls -la\tDocuments  Pictures\t界 ─ ".chars().cycle().take(240 * 67).collect();
+        let time = |f: &dyn Fn(char) -> bool| {
+            let t = std::time::Instant::now();
+            let mut n = 0usize;
+            for _ in 0..1000 {
+                n += std::hint::black_box(&screen).iter().filter(|&&c| f(std::hint::black_box(c))).count();
+            }
+            (t.elapsed().as_secs_f64() * 1e6 / 1000.0, n)
+        };
+        let (before, _) = time(&|c| c == ' ' || c == '\0');
+        let (after, _) = time(&draws_nothing);
+        println!("a screen of {} cells: {before:.1} µs before, {after:.1} µs after", screen.len());
+    }
 
     fn k(name: &str, shift: bool, ctrl: bool, alt: bool) -> Key<'_> {
         Key { name, shift, ctrl, alt }

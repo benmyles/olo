@@ -124,6 +124,25 @@ fn row(out: &mut String, grid: &Grid<Cell>, line: i32, end: Option<usize>, last:
             out.push_str(&sgr(key.0, key.1, key.2));
             *last = Some(key);
         }
+        // A tab's first cell holds the tab itself (alacritty keeps it
+        // there, so that a copy has the tab and not spaces). Pushed as
+        // any character it moved the new screen's cursor on by as far as
+        // a tab goes, and the rest of its row was rebuilt that much
+        // further right (`ls`'s columns, after every reload). Written as
+        // a tab, so the new cell holds one too, then straight back to
+        // the cell after it. A tab takes no colours with it: where its
+        // cell has some, a space that does.
+        if cell.c == '\t' {
+            if key.1 == Color::Named(NamedColor::Background) && key.2.is_empty() {
+                out.push('\t');
+                if c + 1 < grid.columns() {
+                    out.push_str(&format!("\x1b[{}G", c + 2));
+                }
+            } else {
+                out.push(' ');
+            }
+            continue;
+        }
         out.push(if cell.c == '\0' { ' ' } else { cell.c });
         if let Some(z) = cell.zerowidth() {
             out.extend(z);
@@ -344,6 +363,25 @@ mod tests {
         }
         let replay = String::from_utf8(snapshot(&mut a, None, &Store::default(), false)).unwrap();
         assert!(replay.contains("\x1b[0;31mred"));
+    }
+
+    #[test]
+    fn rebuilds_a_row_with_tabs_where_it_was() {
+        let mut a = term(40, 6);
+        // (`ls`'s columns; a tab over what was there; one at the row's
+        // end; one in a coloured stretch.)
+        feed(&mut a, b"Reports\tWelcome.md\tnotes\r\nh llo world\ra\tb\r\nend\t\r\n\x1b[44m\x1b[Kin blue\r\x1b[9C\t!\x1b[0m\r\n$ ");
+        let replay = snapshot(&mut a, None, &Store::default(), false);
+        let mut b = term(40, 6);
+        feed(&mut b, &replay);
+        let (was, is) = (text(a.grid()), text(b.grid()));
+        // Every character where it was (a tab's own cell apart, in blue).
+        assert_eq!(was[0], "Reports\tWelcome.md\t     notes");
+        assert_eq!(is[..3], was[..3]);
+        assert_eq!(was[3].replace('\t', " "), is[3]);
+        assert_eq!(a.grid().cursor.point, b.grid().cursor.point);
+        let blue = |t: &Term<VoidListener>| (0..40).filter(|&c| t.grid()[Line(3)][Column(c)].bg != Color::Named(NamedColor::Background)).count();
+        assert_eq!((blue(&a), blue(&b)), (40, 40));
     }
 
     #[test]

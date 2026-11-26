@@ -19133,7 +19133,15 @@ is on the alternate one, the modes it set (cursor keys, mouse reporting,
 bracketed paste, kitty keyboard flags…), cursor shape and title. Images
 (kitty, sixel, iTerm2) come back as kitty graphics: each image sent once
 under the program's id, then put row by row in its cells; olo-termd
-keeps them zlib-compressed (`Store::pack`). The PTY comes along (SCM_RIGHTS) so Terminal can see the
+keeps them zlib-compressed (`Store::pack`). A tab's first cell holds
+the tab itself (alacritty keeps it there, so that a copy has a tab, not
+spaces): the replay writes it as a tab and goes straight back to the
+cell after it (pushed as a character it moved the new cursor on by a
+tab's width, and the rest of the row was rebuilt that far right: `ls`'s
+columns after every reload, until 2026-11-26), and the view draws
+nothing for it (`draws_nothing`: handed to the font it was a missing
+glyph's box in any font with no glyph for a tab; 4.5 to 5.2 µs for a
+screen of 16,080 cells, asked only of rows that changed). The PTY comes along (SCM_RIGHTS) so Terminal can see the
 foreground program and its working directory. olo-termd answers the
 program's questions (device attributes) only while no Terminal is
 attached.
