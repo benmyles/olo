@@ -198,8 +198,24 @@ pub struct Memory {
 
 impl Memory {
     /// As /proc/meminfo has it now.
+    #[cfg(not(test))]
     pub fn now() -> Option<Memory> {
         Memory::parse(&fs::read_to_string("/proc/meminfo").ok()?)
+    }
+
+    /// In this crate's own tests: a computer made up, with memory to
+    /// spare (64 GB, 48 of them available), not the one the tests run
+    /// on. A keeper decides by this, and a test that says what it
+    /// decided ("the ceiling is closed") passed or failed with how busy
+    /// the machine was: with 57 GB available of 251, under twice a 12%
+    /// reserve, the ceiling is rightly open, and
+    /// `keeps_while_something_is_in_the_group_and_only_one_does` failed
+    /// on the dev server under other people's builds (2026-11-26). What
+    /// /proc/meminfo says is `parse`'s to read, which has its own test.
+    #[cfg(test)]
+    pub fn now() -> Option<Memory> {
+        const GB: u64 = 1 << 30;
+        Some(Memory { total: 64 * GB, free: 8 * GB, available: 48 * GB, unused_cache: 24 * GB, mapped: 2 * GB })
     }
 
     fn parse(meminfo: &str) -> Option<Memory> {
@@ -2010,7 +2026,9 @@ mod tests {
         let n = 5000;
         let t = Instant::now();
         for _ in 0..n {
-            let (memory, held) = (Memory::now().unwrap(), Held::of(dir.path()).unwrap());
+            // (The real file read and parsed, as a look does it outside a
+            // test: what is measured here is that reading too.)
+            let (memory, held) = (Memory::parse(&fs::read_to_string("/proc/meminfo").unwrap()).unwrap(), Held::of(dir.path()).unwrap());
             let want = allowance(&memory, &held, 12.0, credit.after(waited(dir.path()), Instant::now()), lately.after(in_swap(dir.path()), Instant::now()));
             std::hint::black_box(allowed(dir.path()) != Some(Some(want)));
         }

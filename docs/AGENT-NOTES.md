@@ -781,6 +781,27 @@ such a thing:
   only if it is free.) What says "it's over" lets go of what the
   listener will want first.
 
+### A test that decides by the machine it runs on
+
+(2026-11-26.) The background keeper's
+`keeps_while_something_is_in_the_group_and_only_one_does` passed all
+day and failed in one run of the whole workspace: `left: "max", right:
+"0"`. Not a race: the keeper under test read the real `/proc/meminfo`,
+and whether it closes the swap ceiling depends on what is available
+against twice its reserve. The dev server is shared; with other
+people's builds it had 55 GB available of 251, under 2 × 12%, and the
+keeper rightly left the ceiling open. Run again at that moment it
+failed every time; an hour before, never. In its crate's tests the
+keeper now reads a computer made up for it (`Memory::now` under
+`cfg(test)`), and the file's reading has its own test (`parse`). When
+a test fails once on a shared machine, look at what of the machine it
+reads (memory, load, the clock, free ports, the home folder) before
+calling it a race; `grep MemAvailable /proc/meminfo` and `uptime` at
+the moment say more than a second run. (And: `/tmp` here is memory;
+the sessions' folders under `/tmp/claude-UID` are other agents' as
+well as yours, 15 GB of it that afternoon, none of it this session's:
+theirs to clear, said to their lead.)
+
 ### A helper for hosts, tried by hand
 
 (2026-11-26.) The helpers a build of Rex carries
