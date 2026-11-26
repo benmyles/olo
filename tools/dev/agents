@@ -146,13 +146,23 @@ WORKING = {"agy": "esc to cancel", "claude": "esc to interrupt", "codex": "esc t
 # braille), how long it has thought, a tip, the last line.
 VOLATILE = re.compile(r"Working \(|Context \d+% left|^\s*[\u2800-\u28ff]|Thought for |^\s*└ Tip:|esc to cancel|\? for shortcuts|shift\+tab to cycle|esc to interrupt|\(\d+m? ?\d*s · |ctrl\+g to edit")
 # agy's spinner: a braille figure at the start of the line it is on.
-SPINNER = re.compile(r"^\s*[\u2800-\u28ff]\s")
+# Claude Code's: a mark, a word and "… (" with how long ("✻ Drizzling…
+# (10m 54s · ↓ 63.0k tokens · esc to interrupt)").
+SPINNER = re.compile(r"^\s*(?:[\u2800-\u28ff]\s|[^\w\s]\s+\w[\w-]*…\s*\()")
 # Its banner (drawn with these blocks) names the account the program is
 # signed in to, or its plan: the person's, and no business of a
 # transcript's.
 BANNER = re.compile(r"[▀▄▐▛▜▝]")
 # A rule drawn across the screen: above a question, around the field.
 RULE = "─"
+
+
+# What the program says of the person's account at the side of its
+# screen, not of its work: Claude Code's "Now using usage credits" (past
+# a plan's limit) stood as a look's line a minute for the whole of a
+# fifteen-minute review, with nothing to show it was working (a
+# minder's report, 2026-11-26).
+NOTICE = re.compile(r"Now using usage credits|limit resets|Approaching (?:usage|weekly) limit", re.I)
 
 
 def is_rule(line):
@@ -1256,7 +1266,7 @@ def latest(name):
     minder found, 2026-11-24)."""
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
     rules = [i for i, l in enumerate(lines) if is_rule(l)]
-    said = [l for l in (lines[:rules[-2]] if len(rules) >= 2 else lines) if not re.match(r"\s*└ Tip:", l)]
+    said = [l for l in (lines[:rules[-2]] if len(rules) >= 2 else lines) if not re.match(r"\s*└ Tip:", l) and not NOTICE.search(l)]
     turning = [l for l in said if SPINNER.match(l)]
     if turning:
         return turning[-1].strip()[:160]

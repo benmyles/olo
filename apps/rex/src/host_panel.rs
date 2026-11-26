@@ -7,7 +7,10 @@
 //! there by hand). Then one section for each thing, as the Server
 //! window has one for each service, in the order one rests on another:
 //! the host's Rex server (which has a window of its own for the rest:
-//! Manage…), Olo's bridge, the skill for agents, Olo's typing helper.
+//! Manage…), Olo's bridge, the skill for agents, Olo's typing helper;
+//! and, in a tab of its own, Agent Screens of the host's own (Olo
+//! itself put there, and where an agent's screen opens when it doesn't
+//! say: `host_screens`).
 //! A section is its heading and rule; a line that says how the thing
 //! stands (a light, a word or two, and what more there is to say of it
 //! dimmer) with what can be done to it at the line's end; and under
@@ -29,7 +32,7 @@ use std::rc::Rc;
 
 use olo_kit::{
     Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, icons, metrics as m, px, style,
-    widgets::{Button, StringView, TabView, button_width, separator},
+    widgets::{Button, RadioButton, StringView, TabView, button_width, separator},
 };
 
 use crate::host::Shown;
@@ -100,8 +103,11 @@ pub enum HostDo {
     AskAll(bool),
     /// Its question answered yes: these taken off.
     RemoveAll(Vec<HostThing>),
-    /// A tab chosen: Rex, Olo Integration, Files.
+    /// A tab chosen: Rex, Olo Integration, Files, Screens.
     Tab(usize),
+    /// Where an agent's screen opens there when it doesn't say: on the
+    /// host itself (`true`), or on this computer.
+    ScreensDefault(bool),
     /// A kept folder (by its path there) let go of: `true` asks to confirm
     /// first (`Forget…`), `false` forgets immediately (gone folders).
     StopKept(String, bool),
@@ -142,6 +148,11 @@ pub struct Stands {
     /// What its button does, if it can be pressed now: install, update,
     /// or remove, and whether that is a second try (`Try Again`).
     pub can: Option<(HostOp, bool)>,
+    /// What it is stays said under `why`, red light or not (a host's
+    /// own screens: one structure in every state, what is wrong in one
+    /// place over a description that never goes; a reviewer's, of a
+    /// section that jumped as its lines were swapped in and out).
+    pub keeps_note: bool,
 }
 
 /// How a kept folder stands, on its line: in step (and how long ago it
@@ -198,7 +209,7 @@ pub fn kept_mode_parts(k: &crate::hub::Kept, host_name: &str) -> (String, Vec<St
 }
 
 fn stands(light: Light, said: &'static str) -> Stands {
-    Stands { light, said: olo_kit::words::tr(said).into(), more: None, host_said: None, why: None, which: None, busy: false, there: false, behind: false, can: None }
+    Stands { light, said: olo_kit::words::tr(said).into(), more: None, host_said: None, why: None, which: None, busy: false, there: false, behind: false, can: None, keeps_note: false }
 }
 
 /// How `thing` stands on `host`, `reached` whether anything can be
@@ -260,6 +271,13 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
         .filter(|_| connected && host.granted.contains(&"SSH keys"));
         return Stands { more: Some(granted), why: none, which, ..stands(light, "On") };
     }
+    // (Olo being put on a host for its screens says how far it is, and
+    // is said by the hub, which does it: a window closed and opened
+    // again meanwhile shows it still.)
+    if thing == HostThing::Screens && host.screens_doing.is_some() && shown.doing(thing) != Some(HostOp::Remove) {
+        let word = if shown.doing(thing) == Some(HostOp::Update) || host.screens.as_ref().is_some_and(|s| s.installed.is_some()) { "Being updated…" } else { "Being installed…" };
+        return Stands { busy: true, more: host.screens_doing.clone(), ..stands(Light::Waiting, word) };
+    }
     if let Some(op) = shown.doing(thing) {
         let word = match op {
             HostOp::Install => "Being installed…",
@@ -277,7 +295,14 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
             HostOp::Update => "Couldn’t update",
             HostOp::Remove => "Couldn’t remove",
         };
-        let there = matches!(op, HostOp::Update | HostOp::Remove) && thing != HostThing::Pool;
+        let there = matches!(op, HostOp::Update | HostOp::Remove) && thing != HostThing::Pool && thing != HostThing::Screens;
+        // (What the host's helper says of Olo there is a sentence of
+        // Olo's own, set as one: not a command's last words in a well.)
+        if thing == HostThing::Screens {
+            let said = said.trim();
+            let sentence = if said.ends_with(['.', '!', '?', '…']) { said.to_owned() } else { format!("{said}.") };
+            return Stands { why: Some(sentence), can: Some((op, true)), keeps_note: true, ..stands(Light::Down, word) };
+        }
         return Stands { host_said: Some(said.to_owned()), there, behind: op == HostOp::Update, can: Some((op, true)), ..stands(Light::Down, word) };
     }
     let installed = |s: Stands| Stands { there: true, can: Some((HostOp::Remove, false)), ..s };
@@ -292,6 +317,10 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
                 Stands { host_said: host.helper_sync_err.clone(), behind: true, ..installed(more(stands(Light::Down, "Update failed"), "older build in use")) }
             }
             HostHelper::Used if host.helper_current == Some(false) => Stands { behind: true, ..installed(more(stands(Light::Waiting, "Update available"), "older build in use")) },
+            // (A host's own screens are run by it: said where it would be taken off.)
+            HostHelper::Used if host.screens.as_ref().is_some_and(|s| s.installed.is_some()) => {
+                Stands { which: Some(olo_kit::words::tr("Agent Screens on this host run through it.").into()), ..installed(more(stands(Light::On, "Up to date"), "in use")) }
+            }
             HostHelper::Used => installed(more(stands(Light::On, "Up to date"), "in use")),
             HostHelper::Ready if host.helper_current == Some(false) && host.helper_sync_err.is_some() => {
                 Stands { host_said: host.helper_sync_err.clone(), behind: true, ..installed(more(stands(Light::Down, "Update failed"), "older build on host")) }
@@ -341,6 +370,41 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
             (Some(false), _) => absent(stands(Light::Off, "Not installed")),
             (None, _) => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
         },
+        // (As the host's helper says: `host_screens`. Never "there" for
+        // Remove All…, which takes off what is put back in a moment:
+        // this is two gigabytes, and may have screens running on it.
+        // Nor "behind" for Update All: it is fetched when chosen.)
+        HostThing::Screens => {
+            let on_its_own = |s: Stands| Stands { there: false, behind: false, keeps_note: true, ..s };
+            match &host.screens {
+                None => Stands { busy: true, ..stands(Light::Waiting, "Asking…") },
+                // (A helper from before it had screens, or none: Install
+                // puts this Olo's there first, and says so.)
+                Some(s) if !s.helper && crate::link::carried() && host.helper_setting => Stands {
+                    which: Some(olo_kit::words::tr("Install puts the typing helper there first (the Rex tab’s).").into()),
+                    ..absent(more(stands(Light::Off, "Not installed"), "needs the typing helper first"))
+                },
+                Some(s) if !s.helper => more(stands(Light::Off, "Not installed"), "needs the typing helper first"),
+                Some(s) => match (s.summary(), s.lacking()) {
+                    (None, _) => absent(stands(Light::Off, "Not installed")),
+                    (what, Some(why)) => on_its_own(Stands { more: what, why: Some(why), ..installed(stands(Light::Down, "Can’t run")) }),
+                    // (What is there and what updating brings; its line
+                    // has two buttons then, and room for no more. With
+                    // screens running an update waits: said before it is
+                    // pressed, not after it is refused.)
+                    (_, None) if host.this_olo.as_ref().zip(s.committed).is_some_and(|((mine, _), theirs)| theirs < *mine) => {
+                        let waits = s.running_said().map(|running| format!("{running} {}", olo_kit::words::tr("Update once they are stopped.")));
+                        on_its_own(Stands {
+                            more: host.this_olo.as_ref().and_then(|(_, mine)| s.update_said(mine)),
+                            which: waits,
+                            can: Some((HostOp::Update, false)),
+                            ..installed(stands(Light::Waiting, "Update available"))
+                        })
+                    }
+                    (what, None) => on_its_own(Stands { more: what, which: s.running_said(), ..installed(stands(Light::On, "Installed")) }),
+                },
+            }
+        }
     }
 }
 
@@ -449,7 +513,7 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                 // the row failed (e.g. Token Pool gateway error); on a Bridge SSH-keys
                 // warning it sits cleanly above the description.
                 text_col = text_col.child(StringView::new(why.clone()).size(style::SMALL_SIZE).wrap(true));
-                if s.light != Light::Down && !note.is_empty() {
+                if (s.light != Light::Down || s.keeps_note) && !note.is_empty() {
                     text_col = text_col.child(div().h(px(4.0)).flex_shrink_0()).child(small(note));
                 }
             } else {
@@ -713,6 +777,14 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     // (A sentence with a link in it, where its language puts it: the
     // words before and after the template's "{}".)
     let space = f32::from(style::text_width(" ", style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
+    // (What is typed, in the fixed-width face within a sentence: on the
+    // sentence's own line and baseline (a line of its own height beside
+    // it stood a pixel off at 1.5× and 1.75×: the layout review's), and
+    // a point of room after it: its last letter fills its cell, and
+    // "host or" stood 2 pixels apart at 1× where the words either side
+    // stood 4 (a reviewer's, measured).)
+    let typed =
+        |text: &str| div().mr(px(1.0)).child(StringView::new(text.to_owned()).mono(true).size(MONO_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)).beside(style::SMALL_SIZE)).into_element();
     let with_link = |template: &str, link: olo_kit::widgets::LinkButton| {
         let (before, after) = template.split_once("{}").unwrap_or((template, ""));
         let words = |w: &str| StringView::new(w.trim().to_owned()).size(style::SMALL_SIZE).dim(true).height(m::LABEL_ROW);
@@ -748,9 +820,9 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             .items_center()
             .gap(px(space))
             .child(StringView::new(olo_kit::words::tr("Add").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
-            .child(StringView::new("--two-way".to_owned()).mono(true).size(MONO_SIZE).dim(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE))
+            .child(typed("--two-way"))
             .child(StringView::new(olo_kit::words::tr("to sync edits both ways, or").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)))
-            .child(StringView::new("--to-host".to_owned()).mono(true).size(MONO_SIZE).dim(true).height(style::line_row(MONO_SIZE)).beside(style::SMALL_SIZE))
+            .child(typed("--to-host"))
             .child(StringView::new(olo_kit::words::tr("to push from here.").to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE)));
         files = files
             .child(small(olo_kit::tr!("No folders on {} are kept in step here. An agent there keeps one with:", host.name).into()))
@@ -884,11 +956,124 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         )
         .into_element();
 
+    // Agent Screens of the host's own, in a tab of their own: Olo put
+    // there (its line as every thing's is, with Remove beside Update
+    // where it is behind this Olo), and under it where an agent's
+    // screen opens when the agent doesn't say.
+    let scr_s = thing_stands(host, shown, HostThing::Screens);
+    let mut screens_dot: Option<Light> = None;
+    if !scr_s.busy && scr_s.light == Light::Down {
+        bump_dot(&mut screens_dot, scr_s.light);
+    }
+    let olo_there = host.screens.as_ref().is_some_and(|s| s.installed.is_some());
+    let mut scr_actions = Vec::new();
+    match scr_s.can {
+        Some((op, true)) => scr_actions.push(button("Try Again", "host-screens-again", HostDo::Change(HostThing::Screens, op), reached)),
+        Some((HostOp::Install, false)) => scr_actions.push(button("Install", "host-screens-install", HostDo::Change(HostThing::Screens, HostOp::Install), reached)),
+        Some((HostOp::Update, false)) => {
+            scr_actions.push(button("Update", "host-screens-update", HostDo::Change(HostThing::Screens, HostOp::Update), reached));
+            scr_actions.push(button("Remove", "host-screens-remove", HostDo::Change(HostThing::Screens, HostOp::Remove), reached));
+        }
+        Some((HostOp::Remove, false)) => scr_actions.push(button("Remove", "host-screens-remove", HostDo::Change(HostThing::Screens, HostOp::Remove), reached)),
+        // (Not known yet what is there, or being put there: no button
+        // that guesses it or repeats the one just pressed. Both
+        // reviewers, of a greyed Install beside "Asking…" that became
+        // Remove as the host answered, and beside "Being installed…"
+        // where it read as stuck.)
+        None if host.screens.is_none() || scr_s.busy => {}
+        None => scr_actions.push(button(if olo_there { "Remove" } else { "Install" }, "host-screens-wait", HostDo::Check, false)),
+    }
+    // (What it does, then how it is updated, a line each, as the Rex
+    // server's row says of itself; both sizes said where the choice is
+    // made, each by its name: "about 600 MB" alone, beside "2.3 GB"
+    // once it was there, was two figures that disagreed. And the host's
+    // copy isn't called a desktop, which `--on desktop` below means
+    // this computer by. The same under every state. A reviewer's.)
+    let screens_block = block(
+        "Agent Screens on this host",
+        &scr_s,
+        scr_actions,
+        olo_kit::words::tr("Puts Olo and Chrome on this host so agents’ screens can run on it.").into(),
+        olo_kit::words::tr("Updates when you choose: a 600 MB download, 2.2 GB on the host.").into(),
+        Some("~/.local/share/olo/desktop"),
+    );
+    // Where screens open by default: one of two, as chosen there (shown
+    // as chosen at the click, until the host has answered). The host's
+    // own can't be chosen where a screen couldn't run there, and its
+    // note says why not (a greyed choice with its usual words was a
+    // puzzle; one chosen already stays as it is, to be seen).
+    let on_host = shown.screens_default.unwrap_or_else(|| host.screens.as_ref().is_some_and(|s| s.on_host));
+    let helper_there = host.screens.as_ref().is_some_and(|s| s.helper);
+    let can_choose = reached && shown.screens_default.is_none() && helper_there;
+    let could_run = olo_there && host.screens.as_ref().is_some_and(|s| s.lacking().is_none());
+    let host_note = match &host.screens {
+        Some(s) if !s.helper => "Needs the typing helper first.",
+        Some(s) if s.installed.is_none() => "Install Agent Screens above to choose this.",
+        Some(s) if s.lacking().is_some() => "Agent Screens can’t run on this host.",
+        _ => "Keeps working with this computer off. You can’t watch it from here.",
+    };
+    // (On this computer is the bridge's to allow: said where it isn't.)
+    let desktop_note = if connected && !host.granted.contains(&"Agent Screens") {
+        "Off in this host’s permissions (the Olo Integration tab)."
+    } else {
+        "You can watch it and take over. Needs this computer on and connected."
+    };
+    let (to_desktop, to_host) = (on_do.clone(), on_do.clone());
+    // (Under the choices, at their words' edge: at the section's own it
+    // read as a third choice that had lost its button. In the choices'
+    // order, each flag with what it means: a reviewer's.)
+    let option_inset = RadioButton::LABEL_INSET;
+    let said = |words: &'static str| StringView::new(olo_kit::words::tr(words).to_string()).size(style::SMALL_SIZE).dim(true).height(style::line_row(style::SMALL_SIZE));
+    let where_block = div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .child(section("Where screens open by default"))
+        // (As far under its rule as the status line is under its own.)
+        .child(div().h(px(m::TIGHT + 2.0)).flex_shrink_0())
+        .child(
+            div().w_full().pr(px(short)).child(
+                RadioButton::new("On this computer", !on_host)
+                    .id("host-screens-desktop")
+                    .enabled(can_choose)
+                    .on_select(move |_, cx| to_desktop(&HostDo::ScreensDefault(false), cx))
+                    .note(olo_kit::words::tr(desktop_note)),
+            ),
+        )
+        .child(div().h(px(m::TIGHT)).flex_shrink_0())
+        .child(
+            div().w_full().pr(px(short)).child(
+                RadioButton::new("On the host itself", on_host)
+                    .id("host-screens-host")
+                    .enabled(can_choose && (could_run || on_host))
+                    .on_select(move |_, cx| to_host(&HostDo::ScreensDefault(true), cx))
+                    .note(olo_kit::words::tr(host_note)),
+            ),
+        )
+        .child(div().h(px(m::SPACING + 2.0)).flex_shrink_0())
+        .child(
+            div()
+                .w_full()
+                .pl(px(option_inset))
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(px(space))
+                .child(said("An agent can say otherwise:"))
+                .child(typed("olo screen --on desktop"))
+                .child(said("(this computer) or"))
+                .child(typed("--on host"))
+                .child(div().ml(px(-space - 1.0)).child(said("."))),
+        )
+        .into_element();
+    let screens = vec![screens_block, where_block];
+
     // (Every tab's page laid out, the panel as tall as the taller of Rex's
     // and Olo's, so the window keeps its height and its foot its place
     // from tab to tab: both looks. The folders' list fills that room and
     // scrolls in it.)
-    let tab = shown.tab.min(2);
+    let tab = shown.tab.min(3);
     let on_tab = on_do.clone();
     let mut files_dot: Option<Light> = None;
     for k in &host.kept {
@@ -897,14 +1082,14 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
             bump_dot(&mut files_dot, ks.light);
         }
     }
-    let names: Vec<SharedString> = ["Rex", "Olo Integration", "Files"].into_iter().map(SharedString::from).collect();
+    let names: Vec<SharedString> = ["Rex", "Olo Integration", "Files", "Screens"].into_iter().map(SharedString::from).collect();
     let page_of = |things: Vec<Element>| div().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(things).into_element();
     page.push(
         TabView::new("host-tabs", names, tab)
-            .lights([rex_dot, olo_dot, files_dot])
+            .lights([rex_dot, olo_dot, files_dot, screens_dot])
             .grows()
             .on_select(move |i: &usize, cx| on_tab(&HostDo::Tab(*i), cx))
-            .pages([page_of(rex), page_of(olo), files])
+            .pages([page_of(rex), page_of(olo), files, page_of(screens)])
             .fill_page(2)
             .into_element(),
     );
@@ -966,6 +1151,9 @@ mod tests {
             commands: Some(false),
             commands_current: None,
             commands_sync_err: None,
+            screens: None,
+            screens_doing: None,
+            this_olo: None,
             pool: None,
             version: Some("0.19.2".into()),
             server_newer: None,
@@ -980,6 +1168,86 @@ mod tests {
 
     fn said(s: &Stands) -> (Light, &str, Option<&str>) {
         (s.light, s.said.as_str(), s.more.as_deref())
+    }
+
+    /// Agent Screens of a host's own, on their line: asked, a helper
+    /// that hasn't them, not there, there (with what, and which screens
+    /// run), behind this Olo (the version alone, with Update beside
+    /// Remove), lacking something (why, as a sentence), being put there
+    /// (how far), and what couldn't be done as Olo's own sentence. Never
+    /// among what Remove All… takes off or Update All updates.
+    #[test]
+    fn a_hosts_own_screens_say_how_they_stand() {
+        use crate::host_screens::ScreensThere;
+        let (mut h, mut shown) = (host(), Shown { key: "k".into(), name: "far".into(), ..Shown::default() });
+        let of = |h: &HostStands, shown: &Shown| thing_stands(h, shown, HostThing::Screens);
+        assert_eq!((said(&of(&h, &shown)), of(&h, &shown).busy), ((Light::Waiting, "Asking…", None), true));
+        h.screens = Some(ScreensThere::default());
+        let s = of(&h, &shown);
+        // (A helper from before it had screens. This Olo carries one to put
+        // there or not, by how it was built: with one, Install does both.)
+        assert_eq!(said(&s), (Light::Off, "Not installed", Some("needs the typing helper first")));
+        assert_eq!(s.can.is_some(), crate::link::carried() && h.helper_setting, "{:?}", s.which);
+        h.screens = Some(ScreensThere { helper: true, software: true, ..Default::default() });
+        let s = of(&h, &shown);
+        assert_eq!((said(&s), s.can, s.there), ((Light::Off, "Not installed", None), Some((HostOp::Install, false)), false));
+
+        let all = ScreensThere {
+            helper: true,
+            software: true,
+            installed: Some("2026.11.26-c2a7db3c".into()),
+            committed: Some(200),
+            chrome: Some("158.0.8127.88".into()),
+            bytes: 2_394_000_000,
+            ..Default::default()
+        };
+        h.screens = Some(all.clone());
+        let s = of(&h, &shown);
+        assert_eq!((said(&s), s.can), ((Light::On, "Installed", Some("Olo 2026.11.26, Chrome 158, 2.2 GB")), Some((HostOp::Remove, false))));
+        assert_eq!((s.there, s.behind, s.which.clone()), (false, false, None), "not Remove All's, nor Update All's");
+        h.screens = Some(ScreensThere { running: vec!["review".into()], ..all.clone() });
+        assert_eq!(of(&h, &shown).which.as_deref(), Some("1 screen running: review."));
+        // This Olo's release is the later: an update, the version alone on the line.
+        // (What is there and what updating brings; and with a screen
+        // running, that the update waits for it, before it is pressed.)
+        h.this_olo = Some((300, "2026.11.27-0a1b2c3d".into()));
+        let s = of(&h, &shown);
+        assert_eq!((said(&s), s.can, s.behind), ((Light::Waiting, "Update available", Some("2026.11.26 → 2026.11.27")), Some((HostOp::Update, false)), false));
+        assert_eq!(s.which.as_deref(), Some("1 screen running: review. Update once they are stopped."));
+        // (The same release, or a host's later one: none.)
+        h.this_olo = Some((200, "2026.11.26-c2a7db3c".into()));
+        assert_eq!(said(&of(&h, &shown)).1, "Installed");
+        h.this_olo = Some((100, "2026.11.25-00000000".into()));
+        assert_eq!(said(&of(&h, &shown)).1, "Installed");
+
+        h.screens = Some(ScreensThere { missing: vec!["libEGL_mesa.so.0".into()], software: false, ..all.clone() });
+        let s = of(&h, &shown);
+        assert_eq!((s.light, s.said.as_str(), s.can, s.keeps_note), (Light::Down, "Can’t run", Some((HostOp::Remove, false)), true));
+        assert!(s.why.as_deref().is_some_and(|why| why.contains("libEGL_mesa.so.0") && why.contains("Check Again")), "{:?}", s.why);
+
+        // Being put there: the hub's own word of how far, whatever the window was doing.
+        h.screens = Some(ScreensThere { helper: true, software: true, ..Default::default() });
+        h.screens_doing = Some("Downloading Olo, 42%".into());
+        let s = of(&h, &shown);
+        assert_eq!((said(&s), s.busy, s.can), ((Light::Waiting, "Being installed…", Some("Downloading Olo, 42%")), true, None));
+        h.screens = Some(all.clone());
+        assert_eq!(said(&of(&h, &shown)).1, "Being updated…");
+        h.screens_doing = None;
+        // What couldn't be done: Olo's own sentence under the line, and Try Again.
+        // (A sentence: with its full stop, where what was said had none.)
+        shown.failed.push((HostThing::Screens, HostOp::Update, "GitHub couldn’t be reached: timed out".into()));
+        let s = of(&h, &shown);
+        assert_eq!(
+            (s.light, s.said.as_str(), s.why.as_deref(), s.host_said.clone(), s.can),
+            (Light::Down, "Couldn’t update", Some("GitHub couldn’t be reached: timed out."), None, Some((HostOp::Update, true)))
+        );
+        shown.failed = vec![(HostThing::Screens, HostOp::Remove, "Still running: review. Stop it, then try again.".into())];
+        let s = of(&h, &shown);
+        assert_eq!((s.why.as_deref(), s.keeps_note), (Some("Still running: review. Stop it, then try again."), true));
+        // The typing helper's own line says what runs through it, where Olo is there for screens.
+        h.helper = HostHelper::Used;
+        h.helper_current = Some(true);
+        assert_eq!(thing_stands(&h, &Shown::default(), HostThing::Helper).which.as_deref(), Some("Agent Screens on this host run through it."));
     }
 
     /// Each line says how its thing stands, in one set of words, in

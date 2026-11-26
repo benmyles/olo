@@ -36,8 +36,11 @@ pub struct Shown {
     pub checking: bool,
     /// Remove All… was pressed, and waits to be told yes or no.
     pub asking_all: bool,
-    /// The tab shown: Rex, Olo Integration, Files.
+    /// The tab shown: Rex, Olo Integration, Files, Screens.
     pub tab: usize,
+    /// Where an agent's screen opens there is being changed (to the
+    /// host's own, `true`): shown as chosen until the host has answered.
+    pub screens_default: Option<bool>,
 }
 
 impl Shown {
@@ -70,7 +73,24 @@ pub fn open(key: &str, name: &str) {
     let mut live = live();
     match live.as_mut().filter(|shown| shown.key == key) {
         Some(shown) => shown.name = name.to_owned(),
-        None => *live = Some(Shown { key: key.to_owned(), name: name.to_owned(), ..Shown::default() }),
+        None => {
+            let mut shown = Shown { key: key.to_owned(), name: name.to_owned(), ..Shown::default() };
+            // (Rex's demo, for the window's pictures and its lint: what
+            // couldn't be done of a host's own screens, as each is said.
+            // `OLO_REX_DEMO_SCREENS=failed`, `refused`.)
+            if crate::server::demo_mode() {
+                match std::env::var("OLO_REX_DEMO_SCREENS").ok().as_deref() {
+                    Some("failed") => shown.failed.push((HostThing::Screens, HostOp::Install, crate::host_screens::why_not_installed("GitHub couldn't be reached: the connection timed out"))),
+                    Some("refused") => shown.failed.push((
+                        HostThing::Screens,
+                        HostOp::Remove,
+                        crate::host_screens::why_not_removed("olo screen: screens still run here (review, agent-2): `olo screen --on host stop NAME` first"),
+                    )),
+                    _ => {}
+                }
+            }
+            *live = Some(shown);
+        }
     }
 }
 
@@ -123,15 +143,39 @@ pub fn check(hub: &Arc<RexHub>) {
     });
 }
 
+/// Where an agent's screen opens on the window's host when the agent
+/// doesn't say: the host's own (`true`), or this computer's.
+pub fn screens_default(hub: &Arc<RexHub>, on_host: bool) {
+    let key = {
+        let mut live = live();
+        let Some(shown) = live.as_mut().filter(|shown| shown.screens_default.is_none()) else { return };
+        shown.screens_default = Some(on_host);
+        shown.failed.retain(|(t, ..)| *t != HostThing::Screens);
+        shown.key.clone()
+    };
+    crate::ui::host_changed();
+    let of = key.clone();
+    hub.screens_default(&key, on_host, move |result| {
+        if let Some(shown) = live().as_mut().filter(|shown| shown.key == of) {
+            shown.screens_default = None;
+            if let Err(said) = result {
+                shown.failed.push((HostThing::Screens, HostOp::Update, said));
+            }
+        }
+        crate::ui::host_changed();
+    });
+}
+
 /// Remove All… was pressed (`true`), or its question answered no.
 /// The window's tab `tab` shown.
-/// The Host window's tab called `name` (`rex`, `olo`, `files`, or its
-/// words, any case): `host.manage:KEY:TAB`.
+/// The Host window's tab called `name` (`rex`, `olo`, `files`,
+/// `screens`, or its words, any case): `host.manage:KEY:TAB`.
 pub fn tab_named(name: &str) -> Option<usize> {
     match name.trim().to_ascii_lowercase().as_str() {
         "rex" => Some(0),
         "olo" | "olo integration" | "integration" => Some(1),
         "files" => Some(2),
+        "screens" | "agent screens" => Some(3),
         _ => None,
     }
 }
@@ -177,6 +221,7 @@ mod tests {
     #[test]
     fn a_tab_by_its_name() {
         assert_eq!((tab_named("rex"), tab_named("Olo"), tab_named("Olo Integration"), tab_named("FILES")), (Some(0), Some(1), Some(1), Some(2)));
+        assert_eq!((tab_named("screens"), tab_named("Agent Screens")), (Some(3), Some(3)));
         assert_eq!(tab_named("ports"), None);
     }
 

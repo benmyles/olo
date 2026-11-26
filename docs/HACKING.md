@@ -12530,7 +12530,7 @@ check: NVIDIA's `power/runtime_status` stays `suspended` and its
 
 ### Power modes (Preferences ▸ Power, Deskbar and `olo-gpu-follow.service`)
 
-Power uses the shared kit's `RadioButton::description` and `CheckBox::description` for wrapped notes aligned with their mark labels. A menu can use `Menu::note` for a readable, non-interactive status line, as in Viewer's Decode With menu.
+Power uses the shared kit's `RadioButton::description` and `CheckBox::description` for wrapped notes aligned with their mark labels. (`RadioButton::note` is the same in a note's small dim words, `style::SMALL_SIZE`, for a window whose other notes are so: Rex's Host window, under each choice of where an agent's screen opens.) A menu can use `Menu::note` for a readable, non-interactive status line, as in Viewer's Decode With menu.
 
 Power has two tabs. **Power Mode** offers Battery Saver, Adaptive Performance
 and Low Latency. Choosing one in Preferences or Deskbar applies it immediately.
@@ -28699,8 +28699,8 @@ where we can manage all the services and things installed on a host in
 one place instead of only through random menus and stuff"). Opened by
 Hosts and Ports ▸ Manage Host…, Hosts ▸ Manage Host…, a click on a mark
 in the status bar, and for agents `host.manage:KEY`, or
-`host.manage:KEY:TAB` on a tab by its name (`rex`, `olo`, `files`:
-`host::tab_named`; a page not chosen is hidden to agents) (`WinRole::Host`,
+`host.manage:KEY:TAB` on a tab by its name (`rex`, `olo`, `files`,
+`screens`: `host::tab_named`; a page not chosen is hidden to agents) (`WinRole::Host`,
 "Host “NAME”"; one host at a time; `host` is its state, `host_panel`
 its drawing, `HubState::host_stands` what it shows).
 - *What it shows.* At its head the host: its icon, its name, how its
@@ -28786,6 +28786,82 @@ its drawing, `HubState::host_stands` what it shows).
   isn't put back by itself (`Settings::helper_hosts`: "off"); a
   connection that goes through it goes on through it, and the window
   says so.
+- *Screens: Agent Screens of the host's own, in a tab of their own*
+  (2026-11-26; the desktop's side of "Agent Screens of a host's own",
+  above, where the host's side is). Two sections in the window's
+  pattern.
+  **Agent Screens on this host**: Olo itself there, a thing like the
+  others (`HostThing::Screens`), its line as the host's helper says it
+  stands (`olo-rex-link screen status` there, asked with the rest:
+  `host_screens::ScreensThere`). Not installed; Installed, and after
+  the dot what is there, by commas as the bridge's line has what is
+  granted ("Olo 2026.11.26, Chrome 158, 2.2 GB": the line's own dot is
+  the only one); Update available where this Olo's release is the later
+  (each side's commit time: the host's from its status, this one's from
+  `share/olo/release.json`; a build that isn't a release never says
+  so), with what is there and what updating brings ("2026.11.24 →
+  2026.11.26": the one there alone read as the one on offer) and
+  Update beside Remove; Can’t run, red, with what is missing and what
+  cures it ("Missing on the host: libEGL_mesa.so.0. Install them there
+  (needs root), then Check Again."); "needs the typing helper first"
+  for a helper from before it had screens (status 69 from
+  `host_screens::helper_script`, which asks the helper as the host's
+  own `olo` does), where Install puts this Olo's helper there first
+  and says it will. Install and Update run `screen install` there and
+  hear its lines (`Installing::hear`): "Being installed… · Downloading
+  Olo, 42%", then unpacking, Chrome, the font, kept by the hub
+  (`screens_doing`) so a window closed and opened meanwhile still says
+  it; no button beside it while it goes, nor while the host hasn't
+  answered yet (a greyed Install there guessed, or read as stuck).
+  **One structure in every state**: what the thing is and how it is
+  updated never go (two lines, then its path: "Puts Olo and Chrome on
+  this host so agents’ screens can run on it." / "Updates when you
+  choose: a 600 MB download, 2.2 GB on the host.", both sizes by name
+  where the choice is made, and the figure on the Installed line the
+  same one, Chrome and the font counted in it); what this state has to
+  say goes in one slot over them: the screens that run there, dim ("2
+  screens running: review, agent-2.", and with an update on offer
+  "Update once they are stopped.", said before it is pressed); or what
+  is wrong, in the label's ink, a sentence of Olo's own with what to do
+  about it (`Stands::why` with `keeps_note`; "Still running: review.
+  Stop it, then try again."; "The host couldn’t reach Olo’s releases on
+  GitHub: …", the machine that couldn't named:
+  `host_screens::why_not_installed`, `why_not_removed`), never a
+  command's last words in a well. Never among what Remove All… takes
+  off or Update All updates: it is two gigabytes, fetched when chosen,
+  and may have screens running on it. Where it is there, the typing
+  helper's own line (the Rex tab) says "Agent Screens on this host run
+  through it."
+  **Where screens open by default**: one of two (`RadioButton::note`, a
+  radio with a small note under its label, new in the kit for it; the
+  note as dim as its label where the radio can't be chosen): on this
+  computer ("You can watch it and take over. Needs this computer on and
+  connected."; "Off in this host’s permissions (the Olo Integration
+  tab)." where the bridge doesn't allow the host screens), or on the
+  host itself, which is the host's default as `olo screen default`
+  keeps it there (`RexHub::screens_default`; shown as chosen at the
+  click, until the host has answered). The host's own can't be chosen
+  until a screen could run there, and its note says why not ("Install
+  Agent Screens above to choose this.", "Agent Screens can’t run on
+  this host.", "Needs the typing helper first."). Under the choices, at
+  their words' edge (`RadioButton::LABEL_INSET`), what an agent types to
+  say otherwise, in the choices' order and each with what it means:
+  "`olo screen --on desktop` (this computer) or `--on host`". The host's
+  copy is never called a desktop in the window: `--on desktop` means
+  this computer.
+  What is typed within a sentence (here, and the Files tab's own hint)
+  is set by one helper (`typed`): the sentence's own line height, so it
+  shares its baseline at every scale (a line of its own height stood a
+  pixel off at 1.5× and 1.75×), and a point of room after it ("host or"
+  stood 2 pixels apart at 1× where the words either side stood 4).
+  Agents: `host.put:KEY:screens`, `host.update:…`, `host.take:…`, and
+  `host.screens:KEY:host|desktop`. The demo's states:
+  `OLO_REX_DEMO_SCREENS=none|installing|behind|lacking|running|host|
+  nohelper|asking|failed|refused|notallowed`. Tried on the rig against
+  an SSH host of its own: installed from the window in 12.5 s with its
+  progress said, the default kept on the host, a running screen named,
+  a removal refused under it and said so, taken off once it was
+  stopped.
 - *A window's title never asks for `app()`*: the Host window is opened
   from handlers that hold it (`&app().hub.clone()` in a call's
   arguments holds it for the whole call), and a title made by asking
