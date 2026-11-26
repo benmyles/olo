@@ -2933,11 +2933,11 @@ Zoeken naar een nieuwere versie is mislukt: {}
 Couldn't paste: {}
 Plakken mislukt: {}
 
+Couldn't reload: {}
+Herstarten mislukt: {}
+
 Couldn't rename “{}”: {}
 ‘{}’ hernoemen mislukt: {}
-
-Couldn't restart: {}
-Herstarten mislukt: {}
 
 Couldn't save the change: {}
 De wijziging kon niet worden bewaard: {}
@@ -4945,7 +4945,7 @@ Ga
 Go Back
 Teruggaan
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 Teruggaan naar {}?\n\nDeze versie vervangt {}. Olo downloadt de versie (ongeveer {} MB), installeert deze en herstart ter plekke. Uw instellingen blijven bewaard; nieuwere wijzigingen verdwijnen tot u weer upgradet.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5593,7 +5593,7 @@ Hulpprogramma installeren…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 {} installeren?\n\nOlo downloadt de versie (ongeveer {} MB), installeert deze en herstart ter plekke.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 {} installeren?\n\nOlo downloadt de versie (ongeveer {} MB), installeert deze en herstart ter plekke.
 
 Installed
@@ -9653,6 +9653,9 @@ Versie:
 Reload
 Opnieuw laden
 
+Reload Olo
+Olo herladen
+
 Reload Server Configuration
 Serverconfiguratie herladen
 
@@ -9916,9 +9919,6 @@ Nu herstarten
 
 Restart Now…
 Nu herstarten…
-
-Restart Olo
-Olo herstarten
 
 Restart Recording
 Opname opnieuw starten
@@ -13224,8 +13224,8 @@ Bijwerken…
 Upgrade
 Upgraden
 
-Upgrade & Restart
-Upgraden en herstarten
+Upgrade & Reload
+Upgraden en herladen
 
 Upgrade Fedora
 Fedora upgraden

@@ -13,8 +13,11 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Five small things Ben asked for, 2026-11-26 evening** (next, in
-  this order):
+- **Five small things Ben asked for, 2026-11-26 evening** (the two of
+  About Olo done the same evening: the session sets right what it had
+  heard of the release it now runs, `upgrade::settle_heard`, and About
+  doesn't offer the installed one; "Upgrade & Reload", "Reload Olo" in
+  every language. Left, in this order):
   - *Rex's Host window opens with a text cursor*: "when launching that
     host manage window the cursor stays as a text entry cursor until i
     move the mouse out of the window and back in" (the pointer's shape
@@ -34,16 +37,26 @@ something nobody here has is in "Blocked", with what it waits for.
     default delay is in macos and use that as olo's default (it may be
     500ms i'm not sure)". It is a constant now (`crates/kit/src/tip.rs`,
     `DELAY`, 500 ms).
-- **An agent's working ring doesn't turn, and wakes its app 40 times a
-  second** (found measuring Rex at rest, 2026-11-26; the second
-  investigator's report, `/var/tmp/olo-wake/REPORT.md` on the dev
-  server): `crates/kit/src/widgets/agent_marks.rs` takes the seconds
-  since 1970 as an `f32` before their remainder, which at 1.8 billion
-  is good to 128 s, so the ring stands still for two minutes at a time
-  while its ten-a-second repaint goes on (no frame differs: 0 frames,
-  40 wakeups a second in Rex and Terminal whenever an agent works).
-  To fix with a clock that starts with the program, in `f64`; and a
-  row scrolled out of sight shouldn't ask to be painted again.
+- **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
+  "currently we have under manager rex server a limits tab for applying
+  tweaks to the host but they really belong in manage host. please move
+  those into a new tab in the manage host window called 'Tweaks' and
+  also add an item in there that checks if /tmp is in ram and if it is
+  and the various tmp dir system envs are not set have it suggest
+  setting them and able to apply it there" ("the temp folder system
+  envs on the server aren't set today -- because /tmp is ram they
+  should all be set to be /var/tmp instead"); and "as another
+  suggestion under tweaks, add one for installing brush shell and
+  making it the default for all users with an option to also change
+  for all existing users". A new tab: to both reviewers early, before
+  it is built out, and again when done.
+- ~~**An agent's working ring doesn't turn, and wakes its app 40 times
+  a second**~~ Fixed 2026-11-26 (`agent_marks::ring_turn`: a clock from
+  the program's start, in `f64`; it was the seconds since 1970 as an
+  `f32`, good to 128 s). Left of it: a working mark scrolled out of
+  sight still asks to be painted again ten times a second (the
+  investigator's second point: `g.visible_bounds()` would tell, at the
+  cost of a repaint as it scrolls: to measure first).
 - **The helpers' tooling, from a minder's report** (2026-11-26): a
   helper's first `tsession` built busd again into the helper's scratch
   target (`agy-help` sets `CARGO_TARGET_DIR`, which `tsession` and

@@ -999,8 +999,8 @@ Couldn't create a folder: {}
 Couldn't create a link: {}
 Couldn't look for a newer release: {}
 Couldn't paste: {}
+Couldn't reload: {}
 Couldn't rename “{}”: {}
-Couldn't restart: {}
 Couldn't save the change: {}
 Couldn't save the setting: {}
 Couldn't save what was dropped: {}
@@ -1670,7 +1670,7 @@ Glide
 Glow new windows for
 Go
 Go Back
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
 Go to
 Go to End
@@ -1886,7 +1886,7 @@ Install from:
 Install just
 Install the Helper…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 Installed
 Installed in your home folder there, as you, by each maker’s own installer. Nothing runs as root.
 Installed in your home folder there, as you; git alone needs root.
@@ -3283,6 +3283,7 @@ Reinstall Selected…
 Reject
 Release:
 Reload
+Reload Olo
 Reload Server Configuration
 Reload Without the Cache
 Remind:
@@ -3371,7 +3372,6 @@ Restart
 Restart Immediately
 Restart Now
 Restart Now…
-Restart Olo
 Restart Recording
 Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
 Restart kache
@@ -4508,7 +4508,7 @@ Updates
 Updates are downloaded and wait for the computer to restart: they’re installed then.
 Updating…
 Upgrade
-Upgrade & Restart
+Upgrade & Reload
 Upgrade Fedora
 Upgrade Olo
 Upgrade to Fedora {}

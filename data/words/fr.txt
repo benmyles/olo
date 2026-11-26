@@ -2933,11 +2933,11 @@ Impossible de rechercher une version plus récente : {}
 Couldn't paste: {}
 Impossible de coller : {}
 
+Couldn't reload: {}
+Redémarrage impossible : {}
+
 Couldn't rename “{}”: {}
 Impossible de renommer « {} » : {}
-
-Couldn't restart: {}
-Redémarrage impossible : {}
 
 Couldn't save the change: {}
 Impossible d’enregistrer la modification : {}
@@ -4945,7 +4945,7 @@ Aller
 Go Back
 Revenir
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 Revenir à {} ?\n\nCette version remplace {}. Olo la téléchargera (environ {} Mo), l’installera et redémarrera sur place. Vos réglages sont conservés ; ce qu’Olo a gagné depuis disparaît jusqu’à la prochaine mise à niveau.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5593,7 +5593,7 @@ Installer l’assistant…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 Installer {} ?\n\nOlo la télécharge (environ {} Mo), l’installe et redémarre sur place.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 Installer {} ?\n\nOlo la téléchargera (environ {} Mo), l’installera et redémarrera sur place.
 
 Installed
@@ -9653,6 +9653,9 @@ Version :
 Reload
 Recharger
 
+Reload Olo
+Recharger Olo
+
 Reload Server Configuration
 Recharger la configuration du serveur
 
@@ -9916,9 +9919,6 @@ Redémarrer maintenant
 
 Restart Now…
 Redémarrer maintenant…
-
-Restart Olo
-Redémarrer Olo
 
 Restart Recording
 Recommencer l’enregistrement
@@ -13224,8 +13224,8 @@ Mise à jour…
 Upgrade
 Mettre à niveau
 
-Upgrade & Restart
-Mettre à jour et redémarrer
+Upgrade & Reload
+Mettre à jour et recharger
 
 Upgrade Fedora
 Mettre à niveau Fedora

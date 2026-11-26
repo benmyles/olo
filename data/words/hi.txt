@@ -2933,11 +2933,11 @@ Couldn't look for a newer release: {}
 Couldn't paste: {}
 पेस्ट नहीं कर सके: {}
 
+Couldn't reload: {}
+फिर शुरू नहीं कर सके: {}
+
 Couldn't rename “{}”: {}
 “{}” का नाम नहीं बदल सके: {}
-
-Couldn't restart: {}
-फिर शुरू नहीं कर सके: {}
 
 Couldn't save the change: {}
 बदलाव सहेजा नहीं जा सका: {}
@@ -4945,7 +4945,7 @@ Go
 Go Back
 वापस जाएँ
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 {0} पर वापस जाएँ?\n\nयह {1} की जगह लेगा। Olo इसे डाउनलोड (लगभग {2} MB) और इंस्टॉल करके यहीं रीस्टार्ट होगा। आपकी सेटिंग सुरक्षित रहेंगी; उसके बाद जुड़ी सुविधाएँ अगले अपग्रेड तक नहीं रहेंगी।
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5593,7 +5593,7 @@ Install the Helper…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 {0} इंस्टॉल करें?\n\nOlo इसे डाउनलोड (लगभग {1} MB) और इंस्टॉल करके यहीं रीस्टार्ट होता है।
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 {0} इंस्टॉल करें?\n\nOlo इसे डाउनलोड (लगभग {1} MB) और इंस्टॉल करके यहीं रीस्टार्ट होगा।
 
 Installed
@@ -9653,6 +9653,9 @@ Release:
 Reload
 फिर लोड करें
 
+Reload Olo
+Olo रीलोड करें
+
 Reload Server Configuration
 सर्वर कॉन्फ़िगरेशन फिर लोड करें
 
@@ -9916,9 +9919,6 @@ Restart Now
 
 Restart Now…
 अभी रीस्टार्ट करें…
-
-Restart Olo
-Olo रीस्टार्ट करें
 
 Restart Recording
 रिकॉर्डिंग फिर शुरू करें
@@ -13224,8 +13224,8 @@ Updating…
 Upgrade
 अपग्रेड करें
 
-Upgrade & Restart
-अपग्रेड और रीस्टार्ट करें
+Upgrade & Reload
+अपग्रेड और रीलोड करें
 
 Upgrade Fedora
 Fedora अपग्रेड करें

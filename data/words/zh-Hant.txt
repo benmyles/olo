@@ -2920,11 +2920,11 @@ Couldn't look for a newer release: {}
 Couldn't paste: {}
 無法貼上：{}
 
+Couldn't reload: {}
+無法重新啟動：{}
+
 Couldn't rename “{}”: {}
 無法重新命名「{}」：{}
-
-Couldn't restart: {}
-無法重新啟動：{}
 
 Couldn't save the change: {}
 無法儲存變更：{}
@@ -4924,7 +4924,7 @@ Go
 Go Back
 退回
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 要退回 {} 嗎？\n\n這將取代 {}。Olo 會下載該版本（約 {} MB）、安裝並就地重新啟動。您的設定會保留，但在那之後新增的功能會在下次升級前消失。
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5569,7 +5569,7 @@ Install the Helper…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 要安裝 {} 嗎？\n\nOlo 會下載該版本（約 {} MB）、安裝並就地重新啟動。
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 要安裝 {} 嗎？\n\nOlo 會下載該版本（約 {} MB）、安裝並就地重新啟動。
 
 Installed
@@ -9625,6 +9625,9 @@ Release:
 Reload
 重新載入
 
+Reload Olo
+重新載入 Olo
+
 Reload Server Configuration
 重新載入伺服器設定
 
@@ -9888,9 +9891,6 @@ Restart Now
 
 Restart Now…
 現在重新啟動…
-
-Restart Olo
-重新啟動 Olo
 
 Restart Recording
 重新開始錄製
@@ -13192,8 +13192,8 @@ Updating…
 Upgrade
 升級
 
-Upgrade & Restart
-升級並重新啟動
+Upgrade & Reload
+升級並重新載入
 
 Upgrade Fedora
 升級 Fedora

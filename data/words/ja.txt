@@ -2920,11 +2920,11 @@ Couldn't look for a newer release: {}
 Couldn't paste: {}
 貼り付けできません：{}
 
+Couldn't reload: {}
+再起動できません：{}
+
 Couldn't rename “{}”: {}
 「{}」の名前を変更できません：{}
-
-Couldn't restart: {}
-再起動できません：{}
 
 Couldn't save the change: {}
 変更を保存できませんでした：{}
@@ -4924,7 +4924,7 @@ Go
 Go Back
 戻す
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 {}に戻しますか？\n\n{}を置き換えます。Oloがダウンロード（約{} MB）してインストールし、その場で再起動します。設定は維持されますが、これ以降のバージョンで追加された機能は再度アップグレードするまで利用できなくなります。
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5569,7 +5569,7 @@ Install the Helper…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 {}をインストールしますか？\n\nOloがダウンロード（約{} MB）してインストールし、その場で再起動します。
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 {}をインストールしますか？\n\nOloがダウンロード（約{} MB）してインストールし、その場で再起動します。
 
 Installed
@@ -9625,6 +9625,9 @@ Release:
 Reload
 再読み込み
 
+Reload Olo
+Oloを再読み込み
+
 Reload Server Configuration
 サーバー設定を再読み込み
 
@@ -9888,9 +9891,6 @@ Restart Now
 
 Restart Now…
 今すぐ再起動…
-
-Restart Olo
-Oloを再起動
 
 Restart Recording
 収録をやり直す
@@ -13192,8 +13192,8 @@ Updating…
 Upgrade
 アップグレード
 
-Upgrade & Restart
-アップグレードして再起動
+Upgrade & Reload
+アップグレードして再読み込み
 
 Upgrade Fedora
 Fedoraをアップグレード

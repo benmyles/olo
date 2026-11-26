@@ -2959,11 +2959,11 @@ Couldn't look for a newer release: {}
 Couldn't paste: {}
 Не удалось вставить: {}
 
+Couldn't reload: {}
+Не удалось перезапустить: {}
+
 Couldn't rename “{}”: {}
 Не удалось переименовать «{}»: {}
-
-Couldn't restart: {}
-Не удалось перезапустить: {}
 
 Couldn't save the change: {}
 Не удалось сохранить изменение: {}
@@ -4987,7 +4987,7 @@ Go
 Go Back
 Вернуться
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 Вернуться к {}?\n\nЭтот выпуск заменит {}. Olo загрузит его (около {} МБ), установит и перезапустится на месте. Настройки сохранятся; всё, что появилось в Olo позже, будет недоступно до следующего обновления.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5641,7 +5641,7 @@ Install the Helper…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 Установить {}?\n\nOlo загрузит выпуск (около {} МБ), установит его и перезапустится на месте.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 Установить {}?\n\nOlo загрузит выпуск (около {} МБ), установит его и перезапустится на месте.
 
 Installed
@@ -9709,6 +9709,9 @@ Release:
 Reload
 Обновить
 
+Reload Olo
+Перезапустить Olo
+
 Reload Server Configuration
 Перезагрузить конфигурацию сервера
 
@@ -9972,9 +9975,6 @@ Restart Now
 
 Restart Now…
 Перезапустить сейчас…
-
-Restart Olo
-Перезапустить Olo
 
 Restart Recording
 Начать запись заново
@@ -13288,7 +13288,7 @@ Updating…
 Upgrade
 Обновить
 
-Upgrade & Restart
+Upgrade & Reload
 Обновить и перезапустить
 
 Upgrade Fedora

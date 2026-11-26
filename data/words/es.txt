@@ -2933,11 +2933,11 @@ No se pudo buscar una versión más reciente: {}
 Couldn't paste: {}
 No se pudo pegar: {}
 
+Couldn't reload: {}
+No se pudo reiniciar: {}
+
 Couldn't rename “{}”: {}
 No se pudo renombrar «{}»: {}
-
-Couldn't restart: {}
-No se pudo reiniciar: {}
 
 Couldn't save the change: {}
 No se ha podido guardar el cambio: {}
@@ -4945,7 +4945,7 @@ Ir
 Go Back
 Volver
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 ¿Volver a {}?\n\nSustituye a {}. Olo la descargará (unos {} MB), la instalará y se reiniciará sin cerrar tus ventanas. Tus ajustes se mantienen; lo que Olo añadió desde entonces desaparecerá hasta que vuelvas a actualizar.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5593,7 +5593,7 @@ Instalar el ayudante…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 ¿Instalar {}?\n\nOlo la descarga (unos {} MB), la instala y se reinicia sin cerrar tus ventanas.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 ¿Instalar {}?\n\nOlo la descargará (unos {} MB), la instalará y se reiniciará sin cerrar tus ventanas.
 
 Installed
@@ -9653,6 +9653,9 @@ Versión:
 Reload
 Recargar
 
+Reload Olo
+Recargar Olo
+
 Reload Server Configuration
 Recargar configuración del servidor
 
@@ -9916,9 +9919,6 @@ Reiniciar ahora
 
 Restart Now…
 Reiniciar ahora…
-
-Restart Olo
-Reiniciar Olo
 
 Restart Recording
 Reiniciar grabación
@@ -13224,8 +13224,8 @@ Actualizando…
 Upgrade
 Actualizar
 
-Upgrade & Restart
-Actualizar y reiniciar
+Upgrade & Reload
+Actualizar y recargar
 
 Upgrade Fedora
 Actualizar Fedora

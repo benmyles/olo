@@ -240,6 +240,7 @@ impl Watcher {
         }
         if releases {
             crate::log("asking GitHub for Olo's releases (two minutes after starting, then every hour)");
+            settle_heard(&heard_path(display), to);
         }
         let releases = releases.then(|| Releases { next: Instant::now() + RELEASES_FIRST, asking: None, offer: None, installing: None, failed: None, installed: None });
         Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), build_made: None, last: None, wanted: false, releases, heard: heard_path(display) })
@@ -739,6 +740,25 @@ fn building(from: &Path) -> bool {
         }
         false
     })
+}
+
+/// What was heard before this session began, set right for the Olo it
+/// runs now: a session that comes back from installing a release still
+/// had on file that the release was a newer one, until it asked again
+/// two minutes on, and About Olo offered what had just been put in
+/// (Ben, 2026-11-26). The release on file that is the one installed in
+/// `to`'s prefix is no longer newer.
+fn settle_heard(path: &Path, to: &Path) {
+    let installed = to.parent().and_then(|prefix| std::fs::read_to_string(prefix.join("share/olo/version")).ok()).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let heard = std::fs::read(path).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    let (Some(installed), Some(mut heard)) = (installed, heard) else { return };
+    if heard["newer"].as_bool() == Some(true) && heard["version"].as_str() == Some(installed.as_str()) {
+        heard["newer"] = false.into();
+        let tmp = path.with_extension("new");
+        if serde_json::to_vec(&heard).is_ok_and(|b| std::fs::write(&tmp, b).is_ok()) {
+            let _ = std::fs::rename(&tmp, path);
+        }
+    }
 }
 
 /// What was heard, written whole (a reader never sees half of it).
@@ -1574,6 +1594,34 @@ mod tests {
         assert!(std::fs::symlink_metadata(dir.join("tabula-gone")).unwrap().is_file());
         link_old_names(&dir);
         assert_eq!(std::fs::read_link(dir.join("tabula-deskbar")).unwrap(), Path::new("olo-deskbar"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A session back from installing a release: what it had heard, that
+    /// the release was a newer one, is set right at once; what is heard
+    /// of another release, or of none, is left as it is.
+    #[test]
+    fn what_was_heard_of_the_release_now_installed_is_no_longer_newer() {
+        let dir = std::env::temp_dir().join(format!("olo-upgrade-settle-{}", std::process::id()));
+        let (bin, share) = (dir.join("bin"), dir.join("share/olo"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&share).unwrap();
+        std::fs::write(share.join("version"), "2026.11.26-2f5b8865\n").unwrap();
+        let heard = dir.join("heard.json");
+        let on_file = |v: serde_json::Value| std::fs::write(&heard, serde_json::to_vec(&v).unwrap()).unwrap();
+        let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&heard).unwrap()).unwrap();
+        on_file(serde_json::json!({ "at": 7, "title": "Olo 2026.11.26 (update 24)", "tag": "v2026.11.26.24", "version": "2026.11.26-2f5b8865", "newer": true }));
+        settle_heard(&heard, &bin);
+        assert_eq!(read(), serde_json::json!({ "at": 7, "title": "Olo 2026.11.26 (update 24)", "tag": "v2026.11.26.24", "version": "2026.11.26-2f5b8865", "newer": false }));
+        // (A later one still: on offer as it was.)
+        let later = serde_json::json!({ "at": 9, "title": "Olo 2026.11.27", "tag": "v2026.11.27", "version": "2026.11.27-0a1b2c3d", "newer": true });
+        on_file(later.clone());
+        settle_heard(&heard, &bin);
+        assert_eq!(read(), later);
+        // (Nothing on file, or a build with no release's version: nothing done.)
+        std::fs::remove_file(&heard).unwrap();
+        settle_heard(&heard, &bin);
+        assert!(!heard.exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

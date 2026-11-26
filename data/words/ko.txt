@@ -2920,11 +2920,11 @@ Couldn't look for a newer release: {}
 Couldn't paste: {}
 붙여넣을 수 없습니다: {}
 
+Couldn't reload: {}
+다시 시작할 수 없습니다: {}
+
 Couldn't rename “{}”: {}
 ‘{}’의 이름을 변경할 수 없습니다: {}
-
-Couldn't restart: {}
-다시 시작할 수 없습니다: {}
 
 Couldn't save the change: {}
 변경 사항을 저장하지 못했습니다: {}
@@ -4924,7 +4924,7 @@ Go
 Go Back
 되돌리기
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 {0} 버전으로 되돌릴까요?\n\n현재 {1} 버전을 대체합니다. Olo가 약 {2} MB를 다운로드해 설치한 뒤 바로 재시작합니다. 설정은 유지되며, 그 이후 추가된 기능은 다시 업그레이드할 때까지 사용할 수 없습니다.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5569,7 +5569,7 @@ Install the Helper…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 {} 버전을 설치할까요?\n\nOlo가 약 {} MB를 다운로드해 설치한 뒤 바로 재시작합니다.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 {} 버전을 설치할까요?\n\nOlo가 약 {} MB를 다운로드해 설치한 뒤 바로 재시작합니다.
 
 Installed
@@ -9625,6 +9625,9 @@ Release:
 Reload
 새로고침
 
+Reload Olo
+Olo 다시 불러오기
+
 Reload Server Configuration
 서버 구성 다시 불러오기
 
@@ -9888,9 +9891,6 @@ Restart Now
 
 Restart Now…
 지금 재시작…
-
-Restart Olo
-Olo 재시작
 
 Restart Recording
 녹화 다시 시작
@@ -13192,8 +13192,8 @@ Updating…
 Upgrade
 업그레이드
 
-Upgrade & Restart
-업그레이드 후 재시작
+Upgrade & Reload
+업그레이드 후 다시 불러오기
 
 Upgrade Fedora
 Fedora 업그레이드

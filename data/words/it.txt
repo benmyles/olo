@@ -2933,11 +2933,11 @@ Impossibile cercare nuove versioni: {}
 Couldn't paste: {}
 Impossibile incollare: {}
 
+Couldn't reload: {}
+Impossibile riavviare: {}
+
 Couldn't rename “{}”: {}
 Impossibile rinominare “{}”: {}
-
-Couldn't restart: {}
-Impossibile riavviare: {}
 
 Couldn't save the change: {}
 Impossibile salvare la modifica: {}
@@ -4945,7 +4945,7 @@ Vai
 Go Back
 Torna indietro
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 Tornare a {}?\n\nSostituirà {}. Olo lo scaricherà (circa {} MB), lo installerà e si riavvierà sul posto. Le impostazioni restano invariate; le novità aggiunte da allora non saranno presenti fino al prossimo aggiornamento.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5593,7 +5593,7 @@ Installa componente ausiliario…
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 Installare {}?\n\nOlo lo scarica (circa {} MB), lo installa e si riavvia sul posto.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 Installare {}?\n\nOlo lo scaricherà (circa {} MB), lo installerà e si riavvierà sul posto.
 
 Installed
@@ -9653,6 +9653,9 @@ Versione:
 Reload
 Ricarica
 
+Reload Olo
+Ricarica Olo
+
 Reload Server Configuration
 Ricarica configurazione server
 
@@ -9916,9 +9919,6 @@ Riavvia ora
 
 Restart Now…
 Riavvia ora…
-
-Restart Olo
-Riavvia Olo
 
 Restart Recording
 Riavvia registrazione
@@ -13224,8 +13224,8 @@ Aggiornamento…
 Upgrade
 Aggiorna
 
-Upgrade & Restart
-Aggiorna e riavvia
+Upgrade & Reload
+Aggiorna e ricarica
 
 Upgrade Fedora
 Aggiorna Fedora

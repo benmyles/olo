@@ -2933,11 +2933,11 @@ Suche nach neuerer Version fehlgeschlagen: {}
 Couldn't paste: {}
 Einfügen fehlgeschlagen: {}
 
+Couldn't reload: {}
+Neustart nicht möglich: {}
+
 Couldn't rename “{}”: {}
 „{}“ konnte nicht umbenannt werden: {}
-
-Couldn't restart: {}
-Neustart nicht möglich: {}
 
 Couldn't save the change: {}
 Änderung konnte nicht gesichert werden: {}
@@ -4945,7 +4945,7 @@ Gehe zu
 Go Back
 Zurück
 
-Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
+Go back to {}?\n\nIt replaces {}. Olo will download it (about {} MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.
 Zurück zu {}?\n\nEs ersetzt {}. Olo lädt es herunter (etwa {} MB), installiert es und startet im laufenden Betrieb neu. Ihre Einstellungen bleiben erhalten; seither hinzugekommene Funktionen entfallen, bis Sie wieder aktualisieren.
 
 Go back to {}?\n\nIt replaces {}: Olo downloads it (about {} MB), installs it and restarts in place. Your settings stay as they are; what came after it goes until you upgrade again.
@@ -5593,7 +5593,7 @@ Hilfsprogramm installieren …
 Install {}?\n\nOlo downloads it (about {} MB), installs it and restarts in place.
 {} installieren?\n\nOlo lädt es herunter (etwa {} MB), installiert es und startet im laufenden Betrieb neu.
 
-Install {}?\n\nOlo will download it (about {} MB), install it and restart in place.
+Install {}?\n\nOlo will download it (about {} MB), install it and reload in place.
 {} installieren?\n\nOlo lädt es herunter (etwa {} MB), installiert es und startet im laufenden Betrieb neu.
 
 Installed
@@ -9653,6 +9653,9 @@ Version:
 Reload
 Neu laden
 
+Reload Olo
+Olo neu laden
+
 Reload Server Configuration
 Serverkonfiguration neu laden
 
@@ -9916,9 +9919,6 @@ Jetzt neu starten
 
 Restart Now…
 Jetzt neu starten …
-
-Restart Olo
-Olo neu starten
 
 Restart Recording
 Aufnahme neu beginnen
@@ -13224,8 +13224,8 @@ Wird aktualisiert …
 Upgrade
 Aktualisieren
 
-Upgrade & Restart
-Aktualisieren und neu starten
+Upgrade & Reload
+Aktualisieren und neu laden
 
 Upgrade Fedora
 Fedora aktualisieren

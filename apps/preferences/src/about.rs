@@ -66,7 +66,7 @@ pub struct State {
     chosen: Option<String>,
     /// The session's two files followed (kept alive with the pane).
     _watch: Option<olo_kit::watch::Watch>,
-    /// When Restart Olo was last clicked, or why it failed.
+    /// When Reload Olo was last clicked, or why it failed.
     restarted: Option<Instant>,
     error: Option<String>,
     /// A frame is due at the next second (uptime counts them).
@@ -385,9 +385,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // A restart takes a moment; don't let clicks pile up meanwhile.
     let settling = st.restarted.is_some_and(|t| t.elapsed() < Duration::from_secs(5));
     let note = match (&st.error, pid, settling) {
-        (Some(e), _, _) => olo_kit::tr!("Couldn't restart: {}", e),
+        (Some(e), _, _) => olo_kit::tr!("Couldn't reload: {}", e),
         (None, None, _) => olo_kit::words::tr("Not running under olo-session.").to_owned(),
-        (None, Some(_), true) => "Restarting…".to_owned(),
+        (None, Some(_), true) => "Reloading…".to_owned(),
         (None, Some(_), false) => String::new(),
     };
     let restart_now = ui.on_click_view(move |v, cx| {
@@ -406,14 +406,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             .gap(px(m::SPACING))
             .child(StringView::new(note).dim(true))
             // (Not while a release installs: a restart halfway through.)
-            .child(Button::new("Restart Olo").min_width(update_button()).enabled(pid.is_some() && !settling && !st.update.lock().unwrap().available["installing"].is_object()).on_click(restart_now)),
+            .child(Button::new("Reload Olo").min_width(update_button()).enabled(pid.is_some() && !settling && !st.update.lock().unwrap().available["installing"].is_object()).on_click(restart_now)),
     );
 }
 
 /// The width of the box's buttons: one column, whichever is there.
 fn update_button() -> f32 {
     // (One column of buttons, as wide as its widest in the language shown:
-    // Check Now under Upgrade & Restart, Install… under it, and Restart Olo
+    // Check Now under Upgrade & Reload, Install… under it, and Reload Olo
     // below the box as wide. Measured once for each language: the box is
     // drawn again each second the window is open, for its uptime.)
     thread_local! {
@@ -430,7 +430,7 @@ fn update_button() -> f32 {
     })
 }
 
-const UPDATE_BUTTONS: [&str; 4] = ["Check Now", "Upgrade & Restart", "Install…", "Restart Olo"];
+const UPDATE_BUTTONS: [&str; 4] = ["Check Now", "Upgrade & Reload", "Install…", "Reload Olo"];
 
 /// The window's width: its widest row in the language shown (each state's
 /// words, a release's title as long as they come, the release menu), the
@@ -467,7 +467,7 @@ pub fn window_width() -> u32 {
 /// changes; Opus's review, 2026-11-24), and its button; or an install's
 /// bar.
 enum Status {
-    /// Two rows: what there is (and its action: Upgrade & Restart), then
+    /// Two rows: what there is (and its action: Upgrade & Reload), then
     /// the check (when Olo last looked, or why it couldn't) beside Check
     /// Now, the same row in every state (each row's words go with its
     /// button: the restart note beside Check Again read as one sentence).
@@ -520,13 +520,20 @@ fn software_update(ui: &mut Ui, st: &mut State) {
             Status::Line { title: olo_kit::words::tr("Looking for a newer release…").into(), action: None, checked, can_check: false }
         } else if let Some(e) = u.heard["error"].as_str() {
             Status::Line { title: olo_kit::words::tr("Couldn't check for a newer release.").into(), action: None, checked: e.to_owned(), can_check: true }
-        } else if u.heard["newer"].as_bool() == Some(true) {
+        // (Newer than what is installed now: what the session heard
+        // before an upgrade names the release just put in, until it
+        // has asked again. Ben, 2026-11-26: "when it comes back it
+        // still says the release i just installed is available".)
+        } else if u.heard["newer"].as_bool() == Some(true) && u.heard["version"].as_str().is_none_or(|v| Some(v) != u.installed.as_deref()) {
             Status::Line {
                 title: olo_kit::tr!("{} is available.", u.heard["title"].as_str().unwrap_or("A newer release")),
                 // (Not the window's default: Return in About starting a
                 // 900 MB install was one key from an accident. Restart in
                 // its name: what it does when it's done.)
-                action: Some(("Upgrade & Restart", "release")),
+                // ("Reload", not "Restart": Ben, 2026-11-26, "restart
+                // makes it sound like we will restart the whole
+                // computer", which Deskbar's own Restart does.)
+                action: Some(("Upgrade & Reload", "release")),
                 // (And a look for one newer still: Ben, 2026-11-25, "we
                 // should still have a Check Again button or something in
                 // case i want to see if there's a newer release
@@ -545,7 +552,7 @@ fn software_update(ui: &mut Ui, st: &mut State) {
             }
         };
         // Two rows, each a control's height, a button at the end of each
-        // where it has one (Upgrade & Restart, Check Now under it, Install…
+        // where it has one (Upgrade & Reload, Check Now under it, Install…
         // under that in the next row: one column of buttons, rows at the
         // box's pitch); while it installs, what and how far in the first,
         // the bar in the second: the rows below stay where they are in
@@ -615,7 +622,7 @@ fn software_update(ui: &mut Ui, st: &mut State) {
                     let (message, yes) = if older {
                         (
                             olo_kit::tr!(
-                                "Go back to {}?\n\nIt replaces {}. Olo will download it (about {}\u{a0}MB), install it and restart in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.",
+                                "Go back to {}?\n\nIt replaces {}. Olo will download it (about {}\u{a0}MB), install it and reload in place. Your settings are kept; what Olo gained since then is gone until you upgrade again.",
                                 release.title,
                                 installed_name,
                                 mb
@@ -623,7 +630,7 @@ fn software_update(ui: &mut Ui, st: &mut State) {
                             "Go Back",
                         )
                     } else {
-                        (olo_kit::tr!("Install {}?\n\nOlo will download it (about {}\u{a0}MB), install it and restart in place.", release.title, mb), "Install")
+                        (olo_kit::tr!("Install {}?\n\nOlo will download it (about {}\u{a0}MB), install it and reload in place.", release.title, mb), "Install")
                     };
                     let tag = release.tag.clone();
                     // (Going back warned of; on to a newer one, Olo's own.)
