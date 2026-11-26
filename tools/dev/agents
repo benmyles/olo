@@ -175,7 +175,7 @@ SAVES = ("settings.json", "always allow access", "auto mode")
 # allowed. No `rm`, `cp`, `mv`, `kill`: an agent's own files are made
 # with its file tool, and those four come to you, or to the minder.)
 READING = ["ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "sort", "uniq", "cut", "tr", "diff", "cmp", "stat", "file", "du", "df", "which", "command -v",
-        "echo", "printf", "pwd", "date", "true", "test", "basename", "dirname", "realpath", "readlink", "nl", "tac", "column", "jq", "xxd", "od", "sha256sum",
+        "echo", "printf", "pwd", "date", "true", "test", "[", "basename", "dirname", "realpath", "readlink", "nl", "tac", "column", "jq", "xxd", "od", "sha256sum",
         "sed -n", "awk", "id", "uname", "nproc", "free", "uptime", "cd", "mkdir", "touch", "sleep"]
 CARGO = ["cargo build", "cargo check", "cargo test", "cargo clippy", "cargo fmt -p", "cargo ui-lint", "cargo metadata", "cargo tree", "cargo doc", "cargo bench",
          "cargo run", "cargo --version", "cargo -V", "rustc --version", "rustc -V", "rustc --print", "rustup show",
@@ -402,7 +402,12 @@ def state(name):
         if not said:
             return "gone"
         if said.get("state") == "exited" or said.get("running") is False:
-            return "exited"
+            # (The service keeps a child it has stopped, as exited, where
+            # tmux forgets a session it killed: one this tool has ended
+            # already is gone, not to be ended and announced again at
+            # every `list` and `watch`. A minder was told twenty times
+            # that a helper's session had been closed, 2026-11-26.)
+            return "gone" if (meta(name) or {}).get("ended") else "exited"
     else:
         if tmux("has-session", "-t", f"={name}").returncode:
             return "gone"
