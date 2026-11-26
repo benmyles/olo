@@ -43,9 +43,24 @@ something nobody here has is in "Blocked", with what it waits for.
   has the window's nodes, `agent_nodes`, and a tag can carry the place to
   app_server, as `under-pointer` does). And the nit: "the margin above the
   question is 20 pt but the margin below the buttons is 15 pt. Make both
-  16 pt". Also from Opus 5.5 R3 on Rex's Stop Subagents alert (2026-11-26):
-  re-centre alerts horizontally on their parent window's frame after final
-  layout (offset ~25 pt right when content grows past provisional width).
+  16 pt". Measured 2026-11-26 in Rex's stop alert at 2×: the frame gives
+  16 pt above and below (`WINDOW_INSET`, both); the question's ink
+  starts 19 pt down (its line's 3 pt of leading) and a plain button ends
+  16 pt up, the default button's ring 13 pt up. So it is the line's
+  leading and the default ring, not the margins: to fix in the alert's
+  own message and button row (the frame is every dialog's, whose first
+  row may be a field), compared before and after across the alerts.
+  ~~Also from Opus 5.5 R3 on Rex's Stop Subagents alert (2026-11-26):
+  re-centre alerts horizontally on their parent window's frame~~ Done
+  2026-11-26, and it wasn't a centring: that alert had no parent at all
+  and stood in the middle of the screen (frame 445, 311 on a 1280 × 800
+  screen; Rex's window centred on 593). A window opened from another
+  took for its parent whichever window had the keyboard at that
+  instant, and an alert asked for by a menu's command opens while the
+  closing menu still has it. It is the window it was opened from now
+  (`WindowParams::opener`, set by `WindowCx::open_window_here`):
+  measured after, 398, 163, centred on 593 and a quarter of the way
+  down less a third of its height.
 - **Dark-mode raised controls & link blue contrast** (Opus 5.5 & Gemini 4
   Neon looks at Rex's Host window, 2026-11-25):
   - ~~In dark mode, raised push-button faces are a shade darker than the
@@ -66,18 +81,30 @@ something nobody here has is in "Blocked", with what it waits for.
     what act on this host), and Remove beside Update without a question
     (host_panel's own rule: "What is done is done at the click, over
     SSH, and is as easily undone: only Remove All… asks first").
-  - Rex status-bar error banner (Opus 5.5 R2, 2026-11-25): add optional
+  - ~~Rex status-bar error banner (Opus 5.5 R2, 2026-11-25): add optional
     retryable action callback (`Try Again` button on the detail well row)
-    for actions that can be re-run directly; keep Manage Host window
-    height fixed across current/failed states if bottom button row shifts.
+    for actions that can be re-run directly~~ Done 2026-11-26: Try Again
+    beside the detail's well (at the head's end where there is no
+    detail), for what is done again exactly as it was and harms nothing
+    done twice: opening a session, reloading the server's configuration
+    (`Feedback::again`, `WinMsg::RetryWith`, `TryAgain`; the banner goes
+    with the try). Left: a forward, an upload, a rename have no
+    Try Again (each needs what it was asked with kept); keep Manage Host
+    window height fixed across current/failed states if bottom button
+    row shifts.
   - Rex transcript view on wide screens (Opus 5.5 R2, 2026-11-25): cap
     message headers/timestamps/rules to the prose width (~560 pt) and
     align sender icons in the left gutter with `Back`.
-  - Dark-mode popup menus & `Menu::app_items` grouping (Opus 5.5 R3 on
-    Token Pool, 2026-11-25): give dark popup menus stronger border
-    contrast and drop shadow so they separate cleanly from dark panels
-    behind them; separate `About <App>` onto its own top group above
-    `Settings…` + `Keyboard Shortcuts`.
+  - Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
+    dark popup menus stronger border contrast and drop shadow so they
+    separate cleanly from dark panels behind them. As measured
+    2026-11-26 (Classic dark, 2×): the outline (6, 10, 12) against the
+    panel (24, 43, 54) is 1.2:1 and the menu's lifted ground (42, 60,
+    71) 1.3:1, with the light edge (78, 93, 104) on its top and left
+    only; a menu drawn in its window can have a shadow there.
+    ~~`Menu::app_items` grouping: separate `About <App>` onto its own
+    top group above `Settings…` + `Keyboard Shortcuts`~~ Done 2026-11-26
+    (a separator under About, in every app's first menu).
 - **Left of the reviews' findings on the kit and Rex** (Opus 5.5,
   2026-11-24). Done 2026-11-24: an alert's question in bold, its
   explanation 8 points under it (`alert::message`); dimmed buttons keep
@@ -140,6 +167,52 @@ something nobody here has is in "Blocked", with what it waits for.
     the left" (to measure). Not pictured yet: a row under the pointer.
     And "All states" has no word for a command that runs (it is found
     by Active): a Running of its own if commands become many.
+  - Gemini 4 Neon's look at Rex's banner, first menu and stop alert
+    (2026-11-26), there before what it was shown for. Menus: "the space
+    from the menu's top border to the tops of `A`/`b`/`t`/`R` (about 7–8
+    logical px) is noticeably smaller than the space from the baseline
+    of `About Rex` to the grey line of the separator below it (about
+    10–11 logical px) … it sits visibly above vertical centre in its
+    top compartment" (every menu's first group, plain now that About
+    stands alone: the popup's own inset against a separator's, to
+    compare before and after across the menus); "`⇧`, `⌘`, and `/` sit
+    jammed together with almost no spacing … and `⇧` has a noticeably
+    thinner stroke weight than `⌘`. In addition, `/` ends about 4–6
+    logical px further left than the right edges of `N` (`⌘N`) and `Q`"
+    (the keys' column is by their left edges, HACKING: to look at with
+    three keys). Alerts: "the alert sits noticeably high … Include the
+    alert's yellow title tab in the vertical placement geometry so the
+    whole visible alert (tab included) sits a quarter of the way down"
+    (it is Haiku's place, a quarter down less a third of its height:
+    with the tabless look above); "`“Build Log”.` wraps onto a line by
+    itself … Widening the text measure slightly (or reflowing) would
+    avoid the widow line"; "a fixed-size modal alert should not carry a
+    zoom/resize control on its tab". The banner: "`Try Again` floats
+    mid-banner with a wide empty void to its right" (the well is as
+    wide as what it says, by an earlier review: kept); "at 1x [the stop
+    icon] rasterises into a slightly lumpy oval/circle instead of an
+    octagon" (the 16 pt icon's own drawing, docs/ICONS.md).
+  - Opus 5.5's look at the same (2026-11-26; its first as a child tab).
+    The first menu: "Moving About into its own group leaves Keyboard
+    Shortcuts at the top of the settings group. It's the only item there
+    with no ellipsis and with a shortcut (⇧⌘/). So it reads as a
+    reference window, not a setting … Order the group: Rex Settings…,
+    Notifications Settings…, Keyboard Shortcuts. That puts Settings
+    directly under About, where people reach for it" (every app's first
+    menu, `Menu::app_items`: Ben's to say, it is the order people have
+    learnt). The banner: "If the title switches to a progress message
+    during the retry, it shouldn't stay red" (it keeps the problem's
+    words, with Try Again dimmed, until the try answers).
+  - Found running the helpers as child tabs (2026-11-26). A working
+    Claude Code child's summary, in `olo agent list` and so under its
+    name in Rex, is its footer ("⏵⏵ accept edits on (shift+tab to cycle)
+    · esc to interrupt"), not what it is doing ("✽ Hatching… (3m · ↓
+    16k tokens)", the line over its field): `classify_screen_rich`'s
+    summary takes the screen's last line; the line over the field, as
+    `tools/dev/agents`' `latest` does (a rule with the session's name
+    in it is still a rule: `is_rule`). And that footer said "← 1 agent"
+    for the whole of a look that started no agent (a minder's report):
+    to find what Claude Code counts there in a child tab.
   - Preferences: a note's distance under its control differs by pane
     ("Power (radio buttons) 17 pt … Rex, Terminal, Security 24 pt … Date
     & Time ≈26.7 pt. One structure, three rhythms"); Opus would have it 4
@@ -231,6 +304,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Ctrl+Enter does nothing in a Rex terminal** (Ben, 2026-11-26, for
+  later: "ctrl+enter doens't seem to work (at least in claude code) in
+  a rex terminal"). To find first, not guessed: what Rex sends for it
+  (a pane's keys are encoded from the modes its program asked for, read
+  from Ghostty: `ui.rs`'s key path, the `key_cost` test beside it), and
+  what Claude Code asks for and expects there (the kitty keyboard
+  protocol's `CSI 13;5u`, or xterm's modifyOtherKeys `CSI 27;5;13~`; a
+  plain Return, which is what a terminal sends with neither, is a
+  submit, not a new line). Then the same for Shift+Enter and Alt+Enter,
+  in Rex and in Olo's Terminal, with each agent (Claude Code, Codex,
+  Antigravity), read from the program's own screen; and `olo agent send
+  --key Ctrl+Enter`, which should send what the keyboard does.
 - **Agent Screens on the Rex host itself** (Ben, 2026-11-26: "there
   should be an option for agents on a rex host to use olo agent screens
   on the host itself without having to use them on the user's desktop

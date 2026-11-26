@@ -2032,7 +2032,10 @@ impl<'a> WindowCx<'a> {
         let title = spec.title.clone();
         let menu = spec.focus && matches!(spec.kind, crate::WindowKind::Popup { .. });
         let asked = Instant::now();
-        let opened = open(self.looper, id, spec.params(), title, build);
+        // (Its parent, where it takes one, is this window: `WindowParams::opener`.)
+        let mut params = spec.params();
+        params.opener = Some(self.core.id);
+        let opened = open(self.looper, id, params, title, build);
         // (Making a window isn't this window's work for its next frame:
         // most of it is the display thread making a surface and a
         // renderer while the looper waits, and the rest the new window's

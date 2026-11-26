@@ -771,6 +771,16 @@ impl Feedback {
         }
     }
 
+    /// What does this again, said to the window: its problem, should it
+    /// have one, offers Try Again (Opus 5.5's look at the banner,
+    /// 2026-11-25: "add optional retryable action … for actions that can
+    /// be re-run directly"). Only for what is done again exactly as it
+    /// was and harms nothing done twice.
+    fn again(self, with: WinMsg) -> Self {
+        self.send(WinMsg::RetryWith(self.serial, Box::new(with)));
+        self
+    }
+
     pub fn problem(self, title: &str, detail: impl std::fmt::Display) {
         let detail = detail.to_string();
         let detail = detail.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -882,6 +892,11 @@ pub enum WinMsg {
     CreateSession(String, Option<String>),
     Created(u64, String, String),
     StartFeedback(u64),
+    /// What would do again the thing this feedback (its serial) is of:
+    /// the problem's banner offers Try Again with it.
+    RetryWith(u64, Box<WinMsg>),
+    /// Try Again pressed on the problem's banner.
+    TryAgain,
     Problem(u64, String, Option<String>),
     Confirmation(u64, String),
     /// A passing word nobody asked for here (`HubNotice::Said`).
@@ -1114,6 +1129,15 @@ pub struct RexWindow {
     qr: Option<Arc<qrcode::QrCode>>,
     preview_job: Option<tokio::task::AbortHandle>,
     feedback_serial: u64,
+    /// What does again the thing the feedback is of, where it can be
+    /// done again as it was (opening a session, reloading the server's
+    /// configuration): Try Again on its problem's banner.
+    retry: Option<(u64, WinMsg)>,
+    /// Try Again was pressed and what it started hasn't said how it went:
+    /// the problem stays where it is with its button dimmed, so the
+    /// banner doesn't go and come back (Opus 5.5's look, 2026-11-26:
+    /// "grey the button out where it is. Don't hide it").
+    retrying: bool,
     problem: Option<(String, Option<(Child<widgets::TextView>, usize)>)>,
     notice: olo_kit::due::Notice,
     due: olo_kit::due::Due,
@@ -1220,6 +1244,8 @@ impl RexWindow {
     fn clear_feedback(&mut self) {
         self.created_session = None;
         self.feedback_serial = 0;
+        self.retry = None;
+        self.retrying = false;
         self.problem = None;
         self.notice.clear();
     }
@@ -1245,6 +1271,15 @@ impl RexWindow {
             .h(px(row_h))
             .flex_shrink_0();
             let dismiss = GlyphButton::new("Dismiss Error", Glyph::Close).id("rex-dismiss-problem").on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::DismissFeedback));
+            // (On the problem's own row, beside what went wrong: the one
+            // thing to do about it. Where there is a detail, beside its
+            // well; else at the head's end.)
+            let again = (self.retrying || self.retry.as_ref().is_some_and(|(serial, _)| *serial == self.feedback_serial))
+                .then(|| Button::new(olo_kit::words::tr("Try Again").to_owned()).id("rex-problem-again").enabled(!self.retrying).on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::TryAgain)));
+            // (Beside a detail, a button of the desktop's own size, as tall
+            // as the well's first line so their edges meet; at the head's
+            // end, where a row of text sets the height, a small one.)
+            let (again_head, again_detail) = if detail.is_some() { (None, again) } else { (again.map(Button::small), None) };
             let header = div()
                 .w_full()
                 .flex()
@@ -1252,6 +1287,7 @@ impl RexWindow {
                 .items_start()
                 .gap(px(m::TIGHT))
                 .child(div().flex_1().min_w_0().child(StringView::new(title.clone()).bold(true).color(err_red).wrap(true)))
+                .children(again_head.map(|b| div().flex_shrink_0().mt(px(-2.0)).child(b)))
                 .child(div().flex_shrink_0().mt(px(-1.0)).child(dismiss));
             let col = div().flex_1().min_w_0().flex().flex_col().gap(px(8.0)).child(header).children(detail.as_ref().map(|(view, lines)| {
                 // Hug the detail text width (capped to the banner width) so a short
@@ -1259,8 +1295,28 @@ impl RexWindow {
                 let text = view.read(cx).text().to_owned();
                 let mono = style::mono_font(FontWeight::NORMAL);
                 let max_line_w = text.lines().map(|l| f32::from(style::text_width(l.to_owned(), mono_size, mono.clone()))).fold(0.0_f32, f32::max);
-                let hug_w = (max_line_w + 2.0 * widgets::TextView::MARGINS.0 + frame + 10.0).ceil().max(160.0);
-                div().w_full().max_w(px(hug_w)).h(px((*lines as f32) * widgets::TextView::line_height_at(mono_size) + 2.0 * widgets::TextView::MARGINS.1 + frame)).child(view)
+                // (The same room after its last word as before its first:
+                // with ten points to spare its right side was twice its
+                // left, plain once a button stood beside it.)
+                let hug_w = (max_line_w + 2.0 * widgets::TextView::MARGINS.0 + frame + 2.0).ceil().max(160.0);
+                let line_h = widgets::TextView::line_height_at(mono_size) + 2.0 * widgets::TextView::MARGINS.1 + frame;
+                let well = div().flex_1().min_w_0().max_w(px(hug_w)).h(px(((*lines - 1) as f32) * widgets::TextView::line_height_at(mono_size) + line_h)).child(view);
+                // (Try Again at the banner's right edge, under the close
+                // box, wherever the detail's words end: the banner's two
+                // edges, what went wrong at the left and what to do at
+                // the right, as an alert's buttons are (both looks of
+                // 2026-11-26: beside the well it stood "wherever the
+                // error text happens to end"). As tall as the well's first
+                // line, so their tops and, for one line, their feet meet.)
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_start()
+                    .gap(px(m::SPACING))
+                    .child(well)
+                    .child(div().flex_1().min_w_0())
+                    .children(again_detail.map(|b| div().flex_shrink_0().child(b.height(line_h))))
             }));
             return Some(div().w_full().flex().flex_row().items_start().gap(px(m::TIGHT)).child(alert_icon).child(col));
         }
@@ -1327,9 +1383,18 @@ impl RexWindow {
                     cx.send(WinMsg::Command(command.to_owned()));
                 }
             }
-            if std::env::var("OLO_REX_DEMO_ERROR").ok().as_deref() == Some("1") {
+            // (`OLO_REX_DEMO_ERROR=1`: a problem that can be tried again;
+            // `=retrying`: its Try Again pressed and the try not yet
+            // answered, for the dimmed button's picture.)
+            let demo_error = std::env::var("OLO_REX_DEMO_ERROR").ok();
+            if let Some(how) = demo_error.as_deref().filter(|h| matches!(*h, "1" | "retrying")) {
+                let with = if how == "retrying" { WinMsg::Redraw } else { WinMsg::CreateSession("dev-box".into(), None) };
                 cx.send(WinMsg::StartFeedback(999));
+                cx.send(WinMsg::RetryWith(999, Box::new(with)));
                 cx.send(WinMsg::Problem(999, "Couldn’t open a session on dev-box.".into(), Some("ssh: connect to host dev-box port 22: Connection timed out".into())));
+                if how == "retrying" {
+                    cx.send(WinMsg::TryAgain);
+                }
             }
         }
 
@@ -1356,6 +1421,8 @@ impl RexWindow {
             qr: None,
             preview_job: None,
             feedback_serial: 0,
+            retry: None,
+            retrying: false,
             problem: None,
             notice: Default::default(),
             due: Default::default(),
@@ -1589,6 +1656,8 @@ impl RexWindow {
             qr: None,
             preview_job: None,
             feedback_serial: 0,
+            retry: None,
+            retrying: false,
             problem: None,
             notice: Default::default(),
             due: Default::default(),
@@ -2286,13 +2355,13 @@ impl RexWindow {
             "app.new_window" => open_workspace_window(None),
             "app.close_window" => cx.request_close(),
             "app.quit" => olo_kit::quit(),
-            "app.reload_config" => hub.reload_server_config(&self.active_host, Feedback::start(self.id)),
+            "app.reload_config" => hub.reload_server_config(&self.active_host, Feedback::start(self.id).again(WinMsg::Command("app.reload_config".into()))),
             "host.reconnect" => hub.connect_host(&self.active_host),
             // (A host let go of, and connected again, by its key: what
             // Hosts and Ports' one button does, for agents.)
             c if c.starts_with("host.disconnect:") => hub.disconnect_host(c.trim_start_matches("host.disconnect:")),
             c if c.starts_with("host.connect:") => hub.connect_host(c.trim_start_matches("host.connect:")),
-            "session.new" => hub.create_session(&self.active_host, None, None, Feedback::start(self.id)),
+            "session.new" => hub.create_session(&self.active_host, None, None, Feedback::start(self.id).again(WinMsg::CreateSession(self.active_host.clone(), None))),
             "session.close" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
                     hub.close_session(&hk, &sess.session_id, Feedback::start(self.id));
@@ -5277,8 +5346,13 @@ impl View for RexWindow {
                 }
             }
             WinMsg::StartFeedback(serial) => {
+                // (What Try Again started: the problem it is trying again
+                // stays shown until this says how it went.)
+                let kept = if self.retrying { self.problem.take() } else { None };
                 self.clear_feedback();
                 self.feedback_serial = serial;
+                self.retrying = kept.is_some();
+                self.problem = kept;
                 cx.invalidate();
             }
             WinMsg::Problem(serial, title, detail) => {
@@ -5291,11 +5365,16 @@ impl View for RexWindow {
                         (tv, est_lines)
                     });
                     self.problem = Some((title, view));
+                    self.retrying = false;
                     cx.invalidate();
                 }
             }
             WinMsg::Confirmation(serial, title) => {
                 if self.feedback_serial == serial {
+                    // (It went well this time: the problem tried again is gone.)
+                    if std::mem::take(&mut self.retrying) {
+                        self.problem = None;
+                    }
                     self.notice.say(title, Duration::from_secs(4));
                     cx.invalidate();
                 }
@@ -5334,11 +5413,17 @@ impl View for RexWindow {
             }
             WinMsg::Created(serial, hk, sid) => {
                 if self.feedback_serial == serial {
+                    if std::mem::take(&mut self.retrying) {
+                        self.problem = None;
+                    }
                     self.created_session = Some((hk, sid));
                     cx.invalidate();
                 }
             }
-            WinMsg::CreateSession(hk, dir) => app().hub.create_session(&hk, None, dir, Feedback::start(self.id)),
+            WinMsg::CreateSession(hk, dir) => {
+                let again = WinMsg::CreateSession(hk.clone(), dir.clone());
+                app().hub.create_session(&hk, None, dir, Feedback::start(self.id).again(again));
+            }
             WinMsg::Redraw => {
                 let visuals = &mut cx.window_state::<PaneVisuals>().0;
                 if !visuals.is_empty() {
@@ -5411,6 +5496,21 @@ impl View for RexWindow {
             WinMsg::DismissFeedback => {
                 self.clear_feedback();
                 cx.invalidate();
+            }
+            WinMsg::RetryWith(serial, with) => {
+                if self.feedback_serial == serial {
+                    self.retry = Some((serial, *with));
+                    cx.invalidate();
+                }
+            }
+            WinMsg::TryAgain => {
+                // (The problem stays, its button dimmed, until the try
+                // says how it went: `StartFeedback` keeps it.)
+                if let Some((_, with)) = self.retry.take() {
+                    self.retrying = true;
+                    cx.send(with);
+                    cx.invalidate();
+                }
             }
             WinMsg::StopTransfer => {
                 self.cancel_preview();

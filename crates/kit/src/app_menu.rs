@@ -91,15 +91,19 @@ impl Menu {
         self.item(settings_label(target), command).english(settings_english(target))
     }
 
-    /// The first menu's start: About, Keyboard Shortcuts, then the app's
-    /// `settings`, each a Preferences panel ("sound", or with a tab,
-    /// "security/Passwords"), and a separator.
+    /// The first menu's start: About in a group of its own (what the app
+    /// is, apart from how it is set up: Opus 5.5's look at Token Pool's
+    /// menus, 2026-11-25, "separate `About <App>` onto its own top group
+    /// above `Settings…` + `Keyboard Shortcuts`"; BeOS's and the Mac's
+    /// way too), then Keyboard Shortcuts and the app's `settings`, each a
+    /// Preferences panel ("sound", or with a tab, "security/Passwords"),
+    /// and a separator.
     pub fn app_items(self, settings: &[&str]) -> Menu {
         // (In the person's language, the app's name as its catalog has
         // it; the English kept for the menus' check.)
         let name = app_name();
         let about = crate::tr!("About {}", crate::words::of_text(&name)).to_string();
-        let mut m = self.item(about, ABOUT).english(format!("About {name}")).item("Keyboard Shortcuts", SHORTCUTS);
+        let mut m = self.item(about, ABOUT).english(format!("About {name}")).separator().item("Keyboard Shortcuts", SHORTCUTS);
         if let Some(keys) = shortcuts_keys() {
             m = m.keys(keys);
         }

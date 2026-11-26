@@ -967,6 +967,14 @@ pub(crate) struct WindowParams {
     /// Olo: another program's window it belongs to (`WindowOptions::foreign_parent`).
     pub foreign_parent: Option<String>,
 
+    /// Olo: the window it was opened from (`WindowCx::open_window_here`):
+    /// the parent of one that takes a parent (floating, a dialog). Not
+    /// whichever window has the keyboard just then: an alert asked for by
+    /// a menu's command opens while the closing menu still has it, was
+    /// given no parent, and stood in the middle of the screen instead of
+    /// over its window (2026-11-26).
+    pub opener: Option<WindowId>,
+
     /// Olo: the output a lock surface covers (`WindowOptions::session_lock_output`).
     pub session_lock_output: Option<String>,
 

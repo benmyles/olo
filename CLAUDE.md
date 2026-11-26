@@ -284,7 +284,31 @@ are universal and non-negotiable:
   the right-pane progress board (Ben, 2026-11-26: "remove the
   screenshots from the right pane progress board for me please they're
   too intrusive").
-- **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
+- **Helpers are Rex's own subagents: child tabs of yours, through `olo
+  agent`.** (Ben, 2026-11-26: "when you use subagents for review/qa
+  please use the new olo/rex native subagent support you built"; "it
+  should all be available to you as skills if not you need to add
+  them".) Every helper below (a worker, the second investigator, both
+  reviewers) is started by `tools/dev/agents` and its front doors as a
+  child tab of the tab you are in (`olo agent start`), read, answered
+  and stopped through `olo agent` (the `olo-agents` and `olo-rex-bridge`
+  skills): the person sees each under your tab in Rex, with what it is
+  doing, and can read and answer it there. A tmux session only where
+  you aren't in a Rex pane (no `REX_BLOCK`) or the host's `olo agent`
+  doesn't answer; what the rules below say of tmux is of that case, and
+  the rest of them (never a run that goes silent, the minder, what is
+  never approved, stopping each when done) holds either way.
+  **A watch is going whenever a child runs** (Ben, the same day: "make
+  sure you have an olo agents watch going whenever you're running olo
+  agents"): from the first child's start to the last one's end,
+  `tools/dev/agents watch` (or the front door that started it, or the
+  minder's) waits in the background and is started again each time it
+  returns; for children you start with `olo agent start` yourself, `olo
+  agent watch --all --since CURSOR --timeout 90` the same way. It
+  returns the moment a child asks, comes to rest, fails or ends, and
+  polls nothing. Never children running with no watch on them, and
+  never two watches on the same ones.
+- **Subagents: Antigravity, narrow, watched, reviewed.** Do
   the work yourself, in this session, but for three kinds of help, all
   Gemini 4 Neon at xhigh in the Antigravity CLI (`agy`) but Opus's
   design review (never Codex nor Astra: Ben, 2026-11-22, "stop using codex/astra for
@@ -318,9 +342,10 @@ are universal and non-negotiable:
     `tools/dev/opus-look`, Opus 5.5's design review of the same
     pictures (the Claude CLI in a tmux session, with the tools to read
     and write files in a folder of the pictures' copies and no other).
-- **Every helper in a tmux session, never a script that goes silent.**
-  A subagent, the investigator and both reviewers each run their
-  program's own interactive screen in a tmux session
+- **Every helper on a screen of its own, never a script that goes
+  silent.** A subagent, the investigator and both reviewers each run
+  their program's own interactive screen in a child tab of yours (a
+  tmux session where there is no Rex pane: above)
   (`tools/dev/agents`; `agy-help`, `agy-look` and `opus-look` are its
   front doors), so what each is doing can be read at any moment
   (`agents peek NAME`), it can be told more (`agents say`), and what it

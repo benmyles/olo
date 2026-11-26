@@ -36,6 +36,8 @@ pub struct Button {
     working: Option<Option<f32>>,
     /// It opens a menu (`Button::menu`).
     menu: bool,
+    /// As tall as what it stands beside (`Button::height`).
+    height: Option<f32>,
     on_click: Option<Handler>,
 }
 
@@ -46,7 +48,7 @@ pub const MENU_MARK_ROOM: f32 = 14.0;
 impl Button {
     pub fn new(label: impl Into<SharedString>) -> Button {
         let label = crate::words::of(label);
-        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, menu: false, on_click: None }
+        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, menu: false, height: None, on_click: None }
     }
 
     /// Its id, when two buttons share a label.
@@ -74,6 +76,17 @@ impl Button {
     /// open where its click says so (`pushed`).
     pub fn menu(mut self) -> Self {
         self.menu = true;
+        self
+    }
+
+    /// As tall as the thing it stands beside and acts on, where that
+    /// isn't a control's height (a sunken well whose frame is in device
+    /// pixels, so 24 to 26 points by the scale: Rex's error banner, whose
+    /// Try Again at a control's height stood stepped against its
+    /// detail's well, Gemini 4 Neon's look, 2026-11-26). Never shorter
+    /// than a small button.
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = Some(h.max(SMALL_BUTTON_HEIGHT));
         self
     }
 
@@ -134,7 +147,7 @@ impl IntoElement for Button {
         let tw = f32::from(style::text_width(self.label.clone(), font_size, style::ui_font(FontWeight::NORMAL)));
         let mark = if self.menu { MENU_MARK_ROOM } else { 0.0 };
         let w = (((tw + 2.0 * pad + mark).max(self.min_width)) / 2.0).ceil() * 2.0;
-        let h = if self.small { SMALL_BUTTON_HEIGHT } else { m::CONTROL_HEIGHT };
+        let h = self.height.unwrap_or(if self.small { SMALL_BUTTON_HEIGHT } else { m::CONTROL_HEIGHT });
         let (label, default, pushed, working, menu) = (self.label.clone(), self.default, self.pushed, self.working, self.menu);
         let mut c = control(self.id.clone(), w, h, move |g, r, s| match working {
             Some(done) => paint_working(g, r, &label, done, font_size),

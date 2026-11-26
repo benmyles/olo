@@ -1745,6 +1745,20 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   crossed the bar stays open for that press.
 * Session lock (the lock screen only): `olo_kit::lock_session` and
   `unlock_session`. See "The lock screen".
+* A window opened from another (`open_window_here`) that takes a
+  parent (floating, a dialog: an alert)
+  has **the window it was opened from** for its parent
+  (`WindowParams::opener`), not whichever window has the keyboard at
+  that instant: an alert asked for by a menu's command opens while the
+  closing menu still has the keyboard, was given no parent, and stood
+  in the middle of the screen, not over its window, with nothing
+  holding it above it (2026-11-26; measured with app_server's
+  `list_windows`: 445, 311 on a 1280 × 800 screen before, 398, 163 over
+  Rex's window after, centred on it). Opened from a popup or a layer
+  (which can be no parent), it falls back to the keyboard's window.
+* A `Button` beside a thing whose height isn't a control's takes its
+  height (`Button::height`: Rex's Try Again beside a sunken well, whose
+  frame is in device pixels and so 24 to 26 points by the scale).
 
 ### Drag and drop (`olo_kit::dnd`)
 
@@ -22252,6 +22266,27 @@ root). The README and the website's install page say how to ask for it
 tested on few computers. **When a kind of hardware gets a new home in
 Olo (a new section here, a new place per-machine data lives), say so in
 that skill**: it is the map a stranger's agent follows.
+
+**Help with Olo's development, each helper a child tab of the lead's**
+(2026-11-26; Ben: "when you use subagents for review/qa please use the
+new olo/rex native subagent support you built"; "make sure you have an
+olo agents watch going whenever you're running olo agents"). The tool
+below starts each helper with `olo agent start` as a child tab of the
+tab the lead is in (agy and the Claude CLI as the agents they are, so
+Rex says of each what it is doing, under the lead's tab and in
+Activity), reads it with `olo agent read`, types into it with `olo agent
+send` (`--paste --text`, `--key`), stops it with `olo agent stop --force
+--save transcript.txt`, and its `watch` waits on `olo agent watch`
+between its looks (the moment a child asks, comes to rest, fails or
+ends; ten seconds otherwise, for its own clocks), where it slept five
+seconds and read every screen. `rex_here` chooses: in a Rex pane whose
+host answers `olo agent`, child tabs; else, or with
+`OLO_AGENTS_VIA=tmux`, a tmux session as below; an agent goes on the
+way it was started (`via` and `rex_id` in its `meta.json`). What may go
+ahead unasked, the briefs, peek, say, approve and the minder are the
+same either way. A watch is going whenever one runs, and one watcher an
+agent. What follows is the tmux way, kept for where there is no Rex
+pane.
 
 **Help with Olo's development, each helper in a tmux session**
 (`tools/dev/agents`; the `olo-agents` and `olo-debug-help` skills in

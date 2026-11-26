@@ -1,6 +1,6 @@
 ---
 name: olo-rex-bridge
-description: From a Rex session on this host, use the person's Olo desktop - open a link or a local server's page in their browser, reach a server of this host's there at the port it answers on here, read a secret from their Olo Passwords, and see and drive graphical apps on a screen of your own there (Olo Agent Screens). Use when a task on this host needs a browser, a GUI, a password or the person's eyes on something.
+description: From a Rex session on this host: start, watch, answer and stop subagents as child tabs of your own tab (`olo agent`: Claude Code, Codex, Antigravity or a command of your own; it needs no desktop, and is the way to run any subagent, reviewer or helper here), and use the person's Olo desktop - open a link or a local server's page in their browser, reach a server of this host's there at the port it answers on here, read a secret from their Olo Passwords, and see and drive graphical apps on a screen of your own there (Olo Agent Screens). Use when a task on this host needs a browser, a GUI, a password or the person's eyes on something.
 ---
 
 # The Olo desktop, from this host
@@ -30,6 +30,26 @@ terminal tab nested cleanly under your current tab (visible in the tab's
 tree popover and the Activity sidebar, without cluttering the top tab
 bar, and allowing the person to click straight in and interact at any
 time).
+
+**While any child of yours runs, keep a watch going on them.** One
+`olo agent watch --all --since CURSOR --on question,approval,idle,done,error,exit --timeout 90 --json`
+as a background command of your harness (so its return wakes you),
+from the moment you start the first child until the last has ended:
+
+- it returns at once when a child asks leave, asks a question, comes
+  to rest, fails or exits (exit code 0: read the event, act on it with
+  `status`, `read`, `approve` or `send`, then watch again from the
+  `cursor` it gave); with nothing to say it returns 124 when its time is
+  up: watch again from the same cursor. Nothing is polled meanwhile.
+- `CURSOR` is the `cursor` of your `start` (or of `list`): from there,
+  nothing that happened while you looked away is missed, and nothing is
+  said twice.
+- Never start children and go on with other work without one: a child
+  that asks waits on you unseen, for as long as you don't look. Never
+  wait with `sleep` and `read` in a loop instead.
+- Where a tool of the project starts the children for you (Olo's
+  `tools/dev/agents` and its front doors), its own `watch` is this watch
+  (it waits on `olo agent watch`): keep that one going instead.
 
 **It works with no Olo desktop connected.** Every `olo agent` command
 is answered by this host's own agents service (Olo's helper here, which

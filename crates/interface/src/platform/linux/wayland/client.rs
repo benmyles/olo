@@ -971,7 +971,14 @@ impl LinuxClient for WaylandClient {
         // Olo: a window again (launched while lingering): it runs on.
         state.lingering = false;
 
-        let parent = state.keyboard_focused_window.as_ref().and_then(|w| w.toplevel());
+        // Olo: the window it was opened from, where that is a window that
+        // can be a parent (a menu's or a layer's own alert has none such:
+        // then, as before, the one with the keyboard).
+        let parent = params
+            .opener
+            .and_then(|opener| state.windows.values().find(|w| w.handle() == opener))
+            .and_then(|w| w.toplevel())
+            .or_else(|| state.keyboard_focused_window.as_ref().and_then(|w| w.toplevel()));
         // Olo: a popup opens over its parent window's surface, grabbing
         // the press that opened it.
         let popup_parent = match params.kind {

@@ -2501,6 +2501,34 @@ their host's"):
   measuring script that started its server with `&` and then waited for
   thirty starts never came back. Wait for the numbers you started
   (`pids+=($!)`, `wait "${pids[@]}"`).
+- **The helpers are Rex's own subagents now** (2026-11-26; Ben: "when
+  you use subagents for review/qa please use the new olo/rex native
+  subagent support you built"). `tools/dev/agents` starts each as a child
+  tab of the lead's tab with `olo agent start` (agy and the Claude CLI as
+  the agents they are, so Rex says Working or Waiting of them; a tmux
+  session only with no Rex pane, or `OLO_AGENTS_VIA=tmux`), and reads,
+  types into and stops it with `olo agent read`, `send` and `stop
+  --save`. What was learnt doing it:
+  - The host answers `olo agent` by itself once the desktop has
+    connected with a build that has it (it puts the helper and the `olo`
+    script here): `~/.local/share/olo/rex-link/olo-rex-link-* agent
+    --protocol` prints 1. Before that the tool falls back to tmux by
+    itself (`rex_here`).
+  - Who asks is the process that asks: the tool run from the lead's
+    shell, or from the minder (a subagent of the same Claude process),
+    is the lead's tab, and the children are under it. A helper can't
+    start or steer others (`OLO_SUBAGENT`, and the service keeps a child
+    to its own descendants).
+  - A child is known by the id `start` answers with (kept in its meta as
+    `rex_id`): a name is free again once its child has ended, and a look
+    on the same folder is started under the same name.
+  - A child's screen is the asking pane's size (tmux gave 200 × 60), and
+    `read --scrollback --lines` gives 5000 lines at most: the whole of
+    what it said is kept by `stop --save` (transcript.txt), not by
+    reading.
+  - Its first message is short and names the brief's file: a page of
+    rules isn't sent as a command's argument through a tab's command
+    line.
 - **An agent's shell has a proxy on its own loopback, and Podman hands
   it to every container** (`HTTPS_PROXY=http://127.0.0.1:PORT` in a
   Claude Code session here; Podman's `--http-proxy` is on by default).

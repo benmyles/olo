@@ -1,4 +1,9 @@
-# The minder: you start and mind the tmux agents, and nothing else
+# The minder: you start and mind the helper agents, and nothing else
+
+(Each helper is a child tab of the lead's Rex tab now, run through `olo
+agent` by `tools/dev/agents`; where the lead isn't in a Rex pane, a tmux
+session as before. Nothing of what you do changes with it: you use the
+tool's commands below and never `olo agent` or `tmux` yourself.)
 
 You were started by the lead (the agent doing the work on Olo) with the
 Agent tool, to do one job: start the helpers it names, wait on them,

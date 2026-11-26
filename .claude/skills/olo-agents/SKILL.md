@@ -1,9 +1,49 @@
 ---
 name: olo-agents
-description: Run subagents on narrow, targeted Olo work items in parallel - each an interactive Antigravity CLI (agy, Gemini 4 Neon at xhigh) in a tmux session of its own, in this working tree, scoped to one crate no other agent is in, running routine commands without asking and asking leave for the rest - and start, watch, steer, approve, review and commit their work with tools/dev/agents. Also how every helper here is run and watched in tmux (the second investigator, Gemini's look at pictures, Opus 5.5's design review). Use when a task splits into independent pieces in separate crates (one app each; a big feature built in parallel; the same kind of change across several apps), at most five at once, and whenever a helper is running and needs reading, answering or steering. Not for finding a bug's cause (olo-debug-help).
+description: Run subagents on narrow, targeted Olo work items in parallel - each an interactive Antigravity CLI (agy, Gemini 4 Neon at xhigh) in a child tab of your own Rex tab (Rex's native subagents, through `olo agent`; a tmux session where you aren't in a Rex pane), in this working tree, scoped to one crate no other agent is in, running routine commands without asking and asking leave for the rest - and start, watch, steer, approve, review and commit their work with tools/dev/agents. Also how every helper here is run and watched (the second investigator, Gemini's look at pictures, Opus 5.5's design review). Use when a task splits into independent pieces in separate crates (one app each; a big feature built in parallel; the same kind of change across several apps), at most five at once, and whenever a helper is running and needs reading, answering or steering. Not for finding a bug's cause (olo-debug-help).
 ---
 
-# Subagents: narrow work, in parallel, each in tmux
+# Subagents: narrow work, in parallel, each a child tab of yours
+
+**Every helper is one of Rex's own subagents now** (Ben, 2026-11-26:
+"when you use subagents for review/qa please use the new olo/rex native
+subagent support you built"; "it should all be available to you as
+skills if not you need to add them"). `tools/dev/agents` and its front
+doors (`agy-look`, `opus-look`, `agy-help`) start each one with `olo
+agent start` as a **child tab of the tab you are in**, and read, answer
+and stop it with `olo agent read`, `send` and `stop`: the host's own
+agents service, which needs no desktop (the `olo-rex-bridge` skill,
+"Subagents in Rex", says what `olo agent` is). The person sees each one
+under your tab in Rex, in its tree menu and in Activity, with what it is
+doing, and can open it, read it and answer it there. Everything below
+(the briefs, the lists of what may go ahead, peek, say, approve, watch,
+the minder) is the same whichever way it runs: the tool's commands are
+the way in, and `tools/dev/agents list` says who runs.
+
+- **A watch is going whenever a helper runs**, from its start to its
+  end (Ben, 2026-11-26: "make sure you have an olo agents watch going
+  whenever you're running olo agents"): `tools/dev/agents watch` as a
+  background command of yours, started again each time it returns, or
+  the front door that started the helper (each waits as `watch` does),
+  or the minder's. For child tabs it waits on `olo agent watch`: it
+  returns the moment one asks, comes to rest, fails or ends, and reads
+  no screen meanwhile. One watcher an agent, not two: a second `watch`
+  of the same agents takes the news the first was to give (a minder's
+  agents are the minder's to watch; yours are the ones you started
+  without one). Children you start with `olo agent start` yourself, not
+  through the tool, are watched with `olo agent watch --all --since
+  CURSOR …` the same way (the `olo-rex-bridge` skill).
+- You can ask the service too: `olo agent list` (your children),
+  `olo agent status NAME --json`, `olo agent read NAME`, `olo agent
+  focus NAME` (show its tab). Leave starting and stopping to the tool:
+  it keeps each agent's folder, brief and rules.
+- A child's screen is as wide as your pane when it starts (tmux gave
+  each 200 columns): long commands fold sooner in what it asks.
+- Where you are not in a Rex pane (no `REX_BLOCK`), or the host's `olo
+  agent` doesn't answer, or with `OLO_AGENTS_VIA=tmux`, each runs in a
+  tmux session of its own as before (`tmux -L olo-agents`); an agent
+  goes on the way it was started. What is said of tmux below is of that
+  way.
 
 CLAUDE.md, "Subagents": besides the debug helper and the looks at
 pictures, narrow, targeted work items that can go on in parallel may be

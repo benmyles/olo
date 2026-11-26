@@ -1,5 +1,10 @@
 #!/usr/bin/python3
-"""Every agent that helps with Olo, each in a tmux session of its own:
+"""Every agent that helps with Olo, each a child tab of the lead's own
+Rex tab (started, read, answered and stopped through `olo agent`: Rex's
+own support for an agent's children, which needs no desktop; Ben,
+2026-11-26: "when you use subagents for review/qa please use the new
+olo/rex native subagent support you built"), or, where the lead isn't in
+a Rex pane, a tmux session of its own as all of them were until then:
 narrow, parallel work items, second investigators and the looks at a
 change's pictures. Each is an interactive Antigravity CLI (`agy`: Gemini
 4 Neon, its reasoning at xhigh), the look at pictures for what is wrong
@@ -148,6 +153,17 @@ SPINNER = re.compile(r"^\s*[\u2800-\u28ff]\s")
 BANNER = re.compile(r"[▀▄▐▛▜▝]")
 # A rule drawn across the screen: above a question, around the field.
 RULE = "─"
+
+
+def is_rule(line):
+    """A rule drawn across the screen. Claude Code writes its session's
+    name into the rule over its field while it works (a child tab is
+    started with a name), so a rule is a line that is mostly rule, not
+    one of nothing else: read as no rule, a helper's line a minute was
+    its footer, "accept edits on …", for the whole of a ten-minute look
+    (the minders' reports, 2026-11-26)."""
+    t = line.strip()
+    return t.count(RULE) >= 20 and t.count(RULE) >= 0.6 * len(t)
 # Choices never taken from here: one that would write a rule into the
 # person's own settings, or change the mode the agent was started in.
 SAVES = ("settings.json", "always allow access", "auto mode")
@@ -208,6 +224,105 @@ def settings(folders, commands=True, own=()):
 CONF = "set-option -g remain-on-exit on\nset-option -g history-limit 200000\n"
 
 
+# Where an agent's program runs. In a Rex pane: a child tab of the
+# lead's tab, through `olo agent` (the host's own agents service: the
+# person sees each helper under the lead's tab and in Rex's Activity,
+# with what it is doing, and can read or answer it there too). Not in a
+# Rex pane (nothing to be the parent of it), or with OLO_AGENTS_VIA=tmux:
+# a tmux session. An agent goes on as it was started (`via` in its
+# meta).
+OLO = shutil.which("olo") or os.path.expanduser("~/.local/bin/olo")
+# (What tmux calls a key, as `olo agent send --key` takes it.)
+OLO_KEYS = {"C-m": "Enter", "M-m": "Alt+m"}
+_REX = []
+
+
+def olo(*args, check=False, timeout=180):
+    """`olo agent ARGS…`, asked of the host's agents service."""
+    try:
+        r = subprocess.run([OLO, "agent", *args], capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        r = subprocess.CompletedProcess([OLO, "agent", *args], 1, "", str(e))
+    if check and r.returncode:
+        sys.exit(f"agents: olo agent {' '.join(args[:2])}: {(r.stderr or r.stdout).strip()}")
+    return r
+
+
+def rex_here():
+    """Whether a new agent here is a child tab of this pane's tab: in a
+    Rex pane whose host answers `olo agent` by itself (asked once)."""
+    if not _REX:
+        ok = os.environ.get("OLO_AGENTS_VIA") != "tmux" and bool(os.environ.get("REX_BLOCK")) and os.path.exists(OLO)
+        _REX.append(ok and olo("list", "--fast", "--json", timeout=40).returncode == 0)
+    return _REX[0]
+
+
+def via(name):
+    """How it was started: "rex" (a child tab) or "tmux"."""
+    return (meta(name) or {}).get("via", "tmux")
+
+
+def child(name):
+    """What `olo agent` knows it by: its id (a name is another's too,
+    once this one has ended and one like it is started)."""
+    return (meta(name) or {}).get("rex_id") or name
+
+
+def press(name, key):
+    """A key pressed in it (named as tmux names keys)."""
+    if via(name) == "rex":
+        if re.fullmatch(r"[0-9A-Za-z]", key):
+            olo("send", child(name), "--text", key, check=True)
+        else:
+            olo("send", child(name), "--key", OLO_KEYS.get(key, key), check=True)
+    else:
+        tmux("send-keys", "-t", f"={name}:0.0", key, check=True)
+
+
+def paste(name, text):
+    """Text put in its field as one paste, so a new line in it is a new
+    line and not a send."""
+    if via(name) == "rex":
+        olo("send", child(name), "--paste", "--text", text, check=True)
+        return
+    r = subprocess.run(["tmux", "-L", SOCKET, "load-buffer", "-b", "olo-say", "-"], input=text, text=True, capture_output=True)
+    if r.returncode:
+        sys.exit(f"agents: tmux load-buffer: {r.stderr.strip()}")
+    tmux("paste-buffer", "-p", "-d", "-b", "olo-say", "-t", f"={name}:0.0", check=True)
+
+
+def cursor_now():
+    """Where the service's log of what happened stands (`watch --since`)."""
+    try:
+        return int(json.loads(olo("list", "--fast", "--json", timeout=40).stdout).get("cursor", 0))
+    except (ValueError, TypeError, AttributeError):
+        return 0
+
+
+def wait_for_news(waited, cursor):
+    """The wait between two looks at the agents `waited` (those still
+    there). Child tabs: on `olo agent watch`, which returns the moment
+    one of them asks, comes to rest, fails or ends, and after ten
+    seconds otherwise (the loop's own clocks: a turn that is really
+    over, one that shows nothing new); no screen is read meanwhile.
+    With a tmux one among them, or the service not answering: five
+    seconds, as it was. The cursor to wait from next."""
+    ids = [child(n) for n in waited if via(n) == "rex"]
+    if not ids or len(ids) != len(waited):
+        time.sleep(5)
+        return cursor
+    r = olo("watch", *ids, "--since", str(cursor), "--on", "question,approval,idle,done,error,exit", "--timeout", "10", "--json", timeout=60)
+    try:
+        said = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
+    except ValueError:
+        said = {}
+    if r.returncode not in (0, 124) or "cursor" not in said:
+        # (It couldn't be asked: never a loop that spins on a refusal.)
+        time.sleep(5)
+        return cursor
+    return int(said["cursor"])
+
+
 def tmux(*args, check=False):
     conf = os.path.join(HOME, "tmux.conf")
     if not os.path.exists(conf):
@@ -246,10 +361,15 @@ def names():
 def screen(name, lines=None):
     """Its screen as text (the last `lines` of its history, if given),
     less its banner."""
-    args = ["capture-pane", "-p", "-J", "-t", f"={name}:0.0"]
-    if lines:
-        args[1:1] = ["-S", f"-{lines}"]
-    r = tmux(*args)
+    if via(name) == "rex":
+        # (All it has said where lines are asked for, the service's most
+        # at once; else what it shows now.)
+        r = olo("read", child(name), "--scrollback", "--lines", str(min(lines, 5000))) if lines else olo("read", child(name))
+    else:
+        args = ["capture-pane", "-p", "-J", "-t", f"={name}:0.0"]
+        if lines:
+            args[1:1] = ["-S", f"-{lines}"]
+        r = tmux(*args)
     if r.returncode:
         return None
     return "\n".join(l for l in r.stdout.splitlines() if not BANNER.search(l)).rstrip()
@@ -267,13 +387,27 @@ def state(name):
     # (A session that isn't there: `display-message` answers nothing and
     # succeeds, and a bare name matches another's by its start; `=` is the
     # name exactly.)
-    if tmux("has-session", "-t", f"={name}").returncode:
-        return "gone"
-    r = tmux("display-message", "-p", "-t", f"={name}:0.0", "#{pane_dead}")
-    if r.returncode:
-        return "gone"
-    if r.stdout.strip() == "1":
-        return "exited"
+    if via(name) == "rex":
+        # (The service's word for whether it is there and runs; what it
+        # is doing is read from its screen here, as for a tmux one: the
+        # lists of what may go ahead are this tool's.)
+        r = olo("status", child(name), "--json")
+        try:
+            said = json.loads(r.stdout) if r.returncode == 0 else None
+        except ValueError:
+            said = None
+        if not said:
+            return "gone"
+        if said.get("state") == "exited" or said.get("running") is False:
+            return "exited"
+    else:
+        if tmux("has-session", "-t", f"={name}").returncode:
+            return "gone"
+        r = tmux("display-message", "-p", "-t", f"={name}:0.0", "#{pane_dead}")
+        if r.returncode:
+            return "gone"
+        if r.stdout.strip() == "1":
+            return "exited"
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
     # (Read as asking, a look starting on a new folder was shown to a
     # minder as a question for two seconds, 2026-11-25.)
@@ -304,7 +438,7 @@ def asked(name):
     if end is None:
         return [], []
     # (The question: from the rule drawn above it, a line of ─.)
-    start = max((i for i, l in enumerate(lines[:end]) if set(l.strip()) == {RULE}), default=max(0, end - 12)) + 1
+    start = max((i for i, l in enumerate(lines[:end]) if is_rule(l)), default=max(0, end - 12)) + 1
     choices = [(m.group(1), m.group(2).strip()) for m in (re.match(r"^\s*[>❯]?\s*(\d)\.\s+(.*)$", l) for l in lines[start:end]) if m]
     return lines[start:end], choices
 
@@ -592,11 +726,33 @@ The pictures:
 """
 
 
-def session(name, cwd, env, program):
-    """A tmux session of its own for one agent's program, nothing of
-    the person's screen in its reach. (One tmux server for them all,
-    its options from CONF.)"""
-    env = ["env", "-u", "WAYLAND_DISPLAY", "-u", "DISPLAY", "-u", "OLO_SOCKET", "-u", "CLAUDECODE", "-u", "CLAUDE_CODE_ENTRYPOINT", f"OLO_SUBAGENT={name}", *env]
+# What no agent here is given of the lead's shell: the person's screen,
+# and what marks a shell as inside Claude Code.
+UNSET = ["WAYLAND_DISPLAY", "DISPLAY", "OLO_SOCKET", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]
+
+
+def session(name, cwd, env, program, native=None):
+    """Where one agent's program runs, nothing of the person's screen in
+    its reach: a child tab of the lead's Rex tab (`native`: what `olo
+    agent start` is asked for, its agent first), or a tmux session of
+    its own (`program`; one tmux server for them all, its options from
+    CONF)."""
+    if native and rex_here():
+        args = ["start", *native[:1], "--name", name, "--title", name, "--cwd", cwd, "--desktop", "none", "--env", f"OLO_SUBAGENT={name}"]
+        for e in env:
+            args += ["--env", e]
+        for u in UNSET:
+            args += ["--unset-env", u]
+        r = olo(*args, "--json", *native[1:], check=True)
+        try:
+            said = json.loads(r.stdout)
+        except ValueError:
+            sys.exit(f"agents: olo agent start {name}: {r.stdout.strip() or r.stderr.strip()}")
+        m = meta(name) or {}
+        m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id")})
+        save_meta(name, m)
+        return
+    env = ["env", *[x for u in UNSET for x in ("-u", u)], f"OLO_SUBAGENT={name}", *env]
     tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", cwd, *env, *program, check=True)
 
 
@@ -609,8 +765,13 @@ def launch_opus(name, cwd, brief):
     message, after an option that takes no value: `--tools` and
     `--add-dir` take as many as follow them, and took the brief for a
     folder's name, 2026-11-22.)"""
+    # (As a child tab its first message is short and names its brief's
+    # file, written beside the pictures: its rules are a page.)
+    first = f"Read {cwd}/brief.md (the rules, then what it is and what changed) and do what it says."
     session(name, cwd, [], ["claude", "--model", OPUS, "--effort", "max", "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
-                            "--permission-mode", "acceptEdits", "--disable-slash-commands", brief])
+                            "--permission-mode", "acceptEdits", "--disable-slash-commands", brief],
+            native=["claude", "--model", OPUS, "--effort", "max", "--permission-mode", "acceptEdits", "--strict-mcp-config", "--prompt", first,
+                    "--", "--restricted", "--tools", "Read,Write", "--disable-slash-commands"])
 
 
 def launch_astra(name, cwd):
@@ -640,9 +801,10 @@ def launch(name, d, cwd, others, target=None, commands=True):
     # settings are this run's alone, the person's neither read for the
     # lists nor written.)
     add = [a for x in folders[1:] for a in ("--add-dir", x)]
-    agy = ["agy", "--model", MODEL, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add,
-           "-i", f"Read {d}/brief.md (the rules, then your task) and do what it says."]
-    session(name, cwd, env, agy)
+    first = f"Read {d}/brief.md (the rules, then your task) and do what it says."
+    agy = ["agy", "--model", MODEL, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
+    session(name, cwd, env, agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--mode", "accept-edits",
+                                         "--settings", os.path.join(d, "settings.json"), *add, "--prompt", first])
 
 
 # Looks and second investigators at once, apart from the workers.
@@ -895,7 +1057,16 @@ def look(args):
         # it did kept beside that, and the session ended with its
         # folder, so it doesn't count among those running.)
         shutil.copyfile(review, out)
-        open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
+        if via(name) == "rex":
+            # (All a child tab said is kept by the service as it stops
+            # it: a read gives its last screen and little more, and the
+            # first native look's log began partway through its review.)
+            end(name)
+            kept = os.path.join(d, "transcript.txt")
+            if os.path.exists(kept):
+                shutil.copyfile(kept, out[:-3] + ".log")
+        else:
+            open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
         print(open(out).read().rstrip())
         end(name)
         shutil.rmtree(d, ignore_errors=True)
@@ -948,7 +1119,7 @@ def trusts_own_folder(name):
         return False
     # (Its choices are "❯ No, exit" then "Yes, I trust this folder", unnumbered.)
     for k in ("Down", "C-m"):
-        tmux("send-keys", "-t", f"={name}:0.0", k, check=True)
+        press(name, k)
         time.sleep(0.3)
     print(f"agents: {name}: its own folder trusted ({folder(name)})")
     return True
@@ -963,19 +1134,33 @@ def watch(stuck_min, only=None, at_most=None, among=None):
     last = {}
     idle_since = {}
     began = told = time.time()
+    cursor = cursor_now() if rex_here() else 0
     while True:
         alerts = []
+        waited = []
         # (Looked at before the time is up: a question that came in the
         # last moments was said as "nothing has needed you", and waited a
         # minute on a minder that took it at its word, 2026-11-24.)
         out_of_time = bool(at_most) and time.time() - began >= at_most * 60
         rows = [n for n in names() if only in (None, n) and (not among or any(n.startswith(p) for p in among))]
         if not any(state(n) in ("starting", "working", "asking", "idle") for n in rows):
-            print("agents: none running")
+            # (One waited for alone: how it ended, which "none running"
+            # didn't say; a look stopped partway read as one that had
+            # finished, a minder found, 2026-11-26.)
+            if only and meta(only):
+                result = done_file(only)
+                if os.path.exists(result):
+                    print(f"agents: {only} has ended; its result is {result}")
+                else:
+                    print(f"agents: {only} has ended WITHOUT its result ({result}): it was stopped, or its program exited; `tools/dev/agents log {only}` has what it said, if its folder is still there")
+            else:
+                print("agents: none running")
             return 1 if only else 0
         for n in rows:
             st = state(n)
             m = meta(n) or {}
+            if st not in ("gone", "exited"):
+                waited.append(n)
             if st == "starting":
                 trusts_own_folder(n)
                 continue
@@ -1040,7 +1225,7 @@ def watch(stuck_min, only=None, at_most=None, among=None):
             for n in rows:
                 if live(n):
                     print(f"… {n}: {state(n)}, {ago((meta(n) or {}).get('started', told))} since its start: {latest(n)}", flush=True)
-        time.sleep(5)
+        cursor = wait_for_news(waited, cursor)
 
 
 def latest(name):
@@ -1051,7 +1236,7 @@ def latest(name):
     step of six looked stuck writing its report for ten minutes, a
     minder found, 2026-11-24)."""
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
-    rules = [i for i, l in enumerate(lines) if set(l.strip()) == {RULE}]
+    rules = [i for i, l in enumerate(lines) if is_rule(l)]
     said = [l for l in (lines[:rules[-2]] if len(rules) >= 2 else lines) if not re.match(r"\s*└ Tip:", l)]
     turning = [l for l in said if SPINNER.match(l)]
     if turning:
@@ -1080,7 +1265,7 @@ def log(name):
 def field(name):
     """What its field holds: the lines between the last two rules."""
     lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
-    rules = [i for i, l in enumerate(lines) if set(l.strip()) == {RULE}]
+    rules = [i for i, l in enumerate(lines) if is_rule(l)]
     if len(rules) < 2:
         return ""
     held = " ".join(l.strip() for l in lines[rules[-2] + 1:rules[-1]])
@@ -1101,14 +1286,10 @@ def say(name, text, now=False):
         sys.exit(f"agents: {name} is asking you something: answer that first (agents approve {name} y|p|no, agents answer {name} N)")
     # (As one paste, so a new line in it is a new line and not a send;
     # then Enter by itself, a moment later.)
-    target = f"={name}:0.0"
-    r = subprocess.run(["tmux", "-L", SOCKET, "load-buffer", "-b", "olo-say", "-"], input=text, text=True, capture_output=True)
-    if r.returncode:
-        sys.exit(f"agents: tmux load-buffer: {r.stderr.strip()}")
-    tmux("paste-buffer", "-p", "-d", "-b", "olo-say", "-t", target, check=True)
+    paste(name, text)
     time.sleep(0.5 + len(text) / 1500)
     for _ in range(4):
-        tmux("send-keys", "-t", target, "C-m", check=True)
+        press(name, "C-m")
         time.sleep(1.5)
         if not field(name):
             break
@@ -1116,7 +1297,7 @@ def say(name, text, now=False):
         sys.exit(f"agents: said to {name}, but its field still holds the words: look (agents peek {name})")
     queued = "to send immediately" in "\n".join((screen(name) or "").splitlines()[-12:])
     if queued and now:
-        tmux("send-keys", "-t", target, "M-m", check=True)
+        press(name, "M-m")
         time.sleep(1.0)
     seen(name)
     print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until the step it is on ends (`agents say {name} --now …` delivers at once)"))
@@ -1150,7 +1331,7 @@ def answer(name, how):
     if any(x in pick[1] for x in SAVES):
         sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
     before = screen(name, 400) or ""
-    tmux("send-keys", "-t", f"={name}:0.0", pick[0], check=True)
+    press(name, pick[0])
     # (Whether it took: its screen moves on. The same question again after
     # that is a second asking, not this one left up: an agent that ran a
     # script asked to run it again, and the minder took it for an answer
@@ -1198,7 +1379,7 @@ def keys(name, which):
     if None in send:
         sys.exit(f"agents: keys are {', '.join(KEYS)}, a digit or a letter")
     for k in send:
-        tmux("send-keys", "-t", f"={name}:0.0", k, check=True)
+        press(name, k)
         time.sleep(0.3)
     time.sleep(0.5)
     print("\n".join(l for l in (screen(name, 16) or "").splitlines() if l.strip()))
@@ -1211,10 +1392,16 @@ def end(name):
     its folder (transcript.txt) first, and any headless test session it
     left running (it names them agy-NAME…) stopped with it."""
     d = folder(name)
-    text = screen(name, 200000)
-    if text and os.path.isdir(d):
-        open(os.path.join(d, "transcript.txt"), "w").write(text + "\n")
-    tmux("kill-session", "-t", f"={name}")
+    if via(name) == "rex":
+        # (The service keeps all it said as it stops it; its tab closes.)
+        kept = ["--save", os.path.join(d, "transcript.txt")] if os.path.isdir(d) else []
+        if state(name) != "gone":
+            olo("stop", child(name), "--force", *kept)
+    else:
+        text = screen(name, 200000)
+        if text and os.path.isdir(d):
+            open(os.path.join(d, "transcript.txt"), "w").write(text + "\n")
+        tmux("kill-session", "-t", f"={name}")
     tsession = os.path.join(ROOT, "tools/dev/tsession")
     try:
         listed = subprocess.run(["/usr/bin/python3", tsession, "list"], capture_output=True, text=True, timeout=20).stdout
@@ -1341,7 +1528,10 @@ def main():
     elif cmd == "forget" and rest:
         forget(rest[0])
     elif cmd == "attach" and rest:
-        print(f"tmux -L {SOCKET} attach -r -t {rest[0]}")
+        if via(rest[0]) == "rex":
+            print(f"olo agent focus {child(rest[0])}    (its tab, under yours in Rex)")
+        else:
+            print(f"tmux -L {SOCKET} attach -r -t {rest[0]}")
     elif cmd == "allowed":
         allowed()
     elif cmd == "tidy":
