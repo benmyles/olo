@@ -6297,6 +6297,20 @@ machine). To see a
 test's notifications, run its own centre:
 `$T run NAME olo-notifications --bus unix:path=/var/tmp/olo-dev/NAME/bus`.
 
+And every session is fenced off from what the computer has one of. Rex:
+a server socket nothing listens on and an agents folder of its own
+(`REX_SERVER_SOCKET`, `OLO_REX_AGENTS_DIR`; "Leave the host's agents
+alone too"). Token Pool: `OLO_POOL_PORT=0` and `OLO_POOL_PROXY_PORT=0`.
+The pool is one a computer, on 127.0.0.1:17891 with its proxy on 17892,
+and agents' requests go through it (on a Rex host, `olo-pool-host`'s):
+port 0 is no pool to whoever asks one (the palette's /ask and the
+assistants, which spend the person's accounts; Rex), and any free port
+to an `olo-pool` started in the session, which would otherwise take the
+real ports wherever they were free and be the computer's pool with
+nothing behind it. `olo-pool`'s demo (`OLO_POOL_DEMO`) sets the same
+for itself, whatever it is told (2026-11-26; `run NAME OLO_POOL_PORT=N
+…` for a pool of a test's own, as the Rex rig does).
+
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). What apps keep between runs and their caches are

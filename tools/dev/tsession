@@ -372,7 +372,17 @@ def start(name, args):
                  # service came up on the live socket with nothing in it,
                  # under four agents hours into their work (2026-11-26).
                  "REX_SERVER_SOCKET": "unix://" + os.path.join(d, "no-rex-server.sock"),
-                 "OLO_REX_AGENTS_DIR": os.path.join(d, "rex-agents")}
+                 "OLO_REX_AGENTS_DIR": os.path.join(d, "rex-agents"),
+                 # Nor Token Pool's gateway and proxy, the computer's one
+                 # pool (127.0.0.1:17891 and 17892; on a Rex host, its
+                 # agents' requests go through them): port 0 is no port
+                 # to whoever asks the pool (the palette's /ask, Weather's
+                 # and Calendar's assistants, Rex), and any free port to
+                 # an olo-pool started here, so neither a test's question
+                 # is answered from the person's accounts nor a test's
+                 # pool taken for the computer's. (`run NAME
+                 # OLO_POOL_PORT=N …` for a pool of the test's own.)
+                 "OLO_POOL_PORT": "0", "OLO_POOL_PROXY_PORT": "0"}
             if home:
                 e["HOME"] = os.path.abspath(home)
             e.update(own)
