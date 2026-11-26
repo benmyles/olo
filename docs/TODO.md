@@ -138,6 +138,27 @@ something nobody here has is in "Blocked", with what it waits for.
     ~~`Menu::app_items` grouping: separate `About <App>` onto its own
     top group above `Settings…` + `Keyboard Shortcuts`~~ Done 2026-11-26
     (a separator under About, in every app's first menu).
+- **A line under a check box's label, a pixel off it at 1.25× and
+  1.75×** (came with the layout rounding fix, 2026-11-26; the live lint
+  with `--review --scales 1.25,1.75`: "“sav, sv2” (x 214) and “Viewer”
+  under it (x 215) almost line up on the left" in Preferences ▸ Default
+  Apps; "“From the network” (x 196) and “Automatically” under it (x
+  197)" in Network ▸ Ethernet; "“Gateway” (x 44) and “Claude Code uses
+  the pool” under it (x 45)" and "“/workspace/olo · since …” (x 44) and
+  “Codex uses the pool” under it (x 45)" in Token Pool ▸ Machines). The
+  label is drawn in its control's canvas `MARK_SIZE + MARK_GAP` (18
+  points: 22.5 px at 1.25×, 31.5 at 1.75×) from the canvas's rounded
+  edge; the line beside or under it is put by layout the same 18 points
+  from an edge that isn't rounded until after (HACKING, "A node's place
+  is its cumulative place rounded"). To do, in the kit: one way to say
+  "as far in as a mark's label" that both use, a whole number of device
+  pixels (the kit's own `described`, buttons.rs, has the same
+  `pl(width + MARK_GAP)`); or, the larger and better cure, lengths
+  snapped to device pixels where a style becomes layout (as a border's
+  width already is, `border_device_pixels`), so that a 34-point band is
+  43 pixels wherever it stands and 18-point rows don't step 22, 23, 22
+  (the items below): that changes what every window measures at 1.25×,
+  1.5× and 1.75×, and wants its own before and after of every app.
 - **Found beside the layout rounding fix, all there before it** (one
   round of both reviewers on its before and after, 2026-11-26; both
   reviews whole in `/var/tmp/olo-site-reviews/layout-rounding-*.md` on
@@ -147,10 +168,11 @@ something nobody here has is in "Blocked", with what it waits for.
     points each, come to 42 and 43 pixels at 1.25× (the layout review:
     "a band 34 tall over one 34 tall … make them one height");
     `STRIP_HEIGHT` is the kit's, and 36 or 32 would be whole. Token
-    Pool's rule under an account stands in a spacer 6 points high (the
+    ~~Pool's rule under an account stands in a spacer 6 points high (the
     white between a selected account's tint and the rule: 2 pixels at
     1×, 3 at 1.25×; both reviewers: "should meet the horizontal divider
-    line flush", "end the band exactly on the rule"). Speed Test's rows
+    line flush", "end the band exactly on the rule").~~ Done 2026-11-26:
+    the rule is the next row's own top edge. Speed Test's rows
     "step 22, 23, 22, 23 px, because 18pt is 22.5 px at 1.25x" (Opus
     5.5). Token Pool at 1.25×: "rows at x 57 are 21 px apart, but
     “Weekly” to “Today: …” is 22" (the layout review).

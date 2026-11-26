@@ -10957,7 +10957,23 @@ Chrome, GTK 4.16 text), and how Olo does it:
   1.75× most windows, by a pixel. The layout review on the same 135
   window-and-scales: 16 findings gone (the seams under Rex's and
   Tracker's strips, Token Pool's "almost line up" and "uneven rows",
-  Weather's "almost level"), none new. A layout pass costs what it did
+  Weather's "almost level"), none new there. The whole live lint after
+  (`ui-lint --review --scales 1.25,1.75`, every app it runs, the commit
+  before against the commit after): 5 errors before (Tracker's seam at
+  1.75×) and none after; 23 notes before and 28 after. What came: a
+  line laid out under a check box's or a light's label stands a pixel
+  off that label at 1.25× and 1.75× in three places (Default Apps'
+  "sav, sv2" over "Viewer"; Network ▸ Ethernet's "From the network"
+  over "Automatically"; Token Pool ▸ Machines, which the lint didn't
+  run until that day). Why: the label is drawn in the control's canvas,
+  18 points (`MARK_SIZE + MARK_GAP`: 22.5 px at 1.25×) from the
+  canvas's *rounded* left edge; the line under it is put by layout 18
+  points from its parent's *true* left edge, rounded after. Where the
+  parent stands on half a pixel the two round apart. Before, both were
+  rounded from the same rounded edge, and agreed, while things outside
+  the parent did not. The cure is in the lengths, not the rounding: an
+  inset that must match a control's is a whole number of device pixels
+  (TODO). A layout pass costs what it did
   (1,801 nodes, one changed, release: 124 to 131 µs before and after,
   five runs each; `rounding_cost`). The 4-point grid above still holds
   for what is *drawn* from a size (a divider at a column's edge): this
