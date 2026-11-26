@@ -8,7 +8,8 @@
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 const HELPER: &str = env!("CARGO_BIN_EXE_olo-rex-link");
 const OLO: &str = include_str!("../../../apps/rex/src/bridge_olo.sh");
@@ -50,6 +51,57 @@ impl Host {
         std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
+    /// An Olo whose screen tool starts and stops something, as the real
+    /// one does a session: `start NAME` leaves a process in a group of
+    /// its own and prints the screen (its name and that process), and
+    /// `stop NAME` writes that it was asked and ends the group.
+    fn with_olo_that_starts(&self) {
+        self.with_olo("[]");
+        let tool = self.prefix().join("bin/olo-screen");
+        let dir = self.dir.display();
+        std::fs::write(
+            &tool,
+            format!(
+                "#!/bin/sh\ncase \"$1\" in\nstart)\n\tset -m\n\tsleep 300 > /dev/null 2>&1 < /dev/null &\n\techo $! > '{dir}/session-'$2\n\tprintf '{{\"name\": \"%s\", \"pid\": %s}}\\n' \"$2\" \"$!\"\n\t;;\nstop)\n\techo \"stop $2\" >> '{dir}/asked'\n\tkill -TERM -- \"-$(cat '{dir}/session-'$2)\" 2> /dev/null\n\t;;\nesac\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// What the screen tool was asked to stop, so far.
+    fn asked(&self) -> String {
+        std::fs::read_to_string(self.dir.join("asked")).unwrap_or_default()
+    }
+
+    /// The process a made-up screen `name` is, if it still runs.
+    fn session(&self, name: &str) -> Option<i32> {
+        let pid: i32 = std::fs::read_to_string(self.dir.join(format!("session-{name}"))).ok()?.trim().parse().ok()?;
+        // (Not one that has ended and waits to be reaped by nobody.)
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        (!stat.rsplit_once(')')?.1.trim_start().starts_with('Z')).then_some(pid)
+    }
+
+    /// A Rex tab's program, as far as the helper can tell: something
+    /// started with a `REX_BLOCK` of its own, which starts screen `name`
+    /// with the helper (`flags` besides) and then waits to be told to
+    /// end (its standard input closed). Returned once the screen is
+    /// started.
+    fn tab_that_starts(&self, name: &str, flags: &str, block: Option<&str>) -> std::process::Child {
+        let mut tab = self.command(Path::new("/bin/sh"));
+        tab.arg("-c").arg(format!("'{HELPER}' screen start {name} {flags} > '{}/started-{name}'; read line", self.dir.display())).stdin(Stdio::piped());
+        match block {
+            Some(block) => tab.env("REX_BLOCK", block),
+            None => tab.env_remove("REX_BLOCK"),
+        };
+        let tab = tab.spawn().unwrap();
+        let until = Instant::now() + Duration::from_secs(10);
+        while std::fs::read_to_string(self.dir.join(format!("started-{name}"))).is_ok_and(|t| !t.contains("\"pid\"")) || !self.dir.join(format!("started-{name}")).exists() {
+            assert!(Instant::now() < until, "screen {name} wasn't started within 10 s");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        tab
+    }
+
     fn command(&self, program: &Path) -> Command {
         let mut c = Command::new(program);
         c.env_remove("OLO_SCREENS_ON")
@@ -75,6 +127,15 @@ impl Host {
 
 impl Drop for Host {
     fn drop(&mut self) {
+        // (Whatever made-up screens a test left, a failed one too: each
+        // a process in a group of its own.)
+        for entry in std::fs::read_dir(&self.dir).into_iter().flatten().flatten() {
+            if let Some(name) = entry.file_name().to_string_lossy().strip_prefix("session-")
+                && let Some(session) = self.session(name)
+            {
+                let _ = Command::new("/bin/kill").args(["-TERM", "--", &format!("-{session}")]).status();
+            }
+        }
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -169,4 +230,44 @@ fn olo_screen_goes_where_it_is_told() {
     assert!(err(&away).contains("olo screen --on host"), "{}", err(&away));
     let open = host.olo(&["open", "http://localhost:1"], &[("DESKTOP_SAYS", "69")]);
     assert_eq!((open.status.code(), err(&open).as_str()), (Some(69), ""));
+}
+
+/// A screen started from a Rex tab is stopped when the tab's program
+/// ends, and not before; one started with `--keep`, or from no Rex tab,
+/// stays until it is stopped.
+#[test]
+fn a_screen_ends_with_the_tab_that_started_it() {
+    let host = Host::new("tab");
+    host.with_olo_that_starts();
+    let block = format!("block:test-{}", std::process::id());
+    let within = |seconds: u64, what: &str, done: &dyn Fn() -> bool| {
+        let until = Instant::now() + Duration::from_secs(seconds);
+        while !done() {
+            assert!(Instant::now() < until, "{what} (not within {seconds} s)");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+
+    let mut tab = host.tab_that_starts("work", "", Some(&block));
+    let mut kept = host.tab_that_starts("kept", "--keep", Some(&block));
+    let mut bare = host.tab_that_starts("bare", "", None);
+    // While its tab's program runs, a screen runs: nothing is asked.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(host.asked(), "");
+    assert!(host.session("work").is_some() && host.session("kept").is_some() && host.session("bare").is_some());
+
+    // The tabs' programs end (told to: their input closes).
+    for tab in [&mut tab, &mut kept, &mut bare] {
+        drop(tab.stdin.take());
+        tab.wait().unwrap();
+    }
+    within(10, "the screen started from the tab is stopped when the tab's program ends", &|| host.asked() == "stop work\n");
+    within(10, "and what ran on it has ended", &|| host.session("work").is_none());
+    // The others stay: nothing more is asked, and they still run.
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(host.asked(), "stop work\n");
+    for name in ["kept", "bare"] {
+        assert!(host.session(name).is_some(), "{name} was stopped with its tab");
+    }
+    // (The made-up screens it leaves are ended as the host is dropped.)
 }

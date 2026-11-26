@@ -22913,13 +22913,18 @@ installed and ready to use").
   last; `--no-chrome` leaves it.
 - **What the host lacks is said, not found out by a program that won't
   start**: `olo screen status` reads each program's own headers for the
-  libraries it asks its loader for (`screens::needed`: the ELF's
+  libraries it asks its loader for (`screens::Linked`: the ELF's
   dynamic section, in Rust; nothing is run) and looks for each where
   this host's loader looks (`/etc/ld.so.conf` and the usual folders),
   and for Mesa's EGL and its software renderer. `missing` is empty on a
   Fedora 44 host set up by Rex. The release's programs are linked on
-  Fedora 44: an older system's C library is the likeliest thing to be
-  short, and then the loader's own words are what `olo screen` prints.
+  Fedora 44, and a library can be there and too old: `older` has, by
+  library, the versions of its symbols the programs need that the
+  host's hasn't (`DT_VERNEED` of each program against `DT_VERDEF` of
+  the library found: `{"libc.so.6": ["GLIBC_2.42", "GLIBC_2.43"]}` on a
+  system with an older C library, where the loader would say "version
+  `GLIBC_2.43' not found" of every program). `install` ends with
+  status 3 where anything is lacking, Olo put all the same.
 - **Which screens `olo screen` means** on a host
   (`apps/rex/src/bridge_olo.sh`): `--on host` or `--on desktop` first
   of its arguments, else `OLO_SCREENS_ON`, else the host's default
@@ -22931,6 +22936,27 @@ installed and ready to use").
   first on the path: no Rex server, no desktop and no service is asked.
   Where the desktop can't be asked (status 69) a screen command says the
   other way.
+- **A screen ends with the tab that started it.** On the desktop a
+  screen left running is seen by the person, in Agent Screens; on a host
+  nobody sees one, and a screen left by every agent that ever wanted a
+  page is a quarter of a gigabyte each, with Chrome the better part of
+  one, for ever. So `start` from a Rex tab leaves a keeper (`screen
+  keep-until NAME PID BEGAN`, the helper again) that stops the screen
+  when the tab's own program ends: the agent, or the shell. The tab is
+  known by `REX_BLOCK`; its program is the furthest of the helper's
+  parents that was started with the same one (`/proc/PID/environ`: a
+  command an agent runs is several shells down from the agent, and may
+  be in a session of its own, so the session's leader is not it). The
+  keeper waits on the process itself (`pidfd_open`, then `poll`: no
+  timer, and a number given to another process later is never taken for
+  it; BEGAN, its start time, is checked once the descriptor is held),
+  in the screen's process group, so a screen stopped first takes its
+  keeper with it; it stops the screen through `olo-screen stop` in a
+  group of its own, since `stop` ends the screen's. `start --keep`
+  leaves none, and outside a Rex tab there is no program to go by: such
+  a screen stays until it is stopped. (Tried on the dev server: a
+  screen started from a shell with a `REX_BLOCK` of its own ran while
+  the shell did, and was stopped when it ended, nothing of it left.)
 - **Measured** on the dev server (64 processors, no GPU, software
   drawing), an account of its own. Putting Olo there with the static
   helper a host has, from GitHub: 16 s in all (601 MB downloaded,
@@ -22950,13 +22976,14 @@ installed and ready to use").
   button, and the page said so.
 - **Tests**: `crates/rex-link/tests/screens.rs` (where `olo screen`
   goes, each way of saying it; the helper with an Olo made up for the
-  test; never removed under a running screen),
+  test; never removed under a running screen; a screen ended with its
+  tab's program and not before, kept with `--keep` or from no tab),
   `a_release_is_installed_under_a_prefix_without_a_part_left_out` in
   olo-release, and the helper's `a_programs_libraries_are_read_from_its_headers`.
 - **Not yet** (TODO): the person watching a host's screen from Rex; a
   default by host in Preferences ▸ Rex and the Host window; a child's
   policy naming the host's screens; a host's Olo brought up to date by
-  the desktop when it connects; screens stopped after a time unused.
+  the desktop when it connects.
 
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 

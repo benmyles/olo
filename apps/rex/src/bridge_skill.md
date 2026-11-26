@@ -238,6 +238,7 @@ model or reasoning effort is used.
   commands, after `--on host`:
   - `olo screen status`: whether Olo is on this host (`installed`), what
     its programs lack here (`missing`: libraries to have installed;
+    `older`: libraries too old for it, which only a newer system cures;
     `software_drawing`), Chrome's version, and where `olo screen` goes
     when it isn't said (`default`).
   - `olo screen install`: puts Olo here, under the account and nowhere
@@ -256,6 +257,11 @@ model or reasoning effort is used.
     starts. `olo screen remove` takes Olo off the host again.
   - A screen at rest takes no processor time and about 250 MB of memory,
     more with what runs on it (Chrome most): stop it when you are done.
+    One started from a Rex tab is stopped by itself when that tab's
+    program ends (you, or the shell: what ran on it ends, the screen is
+    kept as a stopped one and starts again as it was); `start NAME
+    --keep` for one that must outlive the tab that started it (another
+    agent's to go on with), which then stays until it is stopped.
     The person can't watch a host's screen from their desktop yet: show
     what you did with a picture (`look`).
   Use the host's when the work is the host's own (a server here, a page

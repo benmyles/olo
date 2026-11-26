@@ -33,7 +33,7 @@ move = ["sync", "agents", "dep:russh"]
 # Olo's release fetched from GitHub, checked and unpacked under the
 # account (olo-release: TLS and zstd, C both, so built where zig is, as
 # `quic` and `sync` are), and its `olo-screen` run.
-screens = ["dep:olo-release"]
+screens = ["dep:olo-release", "dep:libc"]
 
 [dependencies]
 serde.workspace = true

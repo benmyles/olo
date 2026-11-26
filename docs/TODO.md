@@ -442,14 +442,17 @@ something nobody here has is in "Blocked", with what it waits for.
   - *Kept up to date*: the desktop, connecting after an upgrade, has
     the host's Olo brought to the same release (it does so for the
     helper); `tools/dev/host-upgrade` does it on the dev server.
-  - *Stopped when unused*: a screen whose agent ended, or left alone for
-    hours, is stopped (it is kept, as a stopped one is); thirty agents
-    with a screen each is the case to size for (about 7.5 GB at rest).
+  - *Stopped when unused*: done for a screen whose agent ended (it ends
+    with the Rex tab that started it, unless `--keep`). Left: one kept
+    with `--keep` or started from no tab and then left alone for days
+    (to decide whether anything should stop it; `olo screen list` has
+    them, and `stats` when each was last used). Thirty agents with a
+    screen each is the case to size for (about 7.5 GB at rest).
   - *Other systems*: the release is linked on Fedora 44. On a host with
-    an older C library its programs won't load, and `status` should say
-    that itself (the versions a program needs are in its headers too:
-    `.gnu.version_r`) instead of leaving it to the loader's words. An
-    aarch64 host has no release to install.
+    an older C library its programs won't load (`status` says which
+    versions are lacking, `older`): a release linked against an older
+    one, or the libraries carried with it, is what such a host would
+    need. An aarch64 host has no release to install.
   - *A font with emoji* on a host that has none (every emoji a box):
     the release carries Olo's fonts but no colour emoji.
   - *The accessibility bus*: `tree` of a GTK program or of a page in
