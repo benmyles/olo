@@ -20,14 +20,22 @@ quic = ["dep:tokio", "dep:quinn", "dep:rustls", "dep:rcgen", "dep:sha2"]
 # (olo-rex-sync, whose zstd is C: built for hosts where zig compiles it,
 # as `quic`'s ciphers are).
 sync = ["dep:olo-rex-sync", "dep:libc"]
+# `olo-rex-link agent`: the agents service of a host (`src/agentd`), its
+# command, and what it reads of the agents there (their processes and
+# transcripts). All Rust, no C: built for every host, whether or not zig
+# is there for the features above (`apps/rex/build.rs`).
+agents = ["dep:tokio", "dep:tungstenite", "dep:tokio-tungstenite", "dep:futures-util", "dep:libc", "dep:regex"]
 # (Moving an account to another host: its key made here, the copy over
 # an SSH connection of the helper's own; Codex's daemon asked which
 # conversations it has open, over its control socket's WebSocket.)
-move = ["sync", "dep:russh", "dep:tokio", "dep:tungstenite"]
+move = ["sync", "agents", "dep:russh"]
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+# (Agents' screens read: `agents`, what the host's agents service and the
+# Olo desktop agree on. No dependencies of its own.)
+olo-agent-screen.workspace = true
 # (In the build already, under serde_json: the search for a word in a
 # message, which is most of what the helper does to each one.)
 memchr = "2"
@@ -40,13 +48,16 @@ olo-rex-sync = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 russh = { version = "0.65", optional = true, default-features = false, features = ["aws-lc-rs"] }
 tungstenite = { version = "0.30", optional = true, default-features = false, features = ["handshake"] }
+tokio-tungstenite = { version = "0.30", optional = true, default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink", "std"] }
+regex = { version = "1", optional = true }
 
 # For `tests/server.rs` alone: the helper in front of a real Rex server
 # of the test's own, spoken to as the app speaks to it. (The app's Rex
 # client depends on this crate; only this crate's tests on it.)
 [dev-dependencies]
 olo-rex-client.workspace = true
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util", "net"] }
 uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
 
@@ -62,6 +73,17 @@ harness = false
 name = "quic"
 required-features = ["quic"]
 
+
+# The agents service (`olo-rex-link agent`), with a Rex server of the
+# test's own and no desktop: stand-ins for the agents (`agents`), and the
+# agents themselves against a made-up API (`agents_live`).
+[[test]]
+name = "agents"
+required-features = ["agents"]
+
+[[test]]
+name = "agents_live"
+required-features = ["agents"]
 
 # The helper's side of a session keeping files in step, driven as the
 # app drives it.

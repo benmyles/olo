@@ -381,7 +381,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
     let command = || Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}}}}));
     let start_schema = {
         let mut props = serde_json::Map::new();
-        props.insert("cli".into(), json!({ "type": "string", "enum": ["claude", "codex", "agy"] }));
+        props.insert("cli".into(), json!({ "type": "string", "enum": ["claude", "codex", "agy", "command"] }));
         for k in [
             "model",
             "effort",
@@ -433,7 +433,8 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
         ] {
             props.insert(k.into(), json!({ "type": "boolean" }));
         }
-        for k in ["unset_env", "allowed_tools", "disallowed_tools", "add_dirs", "configs", "mcp_configs", "image", "extra", "args"] {
+        // (`command`: a command of the asker's own in a child tab, its program and arguments.)
+        for k in ["unset_env", "allowed_tools", "disallowed_tools", "add_dirs", "configs", "mcp_configs", "image", "extra", "args", "command"] {
             props.insert(k.into(), json!({ "type": "array", "items": { "type": "string" } }));
         }
         props.insert("env".into(), json!({ "type": "object" }));
@@ -500,7 +501,7 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "approve", "deny", "permission", "once"],
             args_schema: Some(
-                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"once":{"type":"boolean"},"no":{"type":"boolean"},"reason":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
+                json!({"type":"object","properties":{"target":{"type":"string"},"id":{"type":"string"},"once":{"type":"boolean"},"session":{"type":"boolean"},"no":{"type":"boolean"},"reason":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
             ),
         },
         ActionSpec {

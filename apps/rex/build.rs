@@ -30,9 +30,18 @@ fn main() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_owned();
     // (The helper's own code, the engine's, and russh's (vendored, the
     // helper's own SSH connection when it moves an account).)
-    for changed in
-        ["crates/rex-link/src", "crates/rex-link/Cargo.toml", "crates/rex-sync/src", "crates/rex-sync/Cargo.toml", "vendor/russh/src", "vendor/russh/Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
-    {
+    for changed in [
+        "crates/rex-link/src",
+        "crates/rex-link/Cargo.toml",
+        "crates/agent-screen/src",
+        "crates/agent-screen/Cargo.toml",
+        "crates/rex-sync/src",
+        "crates/rex-sync/Cargo.toml",
+        "vendor/russh/src",
+        "vendor/russh/Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+    ] {
         println!("cargo:rerun-if-changed={}", root.join(changed).display());
     }
     println!("cargo:rerun-if-env-changed=OLO_REX_LINK_SKIP");
@@ -98,9 +107,9 @@ fn build(root: &Path, target: &Path, out: &Path, triple: &str, quic: bool) -> bo
     // (And keeping files in step, `sync`: its engine's zstd is C too; and
     // moving an account, `move`: the engine, and russh's ciphers, C as
     // the link's are.)
-    if quic {
-        cargo.args(["--features", "quic,sync,move"]);
-    }
+    // (The agents service, `agents`, is in every build: all Rust, it
+    // needs no C compiler for the host's machine. `move` has it.)
+    cargo.args(["--features", if quic { "quic,sync,move" } else { "agents" }]);
     // (What this build was told is not for that one: its flags, its
     // target folder, the profile it is built in.)
     for (name, _) in std::env::vars() {

@@ -353,6 +353,10 @@ pub(crate) struct Pending {
     pub(crate) stopped: bool,
     /// Looks once due that didn't find it (a screen read as it's drawn).
     misses: u32,
+    /// Its mark was moved down to its yes for this once (a question
+    /// whose yes isn't the first answer): Return follows only once the
+    /// mark is seen to stand there.
+    moved: bool,
     _timer: Timer,
 }
 
@@ -480,8 +484,13 @@ impl Tab {
     /// A coding agent runs in its foreground now (looked at, not as last
     /// reported: Auto Approve's Return goes only to one).
     fn agent_running(&self) -> bool {
+        self.agent().is_some()
+    }
+
+    /// The agent in its foreground, if one is.
+    fn agent(&self) -> Option<agent::Agent> {
         let shared = &self.session.shared;
-        shared.foreground().filter(|&p| Some(p) != shared.shell()).and_then(agent::which).is_some()
+        shared.foreground().filter(|&p| Some(p) != shared.shell()).and_then(agent::which)
     }
 
     /// (The program's own without what turns in it: titles.rs.)
@@ -2131,7 +2140,7 @@ impl Terminal {
         tracing::info!(shell, on, "auto approve");
         // (Read now, whether or not the agent's been seen yet: after a
         // restart it hasn't.)
-        let ask = if on && tab.agent_running() { agent::approvable(&agent::screen_text(&tab.session.term.lock())) } else { None };
+        let ask = if on { tab.agent().and_then(|a| agent::approvable_for(a, &agent::screen_text(&tab.session.term.lock()))) } else { None };
         cx.redraw(win);
         if let Some(ask) = ask {
             self.auto_approve_asking(cx, agent::Asking(shell, Some(ask)));
@@ -2154,7 +2163,7 @@ impl Terminal {
             // Stopped before Terminal restarted: still theirs.
             Some(ask) if a.theirs == Some(ask.key.max(1)) => {
                 tracing::info!(shell, question = ask.question, "auto approve: stopped before the restart; still the person's");
-                a.pending = Some(Pending { key: ask.key, question: ask.question, due: Instant::now(), stopped: true, misses: 0, _timer: Timer::none() });
+                a.pending = Some(Pending { key: ask.key, question: ask.question, due: Instant::now(), stopped: true, misses: 0, moved: false, _timer: Timer::none() });
             }
             Some(ask) => {
                 a.theirs = None;
@@ -2162,7 +2171,7 @@ impl Terminal {
                 // (Looked at once now, then as often as it says.)
                 let timer = cx.repeating(std::time::Duration::ZERO, move |t, cx| t.auto_approve_tick(cx, shell, key));
                 tracing::info!(shell, question = ask.question, "auto approve: waiting {} s to answer Yes", auto_approve_after().as_secs());
-                a.pending = Some(Pending { key, question: ask.question, due: Instant::now() + auto_approve_after(), stopped: false, misses: 0, _timer: timer });
+                a.pending = Some(Pending { key, question: ask.question, due: Instant::now() + auto_approve_after(), stopped: false, misses: 0, moved: false, _timer: timer });
                 cx.redraw(win);
             }
         }
@@ -2185,12 +2194,24 @@ impl Terminal {
             let frac = left.as_secs_f32().fract();
             return Some(std::time::Duration::from_secs_f32(if frac > 0.0 { frac } else { 1.0 }));
         }
-        // Looked at again now: the same question, Yes still chosen, its
-        // agent still there (a few looks, a moment apart: the screen may be
-        // read as it's drawn).
-        let now = if tab.agent_running() { agent::approvable(&agent::screen_text(&tab.session.term.lock())) } else { None };
+        // Looked at again now: the same question, its agent still there
+        // (a few looks, a moment apart: the screen may be read as it's
+        // drawn), and its yes for this once under the mark. Where that
+        // yes is further down (Claude Code's read outside the working
+        // directories: the fourth), the mark is moved there first, once,
+        // and Return is only for a mark seen to stand on it.
+        let now = tab.agent().and_then(|a| agent::approvable_for(a, &agent::screen_text(&tab.session.term.lock())));
         let a = tab.auto_approve.as_mut()?;
-        if !now.as_ref().is_some_and(|n| n.key == key) {
+        if let Some(ask) = now.as_ref().filter(|n| n.key == key && n.down > 0) {
+            let p = a.pending.as_mut()?;
+            if !p.moved {
+                p.moved = true;
+                tracing::info!(shell, question = p.question, answers = ask.down, "auto approve: its yes for this once is further down; the mark moved to it");
+                tab.session.write("\x1b[B".repeat(ask.down).into_bytes());
+                return Some(std::time::Duration::from_millis(350));
+            }
+        }
+        if !now.as_ref().is_some_and(|n| n.key == key && n.down == 0) {
             let p = a.pending.as_mut()?;
             p.misses += 1;
             if p.misses < 5 {

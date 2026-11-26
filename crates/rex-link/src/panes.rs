@@ -30,7 +30,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::moving::{Proc, all_procs, codex_home, home, unhex};
+use crate::procs::{Proc, all_procs, codex_home, home, unhex};
 
 /// Where the agents keep their sessions: the home, Claude Code's folder
 /// (`CLAUDE_CONFIG_DIR`, else `~/.claude`), Codex's (`CODEX_HOME`, else
@@ -494,6 +494,7 @@ pub(crate) fn sessions(
 /// `move look-pane [--screens HEX] PID…`: for each pane's process (Rex's
 /// report gives its pid), it and everything under it, parents first, and
 /// the agent there with its session (JSON).
+#[cfg_attr(not(feature = "move"), allow(dead_code))]
 pub fn look_pane(args: &[String]) -> i32 {
     let (mut screens, mut pids) = (HashMap::new(), Vec::new());
     let mut it = args.iter();
@@ -616,10 +617,10 @@ mod tests {
         // program may: its name in /proc/PID/stat is that.)
         let mut child = std::process::Command::new("bash").args(["-c", "printf 'odd (name) x' > /proc/self/comm; sleep 30 & wait"]).spawn().unwrap();
         let until = Instant::now() + Duration::from_secs(5);
-        while crate::moving::proc_of(child.id() as i32).is_none_or(|p| p.comm != "odd (name) x") && Instant::now() < until {
+        while crate::procs::proc_of(child.id() as i32).is_none_or(|p| p.comm != "odd (name) x") && Instant::now() < until {
             std::thread::sleep(Duration::from_millis(20));
         }
-        let p = crate::moving::proc_of(child.id() as i32).unwrap();
+        let p = crate::procs::proc_of(child.id() as i32).unwrap();
         assert_eq!(p.comm, "odd (name) x");
         let v = process_json(&p, &places);
         assert_eq!(v["argv"][1], "-c");
@@ -628,7 +629,7 @@ mod tests {
         let _ = child.wait();
         let mut child = std::process::Command::new("bash").args(["-c", "sleep 30 & wait", "a word\nwith a line"]).spawn().unwrap();
         std::thread::sleep(Duration::from_millis(100));
-        let v = process_json(&crate::moving::proc_of(child.id() as i32).unwrap(), &places);
+        let v = process_json(&crate::procs::proc_of(child.id() as i32).unwrap(), &places);
         assert_eq!(v["argv"][3], "a word\nwith a line");
         let _ = child.kill();
         let _ = child.wait();

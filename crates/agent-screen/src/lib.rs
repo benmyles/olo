@@ -220,6 +220,12 @@ pub struct Ask {
     pub key: u64,
     /// Its question ("Do you want to proceed?").
     pub question: String,
+    /// How many answers below the mark its yes for this once stands: 0
+    /// where Return says it, as in nearly every question. Claude Code's
+    /// read outside the working directories has a kept yes first, under
+    /// the mark, and "Yes, but ask again next time" fourth: Down three
+    /// times, and Return only once the mark is seen to stand on it.
+    pub down: usize,
 }
 
 /// The question on `screen` that Auto Approve may answer, if one is: the
@@ -241,7 +247,8 @@ pub fn approvable(screen: &str) -> Option<Ask> {
     let q = lines.iter().enumerate().rposition(|(i, l)| {
         let t = l.trim().to_lowercase();
         let first_under = || lines[i + 1..].iter().find(|l| !l.trim().is_empty()).is_some_and(|l| l.trim().strip_prefix('>').is_some_and(|rest| rest.trim_start().starts_with("1. ")));
-        t.ends_with('?') && (t.starts_with("do you want to ") || t.starts_with("would you like to ") || (navigated && first_under()))
+        // ("Allow this read outside the working directories?": Claude Code, 2.1.33x.)
+        t.ends_with('?') && (t.starts_with("do you want to ") || t.starts_with("would you like to ") || t.starts_with("allow this ") || (navigated && first_under()))
     })?;
     let rest = &lines[q + 1..];
     // Its first answer (Codex shows the command between): "1. …", chosen.
@@ -252,12 +259,45 @@ pub fn approvable(screen: &str) -> Option<Ask> {
     if rest[..at].iter().map(|l| l.trim()).any(|l| l.ends_with('?') && !l.starts_with("Reason:")) {
         return None;
     }
-    let first = rest[at].trim();
-    let chosen = marks.iter().find_map(|mark| first.strip_prefix(*mark))?.trim_start();
-    let chosen_label = chosen.strip_prefix("1. ").or_else(|| chosen.strip_prefix("1.\t"))?;
-    if classify_choice_kind(chosen_label) != ChoiceKind::Once || rest.iter().any(|l| l.to_lowercase().contains("keep planning")) {
+    if rest.iter().any(|l| l.to_lowercase().contains("keep planning")) {
         return None;
     }
+    // Its answers, each with whether the mark stands on it: "N. …"
+    // lines, a line under one that isn't numbered being the rest of it.
+    let mut answers: Vec<(bool, String)> = Vec::new();
+    for line in &rest[at..] {
+        let t = line.trim();
+        let (marked, unmarked) = match marks.iter().find_map(|mark| t.strip_prefix(*mark)) {
+            Some(after) => (true, after.trim_start()),
+            None => (false, t),
+        };
+        let numbered = unmarked.split_once(". ").or_else(|| unmarked.split_once(".\t")).filter(|(n, _)| !n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit()));
+        match (numbered, answers.last_mut()) {
+            (Some((_, label)), _) => answers.push((marked, label.trim().to_owned())),
+            // (The line of keys under them, or the end of them.)
+            (None, _) if t.is_empty() || t.contains("Esc to cancel") || t.contains("↑/↓") || t.to_lowercase().starts_with("press enter") => break,
+            (None, Some(last)) => {
+                last.1.push(' ');
+                last.1.push_str(t);
+            }
+            (None, None) => break,
+        }
+    }
+    // The mark stands on one of them: where the agent put it (the
+    // first), or on the yes for this once.
+    let mut marked = answers.iter().enumerate().filter(|(_, (m, _))| *m).map(|(i, _)| i);
+    let (Some(at_mark), None) = (marked.next(), marked.next()) else { return None };
+    let once: Vec<usize> = answers.iter().enumerate().filter(|(_, (_, label))| classify_choice_kind(label) == ChoiceKind::Once).map(|(i, _)| i).collect();
+    let down = match once[..] {
+        // (As ever: the first answer is the yes, and the mark is on it.)
+        _ if at_mark == 0 && once.first() == Some(&0) => 0,
+        // One yes for this once, further down: the mark where the agent
+        // put it (to be moved there), or on it already. Anywhere else,
+        // someone moved it: theirs.
+        [only] if at_mark == only => 0,
+        [only] if at_mark == 0 => only,
+        _ => return None,
+    };
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for l in &lines[q.saturating_sub(12)..] {
@@ -268,7 +308,41 @@ pub fn approvable(screen: &str) -> Option<Ask> {
         // stopped, half a minute on).
         l.chars().filter(|c| c.is_alphanumeric()).map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
     }
-    Some(Ask { key: h.finish(), question: lines[q].trim().to_owned() })
+    Some(Ask { key: h.finish(), question: lines[q].trim().to_owned(), down })
+}
+
+/// The permission question an agent asks, whatever its shape, as Auto
+/// Approve may answer it (Ben, 2026-11-26, of a read outside the working
+/// directories that never counted down: "when it's on it should auto
+/// approve everything after a 30s countdown"): any question
+/// [`parse_approval`] reads (each agent's, its answers by what they
+/// mean), answered with the yes that keeps nothing: the one for this
+/// once, wherever it stands; where a question has none, the one for this
+/// conversation alone. Never a yes that is kept in settings or switches
+/// the agent's mode, and never a question that isn't leave to go on (a
+/// folder to trust, a plan to choose a mode for).
+///
+/// The mark must stand where the agent put it (the first answer) or on
+/// that yes already: anywhere else, someone moved it and it is theirs.
+/// [`Ask::down`] says how far below the mark the yes is.
+pub fn approvable_for(agent: Agent, screen: &str) -> Option<Ask> {
+    let asked = parse_approval(agent, screen)?;
+    let of_kind = |kind: ChoiceKind| -> Vec<usize> { asked.choices.iter().filter(|c| c.kind == kind).map(|c| c.index).collect() };
+    let (once, session) = (of_kind(ChoiceKind::Once), of_kind(ChoiceKind::AllowSession));
+    let yes = match (&once[..], &session[..]) {
+        ([only], _) => *only,
+        // (More than one reads as a plain yes: the first answer, where it is one, as ever.)
+        ([first, ..], _) if *first == 0 => 0,
+        ([], [only]) => *only,
+        _ => return None,
+    };
+    let at_mark = asked.selected_index?;
+    let down = match at_mark {
+        m if m == yes => 0,
+        0 => yes,
+        _ => return None,
+    };
+    Some(Ask { key: asked.key, question: asked.question, down })
 }
 
 /// What the screen shows, for telling a change: its text with the
@@ -291,6 +365,39 @@ pub fn fingerprint(screen: &str) -> u64 {
     h.finish()
 }
 
+/// A feedback survey an agent draws over its own last lines, which
+/// takes a digit as its answer (Claude Code's "How is Claude doing this
+/// session? … 1: Bad 2: Fine 3: Good 0: Dismiss"; Antigravity's "How's
+/// the CLI experience so far? … [1] Good [2] Fine [3] Bad [0] Skip").
+/// Never a question for whoever looks after the agent: it once hid a
+/// permission prompt under it for 25 minutes, and a message beginning
+/// with a digit would answer it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Survey {
+    pub question: String,
+    /// The key that sets it aside without answering it.
+    pub dismiss: &'static str,
+}
+
+/// The feedback survey showing on an agent's screen, if one is: its
+/// question and its choices as the agent draws them, on two lines one
+/// after the other at the screen's foot, each from its line's start. (A
+/// message that quotes the survey in its prose isn't one.)
+pub fn parse_survey(agent: Agent, screen: &str) -> Option<Survey> {
+    let (asks, first, last) = match agent {
+        Agent::Claude => ("How is Claude doing this session?", "1: Bad", "0: Dismiss"),
+        Agent::Antigravity => ("How's the CLI experience so far?", "[1] Good", "[0] Skip"),
+        Agent::Codex => return None,
+    };
+    let foot: Vec<&str> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(12).collect();
+    foot.windows(2).find_map(|pair| {
+        // (`pair`: a line and the one above it, the foot being read upwards.)
+        let choices = pair[0].split_whitespace().collect::<Vec<_>>().join(" ");
+        let question = pair[1].trim().trim_start_matches(['●', '•', '*']).trim();
+        (choices.starts_with(first) && choices.ends_with(last) && question.starts_with(asks)).then(|| Survey { question: question.to_owned(), dismiss: "0" })
+    })
+}
+
 /// Semantic kind of a choice in a tool approval dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChoiceKind {
@@ -302,8 +409,13 @@ pub enum ChoiceKind {
     DontAskAgain,
     /// Switch the agent's execution/permission mode (e.g. "switch to auto mode").
     SwitchMode,
-    /// Deny / cancel ("No", "No, cancel", "No, and tell ...").
+    /// Deny / cancel this once ("No", "No, cancel", "No, and tell ...",
+    /// "No, and ask again next time").
     No,
+    /// A no that is kept ("No, and block reads", "No, and don't ask
+    /// again"): it refuses the like from now on, as `DontAskAgain`
+    /// allows it. Never what "no, this once" means.
+    NoAlways,
     /// Any other choice.
     Other,
 }
@@ -316,6 +428,7 @@ impl ChoiceKind {
             Self::DontAskAgain => "dont_ask_again",
             Self::SwitchMode => "switch_mode",
             Self::No => "no",
+            Self::NoAlways => "no_always",
             Self::Other => "other",
         }
     }
@@ -415,8 +528,23 @@ pub fn classify_choice_kind(label: &str) -> ChoiceKind {
     {
         return ChoiceKind::SwitchMode;
     }
+    // A no that is kept, before anything else a "no" could be taken for.
+    let is_no =
+        lower == "no" || lower.starts_with("no,") || lower.starts_with("no ") || lower.starts_with("no(") || lower.starts_with("deny") || lower.starts_with("reject") || lower.starts_with("never");
+    if is_no
+        && (lower.contains("block")
+            || lower.contains("don't ask")
+            || lower.contains("dont ask")
+            || lower.contains("do not ask")
+            || lower.contains("always")
+            || lower.contains("never")
+            || lower.contains("remember"))
+    {
+        return ChoiceKind::NoAlways;
+    }
     if lower.contains("persist to settings")
         || lower.contains("settings.json")
+        || lower.contains("keep allowing")
         || lower.contains("don't ask")
         || lower.contains("dont ask")
         || lower.contains("do not ask")
@@ -467,6 +595,9 @@ pub fn classify_choice_kind(label: &str) -> ChoiceKind {
             | "yes, allow this once"
             | "yes, approve once"
             | "yes, this time"
+            // (Claude Code's read outside the working directories: a yes for this read alone.)
+            | "yes, but ask again next time"
+            | "yes, and ask again next time"
             | "yes, allow"
             | "yes, allow this"
             | "yes, allow this tool"
@@ -1233,6 +1364,249 @@ mod tests {
         let hit_scr = format!("{rule}\n❯ \n{rule}\n  You've hit your limit · resets 5pm\n");
         let uh = parse_usage(&hit_scr).expect("limit hit parsed");
         assert!(uh.limit_reached);
+    }
+
+    #[test]
+    fn fuzz_approval_choice_classification_never_mislabels_persistent_as_once() {
+        // (A small generator of its own: the same cases every run.)
+        struct Rng(u64);
+        impl Rng {
+            fn next_u64(&mut self) -> u64 {
+                let mut x = self.0;
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                self.0 = x;
+                x
+            }
+            fn range(&mut self, n: usize) -> usize {
+                (self.next_u64() as usize) % n.max(1)
+            }
+            fn pick<'a, T>(&mut self, slice: &'a [T]) -> &'a T {
+                &slice[self.range(slice.len())]
+            }
+        }
+        let mut rng = Rng(0x010_5AFE_A990_0001);
+
+        // Real-world traps reported in production + adversarial variants across all 3 harnesses.
+        let persistent_or_session_traps = [
+            "Yes, and don\u{2019}t ask again for: env",
+            "Yes, and don't ask again for: cargo test",
+            "Yes, and don\u{2018}t ask again for commands in /home/user/repo",
+            "Yes, and dont ask again for `git status`",
+            "Yes, and do not ask again for this command",
+            "Yes, and always allow in this conversation for commands that start with 'env'",
+            "Yes, and always allow for commands that start with 'env' (Persist to settings.json)",
+            "Yes, allow reading from /workspace/project during this session",
+            "Yes, allow all edits during this session (shift+tab)",
+            "Yes, switch to auto mode",
+            "Yes, and remember this choice for future turns",
+            "Yes, and trust all future runs of this tool",
+            "Yes, and auto-accept similar commands",
+            "Yes, always run without asking",
+            "Yes, allow for this session",
+            "Yes, and something totally new and unknown that grants extra scope",
+        ];
+        for trap in persistent_or_session_traps {
+            let k = classify_choice_kind(trap);
+            assert_ne!(k, ChoiceKind::Once, "SECURITY VIOLATION: persistent/unknown choice `{trap}` was classified as `Once`!");
+        }
+
+        // Valid single-use choices across Claude Code, Codex, and Antigravity.
+        let valid_once = ["Yes", "Yes (y)", "Yes, proceed (y)", "Yes, run command", "Yes, run this command", "Yes, allow once", "Allow once"];
+        for ok in valid_once {
+            assert_eq!(classify_choice_kind(ok), ChoiceKind::Once, "valid single-use choice `{ok}` should be `Once`");
+        }
+
+        // Wrapped multi-line Claude/Codex/Agy approval dialogs across 250 randomized layouts.
+        let prefixes = ["❯ ", "› ", "> "];
+        let indents = ["  ", "   ", "    ", "\t"];
+        let apostrophes = ["'", "\u{2019}", "\u{2018}", "`"];
+        let cmds = ["env", "cargo test -p api && echo 'ok'", "rm -rf build && make", "git status --short"];
+        for i in 0..250 {
+            let is_agy = i % 3 == 2;
+            let agent = match i % 3 {
+                0 => Agent::Claude,
+                1 => Agent::Codex,
+                _ => Agent::Antigravity,
+            };
+            let mark = if is_agy { "> " } else { *rng.pick(&prefixes[..2]) };
+            let apos = *rng.pick(&apostrophes);
+            let indent = *rng.pick(&indents);
+            let cmd = *rng.pick(&cmds);
+            let selected_idx = rng.range(3);
+            let c1 = if is_agy {
+                "Yes, run command"
+            } else if i % 3 == 1 {
+                "Yes, proceed (y)"
+            } else {
+                "Yes"
+            };
+            // Deliberately wrap choice 2 onto a continuation line with 2..4 spaces!
+            let c2_a = "Yes, and";
+            let c2_b = format!("don{apos}t ask again for: {cmd}");
+            let c3 = if is_agy { "No, cancel" } else { "No, and tell agent what to do differently (esc)" };
+
+            let m = |idx: usize| if idx == selected_idx { mark } else { "  " };
+            let footer = if is_agy {
+                "  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command"
+            } else if i % 3 == 1 {
+                "  Press enter to confirm or esc to cancel"
+            } else {
+                " Esc to cancel · Tab to amend"
+            };
+            let question = if is_agy {
+                "Run this command?"
+            } else if i % 3 == 1 {
+                "Would you like to run the following command?"
+            } else {
+                "Do you want to proceed?"
+            };
+            let body = if is_agy {
+                format!("Command\n────────────────────\nRequesting permission for:\n   {cmd}\n{question}\n")
+            } else if i % 3 == 1 {
+                format!("{question}\n\n  $ {cmd}\n\n")
+            } else {
+                format!("Bash command\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  {cmd}\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n{question}\n")
+            };
+            let screen = format!("{body}{}1. {c1}\n{}2. {c2_a}\n{indent}{c2_b}\n{}3. {c3}\n{footer}\n", m(0), m(1), m(2));
+            let ap = parse_approval(agent, &screen).unwrap_or_else(|| panic!("case {i} failed to parse:\n{screen}"));
+            assert_eq!(ap.selected_index, Some(selected_idx), "case {i} wrong selected_index");
+            assert_eq!(ap.choices.len(), 3, "case {i} wrong choice count: {:?}", ap.choices);
+            assert_eq!(ap.choices[0].kind, ChoiceKind::Once, "case {i} choice 0");
+            assert_ne!(ap.choices[1].kind, ChoiceKind::Once, "case {i} choice 1 MUST NOT be Once: {:?}", ap.choices[1]);
+            assert_eq!(ap.choices[1].kind, ChoiceKind::DontAskAgain, "case {i} choice 1 should be DontAskAgain: {:?}", ap.choices[1]);
+            assert_eq!(ap.choices[2].kind, ChoiceKind::No, "case {i} choice 2");
+            assert!(ap.command.as_deref().is_some_and(|c| c.contains(cmd)), "case {i} command missing: {:?}", ap.command);
+        }
+
+        // Folder-trust AND `--add-dir` ("Adding a new directory:") prompts must NEVER be misclassified as tool approvals.
+        let add_dir_screen = "────────────────────\n Adding a new directory:\n /var/tmp/extra-dir\n This session hasn't worked here before. Is this a directory you created or one you trust?\n ❯ No, exit\n   Yes, add it\n Enter to confirm · Esc to cancel\n";
+        let trust = parse_folder_trust(add_dir_screen).expect("must detect --add-dir trust prompt");
+        assert_eq!(trust.folder.as_deref(), Some("/var/tmp/extra-dir"));
+        assert_eq!(trust.selected_index, 0);
+        assert_eq!(trust.trust_index, 1);
+        assert!(!trust.selected_trust);
+        assert!(parse_approval(Agent::Claude, add_dir_screen).is_none());
+    }
+
+    /// Claude Code's read outside the working directories, as 2.1.332
+    /// draws it (Ben's picture of a pane where Auto Approve never counted
+    /// down, 2026-11-26): Auto Approve may answer it, with its yes for
+    /// this once, three below the mark; and Return is right only once
+    /// the mark stands there.
+    #[test]
+    fn auto_approve_answers_a_read_outside_with_its_yes_for_this_once() {
+        let dotted = "┆".repeat(40);
+        let dialog = |marked: usize| {
+            let mark = |i: usize| if i == marked { "❯" } else { " " };
+            format!(
+                "● Reading the picture\n{rule}\n Read outside the working directories\n{dotted}\n Read(/var/tmp/olo-agents-try/shots/light-2x.png)\n{dotted}\n Auto mode and the sandbox read outside the working directories without asking. Yes or No\n answers for this read; the rest is for later reads. Block: the file tools refuse reads outside\n the working directories in every project. To undo, remove\n permissions.blockReadsOutsideWorkingDirectories from your user settings; file tools follow\n next session, sandboxed commands at once.\n\n Allow this read outside the working directories?\n {} 1. Yes, and keep allowing any reads outside the working directories\n {} 2. No, and block reads outside the working directories from now on\n {} 3. No, and ask again next time\n {} 4. Yes, but ask again next time\n\n Esc to cancel · Tab to amend\n",
+                mark(0),
+                mark(1),
+                mark(2),
+                mark(3),
+                rule = "─".repeat(40),
+            )
+        };
+        let asked = approvable(&dialog(0)).expect("a question Auto Approve may answer");
+        assert_eq!(asked.question, "Allow this read outside the working directories?");
+        assert_eq!(asked.down, 3, "its yes for this once is the fourth: never Return on the first, which is kept");
+        // The mark moved there: Return now, and it is the same question.
+        let there = approvable(&dialog(3)).expect("the same question");
+        assert_eq!((there.down, there.key), (0, asked.key));
+        // The mark anywhere else is somebody's doing: theirs.
+        assert!(approvable(&dialog(1)).is_none());
+        assert!(approvable(&dialog(2)).is_none());
+        // And as the service reads it: one of each kind.
+        let parsed = parse_approval(Agent::Claude, &dialog(0)).expect("read as a permission question");
+        assert_eq!(parsed.choices.iter().map(|c| c.kind).collect::<Vec<_>>(), [ChoiceKind::DontAskAgain, ChoiceKind::NoAlways, ChoiceKind::No, ChoiceKind::Once]);
+        assert_eq!(classify(Agent::Claude, &dialog(0)), State::Blocked);
+        // The questions it always answered are answered as before: Return.
+        let plain = "● Bash(touch one.txt)\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again for this command\n   3. No, and tell Claude what to do differently (esc)\n";
+        assert_eq!(approvable(plain).expect("as before").down, 0);
+        // (Its mark moved off the first: the person's.)
+        assert!(approvable(&plain.replace(" ❯ 1. Yes", "   1. Yes").replace("   2. Yes, and", " ❯ 2. Yes, and")).is_none());
+
+        // Every agent's question, by the one reader (`approvable_for`).
+        let for_claude = approvable_for(Agent::Claude, &dialog(0)).expect("Claude Code's read outside");
+        assert_eq!((for_claude.down, for_claude.key), (3, asked.key), "the same question, the same key");
+        assert_eq!(approvable_for(Agent::Claude, &dialog(3)).map(|a| a.down), Some(0));
+        assert!(approvable_for(Agent::Claude, &dialog(2)).is_none(), "the mark on a no: the person's");
+        assert_eq!(approvable_for(Agent::Claude, plain).map(|a| a.down), Some(0));
+        let agy = |marked: usize| {
+            let mark = |i: usize| if i == marked { ">" } else { " " };
+            format!(
+                "Command\n────────────────────\nRequesting permission for:\n   rm -f /var/tmp/x\nRun this command?\n{} 1. Yes, run command\n{} 2. Yes, and always allow in this conversation\n{} 3. No, cancel\n  ↑/↓ Navigate\n",
+                mark(0),
+                mark(1),
+                mark(2)
+            )
+        };
+        assert_eq!(approvable_for(Agent::Antigravity, &agy(0)).map(|a| a.down), Some(0));
+        assert!(approvable_for(Agent::Antigravity, &agy(1)).is_none(), "moved to the yes that is kept for the conversation: the person's");
+        let codex = "  Would you like to run the following command?\n\n  Reason: Do you want to allow listing the folder?\n\n  $ ls -la\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `ls` (p)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n";
+        assert_eq!(approvable_for(Agent::Codex, codex).map(|a| a.down), Some(0));
+        // A question with no yes for this once: the yes for this conversation, never the kept one.
+        let session_only = "Command\n────────────────────\nRequesting permission for:\n   curl example.com\nRun this command?\n> 1. Yes, and always allow for commands that start with 'curl' (Persist to settings.json)\n  2. Yes, and always allow in this conversation\n  3. No, cancel\n  ↑/↓ Navigate\n";
+        assert_eq!(approvable_for(Agent::Antigravity, session_only).map(|a| a.down), Some(1));
+        // What isn't leave to go on is never answered: a folder to trust, a plan to choose a mode for.
+        let trust = "────────────────────\n Accessing workspace:\n /var/tmp/new\n Quick safety check: Is this a project you created or one you trust?\n ❯ 1. Yes, I trust this folder\n   2. No, exit\n Enter to confirm · Esc to cancel\n";
+        assert!(approvable_for(Agent::Claude, trust).is_none());
+        let plan = " Would you like to proceed?\n ❯ 1. Yes, and auto-accept edits\n   2. Yes, and manually approve edits\n   3. No, keep planning\n";
+        assert!(approvable_for(Agent::Claude, plan).is_none());
+    }
+
+    /// Claude Code's question about a read outside the working
+    /// directories (2.1.33x; ShiftUp's launcher met it live, 2026-11-25):
+    /// two yeses and two noes, one of each kept and one for this once.
+    #[test]
+    fn a_read_outside_has_one_yes_and_one_no_for_this_once() {
+        let screen = " Read(/var/tmp/other/notes.md)\n Allow this read?\n \u{276f} 1. Yes, and keep allowing any reads outside the working directories\n   2. No, and block reads\n   3. No, and ask again next time\n   4. Yes, but ask again next time\n Esc to cancel\n";
+        let kinds: Vec<ChoiceKind> = ["Yes, and keep allowing any reads outside the working directories", "No, and block reads", "No, and ask again next time", "Yes, but ask again next time"]
+            .into_iter()
+            .map(classify_choice_kind)
+            .collect();
+        assert_eq!(kinds, [ChoiceKind::DontAskAgain, ChoiceKind::NoAlways, ChoiceKind::No, ChoiceKind::Once]);
+        let asked = parse_approval(Agent::Claude, screen).expect("the question is read");
+        assert_eq!(asked.choices.iter().map(|c| c.kind).collect::<Vec<_>>(), kinds);
+        assert_eq!(asked.selected_index, Some(0), "the mark stands on the one that is kept: Return alone would keep it");
+        assert_eq!(asked.choices.iter().filter(|c| c.kind == ChoiceKind::Once).count(), 1);
+        assert_eq!(asked.choices.iter().filter(|c| c.kind == ChoiceKind::No).count(), 1);
+        // A kept no in other words; and a plain no is still a no.
+        assert_eq!(classify_choice_kind("No, and don\u{2019}t ask again"), ChoiceKind::NoAlways);
+        assert_eq!(classify_choice_kind("No, and tell Claude what to do differently (esc)"), ChoiceKind::No);
+        assert_eq!(classify_choice_kind("No, cancel"), ChoiceKind::No);
+        // Antigravity's yes for this conversation is neither once nor kept in its settings.
+        assert_eq!(classify_choice_kind("Yes, and always allow in this conversation"), ChoiceKind::AllowSession);
+        assert_eq!(classify_choice_kind("Yes, and always allow for commands that start with 'env' (Persist to settings.json)"), ChoiceKind::DontAskAgain);
+    }
+
+    #[test]
+    fn a_feedback_survey_is_seen_and_a_message_that_quotes_it_is_not() {
+        let rule = "─".repeat(40);
+        // Claude Code's, as it draws it over its prompt (2.1.33x).
+        let claude = format!("● Done.\n{rule}\n● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n{rule}\n❯ \n{rule}");
+        let seen = parse_survey(Agent::Claude, &claude).expect("Claude Code's survey");
+        assert_eq!(seen.dismiss, "0");
+        assert!(seen.question.starts_with("How is Claude doing"));
+        // Antigravity's, drawn over a permission prompt's last lines.
+        let agy =
+            "● Bash(for i in 1 2 3; do cargo test …)\n How's the CLI experience so far? Help us improve:\n [1] Good  [2] Fine  [3] Bad  [0] Skip\nesc to cancel · accept-edits · Gemini 4 Neon · xhigh";
+        assert_eq!(parse_survey(Agent::Antigravity, agy).expect("Antigravity's survey").dismiss, "0");
+        // Each is its own agent's; Codex has none.
+        assert!(parse_survey(Agent::Antigravity, &claude).is_none());
+        assert!(parse_survey(Agent::Claude, agy).is_none());
+        assert!(parse_survey(Agent::Codex, &claude).is_none());
+        // A permission prompt isn't a survey, nor a working screen.
+        assert!(parse_survey(Agent::Antigravity, "Run this command?\n> 1. Yes, run command\n  4. No, cancel\n  ↑/↓ Navigate").is_none());
+        assert!(parse_survey(Agent::Claude, "✻ Working… (esc to interrupt)\n❯ ").is_none());
+        // A message that quotes it in a sentence isn't one, nor one that
+        // has only its choices, nor one scrolled far up the screen.
+        assert!(parse_survey(Agent::Claude, "● The survey reads \"How is Claude doing this session?\" with 1: Bad … 0: Dismiss under it.\n❯ ").is_none());
+        assert!(parse_survey(Agent::Claude, "● Ratings:\n  1: Bad    2: Fine   3: Good   0: Dismiss\n❯ ").is_none());
+        let far = format!("{claude}\n{}", (0..14).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n"));
+        assert!(parse_survey(Agent::Claude, &far).is_none());
     }
 
     #[test]

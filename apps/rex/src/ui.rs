@@ -1013,8 +1013,7 @@ pub enum WinMsg {
     ConfirmStopSubagents {
         host_key: String,
         session_id: String,
-        running_wids: Vec<String>,
-        names: Vec<String>,
+        children: Vec<RunningChild>,
     },
     ActivityChanged,
     ToggleActivityFold(BlockKey),
@@ -1308,7 +1307,7 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let activity_search_field = widgets::text_field(cx, |f| f.name("Filter Activity").hint("Filter agents & subagents…"));
+        let activity_search_field = widgets::text_field(cx, |f| f.name("Filter Activity").hint("Filter agents & commands…"));
         cx.subscribe(&activity_search_field, |_w: &mut Self, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Changed | TextFieldEvent::Entered => cx.invalidate(),
             TextFieldEvent::Typed(_) => {}
@@ -4072,20 +4071,27 @@ impl RexWindow {
                             let mut children_items: Vec<NativeChildItem> = Vec::with_capacity(descendants.len());
                             for (d_idx, trow) in descendants.iter().enumerate() {
                                 let child_bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: trow.entry.block_id.clone() };
-                                let (act, running, detail) = if let Some(br) = st.blocks.get(&child_bk) {
+                                // (A command of the asker's own says nothing of itself as an
+                                // agent does: it runs for as long as it is a child at all, with
+                                // no mark of an agent at work, and what it runs is what is said
+                                // of it.)
+                                let command = !trow.entry.cli.is_agent();
+                                let (act, running, detail) = if command {
+                                    (AgentActivity::Idle, true, trow.entry.what())
+                                } else if let Some(br) = st.blocks.get(&child_bk) {
                                     let g = br.lock().unwrap_or_else(|e| e.into_inner());
                                     let live_msg = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone()));
                                     let detail = match live_msg {
                                         Some(msg) if !msg.trim().is_empty() => format!("{} · {}", trow.entry.cli.chrome_name(), msg.trim()),
-                                        _ => format!("{} · {} · {}", trow.entry.cli.chrome_name(), trow.entry.model, trow.entry.effort),
+                                        _ => trow.entry.what(),
                                     };
                                     (g.agent_activity, g.runs_agent() || g.agent_activity != AgentActivity::Idle, detail)
                                 } else {
-                                    (AgentActivity::Idle, false, format!("{} · {} · {}", trow.entry.cli.chrome_name(), trow.entry.model, trow.entry.effort))
+                                    (AgentActivity::Idle, false, trow.entry.what())
                                 };
                                 let has_children = descendants.get(d_idx + 1).is_some_and(|next| next.depth > trow.depth);
                                 let help = crate::hub::help_of(&child_bk);
-                                children_items.push(NativeChildItem { row: trow.clone(), bk: child_bk, act, detail, running, help, has_children });
+                                children_items.push(NativeChildItem { row: trow.clone(), bk: child_bk, act, detail, running, command, help, has_children });
                             }
 
                             let agents_here = w
@@ -4498,10 +4504,10 @@ impl RexWindow {
                 let active_in_collapsed = has_children && !expanded && subs.iter().any(|c| shown.as_ref() == Some(&c.bk));
                 let selected = !ancestor_only && (shown.as_ref() == Some(&row.bk) || active_in_collapsed);
                 let icon_act = if has_children && !expanded { subs.iter().fold(row.act, |a, c| higher_activity(a, c.act)) } else { row.act };
-                let running_kids: Vec<(String, String)> = subs
+                let running_kids: Vec<RunningChild> = subs
                     .iter()
-                    .filter(|c| matches!(c.act, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
-                    .map(|c| (c.row.entry.window_id.clone(), c.row.entry.display_title()))
+                    .filter(|c| c.command || matches!(c.act, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
+                    .map(|c| RunningChild { window_id: c.row.entry.window_id.clone(), name: c.row.entry.display_title(), command: c.command })
                     .collect();
                 let parent_el = sidebar_activity_row(
                     row,
@@ -4524,11 +4530,7 @@ impl RexWindow {
                     let running_for_menu = running_kids.clone();
                     let mut menu = Menu::new("").item("Show Transcript", "row.transcript").checked(viewing_tr).item("Show Terminal", "row.terminal").checked(!viewing_tr);
                     if has_children {
-                        let stop_label = match running_for_menu.len() {
-                            0 => "Stop Subagents…".to_owned(),
-                            1 => "Stop Subagent…".to_owned(),
-                            n => format!("Stop {n} Subagents…"),
-                        };
+                        let stop_label = stop_children_label(&running_for_menu);
                         menu = menu
                             .separator()
                             .item(if expanded { "Collapse Subagents" } else { "Expand Subagents" }, "row.toggle_fold")
@@ -4554,8 +4556,7 @@ impl RexWindow {
                         }
                         "row.stop_all" if !running_for_menu.is_empty() => {
                             if let Some(slot) = wins().map.get(&win_id) {
-                                let (running_wids, names): (Vec<String>, Vec<String>) = running_for_menu.iter().cloned().unzip();
-                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: bk.host_key.clone(), session_id: bk.session_id.clone(), running_wids, names });
+                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: bk.host_key.clone(), session_id: bk.session_id.clone(), children: running_for_menu.clone() });
                             }
                         }
                         _ => {}
@@ -4597,7 +4598,7 @@ impl RexWindow {
                         let viewing_child_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &child.bk);
                         let sub_selected = shown.as_ref() == Some(&child.bk) || active_in_folded_child;
                         let tip_key = format!("rex-sub-{}", child.row.entry.id);
-                        let tip_text = format!("{} ({} · {} · {}) — Click to open terminal", child_title, child.row.entry.cli.chrome_name(), child.row.entry.model, child.row.entry.effort);
+                        let tip_text = format!("{} ({}) — Click to open terminal", child_title, child.row.entry.what());
                         olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
                         let sub_el = olo_kit::tip::on(
                             sidebar_native_child_row(
@@ -5498,10 +5499,14 @@ impl View for RexWindow {
                 app().hub.stop_subagent(&host_key, &session_id, &window_id, force, tree);
                 cx.invalidate();
             }
-            WinMsg::ConfirmStopSubagents { host_key, session_id, running_wids, names } => {
-                if running_wids.is_empty() {
+            WinMsg::ConfirmStopSubagents { host_key, session_id, children } => {
+                if children.is_empty() {
                     return;
                 }
+                let names: Vec<&str> = children.iter().map(|c| c.name.as_str()).collect();
+                let running_wids: Vec<String> = children.iter().map(|c| c.window_id.clone()).collect();
+                let commands = children.iter().filter(|c| c.command).count();
+                let agents = children.len() - commands;
                 let list = match names.as_slice() {
                     [a] => format!("“{a}”"),
                     [a, b] => format!("“{a}” and “{b}”"),
@@ -5510,15 +5515,29 @@ impl View for RexWindow {
                         format!("{}, and “{}”", head.join(", "), many[many.len() - 1])
                     }
                 };
-                let (heading, body, btn) = if names.len() == 1 {
-                    (format!("Stop {list}?"), format!("This interrupts {list}. Its tab will close."), "Stop Subagent")
-                } else {
-                    (format!("Stop {} subagents?", names.len()), format!("This interrupts {list}.\nTheir tabs will close."), "Stop Subagents")
+                // (Said by what they are: an agent is a subagent, a command
+                // of the asker's own a command.)
+                let (heading, body, btn) = match (agents, commands) {
+                    (1, 0) => (format!("Stop {list}?"), format!("This interrupts {list}. Its tab will close."), "Stop Subagent"),
+                    (0, 1) => (format!("Stop {list}?"), format!("This interrupts {list}. Its tab will close."), "Stop Command"),
+                    (a, 0) => (format!("Stop {a} subagents?"), format!("This interrupts {list}.\nTheir tabs will close."), "Stop Subagents"),
+                    (0, c) => (format!("Stop {c} commands?"), format!("This interrupts {list}.\nTheir tabs will close."), "Stop Commands"),
+                    (a, c) => (
+                        format!("Stop {a} subagent{} and {c} command{}?", if a == 1 { "" } else { "s" }, if c == 1 { "" } else { "s" }),
+                        format!("This interrupts {list}.\nTheir tabs will close."),
+                        "Stop All",
+                    ),
                 };
                 let msg = format!("{heading}\n\n{body}");
                 let hub = app().hub.clone();
                 // Destructive action on the left (plain); Cancel on the right as the safe BeOS default (Return & Esc).
-                olo_kit::widgets::open_alert(cx, "Stop Subagents", "warning", &msg, &[btn, "Cancel"], move |choice, _| {
+                // (The alert's own name, by what it would stop.)
+                let named = match (agents, commands) {
+                    (_, 0) => "Stop Subagents",
+                    (0, _) => "Stop Commands",
+                    _ => "Stop Subagents and Commands",
+                };
+                olo_kit::widgets::open_alert(cx, named, "warning", &msg, &[btn, "Cancel"], move |choice, _| {
                     if *choice == Some(0) {
                         for wid in &running_wids {
                             hub.stop_subagent(&host_key, &session_id, wid, false, true);
@@ -6160,7 +6179,7 @@ impl View for RexWindow {
                 let (live, top_indices, running_kids) = {
                     let st = hub_ref.state.lock().unwrap_or_else(|e| e.into_inner());
                     let (live, top_indices) = top_level_window_indices(&st.subagents, &hk, &sess);
-                    let running_kids: Vec<(String, String)> = top_indices
+                    let running_kids: Vec<RunningChild> = top_indices
                         .get(i)
                         .map(|&widx| {
                             st.subagents
@@ -6168,14 +6187,12 @@ impl View for RexWindow {
                                 .into_iter()
                                 .filter(|r| {
                                     let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: r.entry.block_id.clone() };
-                                    st.blocks
-                                        .get(&bk)
-                                        .is_some_and(|br| matches!(br.lock().unwrap_or_else(|e| e.into_inner()).agent_activity, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
+                                    !r.entry.cli.is_agent()
+                                        || st.blocks.get(&bk).is_some_and(|br| {
+                                            matches!(br.lock().unwrap_or_else(|e| e.into_inner()).agent_activity, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error)
+                                        })
                                 })
-                                .map(|r| {
-                                    let t = r.entry.display_title();
-                                    (r.entry.window_id, t)
-                                })
+                                .map(|r| RunningChild { name: r.entry.display_title(), command: !r.entry.cli.is_agent(), window_id: r.entry.window_id })
                                 .collect()
                         })
                         .unwrap_or_default();
@@ -6215,8 +6232,7 @@ impl View for RexWindow {
                     menu = menu.separator();
                 }
                 if !running_kids.is_empty() {
-                    let stop_lbl = format!("Stop {} Running Subagent{}…", running_kids.len(), if running_kids.len() == 1 { "" } else { "s" });
-                    menu = menu.item(stop_lbl, "sub.stop_all").separator();
+                    menu = menu.item(stop_children_label(&running_kids), "sub.stop_all").separator();
                 }
                 let mut menu =
                     menu.item("Move Tab Left", "window.move_left").enabled(i > 0).item("Move Tab Right", "window.move_right").enabled(i + 1 < count).separator().item("Close Tab", "window.close");
@@ -6247,8 +6263,7 @@ impl View for RexWindow {
                     }
                     "sub.stop_all" if !running_kids.is_empty() => {
                         if let Some(slot) = wins().map.get(&window) {
-                            let (running_wids, names): (Vec<String>, Vec<String>) = running_kids.iter().cloned().unzip();
-                            slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sess.session_id.clone(), running_wids, names });
+                            slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sess.session_id.clone(), children: running_kids.clone() });
                         }
                     }
                     _ if cmd.starts_with("agent.keep_going_toggle#") => {
@@ -6324,23 +6339,22 @@ impl View for RexWindow {
                 if let Some((ref h, act)) = parent_detail {
                     menu = apply_detail(menu, h, act);
                 }
-                let mut running_kids: Vec<(String, String)> = Vec::new();
+                let mut running_kids: Vec<RunningChild> = Vec::new();
                 for (row, act) in &rows {
                     let harness = row.entry.cli.chrome_name();
+                    let command = !row.entry.cli.is_agent();
                     menu = menu
                         .item(row.entry.display_title(), format!("win:{}", row.entry.window_id))
                         .tree(row.depth, row.is_last, row.guides.clone())
                         .checked(active_wid.as_deref() == Some(row.entry.window_id.as_str()));
-                    if matches!(act, AgentActivity::Blocked | AgentActivity::Error | AgentActivity::Working) {
-                        running_kids.push((row.entry.window_id.clone(), row.entry.display_title()));
+                    if command || matches!(act, AgentActivity::Blocked | AgentActivity::Error | AgentActivity::Working) {
+                        running_kids.push(RunningChild { window_id: row.entry.window_id.clone(), name: row.entry.display_title(), command });
                     }
-                    menu = apply_detail(menu, harness, *act);
+                    // (A command of the asker's own says nothing of itself as
+                    // an agent does: running, for as long as it is a child.)
+                    menu = if command { menu.detail_status(harness.to_owned(), "Running", menu::DetailTone::Secondary) } else { apply_detail(menu, harness, *act) };
                 }
-                let stop_label = match running_kids.len() {
-                    0 => "Stop Subagents…".to_owned(),
-                    1 => "Stop Subagent…".to_owned(),
-                    n => format!("Stop {n} Subagents…"),
-                };
+                let stop_label = stop_children_label(&running_kids);
                 menu = menu.separator().item(stop_label, "sub.stop_all").enabled(!running_kids.is_empty());
                 menu::resolve(std::slice::from_mut(&mut menu), true);
                 self.open_tree_tab = Some(i);
@@ -6360,8 +6374,7 @@ impl View for RexWindow {
                             }
                         } else if cmd == "sub.stop_all" && !running_kids.is_empty() {
                             if let Some(slot) = wins().map.get(&window) {
-                                let (running_wids, names): (Vec<String>, Vec<String>) = running_kids.iter().cloned().unzip();
-                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sid.clone(), running_wids, names });
+                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sid.clone(), children: running_kids.clone() });
                             }
                         }
                     },
@@ -8055,7 +8068,8 @@ fn render_child_breadcrumb_header(
     // never truncate mid-word; drop trailing segments cleanly when tiled narrow.
     let meta_room = avail_w - 2.0 * pad_x - fixed_left_w - cur_w - m::SPACING;
     let small_font = style::ui_font(FontWeight::NORMAL);
-    let candidates = [format!("{} · {} · {}", entry.cli.chrome_name(), entry.model, entry.effort), format!("{} · {}", entry.cli.chrome_name(), entry.model), entry.cli.chrome_name().to_owned()];
+    // (A command of the asker's own has no model or effort to drop.)
+    let candidates = if entry.cli.is_agent() { vec![entry.what(), format!("{} · {}", entry.cli.chrome_name(), entry.model), entry.cli.chrome_name().to_owned()] } else { vec![entry.what()] };
     let chosen_meta = candidates.into_iter().find_map(|s| {
         let w = f32::from(style::text_width(s.clone(), style::SMALL_SIZE, small_font.clone())).ceil() + 2.0;
         (w <= meta_room).then_some((s, w))
@@ -8259,8 +8273,81 @@ struct NativeChildItem {
     act: AgentActivity,
     detail: String,
     running: bool,
+    /// A command of the asker's own, not an agent: "Running" and no
+    /// agent's mark on its icon.
+    command: bool,
     help: crate::agent::Help,
     has_children: bool,
+}
+
+/// A child of a tab that stopping its children would stop: its tab, its
+/// name, and whether it is a command of the asker's own (not an agent).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunningChild {
+    window_id: String,
+    name: String,
+    command: bool,
+}
+
+/// What stopping a tab's children is called, by what they are: agents
+/// are subagents, a command of the asker's own is a command ("Stop 2
+/// Subagents and 1 Command…"), so the words say what would be stopped.
+fn stop_children_label(kids: &[RunningChild]) -> String {
+    let commands = kids.iter().filter(|k| k.command).count();
+    let agents = kids.len() - commands;
+    let said = |count: usize, one: &str, many: &str| match count {
+        1 if kids.len() == 1 => one.to_owned(),
+        1 => format!("1 {one}"),
+        n => format!("{n} {many}"),
+    };
+    match (agents, commands) {
+        (0, 0) => "Stop Subagents…".to_owned(),
+        (a, 0) => format!("Stop {}…", said(a, "Subagent", "Subagents")),
+        (0, c) => format!("Stop {}…", said(c, "Command", "Commands")),
+        (a, c) => format!("Stop {} and {}…", said(a, "Subagent", "Subagents"), said(c, "Command", "Commands")),
+    }
+}
+
+/// A command's line where its row has no room for it whole. Its end says
+/// the most (the file a `tail -f` follows), so the folders of its paths
+/// go first ("tail -f …/build.log"), then the mark that they went ("tail
+/// -f build.log"), and only then its end.
+fn fit_command_line(text: &str, room: f32, size: f32) -> String {
+    let text = text.trim();
+    if text.is_empty() || room <= 24.0 {
+        return text.to_owned();
+    }
+    let font = style::ui_font(FontWeight::NORMAL);
+    let fits = |s: &str| f32::from(style::text_width(s.to_owned(), size, font.clone())) <= room;
+    if fits(text) {
+        return text.to_owned();
+    }
+    let marked = paths_by_name(text, "…/");
+    if fits(&marked) {
+        return marked;
+    }
+    fit_clean_line(&paths_by_name(text, ""), room, size)
+}
+
+/// `text` with each path in it down to its last name, after `mark`
+/// ("/var/tmp/olo/build.log": "…/build.log"). An option's value is a
+/// path too (`--log=/var/log/x`); an address (`https://…`) is not.
+fn paths_by_name(text: &str, mark: &str) -> String {
+    let short = |path: &str| -> Option<String> {
+        if path.contains("://") {
+            return None;
+        }
+        let (dir, name) = path.trim_end_matches('/').rsplit_once('/')?;
+        let made = format!("{mark}{name}");
+        (!dir.is_empty() && !name.is_empty() && made.chars().count() < path.chars().count()).then_some(made)
+    };
+    text.split(' ')
+        .map(|word| match word.split_once('=').filter(|_| word.starts_with('-')) {
+            Some((option, value)) => short(value).map(|v| format!("{option}={v}")).unwrap_or_else(|| word.to_owned()),
+            None => short(word).unwrap_or_else(|| word.to_owned()),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn top_level_window_indices(subagents: &crate::subagents::SubagentRegistry, hk: &str, sess: &olo_rex_client::SessionView) -> (HashSet<String>, Vec<usize>) {
@@ -8305,7 +8392,9 @@ fn sidebar_native_child_row(
     let indent = (depth as f32) * CHILD_INDENT;
     let left = ACTIVITY_FOLD_W + indent + ROW_ICON + 4.0;
     let title = child.row.entry.display_title();
-    let state = activity_state_word(child.act, child.running);
+    let command = child.command;
+    // (A command of the asker's own runs; it is no agent at work or at rest.)
+    let state = if command { Some(("Running", None)) } else { activity_state_word(child.act, child.running) };
     let has_children = child.has_children;
 
     let collapsed_status: Option<(String, u8)> = if has_children && !expanded {
@@ -8327,10 +8416,12 @@ fn sidebar_native_child_row(
     let desc_room = (width - left - 8.0).max(48.0);
     let desc = if child.detail.is_empty() {
         String::new()
-    } else if query_terms.is_empty() {
-        fit_clean_line(&child.detail, desc_room, style::SMALL_SIZE)
-    } else {
+    } else if !query_terms.is_empty() {
         fit_query_snippet(&child.detail, query_terms, desc_room, style::SMALL_SIZE)
+    } else if command {
+        fit_command_line(&child.detail, desc_room, style::SMALL_SIZE)
+    } else {
+        fit_clean_line(&child.detail, desc_room, style::SMALL_SIZE)
     };
 
     let terms_owned: Vec<String> = query_terms.to_vec();
@@ -8343,7 +8434,7 @@ fn sidebar_native_child_row(
     let state_val = state.map(|(w, _)| w).unwrap_or("Idle");
     let agent_val = format!("{cli_word}; {state_val}");
     let key = style::key((
-        (&child.row.entry.id, &title, &desc, act as u8, icon_act as u8, running, &help),
+        (&child.row.entry.id, &title, &desc, act as u8, icon_act as u8, running, command, &help),
         (depth, is_last, has_children, expanded, sub_total, sub_failed, sub_waiting, &guides, selected, &terms_owned),
     ));
 
@@ -8405,8 +8496,11 @@ fn sidebar_native_child_row(
         if icon_act == AgentActivity::Done {
             icons::paint(g, icon_b, "terminal");
         } else {
+            // (No agent's mark on a command of the asker's own: a terminal,
+            // as any pane that runs a program is. What is under it folded
+            // still shows through.)
             widgets::strip::drawn_on(ground, || {
-                widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(icon_act, &crate::agent::Help::default(), running));
+                widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(icon_act, &crate::agent::Help::default(), running && !command));
             });
         }
 
@@ -8527,7 +8621,8 @@ fn native_child_matches_type(child: &NativeChildItem, tf: &ActivityTypeFilter) -
         ActivityTypeFilter::Claude => child.row.entry.cli == AgentCli::Claude,
         ActivityTypeFilter::Codex => child.row.entry.cli == AgentCli::Codex,
         ActivityTypeFilter::Agy => child.row.entry.cli == AgentCli::Agy,
-        ActivityTypeFilter::Shell => false,
+        // (A command of the asker's own is a program in a shell's place, not an agent.)
+        ActivityTypeFilter::Shell => child.command,
         ActivityTypeFilter::SubagentType(want) => child.row.entry.role.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(want)) || child.row.entry.title.eq_ignore_ascii_case(want),
     }
 }
@@ -8585,13 +8680,16 @@ fn filter_activity_entry(row: &ActivityRow, query: &str, tf: &ActivityTypeFilter
         .children
         .iter()
         .filter(|c| {
-            if !native_child_matches_type(c, tf) || !parent_matches_state(c.act, sf) {
+            // (A command that runs is active, and in none of an agent's states.)
+            let state_ok = if c.command { matches!(sf, ActivityStateFilter::All | ActivityStateFilter::Active) } else { parent_matches_state(c.act, sf) };
+            if !native_child_matches_type(c, tf) || !state_ok {
                 return false;
             }
             if terms.is_empty() {
                 return true;
             }
             let state_w = match c.act {
+                _ if c.command => "running",
                 AgentActivity::Working => "working",
                 AgentActivity::Blocked => "waiting blocked",
                 AgentActivity::Done => "done",
@@ -8748,6 +8846,42 @@ fn encode_terminal_special_key(ks: &olo_kit::Keystroke, modes: olo_kit::term_key
         return None;
     }
     olo_kit::term_keys::bytes(olo_kit::term_keys::Key::of(ks), modes)
+}
+
+#[cfg(test)]
+mod child_words_tests {
+    use super::*;
+
+    fn kid(name: &str, command: bool) -> RunningChild {
+        RunningChild { window_id: format!("win-{name}"), name: name.to_owned(), command }
+    }
+
+    /// Stopping a tab's children says what would be stopped: a command of
+    /// the asker's own is not a subagent, and nothing is counted that
+    /// isn't running.
+    #[test]
+    fn stopping_children_names_agents_and_commands_apart() {
+        assert_eq!(stop_children_label(&[]), "Stop Subagents…");
+        assert_eq!(stop_children_label(&[kid("a", false)]), "Stop Subagent…");
+        assert_eq!(stop_children_label(&[kid("a", false), kid("b", false)]), "Stop 2 Subagents…");
+        assert_eq!(stop_children_label(&[kid("log", true)]), "Stop Command…");
+        assert_eq!(stop_children_label(&[kid("log", true), kid("srv", true)]), "Stop 2 Commands…");
+        assert_eq!(stop_children_label(&[kid("a", false), kid("b", false), kid("log", true)]), "Stop 2 Subagents and 1 Command…");
+        assert_eq!(stop_children_label(&[kid("a", false), kid("log", true), kid("srv", true)]), "Stop 1 Subagent and 2 Commands…");
+    }
+
+    /// A command's line keeps its end where it is cut: the folders of
+    /// its paths go, never the file it is about.
+    #[test]
+    fn a_commands_paths_are_cut_to_their_names() {
+        assert_eq!(paths_by_name("command · tail -f /var/tmp/olo/build.log", "…/"), "command · tail -f …/build.log");
+        assert_eq!(paths_by_name("command · tail -f /var/tmp/olo/build.log", ""), "command · tail -f build.log");
+        assert_eq!(paths_by_name("command · srv --log=/var/log/olo/srv.log --port 8080", "…/"), "command · srv --log=…/srv.log --port 8080");
+        // (Nothing to gain, or not a path: left as typed.)
+        assert_eq!(paths_by_name("command · ./run /tmp x/y", "…/"), "command · ./run /tmp x/y");
+        assert_eq!(paths_by_name("command · curl https://example.org/a/b", "…/"), "command · curl https://example.org/a/b");
+        assert_eq!(paths_by_name("command · ls /var/tmp/olo/", "…/"), "command · ls …/olo");
+    }
 }
 
 #[cfg(test)]
@@ -8934,12 +9068,14 @@ mod activity_tests {
                     exited_by_sync: false,
                     session_confidence: None,
                     add_dirs: Vec::new(),
+                    command: Vec::new(),
                 },
             },
             bk: BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: format!("b-{id}") },
             act,
             detail: detail.into(),
             running: true,
+            command: cli == AgentCli::Command,
             help: crate::agent::Help::default(),
             has_children: false,
         };
@@ -8986,6 +9122,20 @@ mod activity_tests {
 
         // Unmatched keyword hides the entire parent row.
         assert!(filter_activity_entry(&row, "nonexistent", &ActivityTypeFilter::All, ActivityStateFilter::All).is_none());
+
+        // A command of the asker's own is a program, not an agent: among
+        // the shells by type, active while it runs and in none of an
+        // agent's states, and found by "running" and by what it runs.
+        let mut with_command = row;
+        with_command.children.push(mk_child("k1", "w5", "win-1", 1, AgentCli::Command, "Build Log", "", "command · tail -f /var/tmp/olo/build.log", AgentActivity::Idle));
+        let ids = |tf: ActivityTypeFilter, sf: ActivityStateFilter, q: &str| -> Vec<String> {
+            filter_activity_entry(&with_command, q, &tf, sf).map(|m| m.subs.iter().map(|c| c.row.entry.id.clone()).collect()).unwrap_or_default()
+        };
+        assert_eq!(ids(ActivityTypeFilter::Shell, ActivityStateFilter::All, ""), ["k1"]);
+        assert_eq!(ids(ActivityTypeFilter::All, ActivityStateFilter::Active, ""), ["c1", "a1", "k1"]);
+        assert_eq!(ids(ActivityTypeFilter::All, ActivityStateFilter::Working, ""), ["c1"]);
+        assert!(ids(ActivityTypeFilter::All, ActivityStateFilter::Done, "").iter().all(|id| id != "k1"));
+        assert_eq!(ids(ActivityTypeFilter::All, ActivityStateFilter::All, "running build.log"), ["k1"]);
     }
 }
 

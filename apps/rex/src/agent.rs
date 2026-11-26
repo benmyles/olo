@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 pub use olo_agent_screen::{AUTO_APPROVE_AFTER, Agent, KEEP_GOING_EVERY, KEEP_GOING_QUIET, State};
-use olo_agent_screen::{approvable, at_prompt, classify, fingerprint};
+use olo_agent_screen::{approvable_for, at_prompt, classify, fingerprint};
 use olo_rex_client::{ProgramPriority, ProgramStatusRecord};
 
 /// High-level agent state shown on tab icons, pane headers, Activity sidebar,
@@ -141,6 +141,10 @@ pub struct Pending {
     pub stopped: bool,
     /// Looks once due that didn't find it (a screen read as it's drawn).
     misses: u32,
+    /// Its mark was moved down to its yes for this once (a question
+    /// whose yes isn't the first answer): Return follows only once the
+    /// mark is seen to stand there.
+    moved: bool,
 }
 
 /// What a pane's agent is doing, as Keep It Going and Auto Approve see
@@ -167,6 +171,10 @@ pub struct Watch {
 pub enum Do {
     /// Return: Yes, the answer chosen.
     Return,
+    /// The mark moved down this many answers, to the yes for this once
+    /// (Claude Code's read outside the working directories: the fourth).
+    /// The screen is looked at again before anything else is sent.
+    Down(usize),
     /// Keep It Going's message, then Return a moment after.
     Say(String),
 }
@@ -189,10 +197,10 @@ impl Watch {
             self.since = now;
         }
         let before = self.pending.as_ref().map(|p| (p.key, p.stopped));
-        match (help.auto_approve, self.state, agent.and_then(|_| approvable(screen))) {
+        match (help.auto_approve, self.state, agent.and_then(|a| approvable_for(a, screen))) {
             (true, Some(State::Blocked), Some(ask)) => {
                 if self.pending.as_ref().is_none_or(|p| p.key != ask.key) {
-                    self.pending = Some(Pending { key: ask.key, question: ask.question, due: now + after, stopped: help.theirs == Some(ask.key), misses: 0 });
+                    self.pending = Some(Pending { key: ask.key, question: ask.question, due: now + after, stopped: help.theirs == Some(ask.key), misses: 0, moved: false });
                 }
             }
             // (Asking, but not yet read whole: the one waiting stays.)
@@ -242,16 +250,28 @@ impl Watch {
 
     /// Its time has come (`next`): what to send the pane, read from its
     /// screen as it is now. Auto Approve answers only the same question,
-    /// still asked, "1. Yes" chosen; Keep It Going speaks only into the
+    /// still asked, its yes for this once under the mark (moved there
+    /// first where it isn't the first answer, and Return only once it is
+    /// seen there); Keep It Going speaks only into the
     /// agent's own prompt (a chooser would take its Return as a choice),
     /// its turn over and the screen quiet `quiet`, at most once an hour.
     pub fn due(&mut self, help: &Help, screen: &str, quiet: Duration, message: &str, now: Instant, epoch: u64) -> Option<Do> {
         if let Some(p) = self.pending.as_mut().filter(|p| help.auto_approve && !p.stopped && now >= p.due) {
-            let same = self.agent.is_some() && approvable(screen).is_some_and(|a| a.key == p.key);
-            if same {
-                self.pending = None;
-                self.approved += 1;
-                return Some(Do::Return);
+            match self.agent.and_then(|a| approvable_for(a, screen)).filter(|a| a.key == p.key) {
+                Some(ask) if ask.down == 0 => {
+                    self.pending = None;
+                    self.approved += 1;
+                    return Some(Do::Return);
+                }
+                // Its yes is further down: the mark goes there, once,
+                // and the screen is read again before Return.
+                Some(ask) if !p.moved => {
+                    p.moved = true;
+                    p.due = now + Duration::from_millis(350);
+                    return Some(Do::Down(ask.down));
+                }
+                // (Moved, and not seen there: read again, a few times.)
+                _ => {}
             }
             p.misses += 1;
             if p.misses >= 3 {
@@ -291,6 +311,61 @@ mod tests {
     /// Claude Code at its own prompt, its turn over.
     fn claude_at_rest(said: &str) -> String {
         format!("● {said}\n\n{RULE}\n❯ \n{RULE}\n  ? for shortcuts\n")
+    }
+
+    /// Claude Code's read outside the working directories (2.1.332): a
+    /// kept yes first, under the mark, and the yes for this once fourth.
+    fn claude_asks_to_read(marked: usize) -> String {
+        let mark = |i: usize| if i == marked { "❯" } else { " " };
+        format!(
+            "● Read(/var/tmp/shots/a.png)\n{RULE}\n Read outside the working directories\n Read(/var/tmp/shots/a.png)\n\n Allow this read outside the working directories?\n {} 1. Yes, and keep allowing any reads outside the working directories\n {} 2. No, and block reads outside the working directories from now on\n {} 3. No, and ask again next time\n {} 4. Yes, but ask again next time\n\n Esc to cancel · Tab to amend\n",
+            mark(0),
+            mark(1),
+            mark(2),
+            mark(3)
+        )
+    }
+
+    /// Every permission question counts down, whatever its shape (Ben,
+    /// 2026-11-26: "when it's on it should auto approve everything after
+    /// a 30s countdown"). One whose yes for this once isn't the first
+    /// answer has the mark moved to it when its time comes, and Return
+    /// only once the mark is seen there: never Return on a yes that is
+    /// kept.
+    #[test]
+    fn a_question_whose_yes_is_further_down_is_answered_with_it() {
+        let t0 = Instant::now();
+        let help = Help { auto_approve: true, ..Help::default() };
+        let after = Duration::from_secs(30);
+        let mut w = Watch::new(t0);
+        assert!(w.looked(Some(Agent::Claude), &claude_asks_to_read(0), &help, after, t0), "it counts down");
+        assert_eq!(w.counting(t0).map(|(q, left)| (q.to_owned(), left.as_secs())), Some(("Allow this read outside the working directories?".into(), 30)));
+        // Its time: the mark goes down three, and nothing else yet.
+        assert_eq!(w.due(&help, &claude_asks_to_read(0), KEEP_GOING_QUIET, "", t0 + after, 1_000), Some(Do::Down(3)));
+        assert_eq!(w.approved, 0);
+        // (The screen read again as the mark moves: the same question, still waiting.)
+        assert!(!w.looked(Some(Agent::Claude), &claude_asks_to_read(3), &help, after, t0 + after));
+        let soon = t0 + after + Duration::from_millis(350);
+        assert_eq!(w.next(&help, KEEP_GOING_QUIET, soon, 1_000), Some(soon));
+        // Seen there: Return.
+        assert_eq!(w.due(&help, &claude_asks_to_read(3), KEEP_GOING_QUIET, "", soon, 1_000), Some(Do::Return));
+        assert_eq!((w.approved, w.pending.is_none()), (1, true));
+
+        // The mark that doesn't come to stand there is never answered with Return.
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks_to_read(0), &help, after, t0);
+        assert_eq!(w.due(&help, &claude_asks_to_read(0), KEEP_GOING_QUIET, "", t0 + after, 1_000), Some(Do::Down(3)));
+        let mut at = soon;
+        for _ in 0..3 {
+            assert_eq!(w.due(&help, &claude_asks_to_read(0), KEEP_GOING_QUIET, "", at, 1_000), None, "not moved twice, and no Return");
+            at += Duration::from_millis(200);
+        }
+        assert!(w.pending.is_none(), "given up: the person's");
+        assert_eq!(w.approved, 0);
+        // A mark someone moved (onto a no) isn't a question Auto Approve answers.
+        let mut w = Watch::new(t0);
+        assert!(!w.looked(Some(Agent::Claude), &claude_asks_to_read(2), &help, after, t0));
+        assert!(w.pending.is_none());
     }
 
     /// A question Auto Approve may answer is answered Yes once its time

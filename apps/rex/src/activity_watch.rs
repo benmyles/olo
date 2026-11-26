@@ -465,6 +465,13 @@ fn start_transcript_stream(hub: &Arc<RexHub>, bk: BlockKey, target: ViewTarget, 
 /// Runs `olo-rex-link <args...>` on `host_key` (locally or over SSH via the
 /// deployed remote helper), piping optional `stdin_payload` and returning stdout.
 pub async fn run_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], stdin_payload: Option<&str>) -> Option<String> {
+    run_host_link_within(state, host_key, args, stdin_payload, std::time::Duration::from_secs(10)).await
+}
+
+/// [`run_host_link`], waited for as long as `within` (a host's agents
+/// service asked something that takes its time: a watch, a stop that
+/// saves a long scrollback).
+pub async fn run_host_link_within(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], stdin_payload: Option<&str>, within: std::time::Duration) -> Option<String> {
     let is_local = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| h.is_local);
     if is_local {
         let helper = local_helper_path()?;
@@ -475,7 +482,7 @@ pub async fn run_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &
             }
             let _ = stdin.shutdown().await;
         }
-        let out = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait_with_output()).await.ok()?.ok()?;
+        let out = tokio::time::timeout(within, child.wait_with_output()).await.ok()?.ok()?;
         Some(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
         let (target, pool, askpass) = ensure_remote_helper(state, host_key).await.ok()?;
@@ -490,9 +497,46 @@ pub async fn run_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &
         }
         let _ = stream.shutdown().await;
         let mut buf = String::new();
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), stream.read_to_string(&mut buf)).await;
+        let _ = tokio::time::timeout(within, stream.read_to_string(&mut buf)).await;
         Some(buf)
     }
+}
+
+/// Runs `olo-rex-link <args...>` on `host_key` for as long as it says
+/// things, giving `said` each line it writes (a host's agents service
+/// followed: `agent follow`). Its input is held open meanwhile and
+/// closed when this is let go of, which ends it there. Whether it said
+/// anything at all.
+pub async fn follow_host_link(state: &Arc<Mutex<crate::hub::HubState>>, host_key: &str, args: &[&str], mut said: impl FnMut(&str)) -> bool {
+    let is_local = state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).is_some_and(|h| h.is_local);
+    let mut any = false;
+    if is_local {
+        let Some(helper) = local_helper_path() else { return false };
+        let Ok(mut child) = tokio::process::Command::new(&helper).args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true).spawn() else { return false };
+        let _held_open = child.stdin.take();
+        let Some(stdout) = child.stdout.take() else { return false };
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            any = true;
+            said(&line);
+        }
+        let _ = child.kill().await;
+    } else {
+        let Ok((target, pool, askpass)) = ensure_remote_helper(state, host_key).await else { return false };
+        let mut cmd = olo_rex_client::helper::file(crate::link::ID);
+        for a in args {
+            cmd.push(' ');
+            cmd.push_str(&shell_escape_arg(a));
+        }
+        let Ok(stream) = pool.exec_io(&target, askpass, &cmd).await else { return false };
+        let (read_half, _held_open) = tokio::io::split(stream);
+        let mut lines = BufReader::new(read_half).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            any = true;
+            said(&line);
+        }
+    }
+    any
 }
 
 fn shell_escape_arg(s: &str) -> String {

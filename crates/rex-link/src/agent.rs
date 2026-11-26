@@ -1,5 +1,6 @@
-//! `olo-rex-link agent <trust|inspect>`: host-side helpers for native Rex
-//! subagent tabs (`olo agent`).
+//! What the agents service reads of the agents on this host
+//! (`agentd`), and `olo-rex-link agent <trust|inspect>`, the same asked
+//! by hand.
 //!
 //! - `agent trust PATH...`: atomically marks directories as trusted in Claude
 //!   Code's `~/.claude.json` (`projects[path].hasTrustDialogAccepted = true`)
@@ -20,27 +21,26 @@ use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::moving::{Proc, all_procs};
 use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, codex_threads, project_name, sessions_in, start_ticks, started_at, uuid};
+use crate::procs::{Proc, all_procs};
 
 const USAGE: &str = "usage: olo-rex-link agent <trust PATH...|inspect>";
 
-pub fn run(args: Vec<String>) -> ! {
+pub fn run(args: Vec<String>) -> i32 {
     let mut it = args.into_iter();
     let Some(sub) = it.next() else {
         eprintln!("{USAGE}");
-        std::process::exit(2);
+        return 2;
     };
     let rest: Vec<String> = it.collect();
-    let code = match sub.as_str() {
+    match sub.as_str() {
         "trust" => run_trust(&rest),
         "inspect" => run_inspect(),
         other => {
             eprintln!("olo-rex-link agent: unknown subcommand `{other}`\n{USAGE}");
             2
         }
-    };
-    std::process::exit(code);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ fn trust_claude_paths(claude_json: &Path, paths: &[String]) -> io::Result<Vec<St
 }
 
 fn expand_tilde(raw: &str) -> PathBuf {
-    let home = crate::moving::home();
+    let home = crate::procs::home();
     if raw == "~" {
         home
     } else if let Some(rest) = raw.strip_prefix("~/") {
@@ -198,20 +198,20 @@ struct InspectBatchRequest {
     items: Vec<InspectItemRequest>,
 }
 
-#[derive(Debug, Deserialize)]
-struct InspectItemRequest {
-    id: String,
-    cli: String,
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct InspectItemRequest {
+    pub id: String,
+    pub cli: String,
     #[serde(default)]
-    shell_pid: i32,
+    pub shell_pid: i32,
     #[serde(default)]
-    cwd: String,
+    pub cwd: String,
     #[serde(default)]
-    known_session_id: Option<String>,
+    pub known_session_id: Option<String>,
     #[serde(default)]
-    known_transcript: Option<String>,
+    pub known_transcript: Option<String>,
     #[serde(default)]
-    started_at: i64,
+    pub started_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -232,7 +232,7 @@ struct BackgroundShellInfo {
 }
 
 #[derive(Debug, Serialize)]
-struct InspectItemResult {
+pub(crate) struct InspectItemResult {
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pid: Option<i32>,
@@ -1101,6 +1101,19 @@ fn run_inspect() -> i32 {
             return 2;
         }
     };
+    println!("{}", json!({ "ok": true, "items": inspect_items(&req.items) }));
+    0
+}
+
+/// Each child's agent as this host has it now: its process, the
+/// conversation it is in and where that is written, its last message
+/// whole, the tool call it waits on, the programs it runs. One pass over
+/// `/proc` for all of them.
+pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResult> {
+    struct Batch<'a> {
+        items: &'a [InspectItemRequest],
+    }
+    let req = Batch { items };
 
     let places = Places::here();
     let procs = all_procs();
@@ -1114,7 +1127,7 @@ fn run_inspect() -> i32 {
     let mut codex_open: Option<Vec<(String, String)>> = None;
     let mut taken: HashSet<String> = HashSet::new();
 
-    for item in &req.items {
+    for item in req.items {
         if let Some(ref ks) = item.known_session_id
             && !ks.is_empty()
         {
@@ -1123,7 +1136,7 @@ fn run_inspect() -> i32 {
     }
 
     let mut results = Vec::with_capacity(req.items.len());
-    for item in &req.items {
+    for item in req.items {
         let found = find_agent_proc(item, &by_pid, &by_ppid);
         let (pid, start, proc_cwd, args, agent_pids) = match found {
             Some((p, args, pids)) => (Some(p.pid), start_ticks(p.pid), read_cwd(p.pid), args, pids),
@@ -1187,9 +1200,17 @@ fn run_inspect() -> i32 {
             waiting_on,
         });
     }
+    results
+}
 
-    println!("{}", json!({ "ok": true, "items": results }));
-    0
+/// Marks folders trusted in Claude Code's own file, for the account
+/// (or the home and configuration folder a child was given).
+pub(crate) fn trust(home_override: Option<&str>, config_dir_override: Option<&str>, paths: &[String]) -> io::Result<Vec<String>> {
+    let claude_json = match config_dir_override.map(PathBuf::from).or_else(|| std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).filter(|p| !p.as_os_str().is_empty())) {
+        Some(cfg_dir) => cfg_dir.join(".claude.json"),
+        None => home_override.map(PathBuf::from).unwrap_or_else(|| Places::here().home).join(".claude.json"),
+    };
+    trust_claude_paths(&claude_json, paths)
 }
 
 #[cfg(test)]

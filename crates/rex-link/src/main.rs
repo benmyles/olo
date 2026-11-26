@@ -11,18 +11,22 @@
 //! reads. Nothing is written while the gate is locked: a server
 //! that stops reading stops only what goes to it.
 
-#[cfg(feature = "move")]
+#[cfg(feature = "agents")]
 mod activity;
-#[cfg(feature = "move")]
+#[cfg(feature = "agents")]
 mod agent;
+#[cfg(feature = "agents")]
+mod agentd;
 #[cfg(feature = "move")]
 mod fix;
 #[cfg(feature = "sync")]
 mod fs_op;
 #[cfg(feature = "move")]
 mod moving;
-#[cfg(feature = "move")]
+#[cfg(feature = "agents")]
 mod panes;
+#[cfg(feature = "agents")]
+mod procs;
 #[cfg(feature = "quic")]
 mod quic;
 #[cfg(feature = "sync")]
@@ -134,19 +138,20 @@ fn main() {
     }
     // (`activity`: zero-polling subagent discovery and live transcript streaming.)
     if args.first().is_some_and(|a| a == "activity") {
-        #[cfg(feature = "move")]
+        #[cfg(feature = "agents")]
         activity::run(args.split_off(1));
-        #[cfg(not(feature = "move"))]
+        #[cfg(not(feature = "agents"))]
         {
             eprintln!("olo-rex-link: built without activity support");
             std::process::exit(126);
         }
     }
-    // (`agent`: atomic folder pre-trust & single-pass batch inspection for `olo agent`.)
+    // (`agent`: the host's agents service and its command, `olo agent`;
+    // and what it reads of the agents here, `agent inspect`, `agent trust`.)
     if args.first().is_some_and(|a| a == "agent") {
-        #[cfg(feature = "move")]
-        agent::run(args.split_off(1));
-        #[cfg(not(feature = "move"))]
+        #[cfg(feature = "agents")]
+        agentd::run(args.split_off(1));
+        #[cfg(not(feature = "agents"))]
         {
             eprintln!("olo-rex-link: built without agent support");
             std::process::exit(126);

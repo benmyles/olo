@@ -8597,6 +8597,7 @@ dependencies = [
  "olo-net",
  "olo-protocol",
  "olo-rex-client",
+ "olo-rex-link",
  "olo-rex-sync",
  "olo-rex-vt",
  "olo-sync",
@@ -8662,18 +8663,22 @@ dependencies = [
 name = "olo-rex-link"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "libc",
  "memchr",
+ "olo-agent-screen",
  "olo-rex-client",
  "olo-rex-sync",
  "quinn",
  "rcgen",
+ "regex",
  "russh",
  "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.1",
  "tokio",
+ "tokio-tungstenite",
  "tungstenite",
  "uuid",
 ]

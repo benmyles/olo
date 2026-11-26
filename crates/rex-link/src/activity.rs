@@ -19,8 +19,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::moving::{Proc, all_procs};
 use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, codex_threads, found_in, process_json, project_name, sessions, sessions_in, start_ticks, started_at, uuid};
+use crate::procs::{Proc, all_procs};
 
 const USAGE: &str = "usage: olo-rex-link activity <watch|once|tail PATH [--max-initial BYTES]>";
 

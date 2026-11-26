@@ -38,6 +38,8 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+pub mod agents;
+
 /// What this helper does, counted: the app reads it from [`HEADER`] and
 /// asks of the helper only what its number says it does. 1: what is
 /// typed is kept in order. 2: and how a terminal reads is said

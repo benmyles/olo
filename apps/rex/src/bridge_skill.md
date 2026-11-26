@@ -16,6 +16,10 @@ the person has allowed this host (Olo's Preferences ▸ Rex): a command
 that isn't allowed fails and says so (status 69, as when no Olo desktop
 is connected: then this host isn't open in Olo's Rex now, so say so).
 
+**`olo agent` is the exception: it needs no desktop.** The children of
+your tab are this host's own (below): started, read, answered and
+stopped by this host, whether or not an Olo desktop is connected.
+
 ## Subagents in Rex (`olo agent`) — PREFERRED
 
 **Always use `olo agent` to launch subagents when running inside Rex.**
@@ -27,10 +31,32 @@ tree popover and the Activity sidebar, without cluttering the top tab
 bar, and allowing the person to click straight in and interact at any
 time).
 
+**It works with no Olo desktop connected.** Every `olo agent` command
+is answered by this host's own agents service (Olo's helper here, which
+`olo` runs: `olo-rex-link agent`), through this host's Rex server. The
+desktop is not asked and need not be there: children run, are watched,
+answered and stopped while the person's computer sleeps or is away, and
+the moment a desktop connects it shows every one of them, under the tab
+that started it. The service starts by itself at the first command and
+ends when nothing is left for it to do; if it is ever killed, the next
+command starts another that knows every child (and `watch --since`
+goes on from the same cursor). After a restart of this host's Rex
+server, `list --all` has each child as exited with its conversation's
+id, to take up again with `start --resume`.
+
 First-class CLIs: **`claude`**, **`codex`**, and **`agy`**. Both
 **`--model`** and **`--effort`** are **ALWAYS REQUIRED** (even when
 resuming a previous session) so there are never surprises about which
 model or reasoning effort is used.
+
+- **A command of your own in a child tab** (not an agent: a stream
+  pipeline, a dev server, a test run): `olo agent start --command
+  [--name NAME] [--title TITLE] [--cwd DIR] [--env K=V]… [--close-on-exit]
+  [--json] -- CMD [ARG…]`. No `--model` or `--effort`. It is `working`
+  while it runs and `exited` after (`status`: `running`, `exit_code`);
+  `watch NAME --on exit` returns when it ends (a status other than 0 is
+  its `error`); `read`, `send` and `stop` as for an agent. Nothing an
+  agent's screen would mean is read into what it prints.
 
 - **Launch a new or resumed subagent tab** (`olo agent start`):
   - New session:
@@ -48,24 +74,32 @@ model or reasoning effort is used.
     - `--approve-for-me`: **Codex-only** (off by default; never enabled automatically; rejected on `claude` and `agy`). Passes Codex's own `--approve-for-me` flag to route Codex approvals through Codex's automated review.
   - Full CLI options supported: `--name` (unique among live children under your parent; target as `NAME` or `PARENT/NAME`), `--title`, `--role`, `--cwd`, `--prompt` / `--prompt-file PATH` (for prompts > 128 KiB, pass a file path in the prompt or paste via `send --file` after launch), `--env K=V`, `--unset-env K`, `--parent WINDOW_ID`, `--focus`, `--close-on-exit`, `--permission-mode`, `--approval`/`-a`, `--sandbox`/`-s`, `--mode`, `--full-auto`, `--approve-for-me` (Codex-only), `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--allowed-tools`, `--disallowed-tools` (variadic), `--add-dir`, `--worktree` / `--worktree=NAME`, `--agent`, `--session-id UUID` (Claude-only), `--profile`, `--config/-c K=V`, `--settings JSON_OR_FILE`, `--strict-mcp-config`, `--system-prompt`, `--append-system-prompt`, `--mcp-config`, `--project`, `--new-project`, `--remote-agent`, `--remote-control`, `--search`, `--enable`, `--disable`, `--image`, `--no-alt-screen`, `--no-daemon`, `--print`, `--stream`, `--input-format`, `--output-format`, plus `-- EXTRA_CLI_ARGS…` verbatim passthrough.
 - **List your subagent tree**: `olo agent list [--all] [--parent WIN|NAME] [--fast] [--json]` (with `--all`, includes exited children and their persisted `cli_session_id` even after a Rex server restart; returns monotonic event `cursor`; timestamps are Unix milliseconds).
-- **Inspect rich live status**: `olo agent status <ID|NAME> [--json]` (returns `state`, `cli_session_id`, `resume_id`, `transcript_path`, `pid`, `exit_code`, `aborted`, full verbatim `last_message`, structured `approval` with screen-verified command & typed choices, `error`, `started_at`, `exited_at`, `last_output_at`, `last_state_change_at` [all Unix ms], `quiet_secs`, `state_age_secs`, `background_shells`, `waiting_on`, `usage`, `cursor`, and recent `tail`).
+- **Inspect rich live status**: `olo agent status <ID|NAME> [--json]` (returns `state`, `running`, `cli_session_id`, `resume_id`, `transcript_path`, `pid`, `exit_code`, `aborted`, `survey` [a feedback survey that wouldn't be set aside is drawn over its screen], full verbatim `last_message`, structured `approval` with screen-verified command & typed choices, `error`, `started_at`, `exited_at`, `last_output_at`, `last_state_change_at` [all Unix ms], `quiet_secs`, `state_age_secs`, `background_shells`, `waiting_on`, `usage`, `cursor`, and recent `tail`).
 - **Read terminal output / scrollback**: `olo agent read <ID|NAME> [--lines 80] [--scrollback] [--ansi] [--json]` (note: `--scrollback` still caps output to `--lines`, 80 by default; pass `--lines 2000` for deeper history).
 - **Event-driven watch (zero polling, multi-agent & cursor-safe)**:
   `olo agent watch [<ID|NAME>… | --all] [--since CURSOR] [--parent WIN] [--on question,approval,idle,done,error,exit] [--match TEXT] [--regex PAT] [--timeout 90] [--json]`
-  Always pass `--since CURSOR` (from `start`, `list`, `send`, `approve`, or the prior `watch`) and keep `--timeout` under your shell tool timeout (e.g. `90` seconds), looping on exit code **124** (`{"ok":false,"event":"timeout","cursor":...,"code":124}`). Exit codes: `0` event, `124` timeout, `2` usage/validation error, `69` transport/isolation refusal. `--on idle` matches both `idle` and `done`; `--on done` matches strictly `done`. If the event cursor resets (e.g. after a fresh start), `watch` returns `{"ok":true,"event":"reset","cursor":...}` immediately; if events were evicted from the 2000-event ring buffer, `gap:true` is set.
+  Always pass `--since CURSOR` (from `start`, `list`, `send`, `approve`, or the prior `watch`) and keep `--timeout` under your shell tool timeout (e.g. `90` seconds), looping on exit code **124** (`{"ok":false,"event":"timeout","cursor":...,"code":124}`). Exit codes: `0` event, `124` timeout, `2` usage/validation error, `69` it can't be done from here (no Rex server on this host; or a child asking what isn't its to ask), `75` the service ended while it did something that must not be done twice (`start`, `send`, `approve`, `stop`: look with `list` before asking again; `watch`, `list`, `status` and `read` simply ask the next service). `--on idle` matches both `idle` and `done`; `--on done` matches strictly `done`. If the event cursor resets (e.g. after a fresh start), `watch` returns `{"ok":true,"event":"reset","cursor":...}` immediately; if events were evicted from the 2000-event ring buffer, `gap:true` is set.
 - **Approve or deny a pending tool approval safely**:
-  `olo agent approve <ID|NAME> --once | --no [--reason TEXT] [--json]`
-  Never selects persistent (`don't ask again` / `always allow`) or mode-switching options; re-verifies cursor selection before pressing Enter, confirms the specific dialog key dismissed without touching any next dialog, and pastes sanitized `--reason` only after dismissal.
+  `olo agent approve <ID|NAME> --once | --session | --no [--reason TEXT] [--json]`
+  Picks the one choice of that kind by what it means, wherever it stands in the list (`approval.choices[].kind`: `once`, `allow_session`, `dont_ask_again`, `switch_mode`, `no`, `no_always`, `other`): `--once` the yes for this once ("Yes", "Yes, run command", "Yes, but ask again next time"), `--session` the yes kept for this conversation alone (Antigravity's "Yes, and always allow in this conversation"), `--no` the no for this once (never "No, and block reads"). Two of the kind asked for, or none, is refused with the choices named.
+  Never selects persistent (`don't ask again` / `always allow` / kept in settings) or mode-switching options; re-verifies cursor selection before pressing Enter, confirms the specific dialog key dismissed without touching any next dialog, and pastes sanitized `--reason` only after dismissal.
 - **Send input reliably** (text, file paste, control chars, special keys, delivery verification):
   `olo agent send <ID|NAME> "Please check tests/api.rs next" --enter --json`
   `olo agent send <ID|NAME> --file /var/tmp/prompt.md --enter --json`
   `olo agent send <ID|NAME> --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
+  `--key` takes any key with any modifier a terminal can send, joined by `+` or `-`: `--key Alt+m` (what tmux sends for `M-m`), `--key Ctrl+Shift+Up`, `--key Alt+Enter`, `--key Shift+Tab`, `--key F5`, `--key C-M-c`; several `--key`s go one after another.
   Refuses to type text while an approval/question dialog is active (use `olo agent approve` for approvals, or pass `--force`). Always strips bracketed-paste escapes and returns a pre-write `cursor`.
 - **Stop & archive launched tabs cleanly**:
   `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`
   Gracefully interrupts (double Ctrl-C) and closes the child tab (`--save PATH` archives full scrollback to `PATH` before closing; `--tree` stops all nested descendants bottom-up; `--force` closes immediately; `--force` and `--keep-tab` cannot be combined; keeps `cli_session_id` in registry for `list --all` and `--resume`).
 - **Prune exited child records**: `olo agent prune [--all] [--json]`
 - **Focus a child tab in Rex**: `olo agent focus <ID|NAME>`
+- **Feedback surveys are never yours to answer.** Claude Code's ("How is
+  Claude doing this session? … 0: Dismiss") and Antigravity's ("How's
+  the CLI experience so far? … [0] Skip") are set aside by the service
+  itself the moment it sees one (it once hid a permission prompt for 25
+  minutes), and what lies under it is what `status` and `watch` say.
+  One that wouldn't go is said (`status`: `"survey": true`).
 
 ## Desktop integration commands
 
@@ -215,8 +249,12 @@ person's browser or on your own screen there:
    forward); without `--keep` it closes by itself when this Rex session
    ends.
 
-Underneath it is Rex's own `rex do`, which you can use directly
-(`rex actions --json` lists the actions with their arguments):
+Underneath the desktop's commands is Rex's own `rex do`, which you can
+use directly (`rex actions --json` lists the actions with their
+arguments). (`olo agent` is not underneath it: it asks this host's
+service. The `olo.agent.*` actions are the same commands asked through
+a connected desktop, which passes them to that service; use `olo
+agent`, which needs none.)
 `rex do olo.agent.start --args '{"args":["claude","--model","…","--effort","…"]}'`,
 `rex do olo.agent.list --args '{"json":true}'`,
 `rex do olo.agent.status --args '{"target":"ID","json":true}'`,

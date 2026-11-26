@@ -601,6 +601,8 @@ fn detail_columns(menu: &Menu) -> (f32, f32) {
 /// A popup's size for `menu`.
 fn popup_size(menu: &Menu) -> (f32, f32) {
     let (mut label_w, mut key_w, mut h) = (0.0f32, 0.0f32, 0.0f32);
+    // (The widest label with nothing to its right: see below.)
+    let mut alone_w = 0.0f32;
     let mut has_detail = false;
     let mut has_keys = false;
     let font = style::ui_font(FontWeight::NORMAL);
@@ -608,12 +610,16 @@ fn popup_size(menu: &Menu) -> (f32, f32) {
         match item {
             MenuItem::Action(a) => {
                 let indent = a.tree.as_ref().map_or(0.0, |t| (t.depth.min(6) as f32) * TREE_INDENT);
-                label_w = label_w.max(indent + f32::from(style::text_width(a.label.clone(), style::PLAIN_SIZE, font.clone())));
+                let w = indent + f32::from(style::text_width(a.label.clone(), style::PLAIN_SIZE, font.clone()));
                 if let Some(keys) = &a.keys {
                     has_keys = true;
                     key_w = key_w.max(style::key_combo_column_width(keys));
+                    label_w = label_w.max(w);
                 } else if a.detail.is_some() {
                     has_detail = true;
+                    label_w = label_w.max(w);
+                } else {
+                    alone_w = alone_w.max(w);
                 }
                 h += ITEM_HEIGHT;
             }
@@ -628,17 +634,28 @@ fn popup_size(menu: &Menu) -> (f32, f32) {
     }
     let (pref_w, stat_w) = if has_detail { detail_columns(menu) } else { (0.0, 0.0) };
     let detail_total = pref_w + if pref_w > 0.0 && stat_w > 0.0 { DETAIL_COL_GAP } else { 0.0 } + stat_w;
-    let right_w = key_w.max(detail_total);
-    let gap = if has_keys {
-        SHORTCUT_GAP
-    } else if detail_total > 0.0 {
-        DETAIL_LABEL_GAP
-    } else {
-        0.0
-    };
+    let labels = labels_width(label_w, alone_w, has_keys.then_some(key_w), detail_total);
     // On the two-point grid: whole device pixels at 1×, 1.5× and 2×.
-    let w = ((columns(menu).1 + label_w + gap + right_w + ITEM_RIGHT).max(MIN_WIDTH) / 2.0).ceil() * 2.0;
+    let w = ((columns(menu).1 + labels + ITEM_RIGHT).max(MIN_WIDTH) / 2.0).ceil() * 2.0;
     (w + 2.0 * POPUP_BORDER, h + 2.0 * POPUP_PAD)
+}
+
+/// The room a popup's labels and what stands right of them take:
+/// `beside`, the widest label with keys or a detail to its right;
+/// `alone`, the widest with neither; `keys`, the keys' column where any
+/// item has keys; `detail`, the detail columns' width (none: 0).
+///
+/// A label with nothing to its right keeps no room for the detail
+/// columns: it runs under them, so a long command at a menu's foot
+/// ("Stop 2 Subagents and 1 Command…") doesn't push every row's details
+/// a hand's width from their names. Among keys every label keeps clear
+/// of their column, as menus do.
+fn labels_width(beside: f32, alone: f32, keys: Option<f32>, detail: f32) -> f32 {
+    match keys {
+        Some(key_w) => beside.max(alone) + SHORTCUT_GAP + key_w.max(detail),
+        None if detail > 0.0 => (beside + DETAIL_LABEL_GAP + detail).max(alone),
+        None => beside.max(alone),
+    }
 }
 
 /// Opens `menu` over the window, its top left at `corner` of `anchor`
@@ -1837,6 +1854,22 @@ impl IntoElement for MenuBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A long label with nothing beside it doesn't widen a menu of
+    /// detail columns past what its rows need; among keys, and in a
+    /// plain menu, the widest label sets the width as it always did.
+    #[test]
+    fn a_label_alone_runs_under_the_detail_columns() {
+        // (Names 100 wide with details 120 wide, and a 190 command below.)
+        assert_eq!(labels_width(100.0, 190.0, None, 120.0), 100.0 + DETAIL_LABEL_GAP + 120.0);
+        // (A command wider than any row: the menu is as wide as it.)
+        assert_eq!(labels_width(100.0, 300.0, None, 120.0), 300.0);
+        // (Keys: every label clear of their column.)
+        assert_eq!(labels_width(100.0, 190.0, Some(40.0), 0.0), 190.0 + SHORTCUT_GAP + 40.0);
+        assert_eq!(labels_width(100.0, 190.0, Some(40.0), 120.0), 190.0 + SHORTCUT_GAP + 120.0);
+        // (Neither: the widest label.)
+        assert_eq!(labels_width(0.0, 190.0, None, 0.0), 190.0);
+    }
 
     /// A bar's titles where they fit; where they don't, as many as fit
     /// with the » after them, inside the bar, its menu the rest.

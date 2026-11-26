@@ -108,6 +108,29 @@ something nobody here has is in "Blocked", with what it waits for.
     desktop, pressed means 'on'"; "Rex's 'claude' row has four signal
     colours: an orange icon badge, a blue ▶, a green ✓ and orange
     'Waiting' … Show at most one state glyph beside the status word".
+  - Rex's child tabs, there before the command child whose pictures
+    these looks were of (2026-11-26). Opus 5.5, of a child tab's
+    header: "'Build Log' is bold. No pane title in this window is bold;
+    even the focused 'claude — Refactor VT renderer' is regular, in the
+    primary colour. It also sits about 24pt under the bold active tab
+    title 'olo-rex', so two bold dark labels stack and compete", and
+    "Every pane header starts with the 16pt terminal icon. This one
+    starts with bare text, so it reads as a web breadcrumb strip, not an
+    Olo pane header" (regular weight in primary ink; the child's icon at
+    the 16 pt inset with a 6 pt gap, the crumbs then where pane titles
+    start); "no hover/pressed state for the 'olo-rex' crumb. That crumb
+    is the way back to the root, but it looks like plain text". Of the
+    tree menu: "The popover check mark is crowded against the left edge
+    … Its ink starts about 5pt from the popover edge and is about 10pt
+    tall … Move it to an 8pt inset at about 8pt tall" (the kit's check
+    column, every menu's: to compare before and after). Of Activity:
+    "The icon-to-name gap differs by level … about 6pt on the root row
+    but 3–4pt on every child, so the child badges crowd their names …
+    Use one gap at every level: 6pt". Gemini 4 Neon, of the header:
+    "by eye, the right inset looks about 2–4 logical pixels wider than
+    the left" (to measure). Not pictured yet: a row under the pointer.
+    And "All states" has no word for a command that runs (it is found
+    by Active): a Running of its own if commands become many.
   - Preferences: a note's distance under its control differs by pane
     ("Power (radio buttons) 17 pt … Rex, Terminal, Security 24 pt … Date
     & Time ≈26.7 pt. One structure, three rhythms"); Opus would have it 4
@@ -198,6 +221,21 @@ something nobody here has is in "Blocked", with what it waits for.
   Never a sign-in, and nothing of another kind (history, caches).
 
 ## Not started (highest priority first)
+
+- **`olo agent` on a host reached without SSH** (left of the agents
+  service, 2026-11-26). The service is Olo's helper, which the app puts
+  on a host over its SSH connection (`olo_rex_client::helper`); a host
+  reached over HTTP or Tailscale has no helper, so `olo agent` there has
+  nothing to ask but a connected desktop, which has nothing to pass it
+  to (it says so: "this host's agents service couldn't be asked"). Put
+  the helper there through the Rex server itself (a terminal's upload,
+  `terminal.upload_begin`, into `~/.local/share/olo/rex-link`, checked
+  and moved into place as over SSH), and follow the service through a
+  tab of the app's own or the server's `rex.exec`. Also from this work:
+  the desktop asks the service which child a pane is for every action
+  from a pane it doesn't know as one (one helper run a process, kept a
+  minute); over a slow link that is a round trip before `olo open`
+  answers: carry the question on the follower's own connection instead.
 
 - **Pre-existing snap-pad & menu nits noted during Auto-Tiling locked-slots reviews** (Opus 5.5 R2/R3, 2026-11-26; there before locked slots):
   - Full-screen `S` top drag strip vs centered plate geometry and `Look::Back` keycap styling.
@@ -11034,6 +11072,17 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Auto Approve answers every permission question, whatever its shape**~~ (done 2026-11-26; Ben, of a Rex pane where Claude Code's "Read outside the working directories" sat with no countdown: "auto approve in rex terminal doesn't seem to work"; "when it's on it should auto approve everything after a 30s countdown"). The question began "Allow this" (Auto Approve knew "Do you want to" and "Would you like to"), and its first answer, under the mark, is a yes that is kept ("Yes, and keep allowing any reads…"): the yes for this once is the fourth. Auto Approve in Rex and in Terminal now reads questions with the one reader the agents service uses (`olo_agent_screen::approvable_for` over `parse_approval`: each agent's questions, their answers by what they mean) and answers with the yes that keeps nothing, wherever it stands: the mark is moved down to it when the time comes and Return sent only once it is seen there (`Ask::down`, `Do::Down`, `Pending::moved`). Never a yes kept in settings or one that switches mode; a mark someone moved is theirs. Tested from Ben's picture of the dialog (`auto_approve_answers_a_read_outside_with_its_yes_for_this_once`) and through Rex's watcher (`a_question_whose_yes_is_further_down_is_answered_with_it`).
+  - Left for Ben to say: a plan waiting to be approved ("No, keep planning") and a folder to trust are still not answered (a mode and a trust, not leave to go on). If "everything" means those too: the plan's "Yes, and manually approve edits", and the folder's "Yes, I trust this folder".
+
+- ~~**`olo agent` is the host's own: every command with no Olo desktop connected, the desktop following and never in the middle; a child tab that runs a command of one's own; keys with any modifier; surveys set aside; a question answered by what a choice means**~~ (done 2026-11-26; HACKING, Rex, "The children of a tab are their host's"; ShiftUp's needs 19 to 23). Ben: "the desktop shouldn't need to be running or connected for the subagents to work, and when the desktop reconnects all the agents should just appear. the desktop shouldn't be 'in the middle' of anything".
+  - The engine moved out of the app to the host: the agents service (`olo-rex-link agent serve`, `crates/rex-link/src/agentd`) speaks to the host's own Rex server, starts each child as a tab, reads its screen from the server itself (the engine the desktop draws, never a second emulator), types into it, closes it, and numbers what happens (`watch --since`). `olo agent` there asks it over a socket of the account's (`bridge_olo.sh` runs the helper; no `rex do`, no desktop). What the two sides agree on is one library (`olo_rex_link::agents`: the children and their tree, what is asked, how a child stands, the events, the wire).
+  - It starts by itself, is one per Rex server, and can be killed at any moment: the registry is written before `start` answers and an event before any watcher is told (found by the kill test on a fifth run: a cursor that went backwards); a new service asks the server which tabs are there and goes on from the last event's number; a later build's takes over at its first command; a request never taken is asked again, one taken and unanswered only where asking twice does nothing twice (status 75 otherwise).
+  - The app follows (`follow_agents`, `olo-rex-link agent follow`): everything at once as a host connects, then each change; nothing of the children is the app's to keep (`rex-subagents.json` handed to each host's service once). The window's Stop and `rex do olo.agent.…` ask the service. What a child may ask of the desktop is refused here but said by the service, by the asking process's own ancestors (a child that names another pane is still itself; one started a moment ago is known there first).
+  - `start --command -- CMD…` (a child tab that is a command: running, exited with its status, read, typed into, stopped); `send --key` with Alt, Ctrl and Shift in any combination (`Alt+m` as tmux's `M-m`); Claude Code's and Antigravity's feedback surveys set aside by the service; `approve --once | --session | --no` by kind, with a no that is kept (`no_always`: "No, and block reads") never taken for a no, "Yes, but ask again next time" a yes for this once and "Yes, and keep allowing…" never one.
+  - Measured (release): at rest with thirty children, 0.0% of a core and no wakeup in ten seconds, with a watcher waiting too; thirty children all writing, 0.8 to 1.0% of a core. Tested with no desktop anywhere: `tests/agents.rs` (11, stand-ins: a whole life by cursor, the service killed and the server restarted, a child kept to its own, a follower, forty at once, a later build, answers by meaning, a child's environment), `tests/agents_live.rs` (6: Claude Code, Codex and Antigravity themselves against a made-up API, through Olo's `olo`), `hub/agents_tests.rs` (the app's side against the service it carries).
+  - Left: a host reached without SSH (below).
 
 - ~~**Auto-tiling: dragging a window shows hotspots to lock it into a specific slot while remaining unlocked windows auto-tile around it**~~ (done 2026-11-26, commit after 8fc7b5ccd):
   - Dragging any tiled window in Auto-Tiling mode brings up all nine perimeter snap hotspots (`Q W E A S D Z X C`) plus swap pads on other tiles (`crates/app_server/src/shell/snap.rs`), with slate rest panes around the accent-blue target slot and a centered white padlock inside it; dragging an already-locked window adds a centered `Unlock` (`U`) pad with a matched accent-outlined slot icon and open padlock (no knockout box) and a compact padlock inside the `S` strip.

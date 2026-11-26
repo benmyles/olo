@@ -1,27 +1,35 @@
-//! Comprehensive 3-harness (`claude`, `codex`, `agy`) local-mock-API end-to-end & fuzz
-//! test suite for `olo agent`.
+//! The agents service with the agents themselves: Claude Code, Codex
+//! and Antigravity as installed here, each in a home of the test's own
+//! and answered by a made-up API on this computer (Anthropic's Messages,
+//! OpenAI's Responses and Gemini's, as each asks): no account, no
+//! network, nothing spent. And **no Olo desktop**: every command is
+//! `olo agent …` as a host has it (Olo's own `olo` script, which runs
+//! the helper), asked of the host's agents service.
 //!
-//! Zero real network calls: every CLI runs in an isolated scratch `HOME` under `/var/tmp`
-//! pointed at an in-process programmable `MockApiServer` speaking Anthropic Messages SSE
-//! (`claude`), OpenAI Responses SSE (`codex`), and Google Gemini Developer SSE (`agy`).
+//! A whole life for each: started with a prompt from a file, its
+//! permission question seen whole and refused with a reason, the next
+//! one allowed once, its turn's end with its last message whole and its
+//! conversation's id, a message of several lines, its screen read,
+//! stopped with what it showed saved, taken up again by its id. Then all
+//! three at once, and an API that fails and comes back.
 //!
-//! Every command travels through the EXACT production path:
-//!   `bridge_olo.sh` (`olo`) -> `/usr/bin/rex do bridge_olo.lua` (Lua 5.1)
-//!   -> scratch `/usr/bin/rex` server + real `client.keymap` JSON schemas
-//!   -> `ControlEvent::ClientPerformRequested` -> `RexHubInner::handle_client_perform`
-//!   -> real `olo-rex-link agent trust|inspect` -> real `claude` / `codex` / `agy` PTY!
+//! Skipped where Rex or the agent isn't installed.
 
-use super::*;
-use std::{
-    collections::VecDeque,
-    os::unix::fs::PermissionsExt,
-    process::{Child, Command, Stdio},
-    sync::atomic::{AtomicUsize, Ordering},
-};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::os::unix::fs::PermissionsExt as _;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+
+const HELPER: &str = env!("CARGO_BIN_EXE_olo-rex-link");
+/// Olo's command on a host, as the app puts it there.
+const OLO: &str = include_str!("../../../apps/rex/src/bridge_olo.sh");
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG for reproducible fuzzing (no extra crate needed)
@@ -497,7 +505,7 @@ async fn handle_mock_http(mut stream: TcpStream, state: Arc<std::sync::Mutex<Moc
 }
 
 // ---------------------------------------------------------------------------
-// Live Isolated Rex + `olo` + `olo.lua` + `RexHubInner` Rig
+// A Rex server, a home and the `olo` command of the test's own
 // ---------------------------------------------------------------------------
 
 #[allow(dead_code)]
@@ -506,23 +514,25 @@ struct LiveRexHarness {
     home: PathBuf,
     work: PathBuf,
     olo_bin: PathBuf,
-    rex_wrap: PathBuf,
     sock: PathBuf,
     sid: String,
     parent_bid: String,
     mock: MockApiServer,
-    inner: Arc<RexHubInner>,
     rex_proc: Child,
-    ev_abort: tokio::task::AbortHandle,
     claude_key: String,
 }
 
 impl Drop for LiveRexHarness {
     fn drop(&mut self) {
-        self.ev_abort.abort();
+        let mut retire = Command::new(HELPER);
+        self.scratch(&mut retire);
+        let _ = retire.args(["agent", "retire"]).output();
         let _ = self.rex_proc.kill();
         let _ = self.rex_proc.wait();
-        let _ = std::fs::remove_dir_all(&self.dir);
+        std::thread::sleep(Duration::from_millis(100));
+        if std::env::var_os("OLO_AGENTS_TEST_KEEP").is_none() {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
     }
 }
 
@@ -530,7 +540,7 @@ impl LiveRexHarness {
     async fn start(tag: &str) -> Self {
         static SEQ: AtomicUsize = AtomicUsize::new(1);
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = PathBuf::from(format!("/var/tmp/olo-rex-fuzz-{}-{}-{n}", tag, std::process::id()));
+        let dir = PathBuf::from(format!("/var/tmp/olo-agents-live-{}-{}-{n}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let home = dir.join("home");
         let work = dir.join("work");
@@ -539,12 +549,13 @@ impl LiveRexHarness {
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         std::fs::create_dir_all(&work).unwrap();
         std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(dir.join("agents")).unwrap();
 
         let mock = MockApiServer::start().await;
         let claude_key = "sk-ant-api03-olofuzztest0000000001".to_owned();
 
-        // Seed isolated scratch HOME for all 3 harnesses (ZERO real credentials/network!).
-        // Notice: Claude `projects` starts empty so `--trust` is genuinely tested on `work`!
+        // A home for all three with nothing real in it. (Claude Code's
+        // `projects` begins empty, so `--trust` is what trusts `work`.)
         std::fs::write(
             home.join(".claude.json"),
             serde_json::to_string_pretty(&json!({
@@ -585,212 +596,103 @@ impl LiveRexHarness {
         )
         .unwrap();
 
-        // Install REAL `olo` + `olo.lua` scripts into `<dir>/bin`, plus a wrapper forcing
-        // `/usr/bin/rex` to talk ONLY to our isolated scratch Unix socket (`-S unix://...`).
+        // Olo's own `olo` as a host has it, with the helper beside it
+        // (as on the desktop's own computer): `olo agent` runs that.
         let sock = dir.join("rex.sock");
         let olo_bin = bin.join("olo");
-        std::fs::write(&olo_bin, crate::bridge::SKILL_OLO).unwrap();
+        std::fs::write(&olo_bin, OLO).unwrap();
         std::fs::set_permissions(&olo_bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::write(bin.join("olo.lua"), crate::bridge::SKILL_LUA).unwrap();
-        let rex_wrap = bin.join("rex-isolated");
-        std::fs::write(&rex_wrap, format!("#!/bin/sh\nexec /usr/bin/rex -S \"unix://{}\" \"$@\"\n", sock.display())).unwrap();
-        std::fs::set_permissions(&rex_wrap, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink(HELPER, bin.join("olo-rex-link")).unwrap();
 
-        // Install minimal stub `olo-op` and `olo-screen` binaries under `<dir>/fake-bins` and point
-        // `OLO_REX_BRIDGE_BIN` there so `olo op` / `olo screen` bridge tests never hit the host's
-        // live desktop shims!
-        let fake_bins = dir.join("fake-bins");
-        std::fs::create_dir_all(&fake_bins).unwrap();
-        for stub in ["olo-op", "olo-screen"] {
-            let p = fake_bins.join(stub);
-            std::fs::write(&p, format!("#!/bin/sh\necho \"stub {stub}: $*\"\nexit 0\n")).unwrap();
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        // SAFETY: test-only env var used by `bridge::program` to select stand-in binaries.
-        unsafe {
-            std::env::set_var("OLO_REX_BRIDGE_BIN", &fake_bins);
-        }
-
-        // Spawn REAL isolated `/usr/bin/rex server run`.
-        let rex_proc = Command::new("/usr/bin/rex")
-            .args(["-S", &format!("unix://{}", sock.display()), "server", "run", "--listen", &format!("unix://{}", sock.display()), "--restore=false", "--state-dir"])
-            .arg(dir.join("rex-state"))
-            .current_dir(&work)
-            .env("HOME", &home)
-            .env("REX_SERVER_SOCKET", &sock)
-            .env_remove("SSH_AUTH_SOCK")
-            .env_remove("REX_SESSION")
-            .env_remove("REX_BLOCK")
-            .env_remove("CLAUDECODE")
-            .env_remove("CLAUDE_CODE_ENTRYPOINT")
-            .env("XDG_RUNTIME_DIR", &dir)
-            .env("XDG_STATE_HOME", &dir)
-            .env("XDG_CONFIG_HOME", &dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn scratch rex server");
-
-        let deadline = Instant::now() + Duration::from_secs(6);
-        while !sock.exists() && Instant::now() < deadline {
+        let at = format!("unix://{}", sock.display());
+        let mut server = Command::new("/usr/bin/rex");
+        server.args(["-S", &at, "server", "run", "--listen", &at, "--restore=false", "--state-dir"]).arg(dir.join("rex-state")).current_dir(&work).stdout(Stdio::null()).stderr(Stdio::null());
+        let mut rig = Self { dir, home, work, olo_bin, sock, sid: String::new(), parent_bid: String::new(), mock, rex_proc: Command::new("true").spawn().unwrap(), claude_key };
+        rig.scratch(&mut server);
+        let _ = rig.rex_proc.wait();
+        rig.rex_proc = server.spawn().expect("the scratch Rex server");
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while !rig.sock.exists() && Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        assert!(sock.exists(), "scratch rex socket did not appear");
-
-        let ep = RexEndpoint::Unix(sock.clone());
-        let (stream, host_hdr) = ep.connect_stream().await.unwrap();
-        let (ctrl, mut ev_rx) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(Some(format!("fuzz-{tag}"))), None).await.unwrap();
-        // Register REAL `bridge_catalog()` JSON schemas on the Rex server so every `olo.lua` RPC
-        // goes through Rex's ACTUAL schema validation!
-        let km_actions = crate::keymap::register_actions_payload();
-        ctrl.client_keymap(&km_actions, &[], &[]).await.expect("register bridge keymap actions");
-
-        let created = ctrl.session_create(Some("lead"), None).await.unwrap();
-        let sid = created.payload.get("session_id").and_then(Value::as_str).unwrap().to_owned();
-        let att = ctrl.session_attach(&sid).await.unwrap();
-        let parent_bid = att.payload.view.windows[0].all_blocks().next().unwrap().block_id.clone();
-
-        let mut hosts = HashMap::new();
-        hosts.insert(
-            "local".to_owned(),
-            HostRuntime {
-                key: "local".into(),
-                label: "This computer".into(),
-                endpoint_raw: "local".into(),
-                endpoint: Some(ep.clone()),
-                is_local: true,
-                conn_state: HostConnState::Connected,
-                connection_lost: None,
-                client_id: ctrl.client_id().map(str::to_owned),
-                reconnect_token: None,
-                retry: None,
-                server_status: None,
-                server_version: None,
-                server_newer: None,
-                helper: HostHelper::Ready,
-                helper_current: Some(true),
-                helper_sync_err: None,
-                bridge_there: None,
-                skill_there: None,
-                skill_current: None,
-                skill_sync_err: None,
-                commands_there: None,
-                commands_current: None,
-                commands_sync_err: None,
-                agent_keys: None,
-                account: None,
-                carried: None,
-                agent_sessions: None,
-                repos_there: None,
-                tailscale: None,
-                tailscale_seq: 0,
-                synced_hosts: Vec::new(),
-                session_summaries: vec![SessionSummary { session_id: sid.clone(), label: "lead".into() }],
-                sessions: HashMap::new(),
-                pending_focus: HashMap::new(),
-                keymap_bindings: Vec::new(),
-                keymap_modes: Vec::new(),
-                keymap_diagnostics: Vec::new(),
-                control: Some(ctrl.clone()),
-                input_tx: None,
-            },
+        assert!(rig.sock.exists(), "the scratch Rex server didn't begin to listen");
+        rig.sid = rig.rex("session.create", json!({ "label": "lead" }))["session_id"].as_str().unwrap().to_owned();
+        let lead = rig.rex(
+            "session.new_window",
+            json!({ "session_id": rig.sid, "window_label": "lead", "layout": { "block": { "flavor": "com.superlogical.terminal.shell", "options": { "size": { "columns": 120, "rows": 40 } } } } }),
         );
-        let state = Arc::new(Mutex::new(HubState {
-            hosts,
-            host_order: vec!["local".into()],
-            blocks: HashMap::new(),
-            forwards: Vec::new(),
-            kept_forwards: Vec::new(),
-            kept_forward_errors: HashMap::new(),
-            kept_forwards_starting: HashSet::new(),
-            settings: crate::settings::Settings::default(),
-            active_theme: TerminalTheme::default(),
-            pools: None,
-            repos: Vec::new(),
-            carry_choices: Vec::new(),
-            kept: Vec::new(),
-            sessions_window: olo_rex_client::sessions::Window::default(),
-            git_cache: GitCache::new(),
-            local_bin_dir: Some(bin),
-            subagents: crate::subagents::SubagentRegistry::default(),
-            quick_look_cache: HashMap::new(),
-        }));
-        let inner = Arc::new(RexHubInner {
-            state,
-            ssh_pool: Arc::new(SshSessionPool::default()),
-            askpass: None,
-            notify: Arc::new(|_| {}),
-            spares: Mutex::new(HashMap::new()),
-            agent_socks: Mutex::new(HashMap::new()),
-            bridge_calls: bridge::Calls::default(),
-            run_jobs: crate::bridge_run::RunJobs::new(),
-            run_approvals: crate::bridge_run::RunApprovals::new(|| {}, || {}),
-            keeping: Mutex::new(HashMap::new()),
-            subagent_events: Arc::new(tokio::sync::Notify::new()),
-            subagent_log: Mutex::new(crate::subagents::SubagentEventLog::default()),
-            subagent_text_watchers: std::sync::atomic::AtomicUsize::new(0),
-        });
-        inner.ingest_session("local", &ctrl, &ep, att.payload.view, &[]).await;
-
-        // Drive REAL `ControlEvent` dispatch loop just like production `RexHub`!
-        let (inner_ev, ctrl_ev, ep_ev) = (inner.clone(), ctrl.clone(), ep.clone());
-        let ev_abort = tokio::spawn(async move {
-            while let Some(env) = ev_rx.recv().await {
-                inner_ev.handle_control_event("local", &ctrl_ev, &ep_ev, env.seq, env.event).await;
-            }
-        })
-        .abort_handle();
-
-        Self { dir, home, work, olo_bin, rex_wrap, sock, sid, parent_bid, mock, inner, rex_proc, ev_abort, claude_key }
+        rig.parent_bid = lead["block_ids"][0].as_str().unwrap().to_owned();
+        rig
     }
 
-    /// Runs the REAL `olo` shell script -> `/usr/bin/rex do olo.lua` -> Rex server -> `RexHubInner`!
+    /// Nothing of the computer the test runs on.
+    fn scratch(&self, cmd: &mut Command) {
+        cmd.env("HOME", &self.home)
+            .env("REX_SERVER_SOCKET", &self.sock)
+            .env("OLO_REX_AGENTS_DIR", self.dir.join("agents"))
+            .env("TMPDIR", &self.dir)
+            .env("XDG_RUNTIME_DIR", &self.dir)
+            .env("XDG_STATE_HOME", &self.dir)
+            .env("XDG_CONFIG_HOME", &self.dir)
+            .env_remove("SSH_AUTH_SOCK")
+            .env_remove("REX_SESSION")
+            .env_remove("REX_BLOCK");
+        // (Run from an agent's own shell, the test carries that agent's
+        // marks (Claude Code's would have a child of it save no
+        // transcript): none of them is the scratch server's or its
+        // children's.)
+        for (name, _) in std::env::vars_os() {
+            if name.to_str().is_some_and(|n| n.starts_with("CLAUDE") || n.starts_with("CODEX") || n == "AI_AGENT") {
+                cmd.env_remove(name);
+            }
+        }
+    }
+
+    fn rex(&self, method: &str, payload: Value) -> Value {
+        let mut cmd = Command::new("/usr/bin/rex");
+        cmd.args(["-S", &format!("unix://{}", self.sock.display()), "api", "call", method, &payload.to_string()]);
+        self.scratch(&mut cmd);
+        let out = cmd.output().expect("rex api call");
+        assert!(out.status.success(), "rex api call {method}: {}", String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice(&out.stdout).unwrap_or(Value::Null)
+    }
+
+    /// `olo ARGS` from the lead's pane: Olo's own script, which runs the helper.
     async fn run_olo(&self, args: &[&str]) -> (i32, String, String) {
         self.run_olo_from(args, Some(&self.sid), Some(&self.parent_bid)).await
     }
 
     async fn run_olo_from(&self, args: &[&str], sid: Option<&str>, bid: Option<&str>) -> (i32, String, String) {
-        let mut cmd = tokio::process::Command::new(&self.olo_bin);
-        cmd.args(args)
-            .current_dir(&self.work)
-            .env("HOME", &self.home)
-            .env("PWD", &self.work)
-            .env("TMPDIR", &self.dir)
-            .env("XDG_RUNTIME_DIR", &self.dir)
-            .env("XDG_STATE_HOME", &self.dir)
-            .env("XDG_CONFIG_HOME", &self.dir)
-            .env("OLO_BRIDGE_REX", &self.rex_wrap)
-            .env_remove("REX_SESSION")
-            .env_remove("REX_BLOCK")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let mut cmd = Command::new(&self.olo_bin);
+        cmd.args(args).current_dir(&self.work).env("PWD", &self.work).stdout(Stdio::piped()).stderr(Stdio::piped());
+        self.scratch(&mut cmd);
         if let Some(s) = sid {
             cmd.env("REX_SESSION", s);
         }
         if let Some(b) = bid {
             cmd.env("REX_BLOCK", b);
         }
+        let mut cmd = tokio::process::Command::from(cmd);
         let out = tokio::time::timeout(Duration::from_secs(45), cmd.output()).await.expect("olo command timed out").expect("spawn olo");
         (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
     }
 
-    /// Runs `olo` expecting success AND strictly single-line valid JSON on stdout!
+    /// `olo` that must succeed and print one JSON object on one line.
     async fn run_olo_json(&self, args: &[&str]) -> Value {
         let (code, stdout, stderr) = self.run_olo(args).await;
         if code != 0 {
-            // Print live children screens for instant diagnostics on failure!
-            let (_, ls_out, _) = self.run_olo(&["agent", "list", "--all", "--fast", "--json"]).await;
-            let entries: Vec<(String, String)> = {
-                let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.subagents.entries.iter().map(|e| (e.name.clone().unwrap_or_else(|| e.id.clone()), e.block_id.clone())).collect()
-            };
-            let mut diag = format!("list={ls_out}\n");
-            for (nm, bid) in entries {
-                let bk = BlockKey { host_key: "local".into(), session_id: self.sid.clone(), block_id: bid };
-                if let Some(br) = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
-                    let scr = br.lock().unwrap_or_else(|e| e.into_inner()).terminal.format(olo_rex_vt::FormatKind::Plain, false, true).unwrap_or_default();
-                    diag.push_str(&format!("--- SCREEN [{nm}] ---\n{scr}\n"));
+            // (Each child's screen, for the failure's account.)
+            let (_, listed, _) = self.run_olo(&["agent", "list", "--all", "--fast", "--json"]).await;
+            let mut diag = format!("list={listed}\n");
+            if let Ok(v) = serde_json::from_str::<Value>(listed.trim()) {
+                for child in v["subagents"].as_array().into_iter().flatten().filter(|c| c["state"] != "exited") {
+                    let id = child["id"].as_str().unwrap_or_default();
+                    let (_, screen, _) = self.run_olo(&["agent", "read", id, "--lines", "60"]).await;
+                    diag.push_str(&format!("--- SCREEN [{}] ---\n{screen}\n", child["name"].as_str().unwrap_or(id)));
                 }
+            }
+            for d in std::fs::read_dir(self.dir.join("agents")).into_iter().flatten().flatten() {
+                diag.push_str(&format!("--- the service's log ---\n{}", std::fs::read_to_string(d.path().join("service.log")).unwrap_or_default()));
             }
             panic!("olo {args:?} failed (code={code})\nstdout: {stdout}\nstderr: {stderr}\nDIAG:\n{diag}");
         }
@@ -799,7 +701,7 @@ impl LiveRexHarness {
         serde_json::from_str::<Value>(non_empty[0]).unwrap_or_else(|e| panic!("invalid JSON from olo {args:?}: {e}\n{stdout}"))
     }
 
-    /// Builds the common mock-API `--env` args for launching each real CLI in our scratch HOME.
+    /// What each agent is started with so that it asks the made-up API in the test's home.
     fn cli_env_args(&self, cli: &str) -> Vec<String> {
         let mut out = vec!["--env".into(), format!("HOME={}", self.home.display())];
         match cli {
@@ -831,192 +733,50 @@ fn have_program(name: &str) -> bool {
     Command::new("sh").args(["-c", &format!("command -v {name} >/dev/null 2>&1")]).status().is_ok_and(|s| s.success())
 }
 
-// ---------------------------------------------------------------------------
-// Test 1: Lua 5.1 & Bridge Protocol Torture (real `olo` + `olo.lua` + Rex schema)
-// ---------------------------------------------------------------------------
-
+/// `olo` with nothing after a command says how it is used; a file named
+/// for a prompt or a message is read here; what is printed with `--json`
+/// is one object on one line.
 #[test]
-fn lua51_bridge_empty_args_prompt_file_and_single_json_invariants() {
-    if !std::path::Path::new("/usr/bin/rex").exists() {
+fn olo_agent_says_its_usage_reads_its_files_and_prints_one_object() {
+    if !Path::new("/usr/bin/rex").exists() {
         return;
     }
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
     rt.block_on(async {
-        let rig = LiveRexHarness::start("lua51").await;
-
-        // 1. Every subcommand with ZERO args must NEVER fail with Rex 400 `"args" must be array, not object`!
-        for zero_cmd in [
-            &["agent", "approve"][..],
-            &["agent", "start"][..],
-            &["agent", "status"][..],
-            &["agent", "read"][..],
-            &["agent", "watch"][..],
-            &["agent", "send"][..],
-            &["agent", "stop"][..],
-            &["agent", "focus"][..],
-            &["agent", "list"][..],
-            &["agent", "prune"][..],
-            &["ls"][..],
-            &["get"][..],
-            &["forward"][..],
-            &["op"][..],
-            &["screen"][..],
-            &["run"][..],
-        ] {
-            let (code, stdout, stderr) = rig.run_olo(zero_cmd).await;
-            eprintln!("ZERO_CMD {zero_cmd:?} -> code={code} stdout={stdout:?} stderr={stderr:?}");
-            assert!(
-                !stderr.contains("must be array, not object") && !stderr.contains("bad_request") && !stderr.contains("invalid options"),
-                "olo {zero_cmd:?} hit Lua/schema bug (code={code}): stdout={stdout:?} stderr={stderr:?}"
-            );
-            if matches!(zero_cmd, ["agent", "approve" | "start" | "status" | "read" | "watch" | "send" | "stop" | "focus"]) {
-                assert_eq!(code, 2, "olo {zero_cmd:?} should exit 2 with usage, got code={code} stderr={stderr:?}");
-                assert!(stderr.contains("usage:") || stderr.contains("missing agent CLI"), "olo {zero_cmd:?} missing usage line: {stderr:?}");
-            }
+        let rig = LiveRexHarness::start("usage").await;
+        for nothing in [&["agent", "approve"][..], &["agent", "start"], &["agent", "status"], &["agent", "read"], &["agent", "watch"], &["agent", "send"], &["agent", "stop"], &["agent", "focus"]] {
+            let (code, stdout, stderr) = rig.run_olo(nothing).await;
+            assert_eq!(code, 2, "olo {nothing:?} should exit 2 with its usage: stdout={stdout:?} stderr={stderr:?}");
+            assert!(stderr.contains("usage:") || stderr.contains("missing agent CLI"), "olo {nothing:?}: {stderr:?}");
         }
+        let (code, _, stderr) = rig.run_olo(&["agent", "nonsense"]).await;
+        assert_eq!(code, 2, "{stderr}");
+        assert!(stderr.contains("unknown command"), "{stderr}");
 
-        // 2. `--prompt-file` and `send --file` (both space and `=` forms, multiline UTF-8 & empty file)
-        // must work cleanly in Rex's Lua 5.1 (never `bad argument #2 to read (invalid options:a)`).
-        let pf = rig.dir.join("multiline-prompt.md");
-        std::fs::write(&pf, "Line 1 — Unicode “quotes” & $HOME\nLine 2 `backticks` 'single'\n").unwrap();
-        let ef = rig.dir.join("empty-prompt.md");
-        std::fs::write(&ef, "").unwrap();
-
-        // Missing --model fails with Rust validation (proving Lua 5.1 read `--prompt-file` cleanly!).
-        let (code, _, stderr) = rig.run_olo(&["agent", "start", "claude", "--prompt-file", pf.to_str().unwrap()]).await;
-        assert_eq!(code, 2, "expected --model error, got code={code} stderr={stderr:?}");
-        assert!(stderr.contains("--model"), "Lua 5.1 failed before reaching Rust: {stderr:?}");
-
-        let (code, _, stderr) = rig.run_olo(&["agent", "start", "claude", &format!("--prompt-file={}", ef.display())]).await;
+        // A prompt's file is read (a relative path from where it was asked), in both spellings; an empty one too.
+        std::fs::write(rig.work.join("multiline-prompt.md"), "Line 1 — Unicode “quotes” & $HOME\nLine 2 `backticks` 'single'\n").unwrap();
+        std::fs::write(rig.dir.join("empty-prompt.md"), "").unwrap();
+        let (code, _, stderr) = rig.run_olo(&["agent", "start", "claude", "--prompt-file", "multiline-prompt.md"]).await;
+        assert_eq!(code, 2, "{stderr}");
+        assert!(stderr.contains("--model"), "the file was read and the model asked for: {stderr:?}");
+        let (code, _, stderr) = rig.run_olo(&["agent", "start", "claude", &format!("--prompt-file={}", rig.dir.join("empty-prompt.md").display())]).await;
         assert_eq!(code, 2);
-        assert!(stderr.contains("--model"), "empty --prompt-file failed in Lua: {stderr:?}");
-
-        // `send --file` to nonexistent target reaches Rust target lookup (proving Lua 5.1 read `--file` cleanly!).
-        let (code, _, stderr) = rig.run_olo(&["agent", "send", "no-such-child", "--file", pf.to_str().unwrap(), "--enter"]).await;
+        assert!(stderr.contains("--model"), "{stderr:?}");
+        let (code, _, stderr) = rig.run_olo(&["agent", "send", "no-such-child", "--file", "multiline-prompt.md", "--enter"]).await;
         assert_eq!(code, 1);
-        assert!(stderr.contains("not found"), "send --file failed in Lua: {stderr:?}");
-
-        // Missing file path fails with clear Lua error (not a Lua stack trace!).
+        assert!(stderr.contains("not found"), "{stderr:?}");
         let (code, _, stderr) = rig.run_olo(&["agent", "start", "claude", "--prompt-file", "/var/tmp/definitely-no-such-file-olo"]).await;
         assert_eq!(code, 1);
-        assert!(stderr.contains("couldn't read prompt file") && !stderr.contains("bad argument"), "unexpected stderr: {stderr:?}");
+        assert!(stderr.contains("couldn't read prompt file"), "{stderr:?}");
+        // (What follows `--` is the agent's own, never read as a file here.)
+        let (code, _, stderr) = rig.run_olo(&["agent", "start", "--command", "--json", "--", "true", "--prompt-file", "/no/such"]).await;
+        assert_eq!(code, 0, "{stderr}");
 
-        // 3. `list --json` and `prune --json` return strictly 1 JSON object.
         let listed = rig.run_olo_json(&["agent", "list", "--json"]).await;
         assert_eq!(listed["ok"], json!(true));
         let pruned = rig.run_olo_json(&["agent", "prune", "--json"]).await;
         assert_eq!(pruned["ok"], json!(true));
     });
-}
-
-// ---------------------------------------------------------------------------
-// Test 2: Adversarial ChoiceKind & Approval Parser Fuzzing (500+ cases)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn fuzz_approval_choice_classification_never_mislabels_persistent_as_once() {
-    let mut rng = Rng::new(0x010_5AFE_A990_0001);
-
-    // Real-world traps reported in production + adversarial variants across all 3 harnesses.
-    let persistent_or_session_traps = [
-        "Yes, and don\u{2019}t ask again for: env",
-        "Yes, and don't ask again for: cargo test",
-        "Yes, and don\u{2018}t ask again for commands in /home/user/repo",
-        "Yes, and dont ask again for `git status`",
-        "Yes, and do not ask again for this command",
-        "Yes, and always allow in this conversation for commands that start with 'env'",
-        "Yes, and always allow for commands that start with 'env' (Persist to settings.json)",
-        "Yes, allow reading from /workspace/project during this session",
-        "Yes, allow all edits during this session (shift+tab)",
-        "Yes, switch to auto mode",
-        "Yes, and remember this choice for future turns",
-        "Yes, and trust all future runs of this tool",
-        "Yes, and auto-accept similar commands",
-        "Yes, always run without asking",
-        "Yes, allow for this session",
-        "Yes, and something totally new and unknown that grants extra scope",
-    ];
-    for trap in persistent_or_session_traps {
-        let k = olo_agent_screen::classify_choice_kind(trap);
-        assert_ne!(k, olo_agent_screen::ChoiceKind::Once, "SECURITY VIOLATION: persistent/unknown choice `{trap}` was classified as `Once`!");
-    }
-
-    // Valid single-use choices across Claude Code, Codex, and Antigravity.
-    let valid_once = ["Yes", "Yes (y)", "Yes, proceed (y)", "Yes, run command", "Yes, run this command", "Yes, allow once", "Allow once"];
-    for ok in valid_once {
-        assert_eq!(olo_agent_screen::classify_choice_kind(ok), olo_agent_screen::ChoiceKind::Once, "valid single-use choice `{ok}` should be `Once`");
-    }
-
-    // Wrapped multi-line Claude/Codex/Agy approval dialogs across 250 randomized layouts.
-    let prefixes = ["❯ ", "› ", "> "];
-    let indents = ["  ", "   ", "    ", "\t"];
-    let apostrophes = ["'", "\u{2019}", "\u{2018}", "`"];
-    let cmds = ["env", "cargo test -p api && echo 'ok'", "rm -rf build && make", "git status --short"];
-    for i in 0..250 {
-        let is_agy = i % 3 == 2;
-        let agent = match i % 3 {
-            0 => olo_agent_screen::Agent::Claude,
-            1 => olo_agent_screen::Agent::Codex,
-            _ => olo_agent_screen::Agent::Antigravity,
-        };
-        let mark = if is_agy { "> " } else { *rng.pick(&prefixes[..2]) };
-        let apos = *rng.pick(&apostrophes);
-        let indent = *rng.pick(&indents);
-        let cmd = *rng.pick(&cmds);
-        let selected_idx = rng.range(3);
-        let c1 = if is_agy {
-            "Yes, run command"
-        } else if i % 3 == 1 {
-            "Yes, proceed (y)"
-        } else {
-            "Yes"
-        };
-        // Deliberately wrap choice 2 onto a continuation line with 2..4 spaces!
-        let c2_a = "Yes, and";
-        let c2_b = format!("don{apos}t ask again for: {cmd}");
-        let c3 = if is_agy { "No, cancel" } else { "No, and tell agent what to do differently (esc)" };
-
-        let m = |idx: usize| if idx == selected_idx { mark } else { "  " };
-        let footer = if is_agy {
-            "  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command"
-        } else if i % 3 == 1 {
-            "  Press enter to confirm or esc to cancel"
-        } else {
-            " Esc to cancel · Tab to amend"
-        };
-        let question = if is_agy {
-            "Run this command?"
-        } else if i % 3 == 1 {
-            "Would you like to run the following command?"
-        } else {
-            "Do you want to proceed?"
-        };
-        let body = if is_agy {
-            format!("Command\n────────────────────\nRequesting permission for:\n   {cmd}\n{question}\n")
-        } else if i % 3 == 1 {
-            format!("{question}\n\n  $ {cmd}\n\n")
-        } else {
-            format!("Bash command\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  {cmd}\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n{question}\n")
-        };
-        let screen = format!("{body}{}1. {c1}\n{}2. {c2_a}\n{indent}{c2_b}\n{}3. {c3}\n{footer}\n", m(0), m(1), m(2));
-        let ap = olo_agent_screen::parse_approval(agent, &screen).unwrap_or_else(|| panic!("case {i} failed to parse:\n{screen}"));
-        assert_eq!(ap.selected_index, Some(selected_idx), "case {i} wrong selected_index");
-        assert_eq!(ap.choices.len(), 3, "case {i} wrong choice count: {:?}", ap.choices);
-        assert_eq!(ap.choices[0].kind, olo_agent_screen::ChoiceKind::Once, "case {i} choice 0");
-        assert_ne!(ap.choices[1].kind, olo_agent_screen::ChoiceKind::Once, "case {i} choice 1 MUST NOT be Once: {:?}", ap.choices[1]);
-        assert_eq!(ap.choices[1].kind, olo_agent_screen::ChoiceKind::DontAskAgain, "case {i} choice 1 should be DontAskAgain: {:?}", ap.choices[1]);
-        assert_eq!(ap.choices[2].kind, olo_agent_screen::ChoiceKind::No, "case {i} choice 2");
-        assert!(ap.command.as_deref().is_some_and(|c| c.contains(cmd)), "case {i} command missing: {:?}", ap.command);
-    }
-
-    // Folder-trust AND `--add-dir` ("Adding a new directory:") prompts must NEVER be misclassified as tool approvals.
-    let add_dir_screen = "────────────────────\n Adding a new directory:\n /var/tmp/extra-dir\n This session hasn't worked here before. Is this a directory you created or one you trust?\n ❯ No, exit\n   Yes, add it\n Enter to confirm · Esc to cancel\n";
-    let trust = olo_agent_screen::parse_folder_trust(add_dir_screen).expect("must detect --add-dir trust prompt");
-    assert_eq!(trust.folder.as_deref(), Some("/var/tmp/extra-dir"));
-    assert_eq!(trust.selected_index, 0);
-    assert_eq!(trust.trust_index, 1);
-    assert!(!trust.selected_trust);
-    assert!(olo_agent_screen::parse_approval(olo_agent_screen::Agent::Claude, add_dir_screen).is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -1167,11 +927,17 @@ async fn run_full_harness_lifecycle(rig: &LiveRexHarness, cli: &'static str, mod
     assert_eq!(read_out["ok"], json!(true));
     assert!(!read_out["output"].as_str().unwrap_or("").is_empty(), "{cli} read returned empty output");
 
-    // 9. Test server-side `--desktop none` isolation from this child's real `block_id`!
+    // 9. What this child may ask of the desktop is the service's to say (a desktop asks it): nothing.
     let child_bid = started["block_id"].as_str().unwrap();
-    let (iso_code, _, iso_err) = rig.run_olo_from(&["op", "whoami"], Some(&rig.sid), Some(child_bid)).await;
-    assert_eq!(iso_code, 69, "{cli} --desktop none MUST refuse `olo op`, got code={iso_code} err={iso_err}");
-    assert!(iso_err.contains("--desktop none"), "{cli} unexpected isolation stderr: {iso_err}");
+    let mut ask = Command::new(HELPER);
+    rig.scratch(&mut ask);
+    let mut ask = ask.args(["agent", "request"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    {
+        use std::io::Write as _;
+        ask.stdin.take().unwrap().write_all(json!({ "proto": 1, "op": "policy", "block": child_bid }).to_string().as_bytes()).unwrap();
+    }
+    let said: Value = serde_json::from_slice(&ask.wait_with_output().unwrap().stdout).unwrap();
+    assert_eq!(said["data"]["desktop"], json!("none"), "{cli}: what it may ask of the desktop: {said}");
 
     // 10. Test `olo agent stop <name> --save PATH --json` -> scrollback archived + `cli_session_id` preserved!
     let save_path = rig.dir.join(format!("archived-{cli}.txt"));
@@ -1391,237 +1157,6 @@ fn live_mock_api_concurrent_3_harness_fuzz() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 5: Adversarial Security, Isolation, Subtree, Watch & Concurrency Suite
-// (Covers ALL Opus 5.5 Audit §7 Categories C1-C6, H1-H18, M1-M26!)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn audit_security_isolation_subtree_watch_and_concurrency() {
-    if !std::path::Path::new("/usr/bin/rex").exists() {
-        return;
-    }
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-    rt.block_on(async {
-        let rig = LiveRexHarness::start("audit").await;
-        let ctrl = rig.inner.state.lock().unwrap().hosts.get("local").unwrap().control.clone().unwrap();
-        let ep = rig.inner.state.lock().unwrap().hosts.get("local").unwrap().endpoint.clone().unwrap();
-        let parent_wid = rig.inner.state.lock().unwrap().hosts.get("local").unwrap().sessions.get(&rig.sid).unwrap().windows[0].window_id.clone();
-
-        // Spawn two real child tabs (idle shells so we can inject exact VT screens & test live IPC).
-        let spawn_tab = |name: &str, pwid: &str, policy: crate::subagents::DesktopPolicy| {
-            let ctrl = ctrl.clone();
-            let ep = ep.clone();
-            let inner = rig.inner.clone();
-            let sid = rig.sid.clone();
-            let pwid = pwid.to_owned();
-            let name = name.to_owned();
-            let parent_bid = rig.parent_bid.clone();
-            async move {
-                let opts = json!({ "command": ["sh", "-c", "printf '\\033[?2004hREADY\\n'; sleep 60"], "interactive": true });
-                let created = ctrl.session_new_window_with_focus(&sid, Some(&name), Some(opts), false).await.unwrap().payload;
-                let view = ctrl.session_view(&sid).await.unwrap().payload;
-                let wid = created.get("window_id").and_then(Value::as_str).unwrap().to_owned();
-                let bid = view.windows.iter().find(|w| w.window_id == wid).unwrap().all_blocks().next().unwrap().block_id.clone();
-                let ent = crate::subagents::NativeSubagent {
-                    id: crate::subagents::new_subagent_id(),
-                    name: Some(name.clone()),
-                    host_key: "local".into(),
-                    session_id: sid.clone(),
-                    window_id: wid,
-                    block_id: bid,
-                    parent_window_id: pwid,
-                    parent_block_id: Some(parent_bid),
-                    cli: crate::subagents::AgentCli::Claude,
-                    model: "claude-opus-5-5".into(),
-                    effort: "max".into(),
-                    title: name,
-                    role: None,
-                    cwd: Some("/var/tmp".into()),
-                    resume_id: None,
-                    cli_session_id: None,
-                    transcript_path: None,
-                    desktop_policy: policy,
-                    stream_mode: false,
-                    started_at: crate::subagents::now_unix_ms() as i64 - 20_000,
-                    exited_at: None,
-                    exit_code: None,
-                    last_pid: None,
-                    created_rev: view.revision,
-                    seen_live: true,
-                    exited_by_sync: false,
-                    session_confidence: None,
-                    add_dirs: Vec::new(),
-                };
-                inner.state.lock().unwrap().subagents.register(ent.clone());
-                inner.ingest_session("local", &ctrl, &ep, view, &[]).await;
-                ent
-            }
-        };
-
-        let child_a = spawn_tab("alpha", &parent_wid, crate::subagents::DesktopPolicy::None).await;
-        let child_b = spawn_tab("beta", &parent_wid, crate::subagents::DesktopPolicy::parse("screens=qa-1").unwrap()).await;
-        let grand_a = spawn_tab("grand", &child_a.window_id, crate::subagents::DesktopPolicy::None).await;
-        tokio::time::sleep(Duration::from_millis(150)).await;
-
-        // --- C1: Desktop isolation bypass attempts MUST ALL FAIL CLOSED (code 69)! ---
-        for (label, sid, bid) in [
-            ("missing REX_BLOCK", Some(rig.sid.as_str()), None),
-            ("empty REX_BLOCK", Some(rig.sid.as_str()), Some("")),
-            ("spoofed unknown REX_BLOCK", Some(rig.sid.as_str()), Some("blk-fake-999")),
-            ("child_a own block", Some(rig.sid.as_str()), Some(child_a.block_id.as_str())),
-        ] {
-            let (code, _, err) = rig.run_olo_from(&["op", "whoami"], sid, bid).await;
-            assert_eq!(code, 69, "C1 bypass succeeded for {label}: code={code} err={err}");
-        }
-        // Catch-all non-olo actions from restricted child MUST be denied!
-        for catchall in ["agent.auto_approve_toggle", "olo.passwords.fill", "olo.install_remote_skill"] {
-            let res = rig.inner.handle_client_perform("local", catchall.into(), None, Some(rig.sid.clone()), Some(child_a.block_id.clone())).await.unwrap();
-            assert_eq!(res["ok"], json!(false), "C1 catch-all `{catchall}` was not blocked!");
-        }
-
-        // --- C2: Privilege escalation via grandchild launch MUST BE REFUSED! ---
-        let (code_esc1, _, err_esc1) = rig
-            .run_olo_from(
-                &["agent", "start", "claude", "--model", "claude-opus-5-5", "--effort", "max", "--desktop", "inherit"],
-                Some(&rig.sid),
-                Some(&child_a.block_id),
-            )
-            .await;
-        assert_eq!(code_esc1, 69, "C2 none->inherit escalation must fail 69: err={err_esc1}");
-        let (code_esc2, _, err_esc2) = rig
-            .run_olo_from(
-                &["agent", "start", "claude", "--model", "claude-opus-5-5", "--effort", "max", "--desktop", "screens=qa-2"],
-                Some(&rig.sid),
-                Some(&child_b.block_id),
-            )
-            .await;
-        assert_eq!(code_esc2, 69, "C2 screens=qa-1 -> screens=qa-2 escalation must fail 69: err={err_esc2}");
-
-        // --- C3: Subtree confinement — child_a CANNOT act on self or sibling child_b, CAN act on strict descendant grand_a! ---
-        for cmd in [
-            &["agent", "read", "alpha"][..],
-            &["agent", "read", "beta"],
-            &["agent", "status", "beta"],
-            &["agent", "stop", "beta", "--force"],
-            &["agent", "focus", "beta"],
-            &["agent", "approve", "alpha", "--once"],
-            &["agent", "send", "alpha", "--key", "Enter"],
-            &["agent", "prune"],
-        ] {
-            let (c, _, e) = rig.run_olo_from(cmd, Some(&rig.sid), Some(&child_a.block_id)).await;
-            assert_ne!(c, 0, "C3 child_a MUST NOT run {cmd:?} on self/sibling (err={e})");
-        }
-        // child_a CAN read & inspect its own strict descendant `grand`!
-        let (c_ok, out_ok, err_ok) = rig.run_olo_from(&["agent", "status", "grand", "--json"], Some(&rig.sid), Some(&child_a.block_id)).await;
-        assert_eq!(c_ok, 0, "child_a should be allowed to inspect its own descendant grand: {err_ok}");
-        assert!(out_ok.contains(&grand_a.id));
-
-        // --- C6 & H18: `send` refused while approval dialog is active, and paste escape stripped ---
-        {
-            let bk = BlockKey { host_key: "local".into(), session_id: rig.sid.clone(), block_id: child_a.block_id.clone() };
-            let br = rig.inner.state.lock().unwrap().blocks.get(&bk).unwrap().clone();
-            let mut g = br.lock().unwrap();
-            g.terminal.vt_write(b"\x1b[2J\x1b[H\x1b[?2004hBash command\r\n  rm -rf /tmp/x\r\nDo you want to proceed?\r\n \xe2\x9d\xaf 1. Yes\r\n   2. Yes, and don\xe2\x80\x99t ask again for: rm\r\n   3. No\r\n Esc to cancel\r\n");
-            g.received_bytes += 256;
-            g.subagent_cls_cache = None;
-        }
-        let (c_send_ref, _, e_send_ref) = rig.run_olo(&["agent", "send", "alpha", "please proceed", "--enter"]).await;
-        assert_ne!(c_send_ref, 0, "C6 send must refuse typing into active approval dialog");
-        assert!(e_send_ref.contains("dialog is active"), "unexpected C6 stderr: {e_send_ref}");
-
-        // --- H5 & H7: A->B same-state approval transitions BOTH recorded without duplicates! ---
-        let bk_a = BlockKey { host_key: "local".into(), session_id: rig.sid.clone(), block_id: child_a.block_id.clone() };
-        rig.inner.record_subagent_transition(&bk_a);
-        // Watch from cursor 0 catches approval A as soon as its stability+inspect completes!
-        let ev_a = rig.run_olo_json(&["agent", "watch", "--all", "--since", "0", "--on", "approval", "--timeout", "5", "--json"]).await;
-        assert!(ev_a["approval"]["command"].as_str().unwrap_or("").contains("rm -rf"), "missed approval A: {ev_a}");
-        let cur_a = ev_a["cursor"].as_u64().unwrap();
-        // Immediately replace dialog A with a DIFFERENT dialog B (no Working state in between!)
-        {
-            let br = rig.inner.state.lock().unwrap().blocks.get(&bk_a).unwrap().clone();
-            let mut g = br.lock().unwrap();
-            g.terminal.vt_write(b"\x1b[2J\x1b[HBash command\r\n  git push --force\r\nDo you want to proceed?\r\n \xe2\x9d\xaf 1. Yes\r\n   2. No\r\n Esc to cancel\r\n");
-            g.received_bytes += 256;
-            g.subagent_cls_cache = None;
-        }
-        rig.inner.record_subagent_transition(&bk_a);
-        let ev_b = rig.run_olo_json(&["agent", "watch", "--all", "--since", &cur_a.to_string(), "--on", "approval", "--timeout", "5", "--json"]).await;
-        assert!(ev_b["approval"]["command"].as_str().unwrap_or("").contains("git push"), "H5 dropped same-state approval B: {ev_b}");
-        let cur_b = ev_b["cursor"].as_u64().unwrap();
-
-        // --- H8: `since > latest_seq` immediately returns `{"event":"reset"}` instead of hanging! ---
-        let reset = rig.run_olo_json(&["agent", "watch", "--all", "--since", "999999", "--timeout", "3", "--json"]).await;
-        assert_eq!(reset["event"], json!("reset"), "H8 cursor reset failed: {reset}");
-
-        // --- H11: `--match` MUST NOT fire on baseline text already on screen! ---
-        let (mc, mout, _) = rig.run_olo(&["agent", "watch", "alpha", "--match", "git push", "--timeout", "1", "--json"]).await;
-        assert_eq!(mc, 124, "H11 --match falsely matched pre-existing screen text: {mout}");
-
-        // --- H4 & M11: Natural `InlineApc::ChildExited` on grandchild `grand` emits `exited` visible to top-level `watch --all`! ---
-        let bk_g = BlockKey { host_key: "local".into(), session_id: rig.sid.clone(), block_id: grand_a.block_id.clone() };
-        rig.inner.record_subagent_child_exit(&bk_g, 42);
-        let ev_g_exit = rig.run_olo_json(&["agent", "watch", "--all", "--since", &cur_b.to_string(), "--on", "exit", "--timeout", "3", "--json"]).await;
-        assert_eq!(ev_g_exit["id"], json!(grand_a.id), "H4/M11 missed grandchild natural exit: {ev_g_exit}");
-        assert_eq!(ev_g_exit["event"], json!("exited"));
-
-        // --- M10: `stop --force --keep-tab` refused with code 2! ---
-        let (sc, _, serr) = rig.run_olo(&["agent", "stop", "alpha", "--force", "--keep-tab"]).await;
-        assert_eq!(sc, 2, "M10 --force --keep-tab should exit 2: {serr}");
-
-        // --- H1: 30 parallel registrations + out-of-order older view MUST NOT mark any live child exited! ---
-        let mut reg = crate::subagents::SubagentRegistry::default();
-        let mut live_all = HashSet::new();
-        live_all.insert("w-parent".to_owned());
-        for k in 0..30u64 {
-            let wid = format!("w-par-{k}");
-            live_all.insert(wid.clone());
-            reg.register(crate::subagents::NativeSubagent {
-                id: format!("sa-p{k:02}"),
-                name: Some(format!("p-{k}")),
-                host_key: "local".into(),
-                session_id: "s1".into(),
-                window_id: wid,
-                block_id: format!("b-par-{k}"),
-                parent_window_id: "w-parent".into(),
-                parent_block_id: None,
-                cli: crate::subagents::AgentCli::Claude,
-                model: "m".into(),
-                effort: "high".into(),
-                title: format!("P{k}"),
-                role: None,
-                cwd: None,
-                resume_id: None,
-                cli_session_id: None,
-                transcript_path: None,
-                desktop_policy: crate::subagents::DesktopPolicy::None,
-                stream_mode: false,
-                started_at: crate::subagents::now_unix_ms() as i64,
-                exited_at: None,
-                exit_code: None,
-                last_pid: None,
-                created_rev: 100 + k,
-                seen_live: false,
-                exited_by_sync: false,
-                session_confidence: None,
-                add_dirs: Vec::new(),
-            });
-            // Simulate an older concurrent view arriving (`rev = 100`, missing later children):
-            let partial: HashSet<String> = (0..=k.min(5)).map(|j| format!("w-par-{j}")).chain(std::iter::once("w-parent".into())).collect();
-            let (_, ex) = reg.sync_live_windows("local", "s1", &partial, 100);
-            assert!(ex.is_empty(), "H1 race falsely exited child during burst at k={k}: {ex:?}");
-        }
-        // Final view with all 30 live keeps every single child alive!
-        let (_, ex_final) = reg.sync_live_windows("local", "s1", &live_all, 130);
-        assert!(ex_final.is_empty());
-        assert_eq!(reg.entries.iter().filter(|e| e.exited_at.is_none()).count(), 30);
-
-        // Clean up live tabs.
-        let _ = rig.run_olo(&["agent", "stop", "alpha", "--force", "--tree"]).await;
-        let _ = rig.run_olo(&["agent", "stop", "beta", "--force"]).await;
-    });
-}
-
-// ---------------------------------------------------------------------------
 // Test 6: Live API Error / Mid-Stream Drop & Recovery Fuzz Across All 3 CLIs
 // ---------------------------------------------------------------------------
 
@@ -1689,199 +1224,5 @@ fn live_mock_api_error_midstream_drop_and_recovery() {
         assert!(st["last_message"].as_str().unwrap_or("").contains("RECOVERED_AFTER_API_ERROR_OK"), "missing recovery last_message: {st}");
 
         let _ = rig.run_olo_json(&["agent", "stop", "err-claude", "--force", "--json"]).await;
-    });
-}
-
-// ---------------------------------------------------------------------------
-// Test 7: Release Perf Measurement — 30 Streaming Children + 3 Watchers
-// (Run with `perf stat --no-scale` on `--release` build per AGENTS.md & Audit §7 #8)
-// ---------------------------------------------------------------------------
-
-#[test]
-#[ignore = "perf measurement"]
-fn perf_30_streaming_children_3_watchers() {
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-    rt.block_on(async {
-        let state = Arc::new(Mutex::new(HubState {
-            hosts: HashMap::new(),
-            host_order: vec!["local".into()],
-            blocks: HashMap::new(),
-            forwards: Vec::new(),
-            kept_forwards: Vec::new(),
-            kept_forward_errors: HashMap::new(),
-            kept_forwards_starting: HashSet::new(),
-            settings: crate::settings::Settings::default(),
-            active_theme: TerminalTheme::default(),
-            pools: None,
-            repos: Vec::new(),
-            carry_choices: Vec::new(),
-            kept: Vec::new(),
-            sessions_window: olo_rex_client::sessions::Window::default(),
-            git_cache: GitCache::new(),
-            local_bin_dir: None,
-            subagents: crate::subagents::SubagentRegistry::default(),
-            quick_look_cache: HashMap::new(),
-        }));
-        let inner = Arc::new(RexHubInner {
-            state,
-            ssh_pool: Arc::new(SshSessionPool::default()),
-            askpass: None,
-            notify: Arc::new(|_| {}),
-            spares: Mutex::new(HashMap::new()),
-            agent_socks: Mutex::new(HashMap::new()),
-            bridge_calls: bridge::Calls::default(),
-            run_jobs: crate::bridge_run::RunJobs::new(),
-            run_approvals: crate::bridge_run::RunApprovals::new(|| {}, || {}),
-            keeping: Mutex::new(HashMap::new()),
-            subagent_events: Arc::new(tokio::sync::Notify::new()),
-            subagent_log: Mutex::new(crate::subagents::SubagentEventLog::default()),
-            subagent_text_watchers: std::sync::atomic::AtomicUsize::new(0),
-        });
-        let parent_wid = "w-perf-parent".to_owned();
-        let theme = TerminalTheme::default();
-        let mut block_keys = Vec::with_capacity(30);
-        {
-            let mut st = inner.state.lock().unwrap();
-            for i in 0..30usize {
-                let wid = format!("w-perf-{i:02}");
-                let bid = format!("b-perf-{i:02}");
-                let bk = BlockKey { host_key: "local".into(), session_id: "s-perf".into(), block_id: bid.clone() };
-                let br = Arc::new(Mutex::new(BlockRuntime::new(120, 40, &theme)));
-                st.blocks.insert(bk.clone(), br);
-                st.subagents.register(crate::subagents::NativeSubagent {
-                    id: format!("sa-perf-{i:02}"),
-                    name: Some(format!("worker-{i:02}")),
-                    host_key: "local".into(),
-                    session_id: "s-perf".into(),
-                    window_id: wid,
-                    block_id: bid,
-                    parent_window_id: parent_wid.clone(),
-                    parent_block_id: Some("b-perf-parent".into()),
-                    cli: crate::subagents::AgentCli::Claude,
-                    model: "claude-opus-5-5".into(),
-                    effort: "max".into(),
-                    title: format!("Worker {i:02}"),
-                    role: None,
-                    cwd: Some("/var/tmp".into()),
-                    resume_id: None,
-                    cli_session_id: None,
-                    transcript_path: None,
-                    desktop_policy: crate::subagents::DesktopPolicy::None,
-                    stream_mode: false,
-                    started_at: crate::subagents::now_unix_ms() as i64 - 30_000,
-                    exited_at: None,
-                    exit_code: None,
-                    last_pid: Some(10_000 + i as i32),
-                    created_rev: 1,
-                    seen_live: true,
-                    exited_by_sync: false,
-                    session_confidence: None,
-                    add_dirs: Vec::new(),
-                });
-                block_keys.push(bk);
-            }
-        }
-
-        // Spawn 3 concurrent event-driven state watchers waiting on `subagent_events` (zero polling!).
-        let wake_count = Arc::new(AtomicUsize::new(0));
-        let wake_bar = Arc::new(tokio::sync::Barrier::new(4));
-        let mut watchers = Vec::with_capacity(3);
-        for _ in 0..3 {
-            let ev_notify = inner.subagent_events.clone();
-            let log_inner = inner.clone();
-            let wc = wake_count.clone();
-            let bar = wake_bar.clone();
-            watchers.push(tokio::spawn(async move {
-                let notified = ev_notify.notified();
-                tokio::pin!(notified);
-                notified.as_mut().enable();
-                bar.wait().await;
-                notified.await;
-                wc.fetch_add(1, Ordering::Relaxed);
-                let got_at = Instant::now();
-                let seq = log_inner.subagent_log.lock().unwrap().latest_seq();
-                (got_at, seq)
-            }));
-        }
-        wake_bar.wait().await;
-
-        // Phase 1: Stream 30 children × 200 VT chunks (6,000 chunks total) through the exact block-data hot path.
-        // Because `subagent_text_watchers == 0`, ZERO spurious watcher notifications fire during streaming!
-        let t_stream = Instant::now();
-        let chunk = b"  compiling olo-rex v0.1.0 (/workspace/olo/apps/rex) [chunk 0123456789]\r\n";
-        for round in 0..200usize {
-            for bk in &block_keys {
-                let br = inner.state.lock().unwrap().blocks.get(bk).unwrap().clone();
-                let mut g = br.lock().unwrap();
-                g.terminal.vt_write(chunk);
-                g.received_bytes += chunk.len() as u64;
-                g.last_output = Instant::now();
-                g.last_output_at = crate::subagents::now_unix_ms();
-                g.subagent_cls_cache = None;
-                drop(g);
-                if inner.subagent_text_watchers.load(Ordering::Relaxed) > 0 {
-                    inner.subagent_events.notify_waiters();
-                }
-            }
-            if round % 50 == 49 {
-                let entries: Vec<_> = inner.state.lock().unwrap().subagents.entries.clone();
-                for ent in &entries {
-                    let _ = inner.live_subagent_rich(ent);
-                }
-            }
-        }
-        let stream_ms = t_stream.elapsed().as_secs_f64() * 1000.0;
-        assert_eq!(wake_count.load(Ordering::Relaxed), 0, "state watchers must experience ZERO spurious wakeups during streaming!");
-
-        // Phase 2: Measure 100 full cached `live_subagent_rich` sweeps across all 30 children (3,000 evaluations).
-        let entries: Vec<_> = inner.state.lock().unwrap().subagents.entries.clone();
-        for ent in &entries {
-            let _ = inner.live_subagent_rich(ent);
-        }
-        let t_cached = Instant::now();
-        for _ in 0..100 {
-            for ent in &entries {
-                let _ = inner.live_subagent_rich(ent);
-            }
-        }
-        let cached_sweep_us = t_cached.elapsed().as_secs_f64() * 1_000_000.0 / 100.0;
-
-        // Phase 3: Inject an approval event and measure end-to-end wakeup latency across all 3 watchers!
-        let t_emit = Instant::now();
-        let seq = inner.subagent_log.lock().unwrap().push(crate::subagents::SubagentEvent {
-            seq: 0,
-            timestamp_ms: crate::subagents::now_unix_ms(),
-            host_key: "local".into(),
-            session_id: "s-perf".into(),
-            parent_window_id: parent_wid.clone(),
-            ancestor_windows: vec![parent_wid.clone()],
-            id: "sa-perf-00".into(),
-            name: Some("worker-00".into()),
-            window_id: "w-perf-00".into(),
-            block_id: "b-perf-00".into(),
-            resume_id: None,
-            cli_session_id: None,
-            event: "waiting_approval".into(),
-            state: crate::subagents::SubagentLiveState::WaitingApproval,
-            summary: Some("Approve command".into()),
-            last_message: None,
-            approval: None,
-            error: None,
-            tail: Vec::new(),
-            dedupe_key: "cmd:perf".into(),
-        });
-        assert_eq!(seq, 1);
-        inner.subagent_events.notify_waiters();
-        let mut max_wake_us = 0.0f64;
-        for w in watchers {
-            let (t_got, seq) = w.await.unwrap();
-            assert_eq!(seq, 1);
-            max_wake_us = max_wake_us.max(t_got.saturating_duration_since(t_emit).as_secs_f64() * 1_000_000.0);
-        }
-
-        eprintln!(
-            "PERF 30-streaming-children+3-watchers: 6000_chunks={stream_ms:.2}ms ({:.2}us/chunk), cached_30child_sweep={cached_sweep_us:.1}us, 3watcher_wake_max={max_wake_us:.1}us, spurious_wakes=0",
-            (stream_ms * 1000.0) / 6000.0,
-        );
     });
 }

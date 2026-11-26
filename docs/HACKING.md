@@ -19723,13 +19723,28 @@ that is "Auto Approve" and when a "Do you want to proceed?" question
 like this comes up have it auto approve / select yes after 30s";
 `Tab::auto_approve`, `AutoApprove`): beside Keep It Going in a tab's
 menu and Tabs ▸ Auto Approve (`tab-auto-approve:SHELL`). A coding
-agent's question asking leave to go on (`agent::approvable`: the last
-line "Do you want to …?" or "Would you like to …?", its first answer
-"1. Yes" with the chooser, ❯ or ›, on it; Claude Code's permission
-dialogs, Codex's "Would you like to run the following command?") is
-answered with Return `AUTO_APPROVE_AFTER` (30 s) after it shows. Not a
-plan waiting to be approved ("No, keep planning"), not when another
-answer is chosen, not another question's answers under words that ask
+agent's question asking leave to go on (`agent::approvable_for`: any
+permission question `olo_agent_screen::parse_approval` reads, each
+agent's: "Do you want to …?", "Would you like to …?", "Allow this …?",
+Antigravity's "Run this command?", a question wrapped over two lines)
+is answered `AUTO_APPROVE_AFTER` (30 s) after it shows, **every one,
+whatever its shape** (Ben, 2026-11-26, of a pane where Claude Code's
+read outside the working directories sat with no countdown: "when
+it's on it should auto approve everything after a 30s countdown"; its
+question began "Allow this", and its first answer, under the mark, is
+a yes that is kept). It is answered with the yes that keeps nothing:
+the one for this once ("Yes", "Yes, run command", "Yes, but ask again
+next time"), wherever it stands; where a question has none, the one for
+this conversation alone; never one kept in settings or that switches
+the agent's mode. Where that yes isn't under the mark (`Ask::down`:
+the read outside has it fourth), the mark is moved down to it when the
+time comes, the screen read again, and Return sent only once the mark
+is seen to stand on it (`Pending::moved`; one that doesn't come to
+stand there is given up as the person's). Not a
+plan waiting to be approved ("No, keep planning") nor a folder to
+trust (neither is leave to go on: a mode, a trust, are the person's),
+not when the mark stands on another answer (someone moved it), not
+another question's answers under words that ask
 (but for Codex's "Reason: Do you want to …?" between its question and
 its answers: Codex tells its model to give its reason for a command as
 a question, so Auto Approve had never answered Codex).
@@ -28185,7 +28200,10 @@ for the next thing (`next`): the question's answer
 (`AUTO_APPROVE_AFTER`, `OLO_REX_AUTO_APPROVE_SECS` in a test), or the
 end of Keep It Going's quiet (two minutes, `OLO_REX_KEEP_GOING_SECS`;
 at most once an hour). When it goes the screen is read again (`due`):
-Return for the same question still asked with "1. Yes" chosen, or the
+Return for the same question still asked with its yes for this once
+under the mark (any permission question, whatever its shape: Terminal's
+"Auto Approve", above; `Do::Down` first where that yes is further down,
+then Return once the mark is seen on it), or the
 message (Settings ▸ Keep It Going's) then Return 150 ms later into the
 agent's own prompt, its turn over, never into a chooser. Typing in the
 pane, or Stop in the countdown over its screen's top right, makes the
@@ -30416,30 +30434,10 @@ connected to, is off). The port a pane's program listens on and
   `activity.open:<id>`, `activity.open.transcript:<id>`,
   `activity.open.terminal:<id>`, and `activity.fold:<block_id>`, plus
   `activity-subagents`, `agent-transcript`, and `agent-tmux-ro` agent nodes.
-- **Native child-tab orchestration (`olo agent`, `apps/rex/src/subagents.rs`,
-  `crates/agent-screen`, `crates/rex-link/src/agent.rs`, 2026-11-26)**:
-  Agents launch child `claude`, `codex`, and `agy` sessions as real nested
-  Rex tabs (always requiring explicit `--model` and `--effort`; `--approve-for-me`
-  is strictly Codex-only, off by default, and rejected on `claude`/`agy`).
-  Supports `--name` (unique live target accepted everywhere), `--trust`
-  (atomic `flock`-locked `~/.claude.json` pre-trust via `olo-rex-link agent trust`
-  plus 15 s event-driven dialog dismissal), server-enforced `--desktop
-  none|screens=NAME,…|inherit` isolation (default `none`, stripping desktop env
-  vars and refusing `olo.op`/`olo.screen`/`olo.open`/clipboard/bridge calls
-  server-side in `handle_client_perform`, plus `--unset-env`), complete Claude
-  and Antigravity flags (`--session-id`, `--settings`, `--strict-mcp-config`,
-  variadic `--disallowed-tools`/`--allowed-tools`, `--add-dir`, `--mode`,
-  `--stream`), single-pass batched host inspection (`olo-rex-link agent inspect`)
-  returning verbatim unwrapped `last_message`, `cli_session_id`,
-  `transcript_path`, untruncated `pending_tool`, `background_shells`, and
-  `waiting_on`, structured `approval` + `olo agent approve --once|--no`
-  (never selecting persistent or mode-switching choices, verifying dismissal),
-  250 ms stability-confirmed O(1) dirty-block transition tracking feeding a
-  monotonic cursor ring (`olo agent watch --all --since CURSOR`), separated
-  bracketed-paste + Enter delivery verification (`olo agent send --file`),
-  `olo agent stop --save PATH` scrollback archival, exited-child session ID
-  retention across Rex server restarts (`list --all` + `olo agent prune`),
-  and `~/.local/bin/olo` symlink installation with `readlink -f` resolution.
+- **Children of a tab (`olo agent`)**: started, read, answered and
+  stopped by their host's own agents service, never by this app, which
+  follows the service and shows what it says ("The children of a tab are
+  their host's", below).
 
 *Where the keyboard is*: every pane's head is on the panel's ground
 (the chosen tab's face, which opens onto them: with the focused head
@@ -30471,6 +30469,204 @@ divider under the pointer in a split of any size, neither pane under
 15%; a double click halves it. Agents read each as a Splitter, "Pane
 Width" or "Pane Height", its value the first pane's share. The
 sidebar's divider is `side_divider_within` its row.
+
+**The children of a tab are their host's** (`olo agent`;
+`crates/rex-link/src/agents` and `src/agentd`, `apps/rex/src/subagents.rs`;
+2026-11-26). An agent in a Rex tab starts children as tabs of their own
+under its tab: agents (`claude`, `codex`, `agy`, each with its model and
+effort always said), and plain commands (`start --command -- CMD…`). Ben,
+2026-11-25: "native support in rex to let agents running in a rex
+terminal launch native nested subagents in their own tab"; and of where
+that lived at first, 2026-11-26: "the desktop shouldn't need to be
+running or connected for the subagents to work, and when the desktop
+reconnects all the agents should just appear. the desktop shouldn't be
+'in the middle' of anything". It was in the middle of everything: `olo
+agent` on a host asked the Olo app through Rex (`rex do`,
+`client.perform`), and the app kept who was whose child, read the
+children's screens from its own copies of them, typed into them and
+wrote down what happened. With the desktop asleep nothing could be
+asked (status 69), and ShiftUp's lead, whose minder answers thirty
+agents through the night, could not move to it.
+- *Who does what now.* **The host's agents service** (`olo-rex-link
+  agent serve`: Olo's helper there, `agentd/service.rs`) owns the
+  children. It speaks to the host's own Rex server over the server's
+  Unix socket as a client of its own (`agentd/rex.rs`: `rex.control.v1`,
+  named "Olo agents", kind `service`, never taken for the desktop),
+  starts each child as a tab (`session.new_window`, at the size of the
+  pane that asked, so a child no desktop shows isn't 80 by 24), keeps
+  who is whose child, reads what each shows, types into it, closes it,
+  and numbers what happens to each. **`olo agent` there**
+  (`bridge_olo.sh`, which runs the helper: `agentd/client.rs`) asks the
+  service over a socket of the account's. **The app** follows each
+  connected host's service and shows what it says. No path from a
+  command on a host to its answer goes through a desktop.
+- *One reading of a screen: the server's.* What a child shows is asked of
+  the Rex server (`com.superlogical.terminal.format`, `Rex::screen`):
+  the same engine's reading the desktop draws, read by
+  `olo_agent_screen` as before. Not a second emulator beside it (a
+  pure-Rust one would agree with libghostty most of the time, and what
+  is read is what Return is pressed on), and not the app's own engine on
+  the host (libghostty-vt is C, built with zig for one machine: the
+  helper is static Rust for two). The agents draw on the alternate
+  screen, which has no history, so a reading is a few kilobytes (Claude
+  Code 2.1.332: 2.9 kB; measured on live panes). Of a main screen with a
+  long history only the end is fetched (`blob_read` from the end: asked
+  whole, the server keeps each answer five minutes).
+- *A child's output is a sign, not a text.* The service holds each live
+  child's terminal stream (`rex.data.terminal.v1`) and reads of it only
+  that something was written and how much (the first picture is passed
+  over by its own framing, `SnapshotSkip`; the server's words among the
+  output, its program's end and a resize, are found by the stream's own
+  nonce, `Words`). After a pause in the output (`QUIET`, 120 ms; `AT_MOST`
+  a second where it never pauses, a spinner beside a question) the
+  screen is read once, and a state that differs from the last is an
+  event once it has held a quarter of a second (`CONFIRM`), with the
+  turn's last message whole and the tool waited on, from the agent's own
+  transcript (`agent.rs`, in the same process now). What a program says
+  of itself (OSC 7501) and its process changing come as the server's
+  events and ask for a reading at once.
+- *What is asked, and how* (`agents/wire.rs`). One JSON object a line
+  over `/run/user/UID/olo-rex-agents/KEY.sock` (KEY: the Rex server's
+  socket, hashed; the account's state folder where there is no runtime
+  folder; found the same from a pane and over SSH, whatever the
+  environment says): a `Request` (the command's arguments as typed, or
+  `rex do`'s structured form, the folder and the pane asked from), an
+  empty line the moment the service has taken it (`TAKEN`), then a
+  `Response` (what to print, the status). A request never taken is asked
+  of the next service whatever it is; one taken and not answered (the
+  service was killed) is asked again only where asking twice does
+  nothing twice (`list`, `status`, `read`, `watch`), and otherwise said
+  (status 75, "look before asking again"). The socket's folder is the
+  account's alone and the asker's uid is checked.
+- *Who asks is the process that asks.* A child may act on its own
+  descendants alone, and can give a child of its own no more of the
+  desktop than it has. Which child an asker is, is read from its
+  ancestors (`ops.rs`, `caller`: the terminal's own process is among
+  them), whatever pane it says it is in: a child that sets `REX_BLOCK`
+  to its parent's is still that child. (By the pane named alone, as the
+  app did it, that was a way out.)
+- *It starts by itself and can be killed at any moment.* The first
+  command starts it (`client.rs`, `start_service`: a session of its own,
+  the account's places and nothing else of the asking shell's
+  environment, so it is the same service whoever starts it); it ends
+  when its Rex server goes, or ten minutes after the last child and the
+  last asker. The registry (`registry.json`) is written before `start`
+  answers, and an event's line (`events.jsonl`) before any watcher is
+  told of it (a watcher was once told an event a few milliseconds before
+  it was written, the service was killed in between, and the cursor
+  went backwards: the kill test found it on a fifth run). A new service
+  reads both, asks the server which tabs are there, watches those and
+  takes the rest as exited (after a restart of the Rex server every one,
+  each with its conversation's id, for `start --resume`); it goes on
+  from the last event's number and doesn't say again what was said. One
+  service at a time (a lock); a service of an earlier build hands over
+  to a later one's at the first command of that build (`PROTO`): it
+  finishes what it is doing, writes what it knows and ends, the children
+  untouched.
+- *The app follows* (`hub.rs`, `follow_agents`): as a host connects it
+  runs `olo-rex-link agent follow` there (locally, or over the host's
+  SSH connection) and reads a line a frame (`wire::Frame`): everything
+  the service knows, then each child that starts, changes or ends. That
+  is the app's whole knowledge of children (`HubState::subagents`, no
+  file of its own): they are all there the moment a host connects,
+  however long they ran unseen. A service that goes is followed again.
+  The window's Stop asks the service (`stop_subagent`); `rex do
+  olo.agent.…` (and an `olo` from before the service) is passed to it
+  (`ask_agents`, `agent request`), so the commands answer the same
+  through a desktop as without one. Children the app kept itself
+  (`rex-subagents.json`, Olo before this) are handed to the host's
+  service once (`agent adopt`: those whose tabs are there as live).
+- *What a child may ask of this computer* (`--desktop none`, the
+  default; `screens=NAME,…`; `inherit`) is still refused here, where the
+  desktop is (`child_refusal`, before any action is looked at), but said
+  by the service: a pane known as a child is answered at once from what
+  was followed; any other is asked of the service (`policy`), by the
+  asking process's number where the Rex server gives it (the request's
+  principal), so a child started a moment ago is known there before it
+  is said here, and a child naming another pane is still itself. One
+  question a process, kept a minute (`olo run`'s polling asks once).
+- *A command of the asker's own* (`start --command -- CMD…`,
+  `AgentCli::Command`; ShiftUp's readers run agy as a stream pipeline,
+  which a TUI child can't hold): a child tab like the others, with no
+  model or effort and nothing read into what it prints; `working` while
+  it runs, `exited` with its status after, `watch --on exit`, `read`,
+  `send`, `stop`. In Rex it is shown for the program it is, not as an
+  agent at work (both reviewers of its first pictures, 2026-11-26: "a
+  `tail -f` is dressed as a working agent"): "Running" where an agent
+  says Working (Activity's row, the tab's tree menu), the plain terminal
+  icon with no agent's mark, and under its name the command with its
+  paths cut to their names where the row is narrow (`fit_command_line`:
+  "command · tail -f build.log", the whole line in its tip and its tab's
+  header), since a command's end says the most. It is a Shell by
+  Activity's types and active by its states, and stopping a tab's
+  children names both kinds ("Stop 2 Subagents and 1 Command…",
+  `stop_children_label`; the alert's words too). A menu's label with
+  nothing to its right runs under the detail columns
+  (`menu::labels_width`), or that label would set every row's details a
+  hand's width from their names.
+- *Small things the move needed*: `send --key` takes any key with any
+  modifier a terminal can send (`special_key`: `Alt+m` is the escape and
+  the letter, what tmux sends for `M-m`; `Ctrl+Shift+Up` is xterm's
+  form); a feedback survey drawn over a screen (Claude Code's "How is
+  Claude doing this session?", Antigravity's "How's the CLI experience
+  so far?", which hid a permission prompt for 25 minutes) is set aside
+  by the service with the survey's own key (`olo_agent_screen::
+  parse_survey`, `screen_under_survey`: three times at most, and one
+  that stays is said in `status`). A question is answered by what a
+  choice means, wherever it stands (`approve --once | --session | --no`,
+  `spec::Answer`): the one choice of that kind, the mark seen on its very
+  label before Return and Escape otherwise; two of a kind, or none, is
+  refused with the choices named. The kinds (`olo_agent_screen::
+  ChoiceKind`) tell a yes for this once ("Yes", "Yes, but ask again next
+  time") from one for this conversation (`allow_session`, Antigravity's)
+  and one that is kept (`dont_ask_again`: "Yes, and keep allowing any
+  reads…"), and a no for this once from a no that is kept (`no_always`:
+  "No, and block reads…", which `--no` never takes). Claude Code's read
+  outside the working directories has all four, its kept yes first and
+  under the mark. What a child is started with (`--env`, `--unset-env`,
+  the desktop's own unset) is set in front of its program (`env K=V …`:
+  a Rex tab takes no environment of its own), and a test reads it from
+  the child's own `/proc/PID/environ`, as ShiftUp's launcher does.
+- *Built for every host.* The helper's `agents` feature is all Rust
+  (tokio, a WebSocket client, a regex): it is in the helper built
+  without zig too (`apps/rex/build.rs`), where the features that need a
+  C compiler for the host's machine are left out. `olo` finds the helper
+  beside itself (the desktop's own computer) or the newest build the app
+  has put in the account (`~/.local/share/olo/rex-link`); where none is
+  there yet it asks the desktop, which puts the helper there and asks
+  its service, and from then on it goes straight. A host reached without
+  SSH has no helper put on it yet (TODO).
+- *Cost* (release, 2026-11-26, `perf stat --no-scale`, `tools/dev/cost`;
+  thirty stand-in children on a scratch server): **at rest** with thirty
+  children at their prompts, and the same with a watcher waiting: 0.0%
+  of a core, 0 wakeups a second, no instruction counted in ten seconds.
+  Thirty children each redrawing ten times a second (never a pause: one
+  reading a second each): 0.8% of a core, 16 million instructions a
+  second, 193 wakeups a second (one for each piece of output it is
+  woken for). Thirty each writing three bursts a second (a reading after
+  each): 1.0%, 39 million. `list` of thirty with the look at every
+  agent's files and processes: 76 ms (`--fast`, without: 4 ms); forty
+  started side by side are all there and listed in under a second.
+- *Tested with no desktop anywhere.* `crates/rex-link/tests/agents.rs`:
+  a Rex server of the test's own, the helper as built, and stand-ins for
+  the agents (`stand-in.sh`: it draws what the test tells it and writes
+  down every byte it is typed, so what the service reads and types is
+  exact): a child's whole life by cursor; a command child; the service
+  killed with no warning and the Rex server restarted; a child kept to
+  its own by its process; a follower; a survey set aside; forty at once;
+  a later build taking over and kept children adopted; two questions in
+  a row, a stale cursor, text that was already there. `tests/
+  agents_live.rs`: Claude Code, Codex and Antigravity themselves, each
+  in a home of the test's own against a made-up API on this computer
+  (no account, no network), through Olo's own `olo` script: a permission
+  question refused with a reason, the next allowed once, the last
+  message whole, a file sent, stopped and saved, taken up again; all
+  three at once; an API that fails and comes back. (Run from an agent's
+  own shell they carried that agent's marks to the children, and Claude
+  Code then saves no transcript: the rigs take them out.) The app's
+  side, against the service the app carries: `hub/agents_tests.rs` (a
+  child started before any desktop is shown as the app connects; the
+  policy asked; `rex do` passed on; Stop).
 
 **Hosts and Ports** (panels.rs `render_hosts_panel`; 2026-11-22, both
 reviewers' design: it was a row of buttons for each host and each

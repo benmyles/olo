@@ -12,6 +12,9 @@ path = "src/main.rs"
 [dependencies]
 olo-system.workspace = true
 olo-agent-screen.workspace = true
+# (The children of a tab, `olo agent`: what this app and the host's agents
+# service agree on, `olo_rex_link::agents`.)
+olo-rex-link.workspace = true
 olo-crash.workspace = true
 olo-keychain.workspace = true
 olo-kit.workspace = true

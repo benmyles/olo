@@ -15,7 +15,7 @@ use alacritty_terminal::{
     sync::FairMutex,
     term::Term,
 };
-pub use olo_agent_screen::{Agent, Ask, State, approvable, at_prompt, classify, fingerprint};
+pub use olo_agent_screen::{Agent, Ask, State, approvable_for, at_prompt, classify, fingerprint};
 use olo_agent_screen::{identify, shared_server};
 use olo_kit_base::Proxy;
 
@@ -131,7 +131,7 @@ impl Watcher {
                         let state = classify(agent, &text);
                         // (Only on a question: nothing more read otherwise.)
                         if state == State::Blocked {
-                            ask = approvable(&text);
+                            ask = approvable_for(agent, &text);
                         }
                         (agent, state)
                     });

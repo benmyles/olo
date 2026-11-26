@@ -41,6 +41,7 @@
 //! - `move stop [--spare PID…]`: every process of the account stopped but
 //!   this one's own line of parents and the account's own systemd.
 
+pub(crate) use crate::procs::{Proc, all_procs, codex_home, home, proc_of, unhex};
 use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -76,10 +77,6 @@ pub fn run(args: Vec<String>) -> ! {
         }
     };
     std::process::exit(code)
-}
-
-pub(crate) fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// A move's name: what its key's comment and its folder are named by.
@@ -350,11 +347,6 @@ enum Asked {
     /// away: the second pass's, of what the first put there and the
     /// source no longer has.
     Forget { root: String },
-}
-
-pub(crate) fn unhex(s: &str) -> Option<Vec<u8>> {
-    (s.len().is_multiple_of(2)).then_some(())?;
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
 }
 
 /// The ask in a command's last word (`SSH_ORIGINAL_COMMAND`).
@@ -2229,35 +2221,6 @@ fn status(args: &[String]) -> i32 {
     0
 }
 
-/// A process of this host: its parent, its name, its state.
-#[derive(Clone, Debug)]
-pub(crate) struct Proc {
-    pub pid: i32,
-    pub ppid: i32,
-    uid: u32,
-    pub comm: String,
-    state: char,
-    user_manager: bool,
-}
-
-pub(crate) fn proc_of(pid: i32) -> Option<Proc> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let (open, close) = (stat.find('(')?, stat.rfind(')')?);
-    let comm = stat[open + 1..close].to_owned();
-    let mut rest = stat[close + 2..].split_whitespace();
-    let state = rest.next()?.chars().next()?;
-    let ppid = rest.next()?.parse().ok()?;
-    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-    let uid = status.lines().find_map(|l| l.strip_prefix("Uid:"))?.split_whitespace().next()?.parse().ok()?;
-    // (The account's own systemd: `systemd --user`.)
-    let user_manager = comm == "systemd" && std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.split(|&b| b == 0).any(|w| w == b"--user"));
-    Some(Proc { pid, ppid, uid, comm, state, user_manager })
-}
-
-pub(crate) fn all_procs() -> Vec<Proc> {
-    std::fs::read_dir("/proc").map(|d| d.filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok()).filter_map(proc_of).collect()).unwrap_or_default()
-}
-
 /// What stopping leaves alone of the account's: the account's own
 /// systemd and what it keeps for it (its PAM half, its bus: `systemctl
 /// --user` must still answer, to put things back), standard system user
@@ -2603,11 +2566,6 @@ fn var_tmp_summary(uid: u32) -> (u64, u64, u64, bool, Vec<serde_json::Value>) {
     entries.truncate(8);
     let top = entries.into_iter().map(|(path, bytes, files, more)| serde_json::json!({"path": path, "bytes": bytes, "files": files, "more": more})).collect();
     (total_bytes, total_files, total_count, any_more, top)
-}
-
-/// Codex's home (`CODEX_HOME`, else `~/.codex`).
-pub(crate) fn codex_home() -> PathBuf {
-    std::env::var_os("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".codex"))
 }
 
 /// Codex's daemon (`codex app-server`), as its pid file names it (JSON:

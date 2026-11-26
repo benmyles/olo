@@ -1,13 +1,21 @@
 #!/bin/sh
-# olo COMMAND [ARGUMENT…]: a command of the Olo desktop this Rex host is
-# used from, asked through Rex (olo.lua beside this file, run by
-# `rex do`): olo open URL, olo get rex://local/PATH [DEST], olo ls
-# rex://local/PATH, olo op …, olo screen …, olo forward …, olo send PATH…,
-# olo sync …, olo run [--cwd DIR] -- COMMAND…, olo notify TITLE [BODY],
-# olo clipboard TEXT, olo paste.
+# olo COMMAND [ARGUMENT…]: Olo's command on a Rex host.
+#
+# olo agent …: the children of this tab (agents, and commands of your
+# own, each a Rex tab under it). This host's own: asked of the agents
+# service here (Olo's helper, `olo-rex-link agent`), which starts and
+# keeps them through this host's Rex server. No Olo desktop is asked or
+# need be connected.
+#
+# The rest are commands of the Olo desktop this host is used from, asked
+# through Rex (olo.lua beside this file, run by `rex do`): olo open URL,
+# olo get rex://local/PATH [DEST], olo ls rex://local/PATH, olo op …,
+# olo screen …, olo forward …, olo send PATH…, olo sync …, olo run
+# [--cwd DIR] -- COMMAND…, olo notify TITLE [BODY], olo clipboard TEXT,
+# olo paste. Their status is 69 where the desktop couldn't be asked.
+#
 # Part of Olo's skill for agents, and of the desktop commands (xdg-open
-# and the rest, beside it). Its status is 69 where the desktop couldn't
-# be asked.
+# and the rest, beside it).
 self=$0
 if command -v readlink >/dev/null 2>&1; then
 	resolved=$(readlink -f "$self" 2>/dev/null) && [ -n "$resolved" ] && self=$resolved
@@ -15,6 +23,24 @@ fi
 here=$(dirname "$self")
 OLO_BRIDGE_CMD=${1:-}
 [ $# -gt 0 ] && shift
+# `olo agent`: the helper beside this file (the desktop's own computer),
+# else the newest build of it the app has put in this account for this
+# machine. (OLO_REX_LINK: another, for Olo's own tests.) Only one that
+# has the agents service is used (`agent --protocol`); where none is
+# here yet the desktop is asked below, which puts the helper here and
+# asks its service: from then on this goes straight to it.
+if [ "$OLO_BRIDGE_CMD" = agent ]; then
+	link=${OLO_REX_LINK:-}
+	if [ -z "$link" ] && [ -x "$here/olo-rex-link" ]; then
+		link="$here/olo-rex-link"
+	fi
+	if [ -z "$link" ]; then
+		link=$(ls -t "$HOME"/.local/share/olo/rex-link/olo-rex-link-*-"$(uname -m)" 2>/dev/null | head -n 1)
+	fi
+	if [ -n "$link" ] && [ -x "$link" ] && "$link" agent --protocol >/dev/null 2>&1; then
+		exec "$link" agent "$@"
+	fi
+fi
 i=0
 for a in "$@"; do i=$((i + 1)); export "OLO_BRIDGE_ARG_$i=$a"; done
 OLO_BRIDGE_ARGC=$i

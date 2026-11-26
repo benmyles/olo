@@ -2450,6 +2450,76 @@ not the shell script. And the script reads standard input only where
 the command takes it: an agent's shell may leave a pipe open, and
 `head` on it waits for ever.
 
+### The agents service and its tests: what the Rex server gives, and what a test brings with it (2026-11-26)
+
+Learned moving `olo agent` from the app to the host
+(`crates/rex-link/src/agentd`; HACKING, Rex, "The children of a tab are
+their host's"):
+- **A test run from an agent's shell carries that agent's marks to
+  everything it starts.** Run from Claude Code, the environment has
+  `CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `AI_AGENT` and ten more; a
+  scratch Rex server inherits them, every tab it makes has them, and a
+  real Claude Code started in such a tab **saves no transcript** (its
+  screen says "Transcript saving is off — inherited
+  CLAUDE_CODE_CHILD_SESSION marker"): no conversation id, no last
+  message, three live tests failing for a reason that is nothing of the
+  code's. The rigs take out every variable beginning `CLAUDE` or `CODEX`
+  and `AI_AGENT` (`tests/agents.rs`, `scratch_env`); a suite that passed
+  when Antigravity ran it had simply been run from another agent.
+- **What a terminal shows is the server's to say, cheaply where it is
+  the alternate screen.** `com.superlogical.terminal.format` gives the
+  screen *and* its history, as the server's own engine reads it. The
+  agents draw on the alternate screen, which has none: 2 to 14 kB (ask
+  `modes` for `screen`). With `max_bytes` set and more to give, the
+  answer has an `id` and the server **keeps the whole text about five
+  minutes** (`blob_read`): never ask that on every look at a main screen
+  with megabytes of history (a terminal keeps 64 MiB). `rex capture
+  --help` says the limits; `rex api describe METHOD` each method's
+  arguments and what it fails with.
+- **`session.attach_all` is not `session.attach`.** With `attach_all`
+  (scope `session`) a connection gets every session's window and block
+  events and may call methods on all of them, but `data.connect` and a
+  block's own events (`block_event`: `program_status_changed`,
+  `process_changed`) need `session.attach` to that session.
+- **A new tab takes `size`, `cwd`, `path_prepend` and `exit` in its
+  shell's options, and no environment** (`rex api call
+  block_creator.list` lists a flavor's options): a variable is set in
+  front of the program (`env K=V PROGRAM…`), and unset the same way.
+  Left out, `size` is 80 by 24 until a client that owns the block
+  resizes it.
+- **A scratch server under bwrap has process numbers of its own**
+  (`crates/rex/tests/scratch`, `--unshare-pid`): what `terminal.process`
+  says there is not a number `/proc` here knows. A test that reads a
+  child's processes (whose child an asker is, an agent's transcript by
+  its pid) starts its scratch server plainly, with a home and runtime
+  folder of its own (`Rig::serve`).
+- **In a script, a command put in the background reads nothing**
+  (bash gives it `/dev/null` where job control is off): the stand-in's
+  recorder (`cat >> keys &`) recorded no key until it was given the
+  terminal by name (`exec 3<&0; cat <&3 … &`). And **`wait` with no
+  argument waits for every background job**, the scratch server too: a
+  measuring script that started its server with `&` and then waited for
+  thirty starts never came back. Wait for the numbers you started
+  (`pids+=($!)`, `wait "${pids[@]}"`).
+- **A test session's app runs in the person's own home** (`tsession`
+  without `--home`: only what apps keep between runs is the session's).
+  Rex, started there for a picture, repointed `~/.local/bin/olo` at the
+  session's own folder under `/var/tmp/olo-dev` (`bridge::
+  ensure_local_bin_dir` took any Olo link for its own to replace), on a
+  host where thirty agents were using `olo`; stopping the session would
+  have left the link hanging. Seen only because `ls -la` was asked of
+  the link for another reason. The app links there only from a folder
+  inside the home now. Before a headless app is run on a machine other
+  agents work on, ask what it writes outside the session's folder
+  (`strace -f -e trace=symlinkat,renameat2,openat -o …` on a first run,
+  or read its start-up for `HOME`).
+- **What is told must already be written.** An event reached a watcher
+  a few milliseconds before its line reached the log's file; the kill
+  test (`kill -9` of the service right after a watch returned) failed
+  once in five runs with a cursor that had gone backwards. A test that
+  passes four times in five is a bug: run a new suite several times
+  before believing it (`for i in 1 2 3 4 5; do jato test …; done`).
+
 ### Testing Olo Rex and Rex rev-19 servers
 
 - **Rex rev-19 `data_ref_id` is `"terminal"`, not `"output"`.** Both

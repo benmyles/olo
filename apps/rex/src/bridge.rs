@@ -72,9 +72,23 @@ pub fn ensure_local_bin_dir() -> Option<PathBuf> {
     };
     write_if_changed("olo", SKILL_OLO, true);
     write_if_changed("olo.lua", SKILL_LUA, false);
+    // Olo's helper beside it: `olo agent` asks this computer's agents
+    // service through it (`bridge_olo.sh`), as on any host.
+    if let Some(helper) = crate::activity_watch::local_helper_path() {
+        let link = dir.join("olo-rex-link");
+        if std::fs::read_link(&link).ok().as_ref() != Some(&helper) {
+            let _ = std::fs::remove_file(&link);
+            let _ = symlink(&helper, &link);
+        }
+    }
     // Expose `olo` on standard user PATH (`~/.local/bin/olo`) when missing or already an Olo symlink,
     // so non-interactive subshells and scripts find `olo` without needing the full skill path.
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+    // Only where this app's own folder is in the account's home: a link in the account's bin
+    // folder never points out of it. (A test session keeps its state under /var/tmp with the
+    // person's own HOME: one of them repointed `~/.local/bin/olo` at its folder on a host that
+    // thirty agents were using `olo` on, and stopping it would have left the link hanging,
+    // 2026-11-26.)
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from).filter(|home| dir.starts_with(home)) {
         let local_bin = home.join(".local/bin");
         let link = local_bin.join("olo");
         let target = dir.join("olo");
