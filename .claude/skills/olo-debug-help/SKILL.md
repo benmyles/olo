@@ -1,9 +1,17 @@
 ---
 name: olo-debug-help
-description: Get a second investigator on a bug or a hard problem in Olo - start an Antigravity CLI (agy, Gemini 4 Neon at xhigh) in a tmux session with a written brief, let it dig in parallel while you go on (reading its screen, answering what it asks leave for, steering it), then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
+description: Get a second investigator on a bug or a hard problem in Olo - start an Antigravity CLI (agy, Gemini 4 Neon at xhigh) as a child tab of your own Rex tab (Rex's native subagents, through `olo agent`; a tmux session where you aren't in a Rex pane) with a written brief, let it dig in parallel while you go on (reading its screen, answering what it asks leave for, steering it), then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
 ---
 
 # A second investigator, for a cause you can't find
+
+(Where it runs: since 2026-11-26 the helper is a child tab of the tab
+you are in, started and read through `olo agent` by `tools/dev/agy-help`
+itself, and watched on `olo agent watch`; a tmux session only where you
+aren't in a Rex pane. Nothing below changes with it: the brief, what it
+may do unasked, peek, say and approve are the tool's. The `olo-agents`
+skill has the whole of it. Keep its watch going for as long as it runs:
+the front door's own wait, run in the background.)
 
 Olo's rule is that every problem is root-caused, never worked around.
 Two brains are better than one (Ben, 2026-11-18): whenever you're

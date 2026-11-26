@@ -84,6 +84,36 @@ pub struct ScreenClassification {
 
 /// Evaluates a child tab's current screen & activity against `olo_agent_screen`.
 /// Never emits `WaitingApproval` unless a genuine structured approval prompt with choices is present.
+/// What an agent at work is doing, in a line: the last thing above its
+/// field ("✽ Hatching… (3m 0s · ↓ 16.9k tokens)", "⣾ Generating..."),
+/// not its screen's last line, which is its footer ("⏵⏵ accept edits on
+/// (shift+tab to cycle) · esc to interrupt": what a child's line in Rex
+/// said for the whole of a ten-minute look, 2026-11-26). Its field stands
+/// between the last two rules drawn across the screen; a rule may have
+/// words in it (Claude Code writes the session's name into the one over
+/// its field). An agent that draws no rules (Codex, inline): the line
+/// that says it is at work, else the last.
+pub fn doing_line(screen_text: &str) -> Option<String> {
+    let lines: Vec<&str> = screen_text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let is_rule = |l: &str| {
+        let rule = l.chars().filter(|c| *c == '─').count();
+        rule >= 20 && rule * 10 >= l.chars().count() * 6
+    };
+    let rules: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| is_rule(l)).map(|(i, _)| i).collect();
+    let above = match rules.len() {
+        n if n >= 2 => &lines[..rules[n - 2]],
+        _ => &lines[..],
+    };
+    // (Not a tip under its work, nor a rule.)
+    let said = |l: &str| !is_rule(l) && !l.starts_with("└ Tip:");
+    let last_said = || above.iter().rev().copied().find(|l| said(l));
+    if rules.len() >= 2 {
+        return last_said().map(str::to_owned);
+    }
+    let working = above.iter().rev().take(8).copied().find(|l| l.contains("Working (") || l.contains("esc to interrupt)"));
+    working.or_else(last_said).map(str::to_owned)
+}
+
 pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str, alive: bool) -> ScreenClassification {
     if !alive {
         return ScreenClassification { state: SubagentLiveState::Exited, summary: Some("tab closed".into()), approval: None, folder_trust: None, api_error: None, usage: None };
@@ -130,13 +160,13 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
 
     // 5. Working on screen takes precedence over stale Idle/Done.
     if olo_agent_screen::classify(agent, screen_text) == olo_agent_screen::State::Working {
-        return ScreenClassification { state: SubagentLiveState::Working, summary: last_nonempty(), approval: None, folder_trust: None, api_error: None, usage };
+        return ScreenClassification { state: SubagentLiveState::Working, summary: doing_line(screen_text), approval: None, folder_trust: None, api_error: None, usage };
     }
 
     // 6. Fallback to Rex activity — an unrecognised Blocked dialog fails VISIBLE as WaitingQuestion
     //    (unless the screen is still completely blank at startup), never hanging forever as `working` (`H2`)!
     let (state, summary) = match activity {
-        Activity::Working => (SubagentLiveState::Working, last_nonempty()),
+        Activity::Working => (SubagentLiveState::Working, doing_line(screen_text)),
         Activity::Blocked => {
             if screen_text.trim().is_empty() {
                 (SubagentLiveState::Working, Some("starting".into()))

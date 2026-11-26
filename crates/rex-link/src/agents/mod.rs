@@ -36,6 +36,36 @@ mod tests {
 
     use super::*;
 
+    /// An agent at work is said by what it is doing, the line over its
+    /// field, never by its footer; whatever stands in the rule over the
+    /// field, and for an agent that draws no rules.
+    #[test]
+    fn an_agent_at_work_is_said_by_the_line_over_its_field() {
+        use crate::agents::state::doing_line;
+        let rule = "─".repeat(96);
+        // Claude Code, the session's name in the rule over its field.
+        let named = format!("──────────────── opus-batch2 {}", "─".repeat(60));
+        let claude = format!(
+            "● Read 6 files\n\n✽ Hatching… (3m 0s · ↓ 16.9k tokens · deep in thought with max effort)\n\n{named}\n❯ \n{rule}\n  ⏵⏵ accept edits on (shift+tab to cycle) · esc to interrupt · ← 1 agent\n"
+        );
+        assert_eq!(doing_line(&claude).as_deref(), Some("✽ Hatching… (3m 0s · ↓ 16.9k tokens · deep in thought with max effort)"));
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Working, &claude, true);
+        assert_eq!((cls.state, cls.summary.as_deref()), (SubagentLiveState::Working, Some("✽ Hatching… (3m 0s · ↓ 16.9k tokens · deep in thought with max effort)")));
+        // Antigravity: its spinner's line, over two rules and its mode's hint.
+        let agy = format!(
+            "{rule}\n> Read /var/tmp/x/brief.md and do what it says.\n⣾  Generating...\n{rule}\n> Accept-edits mode: file edits auto-approved (shift+tab to cycle)\n{rule}\nesc to cancel          accept-edits · Gemini 4 Neon · xhigh\n"
+        );
+        assert_eq!(doing_line(&agy).as_deref(), Some("⣾  Generating..."));
+        // A tip under its work isn't what it is doing.
+        let tipped = format!("✻ Thinking… (12s)\n└ Tip: press shift+tab to cycle modes\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        assert_eq!(doing_line(&tipped).as_deref(), Some("✻ Thinking… (12s)"));
+        // No rules (Codex, drawn inline): the line that says it works.
+        let codex = "• Ran cargo test\n\n• Working (12s • esc to interrupt)\n\n› Ask Codex to do anything\n  gpt-6.2-astra high · ~/src · Context 91% left\n";
+        assert_eq!(doing_line(codex).as_deref(), Some("• Working (12s • esc to interrupt)"));
+        // Nothing drawn yet.
+        assert_eq!(doing_line("\n  \n"), None);
+    }
+
     #[test]
     fn a_key_is_sent_as_a_terminal_sends_it_with_any_modifier() {
         let key = |name: &str| special_key(name).unwrap();
