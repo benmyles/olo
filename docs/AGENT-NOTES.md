@@ -1501,6 +1501,62 @@ reports, in the scratch `XDG_STATE_HOME` it was started with
 (`…/olo/crashes/*.json`: `message`, `thread`, `backtrace`): look there
 whenever a headless test's key or click "does nothing".
 
+### Rex's hub is never reached through a lock (2026-11-26)
+
+The same fault as the note above came back four days on, in the
+statement form: `app().hub.select_window(&hk, &sid, &wid);` holds the
+guard `app()` returns until the semicolon, `RexHub::select` tells the
+windows at once on the asking thread (`handle_hub_notice`), and that
+takes the app's lock again. Choosing a child from a tab's tree menu
+stopped the window for good, in a release build with nothing said (0 %
+CPU, the window's thread in `futex_wait`: `gdb -p PID -batch -ex
+'thread apply all bt'` on a headless copy shows the two `lock` frames).
+So did the path above a child, and Keep It Going and Auto Approve for a
+child in Activity; `foo(&app().hub.clone())` holds it too (the clone
+doesn't end the guard, the statement does).
+
+Fixing each statement is what was done the first time, and why it came
+back. The hub, the password prompts and the run approvals are now
+statics beside the app's state (`the_hub()`, `the_askpass()`,
+`the_run_approvals()` in `apps/rex/src/ui.rs`): each is made once and
+never changes, so nothing needs a lock to reach it, and `RexApp` holds
+only plain state (the keymap, attention, what is being renamed), whose
+methods call nothing back. Keep it so: nothing that can call out goes
+inside `RexApp`. The same for the windows' lock: a holder of `wins()`
+only sends a message or sets a field.
+
+*Tried*: `tools/dev/rex-slow/tree.py [BIN]` drives the demo through all
+four as a person does (six seconds) and fails where the window stops
+answering; give it an older build to compare (the pre-push tree's
+release build is one: `/var/tmp/olo-prepush/tree/target/release/olo-rex`).
+A dev build would have said so by itself the first time anyone chose a
+child from that menu in a test: none did. A new menu or button that
+asks the hub something gets a line in that script. Two things the
+script learned: a window is listed (`list_windows`) before it has a
+size, and a click then is on nothing (wait for `content.width > 0`;
+a release build is quick enough to lose that race, a dev build isn't);
+and the app's tree can still be read when its window has stopped (as it
+last was), so "it answers" proves nothing: read something only the
+window's own thread can have drawn since.
+
+### Two builds are measured from the same place (2026-11-26)
+
+A release build copied to `/var/tmp` (or built into a target folder of
+its own there) and one run from the tree's `target/release` are not the
+same program on the screen: the one in the tree finds the tree's icons
+and fonts from where it is, the copy doesn't (no icons on Rex's tabs
+and panes, another fixed font, 71 columns where the other has 66). On a
+test desktop the drawing is the software renderer's, in the app's own
+process, so the copy counted 126 M instructions in ten seconds of
+Rex's demo and the build in the tree 172 M: 36 % "more" for a change
+that touched nothing drawn. The profile said where (`perf record -e
+instructions:u -c 20000 -p PID -- sleep 10`, then `perf report --sort
+dso`: all of it in `[JIT]` and `libvulkan_lvp.so`, the app's own code
+the same 18 M), and the two pictures said why. Put the build to compare
+beside the other (`target/before/olo-rex`, a reflink copy) and look at
+a picture of each before believing a difference: from the same place
+they were 172.0 to 173.0 M and 173.0 to 173.1 M.
+
 ### A menu command, run headless (2026-11-22)
 
 `{"invoke":"command.id"}` on the app's socket

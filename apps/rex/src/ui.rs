@@ -278,9 +278,6 @@ fn pane_name(hub: &RexHub, key: &BlockKey) -> String {
 
 /// Global Rex application controller (shared safely across windows via `olo_sync::Mutex`).
 pub struct RexApp {
-    pub hub: Arc<RexHub>,
-    pub askpass: Arc<OloAskpass>,
-    pub run_approvals: Arc<crate::bridge_run::RunApprovals>,
     pub keymap: KeymapEngine,
     /// How the SSH agent stands (asked once as Rex starts), for Diagnostics.
     pub ssh_agent: olo_rex_client::AgentStatus,
@@ -362,15 +359,44 @@ struct WinRegistry {
 }
 
 static APP: OnceLock<Mutex<RexApp>> = OnceLock::new();
+/// The hub, beside the app's state and never inside it: whatever is
+/// asked of the hub may tell the windows at once, on the asking thread
+/// (`handle_hub_notice`), and that takes the app's lock. With the hub
+/// kept in `RexApp`, `app().hub.select_window(…)` held that lock for the
+/// whole statement, and choosing a child from a tab's tree menu stopped
+/// the window for good (Ben, 2026-11-26: "if i use the tree menu to try
+/// switch to a subagent … it just hangs"; so did the path above a child
+/// and Keep It Going). It is made once and never changes, so nothing
+/// needs a lock to reach it.
+static HUB: OnceLock<Arc<RexHub>> = OnceLock::new();
+/// The same of what asks for a password and of what asks leave to run a
+/// command: each tells the windows as it is answered, so neither is
+/// reached through the app's lock.
+static ASKPASS: OnceLock<Arc<OloAskpass>> = OnceLock::new();
+static RUN_APPROVALS: OnceLock<Arc<crate::bridge_run::RunApprovals>> = OnceLock::new();
 static WINS: OnceLock<Mutex<WinRegistry>> = OnceLock::new();
 
 pub fn app() -> olo_sync::MutexGuard<'static, RexApp> {
     APP.wait().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// The hub, where the app has started (its lock let go at once).
+/// The hub (the app has started: every window and message comes after).
+/// No lock is taken for it; see [`HUB`].
+pub fn the_hub() -> &'static Arc<RexHub> {
+    HUB.wait()
+}
+
+fn the_askpass() -> &'static Arc<OloAskpass> {
+    ASKPASS.wait()
+}
+
+fn the_run_approvals() -> &'static Arc<crate::bridge_run::RunApprovals> {
+    RUN_APPROVALS.wait()
+}
+
+/// The hub, where the app has started.
 pub fn app_hub() -> Option<Arc<RexHub>> {
-    APP.get().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hub.clone())
+    HUB.get().cloned()
 }
 
 fn wins() -> olo_sync::MutexGuard<'static, WinRegistry> {
@@ -379,8 +405,7 @@ fn wins() -> olo_sync::MutexGuard<'static, WinRegistry> {
 
 /// The desktop's settings for Rex changed (the settings' own thread).
 pub fn follow_desktop_settings(rex: &olo_protocol::RexSettings) {
-    // (The app's lock let go before the hub's is taken.)
-    let Some(hub) = APP.get().map(|m| m.lock().unwrap_or_else(|e| e.into_inner()).hub.clone()) else { return };
+    let Some(hub) = app_hub() else { return };
     hub.follow_shared(rex);
 }
 
@@ -400,7 +425,10 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
     );
     let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), Some(run_approvals.clone()), move |notice| handle_hub_notice(notice));
     let keymap = KeymapEngine::new(&[], &[], &[]);
-    let _ = APP.set(Mutex::new(RexApp { hub, askpass, run_approvals, keymap, ssh_agent: Default::default(), renaming: None, attention: Attention::new(), broadcast_windows: HashSet::new() }));
+    let _ = HUB.set(hub);
+    let _ = ASKPASS.set(askpass);
+    let _ = RUN_APPROVALS.set(run_approvals);
+    let _ = APP.set(Mutex::new(RexApp { keymap, ssh_agent: Default::default(), renaming: None, attention: Attention::new(), broadcast_windows: HashSet::new() }));
 
     // How the SSH agent stands, asked once and off this thread, for Diagnostics.
     let agent_override = settings.ssh_agent_socket.map(PathBuf::from);
@@ -424,8 +452,7 @@ fn handle_hub_notice(notice: HubNotice) {
         }
         HubNotice::StateChanged => {
             // Rebuild keymap if server bindings updated.
-            if let Some(m) = APP.get() {
-                let hub = m.lock().unwrap_or_else(|e| e.into_inner()).hub.clone();
+            if let (Some(m), Some(hub)) = (APP.get(), HUB.get()) {
                 let (bindings, modes, diags) = {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     let local = st.hosts.get("local");
@@ -451,8 +478,7 @@ fn handle_hub_notice(notice: HubNotice) {
         HubNotice::PromptRequested { host_key, req } => {
             if let Some(w) = selected_workspace(&host_key, None, None) {
                 w.messenger().send(WinMsg::ShowPrompt { host_key, req });
-            } else if let Some(a) = APP.get() {
-                let hub = a.lock().unwrap_or_else(|e| e.into_inner()).hub.clone();
+            } else if let Some(hub) = HUB.get() {
                 hub.respond_prompt(&host_key, &req.call_id, true, None);
             }
         }
@@ -491,14 +517,14 @@ fn handle_hub_notice(notice: HubNotice) {
 /// Open the `olo run` desktop command approval sheet populated with a
 /// deterministic demo prompt (`OLO_REX_DEMO_RUN=1|long|plain`) for headless visual QA.
 pub fn open_demo_run_approve(mode: &str) {
-    app().run_approvals.show_demo(mode);
+    the_run_approvals().show_demo(mode);
     open_or_raise_panel(WinRole::RunApprove);
 }
 
 /// Open the Agent Settings batch conflict review window populated with
 /// deterministic demo data (`OLO_REX_DEMO_CARRY=1|empty|remembered|merged`) for headless visual QA.
 pub fn open_demo_carry() {
-    let hub = app().hub.clone();
+    let hub = the_hub().clone();
     crate::carry::open(&hub, "dev", "dev-box");
     open_or_raise_panel(WinRole::Carry);
     carry_changed();
@@ -507,7 +533,7 @@ pub fn open_demo_carry() {
 /// Switch the demo workspace to Activity sidebar with deterministic native nested subagents
 /// (`OLO_REX_DEMO_ACTIVITY=1|collapsed|child|transcript|follow|find|nomatch`) for headless visual QA.
 pub fn open_demo_activity(mode: &str) {
-    let hub = app().hub.clone();
+    let hub = the_hub().clone();
     {
         let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         st.settings.sidebar_mode = SidebarMode::Activity;
@@ -1333,7 +1359,7 @@ impl RexWindow {
 
     fn new_workspace(id: WinId, restored: Option<SavedWorkspaceState>, cx: &mut olo_kit::Cx<Self>) -> Self {
         let (side_w, side_col) = {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             (restored.as_ref().map(|r| r.sidebar_width).unwrap_or(st.settings.sidebar_width), restored.as_ref().map(|r| r.sidebar_collapsed).unwrap_or(st.settings.sidebar_collapsed))
         };
@@ -1560,7 +1586,7 @@ impl RexWindow {
                 (None, None, None, Some(f))
             }
             WinRole::Askpass => {
-                let is_secret = app().askpass.current_request().is_some_and(|r| matches!(r, AskpassRequest::Secret { echo: false, .. }));
+                let is_secret = the_askpass().current_request().is_some_and(|r| matches!(r, AskpassRequest::Secret { echo: false, .. }));
                 let f = widgets::text_field(cx, |f| f.name("Answer").password(is_secret).hint("Enter secret…"));
                 f.focus(cx);
                 cx.subscribe(&f, |w: &mut Self, e: &TextFieldEvent, cx| {
@@ -1609,7 +1635,7 @@ impl RexWindow {
             }
         }
         let repo_fields = (role == WinRole::RepoEdit).then(|| {
-            let was = crate::repos::editing().and_then(|i| app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.get(i).cloned()).unwrap_or_default();
+            let was = crate::repos::editing().and_then(|i| the_hub().state.lock().unwrap_or_else(|e| e.into_inner()).repos.get(i).cloned()).unwrap_or_default();
             let address = widgets::text_field(cx, |f| f.name("Address").hint("git@github.com:you/project.git").with_text(was.url.clone()));
             // (The folder as the list writes it, "~/…"; each hint what
             // an empty field comes to: where it goes by its name, and
@@ -1733,13 +1759,13 @@ impl RexWindow {
     /// typing helper, its bridge, the skill for agents): the status
     /// bar's three marks, for a far host.
     fn host_has(&mut self) -> Option<crate::hub::HostHas> {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let host = self.focused_block_key().map_or_else(|| self.active_host.clone(), |focused| focused.host_key);
         hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_has(&host)
     }
 
     fn silent_host(&mut self) -> Option<String> {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let focused = self.focused_block_key()?;
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         let host = st.hosts.get(&focused.host_key)?;
@@ -1751,7 +1777,7 @@ impl RexWindow {
             let g = tr.lock().unwrap_or_else(|e| e.into_inner());
             return g.target.status_bar_text(g.last_timestamp());
         }
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let focused = self.focused_block_key();
         let (block, local, far) = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1784,7 +1810,7 @@ impl RexWindow {
     }
 
     fn resolve_active_session(&mut self) -> Option<(String, olo_rex_client::SessionView)> {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         let host = st.hosts.get(&self.active_host).or_else(|| st.hosts.get("local"))?;
         self.active_host.clone_from(&host.key);
@@ -1822,13 +1848,13 @@ impl RexWindow {
     /// host first (`RexHub::quick_look_path`).
     fn open_preview(&mut self, bk: BlockKey, path: String) {
         self.cancel_preview();
-        self.preview_job = app().hub.quick_look_path(&bk, path, Feedback::start(self.id));
+        self.preview_job = the_hub().quick_look_path(&bk, path, Feedback::start(self.id));
     }
 
     fn dismiss_overlay(&mut self, cx: &mut olo_kit::Cx<Self>) {
         self.cancel_preview();
         if let Some(ActiveOverlay::RexPrompt { host_key, req, .. }) = self.overlay.take() {
-            app().hub.respond_prompt(&host_key, &req.call_id, true, None);
+            the_hub().respond_prompt(&host_key, &req.call_id, true, None);
         }
         self.focus.focus(cx);
         cx.invalidate();
@@ -1856,7 +1882,7 @@ impl RexWindow {
                 } else {
                     json!({ "value": query })
                 };
-                app().hub.respond_prompt(&host_key, &req.call_id, false, Some(val));
+                the_hub().respond_prompt(&host_key, &req.call_id, false, Some(val));
             }
             None => {}
         }
@@ -1871,7 +1897,7 @@ impl RexWindow {
             let chosen = req.prompt.items.as_ref().and_then(|v| v.get(index)).map(|i| i.id.clone());
             self.overlay = None;
             if let Some(id) = chosen {
-                app().hub.respond_prompt(&hk, &cid, false, Some(json!({ "id": id })));
+                the_hub().respond_prompt(&hk, &cid, false, Some(json!({ "id": id })));
             }
             self.focus.focus(cx);
             cx.invalidate();
@@ -1891,18 +1917,18 @@ impl RexWindow {
             JumpTarget::Window { host_key, session_id, window_id } => {
                 self.active_host = host_key.clone();
                 self.active_session = Some(session_id.clone());
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 hub.select_window(&host_key, &session_id, &window_id);
             }
             JumpTarget::Pane(bk) => {
                 self.active_host = bk.host_key.clone();
                 self.active_session = Some(bk.session_id.clone());
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 hub.focus_block(&bk.host_key, &bk.session_id, &bk.block_id);
             }
             JumpTarget::Directory(dir) => {
                 if let Some(bk) = self.focused_block_key() {
-                    app().hub.send_input(&bk, format!("cd {}\r", crate::hub::shell_quote(&dir)).into_bytes());
+                    the_hub().send_input(&bk, format!("cd {}\r", crate::hub::shell_quote(&dir)).into_bytes());
                 }
             }
         }
@@ -1921,7 +1947,7 @@ impl RexWindow {
             return;
         }
         if let Some(bk) = self.focused_block_key() {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             hub.find(&bk, (!q.is_empty()).then_some(q.as_str()));
         }
         cx.invalidate();
@@ -1936,7 +1962,7 @@ impl RexWindow {
             return;
         }
         if let Some(bk) = self.focused_block_key() {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
                 let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
                 if g.finding {
@@ -1960,7 +1986,7 @@ impl RexWindow {
     /// than this computer (a port of it is here already) that have a
     /// session to forward through.
     fn forward_hosts(&self) -> Vec<(String, String)> {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         st.host_order.iter().filter_map(|k| st.hosts.get(k)).filter(|h| !h.is_local && !h.session_summaries.is_empty()).map(|h| (h.key.clone(), h.label.clone())).collect()
     }
@@ -1974,7 +2000,7 @@ impl RexWindow {
     /// The person's repositories but the one the form is changing: what
     /// a folder typed there mustn't be another's.
     fn repo_others(&self) -> Vec<olo_rex_client::repos::Repo> {
-        let repos = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
+        let repos = the_hub().state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
         let editing = crate::repos::editing();
         repos.into_iter().enumerate().filter(|(i, _)| Some(*i) != editing).map(|(_, repo)| repo).collect()
     }
@@ -1984,7 +2010,7 @@ impl RexWindow {
         let from = self.forward_hosts();
         let key = self.fwd_host.clone().filter(|k| from.iter().any(|(key, _)| key == k)).or_else(|| from.first().map(|(k, _)| k.clone()));
         let (Some(port), Some(key)) = (port, key) else { return };
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let session = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key).and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone()));
         if let Some(session) = session {
             hub.add_local_forward(&key, &session, "127.0.0.1".to_owned(), port, 0, false, self.fwd_keep, Feedback::start(self.id));
@@ -2008,7 +2034,7 @@ impl RexWindow {
         let typed = |f: &Option<Child<TextField>>| f.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
         let (name, address) = (typed(&self.host_label_field), typed(&self.host_addr_field));
         let name = if name.is_empty() { crate::hub::host_name_from(&address) } else { name };
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let endpoint = match crate::setup::address(&address) {
             Address::Empty | Address::Unfit(_) => return,
             Address::Other => address,
@@ -2026,7 +2052,7 @@ impl RexWindow {
     /// Asks for a session's new name.
     fn rename_session(&self, host_key: &str, session_id: &str) {
         let label = {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             st.hosts.get(host_key).and_then(|h| h.session_summaries.iter().find(|s| s.session_id == session_id)).map(|s| s.label.clone()).unwrap_or_default()
         };
@@ -2040,7 +2066,7 @@ impl RexWindow {
         let Some(i) = session.windows.iter().position(|w| w.window_id == window_id) else { return };
         let was = crate::hub::tab_label(&session.windows[i]).unwrap_or_default().to_owned();
         let shown = {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             crate::hub::session_tab_names(&st, host_key, session).into_iter().nth(i).unwrap_or_default()
         };
@@ -2061,7 +2087,7 @@ impl RexWindow {
         if let Some(r) = renaming
             && name != r.was
         {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             match &r.window_id {
                 Some(tab) => hub.rename_window(&r.host_key, &r.session_id, tab, name, Feedback::start(r.from)),
                 None => hub.rename_session(&r.host_key, &r.session_id, name, Feedback::start(r.from)),
@@ -2075,13 +2101,13 @@ impl RexWindow {
         if let Some(f) = &self.askpass_field {
             f.update(cx, |f, cx| f.clear_secret(cx));
         }
-        app().askpass.answer(AskpassReply::Secret(Some(text)));
+        the_askpass().answer(AskpassReply::Secret(Some(text)));
         cx.request_close();
     }
 
     /// Execute any of the ~105 Rex actions cleanly.
     pub fn execute_action(&mut self, action: &str, args: Option<Value>, cx: &mut olo_kit::Cx<Self>) {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         match action {
             "app.view_activity" => {
                 {
@@ -2923,7 +2949,7 @@ impl RexWindow {
 
         // Check Copy Mode first!
         if let Some(bk) = self.focused_block_key() {
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
                 let cm_action = {
                     let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
@@ -3098,7 +3124,7 @@ impl RexWindow {
         // To the pane the keyboard is in (to every pane of the tab while Type in All Panes is on).
         let Some(bk) = self.focused_block_key() else { return };
         let targets = self.input_target_blocks(&bk);
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
 
         // (What the pane's program asked of its keys.)
         let (modes, kitty_flags) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).map_or_else(Default::default, |b| {
@@ -3167,7 +3193,7 @@ impl RexWindow {
     /// states one couldn't see, "Toggle …" with no check, "Export" that
     /// copied, and Copy enabled with nothing selected.)
     fn build_menu_bar(&mut self) -> Vec<Menu> {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let broadcast_on = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
         let sidebar_shown = self.side_pane.showing();
         let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark) = {
@@ -3395,13 +3421,12 @@ impl RexWindow {
         let viewport = cx.viewport_size();
         let scale = cx.scale_factor();
         let surface = cx.surface_id();
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
 
         // Provide structured context to Olo's `/ask` palette!
         if !olo_kit::agent::has_about(cx) {
             olo_kit::agent::about_from(cx, move |_| {
-                let a = app();
-                let st = a.hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                let st = the_hub().state.lock().unwrap_or_else(|e| e.into_inner());
                 let hosts: Vec<String> = st.hosts.values().map(|h| format!("{} ({})", h.label, h.endpoint_raw)).collect();
                 Some(format!("Asked from Olo Rex (multiplexer for local and remote workspaces).\nConnected hosts: {}", hosts.join(", ")))
             });
@@ -3773,7 +3798,7 @@ impl RexWindow {
             // opposite orders stop for good. This one only happened
             // while a host was connecting, which a slow link makes long:
             // found there, 2026-11-22, by the dev build's lock checker.)
-            let askpass = app().askpass.clone();
+            let askpass = the_askpass().clone();
             let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let host = state.hosts.get(&self.active_host);
             let name = host.map_or("This computer", |h| h.label.as_str());
@@ -4154,7 +4179,7 @@ impl RexWindow {
     }
 
     fn render_sidebar(&mut self, width: f32, cx: &mut olo_kit::Cx<Self>) -> Element {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         // (The pane this window shows: Activity's selected row.)
         let shown = self.focused_block_key();
         let (mode, hosts_snap, activity_rows, blocked_n, native_agent_json) = {
@@ -4773,10 +4798,10 @@ impl RexWindow {
                                         }
                                     }
                                     "sub.keep_going" => {
-                                        app().hub.set_help(&bk, |h| h.keep_going = !h.keep_going);
+                                        the_hub().set_help(&bk, |h| h.keep_going = !h.keep_going);
                                     }
                                     "sub.auto_approve" => {
-                                        toggle_auto_approve(&app().hub, &bk, &title);
+                                        toggle_auto_approve(the_hub(), &bk, &title);
                                     }
                                     "sub.toggle_fold" => {
                                         if let Some(slot) = wins().map.get(&win_id) {
@@ -4896,7 +4921,7 @@ impl RexWindow {
     }
 
     fn render_secondary_panel(&mut self, cx: &mut olo_kit::Cx<Self>) -> Element {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         match self.role {
             WinRole::Hosts => {
                 let hub_r = hub.clone();
@@ -4904,7 +4929,7 @@ impl RexWindow {
                 let window = self.id;
                 let hub_f = hub.clone();
                 let hub_s = hub.clone();
-                let askpass = app().askpass.clone();
+                let askpass = the_askpass().clone();
                 // The hosts as they stand now, for the list to draw
                 // from; the one chosen kept by its key, so it stays
                 // chosen as others come and go (the first, to begin with).
@@ -5304,7 +5329,7 @@ impl RexWindow {
                 cx.msg_with(|_: &()| WinMsg::CloseWindow),
             ),
             WinRole::Askpass => {
-                let req = app().askpass.current_request();
+                let req = the_askpass().current_request();
                 match req {
                     Some(AskpassRequest::ConfirmHostKey { host, port, fingerprint, key_type, changed }) => div()
                         .flex()
@@ -5353,7 +5378,7 @@ impl RexWindow {
                 }
             }
             WinRole::RunApprove => {
-                let prompt = app().run_approvals.current();
+                let prompt = the_run_approvals().current();
                 div()
                     .w_full()
                     .track_focus(&self.focus)
@@ -5497,12 +5522,12 @@ impl View for RexWindow {
             }
             WinMsg::CreateSession(hk, dir) => {
                 let again = WinMsg::CreateSession(hk.clone(), dir.clone());
-                app().hub.create_session(&hk, None, dir, Feedback::start(self.id).again(again));
+                the_hub().create_session(&hk, None, dir, Feedback::start(self.id).again(again));
             }
             WinMsg::Redraw => {
                 let visuals = &mut cx.window_state::<PaneVisuals>().0;
                 if !visuals.is_empty() {
-                    let hub = app().hub.clone();
+                    let hub = the_hub().clone();
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     visuals.retain(|k, _| st.blocks.contains_key(k));
                 }
@@ -5524,7 +5549,7 @@ impl View for RexWindow {
             }
             WinMsg::ShowPrompt { host_key, req } => {
                 if self.active_host != host_key {
-                    let hub = app().hub.clone();
+                    let hub = the_hub().clone();
                     hub.respond_prompt(&host_key, &req.call_id, true, None);
                     return;
                 }
@@ -5565,7 +5590,7 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::RevealInTracker(bk, path) => {
-                app().hub.reveal_path_in_tracker(&bk, path, Feedback::start(self.id));
+                the_hub().reveal_path_in_tracker(&bk, path, Feedback::start(self.id));
                 cx.invalidate();
             }
             WinMsg::DismissFeedback => {
@@ -5596,7 +5621,7 @@ impl View for RexWindow {
             }
             WinMsg::PasteText(bk, connection, txt) => {
                 if self.focused_block_key().as_ref() == Some(&bk) {
-                    let hub = app().hub.clone();
+                    let hub = the_hub().clone();
                     let (is_local, bracketed) = {
                         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                         let is_local = st.hosts.get(&bk.host_key).is_some_and(|h| h.is_local);
@@ -5621,7 +5646,7 @@ impl View for RexWindow {
                     let feedback = Feedback::start(self.id);
                     // (Written on a worker: a picture is megabytes.)
                     std::thread::spawn(move || match pasted_image_file(&mime, &bytes) {
-                        Ok(path) => app().hub.upload_files(&bk, vec![path], feedback),
+                        Ok(path) => the_hub().upload_files(&bk, vec![path], feedback),
                         Err(e) => feedback.problem("Couldn’t paste the picture.", e),
                     });
                 }
@@ -5663,7 +5688,7 @@ impl View for RexWindow {
                 crate::activity_watch::close_viewer();
                 self.active_host = hk.clone();
                 self.active_session = Some(sid.clone());
-                app().hub.select_window(&hk, &sid, &wid);
+                the_hub().select_window(&hk, &sid, &wid);
                 if self.side_pane.alone() {
                     self.side_pane.show_rest();
                 }
@@ -5671,7 +5696,7 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::StopSubagent { host_key, session_id, window_id, force, tree } => {
-                app().hub.stop_subagent(&host_key, &session_id, &window_id, force, tree);
+                the_hub().stop_subagent(&host_key, &session_id, &window_id, force, tree);
                 cx.invalidate();
             }
             WinMsg::ConfirmStopSubagents { host_key, session_id, children } => {
@@ -5704,7 +5729,7 @@ impl View for RexWindow {
                     ),
                 };
                 let msg = format!("{heading}\n\n{body}");
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 // Destructive action on the left (plain); Cancel on the right as the safe BeOS default (Return & Esc).
                 // (The alert's own name, by what it would stop.)
                 let named = match (agents, commands) {
@@ -5721,7 +5746,7 @@ impl View for RexWindow {
                 });
             }
             WinMsg::OpenPaneTranscript(bk, title) => {
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 self.jump_to(JumpTarget::Pane(bk.clone()), cx);
                 crate::activity_watch::open_pane_transcript(&hub, &bk, title);
                 if self.side_pane.alone() {
@@ -5872,7 +5897,7 @@ impl View for RexWindow {
                     g.generation += 1;
                 }
                 if let Some(bk) = self.focused_block_key()
-                    && let Some(br) = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned()
+                    && let Some(br) = the_hub().state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned()
                 {
                     let _ = br.lock().unwrap_or_else(|e| e.into_inner()).set_find_query(None);
                 }
@@ -5959,7 +5984,7 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::MoveDo(what) => {
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     panels::MoveDo::Pick(i) => crate::moving::pick(i),
                     panels::MoveDo::Choose => {
@@ -6004,7 +6029,7 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::SetupDo(what) => {
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     panels::SetupDo::Back => crate::setup::back(),
                     panels::SetupDo::Go => crate::setup::go(&hub),
@@ -6017,8 +6042,8 @@ impl View for RexWindow {
                 }
             }
             WinMsg::SetupKey(i) => crate::setup::choose_key(i),
-            WinMsg::HostOpen(key) => open_host(&app().hub.clone(), &key),
-            WinMsg::AccountOpen(key) => open_account(&app().hub.clone(), &key),
+            WinMsg::HostOpen(key) => open_host(the_hub(), &key),
+            WinMsg::AccountOpen(key) => open_account(the_hub(), &key),
             WinMsg::HostChanged => {
                 // (Another host's things in the window: its name in the title.)
                 if self.role == WinRole::Host {
@@ -6034,7 +6059,7 @@ impl View for RexWindow {
             }
             WinMsg::AccountDo(what) => {
                 use crate::account_panel::AccountDo;
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     AccountDo::Run(items) => crate::account::run(&hub, &items),
                     AccountDo::RemoveSkill => crate::account::remove_skill(&hub),
@@ -6067,7 +6092,7 @@ impl View for RexWindow {
             }
             WinMsg::ReposDo(what) => {
                 use crate::repos::ReposDo;
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     ReposDo::Add => {
                         crate::repos::edit(None);
@@ -6096,7 +6121,7 @@ impl View for RexWindow {
                 // they stand.)
                 let others = self.repo_others();
                 let Some(repo) = self.repo_fields.as_ref().map(|fields| crate::repos::typed(cx, fields)).filter(|repo| crate::repos::wrong(repo, &others).is_none()) else { return };
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 let mut repos = hub.state.lock().unwrap_or_else(|e| e.into_inner()).repos.clone();
                 match crate::repos::editing().filter(|i| *i < repos.len()) {
                     Some(i) => repos[i] = repo,
@@ -6120,7 +6145,7 @@ impl View for RexWindow {
             WinMsg::CarryRemChosen => cx.invalidate(),
             WinMsg::CarryDo(what) => {
                 use crate::carry_panel::CarryDo;
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     CarryDo::Tab(i) => {
                         crate::carry::set_tab(i);
@@ -6159,7 +6184,7 @@ impl View for RexWindow {
             }
             WinMsg::HostDo(what) => {
                 use crate::host_panel::HostDo;
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     HostDo::Move => {
                         if let Some(shown) = crate::host::current() {
@@ -6274,7 +6299,7 @@ impl View for RexWindow {
             }
             WinMsg::ServerDo(what) => {
                 use crate::server_panel::ServerDo;
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 match what {
                     ServerDo::Back => crate::server::back(),
                     ServerDo::Go => crate::server::go(&hub),
@@ -6302,13 +6327,13 @@ impl View for RexWindow {
             WinMsg::ServerKey(i) => crate::server::choose_key(i),
             WinMsg::ServerPage(i) => {
                 if let Some(page) = crate::server::Page::ALL.get(i) {
-                    crate::server::page(&app().hub.clone(), *page);
+                    crate::server::page(the_hub(), *page);
                 }
             }
             WinMsg::ServerPerson(i) => crate::server::choose_person(i),
             WinMsg::ServerRange(i) => {
                 if let Some(range) = olo_rex_client::manage::LogRange::ALL.get(i) {
-                    crate::server::read_log(&app().hub.clone(), None, Some(*range));
+                    crate::server::read_log(the_hub(), None, Some(*range));
                 }
             }
             WinMsg::ServerChosen => {
@@ -6321,17 +6346,17 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::AskpassConfirm(ok) => {
-                let is_secret = matches!(app().askpass.current_request(), Some(AskpassRequest::Secret { .. }));
+                let is_secret = matches!(the_askpass().current_request(), Some(AskpassRequest::Secret { .. }));
                 if is_secret {
-                    app().askpass.answer(AskpassReply::Secret(None));
+                    the_askpass().answer(AskpassReply::Secret(None));
                 } else {
-                    app().askpass.answer(AskpassReply::Confirm(ok));
+                    the_askpass().answer(AskpassReply::Confirm(ok));
                 }
                 cx.request_close();
             }
             WinMsg::AskpassSubmit => self.submit_askpass(cx),
             WinMsg::RunApproveChoice(allow) => {
-                let approvals = app().run_approvals.clone();
+                let approvals = the_run_approvals().clone();
                 if let Some(cur) = approvals.current() {
                     if !approvals.respond_from_ui(&cur.id, allow) {
                         // Inside the 0.5 s accidental-click guard for Allow: ignore.
@@ -6345,7 +6370,7 @@ impl View for RexWindow {
                 }
             }
             WinMsg::RunApproveChanged => {
-                if app().run_approvals.current().is_none() {
+                if the_run_approvals().current().is_none() {
                     cx.request_close();
                 } else {
                     cx.invalidate();
@@ -6359,7 +6384,7 @@ impl View for RexWindow {
             WinMsg::RenameSession(hk, sid) => self.rename_session(&hk, &sid),
             WinMsg::TabMenu(i, at) => {
                 let Some((hk, sess)) = self.resolve_active_session() else { return };
-                let hub_ref = app().hub.clone();
+                let hub_ref = the_hub().clone();
                 let (live, top_indices, running_kids) = {
                     let st = hub_ref.state.lock().unwrap_or_else(|e| e.into_inner());
                     let (live, top_indices) = top_level_window_indices(&st.subagents, &hk, &sess);
@@ -6387,7 +6412,7 @@ impl View for RexWindow {
                 let tab = sess.windows[w_idx].window_id.clone();
                 let count = top_indices.len();
                 let top_ids: Vec<String> = top_indices.iter().map(|&idx| sess.windows[idx].window_id.clone()).collect();
-                let panes = sess.windows.get(w_idx).map(|w| tab_agent_panes(&app().hub, &hk, &sess.session_id, w)).unwrap_or_default();
+                let panes = sess.windows.get(w_idx).map(|w| tab_agent_panes(the_hub(), &hk, &sess.session_id, w)).unwrap_or_default();
                 let tab_block = sess.windows.get(w_idx).and_then(|w| {
                     w.focused_block_id.as_deref().filter(|id| w.all_blocks().any(|b| b.block_id == *id)).or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(|bid| BlockKey {
                         host_key: hk.clone(),
@@ -6403,9 +6428,9 @@ impl View for RexWindow {
                     menu = menu.item("Show Transcript", "pane.show_transcript").checked(viewing_transcript).item("Show Terminal", "pane.show_terminal").checked(!viewing_transcript).separator();
                 }
                 for (n, p) in panes.iter().enumerate() {
-                    let help = app().hub.help(p);
+                    let help = the_hub().help(p);
                     let (keep, approve) = if several {
-                        let name = pane_name(&app().hub, p);
+                        let name = pane_name(the_hub(), p);
                         (olo_kit::tr!("Keep It Going in \u{201c}{}\u{201d}", name), olo_kit::tr!("Auto Approve in \u{201c}{}\u{201d}", name))
                     } else {
                         ("Keep It Going".to_owned(), "Auto Approve".to_owned())
@@ -6421,7 +6446,7 @@ impl View for RexWindow {
                 let mut menu =
                     menu.item("Move Tab Left", "window.move_left").enabled(i > 0).item("Move Tab Right", "window.move_right").enabled(i + 1 < count).separator().item("Close Tab", "window.close");
                 menu::resolve(std::slice::from_mut(&mut menu), true);
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 let window = self.id;
                 menu::context_menu(cx, menu, at, move |cmd, _| match cmd {
                     "window.rename" => {
@@ -6472,7 +6497,7 @@ impl View for RexWindow {
             }
             WinMsg::TabTreeMenu(i, bounds) => {
                 let Some((hk, sess)) = self.resolve_active_session() else { return };
-                let hub_ref = app().hub.clone();
+                let hub_ref = the_hub().clone();
                 let (parent_wid, parent_label, parent_detail, rows, active_wid, is_side) = {
                     let st = hub_ref.state.lock().unwrap_or_else(|e| e.into_inner());
                     let (live, top_indices) = top_level_window_indices(&st.subagents, &hk, &sess);
@@ -6571,7 +6596,7 @@ impl View for RexWindow {
             }
             WinMsg::RenameTab(hk, sid, tab) => {
                 let session = {
-                    let hub = app().hub.clone();
+                    let hub = the_hub().clone();
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     st.hosts.get(&hk).and_then(|h| h.sessions.get(&sid)).cloned()
                 };
@@ -6593,7 +6618,7 @@ impl View for RexWindow {
             }
             WinMsg::SidebarMoved => {
                 let (w, col) = (self.side_pane.width(), self.side_pane.collapsed());
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.settings.sidebar_width = w;
                 st.settings.sidebar_collapsed = col;
@@ -6648,11 +6673,11 @@ impl View for RexWindow {
         self.dropping = false;
         if let Some(bk) = self.focused_block_key() {
             if d.mime == "text/uri-list" {
-                app().hub.upload_files(&bk, d.paths(), Feedback::start(self.id));
+                the_hub().upload_files(&bk, d.paths(), Feedback::start(self.id));
             } else {
                 let text = String::from_utf8_lossy(&d.data).into_owned();
                 if !text.is_empty() && paste_is_safe(&text) {
-                    app().hub.send_input(&bk, text.into_bytes());
+                    the_hub().send_input(&bk, text.into_bytes());
                 }
             }
         }
@@ -6686,10 +6711,10 @@ impl Drop for RexWindow {
         // (A move that hasn't stopped the old host ends with its window;
         // one copying or switching goes on, and opens it again to show.)
         if self.role == WinRole::Move && !matches!(crate::moving::current().map(|m| m.stage), Some(crate::moving::Stage::Copying { .. } | crate::moving::Stage::Switching { .. })) {
-            crate::moving::cancel(&app().hub.clone());
+            crate::moving::cancel(the_hub());
         }
         if self.role == WinRole::Server {
-            crate::server::close(&app().hub.clone());
+            crate::server::close(the_hub());
         }
         if self.role == WinRole::Host {
             crate::host::close();
@@ -6702,7 +6727,7 @@ impl Drop for RexWindow {
         }
         if self.role == WinRole::RunApprove {
             // Closing the alert window denies the pending command.
-            app().run_approvals.clone().deny_front();
+            the_run_approvals().clone().deny_front();
         }
         self.cancel_preview();
         app().attention.hide(self.id);
@@ -6721,7 +6746,7 @@ impl TextInput for RexWindow {
         }
         if let Some(bk) = self.focused_block_key() {
             // If Copy Mode is active, route single characters through Copy Mode.
-            let hub = app().hub.clone();
+            let hub = the_hub().clone();
             let handled_cm = {
                 if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
                     let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
@@ -6799,7 +6824,7 @@ impl View for PanesView {
     }
 
     fn body(&mut self, cx: &mut olo_kit::Cx<Self>) -> Element {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         let scale = cx.scale_factor();
         let Some((hk, sid)) = &self.session else { return div() };
         let (settings, active_theme, host_key, host_label, is_local, sess) = {
@@ -6860,7 +6885,7 @@ impl View for PanesView {
                 let sid = sess.session_id.clone();
                 let title = fl.blocks.first().map(|b| if b.label.is_empty() { "Floating".to_owned() } else { b.label.clone() }).unwrap_or_else(|| "Floating".to_owned());
                 minimized_bar = minimized_bar.child(Button::new(title).small().on_click(move |_, _| {
-                    app().hub.set_layer_minimized(&hk, &sid, &lid, false);
+                    the_hub().set_layer_minimized(&hk, &sid, &lid, false);
                 }));
             } else if let Some(b) = fl.blocks.first() {
                 let [bx, by, bw, bh] = fl.bounds;
@@ -6904,7 +6929,7 @@ impl View for PanesView {
                         .flex()
                         .flex_col()
                         .on_mouse_down(MouseButton::Left, move |_, _| {
-                            app().hub.raise_layer(&hk_r, &sid_r, &lid_raise);
+                            the_hub().raise_layer(&hk_r, &sid_r, &lid_raise);
                         })
                         .child(overlays::overlay_card_back("Floating Terminal"))
                         .child(
@@ -6929,11 +6954,11 @@ impl View for PanesView {
                                     let dy = (f32::from(e.position.y) - f32::from(origin.y)) as f64 / vp_h;
                                     let nx = (orig[0] + dx).clamp(0.02, (0.98 - orig[2]).max(0.02));
                                     let ny = (orig[1] + dy).clamp(0.02, (0.98 - orig[3]).max(0.02));
-                                    app().hub.resize_layer(&hk_mv, &sid_mv, &lid_mv, [nx, ny, orig[2], orig[3]]);
+                                    the_hub().resize_layer(&hk_mv, &sid_mv, &lid_mv, [nx, ny, orig[2], orig[3]]);
                                 })
                                 .child(StringView::new(fl_title).bold(true).cut(true))
                                 .child(Button::new("—").small().on_click(move |_, _| {
-                                    app().hub.set_layer_minimized(&hk_m, &sid_m, &lid_min, true);
+                                    the_hub().set_layer_minimized(&hk_m, &sid_m, &lid_min, true);
                                 })),
                         )
                         .child(
@@ -6985,7 +7010,7 @@ impl View for PanesView {
                                         let dy = (f32::from(e.position.y) - f32::from(origin.y)) as f64 / vp_h;
                                         let nw = (orig[2] + dx).clamp(0.24, (0.98 - orig[0]).max(0.24));
                                         let nh = (orig[3] + dy).clamp(0.22, (0.98 - orig[1]).max(0.22));
-                                        app().hub.resize_layer(&hk_rs, &sid_rs, &lid_rs, [orig[0], orig[1], nw, nh]);
+                                        the_hub().resize_layer(&hk_rs, &sid_rs, &lid_rs, [orig[0], orig[1], nw, nh]);
                                     }),
                                 ),
                         ),
@@ -7070,7 +7095,7 @@ fn render_layout_node(
             cx.stop_propagation();
             if e.click_count >= 2 {
                 cx.node_state::<SplitDrag>().0 = None;
-                app().hub.set_split_ratio(&hk_d, &sid_d, &split_id, 0.5);
+                the_hub().set_split_ratio(&hk_d, &sid_d, &split_id, 0.5);
             } else {
                 cx.node_state::<SplitDrag>().0 = Some((e.position, ratio));
             }
@@ -7085,7 +7110,7 @@ fn render_layout_node(
             }
             let (span, moved) = if eff_horiz { (b.size.width, e.position.x - from.x) } else { (b.size.height, e.position.y - from.y) };
             if let Some(next) = split_dragged(was, f32::from(moved), f32::from(span) - line) {
-                app().hub.set_split_ratio(&hk_dr, &sid_dr, &split_id_drag, f64::from(next));
+                the_hub().set_split_ratio(&hk_dr, &sid_dr, &split_id_drag, f64::from(next));
             }
         })
         .on_window_mouse_up(|e, cx| {
@@ -7207,7 +7232,7 @@ fn render_single_pane(
     win_id: WinId,
     cx: &mut olo_kit::Cx<PanesView>,
 ) -> Element {
-    let hub = app().hub.clone();
+    let hub = the_hub().clone();
     let br = {
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         st.blocks.get(&bk).cloned()
@@ -7253,7 +7278,7 @@ fn render_single_pane(
                     .flex_row()
                     .gap(px(m::SPACING))
                     .child(Button::new("Start Terminal Here").default(true).on_click(move |_, _| {
-                        app().hub.split_pane(&hk_ob, &sid_ob, &bid_ob, "right", None);
+                        the_hub().split_pane(&hk_ob, &sid_ob, &bid_ob, "right", None);
                     }))
                     .child(Button::new("Connect Remote Host…").on_click(|_, _| {
                         open_or_raise_panel(WinRole::Hosts);
@@ -7367,7 +7392,7 @@ fn render_single_pane(
             .pl(px(pad.0))
             .pr(px(HEADER_END))
             .on_mouse_down(MouseButton::Left, move |_, _| {
-                let hub = app().hub.clone();
+                let hub = the_hub().clone();
                 hub.focus_block(&bk_click.host_key, &bk_click.session_id, &bk_click.block_id);
             })
             .child(head_bg)
@@ -7397,22 +7422,22 @@ fn render_single_pane(
             if let Some(zp) = zoom_pill {
                 let z = bk_zoom.clone();
                 bar = bar.child(widgets::LinkButton::new(zp).beside(style::PLAIN_SIZE).id(format!("rex-zoomed-{}", bk.block_id)).on_click(move |_, _| {
-                    app().hub.toggle_zoom(&z.host_key, &z.session_id, Some(z.block_id.clone()));
+                    the_hub().toggle_zoom(&z.host_key, &z.session_id, Some(z.block_id.clone()));
                 }));
             }
         }
         if show_split_btns {
             bar = bar
                 .child(GlyphButton::new("Split Right", Glyph::SplitRight).id(format!("rex-split-right-{}", bk.block_id)).quiet(!focused).on_click(move |_, _| {
-                    app().hub.split_pane(&bk_split_r.host_key, &bk_split_r.session_id, &bk_split_r.block_id, "right", None);
+                    the_hub().split_pane(&bk_split_r.host_key, &bk_split_r.session_id, &bk_split_r.block_id, "right", None);
                 }))
                 .child(GlyphButton::new("Split Down", Glyph::SplitDown).id(format!("rex-split-down-{}", bk.block_id)).quiet(!focused).on_click(move |_, _| {
-                    app().hub.split_pane(&bk_split_d.host_key, &bk_split_d.session_id, &bk_split_d.block_id, "down", None);
+                    the_hub().split_pane(&bk_split_d.host_key, &bk_split_d.session_id, &bk_split_d.block_id, "down", None);
                 }));
         }
         if show_close_btn {
             bar = bar.child(GlyphButton::new("Close Pane", Glyph::Close).id(format!("rex-close-pane-{}", bk.block_id)).quiet(!focused).on_click(move |_, _| {
-                app().hub.close_block(&bk_close.host_key, &bk_close.session_id, &bk_close.block_id);
+                the_hub().close_block(&bk_close.host_key, &bk_close.session_id, &bk_close.block_id);
             }));
         }
         Some(bar)
@@ -7560,7 +7585,7 @@ fn render_single_pane(
         }
     })
     .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, cx| {
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         hub.focus_block(&bk_mouse.host_key, &bk_mouse.session_id, &bk_mouse.block_id);
         let rect = vis_mouse.bounds.get();
         let (col, row) = metrics_mouse.cell_at(rect, pad, e.position, vis_mouse.shift.get());
@@ -7573,7 +7598,7 @@ fn render_single_pane(
             let target = vis_mouse.hover.borrow().as_ref().map(|h| h.target.clone());
             if let Some(t) = target {
                 match t {
-                    LinkTarget::Url(u) => app().hub.open_link_from_pane(&bk_mouse, u, Feedback::start(win_id)),
+                    LinkTarget::Url(u) => the_hub().open_link_from_pane(&bk_mouse, u, Feedback::start(win_id)),
                     LinkTarget::FilePath { path, .. } => {
                         if let Some(slot) = wins().map.get(&win_id) {
                             slot.handle.messenger().send(WinMsg::RevealInTracker(bk_mouse.clone(), path));
@@ -7619,7 +7644,7 @@ fn render_single_pane(
                 let sent = br_drag.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Motion, held, key_mods(&e.modifiers), cell);
                 if let Some(bytes) = sent {
                     vis_drag.reported_at.set(Some(cell));
-                    app().hub.send_input(&bk_drag, bytes);
+                    the_hub().send_input(&bk_drag, bytes);
                 }
             }
             if held.is_some() || e.pressed_button.is_none() {
@@ -7644,7 +7669,7 @@ fn render_single_pane(
             let sent = br_right.lock().unwrap_or_else(|e| e.into_inner()).mouse_report(MouseAction::Press, Some(VtButton::Right), key_mods(&e.modifiers), cell);
             if let Some(bytes) = sent {
                 vis_right.reported_at.set(Some(cell));
-                app().hub.send_input(&bk_rclick, bytes);
+                the_hub().send_input(&bk_rclick, bytes);
                 cx.stop_propagation();
                 return;
             }
@@ -7652,7 +7677,7 @@ fn render_single_pane(
         // The menu bar's commands for this pane, by the names and with
         // the checks and keys they have there: the clipboard; its text;
         // the pane itself; closing it, alone and last.
-        let help = app().hub.help(&bk_rclick);
+        let help = the_hub().help(&bk_rclick);
         let (selected, copying, agent) = {
             let g = br_menu.lock().unwrap_or_else(|e| e.into_inner());
             (g.terminal.has_selection(), g.copy_mode.is_some(), g.runs_agent() || g.agent_activity != AgentActivity::Idle)
@@ -7681,7 +7706,7 @@ fn render_single_pane(
         }
         menu = menu.separator().item("Close Pane", "pane.close");
         menu::resolve(std::slice::from_mut(&mut menu), true);
-        let hub = app().hub.clone();
+        let hub = the_hub().clone();
         hub.focus_block(&bk_rclick.host_key, &bk_rclick.session_id, &bk_rclick.block_id);
         let target = bk_rclick.clone();
         let w = win_id;
@@ -7719,7 +7744,7 @@ fn render_single_pane(
         };
         drop(g);
         if !bytes.is_empty() {
-            app().hub.send_input(&bk_scroll, bytes);
+            the_hub().send_input(&bk_scroll, bytes);
         }
         cx.stop_propagation();
     })
@@ -7731,7 +7756,7 @@ fn render_single_pane(
         match sent {
             Some(bytes) => {
                 vis_middle.reported_at.set(Some(cell));
-                app().hub.send_input(&bk_middle, bytes);
+                the_hub().send_input(&bk_middle, bytes);
             }
             None => {
                 if let Some(slot) = wins().map.get(&win_id) {
@@ -7768,7 +7793,7 @@ fn render_single_pane(
                 };
                 vis_up.reported_at.set(None);
                 if let Some(bytes) = sent {
-                    app().hub.send_input(&bk_up, bytes);
+                    the_hub().send_input(&bk_up, bytes);
                 }
             };
             screen_canvas = if out { screen_canvas.on_mouse_up_out(button, release) } else { screen_canvas.on_mouse_up(button, release) };
@@ -7825,7 +7850,7 @@ fn render_single_pane(
     // over older output (at its foot it covered, in a narrow pane, the
     // question it was about: an agent asks at the bottom).
     if let Some(left) = counting {
-        let hub_stop = app().hub.clone();
+        let hub_stop = the_hub().clone();
         let key_stop = bk.clone();
         // (Its screen's width as last drawn: `pane_w` is the window's
         // share, the sidebar's width in it.)
