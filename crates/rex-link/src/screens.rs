@@ -28,7 +28,9 @@
 //!     Olo put here (the newest release; the one tagged TAG; ARCHIVE, a
 //!     file or a URL with its .sha256 beside it), or brought up to it
 //!     (nothing fetched where that release is here already, unless
-//!     `--again`),
+//!     `--again`; and not while screens run on the Olo that is here,
+//!     which would each reload under whoever uses it, unless
+//!     `--under-screens`: status 4, with which run),
 //!     and Chrome: a line of JSON for each step as it goes, then what
 //!     `status` says (status 3: it is put, and this host lacks something
 //!     its screens need, which `missing` and `how` say)
@@ -64,10 +66,11 @@
 //! its program is the furthest parent of ours started with the same one
 //! (`/proc/PID/environ`). A keeper waits for that program's end, on a
 //! file descriptor of the process itself (`pidfd_open`: no polling, and
-//! no other process ever taken for it), in the screen's process group,
-//! so it ends with the screen if the screen is stopped first. Outside a
-//! Rex tab there is no such program to go by, and the screen stays
-//! until stopped, as with `--keep`.
+//! no other process ever taken for it), and for the screen's own
+//! session's the same way: a screen stopped first, by hand, leaves its
+//! keeper nothing to do, and it ends. Outside a Rex tab there is no
+//! such program to go by, and the screen stays until stopped, as with
+//! `--keep`.
 
 use std::os::unix::fs::{FileExt as _, MetadataExt as _};
 use std::os::unix::process::CommandExt as _;
@@ -78,7 +81,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--no-chrome] [--no-emoji-font]
+const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--again] [--under-screens] [--no-chrome] [--no-emoji-font]
                                             Olo and Chrome put on this host for screens here (and a font with emoji, if it has none)
        olo screen status                    what is here, as JSON
        olo screen default [host|desktop]    where `olo screen` goes on this host when it isn't said
@@ -201,12 +204,13 @@ fn start(args: &[String]) -> ! {
         && let Ok(screen) = serde_json::from_slice::<serde_json::Value>(&out.stdout)
         && let (Some(name), Some(session)) = (screen["name"].as_str(), screen["pid"].as_i64())
         && let Some((owner, began)) = tab_program()
+        && let Some((_, session_began)) = parent_and_start(session as i32)
     {
-        // (In the screen's process group: stopped with it. Its own
-        // file: this program, as it was started.)
+        // (In the screen's process group, so that it is seen with it.
+        // Its own file: this program, as it was started.)
         let me = std::env::current_exe().map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(" (deleted)"))).unwrap_or_else(|_| "olo-rex-link".into());
         let kept = Command::new(me)
-            .args(["screen", "keep-until", name, &owner.to_string(), &began.to_string()])
+            .args(["screen", "keep-until", name, &owner.to_string(), &began.to_string(), &session.to_string(), &session_began.to_string()])
             .process_group(session as i32)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -256,20 +260,48 @@ fn tab_program() -> Option<(i32, u64)> {
     found
 }
 
-/// `keep-until NAME PID BEGAN`: wait for the process PID (the one that
-/// began at BEGAN) to end, then stop screen NAME.
-fn keep_until(args: &[String]) -> ! {
-    let [name, owner, began] = args else { std::process::exit(2) };
-    let (Ok(owner), Ok(began)) = (owner.parse::<i32>(), began.parse::<u64>()) else { std::process::exit(2) };
-    // The process itself, held: its number given to another after it
-    // ends is never taken for it.
-    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, owner, 0) } as i32;
-    if fd >= 0 && parent_and_start(owner).is_some_and(|(_, b)| b == began) {
-        let mut waiting = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
-        // (Readable when it has ended. Interrupted: wait again.)
-        while unsafe { libc::poll(&mut waiting, 1, -1) } < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+/// A process held: a descriptor of the process itself (the one that
+/// began at `began`), readable when it has ended. Its number given to
+/// another after it ends is never taken for it. None where it has ended
+/// already.
+fn held(pid: i32, began: u64) -> Option<i32> {
+    // SAFETY: a system call with two integers.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
+    if fd < 0 {
+        return None;
     }
-    // (In a group of its own: `stop` ends the screen's, which is ours.)
+    if parent_and_start(pid).is_some_and(|(_, b)| b == began) {
+        return Some(fd);
+    }
+    // SAFETY: ours, just opened.
+    unsafe { libc::close(fd) };
+    None
+}
+
+/// `keep-until NAME PID BEGAN SESSION SESSION_BEGAN`: wait for the
+/// process PID (the tab's program) to end, then stop screen NAME; or
+/// for the screen's own session to end, and then there is nothing to
+/// stop. (The session too: a screen stopped by hand ends its session,
+/// not its process group, and its keeper, left waiting for the tab,
+/// would have stopped whatever screen had that name by then: seen on
+/// the dev server's own account, 2026-11-26.)
+fn keep_until(args: &[String]) -> ! {
+    let [name, owner, began, session, session_began] = args else { std::process::exit(2) };
+    let (Ok(owner), Ok(began), Ok(session), Ok(session_began)) = (owner.parse::<i32>(), began.parse::<u64>(), session.parse::<i32>(), session_began.parse::<u64>()) else { std::process::exit(2) };
+    // The screen it was left for has ended already: nothing to keep.
+    let Some(session) = held(session, session_began) else { std::process::exit(0) };
+    if let Some(owner) = held(owner, began) {
+        let mut waiting = [libc::pollfd { fd: owner, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: session, events: libc::POLLIN, revents: 0 }];
+        // (Each readable when its process has ended. Interrupted: wait again.)
+        // SAFETY: two descriptors of ours, in an array of two.
+        while unsafe { libc::poll(waiting.as_mut_ptr(), 2, -1) } < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+        // The screen ended first, stopped by hand or by itself.
+        if waiting[1].revents != 0 {
+            std::process::exit(0);
+        }
+    }
+    // The tab's program has ended and the screen still runs: stopped.
+    // (In a group of its own: `stop` may end the screen's, which is ours.)
     let _ = screen_tool(&["stop".to_owned(), name.clone()]).process_group(0).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
     std::process::exit(0);
 }
@@ -313,8 +345,21 @@ fn install(args: &[String]) -> ! {
         (None, None, false) => olo_release::latest().ok().map(|r| r.version),
         _ => None,
     };
+    // Olo isn't changed under screens that run: each follows the Olo it
+    // runs from (its app_server reloads in place a moment after its
+    // programs change, its apps start again), which is nothing to do to
+    // another agent in the middle of a page. Said, with which run;
+    // `--under-screens` goes ahead. (Chrome and the font are put all
+    // the same: a running Chrome keeps the one it was started from.)
+    let running = if here.is_some() && !args.iter().any(|a| a == "--under-screens") { running_screens(&prefix) } else { Vec::new() };
+    let mut held = false;
     if here.is_some() && here == wanted {
         say(json!({ "installed": here, "changed": 0, "was": true }));
+    } else if !running.is_empty() {
+        held = true;
+        say(
+            json!({ "installed": here, "changed": 0, "held": running, "how": "screens run on the Olo that is here, and each would reload a moment after it changed: `olo screen install` again once they are stopped, or `olo screen install --under-screens`" }),
+        );
     } else {
         let (changed, version) = match olo_release::install(&prefix, &ask, &AtomicBool::new(false), &mut |doing, done, all| told.tell(doing, done, all)) {
             Ok(done) => done,
@@ -354,7 +399,13 @@ fn install(args: &[String]) -> ! {
     let now = status();
     let ready = now["missing"].as_array().is_some_and(Vec::is_empty) && now["older"].as_object().is_some_and(|o| o.is_empty()) && now["software_drawing"] == true;
     say(now);
-    std::process::exit(if ready { 0 } else { 3 });
+    // (3: this host lacks something its screens need. 4: Olo was left
+    // as it is, for the screens that run.)
+    std::process::exit(match (ready, held) {
+        (false, _) => 3,
+        (true, true) => 4,
+        (true, false) => 0,
+    });
 }
 
 fn default(args: &[String]) -> ! {
@@ -375,6 +426,12 @@ fn default(args: &[String]) -> ! {
     std::process::exit(0);
 }
 
+/// The screens that run on the Olo under `prefix`, by name.
+fn running_screens(prefix: &Path) -> Vec<String> {
+    let listed = Command::new(prefix.join("bin/olo-screen")).arg("list").output().ok().and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok()).unwrap_or_default();
+    listed.as_array().into_iter().flatten().filter(|s| s["state"] == "running").filter_map(|s| s["name"].as_str().map(str::to_owned)).collect()
+}
+
 fn remove() -> ! {
     let prefix = prefix();
     if !prefix.join("bin/olo-screen").is_file() {
@@ -382,8 +439,7 @@ fn remove() -> ! {
         std::process::exit(0);
     }
     // (Never under a screen that runs: its programs are these files.)
-    let listed = Command::new(prefix.join("bin/olo-screen")).arg("list").output().ok().and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok()).unwrap_or_default();
-    let running: Vec<String> = listed.as_array().into_iter().flatten().filter(|s| s["state"] == "running").filter_map(|s| s["name"].as_str().map(str::to_owned)).collect();
+    let running = running_screens(&prefix);
     if !running.is_empty() {
         fail(format_args!("{} here ({}): `olo screen --on host stop NAME` first", if running.len() == 1 { "a screen still runs" } else { "screens still run" }, running.join(", ")));
     }
