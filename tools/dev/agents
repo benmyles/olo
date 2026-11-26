@@ -271,10 +271,13 @@ def child(name):
 def press(name, key):
     """A key pressed in it (named as tmux names keys)."""
     if via(name) == "rex":
-        if re.fullmatch(r"[0-9A-Za-z]", key):
-            olo("send", child(name), "--text", key, check=True)
-        else:
-            olo("send", child(name), "--key", OLO_KEYS.get(key, key), check=True)
+        # (As a key, never as text: text is pasted where the program
+        # takes pastes, and a pasted "1" answers no question; and text is
+        # refused while a child asks leave. A choice's own key is meant
+        # (`--force`): which choice may be taken is this tool's to decide,
+        # and it has, before it presses. The first approval of a child
+        # tab went unanswered twice over, 2026-11-26.)
+        olo("send", child(name), "--force", "--key", OLO_KEYS.get(key, key), check=True)
     else:
         tmux("send-keys", "-t", f"={name}:0.0", key, check=True)
 
@@ -1303,6 +1306,33 @@ def say(name, text, now=False):
     print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until the step it is on ends (`agents say {name} --now …` delivers at once)"))
 
 
+def choose(name, pick, choices):
+    """Take `pick`, one of the `choices` a question shows (its key and
+    its words). In tmux: its own key, a digit. In a child tab a digit
+    can't be pressed (text there is pasted where the program takes
+    pastes, and refused while a child asks leave), so it is taken as the
+    service takes an answer: by what the choice means (`olo agent
+    approve`, which sees its mark on that very choice before Return and
+    Escapes otherwise), and, for a choice that is none of its kinds, by
+    moving the mark down to it from the first and confirming."""
+    if via(name) != "rex":
+        press(name, pick[0])
+        return
+    words = pick[1]
+    kind = ("--once" if words.startswith("Yes") and "always" not in words and "auto mode" not in words
+            else "--session" if words.startswith("Yes") and "in this conversation" in words
+            else "--no" if words.startswith("No") else None)
+    if kind:
+        r = olo("approve", child(name), kind, "--json")
+        if r.returncode == 0:
+            return
+        print(f"agents: olo agent approve {kind} didn't take ({(r.stderr or r.stdout).strip()[:200]}): moving to the choice instead", file=sys.stderr)
+    for _ in range([c[0] for c in choices].index(pick[0])):
+        press(name, "Down")
+        time.sleep(0.15)
+    press(name, "C-m")
+
+
 def answer(name, how):
     """Answer what it asks: y, p, no, or the number of a choice."""
     refuse_nested()
@@ -1331,7 +1361,7 @@ def answer(name, how):
     if any(x in pick[1] for x in SAVES):
         sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
     before = screen(name, 400) or ""
-    press(name, pick[0])
+    choose(name, pick, choices)
     # (Whether it took: its screen moves on. The same question again after
     # that is a second asking, not this one left up: an agent that ran a
     # script asked to run it again, and the minder took it for an answer

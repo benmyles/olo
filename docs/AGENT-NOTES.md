@@ -2583,6 +2583,15 @@ their host's"):
   - Its first message is short and names the brief's file: a page of
     rules isn't sent as a command's argument through a tab's command
     line.
+  - A choice's digit can't be pressed in a child tab: `olo agent send`
+    pastes its text where the program takes pastes (a pasted "1"
+    answers nothing), refuses text while a child asks leave, and takes
+    no bare character for a `--key`. The tool answers as the service
+    does, by what the choice means (`olo agent approve --once |
+    --session | --no`), and moves the mark down for a choice of no such
+    kind (`choose`). The first approval a child tab asked for went
+    unanswered until this was so: a minder said yes three times to
+    nobody.
 - **An agent's shell has a proxy on its own loopback, and Podman hands
   it to every container** (`HTTPS_PROXY=http://127.0.0.1:PORT` in a
   Claude Code session here; Podman's `--http-proxy` is on by default).
