@@ -10971,9 +10971,21 @@ Chrome, GTK 4.16 text), and how Olo does it:
   points from its parent's *true* left edge, rounded after. Where the
   parent stands on half a pixel the two round apart. Before, both were
   rounded from the same rounded edge, and agreed, while things outside
-  the parent did not. The cure is in the lengths, not the rounding: an
-  inset that must match a control's is a whole number of device pixels
-  (TODO). A layout pass costs what it did
+  the parent did not. **Lengths on whole device pixels are not the
+  cure: tried and taken out** the same day (every length a style gives
+  layout rounded to the nearest pixel, as a border's width is; every
+  app's live lint with its review at 1, 1.25, 1.5, 1.75 and 2×, the
+  tree against the tree with it): those notes went, and Software
+  Updates' two, but 0 errors and 44 notes became 7 errors and 67
+  notes. Parts rounded each by itself don't add up to their sum
+  rounded (6 and 6 points are 8 and 8 pixels at 1.25×, 12 points are
+  15): whatever is lined up by two different sums parts by a pixel
+  (twelve new "almost line up" in Token Pool), and a row of fixed parts
+  no longer fits what holds it (a Splitter a pixel past its window in
+  Phone and Telegram at 1.25× and 1.75×). Layout keeps true lengths,
+  and rounds places: what is at one true place is at one pixel. What
+  is left is for a control's drawing to know its true place (TODO). A
+  layout pass costs what it did
   (1,801 nodes, one changed, release: 124 to 131 µs before and after,
   five runs each; `rounding_cost`). The 4-point grid above still holds
   for what is *drawn* from a size (a divider at a column's edge): this

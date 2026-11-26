@@ -150,15 +150,23 @@ something nobody here has is in "Blocked", with what it waits for.
   points: 22.5 px at 1.25×, 31.5 at 1.75×) from the canvas's rounded
   edge; the line beside or under it is put by layout the same 18 points
   from an edge that isn't rounded until after (HACKING, "A node's place
-  is its cumulative place rounded"). To do, in the kit: one way to say
-  "as far in as a mark's label" that both use, a whole number of device
-  pixels (the kit's own `described`, buttons.rs, has the same
-  `pl(width + MARK_GAP)`); or, the larger and better cure, lengths
-  snapped to device pixels where a style becomes layout (as a border's
-  width already is, `border_device_pixels`), so that a 34-point band is
-  43 pixels wherever it stands and 18-point rows don't step 22, 23, 22
-  (the items below): that changes what every window measures at 1.25×,
-  1.5× and 1.75×, and wants its own before and after of every app.
+  is its cumulative place rounded"). The kit's own `described`
+  (buttons.rs) has the same `pl(width + MARK_GAP)`. Not the cure:
+  lengths snapped to device pixels where a style becomes layout (tried
+  and taken out, 2026-11-26; HACKING has the numbers: 7 errors and 23
+  more notes, since 6 + 6 points and 12 points stop being the same
+  pixels). Two ways left, neither small: (1) the control's drawing is
+  told how far its true place is from its rounded one (`place` in
+  crates/interface/src/window.rs sums rounded places; taffy keeps the
+  true ones, `unrounded_layout`), and puts its label where layout
+  would, `round(18 pt + that)`; a drawing kept and moved by whole
+  pixels must then be made again when that part of a pixel changes
+  (a centred form in a window being resized: every other step), for
+  the canvases that asked for it only, and `place` runs for every
+  node of every layout, so measure it; (2) a check box, radio button
+  and light with a label become a row laid out (mark, gap, label)
+  instead of one canvas: three nodes for one, its focus ring, press
+  and agent node on the row.
 - **Found beside the layout rounding fix, all there before it** (one
   round of both reviewers on its before and after, 2026-11-26; both
   reviews whole in `/var/tmp/olo-site-reviews/layout-rounding-*.md` on

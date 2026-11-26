@@ -489,9 +489,15 @@ mod tests {
     /// device row 75 and the pane began at 76 (two offsets that each end
     /// on half a pixel, rounded each by itself), a row of the window's
     /// ground between them; the layout review's "seam".
+    ///
+    /// The same sizes as shares, too, which end on any part of a pixel,
+    /// not only a half, as whatever layout divides can (shares of a
+    /// little more than a window that is whole pixels itself, as windows
+    /// are, so that none ends on half a pixel but for what a float loses,
+    /// which no rounding puts the same way twice).
     #[test]
     fn what_follows_a_row_begins_where_it_ends_at_every_scale() {
-        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+        for (scale, shares) in [1.0, 1.25, 1.5, 1.75, 2.0].into_iter().flat_map(|scale| [(scale, false), (scale, true)]) {
             for (bar, strip) in [(26.0, 34.0), (25.0, 33.0), (26.0, 13.0), (31.0, 17.0)] {
                 let mut layout: Layout<u32> = Layout::new();
                 let rem = px(16.0);
@@ -500,17 +506,19 @@ mod tests {
                     layout.set_children(id, children);
                     id
                 };
-                let menu = add(div().w_full().h(px(bar)).flex_shrink_0(), &[]);
-                let tabs = add(div().w_full().h(px(strip)).flex_shrink_0(), &[]);
-                let header = add(div().w_full().h(px(strip)).flex_shrink_0(), &[]);
+                let (wide, tall) = if shares { (800.0, 600.0) } else { (801.0, 601.0) };
+                let high = |points: f32| if shares { crate::relative(points / 601.3) } else { px(points).into() };
+                let menu = add(div().w_full().h(high(bar)).flex_shrink_0(), &[]);
+                let tabs = add(div().w_full().h(high(strip)).flex_shrink_0(), &[]);
+                let header = add(div().w_full().h(high(strip)).flex_shrink_0(), &[]);
                 let body = add(div().w_full().flex_1(), &[]);
                 let view = add(div().size_full().flex().flex_col(), &[header, body]);
                 let pane = add(div().flex_1().w_full().flex().flex_col(), &[view]);
                 let centre = add(div().flex_1().flex().flex_col(), &[tabs, pane]);
-                let side = add(div().w(px(13.0 * bar)).h_full().flex_shrink_0(), &[]);
+                let side = add(div().w(if shares { crate::relative(13.0 * bar / 801.3) } else { px(13.0 * bar).into() }).h_full().flex_shrink_0(), &[]);
                 let row = add(div().flex_1().w_full().flex(), &[side, centre]);
                 let root = add(div().size_full().flex().flex_col(), &[menu, row]);
-                let available = size(AvailableSpace::Definite(px(801.0)), AvailableSpace::Definite(px(601.0)));
+                let available = size(AvailableSpace::Definite(px(wide)), AvailableSpace::Definite(px(tall)));
                 layout.compute(root, available, scale, |_, _, _| Size::default());
                 // (In device pixels, summed down the tree as `place` sums them.)
                 let at = |chain: &[LayoutId]| {
@@ -524,12 +532,12 @@ mod tests {
                 };
                 let (tabs_at, header_at, body_at) = (at(&[root, row, centre, tabs]), at(&[root, row, centre, pane, view, header]), at(&[root, row, centre, pane, view, body]));
                 let (side_at, centre_at) = (at(&[root, row, side]), at(&[root, row, centre]));
-                let why = format!("at {scale}x, a bar {bar} and rows {strip} points high");
+                let why = format!("at {scale}x, a bar {bar} and rows {strip} points high{}", if shares { ", as shares of the window" } else { "" });
                 assert_eq!(header_at.1, tabs_at.3, "the header's top and the strip's foot, {why}");
                 assert_eq!(body_at.1, header_at.3, "the body's top and the header's foot, {why}");
                 assert_eq!(centre_at.0, side_at.2, "the centre's left and the side's right, {why}");
-                assert_eq!(body_at.3, (601.0 * scale).round(), "the body's foot and the window's, {why}");
-                assert_eq!(centre_at.2, (801.0 * scale).round(), "the centre's right and the window's, {why}");
+                assert_eq!(body_at.3, (tall * scale).round(), "the body's foot and the window's, {why}");
+                assert_eq!(centre_at.2, (wide * scale).round(), "the centre's right and the window's, {why}");
             }
         }
     }
