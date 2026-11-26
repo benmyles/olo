@@ -8502,7 +8502,10 @@ fn sidebar_native_child_row(
 
     let depth = child.row.depth.clamp(1, 4);
     let indent = (depth as f32) * CHILD_INDENT;
-    let left = ACTIVITY_FOLD_W + indent + ROW_ICON + 4.0;
+    // (Its name as far from its icon as a top row's is: with 4 points a
+    // child's mark crowded its name, and the gap differed by level, Opus
+    // 5.5's look of 2026-11-26.)
+    let left = ACTIVITY_FOLD_W + indent + ROW_ICON + m::TIGHT;
     let title = child.row.entry.display_title();
     let command = child.command;
     // (A command of the asker's own runs; it is no agent at work or at rest.)

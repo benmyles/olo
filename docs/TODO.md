@@ -47,9 +47,13 @@ something nobody here has is in "Blocked", with what it waits for.
   16 pt above and below (`WINDOW_INSET`, both); the question's ink
   starts 19 pt down (its line's 3 pt of leading) and a plain button ends
   16 pt up, the default button's ring 13 pt up. So it is the line's
-  leading and the default ring, not the margins: to fix in the alert's
-  own message and button row (the frame is every dialog's, whose first
-  row may be a field), compared before and after across the alerts.
+  leading and the default ring, not the margins. Done 2026-11-26 in the
+  alert's own message and button row (`MESSAGE_RISE`, `DEFAULT_RING`;
+  the frame, every dialog's, is as it was, and an alert is as tall as it
+  was): measured after in Rex's stop alert, the question's ink 16.00 pt
+  down at 2× (15.00 at 1×, 16.67 at 1.5×: a pixel of hinting either
+  way; 19 before) and the default button's ring 16.00 pt up (16.67 at
+  1.5×; 13 before).
   ~~Also from Opus 5.5 R3 on Rex's Stop Subagents alert (2026-11-26):
   re-centre alerts horizontally on their parent window's frame~~ Done
   2026-11-26, and it wasn't a centring: that alert had no parent at all
@@ -11236,6 +11240,8 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A build of the tree served this host's live agents service for two minutes**~~ (2026-11-26, 10:15:25 to 10:17:46 UTC; the ShiftUp lead: "we cannot watch or reach them. Please put it back now"). Put back at once (the registry on disk was untouched), and the five things that met are each closed, with tests: Escape takes Cancel in an alert wherever it stands (it took the first button, and Rex's stop alert's first is the stop; a picture's script pressed it); Rex's demo runs no helper; a service hands over only to a helper put beside its own file; what a service keeps is found from the home and another home has another socket; every `tsession` has a Rex server socket nothing listens on and an agents folder of its own. As their lead asked: a registry that can't be read is a failure (69), never an empty list; a replacement of the service there is said in their file first; and `~/.local/state/olo/host-upgrade.hold` holds it. AGENT-NOTES has the whole of it.
 
 - ~~**Ctrl+Enter does nothing in a Rex terminal**~~ (done 2026-11-26; Ben: "ctrl+enter doens't seem to work (at least in claude code) in a rex terminal"). Found, not guessed: Claude Code asks a Rex pane for the kitty keyboard protocol at its start (it writes `CSI ? u`, then `CSI > 5 u`, and xterm's `CSI > 4 ; 2 m` beside: read from what it wrote there), the Rex server's own encoder has the protocol (Ctrl+Enter `CSI 13;5u`, Shift+Enter `CSI 13;2u`, Escape `CSI 27u`: asked of a scratch server with `rex send-key`), and Olo's Rex sent its keys as bytes from xterm's table, where Enter with any modifier is a Return. Rex now hands the server the keys that table can't say for a program that asked for the protocol (`term_keys::kitty_encodes`: a key of the table with a modifier, Escape, and every key of it under flag 8); a program that asked nothing gets what it always got. Pressed for real in a headless Rex on a scratch server, the program in the pane showing its bytes: Enter `\r`, Ctrl+Enter `CSI 13;5u`, Shift+Enter `CSI 13;2u`, Alt+Enter `CSI 13;3u`, Ctrl+Shift+Enter `CSI 13;6u`, Shift+Tab `CSI 9;2u`, Escape `CSI 27u`; and without the protocol `\r`, `\r`, `\r`, `ESC \r`, `CSI Z`, `ESC`, as before. `olo agent send --key` presses the same keys through the server too (`pressed_key`, `block.event`): `--key Ctrl+Enter` is `CSI 13;5u` to Claude Code, xterm's `CSI 27;5;13~` to a program that asked nothing.
   - Olo's own Terminal already had the protocol (`view::kitty_code`, `csi_u`: its own encoder over alacritty's modes); the gap was Rex's alone, which sent what Terminal's legacy table sends and left the protocol to nobody.

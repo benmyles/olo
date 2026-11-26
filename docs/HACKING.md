@@ -17105,7 +17105,26 @@ an asker running a later-written file of the helper
 (`asker_is_a_later_build`: before, only a change of protocol took over,
 and on a host whose agents never rest an upgrade that spoke the same
 never took effect), and is never handed back to an earlier one.
-`OLO_NO_HOST_UPGRADE=1` leaves the host be.
+`OLO_NO_HOST_UPGRADE=1` leaves the host be, and so does a hold: while
+`~/.local/state/olo/host-upgrade.hold` is there (anyone's file, its
+words saying why), nothing on the host is replaced. On a host where
+other agents work, a replacement of the service is said to their lead
+before it is made (2026-11-26, after a build of the tree served this
+host's live socket for two minutes: AGENT-NOTES has all of it).
+**Which service is a host's, and what may take it**: its socket is the
+account's (`/run/user/UID/olo-rex-agents/KEY.sock`, KEY the Rex server's
+socket) and what it keeps is under the home (`~/.local/state/olo/
+rex-agents/KEY`), never where `XDG_STATE_HOME` points, so everyone who
+finds the socket finds the same registry; a home that isn't the
+account's own (by /etc/passwd) has a socket of its own beside it
+(`KEY-HOME.sock`); `OLO_REX_AGENTS_DIR` puts all of it in one folder
+(tests, and every `tsession`, which also has `REX_SERVER_SOCKET` at a
+socket nothing listens on). A running service hands over only to a
+helper put beside its own file, written later; never to a build
+elsewhere, nor to a program that isn't the helper. A registry that is
+there and can't be read ends the service's start with its file named
+(`olo agent` exits 69): never an empty list. Rex's demo runs no
+helper.
 Its log is `publish.log` there, its last line "published URL",
 "dry run: …" or "failed: WHY". Why a container: Olo's programs link
 the system's libraries and glibc, and a release built on another

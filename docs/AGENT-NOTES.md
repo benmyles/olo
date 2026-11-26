@@ -2501,6 +2501,41 @@ their host's"):
   measuring script that started its server with `&` and then waited for
   thirty starts never came back. Wait for the numbers you started
   (`pids+=($!)`, `wait "${pids[@]}"`).
+- **A build of mine became a host's live agents service for 2 min 21 s
+  (2026-11-26, 10:15:25 to 10:17:46 UTC), under four of another lead's
+  agents hours into their work.** Five things met; each is closed, and
+  each is a thing to look for again:
+  1. A picture's script pressed Escape (`tsession key NAME 1`) on Rex's
+     "Stop 2 subagents?" alert to put it away. Escape took an alert's
+     first button whatever it said, and that alert's first is the
+     stop. **Escape now takes Cancel wherever it stands** (`escape_of`).
+     Put a dialog away in a script by its Cancel, and know what a key
+     does before a script presses it.
+  2. Rex's **demo** has a "This computer" that is the computer it runs
+     on: the stop went to the real host's helper. The demo now runs no
+     helper at all (`activity_watch::may_ask_hosts`).
+  3. The service handed over to "a later build", and any newer
+     `olo-rex-link` file counted: the tree's debug build did. **Only a
+     helper put beside the running one** takes over now.
+  4. A test session has the account's runtime folder and a state
+     folder of its own (`XDG_STATE_HOME`), and the service found its
+     socket by the one and its registry by the other: it came up on the
+     live socket over an empty folder. **State is found from the home**
+     now, and another home has another socket (`wire::Paths`).
+  5. Nothing in a test session kept Rex from the account's own Rex
+     server and service. **Every `tsession` now has `REX_SERVER_SOCKET`
+     at a socket nothing listens on and `OLO_REX_AGENTS_DIR` in its own
+     folder**; a test that needs a server gives its own to `run`.
+  Put right by retiring the wrong service and asking once through the
+  installed helper from the real environment (`~/.local/share/olo/
+  rex-link/olo-rex-link-ID-ARCH agent retire`, then `… agent list`):
+  the registry on disk was untouched, because the wrong service kept
+  its own. `olo agent ping` and `readlink /proc/PID/exe` say which
+  build serves; `tr '\0' '\n' < /proc/PID/environ` what it was started
+  with. **On a host where others' agents run: nothing built from the
+  tree speaks to the live socket; a replacement of the service is said
+  in their file before it happens; and `~/.local/state/olo/
+  host-upgrade.hold` (anyone's, any words) holds it.**
 - **A node keeps "the pointer is here" when another element takes it
   over** (the phantom tip, 2026-11-26). The tree matches elements to
   nodes by place where they have no key of their own, so a list's row

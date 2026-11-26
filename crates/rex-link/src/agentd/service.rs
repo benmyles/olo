@@ -224,6 +224,14 @@ fn asker_is_a_later_build(pid: i32) -> bool {
     if !name.trim_end_matches(" (deleted)").starts_with("olo-rex-link") {
         return false;
     }
+    // (And put beside this one: an upgrade, in the folder a host's
+    // helpers are kept in. A build somewhere else is not one: the debug
+    // build of a source tree, asked through from a test session, was
+    // handed the live service of a host with agents at work, 2026-11-26.)
+    let Ok(mine_at) = std::fs::read_link("/proc/self/exe") else { return false };
+    if mine_at.parent() != theirs_at.parent() {
+        return false;
+    }
     // (Through /proc's own links: a file taken off the disk since, as an
     // upgrade's tidying does, is still read.)
     let (Ok(mine), Ok(theirs)) = (std::fs::metadata("/proc/self/exe"), std::fs::metadata(format!("/proc/{pid}/exe"))) else { return false };
@@ -1247,7 +1255,15 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         eprintln!("olo agents: the Rex server wouldn't say what happens in its sessions: {e}");
         return 69;
     }
-    let reg = SubagentRegistry::load_from(&paths.registry);
+    let reg = match SubagentRegistry::read_from(&paths.registry) {
+        Ok(reg) => reg,
+        Err(why) => {
+            // (Said, and no service: whoever asks is told it can't be
+            // asked, with this word, and is never told "no children".)
+            eprintln!("olo agents: {why}");
+            return 69;
+        }
+    };
     let log = load_events(&paths, reg.event_seq);
     let _ = std::fs::remove_file(&paths.socket);
     let listener = match UnixListener::bind(&paths.socket) {

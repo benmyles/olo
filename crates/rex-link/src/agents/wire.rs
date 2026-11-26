@@ -135,8 +135,26 @@ fn runtime_dir(uid: u32) -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
+/// Where the service keeps what it knows: under the home, and nowhere
+/// `XDG_STATE_HOME` says. The socket is the account's (its runtime
+/// folder), and what is kept must be found from the same root by
+/// everyone who finds the socket: a test session with a state folder of
+/// its own and the account's runtime folder started a service on the
+/// live socket over an empty folder, and four agents hours into their
+/// work were nobody's children for two minutes (2026-11-26).
 fn state_home(home: &Path) -> PathBuf {
-    std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home.join(".local/state"))
+    home.join(".local/state")
+}
+
+/// The account's own home as the system has it (its line in
+/// /etc/passwd). None where the system keeps its accounts elsewhere.
+fn account_home(uid: u32) -> Option<PathBuf> {
+    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
+    passwd.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        let (_name, _x, id, _gid, _gecos, home) = (fields.next()?, fields.next()?, fields.next()?, fields.next()?, fields.next()?, fields.next()?);
+        (id.parse::<u32>().ok()? == uid && !home.is_empty()).then(|| PathBuf::from(home))
+    })
 }
 
 impl Paths {
@@ -150,8 +168,13 @@ impl Paths {
             return Self { registry: dir.join("registry.json"), events: dir.join("events.jsonl"), lock: dir.join("lock"), log: dir.join("service.log"), socket: dir.join("sock"), dir };
         }
         let dir = state_home(home).join("olo/rex-agents").join(&key);
+        // (A home that isn't the account's own, a sandbox's or a test's,
+        // has a socket of its own beside the account's: whoever is given
+        // another home never reaches, nor starts, the account's service.)
+        let theirs = account_home(uid).is_none_or(|own| own == home);
+        let name = if theirs { format!("{key}.sock") } else { format!("{key}-{:016x}.sock", fnv(home.as_os_str().as_encoded_bytes())) };
         let socket = match runtime_dir(uid) {
-            Some(rt) => rt.join("olo-rex-agents").join(format!("{key}.sock")),
+            Some(rt) => rt.join("olo-rex-agents").join(name),
             None => dir.join("sock"),
         };
         Self { registry: dir.join("registry.json"), events: dir.join("events.jsonl"), lock: dir.join("lock"), log: dir.join("service.log"), socket, dir }
@@ -182,6 +205,32 @@ pub fn server_socket(home: &Path, uid: u32) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a service keeps is found from the home, the same by
+    /// everyone who finds its socket (never from `XDG_STATE_HOME`); and
+    /// a home that isn't the account's own has a socket of its own, so
+    /// nobody given another home reaches or starts the account's service.
+    #[test]
+    fn the_socket_and_what_is_kept_are_found_from_the_same_home() {
+        use std::os::unix::fs::MetadataExt as _;
+        if std::env::var_os("OLO_REX_AGENTS_DIR").is_some() {
+            return;
+        }
+        let uid = std::fs::metadata("/proc/self").map(|m| m.uid()).unwrap_or(0);
+        let server = Path::new("/run/user/1/rex/server.sock");
+        let Some(own) = account_home(uid) else { return };
+        let mine = Paths::of(server, &own, uid);
+        assert_eq!(mine.dir.parent().unwrap(), own.join(".local/state/olo/rex-agents"), "under the home, whatever XDG_STATE_HOME says");
+        let key = mine.dir.file_name().unwrap().to_string_lossy().into_owned();
+        let other = Paths::of(server, Path::new("/var/tmp/another-home"), uid);
+        assert_eq!(other.dir, Path::new("/var/tmp/another-home/.local/state/olo/rex-agents").join(&key));
+        if mine.socket.parent() != Some(mine.dir.as_path()) {
+            // (Where there is a runtime folder: the account's is named by the key alone.)
+            assert_eq!(mine.socket.file_name().unwrap().to_string_lossy(), format!("{key}.sock"));
+            assert_ne!(other.socket, mine.socket, "another home's is another socket");
+            assert!(other.socket.file_name().unwrap().to_string_lossy().starts_with(&format!("{key}-")));
+        }
+    }
 
     #[test]
     fn a_request_and_an_answer_are_one_line_each() {

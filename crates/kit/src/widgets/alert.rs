@@ -273,10 +273,32 @@ pub fn alert_width(buttons: &[&str]) -> f32 {
     ((ALERT_TEXT_X + row + m::WINDOW_INSET + 4.0).ceil()).max(ALERT_WIDTH)
 }
 
+/// How far an alert's message is raised into its top margin, so its
+/// first line's capitals stand a margin below the alert's top, level
+/// with its icon's top: a line of text has that much above its capitals
+/// (measured 3 pt at 1×, 1.5× and 2× in the plain size), and the margin
+/// measured to the line's box left the question 19 pt down against 16
+/// under the buttons (Opus 5.5, 2026-11-24: "the margin above the
+/// question is 20 pt but the margin below the buttons is 15 pt. Make
+/// both 16 pt").
+const MESSAGE_RISE: f32 = 3.0;
+/// How far the default button's ring reaches past its row: the room
+/// kept under the row for it, so the ring, the lowest thing drawn,
+/// stands a margin above the alert's foot (it stood 13 pt above).
+const DEFAULT_RING: f32 = 3.0;
+
+/// Which of an alert's buttons Escape takes: the one that cancels
+/// ("Cancel", as the app names it, before it is said in the person's
+/// language), wherever it stands; the first where none does.
+fn escape_of(buttons: &[&str]) -> usize {
+    buttons.iter().position(|b| *b == "Cancel").unwrap_or(0)
+}
+
 /// How tall an alert of `width` with `message` must be.
 pub fn alert_height(message: &str, width: f32) -> f32 {
     let text = message_height(message, width - ALERT_TEXT_X - m::WINDOW_INSET);
-    (m::WINDOW_INSET + text.max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
+    // (The message raised by what its row's ring takes below: the same height as before.)
+    (m::WINDOW_INSET + (text - MESSAGE_RISE).max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + DEFAULT_RING + m::WINDOW_INSET).ceil()
 }
 
 /// Who an alert's answer goes to.
@@ -413,15 +435,25 @@ impl View for Alert {
         div()
             .size_full()
             .track_focus(&self.focus)
-            // Escape takes the first when there's more than one (usually
-            // Cancel).
+            // Escape takes Cancel where there is one, else the first, when
+            // there's more than one (`alert`).
             .on_key_down(cx.listener(move |alert: &mut Self, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() && n > 1 {
                     alert.choose(Some(alert.escape.min(n - 1)), cx);
                     cx.stop_propagation();
                 }
             }))
-            .child(AlertFrame::new(self.icon.clone()).child(message(self.message.clone())).children(countdown).child(div().flex_1()).child(row))
+            .child(
+                AlertFrame::new(self.icon.clone())
+                    // (Its capitals a margin below the top, its default
+                    // button's ring a margin above the foot: `MESSAGE_RISE`,
+                    // `DEFAULT_RING`.)
+                    .child(div().w_full().mt(px(-MESSAGE_RISE)).child(message(self.message.clone())))
+                    .children(countdown)
+                    .child(div().flex_1())
+                    .child(row)
+                    .child(div().h(px(DEFAULT_RING)).flex_shrink_0()),
+            )
     }
 }
 
@@ -431,6 +463,12 @@ fn alert(title: &str, icon: &str, message: &str, buttons: &[&str], timeout: Opti
     // they come as plain text, so they're found by what they say.)
     let (title, message) = (crate::words::of_text(title), crate::words::of_text(message));
     let (title, message): (&str, &str) = (&title, &message);
+    // Escape takes Cancel, wherever it stands; the first button where
+    // none says so. (It took the first whatever it said: in an alert
+    // whose Cancel is last, the default, Escape did the very thing being
+    // asked about. Rex's "Stop 2 subagents?" stopped them on Escape,
+    // 2026-11-26, found when a test's Escape sent a real stop.)
+    let escape = escape_of(buttons);
     let said: Vec<SharedString> = buttons.iter().map(|b| crate::words::of_text(b)).collect();
     let labels: Vec<&str> = said.iter().map(|b| b.as_ref()).collect();
     let buttons: &[&str] = &labels;
@@ -450,7 +488,7 @@ fn alert(title: &str, icon: &str, message: &str, buttons: &[&str], timeout: Opti
         done: false,
         timeout,
         ticking: false,
-        escape: 0,
+        escape,
     };
     (crate::WindowOptions::alert(title.to_owned(), width, height), alert)
 }
@@ -566,7 +604,19 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use super::Timeout;
+    use super::{Timeout, escape_of};
+
+    /// Escape never does the thing asked about: it takes Cancel wherever
+    /// Cancel stands, and the first button where there is none.
+    #[test]
+    fn escape_takes_cancel_wherever_it_stands() {
+        assert_eq!(escape_of(&["Cancel", "Delete"]), 0);
+        assert_eq!(escape_of(&["Stop All", "Cancel"]), 1, "Cancel last, the default: Escape is not Stop All");
+        assert_eq!(escape_of(&["Turn On", "Cancel"]), 1);
+        assert_eq!(escape_of(&["Cancel", "Keep Both", "Replace"]), 0);
+        assert_eq!(escape_of(&["Deny", "Allow"]), 0);
+        assert_eq!(escape_of(&["OK"]), 0);
+    }
 
     fn timeout(left: Duration) -> Timeout {
         Timeout { at: Rc::new(Cell::new(Instant::now() + left)), choice: 0, says: Rc::new(|n| format!("{n}")) }

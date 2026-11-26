@@ -42,6 +42,10 @@ What it does, each as the desktop's own install does it
    one again in that moment, so it is asked until the service is the new
    helper's.
 
+A hold: while ~/.local/state/olo/host-upgrade.hold is there, nothing is
+replaced (its words say why and whose it is); --even-if-held goes ahead
+all the same. Whoever has agents at work on the host may put it there.
+
 It prints what it did, and its last line is "host-upgrade: done: …",
 "host-upgrade: nothing to do: …" or "host-upgrade: failed: WHY" (exit 1).
 """
@@ -57,6 +61,7 @@ HOME = os.path.expanduser("~")
 LINKS = os.path.join(HOME, ".local/share/olo/rex-link")
 SKILL = os.path.join(HOME, ".claude/skills/olo-rex-bridge")
 COMMANDS = os.path.join(HOME, ".local/share/olo/rex-commands")
+HOLD = os.path.join(HOME, ".local/state/olo/host-upgrade.hold")
 # (The order the app's build.rs takes them in for its ID.)
 MACHINES = ["x86_64", "aarch64"]
 
@@ -132,6 +137,15 @@ def main():
         work = args[args.index("--work") + 1]
     if not os.path.isdir(LINKS):
         print(f"host-upgrade: nothing to do: this host has none of Olo's helper ({LINKS}); the desktop sets a host up")
+        return
+    # Held: whoever has agents at work on this host says so with a file,
+    # and nothing here is replaced while it is there (its words are why).
+    # (2026-11-26: a service replaced under four agents hours into their
+    # work, for 2 min 21 s, by a build of mine; their lead asked to be
+    # told before the service is replaced. A hold is how they say no.)
+    if os.path.exists(HOLD) and "--even-if-held" not in args:
+        why = " ".join(open(HOLD).read().split())[:200]
+        print(f"host-upgrade: nothing to do: held by {HOLD} ({why or 'no word of why'}): remove it, or --even-if-held")
         return
     machine = platform.machine()
     if machine not in MACHINES:
