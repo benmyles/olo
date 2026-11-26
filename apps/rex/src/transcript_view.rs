@@ -1003,7 +1003,12 @@ fn render_rich_text(tp: &TailPalette, raw: &str, is_mono: bool, parse_md: bool, 
                         size: Some(px(font_size)),
                     }],
                 ));
-                col = col.child(div().w_full().pb(px(2.0)).flex().flex_row().items_start().child(glyph).child(div().flex_1().min_w_0().child(text_el)));
+                // (An item from the next by more than a line from the next
+                // within an item: 2 points, and an item that wrapped ran
+                // into the one after it, three lines of one paragraph. The
+                // layout review, in any pane narrow enough to wrap one:
+                // "are 2.0 pt apart: give them room".)
+                col = col.child(div().w_full().pb(px(m::TIGHT)).flex().flex_row().items_start().child(glyph).child(div().flex_1().min_w_0().child(text_el)));
             }
             MdBlockKind::Normal => {
                 let el = render_rich_slice(tp, &plain, &md_spans, is_mono, font_size, base_ink, field_matches, s, e);
