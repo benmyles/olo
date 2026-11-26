@@ -631,7 +631,6 @@ impl Service {
             }
             return;
         }
-        self.tell(&entry, cls.state, cls.summary.clone());
         if self.text_watchers.load(std::sync::atomic::Ordering::Relaxed) > 0 {
             self.changed.notify_waiters();
         }
@@ -655,6 +654,15 @@ impl Service {
             live.check_gen = live.check_gen.wrapping_add(1);
             if unstarted || cls.state == SubagentLiveState::Working { None } else { Some(live.check_gen) }
         };
+        // Followers are told what its screen says now that it differs
+        // from what it said (it works, it asks): at once, before it is
+        // settled with its transcript below. Not at every reading of a
+        // screen that says the same: that took back what had been
+        // settled (done, by its transcript, told as at rest again by
+        // the next look at the same screen), and a follower that shows
+        // the state it is told (the desktop's rows) would have said At
+        // rest of a child that was done.
+        self.tell(&entry, cls.state, cls.summary.clone());
         // (A question come or gone: who waits on that looks at once.)
         if cls.folder_trust.is_some() || cls.approval.is_some() || cls.state == SubagentLiveState::Exited || cls.state == SubagentLiveState::Working {
             self.changed.notify_waiters();
