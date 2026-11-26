@@ -28790,7 +28790,9 @@ its drawing, `HubState::host_stands` what it shows).
   (2026-11-26; the desktop's side of "Agent Screens of a host's own",
   above, where the host's side is). Two sections in the window's
   pattern.
-  **Agent Screens on this host**: Olo itself there, a thing like the
+  **Agent Screens** (its heading was "Agent Screens on this host"
+  until the list came two sections down with "Screens on this host",
+  and the first read as the list's): Olo itself there, a thing like the
   others (`HostThing::Screens`), its line as the host's helper says it
   stands (`olo-rex-link screen status` there, asked with the rest:
   `host_screens::ScreensThere`). Not installed; Installed, and after
@@ -28809,10 +28811,24 @@ its drawing, `HubState::host_stands` what it shows).
   own `olo` does), where Install puts this Olo's helper there first
   and says it will. Install and Update run `screen install` there and
   hear its lines (`Installing::hear`): "Being installed… · Downloading
-  Olo, 42%", then unpacking, Chrome, the font, kept by the hub
-  (`screens_doing`) so a window closed and opened meanwhile still says
-  it; no button beside it while it goes, nor while the host hasn't
-  answered yet (a greyed Install there guessed, or read as stuck).
+  Olo", then unpacking, Chrome, the font: the step by name, and how
+  far the whole is as a bar under the line (the kit's `StatusBar`, 8 pt
+  in its sunken well, filled in the meters' neutral slate,
+  `style::neutral_bar`; 5 pt under its status line and 10 over the
+  description, so it is the line's and not the paragraph's rule, and
+  as long as from the words' edge to the left edge of the button
+  beside the line; each step given its share of the whole, so the
+  bar only goes forward: Olo's download half, unpacked and put in
+  place a quarter, Chrome a fifth, the font the rest; a step's own
+  "42%" beside a bar a fifth full read as two answers, so the words
+  carry no figure). Both are kept by the hub (`screens_doing`) so a
+  window closed and opened meanwhile still says them. **Cancel** is
+  the one button while it goes (`RexHub::cancel_screens`,
+  `HostDo::ScreensCancel`): the hub's task is stopped, its channel goes
+  with it, and what ran on the host ends with the channel (the script
+  is `ready::cancellable`'s); what was fetched is kept for the next
+  try, and the host is asked again what it has. No button while the
+  host hasn't answered yet (a greyed Install there guessed).
   **One structure in every state**: what the thing is and how it is
   updated never go (two lines, then its path: "Puts Olo and Chrome on
   this host so agents’ screens can run on it." / "Updates when you
@@ -28823,8 +28839,8 @@ its drawing, `HubState::host_stands` what it shows).
   screens running: review, agent-2.", and with an update on offer
   "Update once they are stopped.", said before it is pressed); or what
   is wrong, in the label's ink, a sentence of Olo's own with what to do
-  about it (`Stands::why` with `keeps_note`; "Still running: review.
-  Stop it, then try again."; "The host couldn’t reach Olo’s releases on
+  about it (`Stands::why` with `keeps_note`; "A screen is still
+  running. Stop it below, then try again."; "The host couldn’t reach Olo’s releases on
   GitHub: …", the machine that couldn't named:
   `host_screens::why_not_installed`, `why_not_removed`), never a
   command's last words in a well. Never among what Remove All… takes
@@ -28849,15 +28865,63 @@ its drawing, `HubState::host_stands` what it shows).
   "`olo screen --on desktop` (this computer) or `--on host`". The host's
   copy is never called a desktop in the window: `--on desktop` means
   this computer.
+  **Screens on this host**, last, in every state (empty where Olo
+  isn't there yet, "No screens.": a finished install fills a list in,
+  it doesn't add a section, and the tab isn't half empty on a new
+  host): the host's screens as a list in a well, as the window's other
+  lists are (`host_panel::screens_section`, a `ColumnListView` of three
+  rows' room that scrolls past them: Screen, Title, Started, Status
+  with its light; Title is the one column of prose and the widest, a
+  name 100 pt, a time 80; the four declared come to 492 of the 494 pt
+  the rows have beside the scroll bar, read from the row's own node on
+  the rig, since a point over makes the list scroll sideways with its
+  bar across the third row, which the lint doesn't see). Running ones
+  first, the one started last at their head, then the stopped, then
+  the archived, by name (`host_screens::in_order`); Started is the
+  time of today, "Yesterday", or the day ("Nov 24"). At the right of
+  its heading, how many there are and how many run ("6 screens · 3
+  running"; a row being stopped isn't one that runs). Under it **Look
+  at Screen** and **Stop Screen** for the one chosen (a running one; no
+  button on any row: a healthy row has none), each with a tip that
+  says what it does (`Button::tip`, new in the kit for them: "Quits
+  everything running on the screen. The screen stays in the list,
+  stopped."). The host is asked for them with its status, in one
+  command (`host_screens::asked_script`: `screen status`, a line that
+  divides, `screen list`; `ScreensThere::rows`), so nothing is asked
+  that wasn't before and nothing polls: the list is as the host last
+  said (Check Again, and after anything done here). Look at Screen
+  (and opening a row) takes a picture there (`screen look`), reads the
+  file over the link (`RexHub::look_at_screen`, into Olo's cache,
+  `~/.cache/olo/rex-screens/HOST-NAME.png`, one file a screen, written
+  over by its next look) and opens it in what shows pictures here; Stop
+  Screen is `screen stop` (`RexHub::stop_screen`), its row "Stopping…"
+  with the busy ring until the host has answered. What couldn't be
+  done is one line under the buttons, with the down light: a sentence
+  of Olo's own, its first half in the ink of the window's other
+  failures ("Couldn’t look at notes:" then "it isn’t running any
+  more.", `host_screens::why_not_done`: the tool's own "there's no
+  screen … (olo-screen list)" denied a row the list shows), and the
+  host is asked again; the line's room is kept when nothing failed, so
+  the window and the buttons at its foot don't move when something
+  does. The one chosen is kept by its name (`host_screen_chosen`), so
+  it stays chosen as a stopped screen goes down the list. With the
+  list there, the lines above no longer name the screens that run
+  (said once: "Update once the running screens below are stopped.",
+  Update greyed meanwhile; "Screens are still running. Stop them below,
+  then try again."), and an empty list says how screens come to be
+  ("No screens yet. Agents on the host start them."; "No screens."
+  where Olo isn't there or none can run).
   What is typed within a sentence (here, and the Files tab's own hint)
   is set by one helper (`typed`): the sentence's own line height, so it
   shares its baseline at every scale (a line of its own height stood a
   pixel off at 1.5× and 1.75×), and a point of room after it ("host or"
   stood 2 pixels apart at 1× where the words either side stood 4).
-  Agents: `host.put:KEY:screens`, `host.update:…`, `host.take:…`, and
-  `host.screens:KEY:host|desktop`. The demo's states:
-  `OLO_REX_DEMO_SCREENS=none|installing|behind|lacking|running|host|
-  nohelper|asking|failed|refused|notallowed`. Tried on the rig against
+  Agents: `host.put:KEY:screens`, `host.update:…`, `host.take:…`,
+  `host.cancel:KEY:screens`, `host.screens:KEY:host|desktop`, and
+  `host.screen:KEY:look|stop:NAME`; the bar is a `ProgressBar` with
+  its percent, each row's cells are read. The demo's states:
+  `OLO_REX_DEMO_SCREENS=none|installing|behind|lacking|running|many|
+  stopping|stopfailed|host|nohelper|asking|failed|refused|notallowed`. Tried on the rig against
   an SSH host of its own: installed from the window in 12.5 s with its
   progress said, the default kept on the host, a running screen named,
   a removal refused under it and said so, taken off once it was

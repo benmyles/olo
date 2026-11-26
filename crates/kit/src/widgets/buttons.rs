@@ -51,6 +51,8 @@ pub struct Button {
     menu: bool,
     /// As tall as what it stands beside (`Button::height`).
     height: Option<f32>,
+    /// What it does, said when the pointer rests on it (`Button::tip`).
+    tip: Option<SharedString>,
     on_click: Option<Handler>,
 }
 
@@ -61,7 +63,30 @@ pub const MENU_MARK_ROOM: f32 = 14.0;
 impl Button {
     pub fn new(label: impl Into<SharedString>) -> Button {
         let label = crate::words::of(label);
-        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, menu: false, height: None, on_click: None }
+        Button {
+            id: label.clone(),
+            label,
+            default: false,
+            pushed: false,
+            small: false,
+            enabled: true,
+            min_width: m::BUTTON_MIN_WIDTH,
+            working: None,
+            menu: false,
+            height: None,
+            tip: None,
+            on_click: None,
+        }
+    }
+
+    /// A tip saying `text`, once the pointer has rested on it: what a
+    /// button under a list does to the row chosen, where its two words
+    /// can't say it all (Rex's Stop Screen: "Ends what runs on it. The
+    /// screen is kept, stopped."). It shows whether the button can be
+    /// pressed or not, as a check box's does.
+    pub fn tip(mut self, text: impl Into<SharedString>) -> Self {
+        self.tip = Some(crate::words::of(text));
+        self
     }
 
     /// Its id, when two buttons share a label.
@@ -189,7 +214,13 @@ impl IntoElement for Button {
         if let Some(f) = self.on_click {
             c = c.on_click(move |event, cx| f(event, cx));
         }
-        c.into_element()
+        match self.tip {
+            Some(text) if self.enabled => c.tip(text).into_element(),
+            // (What isn't enabled hears nothing of the pointer: its tip
+            // is its place's, around it, as a check box's.)
+            Some(text) => crate::tip::on(div().flex_shrink_0().child(c.into_element()), format!("tip-{}", self.id), text),
+            None => c.into_element(),
+        }
     }
 }
 

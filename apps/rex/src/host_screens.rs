@@ -22,6 +22,107 @@ exit 69"#
     )
 }
 
+/// What divides the two answers of [`asked_script`].
+const LISTED: &str = "--olo-screens-listed--";
+
+/// What a host is asked of its screens in one command: the helper's
+/// `screen status`, then (where Olo is there) every screen it has, as
+/// `olo-screen list` writes them. Status 69, nothing said, where the
+/// host has no helper with screens.
+pub fn asked_script() -> String {
+    format!(
+        r#"h=$(ls -t "$HOME"/.local/share/olo/rex-link/olo-rex-link-*-"$(uname -m)" 2>/dev/null | head -n 1)
+case "$([ -n "$h" ] && "$h" screen --help 2>/dev/null)" in
+"usage: olo screen"*) ;;
+*) exit 69 ;;
+esac
+"$h" screen status
+echo {LISTED}
+"$h" screen list 2>/dev/null
+exit 0"#
+    )
+}
+
+/// One of a host's screens, as its `olo-screen list` has it.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct ScreenRow {
+    pub name: String,
+    /// The name it was given to show by, if any.
+    pub title: Option<String>,
+    pub running: bool,
+    /// Put out of the way there (`archive`): listed last, dimmer.
+    pub archived: bool,
+    /// Its size in points, and when it was started (seconds since the
+    /// epoch; a running one's).
+    pub size: (u32, u32),
+    pub started: Option<u64>,
+}
+
+impl ScreenRow {
+    /// How it stands, in a word: "Running", "Stopped", "Archived".
+    pub fn said(&self) -> &'static str {
+        match (self.running, self.archived) {
+            (true, _) => "Running",
+            (false, false) => "Stopped",
+            (false, true) => "Archived",
+        }
+    }
+
+    /// When a running one was started, by this computer's clock: "2:02
+    /// PM" of today, "Yesterday", "Nov 24" of a day before (a bare time
+    /// reads as today's); nothing of one that doesn't run.
+    pub fn started_said(&self) -> String {
+        match self.started.filter(|_| self.running) {
+            Some(at) => {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+                started_at(olo_kit::clock::local(at as i64), olo_kit::clock::local(now), olo_kit::clock::local(now - 86_400))
+            }
+            None => String::new(),
+        }
+    }
+}
+
+/// Why one of a host's screens couldn't be looked at or stopped, as the
+/// window says it after "Couldn’t stop review:": the tool's own words
+/// for a screen that doesn't run any more ("there's no screen …
+/// (olo-screen list)", which names a command and denies a row the list
+/// shows) said as what happened; anything else as the host said it,
+/// ended as a sentence.
+pub fn why_not_done(said: &str) -> String {
+    let said = said.trim().trim_start_matches("olo-screen: ").trim_start_matches("olo screen: ").trim();
+    if said.contains("there's no screen") || said.contains("isn't running") || said.contains("is not running") {
+        return olo_kit::words::tr("it isn’t running any more.").to_string();
+    }
+    if said.is_empty() {
+        return olo_kit::words::tr("the host didn’t say why.").to_string();
+    }
+    if said.ends_with(['.', '!', '?', '…']) { said.to_owned() } else { format!("{said}.") }
+}
+
+/// `then` as it is said today: the time alone of `today`, "Yesterday" of
+/// the day before (`yesterday`: a time in it), its day of an earlier one.
+fn started_at(then: olo_kit::clock::Local, today: olo_kit::clock::Local, yesterday: olo_kit::clock::Local) -> String {
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let day = |d: &olo_kit::clock::Local| (d.year, d.month, d.day);
+    if day(&then) == day(&today) {
+        format!("{} {}", then.time(), if then.hour < 12 { "AM" } else { "PM" })
+    } else if day(&then) == day(&yesterday) {
+        olo_kit::words::tr("Yesterday").to_string()
+    } else {
+        format!("{} {}", MONTHS[then.month.clamp(0, 11) as usize], then.day)
+    }
+}
+
+/// A host's screens in the list's order: those that run first, the one
+/// started last at their head (a screen just started is the first row,
+/// never one out of sight in a list that scrolls); then the stopped,
+/// then the archived, each by name.
+pub fn in_order(rows: &mut [ScreenRow]) {
+    rows.sort_by(|a, b| {
+        (!a.running, a.archived, std::cmp::Reverse(a.started.filter(|_| a.running)), &a.name).cmp(&(!b.running, b.archived, std::cmp::Reverse(b.started.filter(|_| b.running)), &b.name))
+    });
+}
+
 /// What a host has for screens of its own, as last heard.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct ScreensThere {
@@ -47,6 +148,9 @@ pub struct ScreensThere {
     pub bytes: u64,
     /// The screens that run there now, by name.
     pub running: Vec<String>,
+    /// Every screen there (running first, then stopped, then archived,
+    /// each by name), where the host was asked for them.
+    pub rows: Vec<ScreenRow>,
 }
 
 impl ScreensThere {
@@ -57,6 +161,29 @@ impl ScreensThere {
         if status == Some(69) {
             return Some(ScreensThere::default());
         }
+        // (What `asked_script` writes after its status: the screens.)
+        let (output, listed) = match output.split_once(LISTED) {
+            Some((status, listed)) => (status, Some(listed)),
+            None => (output, None),
+        };
+        let mut rows: Vec<ScreenRow> = listed
+            .and_then(|listed| serde_json::from_str::<Value>(listed.trim()).ok())
+            .and_then(|listed| listed.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|s| {
+                let state = s["state"].as_str().unwrap_or("stopped");
+                Some(ScreenRow {
+                    name: s["name"].as_str()?.to_owned(),
+                    title: s["title"].as_str().filter(|t| !t.is_empty()).map(str::to_owned),
+                    running: state == "running",
+                    archived: state == "archived",
+                    size: (s["width"].as_u64().unwrap_or(0) as u32, s["height"].as_u64().unwrap_or(0) as u32),
+                    started: s["started"].as_u64(),
+                })
+            })
+            .collect();
+        in_order(&mut rows);
         let said: Value = output.lines().rev().find_map(|line| serde_json::from_str::<Value>(line.trim()).ok().filter(Value::is_object))?;
         let words = |v: &Value| v.as_array().map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_owned)).collect::<Vec<_>>()).unwrap_or_default();
         Some(ScreensThere {
@@ -70,7 +197,10 @@ impl ScreensThere {
             software: said["software_drawing"].as_bool().unwrap_or(true),
             on_host: said["default"] == "host",
             bytes: said["bytes"].as_u64().unwrap_or(0),
-            running: words(&said["running"]),
+            // (As listed, where they were: the status's own names are a
+            // helper's from before the list was asked.)
+            running: if listed.is_some() { rows.iter().filter(|r| r.running).map(|r| r.name.clone()).collect() } else { words(&said["running"]) },
+            rows,
         })
     }
 
@@ -129,8 +259,8 @@ impl ScreensThere {
 /// What a line of `screen install` says.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Heard {
-    /// How far it is, in the person's words.
-    Progress(String),
+    /// How far it is, in the person's words, and of the whole (0 to 1).
+    Progress(String, f32),
     /// Something of it failed, as the helper said it.
     Error(String),
     /// Olo was left as it is: these screens run there.
@@ -139,10 +269,15 @@ pub enum Heard {
 }
 
 /// An install being listened to: its lines say what is being done, and
-/// after "chrome" the same words are Chrome's.
+/// after "chrome" the same words are Chrome's. How far the whole is, is
+/// reckoned from its steps, each given its share of the time the whole
+/// took on the dev server (Olo downloaded, half; unpacked and put in
+/// place, a quarter; Chrome, a fifth; the font, the rest): a bar that
+/// only goes forward, where each step's own fraction began again.
 #[derive(Default)]
 pub struct Installing {
     chrome: bool,
+    far: f32,
 }
 
 impl Installing {
@@ -156,25 +291,27 @@ impl Installing {
             return Heard::Held(held.iter().filter_map(|s| s.as_str().map(str::to_owned)).collect());
         }
         let Some(doing) = said["doing"].as_str() else { return Heard::Nothing };
-        let percent = said["fraction"].as_f64().map(|f| (f * 100.0).round() as u32);
-        let of = |what: &str, percent: Option<u32>| match percent {
-            Some(p) if p < 100 => format!("{what}, {p}%"),
-            _ => what.to_owned(),
-        };
-        Heard::Progress(match (doing, self.chrome) {
+        let part = said["fraction"].as_f64().map(|f| f.clamp(0.0, 1.0) as f32);
+        // (The step by name, no figure of its own: how far is the bar's
+        // to say, of the whole, and a step's "42%" beside a bar a fifth
+        // full read as two answers.)
+        // (Each step's share of the whole: where it begins, how much it is.)
+        let (words, begins, share) = match (doing, self.chrome) {
             ("chrome", _) => {
                 self.chrome = true;
-                tr!("Getting Chrome").to_string()
+                (tr!("Getting Chrome").to_string(), 0.75, 0.0)
             }
-            ("emoji font", _) => tr!("Getting a font with emoji").to_string(),
-            ("downloading", false) => of(&tr!("Downloading Olo"), percent),
-            ("unpacking", false) => of(&tr!("Unpacking Olo"), percent),
-            ("installing", false) => tr!("Putting Olo in place").to_string(),
-            ("looking", true) => tr!("Getting Chrome").to_string(),
-            ("downloading", true) => of(&tr!("Downloading Chrome"), percent),
-            ("unpacking", true) => tr!("Unpacking Chrome").to_string(),
+            ("emoji font", _) => (tr!("Getting a font with emoji").to_string(), 0.95, 0.05),
+            ("downloading", false) => (tr!("Downloading Olo").to_string(), 0.0, 0.5),
+            ("unpacking", false) => (tr!("Unpacking Olo").to_string(), 0.5, 0.15),
+            ("installing", false) => (tr!("Putting Olo in place").to_string(), 0.65, 0.1),
+            ("looking", true) => (tr!("Getting Chrome").to_string(), 0.75, 0.0),
+            ("downloading", true) => (tr!("Downloading Chrome").to_string(), 0.75, 0.15),
+            ("unpacking", true) => (tr!("Unpacking Chrome").to_string(), 0.9, 0.05),
             _ => return Heard::Nothing,
-        })
+        };
+        self.far = self.far.max(begins + share * part.unwrap_or(0.0));
+        Heard::Progress(words, self.far)
     }
 }
 
@@ -187,9 +324,12 @@ impl Installing {
 pub fn why_not_removed(said: &str) -> String {
     let said = said.trim().strip_prefix("olo screen: ").unwrap_or(said.trim());
     let names = said.split_once(" here (").and_then(|(before, rest)| before.contains("still run").then(|| rest.split_once(')').map(|(names, _)| names.to_owned())).flatten());
+    // (Which run is the list's to say, under this line, where they are
+    // stopped too: their names again here were the list's, said twice,
+    // and a line that wrapped with six of them. Opus 5.5's look.)
     match names {
-        Some(names) if names.contains(", ") => olo_kit::tr!("Still running: {}. Stop them, then try again.", names).to_string(),
-        Some(name) => olo_kit::tr!("Still running: {}. Stop it, then try again.", name).to_string(),
+        Some(names) if names.contains(", ") => olo_kit::words::tr("Screens are still running. Stop them below, then try again.").to_string(),
+        Some(_) => olo_kit::words::tr("A screen is still running. Stop it below, then try again.").to_string(),
         None => said.to_owned(),
     }
 }
@@ -269,19 +409,81 @@ mod tests {
     /// font; what failed, and what held it.
     #[test]
     fn an_installs_lines_say_how_far_it_is() {
-        let mut heard = Installing::default();
-        let mut said = |line: &str| heard.hear(line);
-        assert_eq!(said(r#"{"doing":"downloading","fraction":0.417}"#), Heard::Progress("Downloading Olo, 42%".into()));
-        assert_eq!(said(r#"{"doing":"unpacking","fraction":1.0}"#), Heard::Progress("Unpacking Olo".into()));
-        assert_eq!(said(r#"{"doing":"installing","fraction":0.2}"#), Heard::Progress("Putting Olo in place".into()));
+        let heard = std::cell::RefCell::new(Installing::default());
+        let said = |line: &str| heard.borrow_mut().hear(line);
+        // (Its words, and how far the whole is: only ever forward.)
+        let far = std::cell::Cell::new(0.0f32);
+        let progress = |line: &str, words: &str| match said(line) {
+            Heard::Progress(w, f) => {
+                assert_eq!(w, words);
+                assert!(f >= far.get() && f <= 1.0, "{words}: {f} after {}", far.get());
+                far.set(f);
+                f
+            }
+            other => panic!("{line}: {other:?}"),
+        };
+        assert!((progress(r#"{"doing":"downloading","fraction":0.417}"#, "Downloading Olo") - 0.2085).abs() < 0.001);
+        assert_eq!(progress(r#"{"doing":"unpacking","fraction":1.0}"#, "Unpacking Olo"), 0.65);
+        progress(r#"{"doing":"installing","fraction":0.2}"#, "Putting Olo in place");
         assert_eq!(said(r#"{"changed":75,"installed":"2026.11.26-c2a7db3c"}"#), Heard::Nothing);
-        assert_eq!(said(r#"{"doing":"chrome"}"#), Heard::Progress("Getting Chrome".into()));
-        assert_eq!(said(r#"{"doing":"downloading","fraction":0.25}"#), Heard::Progress("Downloading Chrome, 25%".into()));
-        assert_eq!(said(r#"{"doing":"unpacking"}"#), Heard::Progress("Unpacking Chrome".into()));
-        assert_eq!(said(r#"{"doing":"emoji font","fraction":0.5}"#), Heard::Progress("Getting a font with emoji".into()));
+        assert_eq!(progress(r#"{"doing":"chrome"}"#, "Getting Chrome"), 0.75);
+        progress(r#"{"doing":"downloading","fraction":0.25}"#, "Downloading Chrome");
+        progress(r#"{"doing":"unpacking"}"#, "Unpacking Chrome");
+        assert!((progress(r#"{"doing":"emoji font","fraction":0.5}"#, "Getting a font with emoji") - 0.975).abs() < 0.001);
+        // (A step that says less than was reached doesn't take the bar back.)
+        assert!((progress(r#"{"doing":"emoji font","fraction":0.1}"#, "Getting a font with emoji") - 0.975).abs() < 0.001);
         assert_eq!(said(r#"{"error":"GitHub couldn't be reached: timed out"}"#), Heard::Error("GitHub couldn't be reached: timed out".into()));
         assert_eq!(said(r#"{"changed":0,"held":["work","review"],"how":"…","installed":"x"}"#), Heard::Held(vec!["work".into(), "review".into()]));
         assert_eq!(said("not json"), Heard::Nothing);
+    }
+
+    /// A host's answer in one command: how its screens stand, then each
+    /// of them, running first; and a host asked the old way (a status
+    /// alone) is read as before.
+    #[test]
+    fn a_hosts_screens_are_listed_with_how_each_stands() {
+        let status = r#"{"bytes":2394000000,"chrome":"158.0.8127.88","default":"desktop","installed":"2026.11.26-c2a7db3c","missing":[],"older":{},"running":["old-name"],"software_drawing":true}"#;
+        let listed = r#"[
+  {"name": "notes", "width": 1280, "height": 800, "scale": 1.0, "sound": false, "state": "stopped", "title": null},
+  {"name": "review", "wayland_display": "wayland-3", "pid": 4242, "width": 1440, "height": 900, "scale": 1.0, "started": 1795716120, "state": "running", "title": "Checkout flow"},
+  {"name": "attic", "width": 1440, "height": 900, "state": "archived", "title": null}
+]"#;
+        let there = ScreensThere::read(Some(0), &format!("{status}\n{LISTED}\n{listed}\n")).unwrap();
+        assert_eq!(there.rows.iter().map(|r| (r.name.as_str(), r.running, r.archived)).collect::<Vec<_>>(), [("review", true, false), ("notes", false, false), ("attic", false, true)]);
+        assert_eq!((there.running.clone(), there.rows[0].title.as_deref(), there.rows[0].size), (vec!["review".to_owned()], Some("Checkout flow"), (1440, 900)));
+        assert_eq!((there.rows[0].said(), there.rows[1].said(), there.rows[2].said()), ("Running", "Stopped", "Archived"));
+        // (When it was started: the time alone of today, its day too of another.)
+        assert!(!there.rows[0].started_said().is_empty() && there.rows[1].started_said().is_empty());
+        let at = |day, hour, minute| olo_kit::clock::Local { year: 2026, month: 10, day, weekday: 4, hour, minute, second: 0 };
+        assert_eq!(started_at(at(26, 14, 2), at(26, 19, 30), at(25, 19, 30)), "2:02 PM");
+        assert_eq!(started_at(at(26, 0, 7), at(26, 19, 30), at(25, 19, 30)), "12:07 AM");
+        assert_eq!(started_at(at(25, 23, 59), at(26, 19, 30), at(25, 19, 30)), "Yesterday");
+        assert_eq!(started_at(at(24, 9, 0), at(26, 19, 30), at(25, 19, 30)), "Nov 24");
+        // (Those that run, the one started last first; then by name.)
+        let mut rows = vec![
+            ScreenRow { name: "b".into(), running: true, started: Some(10), ..Default::default() },
+            ScreenRow { name: "z".into(), ..Default::default() },
+            ScreenRow { name: "a".into(), running: true, started: Some(30), ..Default::default() },
+            ScreenRow { name: "c".into(), running: true, started: Some(20), ..Default::default() },
+            ScreenRow { name: "old".into(), archived: true, ..Default::default() },
+            ScreenRow { name: "m".into(), started: Some(99), ..Default::default() },
+        ];
+        in_order(&mut rows);
+        assert_eq!(rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["a", "c", "b", "m", "z", "old"]);
+        // (What couldn't be done to one: the tool's "no screen" of one
+        // that stopped meanwhile is said as that; the rest as said.)
+        assert_eq!(why_not_done("olo-screen: there's no screen \"notes\" (olo-screen list)"), "it isn’t running any more.");
+        assert_eq!(why_not_done("exec on the host failed: timed out"), "exec on the host failed: timed out.");
+        assert_eq!(why_not_done(" "), "the host didn’t say why.");
+        // (No list asked: the status's own names.)
+        let old = ScreensThere::read(Some(0), status).unwrap();
+        assert_eq!((old.running, old.rows.len()), (vec!["old-name".to_owned()], 0));
+        // (The script: status 69 and nothing said where there is no helper.)
+        let home = std::env::temp_dir().join(format!("olo-rex-host-screens-asked-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let ran = std::process::Command::new("sh").arg("-c").arg(asked_script()).env("HOME", &home).output().unwrap();
+        assert_eq!((ran.status.code(), ran.stdout.is_empty()), (Some(69), true));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// Why Olo wasn't put there, in the window's words: the machine
@@ -297,8 +499,8 @@ mod tests {
     /// Why Olo wasn't taken off, in the window's words.
     #[test]
     fn why_olo_was_not_taken_off_is_said_for_the_person() {
-        assert_eq!(why_not_removed("olo screen: a screen still runs here (review): `olo screen --on host stop NAME` first"), "Still running: review. Stop it, then try again.");
-        assert_eq!(why_not_removed("olo screen: screens still run here (review, agent-2): `olo screen --on host stop NAME` first"), "Still running: review, agent-2. Stop them, then try again.");
+        assert_eq!(why_not_removed("olo screen: a screen still runs here (review): `olo screen --on host stop NAME` first"), "A screen is still running. Stop it below, then try again.");
+        assert_eq!(why_not_removed("olo screen: screens still run here (review, agent-2): `olo screen --on host stop NAME` first"), "Screens are still running. Stop them below, then try again.");
         assert_eq!(why_not_removed("olo screen: /home/a/.local/share/olo/desktop: Permission denied (os error 13)"), "/home/a/.local/share/olo/desktop: Permission denied (os error 13)");
     }
 

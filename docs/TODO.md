@@ -13,6 +13,46 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **Five small things Ben asked for, 2026-11-26 evening** (next, in
+  this order):
+  - *Rex's Host window opens with a text cursor*: "when launching that
+    host manage window the cursor stays as a text entry cursor until i
+    move the mouse out of the window and back in" (the pointer's shape
+    is the terminal pane's under where the window opens; a new window
+    under a still pointer isn't told the pointer is in it).
+  - *About Olo still offers the release just installed*: "when in
+    about olo and i do the upgrade to new release there, when it comes
+    back it still says the release i just installed is available with
+    the upgrade and restart button".
+  - *"Restart" there says "Reload"*: "restart makes it sound like we
+    will restart the whole computer".
+  - *A tip over an agent in Rex's sidebar shows at once*: "the tooltips
+    when hovering over an agent are not waiting the 500ms delay they
+    appear immediately (hovering over it in the sidebar on the left)".
+  - *A setting for how long a tip waits, system-wide*: "please also add
+    a pref to be able to change it system-wide. also research what the
+    default delay is in macos and use that as olo's default (it may be
+    500ms i'm not sure)". It is a constant now (`crates/kit/src/tip.rs`,
+    `DELAY`, 500 ms).
+- **An agent's working ring doesn't turn, and wakes its app 40 times a
+  second** (found measuring Rex at rest, 2026-11-26; the second
+  investigator's report, `/var/tmp/olo-wake/REPORT.md` on the dev
+  server): `crates/kit/src/widgets/agent_marks.rs` takes the seconds
+  since 1970 as an `f32` before their remainder, which at 1.8 billion
+  is good to 128 s, so the ring stands still for two minutes at a time
+  while its ten-a-second repaint goes on (no frame differs: 0 frames,
+  40 wakeups a second in Rex and Terminal whenever an agent works).
+  To fix with a clock that starts with the program, in `f64`; and a
+  row scrolled out of sight shouldn't ask to be painted again.
+- **The helpers' tooling, from a minder's report** (2026-11-26): a
+  helper's first `tsession` built busd again into the helper's scratch
+  target (`agy-help` sets `CARGO_TARGET_DIR`, which `tsession` and
+  `tools/dev/busd-lenient` both read: 241 MB and a build nobody asked
+  for, in a run told not to build); the transcript kept when a helper
+  stops is its last screen only; a brief that names its own report
+  file and session names disagrees with the rules `agy-help` writes
+  (`answer.md`, `agy-NAME…`): say so in the skill.
+
 - **Agents' screens, checked against Codex** (left of Rex's Auto Approve
   and Keep It Going, done 2026-11-24 with stand-ins of all three): Claude
   Code 2.1.331 and Antigravity 1.5.16 were checked on 2026-11-24 (a real
@@ -427,11 +467,16 @@ something nobody here has is in "Blocked", with what it waits for.
     Rex (a pane or a window that shows it, read-only unless they take
     it), since "what a person can see and do, an agent can read" runs
     both ways; each screen listed with what it costs. Until then an
-    agent's `look` is the only way to see one. The Host window's
-    Screens tab (below) names the screens that run; a list of them
-    there, each looked at (a picture fetched: `screen look` there, the
-    file read over the link) and stopped from here, is the next step,
-    and would let its "Stop it, then try again." be done in the window.
+    agent's `look` was the only way to see one. Done in part,
+    2026-11-26: the Host window's Screens tab lists the host's screens
+    (running first, each with its title, when it was started and how it
+    stands), and the one chosen is looked at (a picture taken there and
+    read over the link, opened here) or stopped (HACKING, the Host
+    window, "Screens on this host"). Left: a screen watched live and
+    taken over from the desktop (its frames over the link, as the
+    desktop's own Agent Screens window shows its own); what each costs
+    (memory, processor) in the list; a stopped screen started again,
+    renamed, archived or deleted from here (an agent's commands still).
   - ~~*Chosen on the desktop*~~ Done 2026-11-26: the Host window's
     Screens tab (HACKING, the Host window, "Screens"): Install with its
     progress, Update, Remove, what the host lacks, and where screens
@@ -440,12 +485,37 @@ something nobody here has is in "Blocked", with what it waits for.
     where it is asked and set); the packages that have what is missing,
     by system, and Rex's setup installing them where it has sudo.
     From its one round of looks, not done, in the reviewers' words:
-    Opus 5.5, "'Being installed' has no progress bar and a dead
+    ~~Opus 5.5, "'Being installed' has no progress bar and a dead
     button … a 600 MB job that takes minutes shows up only as a dim
     number inside a sentence … the toolkit's progress bar: sunken well,
-    8pt tall … An enabled 'Cancel' in the button's place" (the kit has
-    no progress bar yet, and a host's install can't be stopped from
-    here: both to build; it takes 13 s on the rig); "in 04 and 09 the
+    8pt tall … An enabled 'Cancel' in the button's place"~~ (done the
+    same day: the kit's bar under the line, of the whole install, and
+    Cancel, which ends it on the host). From the second part's one
+    round of looks (2026-11-26), not done, in their words: Opus 5.5,
+    "The window still changes height … Can't run is 12 pt taller than
+    Installed … Make the error line's slot part of the fixed height …
+    Size that height for the tallest case" (the error line's room is
+    kept now, so a failed stop moves nothing; a state that says a line
+    more, an update on offer, a refused removal, an install's bar, is
+    still that much taller, 15 to 32 pt, as every tab of this window
+    is: a height of the tab's own would need the tallest state's
+    measured, which a window that fits its content doesn't have yet);
+    "nothing here removes a stopped screen ('kept, stopped'), so the
+    list only grows"; not pictured: "A title too long for its column
+    … Cancel pressed, and a failed or cancelled install. The failure
+    line together with a scrolled list." Gemini 4 Neon, of the kit's
+    own bar and wells, there before: "The top and left bevels are
+    nearly black against the dark tab panel and the empty trough
+    interior is almost the same dark shade as the panel behind it …
+    the unfilled part of the bar reads like an L-shaped bottom-right
+    underline rather than an enclosed 8 pt sunken well" (`StatusBar`
+    in the dark look, wherever it is 8 pt tall); "the text … sit[s]
+    slightly right of center (by about half a scrollbar width)" and
+    is "noticeably fainter than the secondary help copy" (a list's
+    empty words, every list's). And the live lint's one note of it: a
+    failed stop's line begins 2 pt from where the centred words of
+    Look at Screen begin over it (the tab's text column under a
+    button's centred label: neither moves for the other). "in 04 and 09 the
     button becomes 'Remove…', and its alert names the running screens
     before anything happens" (it says so after, in the line: "Still
     running: review. Stop it, then try again."); "The library names are

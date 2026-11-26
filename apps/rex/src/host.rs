@@ -41,9 +41,29 @@ pub struct Shown {
     /// Where an agent's screen opens there is being changed (to the
     /// host's own, `true`): shown as chosen until the host has answered.
     pub screens_default: Option<bool>,
+    /// What is being done to which of the host's screens now.
+    pub screen_doing: Vec<(String, ScreenDo)>,
+    /// What couldn't be done to one of them last: its name, what wasn't
+    /// done ("Couldn’t stop review") and why, the two halves of one
+    /// sentence (the first in the ink of the window's other failures).
+    pub screen_failed: Option<(String, String, String)>,
+}
+
+/// What is done to one of a host's screens from the Host window.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ScreenDo {
+    /// Stopped there (what runs on it ends; the screen is kept).
+    Stop,
+    /// A picture of it as it is now, fetched and shown here.
+    Look,
 }
 
 impl Shown {
+    /// What is being done to the host's screen `name` now, if anything.
+    pub fn screen_doing(&self, name: &str) -> Option<ScreenDo> {
+        self.screen_doing.iter().find(|(n, _)| n == name).map(|(_, what)| *what)
+    }
+
     /// What is being done to `thing` right now, if anything.
     pub fn doing(&self, thing: HostThing) -> Option<HostOp> {
         self.doing.iter().find(|(t, _)| *t == thing).map(|(_, op)| *op)
@@ -77,7 +97,8 @@ pub fn open(key: &str, name: &str) {
             let mut shown = Shown { key: key.to_owned(), name: name.to_owned(), ..Shown::default() };
             // (Rex's demo, for the window's pictures and its lint: what
             // couldn't be done of a host's own screens, as each is said.
-            // `OLO_REX_DEMO_SCREENS=failed`, `refused`.)
+            // `OLO_REX_DEMO_SCREENS=failed`, `refused`, `stopping`,
+            // `stopfailed`.)
             if crate::server::demo_mode() {
                 match std::env::var("OLO_REX_DEMO_SCREENS").ok().as_deref() {
                     Some("failed") => shown.failed.push((HostThing::Screens, HostOp::Install, crate::host_screens::why_not_installed("GitHub couldn't be reached: the connection timed out"))),
@@ -86,6 +107,10 @@ pub fn open(key: &str, name: &str) {
                         HostOp::Remove,
                         crate::host_screens::why_not_removed("olo screen: screens still run here (review, agent-2): `olo screen --on host stop NAME` first"),
                     )),
+                    // (And of one of its screens: being stopped; one
+                    // that couldn't be.)
+                    Some("stopping") => shown.screen_doing.push(("review".into(), ScreenDo::Stop)),
+                    Some("stopfailed") => shown.screen_failed = Some(("agent-2".into(), "Couldn’t stop agent-2".into(), "the host didn’t answer in time.".into())),
                     _ => {}
                 }
             }
@@ -164,6 +189,55 @@ pub fn screens_default(hub: &Arc<RexHub>, on_host: bool) {
         }
         crate::ui::host_changed();
     });
+}
+
+/// Olo being put on the window's host for its screens, stopped where
+/// it is: what the window was waiting for is no longer being done.
+pub fn cancel_screens(hub: &Arc<RexHub>) {
+    let key = {
+        let mut live = live();
+        let Some(shown) = live.as_mut() else { return };
+        shown.doing.retain(|(t, _)| *t != HostThing::Screens);
+        shown.key.clone()
+    };
+    hub.cancel_screens(&key, crate::ui::host_changed);
+    crate::ui::host_changed();
+}
+
+/// One of the window's host's screens stopped, or looked at (a picture
+/// of it fetched, and opened in what shows pictures here): begun now,
+/// and the window told when the host has answered.
+pub fn screen(hub: &Arc<RexHub>, name: &str, what: ScreenDo) {
+    let key = {
+        let mut live = live();
+        let Some(shown) = live.as_mut().filter(|shown| shown.screen_doing(name).is_none()) else { return };
+        shown.screen_doing.push((name.to_owned(), what));
+        shown.screen_failed = None;
+        shown.key.clone()
+    };
+    crate::ui::host_changed();
+    let (of, named) = (key.clone(), name.to_owned());
+    let ended = move |result: Result<(), String>| {
+        if let Some(shown) = live().as_mut().filter(|shown| shown.key == of) {
+            shown.screen_doing.retain(|(n, _)| *n != named);
+            if let Err(why) = result {
+                // (One sentence of Olo's own: what wasn't done, to which, and why.)
+                let why = crate::host_screens::why_not_done(&why);
+                let what = match what {
+                    ScreenDo::Stop => olo_kit::tr!("Couldn’t stop {}", named),
+                    ScreenDo::Look => olo_kit::tr!("Couldn’t look at {}", named),
+                };
+                shown.screen_failed = Some((named.clone(), what.to_string(), why));
+            }
+        }
+        crate::ui::host_changed();
+    };
+    match what {
+        ScreenDo::Stop => hub.stop_screen(&key, name, ended),
+        ScreenDo::Look => hub.look_at_screen(&key, name, move |looked| {
+            ended(looked.and_then(|picture| olo_xdg::open::open(&olo_xdg::open::Target::Path(picture)).map_err(|e| olo_kit::tr!("The picture couldn’t be shown: {}", e).to_string())))
+        }),
+    }
 }
 
 /// Remove All… was pressed (`true`), or its question answered no.
