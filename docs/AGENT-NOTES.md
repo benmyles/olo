@@ -686,6 +686,36 @@ demand gets, ask systemd's user manager
 down, read the code that starts its children. And when writing a
 Doctor check, try its fix and look again: the finding must be gone.
 
+### zbus drops what nobody listens for
+
+A `zbus::Connection`'s reader hands each message to the streams that
+exist then, and drops it where there is none (`set_await_active(false)`,
+`connection/mod.rs`): a `MessageStream::from(&conn)` made after
+`build()` has missed whatever was read first, and with a client that
+sends in the same write as its handshake (every D-Bus client's `Hello`)
+that is its first message, whenever the reader's thread runs first. For
+a server's side of a connection, `Builder::build_message_stream()` (the
+`bus-impl` feature) makes the stream before the reader starts. `olo-bus`
+lost one `Hello` in seventy with the machine busy until it did
+(2026-11-26; HACKING, "Agent Screens", `crates/bus/tests/start.rs`).
+How it was found, for the next hang at start: the stuck process's
+stacks (`gdb -batch -ex "thread apply all bt" -p PID`: all parked, so
+not a lock), its sockets (`ss -x -a -p`: one connection, nothing queued
+either way, so each side waits for the other), then a loop that starts
+it a thousand times at once with a deadline (1.3% hung), then the same
+under `strace -f -e trace=sendmsg,recvmsg`: the bytes were the same in
+a good start and a stuck one up to the `Hello` read and never answered.
+
+### A test that waits for a program's line waits with an end
+
+`read_line` on a child's stdout has no deadline: a program that never
+prints it holds the test, and `jato test --workspace` behind it, for
+good (25 minutes before it was looked at, 2026-11-26). Read the line on
+a thread and wait for it on a channel (`recv_timeout`), as
+`crates/bus/tests/common` does. And a wrapper's "done" is not the
+run's: `cmd | grep … ; echo done` ends 0 whatever `cmd` did; write its
+exit after it (`echo "exit $?"`) and read that.
+
 ## Measuring
 
 - **Which programs have a maker's libraries loaded: `/proc/PID/maps`.**

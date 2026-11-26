@@ -50,33 +50,42 @@ impl Peers {
     }
 
     pub async fn add(self: &Arc<Self>, guid: &OwnedGuid, id: usize, socket: BoxedSplit, auth_mechanism: AuthMechanism) -> Result<()> {
+        // Olo: who it is first, the list's lock after. busd 0.5 took the
+        // lock and then waited for the handshake under it: a program
+        // that connected and said nothing more held the list for ever,
+        // and with it every other program's connecting, going and
+        // messages (each reads the list).
+        let (peer, peer_stream) = Peer::new(guid.clone(), id, socket, auth_mechanism).await?;
         let mut peers = self.peers_mut().await;
-        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism).await?;
         let unique_name = peer.unique_name().clone();
         match peers.get(&unique_name) {
             Some(peer) => panic!("Unique name `{}` re-used. We're in deep trouble if this happens", peer.unique_name()),
             None => {
-                let peer_stream = peer.stream();
+                // (In the list first, and the list let go, before anything
+                // of its is served: its `Hello` finds it there.)
                 let listener = peer.listen_cancellation();
-                spawn(self.clone().serve_peer(peer_stream, listener, unique_name.clone()));
                 peers.insert(unique_name.clone(), peer);
+                drop(peers);
+                spawn(self.clone().serve_peer(peer_stream, listener, unique_name));
             }
         }
 
         Ok(())
     }
 
-    pub async fn add_us(self: &Arc<Self>, conn: zbus::Connection) {
+    pub async fn add_us(self: &Arc<Self>, messages: zbus::MessageStream) {
         let mut peers = self.peers_mut().await;
-        let peer = Peer::new_us(conn).await;
+        let (peer, peer_stream) = Peer::new_us(messages).await;
         let unique_name = peer.unique_name().clone();
         match peers.get(&unique_name) {
             Some(peer) => panic!("Unique name `{}` re-used. We're in deep trouble if this happens", peer.unique_name()),
             None => {
-                let peer_stream = peer.stream();
+                // (In the list first, and the list let go, before anything
+                // of its is served: its `Hello` finds it there.)
                 let listener = peer.listen_cancellation();
-                spawn(self.clone().serve_peer(peer_stream, listener, unique_name.clone()));
                 peers.insert(unique_name.clone(), peer);
+                drop(peers);
+                spawn(self.clone().serve_peer(peer_stream, listener, unique_name));
             }
         }
     }

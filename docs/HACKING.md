@@ -22705,6 +22705,28 @@ costs nothing measurable: `cargo run --release -p olo-bus --example
 calls -- ADDRESS` times calls through a running bus (about 110 µs to
 the bus and 140 µs to a peer here, before and after, 20,000 each), and
 the bus stays at 7.5 MB through 400,000.
+
+And what a program says first is heard. A client sends its `Hello` in
+the same write as the end of its handshake, so the bus has read it by
+the time the peer's connection is made, and the connection's reader
+hands it on at once, on a thread of its own. busd made the peer's
+stream of messages after that (`MessageStream::from(&conn)`), and zbus
+drops what nobody is listening for: whenever the reader ran first the
+`Hello` was lost and its sender waited for ever, a program that hung as
+it started, the bus's own services' client among them (such a bus never
+said "ready": a screen's session gave up on it after 3 s and shared the
+person's). With the machine busy that was one start in seventy (19 of
+1,500 buses started 96 at once; a test sat 25 minutes on one,
+2026-11-26). A peer is made with its stream now (`Peer::new`, zbus's
+`build_message_stream`, which listens before the connection reads): 0 of
+4,500. And the handshake is done before the list of peers is locked,
+not under the lock as busd had it: a program that connected and said
+nothing more held the list for good, and with it every other program's
+connecting and messages. `crates/bus/tests/start.rs` has both (384
+buses started 64 at once, then 384 programs connecting to one; a silent
+program beside one that calls): both failed before. A start takes what
+it took (3 ms alone, 200 starts each). Nothing that waits for a bus to
+say "ready" waits without an end (`tests/common`).
 tsession's sessions use it too, when built.
 
 An Electron app (Slack, VS Code, Discord) finds its running copy through

@@ -3,37 +3,17 @@
 //! dbus-broker answer it: a zbus caller has no timeout of its own and
 //! would wait forever. A call that was answered isn't answered again.
 
-use std::{
-    io::{BufRead as _, BufReader},
-    process::{Child, Command, Stdio},
-    sync::mpsc,
-    time::Duration,
-};
+mod common;
+
+use std::{sync::mpsc, time::Duration};
 
 use zbus::{
     blocking::{Connection, MessageIterator, connection::Builder},
     message,
 };
 
-struct Bus(Child, String);
-
-impl Drop for Bus {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_file(&self.1);
-    }
-}
-
-fn bus(name: &str) -> (Bus, String) {
-    let socket = format!("{}/olo-bus-{name}-{}.sock", env!("CARGO_TARGET_TMPDIR"), std::process::id());
-    let _ = std::fs::remove_file(&socket);
-    let address = format!("unix:path={socket}");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_olo-bus")).args([address.as_str(), "--ready"]).stdout(Stdio::piped()).spawn().expect("olo-bus");
-    let mut line = String::new();
-    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).expect("ready");
-    assert_eq!(line.trim(), "ready");
-    (Bus(child, socket), address)
+fn bus(name: &str) -> (common::Bus, String) {
+    common::bus(name, Duration::from_secs(20)).expect("the bus never said it was ready")
 }
 
 /// A service on `address` that takes one call, then `answer`s it or not
