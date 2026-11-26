@@ -1,6 +1,6 @@
 ---
 title: Olo Desktop: a desktop for Linux in the spirit of BeOS
-description: Olo is a fast, light desktop for Linux in the spirit of BeOS, written in Rust for Wayland: Deskbar, Tracker, yellow window tabs and forty native apps, made for people and AI agents alike.
+description: Olo is a fast, light desktop for Linux in the spirit of BeOS, written in Rust for Wayland: Rex for coding agents and remote hosts, Agent Screens, Token Pool, Deskbar, Tracker, and more than two dozen apps.
 ---
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap">
@@ -9,14 +9,14 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
       <img class="hero-mark" src="/brand/olo-mark.png" width="1024" height="1024" alt="" fetchpriority="high">
     </picture>
     <p class="eyebrow"><b>Free</b> A desktop for Linux, in the spirit of BeOS</p>
-    <h1 id="hero-title">The desktop that <em>never makes you wait</em>.</h1>
-    <p class="lead">Olo is a whole desktop, written in Rust for Wayland. BeOS's yellow window tabs, Deskbar and Tracker's spatial folders, brought to 2026: crisp at every scale, light, dark and night, and made for you and the AI agents working beside you.</p>
+    <h1 id="hero-title">The desktop built for <em>you and your agents</em>.</h1>
+    <p class="lead">Olo is a whole desktop written in Rust for Wayland. BeOS's yellow window tabs, Deskbar and Tracker, brought to 2026 with Rex for coding agents and the hosts they run on, Agent Screens they work on, Token Pool for the subscriptions they spend, your accounts in one place, and upgrades that keep every window open.</p>
     <div class="actions">
       <a class="button" href="/install/">Install Olo</a>
       <a class="button button-quiet" href="https://github.com/benmyles/olo">Source on GitHub</a>
     </div>
     <p class="fine">Open source under the MIT License · Fedora 44 and 45 · <a href="/install/#your-hardware">Beta: tested on a few computers so far</a></p>
-    <div class="hero-shot shot">{{shot olo-desktop | Olo's desktop: Tracker showing a picture's preview, StyledEdit, Terminal and DeskCalc, with Deskbar and its live widgets at the top right | eager}}</div>
+    <div class="hero-shot shot">{{shot olo-desktop | Olo's desktop: Rex with an agent, its child agents and its transcript, Tracker showing a picture's preview, Calendar, and Deskbar with its live widgets at the top right | eager}}</div>
   </div>
 </section>
 
@@ -24,28 +24,130 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
   <div class="wrap">
     <div class="section-head">
       <span class="kicker">Why Olo</span>
-      <h2 id="why-title">Everything BeOS got right, and what 2026 does better.</h2>
-      <p>Olo keeps what made BeOS a joy, a desktop you understand and that answers at once, and takes the better way wherever there is one.</p>
+      <h2 id="why-title">Everything BeOS got right, and what 2026 demands.</h2>
+      <p>A desktop you understand at a glance and that answers at once, built from the window server up for people, coding agents and remote machines.</p>
     </div>
     <div class="pillars">
       <div class="card">
+        {{icon rex 64}}
+        <h3>AI, Rex and integrations first</h3>
+        <p>Run Claude Code, Codex and Antigravity across local and remote Rex hosts, give them headless Agent Screens, pool subscriptions across machines, and keep Google, CalDAV, GitHub, Telegram and your phone native.</p>
+      </div>
+      <div class="card">
         {{icon performance 64}}
         <h3>Fast and light, measured</h3>
-        <p>Idle costs nothing: no polling, no frames when nothing changed. Anything that can take more than a frame runs on a worker thread with live progress. Every change to what runs per frame is measured before and after.</p>
+        <p>Idle costs nothing: no polling, no frames when nothing changed, and large resting windows release GPU swapchains after thirty seconds. Every change to per-frame work is measured on release builds before and after.</p>
       </div>
       <div class="card">
         {{icon application 64}}
         <h3>Native, all the way down</h3>
-        <p>The window server, the kit and every app are Olo's own, in Rust, sharing one kit. Formats and protocols are read and spoken in process, so the whole desktop looks and behaves as one.</p>
-      </div>
-      <div class="card">
-        {{icon agent-screens 64}}
-        <h3>Made for agents too</h3>
-        <p>What you can see, an agent can read as structure and drive through a documented API, on screens of its own that you can watch live and take over, never touching your pointer.</p>
+        <p>The Wayland window server, the shared kit, desktop services and Olo's native apps are written in Rust and speak formats and protocols in process: SSH, Bluetooth, MTProto, CalDAV, PDFs, OCR and encrypted backups.</p>
       </div>
     </div>
   </div>
 </section>
+
+<div id="agents" class="band" aria-labelledby="agents-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">AI, Rex and integrations</span>
+      <h2 id="agents-title">A desktop made for coding agents, remote hosts and your accounts.</h2>
+      <p>Agent-first as much as people-first: work across local and remote machines in Rex, give agents screens of their own, pool your subscriptions, and keep every account connected in one place.</p>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Rex: sessions on any host, that outlive the desktop</h3>
+        <p>Rex connects to local and remote Rex servers over sockets, native Rust SSH and Tailscale using <code>libghostty-vt</code>. Sessions live on the server, surviving reloads, laptop sleeps and roaming networks.</p>
+        <ul>
+          <li><b>Built for slow links</b>: predictive type-ahead safe around password prompts and full-screen TUIs, automatic static <code>olo-rex-link</code> deployment with no root, and optional UDP/QUIC transport behind SSH.</li>
+          <li><b>Account setup and carried settings</b>: install Claude Code, Codex, Antigravity CLI and repos in one window, review settings diffs side by side with merge and remembered choices, and carry agent sessions across hosts.</li>
+          <li><b>Move to Another Host</b>: migrate a working account in two parallel passes (including <code>/var/tmp</code>, leaving the source intact), resuming live agent sessions, moving Token Pool custody and keeping Go Back.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-rex | Rex: this computer and a host in its sidebar, a shell, a coding agent and a dev server in three panes}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>Child tabs, nested subagents and live transcripts</h3>
+        <p>Rex knows when Claude Code, Codex or Antigravity is working, waiting for you, done or failed across every host, with notifications that jump straight to the pane and <span class="keys"><kbd>⌘</kbd> <kbd>J</kbd></span> for the next waiting agent.</p>
+        <ul>
+          <li><b>Child tabs without a desktop</b>: <code>olo agent</code> starts subagents or commands as nested child tabs on the host's own agents service, with zero-polling cursor watches (<code>olo agent watch</code>) and semantic approvals (<code>olo agent approve</code>). Close your laptop and they keep running.</li>
+          <li><b>Streaming Transcript viewer</b>: switch any agent pane between raw terminal output and turn-grouped prose with collapsible tool calls, inline Find and Follow.</li>
+          <li><b>Keep It Going and Auto Approve</b>: nudge an idle agent after two quiet minutes at its prompt, or count down thirty seconds, with a Stop button, before a permission or folder-trust question is answered. It never approves a plan, and it is yours to turn on.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-rex-agents | Rex's Activity: an agent with its child agents under it, and its transcript with a tool call opened}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Olo Desktop Bridge and per-host permissions</h3>
+        <p>Inside any remote Rex session, the <code>olo</code> command reaches back to your desktop, and optionally shims <code>xdg-open</code>, <code>notify-send</code>, <code>wl-copy</code> and <code>op</code>. All eight permissions start off for remote hosts and are granted per host in Preferences &#9656; Rex &#9656; Hosts.</p>
+        <ul>
+          <li><b>Links, ports and live folder sync</b>: <code>olo open</code> auto-forwards remote localhost URLs or opens remote files locally; <code>olo forward</code> keeps ports alive across upgrades; <code>olo sync</code> runs zero-polling two-way folder sync with conflict copies; Tracker browses any host at <code>rex://HOST/PATH</code>.</li>
+          <li><b>Passwords, SSH keys and clipboard</b>: answer <code>olo op</code> from your desktop vault without copying secrets to the server, or lend SSH keys per host.</li>
+          <li><b>Guarded <code>olo run</code></b>: remote sessions can ask to run a command on your desktop, gated by an explicit Deny-default approval sheet with a half-second guard and live output streaming.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-rex-host | Rex's Hosts and Ports window beside a host's own window: its Rex server, the typing helper, Olo Integration and Files}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>Agent Screens: headless 120 Hz desktops of their own</h3>
+        <p>Every Olo window, Chrome tab and GTK/Qt app can be read as structured widgets and driven through a documented API, on full headless Wayland desktops that never move your pointer or steal your focus.</p>
+        <ul>
+          <li><b>Watch live and Take Control</b>: zero-copy GPU viewing, <span class="keys"><kbd>⌘</kbd> <kbd>K</kbd></span> to take over while locking out agent actions, full action History, frame-tile Recorder scrubbing and hardware-encoded MP4 video export.</li>
+          <li><b>Structured, not just pixels</b>: Olo kit trees, Chrome DOM across cross-origin iframes with covered-element checks, and AT-SPI. Share specific Passwords entries and passkeys read-only per screen.</li>
+        </ul>
+<pre><span class="p">$ </span>olo-screen start
+<span class="p">$ </span>olo-screen run agent olo-styled-edit notes.md
+<span class="p">$ </span>olo-screen tree agent --role Button
+<span class="p">$ </span>olo-screen click agent --role Button --name <span class="k">Save</span></pre>
+      </div>
+      <div class="shot">{{shot olo-agent-screens | Agent Screens: an agent's own desktop shown live, with its history, and Take Control}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Terminal built for local coding agents</h3>
+        <p>Shells live in <code>olo-termd</code> so desktop reloads never close them, paired with Olo's bundled Rust shell (<code>brush</code>) and on-device SIMD command suggestions (<code>olo-complete</code>).</p>
+        <ul>
+          <li><b>Repo tab groups and in-process worktrees</b>: create, rename and remove Git worktrees through <code>libgit2</code> from a tab's menu, with live GitHub pull request and check badges per tab.</li>
+          <li><b>Agent-kept titles and startup context</b>: Claude Code and Codex update their own tab titles via MCP and receive their group's worktrees on launch, all opt-in under Preferences &#9656; Terminal.</li>
+          <li><b>Keep It Going, Auto Approve and <code>olo-sudo</code></b>: keep overnight runs moving and approve headless sudo requests in a native Olo window.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-terminal-agents | Terminal: a tab group for a feature, each tab titled by the coding agent working in it}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>Token Pool: shared subscriptions across machines</h3>
+        <p>Pool multiple Claude and ChatGPT subscriptions across Claude Code and Codex in one unified window (Accounts, Activity and Machines), routing earliest-expiring quotas first with client-identical requests and zero-gap handover across upgrades.</p>
+        <ul>
+          <li><b>Standalone remote host pools</b>: deploy <code>olo-pool-host</code> over SSH so agents on remote Rex servers keep drawing from the pool even while your desktop is off, with single-keeper refresh-token custody.</li>
+          <li><b>Live quotas in Deskbar</b>: keep per-account bars or multi-quota heatmaps right beside your CPU and GPU meters.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-token-pool | Token Pool's accounts: Claude and ChatGPT subscriptions, each with its five-hour and weekly quota}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Your accounts in one place, and AI where you ask for it</h3>
+        <p>Connect your accounts once in Preferences &#9656; Integrations across five tabs (Google, Fastmail, CalDAV, GitHub and Telegram), and choose your models in Preferences &#9656; AI.</p>
+        <ul>
+          <li><b>Several Google accounts, each set up for you</b>: tick Mail, Calendar and DiskBackup per account; adding one has Claude Code make the account's own Google Cloud app, on an Agent Screen you can follow.</li>
+          <li><b>AI in a few places, each one you can turn off</b>: <code>/ask</code> in the Command Palette (aware of your active Terminal), <span class="keys"><kbd>⌘</kbd> <kbd>↩</kbd></span> emoji suggestions, Weather's forecast assistant highlighting time windows on charts, and Calendar's assistant drafting events that wait for your confirmation.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-integrations | Preferences ▸ Integrations: two Google accounts, each ticked for what it is used for}}</div>
+    </div>
+  </div>
+</div>
 
 <section id="features" aria-labelledby="features-title">
   <div class="wrap">
@@ -56,77 +158,79 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
 
     <div class="feature">
       <div class="feature-text">
-        <h3>Deskbar and Tracker, as they should be</h3>
-        <p>Deskbar sits in the top-right corner, as on BeOS: the Olo menu, the clock, a tray, and each workspace's running apps. Tracker is the desktop and its folders, spatial, with Quick Look for almost any file.</p>
+        <h3>Deskbar, Glances and Tracker</h3>
+        <p>Deskbar sits top-right on every display (Olo menu, clock with upcoming Calendar events, rich tray and per-workspace apps) and folds to a corner button (<span class="keys"><kbd>⌃</kbd> <kbd>⌘</kbd> <kbd>D</kbd></span>) so tiled windows take its room. Tracker handles local folders, archives and remote Rex hosts alike.</p>
         <ul>
-          <li><b>Live widgets</b> in Deskbar: processor, memory, GPUs, disks, network, temperatures and power, as graphs, bars, meters or numbers.</li>
-          <li><b>Icon, list and column views</b>, each folder opening where you left it.</li>
-          <li><b>Quick Look</b> previews of pictures, PDFs, video, audio, documents and archives.</li>
+          <li><b>Live widgets and App Glances</b>: pin CPU, memory, GPUs, disks, network, temperatures, power and Token Pool meters with hover top-five process cards, plus Glances for Notifications, Weather, Calendar, To-Do, Kache and Rex.</li>
+          <li><b>Spatial folders, archives and backups</b>: Icon, List and Column views, Quick Look previews, in-window <code>zip</code>/<code>tar</code>/<code>7z</code>/<code>RAR</code>/<code>ISO</code> archives, and DiskBackup ticks with Older Versions.</li>
+          <li><b>Remote Rex folders</b>: browse any Rex host natively in Tracker at <code>rex://HOST/PATH</code> over its existing SSH link.</li>
         </ul>
       </div>
-      <div class="shot">{{shot olo-tracker | Tracker: a folder of pictures as icons, and Quick Look on one of them}}</div>
+      <div class="shot">{{shot olo-tracker | Tracker: the Pictures folder as icons and Quick Look on one of them}}</div>
     </div>
 
     <div class="feature flip">
       <div class="feature-text">
         <h3>A command palette for everything</h3>
-        <p>Press <kbd>⌘</kbd> <kbd>Space</kbd> and type: apps, the front app's menu commands, open windows, files, settings and the web, all in one place.</p>
-        <p>Keyboard hints put a letter on every control in every window, so anything you can click, you can reach from the keyboard.</p>
+        <p>Press <span class="keys"><kbd>⌘</kbd> <kbd>Space</kbd></span> for apps, the front app's menu commands, individual Preferences settings (spotlighting the exact control), windows, Rex sessions and panes, Passwords, Calendar, To-Do, paths, sums, <code>/ask</code> AI answers and <code>/ws</code> web search, ranked by an on-device neural model.</p>
+        <p>Keyboard hints put a jump letter on every control in every window, so anything you can click, you can reach from the keyboard.</p>
       </div>
-      <div class="shot">{{shot olo-palette | The command palette, finding Terminal}}</div>
+      <div class="shot">{{shot olo-palette | The command palette answering “term”: a window, an app, a Preferences panel and settings inside it}}</div>
     </div>
 
     <div class="feature">
       <div class="feature-text">
-        <h3>Workspaces, the overview and tiling</h3>
-        <p>A set of workspaces for each display, and an overview of them all. Arrange windows from the keyboard, turn on auto-tiling, or keep a window group in tabs.</p>
+        <h3>Workspaces, Overview and seven auto-tiling layouts</h3>
+        <p>Per-display workspaces, an Overview of them all, Twitcher (<span class="keys"><kbd>⌘</kbd> <kbd>Tab</kbd></span>) with display columns, tabbed window groups, and three windowing modes per workspace: Standard, Focus and Auto-Tiling.</p>
+        <ul>
+          <li><b>Seven auto-tiling layouts</b>: Main and Stack, Halves, Columns, Rows, Grid, Spiral and horizontal Scrolling, with synchronised frame-matched edge drags, Scratchpad, per-app tile pinning and Undo Window Arrangement (<span class="keys"><kbd>⌃</kbd> <kbd>⌘</kbd> <kbd>Z</kbd></span>).</li>
+        </ul>
       </div>
       <div class="pair">
-        <figure><div class="shot">{{shot olo-overview | The overview of every workspace}}</div><figcaption>The overview</figcaption></figure>
-        <figure><div class="shot">{{shot olo-tiling | Windows auto-tiled}}</div><figcaption>Auto-tiling</figcaption></figure>
+        <figure><div class="shot">{{shot olo-overview | The overview: a workspace's windows, each with a letter to jump to it}}</div><figcaption>Workspace overview</figcaption></figure>
+        <figure><div class="shot">{{shot olo-tiling | Auto-tiling: Tracker beside Terminal and StyledEdit, DeskCalc floating over them}}</div><figcaption>Auto-tiling</figcaption></figure>
       </div>
     </div>
 
     <div class="feature flip">
       <div class="feature-text">
-        <h3>Two themes, light, dark and night</h3>
-        <p><b>Classic</b>, after BeOS, and <b>Platinum</b>, after Mac OS 9: each draws every icon, window and control in its own style, with a wallpaper to match. Night mode warms the screen on a schedule, gradually if you like.</p>
-        <p>Pixel-exact at 1×, 1.5×, 2× and every scale between, with HDR and wide-gamut colour, variable refresh rate, and each display on its own GPU.</p>
+        <h3>Five classic looks, twenty-three colour schemes, six icon sets</h3>
+        <p>Pick <b>Classic</b> (BeOS-inspired), <b>Platinum</b> (Mac OS 9), <b>BeOS</b> (R5 palette and 8-bit icons), <b>AmigaOS</b> (Workbench 3 flat chrome and 16-pen icons), <b>Aqua</b> (Mac OS X gel blue and deep gloss), or twenty-three colour schemes including Catppuccin, Dracula, Tokyo Night, Nord, Gruvbox and Solarized, plus a Flat icon set and live <b>Customize&hellip;</b> synced to GTK, Qt and Chrome.</p>
+        <p>Pixel-exact at 1×, 1.25×, 1.5×, 1.75× and 2×, with light, dark and night modes, HDR with wallpaper gain maps, variable refresh rate, and multi-GPU output keeping the discrete GPU asleep at rest.</p>
       </div>
-      <div class="shot">{{shot olo-themes | The same desktop in Classic and Platinum, light and dark}}</div>
+      <div class="shot">{{shot olo-themes | Six of Olo's themes: Classic, Platinum, BeOS, AmigaOS, Aqua and Tokyo Night}}</div>
     </div>
 
     <div class="feature">
       <div class="feature-text">
-        <h3>Your phone, natively</h3>
-        <p>Pair an iPhone or an Android phone over Bluetooth and its messages and contacts are on your desktop. Olo speaks to the phone itself: nothing to install on the phone, no account, no cloud between them.</p>
+        <h3>Your phone, natively over Bluetooth</h3>
+        <p>Pair an iPhone or Android phone over Bluetooth with nothing installed on the phone and no cloud account in between. Olo speaks MAP, PBAP, ANCS and HFP in process.</p>
         <ul>
-          <li><b>Pairing in three steps</b>, each seen to happen: find the phone, confirm the code, allow it on the phone.</li>
-          <li><b>Phone</b>, an app for your conversations and contacts: read, answer, start a new one.</li>
-          <li><b>One-time codes</b> texted to you are offered in the browser tab that's waiting for one, or in an agent's tab, with your say.</li>
-          <li><b>Watched</b>: it reconnects by itself, and Olo Doctor says so if it can't.</li>
+          <li><b>Messages, contacts, calls and music</b>: read and reply to conversations, browse contacts, handle calls and control phone audio right from your desktop.</li>
+          <li><b>One-time codes where you need them</b>: verification codes from SMS or email are offered in the waiting browser tab, or in an agent's tab with your approval.</li>
+          <li><b>Watched</b>: reconnects automatically, and Olo Doctor reports and repairs Bluetooth snags.</li>
         </ul>
       </div>
-      <div class="shot">{{shot olo-phone | Phone showing a conversation, and Preferences with the phone connected}}</div>
+      <div class="shot">{{shot olo-phone | Phone: a conversation, a bank's verification code in the list, and the phone's music}}</div>
     </div>
 
-    <div class="feature">
+    <div class="feature flip">
       <div class="feature-text">
-        <h3>Preferences, one panel per thing</h3>
-        <p>Appearance, themes, displays, keyboard, touchpad, sound, network, Bluetooth, AirPods, power, security and more, each a panel that says what it does and does it at once.</p>
+        <h3>Preferences, twenty-nine focused panels</h3>
+        <p>One panel per area: Appearance, Themes, Backgrounds, Deskbar, Display, Keyboard, Touchpad &amp; Mouse, Sound, Network, Bluetooth, AirPods, AirPlay, Power, Performance, Security, Backup, Phone, Rex, Terminal, Integrations, AI and more, each taking effect immediately.</p>
       </div>
-      <div class="shot">{{shot olo-preferences | Preferences: Themes, and Backgrounds with Olo's own wallpapers}}</div>
+      <div class="shot">{{shot olo-preferences | Preferences: Themes, and Backgrounds on Olo's own wallpapers}}</div>
     </div>
 
     <div class="more">
-      <div class="card">{{icon software-update 48}}<h3>Upgrades in place</h3><p>A new build replaces the running desktop without closing a window. Apps come back as they were.</p></div>
-      <div class="card">{{icon stop 48}}<h3>Olo Rescue</h3><p>From anywhere, a full-screen terminal, the processes to end and every setting, without quitting anything.</p></div>
-      <div class="card">{{icon keyboard 48}}<h3>Your keys</h3><p>Mac, Windows or BeOS keyboard profiles, keyboard hints, an emoji picker, and a touchpad tuned like a Mac's.</p></div>
-      <div class="card">{{icon fingerprint 48}}<h3>Security</h3><p>Lock screen, fingerprint, face unlock with the infrared camera, security keys and Touch ID keyboards.</p></div>
-      <div class="card">{{icon notifications 48}}<h3>Notifications</h3><p>Banners, a history, Do Not Disturb and settings for each app.</p></div>
-      <div class="card">{{icon screenshot 48}}<h3>Screenshots and recording</h3><p>Pictures and videos of the screen, a window or an area, all in process.</p></div>
-      <div class="card">{{icon airpods 48}}<h3>AirPods and AirPlay</h3><p>AirPods' levels and every setting, spoken natively; show your screen or play on AirPlay.</p></div>
-      <div class="card">{{icon lock-screen 48}}<h3>Login and boot</h3><p>Olo's own login screen, boot splash, start-up sound and screen saver.</p></div>
+      <div class="card">{{icon software-update 48}}<h3>Upgrades in place</h3><p>Deskbar installs new builds and reloads the running desktop without closing windows, terminals, Rex forwards or Token Pool streams.</p></div>
+      <div class="card">{{icon stop 48}}<h3>Olo Rescue</h3><p><span class="keys"><kbd>⌃</kbd> <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>Delete</kbd></span> opens safe display settings, an isolated terminal, a process killer and every Preferences panel without quitting anything.</p></div>
+      <div class="card">{{icon keyboard 48}}<h3>Keys and Emoji Picker</h3><p>Mac, Windows or BeOS keyboard profiles, keyboard hints, Unicode 18 Emoji Picker with <span class="keys"><kbd>⌘</kbd> <kbd>↩</kbd></span> AI suggestions, and a Mac-tuned touchpad.</p></div>
+      <div class="card">{{icon fingerprint 48}}<h3>Security and biometrics</h3><p>Lock screen, Touch ID fingerprint, infrared face unlock, FIDO security keys, Approve Without Asking, native polkit and keyring.</p></div>
+      <div class="card">{{icon notifications 48}}<h3>Notifications</h3><p>Banners, Inbox history with Snooze, Do Not Disturb, Deskbar Glance and per-app rules.</p></div>
+      <div class="card">{{icon screenshot 48}}<h3>Screenshots and recording</h3><p>Screen, window and area shots, colour picker, and GPU/CPU H.264 and AV1 MP4 recordings that capture only changed frames.</p></div>
+      <div class="card">{{icon airpods 48}}<h3>AirPods and AirPlay</h3><p>Native AirPods battery levels and controls, voice processing for every mic, and AirPlay mirroring and casting.</p></div>
+      <div class="card">{{icon lock-screen 48}}<h3>Login and boot</h3><p>Olo's own login screen, scale-matched Plymouth boot splash with disk unlock, start-up chime and screen saver.</p></div>
     </div>
   </div>
 </section>
@@ -135,135 +239,56 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
   <div class="wrap">
     <div class="section-head">
       <span class="kicker">The apps</span>
-      <h2 id="apps-title">Forty native apps, one kit.</h2>
-      <p>Every app is Olo's own, built on the same kit, so they look alike, behave alike, and never make you wait.</p>
+      <h2 id="apps-title">More than two dozen apps, built as one.</h2>
+      <p>Twenty-four apps of Olo's own, Preferences' twenty-nine panels and Notifications, all in Rust on one shared kit, with every desktop service underneath; and Google Chrome and Slack, set up by Olo to run as Wayland programs that follow its ways.</p>
     </div>
     <div class="apps">
-      <div class="app">{{icon tracker 56}}<h3>Tracker</h3><p>Files, folders, the desktop, Quick Look and Open With.</p></div>
-      <div class="app">{{icon terminal 56}}<h3>Terminal</h3><p>Tabs and tab groups, Git per tab, sudo in a window, suggestions from a local model.</p></div>
-      <div class="app">{{icon styled-edit 56}}<h3>StyledEdit</h3><p>Rich text, Markdown and source code, spelling, tables, pictures and print.</p></div>
-      <div class="app">{{icon show-image 56}}<h3>Viewer</h3><p>Pictures to edit, PDFs to fill and sign, video with GPU decoding, and audio.</p></div>
+      <div class="app">{{icon rex 56}}<h3>Rex</h3><p>Local and remote agent workspaces, predictive typing, child tabs, live transcripts and Move to Another Host.</p></div>
+      <div class="app">{{icon terminal 56}}<h3>Terminal</h3><p>Persistent shells, repo tab groups, libgit2 worktrees, PR badges, coding-agent tools and local command suggestions.</p></div>
+      <div class="app">{{icon agent-screens 56}}<h3>Agent Screens</h3><p>Headless 120 Hz Olo desktops for agents, with Live view, Take Control, History, Recorder and MP4 export.</p></div>
+      <div class="app">{{icon token-pool 56}}<h3>Token Pool</h3><p>Shared Claude and ChatGPT subscriptions across local agents and standalone remote host pools.</p></div>
+      <div class="app">{{icon tracker 56}}<h3>Tracker</h3><p>Desktop and spatial folders, Quick Look, native archives, DiskBackup versions and <code>rex://</code> remote host folders.</p></div>
+      <div class="app">{{icon styled-edit 56}}<h3>StyledEdit</h3><p>Rich text, Markdown and syntax-coloured code, tables, pictures, ruler, Page View, spelling and Office/PDF export.</p></div>
+      <div class="app">{{icon show-image 56}}<h3>Viewer</h3><p>Images with edits and on-device OCR, PDF forms and signing, <code>.pptx</code> decks, GPU-decoded video and audio.</p></div>
+      <div class="app">{{icon google-chrome 56}}<h3>Google Chrome</h3><p>Native Wayland launcher with rootless updates, Olo Passwords/passkey/OTP extension, link picker and Agent Screen DOM trees.</p></div>
+      <div class="app">{{icon calendar 56}}<h3>Calendar</h3><p>Unified Google, Fastmail and CalDAV calendars, lossless iCalendar, RSVP invitations, AI event drafter and reminders.</p></div>
+      <div class="app">{{icon todo 56}}<h3>To-Do</h3><p><code>.ics</code> tasks with List and Kanban Board views, natural-language quick entry, reminders, attachments and palette capture.</p></div>
+      <div class="app">{{icon passwords 56}}<h3>Passwords</h3><p>Encrypted vault, reviewed 1Password multi-account sync, passkeys, TOTP/QR scanning, SSH agent and drop-in <code>op</code> CLI.</p></div>
+      <div class="app">{{icon phone 56}}<h3>Phone</h3><p>iPhone and Android messages, contacts, calls, music control and SMS/email one-time codes over Bluetooth.</p></div>
+      <div class="app">{{icon telegram 56}}<h3>Telegram</h3><p>Pure-Rust MTProto chat with folders, forums, voice recording, Lottie/WebM stickers and inline banner replies.</p></div>
+      <div class="app">{{icon slack 56}}<h3>Slack</h3><p>Isolated Chrome app profile with native Olo notifications, sender faces, Deskbar badge, palette jump and auto-status.</p></div>
+      <div class="app">{{icon weather 56}}<h3>Weather</h3><p>Forty-four forecast layers, interactive timelines including cloud base, AI forecast assistant and Deskbar widgets.</p></div>
       <div class="app">{{icon calculator 56}}<h3>DeskCalc</h3><p>BeOS's desk calculator, with scientific keys.</p></div>
-      <div class="app">{{icon activity 56}}<h3>Activity Monitor</h3><p>Processes, CPU, memory, disks, network, GPU, displays and sensors, live.</p></div>
-      <div class="app">{{icon passwords 56}}<h3>Passwords</h3><p>Logins, passkeys and notes, encrypted, synced with 1Password if you like.</p></div>
-      <div class="app">{{icon weather 56}}<h3>Weather</h3><p>Every detail of the forecast for your places, and an assistant given all of it.</p></div>
-      <div class="app">{{icon speed-test 56}}<h3>Speed Test</h3><p>Both ways, with everything that can be read of the connection as it runs.</p></div>
-      <div class="app">{{icon doctor 56}}<h3>Olo Doctor</h3><p>Finds what gets in Olo's way and fixes it with a button.</p></div>
-      <div class="app">{{icon drive-setup 56}}<h3>DriveSetup and DiskUsage</h3><p>Disks, partitions and encryption; and where the space went.</p></div>
-      <div class="app">{{icon diskbackup 56}}<h3>DiskBackup</h3><p>Continuous backups to the cloud: versioned, deduplicated and encrypted.</p></div>
-      <div class="app">{{icon logs 56}}<h3>Log Viewer</h3><p>Every program's log, searchable and live.</p></div>
-      <div class="app">{{icon telegram 56}}<h3>Telegram and Slack</h3><p>Native chat, and Slack as an Olo app.</p></div>
-      <div class="app">{{icon phone 56}}<h3>Phone</h3><p>Your iPhone's or Android phone's messages and contacts, over Bluetooth.</p></div>
-      <div class="app">{{icon token-pool 56}}<h3>Token Pool</h3><p>Several Claude and ChatGPT subscriptions, shared by coding agents.</p></div>
-      <div class="app">{{icon agent-screens 56}}<h3>Agent Screens</h3><p>Headless Olo screens for AI agents, to watch and take over.</p></div>
+      <div class="app">{{icon screenshot 56}}<h3>Screenshot</h3><p>Screen, window and region captures, colour picker and H.264/AV1 MP4 recording.</p></div>
+      <div class="app">{{icon activity 56}}<h3>Activity Monitor</h3><p>Processes, CPU, memory/zram, disks, network, per-engine GPU, sensors, kernel tunables and clickable history graphs.</p></div>
+      <div class="app">{{icon doctor 56}}<h3>Olo Doctor</h3><p>What is wrong and what could be better, by how much it matters, each with a button that fixes it.</p></div>
+      <div class="app">{{icon software-update 56}}<h3>OS Updates</h3><p>Native DNF5 client for Fedora updates, advisories, CVEs, Copr/RPM Fusion repos, Undo and version upgrades.</p></div>
+      <div class="app">{{icon logs 56}}<h3>Log Viewer</h3><p>Native systemd journal and Agent Screen log reader with live tail, query language and Show in Context.</p></div>
+      <div class="app">{{icon drive-setup 56}}<h3>DriveSetup</h3><p>Disk map, LUKS unlock, partition, format, resize, image write and benchmark via UDisks2.</p></div>
+      <div class="app">{{icon disk-usage 56}}<h3>DiskUsage</h3><p>Sunburst ring chart of where disk space went, with a Collector basket and Trash undo.</p></div>
+      <div class="app">{{icon diskbackup 56}}<h3>DiskBackup</h3><p>Continuous, deduplicated, encrypted backups to local folders or Google Drive, with Tracker Older Versions.</p></div>
+      <div class="app">{{icon speed-test 56}}<h3>Speed Test</h3><p>Cloudflare upload, download and loaded latency with kernel <code>TCP_INFO</code>/BBRv3 diagnostics.</p></div>
+      <div class="app">{{icon kache 56}}<h3>Kache</h3><p>Native Rust build-cache dashboard with miss-cause analysis, hourly hit-rate chart, slot manager and Deskbar widget.</p></div>
+      <div class="app">{{icon preferences 56}}<h3>Preferences</h3><p>Twenty-nine focused panels covering themes, displays, hardware, security, Rex, Integrations and AI.</p></div>
+      <div class="app">{{icon notifications 56}}<h3>Notifications</h3><p>Native banners, searchable Inbox history, Snooze, Do Not Disturb and per-app notification rules.</p></div>
     </div>
     <div class="gallery">
-      <figure><div class="shot">{{shot olo-viewer-telegram | The Viewer and Telegram}}</div><figcaption>The Viewer and Telegram</figcaption></figure>
-      <figure><div class="shot">{{shot olo-terminal | Terminal with tabs}}</div><figcaption>Terminal</figcaption></figure>
-      <figure><div class="shot">{{shot olo-styled-edit | StyledEdit with a styled document}}</div><figcaption>StyledEdit</figcaption></figure>
-      <figure><div class="shot">{{shot olo-activity | Activity Monitor's graphs}}</div><figcaption>Activity Monitor</figcaption></figure>
-      <figure><div class="shot">{{shot olo-weather | Weather}}</div><figcaption>Weather</figcaption></figure>
-      <figure><div class="shot">{{shot olo-doctor | Olo Doctor}}</div><figcaption>Olo Doctor and the Speed Test</figcaption></figure>
+      <figure><div class="shot">{{shot olo-calendar-todo | Calendar's week beside To-Do's Today list}}</div><figcaption>Calendar and To-Do</figcaption></figure>
+      <figure><div class="shot">{{shot olo-viewer-telegram | Viewer on a picture beside Telegram in a group chat}}</div><figcaption>Viewer and Telegram</figcaption></figure>
+      <figure><div class="shot">{{shot olo-styled-edit | StyledEdit on a Markdown document with a table}}</div><figcaption>StyledEdit</figcaption></figure>
+      <figure><div class="shot">{{shot olo-doctor-kache | Olo Doctor's findings, each with its fix, beside Kache's build cache}}</div><figcaption>Olo Doctor and Kache</figcaption></figure>
+      <figure><div class="shot">{{shot olo-weather | Weather: a place's forecast hour by hour, and its assistant}}</div><figcaption>Weather</figcaption></figure>
+      <figure><div class="shot">{{shot olo-speedtest | The Speed Test: download, upload, latency and the connection's own numbers}}</div><figcaption>Speed Test</figcaption></figure>
     </div>
   </div>
 </section>
-
-<div id="agents" class="band" aria-labelledby="agents-title">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="kicker">Made for agents too</span>
-      <h2 id="agents-title">Your agents get a desktop of their own.</h2>
-      <p>Agent-first, as much as people-first: everything you can see and do, an agent can read and drive, without getting in your way.</p>
-    </div>
-    <div class="feature">
-      <div class="feature-text">
-        <ul>
-          <li><b>Agent Screens</b>: whole headless Olo desktops for agents, which you can watch live, scrub back through, and take over at any moment.</li>
-          <li><b>Structured, not pixels</b>: every window's widgets as a tree, every menu command by name, and an API to click, type and choose.</li>
-          <li><b>Coding agents in Terminal</b> title their own tabs, are kept going while you sleep and get worktrees made for them: more below.</li>
-          <li><b>Token Pool</b> shares several Claude and ChatGPT subscriptions among them, with no gap across upgrades.</li>
-        </ul>
-<pre><span class="p">$ </span>olo-screen start
-<span class="p">$ </span>olo-screen run agent olo-styled-edit notes.md
-<span class="p">$ </span>olo-screen tree agent --role Button
-<span class="p">$ </span>olo-screen click agent --role Button --name <span class="k">Save</span></pre>
-      </div>
-      <div class="shot">{{shot olo-agent-screens | Agent Screens: an agent's own desktop, live, beside yours}}</div>
-    </div>
-
-    <div class="feature flip">
-      <div class="feature-text">
-        <h3>Terminal knows its coding agents</h3>
-        <p>Run Claude Code or Codex in a tab and Terminal sees it there: the tab says whether the agent is working, waiting for you or needs an answer, and a notification tells you when it does.</p>
-        <ul>
-          <li><b>Titles kept by the agent</b>: each agent gets a tool to title its tab with what it's working on, and keeps it current, so a row of tabs reads as a list of what's under way.</li>
-          <li><b>Tab groups</b>, named and coloured, one per feature or per repository; a window whose tabs are all in one repository becomes its group by itself.</li>
-          <li><b>Told where it is</b> as it starts: the group's name and every repository and worktree its tabs are in, its own marked. The picture shows the very words.</li>
-        </ul>
-      </div>
-      <div class="shot">{{shot olo-terminal-agents | Terminal: a tab group named Refunds, three tabs titled by their agents, and what an agent is told as it starts in one}}</div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-text">
-        <h3>Keep It Going</h3>
-        <p>An agent that stops at midnight has stopped until morning. Turn on Keep It Going in its tab's menu and Terminal types &ldquo;Please continue&rdquo; for you.</p>
-        <ul>
-          <li><b>Only when it has really stopped</b>: two quiet minutes, its turn over and its own prompt showing; never while it works, never on a question, at most once an hour.</li>
-          <li><b>Your words</b>: a message of your own for every tab, or for one agent alone.</li>
-          <li><b>Kept</b> with the tab through upgrades and restarts.</li>
-        </ul>
-      </div>
-      <div class="shot">{{shot olo-terminal-agent-menu | A tab's menu in Terminal, with Keep It Going's own menu open: On, the default message, a custom message}}</div>
-    </div>
-
-    <div class="feature flip">
-      <div class="feature-text">
-        <h3>Auto Approve</h3>
-        <p>&ldquo;Do you want to proceed?&rdquo; needn't wait for you either. With Auto Approve on, Terminal answers Yes thirty seconds after an agent asks leave to go on.</p>
-        <ul>
-          <li><b>A countdown you can stop</b> in the tab's corner; typing in the tab makes the question yours.</li>
-          <li><b>Only what asks leave</b>: not a plan waiting to be approved, not another kind of question.</li>
-          <li><b>Yours to turn on</b>: an agent that asks for it gets an alert on your screen whose Return is Cancel, so it can't answer its own questions.</li>
-        </ul>
-      </div>
-      <div class="shot">{{shot olo-terminal-auto-approve | Terminal: an agent's stand-in asking whether to proceed, and Auto Approve counting down to Yes with a Stop button}}</div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-text">
-        <h3>Worktrees and pull requests, per tab</h3>
-        <p>An agent per worktree is how several work on one repository at once. Terminal makes them for you and shows where each stands.</p>
-        <ul>
-          <li><b>New Worktree&hellip;</b>: a name, which is a folder and a branch both, made where you keep them and opened in a new tab of the group. Rename and remove them from the tab's menu too.</li>
-          <li><b>Git in process</b>: no git command to shell out to, and nothing polled; a tab follows its folder as it changes.</li>
-          <li><b>Each tab wears its pull request</b>: open, draft, merged or closed, and whether its checks pass, fail or run.</li>
-        </ul>
-      </div>
-      <div class="shot">{{shot olo-terminal-worktree | Terminal's New Worktree window: a name typed, and where its folder and branch will be made}}</div>
-    </div>
-
-    <div class="feature flip">
-      <div class="feature-text">
-        <h3>You say what agents are told</h3>
-        <p>Everything Terminal tells an agent is a setting, off until you turn it on, in Preferences &#9656; Terminal.</p>
-        <ul>
-          <li><b>Screens of their own</b>: agents are told to test desktop apps and web pages on an Agent Screen, never on yours. A tab moves to an agent's screen from its menu, its shell still running.</li>
-          <li><b>Scratch on disk</b>: where /tmp is held in memory, agents are told to keep their builds and downloads out of it.</li>
-          <li><b>Set up for you</b>: Terminal puts its hook and its tool in Claude Code's and Codex's own settings, every other setting of theirs as it was, and takes them out when you turn it off.</li>
-        </ul>
-      </div>
-      <div class="shot">{{shot olo-terminal-agent-prefs | Preferences, Terminal: what coding agents are told, what Keep It Going says, and where worktrees go}}</div>
-    </div>
-  </div>
-</div>
 
 <section id="wallpapers" aria-labelledby="wallpapers-title">
   <div class="wrap">
     <div class="section-head">
       <span class="kicker">Wallpapers</span>
-      <h2 id="wallpapers-title">Olo blue, Olo yellow, in 4K.</h2>
-      <p>Olo's own abstract collection, each with a version for dark mode (this page shows the one your system is in), beside the classic systems' own: Mac OS 9 and X, AmigaOS, Windows, OS/2 and CDE, redrawn for 4K.</p>
+      <h2 id="wallpapers-title">Olo blue, Olo yellow, in 4K HDR.</h2>
+      <p>Olo's own abstract collection, most with dark versions and all with HDR gain maps (this page shows the mode your system is in), beside classic systems' wallpapers redrawn for 4K: Mac OS 9 and X, AmigaOS, Windows, OS/2 and CDE.</p>
     </div>
     <div class="wallpapers">
       {{wallpaper olo-orbit | Orbit}}
@@ -281,13 +306,13 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
     <div class="section-head">
       <span class="kicker">Fast and light</span>
       <h2 id="fast-title">Rules, not hopes.</h2>
-      <p>Speed isn't a feature added at the end. Olo holds every change to a few rules, and measures it against them.</p>
+      <p>Speed isn't added at the end. Olo holds every change to four rules, and measures it against them.</p>
     </div>
     <div class="principles">
-      <div class="principle"><span class="num">1</span><div><h3>Idle costs nothing</h3><p>No polling, no frames or events when nothing changed. Work follows what changed, not what's on screen, and work done once is kept.</p></div></div>
+      <div class="principle"><span class="num">1</span><div><h3>Idle costs nothing</h3><p>No polling, no frames or events when nothing changed, and large resting windows drop their GPU swapchains after thirty seconds. Work follows what changed, not what's on screen.</p></div></div>
       <div class="principle"><span class="num">2</span><div><h3>Never block the UI</h3><p>Anything that can take more than a frame runs on a worker thread, shows live progress, streams its results and can be cancelled.</p></div></div>
       <div class="principle"><span class="num">3</span><div><h3>Measured, every time</h3><p>Every change to what runs per frame, per event or at rest is measured on release builds before and after, latency included, and the numbers go in its commit.</p></div></div>
-      <div class="principle"><span class="num">4</span><div><h3>Pixel-perfect at every scale</h3><p>Checked in light, dark and night at 1×, 1.5× and 2×. Nothing drawn from a bitmap is resampled: one texture pixel to one device pixel.</p></div></div>
+      <div class="principle"><span class="num">4</span><div><h3>Pixel-perfect at every scale</h3><p>Checked in light, dark and night at 1×, 1.25×, 1.5×, 1.75× and 2×. Nothing drawn from a bitmap is resampled: one texture pixel to one device pixel.</p></div></div>
     </div>
 
     <div class="cta">

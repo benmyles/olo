@@ -348,47 +348,71 @@ something nobody here has is in "Blocked", with what it waits for.
   - With `olo agent` already the host's own (2026-11-26), this is what
     is left for an agent on a host to need nothing of the desktop.
 
-- **The website and README.md, made anew** (Ben, 2026-11-26: "add a
-  todo to completely refresh the website and the README.md with all new
-  screenshots and covering the huge ecosystem of apps and features with
-  a highlight on the AI stuff and rex client + integrations. use neon 4
-  as your copywriter"). Both were last written on 2026-11-17 (`website/`,
-  its pages and templates; README.md, 302 lines), before Rex, the agents'
-  work and most of what is below. To do:
-  - *What to say, first*: a list of everything Olo has now, read from
-    the code and HACKING, not from the old pages: the desktop
-    (app_server, Deskbar, tiling and its layouts, workspaces, themes,
-    fractional scaling, the login screen, the Installer and upgrades in
-    place), every app under `apps/` (56 folders: which are apps a person
-    opens, which are services), and each one's best two or three
-    features.
-  - *The highlight*: the AI side and Rex. Rex as the client of a Rex
-    server on any host (sessions that outlive the desktop, panes, the
-    Hosts and Ports windows, moving an account host to host, synced
-    folders, Tracker over `rex://`); agents in it (Activity, a tab's
-    children and `olo agent` with no desktop needed, transcripts, Keep It
-    Going and Auto Approve, Agent Sessions carried to a host); the
-    desktop for agents (Agent Screens and `olo-screen`, the structured
-    tree every window gives, the Rex bridge: a browser, a password, a
-    screen for an agent on a far host; `olo run`); the Token Pool; and
-    the integrations (Preferences ▸ Integrations, Slack, Telegram, Phone,
-    Calendar's accounts, Passwords and 1Password, Chrome).
-  - *All new pictures*: every screenshot taken again from the current
-    build, headless (`tsession`), each app in its best state with real
-    looking content, light and dark, at 2× for the page (and the tiling
-    layouts, the login screen, the Installer); none kept from before. The
-    website's pictures zoom (2026-11-16): keep that.
-  - *The words*: Gemini 4 Neon at xhigh as the copywriter (a helper in
-    tmux, `tools/dev/agents`, with a brief: the list above, the pictures,
-    Olo's voice from the old pages and the Olo Book, who it is for). It
-    drafts; every claim is checked against the code before it is kept
-    ("Before telling the person how something works … read the code that
-    does it"), and what Olo doesn't do yet is not said.
-  - *The page itself*: looked at as everything else is (both reviewers,
-    at phone width too), and the README's install steps tried as written.
-  LFS: new pictures in the repository need the budget raised first (see
-  "GitHub's LFS budget is used up", below); the website's own may be
-  served from its `static/` without LFS, to check.
+- **The website and README.md, made anew: done but for what waits on
+  GitHub** (Ben, 2026-11-26: "completely refresh the website and the
+  README.md with all new screenshots and covering the huge ecosystem of
+  apps and features with a highlight on the AI stuff and rex client +
+  integrations. use neon 4 as your copywriter"). Done on 2026-11-26:
+  Gemini 4 Neon wrote the README and the home and install pages from
+  the code and HACKING, with a list of every claim and where it is
+  true; the lead checked some seventy of them against the code, cut or
+  reworded what didn't hold (apps counted twice, an "Agent Setup"
+  button that isn't one, "full undo") and what oversold, and took
+  thirty-one new pictures (`tools/dev/readme-shots`, every scene on a
+  demo, nothing of anyone's), none kept from before. The page was
+  looked at in Chrome on a screen (its dark band's code chips were pale
+  on pale: fixed). Left:
+  - *Merging it*: the pictures are LFS files and GitHub's LFS budget
+    refuses new ones ("GitHub's LFS budget is used up", below), and the
+    pages can't go without them (the site's builder stops at a picture
+    that isn't there). It is all on the local branch `site-refresh`:
+    once the budget is raised, `git switch main && git merge
+    site-refresh && tools/dev/push`, then `tools/deploy-website.sh`
+    (which asks before it signs in to Cloudflare: the person's).
+  - *Not pictured*, for want of a demo: Passwords (an empty vault),
+    Activity Monitor, the Log Viewer and OS Updates (each can only show
+    the computer it runs on: a demo for each, then a picture), DiskBackup,
+    Screenshot, DriveSetup, Slack, the login screen and the lock screen.
+  - *Not yet looked at*: the pages at phone width, and the install
+    steps tried as written on a fresh Fedora (`tools/dev/installer-check`).
+  - *What the two reviewers found and is not done* (one round,
+    2026-11-26; done from it: a scratch path in Agent Screens' footer,
+    windows cutting each other's words, a "Trash" label left under a
+    window, a stitched pair of two front windows, text too small in
+    Rex's pictures, the hero's Rex showing no agent, key chords broken
+    across lines, pale code chips in the dark band). Opus 5.5, of the
+    page: "On the page, the pictures can't be read" (a half-column
+    picture, about 660 px, "can show at most about 900 pt of screen
+    width"; "Give the 3–4 key pictures full-width rows with the text
+    above them"; in the zig-zag rows "pictures about 760 px (63%) and
+    text about 400 px"); "The AI section leads the page, but no picture
+    shows AI doing anything" ("run one demo story through every agent
+    picture": the Refunds project, one persona; Weather's assistant
+    answering with its window highlighted, the palette's /ask answer,
+    Calendar's drafted event); "Hero: no product above the fold"
+    (the 165 px ring, the padding above the picture, the gradient on
+    "you and your agents" that "passes through a muddy olive", the one
+    underlined link); "Text density: the page reads like the README";
+    "The same scene again and again"; "The page itself looks like a
+    template". Of the demos: "Demo data that undercuts the pitch":
+    Weather's "Sample Field · A made-up place · Demo (made up)", Token
+    Pool's "about 8 red marks", Doctor's "red Critical backup failure,
+    and 'NVIDIA's graphics driver is stuck'", "Developer-internal
+    strings" in Rex's demo, three personas (ada@, alex@, you@olo): the
+    apps' demos were made to show every state to a reviewer, and a
+    second, friendlier set for pictures is its own piece of work.
+    Gemini 4 Neon: Telegram's list and chat cut a name in half at their
+    scroll edges; Calendar's week truncates its all-day events ("Sam's
+    birt…"); the dark band's pictures have "a bright, high-contrast ~1
+    px" outline; the overview and tiling thumbnails are "about 280 px
+    wide"; the palette "slices Size / Created / Modified mid-value" of
+    the window behind it. Both reviews whole: `/var/tmp/olo-site-reviews/`
+    on the dev server (not kept in the repository).
+  - To-Do's List and Board switch has no menu-free way for an agent on
+    Today (it is drawn only for a list of the person's own), and
+    `olo-screen click --role ListItem --name Work` didn't choose the
+    list in a scene: the board picture was left for the day's list. To
+    look at: whether that switch says what it is to the tree.
 
 - **`olo agent` on a host reached without SSH** (left of the agents
   service, 2026-11-26). The service is Olo's helper, which the app puts

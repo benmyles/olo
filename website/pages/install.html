@@ -1,24 +1,24 @@
 ---
 title: Install Olo Desktop
-description: Install Olo on Fedora 44 or 45 Workstation with one program, beside GNOME, or build it from source. How to update, and what the Installer does.
+description: Install Olo on Fedora 44 or 45 Workstation with one program, beside GNOME, or build it from source. How to update, configure your hardware, and get started with Rex and integrations.
 ---
 <div class="page-head">
   <div class="wrap">
     <span class="kicker">Install</span>
     <h1>Olo on your computer, in minutes.</h1>
-    <p class="lead">One program installs Olo beside GNOME, which stays as it is. You choose Olo or GNOME each time you log in.</p>
+    <p class="lead">One program installs Olo beside GNOME, which stays untouched. You choose Olo or GNOME each time you log in.</p>
   </div>
 </div>
 
 <div class="wrap">
   <div class="prose">
-    <div class="note"><p><strong>Olo is beta software.</strong> It is developed and tested on a few computers (a Lenovo ThinkPad P1 Gen 9 above all). It installs beside GNOME, which stays as it is, so trying it costs nothing; but on hardware it hasn't met, expect rough edges: a special key that does nothing, a touchpad that wants tuning, a display mode that isn't offered. <a href="#your-hardware">Your computer can be made one it knows.</a></p></div>
+    <div class="note"><p><strong>Olo is beta software.</strong> It is developed and tested on a few computers (a Lenovo ThinkPad P1 Gen 9 above all). It installs beside GNOME, which stays as it is, so trying it costs nothing; on hardware Olo has not met yet, expect rough edges such as a special key that does nothing, a touchpad needing tuning, or a display mode not yet offered. <a href="#your-hardware">Your computer can be made one it knows.</a></p></div>
 
     <div class="shot">{{shot olo-installer | Olo's Installer: one full-screen program, after BeOS's own}}</div>
 
     <h2>What you need</h2>
     <ul>
-      <li><strong>Fedora 44 or 45 Workstation</strong>, x86_64. (To build from source: Workstation or an atomic desktop such as Silverblue, on x86_64 or aarch64.)</li>
+      <li><strong>Fedora 44 or 45 Workstation</strong>, x86_64. (Pass <code>--console</code> on minimal or headless Fedora without GNOME; to build from source: Workstation or an atomic desktop such as Silverblue, on x86_64 or aarch64.)</li>
       <li>Your password, once: the Installer adds what Olo needs from Fedora.</li>
     </ul>
 
@@ -39,7 +39,7 @@ description: Install Olo on Fedora 44 or 45 Workstation with one program, beside
     <div class="note"><p>Then log out, and choose <strong>Olo Desktop</strong> from the login screen's session menu (the gear by Sign In) before you log in again. Fedora's GNOME stays there too.</p></div>
 
     <h2>Updating</h2>
-    <p>Run the Installer again: it keeps what you chose and brings everything up to date. Olo upgrades in place: the running desktop is replaced without closing a window, and your apps come back as they were.</p>
+    <p>Once you are in Olo, Deskbar watches GitHub releases and offers newer versions in its tray, or you can run the Installer again, keeping what you chose. Olo upgrades in place: the running desktop is replaced without closing windows, terminals, Rex port forwards, Token Pool streams or DiskBackup runs.</p>
 
     <h2>From source</h2>
     <p>To build Olo yourself:</p>
@@ -62,10 +62,12 @@ description: Install Olo on Fedora 44 or 45 Workstation with one program, beside
     <p>Then, in Claude Code, type <code>/olo-hardware</code>; in Codex, say <em>use the olo-hardware skill</em>. Olo puts its skills where both look for them as you log in; with another agent, say <em>read docs/skills/olo-hardware/SKILL.md and follow it</em>.</p>
     <p>It changes nothing on your computer by itself: what needs your password is an Olo Doctor fix you apply with a button, and what it builds you install with Deskbar's Upgrade. If the result would help others with the same computer, it offers to open a pull request.</p>
 
-    <h2>Then</h2>
+    <h2>First steps in Olo</h2>
     <ul>
-      <li>Press <kbd>⌘</kbd> <kbd>Space</kbd> for the command palette, and type what you're after.</li>
-      <li>Open <strong>Preferences ▸ Themes</strong> to choose Classic or Platinum, and <strong>Backgrounds</strong> for a wallpaper.</li>
+      <li>Press <span class="keys"><kbd>⌘</kbd> <kbd>Space</kbd></span> for the command palette: launch apps, jump to Rex sessions, search Passwords, Calendar or To-Do, or type <code>/ask</code>.</li>
+      <li>Open <strong>Rex</strong> to start local sessions, add remote hosts over SSH or Tailscale, and manage permissions in <strong>Preferences ▸ Rex ▸ Hosts</strong>.</li>
+      <li>Open <strong>Preferences ▸ Integrations</strong> to connect Google, Fastmail, CalDAV, GitHub and Telegram, and <strong>Token Pool</strong> to share Claude and ChatGPT subscriptions.</li>
+      <li>Open <strong>Preferences ▸ Themes</strong> to pick from Classic, Platinum, BeOS, AmigaOS, Aqua or twenty-three colour schemes, and customise colours, icon sets or wallpapers live.</li>
       <li>If something gets in Olo's way, <strong>Olo Doctor</strong> finds it and fixes it with a button.</li>
       <li>Want to help? Start with <a href="https://github.com/benmyles/olo/blob/main/docs/HACKING.md">Hacking on Olo</a>.</li>
     </ul>
