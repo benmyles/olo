@@ -6,6 +6,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-26
 
+### Layout: every thing stands where its neighbour ends, at every scale
+
+*14:40* — Three pairs, before over after, enlarged: Rex at 1.25x (a row of ground between the tab strip and the header under it, gone), Token Pool at 1.25x (a scroll arrow sitting on its well's frame, now inside it), Tracker at 1.75x (a scroll bar a pixel off its frame, now flush). The layout engine rounded a thing's offset in its parent by itself while sizes were cut to rounded edges: nested a few deep, things stood a pixel or two past where their neighbours ended.
+
+![Layout: every thing stands where its neighbour ends, at every scale](2026-11-26/144021-layout-every-thing-stands-where-its-neighbour-en.png)
+
 ### Rex: a transcript's times and results beside what they are of
 
 *13:42* — Before (above), a turn's time and a tool's result stood at the pane's right edge, a window's width from the name and command they belong to. After (below), each follows what it is of: You 14:52:10; a command, then its check and how long it took. A capped column was tried first and both reviewers took it for a pane that had failed to resize.
