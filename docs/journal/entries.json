@@ -5458,5 +5458,11 @@
   "title": "Rex's Host window: a Screens tab",
   "caption": "A host's own Agent Screens from the desktop: Olo and Chrome put on the host, updated and removed here (its line says what is there, what it lacks, which screens run, and how far an install is), and where screens open by default. One round of both reviewers' looks: one structure in every state, both sizes by name, the host's copy never called a desktop, a greyed choice that says why.",
   "image": "2026-11-26/193343-rex-s-host-window-a-screens-tab.png"
+ },
+ {
+  "time": "2026-11-26T20:37:19",
+  "title": "Rex's Host window: a host's screens, listed",
+  "caption": "The Screens tab lists a host's own Agent Screens (running first, the newest at the top), shows the one chosen as it is now (a picture brought over the link) and stops it; an install there has a bar for the whole of it and a Cancel that ends it on the host. One round of both reviewers: the list kept in every state, the title the widest column, a failed stop's line in the failures' ink with its room kept.",
+  "image": "2026-11-26/203719-rex-s-host-window-a-host-s-screens-listed.png"
  }
 ]
