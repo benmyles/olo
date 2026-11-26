@@ -2558,6 +2558,20 @@ impl RexHub {
         // without touching any real Rex server socket or user files.
         if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") {
             hub.populate_demo_workspace();
+            // (`OLO_REX_DEMO_CHILD_ENDS=SECONDS`: the child "Unit Tests"
+            // ends that long after the start, as a child stopped on its
+            // host does: its row goes from every list while whatever the
+            // pointer was doing goes on. For the pictures of what a row's
+            // going leaves behind: a tip stayed up for a child nowhere in
+            // the list, 2026-11-26.)
+            if let Some(after) = std::env::var("OLO_REX_DEMO_CHILD_ENDS").ok().and_then(|s| s.parse::<u64>().ok()) {
+                let (state, notify) = (hub.state.clone(), hub.notify.clone());
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(after));
+                    state.lock().unwrap_or_else(|e| e.into_inner()).subagents.entries.retain(|e| e.title != "Unit Tests");
+                    notify(HubNotice::StateChanged);
+                });
+            }
             if std::env::var_os("OLO_REX_FILES_SOCKET").is_some() {
                 crate::files_sock::spawn(hub.rt.handle(), hub.state.clone());
             }

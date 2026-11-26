@@ -266,8 +266,11 @@ pub struct Reach {
 
 fn on_side(element: Element, key: SharedString, text: SharedString, side: TipPlace, over: Reach) -> Element {
     use olo_interface::InteractiveElement as _;
-    let (rested, pressed_key) = (key.clone(), key);
+    let (rested, pressed_key) = (key.clone(), key.clone());
     element
+        // (Its tip is about this key's thing: another's element in its
+        // place, under a still pointer, is another to the pointer too.)
+        .hover_key(key)
         .on_hover(move |hovered, cx| {
             let at = cx.listener_bounds();
             let place = Bounds::from_corners(olo_interface::point(at.left() - px(over.before), at.top() - px(over.above)), olo_interface::point(at.right() + px(over.after), at.bottom()));

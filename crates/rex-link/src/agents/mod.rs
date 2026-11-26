@@ -36,6 +36,29 @@ mod tests {
 
     use super::*;
 
+    /// A turn's end is an end, whatever the agent left running (ShiftUp's
+    /// item 24). The screen is Claude Code's after a turn that started a
+    /// shell in the background and ended with a question, read from one
+    /// (2026-11-26): Rex still calls the pane working, for the shell.
+    #[test]
+    fn a_turn_that_ended_with_a_shell_still_running_has_ended() {
+        let named = format!("{} probe24 ─", "─".repeat(86));
+        let rule = "─".repeat(96);
+        let ended = format!("● QUESTION: is this seen?\n\n✻ Cooked for 9s · 1 shell still running\n\n{named}\n❯ \n{rule}\n  ⏵⏵ auto mode on · 1 shell · ← 1 agent · ↓ to manage\n");
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Working, &ended, true);
+        assert_eq!(cls.state, SubagentLiveState::Idle, "at its prompt with no turn on: not working, whatever Rex says of the pane");
+        // With its transcript's word that the turn ended, it is done; with a question read there, it asks.
+        assert_eq!(effective_state(&cls, Some("done"), None, true).0, SubagentLiveState::Done);
+        assert_eq!(effective_state(&cls, Some("waiting"), None, true).0, SubagentLiveState::WaitingQuestion);
+        // In a turn (its footer says so), with the same shell: working, by its own screen.
+        let turning = format!("✢ Fermenting… (37s · ↓ 3.0k tokens)\n\n{named}\n❯ \n{rule}\n  ⏵⏵ auto mode on · 1 shell · esc to interrupt · ← 1 agent · ↓ to manage\n");
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Working, &turning, true);
+        assert_eq!((cls.state, cls.summary.as_deref()), (SubagentLiveState::Working, Some("✢ Fermenting… (37s · ↓ 3.0k tokens)")));
+        // A screen that isn't its prompt and says nothing of itself: Rex's word still stands.
+        let unknown = "Compiling olo v0.1.0\n   Building [=====>   ] 12/40\n";
+        assert_eq!(classify_screen_rich(AgentCli::Claude, Activity::Working, unknown, true).state, SubagentLiveState::Working);
+    }
+
     /// An agent at work is said by what it is doing, the line over its
     /// field, never by its footer; whatever stands in the rule over the
     /// field, and for an agent that draws no rules.

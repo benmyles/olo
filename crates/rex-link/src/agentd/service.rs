@@ -208,6 +208,18 @@ pub fn tail_of(screen: &str, lines: usize) -> Vec<String> {
     screen.lines().rev().filter(|l| !l.trim().is_empty()).take(lines).map(str::to_owned).collect::<Vec<_>>().into_iter().rev().collect()
 }
 
+/// Whether the process that asks runs another file of the helper than
+/// this service does, written later (a build put on the host since this
+/// one started). The same file, or an earlier one (a watcher from before
+/// an upgrade, still waiting), is not: the service is never handed back.
+fn asker_is_a_later_build(pid: i32) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    // (Through /proc's own links: a file taken off the disk since, as an
+    // upgrade's tidying does, is still read.)
+    let (Ok(mine), Ok(theirs)) = (std::fs::metadata("/proc/self/exe"), std::fs::metadata(format!("/proc/{pid}/exe"))) else { return false };
+    (mine.dev(), mine.ino()) != (theirs.dev(), theirs.ino()) && (theirs.mtime(), theirs.mtime_nsec()) > (mine.mtime(), mine.mtime_nsec())
+}
+
 impl Service {
     pub fn lock(&self) -> MutexGuard<'_, State> {
         self.st.lock().unwrap_or_else(|e| e.into_inner())
@@ -1067,8 +1079,13 @@ impl Service {
         };
         // An asker of a later build: its own service takes over. This
         // one finishes what it is doing, writes down what it knows and
-        // ends; the children are the server's and go on.
-        if req.proto > PROTO {
+        // ends; the children are the server's and go on. Later by what
+        // it speaks, or by its file: a helper put on the host after this
+        // one was (an upgrade that speaks the same) is asked through at
+        // once, and a service that had no such word ran the old build for
+        // as long as anything kept it busy: on a host whose agents never
+        // rest, for good (2026-11-26).
+        if req.proto > PROTO || peer_pid.is_some_and(asker_is_a_later_build) {
             let _ = write.write_all(format!("\n{}", said(&Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) })).as_bytes()).await;
             self.retire.notify_one();
             return;

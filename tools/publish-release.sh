@@ -42,6 +42,15 @@
 #     ones"). Their tags stay, so step 6 never gives a name twice. A
 #     release GitHub wouldn't delete is said in the log and doesn't undo
 #     the publish: the new release is up either way.
+# 10. Where this computer is itself a Rex host with Olo's pieces on it,
+#     puts the release's own there (tools/dev/host-upgrade: the helper
+#     that is `olo agent` and the agents service, the skill, the `olo`
+#     command), as the desktop would when it next connects upgraded:
+#     the agents working here have a fix as soon as it is released,
+#     whenever the desktop is (Ben, 2026-11-26: "as you build the new
+#     releases please upgrade the services, skills etc on this rex host
+#     automatically for me"). OLO_NO_HOST_UPGRADE=1 leaves the host be.
+#     What it couldn't do is said in the log and doesn't undo the publish.
 set -euo pipefail
 NOTES=${1:?usage: tools/publish-release.sh NOTES.md [--dry-run]}
 NOTES=$(realpath "$NOTES")
@@ -189,5 +198,15 @@ else
     say "the older releases weren't all deleted: $(echo "$out" | grep -E "couldn't|didn't" | head -3 | tr '\n' ' ')(tools/release-prune.sh again)"
 fi
 echo "$out" >> "$LOG"
+step "10. this host"
+if [ "${OLO_NO_HOST_UPGRADE:-}" = 1 ]; then
+    say "left as it is (OLO_NO_HOST_UPGRADE)"
+elif out=$(OLO_RELEASE_WORK="$WORK" "$REPO/tools/dev/host-upgrade" 2>&1); then
+    echo "$out" >> "$LOG"
+    say "$(echo "$out" | tail -1)"
+else
+    echo "$out" >> "$LOG"
+    say "this host wasn't upgraded: $(echo "$out" | tail -1) (tools/dev/host-upgrade again)"
+fi
 URL=$(gh release view "$TAG" --json url -q .url)
 say "published $URL"

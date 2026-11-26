@@ -487,7 +487,25 @@ impl WindowCore {
             let motion = |i: &Option<Box<crate::element::Interactivity>>| i.as_ref().map(|i| (i.motion(), i.all_motion));
             let motion_changed = motion(&node.inter) != motion(&inter);
             let watches_changed = node.inter.as_ref().map(|i| i.watches.as_slice()).unwrap_or(&[]) != inter.as_ref().map(|i| i.watches.as_slice()).unwrap_or(&[]);
+            // Under the pointer, and about another thing than what stood
+            // here (`hover_key`): the pointer left that one, and comes
+            // over this one when hover is worked out again.
+            // (One test of a flag for every element but those under the
+            // pointer: nothing is cloned or compared for the rest.)
+            fn about(i: &Option<Box<Interactivity>>) -> Option<&crate::SharedString> {
+                i.as_ref().and_then(|i| i.hover_key.as_ref())
+            }
+            let another = node.hovered && about(&node.inter) != about(&inter);
+            let left: SmallVec<[crate::element::Listener<bool>; 1]> = if another { node.inter.as_ref().map(|i| i.hover.clone()).unwrap_or_default() } else { SmallVec::new() };
+            if another {
+                node.hovered = false;
+            }
             node.inter = inter;
+            if another {
+                self.left_behind.extend(left);
+                self.hovered.retain(|n| *n != id);
+                self.hover_stale = true;
+            }
             if motion_changed || watches_changed {
                 self.reshaped();
             }

@@ -704,6 +704,43 @@ fn a_later_build_takes_over_and_kept_children_are_adopted() {
     rig.json(&["stop", "steady", "--force", "--json"]);
 }
 
+/// An upgrade that speaks the same protocol takes over too: a helper put
+/// on the host after the service started is asked through at once, the
+/// children there as before; and an asker from before the upgrade (a
+/// watcher still waiting) never takes the service back.
+#[test]
+fn a_helper_put_there_later_takes_over_and_is_not_handed_back() {
+    let Some(rig) = Rig::start("upgrade") else { return };
+    let started = rig.json(&["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
+    let first = rig.service_pid().expect("a service");
+    // The same build asking again changes nothing.
+    assert_eq!(rig.service_pid(), Some(first));
+
+    // "An upgrade": the helper again, another file, written now.
+    let later = rig.dir.join("later").join("olo-rex-link");
+    std::fs::create_dir_all(later.parent().unwrap()).unwrap();
+    std::fs::copy(HELPER, &later).unwrap();
+    let ask = |helper: &Path, args: &[&str]| -> Value {
+        let mut cmd = Command::new(helper);
+        cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work")).env("REX_BLOCK", &rig.lead_block);
+        Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
+        let out = cmd.arg("agent").args(args).output().expect("the helper");
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}: {}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    };
+    let listed = ask(&later, &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"], "the child is there, asked of the later build: {listed}");
+    rig.wait("the first service to end", || !Path::new(&format!("/proc/{first}")).exists());
+    let second = ask(&later, &["ping"])["pid"].as_i64().unwrap() as i32;
+    assert_ne!(second, first);
+    assert_eq!(std::fs::read_link(format!("/proc/{second}/exe")).unwrap(), later, "the service is the later build's");
+
+    // The earlier build asking (a watcher from before): answered by the later one, which stays.
+    let listed = rig.json(&["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"]);
+    assert_eq!(ask(&later, &["ping"])["pid"].as_i64().unwrap() as i32, second, "never handed back to an earlier build");
+    rig.json(&["stop", "steady", "--force", "--json"]);
+}
+
 /// What a watcher is and isn't told: two questions one after the other
 /// are two events; a cursor from before the log began again is said so;
 /// text that was already on the screen isn't the text waited for; a

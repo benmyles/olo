@@ -2501,6 +2501,25 @@ their host's"):
   measuring script that started its server with `&` and then waited for
   thirty starts never came back. Wait for the numbers you started
   (`pids+=($!)`, `wait "${pids[@]}"`).
+- **A node keeps "the pointer is here" when another element takes it
+  over** (the phantom tip, 2026-11-26). The tree matches elements to
+  nodes by place where they have no key of their own, so a list's row
+  for an item that went is given the next item's element, `hovered` and
+  all, and the first row's `on_hover` never hears `false` (only a node
+  destroyed under the pointer did: `left_behind`). What is tied to what
+  a row is about, not where it stands (a tip, a card, a preview), must
+  say so: `hover_key`. To see it: the pointer resting, then the list
+  changed by something other than the pointer (`tsession touch` moves
+  the pointer for hover too; Rex's `OLO_REX_DEMO_CHILD_ENDS` doesn't).
+- **Rex's word for a pane isn't the agent's turn.** The Rex server says
+  a pane is working while a shell the agent left in the background
+  still runs (Claude Code with a dev server: "1 shell" in its footer,
+  no "esc to interrupt"), so anything that takes that word for "the
+  model is in a turn" misses the turn's end. The agent's own screen is
+  what says it (at its prompt, nothing saying a turn is on). Reproduced
+  with a child of one's own in a minute: `olo agent start claude …
+  --prompt 'run sleep 900 in the background, then answer and end your
+  turn'`, then `status --json` (ShiftUp's item 24).
 - **The helpers are Rex's own subagents now** (2026-11-26; Ben: "when
   you use subagents for review/qa please use the new olo/rex native
   subagent support you built"). `tools/dev/agents` starts each as a child

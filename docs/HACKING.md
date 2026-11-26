@@ -1990,7 +1990,19 @@ agents read `minimized` on its `MenuItem` node.
 
 A tip is a popup of its own, never drawn inside the window (in a
 window smaller than what it says, it would be cut at the edge).
-`tip::on(element, key, text)` gives an element one;
+`tip::on(element, key, text)` gives an element one, about the thing
+`key` names. A tip is about a thing, not a place in the tree: its
+element carries the key as its `hover_key`
+(`InteractiveElement::hover_key`), and where the element that comes to
+stand in its place under a still pointer is about another thing (a
+list's row for another item, as the list changes), the pointer has left
+the one and come over the other, and `on_hover` hears both. Without
+that, a node taken over by another row kept "the pointer is here" and
+the old row never heard it leave: its tip stayed up over the list for
+an item no longer in it (Ben, 2026-11-26, of Rex's Activity: "some
+phantom tooltip appearing for an agent i don't see in the list at
+all"). Rex's `OLO_REX_DEMO_CHILD_ENDS=SECONDS` ends a child under a
+resting pointer, for its picture;
 `tip::hover(cx, key, text, anchor, hovered)` is the same for a drawing
 that follows the pointer itself (`WindowKind::Tip`: an xdg_popup
 with no grab and an empty input region, so it takes no clicks; a
@@ -17072,6 +17084,28 @@ by (the first with neither a release nor a tag), and each still names
 the commit its release was built from; drafts and pre-releases are
 neither counted nor deleted. So the list a desktop can go back through
 (`olo_release::list`) is three long.
+Last, where the computer it runs on is itself a Rex host with Olo's
+pieces on it (the dev server), it puts the release's own there
+(`tools/dev/host-upgrade [--dry-run]`; Ben, 2026-11-26: "as you build
+the new releases please upgrade the services, skills etc on this rex
+host automatically for me so that the agents working on stuff relying on
+olo agent fixes etc get it as soon as they're ready"): the helper the
+release's Rex carries, under the very name that Rex looks for (the
+app's `OLO_REX_LINK_ID`, FNV-1a over both machines' helpers as
+`apps/rex/build.rs` takes it: the upgraded desktop finds it there and
+puts nothing again); the skill's `SKILL.md`, `olo` and `olo.lua`, and
+the desktop commands' `olo`, from the release's source, their stamps
+left as the desktop wrote them (a desktop of an earlier release that
+connects meanwhile sees its own stamp and leaves the newer files be;
+the upgraded one sees a stamp not its own and writes its own once);
+and the agents service, which is asked to retire so the new helper's
+starts (children are the server's tabs and go on; a `watch` in flight
+is asked again by its own command). A service hands over by itself to
+an asker running a later-written file of the helper
+(`asker_is_a_later_build`: before, only a change of protocol took over,
+and on a host whose agents never rest an upgrade that spoke the same
+never took effect), and is never handed back to an earlier one.
+`OLO_NO_HOST_UPGRADE=1` leaves the host be.
 Its log is `publish.log` there, its last line "published URL",
 "dry run: …" or "failed: WHY". Why a container: Olo's programs link
 the system's libraries and glibc, and a release built on another
@@ -30690,7 +30724,9 @@ agents through the night, could not move to it.
   its service, and from then on it goes straight. A host reached without
   SSH has no helper put on it yet (TODO).
 - *Cost* (release, 2026-11-26, `perf stat --no-scale`, `tools/dev/cost`;
-  thirty stand-in children on a scratch server): **at rest** with thirty
+  thirty stand-in children on a scratch server: `tools/dev/agentd-cost`
+  does all of it in two minutes, and is what a change to the service is
+  measured with, before and after): **at rest** with thirty
   children at their prompts, and the same with a watcher waiting: 0.0%
   of a core, 0 wakeups a second, no instruction counted in ten seconds.
   Thirty children each redrawing ten times a second (never a pause: one

@@ -253,6 +253,8 @@ pub struct Interactivity {
     pub(crate) file_drop: SmallVec<[Listener<crate::ExternalPaths>; 1]>,
     pub(crate) click: SmallVec<[Listener<ClickEvent>; 1]>,
     pub(crate) hover: SmallVec<[Listener<bool>; 1]>,
+    /// What the pointer being over it is about (`hover_key`).
+    pub(crate) hover_key: Option<crate::SharedString>,
     pub(crate) key_down: SmallVec<[Listener<KeyDownEvent>; 1]>,
     pub(crate) key_up: SmallVec<[Listener<KeyUpEvent>; 1]>,
     /// Keys on their way down to what has the keyboard, before it.
@@ -756,6 +758,23 @@ pub trait InteractiveElement: Sized {
     /// The pointer came over it (true) or left.
     fn on_hover(mut self, listener: impl Fn(&bool, &mut WindowCx) + 'static) -> Self {
         self.interactivity().hover.push(Rc::new(listener));
+        self
+    }
+
+    /// What the pointer being over this is about, where the element that
+    /// stands in its place next may be about another thing: a list's row
+    /// for one item, where the row for another comes to stand as the
+    /// list changes. With another key in its place under a still
+    /// pointer, the pointer has left the one and come over the other:
+    /// `on_hover` hears so (false to the old, true to the new). Without
+    /// keys, an element drawn again in the same place is the same thing
+    /// to the pointer, as it mostly is. (A tip is about a thing: its key.
+    /// The row of a child that had ended kept its tip up over the row
+    /// that took its place, for an agent nowhere in the list: Ben,
+    /// 2026-11-26, "some phantom tooltip appearing for an agent i don't
+    /// see in the list at all".)
+    fn hover_key(mut self, key: impl Into<crate::SharedString>) -> Self {
+        self.interactivity().hover_key = Some(key.into());
         self
     }
 

@@ -1,0 +1,92 @@
+#!/bin/bash
+# What the host's agents service costs (`olo-rex-link agent serve`:
+# HACKING, "The children of a tab are their host's"), on a release build:
+# at rest with thirty children at their prompts (and with a watcher
+# waiting), with thirty redrawing ten times a second, and with thirty
+# writing three bursts a second; and how long `list` and `status` take.
+# A Rex server of its own in a scratch folder, stand-ins for the agents,
+# nothing of the person's session touched.
+#
+#     jato build --release -p olo-rex-link --features agents
+#     tools/dev/agentd-cost [SCRATCH-DIR]      (default /var/tmp/olo-agentd-cost)
+#
+# About two minutes. It prints, for each case, `tools/dev/cost`'s line
+# (a share of a core, wakeups a second) and `perf stat --no-scale`'s
+# instructions over ten seconds: the numbers a commit that changes what
+# the service does per reading, per event or at rest carries, before and
+# after (CLAUDE.md, "Fast and light, measured"). At rest it must read
+# 0.0% of a core, 0 wakeups, no instruction counted.
+set -u
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+D=${1:-/var/tmp/olo-agentd-cost}
+case "$D" in /tmp/*) echo "agentd-cost: $D is in RAM (/tmp): a folder under /var/tmp" >&2; exit 2 ;; esac
+L=$ROOT/target/release/olo-rex-link
+COST=$ROOT/tools/dev/cost
+[ -x "$L" ] || { echo "agentd-cost: no $L: jato build --release -p olo-rex-link --features agents" >&2; exit 2; }
+rm -rf "$D"; mkdir -p "$D"/{run,st,agents,home,quiet,spin,burst,work}
+export HOME="$D/home" XDG_RUNTIME_DIR="$D/run" XDG_STATE_HOME="$D/st" REX_SERVER_SOCKET="$D/rex.sock" OLO_REX_AGENTS_DIR="$D/agents"
+for v in $(env | grep -o '^CLAUDE[A-Z_]*\|^AI_AGENT\|^REX_SESSION\|^REX_BLOCK'); do unset "$v"; done
+RULE=$(printf '─%.0s' $(seq 60))
+# At its prompt: drawn once, then nothing.
+cat > "$D/quiet/claude" <<EOS
+#!/bin/bash
+printf '\033[?1049h\033[2J\033[H● Done with this part.\n✻ Crunched for 2s\n$RULE\n❯ \n$RULE\n  ⏸ manual mode on · ? for shortcuts\n'
+exec sleep 100000
+EOS
+# At work, its spinner turning ten times a second (it never pauses).
+cat > "$D/spin/claude" <<EOS
+#!/bin/bash
+printf '\033[?1049h\033[2J'
+i=0
+while :; do i=\$((i+1)); printf '\033[H❯ Do what the brief says.\n● Read(brief.md)\n✻ Thinking… (%ss)\n$RULE\n❯ \n$RULE\n  ⏸ manual mode on · esc to interrupt\n' \$i; sleep 0.1; done
+EOS
+# Writing in bursts, three a second, with a pause after each.
+cat > "$D/burst/claude" <<EOS
+#!/bin/bash
+printf '\033[?1049h\033[2J'
+i=0
+while :; do i=\$((i+1)); printf '\033[H❯ Do what the brief says.\n● Bash(cargo test) line %s\n✻ Running… (%ss)\n$RULE\n❯ \n$RULE\n  ⏸ manual mode on · esc to interrupt\n' \$i \$i; sleep 0.33; done
+EOS
+chmod +x "$D"/{quiet,spin,burst}/claude
+setsid /usr/bin/rex -S "unix://$D/rex.sock" server run --listen "unix://$D/rex.sock" --restore=false --state-dir "$D/st" > "$D/server.log" 2>&1 < /dev/null &
+SERVER=$!
+for i in $(seq 1 200); do [ -S "$D/rex.sock" ] && break; sleep 0.05; done
+rexs() { /usr/bin/rex -S "unix://$D/rex.sock" "$@"; }
+S=$(rexs api call session.create '{"label":"lead"}' | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin)["session_id"])')
+export REX_BLOCK=$(rexs api call session.new_window "{\"session_id\":\"$S\",\"window_label\":\"lead\",\"layout\":{\"block\":{\"flavor\":\"com.superlogical.terminal.shell\",\"options\":{\"size\":{\"columns\":120,\"rows\":40}}}}}" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin)["block_ids"][0])')
+cd "$D/work"
+# (Waited for by their own numbers: the scratch server is this shell's job too, and never ends.)
+start30() { local pids=(); for n in $(seq -w 1 30); do "$L" agent start claude --model m --effort e --name "$1$n" --env "PATH=$D/$1:/usr/bin:/bin" --json > /dev/null & pids+=($!); done; wait "${pids[@]}"; }
+stop30() { local pids=(); for n in $(seq -w 1 30); do "$L" agent stop "$1$n" --force --json > /dev/null & pids+=($!); done; wait "${pids[@]}"; }
+measure() {
+	echo "== $1"
+	/usr/bin/python3 "$COST" "$PID" 10 2>&1 | head -4
+	perf stat --no-scale -e instructions:u,task-clock -p "$PID" -- sleep 10 2>&1 | grep -E 'instructions|task-clock|elapsed'
+}
+start30 quiet
+PID=$("$L" agent ping | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin)["pid"])')
+echo "service pid $PID, children: $("$L" agent list --json | /usr/bin/python3 -c 'import sys,json; d=json.load(sys.stdin)["subagents"]; print(len(d), sorted(set(s["state"] for s in d)))')"
+sleep 4
+measure "at rest: 30 children at their prompts"
+# A watcher waiting meanwhile changes nothing of it.
+"$L" agent watch --all --on approval --timeout 25 --json > "$D/watch.out" 2>&1 &
+WATCH=$!
+sleep 1
+measure "at rest, with a watcher waiting"
+wait "$WATCH"
+t0=$(date +%s%N); "$L" agent list --json > /dev/null; t1=$(date +%s%N); echo "list of 30 (with the look at each agent's files and processes): $(( (t1-t0)/1000000 )) ms"
+t0=$(date +%s%N); "$L" agent list --fast --json > /dev/null; t1=$(date +%s%N); echo "list --fast of 30: $(( (t1-t0)/1000000 )) ms"
+t0=$(date +%s%N); "$L" agent status quiet01 --json > /dev/null; t1=$(date +%s%N); echo "status of one: $(( (t1-t0)/1000000 )) ms"
+stop30 quiet
+start30 spin
+sleep 3
+measure "30 children, each redrawing ten times a second"
+stop30 spin
+start30 burst
+sleep 3
+measure "30 children, each writing three bursts a second"
+echo "the Rex server itself meanwhile:"; /usr/bin/python3 "$COST" "$SERVER" 5 2>&1 | head -2
+stop30 burst
+"$L" agent retire > /dev/null 2>&1
+kill "$SERVER" 2>/dev/null
+rm -rf "$D"

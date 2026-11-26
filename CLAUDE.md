@@ -213,7 +213,14 @@ are universal and non-negotiable:
   latest release and the two before it: the script deletes the older
   ones once the new one is up (`tools/release-prune.sh`; Ben,
   2026-11-26: "for the releases in github let's just keep latest + 2
-  previous ones").
+  previous ones"). And it upgrades this computer as a Rex host: the
+  release's helper (`olo agent`, the agents service), skill and `olo`
+  command are put here as its last step (`tools/dev/host-upgrade`; Ben,
+  the same day: "as you build the new releases please upgrade the
+  services, skills etc on this rex host automatically for me so that
+  the agents working on stuff relying on olo agent fixes etc get it as
+  soon as they're ready"). That is this host's own pieces only: the
+  desktop's session is still never touched.
 - **Build what you change, in dev, while you work.** While editing,
   build and test only the packages you change, in the dev profile
   (optimized too): `jato build -p`, `jato test -p`, pictures from dev
