@@ -1040,7 +1040,9 @@ def look(args):
             subprocess.run(["cp", "--reflink=auto", pic, os.path.join(d, base)], check=True)
             copies.append(os.path.join(d, base))
         said = {"out": review, "pictures": "\n".join(copies)}
-        record = {"work": work, "pictures": pictures, "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": review}
+        # ("kept": where its front door puts the review once it is
+        # written, beside the pictures: its own folder goes with it.)
+        record = {"work": work, "pictures": pictures, "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": review, "kept": out}
         if by == "astra":
             brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
             open(os.path.join(d, "brief.md"), "w").write(brief)
@@ -1190,7 +1192,10 @@ def watch(stuck_min, only=None, at_most=None, among=None):
                 # (One waited for alone that has its result is done,
                 # whether or not it was looked at meanwhile.)
                 if p != m.get("seen") or (only and finished):
-                    said = f"is DONE ({done_file(n)})" if finished else "finished a turn (a question, or waiting)"
+                    # (A look's review is named where it is kept: the file
+                    # in its own folder is gone a moment after, with the
+                    # folder, and a minder was pointed at nothing.)
+                    said = f"is DONE ({m.get('kept') or done_file(n)})" if finished else "finished a turn (a question, or waiting)"
                     alerts.append((n, said, screen(n, 40)))
                     if finished and not only:
                         # (Said once: a watcher of several isn't called
