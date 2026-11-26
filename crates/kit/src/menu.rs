@@ -44,6 +44,12 @@ const ITEM_LEFT: f32 = 20.0;
 const ITEM_RIGHT: f32 = 14.0;
 const SHORTCUT_GAP: f32 = 28.0;
 const POPUP_BORDER: f32 = 1.0;
+/// How much of the shine a dark menu's right and bottom inner edge has
+/// (its top and left have all of it): 1.5 to 1 against the menu's own
+/// ground where the near edge is 1.7 to 1. (At 0.6, 1.4 to 1, Gemini 4
+/// Neon found it "too faint to separate the menu cleanly"; Opus 5.5,
+/// "don't dim the far edge further".)
+const FAR_EDGE: f32 = 0.8;
 const POPUP_PAD: f32 = 4.0;
 const MIN_WIDTH: f32 = 120.0;
 /// A menu taller than its display: kept this far from the display's top
@@ -1135,6 +1141,20 @@ impl MenuPopup {
         let outline = if p.mode == olo_theme::ThemeMode::Dark { style::c(p.frame_focused[0]) } else { style::tint(ground, 1.55) };
         style::frame_rect(g, b, outline);
         let lined = style::inset(g, b, 1.0);
+        if p.mode == olo_theme::ThemeMode::Dark {
+            // In a dark look the far sides have an edge of their own, a
+            // step dimmer than the near ones (the light still from the top
+            // left). The outline is nearly black, and on a dark panel or a
+            // dark document that is no edge at all: 1.2 to 1 against the
+            // panel, the menu's own ground 1.3 to 1, so a menu's right
+            // side and foot ran into what was under them (Opus 5.5 on
+            // Token Pool, 2026-11-25: "give dark popup menus stronger
+            // border contrast … so they separate cleanly from dark panels
+            // behind them").
+            let far = style::c(olo_theme::mix(ground, p.shine, FAR_EDGE));
+            style::hline_above(g, lined.left(), lined.right(), lined.bottom(), far);
+            style::vline_left_of(g, lined.right(), lined.top(), lined.bottom(), far);
+        }
         style::hline(g, lined.left(), lined.right(), lined.top(), style::c(p.shine));
         style::vline(g, lined.left(), lined.top(), lined.bottom(), style::c(p.shine));
         let (detail_pref_w, detail_stat_w) = detail_columns(menu);
@@ -1180,8 +1200,14 @@ impl MenuPopup {
                     MenuItem::Separator => {
                         // Visually centred between the rows above and below (groove shadow + shine).
                         let gy = style::snap_coord(g, cy + px(0.5));
-                        style::hline_above(g, row.left() + px(1.0), row.right() - px(1.0), gy, style::shade(&p, p.menu_background, 1.16));
-                        style::hline(g, row.left() + px(1.0), row.right() - px(1.0), gy, style::c(p.shine));
+                        // From the frame's inner line to its inner line (two
+                        // lines in, on device pixels as the frame is), not
+                        // two points in: at 1.5x a line is one pixel and a
+                        // point one and a half, and each end stood a pixel
+                        // short of the line it meets at 1x and 2x.
+                        let within = style::inset(g, b, 2.0);
+                        style::hline_above(g, within.left(), within.right(), gy, style::shade(&p, p.menu_background, 1.16));
+                        style::hline(g, within.left(), within.right(), gy, style::c(p.shine));
                     }
                     MenuItem::Action(a) => {
                         if lit {

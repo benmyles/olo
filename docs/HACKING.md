@@ -10305,6 +10305,26 @@ again. The profile row's Save As… and Delete are as wide as their
 words (`Button::min_width`): at the kit's least width they left the
 menu six points short of "Mac (Customized)".
 
+## A menu's frame (crates/kit/src/menu.rs)
+
+BeOS's: the menu's colour in a dark outline, a light inner line on its
+top and left. In a dark look the ground is a step lighter than the
+window's, the outline nearly black, and the right side and foot have an
+inner line of their own, a step dimmer than the near one (`FAR_EDGE`:
+(71, 86, 97) beside (78, 93, 104) in Classic dark): a nearly black line
+on a dark panel or list is no edge (1.2 to 1), and a menu's far sides
+ran into what was under them (Opus 5.5 on Token Pool, 2026-11-25). The
+near lines own the two corners where they meet the far ones. A
+separator runs from the frame's inner line to its inner line, two lines
+in on device pixels as the frame is (`style::inset(g, b, 2.0)`), not two
+points in: at 1.5× a line is one pixel and a point one and a half, and
+each end stood a pixel short. A highlighted row runs from outline to
+outline, over the inner lines on both sides alike. Measured at 1, 1.25,
+1.5, 1.75 and 2× (2026-11-26): no pixel of ground between a separator's
+end and the frame's line on either side; the corners each one colour;
+the last item's highlight clear of the foot's line. The light look is as
+it was but for the separator's ends at 1.5×.
+
 ## Menus in groups (the window menu, Deskbar's; every menu of Olo's)
 
 Ben, 2026-11-18: "group the 3 zoom options under a "Zoom ->" parent and

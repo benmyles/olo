@@ -119,13 +119,22 @@ something nobody here has is in "Blocked", with what it waits for.
     duration can be traced back to its row" (less needed now), and "the
     empty ground at wide widths is the place for a detail pane for the
     opened call".
-  - Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
-    dark popup menus stronger border contrast and drop shadow so they
-    separate cleanly from dark panels behind them. As measured
-    2026-11-26 (Classic dark, 2×): the outline (6, 10, 12) against the
-    panel (24, 43, 54) is 1.2:1 and the menu's lifted ground (42, 60,
-    71) 1.3:1, with the light edge (78, 93, 104) on its top and left
-    only; a menu drawn in its window can have a shadow there.
+  - ~~Dark-mode popup menus (Opus 5.5 R3 on Token Pool, 2026-11-25): give
+    dark popup menus stronger border contrast … so they separate cleanly
+    from dark panels behind them.~~ Done 2026-11-26: in dark looks a
+    menu's right side and foot have an inner line of their own, a step
+    dimmer than the top and left (1.5 to 1 against the menu's ground,
+    the near edge 1.7 to 1; against the nearly black outline beside it,
+    2.6 to 1), and a separator runs from the frame's inner line to its
+    inner line at every scale (at 1.5× each end stood a pixel short).
+    Left: a shadow (a popup is a surface of its own, with no room round
+    it: app_server's to draw). From its one round, there before: Gemini
+    4 Neon, "the `⇧` on `Keyboard Shortcuts` renders with noticeably
+    thinner, fainter strokes than `⌘` and `/`, and the three glyphs sit
+    tightly crowded together"; "`Close` sits slightly low in the bottom
+    slot" (more room above the last item than under it). Opus 5.5: "If
+    the light direction must read here … brighten the dark look's
+    top/left line by one step instead" (it recommends the even rim).
     ~~`Menu::app_items` grouping: separate `About <App>` onto its own
     top group above `Settings…` + `Keyboard Shortcuts`~~ Done 2026-11-26
     (a separator under About, in every app's first menu).
