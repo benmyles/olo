@@ -1584,6 +1584,22 @@ Three smaller things from the same work:
   (`.env("PWD", …)`). That the service takes a conversation by folder at
   all is ShiftUp's item 33 for agy, and is in the TODO for both.
 
+### Whose conversation is it: read it from two agents at once (2026-11-26)
+
+An Antigravity's conversation was taken from "a database it holds
+open", which is true of the one that owns it and was never checked
+against one that doesn't. Two of them side by side
+(`agents_live.rs`, `OLO_AGENTS_SHOW_FDS=1 … -- --nocapture` prints each
+one's open files) showed it in a minute: the second, just started with
+no conversation, held the first's `conversations/ID.db`, `-shm` and
+`-wal` open (it lists the conversations there are) and no
+`presence/ID.lock`; the first held its own lock. The lock is the mark of
+whose it is. Evidence for "this is X's" is tried against something that
+is not X's and has every reason to look like it: one agent alone will
+always confirm it. The same for "the newest file written since it
+started": true of a child alone on a quiet computer, and of nothing on
+a host where thirty run.
+
 ### Two builds are measured from the same place (2026-11-26)
 
 A release build copied to `/var/tmp` (or built into a target folder of

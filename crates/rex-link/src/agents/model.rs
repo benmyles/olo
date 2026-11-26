@@ -277,7 +277,15 @@ pub struct NativeSubagent {
     /// True if `exited_at` was set by `sync_live_windows` (so it can heal if the window reappears in a newer view).
     #[serde(default)]
     pub exited_by_sync: bool,
-    /// Confidence tag of `cli_session_id` discovery (`record`, `open`, `daemon`, `argv`, `written`, `known`, `guess`).
+    /// How `cli_session_id` was found: the agent's own record of its
+    /// process (`record`), the lock it holds on its own conversation
+    /// (`lock`, agy) or its rollout held open (`open`, Codex), Codex's
+    /// daemon (`daemon`), its command line (`argv`), given at its start
+    /// (`known`). Once also `written` and `guess` (the newest written in
+    /// its folder, or since it started), and `open` for an agy by a
+    /// database it had open: each of those named another agent's
+    /// conversation as often as its own, and none is kept
+    /// ([`SubagentRegistry::forget_guesses`]).
     #[serde(default)]
     pub session_confidence: Option<String>,
     /// Extra `--add-dir` paths explicitly passed at launch (used to bound `--trust` auto-confirm).
@@ -351,7 +359,8 @@ pub fn to_unix_ms(ts: i64) -> i64 {
 fn confidence_rank(c: Option<&str>) -> u8 {
     match c {
         Some("record") => 7,
-        Some("open") => 6,
+        // (An agy's lock on its own conversation, and a file held open.)
+        Some("lock") | Some("open") => 6,
         Some("daemon") => 5,
         Some("argv") => 4,
         Some("written") => 3,
@@ -374,7 +383,34 @@ impl SubagentRegistry {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(e) => return Err(format!("the registry at {} can't be read: {e}", path.display())),
         };
-        serde_json::from_str::<Self>(&raw).map_err(|e| format!("the registry at {} can't be read: {e} (it is left as it is; nothing is listed from another)", path.display()))
+        let mut reg = serde_json::from_str::<Self>(&raw).map_err(|e| format!("the registry at {} can't be read: {e} (it is left as it is; nothing is listed from another)", path.display()))?;
+        reg.forget_guesses();
+        Ok(reg)
+    }
+
+    /// Forgets every conversation that was guessed for a child and
+    /// never its own for sure: the newest written in its folder
+    /// (`written`), the newest since it started (`guess`), and an agy's
+    /// by a database it had open (`open`: every agy opens the others').
+    /// A child that runs is read again at once, by what is sure; one
+    /// that has exited has none, which is the truth of what is known
+    /// (the ShiftUp lead's item 33: a launcher resumed the conversation
+    /// a new agy was said to have, and it was another agent's). How many.
+    pub fn forget_guesses(&mut self) -> usize {
+        let mut forgot = 0;
+        for e in &mut self.entries {
+            let guessed = match e.session_confidence.as_deref() {
+                Some("written" | "guess") => true,
+                Some("open") => e.cli == AgentCli::Agy,
+                _ => false,
+            };
+            if guessed && e.cli_session_id.is_some() {
+                // (What it was started with, `resume_id`, is its own and stays.)
+                (e.cli_session_id, e.session_confidence, e.transcript_path) = (None, None, None);
+                forgot += 1;
+            }
+        }
+        forgot
     }
 
     pub fn load_from(path: &Path) -> Self {
@@ -382,7 +418,10 @@ impl SubagentRegistry {
             return Self::default();
         };
         match serde_json::from_str::<Self>(&raw) {
-            Ok(reg) => reg,
+            Ok(mut reg) => {
+                reg.forget_guesses();
+                reg
+            }
             Err(e) => {
                 let bad = path.with_extension("json.bad");
                 let _ = std::fs::write(&bad, &raw);
@@ -573,8 +612,11 @@ impl SubagentRegistry {
         if let Some(sid) = cli_session_id.filter(|s| !s.is_empty()) {
             let new_rank = confidence_rank(confidence);
             let old_rank = confidence_rank(e.session_confidence.as_deref());
-            // Allow surer evidence (e.g. Claude's PID record or open FD) to replace an earlier weaker guess (`H13`).
-            let should_update = e.cli_session_id.is_none() || (e.cli_session_id.as_deref() != Some(sid) && new_rank > old_rank);
+            // Surer evidence replaces weaker. And what its own process
+            // says now (its record, its lock, the file it holds open)
+            // replaces what it said before: an agent that began a new
+            // conversation is in that one.
+            let should_update = e.cli_session_id.is_none() || (e.cli_session_id.as_deref() != Some(sid) && (new_rank > old_rank || (new_rank >= 6 && new_rank == old_rank)));
             if should_update {
                 e.cli_session_id = Some(sid.to_owned());
                 e.session_confidence = confidence.map(str::to_owned);

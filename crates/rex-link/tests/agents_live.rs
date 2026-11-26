@@ -1301,3 +1301,116 @@ fn live_mock_api_a_minder_has_its_one_command_and_nothing_else() {
         assert_eq!(stopped["stopped"].as_array().unwrap().len(), 2, "{stopped}");
     });
 }
+
+/// The conversation a process holds open, as its own files say (Antigravity's `conversations/ID.db`,
+/// `presence/ID.lock`, `brain/ID/…`): what `cli_session_id` must be, read here from the process itself.
+fn agy_conversations_held(pid: i64) -> HashSet<String> {
+    let mut held = HashSet::new();
+    let mut pids = vec![pid];
+    // (And its own children: the same reading the service's is checked against.)
+    if let Ok(tasks) = std::fs::read_to_string(format!("/proc/{pid}/task/{pid}/children")) {
+        pids.extend(tasks.split_whitespace().filter_map(|p| p.parse::<i64>().ok()));
+    }
+    for p in pids {
+        for fd in std::fs::read_dir(format!("/proc/{p}/fd")).into_iter().flatten().flatten() {
+            let Ok(target) = std::fs::read_link(fd.path()) else { continue };
+            let t = target.to_string_lossy();
+            if !t.contains("/antigravity") {
+                continue;
+            }
+            for part in t.split('/') {
+                let stem = part.split('.').next().unwrap_or_default();
+                if stem.len() == 36 && stem.chars().filter(|c| *c == '-').count() == 4 {
+                    held.insert(stem.to_owned());
+                }
+            }
+        }
+    }
+    held
+}
+
+/// A new agent's conversation is its own or none yet, never another agent's (the ShiftUp lead's item 33,
+/// 2026-11-26: "A new agy's `cli_session_id` names another live agy's conversation, after its first turn
+/// too … Please report a new agy's own conversation in `cli_session_id`, the one its process holds open,
+/// or none until it has one. Never report another agent's."; one of their launchers resumed what it was
+/// told and another agent's conversation got a turn that wasn't its own). Two Antigravity children, the
+/// first in the middle of a turn, its conversation the newest written, as the second starts.
+#[test]
+fn live_mock_api_a_new_agents_conversation_is_its_own_or_none() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("agy") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("ownconv").await;
+        rig.mock.clear_queues();
+        let start = |name: &'static str, prompt: Option<&'static str>| {
+            let mut args: Vec<String> =
+                ["agent", "start", "agy", "--model", "gemini-3-flash-preview", "--effort", "high", "--name", name, "--trust", "--cwd"].iter().map(|s| (*s).to_owned()).collect();
+            args.push(rig.work.display().to_string());
+            if let Some(p) = prompt {
+                args.extend(["--prompt".to_owned(), p.to_owned()]);
+            }
+            args.push("--json".to_owned());
+            args.extend(rig.cli_env_args("agy"));
+            args
+        };
+        // The first: in the middle of its turn (it asks leave), its conversation open and the newest written.
+        rig.mock.push("agy", MockReply::RunCommand { command: "sh -c \"printf '%s_%s\\n' FIRST RAN\"".into(), reason: "The first's turn".into() });
+        let a = start("first", Some("Begin the first's work."));
+        let a = rig.run_olo_json(&a.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        let asked = rig.run_olo_json(&["agent", "watch", "first", "--since", &a["cursor"].to_string(), "--on", "approval,error,exit", "--timeout", "30", "--json"]).await;
+        assert_eq!(asked["event"], json!("waiting_approval"), "{asked}");
+        let first = rig.run_olo_json(&["agent", "status", "first", "--json"]).await;
+        let first_id = first["cli_session_id"].as_str().unwrap_or_else(|| panic!("the first has a conversation: {first}")).to_owned();
+        assert!(agy_conversations_held(first["pid"].as_i64().unwrap()).contains(&first_id), "the first's is the one its process holds: {first}");
+
+        // The second: started with nothing to do. It has made no conversation: it has none, and never the first's.
+        let b = start("second", None);
+        let b = rig.run_olo_json(&b.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        rig.run_olo_json(&["agent", "watch", "second", "--since", &b["cursor"].to_string(), "--on", "idle,error,exit", "--timeout", "30", "--json"]).await;
+        for _ in 0..3 {
+            let second = rig.run_olo_json(&["agent", "status", "second", "--json"]).await;
+            if std::env::var_os("OLO_AGENTS_SHOW_FDS").is_some() {
+                for who in ["first", "second"] {
+                    let pid = rig.run_olo_json(&["agent", "status", who, "--json"]).await["pid"].as_i64().unwrap();
+                    let mut open: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/fd"))
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .filter_map(|f| std::fs::read_link(f.path()).ok())
+                        .map(|t| t.to_string_lossy().into_owned())
+                        .filter(|t| t.contains("antigravity"))
+                        .collect();
+                    open.sort();
+                    eprintln!("{who} (pid {pid}, {}) holds:\n  {}", std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default().trim(), open.join("\n  "));
+                }
+            }
+            let held = agy_conversations_held(second["pid"].as_i64().unwrap());
+            match second["cli_session_id"].as_str() {
+                None => {}
+                Some(id) => {
+                    assert!(id != first_id && held.contains(id), "a new agent was given a conversation that isn't its own (the first's is {first_id}; its own process holds {held:?}): {second}")
+                }
+            }
+            let listed = rig.run_olo_json(&["agent", "list", "--json"]).await;
+            let row = listed["subagents"].as_array().unwrap().iter().find(|s| s["name"] == "second").unwrap().clone();
+            assert!(row["cli_session_id"].as_str() != Some(first_id.as_str()), "{row}");
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
+
+        // Its first turn: now it has one, its own (what its process holds open), still not the first's.
+        rig.mock.push("agy", MockReply::Text("SECOND_HAS_SPOKEN".into()));
+        let sent = rig.run_olo_json(&["agent", "send", "second", "Say that you have spoken.", "--enter", "--json"]).await;
+        let ended = rig.run_olo_json(&["agent", "watch", "second", "--since", &sent["cursor"].to_string(), "--on", "done,idle,error,exit", "--timeout", "40", "--json"]).await;
+        assert!(matches!(ended["state"].as_str(), Some("done" | "idle")), "{ended}");
+        let second = rig.run_olo_json(&["agent", "status", "second", "--json"]).await;
+        let held = agy_conversations_held(second["pid"].as_i64().unwrap());
+        let own = second["cli_session_id"].as_str().unwrap_or_else(|| panic!("after its first turn it has a conversation: {second}; its process holds {held:?}"));
+        assert!(own != first_id && held.contains(own), "after its first turn: {own} isn't its own (the first's is {first_id}; its process holds {held:?})");
+        // (And the first's is still the first's.)
+        assert_eq!(rig.run_olo_json(&["agent", "status", "first", "--json"]).await["cli_session_id"], json!(first_id));
+        rig.run_olo_json(&["agent", "stop", "first", "--force", "--json"]).await;
+        rig.run_olo_json(&["agent", "stop", "second", "--force", "--json"]).await;
+    });
+}

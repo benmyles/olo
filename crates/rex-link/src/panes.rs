@@ -56,16 +56,28 @@ impl Places {
     pub(crate) fn agy_brain(&self) -> PathBuf {
         self.home.join(".gemini/antigravity-cli/brain")
     }
+
+    /// Where each Antigravity holds a lock named for the conversation
+    /// that is its own (`presence/ID.lock`): the one mark of whose a
+    /// conversation is. Its database (`conversations/ID.db`) is no such
+    /// mark: an Antigravity that has just started, with no conversation
+    /// of its own, opens the others' databases to list them, and was
+    /// then said to be in another agent's conversation (the ShiftUp
+    /// lead's item 33, 2026-11-26: a launcher resumed what it was told,
+    /// and another agent's conversation got a turn that wasn't its own).
+    pub(crate) fn agy_presence(&self) -> PathBuf {
+        self.home.join(".gemini/antigravity-cli/presence")
+    }
 }
 
 /// The agents' own session files, as each holds them open (Codex's
-/// rollouts, archived ones too; agy's conversations, their logs beside
-/// them).
+/// rollouts, archived ones too; agy's lock on the conversation that is
+/// its own, [`Places::agy_presence`]: never its databases, which every
+/// agy opens).
 fn session_file(places: &Places, target: &Path) -> bool {
     let codex = [places.codex.join("sessions"), places.codex.join("archived_sessions")];
-    let agy = places.agy();
     let name = target.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    (codex.iter().any(|d| target.starts_with(d)) && name.ends_with(".jsonl")) || (target.starts_with(&agy) && (name.ends_with(".db") || name.ends_with(".db-wal") || name.ends_with(".db-shm")))
+    (codex.iter().any(|d| target.starts_with(d)) && name.ends_with(".jsonl")) || (target.starts_with(places.agy_presence()) && name.ends_with(".lock"))
 }
 
 /// When a process started, in clock ticks after boot (`/proc/PID/stat`'s
@@ -361,13 +373,12 @@ pub(crate) fn found_in(tree: &[serde_json::Value]) -> Option<Found> {
         Some((p, agent, args))
     })?;
     // (The session file any of the tree holds open: Codex's rollout's id,
-    // `rollout-STAMP-ID.jsonl`; agy's conversation's, `ID.db`.)
+    // `rollout-STAMP-ID.jsonl`; agy's own conversation's, by its lock,
+    // `ID.lock`.)
     let open = tree.iter().flat_map(|q| words(q, "open")).find_map(|f| {
         let name = base(&f).to_owned();
-        for log in [".db", ".db-wal", ".db-shm"] {
-            if let Some(stem) = name.strip_suffix(log) {
-                return uuid(stem).then(|| stem.to_owned());
-            }
+        if let Some(stem) = name.strip_suffix(".lock") {
+            return uuid(stem).then(|| stem.to_owned());
         }
         let parts: Vec<&str> = name.strip_suffix(".jsonl")?.split('-').collect();
         let id = (parts.len() >= 5).then(|| parts[parts.len() - 5..].join("-"))?;
@@ -596,13 +607,17 @@ mod tests {
     }
 
     /// The agents' session files are told by where they are: Codex's
-    /// rollouts (archived too), agy's conversations and their logs.
+    /// rollouts (archived too), and agy's lock on its own conversation,
+    /// never the conversations' databases (every agy opens those).
     #[test]
     fn session_files_are_told_by_their_place() {
         let h = Places { home: "/home/f".into(), claude: "/home/f/.claude".into(), codex: "/home/f/.codex".into() };
         assert!(session_file(&h, Path::new("/home/f/.codex/sessions/2026/11/25/rollout-x-ID.jsonl")));
         assert!(session_file(&h, Path::new("/home/f/.codex/archived_sessions/rollout-x-ID.jsonl")));
-        assert!(session_file(&h, Path::new("/home/f/.gemini/antigravity-cli/conversations/ID.db-wal")));
+        assert!(session_file(&h, Path::new("/home/f/.gemini/antigravity-cli/presence/ID.lock")));
+        for not_its_own in ["conversations/ID.db", "conversations/ID.db-wal", "conversations/ID.db-shm", "conversation_summaries.db", "brain/ID/.system_generated/logs/transcript.jsonl"] {
+            assert!(!session_file(&h, &Path::new("/home/f/.gemini/antigravity-cli").join(not_its_own)), "{not_its_own}");
+        }
         assert!(!session_file(&h, Path::new("/home/f/.codex/config.toml")));
         assert!(!session_file(&h, Path::new("/home/g/.codex/sessions/a.jsonl")));
     }
@@ -679,6 +694,21 @@ mod tests {
         assert_eq!(said[4], None);
         assert_eq!(asked, 1, "the daemon asked once");
         let _ = std::fs::remove_dir_all(&places.home);
+    }
+
+    /// An Antigravity's conversation is the one it holds the lock of.
+    /// One that has just started holds none, whatever else it has open
+    /// (as read from two of them, 2026-11-26: the second held the
+    /// first's database open and no lock).
+    #[test]
+    fn an_agys_conversation_is_the_one_it_holds_the_lock_of() {
+        let (own, other) = ("81d35bc3-2fbb-4a4d-b863-ce005a295017", "c50df071-a1bd-47f2-bb77-8eed71527b20");
+        let at = "/home/f/.gemini/antigravity-cli";
+        // (As `process_json` lists them: only what `session_file` takes.)
+        let first = vec![proc_json(100, &["bash"], "/w", 1, &[]), proc_json(101, &["agy"], "/w", 2, &[&format!("{at}/presence/{own}.lock")])];
+        assert_eq!(found_in(&first).unwrap().open.as_deref(), Some(own));
+        let fresh = vec![proc_json(201, &["agy"], "/w", 3, &[])];
+        assert_eq!(found_in(&fresh).unwrap().open, None, "no lock held: no conversation of its own, the other's ({other}) least of all");
     }
 
     /// Two Claude Code panes in one folder, two sessions written since

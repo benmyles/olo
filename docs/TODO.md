@@ -98,14 +98,13 @@ something nobody here has is in "Blocked", with what it waits for.
   agents instead of trying to build all that custom'"; no hurry on any
   but 26 and 29, they say, and 33 cost them a turn in another agent's
   conversation). In their words, shortened:
-  - 33: "A new agy's `cli_session_id` names another live agy's
-    conversation, after its first turn too … Please report a new agy's
-    own conversation in `cli_session_id`, the one its process holds
-    open, or none until it has one. Never report another agent's."
-    (The same of a Claude child with no conversation of its own yet:
-    the trial of 2026-11-26 was shown this session's last message as
-    its stand-in's, AGENT-NOTES. A conversation is never taken by
-    folder.)
+  - 33 is done (HACKING, "A child's conversation is its own or
+    none"). Left of it: Codex's daemon is still asked for the
+    conversation open in a child's folder (`daemon`), which is by
+    folder: two Codex children in one folder, one with no conversation
+    yet, can still be told the other's. Its own open rollout is the
+    sure word; whether Codex holds it open from its start wants a look
+    (nobody here runs Codex children now).
   - 29: "`approve copyweb no` aborted ('approval dialog changed during
     navigation') on a box whose countdown line is redrawn every second:
     a dialog's identity is its call and its choices, never its

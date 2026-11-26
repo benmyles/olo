@@ -16,12 +16,12 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, codex_threads, project_name, sessions_in, start_ticks, started_at, uuid};
+use crate::panes::{Places, agent_of, argv_session, claude_record, codex_rollouts, codex_threads, project_name, start_ticks, uuid};
 use crate::procs::{Proc, all_procs};
 
 const USAGE: &str = "usage: olo-rex-link agent <trust PATH...|inspect>";
@@ -210,7 +210,10 @@ pub(crate) struct InspectItemRequest {
     pub known_session_id: Option<String>,
     #[serde(default)]
     pub known_transcript: Option<String>,
+    /// (Taken from whoever still sends it, and not used: a conversation
+    /// was once guessed by when it was written.)
     #[serde(default)]
+    #[allow(dead_code)]
     pub started_at: i64,
 }
 
@@ -437,7 +440,11 @@ fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc
         }
     }
     // Fallback when shell_pid wasn't known: match by known_session_id in argv across all processes.
-    if let Some(ref sid) = item.known_session_id
+    // (Only then. Where the pane's own process is known and no agent is
+    // under it, a process elsewhere with that id in its command line is
+    // another agent's, however the id came to be this child's.)
+    if item.shell_pid <= 0
+        && let Some(ref sid) = item.known_session_id
         && !sid.is_empty()
     {
         for &p in by_pid.values() {
@@ -460,14 +467,11 @@ fn find_agent_proc<'a>(item: &InspectItemRequest, by_pid: &HashMap<i32, &'a Proc
 fn resolve_session_and_transcript(
     places: &Places,
     cli: &str,
-    pid: Option<i32>,
     agent_pids: &[(i32, u64)],
-    start: u64,
     cwd: &str,
     args: &[String],
     known_sid: Option<&str>,
     known_transcript: Option<&str>,
-    started_at_unix: i64,
     rollouts: &HashMap<String, PathBuf>,
     codex_open: &mut Option<Vec<(String, String)>>,
     taken: &mut HashSet<String>,
@@ -486,50 +490,36 @@ fn resolve_session_and_transcript(
         }
     }
 
-    // 2. Open file descriptors for `agy` (`conversations/<UUID>.db*`, `presence/<UUID>.lock`, `brain/<UUID>/`)
-    //    and `codex` (`sessions/...-<UUID>.jsonl`) across all agent PIDs in the pane tree!
+    // 2. What its own process holds open: for `agy`, the lock on the
+    //    conversation that is its own (`presence/<UUID>.lock`,
+    //    `Places::agy_presence`) and nothing else. Its databases and its
+    //    logs are no evidence: an agy that has just started, with no
+    //    conversation yet, opens the others' `conversations/<UUID>.db`,
+    //    and was said to be in one of theirs. For `codex`, its rollout
+    //    (`sessions/...-<UUID>.jsonl`). Across the agent's processes in
+    //    the pane's tree.
     if sid.is_none() && cli == "agy" {
-        let conv_dir = places.agy();
-        let brain_dir = places.agy_brain();
-        let presence_dir = places.home.join(".gemini/antigravity-cli/presence");
+        let presence_dir = places.agy_presence();
+        // (Two locks held, as between one conversation and the next: the one locked last.)
+        let mut held: Option<(SystemTime, String)> = None;
         for &(p, _) in agent_pids {
             let Ok(rd) = std::fs::read_dir(format!("/proc/{p}/fd")) else { continue };
             for entry in rd.flatten() {
                 let Ok(target) = std::fs::read_link(entry.path()) else { continue };
-                if target.starts_with(&conv_dir)
-                    && let Some(name) = target.file_name().and_then(|n| n.to_str())
-                {
-                    for suf in [".db", ".db-wal", ".db-shm"] {
-                        if let Some(stem) = name.strip_suffix(suf)
-                            && uuid(stem)
-                        {
-                            sid = Some(stem.to_owned());
-                            confidence = "open";
-                            break;
-                        }
-                    }
-                } else if target.starts_with(&presence_dir)
-                    && let Some(name) = target.file_name().and_then(|n| n.to_str())
-                    && let Some(stem) = name.strip_suffix(".lock")
+                if target.starts_with(&presence_dir)
+                    && let Some(stem) = target.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".lock"))
                     && uuid(stem)
                 {
-                    sid = Some(stem.to_owned());
-                    confidence = "open";
-                } else if target.starts_with(&brain_dir)
-                    && let Ok(rel) = target.strip_prefix(&brain_dir)
-                    && let Some(first) = rel.components().next().and_then(|c| c.as_os_str().to_str())
-                    && uuid(first)
-                {
-                    sid = Some(first.to_owned());
-                    confidence = "open";
-                }
-                if sid.is_some() {
-                    break;
+                    let at = std::fs::metadata(&target).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                    if held.as_ref().is_none_or(|(was, _)| at >= *was) {
+                        held = Some((at, stem.to_owned()));
+                    }
                 }
             }
-            if sid.is_some() {
-                break;
-            }
+        }
+        if let Some((_, id)) = held {
+            sid = Some(id);
+            confidence = "lock";
         }
     }
 
@@ -588,33 +578,15 @@ fn resolve_session_and_transcript(
         }
     }
 
-    let since = if start > 0 {
-        started_at(start).map(|t| t.checked_sub(Duration::from_secs(3)).unwrap_or(t))
-    } else if started_at_unix > 0 {
-        // Accept both Unix milliseconds (>= 10_000_000_000) and legacy Unix seconds.
-        let secs = if started_at_unix >= 10_000_000_000 { (started_at_unix / 1000) as u64 } else { started_at_unix as u64 };
-        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(secs.saturating_sub(3)))
-    } else {
-        None
-    };
-
     let transcript = match cli {
         "claude" => {
             let proj = places.claude.join("projects").join(project_name(cwd));
-            if let Some(ref id) = sid {
-                let p = proj.join(format!("{id}.jsonl"));
-                if p.exists() { Some(p) } else { None }
-            } else {
-                sessions_in(&proj, ".jsonl", since).into_iter().find_map(|c| {
-                    if taken.contains(&c.id) {
-                        return None;
-                    }
-                    taken.insert(c.id.clone());
-                    sid = Some(c.id);
-                    confidence = "written";
-                    c.file
-                })
-            }
+            // (Its own, by its record or its command line, or none: the
+            // newest written in its folder since it started may be any
+            // other session's there. A child with no conversation yet
+            // was shown the lead's own last message as its own,
+            // 2026-11-26.)
+            sid.as_ref().map(|id| proj.join(format!("{id}.jsonl"))).filter(|p| p.exists())
         }
         "codex" => {
             if let Some(ref id) = sid
@@ -635,71 +607,21 @@ fn resolve_session_and_transcript(
                         break;
                     }
                 }
-                from_daemon.or_else(|| {
-                    // Fallback: newest untaken rollout written since this child started.
-                    let mut best: Option<(SystemTime, String, PathBuf)> = None;
-                    for (rid, rpath) in rollouts {
-                        if taken.contains(rid) {
-                            continue;
-                        }
-                        let Ok(mtime) = std::fs::metadata(rpath).and_then(|m| m.modified()) else { continue };
-                        if since.is_some_and(|s| mtime < s) {
-                            continue;
-                        }
-                        if best.as_ref().is_none_or(|(b, ..)| mtime > *b) {
-                            best = Some((mtime, rid.clone(), rpath.clone()));
-                        }
-                    }
-                    best.map(|(_, rid, rpath)| {
-                        taken.insert(rid.clone());
-                        sid = Some(rid);
-                        confidence = "guess";
-                        rpath
-                    })
-                })
+                // (No further: the newest rollout written since it
+                // started may be any other Codex's.)
+                from_daemon
             }
         }
         "agy" => {
-            if let Some(ref id) = sid {
-                let p = places.agy_brain().join(id).join(".system_generated/logs/transcript.jsonl");
-                if p.exists() { Some(p) } else { None }
-            } else if pid.is_some() {
-                since.and_then(|s| newest_agy_transcript(&places.agy_brain(), Some(s), taken)).map(|(id, p)| {
-                    taken.insert(id.clone());
-                    sid = Some(id);
-                    confidence = "guess";
-                    p
-                })
-            } else {
-                None
-            }
+            // (Its own, by the lock it holds or its command line, or
+            // none until it has one: the newest written since it
+            // started is, as often as not, another agy's.)
+            sid.as_ref().map(|id| places.agy_brain().join(id).join(".system_generated/logs/transcript.jsonl")).filter(|p| p.exists())
         }
         _ => None,
     };
 
     (sid, transcript, confidence)
-}
-
-fn newest_agy_transcript(brain: &Path, since: Option<SystemTime>, taken: &HashSet<String>) -> Option<(String, PathBuf)> {
-    let rd = std::fs::read_dir(brain).ok()?;
-    let mut best: Option<(SystemTime, String, PathBuf)> = None;
-    for entry in rd.flatten() {
-        let name = entry.file_name();
-        let Some(id) = name.to_str() else { continue };
-        if !uuid(id) || taken.contains(id) {
-            continue;
-        }
-        let p = entry.path().join(".system_generated/logs/transcript.jsonl");
-        let Ok(meta) = std::fs::metadata(&p) else { continue };
-        let Ok(mtime) = meta.modified() else { continue };
-        if since.is_some_and(|s| mtime < s) {
-            continue;
-        }
-        if best.as_ref().is_none_or(|(b, ..)| mtime > *b) {
-            best = Some((mtime, id.to_owned(), p));
-        }
-    }
-    best.map(|(_, id, p)| (id, p))
 }
 
 struct TranscriptInspection {
@@ -1138,9 +1060,9 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
     let mut results = Vec::with_capacity(req.items.len());
     for item in req.items {
         let found = find_agent_proc(item, &by_pid, &by_ppid);
-        let (pid, start, proc_cwd, args, agent_pids) = match found {
-            Some((p, args, pids)) => (Some(p.pid), start_ticks(p.pid), read_cwd(p.pid), args, pids),
-            None => (None, 0, String::new(), Vec::new(), Vec::new()),
+        let (pid, proc_cwd, args, agent_pids) = match found {
+            Some((p, args, pids)) => (Some(p.pid), read_cwd(p.pid), args, pids),
+            None => (None, String::new(), Vec::new(), Vec::new()),
         };
         let cwd = if !proc_cwd.is_empty() { proc_cwd } else { item.cwd.clone() };
         let item_places = places_for_pid(pid, &places);
@@ -1152,14 +1074,11 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
         let (cli_session_id, transcript_path, session_confidence) = resolve_session_and_transcript(
             &item_places,
             &item.cli,
-            pid,
             &agent_pids,
-            start,
             &cwd,
             &args,
             item.known_session_id.as_deref(),
             item.known_transcript.as_deref(),
-            item.started_at,
             active_rollouts,
             active_codex_open,
             &mut taken,

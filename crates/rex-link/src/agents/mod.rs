@@ -341,6 +341,85 @@ mod tests {
         assert_eq!(sanitize_paste_text("hi\x1b[201~\r\n/exit\x1b[200~\t\x03ok"), "hi\n/exit\tok");
     }
 
+    /// A child's conversation is kept only by what is sure. What was
+    /// guessed for it is forgotten when a registry is read, what its own
+    /// process says now replaces what it said before, and a weaker word
+    /// never replaces a surer one.
+    #[test]
+    fn a_childs_conversation_is_kept_only_by_what_is_sure() {
+        let entry = |id: &str, cli: AgentCli, sid: &str, how: &str| NativeSubagent {
+            id: id.into(),
+            name: Some(id.into()),
+            host_key: "local".into(),
+            session_id: "s1".into(),
+            window_id: format!("w-{id}"),
+            block_id: format!("b-{id}"),
+            parent_window_id: "w1".into(),
+            parent_block_id: None,
+            cli,
+            model: "m".into(),
+            effort: "e".into(),
+            title: id.into(),
+            role: None,
+            cwd: None,
+            resume_id: (id == "resumed").then(|| "given-at-start".to_owned()),
+            cli_session_id: Some(sid.into()),
+            transcript_path: Some(format!("/t/{sid}")),
+            desktop_policy: DesktopPolicy::None,
+            stream_mode: false,
+            started_at: 1,
+            exited_at: None,
+            exit_code: None,
+            last_pid: None,
+            created_rev: 1,
+            seen_live: true,
+            exited_by_sync: false,
+            session_confidence: Some(how.into()),
+            add_dirs: Vec::new(),
+            command: Vec::new(),
+            minds: None,
+        };
+        let mut kept = SubagentRegistry::default();
+        for (id, cli, sid, how) in [
+            ("agy-open", AgentCli::Agy, "anothers-1", "open"),
+            ("agy-guess", AgentCli::Agy, "anothers-2", "guess"),
+            ("claude-written", AgentCli::Claude, "anothers-3", "written"),
+            ("resumed", AgentCli::Agy, "anothers-4", "guess"),
+            ("claude-record", AgentCli::Claude, "own-1", "record"),
+            ("codex-open", AgentCli::Codex, "own-2", "open"),
+            ("agy-argv", AgentCli::Agy, "own-3", "argv"),
+            ("agy-lock", AgentCli::Agy, "own-4", "lock"),
+        ] {
+            kept.entries.push(entry(id, cli, sid, how));
+        }
+        let dir = std::env::temp_dir().join(format!("olo-registry-guesses-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("registry.json");
+        kept.save_to(&file);
+        let mut reg = SubagentRegistry::read_from(&file).unwrap_or_else(|e| panic!("{e}"));
+        let of = |reg: &SubagentRegistry, id: &str| reg.entries.iter().find(|e| e.id == id).map(|e| (e.cli_session_id.clone(), e.session_confidence.clone(), e.transcript_path.is_some())).unwrap();
+        for forgotten in ["agy-open", "agy-guess", "claude-written", "resumed"] {
+            assert_eq!(of(&reg, forgotten), (None, None, false), "{forgotten}");
+        }
+        // (What it was started with is its own, guess or no guess.)
+        assert_eq!(reg.entries.iter().find(|e| e.id == "resumed").unwrap().effective_session_id(), Some("given-at-start"));
+        for (sure, sid, how) in [("claude-record", "own-1", "record"), ("codex-open", "own-2", "open"), ("agy-argv", "own-3", "argv"), ("agy-lock", "own-4", "lock")] {
+            assert_eq!(of(&reg, sure), (Some(sid.to_owned()), Some(how.to_owned()), true), "{sure}");
+        }
+        assert_eq!(SubagentRegistry::load_from(&file).entries.iter().filter(|e| e.cli_session_id.is_some()).count(), 4, "the other reading forgets the same");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Read again as it runs: the lock it holds now is its conversation (a new one begun), and its command line's word doesn't take that back.
+        assert!(reg.update_discovered("agy-lock", Some("own-5"), Some("lock"), None, Some(7)));
+        assert_eq!(of(&reg, "agy-lock").0.as_deref(), Some("own-5"));
+        assert!(!reg.update_discovered("agy-lock", Some("own-3"), Some("argv"), None, Some(7)));
+        assert_eq!(of(&reg, "agy-lock"), (Some("own-5".to_owned()), Some("lock".to_owned()), true));
+        // One with none yet takes the first sure word; a child read with nothing found keeps what it had.
+        assert!(reg.update_discovered("agy-open", Some("own-6"), Some("lock"), Some("/t/own-6"), Some(8)));
+        assert!(!reg.update_discovered("agy-open", None, None, None, Some(8)));
+        assert_eq!(of(&reg, "agy-open"), (Some("own-6".to_owned()), Some("lock".to_owned()), true));
+    }
+
     #[test]
     fn registry_preserves_exited_children_and_resolves_by_name_and_session_id() {
         let mut reg = SubagentRegistry::default();

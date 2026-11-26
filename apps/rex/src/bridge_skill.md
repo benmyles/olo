@@ -164,7 +164,13 @@ model or reasoning effort is used.
   - Full CLI options supported: `--name` (unique among live children under your parent; target as `NAME` or `PARENT/NAME`), `--title`, `--role`, `--cwd`, `--prompt` / `--prompt-file PATH` (for prompts > 128 KiB, pass a file path in the prompt or paste via `send --file` after launch), `--env K=V`, `--unset-env K`, `--parent WINDOW_ID`, `--focus`, `--close-on-exit`, `--permission-mode`, `--approval`/`-a`, `--sandbox`/`-s`, `--mode`, `--full-auto`, `--approve-for-me` (Codex-only), `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--allowed-tools`, `--disallowed-tools` (variadic), `--add-dir`, `--worktree` / `--worktree=NAME`, `--agent`, `--session-id UUID` (Claude-only), `--profile`, `--config/-c K=V`, `--settings JSON_OR_FILE`, `--strict-mcp-config`, `--system-prompt`, `--append-system-prompt`, `--mcp-config`, `--project`, `--new-project`, `--remote-agent`, `--remote-control`, `--search`, `--enable`, `--disable`, `--image`, `--no-alt-screen`, `--no-daemon`, `--print`, `--stream`, `--input-format`, `--output-format`, plus `-- EXTRA_CLI_ARGS…` verbatim passthrough.
 - **List your subagent tree**: `olo agent list [--all] [--parent WIN|NAME] [--fast] [--json]` (with `--all`, includes exited children and their persisted `cli_session_id` even after a Rex server restart; returns monotonic event `cursor`; timestamps are Unix milliseconds).
 - **Inspect rich live status**: `olo agent status <ID|NAME> [--json]` (returns `state`, `running`, `cli_session_id`, `resume_id`, `transcript_path`, `pid`, `exit_code`, `aborted`, `survey` [a feedback survey that wouldn't be set aside is drawn over its screen], full verbatim `last_message`, structured `approval` with screen-verified command & typed choices, `error`, `started_at`, `exited_at`, `last_output_at`, `last_state_change_at` [all Unix ms], `quiet_secs`, `state_age_secs`, `background_shells`, `waiting_on`, `usage`, `cursor`, and recent `tail`).
-  Two things to know of it. **`state` is the agent's turn, not its
+  **`cli_session_id` is the child's own conversation, or `null`**: the
+  one its own process has (Claude Code's record of it, the lock an
+  Antigravity holds, a Codex's open rollout) or the one you started it
+  with. A new child has none until it has made one (an Antigravity,
+  after its first turn); nothing is guessed, so it never names another
+  agent's, and what you read there is safe to `start --resume`.
+  Two more things to know of it. **`state` is the agent's turn, not its
   pane**: `working` means the model is in a turn. A turn that ended is
   `done` (or `waiting_question`, `idle`) and is told to `watch` at once,
   whatever the agent left running; a shell of its own still going (a dev

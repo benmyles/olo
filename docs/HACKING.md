@@ -31417,6 +31417,46 @@ agents through the night, could not move to it.
     be held to one command without asking). A minder has its agent's
     `--env` and `--minder-env`; one attached later has what `mind …
     --env` gives it, and that isn't kept for the next.
+- *A child's conversation is its own or none* (`cli_session_id`;
+  `agent.rs`, `resolve_session_and_transcript`; the ShiftUp lead's item
+  33, 2026-11-26: "A new agy's `cli_session_id` names another live
+  agy's conversation, after its first turn too … Please report a new
+  agy's own conversation in `cli_session_id`, the one its process holds
+  open, or none until it has one. Never report another agent's": one of
+  their launchers resumed what it was told, and another agent's
+  conversation got a turn that wasn't its own). It is found only by
+  what is sure, and how is kept beside it (`session_confidence`): Claude
+  Code's own record of its process (`record`), the lock an Antigravity
+  holds on its own conversation (`lock`: `presence/ID.lock`), a Codex's
+  rollout held open (`open`) or its daemon's word (`daemon`), the
+  agent's command line (`argv`), or what it was started with (`known`).
+  Two things that looked like evidence and weren't: **an Antigravity
+  that has just started opens the others' conversations** (their
+  `conversations/ID.db`, to list them) and holds no lock until it has
+  one of its own, so "a database it has open" named another agent's;
+  and **the newest written since it started** (in its folder, or
+  anywhere) is as often another session's as its own, so nothing is
+  guessed by folder or by time any more (a Claude child with no
+  conversation yet was shown the lead's own last message as its own).
+  A child with no conversation yet has none (`null`), and `last_message`
+  and `transcript_path` with it. What its own process says now replaces
+  what it said before (a conversation begun anew), a weaker word never
+  replaces a surer one, and every guess an earlier build kept is
+  forgotten when the registry is read (`forget_guesses`: `written`,
+  `guess`, and an Antigravity's `open`); a child that runs is read again
+  at once, one that has exited has none. A child's process is the
+  agent under its own pane, never one found elsewhere by an id in its
+  command line while the pane is known (`find_agent_proc`: with a wrong
+  id kept, that took another agent's process for the child's and made
+  the wrong id sure). The desktop's own reading of a pane's agent
+  (`panes.rs`, for taking a pane's conversation up again) takes an
+  Antigravity's by its lock too; its guesses for the person's own panes
+  are told apart by their screens and stay. *Tried*: `agents_live.rs`,
+  two Antigravity programs (the made-up API their model), the first in
+  the middle of a turn as the second starts: the second has none, then
+  its own after its first turn (the one its process holds the lock of),
+  never the first's. It failed before (the second was given the
+  first's, and the first's transcript as its own).
 - *The service keeps to the hold* (`Service::held`). While
   `~/.local/state/olo/host-upgrade.hold` is there (beside the services'
   folder: whoever has agents at work on a host puts it there, its words
