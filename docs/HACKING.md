@@ -6323,6 +6323,13 @@ volumes; "clipped" where a stream louder than its samples' room goes
 to a card with its own volume). That is how a sound of a set loudness
 (the start-up chime) is tested.
 
+**A computer with no GPU draws in software by itself** (2026-11-26):
+where `/dev/dri` has no render node (a server), a headless app_server
+takes Mesa's software EGL device unasked and says so ("no GPU render
+node in /dev/dri: drawing in software"); an agent's screen started
+there (`olo-screen start`) is a whole desktop, as on a computer with a
+GPU. Before, it refused unless the variable below was set.
+
 **Test desktops draw in software.** A test session and everything
 started in it draw on the processors, not on the person's GPU:
 app_server through Mesa's software EGL device
