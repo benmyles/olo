@@ -6,6 +6,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-26
 
+### An Agent Screen on a Rex host itself
+
+*16:15* — A whole Olo desktop of the host's own, drawn in software on a server with no GPU, with no desktop asked: `olo screen install` put Olo and Chrome under the account, `olo screen --on host start` started it, and Chrome shows a page served from the same machine, its button pressed through the tree (`click --role Button --name "Press me"`). The machine's name, under Tracker's disk, is painted out.
+
+![An Agent Screen on a Rex host itself](2026-11-26/161500-an-agent-screen-on-a-rex-host-itself.png)
+
+### Token Pool: a chosen account's tint runs to its rule
+
+*16:15* — Under a chosen account the tint stopped short of the rule, a strip of the list's ground between them (both reviewers: "end the band exactly on the rule"). The rule is the next row's own top edge now. Before and after, light and dark, at 2× enlarged twice.
+
+![Token Pool: a chosen account's tint runs to its rule](2026-11-26/161500-token-pool-a-chosen-account-s-tint-runs-to-its-r.png)
+
+### A dark menu has an edge on every side
+
+*16:15* — In a dark look a menu's right side and foot had only a nearly black outline, which is no edge on a dark panel: both have an inner line now, a step dimmer than the top and left. Its separators meet the frame at every scale (at 1.5× each end stood a pixel short). Before and after at 1.5×, whole and its corner enlarged.
+
+![A dark menu has an edge on every side](2026-11-26/161500-a-dark-menu-has-an-edge-on-every-side.png)
+
 ### Layout: every thing stands where its neighbour ends, at every scale
 
 *14:40* — Three pairs, before over after, enlarged: Rex at 1.25x (a row of ground between the tab strip and the header under it, gone), Token Pool at 1.25x (a scroll arrow sitting on its well's frame, now inside it), Tracker at 1.75x (a scroll bar a pixel off its frame, now flush). The layout engine rounded a thing's offset in its parent by itself while sizes were cut to rounded edges: nested a few deep, things stood a pixel or two past where their neighbours ended.
