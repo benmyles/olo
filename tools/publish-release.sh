@@ -36,6 +36,12 @@
 #  7. Publishes it at HEAD's full hash with the five files, as the
 #     latest; a file that didn't go up is sent again (three tries).
 #  8. Checks GitHub has each file whole (its size).
+#  9. Keeps the latest release and the two before it on GitHub and
+#     deletes the older ones (tools/release-prune.sh; Ben, 2026-11-26:
+#     "for the releases in github let's just keep latest + 2 previous
+#     ones"). Their tags stay, so step 6 never gives a name twice. A
+#     release GitHub wouldn't delete is said in the log and doesn't undo
+#     the publish: the new release is up either way.
 set -euo pipefail
 NOTES=${1:?usage: tools/publish-release.sh NOTES.md [--dry-run]}
 NOTES=$(realpath "$NOTES")
@@ -159,5 +165,14 @@ for f in "${FILES[@]}"; do
         sleep 10
     done
 done
+step "9. the older releases"
+# (Only now, with the new one up whole: the last three are never fewer
+# than three good ones.)
+if out=$("$REPO/tools/release-prune.sh" 2>&1); then
+    say "$(echo "$out" | tail -1)"
+else
+    say "the older releases weren't all deleted: $(echo "$out" | grep -E "couldn't|didn't" | head -3 | tr '\n' ' ')(tools/release-prune.sh again)"
+fi
+echo "$out" >> "$LOG"
 URL=$(gh release view "$TAG" --json url -q .url)
 say "published $URL"

@@ -17049,6 +17049,15 @@ names it `vYYYY.MM.DD`, "Olo YYYY.MM.DD" (a second on a day
 `.2`, "(update 2)"); publishes it at HEAD's full hash as the latest,
 VERSION in the notes put in as the release's own; sends again what
 didn't go up whole (three tries) and checks GitHub's size of each.
+Then it keeps **the latest release and the two before it** on GitHub
+and deletes the older ones (`tools/release-prune.sh [--dry-run]
+[KEEP]`; Ben, 2026-11-26: "for the releases in github let's just keep
+latest + 2 previous ones"; there were 35, each 2.3 GB of files). A
+deleted release's tag stays: tags are what a day's next name is found
+by (the first with neither a release nor a tag), and each still names
+the commit its release was built from; drafts and pre-releases are
+neither counted nor deleted. So the list a desktop can go back through
+(`olo_release::list`) is three long.
 Its log is `publish.log` there, its last line "published URL",
 "dry run: …" or "failed: WHY". Why a container: Olo's programs link
 the system's libraries and glibc, and a release built on another

@@ -209,7 +209,11 @@ are universal and non-negotiable:
   with work instead of waiting for a slow upload"): it builds in a
   Fedora 44 container, checks and publishes (HACKING, "The
   Installer"). Its log says how it went; go on with the next piece
-  meanwhile, and read its last line when it ends.
+  meanwhile, and read its last line when it ends. GitHub keeps the
+  latest release and the two before it: the script deletes the older
+  ones once the new one is up (`tools/release-prune.sh`; Ben,
+  2026-11-26: "for the releases in github let's just keep latest + 2
+  previous ones").
 - **Build what you change, in dev, while you work.** While editing,
   build and test only the packages you change, in the dev profile
   (optimized too): `jato build -p`, `jato test -p`, pictures from dev
