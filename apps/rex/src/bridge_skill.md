@@ -274,6 +274,9 @@ model or reasoning effort is used.
     kept as a stopped one and starts again as it was); `start NAME
     --keep` for one that must outlive the tab that started it (another
     agent's to go on with), which then stays until it is stopped.
+    The person has all of this in Rex too (the Host window's Screens
+    tab: Install, Update, Remove, what the host lacks, the screens that
+    run, and which screens `olo screen` means here by default).
     The person can't watch a host's screen from their desktop yet: show
     what you did with a picture (`look`), or all of it as a video of
     its actions with the waits between them cut (`olo screen --on host

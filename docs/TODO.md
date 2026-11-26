@@ -427,13 +427,53 @@ something nobody here has is in "Blocked", with what it waits for.
     Rex (a pane or a window that shows it, read-only unless they take
     it), since "what a person can see and do, an agent can read" runs
     both ways; each screen listed with what it costs. Until then an
-    agent's `look` is the only way to see one.
-  - *Chosen on the desktop*: a default by host in Preferences ▸ Rex ▸
-    Hosts and the Host window (which writes the host's
-    `~/.config/olo/screens-on`), with Install there and its progress
-    (the helper's lines of JSON are made for it), and what `status`
-    says of the host (missing libraries with the packages that have
-    them, by system: Rex's setup can install them where it has sudo).
+    agent's `look` is the only way to see one. The Host window's
+    Screens tab (below) names the screens that run; a list of them
+    there, each looked at (a picture fetched: `screen look` there, the
+    file read over the link) and stopped from here, is the next step,
+    and would let its "Stop it, then try again." be done in the window.
+  - ~~*Chosen on the desktop*~~ Done 2026-11-26: the Host window's
+    Screens tab (HACKING, the Host window, "Screens"): Install with its
+    progress, Update, Remove, what the host lacks, and where screens
+    open by default. Left of it: the same default in Preferences ▸ Rex
+    ▸ Hosts (it is the host's own word, kept there: the Host window is
+    where it is asked and set); the packages that have what is missing,
+    by system, and Rex's setup installing them where it has sudo.
+    From its one round of looks, not done, in the reviewers' words:
+    Opus 5.5, "'Being installed' has no progress bar and a dead
+    button … a 600 MB job that takes minutes shows up only as a dim
+    number inside a sentence … the toolkit's progress bar: sunken well,
+    8pt tall … An enabled 'Cancel' in the button's place" (the kit has
+    no progress bar yet, and a host's install can't be stopped from
+    here: both to build; it takes 13 s on the rig); "in 04 and 09 the
+    button becomes 'Remove…', and its alert names the running screens
+    before anything happens" (it says so after, in the line: "Still
+    running: review. Stop it, then try again."); "The library names are
+    in the proportional face, while the tab's other identifiers (path,
+    command) are mono". And of the whole window, there before the tab:
+    both, the greyed Install beside "Asking…" on the other tabs ("the
+    tab doesn't yet know whether [it] is installed or not, yet it
+    displays a disabled Install button", Gemini 4 Neon; "say
+    'Checking…' … Show no button until the state is known", Opus: done
+    on the new tab only); Opus, "Orange means two things, and the busy
+    ring is weak at 1x … keep orange for Update available only. Give
+    busy (Checking, Installing, Removing) its own colour role"; the
+    head's "inline blue Title-Case link with an ellipsis … the one
+    web-page element in the window; a button ('Set Up Account…') would
+    belong"; "Check that the Rex tab's Typing helper Remove warns that
+    Agent Screens needs it" (its line says so now; Remove All… still
+    takes the helper off without a word of the screens). Gemini 4 Neon:
+    "the text inside the right-hand button sits about 1–2px lower than
+    the baseline of the status word on the same row" (every tab); "the
+    inner dot of the selected … radio circle at 1.25x sits a hair
+    (about half a pixel) off-center" (the kit's radio). Both reviews
+    whole: `/var/tmp/olo-site-reviews/host-screens-tab-*.md` on the dev
+    server.
+  - *The helper's link over UDP left running on a host after the app
+    ended*: seen three times on the rig (`olo-rex-link … quic -- rex -S
+    …`, the rig's far host, after the app's session was stopped), ended
+    by hand each time. To find: whether it ends by itself after a time,
+    and if not, why a connection's end doesn't end it.
   - *A child's policy*: `olo agent start --desktop …` names the
     desktop's screens a child may use; the host's own need none of the
     desktop, and a child has them as it has any program here. A start
@@ -442,9 +482,12 @@ something nobody here has is in "Blocked", with what it waits for.
     decide: whether that deserves a word of its own (`--screens host`),
     and whether a host's owner should be able to refuse a child the
     host's screens (memory, on a small host).
-  - *Kept up to date*: the desktop, connecting after an upgrade, has
-    the host's Olo brought to the same release (it does so for the
-    helper); `tools/dev/host-upgrade` does it on the dev server.
+  - *Kept up to date*: where this Olo's release is the later, the Host
+    window says "Update available" and Update brings the host's to the
+    newest (the person's choice: 600 MB, and not under running
+    screens); `tools/dev/host-upgrade` does it on the dev server. Not
+    done by itself on connect, as the helper is: to decide whether it
+    should be.
   - *Stopped when unused*: done for a screen whose agent ended (it ends
     with the Rex tab that started it, unless `--keep`). Left: one kept
     with `--keep` or started from no tab and then left alone for days
