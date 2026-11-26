@@ -1254,10 +1254,14 @@ def latest(name):
 
 
 def peek(name, lines):
-    s = screen(name, lines)
+    # (Its last `lines` lines that say something: taken of a longer
+    # stretch, since a screen's foot is mostly blank. Claude Code's last
+    # forty lines were its spinner and its empty field, and a look at
+    # work read as one doing nothing, 2026-11-26.)
+    s = screen(name, max(lines * 6, 240))
     if s is None:
         sys.exit(f"agents: no {name}")
-    print("\n".join(l for l in s.splitlines() if l.strip()))
+    print("\n".join([l for l in s.splitlines() if l.strip()][-lines:]))
     print(f"--- {name}: {state(name)}")
     seen(name)
 
