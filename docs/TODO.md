@@ -103,11 +103,12 @@ something nobody here has is in "Blocked", with what it waits for.
     tried first, both reviewers took for "a pane that failed to resize").
     Left of that round, all there before it: aligning sender icons in
     the gutter with `Back` (a 16 pt icon in a 14 pt gutter: the text
-    axis would have to move); at 1.25× and 1.75× the layout review's
+    axis would have to move); ~~at 1.25× and 1.75× the layout review's
     "error seam: a line … and what it borders … are 1 device px apart"
-    between the tab strip's foot and the transcript's header (377.6,
-    59.2 to 1690.4, 60.0 over 224, 60.8: the header's top isn't on the
-    line's device pixel), and "a band 34 tall over one 34 tall"; in a
+    between the tab strip's foot and the transcript's header~~ (gone
+    the same day with the layout rounding fix: a node's place is its
+    cumulative place rounded; the live lint has no seam at any scale);
+    "a band 34 tall over one 34 tall"; in a
     pane 690 pt wide "error crowded" between the Summary's two bullets.
     Gemini 4 Neon: "Diff highlight bands paint over and wash out the
     Edit well's vertical borders"; in dark, "active `Transcript` is
@@ -435,10 +436,12 @@ something nobody here has is in "Blocked", with what it waits for.
     them, by system: Rex's setup can install them where it has sudo).
   - *A child's policy*: `olo agent start --desktop …` names the
     desktop's screens a child may use; the host's own need none of the
-    desktop, and a child has them as it has any program here. To
-    decide: whether a start can say "this child's screens are the
-    host's" (today: `OLO_SCREENS_ON=host` in what starts it, or the
-    host's default).
+    desktop, and a child has them as it has any program here. A start
+    says "this child's screens are the host's" with `--env
+    OLO_SCREENS_ON=host` (in the skill), or the host's default does. To
+    decide: whether that deserves a word of its own (`--screens host`),
+    and whether a host's owner should be able to refuse a child the
+    host's screens (memory, on a small host).
   - *Kept up to date*: the desktop, connecting after an upgrade, has
     the host's Olo brought to the same release (it does so for the
     helper); `tools/dev/host-upgrade` does it on the dev server.
@@ -3709,7 +3712,9 @@ something nobody here has is in "Blocked", with what it waits for.
     types (a click, the keys alone), then refused with what it holds
     (`set_not_kept`: a password's, none said, or the keyboard gone on
     to a code's next box can't be told). Tried live on a kit app's
-    field (kept, no second try); not on a page (no Chrome here).
+    field (kept, no second try), and on a page 2026-11-26 (Chrome on a
+    host's own screen: a field whose value the page writes back each
+    frame from its own state kept "4821", the page saying it had it).
   - *`click --name` chose a heading over the field of the same name*:
     prefer what can be acted on (a field, a button, a link) on a tie, or
     refuse and list the matches.
@@ -3723,8 +3728,10 @@ something nobody here has is in "Blocked", with what it waits for.
     1.16.0); `click` and `set` wheel it out from under, else refuse
     naming the layer; `tree` marks it `under=…`. `tree.js`'s part tried
     in a headless Chromium (`tests/tree-covered.html`: PASS, and FAIL
-    without the check); olo-screen's wheeling unit-tested, not tried on
-    a live page.
+    without the check); olo-screen's wheeling unit-tested, and tried on
+    a live page 2026-11-26 (a button scrolled under a header that
+    stays: `tree` had it `under="sticky header"`, `click` wheeled it 96
+    points clear and pressed it, and the page said so).
   - *`select` on a native select types into whatever has the keyboard*:
     when the select hadn't it, the keys went to the page's "/" shortcut,
     another select, a search box. Make sure the select has the keyboard
@@ -3733,7 +3740,9 @@ something nobody here has is in "Blocked", with what it waits for.
     its list opened, has the keyboard (`keys_reach`: not the page, which
     lies over it and takes text, nor nothing); clicked twice, then
     refused naming what kept it, nothing typed. The value was read back
-    already. Unit-tested; not on a live page (no Chrome here).
+    already. Unit-tested, and tried on a live page 2026-11-26 (a page
+    whose `/` goes to its search box: `select … Violet` chose Violet,
+    the page said so, and the search box had nothing).
   - *Olo's Chrome on a fresh screen's profile*: a "What's New" tab in
     front of the page asked for, and after a Google sign-in Chrome's
     "Sign in to Chrome?" sheet, which took the keys meant for the page;
@@ -3741,7 +3750,16 @@ something nobody here has is in "Blocked", with what it waits for.
     both off for screens' profiles (Chrome's policies or flags).
     **Done** 2026-11-24: `signin.allowed` off in a screen's profile and
     What's New turned off at its launch (`olo-chrome`); unit-tested, not
-    tried against a live Chrome (none on the dev server).
+    tried against a live Chrome (none on the dev server). Tried
+    2026-11-26, and the sign-in half hadn't worked: Chrome 158 still
+    offered "Sign in to Chrome?" in its bar, the profile's file reading
+    `"allowed": true`. Chrome starts with `signin.allowed` made what
+    `signin.allowed_on_next_startup` says. Both are written now, for a
+    screen's profile set up before too (which was also never looked at
+    again once its screen had been stopped: the lock an ended Chrome
+    leaves was taken for a running one). After: no offer, a plain
+    profile button, both settings off in the file with Chrome running.
+    No What's New tab came either time.
   - *`olo-screen look NAME /abs/path.png` from a host*: a path of the
     host's was taken as the desktop's, and failed ("app_server: No such
     file or directory"); a bare name landed in the bridge's shared

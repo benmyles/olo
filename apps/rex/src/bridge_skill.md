@@ -254,7 +254,11 @@ model or reasoning effort is used.
   - `olo screen default host` makes the host's the ones `olo screen …`
     (and `olo-screen …`) means here when it isn't said, `--on desktop`
     the other; `OLO_SCREENS_ON=host` does it for one shell and what it
-    starts. `olo screen remove` takes Olo off the host again.
+    starts. A child tab isn't started by your shell (the Rex server
+    starts it), so say it as you start one: `olo agent start … --env
+    OLO_SCREENS_ON=host`. A child needs no `--desktop` leave for the
+    host's screens: they are the host's, as any program here is.
+    `olo screen remove` takes Olo off the host again.
   - A screen at rest takes no processor time and about 250 MB of memory,
     more with what runs on it (Chrome most): stop it when you are done.
     One started from a Rex tab is stopped by itself when that tab's

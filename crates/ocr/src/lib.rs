@@ -90,7 +90,7 @@ impl Engine {
         let words = self.0.detect_words(&input).map_err(|e| err(&e))?;
         let lines = self.0.find_text_lines(&input, &words);
         let read = self.0.recognize_text(&input, &lines).map_err(|e| err(&e))?;
-        let mut out: Vec<Line> = read
+        let out: Vec<Line> = read
             .into_iter()
             .flatten()
             .map(|line| Line { chars: line.chars().iter().map(|c| Char { ch: c.char, rect: [c.rect.left() as f32, c.rect.top() as f32, c.rect.width() as f32, c.rect.height() as f32] }).collect() })

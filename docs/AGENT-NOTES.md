@@ -795,6 +795,23 @@ which is what a host gets. And a clean-up that ends programs by their
 command line (`kill` of whatever's `cmdline` holds a word) ends the
 shell that typed the word too: the same trap as `pkill -f`, by hand.
 
+### What was unit-tested "for want of a Chrome" can be tried now
+
+(2026-11-26.) The dev server has Chrome since a host's own screens: in
+the trial account (below), `olo-chrome --olo-install` once, then a
+page served by `python3 -m http.server` on 127.0.0.1 opened with
+`screen run NAME olo-chrome URL` and driven with `tree`, `set`,
+`select`, `click`. The first thing tried so had never worked (Chrome's
+own sign-in on a screen's profile: the setting written was one Chrome
+overwrites as it starts), which only a live Chrome could show: a
+setting written into another program's file is tested against that
+program, read back after it has started, not against what was
+written. Where a note says "not tried live (no Chrome here)", try it.
+A page that stands in for a framework is small: a field whose value is
+written back each frame from the page's own state, which only `input`
+events change; a header `position: sticky`; a `keydown` handler that
+takes `/`.
+
 ### A host's own screens, tried without touching the host
 
 (2026-11-26.) An account of its own for the trial, as a test session
