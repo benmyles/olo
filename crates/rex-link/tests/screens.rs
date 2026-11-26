@@ -225,6 +225,15 @@ fn olo_screen_goes_where_it_is_told() {
     let moon = host.olo(&["screen", "--on", "moon", "list"], &[]);
     assert_eq!((moon.status.code(), err(&moon).as_str()), (Some(2), "olo screen: --on takes host or desktop, not `moon`"));
     assert_eq!(host.olo(&["screen", "--on"], &[]).status.code(), Some(2));
+    // A helper from before it had screens takes `screen` for a program
+    // to run, and a host may have one of that name that answers and
+    // succeeds: never run so; said, with the other way.
+    let old = host.dir.join("old-helper");
+    std::fs::write(&old, "#!/bin/sh\necho 'Use: screen [-opts] [cmd [args]]'\nexit 0\n").unwrap();
+    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let before = host.olo(&["screen", "--on", "host", "list"], &[("OLO_REX_LINK", old.to_str().unwrap())]);
+    assert_eq!(before.status.code(), Some(69), "{} {}", said(&before), err(&before));
+    assert!(said(&before).is_empty() && err(&before).contains("no screens of its own yet"), "{}", err(&before));
     // No desktop to ask: said with the way that needs none (of a screen
     // only: the desktop's other commands have no other way).
     let away = host.olo(&["screen", "start", "work"], &[("DESKTOP_SAYS", "69")]);
