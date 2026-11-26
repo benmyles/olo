@@ -781,6 +781,27 @@ such a thing:
   only if it is free.) What says "it's over" lets go of what the
   listener will want first.
 
+### A test that decides by the machine it runs on
+
+(2026-11-26.) The background keeper's
+`keeps_while_something_is_in_the_group_and_only_one_does` passed all
+day and failed in one run of the whole workspace: `left: "max", right:
+"0"`. Not a race: the keeper under test read the real `/proc/meminfo`,
+and whether it closes the swap ceiling depends on what is available
+against twice its reserve. The dev server is shared; with other
+people's builds it had 55 GB available of 251, under 2 × 12%, and the
+keeper rightly left the ceiling open. Run again at that moment it
+failed every time; an hour before, never. In its crate's tests the
+keeper now reads a computer made up for it (`Memory::now` under
+`cfg(test)`), and the file's reading has its own test (`parse`). When
+a test fails once on a shared machine, look at what of the machine it
+reads (memory, load, the clock, free ports, the home folder) before
+calling it a race; `grep MemAvailable /proc/meminfo` and `uptime` at
+the moment say more than a second run. (And: `/tmp` here is memory;
+the sessions' folders under `/tmp/claude-UID` are other agents' as
+well as yours, 15 GB of it that afternoon, none of it this session's:
+theirs to clear, said to their lead.)
+
 ### A helper for hosts, tried by hand
 
 (2026-11-26.) The helpers a build of Rex carries
@@ -811,6 +832,34 @@ A page that stands in for a framework is small: a field whose value is
 written back each frame from the page's own state, which only `input`
 events change; a header `position: sticky`; a `keydown` handler that
 takes `/`.
+
+### The dev server has a host's own screens (since 2026-11-26)
+
+`olo screen install` was run on the dev server's own account that day
+(the released Olo under `~/.local/share/olo/desktop`, 1.8 GB; Chrome
+under `~/.local/share/olo/chrome`, 460 MB; Noto Color Emoji in
+`~/.local/share/fonts/olo-screens`), for the agents that work there:
+`olo screen --on host start NAME`. `olo screen status` says what is
+there, `olo screen install` again brings it up to the newest release,
+`olo screen remove` takes Olo and the font off (Chrome stays). The
+host's default is still the desktop's screens. It is the released Olo,
+not the tree's: a change of yours is not in it until it is released
+and installed.
+
+### A stand-in that does more than the real thing hides the bug
+
+(2026-11-26.) The test of "a screen ends with its tab" had a made-up
+`olo-screen` whose `stop` ended the screen's whole process group. The
+real one asks the session to end and leaves the group alone, so the
+helper's keeper, which is in that group, lived on after a screen was
+stopped by hand, ready to stop whatever screen had the name later. The
+test passed for a day's worth of runs; the first real `stop` on a real
+account showed it (`ps` for `keep-until` after the stop: one). When a
+stand-in ends, removes or answers something, read the real program's
+code for exactly how much it does, and make the stand-in do no more:
+the bug lives in the difference. And after any real trial, look for
+what is left (`ps`, by each process's own words: a search for a word
+your own shell's command line holds counts the shell).
 
 ### A host's own screens, tried without touching the host
 
