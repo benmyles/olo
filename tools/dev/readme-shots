@@ -36,8 +36,13 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-RELEASE = os.path.join(ROOT, "target/release")
-OUT = os.path.join(ROOT, "docs/img")
+# The build the pictures are of: this tree's release build, or another
+# (OLO_SHOTS_BUILD: a release's own, `/var/tmp/olo-release/target/release`
+# where tools/publish-release.sh built it, so no second workspace build
+# is made for pictures). Where they go: docs/img, or OLO_SHOTS_OUT (to
+# look at them before any replaces one that is there).
+RELEASE = os.environ.get("OLO_SHOTS_BUILD") or os.path.join(ROOT, "target/release")
+OUT = os.environ.get("OLO_SHOTS_OUT") or os.path.join(ROOT, "docs/img")
 WORK = "/var/tmp/olo-readme-shots"
 HOME = os.path.join(WORK, "home")
 RUN = os.path.join(WORK, "run")
@@ -54,11 +59,45 @@ def env_for_screens(run_dir=RUN):
     """olo-screen's environment: this tree's build first, the sample home,
     a runtime folder of the shots' own; nothing of the person's session."""
     env = dict(os.environ, XDG_RUNTIME_DIR=run_dir, HOME=HOME, PATH=RELEASE + ":" + os.environ.get("PATH", ""))
+    # Nor the host's Rex server and agents service: a Rex on the screen
+    # finds no server and keeps its agents in the shots' own folder (as
+    # every tsession: a build of the tree served the live socket once,
+    # 2026-11-26).
+    env.update(REX_SERVER_SOCKET="unix://" + os.path.join(WORK, "no-rex-server.sock"), OLO_REX_AGENTS_DIR=os.path.join(WORK, "rex-agents"))
+    # This tree's data (icons, fonts, wallpapers), whatever build is
+    # pictured: a build made somewhere else finds none beside it, and
+    # its desktop comes up with no icons, no wallpaper and the system's
+    # fonts. And the desktop's disk by a name of the pictures' own, not
+    # this computer's (a dev server's name is nobody's to publish).
+    env.update(OLO_DATA=os.path.join(ROOT, "data"), OLO_TRACKER_DEMO_VOLUME="Olo")
+    env.update(software())
     # (Nor the person's coding agents' settings: Terminal's settings for
     # agents write hooks where these point.)
     for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION", "OLO_SCREEN", "DBUS_SESSION_BUS_ADDRESS", "DISPLAY", "CLAUDE_CONFIG_DIR", "CODEX_HOME"):
         env.pop(k, None)
     return env
+
+
+def software():
+    """What makes a screen and its programs draw on the processors, where
+    there is no GPU to draw on (a dev server: no render node in /dev/dri)
+    or OLO_SHOTS_SOFTWARE=1 says so: as tools/dev/tsession sets it."""
+    import glob
+    import re
+
+    if os.environ.get("OLO_SHOTS_SOFTWARE") != "1" and glob.glob("/dev/dri/renderD*"):
+        return {}
+    env = {"OLO_HEADLESS_RENDERER": "software", "LIBGL_ALWAYS_SOFTWARE": "1", "GALLIUM_DRIVER": "llvmpipe", "VK_LOADER_DRIVERS_SELECT": "lvp*"}
+    for folder in ("/etc/glvnd/egl_vendor.d", "/usr/share/glvnd/egl_vendor.d"):
+        for n in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+            try:
+                lib = json.load(open(os.path.join(folder, n)))["ICD"]["library_path"]
+            except (OSError, ValueError, KeyError):
+                continue
+            if isinstance(lib, str) and re.fullmatch(r"libEGL_mesa\.so(?:\.\d+)*", os.path.basename(lib)):
+                env["__EGL_VENDOR_LIBRARY_FILENAMES"] = os.path.join(folder, n)
+                return env
+    sys.exit("readme-shots: no GPU here and no Mesa EGL to draw in software with (mesa's EGL vendor file)")
 
 
 def screen(*args, run_dir=RUN, name=NAME, check=False):
