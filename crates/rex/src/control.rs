@@ -653,13 +653,18 @@ impl ControlClient {
     }
 
     pub async fn session_new_window(&self, session_id: &str, window_label: Option<&str>, shell_options: Option<Value>) -> Result<RpcResult<Value>, RexError> {
+        self.session_new_window_with_focus(session_id, window_label, shell_options, true).await
+    }
+
+    pub async fn session_new_window_with_focus(&self, session_id: &str, window_label: Option<&str>, shell_options: Option<Value>, focus: bool) -> Result<RpcResult<Value>, RexError> {
         let mut block = json!({ "flavor": "com.superlogical.terminal.shell" });
         if let Some(opts) = shell_options {
             block["options"] = opts;
         }
         let mut p = json!({
             "session_id": session_id,
-            "layout": { "block": block }
+            "layout": { "block": block },
+            "focus": focus,
         });
         if let Some(l) = window_label
             && !l.is_empty()

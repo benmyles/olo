@@ -3312,3 +3312,11 @@ PTY minus `status` rows (e.g. a `97×31` PTY with `status on` shrinks a
 a detached pane's dimensions by even one row, size the viewer PTY to
 `#{window_width} × (#{window_height} + status_rows)` alongside `-r -f
 ignore-size`.
+
+**Modern `codex` CLI rejects `--full-auto` in interactive mode**
+(2026-11-26): the installed `codex` binary exits with `unexpected
+argument '--full-auto'`; pass `-a on-request -s workspace-write` (or
+`--approve-for-me` / `--dangerously-bypass-approvals-and-sandbox`)
+instead, and set reasoning effort via `-c model_reasoning_effort="<LEVEL>"`.
+Rex's `olo agent start codex` maps `--full-auto` to `-a on-request -s
+workspace-write` automatically unless `-a`/`-s` are specified explicitly.

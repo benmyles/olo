@@ -16,6 +16,48 @@ the person has allowed this host (Olo's Preferences ▸ Rex): a command
 that isn't allowed fails and says so (status 69, as when no Olo desktop
 is connected: then this host isn't open in Olo's Rex now, so say so).
 
+## Subagents in Rex (`olo agent`) — PREFERRED
+
+**Always use `olo agent` to launch subagents when running inside Rex.**
+Because you are in an Olo Rex environment, the user strongly prefers
+this native Rex child-tab mechanism over any other subagent, background
+shell, or tmux mechanism: each subagent gets a real interactive Rex
+terminal tab nested cleanly under your current tab (visible in the tab's
+tree popover and the Activity sidebar, without cluttering the top tab
+bar, and allowing the person to click straight in and interact at any
+time).
+
+First-class CLIs: **`claude`**, **`codex`**, and **`agy`**. Both
+**`--model`** and **`--effort`** are **ALWAYS REQUIRED** (even when
+resuming a previous session) so there are never surprises about which
+model or reasoning effort is used.
+
+- **Launch a new or resumed subagent tab** (`olo agent start`):
+  - New session:
+    `olo agent start claude --model claude-opus-5-5 --effort max --title "API Audit" --permission-mode acceptEdits --prompt "Review crates/api" --json`
+    `olo agent start codex --model gpt-5.4-codex --effort high --title "Tests" --approval on-request --sandbox workspace-write --prompt "Add unit tests" --json`
+    `olo agent start agy --model gemini-4-neon --effort xhigh --title "UI Check" --mode accept-edits --prompt "Inspect layout" --json`
+  - Resume or fork an existing session (`--model` and `--effort` still required):
+    `olo agent start claude --model claude-opus-5-5 --effort max --resume SESSION_ID` (or `--continue`, `--fork`)
+    `olo agent start codex --model gpt-5.4-codex --effort high --resume SESSION_ID` (or `--continue`/`--last`, `--fork`)
+    `olo agent start agy --model gemini-4-neon --effort xhigh --resume SESSION_ID` (or `--continue`)
+  - Full CLI options supported: `--title`, `--role`, `--cwd`, `--prompt` / `--prompt-file PATH`, `--env K=V`, `--parent WINDOW_ID`, `--focus`, `--close-on-exit`, `--permission-mode`, `--approval`/`-a`, `--sandbox`/`-s`, `--mode`, `--full-auto`, `--approve-for-me`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--allowed-tools`, `--disallowed-tools`, `--add-dir`, `--worktree [NAME]`, `--agent`, `--name`, `--profile`, `--config/-c K=V`, `--settings`, `--system-prompt`, `--append-system-prompt`, `--mcp-config`, `--project`, `--new-project`, `--remote-agent`, `--remote-control`, `--search`, `--enable`, `--disable`, `--image`, `--no-alt-screen`, `--no-daemon`, plus `-- EXTRA_CLI_ARGS…` verbatim passthrough.
+- **List your subagent tree**: `olo agent list [--tree] [--all] [--json]`
+- **Inspect live status**: `olo agent status ID [--json]` (returns `working`, `waiting_question`, `waiting_approval`, `idle`, `done`, `error`, `exited`, plus summary and recent output)
+- **Read terminal output / scrollback**: `olo agent read ID [--lines 80] [--scrollback] [--ansi] [--json]`
+- **Event-driven watch (zero polling)**:
+  `olo agent watch ID --on question,approval,idle,done,error,exit [--match TEXT] [--regex PAT] [--timeout 600] [--json]`
+  Wakes immediately when the child asks a question, needs approval, goes idle/done, exits, or matches your text/regex.
+- **Send input reliably** (text, paste, control chars, special keys):
+  `olo agent send ID "Yes, go ahead" --enter`
+  `olo agent send ID --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
+- **Stop & close launched tabs cleanly**:
+  `olo agent stop ID [--force] [--tree] [--keep-tab] [--json]`
+  Gracefully interrupts and closes the child tab (`--tree` stops all nested descendants too; `--force` closes immediately).
+- **Focus a child tab in Rex**: `olo agent focus ID`
+
+## Desktop integration commands
+
 - **A link in the person's browser**: `olo open https://example.com`.
   A `http://localhost:PORT` of this host is reached through a forward
   Rex makes for it, where that is allowed (at a free port there, unless
@@ -164,6 +206,14 @@ person's browser or on your own screen there:
 
 Underneath it is Rex's own `rex do`, which you can use directly
 (`rex actions --json` lists the actions with their arguments):
+`rex do olo.agent.start --args '{"args":["claude","--model","…","--effort","…"]}'`,
+`rex do olo.agent.list --args '{"json":true}'`,
+`rex do olo.agent.status --args '{"target":"ID","json":true}'`,
+`rex do olo.agent.read --args '{"target":"ID","lines":80}'`,
+`rex do olo.agent.watch --args '{"target":"ID","on":"question,approval,idle,exit"}'`,
+`rex do olo.agent.send --args '{"target":"ID","text":"yes","enter":true}'`,
+`rex do olo.agent.stop --args '{"target":"ID"}'`,
+`rex do olo.agent.focus --args '{"target":"ID"}'`,
 `rex do olo.open target=URL`, `rex do olo.get --args '{"args":["rex://local/PATH"]}'`,
 `rex do olo.ls --args '{"args":["rex://local/PATH"]}'`, `rex do olo.op --args '{"args":[…]}'`,
 `rex do olo.screen --args '{"args":[…]}'`, `rex do olo.forward --args

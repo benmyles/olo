@@ -59,5 +59,9 @@ if [ "$OLO_BRIDGE_CMD" = run ]; then
 	trap - INT TERM HUP
 	exit "$rc"
 fi
+# `olo agent watch`: event-driven wait that may span minutes; allow up to 3600s.
+if [ "$OLO_BRIDGE_CMD" = agent ] && { [ "${1:-}" = watch ] || [ "${1:-}" = wait ]; }; then
+	exec ${OLO_BRIDGE_REX:-rex} --timeout 3600s do "$here/olo.lua"
+fi
 # (OLO_BRIDGE_REX: another way to say `rex`, for Olo's own tests.)
 exec ${OLO_BRIDGE_REX:-rex} --timeout 60s do "$here/olo.lua"

@@ -135,6 +135,37 @@ pub fn review_groups(menu: &Menu) -> Vec<String> {
     found
 }
 
+/// Horizontal indent per nesting level for hierarchical tree items ([`Menu::tree`]).
+const TREE_INDENT: f32 = 14.0;
+
+/// Semantic colour tone for a menu item's right-aligned status detail ([`Menu::detail_status`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DetailTone {
+    #[default]
+    Secondary,
+    Muted,
+    Warning,
+    Error,
+}
+
+/// Right-aligned secondary metadata on a [`Menu`] item, optionally highlighting a trailing status word.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DetailText {
+    pub prefix: SharedString,
+    pub status: Option<(SharedString, DetailTone)>,
+}
+
+/// Tree branch geometry for a hierarchical [`Menu`] item ([`Menu::tree`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TreeBranch {
+    /// Nesting depth (`1` = direct child of the parent item above it).
+    pub depth: usize,
+    /// True when this item is the last sibling at its depth (`└─` instead of `├─`).
+    pub is_last: bool,
+    /// For each ancestor level `0..depth - 1`, true if that ancestor has more siblings below (`│`).
+    pub guides: Vec<bool>,
+}
+
 /// A command in a menu.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Action {
@@ -154,6 +185,10 @@ pub struct Action {
     /// Its keys as shown ("⌘C", "Ctrl+C"): the shortcut's, or keys the
     /// window doesn't take itself (a desktop shortcut, a chord).
     pub keys: Option<SharedString>,
+    /// Quiet right-aligned secondary metadata (e.g. subagent harness & live state).
+    pub detail: Option<DetailText>,
+    /// Optional hierarchical tree branch geometry painted with pixel-snapped BeOS guides.
+    pub tree: Option<TreeBranch>,
     /// Drawn at its left (an icon name, as for `icons::paint`). A menu
     /// with any gives them all a column, between the check marks and the
     /// labels.
@@ -365,6 +400,34 @@ impl Menu {
         self
     }
 
+    /// Quiet right-aligned secondary metadata on the last item (e.g. live status).
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Menu {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.detail = Some(DetailText { prefix: detail.into(), status: None });
+        }
+        self
+    }
+
+    /// Quiet right-aligned prefix plus a semantically toned trailing status word
+    /// (e.g. `"antigravity · "` in secondary grey + `"Waiting"` in warning orange).
+    pub fn detail_status(mut self, prefix: impl Into<SharedString>, status: impl Into<SharedString>, tone: DetailTone) -> Menu {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.detail = Some(DetailText { prefix: prefix.into(), status: Some((status.into(), tone)) });
+        }
+        self
+    }
+
+    /// Marks the last item as a hierarchical tree child painted with crisp
+    /// pixel-snapped BeOS tree guides (`depth >= 1`).
+    pub fn tree(mut self, depth: usize, is_last: bool, guides: Vec<bool>) -> Menu {
+        if depth > 0
+            && let Some(MenuItem::Action(a)) = self.items.last_mut()
+        {
+            a.tree = Some(TreeBranch { depth, is_last, guides });
+        }
+        self
+    }
+
     /// The last item pressed with the command key and `key` (as the kit
     /// names it: "w", "f3", "="): ⌘W on a Mac's keys, Ctrl+W on
     /// Windows'; the profile's keys for its command win ([`resolve`]).
@@ -509,30 +572,72 @@ pub fn on_command(command: &str, cx: &mut WindowCx) {
     cx.command(command);
 }
 
+/// Column spacing between primary detail column (e.g. agent name) and status column.
+const DETAIL_COL_GAP: f32 = 12.0;
+/// Minimum gutter between longest menu item label and detail columns.
+const DETAIL_LABEL_GAP: f32 = 24.0;
+
+/// Maximum widths `(prefix_col_w, status_col_w)` across all [`DetailText`] rows in `menu`,
+/// so agent names and states align vertically into two crisp left-aligned columns.
+fn detail_columns(menu: &Menu) -> (f32, f32) {
+    let font = style::ui_font(FontWeight::NORMAL);
+    let (mut pref_w, mut stat_w) = (0.0f32, 0.0f32);
+    for item in &menu.items {
+        if let MenuItem::Action(a) = item
+            && let Some(detail) = &a.detail
+        {
+            if !detail.prefix.is_empty() {
+                pref_w = pref_w.max(f32::from(style::text_width(detail.prefix.clone(), style::SMALL_SIZE, font.clone())).ceil());
+            }
+            if let Some((st, tone)) = &detail.status {
+                let st_font = if matches!(tone, DetailTone::Warning | DetailTone::Error) { style::ui_font(FontWeight::BOLD) } else { font.clone() };
+                stat_w = stat_w.max(f32::from(style::text_width(st.clone(), style::SMALL_SIZE, st_font)).ceil());
+            }
+        }
+    }
+    (pref_w, stat_w)
+}
+
 /// A popup's size for `menu`.
 fn popup_size(menu: &Menu) -> (f32, f32) {
     let (mut label_w, mut key_w, mut h) = (0.0f32, 0.0f32, 0.0f32);
+    let mut has_detail = false;
+    let mut has_keys = false;
     let font = style::ui_font(FontWeight::NORMAL);
     for item in &menu.items {
         match item {
             MenuItem::Action(a) => {
-                label_w = label_w.max(f32::from(style::text_width(a.label.clone(), style::PLAIN_SIZE, font.clone())));
+                let indent = a.tree.as_ref().map_or(0.0, |t| (t.depth.min(6) as f32) * TREE_INDENT);
+                label_w = label_w.max(indent + f32::from(style::text_width(a.label.clone(), style::PLAIN_SIZE, font.clone())));
                 if let Some(keys) = &a.keys {
+                    has_keys = true;
                     key_w = key_w.max(style::key_combo_column_width(keys));
+                } else if a.detail.is_some() {
+                    has_detail = true;
                 }
                 h += ITEM_HEIGHT;
             }
             MenuItem::Submenu(m) => {
                 label_w = label_w.max(f32::from(style::text_width(m.title.clone(), style::PLAIN_SIZE, font.clone())));
+                has_keys = true;
                 key_w = key_w.max(10.0);
                 h += ITEM_HEIGHT;
             }
             MenuItem::Separator => h += SEPARATOR_HEIGHT,
         }
     }
-    let gap = if key_w > 0.0 { SHORTCUT_GAP } else { 0.0 };
+    let (pref_w, stat_w) = if has_detail { detail_columns(menu) } else { (0.0, 0.0) };
+    let detail_total = pref_w + if pref_w > 0.0 && stat_w > 0.0 { DETAIL_COL_GAP } else { 0.0 } + stat_w;
+    let right_w = key_w.max(detail_total);
+    let gap = if has_keys {
+        SHORTCUT_GAP
+    } else if detail_total > 0.0 {
+        DETAIL_LABEL_GAP
+    } else {
+        0.0
+    };
     // On the two-point grid: whole device pixels at 1×, 1.5× and 2×.
-    let w = ((columns(menu).1 + label_w + gap + key_w + ITEM_RIGHT).max(MIN_WIDTH) / 2.0).ceil() * 2.0;
+    let w = ((columns(menu).1 + label_w + gap + right_w + ITEM_RIGHT).max(MIN_WIDTH) / 2.0).ceil() * 2.0;
     (w + 2.0 * POPUP_BORDER, h + 2.0 * POPUP_PAD)
 }
 
@@ -1008,11 +1113,14 @@ impl MenuPopup {
         // window" (Opus's look at Rex's Agent sessions row).)
         let ground = if p.mode == olo_theme::ThemeMode::Dark { olo_theme::mix(p.menu_background, p.menu_item_text, 0.06) } else { p.menu_background };
         style::fill_rect(g, b, style::c(ground));
-        // The outline, then a light inner edge on top and left.
-        style::frame_rect(g, b, style::tint(ground, 1.55));
+        // The outline (near-black window frame in dark mode so popups separate cleanly
+        // over dark bars/headers), then a light inner edge on top and left.
+        let outline = if p.mode == olo_theme::ThemeMode::Dark { style::c(p.frame_focused[0]) } else { style::tint(ground, 1.55) };
+        style::frame_rect(g, b, outline);
         let lined = style::inset(g, b, 1.0);
         style::hline(g, lined.left(), lined.right(), lined.top(), style::c(p.shine));
         style::vline(g, lined.left(), lined.top(), lined.bottom(), style::c(p.shine));
+        let (detail_pref_w, detail_stat_w) = detail_columns(menu);
         let (left, right) = (b.left() + px(POPUP_BORDER), b.right() - px(POPUP_BORDER));
         // Scrolled: the items between the arrows, each arrow on the
         // menu's ground.
@@ -1053,7 +1161,8 @@ impl MenuPopup {
                 let cy = row.center().y;
                 match item {
                     MenuItem::Separator => {
-                        let gy = px(f32::from(cy).floor());
+                        // Visually centred between the rows above and below (groove shadow + shine).
+                        let gy = style::snap_coord(g, cy + px(0.5));
                         style::hline_above(g, row.left() + px(1.0), row.right() - px(1.0), gy, style::shade(&p, p.menu_background, 1.16));
                         style::hline(g, row.left() + px(1.0), row.right() - px(1.0), gy, style::c(p.shine));
                     }
@@ -1080,9 +1189,67 @@ impl MenuPopup {
                             let r = style::snap_centred(g, point(row.left() + px(left + ICON_SIZE / 2.0), row.center().y), ICON_SIZE - 2.0, ICON_SIZE - 2.0);
                             g.with_element_opacity((!a.enabled).then_some(110.0 / 255.0), |g| style::paint_swatch(g, r, color, &p));
                         }
-                        style::label(g, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                        let mut text_left = label_left;
+                        if let Some(tr) = &a.tree {
+                            let depth = tr.depth.clamp(1, 6);
+                            let guide_c = if lit {
+                                style::c(olo_theme::mix(p.menu_selected_item_text, p.menu_selected_background, 0.35))
+                            } else if p.mode == olo_theme::ThemeMode::Dark {
+                                style::c(olo_theme::mix(p.menu_background, p.menu_item_text, 0.34))
+                            } else {
+                                style::shade(&p, p.menu_background, 1.32)
+                            };
+                            let stem_y = style::snap_coord(g, cy);
+                            for (lvl, &more) in tr.guides.iter().take(depth.saturating_sub(1)).enumerate() {
+                                if more {
+                                    let gx = style::snap_coord(g, row.left() + px(label_left + (lvl as f32) * TREE_INDENT + 4.0));
+                                    style::vline(g, gx, row.top(), row.bottom(), guide_c);
+                                }
+                            }
+                            let px_x = style::snap_coord(g, row.left() + px(label_left + ((depth - 1) as f32) * TREE_INDENT + 4.0));
+                            let end_y = if tr.is_last { stem_y } else { row.bottom() };
+                            style::vline(g, px_x, row.top(), end_y, guide_c);
+                            let elbow_end = style::snap_coord(g, row.left() + px(label_left + (depth as f32) * TREE_INDENT - 3.0));
+                            style::hline(g, px_x, elbow_end, stem_y, guide_c);
+                            text_left += (depth as f32) * TREE_INDENT;
+                        }
+                        style::label(g, row.left() + px(text_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
                         if let Some(keys) = &a.keys {
                             style::key_combo_column(g, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
+                        } else if let Some(detail) = &a.detail {
+                            let base = style::baseline_at(g, cy, style::PLAIN_SIZE);
+                            let right_edge = row.right() - px(ITEM_RIGHT);
+                            let status_x = right_edge - px(detail_stat_w);
+                            let prefix_x = status_x - px(if detail_pref_w > 0.0 && detail_stat_w > 0.0 { DETAIL_COL_GAP + detail_pref_w } else { detail_pref_w });
+                            if !detail.prefix.is_empty() {
+                                let pref_ink = if lit { ink } else { style::secondary_text(&p) };
+                                style::label_on_baseline(g, prefix_x, base, style::Align::Left, detail.prefix.clone(), style::SMALL_SIZE, font.clone(), pref_ink);
+                            }
+                            if let Some((status_txt, tone)) = &detail.status {
+                                let status_ink = if lit {
+                                    ink
+                                } else {
+                                    match tone {
+                                        DetailTone::Secondary => style::secondary_text(&p),
+                                        // Full secondary contrast in light mode so "Done" never reads as disabled at 1×;
+                                        // softly muted yet legible in dark mode.
+                                        DetailTone::Muted => {
+                                            if p.mode == olo_theme::ThemeMode::Dark {
+                                                style::c(olo_theme::mix(p.menu_item_text, ground, 0.44))
+                                            } else {
+                                                style::secondary_text(&p)
+                                            }
+                                        }
+                                        DetailTone::Warning => {
+                                            let raw = p.hue(olo_theme::Hue::Orange);
+                                            if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(raw, p.panel_text, 0.22)) } else { style::c(olo_theme::mix(raw, p.panel_text, 0.44)) }
+                                        }
+                                        DetailTone::Error => style::c(p.failure),
+                                    }
+                                };
+                                let weight = if matches!(tone, DetailTone::Warning | DetailTone::Error) { FontWeight::BOLD } else { FontWeight::NORMAL };
+                                style::label_on_baseline(g, status_x, base, style::Align::Left, status_txt.clone(), style::SMALL_SIZE, style::ui_font(weight), status_ink);
+                            }
                         }
                         g.agent(agent::Node {
                             role: if a.informational { "Label" } else { "MenuItem" },

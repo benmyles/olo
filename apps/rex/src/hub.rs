@@ -1732,6 +1732,8 @@ pub struct HubState {
     pub sessions_window: olo_rex_client::sessions::Window,
     pub git_cache: Arc<GitCache>,
     pub local_bin_dir: Option<PathBuf>,
+    /// Native nested subagent tabs registry (parent_window_id -> child window_ids).
+    pub subagents: crate::subagents::SubagentRegistry,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
 }
 
@@ -1966,6 +1968,9 @@ struct RexHubInner {
     /// time into a folder: the runner's, and an agent's `olo sync wait`),
     /// by its host and its path there.
     keeping: Mutex<HashMap<(String, String), (Option<tokio::task::AbortHandle>, Arc<tokio::sync::Mutex<()>>)>>,
+    /// Event-driven wakeups for `olo agent watch` whenever terminal output,
+    /// program status, or session window state changes (zero polling).
+    subagent_events: Arc<tokio::sync::Notify>,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -2500,6 +2505,7 @@ impl RexHub {
             }
         }
 
+        let is_demo = std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1");
         let state = Arc::new(Mutex::new(HubState {
             hosts,
             host_order,
@@ -2517,6 +2523,7 @@ impl RexHub {
             sessions_window: olo_rex_client::sessions::Window::default(),
             git_cache: GitCache::new(),
             local_bin_dir,
+            subagents: if is_demo { crate::subagents::SubagentRegistry::default() } else { crate::subagents::SubagentRegistry::load() },
             quick_look_cache: HashMap::new(),
         }));
 
@@ -2531,6 +2538,7 @@ impl RexHub {
             run_approvals: run_approvals.unwrap_or_else(|| crate::bridge_run::RunApprovals::new(|| {}, || {})),
             agent_socks: Mutex::new(HashMap::new()),
             keeping: Mutex::new(HashMap::new()),
+            subagent_events: Arc::new(tokio::sync::Notify::new()),
         });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
@@ -2626,22 +2634,34 @@ impl RexHub {
                 blocks: vec![mk_block("demo-build", "cargo test — olo-rex"), mk_block("demo-agent", "claude — Refactor VT renderer"), mk_block("demo-shell", "zsh — ~/olo/rex")],
             }],
         };
-        let win2 = WindowView {
-            window_id: "win-2".to_owned(),
-            label: "server-logs".to_owned(),
-            focused_block_id: Some("demo-logs".to_owned()),
+        let mk_single_win = |wid: &str, label: &str, bid: &str, blabel: &str| WindowView {
+            window_id: wid.to_owned(),
+            label: label.to_owned(),
+            focused_block_id: Some(bid.to_owned()),
             zoomed_block_id: None,
             layers: vec![LayerView {
-                layer_id: "layer-logs".to_owned(),
+                layer_id: format!("layer-{wid}"),
                 kind: "tiled".to_owned(),
                 bounds: [0.0, 0.0, 1.0, 1.0],
                 state: Some("normal".to_owned()),
-                layout: Some(LayoutNode { rect: [0.0, 0.0, 1.0, 1.0], block_id: Some("demo-logs".to_owned()), split: None }),
-                blocks: vec![mk_block("demo-logs", "rex server logs")],
+                layout: Some(LayoutNode { rect: [0.0, 0.0, 1.0, 1.0], block_id: Some(bid.to_owned()), split: None }),
+                blocks: vec![mk_block(bid, blabel)],
             }],
         };
+        let win2 = mk_single_win("win-2", "server-logs", "demo-logs", "rex server logs");
+        // Native nested child-tab subagents under `win-1` (depth 1 + depth 2 grandchild!)
+        let win_sub1 = mk_single_win("win-sub-1", "API Audit", "demo-sub-1", "claude — API Audit");
+        let win_sub1a = mk_single_win("win-sub-1a", "Schema Diff", "demo-sub-1a", "agy — Schema Diff");
+        let win_sub2 = mk_single_win("win-sub-2", "Unit Tests", "demo-sub-2", "codex — Unit Tests");
 
-        let main_view = SessionView { revision: 1, session_id: "demo-main".to_owned(), label: "main".to_owned(), active_window_id: Some("win-1".to_owned()), windows: vec![win1, win2] };
+        let active_wid = if std::env::var("OLO_REX_DEMO_ACTIVE_CHILD").ok().as_deref() == Some("1") { "win-sub-1a" } else { "win-1" };
+        let main_view = SessionView {
+            revision: 1,
+            session_id: "demo-main".to_owned(),
+            label: "main".to_owned(),
+            active_window_id: Some(active_wid.to_owned()),
+            windows: vec![win1, win2, win_sub1, win_sub1a, win_sub2],
+        };
 
         if let Some(local) = st.hosts.get_mut("local") {
             local.endpoint_raw = "unix:///run/user/1000/rex/server.sock".to_owned();
@@ -2760,6 +2780,110 @@ impl RexHub {
         br_logs.data_connected = true;
         br_logs.terminal.vt_write(b"\x1b[2m2026-11-21T14:00:01Z\x1b[0m \x1b[32mINFO\x1b[0m rex_server: listening on unix:///run/user/1000/rex/server.sock (rev 19)\r\n");
         st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-logs".into() }, Arc::new(Mutex::new(br_logs)));
+
+        // Native child-tab subagents under `win-1` (`olo-rex`): depth-1 workers + depth-2 grandchild
+        let mut br_sub1 = BlockRuntime::new(110, 32, &theme);
+        br_sub1.title = "claude — API Audit".to_owned();
+        br_sub1.pwd = "/home/you/olo/rex".to_owned();
+        br_sub1.agent_activity = AgentActivity::Working;
+        br_sub1.program_statuses = vec![ProgramStatusRecord { state: "working".into(), msg: Some("Checking action schemas in keymap.rs".into()), ..Default::default() }];
+        br_sub1.data_connected = true;
+        br_sub1.terminal.vt_write(
+            concat!(
+                "\x1b[1;35m◆ Claude Code\x1b[0m \x1b[2mclaude-opus-5-5 · effort: max\x1b[0m\r\n",
+                "\x1b[2m────────────────────────────────────────────\x1b[0m\r\n",
+                "\x1b[32m✓\x1b[0m Read \x1b[36mapps/rex/src/keymap.rs\x1b[0m\r\n",
+                "\x1b[33m⠋\x1b[0m Checking action schemas and JSON validation…\r\n"
+            )
+            .as_bytes(),
+        );
+        st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-sub-1".into() }, Arc::new(Mutex::new(br_sub1)));
+
+        let mut br_sub1a = BlockRuntime::new(110, 32, &theme);
+        br_sub1a.title = "agy — Schema Diff".to_owned();
+        br_sub1a.pwd = "/home/you/olo/rex".to_owned();
+        br_sub1a.agent_activity = AgentActivity::Blocked;
+        br_sub1a.program_statuses = vec![ProgramStatusRecord { state: "blocked".into(), msg: Some("Approve editing bridge_skill.md?".into()), ..Default::default() }];
+        br_sub1a.data_connected = true;
+        br_sub1a.terminal.vt_write(
+            concat!(
+                "\x1b[1;36m◈ Antigravity\x1b[0m \x1b[2mgemini-4-neon · effort: xhigh\x1b[0m\r\n",
+                "\x1b[2m────────────────────────────────────────────\x1b[0m\r\n",
+                "\x1b[32m✓\x1b[0m Compared rex actions --json against bridge_skill.md\r\n",
+                "\x1b[33m?\x1b[0m Allow updating bridge_skill.md? [y/n] "
+            )
+            .as_bytes(),
+        );
+        st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-sub-1a".into() }, Arc::new(Mutex::new(br_sub1a)));
+
+        let mut br_sub2 = BlockRuntime::new(110, 32, &theme);
+        br_sub2.title = "codex — Unit Tests".to_owned();
+        br_sub2.pwd = "/home/you/olo/rex".to_owned();
+        br_sub2.agent_activity = AgentActivity::Done;
+        br_sub2.program_statuses = vec![ProgramStatusRecord { state: "done".into(), msg: Some("4 new subagent tests passed".into()), ..Default::default() }];
+        br_sub2.data_connected = true;
+        br_sub2.terminal.vt_write(
+            concat!(
+                "\x1b[1;34m● Codex\x1b[0m \x1b[2mgpt-5.4-codex · effort: high\x1b[0m\r\n",
+                "\x1b[2m────────────────────────────────────────────\x1b[0m\r\n",
+                "\x1b[32m✓\x1b[0m cargo test -p olo-rex subagents — 4 passed, 0 failed\r\n"
+            )
+            .as_bytes(),
+        );
+        st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-sub-2".into() }, Arc::new(Mutex::new(br_sub2)));
+
+        let now_s = crate::subagents::now_unix();
+        st.subagents.register(crate::subagents::NativeSubagent {
+            id: "sa-audit1".into(),
+            host_key: "local".into(),
+            session_id: "demo-main".into(),
+            window_id: "win-sub-1".into(),
+            block_id: "demo-sub-1".into(),
+            parent_window_id: "win-1".into(),
+            parent_block_id: Some("demo-agent".into()),
+            cli: crate::subagents::AgentCli::Claude,
+            model: "claude-opus-5-5".into(),
+            effort: "max".into(),
+            title: "API Audit".into(),
+            role: Some("Code Auditor".into()),
+            cwd: Some("/home/you/olo/rex".into()),
+            resume_id: None,
+            started_at: now_s - 95,
+        });
+        st.subagents.register(crate::subagents::NativeSubagent {
+            id: "sa-diff1a".into(),
+            host_key: "local".into(),
+            session_id: "demo-main".into(),
+            window_id: "win-sub-1a".into(),
+            block_id: "demo-sub-1a".into(),
+            parent_window_id: "win-sub-1".into(),
+            parent_block_id: Some("demo-sub-1".into()),
+            cli: crate::subagents::AgentCli::Agy,
+            model: "gemini-4-neon".into(),
+            effort: "xhigh".into(),
+            title: "Schema Diff".into(),
+            role: Some("Schema Checker".into()),
+            cwd: Some("/home/you/olo/rex".into()),
+            resume_id: None,
+            started_at: now_s - 42,
+        });
+        st.subagents.register(crate::subagents::NativeSubagent {
+            id: "sa-tests2".into(),
+            host_key: "local".into(),
+            session_id: "demo-main".into(),
+            window_id: "win-sub-2".into(),
+            block_id: "demo-sub-2".into(),
+            parent_window_id: "win-1".into(),
+            parent_block_id: Some("demo-agent".into()),
+            cli: crate::subagents::AgentCli::Codex,
+            model: "gpt-5.4-codex".into(),
+            effort: "high".into(),
+            title: "Unit Tests".into(),
+            role: Some("Test Runner".into()),
+            cwd: Some("/home/you/olo/rex".into()),
+            resume_id: None,
+            started_at: now_s - 180,
+        });
 
         // The remote example owns a separate tab, screen and focus just like a connected host.
         let remote_block = BlockInfo { host_id: "dev-box".into(), ..mk_block("remote-shell", "Remote shell") };
@@ -3525,6 +3649,17 @@ impl RexHub {
         });
     }
 
+    /// Gracefully stops and closes a native subagent child tab (and optionally its
+    /// entire descendant subtree bottom-up when `tree` is true).
+    pub fn stop_subagent(&self, host_key: &str, session_id: &str, window_id: &str, force: bool, tree: bool) {
+        let hk = host_key.to_owned();
+        let sid = session_id.to_owned();
+        let wid = window_id.to_owned();
+        self.with_control(host_key, move |_ctrl, _ep, inner| async move {
+            let _ = inner.stop_subagent_windows(&hk, &sid, &wid, force, tree, false).await;
+        });
+    }
+
     /// Moves a tab before another of its session's (none: to the end).
     pub fn move_window(&self, host_key: &str, session_id: &str, window_id: &str, before_window_id: Option<String>) {
         let hk = host_key.to_owned();
@@ -3849,7 +3984,7 @@ impl RexHub {
         }
     }
 
-    pub fn resize_block(&self, key: &BlockKey, cols: u16, rows: u16, cell_w: u32, cell_h: u32) {
+    pub fn resize_block(&self, key: &BlockKey, cols: u16, rows: u16, cell_w: u32, cell_h: u32) -> bool {
         let br_opt = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned();
         let changed = if let Some(br) = br_opt {
             let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
@@ -3858,13 +3993,14 @@ impl RexHub {
             false
         };
         if !changed {
-            return;
+            return false;
         }
         let sid = key.session_id.clone();
         let bid = key.block_id.clone();
         self.with_control(&key.host_key, move |ctrl, _, _| async move {
             let _ = ctrl.terminal_resize(&sid, &bid, cols, rows, Some(cell_w as u16), Some(cell_h as u16)).await;
         });
+        true
     }
 
     pub fn respond_prompt(&self, host_key: &str, call_id: &str, cancelled: bool, value: Option<Value>) {
@@ -7261,9 +7397,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             {
                 target.apply(view);
             }
+            let live_windows: HashSet<String> = h.sessions.get(&session_id).map(|s| s.windows.iter().map(|w| w.window_id.clone()).collect()).unwrap_or_default();
             let theme = st.active_theme.clone();
             let live_ids: HashSet<String> = blocks.iter().map(|b| b.block_id.clone()).collect();
             st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id && !live_ids.contains(&bk.block_id)));
+            if st.subagents.prune_session(host_key, &session_id, &live_windows) {
+                st.subagents.save();
+            }
 
             for b in &blocks {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: b.block_id.clone() };
@@ -7298,6 +7438,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             self.spawn_block_data_stream(ctrl.clone(), ep.clone(), bk, br, pre_ticket);
         }
         self.write_palette_index();
+        self.subagent_events.notify_waiters();
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -7578,6 +7719,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     }
                     (result, guess)
                 };
+                if !live.is_empty() {
+                    inner.subagent_events.notify_waiters();
+                }
                 if guess {
                     // What an agent is doing there, looked at while the
                     // chunks come (every so often, not with each) and
@@ -7599,6 +7743,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             if changed {
                                 notify(HubNotice::StateChanged);
                             }
+                            helper.subagent_events.notify_waiters();
                             // (Keep It Going's and Auto Approve's look,
                             // where the pane has either on.)
                             helper.agent_look(&bk);
@@ -7831,13 +7976,13 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         && let Ok(r) = ctrl.terminal_process(&sid, &bid).await
                     {
                         block.lock().unwrap_or_else(|e| e.into_inner()).process_snapshot(r);
-                        crate::activity_watch::nudge_host(&host_key);
                     }
                     if matches!(what, None | Some("input_mode_changed"))
                         && let Ok(r) = ctrl.terminal_input_mode(&sid, &bid).await
                     {
                         block.lock().unwrap_or_else(|e| e.into_inner()).set_password_prompt(asks_for_secret(r.payload.echo, r.payload.canonical));
                     }
+                    self.subagent_events.notify_waiters();
                     (self.notify)(HubNotice::StateChanged);
                 }
             }
@@ -7966,7 +8111,6 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                     g.pwd = cwd;
                                 }
                                 g.recompute_activity();
-                                crate::activity_watch::nudge_host(&host_key);
                             }
                             "bell" => {
                                 g.last_bell = Some(Instant::now());
@@ -7977,6 +8121,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             _ => {}
                         }
                     }
+                    self.subagent_events.notify_waiters();
                     if let Some((title, body, kind)) = activity_note {
                         self.pane_attention(&bk, title, body, kind);
                     }
@@ -8236,6 +8381,9 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         Err(e) => json!({ "ok": false, "stderr": format!("olo: the clipboard couldn't be read: {e}\n") }),
                     });
                 }
+                "olo.agent.start" | "olo.agent.list" | "olo.agent.status" | "olo.agent.read" | "olo.agent.watch" | "olo.agent.send" | "olo.agent.stop" | "olo.agent.focus" => {
+                    return Some(self.handle_agent_action(host_key, &action, args, session_id, block_id).await);
+                }
                 "olo.clipboard.set" => {
                     if !policy.allow_remote_control {
                         return None;
@@ -8250,6 +8398,624 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         }
 
         crate::ui::request_action(host_key, session_id, block_id, action, args).then_some(json!({ "ok": true }))
+    }
+
+    /// Dispatches native nested subagent tab actions (`olo.agent.*`).
+    async fn handle_agent_action(self: &Arc<Self>, host_key: &str, action: &str, args: Option<Value>, session_id: Option<String>, block_id: Option<String>) -> Value {
+        match action {
+            "olo.agent.start" => self.agent_start(host_key, args.as_ref(), session_id, block_id).await,
+            "olo.agent.list" => self.agent_list(host_key, args.as_ref(), session_id, block_id).await,
+            "olo.agent.status" => self.agent_status(host_key, args.as_ref(), session_id).await,
+            "olo.agent.read" => self.agent_read(host_key, args.as_ref(), session_id).await,
+            "olo.agent.watch" => {
+                let (inner, hk) = (self.clone(), host_key.to_owned());
+                self.bridge_calls.answer(async move { inner.agent_watch(&hk, args.as_ref(), session_id).await }).await
+            }
+            "olo.agent.send" => self.agent_send(host_key, args.as_ref(), session_id).await,
+            "olo.agent.stop" => self.agent_stop(host_key, args.as_ref(), session_id).await,
+            "olo.agent.focus" => self.agent_focus(host_key, args.as_ref(), session_id).await,
+            _ => json!(bridge::BridgeResponse::err(format!("unknown agent action `{action}`"))),
+        }
+    }
+
+    fn resolve_session_and_parent(
+        &self,
+        host_key: &str,
+        session_id: Option<&str>,
+        block_id: Option<&str>,
+        explicit_parent: Option<&str>,
+    ) -> Result<(ControlClient, RexEndpoint, String, String, Option<String>), String> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let h = st.hosts.get(host_key).ok_or_else(|| format!("unknown Rex host `{host_key}`"))?;
+        let ctrl = h.control.clone().ok_or_else(|| "Rex host is not connected".to_owned())?;
+        let ep = h.endpoint.clone().ok_or_else(|| "Rex host endpoint unavailable".to_owned())?;
+        let sid = session_id
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .or_else(|| h.session_summaries.first().map(|s| s.session_id.clone()))
+            .ok_or_else(|| "no active Rex session found for this host".to_owned())?;
+        let view = h.sessions.get(&sid).ok_or_else(|| format!("Rex session `{sid}` is not loaded"))?;
+        let parent_win = if let Some(p) = explicit_parent.filter(|s| !s.is_empty()) {
+            if view.windows.iter().any(|w| w.window_id == p) {
+                p.to_owned()
+            } else if let Some(sub) = st.subagents.resolve_target(host_key, Some(&sid), p) {
+                sub.window_id
+            } else {
+                return Err(format!("parent tab `{p}` not found in session `{sid}`"));
+            }
+        } else if let Some(bid) = block_id.filter(|s| !s.is_empty()) {
+            view.windows
+                .iter()
+                .find(|w| w.all_blocks().any(|b| b.block_id == bid))
+                .map(|w| w.window_id.clone())
+                .or_else(|| view.active_window_id.clone())
+                .or_else(|| view.windows.first().map(|w| w.window_id.clone()))
+                .ok_or_else(|| "could not determine parent tab for this pane".to_owned())?
+        } else {
+            view.active_window_id.clone().or_else(|| view.windows.first().map(|w| w.window_id.clone())).ok_or_else(|| "session has no open tabs".to_owned())?
+        };
+        let parent_cwd =
+            block_id.filter(|s| !s.is_empty()).and_then(|bid| st.blocks.get(&BlockKey { host_key: host_key.to_owned(), session_id: sid.clone(), block_id: bid.to_owned() })).and_then(|br| {
+                let pwd = br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone();
+                (!pwd.is_empty()).then_some(pwd)
+            });
+        Ok((ctrl, ep, sid, parent_win, parent_cwd))
+    }
+
+    fn live_subagent_state(&self, entry: &crate::subagents::NativeSubagent) -> (crate::subagents::SubagentLiveState, Option<String>, String) {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let alive = st.hosts.get(&entry.host_key).and_then(|h| h.sessions.get(&entry.session_id)).is_some_and(|s| s.windows.iter().any(|w| w.window_id == entry.window_id));
+        if !alive {
+            return (crate::subagents::SubagentLiveState::Exited, Some("tab closed".into()), String::new());
+        }
+        let bk = BlockKey { host_key: entry.host_key.clone(), session_id: entry.session_id.clone(), block_id: entry.block_id.clone() };
+        let Some(br) = st.blocks.get(&bk) else {
+            return (crate::subagents::SubagentLiveState::Idle, None, String::new());
+        };
+        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+        let screen = g.terminal.format(olo_rex_vt::FormatKind::Plain, false, true).unwrap_or_default();
+        let (state, mut summary) = crate::subagents::classify_screen(entry.cli, g.agent_activity, &screen, true);
+        if summary.is_none() {
+            summary = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone()));
+        }
+        (state, summary, screen)
+    }
+
+    async fn agent_start(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> Value {
+        let spec = match crate::subagents::StartSpec::parse(raw) {
+            Ok(s) => s,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent start: {e}\n"), "data": { "code": 2 } }),
+        };
+        let (cli, model, effort, argv) = match spec.build_command() {
+            Ok(v) => v,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent start: {e}\n"), "data": { "code": 2 } }),
+        };
+        let (ctrl, ep, sid, parent_win, parent_cwd) = match self.resolve_session_and_parent(host_key, session_id.as_deref(), block_id.as_deref(), spec.parent_window.as_deref()) {
+            Ok(v) => v,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent start: {e}\n"), "data": { "code": 1 } }),
+        };
+        let cwd = spec.cwd.clone().or(parent_cwd);
+        let title = spec.effective_title(cli);
+
+        // Build Rex shell options matching local/remote environment + command argv
+        let mut opts = json!({
+            "command": argv,
+            "interactive": true,
+            "exit": { "on_completion": spec.close_on_exit },
+        });
+        if let Some(ref dir) = cwd {
+            opts["cwd"] = json!(dir);
+        }
+        let mut env_map = serde_json::Map::new();
+        {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let is_local = st.hosts.get(host_key).is_some_and(|h| h.is_local);
+            if is_local {
+                if let Some(bin) = &st.local_bin_dir {
+                    opts["path_prepend"] = json!([bin.to_string_lossy()]);
+                }
+                if let Some(open_bin) = olo_xdg::find_program("olo-open") {
+                    env_map.insert("BROWSER".into(), json!(open_bin.to_string_lossy()));
+                }
+            } else if let Some(agent) = self.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).get(host_key) {
+                env_map.insert("SSH_AUTH_SOCK".into(), json!(agent));
+            }
+        }
+        for (k, v) in &spec.env {
+            env_map.insert(k.clone(), json!(v));
+        }
+        if !env_map.is_empty() {
+            opts["env"] = Value::Object(env_map);
+        }
+
+        let before_ids: HashSet<String> = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).and_then(|h| h.sessions.get(&sid)).map(|s| s.windows.iter().map(|w| w.window_id.clone()).collect()).unwrap_or_default()
+        };
+
+        let created = match ctrl.session_new_window_with_focus(&sid, Some(&title), Some(opts), spec.focus).await {
+            Ok(r) => r.payload,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent start: failed to create Rex tab: {e}\n"), "data": { "code": 1 } }),
+        };
+        let view = match ctrl.session_view(&sid).await {
+            Ok(v) => v.payload,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent start: failed to read session view: {e}\n"), "data": { "code": 1 } }),
+        };
+
+        let explicit_wid = created.get("window_id").and_then(Value::as_str).map(str::to_owned);
+        let new_win =
+            explicit_wid.as_deref().and_then(|wid| view.windows.iter().find(|w| w.window_id == wid)).or_else(|| view.windows.iter().rev().find(|w| !before_ids.contains(&w.window_id))).cloned();
+        let Some(new_win) = new_win else {
+            return json!({ "ok": false, "stderr": "olo agent start: Rex created the tab but its window_id could not be identified\n", "data": { "code": 1 } });
+        };
+        let new_bid = new_win.focused_block_id.clone().or_else(|| new_win.all_blocks().next().map(|b| b.block_id.clone())).unwrap_or_default();
+
+        let entry = crate::subagents::NativeSubagent {
+            id: crate::subagents::new_subagent_id(),
+            host_key: host_key.to_owned(),
+            session_id: sid.clone(),
+            window_id: new_win.window_id.clone(),
+            block_id: new_bid.clone(),
+            parent_window_id: parent_win.clone(),
+            parent_block_id: block_id,
+            cli,
+            model: model.clone(),
+            effort: effort.clone(),
+            title: title.clone(),
+            role: spec.role.clone(),
+            cwd: cwd.clone(),
+            resume_id: spec.resume.clone(),
+            started_at: crate::subagents::now_unix(),
+        };
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.subagents.register(entry.clone());
+            st.subagents.save();
+        }
+        self.ingest_session(host_key, &ctrl, &ep, view, &[]).await;
+
+        let payload = json!({
+            "ok": true,
+            "id": entry.id,
+            "window_id": entry.window_id,
+            "block_id": entry.block_id,
+            "parent_window_id": entry.parent_window_id,
+            "cli": cli.binary(),
+            "model": model,
+            "effort": effort,
+            "title": title,
+            "role": entry.role,
+            "cwd": cwd,
+            "command": argv,
+        });
+        let stdout = if spec.json { format!("{payload}\n") } else { format!("{}  {} ({}, effort={})  tab={}  {}\n", entry.id, cli.binary(), model, effort, entry.window_id, title) };
+        json!({ "ok": true, "stdout": stdout, "data": payload })
+    }
+
+    async fn agent_list(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>, block_id: Option<String>) -> Value {
+        let mut all = false;
+        let mut as_json = false;
+        if let Some(v) = raw {
+            if let Some(arr) = v.get("args").and_then(Value::as_array) {
+                for a in arr.iter().filter_map(Value::as_str) {
+                    match a {
+                        "--all" | "-a" => all = true,
+                        "--json" => as_json = true,
+                        _ => {}
+                    }
+                }
+            } else {
+                all = v.get("all").and_then(Value::as_bool).unwrap_or(false);
+                as_json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
+            }
+        }
+        let (_ctrl, _ep, sid, caller_win, _) = match self.resolve_session_and_parent(host_key, session_id.as_deref(), block_id.as_deref(), None) {
+            Ok(v) => v,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent list: {e}\n"), "data": { "code": 1 } }),
+        };
+
+        let (rows, live_windows) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let live: HashSet<String> = st.hosts.get(host_key).and_then(|h| h.sessions.get(&sid)).map(|s| s.windows.iter().map(|w| w.window_id.clone()).collect()).unwrap_or_default();
+            let rows = if all {
+                let mut collected = Vec::new();
+                if let Some(sess) = st.hosts.get(host_key).and_then(|h| h.sessions.get(&sid)) {
+                    for w in &sess.windows {
+                        if !st.subagents.is_child_window(host_key, &sid, &w.window_id, &live) {
+                            collected.extend(st.subagents.descendants_tree(host_key, &sid, &w.window_id, &live));
+                        }
+                    }
+                }
+                collected
+            } else {
+                st.subagents.descendants_tree(host_key, &sid, &caller_win, &live)
+            };
+            (rows, live)
+        };
+
+        let mut items = Vec::with_capacity(rows.len());
+        let mut text = String::new();
+        for row in &rows {
+            let (state, summary, _) = self.live_subagent_state(&row.entry);
+            let kids = {
+                let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.subagents.direct_children(host_key, &sid, &row.entry.window_id, &live_windows).len()
+            };
+            items.push(crate::subagents::summary_json(&row.entry, state, summary.as_deref(), row.depth, kids));
+            let tail = summary.as_deref().map(|s| format!(" — {s}")).unwrap_or_default();
+            text.push_str(&format!(
+                "{}{}  {}  {} ({}, effort={})  [{}]{}\n",
+                row.menu_prefix(),
+                row.entry.id,
+                row.entry.display_title(),
+                row.entry.cli.binary(),
+                row.entry.model,
+                row.entry.effort,
+                state.as_str(),
+                tail
+            ));
+        }
+        let payload = json!({ "ok": true, "session_id": sid, "parent_window_id": caller_win, "subagents": items });
+        let stdout = if as_json {
+            format!("{payload}\n")
+        } else if text.is_empty() {
+            "No child subagent tabs.\n".to_owned()
+        } else {
+            text
+        };
+        json!({ "ok": true, "stdout": stdout, "data": payload })
+    }
+
+    fn resolve_agent_target(&self, host_key: &str, session_id: Option<&str>, target: &str) -> Result<crate::subagents::NativeSubagent, String> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.subagents.resolve_target(host_key, session_id, target).ok_or_else(|| format!("subagent `{target}` not found (run `olo agent list` to see active child tabs)"))
+    }
+
+    async fn agent_status(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+        let mut target: Option<String> = None;
+        let mut as_json = false;
+        if let Some(v) = raw {
+            if let Some(arr) = v.get("args").and_then(Value::as_array) {
+                for a in arr.iter().filter_map(Value::as_str) {
+                    if a == "--json" {
+                        as_json = true;
+                    } else if !a.starts_with('-') && target.is_none() {
+                        target = Some(a.to_owned());
+                    }
+                }
+            } else {
+                target = v.get("target").or_else(|| v.get("id")).and_then(Value::as_str).map(str::to_owned);
+                as_json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
+            }
+        }
+        let Some(target) = target else {
+            return json!({ "ok": false, "stderr": "usage: olo agent status <ID> [--json]\n", "data": { "code": 2 } });
+        };
+        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+            Ok(e) => e,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent status: {e}\n"), "data": { "code": 1 } }),
+        };
+        let (state, summary, screen) = self.live_subagent_state(&entry);
+        let tail: Vec<&str> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(8).collect::<Vec<_>>().into_iter().rev().collect();
+        let mut payload = crate::subagents::summary_json(&entry, state, summary.as_deref(), 1, 0);
+        payload["tail"] = json!(tail);
+        let stdout = if as_json {
+            format!("{payload}\n")
+        } else {
+            let mut s = format!("{}  {}  {} ({}, effort={})  state={}\n", entry.id, entry.display_title(), entry.cli.binary(), entry.model, entry.effort, state.as_str());
+            if let Some(sum) = &summary {
+                s.push_str(&format!("summary: {sum}\n"));
+            }
+            for l in &tail {
+                s.push_str("  ");
+                s.push_str(l);
+                s.push('\n');
+            }
+            s
+        };
+        json!({ "ok": true, "stdout": stdout, "data": payload })
+    }
+
+    async fn agent_read(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+        let mut target: Option<String> = None;
+        let mut lines: usize = 80;
+        let mut scrollback = false;
+        let mut ansi = false;
+        let mut as_json = false;
+        if let Some(v) = raw {
+            if let Some(arr) = v.get("args").and_then(Value::as_array) {
+                let strs: Vec<String> = arr.iter().map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| x.to_string())).collect();
+                let mut i = 0;
+                while i < strs.len() {
+                    match strs[i].as_str() {
+                        "--scrollback" | "--all" => scrollback = true,
+                        "--ansi" => ansi = true,
+                        "--json" => as_json = true,
+                        "-n" | "--lines" => {
+                            i += 1;
+                            if let Some(n) = strs.get(i).and_then(|s| s.parse::<usize>().ok()) {
+                                lines = n.clamp(1, 5000);
+                            }
+                        }
+                        s if s.starts_with("--lines=") => {
+                            if let Ok(n) = s["--lines=".len()..].parse::<usize>() {
+                                lines = n.clamp(1, 5000);
+                            }
+                        }
+                        s if !s.starts_with('-') && target.is_none() => target = Some(s.to_owned()),
+                        _ => {}
+                    }
+                    i += 1;
+                }
+            } else {
+                target = v.get("target").or_else(|| v.get("id")).and_then(Value::as_str).map(str::to_owned);
+                lines = v.get("lines").and_then(Value::as_u64).unwrap_or(80).clamp(1, 5000) as usize;
+                scrollback = v.get("scrollback").and_then(Value::as_bool).unwrap_or(false);
+                ansi = v.get("ansi").and_then(Value::as_bool).unwrap_or(false);
+                as_json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
+            }
+        }
+        let Some(target) = target else {
+            return json!({ "ok": false, "stderr": "usage: olo agent read <ID> [--lines N] [--scrollback] [--ansi] [--json]\n", "data": { "code": 2 } });
+        };
+        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+            Ok(e) => e,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent read: {e}\n"), "data": { "code": 1 } }),
+        };
+        let ctrl = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).and_then(|h| h.control.clone())
+        };
+        let mut text = if scrollback
+            && let Some(ctrl) = ctrl
+            && let Ok(r) = ctrl.terminal_format(&entry.session_id, &entry.block_id, if ansi { "vt" } else { "plain" }).await
+        {
+            r.payload
+        } else {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let bk = BlockKey { host_key: entry.host_key.clone(), session_id: entry.session_id.clone(), block_id: entry.block_id.clone() };
+            let kind = if ansi { olo_rex_vt::FormatKind::Vt } else { olo_rex_vt::FormatKind::Plain };
+            st.blocks.get(&bk).and_then(|br| br.lock().unwrap_or_else(|e| e.into_inner()).terminal.format(kind, scrollback, true).ok()).unwrap_or_default()
+        };
+        let all_lines: Vec<&str> = text.lines().collect();
+        if all_lines.len() > lines {
+            text = all_lines[all_lines.len() - lines..].join("\n");
+        }
+        if !text.ends_with('\n') && !text.is_empty() {
+            text.push('\n');
+        }
+        let (state, summary, _) = self.live_subagent_state(&entry);
+        let payload = json!({ "ok": true, "id": entry.id, "state": state.as_str(), "summary": summary, "output": text });
+        let stdout = if as_json { format!("{payload}\n") } else { text };
+        json!({ "ok": true, "stdout": stdout, "data": payload })
+    }
+
+    async fn agent_watch(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> bridge::BridgeResponse {
+        let spec = match crate::subagents::WatchSpec::parse(raw) {
+            Ok(s) => s,
+            Err(e) => return bridge::BridgeResponse { ok: false, stdout: None, stderr: Some(format!("olo agent watch: {e}\n")), data: Some(json!({ "code": 2 })), carried: Vec::new() },
+        };
+        let compiled_re = match &spec.regex_pat {
+            Some(pat) => match regex::Regex::new(pat) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    return bridge::BridgeResponse {
+                        ok: false,
+                        stdout: None,
+                        stderr: Some(format!("olo agent watch: invalid --regex `{pat}`: {e}\n")),
+                        data: Some(json!({ "code": 2 })),
+                        carried: Vec::new(),
+                    };
+                }
+            },
+            None => None,
+        };
+        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &spec.target) {
+            Ok(e) => e,
+            Err(e) => return bridge::BridgeResponse::err(format!("olo agent watch: {e}\n")),
+        };
+        let started = Instant::now();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(spec.timeout_secs);
+        loop {
+            let notified = self.subagent_events.notified();
+            let (state, summary, screen) = self.live_subagent_state(&entry);
+            if let Some((event, matched_line)) = spec.check(state, &screen, compiled_re.as_ref()) {
+                let tail: Vec<&str> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(10).collect::<Vec<_>>().into_iter().rev().collect();
+                let payload = json!({
+                    "ok": true,
+                    "id": entry.id,
+                    "window_id": entry.window_id,
+                    "event": event,
+                    "state": state.as_str(),
+                    "summary": summary,
+                    "matched_line": matched_line,
+                    "elapsed_ms": started.elapsed().as_millis() as u64,
+                    "tail": tail,
+                });
+                let stdout = if spec.json {
+                    format!("{payload}\n")
+                } else {
+                    let detail = matched_line.or(summary).unwrap_or_default();
+                    format!("{}  event={}  state={}  {}\n", entry.id, event, state.as_str(), detail)
+                };
+                return bridge::BridgeResponse { ok: true, stdout: Some(stdout), stderr: None, data: Some(payload), carried: Vec::new() };
+            }
+            tokio::select! {
+                _ = notified => {}
+                _ = tokio::time::sleep_until(deadline) => {
+                    let payload = json!({
+                        "ok": false,
+                        "id": entry.id,
+                        "event": "timeout",
+                        "state": state.as_str(),
+                        "summary": summary,
+                        "elapsed_ms": started.elapsed().as_millis() as u64,
+                        "code": 124,
+                    });
+                    let stdout = if spec.json { Some(format!("{payload}\n")) } else { None };
+                    return bridge::BridgeResponse {
+                        ok: false,
+                        stdout,
+                        stderr: Some(format!("olo agent watch: timed out after {}s (state={})\n", spec.timeout_secs, state.as_str())),
+                        data: Some(payload),
+                        carried: Vec::new(),
+                    };
+                }
+            }
+        }
+    }
+
+    async fn agent_send(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+        let cli_args: Vec<String> =
+            raw.and_then(|v| v.get("args")).and_then(Value::as_array).map(|a| a.iter().map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| x.to_string())).collect()).unwrap_or_default();
+        let (target, bytes, as_json) = match crate::subagents::encode_send_payload(&cli_args, raw) {
+            Ok(v) => v,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent send: {e}\n"), "data": { "code": 2 } }),
+        };
+        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+            Ok(e) => e,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent send: {e}\n"), "data": { "code": 1 } }),
+        };
+        let ctrl = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).and_then(|h| h.control.clone())
+        };
+        let Some(ctrl) = ctrl else {
+            return json!({ "ok": false, "stderr": "olo agent send: Rex host is not connected\n", "data": { "code": 69 } });
+        };
+        if let Err(e) = ctrl.terminal_write(&entry.session_id, &entry.block_id, &bytes).await {
+            return json!({ "ok": false, "stderr": format!("olo agent send: {e}\n"), "data": { "code": 1 } });
+        }
+        let payload = json!({ "ok": true, "id": entry.id, "bytes": bytes.len() });
+        let stdout = if as_json { format!("{payload}\n") } else { format!("Sent {} bytes to {}.\n", bytes.len(), entry.id) };
+        json!({ "ok": true, "stdout": stdout, "data": payload })
+    }
+
+    async fn agent_stop(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+        let mut target: Option<String> = None;
+        let mut force = false;
+        let mut tree = false;
+        let mut keep_tab = false;
+        let mut as_json = false;
+        if let Some(v) = raw {
+            if let Some(arr) = v.get("args").and_then(Value::as_array) {
+                for a in arr.iter().filter_map(Value::as_str) {
+                    match a {
+                        "--force" | "-f" => force = true,
+                        "--tree" | "--recursive" | "-r" => tree = true,
+                        "--keep-tab" => keep_tab = true,
+                        "--json" => as_json = true,
+                        s if !s.starts_with('-') && target.is_none() => target = Some(s.to_owned()),
+                        _ => {}
+                    }
+                }
+            } else {
+                target = v.get("target").or_else(|| v.get("id")).and_then(Value::as_str).map(str::to_owned);
+                force = v.get("force").and_then(Value::as_bool).unwrap_or(false);
+                tree = v.get("tree").and_then(Value::as_bool).unwrap_or(false);
+                keep_tab = v.get("keep_tab").and_then(Value::as_bool).unwrap_or(false);
+                as_json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
+            }
+        }
+        let Some(target) = target else {
+            return json!({ "ok": false, "stderr": "usage: olo agent stop <ID> [--force] [--tree] [--keep-tab] [--json]\n", "data": { "code": 2 } });
+        };
+        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+            Ok(e) => e,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent stop: {e}\n"), "data": { "code": 1 } }),
+        };
+        match self.stop_subagent_windows(host_key, &entry.session_id, &entry.window_id, force, tree, keep_tab).await {
+            Ok(stopped) => {
+                let payload = json!({ "ok": true, "stopped": stopped });
+                let stdout = if as_json { format!("{payload}\n") } else { format!("Stopped {} subagent tab(s).\n", stopped.len()) };
+                json!({ "ok": true, "stdout": stdout, "data": payload })
+            }
+            Err(e) => json!({ "ok": false, "stderr": format!("olo agent stop: {e}\n"), "data": { "code": 1 } }),
+        }
+    }
+
+    async fn stop_subagent_windows(self: &Arc<Self>, host_key: &str, session_id: &str, window_id: &str, force: bool, tree: bool, keep_tab: bool) -> Result<Vec<String>, String> {
+        let (ctrl, ep, targets) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let h = st.hosts.get(host_key).ok_or_else(|| format!("unknown host `{host_key}`"))?;
+            let ctrl = h.control.clone().ok_or_else(|| "Rex host is not connected".to_owned())?;
+            let ep = h.endpoint.clone().ok_or_else(|| "Rex host endpoint unavailable".to_owned())?;
+            let live: HashSet<String> = h.sessions.get(session_id).map(|s| s.windows.iter().map(|w| w.window_id.clone()).collect()).unwrap_or_default();
+            let mut targets: Vec<(String, String, String)> = Vec::new();
+            if tree {
+                let mut desc = st.subagents.descendants_tree(host_key, session_id, window_id, &live);
+                // Stop deepest grandchildren first (bottom-up)!
+                desc.reverse();
+                for row in desc {
+                    targets.push((row.entry.id, row.entry.window_id, row.entry.block_id));
+                }
+            }
+            if let Some(own) = st.subagents.by_window(host_key, session_id, window_id) {
+                targets.push((own.id.clone(), own.window_id.clone(), own.block_id.clone()));
+            }
+            (ctrl, ep, targets)
+        };
+        if targets.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !force {
+            for (_, _, bid) in &targets {
+                let _ = ctrl.terminal_write(session_id, bid, "\x03").await;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        let mut stopped = Vec::with_capacity(targets.len());
+        for (id, wid, _) in &targets {
+            if !keep_tab {
+                let _ = ctrl.session_close_window(session_id, Some(wid)).await;
+            }
+            stopped.push(id.clone());
+        }
+        if !keep_tab {
+            {
+                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                let mut changed = false;
+                for (_, wid, _) in &targets {
+                    changed |= st.subagents.remove_window(host_key, session_id, wid);
+                }
+                if changed {
+                    st.subagents.save();
+                }
+            }
+            if let Ok(v) = ctrl.session_view(session_id).await {
+                self.ingest_session(host_key, &ctrl, &ep, v.payload, &[]).await;
+            }
+        }
+        Ok(stopped)
+    }
+
+    async fn agent_focus(self: &Arc<Self>, host_key: &str, raw: Option<&Value>, session_id: Option<String>) -> Value {
+        let target = raw.and_then(|v| {
+            v.get("target")
+                .or_else(|| v.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| v.get("args").and_then(Value::as_array).and_then(|a| a.iter().filter_map(Value::as_str).find(|s| !s.starts_with('-')).map(str::to_owned)))
+        });
+        let Some(target) = target else {
+            return json!({ "ok": false, "stderr": "usage: olo agent focus <ID>\n", "data": { "code": 2 } });
+        };
+        let entry = match self.resolve_agent_target(host_key, session_id.as_deref(), &target) {
+            Ok(e) => e,
+            Err(e) => return json!({ "ok": false, "stderr": format!("olo agent focus: {e}\n"), "data": { "code": 1 } }),
+        };
+        let ctrl = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).and_then(|h| h.control.clone())
+        };
+        let Some(ctrl) = ctrl else {
+            return json!({ "ok": false, "stderr": "olo agent focus: Rex host is not connected\n", "data": { "code": 69 } });
+        };
+        if let Err(e) = ctrl.session_focus_window(&entry.session_id, &entry.window_id).await {
+            return json!({ "ok": false, "stderr": format!("olo agent focus: {e}\n"), "data": { "code": 1 } });
+        }
+        (self.notify)(HubNotice::StateChanged);
+        json!({ "ok": true, "stdout": format!("Focused {} ({}).\n", entry.id, entry.display_title()), "data": { "ok": true, "id": entry.id, "window_id": entry.window_id } })
     }
 
     /// What Olo's command palette finds of Rex (apps/palette, its Rex

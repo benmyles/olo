@@ -58,9 +58,56 @@ local asked = ({
   paste = function() return "olo.clipboard.get", {} end,
   run = function() return "olo.run", { id = os.getenv("OLO_RUN_ID") or "", args = args } end,
   run_cancel = function() return "olo.run.cancel", { id = os.getenv("OLO_RUN_ID") or "" } end,
+  agent = function()
+    local sub = args[1] or ""
+    local rest = {}
+    local i = 2
+    while i <= #args do
+      local x = args[i]
+      if sub == "start" and (x == "--prompt-file" or x:match("^%-%-prompt%-file=")) then
+        local path = x:match("^%-%-prompt%-file=(.*)$")
+        if not path then
+          i = i + 1
+          path = args[i]
+        end
+        if not path then fail("--prompt-file requires a file path", 2) end
+        local f = io.open(path, "rb")
+        if not f then fail("couldn't read prompt file " .. path, 1) end
+        local body = f:read("a")
+        f:close()
+        rest[#rest + 1] = "--prompt"
+        rest[#rest + 1] = body
+      else
+        rest[#rest + 1] = x
+      end
+      i = i + 1
+    end
+    local map = {
+      start = "olo.agent.start",
+      spawn = "olo.agent.start",
+      list = "olo.agent.list",
+      ls = "olo.agent.list",
+      status = "olo.agent.status",
+      read = "olo.agent.read",
+      tail = "olo.agent.read",
+      watch = "olo.agent.watch",
+      wait = "olo.agent.watch",
+      send = "olo.agent.send",
+      input = "olo.agent.send",
+      stop = "olo.agent.stop",
+      close = "olo.agent.stop",
+      kill = "olo.agent.stop",
+      focus = "olo.agent.focus",
+    }
+    local act = map[sub]
+    if not act then
+      fail("usage: olo agent <start|list|status|read|watch|send|stop|focus> [ARGS…]", 2)
+    end
+    return act, { args = rest, cwd = os.getenv("PWD") or "" }
+  end,
 })[cmd]
 if not asked then
-  fail("usage: olo open URL | olo get rex://local/PATH [DEST] | olo ls rex://local/PATH | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
+  fail("usage: olo agent <start|list|status|read|watch|send|stop|focus> … | olo open URL | olo get rex://local/PATH [DEST] | olo ls rex://local/PATH | olo op ARGS… | olo screen ARGS… | olo forward ARGS… | olo send PATH… | olo sync ARGS… | olo run [--cwd DIR] -- COMMAND… | olo notify TITLE [BODY] | olo clipboard TEXT | olo paste", 2)
 end
 local action, a = asked()
 

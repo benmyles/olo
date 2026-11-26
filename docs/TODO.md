@@ -43,7 +43,9 @@ something nobody here has is in "Blocked", with what it waits for.
   has the window's nodes, `agent_nodes`, and a tag can carry the place to
   app_server, as `under-pointer` does). And the nit: "the margin above the
   question is 20 pt but the margin below the buttons is 15 pt. Make both
-  16 pt".
+  16 pt". Also from Opus 5.5 R3 on Rex's Stop Subagents alert (2026-11-26):
+  re-centre alerts horizontally on their parent window's frame after final
+  layout (offset ~25 pt right when content grows past provisional width).
 - **Dark-mode raised controls & link blue contrast** (Opus 5.5 & Gemini 4
   Neon looks at Rex's Host window, 2026-11-25):
   - In dark mode, raised push-button faces are currently a shade darker than
@@ -196,60 +198,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Never a sign-in, and nothing of another kind (history, caches).
 
 ## Not started (highest priority first)
-
-- **Rex native nested subagent tabs, Olo Kit hierarchical child-tab
-  switcher, Activity tree, and agent-ergonomic tab control/watch tooling
-  & skill** (Ben, 2026-11-25):
-  - **Tab hierarchy in Rex & Olo Kit (`TabStrip`):** allow agents running
-    in a Rex terminal to launch native nested subagents in their own
-    proper full terminal tab (forming a parent/child/nested tab tree).
-    Only top-level parent tabs appear in the horizontal tab bar so large
-    swarms don't overflow it. Extend Olo Kit tabs so any tab with child
-    tabs gets an icon button to the left of its `×` close button;
-    clicking it opens a right-click-context-menu-style hierarchical tab
-    tree showing the parent and all nested children with the active tab
-    clearly indicated, allowing switching to any child, sibling, or back
-    to the parent seamlessly.
-  - **Activity view tree:** show child tabs that have agents running
-    under their parent in the proper tree hierarchy; clicking one
-    switches directly to the full interactive terminal tab for that
-    agent.
-  - **Supported agents, session resume & explicit model/effort (mandatory):**
-    - First-class support for **`claude`**, **`codex`**, and **`agy`**.
-    - Support both **starting a new session** and **resuming a previous
-      session** (`--resume <id>` / `--continue` etc. per CLI).
-    - Support passing **all CLI options each agent supports** (model,
-      reasoning effort, permissions/approval mode, sandbox/flags, extra
-      passthrough args, etc.).
-    - **Always REQUIRE explicitly specifying both `model` and `effort`**
-      when launching a subagent (reject the launch with a clear error if
-      either is omitted) so there are never any surprises about which
-      model or effort level gets used.
-  - **Agent-ergonomic control, watch & event alerts (best integrated
-    mechanism — Rex custom actions / `olo` CLI / bridge):** give agents
-    full, frictionless control over tabs they launch:
-    - Launch / list / inspect / stop / close child tabs cleanly (graceful
-      stop and forceful kill/close of any subagent or tab they launched,
-      capturing pane ID / handle cleanly, setting title/role/cwd/env/command).
-    - Tail / read / watch a child session's output & screen state.
-    - Structured event alerts / waits: trigger when the child agent asks
-      a question, needs an approval, goes idle, finishes/exits, or
-      matches user-specified keywords / regular expressions.
-    - Send input reliably, including control characters (`Ctrl-C`,
-      `Ctrl-D`, etc.), special keys (`Enter`, `Escape`, arrows, `Tab`),
-      and literal text.
-    - Optimize specifically for **agent ergonomics** (clean composable
-      subcommands, structured JSON output, zero fragile quoting or
-      polling loops).
-  - **Rex / Olo bridge agent skill:** explicitly instruct agents running
-    in Rex that because they are in this Rex environment, the user
-    strongly prefers using this native Rex child-tab mechanism to launch
-    and manage subagents over any other subagent/tmux mechanisms they may
-    have.
-  - **Remove legacy hacky subagent auto-detection:** as part of shipping
-    native Rex subagents, remove the old heuristic/auto-detected subagent
-    discovery (process/JSONL/tmux scraping) so ONLY native Rex child-tab
-    subagents appear in the Rex client.
 
 - **Phone service: self-heal Bluetooth `br-connection-busy` stuck state**
   (Ben, 2026-11-25: "sometimes the phone app is still getting stuck with
@@ -11104,6 +11052,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Rex native nested subagent tabs, reusable Olo Kit `TabStrip` tree button & `Menu::tree` / `Menu::detail_status` popover, multi-level Activity tree, `olo agent` CLI/actions, and removal of legacy auto-detection**~~ (done 2026-11-26, commit after 766be99ce):
+  - Reusable Olo Kit (`crates/kit`): `TabStrip` supports nested child tabs (`StripTab::{children_count, child_active}`, `TabStrip::tree_open(Option<usize>)`, `StripAction::TreeMenu(index, anchor)`) with a pixel-snapped flush-left 8×8 `├`/`└` hierarchy button 6 pt left of `×` and 4 distinct BeOS states (rest, high-contrast child-active accent, raised hover bevel, sunken pressed/open bevel), flush popover anchoring on top and side strips, aligned side-strip `+ New Tab`, `Menu::tree(depth, is_last, guides)` continuous 1 px BeOS tree guides, `Menu::detail` / `Menu::detail_status` aligned two-column metadata/status layout, crisp 1 px dark-mode popup outer frames, and consistent near-black `!` on warning orange in `agent_marks`.
+  - First-class native nested subagent tabs (`apps/rex/src/subagents.rs`, `bridge.rs`, `bridge_olo.sh`, `bridge_olo.lua`, `bridge_skill.md`, `hub.rs`): `olo agent start|list|status|read|send|watch|focus|stop` (and `olo.agent.*` Rex client actions) supporting `claude`, `codex`, and `agy` (new & resume/fork, all verified CLI flags + `--` passthrough, mandatory explicit `--model` and `--effort`), zero-polling event-driven `watch` (approval/question/idle/done/error/regex), reliable text/paste/ctrl/special-key `send`, graceful/forceful/tree `stop`, and `bridge_skill.md` instructing agents to prefer native Rex child tabs over any other subagent/tmux mechanism.
+  - Rex UI (`apps/rex/src/ui.rs`): top-level-only `TabStrip` with hierarchical child-tab popover + safe BeOS `"Stop N Subagents…"` confirmation alert (`Cancel` default on right), `22 pt` BeOS child-tab breadcrumb header matching pane title bars (clickable ancestors with hover bevel, width-driven trailing segment dropping), live resize status-bar grid updates, multi-level collapsible Activity tree (disclosure triangles on intermediate parents, rolled-up `!` badge & line-1 rollup count on collapse, smart word-boundary subtitles), and complete removal of legacy heuristic subagent auto-detection and read-only `TmuxViewer`.
+  - Reviewed through 3 full rounds by Opus 5.5 max and Gemini 4 Neon xhigh; 0 `tsession review` errors across 1×/1.5×/2×, light/dark, top/side tabs, collapsed trees, alerts, and narrow tiles; `ui-lint --dev --tiles Rex Terminal` 0 errors.
 
 - ~~**Token Pool UX overhaul: cohesive local vs remote Rex hosts menus, preferences, management, and unified activity monitoring**~~ (done 2026-11-25, commit after b4a95db46):
   - Unified Token Pool into one BeOS-native three-tab window (`Accounts`, `Activity`, `Machines`) with `Cmd+1/2/3`, `Cmd+R`, `Cmd+Shift+S`, deleting the redundant `Clients` and `Hosts` sub-windows while keeping legacy `--hosts-window` / `hosts` / `clients` callers opening the matching tab seamlessly.

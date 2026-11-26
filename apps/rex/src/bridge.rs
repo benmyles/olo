@@ -38,9 +38,11 @@ use serde_json::{Value, json};
 use crate::{links::parse_localhost_url, settings::HostBridgePolicy};
 
 /// Prepare `~/.local/state/olo/rex/bin` with symlinks to `olo-open` (`xdg-open`),
-/// `olo-sudo` (`sudo`), and `olo-op` (`op`) so local Rex shells seamlessly use
-/// Olo's native Chrome window picker, sudo sheets, and Olo Passwords!
+/// `olo-sudo` (`sudo`), and `olo-op` (`op`), plus the `olo` + `olo.lua` Rex bridge
+/// command (for `olo agent ...`, `olo open`, etc.), so local Rex shells work
+/// seamlessly with Olo's native tools and child-tab subagents!
 pub fn ensure_local_bin_dir() -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt as _;
     let dir = olo_xdg::state_dir().join("rex").join("bin");
     std::fs::create_dir_all(&dir).ok()?;
     let pairs = [("xdg-open", "olo-open"), ("sudo", "olo-sudo"), ("op", "olo-op")];
@@ -54,6 +56,17 @@ pub fn ensure_local_bin_dir() -> Option<PathBuf> {
             }
         }
     }
+    let write_if_changed = |name: &str, body: &str, exec: bool| {
+        let path = dir.join(name);
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(body) {
+            let _ = std::fs::write(&path, body);
+        }
+        if exec {
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+    };
+    write_if_changed("olo", SKILL_OLO, true);
+    write_if_changed("olo.lua", SKILL_LUA, false);
     Some(dir)
 }
 

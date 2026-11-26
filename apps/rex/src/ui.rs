@@ -504,23 +504,25 @@ pub fn open_demo_carry() {
     carry_changed();
 }
 
-/// Switch the demo workspace to Activity sidebar with deterministic nested subagents
-/// (`OLO_REX_DEMO_ACTIVITY=1|collapsed|transcript|follow|failed|find|nomatch|tmux|tmux_big`) for headless visual QA.
+/// Switch the demo workspace to Activity sidebar with deterministic native nested subagents
+/// (`OLO_REX_DEMO_ACTIVITY=1|collapsed|child|transcript|follow|find|nomatch`) for headless visual QA.
 pub fn open_demo_activity(mode: &str) {
     let hub = app().hub.clone();
     {
         let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         st.settings.sidebar_mode = SidebarMode::Activity;
         st.settings.sidebar_collapsed = false;
-        // Focus the active agent block so its Activity row carries the selection band.
         if let Some(h) = st.hosts.get_mut("local")
             && let Some(s) = h.sessions.get_mut("demo-main")
-            && let Some(w) = s.windows.first_mut()
         {
-            w.focused_block_id = Some("demo-agent".to_owned());
+            if mode == "child" {
+                s.active_window_id = Some("win-sub-1a".to_owned());
+            } else if let Some(w) = s.windows.first_mut() {
+                w.focused_block_id = Some("demo-agent".to_owned());
+            }
         }
     }
-    crate::activity_watch::sync_watchers(&hub, true);
+    crate::activity_watch::apply_demo_activity_mode(mode);
     if matches!(mode, "find" | "nomatch") {
         broadcast_to_role(WinRole::Workspace, || WinMsg::Command("terminal.find".into()));
     }
@@ -991,21 +993,41 @@ pub enum WinMsg {
     RenameSession(String, String),
     /// A tab's menu's Rename (its host, its session, the tab).
     RenameTab(String, String, String),
-    /// A tab's menu asked for (which tab, where the pointer is).
+    /// A tab's menu asked for (which top-level tab, where the pointer is).
     TabMenu(usize, Point<Pixels>),
+    /// A tab's child-tab tree popover asked for (which top-level tab, anchor bounds).
+    TabTreeMenu(usize, Bounds<Pixels>),
+    /// The child-tab tree popover closed.
+    TreeMenuClosed,
+    /// Switch to a specific Rex window (parent or nested child subagent tab).
+    SelectWindow(String, String, String),
+    /// Stop a native Rex child-tab subagent (and optionally its descendants).
+    StopSubagent {
+        host_key: String,
+        session_id: String,
+        window_id: String,
+        force: bool,
+        tree: bool,
+    },
+    /// Confirm stopping running subagents under a parent tab with a native kit alert.
+    ConfirmStopSubagents {
+        host_key: String,
+        session_id: String,
+        running_wids: Vec<String>,
+        names: Vec<String>,
+    },
     ActivityChanged,
     ToggleActivityFold(BlockKey),
     SetActivityTypeFilter(ActivityTypeFilter),
     SetActivityStateFilter(ActivityStateFilter),
     ClearActivityFilters,
-    OpenSubagent(BlockKey, olo_rex_client::activity::SubagentInfo, bool),
     OpenPaneTranscript(BlockKey, String),
     TranscriptDo(crate::transcript_view::TranscriptDo),
     SidebarMoved,
     CloseWindow,
 }
 
-/// Filter by agent harness, origin, or a specific discovered subagent role name.
+/// Filter by agent harness or a specific native subagent role/title.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum ActivityTypeFilter {
     #[default]
@@ -1013,7 +1035,6 @@ pub enum ActivityTypeFilter {
     Claude,
     Codex,
     Agy,
-    Tmux,
     Shell,
     SubagentType(String),
 }
@@ -1025,7 +1046,6 @@ impl ActivityTypeFilter {
             Self::Claude => "Claude".into(),
             Self::Codex => "Codex".into(),
             Self::Agy => "Antigravity".into(),
-            Self::Tmux => "Tmux".into(),
             Self::Shell => "Shell".into(),
             Self::SubagentType(name) => name.clone(),
         }
@@ -1037,7 +1057,6 @@ impl ActivityTypeFilter {
             "claude" => Self::Claude,
             "codex" => Self::Codex,
             "agy" | "antigravity" => Self::Agy,
-            "tmux" => Self::Tmux,
             "shell" => Self::Shell,
             _ => Self::SubagentType(s.trim().to_owned()),
         }
@@ -1103,13 +1122,12 @@ pub struct RexWindow {
     sidebar_scroll: olo_kit::ScrollHandle,
     run_scroll: olo_kit::ScrollHandle,
     transcript_scroll: olo_kit::ScrollHandle,
-    tmux_scroll: olo_kit::ScrollHandle,
     last_transcript_ptr: usize,
     last_transcript_gen: u64,
-    tmux_visual: Rc<crate::terminal_pane::PaneVisualState>,
     activity_search_field: Option<Child<TextField>>,
     activity_type_filter: ActivityTypeFilter,
     activity_state_filter: ActivityStateFilter,
+    open_tree_tab: Option<usize>,
     pub panes_view: Option<Child<PanesView>>,
     pub overlay: Option<ActiveOverlay>,
     pub overlay_field: Option<Child<TextField>>,
@@ -1328,13 +1346,12 @@ impl RexWindow {
             sidebar_scroll: olo_kit::ScrollHandle::new(),
             run_scroll: olo_kit::ScrollHandle::new(),
             transcript_scroll: olo_kit::ScrollHandle::new(),
-            tmux_scroll: olo_kit::ScrollHandle::new(),
             last_transcript_ptr: 0,
             last_transcript_gen: 0,
-            tmux_visual: Rc::new(crate::terminal_pane::PaneVisualState::default()),
             activity_search_field: Some(activity_search_field),
             activity_type_filter: ActivityTypeFilter::All,
             activity_state_filter: ActivityStateFilter::All,
+            open_tree_tab: None,
             created_session: None,
             qr_url: None,
             qr: None,
@@ -1562,13 +1579,12 @@ impl RexWindow {
             sidebar_scroll: olo_kit::ScrollHandle::new(),
             run_scroll: olo_kit::ScrollHandle::new(),
             transcript_scroll: olo_kit::ScrollHandle::new(),
-            tmux_scroll: olo_kit::ScrollHandle::new(),
             last_transcript_ptr: 0,
             last_transcript_gen: 0,
-            tmux_visual: Rc::new(crate::terminal_pane::PaneVisualState::default()),
             activity_search_field: None,
             activity_type_filter: ActivityTypeFilter::All,
             activity_state_filter: ActivityStateFilter::All,
+            open_tree_tab: None,
             created_session: None,
             qr_url: None,
             qr: None,
@@ -1653,10 +1669,6 @@ impl RexWindow {
             let g = tr.lock().unwrap_or_else(|e| e.into_inner());
             return g.target.status_bar_text(g.last_timestamp());
         }
-        if let Some(tm) = crate::activity_watch::active_tmux() {
-            let g = tm.lock().unwrap_or_else(|e| e.into_inner());
-            return g.target.status_bar_text(None);
-        }
         let hub = app().hub.clone();
         let focused = self.focused_block_key();
         let (block, local, far) = {
@@ -1673,8 +1685,6 @@ impl RexWindow {
         if let Some(block) = block {
             let g = block.lock().unwrap_or_else(|e| e.into_inner());
             let (columns, rows) = g.terminal.size();
-            // (This computer's home is known, and said as a shell says
-            // it; a pane on another host says which first.)
             let home = if local { crate::hub::local_home() } else { None };
             let home = g.process.as_ref().and_then(|p| p.home.clone()).or(home);
             let folder = crate::hub::folder_said(&g.pwd, home.as_deref());
@@ -1998,7 +2008,6 @@ impl RexWindow {
                     st.settings.sidebar_collapsed = false;
                     st.settings.save();
                 }
-                crate::activity_watch::sync_watchers(&hub, true);
                 self.side_pane.show_pane();
                 cx.invalidate();
             }
@@ -2009,7 +2018,6 @@ impl RexWindow {
                     st.settings.sidebar_collapsed = false;
                     st.settings.save();
                 }
-                crate::activity_watch::sync_watchers(&hub, false);
                 self.side_pane.show_pane();
                 cx.invalidate();
             }
@@ -2020,39 +2028,43 @@ impl RexWindow {
                 }
             }
             "pane.view:terminal" => {
-                if let Some(crate::activity_watch::ViewTarget::SubagentTranscript { parent, sub }) = crate::activity_watch::active_view_target()
-                    && sub.tmux.is_some()
-                {
-                    crate::activity_watch::open_subagent(&hub, &parent, sub, false);
-                } else {
-                    crate::activity_watch::close_viewer();
-                }
+                crate::activity_watch::close_viewer();
             }
             c if c.starts_with("activity.open.transcript:") => {
                 let id = c.trim_start_matches("activity.open.transcript:");
-                if let Some((parent, sub)) = crate::activity_watch::find_subagent_by_id(id) {
-                    crate::activity_watch::open_subagent(&hub, &parent, sub, true);
+                let found = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.subagents
+                        .entries
+                        .iter()
+                        .find(|e| e.id == id || e.window_id == id || e.block_id == id)
+                        .map(|e| (BlockKey { host_key: e.host_key.clone(), session_id: e.session_id.clone(), block_id: e.block_id.clone() }, e.display_title()))
+                };
+                if let Some((bk, title)) = found {
+                    self.jump_to(JumpTarget::Pane(bk.clone()), cx);
+                    crate::activity_watch::open_pane_transcript(&hub, &bk, title);
                 }
             }
-            c if c.starts_with("activity.open.terminal:") => {
-                let id = c.trim_start_matches("activity.open.terminal:");
-                if let Some((parent, sub)) = crate::activity_watch::find_subagent_by_id(id)
-                    && sub.tmux.is_some()
-                {
-                    crate::activity_watch::open_subagent(&hub, &parent, sub, false);
-                }
-            }
-            c if c.starts_with("activity.open:") => {
-                let id = c.trim_start_matches("activity.open:");
-                if let Some((parent, sub)) = crate::activity_watch::find_subagent_by_id(id) {
-                    crate::activity_watch::open_subagent(&hub, &parent, sub, false);
+            c if c.starts_with("activity.open.terminal:") || c.starts_with("activity.open:") => {
+                let id = c.strip_prefix("activity.open.terminal:").or_else(|| c.strip_prefix("activity.open:")).unwrap_or("");
+                let found = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.subagents.entries.iter().find(|e| e.id == id || e.window_id == id || e.block_id == id).map(|e| BlockKey {
+                        host_key: e.host_key.clone(),
+                        session_id: e.session_id.clone(),
+                        block_id: e.block_id.clone(),
+                    })
+                };
+                if let Some(bk) = found {
+                    crate::activity_watch::close_viewer();
+                    self.jump_to(JumpTarget::Pane(bk), cx);
                 }
             }
             c if c.starts_with("activity.fold:") => {
                 let bid = c.trim_start_matches("activity.fold:");
                 let found = {
-                    let mgr = crate::activity_watch::manager().lock().unwrap_or_else(|e| e.into_inner());
-                    mgr.by_block.keys().find(|bk| bk.block_id == bid).cloned()
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.blocks.keys().find(|bk| bk.block_id == bid).cloned()
                 };
                 if let Some(bk) = found {
                     crate::activity_watch::toggle_fold(&bk);
@@ -2325,21 +2337,33 @@ impl RexWindow {
                 }
             }
             "window.next" | "window.previous" => {
-                if let Some((hk, sess)) = self.resolve_active_session()
-                    && sess.windows.len() > 1
-                {
-                    let cur = sess.active_window_id.as_deref().and_then(|id| sess.windows.iter().position(|w| w.window_id == id)).unwrap_or(0);
-                    let next = if action == "window.next" { (cur + 1) % sess.windows.len() } else { (cur + sess.windows.len() - 1) % sess.windows.len() };
-                    hub.select_window(&hk, &sess.session_id, &sess.windows[next].window_id);
+                if let Some((hk, sess)) = self.resolve_active_session() {
+                    let (live, top_indices, root_id) = {
+                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                        let (live, top_indices) = top_level_window_indices(&st.subagents, &hk, &sess);
+                        let root_id = sess.active_window_id.as_deref().map(|id| st.subagents.root_ancestor(&hk, &sess.session_id, id, &live));
+                        (live, top_indices, root_id)
+                    };
+                    let _ = live;
+                    if top_indices.len() > 1 {
+                        let cur = root_id.as_deref().and_then(|rid| top_indices.iter().position(|&idx| sess.windows[idx].window_id == rid)).unwrap_or(0);
+                        let next = if action == "window.next" { (cur + 1) % top_indices.len() } else { (cur + top_indices.len() - 1) % top_indices.len() };
+                        hub.select_window(&hk, &sess.session_id, &sess.windows[top_indices[next]].window_id);
+                    }
                 }
             }
             a if a.starts_with("window.select_") => {
                 if let Ok(n) = a.trim_start_matches("window.select_").parse::<usize>()
                     && n >= 1
                     && let Some((hk, sess)) = self.resolve_active_session()
-                    && let Some(w) = sess.windows.get(n - 1)
                 {
-                    hub.select_window(&hk, &sess.session_id, &w.window_id);
+                    let (_, top_indices) = {
+                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                        top_level_window_indices(&st.subagents, &hk, &sess)
+                    };
+                    if let Some(&widx) = top_indices.get(n - 1) {
+                        hub.select_window(&hk, &sess.session_id, &sess.windows[widx].window_id);
+                    }
                 }
             }
             "pane.split_right" | "pane.split_down" | "pane.split_best_fit" => {
@@ -3356,21 +3380,34 @@ impl RexWindow {
         let side_layout = self.side_pane.panes(total_w, 460.0);
         let side_w = side_layout.width();
 
-        // Build TabStrip from active session's windows.
+        // Build TabStrip from active session's top-level windows only; native
+        // child subagent tabs nest under their parent tab's kit tree button.
         let mut strip_tabs = Vec::new();
+        let mut top_ids: Vec<String> = Vec::new();
         let mut active_tab_idx = 0usize;
         if let Some((ref hk, ref sess)) = sess_info {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let names = crate::hub::session_tab_names(&st, hk, sess);
-            for (idx, w) in sess.windows.iter().enumerate() {
-                if sess.active_window_id.as_deref() == Some(w.window_id.as_str()) {
-                    active_tab_idx = idx;
+            let (live, top_indices) = top_level_window_indices(&st.subagents, hk, sess);
+            let active_raw_id = sess.active_window_id.as_deref().or_else(|| sess.windows.first().map(|w| w.window_id.as_str()));
+            let active_root_id = active_raw_id.map(|id| st.subagents.root_ancestor(hk, &sess.session_id, id, &live));
+            let active_is_child = active_raw_id.is_some_and(|raw| active_root_id.as_deref() != Some(raw));
+
+            for (strip_idx, &w_idx) in top_indices.iter().enumerate() {
+                let w = &sess.windows[w_idx];
+                top_ids.push(w.window_id.clone());
+                let is_active_root = active_root_id.as_deref() == Some(w.window_id.as_str());
+                if is_active_root {
+                    active_tab_idx = strip_idx;
                 }
+                let descendants = st.subagents.descendants_tree(hk, &sess.session_id, &w.window_id, &live);
+                let children_count = descendants.len();
+                let child_active = is_active_root && active_is_child;
+
                 let mut tab_act = AgentActivity::Idle;
                 let mut tab_unread: Option<Option<Instant>> = None;
                 let mut tab_help = crate::agent::Help::default();
-                for b in w.all_blocks() {
-                    let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
+                let mut accum_block = |bk: BlockKey| {
                     let h = crate::hub::help_of(&bk);
                     tab_help.keep_going |= h.keep_going;
                     tab_help.auto_approve |= h.auto_approve;
@@ -3385,8 +3422,14 @@ impl RexWindow {
                         }
                         tab_act = higher_activity(tab_act, g.agent_activity);
                     }
+                };
+                for b in w.all_blocks() {
+                    accum_block(BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() });
                 }
-                let label = names.get(idx).cloned().unwrap_or_default();
+                for row in &descendants {
+                    accum_block(BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: row.entry.block_id.clone() });
+                }
+                let label = names.get(w_idx).cloned().unwrap_or_default();
                 let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(widgets::agent_marks::icon("terminal", marks_of(tab_act, &tab_help, false)));
                 let what = match tab_act {
                     AgentActivity::Blocked => Some(olo_kit::words::tr("Waiting for approval").to_string()),
@@ -3396,13 +3439,75 @@ impl RexWindow {
                     AgentActivity::Idle => None,
                 };
                 let words: Vec<String> = [what, help_words(&tab_help)].into_iter().flatten().collect();
-                strip_tabs.push(StripTab { label: label.into(), icon: icon_fn, status: (!words.is_empty()).then(|| words.join("; ").into()), unread: tab_unread, ..Default::default() });
+                strip_tabs.push(StripTab {
+                    label: label.into(),
+                    icon: icon_fn,
+                    status: (!words.is_empty()).then(|| words.join("; ").into()),
+                    unread: tab_unread,
+                    children_count,
+                    child_active,
+                    ..Default::default()
+                });
             }
         }
 
+        let tr_active = crate::activity_watch::active_transcript();
+        // When the active tab is a native child subagent tab, build a native
+        // STRIP_ROW (26 pt) breadcrumb header (`parent › child › Current` + right-aligned
+        // `harness · model · effort`) so the main view always says where you are.
+        let child_header: Option<Element> = if tr_active.is_none()
+            && let Some((ref hk, ref sess)) = sess_info
+            && let Some(active_wid) = sess.active_window_id.as_deref()
+        {
+            let info = {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                let live: HashSet<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+                st.subagents.by_window(hk, &sess.session_id, active_wid).filter(|_| st.subagents.is_child_window(hk, &sess.session_id, active_wid, &live)).map(|entry| {
+                    let names = crate::hub::session_tab_names(&st, hk, sess);
+                    let mut chain: Vec<(String, String)> = Vec::new();
+                    let mut cur = entry.parent_window_id.clone();
+                    let mut seen = HashSet::new();
+                    seen.insert(entry.window_id.clone());
+                    while seen.insert(cur.clone()) {
+                        if let Some(sub) = st.subagents.by_window(hk, &sess.session_id, &cur) {
+                            let next = sub.parent_window_id.clone();
+                            let t = sub.display_title();
+                            chain.push((cur.clone(), t));
+                            if live.contains(&next) {
+                                cur = next;
+                                continue;
+                            }
+                            break;
+                        } else if let Some(widx) = sess.windows.iter().position(|w| w.window_id == cur) {
+                            let t = names.get(widx).cloned().unwrap_or_else(|| "Tab".into());
+                            chain.push((cur.clone(), t));
+                            break;
+                        } else {
+                            break;
+                        }
+                    }
+                    chain.reverse();
+                    let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: entry.block_id.clone() };
+                    let (act, running) = st
+                        .blocks
+                        .get(&bk)
+                        .map(|br| {
+                            let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                            (g.agent_activity, g.runs_agent() || g.agent_activity != AgentActivity::Idle)
+                        })
+                        .unwrap_or((AgentActivity::Idle, false));
+                    (hk.clone(), sess.session_id.clone(), chain, entry.clone(), act, running)
+                })
+            };
+            let hdr_avail_w = (total_w - side_w - if settings.toolbar_layout == ToolbarLayout::Side { widgets::STRIP_SIDE_WIDTH } else { 0.0 }).max(200.0);
+            info.map(|(hk, sid, ancestors, entry, act, running)| render_child_breadcrumb_header(hk, sid, ancestors, entry, act, running, hdr_avail_w, cx))
+        } else {
+            None
+        };
+
         let active_has_splits = sess_info.as_ref().and_then(|(_, s)| s.active_window().or_else(|| s.windows.first())).is_some_and(|w| w.all_blocks().count() > 1 || w.zoomed_block_id.is_some());
-        let active_shows_header = active_has_splits && settings.pane_header_behavior != BarBehavior::Hidden;
-        // Active tab opens seamlessly into the focused pane header (panel_background), visibly lighter than inactive tabs!
+        let active_shows_header = (active_has_splits && settings.pane_header_behavior != BarBehavior::Hidden) || child_header.is_some();
+        // Active tab opens seamlessly into the focused pane header or child breadcrumb header (panel_background)!
         let (tab_content_bg, tab_content_fg) =
             if active_shows_header { (style::c(look.panel_background), style::c(look.panel_text)) } else { (hsla(active_theme.background), hsla(active_theme.foreground)) };
 
@@ -3412,33 +3517,34 @@ impl RexWindow {
         {
             let hub = hub.clone();
             let (hk, sid) = (hk.clone(), sess.session_id.clone());
-            let ids: Vec<_> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
-            let mut strip = TabStrip::new("rex-tabs", strip_tabs, active_tab_idx).content(tab_content_bg, tab_content_fg).in_window(surface).on_action(cx.msg_with(move |act: &StripAction| {
-                match act {
-                    StripAction::Select(i) => {
-                        crate::activity_watch::close_viewer();
-                        if let Some(id) = ids.get(*i) {
-                            hub.select_window(&hk, &sid, id);
+            let ids = top_ids;
+            let mut strip = TabStrip::new("rex-tabs", strip_tabs, active_tab_idx).content(tab_content_bg, tab_content_fg).tree_open(self.open_tree_tab).in_window(surface).on_action(cx.msg_with(
+                move |act: &StripAction| {
+                    match act {
+                        StripAction::Select(i) => {
+                            crate::activity_watch::close_viewer();
+                            if let Some(id) = ids.get(*i) {
+                                hub.select_window(&hk, &sid, id);
+                            }
                         }
-                    }
-                    StripAction::Close(i) => {
-                        if let Some(id) = ids.get(*i) {
-                            hub.close_window(&hk, &sid, id);
+                        StripAction::Close(i) => {
+                            if let Some(id) = ids.get(*i) {
+                                hub.close_window(&hk, &sid, id);
+                            }
                         }
-                    }
-                    StripAction::New => hub.create_window(&hk, &sid, None),
-                    // A tab's own menu, and a tab dragged to another
-                    // place among its session's. (Neither did anything.)
-                    StripAction::Menu(i, at) => return WinMsg::TabMenu(*i, *at),
-                    StripAction::Move { from, to, .. } => {
-                        if let Some(before) = crate::hub::moved_before(&ids, *from, *to) {
-                            hub.move_window(&hk, &sid, &ids[*from], before);
+                        StripAction::New => hub.create_window(&hk, &sid, None),
+                        StripAction::Menu(i, at) => return WinMsg::TabMenu(*i, *at),
+                        StripAction::TreeMenu(i, bounds) => return WinMsg::TabTreeMenu(*i, *bounds),
+                        StripAction::Move { from, to, .. } => {
+                            if let Some(before) = crate::hub::moved_before(&ids, *from, *to) {
+                                hub.move_window(&hk, &sid, &ids[*from], before);
+                            }
                         }
+                        _ => return WinMsg::Redraw,
                     }
-                    _ => return WinMsg::Redraw,
-                }
-                WinMsg::TabChanged
-            }));
+                    WinMsg::TabChanged
+                },
+            ));
             if is_side_strip {
                 strip = strip.side();
             } else {
@@ -3451,7 +3557,6 @@ impl RexWindow {
 
         // Optional Find Bar (for Transcript view, placed neatly beneath the transcript header;
         // for normal Terminal panes, placed above the panes).
-        let tr_active = crate::activity_watch::active_transcript();
         let focused_bk_for_find = if self.find_open { self.focused_block_key() } else { None };
         let (tr_find_bar, find_el) = if self.find_open
             && let Some(ff) = &self.find_field
@@ -3514,21 +3619,6 @@ impl RexWindow {
                 self.last_transcript_gen = cur_gen;
             }
             div().flex_1().min_w_0().min_h_0().w_full().flex().flex_col().child(tr_el)
-        } else if let Some(tm_viewer) = crate::activity_watch::active_tmux() {
-            self.last_transcript_ptr = 0;
-            let metrics = Metrics::from_settings(scale, &settings);
-            let avail_w = (total_w - side_w).max(200.0);
-            let avail_h = (f32::from(cx.viewport_size().height) - 26.0 - widgets::STRIP_HEIGHT - m::LABEL_ROW - 4.0).max(160.0);
-            div().flex_1().min_w_0().min_h_0().w_full().flex().flex_col().child(crate::transcript_view::render_tmux_viewer(
-                &tm_viewer,
-                &self.tmux_visual,
-                &self.tmux_scroll,
-                avail_w,
-                avail_h,
-                &active_theme,
-                &metrics,
-                cx.msg_with(|what: &crate::transcript_view::TranscriptDo| WinMsg::TranscriptDo(what.clone())),
-            ))
         } else if let Some((hk, sess)) = &sess_info
             && let Some(w) = sess.active_window().or_else(|| sess.windows.first())
             && w.all_blocks().next().is_some()
@@ -3613,6 +3703,9 @@ impl RexWindow {
                 if let Some(s) = strip_el {
                     c = c.child(s);
                 }
+                if let Some(ch) = child_header {
+                    c = c.child(ch);
+                }
                 if let Some(fb) = find_el {
                     c = c.child(fb);
                 }
@@ -3620,6 +3713,9 @@ impl RexWindow {
             }
             ToolbarLayout::Side => {
                 let mut inner = div().flex_1().min_w_0().min_h_0().flex().flex_col();
+                if let Some(ch) = child_header {
+                    inner = inner.child(ch);
+                }
                 if let Some(fb) = find_el {
                     inner = inner.child(fb);
                 }
@@ -3642,14 +3738,14 @@ impl RexWindow {
                 body_row = body_row.child(self.render_sidebar(total_w, cx));
             }
             SidePanes::Rest => {
-                crate::activity_watch::sync_watchers(&hub, false);
                 body_row = body_row.child(center);
             }
         }
 
         // The sidebar's divider, in the row it divides: not over the
-        // status bar under it, whose words went under its grip.
-        if !self.side_pane.alone() {
+        // status bar under it, whose words went under its grip, and not
+        // over side-tab rows when the sidebar is collapsed.
+        if !self.side_pane.alone() && !(is_side_strip && matches!(side_layout, SidePanes::Rest)) {
             body_row = body_row.child(side_divider_within(&self.side_pane, side_w, "Rex Sidebar", cx.msg_with(|_: &()| WinMsg::SidebarMoved)));
         }
 
@@ -3675,13 +3771,7 @@ impl RexWindow {
         let tr_at_bottom = !tr_scrollable || -f32::from(self.transcript_scroll.offset().y) >= tr_max_y - 4.0;
         let tr_status = tr_visible.then(crate::activity_watch::active_transcript).flatten().map(|tr| {
             let g = tr.lock().unwrap_or_else(|e| e.into_inner());
-            let is_live_agent = match &g.target {
-                crate::activity_watch::ViewTarget::SubagentTranscript { sub, .. } => {
-                    matches!(sub.state, olo_rex_client::activity::SubagentState::Working | olo_rex_client::activity::SubagentState::Waiting)
-                }
-                _ => g.streaming,
-            };
-            (g.follow, g.paused_unseen, is_live_agent, !g.doc.entries.is_empty())
+            (g.follow, g.paused_unseen, g.streaming, !g.doc.entries.is_empty())
         });
         let has = if tr_status.is_some() { None } else { self.host_has() };
         // (A file going to or from the focused pane's host.)
@@ -3940,11 +4030,12 @@ impl RexWindow {
         let hub = app().hub.clone();
         // (The pane this window shows: Activity's selected row.)
         let shown = self.focused_block_key();
-        let (mode, hosts_snap, activity_rows) = {
+        let (mode, hosts_snap, activity_rows, blocked_n, native_agent_json) = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let mode = st.settings.sidebar_mode;
             let mut hosts_snap = Vec::new();
             let mut activity_rows = Vec::new();
+            let mut blocked_total = 0usize;
             for hk in &st.host_order {
                 let Some(h) = st.hosts.get(hk) else { continue };
                 let mut sessions = Vec::new();
@@ -3954,26 +4045,10 @@ impl RexWindow {
                     let mut sess_help = crate::agent::Help::default();
                     let mut unread_count = 0usize;
                     if let Some(v) = view {
-                        // (Each agent named by its tab, as the tab strip names
-                        // it: the name it was given, else its program's title.
-                        // By its pane's own title it went by what its program
-                        // calls itself, Claude Code's version, agy's name: Ben,
-                        // 2026-11-24, "it isn't showing the terminal tab title
-                        // it's showing some weird "2.1.331" title".)
                         let tab_names = crate::hub::session_tab_names(&st, &h.key, v);
+                        let live: HashSet<String> = v.windows.iter().map(|w| w.window_id.clone()).collect();
                         for (tab, w) in v.windows.iter().enumerate() {
-                            // (A tab of more than one agent: each also by its own
-                            // pane's title, where that says something more.)
-                            let agents_here = w
-                                .all_blocks()
-                                .filter(|b| {
-                                    let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
-                                    st.blocks.get(&bk).is_some_and(|br| {
-                                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                        g.agent_activity != AgentActivity::Idle || g.runs_agent() || st.settings.activity_include_idle
-                                    })
-                                })
-                                .count();
+                            let is_child = st.subagents.is_child_window(&h.key, &v.session_id, &w.window_id, &live);
                             for b in w.all_blocks() {
                                 let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
                                 if let Some(br) = st.blocks.get(&bk) {
@@ -3985,26 +4060,97 @@ impl RexWindow {
                                     if g.unread {
                                         unread_count += 1;
                                     }
-                                    // (An agent stays while its program runs, at rest
-                                    // too: Ben, 2026-11-24, "the agent shouldn't
-                                    // disappear if it just stops working but the
-                                    // harness is still open".)
+                                    if matches!(g.agent_activity, AgentActivity::Blocked | AgentActivity::Error) {
+                                        blocked_total += 1;
+                                    }
+                                }
+                            }
+                            if is_child {
+                                continue;
+                            }
+                            let descendants = st.subagents.descendants_tree(&h.key, &v.session_id, &w.window_id, &live);
+                            let mut children_items: Vec<NativeChildItem> = Vec::with_capacity(descendants.len());
+                            for (d_idx, trow) in descendants.iter().enumerate() {
+                                let child_bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: trow.entry.block_id.clone() };
+                                let (act, running, detail) = if let Some(br) = st.blocks.get(&child_bk) {
+                                    let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                    let live_msg = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone()));
+                                    let detail = match live_msg {
+                                        Some(msg) if !msg.trim().is_empty() => format!("{} · {}", trow.entry.cli.chrome_name(), msg.trim()),
+                                        _ => format!("{} · {} · {}", trow.entry.cli.chrome_name(), trow.entry.model, trow.entry.effort),
+                                    };
+                                    (g.agent_activity, g.runs_agent() || g.agent_activity != AgentActivity::Idle, detail)
+                                } else {
+                                    (AgentActivity::Idle, false, format!("{} · {} · {}", trow.entry.cli.chrome_name(), trow.entry.model, trow.entry.effort))
+                                };
+                                let has_children = descendants.get(d_idx + 1).is_some_and(|next| next.depth > trow.depth);
+                                let help = crate::hub::help_of(&child_bk);
+                                children_items.push(NativeChildItem { row: trow.clone(), bk: child_bk, act, detail, running, help, has_children });
+                            }
+
+                            let agents_here = w
+                                .all_blocks()
+                                .filter(|b| {
+                                    let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
+                                    st.blocks.get(&bk).is_some_and(|br| {
+                                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                        g.agent_activity != AgentActivity::Idle || g.runs_agent() || st.settings.activity_include_idle
+                                    })
+                                })
+                                .count();
+                            let mut attached_children = false;
+                            let child_target_bid: Option<String> = (!children_items.is_empty())
+                                .then(|| {
+                                    descendants
+                                        .iter()
+                                        .find_map(|d| d.entry.parent_block_id.as_deref())
+                                        .filter(|pid| w.all_blocks().any(|b| b.block_id == *pid))
+                                        .or_else(|| {
+                                            w.all_blocks().find_map(|b| {
+                                                let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
+                                                st.blocks
+                                                    .get(&bk)
+                                                    .is_some_and(|br| {
+                                                        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                                                        g.agent_activity != AgentActivity::Idle || g.runs_agent()
+                                                    })
+                                                    .then_some(b.block_id.as_str())
+                                            })
+                                        })
+                                        .or(w.focused_block_id.as_deref())
+                                        .or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str()))
+                                        .map(str::to_owned)
+                                })
+                                .flatten();
+                            for b in w.all_blocks() {
+                                let bk = BlockKey { host_key: h.key.clone(), session_id: v.session_id.clone(), block_id: b.block_id.clone() };
+                                if let Some(br) = st.blocks.get(&bk) {
+                                    let g = br.lock().unwrap_or_else(|e| e.into_inner());
                                     let running = g.runs_agent();
-                                    if g.agent_activity != AgentActivity::Idle || running || st.settings.activity_include_idle {
-                                        // (What it goes by: its title, else its program.)
+                                    let attach_here = !attached_children && child_target_bid.as_deref() == Some(b.block_id.as_str());
+                                    if g.agent_activity != AgentActivity::Idle || running || st.settings.activity_include_idle || attach_here {
                                         let process = g.process.as_ref();
                                         let program = g.program_title();
                                         let home = process.and_then(|p| p.home.clone()).or_else(|| h.is_local.then(crate::hub::local_home).flatten());
-                                        // (Its folder is the line under it: `tab_title` leaves a
-                                        // pane outside home unnamed, its tab to be named by it.)
                                         let pane = crate::hub::pane_title(&g.title, &g.label, program.as_deref(), "");
-                                        let label = activity_title(tab_names.get(tab).map(String::as_str), agents_here, pane);
-                                        // (What it says of itself, else its folder by its own
-                                        // name: a path cut at its end lost the part that
-                                        // tells two apart.)
-                                        let detail = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| folder_name(&g.pwd, home.as_deref()));
+                                        let label = activity_title(tab_names.get(tab).map(String::as_str), agents_here.max(1), pane);
+                                        let raw_detail = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| folder_name(&g.pwd, home.as_deref()));
                                         let help = crate::hub::help_of(&bk);
-                                        activity_rows.push(ActivityRow { bk, host: h.label.clone(), title: label, detail, act: g.agent_activity, help, running });
+                                        let parent_agent = detect_agent_harness(program.as_deref(), &g.title);
+                                        let detail = match parent_agent.as_deref() {
+                                            Some(h_name) if !raw_detail.is_empty() && !raw_detail.to_ascii_lowercase().starts_with(h_name) => {
+                                                let chrome = if h_name == "agy" { "antigravity" } else { h_name };
+                                                format!("{chrome} · {raw_detail}")
+                                            }
+                                            _ => raw_detail,
+                                        };
+                                        let kids = if attach_here {
+                                            attached_children = true;
+                                            std::mem::take(&mut children_items)
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        activity_rows.push(ActivityRow { bk, host: h.label.clone(), title: label, detail, act: g.agent_activity, help, running, parent_agent, children: kids });
                                     }
                                 }
                             }
@@ -4013,12 +4159,11 @@ impl RexWindow {
                     let label = if !s.label.is_empty() { s.label.clone() } else { s.session_id.clone() };
                     sessions.push((s.session_id.clone(), label, sess_act, sess_help, unread_count));
                 }
-                // (And whether it is silent about something typed: its
-                // light and its words then say so, as the status bar does.)
                 let silent = st.host_silent(&h.key).map(crate::hub::silent_tip);
                 hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
             }
-            (mode, hosts_snap, activity_rows)
+            let agent_json = serde_json::to_string(&st.subagents.entries).unwrap_or_default();
+            (mode, hosts_snap, activity_rows, blocked_total, agent_json)
         };
 
         let back = canvas(|g, b| {
@@ -4028,8 +4173,6 @@ impl RexWindow {
         .paint_key(2)
         .absolute()
         .inset_0();
-
-        let blocked_n = activity_rows.iter().filter(|r| matches!(r.act, AgentActivity::Blocked | AgentActivity::Error)).count();
 
         let hub_s1 = hub.clone();
         // Match TabStrip exactly (`STRIP_HEIGHT = 34`, tabs `y = 8..34`, label center `y = 21`)
@@ -4046,10 +4189,7 @@ impl RexWindow {
         // The sidebar's two lists: the kit's segmented control, the
         // row's width, the agents waiting as Activity's count; its
         // marks show once the sidebar is wide enough for them beside
-        // the names and the count. (They were a pair of small buttons,
-        // the chosen one held down, and before that two boxes drawn by
-        // hand; Ben, 2026-11-22: "this sessions/activity segmented
-        // control looks weird".)
+        // the names and the count.
         let segments = widgets::SegmentedControl::new(
             "rex-side",
             [widgets::Segment::new("Sessions").mark(widgets::Mark::Terminal), widgets::Segment::new("Activity").mark(widgets::Mark::Pulse).waiting(blocked_n)],
@@ -4063,7 +4203,6 @@ impl RexWindow {
                 st.settings.sidebar_mode = if activity { SidebarMode::Activity } else { SidebarMode::Sessions };
                 st.settings.save();
             }
-            crate::activity_watch::sync_watchers(&hub_s1, activity);
             WinMsg::Redraw
         }));
         let header = div()
@@ -4198,7 +4337,6 @@ impl RexWindow {
                 list = list.child(group);
             }
         }
-        crate::activity_watch::sync_watchers(&hub, mode == SidebarMode::Activity);
         // Compute filtered Activity rows BEFORE rendering the filter bar so the
         // bar can show exact match counts ("1 of 5 shown") + a bevelled Show All button.
         let query_now = self.activity_search_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
@@ -4207,17 +4345,15 @@ impl RexWindow {
 
         let mut total_activity_entities = 0usize;
         let mut matched_activity_entities = 0usize;
-        let mut filtered_items: Vec<(ActivityRow, Vec<olo_rex_client::activity::SubagentInfo>, usize, usize, usize, bool, bool)> = Vec::new();
+        let mut filtered_items: Vec<(ActivityRow, Vec<NativeChildItem>, usize, usize, usize, bool, bool)> = Vec::new();
         let mut dyn_names: Vec<String> = Vec::new();
         if mode == SidebarMode::Activity {
             for row in &activity_rows {
-                let pa = crate::activity_watch::pane_activity(&row.bk);
-                let all_subs = pa.as_ref().map(|p| p.subagents.clone()).unwrap_or_default();
-                total_activity_entities += 1 + all_subs.len();
-                for sub in &all_subs {
-                    let n = sub.name.trim();
+                total_activity_entities += 1 + row.children.len();
+                for child in &row.children {
+                    let n = child.row.entry.role.as_deref().filter(|r| !r.trim().is_empty()).unwrap_or(child.row.entry.title.as_str()).trim();
                     if !n.is_empty()
-                        && !matches!(n.to_ascii_lowercase().as_str(), "claude" | "codex" | "agy" | "antigravity" | "tmux" | "shell" | "subagent")
+                        && !matches!(n.to_ascii_lowercase().as_str(), "claude" | "codex" | "agy" | "antigravity" | "shell" | "subagent")
                         && !dyn_names.iter().any(|x| x.eq_ignore_ascii_case(n))
                     {
                         dyn_names.push(n.to_owned());
@@ -4225,13 +4361,10 @@ impl RexWindow {
                 }
             }
             for row in activity_rows {
-                let pa = crate::activity_watch::pane_activity(&row.bk);
-                let all_subs = pa.as_ref().map(|p| p.subagents.clone()).unwrap_or_default();
-                let parent_agent = pa.as_ref().and_then(|p| p.agent.as_deref());
-                if let Some(fm) = filter_activity_entry(&row, parent_agent, &all_subs, &query_now, &self.activity_type_filter, self.activity_state_filter) {
+                if let Some(fm) = filter_activity_entry(&row, &query_now, &self.activity_type_filter, self.activity_state_filter) {
                     let total_c = fm.subs.len();
-                    let failed_c = fm.subs.iter().filter(|s| s.state == olo_rex_client::activity::SubagentState::Failed).count();
-                    let waiting_c = fm.subs.iter().filter(|s| s.state == olo_rex_client::activity::SubagentState::Waiting).count();
+                    let failed_c = fm.subs.iter().filter(|s| s.act == AgentActivity::Error).count();
+                    let waiting_c = fm.subs.iter().filter(|s| s.act == AgentActivity::Blocked).count();
                     if fm.parent_matched {
                         matched_activity_entities += 1;
                     }
@@ -4243,8 +4376,7 @@ impl RexWindow {
 
         // Pinned Activity Search & Filter bar (below Sessions|Activity header, above scroller).
         let activity_filter_bar = (mode == SidebarMode::Activity).then(|| {
-            let mut type_options: Vec<ActivityTypeFilter> =
-                vec![ActivityTypeFilter::All, ActivityTypeFilter::Claude, ActivityTypeFilter::Codex, ActivityTypeFilter::Agy, ActivityTypeFilter::Tmux, ActivityTypeFilter::Shell];
+            let mut type_options: Vec<ActivityTypeFilter> = vec![ActivityTypeFilter::All, ActivityTypeFilter::Claude, ActivityTypeFilter::Codex, ActivityTypeFilter::Agy, ActivityTypeFilter::Shell];
             dyn_names.sort_by_key(|s| s.to_ascii_lowercase());
             for dn in dyn_names {
                 type_options.push(ActivityTypeFilter::SubagentType(dn));
@@ -4343,11 +4475,10 @@ impl RexWindow {
                 }
             }
             let active_view = crate::activity_watch::active_view_target();
-            let active_sub_id = active_view.as_ref().and_then(|v| v.subagent_id()).map(str::to_owned);
             let win_id = self.id;
             // Group Activity rows by host under clean section headers (aligned
             // flush with the sidebar filter controls above).
-            let mut rows = div().w_full().flex_shrink_0().flex().flex_col().agent("Group", "activity-subagents").agent_value(crate::activity_watch::activity_agent_json());
+            let mut rows = div().w_full().flex_shrink_0().flex().flex_col().agent("Group", "activity-subagents").agent_value(native_agent_json);
             let mut last_host: Option<String> = None;
             for (row, subs, total_children, failed_children, waiting_children, force_expand, parent_matched) in filtered_items {
                 if last_host.as_deref() != Some(row.host.as_str()) {
@@ -4361,13 +4492,20 @@ impl RexWindow {
                 let ancestor_only = filter_active && !parent_matched;
                 let bk_jump = row.bk.clone();
                 let bk_fold = row.bk.clone();
-                let bk_children = row.bk.clone();
                 let bk_menu = row.bk.clone();
                 let row_title = row.title.clone();
                 let viewing_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &row.bk);
-                let selected = !ancestor_only && active_sub_id.is_none() && shown.as_ref() == Some(&row.bk);
+                let active_in_collapsed = has_children && !expanded && subs.iter().any(|c| shown.as_ref() == Some(&c.bk));
+                let selected = !ancestor_only && (shown.as_ref() == Some(&row.bk) || active_in_collapsed);
+                let icon_act = if has_children && !expanded { subs.iter().fold(row.act, |a, c| higher_activity(a, c.act)) } else { row.act };
+                let running_kids: Vec<(String, String)> = subs
+                    .iter()
+                    .filter(|c| matches!(c.act, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
+                    .map(|c| (c.row.entry.window_id.clone(), c.row.entry.display_title()))
+                    .collect();
                 let parent_el = sidebar_activity_row(
                     row,
+                    icon_act,
                     selected,
                     ancestor_only,
                     has_children,
@@ -4383,9 +4521,19 @@ impl RexWindow {
                 .on_mouse_down(MouseButton::Right, move |e, cx| {
                     let bk = bk_menu.clone();
                     let title = row_title.clone();
+                    let running_for_menu = running_kids.clone();
                     let mut menu = Menu::new("").item("Show Transcript", "row.transcript").checked(viewing_tr).item("Show Terminal", "row.terminal").checked(!viewing_tr);
                     if has_children {
-                        menu = menu.separator().item(if expanded { "Collapse Subagents" } else { "Expand Subagents" }, "row.toggle_fold");
+                        let stop_label = match running_for_menu.len() {
+                            0 => "Stop Subagents…".to_owned(),
+                            1 => "Stop Subagent…".to_owned(),
+                            n => format!("Stop {n} Subagents…"),
+                        };
+                        menu = menu
+                            .separator()
+                            .item(if expanded { "Collapse Subagents" } else { "Expand Subagents" }, "row.toggle_fold")
+                            .item(stop_label, "row.stop_all")
+                            .enabled(!running_for_menu.is_empty());
                     }
                     menu::resolve(std::slice::from_mut(&mut menu), true);
                     menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
@@ -4404,6 +4552,12 @@ impl RexWindow {
                                 slot.handle.messenger().send(WinMsg::ToggleActivityFold(bk.clone()));
                             }
                         }
+                        "row.stop_all" if !running_for_menu.is_empty() => {
+                            if let Some(slot) = wins().map.get(&win_id) {
+                                let (running_wids, names): (Vec<String>, Vec<String>) = running_for_menu.iter().cloned().unzip();
+                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: bk.host_key.clone(), session_id: bk.session_id.clone(), running_wids, names });
+                            }
+                        }
                         _ => {}
                     });
                     cx.stop_propagation();
@@ -4411,51 +4565,126 @@ impl RexWindow {
                 rows = rows.child(parent_el);
 
                 if expanded {
-                    let parent_bk = bk_children;
-                    for (sub_idx, sub) in subs.iter().enumerate() {
-                        let is_last = sub_idx + 1 == subs.len();
-                        let sub_selected = active_sub_id.as_deref() == Some(sub.id.as_str());
-                        let sub_click = sub.clone();
-                        let sub_menu = sub.clone();
-                        let parent_click = parent_bk.clone();
-                        let parent_menu = parent_bk.clone();
-                        let has_tmux = sub.tmux.is_some();
-                        let has_tr = sub.transcript.is_some();
-                        let viewing_sub_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::SubagentTranscript { sub: s, .. }) if s.id == sub.id);
-                        let viewing_sub_tm = matches!(&active_view, Some(crate::activity_watch::ViewTarget::SubagentTmux { sub: s, .. }) if s.id == sub.id);
-                        let tip_key = format!("rex-sub-{}", sub.id);
-                        let tip_action = if has_tmux { "Opens read-only terminal" } else { "Opens transcript" };
-                        let tip_text = if sub.description.is_empty() { format!("{} — {tip_action}", sub.name) } else { format!("{} — {} ({tip_action})", sub.name, sub.description) };
+                    let mut folded_depth: Option<usize> = None;
+                    for (c_idx, child) in subs.iter().enumerate() {
+                        if folded_depth.is_some_and(|fd| child.row.depth > fd) {
+                            continue;
+                        }
+                        folded_depth = None;
+                        let child_has_kids = child.has_children;
+                        let sub_kids: &[NativeChildItem] = if child_has_kids {
+                            let end = subs[c_idx + 1..].iter().position(|n| n.row.depth <= child.row.depth).map_or(subs.len(), |off| c_idx + 1 + off);
+                            &subs[c_idx + 1..end]
+                        } else {
+                            &[]
+                        };
+                        let child_expanded = child_has_kids && (force_expand || !crate::activity_watch::is_folded(&child.bk));
+                        if child_has_kids && !child_expanded {
+                            folded_depth = Some(child.row.depth);
+                        }
+                        let sub_total = sub_kids.len();
+                        let sub_failed = sub_kids.iter().filter(|k| k.act == AgentActivity::Error).count();
+                        let sub_waiting = sub_kids.iter().filter(|k| k.act == AgentActivity::Blocked).count();
+                        let active_in_folded_child = child_has_kids && !child_expanded && sub_kids.iter().any(|k| shown.as_ref() == Some(&k.bk));
+                        let child_icon_act = if child_has_kids && !child_expanded { sub_kids.iter().fold(child.act, |a, k| higher_activity(a, k.act)) } else { child.act };
+
+                        let child_bk_click = child.bk.clone();
+                        let child_bk_fold = child.bk.clone();
+                        let child_bk_menu = child.bk.clone();
+                        let child_wid_menu = child.row.entry.window_id.clone();
+                        let child_title = child.row.entry.display_title();
+                        let child_help = child.help.clone();
+                        let viewing_child_tr = matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == &child.bk);
+                        let sub_selected = shown.as_ref() == Some(&child.bk) || active_in_folded_child;
+                        let tip_key = format!("rex-sub-{}", child.row.entry.id);
+                        let tip_text = format!("{} ({} · {} · {}) — Click to open terminal", child_title, child.row.entry.cli.chrome_name(), child.row.entry.model, child.row.entry.effort);
                         olo_kit::tip::retext(cx, tip_key.clone(), tip_text.clone());
                         let sub_el = olo_kit::tip::on(
-                            sidebar_subagent_row(
-                                sub.clone(),
+                            sidebar_native_child_row(
+                                child.clone(),
+                                child_icon_act,
                                 sub_selected,
-                                is_last,
+                                child_expanded,
+                                (sub_total, sub_failed, sub_waiting),
                                 &query_terms,
                                 width - 2.0 * m::SPACING,
-                                cx.msg_with(move |_: &()| WinMsg::OpenSubagent(parent_click.clone(), sub_click.clone(), false)),
+                                cx.msg_with(move |_: &()| WinMsg::FocusBlock(child_bk_click.clone())),
+                                cx.msg_with(move |_: &()| WinMsg::ToggleActivityFold(child_bk_fold.clone())),
                             )
                             .on_mouse_down(MouseButton::Right, move |e, cx| {
-                                let sub = sub_menu.clone();
-                                let parent = parent_menu.clone();
+                                let bk = child_bk_menu.clone();
+                                let wid = child_wid_menu.clone();
+                                let title = child_title.clone();
                                 let mut menu = Menu::new("")
-                                    .item("Show Transcript", "sub.transcript")
-                                    .enabled(has_tr)
-                                    .checked(viewing_sub_tr)
                                     .item("Show Terminal", "sub.terminal")
-                                    .enabled(has_tmux)
-                                    .checked(viewing_sub_tm);
+                                    .checked(!viewing_child_tr)
+                                    .item("Show Transcript", "sub.transcript")
+                                    .checked(viewing_child_tr)
+                                    .separator()
+                                    .item("Keep It Going", "sub.keep_going")
+                                    .checked(child_help.keep_going)
+                                    .item("Auto Approve", "sub.auto_approve")
+                                    .checked(child_help.auto_approve)
+                                    .separator()
+                                    .item("Stop Subagent", "sub.stop");
+                                if child_has_kids {
+                                    menu = menu.item(if child_expanded { "Collapse Children" } else { "Expand Children" }, "sub.toggle_fold").item("Stop Subagent & Children", "sub.stop_tree");
+                                }
+                                menu = menu.item("Force Close Tab", "sub.force_stop");
                                 menu::resolve(std::slice::from_mut(&mut menu), true);
                                 menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
-                                    "sub.transcript" => {
+                                    "sub.terminal" => {
                                         if let Some(slot) = wins().map.get(&win_id) {
-                                            slot.handle.messenger().send(WinMsg::OpenSubagent(parent.clone(), sub.clone(), true));
+                                            slot.handle.messenger().send(WinMsg::FocusBlock(bk.clone()));
                                         }
                                     }
-                                    "sub.terminal" if has_tmux => {
+                                    "sub.transcript" => {
                                         if let Some(slot) = wins().map.get(&win_id) {
-                                            slot.handle.messenger().send(WinMsg::OpenSubagent(parent.clone(), sub.clone(), false));
+                                            slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title.clone()));
+                                        }
+                                    }
+                                    "sub.keep_going" => {
+                                        app().hub.set_help(&bk, |h| h.keep_going = !h.keep_going);
+                                    }
+                                    "sub.auto_approve" => {
+                                        toggle_auto_approve(&app().hub, &bk, &title);
+                                    }
+                                    "sub.toggle_fold" => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::ToggleActivityFold(bk.clone()));
+                                        }
+                                    }
+                                    "sub.stop" => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::StopSubagent {
+                                                host_key: bk.host_key.clone(),
+                                                session_id: bk.session_id.clone(),
+                                                window_id: wid.clone(),
+                                                force: false,
+                                                tree: false,
+                                            });
+                                        }
+                                    }
+                                    "sub.stop_tree" => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::StopSubagent {
+                                                host_key: bk.host_key.clone(),
+                                                session_id: bk.session_id.clone(),
+                                                window_id: wid.clone(),
+                                                force: false,
+                                                tree: true,
+                                            });
+                                        }
+                                    }
+                                    "sub.force_stop" => {
+                                        if let Some(slot) = wins().map.get(&win_id) {
+                                            slot.handle.messenger().send(WinMsg::StopSubagent {
+                                                host_key: bk.host_key.clone(),
+                                                session_id: bk.session_id.clone(),
+                                                window_id: wid.clone(),
+                                                force: true,
+                                                tree: false,
+                                            });
                                         }
                                     }
                                     _ => {}
@@ -5249,14 +5478,53 @@ impl View for RexWindow {
                 self.activity_state_filter = ActivityStateFilter::All;
                 cx.invalidate();
             }
-            WinMsg::OpenSubagent(parent, sub, force_transcript) => {
-                let hub = app().hub.clone();
-                self.jump_to(JumpTarget::Pane(parent.clone()), cx);
-                crate::activity_watch::open_subagent(&hub, &parent, sub, force_transcript);
+            WinMsg::TreeMenuClosed => {
+                if self.open_tree_tab.take().is_some() {
+                    cx.invalidate();
+                }
+            }
+            WinMsg::SelectWindow(hk, sid, wid) => {
+                crate::activity_watch::close_viewer();
+                self.active_host = hk.clone();
+                self.active_session = Some(sid.clone());
+                app().hub.select_window(&hk, &sid, &wid);
                 if self.side_pane.alone() {
                     self.side_pane.show_rest();
                 }
+                self.focus.focus(cx);
                 cx.invalidate();
+            }
+            WinMsg::StopSubagent { host_key, session_id, window_id, force, tree } => {
+                app().hub.stop_subagent(&host_key, &session_id, &window_id, force, tree);
+                cx.invalidate();
+            }
+            WinMsg::ConfirmStopSubagents { host_key, session_id, running_wids, names } => {
+                if running_wids.is_empty() {
+                    return;
+                }
+                let list = match names.as_slice() {
+                    [a] => format!("“{a}”"),
+                    [a, b] => format!("“{a}” and “{b}”"),
+                    many => {
+                        let head: Vec<String> = many[..many.len() - 1].iter().map(|s| format!("“{s}”")).collect();
+                        format!("{}, and “{}”", head.join(", "), many[many.len() - 1])
+                    }
+                };
+                let (heading, body, btn) = if names.len() == 1 {
+                    (format!("Stop {list}?"), format!("This interrupts {list}. Its tab will close."), "Stop Subagent")
+                } else {
+                    (format!("Stop {} subagents?", names.len()), format!("This interrupts {list}.\nTheir tabs will close."), "Stop Subagents")
+                };
+                let msg = format!("{heading}\n\n{body}");
+                let hub = app().hub.clone();
+                // Destructive action on the left (plain); Cancel on the right as the safe BeOS default (Return & Esc).
+                olo_kit::widgets::open_alert(cx, "Stop Subagents", "warning", &msg, &[btn, "Cancel"], move |choice, _| {
+                    if *choice == Some(0) {
+                        for wid in &running_wids {
+                            hub.stop_subagent(&host_key, &session_id, wid, false, true);
+                        }
+                    }
+                });
             }
             WinMsg::OpenPaneTranscript(bk, title) => {
                 let hub = app().hub.clone();
@@ -5269,22 +5537,11 @@ impl View for RexWindow {
             }
             WinMsg::TranscriptDo(what) => {
                 use crate::transcript_view::TranscriptDo;
-                let hub = app().hub.clone();
                 match what {
                     TranscriptDo::ShowTerminal => {
-                        if let Some(crate::activity_watch::ViewTarget::SubagentTranscript { parent, sub }) = crate::activity_watch::active_view_target()
-                            && sub.tmux.is_some()
-                        {
-                            crate::activity_watch::open_subagent(&hub, &parent, sub, false);
-                        } else {
-                            crate::activity_watch::close_viewer();
-                        }
+                        crate::activity_watch::close_viewer();
                     }
-                    TranscriptDo::ShowTranscript => {
-                        if let Some(crate::activity_watch::ViewTarget::SubagentTmux { parent, sub, .. }) = crate::activity_watch::active_view_target() {
-                            crate::activity_watch::open_subagent(&hub, &parent, sub, true);
-                        }
-                    }
+                    TranscriptDo::ShowTranscript => {}
                     TranscriptDo::ToggleExpand(eid) => {
                         if let Some(tr) = crate::activity_watch::active_transcript() {
                             let mut g = tr.lock().unwrap_or_else(|e| e.into_inner());
@@ -5899,24 +6156,45 @@ impl View for RexWindow {
             WinMsg::RenameSession(hk, sid) => self.rename_session(&hk, &sid),
             WinMsg::TabMenu(i, at) => {
                 let Some((hk, sess)) = self.resolve_active_session() else { return };
-                let Some(tab) = sess.windows.get(i).map(|w| w.window_id.clone()) else { return };
-                let count = sess.windows.len();
-                // Keep It Going and Auto Approve of the tab's panes that run
-                // an agent (or have either on), else of its pane with the
-                // keyboard (Ben, 2026-11-24: "make sure those options show
-                // when right clicking the rex tab too"). In a tab of
-                // several panes each pair names its pane: the pair of the
-                // pane with the keyboard, unchecked, beside another's
-                // countdown read as Auto Approve off (Opus's review).
-                let panes = sess.windows.get(i).map(|w| tab_agent_panes(&app().hub, &hk, &sess.session_id, w)).unwrap_or_default();
-                let tab_block = sess.windows.get(i).and_then(|w| {
+                let hub_ref = app().hub.clone();
+                let (live, top_indices, running_kids) = {
+                    let st = hub_ref.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let (live, top_indices) = top_level_window_indices(&st.subagents, &hk, &sess);
+                    let running_kids: Vec<(String, String)> = top_indices
+                        .get(i)
+                        .map(|&widx| {
+                            st.subagents
+                                .descendants_tree(&hk, &sess.session_id, &sess.windows[widx].window_id, &live)
+                                .into_iter()
+                                .filter(|r| {
+                                    let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: r.entry.block_id.clone() };
+                                    st.blocks
+                                        .get(&bk)
+                                        .is_some_and(|br| matches!(br.lock().unwrap_or_else(|e| e.into_inner()).agent_activity, AgentActivity::Working | AgentActivity::Blocked | AgentActivity::Error))
+                                })
+                                .map(|r| {
+                                    let t = r.entry.display_title();
+                                    (r.entry.window_id, t)
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (live, top_indices, running_kids)
+                };
+                let _ = live;
+                let Some(&w_idx) = top_indices.get(i) else { return };
+                let tab = sess.windows[w_idx].window_id.clone();
+                let count = top_indices.len();
+                let top_ids: Vec<String> = top_indices.iter().map(|&idx| sess.windows[idx].window_id.clone()).collect();
+                let panes = sess.windows.get(w_idx).map(|w| tab_agent_panes(&app().hub, &hk, &sess.session_id, w)).unwrap_or_default();
+                let tab_block = sess.windows.get(w_idx).and_then(|w| {
                     w.focused_block_id.as_deref().filter(|id| w.all_blocks().any(|b| b.block_id == *id)).or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())).map(|bid| BlockKey {
                         host_key: hk.clone(),
                         session_id: sess.session_id.clone(),
                         block_id: bid.to_owned(),
                     })
                 });
-                let several = sess.windows.get(i).is_some_and(|w| w.all_blocks().count() > 1);
+                let several = sess.windows.get(w_idx).is_some_and(|w| w.all_blocks().count() > 1);
                 let active_view = crate::activity_watch::active_view_target();
                 let viewing_transcript = tab_block.as_ref().is_some_and(|tb| matches!(&active_view, Some(crate::activity_watch::ViewTarget::PaneTranscript { bk, .. }) if bk == tb));
                 let mut menu = Menu::new("").item("Rename Tab…", "window.rename").item(olo_kit_base::tracker::LABEL, "files.open_in_tracker").enabled(tab_block.is_some()).separator();
@@ -5936,55 +6214,163 @@ impl View for RexWindow {
                 if !panes.is_empty() {
                     menu = menu.separator();
                 }
+                if !running_kids.is_empty() {
+                    let stop_lbl = format!("Stop {} Running Subagent{}…", running_kids.len(), if running_kids.len() == 1 { "" } else { "s" });
+                    menu = menu.item(stop_lbl, "sub.stop_all").separator();
+                }
                 let mut menu =
                     menu.item("Move Tab Left", "window.move_left").enabled(i > 0).item("Move Tab Right", "window.move_right").enabled(i + 1 < count).separator().item("Close Tab", "window.close");
                 menu::resolve(std::slice::from_mut(&mut menu), true);
                 let hub = app().hub.clone();
                 let window = self.id;
-                menu::context_menu(cx, menu, at, move |cmd, _| {
-                    let ids: Vec<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
-                    match cmd {
-                        "window.rename" => {
+                menu::context_menu(cx, menu, at, move |cmd, _| match cmd {
+                    "window.rename" => {
+                        if let Some(slot) = wins().map.get(&window) {
+                            slot.handle.messenger().send(WinMsg::RenameTab(hk.clone(), sess.session_id.clone(), tab.clone()));
+                        }
+                    }
+                    "files.open_in_tracker" => {
+                        if let Some(bk) = &tab_block {
+                            open_block_in_tracker(&hub, bk);
+                        }
+                    }
+                    "pane.show_transcript" => {
+                        if let Some(bk) = &tab_block {
+                            let title = pane_name(&hub, bk);
                             if let Some(slot) = wins().map.get(&window) {
-                                slot.handle.messenger().send(WinMsg::RenameTab(hk.clone(), sess.session_id.clone(), tab.clone()));
+                                slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title));
                             }
                         }
-                        "files.open_in_tracker" => {
-                            if let Some(bk) = &tab_block {
-                                open_block_in_tracker(&hub, bk);
-                            }
+                    }
+                    "pane.show_terminal" => {
+                        crate::activity_watch::close_viewer();
+                    }
+                    "sub.stop_all" if !running_kids.is_empty() => {
+                        if let Some(slot) = wins().map.get(&window) {
+                            let (running_wids, names): (Vec<String>, Vec<String>) = running_kids.iter().cloned().unzip();
+                            slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sess.session_id.clone(), running_wids, names });
                         }
-                        "pane.show_transcript" => {
-                            if let Some(bk) = &tab_block {
-                                let title = pane_name(&hub, bk);
-                                if let Some(slot) = wins().map.get(&window) {
-                                    slot.handle.messenger().send(WinMsg::OpenPaneTranscript(bk.clone(), title));
+                    }
+                    _ if cmd.starts_with("agent.keep_going_toggle#") => {
+                        if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
+                            hub.set_help(p, |h| h.keep_going = !h.keep_going);
+                        }
+                    }
+                    _ if cmd.starts_with("agent.auto_approve_toggle#") => {
+                        if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
+                            toggle_auto_approve(&hub, p, &pane_name(&hub, p));
+                        }
+                    }
+                    "window.move_left" | "window.move_right" => {
+                        let to = if cmd == "window.move_left" { i.checked_sub(1) } else { Some(i + 1) };
+                        if let Some(before) = to.and_then(|to| crate::hub::moved_before(&top_ids, i, to)) {
+                            hub.move_window(&hk, &sess.session_id, &tab, before);
+                        }
+                    }
+                    "window.close" => hub.close_window(&hk, &sess.session_id, &tab),
+                    _ => {}
+                });
+            }
+            WinMsg::TabTreeMenu(i, bounds) => {
+                let Some((hk, sess)) = self.resolve_active_session() else { return };
+                let hub_ref = app().hub.clone();
+                let (parent_wid, parent_label, parent_detail, rows, active_wid, is_side) = {
+                    let st = hub_ref.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let (live, top_indices) = top_level_window_indices(&st.subagents, &hk, &sess);
+                    let Some(&w_idx) = top_indices.get(i) else { return };
+                    let names = crate::hub::session_tab_names(&st, &hk, &sess);
+                    let parent_win = &sess.windows[w_idx];
+                    let parent_wid = parent_win.window_id.clone();
+                    let parent_label = names.get(w_idx).cloned().unwrap_or_else(|| "Tab".into());
+                    // Identify the root tab's own agent harness and live state so its row matches its children.
+                    let mut parent_detail: Option<(String, AgentActivity)> = None;
+                    for b in parent_win.all_blocks() {
+                        let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
+                        if let Some(br) = st.blocks.get(&bk) {
+                            let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                            let program = g.program_title();
+                            let raw_harness = detect_agent_harness(program.as_deref(), &g.title);
+                            let chrome = raw_harness.map(|h| if h == "agy" { "antigravity".to_owned() } else { h });
+                            if let Some(h) = chrome {
+                                let act = g.agent_activity;
+                                if parent_detail.as_ref().is_none_or(|(_, cur)| higher_activity(*cur, act) != *cur) {
+                                    parent_detail = Some((h, act));
                                 }
                             }
                         }
-                        "pane.show_terminal" => {
-                            crate::activity_watch::close_viewer();
-                        }
-                        _ if cmd.starts_with("agent.keep_going_toggle#") => {
-                            if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
-                                hub.set_help(p, |h| h.keep_going = !h.keep_going);
-                            }
-                        }
-                        _ if cmd.starts_with("agent.auto_approve_toggle#") => {
-                            if let Some(p) = cmd.rsplit('#').next().and_then(|n| n.parse::<usize>().ok()).and_then(|n| panes.get(n)) {
-                                toggle_auto_approve(&hub, p, &pane_name(&hub, p));
-                            }
-                        }
-                        "window.move_left" | "window.move_right" => {
-                            let to = if cmd == "window.move_left" { i.checked_sub(1) } else { Some(i + 1) };
-                            if let Some(before) = to.and_then(|to| crate::hub::moved_before(&ids, i, to)) {
-                                hub.move_window(&hk, &sess.session_id, &tab, before);
-                            }
-                        }
-                        "window.close" => hub.close_window(&hk, &sess.session_id, &tab),
-                        _ => {}
                     }
-                });
+                    let descendants = st.subagents.descendants_tree(&hk, &sess.session_id, &parent_wid, &live);
+                    let mut rows = Vec::with_capacity(descendants.len());
+                    for row in descendants {
+                        let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: row.entry.block_id.clone() };
+                        let act = st.blocks.get(&bk).map(|br| br.lock().unwrap_or_else(|e| e.into_inner()).agent_activity).unwrap_or(AgentActivity::Idle);
+                        rows.push((row, act));
+                    }
+                    let active_wid = sess.active_window_id.clone().or_else(|| sess.windows.first().map(|w| w.window_id.clone()));
+                    let is_side = st.settings.toolbar_layout == ToolbarLayout::Side;
+                    (parent_wid, parent_label, parent_detail, rows, active_wid, is_side)
+                };
+                if rows.is_empty() {
+                    return;
+                }
+                let apply_detail = |m: Menu, harness: &str, act: AgentActivity| match act {
+                    AgentActivity::Blocked => m.detail_status(harness.to_owned(), "Waiting", menu::DetailTone::Warning),
+                    AgentActivity::Error => m.detail_status(harness.to_owned(), "Failed", menu::DetailTone::Error),
+                    AgentActivity::Working => m.detail_status(harness.to_owned(), "Working", menu::DetailTone::Secondary),
+                    AgentActivity::Done => m.detail_status(harness.to_owned(), "Done", menu::DetailTone::Muted),
+                    AgentActivity::Idle => m.detail(harness.to_owned()),
+                };
+                let mut menu = Menu::new("").item(parent_label, format!("win:{parent_wid}")).checked(active_wid.as_deref() == Some(parent_wid.as_str()));
+                if let Some((ref h, act)) = parent_detail {
+                    menu = apply_detail(menu, h, act);
+                }
+                let mut running_kids: Vec<(String, String)> = Vec::new();
+                for (row, act) in &rows {
+                    let harness = row.entry.cli.chrome_name();
+                    menu = menu
+                        .item(row.entry.display_title(), format!("win:{}", row.entry.window_id))
+                        .tree(row.depth, row.is_last, row.guides.clone())
+                        .checked(active_wid.as_deref() == Some(row.entry.window_id.as_str()));
+                    if matches!(act, AgentActivity::Blocked | AgentActivity::Error | AgentActivity::Working) {
+                        running_kids.push((row.entry.window_id.clone(), row.entry.display_title()));
+                    }
+                    menu = apply_detail(menu, harness, *act);
+                }
+                let stop_label = match running_kids.len() {
+                    0 => "Stop Subagents…".to_owned(),
+                    1 => "Stop Subagent…".to_owned(),
+                    n => format!("Stop {n} Subagents…"),
+                };
+                menu = menu.separator().item(stop_label, "sub.stop_all").enabled(!running_kids.is_empty());
+                menu::resolve(std::slice::from_mut(&mut menu), true);
+                self.open_tree_tab = Some(i);
+                cx.invalidate();
+                let window = self.id;
+                let sid = sess.session_id.clone();
+                let corner = if is_side { olo_kit::Corner::TopRight } else { olo_kit::Corner::BottomLeft };
+                menu::popup_then(
+                    cx,
+                    menu,
+                    bounds,
+                    corner,
+                    move |cmd, _| {
+                        if let Some(wid) = cmd.strip_prefix("win:") {
+                            if let Some(slot) = wins().map.get(&window) {
+                                slot.handle.messenger().send(WinMsg::SelectWindow(hk.clone(), sid.clone(), wid.to_owned()));
+                            }
+                        } else if cmd == "sub.stop_all" && !running_kids.is_empty() {
+                            if let Some(slot) = wins().map.get(&window) {
+                                let (running_wids, names): (Vec<String>, Vec<String>) = running_kids.iter().cloned().unzip();
+                                slot.handle.messenger().send(WinMsg::ConfirmStopSubagents { host_key: hk.clone(), session_id: sid.clone(), running_wids, names });
+                            }
+                        }
+                    },
+                    move |_| {
+                        if let Some(slot) = wins().map.get(&window) {
+                            slot.handle.messenger().send(WinMsg::TreeMenuClosed);
+                        }
+                    },
+                );
             }
             WinMsg::RenameTab(hk, sid, tab) => {
                 let session = {
@@ -6890,8 +7276,10 @@ fn render_single_pane(
             let g = br_paint.lock().unwrap_or_else(|e| e.into_inner());
             !g.other_size_owner && g.geometry != Some((want_cols, want_rows, cw_px, ch_px))
         };
-        if resize {
-            app().hub.resize_block(&bk_paint, want_cols, want_rows, cw_px, ch_px);
+        if resize && hub_paint.resize_block(&bk_paint, want_cols, want_rows, cw_px, ch_px) {
+            if let Some(slot) = wins().map.get(&win_id) {
+                slot.handle.messenger().send(WinMsg::Redraw);
+            }
         }
 
         let mut guard = br_paint.lock().unwrap_or_else(|e| e.into_inner());
@@ -7289,6 +7677,50 @@ fn two_lines(text: &str, room: f32, size: f32) -> (String, String) {
     (words[..first].join(" "), words[first..].join(" "))
 }
 
+/// Fit `text` onto a single line within `room` points, filling the full width
+/// while stepping back to the previous word boundary whenever character cutoff
+/// would leave a 1–3 letter trailing stub (e.g. `Running visual QA o…` -> `Running visual QA…`).
+fn fit_clean_line(text: &str, room: f32, size: f32) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || room <= 24.0 {
+        return trimmed.to_owned();
+    }
+    let font = style::ui_font(FontWeight::NORMAL);
+    let fits = |s: &str| f32::from(style::text_width(s.to_owned(), size, font.clone())) <= room;
+    if fits(trimmed) {
+        return trimmed.to_owned();
+    }
+    let ell = "…";
+    let mut best_byte = 0usize;
+    for (idx, ch) in trimmed.char_indices() {
+        let end = idx + ch.len_utf8();
+        let cand = format!("{}{ell}", &trimmed[..end]);
+        if fits(&cand) {
+            best_byte = end;
+        } else {
+            break;
+        }
+    }
+    if best_byte == 0 {
+        return trimmed.to_owned();
+    }
+    let slice = trimmed[..best_byte].trim_end();
+    // If we cut mid-word and the visible prefix of that trailing word is under 4 letters,
+    // step back cleanly to the preceding word boundary.
+    let mid_word = trimmed[best_byte..].chars().next().is_some_and(|c| !c.is_whitespace());
+    if mid_word && let Some(sp) = slice.rfind(char::is_whitespace) {
+        let tail_word = &slice[sp + 1..];
+        if tail_word.chars().count() < 4 {
+            let clean = slice[..sp].trim_end_matches(|c: char| c.is_whitespace() || matches!(c, '.' | ',' | ':' | ';' | '-' | '—' | '·'));
+            if !clean.is_empty() {
+                return format!("{clean}{ell}");
+            }
+        }
+    }
+    let clean = slice.trim_end_matches(|c: char| c.is_whitespace() || matches!(c, '.' | ',' | ':' | ';' | '-' | '—'));
+    format!("{clean}{ell}")
+}
+
 /// Fit `text` onto a single line within `room` points, breaking cleanly at word
 /// boundaries before appending `…` so sidebar subtitles never end with awkward
 /// 1–2 letter word stubs like `t…` or `an…`.
@@ -7531,9 +7963,128 @@ fn bevel_colors(p: &olo_theme::Palette) -> (olo_kit::Hsla, olo_kit::Hsla) {
 /// with the pane icon.
 const ACTIVITY_FOLD_W: f32 = 20.0;
 
+/// Native BeOS child-tab breadcrumb header bar matching [`crate::settings::PANE_HEADER`]
+/// (`22 pt`, identical to pane title bars so parent↔child switching never jumps terminal text):
+/// `parent › child › Current` aligned flush with the terminal's first text column (`12 pt`)
+/// on the left (with BeOS hover frames on clickable ancestors) and right-aligned
+/// `harness · model · effort` with width-driven whole-segment dropping on narrow tiles.
+#[allow(clippy::too_many_arguments)]
+fn render_child_breadcrumb_header(
+    hk: String,
+    sid: String,
+    ancestors: Vec<(String, String)>,
+    entry: crate::subagents::NativeSubagent,
+    _act: AgentActivity,
+    _running: bool,
+    avail_w: f32,
+    cx: &mut olo_kit::Cx<RexWindow>,
+) -> Element {
+    let hdr_h = crate::settings::PANE_HEADER;
+    let pad_x = crate::settings::PADDING.0;
+
+    let head_bg = canvas(|g, b| {
+        let p = theme::palette();
+        style::fill_rect(g, b, style::c(p.panel_background));
+        style::hline_above(g, b.left(), b.right(), b.bottom(), pane_edge(&p));
+    })
+    .paint_key(912)
+    .absolute()
+    .inset_0();
+
+    const SEP_W: f32 = 18.0;
+    let mut fixed_left_w = 0.0f32;
+    let mut crumb = div().flex_1().min_w_0().flex().flex_row().items_center();
+    for (wid, label) in ancestors {
+        let hk_c = hk.clone();
+        let sid_c = sid.clone();
+        let wid_c = wid.clone();
+        let nav = cx.msg(WinMsg::SelectWindow(hk_c, sid_c, wid_c));
+        let link_label = label.clone();
+        let link_w = f32::from(style::text_width(label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+        fixed_left_w += link_w + SEP_W;
+        let seg_id = olo_kit::SharedString::from(format!("rex-crumb-{wid}"));
+        let seg = canvas(move |g, b| {
+            let hovered = g.node_state::<std::cell::Cell<bool>>().get();
+            let p = theme::palette();
+            if hovered {
+                let dark = p.mode == olo_theme::ThemeMode::Dark;
+                let pill = Bounds::from_corners(point(b.left() - px(5.0), b.top() + px(2.0)), point(b.right() + px(5.0), b.bottom() - px(2.0)));
+                let snapped = style::snap(g, pill);
+                let fill_c = if dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.08)) } else { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.35)) };
+                let shine = if dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.22)) } else { style::c(p.shine) };
+                let shadow = if dark { style::c(olo_theme::mix(p.panel_background, [0, 0, 0, 255], 0.45)) } else { style::c(olo_theme::mix(p.panel_background, [0, 0, 0, 255], 0.24)) };
+                style::fill_rect(g, snapped, fill_c);
+                style::bevel(g, snapped, shine, shadow);
+            }
+            let ink = if hovered { style::c(p.panel_text) } else { style::secondary_text(&p) };
+            style::label(g, b.center().x, b.center().y, style::Align::Center, link_label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+            g.agent(agent::Node::button(format!("Switch to {link_label}"), b));
+        })
+        .id(seg_id)
+        .w(px(link_w))
+        .h(px(hdr_h))
+        .flex_shrink_0()
+        .cursor(CursorStyle::PointingHand)
+        .on_hover(|over: &bool, cx| {
+            let cell = cx.node_state::<std::cell::Cell<bool>>();
+            if cell.get() != *over {
+                cell.set(*over);
+                cx.repaint();
+            }
+        })
+        .on_mouse_down(MouseButton::Left, move |_, cx| {
+            nav(&(), cx);
+            cx.stop_propagation();
+        });
+        let sep = canvas(|g, b| {
+            let p = theme::palette();
+            style::label(g, b.center().x, b.center().y, style::Align::Center, "›", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+        })
+        .paint_key(913)
+        .w(px(SEP_W))
+        .h(px(hdr_h))
+        .flex_shrink_0();
+        crumb = crumb.child(seg).child(sep);
+    }
+    let current_title = entry.display_title();
+    let cur_w = f32::from(style::text_width(current_title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD))).ceil().min(140.0);
+    let cur_el = div().flex_1().min_w_0().child(StringView::new(current_title).bold(true).cut(true).height(hdr_h));
+    crumb = crumb.child(cur_el);
+
+    // Width-driven segment dropping from lowest priority first (effort, then model, then agent):
+    // never truncate mid-word; drop trailing segments cleanly when tiled narrow.
+    let meta_room = avail_w - 2.0 * pad_x - fixed_left_w - cur_w - m::SPACING;
+    let small_font = style::ui_font(FontWeight::NORMAL);
+    let candidates = [format!("{} · {} · {}", entry.cli.chrome_name(), entry.model, entry.effort), format!("{} · {}", entry.cli.chrome_name(), entry.model), entry.cli.chrome_name().to_owned()];
+    let chosen_meta = candidates.into_iter().find_map(|s| {
+        let w = f32::from(style::text_width(s.clone(), style::SMALL_SIZE, small_font.clone())).ceil() + 2.0;
+        (w <= meta_room).then_some((s, w))
+    });
+
+    let mut bar = div().relative().w_full().h(px(hdr_h)).flex_shrink_0().px(px(pad_x)).flex().flex_row().items_center().child(head_bg).child(crumb);
+
+    if let Some((meta, meta_w)) = chosen_meta {
+        let meta_paint = meta.clone();
+        let meta_el = canvas(move |g, b| {
+            let p = theme::palette();
+            let baseline = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+            style::label_on_baseline(g, b.right(), baseline, style::Align::Right, meta_paint.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
+            g.agent(agent::Node::label(meta_paint.clone(), b));
+        })
+        .paint_key(style::key(("child-hdr-meta", &meta)))
+        .ml(px(m::SPACING))
+        .w(px(meta_w))
+        .h(px(hdr_h))
+        .flex_shrink_0();
+        bar = bar.child(meta_el);
+    }
+    bar
+}
+
 #[allow(clippy::too_many_arguments)]
 fn sidebar_activity_row(
     row: ActivityRow,
+    icon_act: AgentActivity,
     selected: bool,
     ancestor_only: bool,
     has_children: bool,
@@ -7549,46 +8100,37 @@ fn sidebar_activity_row(
     let ActivityRow { title, detail, act, help, running, .. } = row;
     let state = if ancestor_only { None } else { activity_state_word(act, running) };
     let left = ACTIVITY_FOLD_W + ROW_ICON + m::TIGHT;
-    // Collapsed attention rollup: list EVERY attention state in its own colour
-    // ("1 waiting · 1 failed"), or neutral subagent count when all are calm.
-    let rollup_parts: Vec<(String, u8)> = if has_children && !expanded {
-        let mut parts = Vec::new();
-        if waiting_children > 0 {
-            parts.push((format!("{waiting_children} waiting"), 1));
+    // When collapsed with hidden children, move the rollup count into line 1's status slot
+    // (replacing "Working") so line 2 keeps the entire column width for the subtitle.
+    let collapsed_status: Option<(String, u8)> = if has_children && !expanded {
+        if failed_children > 0 && waiting_children > 0 {
+            Some((format!("{waiting_children} waiting · {failed_children} failed"), 2))
+        } else if failed_children > 0 {
+            Some((format!("{failed_children} failed"), 2))
+        } else if waiting_children > 0 {
+            Some((format!("{waiting_children} waiting"), 1))
+        } else if total_children > 0 {
+            Some((format!("{total_children} subagent{}", if total_children == 1 { "" } else { "s" }), 0))
+        } else {
+            None
         }
-        if failed_children > 0 {
-            parts.push((format!("{failed_children} failed"), 2));
-        }
-        if parts.is_empty() {
-            parts.push((format!("{total_children} subagent{}", if total_children == 1 { "" } else { "s" }), 0));
-        }
-        parts
     } else {
-        Vec::new()
-    };
-    let rollup_w: f32 = if rollup_parts.is_empty() {
-        0.0
-    } else {
-        let sep_w = f32::from(style::text_width(" · ".to_owned(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL)));
-        let sum: f32 =
-            rollup_parts.iter().map(|(s, urg)| f32::from(style::text_width(s.clone(), style::SMALL_SIZE, style::ui_font(if *urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL })))).sum();
-        sum + sep_w * (rollup_parts.len().saturating_sub(1) as f32)
+        None
     };
     let sub_room = (width - left - 8.0).max(48.0);
-    // Steady 1-line rhythm matching child rows (never reflows 2-line -> 1-line on collapse).
-    // When collapsed with a wide attention rollup leaving < 56 pt, let the rollup own line 2
-    // cleanly rather than squeezing the subtitle down to a 4-letter stub.
     let sub_line = if detail.is_empty() {
         String::new()
-    } else if !rollup_parts.is_empty() {
-        let avail = sub_room - rollup_w - 14.0;
-        if avail < 56.0 { String::new() } else { fit_query_snippet(&detail, query_terms, avail, style::SMALL_SIZE) }
+    } else if query_terms.is_empty() {
+        fit_clean_line(&detail, sub_room, style::SMALL_SIZE)
     } else {
         fit_query_snippet(&detail, query_terms, sub_room, style::SMALL_SIZE)
     };
     let height = ACTIVITY_ROW;
     let terms_owned: Vec<String> = query_terms.to_vec();
-    let key = style::key(((&title, &sub_line, act as u8, &help, running), (selected, ancestor_only, has_children, expanded, total_children, failed_children, waiting_children, &terms_owned)));
+    let key = style::key((
+        (&title, &sub_line, act as u8, icon_act as u8, &help, running),
+        (selected, ancestor_only, has_children, expanded, total_children, failed_children, waiting_children, &terms_owned),
+    ));
     let words = activity_row_words(act, running, &help);
     let on_toggle_fold = Rc::new(on_toggle_fold);
 
@@ -7599,31 +8141,27 @@ fn sidebar_activity_row(
         if selected {
             style::fill_rect(g, b, ground);
         }
-        let (ink, quiet) = (style::c(p.panel_text), style::secondary_text(&p));
+        let (ink, quiet, muted) = (style::c(p.panel_text), style::secondary_text(&p), style::disabled_text(&p));
         let title_ink = if ancestor_only { quiet } else { ink };
         let baseline = style::baseline_at(g, b.top() + px(12.0), style::PLAIN_SIZE);
         let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
         let icon_b = style::snap_centred(g, point(b.left() + px(ACTIVITY_FOLD_W + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
-        match act {
-            AgentActivity::Working if !ancestor_only => {
-                icons::paint(g, icon_b, "terminal");
-                let dot_c = point(icon_b.right() - px(3.0), icon_b.top() + px(3.0));
-                style::dot(g, dot_c, 7.0, ground);
-                style::dot(g, dot_c, 5.0, style::c(p.success));
-            }
-            AgentActivity::Done | _ if ancestor_only => {
-                icons::paint(g, icon_b, "terminal");
-            }
-            AgentActivity::Done => {
-                icons::paint(g, icon_b, "terminal");
-            }
-            _ => {
-                widgets::strip::drawn_on(ground, || widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(act, &crate::agent::Help::default(), running)));
-            }
+        if ancestor_only || icon_act == AgentActivity::Done {
+            icons::paint(g, icon_b, "terminal");
+        } else {
+            widgets::strip::drawn_on(ground, || {
+                widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(icon_act, &crate::agent::Help::default(), running));
+            });
         }
-        if has_children && expanded && !selected {
+        if has_children && expanded {
             let guide_x = style::snap_coord(g, icon_b.center().x);
-            let guide_c = if dark { style::c(olo_theme::mix(p.panel_background, p.panel_text, 0.32)) } else { style::shade(&p, p.panel_background, 1.32) };
+            let sel_rgba = style::selection_ground(&p, p.panel_background, false);
+            let guide_c = if dark {
+                let base_g = if selected { sel_rgba } else { p.panel_background };
+                style::c(olo_theme::mix(base_g, p.panel_text, if selected { 0.42 } else { 0.34 }))
+            } else {
+                style::shade(&p, if selected { sel_rgba } else { p.panel_background }, 1.32)
+            };
             style::vline(g, guide_x, icon_b.bottom() + px(2.0), b.bottom(), guide_c);
         }
 
@@ -7638,12 +8176,20 @@ fn sidebar_activity_row(
             right -= px(8.0 + m::MARK_GAP);
         }
         let left_x = b.left() + px(left);
-        if let Some((word, urgent)) = state {
-            // Working & Done stay quiet secondary text (green icon badge carries Working);
-            // only Waiting and Failed stay loud.
+        if let Some((text, urg)) = &collapsed_status {
+            let color = match *urg {
+                2 => style::c(p.failure),
+                1 => crate::transcript_view::waiting_chrome_color(&p),
+                _ => quiet,
+            };
+            let weight = if *urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
+            let at = style::label_on_baseline(g, right, baseline, style::Align::Right, text.clone(), style::SMALL_SIZE, style::ui_font(weight), color);
+            right = at.left();
+        } else if let Some((word, urgent)) = state {
             let color = match urgent {
                 Some(_) if act == AgentActivity::Error => style::c(p.failure),
                 Some(_) => crate::transcript_view::waiting_chrome_color(&p),
+                None if act == AgentActivity::Done => muted,
                 None => quiet,
             };
             let weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
@@ -7653,26 +8199,8 @@ fn sidebar_activity_row(
         let title_weight = if ancestor_only { FontWeight::MEDIUM } else { FontWeight::BOLD };
         paint_query_label(g, left_x, b.top() + px(12.0), &title, style::PLAIN_SIZE, title_weight, title_ink, (right - px(10.0) - left_x).max(px(24.0)), &terms_owned, &p);
 
-        if !rollup_parts.is_empty() {
-            let b2 = style::baseline_at(g, b.top() + px(26.0), style::SMALL_SIZE);
-            let mut cursor = right_edge;
-            for (idx, (part, urg)) in rollup_parts.iter().enumerate().rev() {
-                let c = match *urg {
-                    2 => style::c(p.failure),
-                    1 => crate::transcript_view::waiting_chrome_color(&p),
-                    _ => quiet,
-                };
-                let w = if *urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
-                let at = style::label_on_baseline(g, cursor, b2, style::Align::Right, part.clone(), style::SMALL_SIZE, style::ui_font(w), c);
-                cursor = at.left();
-                if idx > 0 {
-                    let sep = style::label_on_baseline(g, cursor, b2, style::Align::Right, " · ".to_owned(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet);
-                    cursor = sep.left();
-                }
-            }
-        }
         if !sub_line.is_empty() {
-            let sub_max = if rollup_parts.is_empty() { (right_edge - left_x).max(px(24.0)) } else { (right_edge - px(rollup_w + 14.0) - left_x).max(px(24.0)) };
+            let sub_max = (right_edge - left_x).max(px(24.0));
             paint_query_label(g, left_x, b.top() + px(26.0), &sub_line, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
         }
         g.agent(agent::Node {
@@ -7704,7 +8232,6 @@ fn sidebar_activity_row(
             let quiet = style::secondary_text(&p);
             let baseline = style::baseline_at(g, b.top() + px(12.0), style::PLAIN_SIZE);
             let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-            // 8 pt from row highlight's left edge (matching the 8 pt right inset).
             crate::transcript_view::paint_disclosure(g, point(b.left() + px(11.0), name_mid), expanded, quiet);
             g.agent(agent::Node { role: "Button", name: Some(fold_label.into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
         })
@@ -7724,33 +8251,104 @@ fn sidebar_activity_row(
     wrapper
 }
 
-/// Compact 2-line nested subagent row (`38 pt`) under its parent Activity row:
-/// vertically centered inside its selection band, connected tree guide,
-/// name-line-centred icon, title + right-aligned status on line 1, and
-/// keyword-aware description snippet on line 2.
-fn sidebar_subagent_row(sub: olo_rex_client::activity::SubagentInfo, selected: bool, is_last: bool, query_terms: &[String], width: f32, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    use olo_rex_client::activity::{SubagentOrigin, SubagentState};
-    const SUB_INDENT: f32 = 18.0;
+/// Live native child-tab subagent row rendered inside the Activity sidebar tree.
+#[derive(Clone)]
+struct NativeChildItem {
+    row: crate::subagents::TreeRow,
+    bk: BlockKey,
+    act: AgentActivity,
+    detail: String,
+    running: bool,
+    help: crate::agent::Help,
+    has_children: bool,
+}
+
+fn top_level_window_indices(subagents: &crate::subagents::SubagentRegistry, hk: &str, sess: &olo_rex_client::SessionView) -> (HashSet<String>, Vec<usize>) {
+    let live: HashSet<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+    let indices: Vec<usize> = sess.windows.iter().enumerate().filter(|(_, w)| !subagents.is_child_window(hk, &sess.session_id, &w.window_id, &live)).map(|(i, _)| i).collect();
+    (live, indices)
+}
+
+fn detect_agent_harness(program: Option<&str>, title: &str) -> Option<String> {
+    let hay = format!("{} {}", program.unwrap_or(""), title).to_ascii_lowercase();
+    if hay.contains("claude") {
+        Some("claude".into())
+    } else if hay.contains("codex") {
+        Some("codex".into())
+    } else if hay.contains("antigravity") || hay.contains("agy") {
+        Some("agy".into())
+    } else {
+        None
+    }
+}
+
+/// Compact 2-line native nested subagent row (`38 pt`) supporting arbitrary
+/// parent -> child -> grandchild tree depth with connected 1px BeOS tree guides,
+/// collapsible intermediate parents (disclosure triangle on branch + rollup),
+/// and full-width character-accurate subtitle fitting.
+#[allow(clippy::too_many_arguments)]
+fn sidebar_native_child_row(
+    child: NativeChildItem,
+    icon_act: AgentActivity,
+    selected: bool,
+    expanded: bool,
+    (sub_total, sub_failed, sub_waiting): (usize, usize, usize),
+    query_terms: &[String],
+    width: f32,
+    on_click: impl Fn(&(), &mut WindowCx) + 'static,
+    on_toggle_fold: impl Fn(&(), &mut WindowCx) + 'static,
+) -> Element {
+    const CHILD_INDENT: f32 = 15.0;
     const SUB_ROW_H: f32 = 38.0;
 
-    let origin_word = match sub.origin {
-        SubagentOrigin::Tmux => "tmux",
-        SubagentOrigin::Native => "subagent",
-        SubagentOrigin::Shell => "shell",
-    };
-    let left = ACTIVITY_FOLD_W + SUB_INDENT + ROW_ICON + m::TIGHT;
-    let icon_name = if sub.tmux.is_some() { "terminal" } else { "text" };
-    let (state_word, urgent) = crate::transcript_view::subagent_state_word(sub.state);
-    let mark = crate::transcript_view::subagent_mark(sub.state);
-    let title = sub.name.clone();
-    let desc_room = (width - left - 8.0).max(48.0);
-    let desc = fit_query_snippet(&sub.description, query_terms, desc_room, style::SMALL_SIZE);
-    let terms_owned: Vec<String> = query_terms.to_vec();
-    let key = style::key((&sub.id, &title, &desc, sub.state, sub.tmux.is_some(), selected, is_last, &terms_owned));
-    let sub_state = sub.state;
-    let agent_val = format!("{origin_word}; {state_word}");
+    let depth = child.row.depth.clamp(1, 4);
+    let indent = (depth as f32) * CHILD_INDENT;
+    let left = ACTIVITY_FOLD_W + indent + ROW_ICON + 4.0;
+    let title = child.row.entry.display_title();
+    let state = activity_state_word(child.act, child.running);
+    let has_children = child.has_children;
 
-    canvas(move |g, b| {
+    let collapsed_status: Option<(String, u8)> = if has_children && !expanded {
+        if sub_failed > 0 && sub_waiting > 0 {
+            Some((format!("{sub_waiting} waiting · {sub_failed} failed"), 2))
+        } else if sub_failed > 0 {
+            Some((format!("{sub_failed} failed"), 2))
+        } else if sub_waiting > 0 {
+            Some((format!("{sub_waiting} waiting"), 1))
+        } else if sub_total > 0 {
+            Some((format!("{sub_total} subagent{}", if sub_total == 1 { "" } else { "s" }), 0))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let desc_room = (width - left - 8.0).max(48.0);
+    let desc = if child.detail.is_empty() {
+        String::new()
+    } else if query_terms.is_empty() {
+        fit_clean_line(&child.detail, desc_room, style::SMALL_SIZE)
+    } else {
+        fit_query_snippet(&child.detail, query_terms, desc_room, style::SMALL_SIZE)
+    };
+
+    let terms_owned: Vec<String> = query_terms.to_vec();
+    let guides = child.row.guides.clone();
+    let is_last = child.row.is_last;
+    let act = child.act;
+    let running = child.running;
+    let help = child.help;
+    let cli_word = child.row.entry.cli.chrome_name();
+    let state_val = state.map(|(w, _)| w).unwrap_or("Idle");
+    let agent_val = format!("{cli_word}; {state_val}");
+    let key = style::key((
+        (&child.row.entry.id, &title, &desc, act as u8, icon_act as u8, running, &help),
+        (depth, is_last, has_children, expanded, sub_total, sub_failed, sub_waiting, &guides, selected, &terms_owned),
+    ));
+
+    let title_for_fold = title.clone();
+    let row_canvas = canvas(move |g, b| {
         let p = theme::palette();
         let dark = p.mode == olo_theme::ThemeMode::Dark;
         let sel_rgba = style::selection_ground(&p, p.panel_background, false);
@@ -7758,52 +8356,96 @@ fn sidebar_subagent_row(sub: olo_rex_client::activity::SubagentInfo, selected: b
         if selected {
             style::fill_rect(g, b, ground);
         }
-        let (ink, quiet) = (style::c(p.panel_text), style::secondary_text(&p));
+        let (ink, quiet, muted) = (style::c(p.panel_text), style::secondary_text(&p), style::disabled_text(&p));
         let baseline1 = style::baseline_at(g, b.top() + px(11.5), style::PLAIN_SIZE);
         let name_mid = baseline1 - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-        let icon_b = style::snap_centred(g, point(b.left() + px(ACTIVITY_FOLD_W + SUB_INDENT + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
+        let icon_b = style::snap_centred(g, point(b.left() + px(ACTIVITY_FOLD_W + indent + ROW_ICON / 2.0), name_mid), ROW_ICON, ROW_ICON);
 
-        let guide_x = style::snap_coord(g, b.left() + px(ACTIVITY_FOLD_W + ROW_ICON / 2.0));
-        let guide_end = if is_last { name_mid } else { b.bottom() };
         let guide_c = if dark {
             let base_g = if selected { sel_rgba } else { p.panel_background };
-            style::c(olo_theme::mix(base_g, p.panel_text, if selected { 0.42 } else { 0.34 }))
+            style::c(olo_theme::mix(base_g, p.panel_text, if selected { 0.48 } else { 0.34 }))
         } else {
-            style::shade(&p, p.panel_background, 1.32)
+            style::shade(&p, if selected { sel_rgba } else { p.panel_background }, 1.32)
         };
-        style::vline(g, guide_x, b.top(), guide_end, guide_c);
-        style::hline(g, guide_x, icon_b.left() - px(2.0), name_mid, guide_c);
 
-        match sub_state {
-            SubagentState::Working => {
-                icons::paint(g, icon_b, icon_name);
-                let dot_c = point(icon_b.right() - px(3.0), icon_b.top() + px(3.0));
-                style::dot(g, dot_c, 7.0, ground);
-                style::dot(g, dot_c, 5.0, style::c(p.success));
+        // Ancestor continuation guides for nested depth >= 2.
+        for (lvl, &more) in guides.iter().take(depth.saturating_sub(1)).enumerate() {
+            if more {
+                let gx = style::snap_coord(g, b.left() + px(ACTIVITY_FOLD_W + (lvl as f32) * CHILD_INDENT + ROW_ICON / 2.0));
+                style::vline(g, gx, b.top(), b.bottom(), guide_c);
             }
-            SubagentState::Done => {
-                icons::paint(g, icon_b, icon_name);
+        }
+        // Own connector elbow from direct parent's icon center into this row's icon.
+        let parent_x = style::snap_coord(g, b.left() + px(ACTIVITY_FOLD_W + ((depth - 1) as f32) * CHILD_INDENT + ROW_ICON / 2.0));
+        if has_children {
+            // Break the vertical trunk cleanly 2.5 pt above and below the disclosure triangle
+            // centred on `parent_x` so the guide line never passes through ▾ / ▸.
+            let gap_top = (name_mid - px(7.0)).max(b.top());
+            if gap_top > b.top() {
+                style::vline(g, parent_x, b.top(), gap_top, guide_c);
             }
-            _ => {
-                widgets::strip::drawn_on(ground, || {
-                    widgets::agent_marks::paint(g, icon_b, icon_name, widgets::agent_marks::Marks { agent: mark, keep_going: false, auto_approve: false });
-                });
+            if !is_last {
+                let gap_bot = (name_mid + px(7.0)).min(b.bottom());
+                if b.bottom() > gap_bot {
+                    style::vline(g, parent_x, gap_bot, b.bottom(), guide_c);
+                }
             }
+        } else {
+            let guide_end = if is_last { name_mid } else { b.bottom() };
+            style::vline(g, parent_x, b.top(), guide_end, guide_c);
+            style::hline(g, parent_x, icon_b.left() - px(2.0), name_mid, guide_c);
+        }
+
+        // Downward stem connecting to nested grandchildren directly beneath this child's icon.
+        if has_children && expanded {
+            let own_x = style::snap_coord(g, icon_b.center().x);
+            style::vline(g, own_x, icon_b.bottom() + px(2.0), b.bottom(), guide_c);
+        }
+
+        if icon_act == AgentActivity::Done {
+            icons::paint(g, icon_b, "terminal");
+        } else {
+            widgets::strip::drawn_on(ground, || {
+                widgets::agent_marks::paint(g, icon_b, "terminal", marks_of(icon_act, &crate::agent::Help::default(), running));
+            });
         }
 
         let right_edge = b.right() - px(8.0);
-        let state_color = match urgent {
-            Some(_) if sub_state == SubagentState::Failed => style::c(p.failure),
-            Some(_) => crate::transcript_view::waiting_chrome_color(&p),
-            None => quiet,
-        };
-        let state_weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
-        let at = style::label_on_baseline(g, right_edge, baseline1, style::Align::Right, olo_kit::words::tr(state_word).to_string(), style::SMALL_SIZE, style::ui_font(state_weight), state_color);
+        let mut right = right_edge;
+        if help.auto_approve {
+            widgets::agent_marks::auto_approve_mark(g, point(right - px(4.5), name_mid), 9.0, ground);
+            right -= px(9.0 + m::MARK_GAP);
+        }
+        if help.keep_going {
+            widgets::agent_marks::keep_going_mark(g, point(right - px(4.0), name_mid), 9.0, ground);
+            right -= px(8.0 + m::MARK_GAP);
+        }
+        if let Some((text, urg)) = &collapsed_status {
+            let color = match *urg {
+                2 => style::c(p.failure),
+                1 => crate::transcript_view::waiting_chrome_color(&p),
+                _ => quiet,
+            };
+            let weight = if *urg > 0 { FontWeight::BOLD } else { FontWeight::NORMAL };
+            let at = style::label_on_baseline(g, right, baseline1, style::Align::Right, text.clone(), style::SMALL_SIZE, style::ui_font(weight), color);
+            right = at.left();
+        } else if let Some((word, urgent)) = state {
+            let state_color = match urgent {
+                Some(_) if act == AgentActivity::Error => style::c(p.failure),
+                Some(_) => crate::transcript_view::waiting_chrome_color(&p),
+                None if act == AgentActivity::Done => muted,
+                None => quiet,
+            };
+            let state_weight = if urgent.is_some() { FontWeight::BOLD } else { FontWeight::NORMAL };
+            let at = style::label_on_baseline(g, right, baseline1, style::Align::Right, olo_kit::words::tr(word).to_string(), style::SMALL_SIZE, style::ui_font(state_weight), state_color);
+            right = at.left();
+        }
         let left_x = b.left() + px(left);
-        paint_query_label(g, left_x, b.top() + px(11.5), &title, style::PLAIN_SIZE, FontWeight::MEDIUM, ink, (at.left() - px(10.0) - left_x).max(px(24.0)), &terms_owned, &p);
+        paint_query_label(g, left_x, b.top() + px(11.5), &title, style::PLAIN_SIZE, FontWeight::MEDIUM, ink, (right - px(8.0) - left_x).max(px(24.0)), &terms_owned, &p);
 
         if !desc.is_empty() {
-            paint_query_label(g, left_x, b.top() + px(25.5), &desc, style::SMALL_SIZE, FontWeight::NORMAL, quiet, (right_edge - left_x).max(px(24.0)), &terms_owned, &p);
+            let sub_max = (right_edge - left_x).max(px(24.0));
+            paint_query_label(g, left_x, b.top() + px(25.5), &desc, style::SMALL_SIZE, FontWeight::NORMAL, quiet, sub_max, &terms_owned, &p);
         }
 
         g.agent(agent::Node {
@@ -7818,18 +8460,42 @@ fn sidebar_subagent_row(sub: olo_rex_client::activity::SubagentInfo, selected: b
         });
     })
     .paint_key(key)
-    .w_full()
-    .h(px(SUB_ROW_H))
+    .size_full()
     .cursor(CursorStyle::PointingHand)
     .on_mouse_down(MouseButton::Left, move |_, cx| {
         on_click(&(), cx);
         cx.stop_propagation();
-    })
+    });
+
+    let mut wrapper = div().relative().w_full().h(px(SUB_ROW_H)).child(row_canvas);
+    if has_children {
+        let latch_x = ACTIVITY_FOLD_W + ((depth - 1) as f32) * CHILD_INDENT + ROW_ICON / 2.0;
+        let fold_label = format!("{} {}", if expanded { "Collapse" } else { "Expand" }, title_for_fold);
+        let latch_key = style::key(("act-sub-fold", &child.row.entry.id, expanded, selected));
+        let latch_btn = canvas(move |g, b| {
+            let p = theme::palette();
+            let quiet = style::secondary_text(&p);
+            let baseline = style::baseline_at(g, b.top() + px(11.5), style::PLAIN_SIZE);
+            let name_mid = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+            crate::transcript_view::paint_disclosure(g, point(b.center().x, name_mid), expanded, quiet);
+            g.agent(agent::Node { role: "Button", name: Some(fold_label.clone().into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
+        })
+        .paint_key(latch_key)
+        .absolute()
+        .left(px((latch_x - 8.0).max(0.0)))
+        .top(px(0.0))
+        .w(px(16.0))
+        .h(px(SUB_ROW_H))
+        .cursor(CursorStyle::PointingHand)
+        .on_mouse_down(MouseButton::Left, move |_, cx| {
+            on_toggle_fold(&(), cx);
+            cx.stop_propagation();
+        });
+        wrapper = wrapper.child(latch_btn);
+    }
+    wrapper
 }
 
-/// An Activity row: a pane an agent runs in (or a shell, where idle panes
-/// are shown), its host and what it says of itself, its agent's state,
-/// what it has on, and whether an agent runs there now.
 /// What an Activity row is called: its tab's name, as the tab strip
 /// names it (`hub::session_tab_names`), and where the tab holds more than
 /// one agent, each also by its own pane's title where that says more;
@@ -7850,34 +8516,24 @@ struct ActivityRow {
     act: AgentActivity,
     help: crate::agent::Help,
     running: bool,
+    parent_agent: Option<String>,
+    children: Vec<NativeChildItem>,
 }
 
-fn subagent_matches_type(sub: &olo_rex_client::activity::SubagentInfo, tf: &ActivityTypeFilter) -> bool {
-    use olo_rex_client::activity::SubagentOrigin;
+fn native_child_matches_type(child: &NativeChildItem, tf: &ActivityTypeFilter) -> bool {
+    use crate::subagents::AgentCli;
     match tf {
         ActivityTypeFilter::All => true,
-        ActivityTypeFilter::Claude => sub.kind.eq_ignore_ascii_case("claude"),
-        ActivityTypeFilter::Codex => sub.kind.eq_ignore_ascii_case("codex"),
-        ActivityTypeFilter::Agy => sub.kind.eq_ignore_ascii_case("agy") || sub.kind.eq_ignore_ascii_case("antigravity"),
-        ActivityTypeFilter::Tmux => sub.origin == SubagentOrigin::Tmux || sub.tmux.is_some(),
-        ActivityTypeFilter::Shell => sub.origin == SubagentOrigin::Shell,
-        ActivityTypeFilter::SubagentType(want) => sub.name.eq_ignore_ascii_case(want),
+        ActivityTypeFilter::Claude => child.row.entry.cli == AgentCli::Claude,
+        ActivityTypeFilter::Codex => child.row.entry.cli == AgentCli::Codex,
+        ActivityTypeFilter::Agy => child.row.entry.cli == AgentCli::Agy,
+        ActivityTypeFilter::Shell => false,
+        ActivityTypeFilter::SubagentType(want) => child.row.entry.role.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(want)) || child.row.entry.title.eq_ignore_ascii_case(want),
     }
 }
 
-fn subagent_matches_state(sub: &olo_rex_client::activity::SubagentInfo, sf: ActivityStateFilter) -> bool {
-    use olo_rex_client::activity::SubagentState;
-    match sf {
-        ActivityStateFilter::All => true,
-        ActivityStateFilter::Active => matches!(sub.state, SubagentState::Working | SubagentState::Waiting),
-        ActivityStateFilter::Working => sub.state == SubagentState::Working,
-        ActivityStateFilter::Waiting => sub.state == SubagentState::Waiting,
-        ActivityStateFilter::Failed => sub.state == SubagentState::Failed,
-        ActivityStateFilter::Done => sub.state == SubagentState::Done,
-    }
-}
-
-fn parent_matches_type(row: &ActivityRow, parent_agent: Option<&str>, tf: &ActivityTypeFilter) -> bool {
+fn parent_matches_type(row: &ActivityRow, tf: &ActivityTypeFilter) -> bool {
+    let parent_agent = row.parent_agent.as_deref();
     match tf {
         ActivityTypeFilter::All => true,
         ActivityTypeFilter::Claude => parent_agent.is_some_and(|a| a.eq_ignore_ascii_case("claude")) || row.title.to_ascii_lowercase().contains("claude"),
@@ -7886,7 +8542,7 @@ fn parent_matches_type(row: &ActivityRow, parent_agent: Option<&str>, tf: &Activ
             parent_agent.is_some_and(|a| a.eq_ignore_ascii_case("agy")) || row.title.to_ascii_lowercase().contains("antigravity") || row.title.to_ascii_lowercase().contains("agy")
         }
         ActivityTypeFilter::Shell => !row.running && parent_agent.is_none(),
-        ActivityTypeFilter::Tmux | ActivityTypeFilter::SubagentType(_) => false,
+        ActivityTypeFilter::SubagentType(_) => false,
     }
 }
 
@@ -7906,54 +8562,56 @@ fn terms_match(haystack_lower: &str, terms: &[String]) -> bool {
 }
 
 struct ActivityFilterMatch {
-    subs: Vec<olo_rex_client::activity::SubagentInfo>,
+    subs: Vec<NativeChildItem>,
     force_expand: bool,
     parent_matched: bool,
 }
 
-/// Filter a parent Activity row and its nested subagents by keyword query,
-/// harness/subagent type filter, and state filter.
+/// Filter a parent Activity row and its native nested subagents by keyword query,
+/// harness/role filter, and live state filter.
 /// Returns `Some(ActivityFilterMatch)` if the parent should appear (either directly
-/// or as a muted ancestor for matching subagents).
-fn filter_activity_entry(
-    row: &ActivityRow,
-    parent_agent: Option<&str>,
-    subs: &[olo_rex_client::activity::SubagentInfo],
-    query: &str,
-    tf: &ActivityTypeFilter,
-    sf: ActivityStateFilter,
-) -> Option<ActivityFilterMatch> {
-    use olo_rex_client::activity::{SubagentOrigin, SubagentState};
+/// or as a muted ancestor for matching child subagents).
+fn filter_activity_entry(row: &ActivityRow, query: &str, tf: &ActivityTypeFilter, sf: ActivityStateFilter) -> Option<ActivityFilterMatch> {
     let terms: Vec<String> = query.split_whitespace().map(|w| w.to_ascii_lowercase()).collect();
     let filter_active = !terms.is_empty() || *tf != ActivityTypeFilter::All || sf != ActivityStateFilter::All;
     if !filter_active {
-        return Some(ActivityFilterMatch { subs: subs.to_vec(), force_expand: false, parent_matched: true });
+        return Some(ActivityFilterMatch { subs: row.children.clone(), force_expand: false, parent_matched: true });
     }
 
-    let parent_hay = format!("{} {} {} {}", row.host, row.title, row.detail, parent_agent.unwrap_or("")).to_ascii_lowercase();
-    let parent_ok = parent_matches_type(row, parent_agent, tf) && parent_matches_state(row.act, sf) && terms_match(&parent_hay, &terms);
+    let parent_hay = format!("{} {} {} {}", row.host, row.title, row.detail, row.parent_agent.as_deref().unwrap_or("")).to_ascii_lowercase();
+    let parent_ok = parent_matches_type(row, tf) && parent_matches_state(row.act, sf) && terms_match(&parent_hay, &terms);
 
-    let matched_subs: Vec<olo_rex_client::activity::SubagentInfo> = subs
+    let matched_subs: Vec<NativeChildItem> = row
+        .children
         .iter()
-        .filter(|s| {
-            if !subagent_matches_type(s, tf) || !subagent_matches_state(s, sf) {
+        .filter(|c| {
+            if !native_child_matches_type(c, tf) || !parent_matches_state(c.act, sf) {
                 return false;
             }
             if terms.is_empty() {
                 return true;
             }
-            let origin_w = match s.origin {
-                SubagentOrigin::Tmux => "tmux",
-                SubagentOrigin::Native => "subagent native",
-                SubagentOrigin::Shell => "shell",
+            let state_w = match c.act {
+                AgentActivity::Working => "working",
+                AgentActivity::Blocked => "waiting blocked",
+                AgentActivity::Done => "done",
+                AgentActivity::Error => "failed error",
+                AgentActivity::Idle => "idle",
             };
-            let state_w = match s.state {
-                SubagentState::Working => "working",
-                SubagentState::Waiting => "waiting",
-                SubagentState::Done => "done",
-                SubagentState::Failed => "failed",
-            };
-            let sub_hay = format!("{} {} {} {} {} {} {}", s.name, s.kind, origin_w, s.description, state_w, row.host, row.title).to_ascii_lowercase();
+            let sub_hay = format!(
+                "{} {} {} {} {} {} {} {} {} {}",
+                c.row.entry.display_title(),
+                c.row.entry.role.as_deref().unwrap_or(""),
+                c.row.entry.cli.binary(),
+                c.row.entry.cli.display_name(),
+                c.row.entry.model,
+                c.row.entry.effort,
+                c.detail,
+                state_w,
+                row.host,
+                row.title
+            )
+            .to_ascii_lowercase();
             terms_match(&sub_hay, &terms)
         })
         .cloned()
@@ -7962,8 +8620,7 @@ fn filter_activity_entry(
     if !matched_subs.is_empty() {
         Some(ActivityFilterMatch { subs: matched_subs, force_expand: true, parent_matched: parent_ok })
     } else if parent_ok {
-        let show_children = if *tf == ActivityTypeFilter::All && sf == ActivityStateFilter::All && terms.is_empty() { subs.to_vec() } else { Vec::new() };
-        Some(ActivityFilterMatch { subs: show_children, force_expand: false, parent_matched: true })
+        Some(ActivityFilterMatch { subs: Vec::new(), force_expand: false, parent_matched: true })
     } else {
         None
     }
@@ -8242,7 +8899,37 @@ mod activity_tests {
 
     #[test]
     fn filters_activity_by_subagent_type_state_and_keywords() {
-        use olo_rex_client::activity::{SubagentInfo, SubagentOrigin, SubagentState};
+        use crate::subagents::{AgentCli, NativeSubagent, TreeRow};
+        let mk_child = |id: &str, wid: &str, parent_wid: &str, depth: usize, cli: AgentCli, title: &str, role: &str, detail: &str, act: AgentActivity| NativeChildItem {
+            row: TreeRow {
+                depth,
+                is_last: false,
+                guides: vec![],
+                entry: NativeSubagent {
+                    id: id.into(),
+                    host_key: "local".into(),
+                    session_id: "s1".into(),
+                    window_id: wid.into(),
+                    block_id: format!("b-{id}"),
+                    parent_window_id: parent_wid.into(),
+                    parent_block_id: None,
+                    cli,
+                    model: "test-model".into(),
+                    effort: "high".into(),
+                    title: title.into(),
+                    role: Some(role.into()),
+                    cwd: None,
+                    resume_id: None,
+                    started_at: 1,
+                },
+            },
+            bk: BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: format!("b-{id}") },
+            act,
+            detail: detail.into(),
+            running: true,
+            help: crate::agent::Help::default(),
+            has_children: false,
+        };
         let row = ActivityRow {
             bk: BlockKey { host_key: "local".into(), session_id: "s1".into(), block_id: "b1".into() },
             host: "This computer".into(),
@@ -8251,73 +8938,41 @@ mod activity_tests {
             act: AgentActivity::Working,
             help: crate::agent::Help::default(),
             running: true,
+            parent_agent: Some("claude".into()),
+            children: vec![
+                mk_child("c1", "w2", "win-1", 1, AgentCli::Claude, "API Audit", "Auditor", "claude · Checking parser bugs", AgentActivity::Working),
+                mk_child("a1", "w3", "w2", 2, AgentCli::Agy, "Schema Diff", "Reviewer", "agy · Visual QA of 2x shots", AgentActivity::Blocked),
+                mk_child("x1", "w4", "win-1", 1, AgentCli::Codex, "Unit Tests", "Tester", "codex · Nightly benchmark", AgentActivity::Done),
+            ],
         };
-        let subs = vec![
-            SubagentInfo {
-                id: "c1".into(),
-                kind: "claude".into(),
-                origin: SubagentOrigin::Native,
-                name: "Explore".into(),
-                description: "Audit parser bugs".into(),
-                state: SubagentState::Working,
-                pid: None,
-                transcript: None,
-                tmux: None,
-                started_ms: 1,
-            },
-            SubagentInfo {
-                id: "a1".into(),
-                kind: "agy".into(),
-                origin: SubagentOrigin::Tmux,
-                name: "agy-reviewer".into(),
-                description: "Visual QA of 2x shots".into(),
-                state: SubagentState::Waiting,
-                pid: None,
-                transcript: None,
-                tmux: None,
-                started_ms: 2,
-            },
-            SubagentInfo {
-                id: "x1".into(),
-                kind: "codex".into(),
-                origin: SubagentOrigin::Shell,
-                name: "Codex".into(),
-                description: "Nightly benchmark".into(),
-                state: SubagentState::Done,
-                pid: None,
-                transcript: None,
-                tmux: None,
-                started_ms: 3,
-            },
-        ];
 
-        // Unfiltered returns parent + all subagents without force-expanding.
-        let all = filter_activity_entry(&row, Some("claude"), &subs, "", &ActivityTypeFilter::All, ActivityStateFilter::All).unwrap();
+        // Unfiltered returns parent + all nested subagents without force-expanding.
+        let all = filter_activity_entry(&row, "", &ActivityTypeFilter::All, ActivityStateFilter::All).unwrap();
         assert_eq!(all.subs.len(), 3);
         assert!(!all.force_expand);
         assert!(all.parent_matched);
 
-        // Filter to a specific subagent type ("Explore") keeps parent as ancestor-only and shows only Explore.
-        let exp = filter_activity_entry(&row, Some("claude"), &subs, "", &ActivityTypeFilter::SubagentType("Explore".into()), ActivityStateFilter::All).unwrap();
+        // Filter to a specific subagent role ("Auditor") keeps parent as ancestor-only and shows only c1.
+        let exp = filter_activity_entry(&row, "", &ActivityTypeFilter::SubagentType("Auditor".into()), ActivityStateFilter::All).unwrap();
         assert_eq!(exp.subs.len(), 1);
-        assert_eq!(exp.subs[0].id, "c1");
+        assert_eq!(exp.subs[0].row.entry.id, "c1");
         assert!(exp.force_expand);
         assert!(!exp.parent_matched);
 
-        // Filter to harness ("agy") + keyword ("shots") matches agy-reviewer only.
-        let agy = filter_activity_entry(&row, Some("claude"), &subs, "shots", &ActivityTypeFilter::Agy, ActivityStateFilter::All).unwrap();
+        // Filter to harness ("agy") + keyword ("shots") matches grandchild a1 only.
+        let agy = filter_activity_entry(&row, "shots", &ActivityTypeFilter::Agy, ActivityStateFilter::All).unwrap();
         assert_eq!(agy.subs.len(), 1);
-        assert_eq!(agy.subs[0].id, "a1");
+        assert_eq!(agy.subs[0].row.entry.id, "a1");
         assert!(!agy.parent_matched);
 
-        // Filter by state (Waiting) keeps parent as ancestor-only because a child is Waiting.
-        let wait = filter_activity_entry(&row, Some("claude"), &subs, "", &ActivityTypeFilter::All, ActivityStateFilter::Waiting).unwrap();
+        // Filter by state (Waiting) keeps parent as ancestor-only because grandchild a1 is Blocked.
+        let wait = filter_activity_entry(&row, "", &ActivityTypeFilter::All, ActivityStateFilter::Waiting).unwrap();
         assert_eq!(wait.subs.len(), 1);
-        assert_eq!(wait.subs[0].id, "a1");
+        assert_eq!(wait.subs[0].row.entry.id, "a1");
         assert!(!wait.parent_matched);
 
         // Unmatched keyword hides the entire parent row.
-        assert!(filter_activity_entry(&row, Some("claude"), &subs, "nonexistent", &ActivityTypeFilter::All, ActivityStateFilter::All).is_none());
+        assert!(filter_activity_entry(&row, "nonexistent", &ActivityTypeFilter::All, ActivityStateFilter::All).is_none());
     }
 }
 

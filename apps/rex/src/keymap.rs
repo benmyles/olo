@@ -380,6 +380,89 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
     let command = || Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}}},"required":["args"]}));
     vec![
         ActionSpec {
+            id: "olo.agent.start",
+            title: "Launch a Native Nested Subagent Tab in Rex",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "tab", "claude", "codex", "agy", "spawn"],
+            args_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "cli": { "type": "string", "enum": ["claude", "codex", "agy"] },
+                    "model": { "type": "string" },
+                    "effort": { "type": "string" },
+                    "resume": { "type": "string" },
+                    "continue": { "type": "boolean" },
+                    "fork": { "type": "boolean" },
+                    "title": { "type": "string" },
+                    "role": { "type": "string" },
+                    "cwd": { "type": "string" },
+                    "prompt": { "type": "string" },
+                    "permission_mode": { "type": "string" },
+                    "approval": { "type": "string" },
+                    "sandbox": { "type": "string" },
+                    "mode": { "type": "string" },
+                    "args": { "type": "array", "items": { "type": "string" } }
+                }
+            })),
+        },
+        ActionSpec {
+            id: "olo.agent.list",
+            title: "List Nested Subagent Tabs in This Rex Session",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "list", "tree"],
+            args_schema: Some(json!({"type":"object","properties":{"args":{"type":"array","items":{"type":"string"}},"all":{"type":"boolean"},"tree":{"type":"boolean"},"json":{"type":"boolean"}}})),
+        },
+        ActionSpec {
+            id: "olo.agent.status",
+            title: "Inspect a Nested Subagent Tab’s Live Status",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "status", "state"],
+            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}})),
+        },
+        ActionSpec {
+            id: "olo.agent.read",
+            title: "Read a Nested Subagent Tab’s Screen or Scrollback",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "read", "tail", "output"],
+            args_schema: Some(
+                json!({"type":"object","properties":{"target":{"type":"string"},"lines":{"type":"integer"},"scrollback":{"type":"boolean"},"ansi":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+            ),
+        },
+        ActionSpec {
+            id: "olo.agent.watch",
+            title: "Wait for an Event or Pattern on a Nested Subagent Tab",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "watch", "wait", "alert", "question", "approval"],
+            args_schema: Some(
+                json!({"type":"object","properties":{"target":{"type":"string"},"on":{"type":"string"},"match":{"type":"string"},"regex":{"type":"string"},"timeout":{"type":"integer"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+            ),
+        },
+        ActionSpec {
+            id: "olo.agent.send",
+            title: "Send Text, Control Keys, or Special Keys to a Nested Subagent Tab",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "send", "input", "keys", "ctrl"],
+            args_schema: Some(
+                json!({"type":"object","properties":{"target":{"type":"string"},"text":{"type":"string"},"enter":{"type":"boolean"},"paste":{"type":"boolean"},"ctrl":{"type":"string"},"key":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+            ),
+        },
+        ActionSpec {
+            id: "olo.agent.stop",
+            title: "Stop and Close a Launched Nested Subagent Tab",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "stop", "close", "kill"],
+            args_schema: Some(
+                json!({"type":"object","properties":{"target":{"type":"string"},"force":{"type":"boolean"},"tree":{"type":"boolean"},"keep_tab":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"json":{"type":"boolean"}}}),
+            ),
+        },
+        ActionSpec {
+            id: "olo.agent.focus",
+            title: "Focus a Nested Subagent Tab in Rex",
+            category: "Olo Bridge",
+            keywords: &["agent", "subagent", "focus", "switch"],
+            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}}})),
+        },
+        ActionSpec {
             id: "olo.open",
             title: "Open a Link or a File on the Olo Desktop",
             category: "Olo Bridge",

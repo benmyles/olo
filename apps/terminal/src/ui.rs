@@ -1147,6 +1147,7 @@ impl Terminal {
                     group: tab.group,
                     faded: tab.hidden_tiled.then(|| olo_kit::words::tr("hidden when tiled").into()),
                     unread: tab.dot(),
+                    ..Default::default()
                 }
             })
             .collect();
@@ -1822,6 +1823,7 @@ impl Terminal {
                 }
                 cx.redraw_all();
             }
+            StripAction::TreeMenu(..) => {}
             StripAction::Menu(i, pos) => {
                 let shell = t.tabs[i].session.id;
                 let (place, label) = if side { ("tabs-top", "Tabs Along the Top") } else { ("tabs-side", "Tabs Down the Side") };

@@ -36,6 +36,7 @@ mod server_panel;
 mod settings;
 mod setup;
 mod shared;
+mod subagents;
 mod tailscale;
 mod terminal_pane;
 mod themes;

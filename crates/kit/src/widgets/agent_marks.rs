@@ -82,7 +82,9 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, name: &str, marks: Marks) {
             working_ring(g, ring, turn, rim, style::c(p.keyboard_navigation), p.mode == olo_theme::ThemeMode::Dark);
             g.paint_again_within(0.1);
         }
-        AgentMark::Asking => disc(g, at, 3.5, p.hue(olo_theme::Hue::Orange), Glyph::Bang),
+        // Warm near-black on asking orange in both light and dark themes
+        // (white is <3:1 on light orange and mismatches the Activity count pill).
+        AgentMark::Asking => mark(g, at, 3.5, style::c(p.hue(olo_theme::Hue::Orange)), rim, Glyph::Bang, style::c([0x2b, 0x16, 0x00, 0xff])),
         AgentMark::Failed => disc(g, at, 3.5, p.failure, Glyph::Cross),
         AgentMark::Done => disc(g, at, 3.0, p.success, Glyph::None),
         // (A ring, hollow: a grey dot was lost on the grey icon. Opus's

@@ -96,6 +96,13 @@ pub struct StripTab {
     /// say (`crate::unread`): a red dot after its title; `Some(Some(t))`,
     /// looked at since `t`, fading out over [`STRIP_DOT_FADE`].
     pub unread: Option<Option<std::time::Instant>>,
+    /// Number of nested child tabs under this top-level tab (`0` = none).
+    /// When `> 0`, a hierarchy tree icon button appears immediately left of
+    /// the close `×` button and emits [`StripAction::TreeMenu`].
+    pub children_count: usize,
+    /// Whether one of this tab's nested child tabs is currently active (so
+    /// the tree button highlights to indicate a child tab is focused).
+    pub child_active: bool,
 }
 
 /// How long a tab's red dot takes to fade once the tab is looked at (as
@@ -139,6 +146,9 @@ pub enum StripAction {
     New,
     /// A right-click on a tab, at the pointer (in the window).
     Menu(usize, Point<Pixels>),
+    /// Clicked the nested-child-tabs tree icon button on tab `usize`, with
+    /// the button's bounds in the window (for anchoring a tree popup menu).
+    TreeMenu(usize, Bounds<Pixels>),
     /// A tab dragged along the row to another place: `to` among the
     /// others, and the group it's in there.
     Move {
@@ -207,6 +217,9 @@ const TAB_MAX: f32 = 250.0;
 /// The close button's hit area, and the × in it.
 const CLOSE: f32 = 16.0;
 const CROSS: f32 = 7.0;
+/// The nested-child-tabs tree button's hit area and its gap before ×.
+const TREE: f32 = 16.0;
+const TREE_GAP: f32 = m::TIGHT;
 /// The + button, and its centre past the last tab.
 const NEW_SIZE: f32 = 20.0;
 const NEW_AFTER: f32 = 18.0;
@@ -294,6 +307,8 @@ pub struct TabStrip {
     content: Option<(Hsla, Hsla)>,
     /// The chosen tab doesn't open onto what's under the strip.
     closed: bool,
+    /// Tab index whose child-tab tree popover is currently open (drawn sunken).
+    tree_open: Option<usize>,
     /// The window it's in, as app_server knows it (its surface).
     window: Option<u32>,
     on_action: Option<ActionFn>,
@@ -301,7 +316,27 @@ pub struct TabStrip {
 
 impl TabStrip {
     pub fn new(id: impl Into<SharedString>, tabs: Vec<StripTab>, active: usize) -> TabStrip {
-        TabStrip { id: id.into(), tabs, active, max_width: f32::INFINITY, new_tab: true, groups: Vec::new(), chosen: None, side: false, content: None, closed: false, window: None, on_action: None }
+        TabStrip {
+            id: id.into(),
+            tabs,
+            active,
+            max_width: f32::INFINITY,
+            new_tab: true,
+            groups: Vec::new(),
+            chosen: None,
+            side: false,
+            content: None,
+            closed: false,
+            tree_open: None,
+            window: None,
+            on_action: None,
+        }
+    }
+
+    /// Marks tab `open`'s child-tab tree button as sunken while its popup menu is open.
+    pub fn tree_open(mut self, open: Option<usize>) -> Self {
+        self.tree_open = open;
+        self
     }
 
     /// The colours of what the tabs show (Terminal's ground and text):
@@ -377,6 +412,7 @@ impl TabStrip {
 enum Part {
     Tab(usize),
     Close(usize),
+    Tree(usize),
     Chip(usize),
     New,
     Edge,
@@ -418,6 +454,8 @@ struct Layout {
     /// tab, where.
     chips: Vec<(usize, usize, Bounds<Pixels>)>,
     closes: Vec<Bounds<Pixels>>,
+    /// Nested-child-tabs tree icon button (immediately left of `closes[i]`) for tabs with children.
+    trees: Vec<Option<Bounds<Pixels>>>,
     new: Option<Bounds<Pixels>>,
     edge: Option<Bounds<Pixels>>,
     /// Past the last tab (x along the top, y down the side).
@@ -451,6 +489,9 @@ impl Layout {
         }
         if let Some(i) = self.closes.iter().position(|r| r.contains(&at)) {
             return Some(Part::Close(i));
+        }
+        if let Some(i) = self.trees.iter().position(|r| r.is_some_and(|b| b.contains(&at))) {
+            return Some(Part::Tree(i));
         }
         if let Some(i) = self.slots.iter().position(|r| r.contains(&at)) {
             return Some(Part::Tab(i));
@@ -554,11 +595,15 @@ fn plus_mark(g: &mut Painter, center: Point<Pixels>, color: Hsla) {
     style::plus_mark(g, center, 10.0, 1.5, color);
 }
 
-/// A tab's name to agents: its title, what it's doing, its group.
+/// A tab's name to agents: its title, what it's doing, its child count, its group.
 fn tab_name(tab: &StripTab, group: Option<&StripGroup>) -> SharedString {
     let mut name = tab.label.to_string();
     if let Some(s) = &tab.status {
         name = format!("{name}, {s}");
+    }
+    if tab.children_count > 0 {
+        let noun = if tab.children_count == 1 { "child tab" } else { "child tabs" };
+        name = format!("{name}, {} {noun}", tab.children_count);
     }
     if let Some(f) = &tab.faded {
         name = format!("{name}, {f}");
@@ -626,8 +671,14 @@ impl TabStrip {
         // (Room after the last tab for its + and the strip's end.)
         let new_w = if self.new_tab { NEW_AFTER + NEW_SIZE / 2.0 + 12.0 } else { m::TIGHT };
         let bold = style::ui_font(FontWeight::BOLD);
-        let natural: Vec<f32> =
-            self.tabs.iter().map(|t| (f32::from(style::text_width(t.label.clone(), style::PLAIN_SIZE, bold.clone())) + sh.chrome()).clamp(TAB_MIN, TAB_MAX.min(self.max_width).max(TAB_MIN))).collect();
+        let natural: Vec<f32> = self
+            .tabs
+            .iter()
+            .map(|t| {
+                let extra = if t.children_count > 0 { TREE + TREE_GAP } else { 0.0 };
+                (f32::from(style::text_width(t.label.clone(), style::PLAIN_SIZE, bold.clone())) + sh.chrome() + extra).clamp(TAB_MIN, TAB_MAX.min(self.max_width).max(TAB_MIN))
+            })
+            .collect();
         let room = f32::from(full.size.width) - TAB_LEFT - new_w - fixed;
         let widths = fit_widths(&natural, room, TAB_MIN.min(sh.chrome() + 40.0));
         let mut chips = Vec::new();
@@ -648,9 +699,17 @@ impl TabStrip {
             x += widths[i];
         }
         let end = px(x);
-        let closes = slots.iter().map(|r| style::snap_centred(g, point(r.right() - px(sh.pad + CLOSE / 2.0 - 2.0), px(cy)), CLOSE, CLOSE)).collect();
+        let closes: Vec<Bounds<Pixels>> = slots.iter().map(|r| style::snap_centred(g, point(r.right() - px(sh.pad + CLOSE / 2.0 - 2.0), px(cy)), CLOSE, CLOSE)).collect();
+        let trees: Vec<Option<Bounds<Pixels>>> = slots
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                (self.tabs[i].children_count > 0 && r.size.width >= px(2.0 * sh.pad + 20.0 + CLOSE + TREE + TREE_GAP))
+                    .then(|| style::snap_centred(g, point(closes[i].left() - px(TREE_GAP + TREE / 2.0), px(cy)), TREE, TREE))
+            })
+            .collect();
         let new = self.new_tab.then(|| style::snap_centred(g, point(end + px(NEW_AFTER), px(cy)), NEW_SIZE, NEW_SIZE));
-        Layout { full, slots, chips, closes, new, edge: None, end, groups_of, cy: px(cy) }
+        Layout { full, slots, chips, closes, trees, new, edge: None, end, groups_of, cy: px(cy) }
     }
 
     /// Where everything goes down `full`: each group's label (as wide as
@@ -687,9 +746,16 @@ impl TabStrip {
             y += row_h + SIDE_TAB_GAP;
         }
         let end_row = style::snap(g, Bounds::from_corners(point(left, px(y + 2.0)), point(right, px(y + 2.0 + row_h))));
-        let closes = slots.iter().map(|r| style::snap_centred(g, point(r.right() - px(14.0 + CLOSE / 2.0 - 2.0), r.center().y.round()), CLOSE, CLOSE)).collect();
+        let closes: Vec<Bounds<Pixels>> = slots.iter().map(|r| style::snap_centred(g, point(r.right() - px(14.0 + CLOSE / 2.0 - 2.0), r.center().y.round()), CLOSE, CLOSE)).collect();
+        let trees: Vec<Option<Bounds<Pixels>>> = slots
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                (self.tabs[i].children_count > 0 && r.size.width >= px(92.0)).then(|| style::snap_centred(g, point(closes[i].left() - px(TREE_GAP + TREE / 2.0), r.center().y.round()), TREE, TREE))
+            })
+            .collect();
         let edge = Some(Bounds::from_corners(point(full.right() - px(4.0), full.top()), full.bottom_right()));
-        Layout { full, slots, chips, closes, new: self.new_tab.then_some(end_row), edge, end: end_row.top(), groups_of, cy: full.top() }
+        Layout { full, slots, chips, closes, trees, new: self.new_tab.then_some(end_row), edge, end: end_row.top(), groups_of, cy: full.top() }
     }
 }
 
@@ -698,12 +764,12 @@ fn side_chip(_g: &Painter, head: Bounds<Pixels>, _name: &SharedString) -> Bounds
     head
 }
 
-/// A side strip's New Tab in its row `r`, as it shows: its + and its
-/// name (the whole row takes a click).
+/// A side strip's New Tab in its row `r`, as it shows: its + centred in the
+/// 16 pt icon column and its label aligned flush with the tab labels above.
 fn side_new_tab(r: Bounds<Pixels>) -> Bounds<Pixels> {
     let text = style::text_width("New Tab", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL));
-    let left = r.left() + px(SIDE_LEFT + 6.0);
-    Bounds::from_corners(point(left, r.top()), point((left + px(22.0) + text).min(r.right()), r.bottom()))
+    let left = r.left() + px(SIDE_LEFT + SIDE_FACE);
+    Bounds::from_corners(point(left, r.top()), point((left + px(16.0 + 8.0) + text).min(r.right()), r.bottom()))
 }
 
 /// A group's name as its label says it: in capitals.
@@ -724,18 +790,91 @@ fn side_label_width(name: &SharedString, _sh: Shape) -> f32 {
     ((w + 2.0 * SIDE_LABEL_TEXT) / 2.0).ceil() * 2.0
 }
 
+/// Draws a crisp pixel-snapped 8×8 pt thin-line hierarchy tree icon (`├` over `└`)
+/// inside `r` (matching the stroke weight and vertical centering of `×`) with four
+/// distinct BeOS states:
+/// - **Rest:** secondary colour matching `×`, no fill or border.
+/// - **Child active:** high-contrast accent blue glyph (>= 4:1 on fill), no fill or border.
+/// - **Hover:** raised 1 px BeOS bevel (top/left highlight, bottom/right shadow).
+/// - **Pressed / Menu open:** sunken 1 px BeOS bevel with fill one step darker.
+fn tree_mark(g: &mut Painter, r: Bounds<Pixels>, hovered: bool, pressed: bool, child_active: bool, ink: Hsla, back: Hsla) {
+    let p = theme::palette();
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let accent = style::c(p.keyboard_navigation);
+    let snapped = style::snap(g, r);
+    let shine = if dark { lerp(back, white(), 0.22) } else { style::c(p.shine) };
+    let shadow = if dark { lerp(back, black(), 0.45) } else { lerp(back, black(), 0.26) };
+
+    let fill_under = if pressed {
+        let down_fill = if dark { lerp(back, black(), 0.20) } else { lerp(back, black(), 0.08) };
+        style::fill_rect(g, snapped, down_fill);
+        style::bevel(g, snapped, shadow, shine);
+        down_fill
+    } else if hovered {
+        let up_fill = if dark { lerp(back, white(), 0.06) } else { lerp(back, white(), 0.28) };
+        style::fill_rect(g, snapped, up_fill);
+        style::bevel(g, snapped, shine, shadow);
+        up_fill
+    } else {
+        back
+    };
+
+    let color = if child_active {
+        group_ink(accent, fill_under)
+    } else if hovered || pressed {
+        ink
+    } else {
+        lerp(ink, back, 0.3)
+    };
+
+    // Pixel-exact 8×8 pt flush-left hierarchy glyph (├ over └, zero leftward overhang,
+    // identical physical stroke width across 1×, 1.5×, and 2×).
+    let s = g.scale_factor();
+    let stroke = s.round().max(1.0);
+    let box_px = (8.0 * s).round().max(7.0);
+    let shift = if pressed { 0.5 * s } else { 0.0 };
+    let cx = (f32::from(snapped.center().x) * s + shift).round();
+    let cy = (f32::from(snapped.center().y) * s + shift).round();
+    let left = cx - (box_px / 2.0).floor();
+    let right = left + box_px;
+    let top = cy - (box_px / 2.0).floor();
+    let bot = top + box_px - stroke;
+    let mid = top + ((box_px - stroke) * 0.48).round();
+    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| Bounds::from_corners(point(px(x0 / s), px(y0 / s)), point(px(x1 / s), px(y1 / s)));
+    // Straight flush-left vertical trunk from top to bottom branch
+    style::fill_rect(g, rect(left, top, left + stroke, bot + stroke), color);
+    // Middle branch (├) joined cleanly to the trunk
+    style::fill_rect(g, rect(left, mid, right, mid + stroke), color);
+    // Bottom branch (└) joined cleanly to the trunk
+    style::fill_rect(g, rect(left, bot, right, bot + stroke), color);
+}
+
 /// A tab's face: its icon (if `icon` and it has one) at `face` and title
-/// after it in `ink` (bold when chosen), its close × while chosen or
-/// under the pointer (red under it; a badge in its place otherwise),
-/// centred on `cy`; `back`, what it's on.
+/// after it in `ink` (bold when chosen), optional nested-child-tabs tree
+/// button immediately left of its close × while chosen or under the
+/// pointer (red under it; a badge in its place otherwise), centred on
+/// `cy`; `back`, what it's on.
 #[allow(clippy::too_many_arguments)]
-fn tab_face(g: &mut Painter, tab: &StripTab, selected: bool, (pointed, on_close): (bool, bool), (face, cy, close): (Pixels, Pixels, Bounds<Pixels>), icon: bool, ink: Hsla, back: Hsla) {
+fn tab_face(
+    g: &mut Painter,
+    tab: &StripTab,
+    selected: bool,
+    (pointed, on_close): (bool, bool),
+    (face, cy, close, tree): (Pixels, Pixels, Bounds<Pixels>, Option<(Bounds<Pixels>, bool, bool)>),
+    icon: bool,
+    ink: Hsla,
+    back: Hsla,
+) {
     let badge = tab.badge.clone().filter(|_| icon);
     if pointed || selected && badge.is_none() {
         let color = if on_close { style::c(theme::palette().failure) } else { lerp(ink, back, 0.3) };
         style::close_mark(g, close.center(), CROSS, color);
     }
     let mut end = close.left() - px(m::TIGHT);
+    if let Some((tr, on_tree, tree_pressed)) = tree {
+        tree_mark(g, tr, on_tree, tree_pressed, tab.child_active, ink, back);
+        end = tr.left() - px(m::TIGHT);
+    }
     // Its red dot, after the title (the title cut short for it), fading
     // once looked at: drawn again each frame while it does.
     let dot = dot_strength(tab.unread);
@@ -842,10 +981,11 @@ impl IntoElement for TabStrip {
                 _ => None,
             };
             let under = under.filter(|_| drag.is_none());
+            let pressed_part = press.map(|(p, _, _)| p);
             if s.side {
-                paint_side(g, &s, full, &l, under, drag, lift);
+                paint_side(g, &s, full, &l, under, pressed_part, drag, lift);
             } else {
-                paint_top(g, &s, full, &l, under, drag, lift);
+                paint_top(g, &s, full, &l, under, pressed_part, drag, lift);
             }
             let p = theme::palette();
             let n = s.tabs.len();
@@ -899,10 +1039,13 @@ impl IntoElement for TabStrip {
             if let Some(edge) = l.edge.filter(|_| matches!(under, Some(Part::Edge)) || drag == Some(Drag::Edge)) {
                 g.set_cursor_style(CursorStyle::ResizeLeftRight, if drag == Some(Drag::Edge) { full.dilate(px(4096.0)) } else { edge });
             }
-            // Agents: each tab, its close box, the chips, New Tab.
+            // Agents: each tab, its child-tab tree button (when present), its close box, the chips, New Tab.
             for (i, tab) in s.tabs.iter().enumerate() {
                 let group = l.groups_of[i].and_then(|group| s.groups.get(group));
                 g.agent(agent::Node { role: "Tab", name: Some(tab_name(tab, group)), bounds: l.slots[i], enabled: true, clickable: true, selected: Some(i == s.active), ..Default::default() });
+                if let Some(tr) = l.trees[i] {
+                    g.agent(agent::Node::button(format!("Child tabs of {} ({})", tab.label, tab.children_count), tr));
+                }
                 g.agent(agent::Node::button(format!("Close {}", tab.label), l.closes[i]));
             }
             for &(group, _, r) in &l.chips {
@@ -1057,6 +1200,17 @@ impl IntoElement for TabStrip {
                     None if l.part_at(pos) != Some(part) => None,
                     None => match (part, e.button) {
                         (Part::Close(i), MouseButton::Left) | (Part::Tab(i), MouseButton::Middle) => Some(StripAction::Close(i)),
+                        (Part::Tree(i), MouseButton::Left | MouseButton::Right) => l.trees.get(i).copied().flatten().map(|tr| {
+                            // Top strip: hang flush from strip bottom hairline, aligned with button left edge.
+                            // Side strip: open flush against the side-tab rail's right divider, aligned with tab row top.
+                            let anchor = if s.side {
+                                let row = l.slots[i];
+                                Bounds::from_corners(point(row.left(), row.top()), point(l.full.right(), row.bottom()))
+                            } else {
+                                Bounds::from_corners(point(tr.left(), l.full.top()), point(tr.right(), l.full.bottom()))
+                            };
+                            StripAction::TreeMenu(i, anchor)
+                        }),
                         (Part::Tab(i), MouseButton::Right) => Some(StripAction::Menu(i, pos)),
                         (Part::Tab(i), MouseButton::Left) => Some(StripAction::Select(i)),
                         (Part::Chip(group), MouseButton::Left) if s.chosen.is_some() => Some(StripAction::ToggleGroup(group)),
@@ -1323,13 +1477,13 @@ fn last_of(l: &Layout, g: usize, first: usize) -> usize {
 /// pointer. A tab being dragged (`lift`: it, and how far) rides as a
 /// chosen one under the pointer, its place left empty.
 #[allow(clippy::too_many_arguments)]
-fn paint_top(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, under: Option<Part>, drag: Option<Drag>, lift: Option<(usize, Pixels)>) {
+fn paint_top(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, under: Option<Part>, pressed: Option<Part>, drag: Option<Drag>, lift: Option<(usize, Pixels)>) {
     let sh = Shape::now();
     let f = Folder::of(s.content);
     let n = s.tabs.len();
     style::fill_rect(g, full, f.ground);
     let lifted = |i: usize| lift.is_some_and(|(t, _)| t == i);
-    let pointed = |i: usize| matches!(under, Some(Part::Tab(t) | Part::Close(t)) if t == i);
+    let pointed = |i: usize| matches!(under, Some(Part::Tab(t) | Part::Close(t) | Part::Tree(t)) if t == i);
     // (Its icon only with room for it, a few letters and the ×.)
     let icons = |r: Bounds<Pixels>| r.size.width >= px(2.0 * sh.pad + 16.0 + 8.0 + 28.0 + CLOSE);
     // The labels.
@@ -1347,7 +1501,8 @@ fn paint_top(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, un
         let back = if pointed(i) { f.hover } else { f.behind };
         folder(g, r, back, f.light, f.shadow, f.soft, sh);
         crate::review::own_grid(g, r);
-        tab_face(g, tab, false, (pointed(i), under == Some(Part::Close(i))), (r.left() + px(sh.pad), l.cy, l.closes[i]), icons(r), f.ink, back);
+        let tree = l.trees[i].map(|tr| (tr, under == Some(Part::Tree(i)), s.tree_open == Some(i) || pressed == Some(Part::Tree(i))));
+        tab_face(g, tab, false, (pointed(i), under == Some(Part::Close(i))), (r.left() + px(sh.pad), l.cy, l.closes[i], tree), icons(r), f.ink, back);
     }
     // The line along the foot, but under the chosen tab: it opens onto
     // the content.
@@ -1373,7 +1528,8 @@ fn paint_top(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, un
             foot(g, dev(g, r.left()), dev(g, r.right()));
         }
         crate::review::own_grid(g, r);
-        tab_face(g, &s.tabs[s.active], true, (pointed(s.active), under == Some(Part::Close(s.active))), (r.left() + px(sh.pad), l.cy, l.closes[s.active]), icons(r), f.front_ink, f.front);
+        let tree = l.trees[s.active].map(|tr| (tr, under == Some(Part::Tree(s.active)), s.tree_open == Some(s.active) || pressed == Some(Part::Tree(s.active))));
+        tab_face(g, &s.tabs[s.active], true, (pointed(s.active), under == Some(Part::Close(s.active))), (r.left() + px(sh.pad), l.cy, l.closes[s.active], tree), icons(r), f.front_ink, f.front);
     }
     if let Some(plus) = l.new {
         let hov = under == Some(Part::New);
@@ -1388,8 +1544,9 @@ fn paint_top(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, un
         let d = style::snap_coord(g, d.clamp(full.left() - r.left(), full.right() - r.right()));
         let r = Bounds { origin: point(r.left() + d, r.top()), ..r };
         let close = Bounds { origin: point(l.closes[i].left() + d, l.closes[i].top()), ..l.closes[i] };
+        let tree = l.trees[i].map(|tr| (Bounds { origin: point(tr.left() + d, tr.top()), ..tr }, false, false));
         folder(g, r, f.front, f.front_light, f.front_shadow, f.outline, sh);
-        tab_face(g, &s.tabs[i], true, (false, false), (r.left() + px(sh.pad), l.cy, close), icons(r), f.front_ink, f.front);
+        tab_face(g, &s.tabs[i], true, (false, false), (r.left() + px(sh.pad), l.cy, close, tree), icons(r), f.front_ink, f.front);
     }
 }
 
@@ -1399,7 +1556,7 @@ fn paint_top(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, un
 /// its rows. A row being dragged rides as the chosen one under the
 /// pointer, as along the top.
 #[allow(clippy::too_many_arguments)]
-fn paint_side(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, under: Option<Part>, drag: Option<Drag>, lift: Option<(usize, Pixels)>) {
+fn paint_side(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, under: Option<Part>, pressed: Option<Part>, drag: Option<Drag>, lift: Option<(usize, Pixels)>) {
     let sh = Shape::now();
     let f = Folder::of(s.content);
     let lifted = |i: usize| lift.is_some_and(|(t, _)| t == i);
@@ -1443,7 +1600,7 @@ fn paint_side(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, u
     for (i, tab) in s.tabs.iter().enumerate().filter(|&(i, _)| !lifted(i)) {
         let r = l.slots[i];
         let row = Bounds::from_corners(point(lx, r.top()), point(rx, r.bottom()));
-        let pointed = matches!(under, Some(Part::Tab(t) | Part::Close(t)) if t == i);
+        let pointed = matches!(under, Some(Part::Tab(t) | Part::Close(t) | Part::Tree(t)) if t == i);
         let (back, ink) = if i == s.active {
             // (To the edge's outer side, its outlines meeting the edge's
             // ends: it opens onto the content.)
@@ -1461,24 +1618,26 @@ fn paint_side(g: &mut Painter, s: &TabStrip, full: Bounds<Pixels>, l: &Layout, u
         } else {
             (f.ground, f.ink)
         };
-        tab_face(g, tab, i == s.active, (pointed, under == Some(Part::Close(i))), (lx + px(SIDE_FACE), mid(g, r), l.closes[i]), icons(r), ink, back);
+        let tree = l.trees[i].map(|tr| (tr, under == Some(Part::Tree(i)), s.tree_open == Some(i) || pressed == Some(Part::Tree(i))));
+        tab_face(g, tab, i == s.active, (pointed, under == Some(Part::Close(i))), (lx + px(SIDE_FACE), mid(g, r), l.closes[i], tree), icons(r), ink, back);
     }
     if let Some(r) = l.new {
         let hov = under == Some(Part::New);
         let color = lerp(style::c(theme::palette().panel_text), f.ground, if hov { 0.0 } else { 0.3 });
         let y = mid(g, r);
-        let x = r.left() + px(SIDE_LEFT + 6.0);
+        let x = r.left() + px(SIDE_LEFT + SIDE_FACE);
         plus_mark(g, point(x + px(8.0), y), color);
-        style::label_fit(g, x + px(22.0), y, style::Align::Left, "New Tab", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, r.right() - px(m::TIGHT) - x - px(22.0));
+        style::label_fit(g, x + px(16.0 + 8.0), y, style::Align::Left, "New Tab", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, r.right() - px(m::TIGHT) - x - px(16.0 + 8.0));
     }
     if let Some((i, d)) = lift.filter(|&(i, _)| i < n) {
         let r = l.slots[i];
         let d = style::snap_coord(g, d.clamp(full.top() - r.top(), full.bottom() - r.bottom()));
         let r = Bounds { origin: point(r.left(), r.top() + d), ..r };
         let close = Bounds { origin: point(l.closes[i].left(), l.closes[i].top() + d), ..l.closes[i] };
+        let tree = l.trees[i].map(|tr| (Bounds { origin: point(tr.left(), tr.top() + d), ..tr }, false, false));
         let row = Bounds::from_corners(point(lx, r.top()), point(px(dev(g, rx) / sc), r.bottom()));
         side_folder(g, row, f.front, f.front_light, f.front_shadow, f.outline, false, sh);
-        tab_face(g, &s.tabs[i], true, (false, false), (lx + px(SIDE_FACE), mid(g, r), close), icons(r), f.front_ink, f.front);
+        tab_face(g, &s.tabs[i], true, (false, false), (lx + px(SIDE_FACE), mid(g, r), close, tree), icons(r), f.front_ink, f.front);
     }
 }
 

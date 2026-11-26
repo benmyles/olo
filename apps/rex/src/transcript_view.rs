@@ -1,6 +1,5 @@
-//! Terminal-themed live-streaming Transcript view (`render_transcript_view`),
-//! harmonized in-panel Find bar (`render_transcript_find_bar`), and bounded safe
-//! read-only `tmux attach -r -f ignore-size` viewer (`render_tmux_viewer`).
+//! Terminal-themed live-streaming Transcript view (`render_transcript_view`)
+//! and harmonized in-panel Find bar (`render_transcript_find_bar`).
 //!
 //! Styled directly from the active [`TerminalTheme`] (`background`, `foreground`,
 //! and contrast-verified ANSI 16 accents reserved for meaning: speaker identity,
@@ -10,25 +9,23 @@
 use std::{collections::HashSet, rc::Rc, sync::Arc};
 
 use olo_kit::{
-    Bounds, Child, CursorStyle, Element, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, KeyDownEvent, MouseButton, ParentElement as _, PathBuilder, Pixels, Point, ScrollHandle,
-    SharedString, Styled as _, TextRun, WindowCx, canvas, control_canvas, div, icons, metrics as m, point, px, relative, size, style, styled_text, theme, tip,
-    widgets::{Button, ScrollView, Segment, SegmentedControl, StringView, TextControl, TextField, agent_marks},
+    Bounds, Child, CursorStyle, Element, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, MouseButton, ParentElement as _, PathBuilder, Pixels, Point, ScrollHandle, SharedString, Styled as _,
+    TextRun, WindowCx, canvas, control_canvas, div, icons, metrics as m, point, px, relative, size, style, styled_text, theme, tip,
+    widgets::{Button, ScrollView, Segment, SegmentedControl, StringView, TextControl, TextField},
 };
 use olo_rex_client::activity::{
-    BodySegment, DiffLine, InlineKind, InlineSpan, MatchField, SearchMatch, Speaker, SubagentState, ToolCategory, ToolStatus, TranscriptEntry, classify_tool, extract_tool_diff, format_code_lang,
-    format_tool_input, friendly_tool_name, parse_inline_markdown,
+    BodySegment, DiffLine, InlineKind, InlineSpan, MatchField, SearchMatch, Speaker, ToolCategory, ToolStatus, TranscriptEntry, classify_tool, extract_tool_diff, format_code_lang, format_tool_input,
+    friendly_tool_name, parse_inline_markdown,
 };
 use olo_rex_vt::{Rgb, TerminalTheme};
 use olo_sync::Mutex;
 
 use crate::{
-    activity_watch::{TmuxViewer, TranscriptSession, ViewTarget},
-    settings,
-    terminal_pane::{self, Metrics, PanePaintArgs},
+    activity_watch::TranscriptSession,
     themes::{hsla, legible, mix},
 };
 
-/// Actions emitted by the Transcript / read-only Tmux viewer header and body.
+/// Actions emitted by the Transcript viewer header and body.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TranscriptDo {
     ShowTerminal,
@@ -154,28 +151,10 @@ impl TailPalette {
     }
 }
 
-pub fn subagent_mark(state: SubagentState) -> agent_marks::AgentMark {
-    match state {
-        SubagentState::Working => agent_marks::AgentMark::Working,
-        SubagentState::Waiting => agent_marks::AgentMark::Asking,
-        SubagentState::Done => agent_marks::AgentMark::None,
-        SubagentState::Failed => agent_marks::AgentMark::Failed,
-    }
-}
-
-pub fn subagent_state_word(state: SubagentState) -> (&'static str, Option<olo_theme::Rgba>) {
-    let p = theme::palette();
-    match state {
-        SubagentState::Waiting => ("Waiting", Some(p.hue(olo_theme::Hue::Orange))),
-        SubagentState::Failed => ("Failed", Some(p.failure)),
-        SubagentState::Working => ("Working", None),
-        SubagentState::Done => ("Done", None),
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HeaderStatus {
     Working,
+    #[allow(dead_code)]
     Waiting,
     Done,
     Failed,
@@ -509,13 +488,6 @@ pub fn render_transcript_view(
 
     let hdr_status = if error.is_some() {
         HeaderStatus::Failed
-    } else if let ViewTarget::SubagentTranscript { sub, .. } = &target {
-        match sub.state {
-            SubagentState::Failed => HeaderStatus::Failed,
-            SubagentState::Waiting => HeaderStatus::Waiting,
-            SubagentState::Done => HeaderStatus::Done,
-            SubagentState::Working => HeaderStatus::Working,
-        }
     } else if streaming {
         HeaderStatus::Working
     } else {
@@ -1418,174 +1390,6 @@ fn render_divider(tp: &TailPalette, label: &str, timestamp: &str) -> Element {
     };
     let text = if timestamp.is_empty() { label.to_owned() } else { format!("{label} · {timestamp}") };
     div().w_full().flex().flex_row().items_center().gap(px(m::TIGHT)).py(px(8.0)).child(rule()).child(StringView::new(text).size(style::SMALL_SIZE).color(tp.secondary).height(14.0)).child(rule())
-}
-
-/// Render the bounded safe read-only `tmux attach -r -f ignore-size` viewer:
-/// centers the remote pane's exact `cols × rows` BeOS sunken well inside the
-/// canvas when it fits, or pins it 12 pt top-left with scrollbars when larger
-/// than the viewport (never resizing the remote session), with a neutral cursor.
-#[allow(clippy::too_many_arguments)]
-pub fn render_tmux_viewer(
-    viewer: &Arc<Mutex<TmuxViewer>>,
-    visual: &Rc<terminal_pane::PaneVisualState>,
-    scroll: &ScrollHandle,
-    avail_w: f32,
-    avail_h: f32,
-    active_theme: &TerminalTheme,
-    metrics: &Metrics,
-    on_do: impl Fn(&TranscriptDo, &mut WindowCx) + 'static,
-) -> Element {
-    let on_do: Arc<dyn Fn(&TranscriptDo, &mut WindowCx)> = Arc::new(on_do);
-    let (target, title, error, remote_dims) = {
-        let g = viewer.lock().unwrap_or_else(|e| e.into_inner());
-        let dims = match &g.target {
-            ViewTarget::SubagentTmux { target, .. } => (target.cols, target.rows),
-            _ => g.terminal.size(),
-        };
-        (g.target.clone(), g.target.title(), g.error.clone(), dims)
-    };
-
-    let hdr_status = if error.is_some() {
-        HeaderStatus::Failed
-    } else if let ViewTarget::SubagentTmux { sub, .. } = &target {
-        match sub.state {
-            SubagentState::Failed => HeaderStatus::Failed,
-            SubagentState::Waiting => HeaderStatus::Waiting,
-            SubagentState::Done => HeaderStatus::Done,
-            SubagentState::Working => HeaderStatus::Working,
-        }
-    } else {
-        HeaderStatus::Working
-    };
-
-    let header = viewer_header(
-        "terminal",
-        title.clone(),
-        hdr_status,
-        true,
-        Some(("rex-tmux-ro-tip", "Attached with tmux attach -r -f ignore-size; the agent’s pane size is unchanged.")),
-        true,
-        target.has_transcript(),
-        true,
-        None,
-        on_do,
-    );
-
-    if let Some(err) = error {
-        return div().size_full().flex().flex_col().child(header).child(
-            div()
-                .flex_1()
-                .w_full()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap(px(6.0))
-                .child(StringView::new(olo_kit::words::tr("Read-only tmux attach unavailable").to_owned()).bold(true))
-                .child(StringView::new(err).size(style::SMALL_SIZE).dim(true)),
-        );
-    }
-
-    // Neutral tertiary grey cursor for read-only viewer (never focus-accent blue).
-    let mut ro_theme = active_theme.clone();
-    let fg = ro_theme.foreground;
-    let bg = ro_theme.background;
-    ro_theme.cursor = Some(Rgb { r: ((fg.r as u16 + bg.r as u16) / 2) as u8, g: ((fg.g as u16 + bg.g as u16) / 2) as u8, b: ((fg.b as u16 + bg.b as u16) / 2) as u8 });
-
-    let (cols, rows) = remote_dims;
-    let pad = settings::PADDING;
-    let grid_w = (cols as f32 * metrics.cell.0 + 2.0 * pad.0).ceil();
-    let grid_h = (rows as f32 * metrics.cell.1 + 2.0 * pad.1).ceil();
-
-    let v_paint = viewer.clone();
-    let theme_paint = ro_theme.clone();
-    let metrics_paint = metrics.clone();
-    let vis_paint = visual.clone();
-    let title_agent = title.clone();
-
-    let screen = canvas(move |g, rect| {
-        let mut guard = v_paint.lock().unwrap_or_else(|e| e.into_inner());
-        let v_ref = &mut *guard;
-        if v_ref.current_theme != theme_paint {
-            let _ = v_ref.terminal.apply_theme(&theme_paint);
-            v_ref.current_theme = theme_paint.clone();
-        }
-        let _ = v_ref.frame.capture(&mut v_ref.render_state, &v_ref.terminal);
-        let _ = terminal_pane::paint_pane(
-            g,
-            rect,
-            PanePaintArgs {
-                term: &mut v_ref.terminal,
-                frame: &v_ref.frame,
-                theme: &theme_paint,
-                metrics: &metrics_paint,
-                focused: false,
-                window_active: true,
-                copy_mode: None,
-                search_matches: &[],
-                hover_link: None,
-                preedit: None,
-                predicted: None,
-            },
-            &vis_paint,
-        );
-        g.agent(olo_kit::agent::Node {
-            role: "Terminal",
-            name: Some(format!("Read-only tmux: {title_agent}").into()),
-            bounds: rect,
-            focused: false,
-            enabled: true,
-            clickable: false,
-            ..Default::default()
-        });
-    })
-    .w(px(grid_w))
-    .h(px(grid_h))
-    .flex_shrink_0();
-
-    let well_frame = canvas(|g, b| {
-        let pal = theme::palette();
-        style::sunken(g, b, &pal, false);
-    })
-    .paint_key(909)
-    .absolute()
-    .inset_0();
-
-    let box_w = grid_w + 4.0;
-    let box_h = grid_h + 4.0;
-    let framed_pane = div().relative().p(px(2.0)).w(px(box_w)).h(px(box_h)).flex_shrink_0().child(screen).child(well_frame);
-
-    let p = theme::palette();
-    let canvas_h = (avail_h - olo_kit::widgets::STRIP_HEIGHT).max(100.0);
-    let need_h = box_w + 24.0 > avail_w;
-    let need_v = box_h + 24.0 > canvas_h;
-
-    let body = if !need_h && !need_v {
-        div().size_full().bg(style::c(p.panel_background)).flex().items_center().justify_center().child(framed_pane)
-    } else {
-        // Explicit outer size so Taffy's block layout inside `ScrollView` doesn't clamp
-        // `stage` to viewport width and disable the horizontal scrollbar on wide panes.
-        let stage = div().w(px(box_w + 24.0)).h(px(box_h + 24.0)).p(px(12.0)).flex_shrink_0().child(framed_pane);
-        ScrollView::new(scroll).vertical(need_v).horizontal(need_h).auto_hide(false).border(false).background(p.panel_background).child(stage).into_element()
-    };
-
-    let container_mark = canvas(|g, b| {
-        olo_kit::review::container(g, b);
-    })
-    .paint_key(910)
-    .absolute()
-    .inset_0();
-
-    div()
-        .relative()
-        .size_full()
-        .flex()
-        .flex_col()
-        .agent("Group", "agent-tmux-ro")
-        .agent_value(title)
-        .child(container_mark)
-        .child(header)
-        .child(div().relative().flex_1().min_h_0().w_full().flex().flex_col().child(body))
 }
 
 /// Draw a small BeOS disclosure triangle (`▸` collapsed / `▾` expanded) snapped to device pixels.

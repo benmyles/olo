@@ -3680,10 +3680,17 @@ it.
   `widgets::separator()` (a groove across).
 - `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
   under a menu bar (Terminal's shells), `STRIP_HEIGHT` (34) tall, each
-  a `StripTab { label, icon, status, badge, group, faded }`, drawn as
+  a `StripTab { label, icon, status, badge, group, faded, unread, children_count, child_active }`, drawn as
   folder tabs (Ben, 2026-11-14: "folder tabs → labels"; the options page
   is in the journal): BeOS's slanted in Classic, Mac OS 9's rounded at
-  the top in Platinum (`Shape`, from the look). The chosen tab is in
+  the top in Platinum (`Shape`, from the look). When `children_count > 0`,
+  a pixel-snapped 8×8 flush-left `├`/`└` hierarchy tree icon button appears
+  `metrics::TIGHT` (6 pt) left of × with four BeOS states (rest, high-contrast
+  child-active accent, raised hover bevel, sunken pressed/menu-open bevel via
+  `.tree_open(Option<usize>)`) and emits `StripAction::TreeMenu(index, anchor)`
+  (anchored flush to the top strip's bottom hairline or the side rail's right
+  divider) so any tabbed app can open a hierarchical child-tab popover menu
+  without overflowing the tab bar. The chosen tab is in
   the content's colours (`.content(fill, ink)`: Terminal's screen; else
   a document's), outlined as the window's frame is and open onto the
   content: the line along the strip's foot stops under it. The others
@@ -3936,7 +3943,15 @@ it.
   and ⇧ tightened and lifted onto the capitals' line). `.minimized(on)`
   marks an item a minimized window (a hollow diamond where the check
   goes, a lighter label, `minimized` to agents), as a Mac's Window menu
-  does. A menu shows no separator at either end or two together, so one
+  does. `.tree(depth, is_last, guides)` paints continuous pixel-snapped
+  1 px BeOS hierarchy guides (`├─`, `└─`, `│`) for nested tree items
+  (such as `TabStrip` child-tab switchers), `.detail(text)` adds quiet
+  baseline-matched secondary metadata in `SMALL_SIZE`, and
+  `.detail_status(prefix, status, tone)` aligns metadata and semantic
+  status (`DetailTone::{Secondary, Muted, Warning, Error}`) into two
+  clean left-aligned columns (`12 pt` apart, `24 pt` after the longest
+  label). Dark-mode popups use `frame_focused[0]` for a crisp 1 px outer
+  border over dark headers. A menu shows no separator at either end or two together, so one
   built with items it has only sometimes needs no care with them (a
   menu field's, whose items are counted, is left as it is). A press anywhere in the window a menu opened over puts it away
   (the `Frame` sees it first: app_server's popup grab hands an app's
