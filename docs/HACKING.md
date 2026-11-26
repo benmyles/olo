@@ -10900,6 +10900,34 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - Right-aligned labels: `style::label` rounds their left edge down, so
     they never run past their anchor.
   - The review measures a text field by its frame.
+- **A node's place is its cumulative place rounded** (2026-11-26; the
+  layout engine itself, `vendor/taffy/src/compute/mod.rs`,
+  `round_layout`). Layout is worked out in device pixels and rounded:
+  a size is the difference of two rounded edges, each rounded from where
+  it is in the window. Taffy rounded a node's offset in its parent by
+  itself, though, and whoever draws sums those offsets down the tree:
+  wherever two of them each ended on half a pixel (0.5 + 0.5 is 1, but
+  1 + 1 is 2), a node stood a pixel past the end of what it follows, or
+  a pixel into it. Under every tab strip at 1.25× and 1.75×: a 26-point
+  menu bar (32.5 px), then a column whose strip is 34 points (42.5 px);
+  the strip ended at row 75 and the pane began at 76. An offset is now
+  the difference of the node's rounded place and its parent's, so the
+  sum is the same number its neighbours' sizes were cut to
+  (`what_follows_a_row_begins_where_it_ends_at_every_scale`, five
+  scales, rows of even and odd heights). What it changed, 27 windows of
+  20 apps at 1, 1.25, 1.5, 1.75 and 2×, the build before against the
+  build after, pixel for pixel (noise taken out by the build before
+  against itself): at 1× and 2× a block here and there one pixel up or
+  down (a centred line of words: Telegram's "Choose a chat…",
+  Preferences' notes), each whole and unchanged in itself; at 1.25× and
+  1.75× most windows, by a pixel. The layout review on the same 135
+  window-and-scales: 16 findings gone (the seams under Rex's and
+  Tracker's strips, Token Pool's "almost line up" and "uneven rows",
+  Weather's "almost level"), none new. A layout pass costs what it did
+  (1,801 nodes, one changed, release: 124 to 131 µs before and after,
+  five runs each; `rounding_cost`). The 4-point grid above still holds
+  for what is *drawn* from a size (a divider at a column's edge): this
+  is only where nodes are put.
   `tools/dev/ui-lint --review --scales 1,1.25,1.5,1.75,2` checks every
   app at all five.
 - **Clients draw at the device size.** The Interface Kit asks app_server for

@@ -706,6 +706,25 @@ it a thousand times at once with a deadline (1.3% hung), then the same
 under `strace -f -e trace=sendmsg,recvmsg`: the bytes were the same in
 a good start and a stuck one up to the `Hello` read and never answered.
 
+### Two builds compared need the same data, and a timing its own program
+
+A build kept somewhere else (`cp --reflink` into `/var/tmp`, for a
+before and after) finds no `data/` beside it: it draws with the
+system's fonts and no icons, and every pixel of text differs from the
+tree's build for that alone. Give both `OLO_DATA=…/olo/data`
+(`tsession run NAME OLO_DATA=… PROGRAM`); the first comparison of the
+layout fix was all font (2026-11-26). And take the noise out first: the
+build before against itself (clocks, a chart by the hour: Token Pool,
+Kache, Weather). `tools/dev/kit-compare` runs one window at a time in
+one session; for many at once, a session a window, as
+`at_once.py` does for the Rex rig.
+
+`jato test … -- --nocapture` gave one `--ignored` cost test's printed
+time three runs running, to the tenth of a microsecond: a kept result
+said again, not three runs. To time a test, run its own program
+(`jato test --release -p PKG --no-run`, then the file it names under
+`target/release/build/PKG/*/out/`, with `NAME --ignored --nocapture`).
+
 ### Nothing is committed while a push-then-publish runs
 
 `tools/publish-release.sh` publishes at HEAD as it is when its turn
