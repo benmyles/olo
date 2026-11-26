@@ -526,9 +526,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             .auto_trees_as_laid_out()
             .into_iter()
             .map(|((workspace, output), t)| {
-                // (Its main window pinned: by that window's saved place.)
-                let pinned = self.pinned_main_of(&(workspace, output.clone())).and_then(|id| slots(id).first().copied());
-                crate::shell::autotile::SavedTree { workspace, output, tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like), pinned }
+                // (Its main window pinned and any locked slots: by saved place.)
+                let key = (workspace, output.clone());
+                let pinned = self.pinned_main_of(&key).and_then(|id| slots(id).first().copied());
+                let locked = self.locked_slots_of_key(&key).into_iter().filter_map(|(id, tile)| Some((slots(id).first().copied()?, tile))).collect();
+                crate::shell::autotile::SavedTree { workspace, output, tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like), pinned, locked }
             })
             .collect();
         if let Some(tp) = trees_path() {

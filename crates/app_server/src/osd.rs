@@ -55,6 +55,12 @@ pub enum Indicator {
     Mode(olo_protocol::WindowingMode),
     /// Main and Stack's main window pinned (⌃⌥⇧⌘M), or let go.
     Pinned(bool),
+    /// Auto-tiling slot lock toggled (dragged onto a hotspot or via menu/IPC).
+    SlotLocked {
+        tile: olo_protocol::Tile,
+        locked: bool,
+        window: Option<String>,
+    },
     /// Do Not Disturb on or off (a Magic Keyboard's key).
     DoNotDisturb {
         on: bool,
@@ -106,8 +112,51 @@ impl Indicator {
             Indicator::Mode(m) => m.title(),
             Indicator::Pinned(true) => "Main window pinned",
             Indicator::Pinned(false) => "Main window let go",
+            Indicator::SlotLocked { tile, locked: true, .. } => match tile {
+                olo_protocol::Tile::Left => "Locked to Left Half",
+                olo_protocol::Tile::Right => "Locked to Right Half",
+                olo_protocol::Tile::Top => "Locked to Top Half",
+                olo_protocol::Tile::Bottom => "Locked to Bottom Half",
+                olo_protocol::Tile::TopLeft => "Locked to Top Left Quarter",
+                olo_protocol::Tile::TopRight => "Locked to Top Right Quarter",
+                olo_protocol::Tile::BottomLeft => "Locked to Bottom Left Quarter",
+                olo_protocol::Tile::BottomRight => "Locked to Bottom Right Quarter",
+                _ => "Locked to Slot",
+            },
+            Indicator::SlotLocked { tile, locked: false, .. } => match tile {
+                olo_protocol::Tile::Left => "Unlocked from Left Half",
+                olo_protocol::Tile::Right => "Unlocked from Right Half",
+                olo_protocol::Tile::Top => "Unlocked from Top Half",
+                olo_protocol::Tile::Bottom => "Unlocked from Bottom Half",
+                olo_protocol::Tile::TopLeft => "Unlocked from Top Left Quarter",
+                olo_protocol::Tile::TopRight => "Unlocked from Top Right Quarter",
+                olo_protocol::Tile::BottomLeft => "Unlocked from Bottom Left Quarter",
+                olo_protocol::Tile::BottomRight => "Unlocked from Bottom Right Quarter",
+                _ => "Unlocked from Slot",
+            },
             Indicator::DoNotDisturb { on: true } => "Do Not Disturb on",
             Indicator::DoNotDisturb { on: false } => "Do Not Disturb off",
+        }
+    }
+
+    fn detail(&self) -> Option<std::borrow::Cow<'_, str>> {
+        use std::borrow::Cow;
+        match self {
+            Indicator::Caffeinated { detail, .. } => Some(Cow::Borrowed(detail.as_str())),
+            Indicator::Mode(m) => Some(Cow::Borrowed(m.detail())),
+            Indicator::Pinned(true) => Some(Cow::Borrowed("It keeps its place")),
+            Indicator::Pinned(false) => Some(Cow::Borrowed("A new window takes it")),
+            Indicator::SlotLocked { locked, window, .. } => {
+                let tail = if *locked { "Others tile around it" } else { "Back to Auto-Tiling" };
+                match window.as_deref().map(str::trim).filter(|w| !w.is_empty()) {
+                    Some(name) => {
+                        let short: String = if name.chars().count() > 22 { format!("{}…", name.chars().take(21).collect::<String>()) } else { name.to_owned() };
+                        Some(Cow::Owned(format!("{short} · {tail}")))
+                    }
+                    None => Some(Cow::Borrowed(tail)),
+                }
+            }
+            _ => None,
         }
     }
 
@@ -115,7 +164,13 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Pinned(_) | Indicator::Microphone { .. } | Indicator::Airplane { .. } | Indicator::DoNotDisturb { .. } => None,
+            Indicator::Caffeinated { .. }
+            | Indicator::Mode(_)
+            | Indicator::Pinned(_)
+            | Indicator::SlotLocked { .. }
+            | Indicator::Microphone { .. }
+            | Indicator::Airplane { .. }
+            | Indicator::DoNotDisturb { .. } => None,
         }
     }
 }
@@ -132,25 +187,54 @@ fn draw(ind: &Indicator, s: f64) -> Pixmap {
     let px = |l: f32| (l as f64 * s).round() as i32;
     let u = px(1.0).max(1);
     let title_size = TITLE * s as f32;
+    let detail_size = (TITLE - 1.0) * s as f32;
+    let detail_owned = ind.detail();
+    let is_slot = matches!(ind, Indicator::SlotLocked { .. });
+    let pad = px(if is_slot { 16.0 } else { PAD });
+    let gap = px(GAP);
+    let icon_w = px(if is_slot { 44.0 } else { ICON });
     let bar_w = SEGMENTS as i32 * px(SEGMENT);
-    let w = px(PAD) * 2 + px(ICON) + px(GAP) + bar_w;
-    let h = px(PAD) * 2 + px(ICON + 8.0);
+    let content_w = if ind.level().is_some() {
+        bar_w
+    } else {
+        let title_w = text::measure(ind.title(), title_size, true).ceil() as i32;
+        let detail_w = detail_owned.as_deref().map_or(0, |d| text::measure(d, detail_size, false).ceil() as i32);
+        title_w.max(detail_w).max(px(110.0)).min(px(if is_slot { 280.0 } else { 230.0 }))
+    };
+    let w = pad * 2 + icon_w + gap + content_w;
+    let h = if is_slot { pad * 2 + px(30.0) } else { px(PAD) * 2 + px(ICON + 8.0) };
     let mut pm = Pixmap::new(w as u32, h as u32).expect("indicator pixmap");
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let bg = if dark { olo_theme::tint(p.panel_background, 0.9) } else { p.panel_background };
     fill(&mut pm, 0, 0, w, h, p.frame_focused[0]);
-    fill(&mut pm, u, u, w - 2 * u, h - 2 * u, p.panel_background);
+    fill(&mut pm, u, u, w - 2 * u, h - 2 * u, bg);
     fill(&mut pm, u, u, w - 2 * u, u, p.shine);
     fill(&mut pm, u, u, u, h - 2 * u, p.shine);
     fill(&mut pm, u, h - 2 * u, w - 2 * u, u, p.shadow);
     fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.shadow);
 
-    let icon = (px(PAD) as f32, ((h - px(ICON)) / 2) as f32, px(ICON) as f32);
-    draw_icon(&mut pm, ind, icon, p.panel_text);
+    let icon = (pad as f32, ((h - icon_w) / 2) as f32, icon_w as f32);
+    draw_icon(&mut pm, ind, icon, p.panel_text, &p, s);
 
-    let x = px(PAD) + px(ICON) + px(GAP);
+    let x = pad + icon_w + gap;
+    if is_slot {
+        // Center the two-line optical letter bounds cleanly on the mini-screen's centerline
+        // with 16 pt padding on all four sides.
+        let cy = h as f32 / 2.0;
+        let title_y = text::top_for_centre(cy - (7.0 * s) as f32, title_size, true);
+        text::draw(&mut pm, ind.title(), x as f32, title_y, title_size, true, p.panel_text);
+        if let Some(detail) = detail_owned.as_deref() {
+            let detail = text::ellipsize(detail, detail_size, false, content_w as f32);
+            let sub_ink = olo_theme::mix(p.panel_text, bg, 0.30);
+            let detail_y = text::top_for_centre(cy + (7.5 * s) as f32, detail_size, false);
+            text::draw(&mut pm, &detail, x as f32, detail_y, detail_size, false, sub_ink);
+        }
+        return pm;
+    }
     let line = (title_size * 1.25).ceil() as i32;
-    let top = (h - line - px(6.0) - px(BAR)) / 2;
+    let top = (h - line - px(5.0) - px(BAR)) / 2;
     text::draw(&mut pm, ind.title(), x as f32, top as f32, title_size, true, p.panel_text);
-    let y = top + line + px(6.0);
+    let y = top + line + px(5.0);
     match ind.level() {
         Some(level) => {
             let on = lit(level);
@@ -166,17 +250,10 @@ fn draw(ind: &Indicator, s: f64) -> Pixmap {
             }
         }
         None => {
-            let detail = match ind {
-                Indicator::Caffeinated { detail, .. } => Some(detail.as_str()),
-                Indicator::Mode(m) => Some(m.detail()),
-                Indicator::Pinned(true) => Some("It keeps its place"),
-                Indicator::Pinned(false) => Some("A new window takes it"),
-                _ => None,
-            };
-            if let Some(detail) = detail {
-                let size = title_size * 11.0 / 12.0;
-                let detail = text::ellipsize(detail, size, false, bar_w as f32);
-                text::draw(&mut pm, &detail, x as f32, (y - px(2.0)) as f32, size, false, p.panel_text);
+            if let Some(detail) = detail_owned.as_deref() {
+                let detail = text::ellipsize(detail, detail_size, false, content_w as f32);
+                let sub_ink = olo_theme::mix(p.panel_text, bg, 0.30);
+                text::draw(&mut pm, &detail, x as f32, (y - px(1.0)) as f32, detail_size, false, sub_ink);
             }
         }
     }
@@ -184,7 +261,7 @@ fn draw(ind: &Indicator, s: f64) -> Pixmap {
 }
 
 /// The indicator's symbol in `(x, y, size)`.
-fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rgba: [u8; 4]) {
+fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rgba: [u8; 4], palette: &olo_theme::Palette, s: f64) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(rgba[0], rgba[1], rgba[2], rgba[3]);
     paint.anti_alias = true;
@@ -450,6 +527,112 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
                 }
             }
         }
+        Indicator::SlotLocked { tile, locked, .. } => {
+            // Pixel-snapped BeOS mini-screen matching the drag hotspot plates:
+            // locked = blue fill + white closed padlock in the slot;
+            // unlocked = blue/sky-blue 1 pt outline + open padlock in the same slot.
+            let u = (s.floor() as i32).max(1);
+            let px = |l: f64| (l * s).round() as i32;
+            let sw = px(44.0);
+            let sh = px(30.0);
+            let sx = x.round() as i32;
+            let sy = (pm.height() as i32 - sh) / 2;
+            let dark = palette.mode == olo_theme::ThemeMode::Dark;
+            let ground = if dark { olo_theme::tint(palette.panel_background, 0.9) } else { palette.panel_background };
+            let lit_c = if dark { olo_theme::mix(ground, [255, 255, 255, 255], 0.2) } else { olo_theme::mix(ground, palette.shine, 0.8) };
+            fill(pm, sx, sy, sw, u, palette.shade(ground, 1.15));
+            fill(pm, sx, sy + u, u, sh - u, palette.shade(ground, 1.15));
+            fill(pm, sx + u, sy + sh - u, sw - u, u, lit_c);
+            fill(pm, sx + sw - u, sy + u, u, sh - 2 * u, lit_c);
+            fill(pm, sx + u, sy + u, sw - 2 * u, u, palette.shade(ground, 1.55));
+            fill(pm, sx + u, sy + 2 * u, u, sh - 3 * u, palette.shade(ground, 1.55));
+            fill(pm, sx + 2 * u, sy + sh - 2 * u, sw - 3 * u, u, palette.shade(ground, 1.06));
+            fill(pm, sx + sw - 2 * u, sy + 2 * u, u, sh - 4 * u, palette.shade(ground, 1.06));
+            let (ix, iy, iw, ih) = (sx + 2 * u, sy + 2 * u, sw - 4 * u, sh - 4 * u);
+            fill(pm, ix, iy, iw, ih, palette.document_background);
+            let stroke_c = if dark { [126, 142, 162, 255] } else { [132, 146, 165, 255] };
+            let fill_c = olo_theme::mix(palette.document_background, stroke_c, if dark { 0.16 } else { 0.12 });
+            let mut draw_pane = |fx: f32, fy: f32, fw: f32, fh: f32| {
+                let x0 = ix + (fx * iw as f32).round() as i32 + u;
+                let y0 = iy + (fy * ih as f32).round() as i32 + u;
+                let x1 = ix + ((fx + fw) * iw as f32).round() as i32 - u;
+                let y1 = iy + ((fy + fh) * ih as f32).round() as i32 - u;
+                let (rw, rh) = (x1 - x0, y1 - y0);
+                if rw > 2 * u && rh > 2 * u {
+                    fill(pm, x0, y0, rw, rh, stroke_c);
+                    fill(pm, x0 + u, y0 + u, rw - 2 * u, rh - 2 * u, fill_c);
+                }
+            };
+            match tile {
+                olo_protocol::Tile::Left => {
+                    draw_pane(0.5, 0.0, 0.5, 0.5);
+                    draw_pane(0.5, 0.5, 0.5, 0.5);
+                }
+                olo_protocol::Tile::Right => {
+                    draw_pane(0.0, 0.0, 0.5, 0.5);
+                    draw_pane(0.0, 0.5, 0.5, 0.5);
+                }
+                olo_protocol::Tile::Top => {
+                    draw_pane(0.0, 0.5, 0.5, 0.5);
+                    draw_pane(0.5, 0.5, 0.5, 0.5);
+                }
+                olo_protocol::Tile::Bottom => {
+                    draw_pane(0.0, 0.0, 0.5, 0.5);
+                    draw_pane(0.5, 0.0, 0.5, 0.5);
+                }
+                olo_protocol::Tile::TopLeft => {
+                    draw_pane(0.0, 0.5, 0.5, 0.5);
+                    draw_pane(0.5, 0.0, 0.5, 1.0);
+                }
+                olo_protocol::Tile::TopRight => {
+                    draw_pane(0.5, 0.5, 0.5, 0.5);
+                    draw_pane(0.0, 0.0, 0.5, 1.0);
+                }
+                olo_protocol::Tile::BottomLeft => {
+                    draw_pane(0.0, 0.0, 0.5, 0.5);
+                    draw_pane(0.5, 0.0, 0.5, 1.0);
+                }
+                olo_protocol::Tile::BottomRight => {
+                    draw_pane(0.5, 0.0, 0.5, 0.5);
+                    draw_pane(0.0, 0.0, 0.5, 1.0);
+                }
+                _ => {}
+            }
+            let (fx, fy, fw, fh) = tile.fraction();
+            let x0 = ix + (fx * iw as f32).round() as i32 + u;
+            let y0 = iy + (fy * ih as f32).round() as i32 + u;
+            let x1 = ix + ((fx + fw) * iw as f32).round() as i32 - u;
+            let y1 = iy + ((fy + fh) * ih as f32).round() as i32 - u;
+            let (rw, rh) = (x1 - x0, y1 - y0);
+            let short = fh <= 0.55;
+            let want_w = if short { px(5.0) } else { px(7.0) };
+            let want_h = if short { px(7.0) } else { px(9.0) };
+            if *locked {
+                fill(pm, x0, y0, rw, rh, palette.control_highlight);
+                let pad_y = if rh >= 10 * u { 2 * u } else { u };
+                let lw = want_w.min(rw - 2 * u).max(5 * u);
+                let lh = want_h.min(rh - 2 * pad_y).max(5 * u);
+                if rw >= lw + 2 * u && rh >= lh + 2 * u {
+                    let lx = x0 + (rw - lw) / 2;
+                    let ly = y0 + (rh - lh) / 2;
+                    crate::shell::deco::draw_lock_glyph(pm, lx, ly, lw, lh, u, [255, 255, 255, 255], palette.control_highlight);
+                }
+            } else if rw > 2 * u && rh > 2 * u {
+                let accent_ink = if dark { olo_theme::mix(palette.control_highlight, [255, 255, 255, 255], 0.38) } else { palette.control_highlight };
+                fill(pm, x0, y0, rw, rh, accent_ink);
+                fill(pm, x0 + u, y0 + u, rw - 2 * u, rh - 2 * u, fill_c);
+                let inner_w = rw - 2 * u;
+                let inner_h = rh - 2 * u;
+                let pad_y = if inner_h >= 10 * u { 2 * u } else { u };
+                let lw = want_w.min(inner_w - 2 * u).max(5 * u);
+                let lh = want_h.min(inner_h - 2 * pad_y).max(5 * u);
+                if inner_w >= lw && inner_h >= lh {
+                    let lx = x0 + u + (inner_w - lw) / 2;
+                    let ly = y0 + u + (inner_h - lh) / 2;
+                    crate::shell::deco::draw_open_lock_glyph(pm, lx, ly, lw, lh, u, accent_ink, fill_c);
+                }
+            }
+        }
         Indicator::Caffeinated { on, .. } => {
             // A cup with a handle; steam while on.
             let mut pb = PathBuilder::new();
@@ -527,6 +710,13 @@ impl<B: Backend> AnvilState<B> {
         let Some(output) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() else { return };
         show(self.space.outputs(), &output, &ind);
     }
+
+    /// Show an indicator directly on `output` without querying the pointer
+    /// (safe to call from inside a pointer grab's `unset`).
+    pub fn show_indicator_on(&mut self, output: &Output, ind: Indicator) {
+        self.backend_data.wake(None);
+        show(self.space.outputs(), output, &ind);
+    }
 }
 
 #[cfg(test)]
@@ -562,6 +752,9 @@ mod tests {
             Indicator::Mode(olo_protocol::WindowingMode::Focus),
             Indicator::Pinned(true),
             Indicator::Pinned(false),
+            Indicator::SlotLocked { tile: olo_protocol::Tile::Left, locked: true, window: Some("Kache".into()) },
+            Indicator::SlotLocked { tile: olo_protocol::Tile::BottomRight, locked: true, window: Some("Weather".into()) },
+            Indicator::SlotLocked { tile: olo_protocol::Tile::Left, locked: false, window: Some("Kache".into()) },
             Indicator::DoNotDisturb { on: true },
             Indicator::DoNotDisturb { on: false },
         ];

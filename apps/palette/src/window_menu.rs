@@ -94,6 +94,8 @@ pub struct Facts {
     pub previous_main: bool,
     /// It's the main window, pinned (Pin as Main is checked).
     pub main_pinned: bool,
+    /// In auto-tiling mode, the screen slot this window is locked into.
+    pub locked_slot: Option<olo_protocol::Tile>,
     /// Its app's windows float always (Float Window ▸ Always:
     /// `TilingSettings::floating_apps`).
     pub app_floats: bool,
@@ -206,6 +208,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         };
         let (rolled, on_top, grouped, floating, floats_always, main) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always, w.main);
         let main_pinned = w.main_pinned;
+        let locked_slot = w.locked_slot;
         let (all_workspaces, scratch) = (w.all_workspaces, w.scratch);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_kit::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
@@ -238,6 +241,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             main,
             previous_main,
             main_pinned,
+            locked_slot,
             app_floats,
             app_workspace,
             app_pin,
@@ -367,23 +371,41 @@ pub fn build(f: &Facts) -> Menu {
     if !f.focus && !(f.auto && f.floating) && !f.beside.is_empty() {
         tile = tile.separator().submenu(f.beside.iter().fold(Menu::new("With Another Window"), |m, (id, label)| m.item(label.clone(), format!("tile-with:{id}"))));
     }
-    m = m.submenu(tile).separator();
+    m = m.submenu(tile);
+    if f.auto && !f.floating {
+        let mut slots = Menu::new("Lock to Slot");
+        const LOCK_SLOTS: [Tile; 8] = [Tile::Left, Tile::Right, Tile::Top, Tile::Bottom, Tile::TopLeft, Tile::TopRight, Tile::BottomLeft, Tile::BottomRight];
+        for (i, slot) in LOCK_SLOTS.into_iter().enumerate() {
+            if i == 4 {
+                slots = slots.separator();
+            }
+            let idx = Tile::CHOOSABLE.iter().position(|t| *t == slot).unwrap_or(0);
+            let on = f.locked_slot == Some(slot);
+            slots = slots.item(slot.title(), if on { "lock-slot:none".to_owned() } else { format!("lock-slot:{idx}") }).checked(on);
+        }
+        m = m.submenu(slots);
+        if let Some(slot) = f.locked_slot {
+            m = m.item(olo_kit::tr!("Unlock from {}", olo_kit::words::tr(slot.title())), "lock-slot:none").english(format!("Unlock from {}", slot.title()));
+        }
+    }
+    m = m.separator();
     // Where it is and shows: Pin (Ben, 2026-11-17: "i often have some windows like telegram
     // where i want it to always open in the top-left quarter, and phone
     // in the top-right quarter (of whatever desktop-workspace they
     // happen to be opened on) … right click the window title tab and
-    // choose Pin -> Always Main / Always [...] where Always [...] would
-    // be e.g. \"Always Top Left Quarter\" based on where that window
-    // currently is"). This window as the main one while it's here (Pin
-    // as Main: windows that open leave it its place), and its app's
-    // windows always, wherever they open: the main one, or in the part
-    // of the display this one is in now. An app's pin that is another
-    // place is listed too, checked, to take away. And the workspace its
-    // app's new windows open on (i3's `assign`): checked if they open
-    // here; chosen again, as any app's.
+    // choose Pin -> Always Open as Main / Always Open in [...]").
+    // This window as the main one while it's here (Pin as Main: windows
+    // that open leave it its place), and its app's windows always,
+    // wherever they open: the main one, or in the part of the display
+    // this one is in now. An app's pin that is another place is listed
+    // too, checked, to take away. And the workspace its app's new windows
+    // open on (i3's `assign`): checked if they open here; chosen again,
+    // as any app's.
     let mut pin = Menu::new("Pin");
     if f.main_and_stack {
         pin = shortcut(pin, "pin-main", "Pin as Main").checked(f.main_pinned).separator();
+    }
+    if f.main_and_stack {
         let on = f.app_pin == Some(Pin::Main);
         pin = pin.item(Pin::Main.title(), if on { "app-pin:none" } else { "app-pin:main" }).checked(on).enabled(has_app);
     } else if f.app_pin == Some(Pin::Main) {
@@ -396,7 +418,7 @@ pub fn build(f: &Facts) -> Menu {
             pin = pin.item(Pin::Part(tile).title(), if on { "app-pin:none".to_owned() } else { format!("app-pin:part:{n}") }).checked(on).enabled(has_app);
         }
         // (Not in a part with a name: tiled into one first, Tile ▸.)
-        None => pin = pin.item("Always Where It Is", "app-pin:none").enabled(false),
+        None => pin = pin.item("Always Open Where It Is", "app-pin:none").enabled(false),
     }
     if let Some(Pin::Part(other)) = f.app_pin.filter(|p| Some(*p) != f.place.map(Pin::Part)) {
         pin = pin.item(Pin::Part(other).title(), "app-pin:none").checked(true);
@@ -404,12 +426,8 @@ pub fn build(f: &Facts) -> Menu {
     if has_app && f.workspaces > 1 {
         let here = f.app_workspace == Some(f.workspace);
         let command = if here { "app-workspace:none".to_owned() } else { format!("app-workspace:{}", f.workspace) };
-        // (In the person's words, `format!` had left it English in every
-        // language; and as its neighbours, "Always Main", without the
-        // app's name, so it begins with the words Preferences ▸ Windows
-        // quotes, "Always Open on Workspace".)
         let n = f.workspace + 1;
-        pin = pin.separator().item(olo_kit::tr!("Always Open on Workspace {}", n), command).english(format!("Always Open on Workspace {n}")).checked(here);
+        pin = pin.item(olo_kit::tr!("Always Open on Workspace {}", n), command).english(format!("Always Open on Workspace {n}")).checked(here);
     }
     m = m.submenu(pin);
     // Move: to a workspace (every display's, left to right as Deskbar's
@@ -615,6 +633,13 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
             "float-always" | "unfloat-always" if !app.app_id.is_empty() => Request::SetAppFloating { app_id: app.app_id.clone(), floating: command == "float-always" },
             c if c.starts_with("app-workspace:") && !app.app_id.is_empty() => Request::SetAppWorkspace { app_id: app.app_id.clone(), workspace: c["app-workspace:".len()..].parse().ok() },
             c if c.starts_with("app-pin:") && !app.app_id.is_empty() => Request::SetAppPin { app_id: app.app_id.clone(), pin: pin_of(c), window: Some(window) },
+            "lock-slot:none" => Request::LockSlot { id: window, tile: None },
+            c if c.starts_with("lock-slot:") => {
+                let Some(tile) = c["lock-slot:".len()..].parse::<usize>().ok().and_then(|i| Tile::CHOOSABLE.get(i).copied()) else {
+                    return;
+                };
+                Request::LockSlot { id: window, tile: Some(tile) }
+            }
             "ungroup" => Request::UngroupWindow { id: window },
             "close" => Request::Close { id: window },
             _ => return,
@@ -758,6 +783,7 @@ mod tests {
             main: false,
             previous_main: false,
             main_pinned: false,
+            locked_slot: None,
             app_floats: false,
             app_workspace: None,
             app_pin: None,
@@ -873,32 +899,32 @@ mod tests {
         };
         let it = |label: &str, command: &str, checked: bool, enabled: bool| (label.to_owned(), command.to_owned(), checked, enabled);
         // A window in no part with a name: nothing to pin it to yet.
-        assert_eq!(pins(&facts), [it("Always Where It Is", "app-pin:none", false, false)]);
+        assert_eq!(pins(&facts), [it("Always Open Where It Is", "app-pin:none", false, false)]);
         // In the top left quarter: always there, by where it is; chosen
         // again, taken away.
         let quarter = Facts { place: Some(Tile::TopLeft), ..facts.clone() };
-        assert_eq!(pins(&quarter), [it("Always Top Left Quarter", "app-pin:part:4", false, true)]);
+        assert_eq!(pins(&quarter), [it("Always Open in Top Left Quarter", "app-pin:part:4", false, true)]);
         assert_eq!(pin_of("app-pin:part:4"), Some(Pin::Part(Tile::TopLeft)));
-        assert_eq!(pins(&Facts { app_pin: Some(Pin::Part(Tile::TopLeft)), ..quarter.clone() }), [it("Always Top Left Quarter", "app-pin:none", true, true)]);
+        assert_eq!(pins(&Facts { app_pin: Some(Pin::Part(Tile::TopLeft)), ..quarter.clone() }), [it("Always Open in Top Left Quarter", "app-pin:none", true, true)]);
         // Pinned elsewhere: where it is now offered, the pin there is
         // listed and checked.
         assert_eq!(
             pins(&Facts { app_pin: Some(Pin::Part(Tile::Right)), ..quarter.clone() }),
-            [it("Always Top Left Quarter", "app-pin:part:4", false, true), it("Always Right Half", "app-pin:none", true, true)]
+            [it("Always Open in Top Left Quarter", "app-pin:part:4", false, true), it("Always Open in Right Half", "app-pin:none", true, true)]
         );
         // Main and Stack's tile: Pin as Main (this window, with its
-        // key), Always Main (its app's), and where it is.
+        // key), Always Open as Main (its app's), and where it is.
         let main_tile = Facts { place: Some(Tile::LeftTwoThirds), ..tile.clone() };
         assert_eq!(
             pins(&main_tile),
-            [it("Pin as Main", "shortcut:pin-main", false, true), it("Always Main", "app-pin:main", false, true), it("Always Left Two Thirds", "app-pin:part:11", false, true)]
+            [it("Pin as Main", "shortcut:pin-main", false, true), it("Always Open as Main", "app-pin:main", false, true), it("Always Open in Left Two Thirds", "app-pin:part:11", false, true)]
         );
         assert_eq!((pin_of("app-pin:main"), pin_of("app-pin:none"), pin_of("app-pin:part:99")), (Some(Pin::Main), None, None));
         let pinned = pins(&Facts { main: true, main_pinned: true, app_pin: Some(Pin::Main), ..main_tile.clone() });
-        assert_eq!(pinned[..2], [it("Pin as Main", "shortcut:pin-main", true, true), it("Always Main", "app-pin:none", true, true)]);
+        assert_eq!(pinned[..2], [it("Pin as Main", "shortcut:pin-main", true, true), it("Always Open as Main", "app-pin:none", true, true)]);
         // (An app pinned as Main, its window where tiles aren't Main and
         // Stack's: still there to take away.)
-        assert_eq!(pins(&Facts { app_pin: Some(Pin::Main), ..quarter.clone() })[0], it("Always Main", "app-pin:none", true, true));
+        assert_eq!(pins(&Facts { app_pin: Some(Pin::Main), ..quarter.clone() })[0], it("Always Open as Main", "app-pin:none", true, true));
         // Its app's own workspace is Pin's too: the one it's on, checked
         // once its app's windows open there, chosen again to let go.
         fn within<'a>(menu: &'a Menu, title: &str) -> &'a Menu {
@@ -912,6 +938,15 @@ mod tests {
         };
         assert_eq!(own_space(&facts), Some(("Always Open on Workspace 2".into(), "app-workspace:1".into(), false)));
         assert_eq!(own_space(&Facts { app_workspace: Some(1), ..facts.clone() }), Some(("Always Open on Workspace 2".into(), "app-workspace:none".into(), true)));
+        // Auto-tiling: top-level window menu offers `Lock to Slot` directly under `Tile`,
+        // and `Unlock from <Slot>` directly below it when locked.
+        let auto_unlocked = Facts { auto: true, ..facts.clone() };
+        let built = build(&auto_unlocked);
+        let lock_sub = within(&built, "Lock to Slot");
+        assert!(lock_sub.items.iter().any(|i| matches!(i, menu::MenuItem::Action(a) if a.label == "Left Half" && a.command == "lock-slot:0")));
+        let auto_locked = Facts { auto: true, locked_slot: Some(Tile::Left), ..facts.clone() };
+        let built_locked = build(&auto_locked);
+        assert!(built_locked.items.iter().any(|i| matches!(i, menu::MenuItem::Action(a) if a.label == "Unlock from Left Half" && a.command == "lock-slot:none" && !a.checked)));
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();

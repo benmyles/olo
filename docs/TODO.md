@@ -199,13 +199,9 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Auto-tiling: dragging a window shows hotspots to lock it into a
-  specific slot while remaining unlocked windows auto-tile around it**
-  (Ben, 2026-11-25: "when i'm in auto-tiling mode and drag a window it
-  should still show me the hotspots so that i can drag to a specific spot
-  and 'lock that one window into it' and then the other windows not locked
-  in to a spot still tile the remaining space around it based on the
-  tiling algo selected").
+- **Pre-existing snap-pad & menu nits noted during Auto-Tiling locked-slots reviews** (Opus 5.5 R2/R3, 2026-11-26; there before locked slots):
+  - Full-screen `S` top drag strip vs centered plate geometry and `Look::Back` keycap styling.
+  - Popup menu checkmark (`✓`) left gutter sits tight against the menu's left edge (`crates/kit/src/widgets/menu.rs`).
 
 - **About Olo, what its reviewers found there before Check Now's row**
   (2026-11-25, Astra 6.2 and Opus 5.5 over three rounds):
@@ -11038,6 +11034,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Auto-tiling: dragging a window shows hotspots to lock it into a specific slot while remaining unlocked windows auto-tile around it**~~ (done 2026-11-26, commit after 8fc7b5ccd):
+  - Dragging any tiled window in Auto-Tiling mode brings up all nine perimeter snap hotspots (`Q W E A S D Z X C`) plus swap pads on other tiles (`crates/app_server/src/shell/snap.rs`), with slate rest panes around the accent-blue target slot and a centered white padlock inside it; dragging an already-locked window adds a centered `Unlock` (`U`) pad with a matched accent-outlined slot icon and open padlock (no knockout box) and a compact padlock inside the `S` strip.
+  - Hovering any pad hides other pads cleanly (zero floating keycaps over previewed windows) and previews both the window frame and live tab padlock (`deco.rs`, `snap.rs`); releasing on a slot locks the window (`crates/app_server/src/shell/autotile.rs`) while remaining unlocked windows tile the residual region across all 7 layouts (`Halves`, `Columns`, `Rows`, `Grid`, `Main and Stack`, `Spiral`, `Scrolling`), including multi-locked slots, layout switches, window additions/closures, tile swaps, and in-place `app_server` reloads (`layout.rs`).
+  - Pixel-snapped `7:9` portrait tab padlock badge (`deco.rs`, exact `4 pt` title gap, parity-aligned keyhole across `1×`–`2×`, olive focused ink and quieter unfocused ink), matched `44 × 30 pt` `SlotLocked` OSD toast with window-name attribution (`osd.rs`), top-level Window menu `Lock to Slot ▸` & `Unlock from <Slot>` directly under `Tile ▸` with parallel `Pin ▸` (`Always Open in …`) wording (`apps/palette/src/window_menu.rs`, `crates/protocol/src/shortcuts.rs`), and full IPC support (`Request::LockSlot`, `WindowInfo::locked_slot`, `SnapPad::lock`).
+  - Reviewed through 3 full rounds by Opus 5.5 max and Gemini 4 Neon xhigh; all 80 `olo-protocol`, 265 `app_server`, and 30 `olo-palette` tests plus 39/39 `tools/dev/snap-check` checks passed; release idle/drag timings measured.
 
 - ~~**Phone service: self-heal Bluetooth `br-connection-busy` stuck state & sync outgoing replies sent from the phone**~~ (done 2026-11-26, commit after 7e0e4b4ea):
   - Bluetooth `br-connection-busy` self-heal (`crates/system/src/phone/link.rs`, `apps/phone/src/service.rs`): matches both `org.bluez.Error.Failed: br-connection-busy` and `org.bluez.Error.InProgress` regardless of whether `Device1.Connected` is true (wedged ACL/LE bearer) or false; automatically runs `Device1.Disconnect`, waits 2 s (`UNSTICK_SETTLE`), runs `Device1.Connect`, and retries MAP profile opening (never disconnecting during an active hands-free call), repeating with exponential backoff (`60s → 2m → 5m → 10m → 15m`) if it stays stuck, and resetting immediately on manual `Reconnect`.

@@ -120,6 +120,9 @@ pub struct Decoration {
     /// Its window has something unread (`WindowMeta::unread`): room on
     /// the tab for the red dot, drawn over it (`dot_elements`).
     pub dot: bool,
+    /// Its window is locked into an explicit slot in auto-tiling mode:
+    /// draws a crisp padlock glyph beside the zoom box.
+    pub locked: bool,
     /// The red dot as drawn (its device size and colour).
     dot_look: Option<((i32, [u8; 4]), MemoryRenderBuffer)>,
 }
@@ -130,6 +133,12 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 /// gap from the title.
 const DOT: i32 = 7;
 const DOT_GAP: i32 = 5;
+/// The slot-lock padlock glyph on a locked auto-tiled window's tab:
+/// 7 × 9 pt overall (`7×9 px` at 1×, `10×13 px` at 1.5×, `14×18 px` at 2×),
+/// grouped 4 pt after the title and 7–8 pt (`TITLE_GAP`) before the zoom box.
+const LOCK_W: i32 = 7;
+const LOCK_H: i32 = 9;
+const LOCK_GAP: i32 = 4;
 
 /// The red dot is after the title, by the zoom box, as Deskbar's is
 /// after the app's name; not before it, by the close box (both tried,
@@ -198,6 +207,8 @@ struct TabKey {
     zoom: bool,
     /// It has room for the red dot (`Decoration::dot`).
     dot: bool,
+    /// It is locked into an auto-tiling slot (`Decoration::locked`).
+    locked: bool,
 }
 
 impl TabKey {
@@ -381,6 +392,7 @@ impl Default for Decoration {
             frame_commit: CommitCounter::default(),
             frame_key: None,
             dot: false,
+            locked: false,
             dot_look: None,
         }
     }
@@ -395,14 +407,16 @@ pub struct TabLayout {
     pub zoom: bool,
     /// It has the red dot beside its title (`Decoration::dot`).
     pub dot: bool,
+    /// It is locked into an auto-tiling slot (`Decoration::locked`).
+    pub locked: bool,
 }
 
 /// What a tab holds beside its title: the close box and its gap at the
 /// left, and at the right the zoom box and its gap, or, with no zoom
-/// box, the tab's own edge as far from the title; and the red dot and its
-/// gap, with one.
-fn beside_title(zoom: bool, dot: bool) -> i32 {
-    (BOX_INSET + BOX_SIZE + TITLE_GAP) + if zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP } + if dot { DOT + DOT_GAP } else { 0 }
+/// box, the tab's own edge as far from the title; plus the padlock glyph
+/// and red dot when present.
+fn beside_title(zoom: bool, dot: bool, locked: bool) -> i32 {
+    (BOX_INSET + BOX_SIZE + TITLE_GAP) + if zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP } + if dot { DOT + DOT_GAP } else { 0 } + if locked { LOCK_W + LOCK_GAP } else { 0 }
 }
 
 impl TabLayout {
@@ -416,9 +430,9 @@ impl TabLayout {
         Rectangle::new((self.x + self.width - BOX_INSET - BOX_SIZE, (TAB_HEIGHT - BOX_SIZE) / 2).into(), (BOX_SIZE, BOX_SIZE).into())
     }
     /// Room for the title between the boxes (to the tab's edge, with no
-    /// zoom box), and the red dot's beside it.
+    /// zoom box), and the red dot / lock glyph beside it.
     pub fn title_space(&self) -> i32 {
-        self.width - beside_title(self.zoom, self.dot)
+        self.width - beside_title(self.zoom, self.dot, self.locked)
     }
 
     /// Where the title starts, from the tab's left (past the red dot,
@@ -428,9 +442,10 @@ impl TabLayout {
     }
 
     /// Where the red dot is (element-local), with one: by the close box
-    /// before the title, or by the zoom box after it.
+    /// before the title, or left of the lock glyph / zoom box after it.
     pub fn dot_rect(&self) -> Rectangle<i32, Logical> {
-        let x = if dot_left() { self.x + BOX_INSET + BOX_SIZE + TITLE_GAP } else { self.x + self.width - if self.zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP } - DOT };
+        let right_reserve = if self.zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP } + if self.locked { LOCK_W + LOCK_GAP } else { 0 };
+        let x = if dot_left() { self.x + BOX_INSET + BOX_SIZE + TITLE_GAP } else { self.x + self.width - right_reserve - DOT };
         Rectangle::new((x, (TAB_HEIGHT - DOT) / 2).into(), (DOT, DOT).into())
     }
 }
@@ -469,7 +484,7 @@ impl Decoration {
 
     /// How wide a tab wants to be for `title`, with room for it all.
     pub fn wanted_tab_width(&mut self, title: &str) -> i32 {
-        (beside_title(!self.zoomless, self.dot) + self.title_width(title)).max(MIN_TAB_WIDTH)
+        (beside_title(!self.zoomless, self.dot, self.locked) + self.title_width(title)).max(MIN_TAB_WIDTH)
     }
 
     pub fn tab_layout(&mut self, title: &str, content: Size<i32, Logical>) -> TabLayout {
@@ -480,11 +495,11 @@ impl Decoration {
         };
         // Docked: its place among another frame's tabs, wherever that is.
         if self.docked {
-            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1), zoom: !self.zoomless, dot: self.dot };
+            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1), zoom: !self.zoomless, dot: self.dot, locked: self.locked };
         }
         let width = wanted.min(frame_w).max(1);
         let x = self.tab_offset.clamp(0, (frame_w - width).max(0));
-        TabLayout { x, width, zoom: !self.zoomless, dot: self.dot }
+        TabLayout { x, width, zoom: !self.zoomless, dot: self.dot, locked: self.locked }
     }
 
     /// Where the tab's title is (element-local), if the tab cuts it short
@@ -663,6 +678,7 @@ impl Decoration {
             closed: self.rolled,
             zoom: tab.zoom,
             dot: tab.dot,
+            locked: tab.locked,
         };
         warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
@@ -836,6 +852,84 @@ fn sk(c: Rgba) -> Color {
     Color::from_rgba8(c[0], c[1], c[2], c[3])
 }
 
+/// Pixel-snapped closed padlock glyph inside `(x, y, w, h)` in device pixels.
+/// Keeps body width, shackle width, and keyhole cutout parity-aligned so the
+/// glyph is dead-center at 1×, 1.25×, 1.5×, 1.75×, and 2×, and ensures the
+/// body is always at least as tall as the shackle even at compact 1× sizes.
+pub(crate) fn draw_lock_glyph(pixmap: &mut Pixmap, x: i32, y: i32, w: i32, h: i32, stroke: i32, ink: Rgba, cutout: Rgba) {
+    let t = stroke.max(1);
+    let kw = if t == 1 { 1 } else { t.min(2) };
+    let mut bw = w.max(5 * t);
+    // Keep body width parity aligned with keyhole width (`kw`) at every scale
+    // (odd at 1×/1.25× for a 1 px keyhole, even at 1.5×/1.75×/2× for a 2 px keyhole).
+    if bw % 2 != kw % 2 && bw > 5 * t {
+        bw -= 1;
+    }
+    let bx = x + (w - bw) / 2;
+    let bh_raw = ((h * 5 + 4) / 9).max((h + 1) / 2).max(3 * t);
+    let sh = (h - bh_raw).max(2 * t);
+    let bh = (h - sh).max(3 * t);
+    // Match shackle width parity with body width so legs sit symmetrically.
+    let mut sw = ((bw * 5) / 7).max(3 * t);
+    if sw % 2 != bw % 2 {
+        sw = (sw - 1).max(3 * t);
+    }
+    let sx = bx + (bw - sw) / 2;
+    let by = y + sh;
+    // Shackle arch (top bar + left/right legs).
+    fill(pixmap, sx, y, sw, t, ink);
+    fill(pixmap, sx, y + t, t, sh - t, ink);
+    fill(pixmap, sx + sw - t, y + t, t, sh - t, ink);
+    // Solid body.
+    fill(pixmap, bx, by, bw, bh, ink);
+    // Centered keyhole cutout when body is large enough.
+    if bw >= 5 * t && bh >= 3 * t {
+        let kh = ((bh * 2) / 5).clamp(t.min(2), (bh - 2 * t).max(1));
+        let kx = bx + (bw - kw) / 2;
+        let ky = by + (bh - kh) / 2;
+        fill(pixmap, kx, ky, kw, kh, cutout);
+    }
+}
+
+/// Pixel-snapped open padlock glyph inside `(x, y, w, h)` in device pixels:
+/// same integer body + keyhole, with the shackle lifted and unlatched on the
+/// right with an unmistakable gap of at least `t` (1 pt) above the body.
+pub(crate) fn draw_open_lock_glyph(pixmap: &mut Pixmap, x: i32, y: i32, w: i32, h: i32, stroke: i32, ink: Rgba, cutout: Rgba) {
+    let t = stroke.max(1);
+    let kw = if t == 1 { 1 } else { t.min(2) };
+    let mut bw = w.max(5 * t);
+    if bw % 2 != kw % 2 && bw > 5 * t {
+        bw -= 1;
+    }
+    let bx = x + (w - bw) / 2;
+    let bh_raw = ((h * 5 + 4) / 9).max((h + 1) / 2).max(3 * t);
+    let sh = (h - bh_raw).max(2 * t);
+    let bh = (h - sh).max(3 * t);
+    let mut sw = ((bw * 5) / 7).max(3 * t);
+    if sw % 2 != bw % 2 {
+        sw = (sw - 1).max(3 * t);
+    }
+    let sx = bx + (bw - sw) / 2;
+    let by = y + sh;
+    // Open shackle: left leg meets body, right leg stops short leaving a clear
+    // open gap of at least `t` (1 pt) above the body — never collapsing to closed.
+    let open_gap = (((sh - t) * 3) / 4).max(t);
+    let right_leg = (sh - t - open_gap).max(0);
+    fill(pixmap, sx, y, sw, t, ink);
+    fill(pixmap, sx, y + t, t, sh - t, ink);
+    if right_leg > 0 {
+        fill(pixmap, sx + sw - t, y + t, t, right_leg, ink);
+    }
+    // Solid body.
+    fill(pixmap, bx, by, bw, bh, ink);
+    if bw >= 5 * t && bh >= 3 * t {
+        let kh = ((bh * 2) / 5).clamp(t.min(2), (bh - 2 * t).max(1));
+        let kx = bx + (bw - kw) / 2;
+        let ky = by + (bh - kh) / 2;
+        fill(pixmap, kx, ky, kw, kh, cutout);
+    }
+}
+
 pub(crate) fn fill(pixmap: &mut Pixmap, x: i32, y: i32, w: i32, h: i32, c: Rgba) {
     if let Some(r) = Rect::from_xywh(x as f32, y as f32, w as f32, h as f32) {
         let mut paint = Paint::default();
@@ -950,15 +1044,37 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
         blended_box(&mut pixmap, zx, zy, small, hair, from, to, box_outline);
     }
 
-    // Title.
+    // Title (drawn first so we know exact hinted device-pixel extent at every scale).
     let space = tab.title_space();
+    let mut rendered_title_end: Option<i32> = None;
     if space > 4 {
         let title = text::ellipsize(&key.title, fonts::TAB_SIZE, true, space as f32);
-        let size = fonts::TAB_SIZE * s as f32;
+        let font_px = fonts::TAB_SIZE * s as f32;
         let tx = px(tab.title_x()) as f32;
         // Level with the boxes.
-        let ty = text::top_for_centre(top as f32 + px(BOX_SIZE) as f32 / 2.0, size, true);
-        text::draw(&mut pixmap, &title, tx, ty, size, true, text_color);
+        let ty = text::top_for_centre(top as f32 + px(BOX_SIZE) as f32 / 2.0, font_px, true);
+        text::draw(&mut pixmap, &title, tx, ty, font_px, true, text_color);
+        rendered_title_end = Some(tx as i32 + text::measure(&title, font_px, true).ceil() as i32);
+    }
+
+    // Slot-lock padlock glyph: 7:9 portrait proportion (`7×9 px` at 1×, `10×13 px`
+    // at 1.5×, `14×18 px` at 2×) so its bottom sits flush on the title baseline
+    // and its keyhole is centered at every scale, grouped exactly 4 pt after the
+    // rendered title end so it reads as a badge on the title rather than floating.
+    if tab.locked {
+        let lh = (LOCK_H as f64 * s).floor() as i32;
+        let shackle_t = (s.round() as i32).max(1);
+        let lw = ((lh as f64 * LOCK_W as f64 / LOCK_H as f64).round() as i32).max(5 * shackle_t);
+        let right_edge = if tab.zoom { w - inset - size - px(TITLE_GAP) } else { w - inset - px(TITLE_GAP) };
+        let gap_px = (LOCK_GAP as f64 * s).round() as i32;
+        let max_lx = if tab.zoom { w - inset - size - px(5) - lw } else { w - inset - px(4) - lw };
+        let lx = match rendered_title_end {
+            Some(te) => (te + gap_px).min(max_lx),
+            None => right_edge - lw,
+        };
+        let ly = top + (size - lh) / 2;
+        let lock_ink = if key.focused { box_outline } else { mix(text_color, base, 0.34) };
+        draw_lock_glyph(&mut pixmap, lx, ly, lw, lh, shackle_t, lock_ink, base);
     }
     pixmap
 }
@@ -1037,6 +1153,7 @@ mod title_tests {
                 closed,
                 zoom: tab.zoom,
                 dot: false,
+                locked: false,
             };
             let (hair, bevel) = lines(s);
             let at = |p: &Pixmap, x: i32, y: i32| {
@@ -1085,6 +1202,7 @@ mod title_tests {
                     closed: false,
                     zoom: tab.zoom,
                     dot: false,
+                    locked: false,
                 };
                 let t = std::time::Instant::now();
                 let _ = draw_tab(&palette, &key, &tab, s);
@@ -1124,7 +1242,24 @@ mod look_tests {
     use super::*;
 
     fn key(title: &str, focused: bool, phys: (i32, i32)) -> TabKey {
-        TabKey { title: title.into(), focused, hover: Part::None, pressed: Part::None, width: phys.0, phys, generation: 1, target: false, closed: false, zoom: true, dot: false }
+        TabKey { title: title.into(), focused, hover: Part::None, pressed: Part::None, width: phys.0, phys, generation: 1, target: false, closed: false, zoom: true, dot: false, locked: false }
+    }
+
+    #[test]
+    fn locked_tab_reserves_lock_glyph_space_and_renders_across_scales() {
+        let palette = theme::palette();
+        let mut unlocked = Decoration::default();
+        let mut locked = Decoration::default();
+        locked.locked = true;
+        let t_u = unlocked.tab_layout("Terminal", (800, 600).into());
+        let t_l = locked.tab_layout("Terminal", (800, 600).into());
+        assert_eq!(t_l.width - t_u.width, LOCK_W + LOCK_GAP);
+        for s in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            let phys = ((t_l.width as f64 * s).round() as i32, (TAB_HEIGHT as f64 * s).round() as i32);
+            let k = TabKey { locked: true, width: t_l.width, phys, ..key("Terminal", true, phys) };
+            let pm = draw_tab(&palette, &k, &t_l, s);
+            assert_eq!((pm.width() as i32, pm.height() as i32), phys);
+        }
     }
 
     /// A window on two displays of different scales has a tab drawn for

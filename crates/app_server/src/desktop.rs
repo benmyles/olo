@@ -727,6 +727,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         let mains = self.main_windows();
         let pinned = self.pinned_mains();
+        let locked_slots = self.locked_slots();
         let mut infos: Vec<WindowInfo> = self
             .all_windows()
             .into_iter()
@@ -772,6 +773,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     floats_always: Self::floats_always(&w),
                     main: mains.contains(&meta.id),
                     main_pinned: pinned.contains(&meta.id),
+                    locked_slot: locked_slots.get(&meta.id).copied(),
                     output: self.display_of(&w).map(|o| o.name()),
                     tab: place.map(|(_, t)| t),
                     behind: self.behind_in_group(&w),

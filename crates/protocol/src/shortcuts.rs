@@ -1575,26 +1575,26 @@ impl Pin {
     /// was never translated, nor could be well: „Immer Linke Hälfte").
     pub fn title(self) -> &'static str {
         match self {
-            Pin::Main => "Always Main",
+            Pin::Main => "Always Open as Main",
             Pin::Part(tile) => match tile {
-                Tile::Left => "Always Left Half",
-                Tile::Right => "Always Right Half",
-                Tile::Top => "Always Top Half",
-                Tile::Bottom => "Always Bottom Half",
-                Tile::TopLeft => "Always Top Left Quarter",
-                Tile::TopRight => "Always Top Right Quarter",
-                Tile::BottomLeft => "Always Bottom Left Quarter",
-                Tile::BottomRight => "Always Bottom Right Quarter",
-                Tile::LeftThird => "Always Left Third",
-                Tile::CenterThird => "Always Center Third",
-                Tile::RightThird => "Always Right Third",
-                Tile::LeftTwoThirds => "Always Left Two Thirds",
-                Tile::CenterTwoThirds => "Always Center Two Thirds",
-                Tile::RightTwoThirds => "Always Right Two Thirds",
-                Tile::TopTwoThirds => "Always Top Two Thirds",
-                Tile::BottomTwoThirds => "Always Bottom Two Thirds",
+                Tile::Left => "Always Open in Left Half",
+                Tile::Right => "Always Open in Right Half",
+                Tile::Top => "Always Open in Top Half",
+                Tile::Bottom => "Always Open in Bottom Half",
+                Tile::TopLeft => "Always Open in Top Left Quarter",
+                Tile::TopRight => "Always Open in Top Right Quarter",
+                Tile::BottomLeft => "Always Open in Bottom Left Quarter",
+                Tile::BottomRight => "Always Open in Bottom Right Quarter",
+                Tile::LeftThird => "Always Open in Left Third",
+                Tile::CenterThird => "Always Open in Center Third",
+                Tile::RightThird => "Always Open in Right Third",
+                Tile::LeftTwoThirds => "Always Open in Left Two Thirds",
+                Tile::CenterTwoThirds => "Always Open in Center Two Thirds",
+                Tile::RightTwoThirds => "Always Open in Right Two Thirds",
+                Tile::TopTwoThirds => "Always Open in Top Two Thirds",
+                Tile::BottomTwoThirds => "Always Open in Bottom Two Thirds",
                 // (A cell has no name: where it is.)
-                Tile::Cell => "Always Where It Is",
+                Tile::Cell => "Always Open Where It Is",
             },
         }
     }
@@ -1838,11 +1838,11 @@ mod tests {
         assert_eq!(t.app_pin("olo.phone"), None);
         // (Settings from before there were pins have none.)
         assert_eq!(serde_json::from_str::<TilingSettings>("{}").unwrap().app_pins, []);
-        assert_eq!((Pin::Main.title(), Pin::Part(Tile::TopLeft).title()), ("Always Main", "Always Top Left Quarter"));
+        assert_eq!((Pin::Main.title(), Pin::Part(Tile::TopLeft).title()), ("Always Open as Main", "Always Open in Top Left Quarter"));
         // Each named part's is "Always" and its name, as the menu's other
         // items read.
         for tile in Tile::CHOOSABLE {
-            assert_eq!(Pin::Part(tile).title(), format!("Always {}", tile.title()), "{tile:?}");
+            assert_eq!(Pin::Part(tile).title(), format!("Always Open in {}", tile.title()), "{tile:?}");
         }
         // A tile's part, gaps and all, is the part with that name; one
         // dragged elsewhere is none.

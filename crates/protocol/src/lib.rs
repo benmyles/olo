@@ -562,6 +562,15 @@ pub enum Request {
         #[serde(default)]
         on: Option<bool>,
     },
+    /// Auto-tiling: lock window `id` into a specific screen slot (`tile: Some(...)`)
+    /// so remaining unlocked windows auto-tile into the remaining space around it
+    /// using the selected tiling layout, or unlock it (`tile: None`) so it rejoins
+    /// the auto-tiling layout. Answered `Reply::Ok`, or an error if not auto-tiled.
+    LockSlot {
+        id: WindowId,
+        #[serde(default)]
+        tile: Option<Tile>,
+    },
     /// Main and Stack: the main window before the one that is now is the
     /// main window again on one display (`output`; else the active
     /// display) on the workspace showing, as Swap with Previous Main
@@ -1446,6 +1455,10 @@ pub struct WindowInfo {
     /// (`Request::PinMain`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub main_pinned: bool,
+    /// In auto-tiling mode, the screen slot this window is locked into
+    /// (`Request::LockSlot`, or dragged onto an auto-tiling hotspot).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locked_slot: Option<Tile>,
     /// The display it is on (its connector), or was on while hidden or
     /// on another workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3268,6 +3281,10 @@ pub struct SnapPad {
     pub height: i32,
     /// The pointer is in it: the window is shown there.
     pub inside: bool,
+    /// True in auto-tiling mode when dropping into this pad locks the
+    /// window into that slot while remaining windows auto-tile around it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lock: bool,
 }
 
 /// [`Request::Overview`]'s answer: what the overview shows.

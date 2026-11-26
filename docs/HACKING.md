@@ -10359,10 +10359,46 @@ ends; its letting up types nothing; with ⌃, ⌥ or ⌘ held it's a
 shortcut's key).
 
 **Which windows.** Those that tile: not dialogs, alerts, windows of one
-size, full screen ones (`snaps`). A tile of an auto-tiled display's tree
-keeps what dragging does there (onto a tile: swap; beside one:
-`auto_dropped`). Preferences ▸ Windows ▸ Dragging a Window turns it off
-(`TilingSettings::snap`).
+size, full screen ones (`snaps`). Preferences ▸ Windows ▸ Dragging a
+Window turns it off (`TilingSettings::snap`).
+
+**In Auto-Tiling mode (locked slots)** (`shell/autotile.rs`, `shell/snap.rs`,
+`shell/deco.rs`, `osd.rs`, `apps/palette/src/window_menu.rs`; Ben,
+2026-11-25): dragging any tiled window brings up the same nine perimeter
+hotspots (`Q W E A S D Z X C`) plus swap pads on other tiles, with each
+slot pad showing subtle slate rest panes around the accent-blue target
+slot and a centered white padlock inside it. Hovering a pad hides the
+other pads cleanly (no floating keycaps over previewed windows) and
+previews both the window's frame and its tab padlock live; letting go on
+a slot pad (or pressing its letter) locks that window into that explicit
+slot (`Tile::Left`, `Right`, `Top`, `Bottom`, `TopLeft`, `TopRight`,
+`BottomLeft`, `BottomRight`) while all remaining unlocked windows on
+that display and workspace automatically tile the residual region using
+the active tiling layout (Halves, Columns, Rows, Grid, Main and Stack,
+Spiral, or Scrolling — including multi-locked slots such as `TopLeft` +
+`TopRight` leaving `Bottom` for unlocked tiles). Dragging an already-locked
+window adds an `Unlock` (`U`) pad centered in its locked slot with a
+matched accent-outlined slot icon and open padlock (no knockout box),
+and shows a compact padlock inside the `S` strip (zooming keeps its lock
+state). Locked windows show a crisp pixel-snapped padlock glyph on their
+title tab (`deco.rs`, `7:9` portrait proportion, parity-aligned keyhole
+at `1×`–`2×`, `4 pt` after the rendered title, olive ink on focused tabs
+and quieter muted ink on unfocused tabs) and a brief `SlotLocked` OSD
+toast (`44 × 30 pt` mini-screen matching the drag pads, window-name
+attribution, `62 pt` tall with symmetric `16 pt` padding). Right-clicking
+the tab puts `Lock to Slot ▸` and `Unlock from <Slot>` directly at the
+top level under `Tile ▸` (with `Pin ▸` using parallel `Always Open in …`
+wording). Over IPC (`crates/protocol`), `Request::LockSlot { id, tile }`
+sets or clears a lock, `WindowInfo::locked_slot` reports it, and
+`SnapPad::lock` marks slot-locking drag pads. Locks follow layout
+switches, survive window additions/closures, transfer on tile swaps, and
+persist across in-place `app_server` reloads (`Layout`).
+
+Measured (release, 3200 × 2000 at 2×, software headless, Kache + Weather
++ StyledEdit with Left Half locked): settled idle 3 frames in 3 s
+(slowest 334 µs, `tick: auto-tiling` 3.1 µs avg / 23 µs max); active
+drag across 18 pad hovers: `look (whole)` 1.19 ms avg per frame
+(`tick: auto-tiling` 6.2 µs avg / 61 µs max).
 
 **A pad** (`pad_pixmap`) is a plate raised as Olo's panels are, with
 the highlight's edge and a point of shadow; on it a small picture of the

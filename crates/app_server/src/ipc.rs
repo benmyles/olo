@@ -592,6 +592,11 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some(_) => Reply::Error { message: "not a tile of Main and Stack's (auto-tiling, its layout Main and Stack)".into() },
                 None => Reply::Error { message: "no such window".into() },
             },
+            Request::LockSlot { id, tile } => match self.window_by_id(id) {
+                Some(w) if self.lock_slot(&w, tile) => Reply::Ok,
+                Some(_) => Reply::Error { message: "not an auto-tiled window (or not locked)".into() },
+                None => Reply::Error { message: "no such window".into() },
+            },
             Request::SwapMain { output } => {
                 let o = match output {
                     Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {

@@ -305,6 +305,9 @@ pub struct SavedTree {
     /// Its main window pinned (`pin_main`): that window's saved place.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned: Option<u64>,
+    /// Windows locked into explicit screen slots (`lock_slot`), by saved place.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locked: Vec<(u64, Tile)>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1461,18 +1464,279 @@ struct Known {
     group: Option<u64>,
 }
 
-/// What ⌃⌘Z puts back: a tree as it was, or the windowing mode there was
-/// before auto-tiling.
+/// Quadrant bitmask for the 8 drag-hotspot slots (`TL=1, TR=2, BL=4, BR=8`).
+const Q_TL: u8 = 1;
+const Q_TR: u8 = 2;
+const Q_BL: u8 = 4;
+const Q_BR: u8 = 8;
+
+/// Quadrant bitmask for any of the 8 drag-hotspot slots (halves & quarters);
+/// `None` for thirds, two-thirds, or `Cell`.
+pub fn slot_mask(tile: Tile) -> Option<u8> {
+    match tile {
+        Tile::TopLeft => Some(Q_TL),
+        Tile::TopRight => Some(Q_TR),
+        Tile::BottomLeft => Some(Q_BL),
+        Tile::BottomRight => Some(Q_BR),
+        Tile::Left => Some(Q_TL | Q_BL),
+        Tile::Right => Some(Q_TR | Q_BR),
+        Tile::Top => Some(Q_TL | Q_TR),
+        Tile::Bottom => Some(Q_BL | Q_BR),
+        _ => None,
+    }
+}
+
+/// Whether two locked slots overlap on screen.
+pub fn slots_overlap(a: Tile, b: Tile) -> bool {
+    match (slot_mask(a), slot_mask(b)) {
+        (Some(ma), Some(mb)) => (ma & mb) != 0,
+        _ => overlap(a.fraction(), b.fraction()),
+    }
+}
+
+/// If `locked` leaves a single contiguous free rectangle (e.g. one half,
+/// two adjacent quarters, a half + a quarter, or three quarters), return its
+/// fractional part of the tiling area (used by `Scrolling` so unlocked columns
+/// scroll smoothly in the remaining space beside locked windows).
+pub fn scrolling_free_part(locked: &[(u64, Tile)]) -> Option<Part> {
+    if locked.is_empty() {
+        return None;
+    }
+    let mut occ = 0u8;
+    for &(_, tile) in locked {
+        occ |= slot_mask(tile)?;
+    }
+    match (!occ) & 0x0F {
+        m if m == (Q_TL | Q_BL) => Some((0.0, 0.0, 0.5, 1.0)),
+        m if m == (Q_TR | Q_BR) => Some((0.5, 0.0, 0.5, 1.0)),
+        m if m == (Q_TL | Q_TR) => Some((0.0, 0.0, 1.0, 0.5)),
+        m if m == (Q_BL | Q_BR) => Some((0.0, 0.5, 1.0, 0.5)),
+        m if m == Q_TL => Some((0.0, 0.0, 0.5, 0.5)),
+        m if m == Q_TR => Some((0.5, 0.0, 0.5, 0.5)),
+        m if m == Q_BL => Some((0.0, 0.5, 0.5, 0.5)),
+        m if m == Q_BR => Some((0.5, 0.5, 0.5, 0.5)),
+        _ => None,
+    }
+}
+
+/// Lay out a free region's unlocked windows according to `layout`, folding any
+/// zero-room `away` kept places onto the side so they stay tracked.
+fn build_free_region(nodes: Vec<Node>, away: Vec<Node>, layout: olo_protocol::TilingLayout, main_place: Tile, main_count: usize, mains: Mains, region_aspect: f32) -> Node {
+    use olo_protocol::TilingLayout as L;
+    let built = if nodes.is_empty() {
+        Node::hole()
+    } else if nodes.len() == 1 {
+        nodes.into_iter().next().unwrap()
+    } else {
+        let flat = evenly(Cut::Columns, nodes);
+        match layout {
+            L::MainAndStack => main_and_stack_again(&flat, main_place, None, main_count, None, None, mains.now, mains.before).unwrap_or(flat),
+            L::Columns | L::Rows | L::Grid | L::Spiral | L::Scrolling => built_again(layout, &flat, region_aspect).unwrap_or(flat),
+            L::Halves => dwindle(&flat, region_aspect).unwrap_or(flat),
+        }
+    };
+    away.into_iter().fold(built, |t, k| Node::split(Cut::Columns, 1.0, t, k))
+}
+
+/// Compose an auto-tiling tree with `locked` windows held in their exact screen
+/// slots and `unlocked` windows auto-tiled into the maximal contiguous remaining
+/// space using `layout`.
+#[allow(clippy::too_many_arguments)]
+pub fn compose_with_locks(
+    locked: &[(u64, Tile)],
+    unlocked: Vec<Node>,
+    away: Vec<Node>,
+    layout: olo_protocol::TilingLayout,
+    main_place: Tile,
+    main_count: usize,
+    mains: Mains,
+    aspect: f32,
+) -> Option<Node> {
+    if locked.is_empty() {
+        return None;
+    }
+    if locked.len() == 1 && slot_mask(locked[0].1).is_none() {
+        let (id, tile) = locked[0];
+        let (rw, rh) = rest_room(tile);
+        let sub_aspect = (aspect * rw / rh.max(0.05)).max(0.05);
+        let rest = if unlocked.is_empty() && away.is_empty() { None } else { Some(build_free_region(unlocked, away, layout, main_place, main_count, mains, sub_aspect)) };
+        return Some(tiled_into(rest, id, tile, &|_| (0.5, 0.5)));
+    }
+
+    let mut occ = 0u8;
+    for &(_, tile) in locked {
+        if let Some(m) = slot_mask(tile) {
+            occ |= m;
+        }
+    }
+    let find_slot = |want: Tile| locked.iter().find(|(_, t)| *t == want).map(|(id, _)| *id);
+    let has_horiz_half = find_slot(Tile::Top).is_some() || find_slot(Tile::Bottom).is_some();
+    let has_vert_half = find_slot(Tile::Left).is_some() || find_slot(Tile::Right).is_some();
+    let full_top = (occ & (Q_TL | Q_TR)) == (Q_TL | Q_TR);
+    let full_bottom = (occ & (Q_BL | Q_BR)) == (Q_BL | Q_BR);
+    let full_left = (occ & (Q_TL | Q_BL)) == (Q_TL | Q_BL);
+    let full_right = (occ & (Q_TR | Q_BR)) == (Q_TR | Q_BR);
+    let root_rows = has_horiz_half || ((full_top || full_bottom) && !has_vert_half && !(full_left || full_right));
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Region {
+        TopHalf,
+        BottomHalf,
+        LeftHalf,
+        RightHalf,
+        TL,
+        TR,
+        BL,
+        BR,
+    }
+    let region_weight = |r: Region| match r {
+        Region::TopHalf | Region::BottomHalf | Region::LeftHalf | Region::RightHalf => 2usize,
+        Region::TL | Region::TR | Region::BL | Region::BR => 1usize,
+    };
+    let region_aspect = |r: Region| match r {
+        Region::TopHalf | Region::BottomHalf => (aspect * 2.0).max(0.05),
+        Region::LeftHalf | Region::RightHalf => (aspect * 0.5).max(0.05),
+        Region::TL | Region::TR | Region::BL | Region::BR => aspect.max(0.05),
+    };
+
+    let mut free_regions: Vec<Region> = Vec::new();
+    if root_rows {
+        if (occ & (Q_TL | Q_TR)) == 0 {
+            free_regions.push(Region::TopHalf);
+        } else if find_slot(Tile::Top).is_none() {
+            if (occ & Q_TL) == 0 {
+                free_regions.push(Region::TL);
+            }
+            if (occ & Q_TR) == 0 {
+                free_regions.push(Region::TR);
+            }
+        }
+        if (occ & (Q_BL | Q_BR)) == 0 {
+            free_regions.push(Region::BottomHalf);
+        } else if find_slot(Tile::Bottom).is_none() {
+            if (occ & Q_BL) == 0 {
+                free_regions.push(Region::BL);
+            }
+            if (occ & Q_BR) == 0 {
+                free_regions.push(Region::BR);
+            }
+        }
+    } else {
+        if (occ & (Q_TL | Q_BL)) == 0 {
+            free_regions.push(Region::LeftHalf);
+        } else if find_slot(Tile::Left).is_none() {
+            if (occ & Q_TL) == 0 {
+                free_regions.push(Region::TL);
+            }
+            if (occ & Q_BL) == 0 {
+                free_regions.push(Region::BL);
+            }
+        }
+        if (occ & (Q_TR | Q_BR)) == 0 {
+            free_regions.push(Region::RightHalf);
+        } else if find_slot(Tile::Right).is_none() {
+            if (occ & Q_TR) == 0 {
+                free_regions.push(Region::TR);
+            }
+            if (occ & Q_BR) == 0 {
+                free_regions.push(Region::BR);
+            }
+        }
+    }
+
+    let mut ordered_free = free_regions;
+    ordered_free.sort_by_key(|r| std::cmp::Reverse(region_weight(*r)));
+
+    let mut assigned: Vec<(Region, Vec<Node>, Vec<Node>)> = Vec::new();
+    match ordered_free.as_slice() {
+        [] => {}
+        [only] => {
+            assigned.push((*only, unlocked, away));
+        }
+        [big, small] => {
+            let mut u = unlocked;
+            let n = u.len();
+            let (for_big, for_small) = if n <= 1 {
+                (u, Vec::new())
+            } else if region_weight(*big) > region_weight(*small) {
+                let n_small = (n / 3).max(1);
+                let tail = u.split_off(n - n_small);
+                (u, tail)
+            } else {
+                let tail = u.split_off(n.div_ceil(2));
+                (u, tail)
+            };
+            assigned.push((*big, for_big, Vec::new()));
+            assigned.push((*small, for_small, away));
+        }
+        _ => {}
+    }
+
+    let mut built_region = |r: Region| -> Node {
+        if let Some(pos) = assigned.iter().position(|(reg, ..)| *reg == r) {
+            let (_, nodes, aw) = assigned.remove(pos);
+            build_free_region(nodes, aw, layout, main_place, main_count, mains, region_aspect(r))
+        } else {
+            Node::hole()
+        }
+    };
+
+    let node = if root_rows {
+        let top = if let Some(id) = find_slot(Tile::Top) {
+            Node::Window(id)
+        } else if (occ & (Q_TL | Q_TR)) == 0 {
+            built_region(Region::TopHalf)
+        } else {
+            let tl = find_slot(Tile::TopLeft).map(Node::Window).unwrap_or_else(|| built_region(Region::TL));
+            let tr = find_slot(Tile::TopRight).map(Node::Window).unwrap_or_else(|| built_region(Region::TR));
+            Node::split(Cut::Columns, 0.5, tl, tr)
+        };
+        let bottom = if let Some(id) = find_slot(Tile::Bottom) {
+            Node::Window(id)
+        } else if (occ & (Q_BL | Q_BR)) == 0 {
+            built_region(Region::BottomHalf)
+        } else {
+            let bl = find_slot(Tile::BottomLeft).map(Node::Window).unwrap_or_else(|| built_region(Region::BL));
+            let br = find_slot(Tile::BottomRight).map(Node::Window).unwrap_or_else(|| built_region(Region::BR));
+            Node::split(Cut::Columns, 0.5, bl, br)
+        };
+        Node::split(Cut::Rows, 0.5, top, bottom)
+    } else {
+        let left = if let Some(id) = find_slot(Tile::Left) {
+            Node::Window(id)
+        } else if (occ & (Q_TL | Q_BL)) == 0 {
+            built_region(Region::LeftHalf)
+        } else {
+            let tl = find_slot(Tile::TopLeft).map(Node::Window).unwrap_or_else(|| built_region(Region::TL));
+            let bl = find_slot(Tile::BottomLeft).map(Node::Window).unwrap_or_else(|| built_region(Region::BL));
+            Node::split(Cut::Rows, 0.5, tl, bl)
+        };
+        let right = if let Some(id) = find_slot(Tile::Right) {
+            Node::Window(id)
+        } else if (occ & (Q_TR | Q_BR)) == 0 {
+            built_region(Region::RightHalf)
+        } else {
+            let tr = find_slot(Tile::TopRight).map(Node::Window).unwrap_or_else(|| built_region(Region::TR));
+            let br = find_slot(Tile::BottomRight).map(Node::Window).unwrap_or_else(|| built_region(Region::BR));
+            Node::split(Cut::Rows, 0.5, tr, br)
+        };
+        Node::split(Cut::Columns, 0.5, left, right)
+    };
+    Some(node)
+}
+
+/// What ⌃⌘Z puts back: a tree as it was (with its locked slots), or the
+/// windowing mode there was before auto-tiling.
 #[derive(Debug, Clone)]
 enum Undo {
-    Tree((u32, String), Option<Node>),
+    Tree((u32, String), Option<Node>, Vec<(u64, Tile)>),
     TurnedOn(u32, Vec<String>, olo_protocol::WindowingMode),
 }
 
 /// Main and Stack's main window of a tree, as last built, and the one
 /// that was before it (still in the tree).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-struct Mains {
+pub struct Mains {
     now: Option<u64>,
     before: Option<u64>,
     /// The window pinned as the main one (`pin_main`): while it's the
@@ -1586,6 +1850,19 @@ pub struct AutoTiler {
     /// The main windows pinned before an in-place restart, by their
     /// saved places, until each is back in its tile (`auto_returned`).
     pins_kept: HashMap<(u32, String), u64>,
+    /// Windows locked into explicit screen slots (`lock_slot`) on each
+    /// `(workspace, output)` auto-tiling tree. Unlocked windows tile the
+    /// remaining space around them using the selected `TilingLayout`.
+    locked: HashMap<(u32, String), Vec<(u64, Tile)>>,
+    /// Snapshot of `locked` as last built into each tree, so user edge drags
+    /// stay intact until the lock set, layout, or window set changes.
+    built_locked: HashMap<(u32, String), Vec<(u64, Tile)>>,
+    /// Sorted live window IDs present when `compose_with_locks` last ran for a
+    /// locked tree, so newly claimed windows (which enter `tree` in `auto_claim`
+    /// before `auto_output` counts `tiles_before`) still trigger recomposition.
+    built_windows: HashMap<(u32, String), Vec<u64>>,
+    /// Locked slots preserved across an in-place restart (by saved `slot`).
+    locked_kept: HashMap<(u32, String), Vec<(u64, Tile)>>,
 }
 
 impl Default for AutoTiler {
@@ -1615,6 +1892,10 @@ impl Default for AutoTiler {
             looked: None,
             away: HashMap::new(),
             pins_kept: HashMap::new(),
+            locked: HashMap::new(),
+            built_locked: HashMap::new(),
+            built_windows: HashMap::new(),
+            locked_kept: HashMap::new(),
         }
     }
 }
@@ -1629,6 +1910,9 @@ impl AutoTiler {
             info!(output = t.output, workspace = t.workspace, tree = %node, "tiles kept from before the restart");
             if let Some(slot) = t.pinned {
                 self.pins_kept.insert((t.workspace, t.output.clone()), slot);
+            }
+            if !t.locked.is_empty() {
+                self.locked_kept.insert((t.workspace, t.output.clone()), t.locked);
             }
             self.trees.insert((t.workspace, t.output), node);
         }
@@ -1672,6 +1956,9 @@ impl AutoTiler {
     fn forget(&mut self, workspace: u32, outputs: &[String]) {
         self.trees.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
         self.laid.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
+        self.locked.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
+        self.built_locked.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
+        self.built_windows.retain(|(ws, o), _| !(*ws == workspace && outputs.contains(o)));
         for o in outputs {
             self.seen.remove(o);
         }
@@ -1980,6 +2267,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto.trees.retain(|(_, o), _| finding || names.contains(o));
         let trees: Vec<(u32, String)> = self.auto.trees.keys().cloned().collect();
         self.auto.laid.retain(|k, _| trees.contains(k));
+        self.auto.locked.retain(|k, v| trees.contains(k) && !v.is_empty());
+        self.auto.built_locked.retain(|k, _| trees.contains(k));
         let mut kept: Vec<u64> = self.all_windows().iter().map(|w| w.id()).collect();
         kept.extend(self.auto.trees.values().flat_map(|t| t.windows()));
         self.auto.known.retain(|id, _| kept.contains(id));
@@ -2058,10 +2347,13 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             self.auto.pinned_for.insert(key.clone(), ids);
             let centres = self.auto_centres(tree);
-            // (In the tree's own order: the first pinned to a part has it.)
+            // (In the tree's own order: the first pinned to a part has it.
+            // Windows explicitly locked into a slot by the user stay locked.)
+            let locked_ids: Vec<u64> = self.auto.locked.get(&key).map(|v| v.iter().map(|(id, _)| *id).collect()).unwrap_or_default();
             let wanted: Vec<(u64, (f32, f32))> = tree
                 .windows()
                 .into_iter()
+                .filter(|id| !locked_ids.contains(id))
                 .filter_map(|id| {
                     let w = self.window_by_id(id)?;
                     match self.settings.tiling.app_pin(&w.app_id())? {
@@ -2120,6 +2412,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 if self.auto.pins_kept.get(key) == Some(&slot) && t.any_leaf(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot))) {
                     self.auto.pins_kept.remove(key);
                     self.auto.mains.entry(key.clone()).or_default().pinned = Some(id);
+                }
+                if let Some(kept) = self.auto.locked_kept.get_mut(key)
+                    && let Some(pos) = kept.iter().position(|(s, _)| *s == slot)
+                    && t.any_leaf(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot)))
+                {
+                    let (_, tile) = kept.remove(pos);
+                    let entry = self.auto.locked.entry(key.clone()).or_default();
+                    if !entry.iter().any(|(i, _)| *i == id) {
+                        entry.push((id, tile));
+                    }
                 }
                 let mut slots = None;
                 t.each_leaf(&mut |n| {
@@ -2228,7 +2530,17 @@ impl<B: Backend + 'static> AnvilState<B> {
                     *t = rest.without(&|n| *n == Node::Window(h)).unwrap_or_else(Node::gap);
                 }
                 let with = match (heir, alive, known) {
-                    (Some(h), ..) => Node::Window(h),
+                    (Some(h), ..) => {
+                        // Transfer any slot lock when another tab of the same group comes forward.
+                        if let Some(locks) = self.auto.locked.get_mut(&key) {
+                            for (lid, _) in locks.iter_mut() {
+                                if *lid == id {
+                                    *lid = h;
+                                }
+                            }
+                        }
+                        Node::Window(h)
+                    }
                     (None, Some(_), _) => Node::Kept(Kept { who: Who::Window(id), holds: false, until: None }),
                     (None, None, Some(k)) => Node::Kept(Kept { who: Who::Like { app_id: k.app_id, title: k.title }, holds: false, until: Some(now + CLOSED_KEEP) }),
                     (None, None, None) => Node::gap(),
@@ -2292,73 +2604,147 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             }
         }
-        // Main and Stack: built in its shape when it's just been chosen (or
-        // its main window's place), or as the number of tiles with room
-        // changes (a window came, went, or hid: the stack each as big
-        // again, and a main window gone gives its place to the one before
-        // it); otherwise as the person left it.
         let layout = self.layout_of(&key);
         let (place, was) = self.main_places(&key);
-        // Another layout chosen: the tiles in the order the last one had
-        // them (Spiral's and Main and Stack's isn't their tree's), so
-        // going round the layouts keeps the windows' order, as tiling
-        // window managers keep their window list.
         let prev = self.auto.built_as.get(&key).copied();
         let switched = prev.is_some_and(|(l, ..)| l != layout);
         let count = self.main_count_of(&key);
-        if let Some((l, p, _)) = prev
-            && switched
-            && let Some(t) = tree.as_mut()
-            && tiles_with_room(t) > 0
-        {
-            *t = evenly(Cut::Columns, in_order(l, p, t));
-        }
-        if let Some(t) = tree.as_mut()
-            && layout == olo_protocol::TilingLayout::MainAndStack
-            && (self.auto.built_as.get(&key) != Some(&(layout, place, count)) || tiles_with_room(t) != tiles_before)
-        {
-            let m = self.auto.mains.get(&key).copied().unwrap_or_default();
-            if let Some(built) = main_and_stack_again(t, place, was, count as usize, None, None, m.now, m.before) {
-                *t = built;
+        let aspect = area.size.w as f32 / area.size.h.max(1) as f32;
+
+        // Prune locked slots whose windows left this tree, and ensure if all 4
+        // quadrants were locked and an unlocked window arrived, the oldest lock
+        // yields so unlocked windows always have visible space.
+        let mut locked_now = self.auto.locked.remove(&key).unwrap_or_default();
+        locked_now.retain(|(id, _)| ids.contains(id));
+        if !locked_now.is_empty() {
+            let locked_ids: HashSet<u64> = locked_now.iter().map(|(id, _)| *id).collect();
+            let has_unlocked = tree.as_ref().is_some_and(|t| {
+                leaves(t).into_iter().any(|n| match n {
+                    Node::Window(id) => !locked_ids.contains(&id),
+                    _ => false,
+                })
+            });
+            if has_unlocked {
+                let all_covered = |list: &[(u64, Tile)]| -> bool {
+                    let mut m = 0u8;
+                    for &(_, tile) in list {
+                        if let Some(b) = slot_mask(tile) {
+                            m |= b;
+                        }
+                    }
+                    m == (Q_TL | Q_TR | Q_BL | Q_BR)
+                };
+                while locked_now.len() > 1 && all_covered(&locked_now) {
+                    locked_now.remove(0);
+                }
             }
         }
-        // Columns, Rows, Grid and Spiral: built in their shape from the
-        // tiles in order as the layout is chosen and as the number of
-        // tiles with room changes; between those, as the person left it.
-        // (Switched: built as another layout before. Not on the first look
-        // after a restart, with nothing built yet: the tree kept is the
-        // person's.)
-        let aspect = area.size.w as f32 / area.size.h.max(1) as f32;
-        if let Some(t) = tree.as_mut()
-            && layout.built()
-            && (switched || tiles_with_room(t) != tiles_before)
-            && let Some(built) = built_again(layout, t, aspect)
-        {
-            *t = built;
+        let has_locked = !locked_now.is_empty();
+        if has_locked {
+            self.auto.locked.insert(key.clone(), locked_now.clone());
         }
-        // Halves, chosen: the tiles in order as it would have made them
-        // (each the next one's half, across its longer side), as bspwm and
-        // Hyprland's dwindle rearrange on a change of layout; from then on
-        // it grows a split at a time.
-        if let Some(t) = tree.as_mut()
-            && layout == olo_protocol::TilingLayout::Halves
-            && switched
-            && let Some(built) = dwindle(t, aspect)
-        {
-            *t = built;
+        let locks_changed = self.auto.built_locked.get(&key).map(Vec::as_slice).unwrap_or(&[]) != locked_now.as_slice();
+
+        if has_locked {
+            let mut live_ids: Vec<u64> = units.iter().map(|w| w.id()).collect();
+            live_ids.sort_unstable();
+            let windows_changed = self.auto.built_windows.get(&key) != Some(&live_ids);
+            if let Some(t) = tree.as_mut() {
+                let tiles_now = tiles_with_room(t);
+                let need_compose = locks_changed || switched || windows_changed || tiles_now != tiles_before || self.auto.built_as.get(&key) != Some(&(layout, place, count));
+                if need_compose {
+                    let (ord_l, ord_p) = prev.map_or((layout, place), |(l, p, _)| (l, p));
+                    let all = in_order(ord_l, ord_p, t);
+                    let locked_ids: HashSet<u64> = locked_now.iter().map(|(id, _)| *id).collect();
+                    let mut unlocked = Vec::new();
+                    let mut away = Vec::new();
+                    for n in all {
+                        if n == Node::hole() || n.is_gap() {
+                            continue;
+                        }
+                        if let Node::Window(id) = n
+                            && locked_ids.contains(&id)
+                        {
+                            continue;
+                        }
+                        if has_room(&n) {
+                            unlocked.push(n);
+                        } else {
+                            away.push(n);
+                        }
+                    }
+                    let m = self.auto.mains.get(&key).copied().unwrap_or_default();
+                    if let Some(composed) = compose_with_locks(&locked_now, unlocked, away, layout, place, count as usize, m, aspect) {
+                        *t = composed;
+                    }
+                }
+            }
+            self.auto.built_locked.insert(key.clone(), locked_now.clone());
+            self.auto.built_windows.insert(key.clone(), live_ids);
+        } else {
+            let locks_cleared = self.auto.built_locked.remove(&key).is_some_and(|was| !was.is_empty());
+            self.auto.built_windows.remove(&key);
+            // Another layout chosen (or last lock cleared): the tiles in the order
+            // the last one had them, so going round the layouts keeps window order.
+            if let Some((l, p, _)) = prev
+                && (switched || locks_cleared)
+                && let Some(t) = tree.as_mut()
+                && tiles_with_room(t) > 0
+            {
+                let mut clean = in_order(l, p, t);
+                clean.retain(|n| *n != Node::hole() && !n.is_gap());
+                if !clean.is_empty() {
+                    *t = evenly(Cut::Columns, clean);
+                }
+            }
+            if let Some(t) = tree.as_mut()
+                && layout == olo_protocol::TilingLayout::MainAndStack
+                && (self.auto.built_as.get(&key) != Some(&(layout, place, count)) || tiles_with_room(t) != tiles_before || locks_cleared)
+            {
+                let m = self.auto.mains.get(&key).copied().unwrap_or_default();
+                if let Some(built) = main_and_stack_again(t, place, if locks_cleared { None } else { was }, count as usize, None, None, m.now, m.before) {
+                    *t = built;
+                }
+            }
+            if let Some(t) = tree.as_mut()
+                && layout.built()
+                && (switched || locks_cleared || tiles_with_room(t) != tiles_before)
+                && let Some(built) = built_again(layout, t, aspect)
+            {
+                *t = built;
+            }
+            if let Some(t) = tree.as_mut()
+                && layout == olo_protocol::TilingLayout::Halves
+                && (switched || locks_cleared)
+                && let Some(built) = dwindle(t, aspect)
+            {
+                *t = built;
+            }
         }
         self.auto.built_as.insert(key.clone(), (layout, place, count));
         // Tiles too small for their windows' least sizes, where another
         // arrangement has room for them all (or overlaps less): that one.
-        // (Not Scrolling's: its strip is as wide as they need.)
-        if let Some(t) = tree.as_mut()
+        // (Not Scrolling's, and not when explicit slot locks hold the outer structure.)
+        if !has_locked
+            && let Some(t) = tree.as_mut()
             && layout != olo_protocol::TilingLayout::Scrolling
         {
             let mins = self.auto_mins(&units, area);
-            let aspect = area.size.w as f32 / area.size.h.max(1) as f32;
             if let Some(better) = super::autofit::refit(t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)), aspect) {
                 info!(output = key.1, from = %t, to = %better, "tiles refitted to their windows' least sizes");
                 *t = better;
+            }
+        }
+        // Sync tab lock badge on every tile window (and its group mates).
+        for w in &units {
+            let is_locked = locked_now.iter().any(|(id, _)| *id == w.id());
+            if w.decoration().locked != is_locked {
+                w.decoration().locked = is_locked;
+            }
+            for mate in self.groups.mates(w) {
+                if mate != *w && mate.decoration().locked != is_locked {
+                    mate.decoration().locked = is_locked;
+                }
             }
         }
         for w in &units {
@@ -2581,7 +2967,19 @@ impl<B: Backend + 'static> AnvilState<B> {
             t.replace_nth(&|n| *n == Node::hole(), nth, Node::Window(id));
             return;
         }
-        let tiles: Vec<(u64, Part)> = laid.iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, *p)) } else { None }).collect();
+        let locked_ids: HashSet<u64> = self.auto.locked.get(key).map(|v| v.iter().map(|(i, _)| *i).collect()).unwrap_or_default();
+        let tiles: Vec<(u64, Part)> = laid
+            .iter()
+            .filter_map(|(n, p)| {
+                if let Node::Window(i) = n
+                    && !locked_ids.contains(i)
+                {
+                    Some((*i, *p))
+                } else {
+                    None
+                }
+            })
+            .collect();
         // (In pixels: a tile's longer side is across the screen's shape.)
         let px = |(w, h): (f32, f32)| (w * area.size.w as f32, h * area.size.h as f32);
         let mut own = self.auto_mins(std::slice::from_ref(w), area);
@@ -2633,7 +3031,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// tiling area, or, a tile alone with smart gaps on, the whole usable
     /// area and none.
     fn auto_area(&self, output: &Output, tree: &Node) -> Option<(Rectangle<i32, Logical>, i32)> {
-        if self.settings.tiling.smart_gaps && tiles_with_room(tree) == 1 { Some((self.usable_area(output)?, 0)) } else { Some((self.tile_area(output)?, self.tile_gap())) }
+        let key = (self.showing(output), output.name());
+        let has_locked = self.auto.locked.get(&key).is_some_and(|v| !v.is_empty());
+        if !has_locked && self.settings.tiling.smart_gaps && tiles_with_room(tree) == 1 { Some((self.usable_area(output)?, 0)) } else { Some((self.tile_area(output)?, self.tile_gap())) }
     }
 
     /// The area auto-tiled `w`'s tile is in ([`Self::auto_area`]), if it
@@ -2653,7 +3053,10 @@ impl<B: Backend + 'static> AnvilState<B> {
     fn auto_apply_tiles(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {
         let key = (self.showing(output), output.name());
         if self.layout_of(&key) == olo_protocol::TilingLayout::Scrolling {
-            return self.auto_apply_scrolling(output, tree, units, key);
+            let locked = self.auto.locked.get(&key).cloned().unwrap_or_default();
+            if locked.is_empty() || scrolling_free_part(&locked).is_some() {
+                return self.auto_apply_scrolling(output, tree, units, key);
+            }
         }
         // (Not Scrolling: none of its windows kept to the display.)
         for w in units {
@@ -2714,22 +3117,58 @@ impl<B: Backend + 'static> AnvilState<B> {
     fn auto_apply_scrolling(&mut self, output: &Output, tree: &Node, units: &[WindowElement], key: (u32, String)) {
         let Some((area, gap)) = self.auto_area(output, tree) else { return };
         let Some(screen) = self.space.output_geometry(output) else { return };
-        let order = windows_in_order(olo_protocol::TilingLayout::Scrolling, Tile::Left, tree);
-        let room = area.size.w.max(1);
+        let locked = self.auto.locked.get(&key).cloned().unwrap_or_default();
+        let locked_ids: HashSet<u64> = locked.iter().map(|(id, _)| *id).collect();
+        let moving_by_drag = |s: &Self, w: &WindowElement| s.tile_drag.as_ref().is_some_and(|d| d.moves(w));
+
+        // Place locked windows into their exact locked slots first (unconfined
+        // to the scrolling strip), then scroll unlocked windows inside the
+        // remaining contiguous area.
+        for &(id, tile) in &locked {
+            let Some(w) = units.iter().find(|w| w.id() == id).cloned() else { continue };
+            if self.auto.confined.remove(&id) {
+                *w.meta().confined.borrow_mut() = None;
+            }
+            let f = tile.fraction();
+            let was_tiled = Self::tiled(&w).is_some();
+            Self::set_tile_state(&w, Some(Tile::Cell), Some(f));
+            if self.is_zoomed(&w) || fullscreen(&w) || self.auto.moving.as_ref() == Some(&w) || moving_by_drag(self, &w) {
+                continue;
+            }
+            let rect = fit(part(area, f, gap), self.min_frame(&w), area);
+            let Some(geo) = self.space.element_geometry(&w) else { continue };
+            if !was_tiled && w.meta().placed.get() && geo.size.w > 1 {
+                w.user_data().insert_if_missing(PreZoom::default);
+                w.user_data().get::<PreZoom>().unwrap().0.borrow_mut().get_or_insert(geo);
+            }
+            self.auto_place(&w, geo, rect);
+        }
+
+        let scroll_area = match scrolling_free_part(&locked) {
+            Some(free_part) => part(area, free_part, gap),
+            None => area,
+        };
+        let confine_rect = if locked.is_empty() { screen } else { scroll_area };
+        let order: Vec<u64> = windows_in_order(olo_protocol::TilingLayout::Scrolling, Tile::Left, tree).into_iter().filter(|id| !locked_ids.contains(id)).collect();
+        let room = scroll_area.size.w.max(1);
         let mins: HashMap<u64, i32> = units.iter().map(|w| (w.id(), self.min_frame(w).w)).collect();
         let widths = &self.auto.widths;
         let width = |id: u64| ((widths.get(&id).copied().unwrap_or(COLUMN_WIDTH) * (room + gap) as f32).round() as i32 - gap).max(mins.get(&id).copied().unwrap_or(0));
         let focus = self.recent.iter().find(|r| order.contains(r)).copied();
         let scroll = self.auto.scroll.get(&key).copied().unwrap_or(0);
-        let (frames, scroll) = scrolling_frames(&order, &width, gap, area, focus, scroll);
+        let (frames, scroll) = scrolling_frames(&order, &width, gap, scroll_area, focus, scroll);
         self.auto.scroll.insert(key, scroll);
-        let moving_by_drag = |s: &Self, w: &WindowElement| s.tile_drag.as_ref().is_some_and(|d| d.moves(w));
         for (id, rect) in frames {
             let Some(w) = units.iter().find(|w| w.id() == id).cloned() else { continue };
-            *w.meta().confined.borrow_mut() = Some((output.name(), screen));
+            *w.meta().confined.borrow_mut() = Some((output.name(), confine_rect));
             self.auto.confined.insert(id);
             let was_tiled = Self::tiled(&w).is_some();
-            let f = (((rect.loc.x - area.loc.x) as f32) / room as f32, 0.0, rect.size.w as f32 / room as f32, 1.0);
+            let f = (
+                ((rect.loc.x - area.loc.x) as f32) / area.size.w.max(1) as f32,
+                ((rect.loc.y - area.loc.y) as f32) / area.size.h.max(1) as f32,
+                rect.size.w as f32 / area.size.w.max(1) as f32,
+                rect.size.h as f32 / area.size.h.max(1) as f32,
+            );
             Self::set_tile_state(&w, Some(Tile::Cell), Some(f));
             if self.is_zoomed(&w) || fullscreen(&w) || self.auto.moving.as_ref() == Some(&w) || moving_by_drag(self, &w) {
                 continue;
@@ -2915,8 +3354,19 @@ impl<B: Backend + 'static> AnvilState<B> {
         let key = (ws, output.name());
         if self.auto.pins_kept.get(&key).is_some_and(|kept| slots.contains(kept)) {
             self.auto.pins_kept.remove(&key);
-            self.auto.mains.entry(key).or_default().pinned = Some(id);
+            self.auto.mains.entry(key.clone()).or_default().pinned = Some(id);
             info!(window = id, "pinned as the main window, as before the restart");
+        }
+        if let Some(kept) = self.auto.locked_kept.get_mut(&key)
+            && let Some(pos) = kept.iter().position(|(s, _)| slots.contains(s))
+        {
+            let (_, tile) = kept.remove(pos);
+            let entry = self.auto.locked.entry(key).or_default();
+            if !entry.iter().any(|(i, _)| *i == id) {
+                entry.push((id, tile));
+            }
+            w.decoration().locked = true;
+            info!(window = id, ?tile, "locked into its slot, as before the restart");
         }
         self.auto.kept_for.insert(id, slots);
         // On its display, so it is one of its tiles.
@@ -3011,6 +3461,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// where they are, still tiled, so their edges still move together).
     pub(super) fn auto_forget(&mut self, workspace: u32, outputs: &[String]) {
         self.auto.forget(workspace, outputs);
+        for w in self.all_windows() {
+            if w.decoration().locked && self.workspace_of(&w) == workspace && self.display_of(&w).is_some_and(|o| outputs.contains(&o.name())) {
+                w.decoration().locked = false;
+            }
+        }
     }
 
     /// Each display's auto-tiling on its workspace `workspace` (the one
@@ -3073,6 +3528,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             m.meta().moved_on_purpose.set(true);
         }
         if self.floats(w) && !was && self.auto_tiled(w) {
+            let id = w.id();
+            for locks in self.auto.locked.values_mut() {
+                locks.retain(|(i, _)| *i != id);
+            }
+            for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
+                if m.decoration().locked {
+                    m.decoration().locked = false;
+                }
+            }
             let own = w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
             self.restore_frame(w);
             // Its own size not known (it opened in its tile, or came back
@@ -3158,7 +3622,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// [`auto_take`] of the tree `key` names (a workspace and display).
     fn auto_take_key(&mut self, key: (u32, String), name: &str) -> Option<((u32, String), Node)> {
         let tree = self.auto.trees.remove(&key)?;
-        self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
+        let locks = self.auto.locked.get(&key).cloned().unwrap_or_default();
+        self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone()), locks));
         self.arrangement_step(name, super::tiling::ArrangedKind::Auto);
         Some((key, tree))
     }
@@ -3274,6 +3739,195 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Every pinned main window, of every tree (the IPC's window list).
     pub fn pinned_mains(&self) -> Vec<u64> {
         self.auto.trees.keys().filter_map(|k| self.pinned_main_of(k)).collect()
+    }
+
+    /// The screen slot `w` is explicitly locked into in auto-tiling mode, if any.
+    pub fn locked_slot_of(&self, w: &WindowElement) -> Option<Tile> {
+        let key = self.tree_of(w)?;
+        self.auto.locked.get(&key)?.iter().find(|(id, _)| *id == w.id()).map(|(_, tile)| *tile)
+    }
+
+    /// Locked `(window_id, tile)` entries for tree `key` (for layout persistence).
+    pub fn locked_slots_of_key(&self, key: &(u32, String)) -> Vec<(u64, Tile)> {
+        self.auto.locked.get(key).cloned().unwrap_or_default()
+    }
+
+    /// Every window currently locked into an auto-tiling slot (for IPC `WindowInfo`).
+    pub fn locked_slots(&self) -> HashMap<u64, Tile> {
+        let mut out = HashMap::new();
+        for ((ws, o), locks) in &self.auto.locked {
+            if *ws != self.showing_named(o) {
+                continue;
+            }
+            for &(id, tile) in locks {
+                out.insert(id, tile);
+            }
+        }
+        out
+    }
+
+    /// Lock `w` into `tile` (`Some(tile)`) in auto-tiling mode so unlocked windows
+    /// auto-tile around it using the selected tiling layout, or unlock it (`None`).
+    pub fn lock_slot(&mut self, w: &WindowElement, tile: Option<Tile>) -> bool {
+        if let Some(t) = tile
+            && t == Tile::Cell
+        {
+            return false;
+        }
+        if tile.is_some() && self.floats(w) && self.window_output(w).is_some_and(|o| self.auto_on(&o, self.showing(&o))) {
+            self.set_floating(w, Some(false));
+            self.auto_tick();
+        }
+        let Some((key, tree)) = self.auto_take(w, if tile.is_some() { "Lock to Slot" } else { "Unlock Slot" }) else {
+            return false;
+        };
+        let output = self.space.outputs().find(|o| o.name() == key.1).cloned();
+        let id = w.id();
+        match tile {
+            Some(t) => {
+                let locks = self.auto.locked.entry(key.clone()).or_default();
+                locks.retain(|(i, _)| *i != id);
+                if slot_mask(t).is_some() {
+                    locks.retain(|(_, other)| !slots_overlap(*other, t));
+                } else {
+                    locks.clear();
+                }
+                locks.push((id, t));
+                if self.is_zoomed(w) {
+                    self.unzoom_window(w);
+                }
+                info!(window = id, ?t, "locked window to auto-tiling slot");
+                if let Some(o) = &output {
+                    let wt = w.title();
+                    self.show_indicator_on(o, crate::osd::Indicator::SlotLocked { tile: t, locked: true, window: (!wt.trim().is_empty()).then_some(wt) });
+                }
+            }
+            None => {
+                let mut was_tile = None;
+                if let Some(locks) = self.auto.locked.get_mut(&key) {
+                    was_tile = locks.iter().find(|(i, _)| *i == id).map(|(_, t)| *t);
+                    locks.retain(|(i, _)| *i != id);
+                    if locks.is_empty() {
+                        self.auto.locked.remove(&key);
+                    }
+                }
+                let Some(prev_tile) = was_tile else {
+                    self.auto.trees.insert(key, tree);
+                    return false;
+                };
+                info!(window = id, ?prev_tile, "unlocked window from auto-tiling slot");
+                if let Some(o) = &output {
+                    let wt = w.title();
+                    self.show_indicator_on(o, crate::osd::Indicator::SlotLocked { tile: prev_tile, locked: false, window: (!wt.trim().is_empty()).then_some(wt) });
+                }
+            }
+        }
+        self.auto_put(key, tree);
+        true
+    }
+
+    /// Lock `w` into `tile` on `output` (handling cross-display drags onto another
+    /// auto-tiled display cleanly).
+    pub fn lock_slot_on(&mut self, w: &WindowElement, output: &Output, tile: Tile) -> bool {
+        let ws = self.showing(output);
+        if !self.auto_on(output, ws) {
+            return false;
+        }
+        if self.window_output(w).as_ref() != Some(output) {
+            // Move window onto `output` first so `auto_output` puts it into that
+            // display's tree, clearing any lock on the display it left.
+            let id = w.id();
+            for locks in self.auto.locked.values_mut() {
+                locks.retain(|(i, _)| *i != id);
+            }
+            if let Some(area) = self.tile_area(output) {
+                self.space.map_element(w.clone(), area.loc, true);
+            }
+            self.auto.dirty = true;
+            self.auto_tick();
+        }
+        self.lock_slot(w, Some(tile))
+    }
+
+    /// Swap two auto-tiled windows in place (preserving any slot locks on their
+    /// respective positions: swapping into a locked slot transfers the lock to
+    /// the incoming window).
+    pub fn auto_swap_windows(&mut self, a: &WindowElement, b: &WindowElement) -> bool {
+        let (Some(ka), Some(kb)) = (self.tree_of(a), self.tree_of(b)) else { return false };
+        if ka != kb {
+            return false;
+        }
+        let Some((key, mut tree)) = self.auto_take(a, "Swap Tiles") else { return false };
+        let (ia, ib) = (a.id(), b.id());
+        tree.swap(ia, ib);
+        if let Some(locks) = self.auto.locked.get_mut(&key) {
+            for (id, _) in locks.iter_mut() {
+                if *id == ia {
+                    *id = ib;
+                } else if *id == ib {
+                    *id = ia;
+                }
+            }
+        }
+        info!(window = ia, with = ib, "swapped auto-tiled windows via hotspot");
+        self.auto_put(key, tree);
+        true
+    }
+
+    /// Compute where a currently locked window `w` would land if unlocked right
+    /// now, so hovering the `U` Unlock hotspot glides to an accurate live preview.
+    pub fn auto_unlock_preview(&self, w: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+        let key = self.tree_of(w)?;
+        let tree = self.auto.trees.get(&key)?;
+        let output = self.space.outputs().find(|o| o.name() == key.1)?;
+        let (area, gap) = self.auto_area(output, tree)?;
+        let layout_kind = self.layout_of(&key);
+        let (place, _) = self.main_places(&key);
+        let count = self.main_count_of(&key) as usize;
+        let m = self.auto.mains.get(&key).copied().unwrap_or_default();
+        let aspect = area.size.w as f32 / area.size.h.max(1) as f32;
+        let mut locks = self.auto.locked.get(&key).cloned().unwrap_or_default();
+        locks.retain(|(id, _)| *id != w.id());
+        let all = in_order(layout_kind, place, tree);
+        let locked_ids: HashSet<u64> = locks.iter().map(|(id, _)| *id).collect();
+        let mut unlocked = Vec::new();
+        let mut away = Vec::new();
+        for n in all {
+            if n == Node::hole() || n.is_gap() {
+                continue;
+            }
+            if let Node::Window(id) = n
+                && locked_ids.contains(&id)
+            {
+                continue;
+            }
+            if has_room(&n) {
+                unlocked.push(n);
+            } else {
+                away.push(n);
+            }
+        }
+        let preview = if locks.is_empty() {
+            let flat = evenly(Cut::Columns, unlocked);
+            match layout_kind {
+                olo_protocol::TilingLayout::MainAndStack => main_and_stack_again(&flat, place, None, count, None, None, m.now, m.before).unwrap_or(flat),
+                olo_protocol::TilingLayout::Halves => dwindle(&flat, aspect).unwrap_or(flat),
+                other => built_again(other, &flat, aspect).unwrap_or(flat),
+            }
+        } else {
+            compose_with_locks(&locks, unlocked, away, layout_kind, place, count, m, aspect)?
+        };
+        let units = self.all_windows();
+        let mins = self.auto_mins(&units, area);
+        let min = |id: u64| mins.get(&id).copied().unwrap_or((0.0, 0.0));
+        layout(&preview, &min, Inset::of(area, gap)).into_iter().find_map(|(n, f)| (*n == Node::Window(w.id())).then(|| fit(part(area, f, gap), self.min_frame(w), area)))
+    }
+
+    /// Clear `auto.moving` when snap handles a drag drop or cancel directly.
+    pub fn auto_stop_moving(&mut self, w: &WindowElement) {
+        if self.auto.moving.as_ref() == Some(w) {
+            self.auto.moving = None;
+        }
     }
 
     /// Pin as Main (⌃⌥⇧⌘M, the window menu, `Request::PinMain`): `w` is
@@ -3728,7 +4382,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.auto.trees.insert(key, tree);
             return false;
         };
-        self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
+        let locks = self.auto.locked.get(&key).cloned().unwrap_or_default();
+        self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone()), locks));
         self.arrangement_step("Balance Tiles", super::tiling::ArrangedKind::Auto);
         let mut ids = tree.windows();
         let order = |s: &Self, id: u64| {
@@ -3752,7 +4407,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn auto_readopt(&mut self, output: &Output) {
         let key = (self.showing(&output), output.name());
         if let Some(tree) = self.auto.trees.remove(&key) {
-            self.auto.undo = Some(Undo::Tree(key, Some(tree)));
+            let locks = self.auto.locked.get(&key).cloned().unwrap_or_default();
+            self.auto.undo = Some(Undo::Tree(key, Some(tree), locks));
             // (The arranger's step, its name kept: auto-tiling's to undo.)
             if let Some(a) = &mut self.arrangement {
                 a.kind = super::tiling::ArrangedKind::Auto;
@@ -3776,12 +4432,18 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn auto_undo(&mut self) -> bool {
         match self.auto.undo.take() {
             None => false,
-            Some(Undo::Tree(key, before)) => {
+            Some(Undo::Tree(key, before, before_locks)) => {
                 let now = self.auto.trees.remove(&key);
+                let now_locks = self.auto.locked.remove(&key).unwrap_or_default();
                 if let Some(t) = before {
                     self.auto.trees.insert(key.clone(), t);
                 }
-                self.auto.undo = Some(Undo::Tree(key, now));
+                if !before_locks.is_empty() {
+                    self.auto.locked.insert(key.clone(), before_locks);
+                }
+                self.auto.built_locked.remove(&key);
+                self.auto.built_windows.remove(&key);
+                self.auto.undo = Some(Undo::Tree(key, now, now_locks));
                 self.auto.dirty = true;
                 self.auto_tick();
                 info!("undid an auto-tiling change");
@@ -3852,18 +4514,39 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.auto.dirty = true;
             return;
         };
-        let mut before = self.auto.trees.remove(&from);
-        self.auto.undo = Some(Undo::Tree(from.clone(), before.clone()));
-        self.arrangement_step("Move Tile", super::tiling::ArrangedKind::Auto);
         let drop = drop_at(r, p);
+        if from == to && drop != Drop::Swap && self.auto.locked.get(&to).is_some_and(|v| v.iter().any(|(lid, _)| *lid == target)) {
+            // Do not split a locked slot's tile via an edge drop; dropping on
+            // its centre (or swap pad) swaps windows and transfers the lock.
+            self.auto.dirty = true;
+            return;
+        }
+        let mut before = self.auto.trees.remove(&from);
+        let locks = self.auto.locked.get(&from).cloned().unwrap_or_default();
+        self.auto.undo = Some(Undo::Tree(from.clone(), before.clone(), locks));
+        self.arrangement_step("Move Tile", super::tiling::ArrangedKind::Auto);
         if from == to && drop == Drop::Swap {
             if let Some(t) = before.as_mut() {
                 t.swap(id, target);
+            }
+            if let Some(locks) = self.auto.locked.get_mut(&from) {
+                for (lid, _) in locks.iter_mut() {
+                    if *lid == id {
+                        *lid = target;
+                    } else if *lid == target {
+                        *lid = id;
+                    }
+                }
             }
             if let Some(t) = before {
                 self.auto.trees.insert(from, t);
             }
         } else {
+            // Dropped onto a tile's edge: if the dragged window was locked, unlock it
+            // so it moves freely beside the target tile.
+            if let Some(locks) = self.auto.locked.get_mut(&from) {
+                locks.retain(|(lid, _)| *lid != id);
+            }
             let rest = before.and_then(|t| t.without(&|n| *n == Node::Window(id)));
             if let Some(t) = rest {
                 self.auto.trees.insert(from.clone(), t);
@@ -3898,7 +4581,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             && a == b
             && let Some(before) = self.auto.trees.remove(&a)
         {
-            self.auto.undo = Some(Undo::Tree(a.clone(), Some(before.clone())));
+            let locks = self.auto.locked.get(&a).cloned().unwrap_or_default();
+            self.auto.undo = Some(Undo::Tree(a.clone(), Some(before.clone()), locks));
             self.arrangement_step("Tile With", super::tiling::ArrangedKind::Auto);
             let mut t = before.without(&|n| *n == Node::Window(other.id())).unwrap_or(Node::Window(w.id()));
             t.split_leaf(w.id(), Node::Window(other.id()), Cut::Columns, !w_left);
@@ -3943,7 +4627,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn auto_drag_ended(&mut self, w: &WindowElement) {
         let Some(key) = self.tree_of(w) else { return };
         let Some(mut tree) = self.auto.trees.remove(&key) else { return };
-        self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
+        let locks = self.auto.locked.get(&key).cloned().unwrap_or_default();
+        self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone()), locks));
         self.arrangement_step("Resize Tiles", super::tiling::ArrangedKind::Auto);
         let parts: HashMap<u64, Part> = tree.windows().into_iter().filter_map(|i| Some((i, Self::custom_part(&self.window_by_id(i)?)?))).collect();
         // Where it can be: not past a window's least size (else the split
@@ -4834,5 +5519,62 @@ mod tests {
         let mut t = Node::split(Cut::Columns, 0.3, w(1), w(2));
         t.swap(1, 2);
         assert_eq!(t, Node::split(Cut::Columns, 0.3, w(2), w(1)));
+    }
+
+    #[test]
+    fn locked_slots_compose_with_every_tiling_layout() {
+        use olo_protocol::TilingLayout as L;
+        let layouts = [L::Halves, L::MainAndStack, L::Columns, L::Rows, L::Grid, L::Spiral, L::Scrolling];
+        let unlocked = || vec![w(2), w(3), w(4)];
+        // 1. Single half locked (Left): window 1 stays exact (0, 0, 0.5, 1.0)
+        //    and windows 2, 3, 4 tile the right half cleanly in every layout.
+        for layout_kind in layouts {
+            let t = compose_with_locks(&[(1, Tile::Left)], unlocked(), Vec::new(), layout_kind, Tile::CenterTwoThirds, 1, Mains::default(), 1.6).unwrap();
+            let p = parts(&t);
+            assert_eq!(parts_wrong(&p), None, "{layout_kind:?}: {p:?}");
+            assert!(near(p.iter().find(|(i, _)| *i == 1).unwrap().1, (0.0, 0.0, 0.5, 1.0)), "{layout_kind:?}: {p:?}");
+            for id in [2u64, 3, 4] {
+                let r = p.iter().find(|(i, _)| *i == id).unwrap().1;
+                assert!(r.0 >= 0.499 && r.0 + r.2 <= 1.001, "{layout_kind:?} window {id} escaped right half: {r:?}");
+            }
+        }
+        // 2. Single quarter locked (TopLeft): window 1 stays exact (0, 0, 0.5, 0.5),
+        //    and unlocked windows tile BottomLeft + Right with zero overlap.
+        for layout_kind in layouts {
+            let t = compose_with_locks(&[(1, Tile::TopLeft)], unlocked(), Vec::new(), layout_kind, Tile::Left, 1, Mains::default(), 1.6).unwrap();
+            let p = parts(&t);
+            assert_eq!(parts_wrong(&p), None, "{layout_kind:?}: {p:?}");
+            assert!(near(p.iter().find(|(i, _)| *i == 1).unwrap().1, (0.0, 0.0, 0.5, 0.5)), "{layout_kind:?}: {p:?}");
+            assert_eq!(p.len(), 4);
+        }
+        // 3. TopLeft + TopRight locked: root splits horizontally so the bottom
+        //    half is ONE contiguous free region for unlocked windows.
+        let t = compose_with_locks(&[(1, Tile::TopLeft), (2, Tile::TopRight)], vec![w(3), w(4)], Vec::new(), L::Columns, Tile::Left, 1, Mains::default(), 1.6).unwrap();
+        let p = parts(&t);
+        assert_eq!(parts_wrong(&p), None, "{p:?}");
+        assert!(near(p.iter().find(|(i, _)| *i == 1).unwrap().1, (0.0, 0.0, 0.5, 0.5)));
+        assert!(near(p.iter().find(|(i, _)| *i == 2).unwrap().1, (0.5, 0.0, 0.5, 0.5)));
+        assert!(near(p.iter().find(|(i, _)| *i == 3).unwrap().1, (0.0, 0.5, 0.5, 0.5)));
+        assert!(near(p.iter().find(|(i, _)| *i == 4).unwrap().1, (0.5, 0.5, 0.5, 0.5)));
+        // 4. Diagonal quarters (TopLeft + BottomRight) locked: unlocked fill TR + BL.
+        let t = compose_with_locks(&[(1, Tile::TopLeft), (2, Tile::BottomRight)], vec![w(3), w(4)], Vec::new(), L::Halves, Tile::Left, 1, Mains::default(), 1.6).unwrap();
+        let p = parts(&t);
+        assert_eq!(parts_wrong(&p), None, "{p:?}");
+        assert!(near(p.iter().find(|(i, _)| *i == 1).unwrap().1, (0.0, 0.0, 0.5, 0.5)));
+        assert!(near(p.iter().find(|(i, _)| *i == 2).unwrap().1, (0.5, 0.5, 0.5, 0.5)));
+        // 5. Half + quarter (Left + TopRight): unlocked fills BottomRight cleanly.
+        let t = compose_with_locks(&[(1, Tile::Left), (2, Tile::TopRight)], vec![w(3)], Vec::new(), L::Grid, Tile::Left, 1, Mains::default(), 1.6).unwrap();
+        let p = parts(&t);
+        assert_eq!(parts_wrong(&p), None, "{p:?}");
+        assert!(near(p.iter().find(|(i, _)| *i == 3).unwrap().1, (0.5, 0.5, 0.5, 0.5)));
+        // 6. Scrolling free part returns exact remaining rectangle for contiguous cases.
+        assert_eq!(scrolling_free_part(&[(1, Tile::Left)]), Some((0.5, 0.0, 0.5, 1.0)));
+        assert_eq!(scrolling_free_part(&[(1, Tile::TopLeft), (2, Tile::TopRight)]), Some((0.0, 0.5, 1.0, 0.5)));
+        assert_eq!(scrolling_free_part(&[(1, Tile::Left), (2, Tile::TopRight)]), Some((0.5, 0.5, 0.5, 0.5)));
+        assert_eq!(scrolling_free_part(&[(1, Tile::TopLeft)]), None);
+        // 7. Overlap checks.
+        assert!(slots_overlap(Tile::Left, Tile::TopLeft));
+        assert!(!slots_overlap(Tile::Left, Tile::TopRight));
+        assert!(!slots_overlap(Tile::TopLeft, Tile::BottomRight));
     }
 }

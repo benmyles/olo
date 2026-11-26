@@ -67,12 +67,16 @@ type Rect = Rectangle<i32, Logical>;
 /// A place a dragged window can be let go into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Place {
-    /// A half or a quarter of the display.
+    /// A half or a quarter of the display (in auto-tiling mode, locks the
+    /// window into that slot while remaining unlocked windows tile around it).
     Tile(Tile),
     /// The whole of it (zoomed).
     Whole,
     /// Another window's (by its id): the two swap.
     Window(u64),
+    /// In auto-tiling mode, unlock a currently locked window from `Tile` so it
+    /// rejoins the auto-tiling layout.
+    Unlock(Tile),
 }
 
 impl Place {
@@ -82,6 +86,7 @@ impl Place {
             Place::Tile(t) => format!("{t:?}"),
             Place::Whole => "Whole".into(),
             Place::Window(id) => format!("Window {id}"),
+            Place::Unlock(_) => "Unlock".into(),
         }
     }
 }
@@ -133,6 +138,13 @@ const WINDOWS: &str = "jklhuiopynmbgtrfv";
 /// the middle, then the windows'. One that would lie over an earlier one
 /// (a small display, a window under a pad) isn't made.
 pub fn pads(screen: Rect, area: Rect, others: &[(u64, Rect)]) -> Vec<Pad> {
+    pads_with_unlock(screen, area, others, None)
+}
+
+/// Like [`pads`], plus an optional `Unlock` (`U`) pad placed inside
+/// `unlock_at` (or the display center as fallback) when dragging a window
+/// that is currently locked into an auto-tiling slot.
+pub fn pads_with_unlock(screen: Rect, area: Rect, others: &[(u64, Rect)], unlock_at: Option<(Tile, Rect)>) -> Vec<Pad> {
     let (l, t, r, b) = (area.loc.x, area.loc.y, area.loc.x + area.size.w, area.loc.y + area.size.h);
     let (cx, cy) = (l + area.size.w / 2, t + area.size.h / 2);
     let (w, h) = PAD;
@@ -170,14 +182,28 @@ pub fn pads(screen: Rect, area: Rect, others: &[(u64, Rect)]) -> Vec<Pad> {
         let grown = at(a.loc.x - GAP, a.loc.y - GAP, a.size.w + 2 * GAP, a.size.h + 2 * GAP);
         !grown.overlaps(*b)
     };
-    let mut out: Vec<Pad> = Vec::with_capacity(PLACES.len() + others.len());
+    let mut out: Vec<Pad> = Vec::with_capacity(PLACES.len() + others.len() + usize::from(unlock_at.is_some()));
     for (place, letter) in PLACES {
         let rect = rect_of(place);
         if rect.size.w >= BAR && rect.size.h >= BAR && out.iter().all(|p| apart(&p.rect, &rect)) {
             out.push(Pad { place, rect, hot: hot(rect), letter });
         }
     }
-    let mut letters = WINDOWS.chars();
+    let mut has_unlock = false;
+    if let Some((slot, frame)) = unlock_at {
+        let (uw, uh) = WINDOW_PAD;
+        let try_center = |box_r: Rect| -> Option<Rect> {
+            let seen = box_r.intersection(area)?;
+            let rect = at(seen.loc.x + (seen.size.w - uw) / 2, seen.loc.y + (seen.size.h - uh) / 2, uw, uh);
+            (seen.size.w >= uw && seen.size.h >= uh && area.contains_rect(rect) && out.iter().all(|p| apart(&p.rect, &rect))).then_some(rect)
+        };
+        let rect = try_center(frame).or_else(|| try_center(area));
+        if let Some(rect) = rect {
+            out.push(Pad { place: Place::Unlock(slot), rect, hot: rect, letter: 'u' });
+            has_unlock = true;
+        }
+    }
+    let mut letters = WINDOWS.chars().filter(|&c| !(has_unlock && c == 'u'));
     for &(id, frame) in others {
         // At the middle of what of it is on the display's area.
         let Some(seen) = frame.intersection(area) else { continue };
@@ -236,6 +262,12 @@ pub struct Snap {
     pre: Option<Rect>,
     /// The display's scale and the look the pads were last drawn for.
     shown_for: (f64, u64),
+    /// True when the current display is in Auto-Tiling mode and the dragged
+    /// window tiles (dropping into a slot locks it there while unlocked
+    /// windows auto-tile around it).
+    auto: bool,
+    /// True if the dragged window was already locked to a slot when the drag began.
+    was_locked: bool,
 }
 
 /// The other window of a swap glows for as long as it's shown swapped
@@ -280,11 +312,12 @@ enum Look {
     Back,
 }
 
-/// What a pad's picture is of: its place's kind and, for a window's, the
-/// window's title (none: one stepped back, which shows none); its
-/// letter, its size in device pixels, whether it's a window's, and its
-/// look.
-type PadKey = (Option<Tile>, Option<String>, char, (i32, i32), bool, Look);
+/// What a pad's picture is of: its place's kind and, for a window/unlock pad,
+/// its title (none: stepped back, which shows none); its letter, its size in
+/// device pixels, pad variant tag (0 = tile/whole, 1 = window, 2 = unlock),
+/// whether auto-tiling lock graphics are drawn, whether the dragged window is
+/// currently locked, and its look.
+type PadKey = (Option<Tile>, Option<String>, char, (i32, i32), u8, bool, bool, Look);
 
 /// The pads' pictures, each made once for a scale and a look: the
 /// picture, where it goes in its pad, and its size (device pixels).
@@ -346,7 +379,66 @@ const COLLAR: f64 = 3.0;
 /// back one is no bigger than its collar: eleven pad-sized pictures,
 /// nearly all of them nothing, were 5 ms to hand the GPU in the frame
 /// the first place was shown).
-fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter: char, size: (i32, i32), look: Look, s: f64) -> Option<(Pixmap, (i32, i32))> {
+/// Contrasting ink (white or deep charcoal) over `bg` by relative luminance.
+fn contrast_ink(bg: [u8; 4]) -> [u8; 4] {
+    let luma = 0.2126 * bg[0] as f32 + 0.7152 * bg[1] as f32 + 0.0722 * bg[2] as f32;
+    if luma < 148.0 { [255, 255, 255, 255] } else { [24, 28, 34, 255] }
+}
+
+/// Draw crisp 1-px neutral-slate wireframe panes inside the mini-screen well
+/// showing the remaining auto-tiled space around locked slot `tile`.
+fn draw_auto_rest(pm: &mut Pixmap, ix: i32, iy: i32, iw: i32, ih: i32, u: i32, tile: Tile, stroke: [u8; 4], fill_c: [u8; 4]) {
+    let mut box_outline = |fx: f32, fy: f32, fw: f32, fh: f32| {
+        let x0 = ix + (fx * iw as f32).round() as i32 + u;
+        let y0 = iy + (fy * ih as f32).round() as i32 + u;
+        let x1 = ix + ((fx + fw) * iw as f32).round() as i32 - u;
+        let y1 = iy + ((fy + fh) * ih as f32).round() as i32 - u;
+        let (rw, rh) = (x1 - x0, y1 - y0);
+        if rw <= 2 * u || rh <= 2 * u {
+            return;
+        }
+        super::deco::fill(pm, x0, y0, rw, rh, stroke);
+        super::deco::fill(pm, x0 + u, y0 + u, rw - 2 * u, rh - 2 * u, fill_c);
+    };
+    match tile {
+        Tile::Left => {
+            box_outline(0.5, 0.0, 0.5, 0.5);
+            box_outline(0.5, 0.5, 0.5, 0.5);
+        }
+        Tile::Right => {
+            box_outline(0.0, 0.0, 0.5, 0.5);
+            box_outline(0.0, 0.5, 0.5, 0.5);
+        }
+        Tile::Top => {
+            box_outline(0.0, 0.5, 0.5, 0.5);
+            box_outline(0.5, 0.5, 0.5, 0.5);
+        }
+        Tile::Bottom => {
+            box_outline(0.0, 0.0, 0.5, 0.5);
+            box_outline(0.5, 0.0, 0.5, 0.5);
+        }
+        Tile::TopLeft => {
+            box_outline(0.0, 0.5, 0.5, 0.5);
+            box_outline(0.5, 0.0, 0.5, 1.0);
+        }
+        Tile::TopRight => {
+            box_outline(0.5, 0.5, 0.5, 0.5);
+            box_outline(0.0, 0.0, 0.5, 1.0);
+        }
+        Tile::BottomLeft => {
+            box_outline(0.0, 0.0, 0.5, 0.5);
+            box_outline(0.5, 0.0, 0.5, 1.0);
+        }
+        Tile::BottomRight => {
+            box_outline(0.5, 0.0, 0.5, 0.5);
+            box_outline(0.0, 0.0, 0.5, 1.0);
+        }
+        _ => {}
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter: char, size: (i32, i32), auto: bool, was_locked: bool, look: Look, s: f64) -> Option<(Pixmap, (i32, i32))> {
     let (w, h) = size;
     let u = (s.floor() as i32).max(1);
     let px = |l: f64| (l * s).round() as i32;
@@ -367,7 +459,7 @@ fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter:
         rect(pm, x + w - u, y + u, u, h - 2 * u, br, a);
     };
     let dark = p.mode == olo_theme::ThemeMode::Dark;
-    let window = matches!(place, Place::Window(_));
+    let captioned = matches!(place, Place::Window(_) | Place::Unlock(_));
     // A raised edge's light and shade on `ground`: by day the palette's
     // shine and a tint darker; by night, where the shine is as dark as
     // the panels and a plate was a flat card (Opus's review), a step
@@ -386,16 +478,19 @@ fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter:
     let low = h < px(SCREEN.1 + BETWEEN) + ch + 2 * u;
     let (sw, sh) = if low { (px(SCREEN_SMALL.0), px(SCREEN_SMALL.1)) } else { (px(SCREEN.0), px(SCREEN.1)) };
     let between = px(BETWEEN);
-    // (A window's pad: its title's line between the two, in place of
+    // (A window's or unlock pad: its caption line between the two, in place of
     // the room between them.)
-    let named = if window && !low { px(TITLE_OVER) + px(TITLE_LINE) + px(TITLE_UNDER) - between } else { 0 };
+    let named = if captioned && !low { px(TITLE_OVER) + px(TITLE_LINE) + px(TITLE_UNDER) - between } else { 0 };
     // Where each goes: one over the other; in a low pad side by side, the
     // cap in the pad's middle as every other is (so it's where the eye
     // left it when the plate steps back, and over W's: Astra's review)
     // and the picture at its left.
     let ((sx, sy), (cx, cy)) = if low {
-        let x = (w - cw) / 2;
-        ((x - between - sw, (h - sh) / 2), (x, (h - ch) / 2))
+        // Center the combined `[icon] [S]` cluster horizontally inside the bar
+        // so it aligns symmetrically over the `W` pad below it.
+        let total = sw + between + cw;
+        let x0 = (w - total) / 2;
+        ((x0, (h - sh) / 2), (x0 + sw + between, (h - ch) / 2))
     } else {
         let y = (h - (sh + named + between + ch)) / 2;
         (((w - sw) / 2, y), ((w - cw) / 2, y + sh + named + between))
@@ -412,7 +507,8 @@ fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter:
         rect(&mut pm, u, u, kw - 2 * u, kh - 2 * u, panel, 255);
         bevel(&mut pm, u, u, kw - 2 * u, kh - 2 * u, lit(panel), shaded(panel), 255);
         pm.draw_pixmap(c, c, cap.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
-        return Some((pm, (cx - c, cy - c)));
+        let bx = if low { (w - cw) / 2 } else { cx };
+        return Some((pm, (bx - c, cy - c)));
     }
     let mut pm = Pixmap::new((w + u).max(1) as u32, (h + u).max(1) as u32)?;
     rect(&mut pm, u, u, w, h, [0, 0, 0, 255], SHADOW);
@@ -444,10 +540,51 @@ fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter:
             rect(&mut pm, sx + u + 1, sy + u + 1, close, close, ink, 255);
             rect(&mut pm, sx + 2 * u + 1, sy + 2 * u + 1, close - 2 * u, close - 2 * u, p.tab_focused_light, 255);
         }
+        // Unlock pad: matched pair with the locked mini-screen — neutral slate
+        // outlines for the other panes, and the slot being unlocked drawn with a
+        // 1 pt accent-blue outline (brighter sky-blue in dark, crisp white on dark
+        // hover) and a centered open padlock inside that slot (no knockout box).
+        Place::Unlock(tile) => {
+            bevel(&mut pm, sx, sy, sw, sh, p.shade(ground, 1.147), lit(ground), 255);
+            bevel(&mut pm, sx + u, sy + u, sw - 2 * u, sh - 2 * u, p.shade(ground, 1.55), p.shade(ground, 1.06), 255);
+            let (ix, iy, iw, ih) = (sx + 2 * u, sy + 2 * u, sw - 4 * u, sh - 4 * u);
+            rect(&mut pm, ix, iy, iw, ih, p.document_background, 255);
+            let (rest_stroke, rest_fill, accent_ink) = if look == Look::In && dark {
+                ([196, 212, 232, 255], olo_theme::mix(p.document_background, [196, 212, 232, 255], 0.14), [255, 255, 255, 255])
+            } else {
+                let st = if dark { [126, 142, 162, 255] } else { [132, 146, 165, 255] };
+                let ac = if dark { olo_theme::mix(p.control_highlight, [255, 255, 255, 255], 0.38) } else { p.control_highlight };
+                (st, olo_theme::mix(p.document_background, st, if dark { 0.16 } else { 0.12 }), ac)
+            };
+            draw_auto_rest(&mut pm, ix, iy, iw, ih, u, tile, rest_stroke, rest_fill);
+            let (fx, fy, fw, fh) = tile.fraction();
+            let (x0, y0) = ((fx * iw as f32).round() as i32 + u, (fy * ih as f32).round() as i32 + u);
+            let (x1, y1) = (((fx + fw) * iw as f32).round() as i32 - u, ((fy + fh) * ih as f32).round() as i32 - u);
+            let (rx, ry, rw, rh) = (ix + x0, iy + y0, x1 - x0, y1 - y0);
+            if rw > 2 * u && rh > 2 * u {
+                rect(&mut pm, rx, ry, rw, rh, accent_ink, 255);
+                rect(&mut pm, rx + u, ry + u, rw - 2 * u, rh - 2 * u, rest_fill, 255);
+                let short = fh <= 0.55;
+                let want_w = if short { px(5.0) } else { px(7.0) };
+                let want_h = if short { px(7.0) } else { px(9.0) };
+                let inner_w = rw - 2 * u;
+                let inner_h = rh - 2 * u;
+                let pad_y = if inner_h >= 10 * u { 2 * u } else { u };
+                let lw = want_w.min(inner_w - 2 * u).max(5 * u);
+                let lh = want_h.min(inner_h - 2 * pad_y).max(5 * u);
+                if inner_w >= lw && inner_h >= lh {
+                    let lx = rx + u + (inner_w - lw) / 2;
+                    let ly = ry + u + (inner_h - lh) / 2;
+                    super::deco::draw_open_lock_glyph(&mut pm, lx, ly, lw, lh, u, accent_ink, rest_fill);
+                }
+            }
+        }
         // The display, small, in a well sunken as the kit's are: the
         // screen's white, the place filled in the highlight, a line of
         // the white left round the filling (at an edge too: it's a part
-        // of a screen, not a block).
+        // of a screen, not a block). In auto-tiling mode, subtle slate
+        // outlines show remaining unlocked tiles around the locked slot
+        // and a crisp pixel-snapped padlock marks the locked slot.
         _ => {
             let (fx, fy, fw, fh) = match place {
                 Place::Tile(tile) => tile.fraction(),
@@ -457,9 +594,35 @@ fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter:
             bevel(&mut pm, sx + u, sy + u, sw - 2 * u, sh - 2 * u, p.shade(ground, 1.55), p.shade(ground, 1.06), 255);
             let (ix, iy, iw, ih) = (sx + 2 * u, sy + 2 * u, sw - 4 * u, sh - 4 * u);
             rect(&mut pm, ix, iy, iw, ih, p.document_background, 255);
+            if auto && let Place::Tile(tile) = place {
+                let rest_stroke = if dark { [126, 142, 162, 255] } else { [132, 146, 165, 255] };
+                let rest_fill = olo_theme::mix(p.document_background, rest_stroke, if dark { 0.16 } else { 0.12 });
+                draw_auto_rest(&mut pm, ix, iy, iw, ih, u, tile, rest_stroke, rest_fill);
+            }
             let (x0, y0) = ((fx * iw as f32).round() as i32 + u, (fy * ih as f32).round() as i32 + u);
             let (x1, y1) = (((fx + fw) * iw as f32).round() as i32 - u, ((fy + fh) * ih as f32).round() as i32 - u);
-            rect(&mut pm, ix + x0, iy + y0, x1 - x0, y1 - y0, p.control_highlight, 255);
+            let (rx, ry, rw, rh) = (ix + x0, iy + y0, x1 - x0, y1 - y0);
+            rect(&mut pm, rx, ry, rw, rh, p.control_highlight, 255);
+            let draw_padlock = (auto && matches!(place, Place::Tile(_)) && !low) || (auto && was_locked && matches!(place, Place::Whole));
+            if draw_padlock {
+                let short = fh <= 0.55 || low;
+                let want_w = if short { px(5.0) } else { px(7.0) };
+                let want_h = if low {
+                    px(6.0)
+                } else if short {
+                    px(7.0)
+                } else {
+                    px(9.0)
+                };
+                let pad_y = if !low && rh >= 10 * u { 2 * u } else { u };
+                let lw = want_w.min(rw - 2 * u).max(5 * u);
+                let lh = want_h.min(rh - 2 * pad_y).max(5 * u);
+                if rw >= lw + 2 * u && rh >= lh + 2 * u {
+                    let lx = rx + (rw - lw) / 2;
+                    let ly = ry + (rh - lh) / 2;
+                    super::deco::draw_lock_glyph(&mut pm, lx, ly, lw, lh, u, contrast_ink(p.control_highlight), p.control_highlight);
+                }
+            }
         }
     }
     // Whose place: the window's title, cut short to the pad.
@@ -470,7 +633,8 @@ fn pad_pixmap(p: &olo_theme::Palette, place: Place, title: Option<&str>, letter:
         let tw = crate::text::measure(&title, font, false).ceil() as i32;
         let line = sy + sh + px(TITLE_OVER);
         let y = crate::text::top_for_centre(line as f32 + px(TITLE_LINE) as f32 / 2.0, font, false);
-        crate::text::draw(&mut pm, &title, ((w - tw) / 2) as f32, y, font, false, p.panel_text);
+        let text_ink = if look == Look::In && dark { contrast_ink(ground) } else { p.panel_text };
+        crate::text::draw(&mut pm, &title, ((w - tw) / 2) as f32, y, font, false, text_ink);
     }
     Some((pm, (0, 0)))
 }
@@ -490,10 +654,11 @@ where
 }
 
 impl<B: Backend + 'static> AnvilState<B> {
-    /// Whether a window snaps as it's dragged: one that tiles, not a tile
-    /// of an auto-tiled display's tree.
+    /// Whether a window snaps as it's dragged: any resizable, non-floating-only
+    /// window, both in Standard mode and in Auto-Tiling mode (where dropping
+    /// into a slot locks the window there while unlocked windows tile around it).
     fn snaps(&self, window: &WindowElement) -> bool {
-        self.settings.tiling.snap && !self.auto_tiled(window) && !Self::floats_always(window) && !window.meta().fullscreen.get() && !window.meta().pip.get() && super::tiling::resizable(window)
+        self.settings.tiling.snap && !Self::floats_always(window) && !window.meta().fullscreen.get() && !window.meta().pip.get() && super::tiling::resizable(window)
     }
 
     /// How `window` is arranged now (where it's going, if it's on its way).
@@ -527,10 +692,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         *window.user_data().get::<PreZoom>().unwrap().0.borrow_mut() = own;
     }
 
-    /// The pads for `window` moved on `output`, and the other windows
-    /// that have one.
-    fn snap_pads(&self, window: &WindowElement, output: &Output) -> (Vec<Pad>, Vec<(u64, Arranged)>) {
+    /// The pads for `window` moved on `output`, the other windows that have
+    /// a swap pad, and whether `output` is currently in Auto-Tiling mode for `window`.
+    fn snap_pads(&self, window: &WindowElement, output: &Output, unlock_at: Option<(Tile, Rect)>) -> (Vec<Pad>, Vec<(u64, Arranged)>, bool) {
         let (Some(screen), Some(area)) = (self.space.output_geometry(output), self.tile_area(output)) else { return Default::default() };
+        let auto = self.auto_on(output, self.showing(output)) && !self.floats(window);
         // (Another window of its own app is told it's over it, to take
         // it as a tab: `window_drop`. Not a place to swap with.)
         let client = window.meta().owner.borrow().as_ref().map(|(_, c)| c.clone());
@@ -544,7 +710,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     && !w.meta().covered.get()
                     && !w.meta().fullscreen.get()
                     && !Self::floats_always(w)
-                    && !self.auto_tiled(w)
+                    && (if auto { self.auto_tiled(w) } else { !self.auto_tiled(w) })
                     && super::tiling::resizable(w)
                     && (client.is_none() || w.meta().owner.borrow().as_ref().map(|(_, c)| c.clone()) != client)
             })
@@ -552,7 +718,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             .filter(|(_, a)| a.frame.overlaps(area))
             .collect();
         let frames: Vec<(u64, Rect)> = others.iter().map(|(id, a)| (*id, a.frame)).collect();
-        (pads(screen, area, &frames), others)
+        let unlock = if auto { unlock_at } else { None };
+        (pads_with_unlock(screen, area, &frames, unlock), others, auto)
     }
 
     /// What the displays show of the pads, made again (they changed, or
@@ -583,15 +750,20 @@ impl<B: Backend + 'static> AnvilState<B> {
                     Some(_) => Look::Back,
                     None => Look::Rest,
                 };
-                let (tile, title) = match pad.place {
-                    Place::Tile(tile) => (Some(tile), None),
-                    Place::Whole => (None, None),
-                    Place::Window(_) if look == Look::Back => (None, None),
-                    Place::Window(id) => (None, Some(self.window_by_id(id).map(|w| w.title()).unwrap_or_default())),
+                // While a hover preview is active, hide every non-hovered pad so floating
+                // keycaps never sit on top of the previewed windows' tabs, close boxes, or content.
+                if look == Look::Back {
+                    continue;
+                }
+                let (tile, title, kind_tag) = match pad.place {
+                    Place::Tile(tile) => (Some(tile), None, 0u8),
+                    Place::Whole => (None, None, 0u8),
+                    Place::Window(id) => (None, Some(self.window_by_id(id).map(|w| w.title()).unwrap_or_default()), 1u8),
+                    Place::Unlock(tile) => (Some(tile), Some("Unlock".to_owned()), 2u8),
                 };
-                let pad_key = (tile, title, pad.letter, size, matches!(pad.place, Place::Window(_)), look);
+                let pad_key = (tile, title, pad.letter, size, kind_tag, snap.auto, snap.was_locked, look);
                 if !drawn.pads.contains_key(&pad_key) {
-                    let Some((pm, offset)) = pad_pixmap(&palette, pad.place, pad_key.1.as_deref(), pad.letter, size, look, scale) else { continue };
+                    let Some((pm, offset)) = pad_pixmap(&palette, pad.place, pad_key.1.as_deref(), pad.letter, size, snap.auto, snap.was_locked, look, scale) else { continue };
                     let whole = (pm.width() as i32, pm.height() as i32);
                     drawn.pads.insert(pad_key.clone(), (MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, whole, 1, Transform::Normal, None), offset, whole));
                 }
@@ -637,7 +809,23 @@ impl<B: Backend + 'static> AnvilState<B> {
         // (Taken while on its way somewhere: as it would have been there.)
         let before = self.snap_arranged(window)?;
         let pre = window.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
-        let own = if before.tile.is_some() || before.zoomed { pre.map_or(from.size, |k| k.size) } else { from.size };
+        let locked_tile = self.locked_slot_of(window);
+        let was_locked = locked_tile.is_some();
+        let unlock_at = locked_tile.map(|t| (t, before.frame));
+        let (pads, others, auto) = self.snap_pads(window, &output, unlock_at);
+        if auto {
+            self.auto_moving(window);
+        }
+        // In auto-tiling mode, keep the tile's dragged size intact so the
+        // window glides cleanly into slot previews and drops back cleanly if
+        // released outside a pad; in standard mode, restore its own size.
+        let own = if auto {
+            from.size
+        } else if before.tile.is_some() || before.zoomed {
+            pre.map_or(from.size, |k| k.size)
+        } else {
+            from.size
+        };
         let mut initial = from.loc;
         if own != from.size {
             // Its tab stays under the pointer: where it is along the
@@ -655,22 +843,22 @@ impl<B: Backend + 'static> AnvilState<B> {
             };
             self.snap_put(window, Rect::new(initial + (pointer - pressed).to_i32_round(), own));
         }
-        let (pads, others) = self.snap_pads(window, &output);
         let began_in = pad_at(&pads, pointer);
-        self.snap = Some(Snap { window: window.clone(), output, pads, others, at: None, began_in, swapped: None, own, before, pre, shown_for: (0.0, 0) });
+        self.snap = Some(Snap { window: window.clone(), output, pads, others, at: None, began_in, swapped: None, own, before, pre, shown_for: (0.0, 0), auto, was_locked });
         self.snap_show();
         Some(initial)
     }
 
     /// The frame `place` gives the window being moved: a part of the
     /// display as a tiling command would make it (no smaller than the
-    /// window can be), all of it, or the other window's.
+    /// window can be), all of it, the other window's, or the unlocked preview.
     fn snap_frame(&self, snap: &Snap, place: Place) -> Option<Rect> {
         let area = self.tile_area(&snap.output)?;
         match place {
             Place::Tile(tile) => Some(self.given_way(&snap.window, super::tiling::part(area, tile.fraction(), self.tile_gap()), area)),
             Place::Whole => Some(area),
             Place::Window(id) => snap.others.iter().find(|(i, _)| *i == id).map(|(_, a)| a.frame),
+            Place::Unlock(_) => self.auto_unlock_preview(&snap.window).or(Some(snap.before.frame)),
         }
     }
 
@@ -686,7 +874,20 @@ impl<B: Backend + 'static> AnvilState<B> {
         };
         let Some(frame) = frame else { return };
         let window = snap.window.clone();
+        let was_locked = snap.was_locked;
+        let auto = snap.auto;
         self.snap.as_mut().unwrap().at = at;
+        if auto {
+            let preview_locked = match place {
+                Some(Place::Tile(_)) => true,
+                Some(Place::Unlock(_)) => false,
+                Some(Place::Whole) | None => was_locked,
+                Some(Place::Window(id)) => self.window_by_id(id).is_some_and(|w| self.locked_slot_of(&w).is_some()),
+            };
+            if window.decoration().locked != preview_locked {
+                window.decoration().locked = preview_locked;
+            }
+        }
         self.snap_put(&window, frame);
         self.snap_swap(match place {
             Some(Place::Window(id)) => Some(id),
@@ -746,12 +947,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(output) = on
             && output != snap.output
         {
+            let unlock_at = self.locked_slot_of(window).map(|t| (t, snap.before.frame));
             if snap.at.is_some() {
                 self.snap_enter(None, under);
             }
-            let (pads, others) = self.snap_pads(window, &output);
+            let (pads, others, auto) = self.snap_pads(window, &output, unlock_at);
             let snap = self.snap.as_mut().unwrap();
-            (snap.output, snap.pads, snap.others, snap.began_in) = (output, pads, others, None);
+            (snap.output, snap.pads, snap.others, snap.auto, snap.began_in) = (output, pads, others, auto, None);
             self.snap_show();
         }
         let snap = self.snap.as_mut().unwrap();
@@ -780,6 +982,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         match (how, place) {
             // As it was: the window, and the other one of a swap shown.
             (End::Cancelled, _) => {
+                if snap.auto && window.decoration().locked != snap.was_locked {
+                    window.decoration().locked = snap.was_locked;
+                }
                 if let Some((_, a)) = snap.swapped.and_then(|id| snap.others.iter().find(|(i, _)| *i == id))
                     && let Some(other) = snap.swapped.and_then(|id| self.window_by_id(id))
                 {
@@ -788,12 +993,21 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 self.snap_arrange(window, &snap.before);
                 Self::set_own_frame(window, snap.pre);
+                if snap.auto {
+                    self.auto_stop_moving(window);
+                    self.auto.changed();
+                    self.auto_tick();
+                }
                 true
             }
             // In the open: there it is. Out of a tile or a zoom, at its
-            // own size, that's its own frame now.
+            // own size, that's its own frame now. In auto-tiling mode, let
+            // `grabs.rs` run `auto_dropped` cleanly.
             (End::Dropped, None) => {
-                if snap.before.tile.is_some() || snap.before.zoomed {
+                if snap.auto && window.decoration().locked != snap.was_locked {
+                    window.decoration().locked = snap.was_locked;
+                }
+                if !snap.auto && (snap.before.tile.is_some() || snap.before.zoomed) {
                     self.forget_own_frame(window);
                 }
                 false
@@ -805,10 +1019,45 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
-    /// The window let go in `place`: it's there for good, as a tiling
-    /// command would have put it, its own frame kept for Restore.
+    /// The window let go in `place`: it's there for good — in auto-tiling mode,
+    /// locking into the slot (or unlocking / swapping / zooming) so remaining
+    /// unlocked windows tile around it; in standard mode, tiled or swapped.
     fn snap_keep(&mut self, snap: &Snap, place: Place) {
         let (window, before) = (&snap.window, snap.before);
+        if snap.auto {
+            self.auto_stop_moving(window);
+            if let Some(id) = snap.swapped
+                && let Some(other) = self.window_by_id(id)
+            {
+                Self::snap_unglow(&other);
+            }
+            tracing::info!(window = window.id(), place = %place.name(), "let go in an auto-tiling hotspot");
+            match place {
+                Place::Tile(tile) => {
+                    self.lock_slot_on(window, &snap.output, tile);
+                }
+                Place::Unlock(_) => {
+                    self.lock_slot(window, None);
+                }
+                Place::Whole => {
+                    self.auto.changed();
+                    self.auto_tick();
+                    self.zoom_window(window);
+                }
+                Place::Window(id) => {
+                    if let Some(other) = self.window_by_id(id) {
+                        if !self.auto_swap_windows(window, &other) {
+                            self.auto.changed();
+                            self.auto_tick();
+                        }
+                    } else {
+                        self.auto.changed();
+                        self.auto_tick();
+                    }
+                }
+            }
+            return;
+        }
         tracing::info!(window = window.id(), place = %place.name(), "let go in a place: snapped there");
         // Its own frame: where it was, if it was there at its own size.
         let arranged = before.tile.is_some() || before.zoomed;
@@ -824,6 +1073,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.snap_arrange(window, &Arranged { zoomed: true, ..free });
                 Self::set_own_frame(window, Some(own));
             }
+            Place::Unlock(_) => {}
             // The two swap: each as the other was. One in a tile or
             // zoomed keeps its own frame for Restore; one at a size of
             // its own is where it's put.
@@ -894,6 +1144,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     width: p.rect.size.w,
                     height: p.rect.size.h,
                     inside: snap.at == Some(i),
+                    lock: snap.auto && matches!(p.place, Place::Tile(_)),
                 })
                 .collect(),
         }
@@ -966,6 +1217,25 @@ mod tests {
         let screen = r(0, 0, 320, 240);
         let pads = pads(screen, screen, &[]);
         assert_eq!(pads.iter().map(|p| p.letter).collect::<String>(), "qezcs");
+        for (i, a) in pads.iter().enumerate() {
+            for b in &pads[i + 1..] {
+                assert!(!a.rect.overlaps(b.rect), "{a:?} over {b:?}");
+            }
+        }
+    }
+
+    /// Dragging a locked auto-tiled window shows the `U` Unlock pad inside its
+    /// locked frame without colliding with any perimeter or window swap pad,
+    /// and never assigns `'u'` to a window swap pad.
+    #[test]
+    fn unlock_pad_has_unique_letter_and_no_overlap() {
+        let (screen, area) = (r(0, 0, 1280, 800), r(8, 8, 1100, 784));
+        let locked_left = r(8, 8, 546, 784);
+        let others = [(10, r(562, 8, 546, 388)), (11, r(562, 404, 546, 388))];
+        let pads = pads_with_unlock(screen, area, &others, Some((Tile::Left, locked_left)));
+        let unlock = pads.iter().find(|p| p.place == Place::Unlock(Tile::Left)).expect("unlock pad");
+        assert_eq!(unlock.letter, 'u');
+        assert_eq!(pads.iter().filter(|p| p.letter == 'u').count(), 1);
         for (i, a) in pads.iter().enumerate() {
             for b in &pads[i + 1..] {
                 assert!(!a.rect.overlaps(b.rect), "{a:?} over {b:?}");
