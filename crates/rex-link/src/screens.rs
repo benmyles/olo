@@ -64,10 +64,11 @@
 //! its program is the furthest parent of ours started with the same one
 //! (`/proc/PID/environ`). A keeper waits for that program's end, on a
 //! file descriptor of the process itself (`pidfd_open`: no polling, and
-//! no other process ever taken for it), in the screen's process group,
-//! so it ends with the screen if the screen is stopped first. Outside a
-//! Rex tab there is no such program to go by, and the screen stays
-//! until stopped, as with `--keep`.
+//! no other process ever taken for it), and for the screen's own
+//! session's the same way: a screen stopped first, by hand, leaves its
+//! keeper nothing to do, and it ends. Outside a Rex tab there is no
+//! such program to go by, and the screen stays until stopped, as with
+//! `--keep`.
 
 use std::os::unix::fs::{FileExt as _, MetadataExt as _};
 use std::os::unix::process::CommandExt as _;
@@ -201,12 +202,13 @@ fn start(args: &[String]) -> ! {
         && let Ok(screen) = serde_json::from_slice::<serde_json::Value>(&out.stdout)
         && let (Some(name), Some(session)) = (screen["name"].as_str(), screen["pid"].as_i64())
         && let Some((owner, began)) = tab_program()
+        && let Some((_, session_began)) = parent_and_start(session as i32)
     {
-        // (In the screen's process group: stopped with it. Its own
-        // file: this program, as it was started.)
+        // (In the screen's process group, so that it is seen with it.
+        // Its own file: this program, as it was started.)
         let me = std::env::current_exe().map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(" (deleted)"))).unwrap_or_else(|_| "olo-rex-link".into());
         let kept = Command::new(me)
-            .args(["screen", "keep-until", name, &owner.to_string(), &began.to_string()])
+            .args(["screen", "keep-until", name, &owner.to_string(), &began.to_string(), &session.to_string(), &session_began.to_string()])
             .process_group(session as i32)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -256,20 +258,48 @@ fn tab_program() -> Option<(i32, u64)> {
     found
 }
 
-/// `keep-until NAME PID BEGAN`: wait for the process PID (the one that
-/// began at BEGAN) to end, then stop screen NAME.
-fn keep_until(args: &[String]) -> ! {
-    let [name, owner, began] = args else { std::process::exit(2) };
-    let (Ok(owner), Ok(began)) = (owner.parse::<i32>(), began.parse::<u64>()) else { std::process::exit(2) };
-    // The process itself, held: its number given to another after it
-    // ends is never taken for it.
-    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, owner, 0) } as i32;
-    if fd >= 0 && parent_and_start(owner).is_some_and(|(_, b)| b == began) {
-        let mut waiting = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
-        // (Readable when it has ended. Interrupted: wait again.)
-        while unsafe { libc::poll(&mut waiting, 1, -1) } < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+/// A process held: a descriptor of the process itself (the one that
+/// began at `began`), readable when it has ended. Its number given to
+/// another after it ends is never taken for it. None where it has ended
+/// already.
+fn held(pid: i32, began: u64) -> Option<i32> {
+    // SAFETY: a system call with two integers.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
+    if fd < 0 {
+        return None;
     }
-    // (In a group of its own: `stop` ends the screen's, which is ours.)
+    if parent_and_start(pid).is_some_and(|(_, b)| b == began) {
+        return Some(fd);
+    }
+    // SAFETY: ours, just opened.
+    unsafe { libc::close(fd) };
+    None
+}
+
+/// `keep-until NAME PID BEGAN SESSION SESSION_BEGAN`: wait for the
+/// process PID (the tab's program) to end, then stop screen NAME; or
+/// for the screen's own session to end, and then there is nothing to
+/// stop. (The session too: a screen stopped by hand ends its session,
+/// not its process group, and its keeper, left waiting for the tab,
+/// would have stopped whatever screen had that name by then: seen on
+/// the dev server's own account, 2026-11-26.)
+fn keep_until(args: &[String]) -> ! {
+    let [name, owner, began, session, session_began] = args else { std::process::exit(2) };
+    let (Ok(owner), Ok(began), Ok(session), Ok(session_began)) = (owner.parse::<i32>(), began.parse::<u64>(), session.parse::<i32>(), session_began.parse::<u64>()) else { std::process::exit(2) };
+    // The screen it was left for has ended already: nothing to keep.
+    let Some(session) = held(session, session_began) else { std::process::exit(0) };
+    if let Some(owner) = held(owner, began) {
+        let mut waiting = [libc::pollfd { fd: owner, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: session, events: libc::POLLIN, revents: 0 }];
+        // (Each readable when its process has ended. Interrupted: wait again.)
+        // SAFETY: two descriptors of ours, in an array of two.
+        while unsafe { libc::poll(waiting.as_mut_ptr(), 2, -1) } < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+        // The screen ended first, stopped by hand or by itself.
+        if waiting[1].revents != 0 {
+            std::process::exit(0);
+        }
+    }
+    // The tab's program has ended and the screen still runs: stopped.
+    // (In a group of its own: `stop` may end the screen's, which is ours.)
     let _ = screen_tool(&["stop".to_owned(), name.clone()]).process_group(0).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
     std::process::exit(0);
 }

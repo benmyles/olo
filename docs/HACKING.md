@@ -22967,13 +22967,22 @@ installed and ready to use").
   keeper waits on the process itself (`pidfd_open`, then `poll`: no
   timer, and a number given to another process later is never taken for
   it; BEGAN, its start time, is checked once the descriptor is held),
-  in the screen's process group, so a screen stopped first takes its
-  keeper with it; it stops the screen through `olo-screen stop` in a
-  group of its own, since `stop` ends the screen's. `start --keep`
-  leaves none, and outside a Rex tab there is no program to go by: such
-  a screen stays until it is stopped. (Tried on the dev server: a
-  screen started from a shell with a `REX_BLOCK` of its own ran while
-  the shell did, and was stopped when it ended, nothing of it left.)
+  and on the screen's own session the same way: whichever ends first.
+  The tab's program: it stops the screen (through `olo-screen stop`, in
+  a group of its own). The session: the screen was stopped by hand, and
+  the keeper ends with nothing to do. (At first it waited for the tab
+  alone, "in the screen's process group, so a screen stopped first
+  takes its keeper with it": but `olo-screen stop` asks the session to
+  end and doesn't end the group, so a screen stopped by hand left its
+  keeper waiting, to stop whatever screen had that name when the tab
+  ended, another agent's by then perhaps. Seen the first time one was
+  stopped by hand on a real account, an hour after it shipped; the
+  test's stand-in for `stop` had ended the whole group, which the real
+  one doesn't.) `start --keep` leaves none, and outside a Rex tab there
+  is no program to go by: such a screen stays until it is stopped.
+  (Tried on the dev server: a screen started from a shell with a
+  `REX_BLOCK` of its own ran while the shell did, and was stopped when
+  it ended, nothing of it left.)
 - **Measured** on the dev server (64 processors, no GPU, software
   drawing), an account of its own. Putting Olo there with the static
   helper a host has, from GitHub: 16 s in all (601 MB downloaded,
@@ -22994,7 +23003,8 @@ installed and ready to use").
 - **Tests**: `crates/rex-link/tests/screens.rs` (where `olo screen`
   goes, each way of saying it; the helper with an Olo made up for the
   test; never removed under a running screen; a screen ended with its
-  tab's program and not before, kept with `--keep` or from no tab),
+  tab's program and not before, kept with `--keep` or from no tab, and
+  one stopped by hand not stopped again when its tab ends),
   `a_release_is_installed_under_a_prefix_without_a_part_left_out` in
   olo-release, and the helper's `a_programs_libraries_are_read_from_its_headers`.
 - **Not yet** (TODO): the person watching a host's screen from Rex; a

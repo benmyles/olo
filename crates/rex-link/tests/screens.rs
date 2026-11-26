@@ -54,7 +54,9 @@ impl Host {
     /// An Olo whose screen tool starts and stops something, as the real
     /// one does a session: `start NAME` leaves a process in a group of
     /// its own and prints the screen (its name and that process), and
-    /// `stop NAME` writes that it was asked and ends the group.
+    /// `stop NAME` writes that it was asked and ends that process (the
+    /// session alone, as the real one asks its session to end: not the
+    /// group, where the helper's keeper is).
     fn with_olo_that_starts(&self) {
         self.with_olo("[]");
         let tool = self.prefix().join("bin/olo-screen");
@@ -62,7 +64,7 @@ impl Host {
         std::fs::write(
             &tool,
             format!(
-                "#!/bin/sh\ncase \"$1\" in\nstart)\n\tset -m\n\tsleep 300 > /dev/null 2>&1 < /dev/null &\n\techo $! > '{dir}/session-'$2\n\tprintf '{{\"name\": \"%s\", \"pid\": %s}}\\n' \"$2\" \"$!\"\n\t;;\nstop)\n\techo \"stop $2\" >> '{dir}/asked'\n\tkill -TERM -- \"-$(cat '{dir}/session-'$2)\" 2> /dev/null\n\t;;\nesac\n"
+                "#!/bin/sh\ncase \"$1\" in\nstart)\n\tset -m\n\tsleep 300 > /dev/null 2>&1 < /dev/null &\n\techo $! > '{dir}/session-'$2\n\tprintf '{{\"name\": \"%s\", \"pid\": %s}}\\n' \"$2\" \"$!\"\n\t;;\nstop)\n\techo \"stop $2\" >> '{dir}/asked'\n\tkill -TERM \"$(cat '{dir}/session-'$2)\" 2> /dev/null\n\t;;\nesac\n"
             ),
         )
         .unwrap();
@@ -248,24 +250,41 @@ fn a_screen_ends_with_the_tab_that_started_it() {
         }
     };
 
+    // (A keeper is the helper again: `screen keep-until NAME …`.)
+    let keeper_of = |name: &str| {
+        std::fs::read_dir("/proc").into_iter().flatten().flatten().any(|p| {
+            let line = std::fs::read(p.path().join("cmdline")).unwrap_or_default();
+            let words: Vec<&[u8]> = line.split(|b| *b == 0).collect();
+            words.windows(2).any(|w| w[0] == b"keep-until" && w[1] == name.as_bytes())
+        })
+    };
     let mut tab = host.tab_that_starts("work", "", Some(&block));
     let mut kept = host.tab_that_starts("kept", "--keep", Some(&block));
     let mut bare = host.tab_that_starts("bare", "", None);
+    let mut by_hand = host.tab_that_starts("byhand", "", Some(&block));
     // While its tab's program runs, a screen runs: nothing is asked.
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(host.asked(), "");
-    assert!(host.session("work").is_some() && host.session("kept").is_some() && host.session("bare").is_some());
+    assert!(["work", "kept", "bare", "byhand"].iter().all(|name| host.session(name).is_some()));
+    assert!(keeper_of("work") && keeper_of("byhand") && !keeper_of("kept") && !keeper_of("bare"));
+
+    // One stopped by hand while its tab's program still runs: its
+    // keeper has nothing left to do, and ends.
+    assert!(host.helper(&["stop", "byhand"]).status.success());
+    within(10, "a screen stopped by hand takes its keeper with it", &|| !keeper_of("byhand"));
+    assert_eq!(host.asked(), "stop byhand\n");
 
     // The tabs' programs end (told to: their input closes).
-    for tab in [&mut tab, &mut kept, &mut bare] {
+    for tab in [&mut tab, &mut kept, &mut bare, &mut by_hand] {
         drop(tab.stdin.take());
         tab.wait().unwrap();
     }
-    within(10, "the screen started from the tab is stopped when the tab's program ends", &|| host.asked() == "stop work\n");
-    within(10, "and what ran on it has ended", &|| host.session("work").is_none());
-    // The others stay: nothing more is asked, and they still run.
+    within(10, "the screen started from the tab is stopped when the tab's program ends", &|| host.asked() == "stop byhand\nstop work\n");
+    within(10, "and what ran on it has ended, its keeper too", &|| host.session("work").is_none() && !keeper_of("work"));
+    // The others stay, and the one stopped by hand isn't stopped again
+    // (whatever had its name by now): nothing more is asked.
     std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(host.asked(), "stop work\n");
+    assert_eq!(host.asked(), "stop byhand\nstop work\n");
     for name in ["kept", "bare"] {
         assert!(host.session(name).is_some(), "{name} was stopped with its tab");
     }
