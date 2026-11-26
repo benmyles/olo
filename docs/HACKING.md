@@ -30612,7 +30612,17 @@ connected to, is off). The port a pane's program listens on and
   22-pt latch event rows with a fixed 64-pt label column and single BeOS
   sunken wells (`4 pt` below their own latch row, `12 pt` between all other
   blocks; failed tool rows open by default with stderr and exit code;
-  redundant Bash JSON input is omitted). In-panel Find counts every
+  redundant Bash JSON input is omitted). What says when and how a
+  thing went stands beside the thing: a turn's time after its name
+  ("You  14:52:10", "Claude Code  claude-opus-5-5 · 14:52:12"), a tool's
+  result after its preview ("jato test -p olo-rex  ✓ 2s"), the same 13
+  points of ground between their ink at every scale; a preview too long
+  for its row is cut and its result still shows (`summary_width`: its
+  characters at the monospace's one advance, not a line laid out for
+  every row). They stood at the pane's right edge, a window's width
+  from what they were of; a column capped at a measure, tried first,
+  both reviewers took for a pane that had failed to resize
+  (2026-11-26). In-panel Find counts every
   occurrence across prose, thinking, and code wells, highlights exact
   matched characters inline via `styled_text` (no block tint or layout
   shift), and auto-expands only the active match's collapsed item. Structured

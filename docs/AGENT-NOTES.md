@@ -706,6 +706,17 @@ it a thousand times at once with a deadline (1.3% hung), then the same
 under `strace -f -e trace=sendmsg,recvmsg`: the bytes were the same in
 a good start and a stuck one up to the `Hello` read and never answered.
 
+### Nothing is committed while a push-then-publish runs
+
+`tools/publish-release.sh` publishes at HEAD as it is when its turn
+comes, and refuses a HEAD that isn't on origin/main. Chained after
+`tools/dev/push` in one background command (the push's checks take
+minutes), a commit made meanwhile is that HEAD: the push sends the
+commit it began with, and the publisher stops ("HEAD … isn't on
+origin/main: push it first"; update 13, 2026-11-26: four minutes lost,
+nothing wrong published). Commit before starting the chain or after it
+ends; work that waits goes on outside the repository, or uncommitted.
+
 ### A test that waits for a program's line waits with an end
 
 `read_line` on a child's stdout has no deadline: a program that never
