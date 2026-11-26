@@ -408,6 +408,21 @@ impl WindowCx<'_> {
         // The pointer's shape: the topmost thing under it that says
         // one, for where in it the pointer is (its drawing may have
         // said: a table's column dividers) or for all of it.
+        // (Of the window the pointer is in, only. A window works this
+        // out as it first draws, before the pointer has come into it:
+        // it "said" an arrow then, to nobody, and remembered the arrow
+        // as shown. When the pointer then came in over plain ground,
+        // an arrow again, it said nothing, and the shape stayed what
+        // the program had last shown in another window, which the
+        // display says again as the pointer enters: a window opened
+        // under a still pointer kept the text cursor of the terminal
+        // pane under it until the pointer left and came back. Ben,
+        // 2026-11-26, of Rex's Host window; the protocol's own log
+        // showed `set_shape(text)` at the enter and nothing after.)
+        if !self.core.pointer_in {
+            self.core.cursor = shape_said(false, self.core.cursor, crate::CursorStyle::Arrow).0;
+            return;
+        }
         let at = self.core.mouse;
         let cursor = now
             .iter()
@@ -456,12 +471,23 @@ impl WindowCx<'_> {
 
     /// The pointer's shape, as the display thread shows it.
     fn set_cursor(&mut self, cursor: crate::CursorStyle) {
-        if self.core.cursor == Some(cursor) {
-            return;
-        }
-        self.core.cursor = Some(cursor);
+        let (remembered, say) = shape_said(self.core.pointer_in, self.core.cursor, cursor);
+        self.core.cursor = remembered;
+        let Some(cursor) = say else { return };
+        // (Only the window the pointer is in says its shape. The shape
+        // is the whole program's on the display, and each window says
+        // its own from its own thread: one the pointer had just left,
+        // late with a move it had still to work through, said its
+        // shape after the window the pointer had come into said its
+        // own, and that one, believing its own shown, never said it
+        // again. A window opened under a still pointer kept the shape
+        // of what was under it before, until the pointer left and came
+        // back: Ben, 2026-11-26, of Rex's Host window over a terminal
+        // pane's text cursor.)
+        let id = self.core.id;
         crate::display::display().post(move |on| {
-            if let Some(client) = on.client.wayland() {
+            let here = on.stage(id).and_then(|stage| stage.with_window(|window| window.pointer_in())).unwrap_or(false);
+            if here && let Some(client) = on.client.wayland() {
                 crate::LinuxClient::set_cursor_style(client, cursor);
             }
         });
@@ -804,6 +830,52 @@ fn typed_by(k: &crate::Keystroke) -> Option<String> {
         return None;
     }
     k.key_char.clone().filter(|c| !c.is_empty() && !c.chars().any(char::is_control))
+}
+
+/// What a window does about the pointer's shape once it has worked out
+/// what the pointer is over and the shape that asks for (`wanted`), given
+/// the shape it last said (`said`): what it remembers having said, and
+/// what it says now, if anything. Only the window the pointer is in says
+/// a shape, and one it isn't in remembers none: what it last said is no
+/// longer what is shown, and when the pointer comes into it, it says its
+/// shape whatever that is.
+fn shape_said(pointer_in: bool, said: Option<crate::CursorStyle>, wanted: crate::CursorStyle) -> (Option<crate::CursorStyle>, Option<crate::CursorStyle>) {
+    match (pointer_in, said) {
+        (false, _) => (None, None),
+        (true, Some(said)) if said == wanted => (Some(said), None),
+        (true, _) => (Some(wanted), Some(wanted)),
+    }
+}
+
+#[cfg(test)]
+mod shape_tests {
+    use super::shape_said;
+    use crate::CursorStyle::{Arrow, IBeam};
+
+    /// A window opened under a still pointer, as it went wrong: it works
+    /// out the pointer's shape as it first draws, the pointer not yet in
+    /// it; the pointer then comes in over plain ground. It must say its
+    /// arrow then (it said nothing, having "said" one already, and the
+    /// text cursor of the window under it stayed).
+    #[test]
+    fn a_window_says_the_pointers_shape_when_the_pointer_comes_into_it() {
+        // As it first draws: nothing said, nothing remembered.
+        let (remembered, say) = shape_said(false, None, Arrow);
+        assert_eq!((remembered, say), (None, None));
+        // The pointer comes in over plain ground: its arrow, said.
+        let (remembered, say) = shape_said(true, remembered, Arrow);
+        assert_eq!((remembered, say), (Some(Arrow), Some(Arrow)));
+        // It moves on over plain ground: said already.
+        assert_eq!(shape_said(true, remembered, Arrow), (Some(Arrow), None));
+        // Over a text field: said; and back.
+        assert_eq!(shape_said(true, remembered, IBeam), (Some(IBeam), Some(IBeam)));
+        assert_eq!(shape_said(true, Some(IBeam), Arrow), (Some(Arrow), Some(Arrow)));
+        // It leaves, and something moves in the window meanwhile: what it
+        // said is forgotten, and nothing is said to a pointer elsewhere.
+        assert_eq!(shape_said(false, Some(Arrow), IBeam), (None, None));
+        // It comes back over the same plain ground: said again.
+        assert_eq!(shape_said(true, None, Arrow), (Some(Arrow), Some(Arrow)));
+    }
 }
 
 #[cfg(test)]

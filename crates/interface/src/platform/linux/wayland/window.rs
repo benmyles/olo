@@ -1850,6 +1850,10 @@ impl PlatformWindow for WaylandWindow {
         self.borrow().maximized
     }
 
+    fn pointer_in(&self) -> bool {
+        self.0.frames.hovered.get()
+    }
+
     fn awaits_size(&self) -> bool {
         let state = self.borrow();
         let stretched = state.layer_shell.as_ref().is_some_and(|o| {

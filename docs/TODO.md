@@ -37,6 +37,21 @@ something nobody here has is in "Blocked", with what it waits for.
     default delay is in macos and use that as olo's default (it may be
     500ms i'm not sure)". It is a constant now (`crates/kit/src/tip.rs`,
     `DELAY`, 500 ms).
+- **Minder agents for `olo agent`** (Ben, 2026-11-26 evening): "often
+  when subagents need an approval or have a question it takes a long
+  time for parent agents to notice and respond because they are busy
+  with something else. i was thinking that one way to handle this could
+  be to allow parent agents, when starting an olo rex agent (also with
+  the ability to add/change it for a running agent), to attach an
+  approval/minder agent specifically for each agent where the parent
+  agent can choose to use a more powerful model, e.g. fable 5.2, and
+  give it context and instructions on what to approve/deny and how to
+  steer that specific agent it is minding (i think calling this feature
+  a minder agent makes more sense) and also giving it the minder the
+  ability to message the parent when something needs escalation. please
+  design this functionality elegantly with easy to use ergonomics for
+  the parent agent and build it and update the skills etc. that agents
+  running under rex get to cover it".
 - **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
   "currently we have under manager rex server a limits tab for applying
   tweaks to the host but they really belong in manage host. please move

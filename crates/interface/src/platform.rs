@@ -244,6 +244,12 @@ pub(crate) struct RequestFrameOptions {
 
 pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_maximized(&self) -> bool;
+    /// Olo: whether the pointer is in the window now, as the display
+    /// knows it (entered and not yet left). Only that window says what
+    /// shape the pointer has (`WindowCx::set_cursor`).
+    fn pointer_in(&self) -> bool {
+        true
+    }
     fn content_size(&self) -> Size<Pixels>;
     /// Olo: whether the size it opened at stands in for one the
     /// compositor hasn't given yet (a lock surface, a layer surface
