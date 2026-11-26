@@ -5404,5 +5404,23 @@
   "title": "Rex: its keys are Olo's",
   "caption": "Rex's command-key shortcuts had never worked (\u2318D was the end of the shell, not a split). Its commands now have their keys from the keyboard profile, as Terminal's, shown in its menus and changed in Preferences \u25b8 Keyboard; a Tabs menu lists the session's tabs with \u23181 to \u23189.",
   "image": "2026-11-21/231039-rex-its-keys-are-olo-s.png"
+ },
+ {
+  "time": "2026-11-26T09:04:01",
+  "title": "Rex: a command of your own as a child tab",
+  "caption": "olo agent start --command: a child tab that runs a command (Build Log), shown for the program it is: Running, the plain terminal icon, its command with its paths cut to their names. The children are their host's now: they run, are watched and answered with no desktop connected, and are all there when it connects.",
+  "image": "2026-11-26/090401-rex-a-command-of-your-own-as-a-child-tab.png"
+ },
+ {
+  "time": "2026-11-26T09:04:02",
+  "title": "Rex: a tab's tree menu names a command and stops by kind",
+  "caption": "The tab's tree menu: Build Log is a command, Running; stopping a tab's children says what would be stopped (Stop 2 Subagents and 1 Command\u2026). A menu's label with nothing to its right runs under the detail columns.",
+  "image": "2026-11-26/090402-rex-a-tab-s-tree-menu-names-a-command-and-stops-.png"
+ },
+ {
+  "time": "2026-11-26T09:04:04",
+  "title": "Alerts stand over their window; Rex's error banner has Try Again",
+  "caption": "An alert asked for by a menu's command stood in the middle of the screen with no parent: it opens over the window it was asked from now, centred across it. The error banner at Rex's foot offers Try Again at its right edge, under the close box.",
+  "image": "2026-11-26/090404-alerts-stand-over-their-window-rex-s-error-banne.png"
  }
 ]

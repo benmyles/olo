@@ -2,6 +2,27 @@
 
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
+`tools/journal_html.py` builds the whole of it as one page to share.
+
+## 2026-11-26
+
+### Alerts stand over their window; Rex's error banner has Try Again
+
+*09:04* — An alert asked for by a menu's command stood in the middle of the screen with no parent: it opens over the window it was asked from now, centred across it. The error banner at Rex's foot offers Try Again at its right edge, under the close box.
+
+![Alerts stand over their window; Rex's error banner has Try Again](2026-11-26/090404-alerts-stand-over-their-window-rex-s-error-banne.png)
+
+### Rex: a tab's tree menu names a command and stops by kind
+
+*09:04* — The tab's tree menu: Build Log is a command, Running; stopping a tab's children says what would be stopped (Stop 2 Subagents and 1 Command…). A menu's label with nothing to its right runs under the detail columns.
+
+![Rex: a tab's tree menu names a command and stops by kind](2026-11-26/090402-rex-a-tab-s-tree-menu-names-a-command-and-stops-.png)
+
+### Rex: a command of your own as a child tab
+
+*09:04* — olo agent start --command: a child tab that runs a command (Build Log), shown for the program it is: Running, the plain terminal icon, its command with its paths cut to their names. The children are their host's now: they run, are watched and answered with no desktop connected, and are all there when it connects.
+
+![Rex: a command of your own as a child tab](2026-11-26/090401-rex-a-command-of-your-own-as-a-child-tab.png)
 
 ## 2026-11-21
 
