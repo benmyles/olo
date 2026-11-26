@@ -317,7 +317,23 @@ something nobody here has is in "Blocked", with what it waits for.
   use"). Today an agent on a host gets a screen on the person's desktop
   through the bridge (`olo screen …` from the host, the `olo-rex-bridge`
   skill; a child's `--desktop screens=…` says which), so it needs the
-  desktop connected and awake, and it draws there. To do:
+  desktop connected and awake, and it draws there.
+  **What is known to work, 2026-11-26** (found taking the README's
+  pictures on a dev server with no GPU): `olo-screen start` there
+  brings up a whole Olo desktop drawn in software (Deskbar, Tracker's
+  desktop, every app of the pictures, an agent's screen within a
+  screen), by itself since that day (app_server takes Mesa's software
+  device where there is no render node; before, only with
+  `OLO_HEADLESS_RENDERER=software` set). It was a release's own
+  programs in a folder, with `OLO_DATA` pointing at the data (a build
+  not installed finds none beside it). Chrome was put in the home by
+  Olo's own launcher (`olo-chrome`, its Download button: Google's rpm
+  unpacked under the account, no root) and showed a page from a server
+  on the same machine. A server lacks an emoji font (every emoji a
+  box) and may lack Mesa's software drivers. And the screen's bus lost
+  one program's first words in seventy under load until the same day
+  (HACKING, "Agent Screens"): a screen on a busy host would have had a
+  program hang at start now and then. To do:
   - *A desktop of the host's own*: app_server run headless on the host,
     drawn in software (what `tools/dev/tsession` does on the dev server
     with no GPU: the olo-dev-server skill has what it takes), one for

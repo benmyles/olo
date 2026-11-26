@@ -382,13 +382,22 @@ pub const RENDERER_ENV: &str = "OLO_HEADLESS_RENDERER";
 /// The EGL display a headless app_server draws on, and the GPU's render
 /// node where that is a GPU's (None: in software, `RENDERER_ENV`).
 fn headless_display() -> Result<(EGLDisplay, Option<std::path::PathBuf>), String> {
-    if std::env::var(RENDERER_ENV).as_deref() == Ok("software") {
+    let asked = std::env::var(RENDERER_ENV).as_deref() == Ok("software");
+    // A computer with no GPU draws in software without being told: a
+    // server, where an agent's screens are the only desktops there are
+    // (a Rex host's own Agent Screens; the README's pictures taken on a
+    // dev server). It refused before ("no GPU render node in /dev/dri")
+    // unless whoever started it knew to set the variable.
+    let node = if asked { None } else { render_node() };
+    let Some(node) = node else {
+        if !asked {
+            info!("no GPU render node in /dev/dri: drawing in software");
+        }
         let device = EGLDevice::enumerate().map_err(|e| format!("no EGL devices: {e}"))?.find(EGLDevice::is_software).ok_or("Mesa's software EGL device isn't here (mesa-dri-drivers)")?;
         // SAFETY: the display keeps the device it was made from.
         let egl = unsafe { EGLDisplay::new(device) }.map_err(|e| format!("the software EGL display: {e}"))?;
         return Ok((egl, None));
-    }
-    let node = render_node().ok_or("no GPU render node in /dev/dri")?;
+    };
     let file = OpenOptions::new().read(true).write(true).open(&node).map_err(|e| format!("cannot open render node {}: {e}", node.display()))?;
     let gbm = GbmDevice::new(file).map_err(|e| format!("gbm device: {e}"))?;
     // SAFETY: the gbm device outlives the display (moved into it).

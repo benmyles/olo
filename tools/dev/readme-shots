@@ -113,7 +113,9 @@ def software():
     import glob
     import re
 
-    if os.environ.get("OLO_SHOTS_SOFTWARE") != "1" and glob.glob("/dev/dri/renderD*"):
+    # (OLO_SHOTS_SOFTWARE=0: nothing set, whatever the computer has: to
+    # try that a screen finds its own way to draw.)
+    if os.environ.get("OLO_SHOTS_SOFTWARE") == "0" or (os.environ.get("OLO_SHOTS_SOFTWARE") != "1" and glob.glob("/dev/dri/renderD*")):
         return {}
     env = {"OLO_HEADLESS_RENDERER": "software", "LIBGL_ALWAYS_SOFTWARE": "1", "GALLIUM_DRIVER": "llvmpipe", "VK_LOADER_DRIVERS_SELECT": "lvp*"}
     for folder in ("/etc/glvnd/egl_vendor.d", "/usr/share/glvnd/egl_vendor.d"):
@@ -346,7 +348,7 @@ def scene_tracker():
     place(home, 110, 690, 860, 350)
     run("olo-tracker", os.path.join(HOME, "Pictures"))
     pics = wait_for(by_app("olo.tracker", "Pictures"))
-    place(pics, 70, 90, 900, 560)
+    place(pics, 70, 90, 900, 330)
     settle(2)
     screen("invoke", "view-icons", "--window", pics["id"])
     settle(1.5)
@@ -359,7 +361,10 @@ def scene_tracker():
     settle(2)
     place(wait_for(by_app("olo.tracker", "Poster.jpg")), 1020, 100)
     settle(2)
-    both_looks("olo-tracker", lambda n: shot(n))
+    poster = wait_for(by_app("olo.tracker", "Poster.jpg"))
+    tuck(poster)
+    settle(2)
+    both_looks("olo-tracker", lambda n: shot_of(n, pics, poster))
 
 
 def scene_features():
@@ -367,7 +372,7 @@ def scene_features():
     close_all()
     widgets(DESKBAR_WIDGETS)
     look("light", wallpaper=DESKTOP_WALLPAPER)
-    desktop_windows()
+    calc = desktop_windows()[3]
     settle(2)
     # The palette (⌘Space).
     key("Cmd+Space")
@@ -386,6 +391,10 @@ def scene_features():
     settle(2.5)
     shot("olo-overview")
     ipc({"type": "overview", "show": False})
+    settle(1)
+    # (The calculator floats over a tiled workspace: closed, so the
+    # picture is of tiles.)
+    ipc({"type": "close", "id": calc["id"]})
     settle(1)
     ipc({"type": "set_windowing_mode", "mode": "auto_tiling"})
     settle(3)
@@ -442,12 +451,14 @@ def scene_preferences():
         run("olo-preferences", panel)
     themes = wait_for(by_app("olo.preferences", "Themes"))
     backgrounds = wait_for(by_app("olo.preferences", "Backgrounds"))
-    place(themes, 50, 70)
-    place(backgrounds, 900, 150)
+    place(themes, 40, 70)
+    place(backgrounds, 760, 150)
     settle(4)
+    tuck(backgrounds)
+    settle(1)
     activate(backgrounds)
     settle(2)
-    shot("olo-preferences")
+    shot_of("olo-preferences", themes, backgrounds)
 
 
 def scene_installer():
@@ -488,8 +499,10 @@ def scene_agents():
     research("stop")
     print(research("start", "--size", "1280x800").strip()[:200])
     research("run", "olo-styled-edit", os.path.join(HOME, "Documents", "Welcome.md"))
-    research("run", "olo-tracker", HOME)
     time.sleep(6)
+    # (What it did last is said under its picture: not a path of these
+    # pictures' own.)
+    research("key", "Esc")
     close_all()
     widgets(DESKBAR_WIDGETS)
     look("light", wallpaper=DESKTOP_WALLPAPER)
@@ -778,37 +791,29 @@ def scene_rex():
     close_all()
     widgets([])
     look("dark", wallpaper=DESKTOP_WALLPAPER)
-    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(120, 80), size=(1500, 880))
+    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(120, 80), size=(960, 620))
     settle(6)
     shot_of("olo-rex", w)
     close_all()
-    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_ACTIVITY": "transcript"}, at=(120, 80), size=(1500, 880))
+    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_ACTIVITY": "transcript"}, at=(120, 80), size=(960, 620))
     settle(6)
     shot_of("olo-rex-agents", w)
     look("light", wallpaper=DESKTOP_WALLPAPER)
 
 
 def scene_pool():
-    """Token Pool on its demo: the accounts, and the machines beside
-    (two pictures of the one window, a gutter between)."""
-    from PIL import Image
-
+    """Token Pool on its demo: its accounts, then its machines (a
+    picture each: stitched side by side they were two front windows on
+    two wallpapers)."""
     close_all()
     widgets([])
     look("dark", wallpaper=DESKTOP_WALLPAPER)
-    w = one("olo.pool", "olo-pool", env={"OLO_POOL_DEMO": "1", "OLO_POOL_DEMO_HOSTS": "1"}, at=(200, 90), size=(720, 800))
+    w = one("olo.pool", "olo-pool", env={"OLO_POOL_DEMO": "1", "OLO_POOL_DEMO_HOSTS": "1"}, at=(200, 90), size=(700, 760))
     settle(5)
-    f = frame_of(w)
-    around = (f["x"] - 44, f["y"] - 44, f["width"] + 88, f["height"] + 88)
-    tiles = [grab("pool-accounts", around)]
+    shot_of("olo-token-pool", w)
     screen("click", "--window", w["id"], "--role", "Tab", "--name", "Machines")
     settle(3)
-    tiles.append(grab("pool-machines", around))
-    gap = 16
-    sheet = Image.new("RGB", (sum(t.width for t in tiles) + gap, max(t.height for t in tiles)), (128, 128, 128))
-    sheet.paste(tiles[0], (0, 0))
-    sheet.paste(tiles[1], (tiles[0].width + gap, 0))
-    save(sheet, "olo-token-pool")
+    shot_of("olo-token-pool-machines", w)
     look("light", wallpaper=DESKTOP_WALLPAPER)
 
 
@@ -823,6 +828,8 @@ def scene_calendar_todo():
     screen("click", "--window", cal["id"], "--role", "Tab", "--name", "Week")
     tuck(todo)
     settle(2)
+    screen("click", "--window", todo["id"], "--role", "ListItem", "--name", "Call Ann about the trip")
+    settle(1.5)
     activate(todo)
     both_looks("olo-calendar-todo", lambda n: shot_of(n, cal, todo))
 
@@ -831,7 +838,7 @@ def scene_phone():
     """Phone on its demo (made-up people and numbers)."""
     close_all()
     widgets([])
-    w = one("olo.phone", "olo-phone", env={"OLO_PHONE_DEMO": "1"}, at=(200, 100), size=(1100, 760))
+    w = one("olo.phone", "olo-phone", env={"OLO_PHONE_DEMO": "1"}, at=(200, 100), size=(940, 680))
     settle(5)
     both_looks("olo-phone", lambda n: shot_of(n, w))
 
@@ -843,6 +850,9 @@ def scene_doctor_kache():
     widgets([])
     look("light", wallpaper=DESKTOP_WALLPAPER)
     d = one("olo.doctor", "olo-doctor", env={"OLO_DOCTOR_DEMO": "1"}, at=(40, 70))
+    settle(2)
+    f = frame_of(d)
+    place(d, 40, 70, f["width"], f["height"] + 86)
     k = one("olo.kache", "olo-kache", env={"OLO_KACHE_DEMO": "1"}, at=(620, 250), size=(930, 760))
     settle(7)
     tuck(k)
@@ -853,18 +863,19 @@ def scene_doctor_kache():
 
 
 def scene_weather_speedtest():
-    """Weather on its demo forecast, the Speed Test on made-up results."""
+    """Weather on its demo forecast, and the Speed Test on made-up
+    results: a picture each (side by side, one cut through the other's
+    words)."""
     close_all()
     widgets([])
     look("light", wallpaper=DESKTOP_WALLPAPER)
-    w = one("olo.weather", "olo-weather", env={"OLO_WEATHER_DEMO": "1"}, at=(40, 70), size=(1100, 720))
-    t = one("olo.speedtest", "olo-speedtest", env={"OLO_SPEEDTEST_DEMO": "1"}, at=(700, 200))
+    w = one("olo.weather", "olo-weather", env={"OLO_WEATHER_DEMO": "1"}, at=(60, 80), size=(1180, 760))
     settle(7)
-    tuck(t)
-    settle(1)
-    activate(t)
-    settle(2)
-    shot_of("olo-weather-speedtest", w, t)
+    shot_of("olo-weather", w)
+    close_all()
+    t = one("olo.speedtest", "olo-speedtest", env={"OLO_SPEEDTEST_DEMO": "1"}, at=(60, 80))
+    settle(7)
+    shot_of("olo-speedtest", t)
 
 
 GOOGLE_SCOPES = ["openid", "email", "https://mail.google.com/", "https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/drive.file"]
@@ -876,8 +887,7 @@ GOOGLE_ACCOUNTS = [
 
 
 def scene_integrations():
-    """Preferences ▸ Integrations with two made-up Google accounts, and
-    Preferences ▸ AI."""
+    """Preferences ▸ Integrations with two made-up Google accounts."""
     close_all()
     widgets([])
     look("dark", wallpaper=DESKTOP_WALLPAPER)
@@ -886,14 +896,9 @@ def scene_integrations():
         json.dump(GOOGLE_ACCOUNTS, f)
     run("olo-preferences", "integrations", env={"OLO_PREFS_DEMO_GOOGLE": "signed"})
     i = wait_for(by_app("olo.preferences", "Integrations"))
-    run("olo-preferences", "ai")
-    a = wait_for(by_app("olo.preferences", "AI"))
-    place(i, 40, 70)
-    place(a, 400, 470)
+    place(i, 120, 90)
     settle(5)
-    activate(a)
-    settle(2)
-    shot_of("olo-integrations", i, a)
+    shot_of("olo-integrations", i)
     look("light", wallpaper=DESKTOP_WALLPAPER)
 
 
@@ -921,16 +926,16 @@ def scene_rex_host():
 
 
 def scene_desktop():
-    """The desktop: Rex (its demo), Tracker with a picture's preview,
-    Calendar, and Deskbar with its live widgets."""
+    """The desktop: Rex on its demo's agents, Tracker with a picture's
+    preview, Calendar, and Deskbar with its live widgets."""
     close_all()
     widgets(DESKBAR_WIDGETS)
     look("light", wallpaper=DESKTOP_WALLPAPER)
-    cal = one("olo.calendar", "olo-calendar", env={"OLO_CALENDAR_DEMO": "1"}, at=(1075, 450), size=(820, 590))
+    cal = one("olo.calendar", "olo-calendar", env={"OLO_CALENDAR_DEMO": "1"}, at=(1084, 480), size=(730, 560))
     run("olo-tracker", HOME)
     tracker = wait_for(by_app("olo.tracker", "Home"))
-    place(tracker, 60, 715, 800, 330)
-    rex = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(40, 60), size=(1020, 600))
+    place(tracker, 40, 710, 800, 330)
+    rex = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_ACTIVITY": "transcript"}, at=(40, 60), size=(1020, 590))
     settle(4)
     activate(tracker)
     type_text("Pic")
