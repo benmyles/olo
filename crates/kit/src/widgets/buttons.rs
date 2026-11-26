@@ -17,6 +17,19 @@ fn described(mark: impl IntoElement, width: f32, text: impl Into<SharedString>) 
     div().flex().flex_col().child(mark).child(div().pl(px(width + m::MARK_GAP)).child(super::StringView::new(text).dim(true).wrap(true))).into_element()
 }
 
+/// As [`described`], in a note's small words: for a window whose notes
+/// under its lines are so. Under a mark that can't be chosen
+/// (`enabled` false) the note is as dim as its label is: left as it was,
+/// it stood out over the label it explains (a reviewer's, of Rex's Host
+/// window).
+fn noted(mark: impl IntoElement, width: f32, text: impl Into<SharedString>, enabled: bool) -> Element {
+    let mut note = super::StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
+    if !enabled {
+        note = note.color(style::disabled_text(&theme::palette()));
+    }
+    div().flex().flex_col().child(mark).child(div().pl(px(width + m::MARK_GAP)).child(note)).into_element()
+}
+
 /// A small button's height (`Button::small`).
 pub const SMALL_BUTTON_HEIGHT: f32 = 20.0;
 
@@ -948,6 +961,11 @@ pub struct RadioButton {
 }
 
 impl RadioButton {
+    /// How far in from its left edge its label begins (its mark and
+    /// the gap): where a line of an app's own that goes with the
+    /// choices lines up with their words.
+    pub const LABEL_INSET: f32 = RADIO_WIDTH + m::MARK_GAP;
+
     pub fn new(label: impl Into<SharedString>, selected: bool) -> RadioButton {
         let label = crate::words::of(label);
         RadioButton { id: label.clone(), label, selected, enabled: true, height: m::MARK_ROW, on_select: None }
@@ -956,6 +974,14 @@ impl RadioButton {
     /// Add a wrapped explanation directly beneath this mark's label.
     pub fn description(self, text: impl Into<SharedString>) -> Element {
         described(self, RADIO_WIDTH, text)
+    }
+
+    /// The same in a note's small dim words (`style::SMALL_SIZE`), where
+    /// the window's other notes are so (Rex's Host window: what each
+    /// choice means, under it).
+    pub fn note(self, text: impl Into<SharedString>) -> Element {
+        let enabled = self.enabled;
+        noted(self, RADIO_WIDTH, text, enabled)
     }
 
     /// As tall as what's beside it, as [`CheckBox::height`]: beside a

@@ -833,6 +833,47 @@ written back each frame from the page's own state, which only `input`
 events change; a header `position: sticky`; a `keydown` handler that
 takes `/`.
 
+### A new section's first look: what both reviewers found that a careful build still had (2026-11-26)
+
+The Host window's Screens tab was built by copying the window's own
+row pattern, measured, lint-clean at five scales, and tried on the rig,
+and its one round of looks still found sixteen things. None was a
+pixel the lint could see. What to check before the next new section
+goes to them:
+
+- **Every state has one structure.** What a thing is and how it is
+  updated stay; what this state has to say goes in one slot. Lines
+  swapped in and out per state made the section under it stand at
+  three different heights, and left "Fetched from Olo's releases when
+  you choose" reading as an error's second sentence.
+- **A word means one thing in a window.** "A whole Olo desktop of this
+  host's own" over "`--on desktop`" (this computer): a careful reader
+  maps it backwards.
+- **A number is said once, by name.** "about 600 MB" beside "2.3 GB"
+  were a download and what it holds on disk, unlabelled; and the
+  helper's "bytes" (Olo's alone, 1.8 GB) beside the window's "2.3 GB
+  on the host" would have been two again: measure what the words claim.
+- **An error says what to do, and whose it is.** "Couldn't remove" with
+  "Olo is taken off once they are stopped" said it failed and that it
+  would happen by itself; "GitHub couldn't be reached" read as this
+  computer's trouble when it was the host's.
+- **A greyed choice says why**, in its own note; and its note is as dim
+  as its label.
+- **No button that guesses** (a greyed Install beside "Asking…") or
+  repeats the one just pressed.
+- **What is typed inside a sentence** takes the sentence's line height
+  and a point of room after it (`host_panel`'s `typed`).
+- Lines that wrap with one or two words over are rewritten to fit, in
+  every state: read every state's picture for them before the round.
+
+And of the picture script (`/var/tmp` scratch, each state a session of
+its own): a window that fits its content has its frame for good only a
+moment after it first shows, so ask for the frame until two looks a
+second apart agree, then take the picture (taken at first sight, most
+were blank); and a session as big as the smallest screen in points
+times the scale (1280 × 800), or the window is taller than its screen
+and its Frame scrolls it.
+
 ### The dev server has a host's own screens (since 2026-11-26)
 
 `olo screen install` was run on the dev server's own account that day

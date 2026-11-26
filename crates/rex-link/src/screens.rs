@@ -36,12 +36,15 @@
 //!     its screens need, which `missing` and `how` say)
 //! olo-rex-link screen status
 //!     what is here, as JSON: {"installed": VERSION|null, "prefix",
-//!     "bytes", "chrome": VERSION|null, "missing": [libraries its
+//!     "bytes" (Olo, Chrome and the font together), "chrome":
+//!     VERSION|null, "missing": [libraries its
 //!     programs need that this host hasn't], "older": {library:
 //!     [versions of its symbols they need that this host's hasn't]},
 //!     "software_drawing": true|false, "emoji_font": true|false (none:
 //!     every emoji is a box, on Olo's windows and on a page), "default":
-//!     "host"|"desktop"}
+//!     "host"|"desktop", "committed": when the release here was made
+//!     (seconds; by it a desktop knows its own is newer), "running":
+//!     [the screens that run here, by name]}
 //! olo-rex-link screen default [host|desktop]
 //!     where `olo screen` goes on this host when it isn't said
 //!     (`--on host`, `--on desktop`, `OLO_SCREENS_ON`); none: says it
@@ -455,7 +458,8 @@ fn remove() -> ! {
 /// What is here.
 fn status() -> serde_json::Value {
     let prefix = prefix();
-    let installed = olo_release::installed_in(&prefix).version.filter(|_| prefix.join("bin/olo-screen").is_file());
+    let here = olo_release::installed_in(&prefix);
+    let installed = here.version.filter(|_| prefix.join("bin/olo-screen").is_file());
     let dirs = library_dirs();
     let has = |name: &str| dirs.iter().any(|d| d.join(name).exists());
     let mut missing: Vec<String> = Vec::new();
@@ -486,12 +490,17 @@ fn status() -> serde_json::Value {
         "installed": installed,
         "prefix": prefix,
         "programs": programs,
-        "bytes": if installed.is_some() { bytes_under(&prefix) } else { 0 },
+        // (All of it: Olo, the Chrome it runs and the font put with it.
+        // Olo's alone, 1.8 GB, stood beside "2.3 GB on the host" in the
+        // window that had both.)
+        "bytes": if installed.is_some() { bytes_under(&prefix) + bytes_under(&home().join(".local/share/olo/chrome")) + bytes_under(&screens_fonts()) } else { 0 },
         "chrome": chrome,
         "missing": missing,
         "older": older,
         "software_drawing": software,
         "emoji_font": emoji_font(),
+        "committed": here.committed.filter(|_| installed.is_some()),
+        "running": if installed.is_some() { running_screens(&prefix) } else { Vec::new() },
         "default": default_now(),
     });
     if installed.is_none() {

@@ -2300,8 +2300,20 @@ impl RexWindow {
                 }
             }
             // (One of Olo's things put on a host, updated, or taken off, for
-            // agents: `host.put:KEY:helper|skill|commands|pool`, `host.update:…`,
-            // `host.take:…`, `host.update-all:KEY`. In the Host window, where it shows.)
+            // agents: `host.put:KEY:helper|skill|commands|pool|screens`,
+            // `host.update:…`, `host.take:…`, `host.update-all:KEY`. In the Host
+            // window, where it shows. And where an agent's screen opens there:
+            // `host.screens:KEY:host|desktop`.)
+            c if c.starts_with("host.screens:") => {
+                let rest = c.trim_start_matches("host.screens:");
+                if let Some((key, word @ ("host" | "desktop"))) = rest.rsplit_once(':') {
+                    open_host(&hub, key);
+                    if crate::host::current().is_some_and(|shown| shown.key == key) {
+                        crate::host::show_tab(3);
+                        crate::host::screens_default(&hub, word == "host");
+                    }
+                }
+            }
             c if c.starts_with("host.put:") || c.starts_with("host.update:") || c.starts_with("host.take:") => {
                 let op = if c.starts_with("host.put:") {
                     crate::hub::HostOp::Install
@@ -2317,6 +2329,7 @@ impl RexWindow {
                         "skill" => crate::hub::HostThing::Skill,
                         "commands" => crate::hub::HostThing::Commands,
                         "pool" => crate::hub::HostThing::Pool,
+                        "screens" => crate::hub::HostThing::Screens,
                         _ => return None,
                     };
                     Some((key.to_owned(), thing))
@@ -6132,6 +6145,7 @@ impl View for RexWindow {
                     HostDo::AskAll(asking) => crate::host::ask_all(asking),
                     HostDo::RemoveAll(things) => crate::host::remove_all(&hub, &things),
                     HostDo::Tab(tab) => crate::host::show_tab(tab),
+                    HostDo::ScreensDefault(on_host) => crate::host::screens_default(&hub, on_host),
                     // (Its copy here, in Tracker; or the host's own folder
                     // here, made if nothing came from it yet.)
                     HostDo::ShowKept(there) => {

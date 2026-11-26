@@ -21,6 +21,7 @@ mod frame;
 mod git;
 mod host;
 mod host_panel;
+mod host_screens;
 mod hub;
 mod keymap;
 mod link;
