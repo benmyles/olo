@@ -456,12 +456,23 @@ something nobody here has is in "Blocked", with what it waits for.
     versions are lacking, `older`): a release linked against an older
     one, or the libraries carried with it, is what such a host would
     need. An aarch64 host has no release to install.
-  - *A font with emoji* on a host that has none (every emoji a box):
-    the release carries Olo's fonts but no colour emoji.
-  - *The accessibility bus*: `tree` of a GTK program or of a page in
-    Chrome reads the account's AT-SPI bus, which a server may not have
-    (`at-spi2-core`); Olo's own apps are read without it. To check on a
-    bare host, and say in `status`.
+  - ~~*A font with emoji* on a host that has none (every emoji a box)~~
+    Done 2026-11-26: `status` says (`emoji_font`), and `screen install`
+    puts Noto Color Emoji among the account's fonts where there is
+    none (one commit of its makers' repository, its SHA-256 written in
+    the helper). Left: a newer one, when Unicode has more (the commit
+    and the checksum are in `screens.rs`).
+  - *The accessibility bus*: `tree` of a GTK or Qt program reads the
+    account's AT-SPI bus, which a server may not have (`at-spi2-core`).
+    Olo's own apps are read without it, and so is a page in Chrome
+    (through Olo's extension: read and driven on the dev server with no
+    session bus at all, 2026-11-26). To check for the rest on a bare
+    host, and say in `status`.
+  - *Videos* work there as they are (tried 2026-11-26, no GPU:
+    `history --export` of a screen's actions in under a second, and a
+    live `record-video` whose frame showed what was typed): the skill
+    says to send one to the desktop to show what was done. Nothing
+    left but to say so here.
 - **The website and README.md, made anew** (Ben, 2026-11-26: "add a
   todo to completely refresh the website and the README.md with all new
   screenshots and covering the huge ecosystem of apps and features with

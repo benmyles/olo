@@ -239,14 +239,19 @@ model or reasoning effort is used.
   - `olo screen status`: whether Olo is on this host (`installed`), what
     its programs lack here (`missing`: libraries to have installed;
     `older`: libraries too old for it, which only a newer system cures;
-    `software_drawing`), Chrome's version, and where `olo screen` goes
-    when it isn't said (`default`).
+    `software_drawing`), Chrome's version, whether the host has a font
+    with emoji (`emoji_font`: without one every emoji is a box, on a
+    page too; `olo screen install` puts one), and where `olo screen`
+    goes when it isn't said (`default`).
   - `olo screen install`: puts Olo here, under the account and nowhere
     else (`~/.local/share/olo/desktop`: about 600 MB downloaded from
     Olo's releases and checked, 1.9 GB on disk; nothing needs root),
-    and Chrome (Google's own, unpacked under `~/.local/share/olo/chrome`).
-    A line of JSON for each step, then what `status` says. Run again
-    later, it brings both up to the newest.
+    and Chrome (Google's own, unpacked under `~/.local/share/olo/chrome`),
+    and, where the host has no font with emoji, Noto Color Emoji among
+    the account's fonts (so a 🚀 is one, in Olo's windows and on a
+    page, not a box). A line of JSON for each step, then what `status`
+    says. Run again later, it brings Olo and Chrome up to the newest
+    (and fetches nothing where the newest is here).
   - `olo screen --on host start NAME`, then `run NAME olo-chrome
     http://localhost:5173` (a server of this host's needs no forward: it
     is the same machine), `tree NAME`, `click`, `type`, `key`, `wait`,
@@ -267,7 +272,10 @@ model or reasoning effort is used.
     --keep` for one that must outlive the tab that started it (another
     agent's to go on with), which then stays until it is stopped.
     The person can't watch a host's screen from their desktop yet: show
-    what you did with a picture (`look`).
+    what you did with a picture (`look`), or all of it as a video of
+    its actions with the waits between them cut (`olo screen --on host
+    history NAME --export OUT.mp4`, made in under a second with no GPU),
+    which `olo send OUT.mp4` saves on their desktop.
   Use the host's when the work is the host's own (a server here, a page
   to test, a program to drive) or the desktop is away; the desktop's
   when the person should watch or take over, or the task needs what is

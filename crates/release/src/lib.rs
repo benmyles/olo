@@ -344,6 +344,15 @@ pub fn fetch_into(src: &Source, have: &[String], cache: &Path, cancel: &AtomicBo
     Ok(here)
 }
 
+/// A file that isn't a release's, fetched as one is: `name` from `url`
+/// into `cache` (kept: not fetched again while a checked copy is
+/// there), refused unless its SHA-256 is `want`. Where it is. (The font
+/// with emoji a Rex host's screens are given: `olo-rex-link screen
+/// install`.)
+pub fn fetch_file(name: &str, url: &str, want: &str, cache: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, u64)) -> Result<PathBuf, String> {
+    fetch_one(name, &Origin::Url(url.to_owned()), want, cache, cancel, progress)
+}
+
 /// One file of a release, `name` from `origin`, whose SHA-256 is `want`.
 fn fetch_one(name: &str, origin: &Origin, want: &str, cache: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, u64)) -> Result<PathBuf, String> {
     let path = match origin {
