@@ -109,7 +109,7 @@ fn build(root: &Path, target: &Path, out: &Path, triple: &str, quic: bool) -> bo
     // the link's are.)
     // (The agents service, `agents`, is in every build: all Rust, it
     // needs no C compiler for the host's machine. `move` has it.)
-    cargo.args(["--features", if quic { "quic,sync,move" } else { "agents" }]);
+    cargo.args(["--features", if quic { "quic,sync,move,screens" } else { "agents" }]);
     // (What this build was told is not for that one: its flags, its
     // target folder, the profile it is built in.)
     for (name, _) in std::env::vars() {

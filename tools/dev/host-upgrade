@@ -42,6 +42,13 @@ What it does, each as the desktop's own install does it
    one again in that moment, so it is asked until the service is the new
    helper's.
 
+4. Olo itself, where this host has it for its agents' screens
+   (~/.local/share/olo/desktop: `olo screen install` put it there):
+   brought to this release from the release's own archive, by the new
+   helper (`screen install --from`: only the programs that differ are
+   written, each renamed into place, so a screen that runs keeps its
+   files). Never put on a host that hasn't it.
+
 A hold: while ~/.local/state/olo/host-upgrade.hold is there, nothing is
 replaced (its words say why and whose it is); --even-if-held goes ahead
 all the same. Whoever has agents at work on the host may put it there.
@@ -218,6 +225,24 @@ def main():
             break
     else:
         fail(f"the agents service is still pid {pid} running {exe} after 12 askings: an asker of the old build starts it again each time; `{helper} agent retire` and look")
+    # 4. Olo for this host's own screens, where it is here.
+    desktop = os.path.join(HOME, ".local/share/olo/desktop")
+    if os.path.isfile(os.path.join(desktop, "bin/olo-screen")):
+        archives = sorted(glob.glob(os.path.join(work, f"target/dist/olo-*-{machine}.tar.zst")), key=os.path.getmtime)
+        version = lambda: open(os.path.join(desktop, "share/olo/version")).read().strip() if os.path.isfile(os.path.join(desktop, "share/olo/version")) else "?"
+        was = version()
+        if not archives:
+            print(f"host-upgrade: Olo for this host's screens is left at {was}: {work}/target/dist has no archive for {machine}")
+        else:
+            r = subprocess.run([helper, "screen", "install", "--from", archives[-1], "--no-chrome"], capture_output=True, text=True)
+            lines = [l for l in r.stdout.splitlines() if l.startswith("{")]
+            said = next((json.loads(l) for l in lines if '"installed"' in l and '"changed"' in l), None)
+            # (Status 3: it is in, and something this host lacks is said.)
+            if r.returncode not in (0, 3) or said is None:
+                why = next((json.loads(l).get("error") for l in lines if '"error"' in l), None) or (r.stderr or r.stdout).strip()[-300:]
+                fail(f"Olo for this host's screens wasn't brought up to date ({why})")
+            if said["changed"] or version() != was:
+                did.append(f"Olo for this host's screens ({was} to {version()}: {said['changed']} programs written)")
     if not did:
         print(f"host-upgrade: nothing to do: this host has release {commit}'s helper ({build}), skill and commands, and its service is the helper's (pid {pid})")
         return

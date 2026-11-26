@@ -414,7 +414,12 @@ impl<R: Read> Read for Counting<'_, R> {
 
 /// The archives (Olo's, then its parts) unpacked into `into` (made empty
 /// first), one over another: `into/olo/…`.
-pub fn unpack(archives: &[PathBuf], into: &Path, cancel: &AtomicBool, mut progress: Box<dyn FnMut(u64, u64)>) -> Result<PathBuf, String> {
+pub fn unpack(archives: &[PathBuf], into: &Path, cancel: &AtomicBool, progress: Box<dyn FnMut(u64, u64)>) -> Result<PathBuf, String> {
+    unpack_telling(archives, into, cancel, progress)
+}
+
+/// [`unpack`], told through something that needn't outlive the call.
+fn unpack_telling<'a>(archives: &[PathBuf], into: &Path, cancel: &AtomicBool, mut progress: Box<dyn FnMut(u64, u64) + 'a>) -> Result<PathBuf, String> {
     let _ = std::fs::remove_dir_all(into);
     std::fs::create_dir_all(into).map_err(|e| format!("{}: {e}", into.display()))?;
     let sizes: Vec<u64> = archives.iter().map(|a| std::fs::metadata(a).map(|m| m.len()).unwrap_or(0)).collect();
@@ -677,6 +682,81 @@ pub fn place_prefix(olo: &Path, prefix: &Path, retire: &[String], release: Optio
     Ok(changed)
 }
 
+/// What [`install`] is asked.
+#[derive(Debug, Clone, Default)]
+pub struct Install {
+    /// An archive (a file or a URL, its `.sha256` beside it), not one of
+    /// GitHub's releases.
+    pub from: Option<String>,
+    /// The release tagged so (an older one too), not the newest.
+    pub tag: Option<String>,
+    /// Programs Olo no longer has, taken away.
+    pub retire: Vec<String>,
+    /// Parts left out, each by how its file's name begins
+    /// (`olo-wallpapers-`: a Rex host's screens do without them, 1.6 GB).
+    pub without: Vec<String>,
+}
+
+/// A release downloaded, checked, unpacked and put in place under
+/// `prefix` (`olo-release install`, and Olo put on a Rex host for its
+/// agents' screens: `olo-rex-link screen install`): the newest, or the
+/// one `ask` names. `tell` hears how far it is ("downloading",
+/// "unpacking", "installing": done, of how much), as often as it moves.
+/// The programs that changed, and the version now there.
+pub fn install(prefix: &Path, ask: &Install, cancel: &AtomicBool, tell: &mut dyn FnMut(&'static str, u64, u64)) -> Result<(Vec<String>, String), String> {
+    install_with(prefix, ask, &cache_dir(), cancel, tell)
+}
+
+/// [`install`], with its downloads and what it unpacks in `cache`.
+pub fn install_with(prefix: &Path, ask: &Install, cache: &Path, cancel: &AtomicBool, tell: &mut dyn FnMut(&'static str, u64, u64)) -> Result<(Vec<String>, String), String> {
+    let mut installed = installed_in(prefix);
+    // The newest release (its checksum file and commit known: recorded
+    // as it's installed), or the archive given.
+    let (source, release) = match (&ask.from, &ask.tag) {
+        (Some(given), _) => (find(Some(given))?, None),
+        (None, Some(tag)) => {
+            let r = by_tag(tag)?;
+            (r.source.clone(), Some(r))
+        }
+        (None, None) => {
+            let r = latest()?;
+            (r.source.clone(), Some(r))
+        }
+    };
+    // (A part left out is one it "has": never fetched.)
+    if !ask.without.is_empty() {
+        let sums = match &release {
+            Some(r) => r.sums.clone(),
+            None => read_sums(&source.sums)?,
+        };
+        installed.sums.extend(parts(&sums, &source.name).into_iter().filter(|(name, _)| ask.without.iter().any(|w| name.starts_with(w.as_str()))).map(|(_, hash)| hash));
+    }
+    // (Bytes across all the files: the archive, and the parts it hasn't.)
+    let total: u64 = release.as_ref().map_or(0, |r| r.download_bytes(&installed));
+    let mut before = 0u64;
+    let mut current = (0usize, 0u64);
+    let archives = fetch_into(&source, &installed.sums, cache, cancel, &mut |file, _, got, of| {
+        if file != current.0 {
+            before += current.1;
+            current = (file, 0);
+        }
+        current.1 = of;
+        let (done, all) = if total > 0 { (before + got, total) } else { (got, of) };
+        tell("downloading", done, all);
+    })?;
+    let stage = cache.join("upgrade");
+    let olo = unpack_telling(&archives, &stage, cancel, Box::new(|done, all| tell("unpacking", done, all)))?;
+    let version = version_of(&olo);
+    let changed = place_prefix(&olo, prefix, &ask.retire, release.as_ref(), &mut |done, all| tell("installing", done, all))?;
+    // What was downloaded, only kept until it's in place: 2 GB in the
+    // cache otherwise.
+    let _ = std::fs::remove_dir_all(&stage);
+    for a in archives.iter().filter(|a| a.starts_with(cache)) {
+        let _ = std::fs::remove_file(a);
+    }
+    Ok((changed, version))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,6 +767,71 @@ mod tests {
         assert_eq!(expected(&format!("{h}  olo-1-x86_64.tar.zst\n"), "olo-1-x86_64.tar.zst"), Some(h.clone()));
         assert_eq!(expected(&format!("{h} *olo-1-x86_64.tar.zst\n"), "olo-1-x86_64.tar.zst"), Some(h.clone()));
         assert_eq!(expected("nonsense", "x"), None);
+    }
+
+    /// A release installed from its files under a prefix: its programs
+    /// and data there, what it is recorded, the archive given left where
+    /// it was; and without a part (a Rex host's screens do without the
+    /// wallpapers), that part's files not there, nor asked for (its file
+    /// isn't even beside the archive).
+    #[test]
+    fn a_release_is_installed_under_a_prefix_without_a_part_left_out() {
+        let dir = std::env::temp_dir().join(format!("olo-release-install-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let archive = |name: &str, files: &[(&str, &str, u32)]| {
+            let path = dir.join(name);
+            let mut tar = tar::Builder::new(zstd::stream::write::Encoder::new(std::fs::File::create(&path).unwrap(), 1).unwrap());
+            for (file, text, mode) in files {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(text.len() as u64);
+                header.set_mode(*mode);
+                header.set_cksum();
+                tar.append_data(&mut header, file, text.as_bytes()).unwrap();
+            }
+            tar.into_inner().unwrap().finish().unwrap();
+            sha256_of(&path).unwrap()
+        };
+        let olo = archive(
+            "olo-9-x86_64.tar.zst",
+            &[("olo/VERSION", "9\n", 0o644), ("olo/bin/olo-session", "#!/bin/sh\n", 0o755), ("olo/bin/olo-screen", "#!/bin/sh\n", 0o755), ("olo/share/olo/icons/a.svg", "<svg/>", 0o644)],
+        );
+        let walls = archive("olo-wallpapers-9.tar.zst", &[("olo/share/olo/wallpapers/hill.webp", "a hill", 0o644)]);
+        std::fs::write(dir.join("olo-9-x86_64.tar.zst.sha256"), format!("{olo}  olo-9-x86_64.tar.zst\n{walls}  olo-wallpapers-9.tar.zst\n")).unwrap();
+        let from = Some(dir.join("olo-9-x86_64.tar.zst").to_string_lossy().into_owned());
+        let stop = AtomicBool::new(false);
+
+        // Without the wallpapers, whose file is gone meanwhile.
+        std::fs::rename(dir.join("olo-wallpapers-9.tar.zst"), dir.join("kept")).unwrap();
+        let (host, cache) = (dir.join("host"), dir.join("cache"));
+        let mut said = Vec::new();
+        let ask = Install { from: from.clone(), without: vec!["olo-wallpapers-".into()], ..Default::default() };
+        let (changed, version) = install_with(&host, &ask, &cache, &stop, &mut |doing, _, _| {
+            if said.last() != Some(&doing) {
+                said.push(doing);
+            }
+        })
+        .unwrap();
+        assert_eq!((changed, version.as_str()), (vec!["olo-screen".to_owned(), "olo-session".to_owned()], "9"));
+        assert_eq!(said, ["unpacking", "installing"], "nothing is downloaded from a file");
+        assert!(host.join("bin/olo-session").is_file() && host.join("share/olo/icons/a.svg").is_file());
+        assert!(!host.join("share/olo/wallpapers").exists(), "the part left out");
+        assert_eq!(installed_in(&host).version.as_deref(), Some("9"));
+        assert!(dir.join("olo-9-x86_64.tar.zst").is_file(), "an archive given is the giver's to keep");
+        assert!(!cache.join("upgrade").exists(), "what was unpacked is cleared away");
+        // Again: nothing differs, nothing is put.
+        assert_eq!(install_with(&host, &ask, &cache, &stop, &mut |_, _, _| {}).unwrap().0, Vec::<String>::new());
+
+        // With every part: the wallpapers too (and asked for: without
+        // their file it fails, saying which).
+        let all = Install { from, ..Default::default() };
+        let whole = dir.join("whole");
+        let missing = install_with(&whole, &all, &cache, &stop, &mut |_, _, _| {}).unwrap_err();
+        assert!(missing.contains("olo-wallpapers-9.tar.zst"), "{missing}");
+        std::fs::rename(dir.join("kept"), dir.join("olo-wallpapers-9.tar.zst")).unwrap();
+        install_with(&whole, &all, &cache, &stop, &mut |_, _, _| {}).unwrap();
+        assert_eq!(std::fs::read_to_string(whole.join("share/olo/wallpapers/hill.webp")).unwrap(), "a hill");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The archive's parts are the other archives its checksum file

@@ -22868,6 +22868,96 @@ Chrome opens in half a second with no match rule refused; `tree` reads
 GNOME Calculator's buttons on a screen with its own bus; the bus ends
 with the screen.
 
+### Agent Screens of a host's own (crates/rex-link/src/screens.rs)
+
+An agent on a Rex host had its screens on the person's desktop, asked
+through Rex (`olo screen …`, the bridge): the desktop had to be
+connected and awake, and the screen drew there. It can have them on the
+host itself (Ben, 2026-11-26: "there should be an option for agents on a
+rex host to use olo agent screens on the host itself without having to
+use them on the user's desktop (although that should also remain an
+option). the host's olo agent screens should use software rendering and
+provide a full olo desktop for the agent and it should also have chrome
+installed and ready to use").
+
+- **A screen there is a screen**: `olo-screen`'s, a headless
+  `olo-session` with Deskbar, Tracker's desktop and every app, on a bus
+  of its own. Nothing of it is special to a host but where it draws:
+  app_server takes Mesa's software device by itself where there is no
+  render node (above). So what a host needs is Olo itself.
+- **Olo on a host** is the release, put under the account and nowhere
+  else, in a prefix of its own: `~/.local/share/olo/desktop` (`bin`,
+  `share/olo`). Not `~/.local`: a host isn't an Olo desktop, its
+  `~/.local/bin` is the account's, and the desktop commands' `olo-screen`
+  there must go on meaning what it means. The helper puts it
+  (`olo-rex-link screen install`, feature `screens`, in the helper built
+  with zig): `olo_release::install`, which is `olo-release install`'s own
+  code moved into the library (the release found on GitHub, each file
+  checked against its SHA-256, unpacked, each program that differs
+  renamed into place), with one thing more, `Install::without`: parts
+  left out by how their files' names begin. A host goes without
+  `olo-wallpapers-` (1.6 GB; its desktop's ground is the plain colour).
+  A part left out is told to `fetch` as one it has, so it is never asked
+  for. 601 MB to download, 1.9 GB on disk, 78 programs. `olo screen
+  install` again brings it up to the newest; `remove` takes it off, never
+  from under a screen that runs.
+- **Its data is found beside it**: `olo_xdg::data_dirs` looks in
+  `PREFIX/share/olo` for a program run from `PREFIX/bin` (before, only
+  the tree, `~/.local/share/olo` and `/usr/share/olo`: an Olo in any
+  other place drew with the system's fonts and no icons unless
+  `OLO_DATA` said where).
+- **Chrome** is put in the home folder by Olo's own launcher with no
+  window: `olo-chrome --olo-install` (Google's package for the machine,
+  checked and unpacked under `~/.local/share/olo/chrome`, as its
+  Download button does; a line of JSON a step). `screen install` runs it
+  last; `--no-chrome` leaves it.
+- **What the host lacks is said, not found out by a program that won't
+  start**: `olo screen status` reads each program's own headers for the
+  libraries it asks its loader for (`screens::needed`: the ELF's
+  dynamic section, in Rust; nothing is run) and looks for each where
+  this host's loader looks (`/etc/ld.so.conf` and the usual folders),
+  and for Mesa's EGL and its software renderer. `missing` is empty on a
+  Fedora 44 host set up by Rex. The release's programs are linked on
+  Fedora 44: an older system's C library is the likeliest thing to be
+  short, and then the loader's own words are what `olo screen` prints.
+- **Which screens `olo screen` means** on a host
+  (`apps/rex/src/bridge_olo.sh`): `--on host` or `--on desktop` first
+  of its arguments, else `OLO_SCREENS_ON`, else the host's default
+  (`olo screen default host|desktop`, one word in
+  `~/.config/olo/screens-on`), else the desktop's as it always was.
+  `install`, `status`, `default` and `remove` are the host's own
+  whichever is asked. The host's are `exec`ed straight to the helper,
+  which `exec`s the prefix's `olo-screen` with the prefix's programs
+  first on the path: no Rex server, no desktop and no service is asked.
+  Where the desktop can't be asked (status 69) a screen command says the
+  other way.
+- **Measured** on the dev server (64 processors, no GPU, software
+  drawing), an account of its own. Putting Olo there with the static
+  helper a host has, from GitHub: 16 s in all (601 MB downloaded,
+  checked, unpacked, 75 programs and the data placed); Chrome after, 7 s
+  (460 MB in the home). A screen starts in 0.23 s to 0.31 s. At rest for
+  12 s its processes took 0 ticks of processor time (nothing is drawn
+  when nothing changes, in software as on a GPU). One screen alone
+  holds 407 MB (proportional set size: app_server 108, Tracker 88,
+  Deskbar 82, the notification centre and the portal 46 each), and with
+  three running each holds about 250 MB, the programs' own pages being
+  shared: thirty screens are about 7.5 GB before what runs on them.
+  With Chrome on a still page of a server on the same machine (20 s
+  after it loaded, over 30 s): 26 ticks, 0.9% of one processor, 25 of
+  them Chrome's own and 1 app_server's; 867 MB in all, 466 of it
+  Chrome. On that screen `tree` read the page (its heading, button and
+  paragraph), `click --role Button --name "Press me"` pressed the
+  button, and the page said so.
+- **Tests**: `crates/rex-link/tests/screens.rs` (where `olo screen`
+  goes, each way of saying it; the helper with an Olo made up for the
+  test; never removed under a running screen),
+  `a_release_is_installed_under_a_prefix_without_a_part_left_out` in
+  olo-release, and the helper's `a_programs_libraries_are_read_from_its_headers`.
+- **Not yet** (TODO): the person watching a host's screen from Rex; a
+  default by host in Preferences ▸ Rex and the Host window; a child's
+  policy naming the host's screens; a host's Olo brought up to date by
+  the desktop when it connects; screens stopped after a time unused.
+
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 
 Agents on a screen get the passwords the person chose, and only those:

@@ -409,62 +409,53 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Agent Screens on the Rex host itself** (Ben, 2026-11-26: "there
-  should be an option for agents on a rex host to use olo agent screens
-  on the host itself without having to use them on the user's desktop
-  (although that should also remain an option). the host's olo agent
-  screens should use software rendering and provide a full olo desktop
-  for the agent and it should also have chrome installed and ready to
-  use"). Today an agent on a host gets a screen on the person's desktop
-  through the bridge (`olo screen …` from the host, the `olo-rex-bridge`
-  skill; a child's `--desktop screens=…` says which), so it needs the
-  desktop connected and awake, and it draws there.
-  **What is known to work, 2026-11-26** (found taking the README's
-  pictures on a dev server with no GPU): `olo-screen start` there
-  brings up a whole Olo desktop drawn in software (Deskbar, Tracker's
-  desktop, every app of the pictures, an agent's screen within a
-  screen), by itself since that day (app_server takes Mesa's software
-  device where there is no render node; before, only with
-  `OLO_HEADLESS_RENDERER=software` set). It was a release's own
-  programs in a folder, with `OLO_DATA` pointing at the data (a build
-  not installed finds none beside it). Chrome was put in the home by
-  Olo's own launcher (`olo-chrome`, its Download button: Google's rpm
-  unpacked under the account, no root) and showed a page from a server
-  on the same machine. A server lacks an emoji font (every emoji a
-  box) and may lack Mesa's software drivers. And the screen's bus lost
-  one program's first words in seventy under load until the same day
-  (HACKING, "Agent Screens"): a screen on a busy host would have had a
-  program hang at start now and then. To do:
-  - *A desktop of the host's own*: app_server run headless on the host,
-    drawn in software (what `tools/dev/tsession` does on the dev server
-    with no GPU: the olo-dev-server skill has what it takes), one for
-    each screen an agent asks for, with the whole of Olo in it (Deskbar,
-    Tracker, the apps, the palette), not a bare surface: so Olo itself
-    is put on the host (the release's archive, without wallpapers,
-    under the account as the helper is; what a host with no Fedora needs
-    of libraries, to find: the release's programs link Fedora 44's).
-  - *The same commands*: `olo-screen` and `olo screen …` unchanged for
-    the agent (start, look, the tree, click, type, menu), with where it
-    is chosen once: `--on host` or `--on desktop`, a default by host
-    (Preferences ▸ Rex ▸ Hosts, and the Host window), and for a child
-    by its policy (`olo agent start --desktop …` gains the host's own
-    beside `screens=`). The desktop's stays as it is.
-  - *Chrome there and ready*: installed with the rest (Chrome for
-    Testing or the distribution's, as a Wayland client, never X11), a
-    profile of the screen's own, opened by `olo-screen run chrome URL`;
-    said in the skill, with how a page on the host's own ports is
-    reached (no forward needed: it is the same machine).
+- **Agent Screens on the Rex host itself: what is left** (Ben,
+  2026-11-26: "there should be an option for agents on a rex host to use
+  olo agent screens on the host itself without having to use them on
+  the user's desktop (although that should also remain an option). the
+  host's olo agent screens should use software rendering and provide a
+  full olo desktop for the agent and it should also have chrome
+  installed and ready to use"). **Done 2026-11-26** (HACKING, "Agent
+  Screens of a host's own"): Olo put on a host by its helper from the
+  release (`olo screen install`: under the account, without wallpapers,
+  Chrome with it), `olo screen --on host …` with the same commands, a
+  default by host (`olo screen default host`), what the host lacks said
+  (`olo screen status`), the desktop's screens as before; at rest a
+  screen costs no processor time, about 250 MB each. Left:
   - *Seen from the desktop*: the person can look at a host's screen from
     Rex (a pane or a window that shows it, read-only unless they take
     it), since "what a person can see and do, an agent can read" runs
-    both ways; and each screen is listed with what it costs.
-  - *Measured*: a software-drawn desktop at rest must cost nothing (no
-    frames when nothing changes), and its memory a screen is said
-    (thirty agents with a screen each is the case to size for); stopped
-    when its agent ends, and after a time unused.
-  - With `olo agent` already the host's own (2026-11-26), this is what
-    is left for an agent on a host to need nothing of the desktop.
-
+    both ways; each screen listed with what it costs. Until then an
+    agent's `look` is the only way to see one.
+  - *Chosen on the desktop*: a default by host in Preferences ▸ Rex ▸
+    Hosts and the Host window (which writes the host's
+    `~/.config/olo/screens-on`), with Install there and its progress
+    (the helper's lines of JSON are made for it), and what `status`
+    says of the host (missing libraries with the packages that have
+    them, by system: Rex's setup can install them where it has sudo).
+  - *A child's policy*: `olo agent start --desktop …` names the
+    desktop's screens a child may use; the host's own need none of the
+    desktop, and a child has them as it has any program here. To
+    decide: whether a start can say "this child's screens are the
+    host's" (today: `OLO_SCREENS_ON=host` in what starts it, or the
+    host's default).
+  - *Kept up to date*: the desktop, connecting after an upgrade, has
+    the host's Olo brought to the same release (it does so for the
+    helper); `tools/dev/host-upgrade` does it on the dev server.
+  - *Stopped when unused*: a screen whose agent ended, or left alone for
+    hours, is stopped (it is kept, as a stopped one is); thirty agents
+    with a screen each is the case to size for (about 7.5 GB at rest).
+  - *Other systems*: the release is linked on Fedora 44. On a host with
+    an older C library its programs won't load, and `status` should say
+    that itself (the versions a program needs are in its headers too:
+    `.gnu.version_r`) instead of leaving it to the loader's words. An
+    aarch64 host has no release to install.
+  - *A font with emoji* on a host that has none (every emoji a box):
+    the release carries Olo's fonts but no colour emoji.
+  - *The accessibility bus*: `tree` of a GTK program or of a page in
+    Chrome reads the account's AT-SPI bus, which a server may not have
+    (`at-spi2-core`); Olo's own apps are read without it. To check on a
+    bare host, and say in `status`.
 - **The website and README.md, made anew** (Ben, 2026-11-26: "add a
   todo to completely refresh the website and the README.md with all new
   screenshots and covering the huge ecosystem of apps and features with

@@ -103,12 +103,28 @@ pub fn data_dirs() -> &'static [PathBuf] {
                 }
             }
         }
+        // An Olo installed in a place of its own (PREFIX/bin/x beside
+        // PREFIX/share/olo): its own data, before the home folder's. A
+        // Rex host's, for its agents' screens, is one
+        // (~/.local/share/olo/desktop: `olo screen install`), on a host
+        // whose home has none of Olo's data. (For ~/.local it is the
+        // home folder's own, below.)
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(prefix) = exe.parent().and_then(Path::parent)
+        {
+            let d = prefix.join("share/olo");
+            if d.join("icons").is_dir() && !v.contains(&d) {
+                v.push(d);
+            }
+        }
         if let Some(home) = std::env::var_os("HOME") {
             let installed = Path::new(&home).join(".local/share/olo");
             // The tree it was built from (recorded by the installer): new
             // data shows up there before an upgrade copies it over.
             let tree = std::fs::read_to_string(installed.join("build-dir")).ok().and_then(|t| Path::new(t.trim()).ancestors().nth(2).map(|r| r.join("data")));
-            v.push(installed);
+            if !v.contains(&installed) {
+                v.push(installed);
+            }
             v.extend(tree);
         }
         v.push("/usr/local/share/olo".into());

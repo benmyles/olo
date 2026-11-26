@@ -266,6 +266,45 @@ fn start_chrome(chrome: &Path, args: &[String]) {
     }
 }
 
+/// `olo-chrome --olo-install`: Chrome downloaded from Google and put in
+/// the home folder if it isn't there, with no window: each step a line
+/// of JSON (`{"doing": "downloading", "fraction": 0.42}`), then
+/// `{"chrome": VERSION, "was": true|false}` (was: there already) or
+/// `{"error": WHY}` and status 1.
+fn install_quietly() -> i32 {
+    use std::io::Write as _;
+    let say = |v: serde_json::Value| {
+        let mut out = std::io::stdout().lock();
+        let _ = writeln!(out, "{v}");
+        let _ = out.flush();
+    };
+    if install::installed().is_some() {
+        say(serde_json::json!({ "chrome": install::current_version(), "was": true }));
+        return 0;
+    }
+    let failed = std::cell::Cell::new(false);
+    // (A line when what it does changes, and every twentieth of the download.)
+    let last = std::cell::Cell::new((0u8, u64::MAX));
+    install::install(&AtomicBool::new(false), &|p| match p {
+        Progress::Looking => say(serde_json::json!({ "doing": "looking" })),
+        Progress::Downloading { got, total, .. } => {
+            let step = if total > 0 { got * 20 / total } else { 0 };
+            if last.get() != (1, step) {
+                last.set((1, step));
+                say(serde_json::json!({ "doing": "downloading", "fraction": if total > 0 { (got as f64 / total as f64 * 100.0).round() / 100.0 } else { 0.0 } }));
+            }
+        }
+        Progress::Unpacking { .. } => say(serde_json::json!({ "doing": "unpacking" })),
+        Progress::Done(_) => say(serde_json::json!({ "chrome": install::current_version(), "was": false })),
+        Progress::Failed(why) => {
+            failed.set(true);
+            say(serde_json::json!({ "error": why }));
+        }
+        Progress::Cancelled => failed.set(true),
+    });
+    i32::from(failed.get())
+}
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -274,6 +313,12 @@ fn main() {
     // Chrome starting us as the Passwords extension's host.
     if args.first().is_some_and(|a| a.starts_with("chrome-extension://")) {
         return host::run();
+    }
+    // Chrome put here with no window to ask in (a Rex host's screens,
+    // made ready before an agent first wants a page: `olo screen
+    // install`): what it does, a line of JSON at a time.
+    if args.first().map(String::as_str) == Some("--olo-install") {
+        std::process::exit(install_quietly());
     }
     if let Some(chrome) = install::installed() {
         // Its icons and entry (an install from before, or another place
