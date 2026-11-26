@@ -9,7 +9,7 @@ for me so that the agents working on stuff relying on olo agent fixes
 etc get it as soon as they're ready (i'll be stepping away for a while
 and won't be able to upgrade my desktop for a bit)").
 
-    tools/dev/host-upgrade [--dry-run] [--work DIR]
+    tools/dev/host-upgrade [--dry-run] [--work DIR] [--even-if-held] [--under-screens]
 
 DIR: where the release was built (tools/publish-release.sh's work folder:
 /var/tmp/olo-release, or OLO_RELEASE_WORK). tools/publish-release.sh runs
@@ -46,8 +46,12 @@ What it does, each as the desktop's own install does it
    (~/.local/share/olo/desktop: `olo screen install` put it there):
    brought to this release from the release's own archive, by the new
    helper (`screen install --from`: only the programs that differ are
-   written, each renamed into place, so a screen that runs keeps its
-   files). Never put on a host that hasn't it.
+   written, each renamed into place). Never put on a host that hasn't
+   it, and not while a screen runs there: a screen follows the Olo it
+   runs from (its app_server reloads in place a moment after the
+   programs change), which is nothing to do to an agent in the middle
+   of a page; it says which run, and is done at the next upgrade that
+   finds none (`--under-screens`: all the same).
 
 A hold: while ~/.local/state/olo/host-upgrade.hold is there, nothing is
 replaced (its words say why and whose it is); --even-if-held goes ahead
@@ -231,8 +235,17 @@ def main():
         archives = sorted(glob.glob(os.path.join(work, f"target/dist/olo-*-{machine}.tar.zst")), key=os.path.getmtime)
         version = lambda: open(os.path.join(desktop, "share/olo/version")).read().strip() if os.path.isfile(os.path.join(desktop, "share/olo/version")) else "?"
         was = version()
+        listed = subprocess.run([helper, "screen", "list"], capture_output=True, text=True)
+        try:
+            running = [s["name"] for s in json.loads(listed.stdout) if s.get("state") == "running"]
+        except (ValueError, TypeError, KeyError):
+            running = None
         if not archives:
             print(f"host-upgrade: Olo for this host's screens is left at {was}: {work}/target/dist has no archive for {machine}")
+        elif running is None:
+            print(f"host-upgrade: Olo for this host's screens is left at {was}: its screens couldn't be listed ({(listed.stderr or listed.stdout).strip()[-200:]})")
+        elif running and "--under-screens" not in args:
+            print(f"host-upgrade: Olo for this host's screens is left at {was}: {len(running)} run ({', '.join(running)}), and each would reload a moment after its programs changed; done at the next upgrade that finds none, or --under-screens")
         else:
             r = subprocess.run([helper, "screen", "install", "--from", archives[-1], "--no-chrome"], capture_output=True, text=True)
             lines = [l for l in r.stdout.splitlines() if l.startswith("{")]
