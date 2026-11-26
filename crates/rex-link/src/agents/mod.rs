@@ -101,6 +101,13 @@ mod tests {
         // A tip under its work isn't what it is doing.
         let tipped = format!("✻ Thinking… (12s)\n└ Tip: press shift+tab to cycle modes\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
         assert_eq!(doing_line(&tipped).as_deref(), Some("✻ Thinking… (12s)"));
+        // (Claude Code 2.1.332's word of its effort, set at the right under its work, isn't what it is doing: as read off one, 2026-11-26.)
+        let hinted = format!(
+            "● Background: wait for the build\n  ⎿  $ echo STARTED_WAITING; sleep 45\n✢ Whatchamacalliting… (0s · ↓ 2 tokens)\n{}◈ max · /effort\n{} waiter ─\n❯ \n{rule}\n  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← for agents\n",
+            " ".repeat(103),
+            "─".repeat(111)
+        );
+        assert_eq!(doing_line(&hinted).as_deref(), Some("✢ Whatchamacalliting… (0s · ↓ 2 tokens)"));
         // No rules (Codex, drawn inline): the line that says it works.
         let codex = "• Ran cargo test\n\n• Working (12s • esc to interrupt)\n\n› Ask Codex to do anything\n  gpt-6.2-astra high · ~/src · Context 91% left\n";
         assert_eq!(doing_line(codex).as_deref(), Some("• Working (12s • esc to interrupt)"));

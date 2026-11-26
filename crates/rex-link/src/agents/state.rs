@@ -104,8 +104,11 @@ pub fn doing_line(screen_text: &str) -> Option<String> {
         n if n >= 2 => &lines[..rules[n - 2]],
         _ => &lines[..],
     };
-    // (Not a tip under its work, nor a rule.)
-    let said = |l: &str| !is_rule(l) && !l.starts_with("└ Tip:");
+    // (Not a tip under its work, nor a rule, nor Claude Code's word of
+    // its effort set at the right under its work, "◈ max · /effort",
+    // which was every working Claude agent's summary: the ShiftUp
+    // lead's item 32, 2026-11-26.)
+    let said = |l: &str| !is_rule(l) && !l.starts_with("└ Tip:") && !(l.starts_with('◈') && l.ends_with("/effort"));
     let last_said = || above.iter().rev().copied().find(|l| said(l));
     if rules.len() >= 2 {
         return last_said().map(str::to_owned);

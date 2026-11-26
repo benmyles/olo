@@ -31457,6 +31457,39 @@ agents through the night, could not move to it.
   its own after its first turn (the one its process holds the lock of),
   never the first's. It failed before (the second was given the
   first's, and the first's transcript as its own).
+- *An agent's own shells* (`background_shells`, `waiting_on`;
+  `agent.rs`, `find_background_shells`; the ShiftUp lead's item 26,
+  2026-11-26: "A Claude Code agent whose turn ended with its own
+  background Bash still running (`sleep 45`, its footer '1 shell', the
+  shell under its process) had `waiting_on: someone` and
+  `background_shells: []` … Please list each such shell, with its
+  command, its output file and when it last wrote, and say
+  `waiting_on: own_run`"). A shell the agent started for a command of
+  its own is the unit, whatever runs in it at the moment: read leaf by
+  leaf, a shell whose command was `sleep 45`, or a loop that sleeps
+  between its looks, had nothing to show (a bare `sleep` was skipped,
+  and the shell above it as a wrapper). Claude Code (2.1.332) runs each
+  command of the agent's as a direct child, `bash -c "source SNAPSHOT …
+  && eval 'COMMAND' < /dev/null && pwd -P >| …"`, its output to a file
+  (`…/tasks/ID.output`): each such child is one entry, `cmd` the
+  agent's own command as it gave it (`own_shell_command`: the word after
+  the script's `eval`, its quoted pieces put together), `output` that
+  file and `last_wrote_ms` when it was last written (how long a run has
+  said nothing), `kind` as before (`task`, which makes `waiting_on`
+  `own_run`; `dev_server`, which doesn't: whether that will wake the
+  agent is the reader's to judge). And for Claude Code those are all of
+  them: what else runs under it is Claude Code's own doing (as it
+  starts, `ps aux | grep -E code|cursor|…` to see which editor it is in),
+  which was listed as the agent's run and the agent said to be waiting
+  on it. Antigravity and Codex are read leaf by leaf as before, with
+  the output file where a leaf has one. *Tried*: `agents_live.rs`,
+  Claude Code itself with the made-up API its model: a command run in
+  the background (`run_in_background`), the turn ended: one entry, its
+  own command, its output file holding what it printed, `own_run`; and
+  nothing of Claude Code's own listed while it starts. (The same test's
+  screen is where item 32 was read: a working Claude agent's `summary`
+  was Claude Code's word of its effort, "◈ max · /effort", set at the
+  right under its work. `doing_line` passes over it.)
 - *The service keeps to the hold* (`Service::held`). While
   `~/.local/state/olo/host-upgrade.hold` is there (beside the services'
   folder: whoever has agents at work on a host puts it there, its words

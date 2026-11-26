@@ -232,6 +232,88 @@ struct BackgroundShellInfo {
     cmd: String,
     cwd: String,
     kind: &'static str,
+    /// The file its output goes to, where it goes to one (a shell of
+    /// Claude Code's own: `…/tasks/ID.output`), and when it was last
+    /// written (Unix milliseconds): how long a run has said nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_wrote_ms: Option<u64>,
+}
+
+/// The command an agent's own shell runs, from the script its agent
+/// gave the shell: Claude Code runs each of its commands as `bash -c
+/// "source SNAPSHOT … && eval 'COMMAND' < /dev/null && pwd -P >| …"`
+/// (2.1.332, read from one running). The word after the script's own
+/// ` eval ` (the first that is followed by a whole quoted word and then
+/// the rest of the script: one inside the command is inside its
+/// quotes), as a shell reads it (quoted pieces set side by side:
+/// `'it'"'"'s'`). None where the script has no such word.
+fn own_shell_command(script: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(at) = script[from..].find(" eval ") {
+        let start = from + at + " eval ".len();
+        if let Some((word, after)) = shell_word(&script[start..])
+            && (after.is_empty() || after.starts_with(' '))
+            && !word.trim().is_empty()
+        {
+            return Some(word);
+        }
+        from = start;
+    }
+    None
+}
+
+/// One quoted word at the start of `s` (`'…'` and `"…"` pieces side by
+/// side) and what follows it; None if it doesn't begin with a quote or
+/// a quote isn't closed.
+fn shell_word(s: &str) -> Option<(String, &str)> {
+    let mut out = String::new();
+    let mut chars = s.char_indices().peekable();
+    let mut end = 0;
+    loop {
+        match chars.peek().copied() {
+            Some((_, '\'')) => {
+                chars.next();
+                loop {
+                    match chars.next()? {
+                        (i, '\'') => {
+                            end = i + 1;
+                            break;
+                        }
+                        (_, c) => out.push(c),
+                    }
+                }
+            }
+            Some((_, '"')) => {
+                chars.next();
+                loop {
+                    match chars.next()? {
+                        (i, '"') => {
+                            end = i + 1;
+                            break;
+                        }
+                        (_, '\\') => out.push(chars.next()?.1),
+                        (_, c) => out.push(c),
+                    }
+                }
+            }
+            _ => break,
+        }
+    }
+    (end > 0).then(|| (out, &s[end..]))
+}
+
+/// Where a process's output goes, if to a file, and when that file was
+/// last written.
+fn output_of(pid: i32) -> (Option<String>, Option<u64>) {
+    let Ok(target) = std::fs::read_link(format!("/proc/{pid}/fd/1")) else { return (None, None) };
+    let Ok(meta) = std::fs::metadata(&target) else { return (None, None) };
+    if !meta.is_file() {
+        return (None, None);
+    }
+    let wrote = meta.modified().ok().and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
+    (Some(target.display().to_string()), wrote)
 }
 
 #[derive(Debug, Serialize)]
@@ -373,10 +455,44 @@ fn classify_bg_process(cmd: &str) -> &'static str {
     "task"
 }
 
-fn find_background_shells(agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) -> Vec<BackgroundShellInfo> {
-    let desc = collect_descendants(agent_pid, by_ppid);
+fn find_background_shells(cli: &str, agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) -> Vec<BackgroundShellInfo> {
     let mut out = Vec::new();
+    // The agent's own shells first, each one whole: a shell the agent
+    // started for a command of its own is what it waits on, whatever
+    // runs in it at this moment. Read leaf by leaf (below), a shell
+    // whose command was `sleep 45`, or a loop that sleeps between its
+    // looks, had nothing to show: a bare `sleep` is skipped there, and
+    // the shell above it as a wrapper (the ShiftUp lead's item 26,
+    // 2026-11-26: a Claude Code agent with "1 shell" in its footer had
+    // `background_shells: []` and `waiting_on: someone`).
+    let mut own: HashSet<i32> = HashSet::new();
+    for shell in by_ppid.get(&agent_pid).into_iter().flatten() {
+        if !matches!(shell.comm.as_str(), "sh" | "bash" | "zsh" | "dash") {
+            continue;
+        }
+        let argv = read_argv(shell.pid);
+        let Some(cmd) = argv.iter().position(|a| a == "-c").and_then(|i| argv.get(i + 1..)).and_then(|rest| rest.iter().find(|a| !a.starts_with('-'))).and_then(|script| own_shell_command(script))
+        else {
+            continue;
+        };
+        let (output, last_wrote_ms) = output_of(shell.pid);
+        own.insert(shell.pid);
+        own.extend(collect_descendants(shell.pid, by_ppid).iter().map(|p| p.pid));
+        out.push(BackgroundShellInfo { pid: shell.pid, kind: classify_bg_process(&cmd), cmd: cmd.chars().take(240).collect(), cwd: read_cwd(shell.pid), output, last_wrote_ms });
+    }
+    // Claude Code's shells of the agent's own are those, and all of
+    // them: what else runs under it is Claude Code's own doing (as it
+    // starts: `ps aux | grep -E code|cursor|…` to see which editor it is
+    // in; later its searches, its servers), which read leaf by leaf was
+    // said to be the agent's run, and the agent to be waiting on it.
+    if cli == "claude" {
+        return out;
+    }
+    let desc = collect_descendants(agent_pid, by_ppid);
     for p in desc {
+        if own.contains(&p.pid) {
+            continue;
+        }
         let argv = read_argv(p.pid);
         if argv.is_empty() {
             continue;
@@ -407,7 +523,8 @@ fn find_background_shells(agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) ->
         }
         let kind = classify_bg_process(&cmd);
         let cwd = read_cwd(p.pid);
-        out.push(BackgroundShellInfo { pid: p.pid, cmd: cmd.chars().take(240).collect(), cwd, kind });
+        let (output, last_wrote_ms) = output_of(p.pid);
+        out.push(BackgroundShellInfo { pid: p.pid, cmd: cmd.chars().take(240).collect(), cwd, kind, output, last_wrote_ms });
     }
     out
 }
@@ -1091,7 +1208,7 @@ pub(crate) fn inspect_items(items: &[InspectItemRequest]) -> Vec<InspectItemResu
             _ => TranscriptInspection { state: "unknown", last_message: None, error: None, pending_tool: None, pending_tools: Vec::new() },
         };
 
-        let background_shells = pid.map(|p| find_background_shells(p, &by_ppid)).unwrap_or_default();
+        let background_shells = pid.map(|p| find_background_shells(&item.cli, p, &by_ppid)).unwrap_or_default();
         let has_active_task = background_shells.iter().any(|s| s.kind == "task");
         let waiting_on = if pid.is_none() {
             None
@@ -1135,6 +1252,26 @@ pub(crate) fn trust(home_override: Option<&str>, config_dir_override: Option<&st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The command of an agent's own shell, from the script Claude Code
+    /// gives it (2.1.332, copied from two that ran): the word after
+    /// `eval`, its quoted pieces put together.
+    #[test]
+    fn an_own_shells_command_is_read_from_its_script() {
+        let wrap = |eval: &str| {
+            format!(
+                "source /home/f/.claude/shell-snapshots/snapshot-bash-1795681562352-golggv.sh 2>/dev/null || true && \\builtin shopt -u extglob 2>/dev/null || true && {{ \\builtin unalias -- 'which'; \\builtin unset -f -- 'which'; }} >/dev/null 2>&1 || true && eval {eval} < /dev/null && pwd -P >| /var/tmp/claude-319e-cwd"
+            )
+        };
+        assert_eq!(own_shell_command(&wrap("'sleep 100'")).as_deref(), Some("sleep 100"));
+        // (A quote inside it, as a shell writes one: closed, quoted, opened again.)
+        assert_eq!(own_shell_command(&wrap(r#"'awk '"'"'{print $4}'"'"' /proc/1/stat; echo "done"'"#)).as_deref(), Some(r#"awk '{print $4}' /proc/1/stat; echo "done""#));
+        // (A command with an eval of its own: the script's is the last, the one that runs it.)
+        assert_eq!(own_shell_command(&wrap(r#"'while true; do eval "$next"; sleep 5; done'"#)).as_deref(), Some(r#"while true; do eval "$next"; sleep 5; done"#));
+        for none in ["sleep 100", "bash -lc tail -f log", "x && eval ", "x && eval 'unclosed"] {
+            assert_eq!(own_shell_command(none), None, "{none}");
+        }
+    }
 
     #[test]
     fn trust_claude_paths_is_atomic_and_preserves_existing_keys() {

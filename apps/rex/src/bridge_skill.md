@@ -174,9 +174,12 @@ model or reasoning effort is used.
   pane**: `working` means the model is in a turn. A turn that ended is
   `done` (or `waiting_question`, `idle`) and is told to `watch` at once,
   whatever the agent left running; a shell of its own still going (a dev
-  server, a test run) is said beside it, in `waiting_on` (`own_run`) and
-  `background_shells`, and whether that will wake the agent is yours to
-  judge from its command. **`pid` is the `env` wrapper's for a moment
+  server, a test run, a `sleep` it set itself) is said beside it, in
+  `waiting_on` (`own_run`) and `background_shells` (each with `pid`,
+  `cmd` the agent's own command, `kind`, and for Claude Code `output`,
+  the file its output goes to, and `last_wrote_ms`, when that was last
+  written), and whether that will wake the agent is yours to judge
+  from its command. **`pid` is the `env` wrapper's for a moment
   after `start`** (a child is started as `env K=V … PROGRAM`), then the
   program's own, the same number: its environment read in that moment
   is `env`'s, without the variables. Read it once `status` shows the

@@ -70,6 +70,8 @@ enum MockReply {
     /// Stream plain text and end the turn.
     Text(String),
     /// Emit a shell/command tool call that triggers the CLI's real approval dialog.
+    /// (A `reason` that begins "background:" has Claude Code run it in the
+    /// background: `run_in_background`, a shell that outlives the turn.)
     RunCommand { command: String, reason: String },
     /// Return an HTTP error status (e.g. 429 or 529 overloaded) with JSON error body.
     HttpError { status: u16, body: String },
@@ -430,7 +432,11 @@ async fn handle_mock_http(mut stream: TcpStream, state: Arc<std::sync::Mutex<Moc
         },
         MockReply::RunCommand { command, reason } => match family {
             "claude" => {
-                let input_json = json!({"command": command, "description": reason}).to_string();
+                let mut input = json!({"command": command, "description": reason});
+                if reason.starts_with("background:") {
+                    input["run_in_background"] = json!(true);
+                }
+                let input_json = input.to_string();
                 let mut sse = String::new();
                 for (ev, data) in [
                     (
@@ -1412,5 +1418,80 @@ fn live_mock_api_a_new_agents_conversation_is_its_own_or_none() {
         assert_eq!(rig.run_olo_json(&["agent", "status", "first", "--json"]).await["cli_session_id"], json!(first_id));
         rig.run_olo_json(&["agent", "stop", "first", "--force", "--json"]).await;
         rig.run_olo_json(&["agent", "stop", "second", "--force", "--json"]).await;
+    });
+}
+
+/// An agent's own shell that outlives its turn is said (the ShiftUp lead's item 26, 2026-11-26: "A Claude
+/// Code agent whose turn ended with its own background Bash still running (`sleep 45`, its footer '1 shell',
+/// the shell under its process) had `waiting_on: someone` and `background_shells: []` … Please list each
+/// such shell, with its command, its output file and when it last wrote, and say `waiting_on: own_run`").
+/// Claude Code itself, the made-up API its model: a command run in the background, the turn ended.
+#[test]
+fn live_mock_api_an_agents_own_background_shell_is_listed() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("claude") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("ownshell").await;
+        rig.mock.clear_queues();
+        // (Their probe's own command; and one that says something first, for the file's last write.)
+        rig.mock.push("claude", MockReply::RunCommand { command: "echo STARTED_WAITING; sleep 45".into(), reason: "background: wait for the build".into() });
+        rig.mock.push("claude", MockReply::Text("OWN_SHELL_STARTED: I will look again when it ends.".into()));
+        let mut args: Vec<String> = [
+            "agent",
+            "start",
+            "claude",
+            "--model",
+            "claude-opus-5-5",
+            "--effort",
+            "max",
+            "--name",
+            "waiter",
+            "--trust",
+            "--allowed-tools",
+            "Bash(echo *)",
+            "Bash(sleep *)",
+            "--prompt",
+            "Start the wait.",
+            "--json",
+            "--cwd",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        args.push(rig.work.display().to_string());
+        args.extend(rig.cli_env_args("claude"));
+        let _started = rig.run_olo_json(&args.iter().map(String::as_str).collect::<Vec<_>>()).await;
+        // Its turn's end: by what it said last. (As it starts, what runs under it is Claude Code's own
+        // looking about, `ps aux | grep …`: never said to be the agent's.)
+        let until = Instant::now() + Duration::from_secs(40);
+        let mut status = rig.run_olo_json(&["agent", "status", "waiter", "--json"]).await;
+        while !status["last_message"].as_str().is_some_and(|m| m.contains("OWN_SHELL_STARTED")) {
+            assert!(status["approval"].is_null(), "nothing is asked (its commands are allowed): {status}");
+            for shell in status["background_shells"].as_array().into_iter().flatten() {
+                assert!(shell["cmd"].as_str().is_some_and(|c| c.contains("sleep 45")), "Claude Code's own doing was said to be the agent's shell: {shell}");
+            }
+            assert!(Instant::now() < until, "its turn didn't end: {status}");
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            status = rig.run_olo_json(&["agent", "status", "waiter", "--json"]).await;
+        }
+        assert!(matches!(status["state"].as_str(), Some("done" | "idle")), "{status}");
+        let shells = status["background_shells"].as_array().unwrap_or_else(|| panic!("{status}"));
+        assert_eq!(shells.len(), 1, "its one shell, once (not its `sleep` as another): {status}");
+        let shell = &shells[0];
+        assert_eq!((&shell["cmd"], &shell["kind"]), (&json!("echo STARTED_WAITING; sleep 45"), &json!("task")), "its own command, as it gave it: {shell}");
+        assert_eq!(status["waiting_on"], "own_run", "{status}");
+        // Its output file, which has what it printed, and when that was written.
+        let output = shell["output"].as_str().unwrap_or_else(|| panic!("no output file: {shell}"));
+        assert_eq!(std::fs::read_to_string(output).unwrap().trim(), "STARTED_WAITING");
+        let wrote = shell["last_wrote_ms"].as_u64().unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        assert!(wrote <= now && now - wrote < 60_000, "written just now: {wrote} against {now}");
+        // The shell is a process under the agent's own.
+        let pid = shell["pid"].as_i64().unwrap();
+        let parent: i64 = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap().rsplit_once(')').unwrap().1.split_whitespace().nth(1).unwrap().parse().unwrap();
+        assert_eq!(parent, status["pid"].as_i64().unwrap(), "{status}");
+        rig.run_olo_json(&["agent", "stop", "waiter", "--force", "--json"]).await;
     });
 }

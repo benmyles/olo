@@ -109,15 +109,14 @@ something nobody here has is in "Blocked", with what it waits for.
     navigation') on a box whose countdown line is redrawn every second:
     a dialog's identity is its call and its choices, never its
     countdown."
-  - 26: "A Claude Code agent whose turn ended with its own background
-    Bash still running … had `waiting_on: someone` and
-    `background_shells: []` … list each such shell, with its command,
-    its output file and when it last wrote, and say `waiting_on:
-    own_run`."
+  - 26 is done (HACKING, "An agent's own shells").
   - 27: "`start agy --resume ID --prompt …` reports `done` 1.4 s after
     the start, carrying the old conversation's last message, before the
     prompt is read … tell no turn's end until the prompt's own turn has
     ended."
+    (Claude Code too, seen 2026-11-26 in item 26's test: started with
+    `--prompt`, a `watch --on done,idle` returned its prompt's rest a
+    second after the start, before the prompt's turn had begun.)
   - 28: "In `approval`: when the box opened, and when its CLI will
     refuse it by itself (Claude Code 2.1.332's 'will automatically
     block this request in M:SS')."
@@ -126,8 +125,8 @@ something nobody here has is in "Blocked", with what it waits for.
     with its 0, never its 2."
   - 31: "`list` keeps every live child through a handover (it did at
     20:25), said in the guide."
-  - 32: "a Claude agent's `summary` reads Claude Code's effort hint
-    ('◈ max · /effort')."
+  - 32 is done (`doing_line`: Claude Code's "◈ max · /effort" is not
+    what it is doing).
 - **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
   "currently we have under manager rex server a limits tab for applying
   tweaks to the host but they really belong in manage host. please move
