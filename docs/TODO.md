@@ -473,11 +473,6 @@ something nobody here has is in "Blocked", with what it waits for.
     56 MB of one tried), where on a host nobody empties it. To decide:
     deleted outright on a host, or the Trash emptied of screens after a
     time, and said in the skill either way.
-  - *A host's Olo isn't brought up to date under running screens*
-    (`tools/dev/host-upgrade` leaves it and says which run: a screen
-    follows the Olo it runs from, its app_server reloading in place a
-    moment after). `olo screen install` itself doesn't look: to do the
-    same there, with a word to go ahead.
   - *Videos* work there as they are (tried 2026-11-26, no GPU:
     `history --export` of a screen's actions in under a second, and a
     live `record-video` whose frame showed what was typed): the skill

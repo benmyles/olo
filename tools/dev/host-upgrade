@@ -247,11 +247,15 @@ def main():
         elif running and "--under-screens" not in args:
             print(f"host-upgrade: Olo for this host's screens is left at {was}: {len(running)} run ({', '.join(running)}), and each would reload a moment after its programs changed; done at the next upgrade that finds none, or --under-screens")
         else:
-            r = subprocess.run([helper, "screen", "install", "--from", archives[-1], "--no-chrome"], capture_output=True, text=True)
+            r = subprocess.run([helper, "screen", "install", "--from", archives[-1], "--no-chrome"] + (["--under-screens"] if "--under-screens" in args else []), capture_output=True, text=True)
             lines = [l for l in r.stdout.splitlines() if l.startswith("{")]
             said = next((json.loads(l) for l in lines if '"installed"' in l and '"changed"' in l), None)
-            # (Status 3: it is in, and something this host lacks is said.)
-            if r.returncode not in (0, 3) or said is None:
+            # (Status 3: it is in, and something this host lacks is said.
+            # 4: the helper's own look found a screen running, one
+            # started since ours: left, and said.)
+            if said is not None and said.get("held"):
+                print(f"host-upgrade: Olo for this host's screens is left at {was}: {', '.join(said['held'])} started meanwhile")
+            if r.returncode not in (0, 3, 4) or said is None:
                 why = next((json.loads(l).get("error") for l in lines if '"error"' in l), None) or (r.stderr or r.stdout).strip()[-300:]
                 fail(f"Olo for this host's screens wasn't brought up to date ({why})")
             if said["changed"] or version() != was:

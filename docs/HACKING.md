@@ -22938,6 +22938,15 @@ installed and ready to use").
   hosts.) `remove` takes that folder away with Olo. Tried on the dev
   server: StyledEdit and a page in Chrome drew a rocket, a tick, a
   warning sign and a flag in colour where each had drawn boxes.
+- **Olo isn't changed under screens that run.** A screen follows the
+  Olo it runs from (`follow_install`: a moment after its programs
+  change its app_server reloads in place and its apps start again),
+  which is right on a desktop after an upgrade the person chose and
+  nothing to do to another agent in the middle of a page. `install`
+  that would change Olo lists the screens first and, where any run,
+  leaves Olo as it is and says which (`held`, status 4;
+  `--under-screens` goes ahead). Chrome and the font are put all the
+  same. `tools/dev/host-upgrade` does likewise for the dev server.
 - **Nothing is fetched twice.** `install` asks GitHub which release is
   meant (the newest, or `--tag`) and, where that one is here already,
   fetches nothing (0.1 s; `--again` to fetch it all the same; before,

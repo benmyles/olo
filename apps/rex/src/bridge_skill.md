@@ -251,7 +251,10 @@ model or reasoning effort is used.
     the account's fonts (so a 🚀 is one, in Olo's windows and on a
     page, not a box). A line of JSON for each step, then what `status`
     says. Run again later, it brings Olo and Chrome up to the newest
-    (and fetches nothing where the newest is here).
+    (and fetches nothing where the newest is here). It leaves Olo as
+    it is while screens run here, yours or another agent's (each would
+    reload a moment after its programs changed): it says which
+    (`held`), and is run again once they are stopped.
   - `olo screen --on host start NAME`, then `run NAME olo-chrome
     http://localhost:5173` (a server of this host's needs no forward: it
     is the same machine), `tree NAME`, `click`, `type`, `key`, `wait`,

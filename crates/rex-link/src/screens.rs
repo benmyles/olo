@@ -28,7 +28,9 @@
 //!     Olo put here (the newest release; the one tagged TAG; ARCHIVE, a
 //!     file or a URL with its .sha256 beside it), or brought up to it
 //!     (nothing fetched where that release is here already, unless
-//!     `--again`),
+//!     `--again`; and not while screens run on the Olo that is here,
+//!     which would each reload under whoever uses it, unless
+//!     `--under-screens`: status 4, with which run),
 //!     and Chrome: a line of JSON for each step as it goes, then what
 //!     `status` says (status 3: it is put, and this host lacks something
 //!     its screens need, which `missing` and `how` say)
@@ -79,7 +81,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--no-chrome] [--no-emoji-font]
+const USAGE: &str = "usage: olo screen install [--tag TAG | --from ARCHIVE] [--again] [--under-screens] [--no-chrome] [--no-emoji-font]
                                             Olo and Chrome put on this host for screens here (and a font with emoji, if it has none)
        olo screen status                    what is here, as JSON
        olo screen default [host|desktop]    where `olo screen` goes on this host when it isn't said
@@ -343,8 +345,21 @@ fn install(args: &[String]) -> ! {
         (None, None, false) => olo_release::latest().ok().map(|r| r.version),
         _ => None,
     };
+    // Olo isn't changed under screens that run: each follows the Olo it
+    // runs from (its app_server reloads in place a moment after its
+    // programs change, its apps start again), which is nothing to do to
+    // another agent in the middle of a page. Said, with which run;
+    // `--under-screens` goes ahead. (Chrome and the font are put all
+    // the same: a running Chrome keeps the one it was started from.)
+    let running = if here.is_some() && !args.iter().any(|a| a == "--under-screens") { running_screens(&prefix) } else { Vec::new() };
+    let mut held = false;
     if here.is_some() && here == wanted {
         say(json!({ "installed": here, "changed": 0, "was": true }));
+    } else if !running.is_empty() {
+        held = true;
+        say(
+            json!({ "installed": here, "changed": 0, "held": running, "how": "screens run on the Olo that is here, and each would reload a moment after it changed: `olo screen install` again once they are stopped, or `olo screen install --under-screens`" }),
+        );
     } else {
         let (changed, version) = match olo_release::install(&prefix, &ask, &AtomicBool::new(false), &mut |doing, done, all| told.tell(doing, done, all)) {
             Ok(done) => done,
@@ -384,7 +399,13 @@ fn install(args: &[String]) -> ! {
     let now = status();
     let ready = now["missing"].as_array().is_some_and(Vec::is_empty) && now["older"].as_object().is_some_and(|o| o.is_empty()) && now["software_drawing"] == true;
     say(now);
-    std::process::exit(if ready { 0 } else { 3 });
+    // (3: this host lacks something its screens need. 4: Olo was left
+    // as it is, for the screens that run.)
+    std::process::exit(match (ready, held) {
+        (false, _) => 3,
+        (true, true) => 4,
+        (true, false) => 0,
+    });
 }
 
 fn default(args: &[String]) -> ! {
@@ -405,6 +426,12 @@ fn default(args: &[String]) -> ! {
     std::process::exit(0);
 }
 
+/// The screens that run on the Olo under `prefix`, by name.
+fn running_screens(prefix: &Path) -> Vec<String> {
+    let listed = Command::new(prefix.join("bin/olo-screen")).arg("list").output().ok().and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok()).unwrap_or_default();
+    listed.as_array().into_iter().flatten().filter(|s| s["state"] == "running").filter_map(|s| s["name"].as_str().map(str::to_owned)).collect()
+}
+
 fn remove() -> ! {
     let prefix = prefix();
     if !prefix.join("bin/olo-screen").is_file() {
@@ -412,8 +439,7 @@ fn remove() -> ! {
         std::process::exit(0);
     }
     // (Never under a screen that runs: its programs are these files.)
-    let listed = Command::new(prefix.join("bin/olo-screen")).arg("list").output().ok().and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok()).unwrap_or_default();
-    let running: Vec<String> = listed.as_array().into_iter().flatten().filter(|s| s["state"] == "running").filter_map(|s| s["name"].as_str().map(str::to_owned)).collect();
+    let running = running_screens(&prefix);
     if !running.is_empty() {
         fail(format_args!("{} here ({}): `olo screen --on host stop NAME` first", if running.len() == 1 { "a screen still runs" } else { "screens still run" }, running.join(", ")));
     }

@@ -234,6 +234,31 @@ fn olo_screen_goes_where_it_is_told() {
     assert_eq!((open.status.code(), err(&open).as_str()), (Some(69), ""));
 }
 
+/// Olo isn't changed under screens that run: `install` says which run
+/// and leaves it (nothing is fetched: the archive named here isn't even
+/// there), unless told to go ahead.
+#[test]
+fn olo_is_not_changed_under_a_running_screen() {
+    let host = Host::new("held");
+    host.with_olo(r#"[{"name":"work","state":"running"},{"name":"old","state":"stopped"}]"#);
+    let held = host.helper(&["install", "--from", "/nowhere/olo-9-x86_64.tar.zst", "--no-chrome", "--no-emoji-font"]);
+    let lines: Vec<serde_json::Value> = out(&held).lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(lines[0]["held"], serde_json::json!(["work"]), "{}", out(&held));
+    assert_eq!((lines[0]["installed"].as_str(), lines[0]["changed"].as_u64()), (Some("9-test"), Some(0)));
+    assert!(lines[0]["how"].as_str().unwrap().contains("--under-screens"));
+    // (4: left as it is for the screens; 3 where this host couldn't
+    // draw one anyway, which is said first.)
+    let lacking = lines.last().unwrap()["software_drawing"] == false;
+    assert_eq!(held.status.code(), Some(if lacking { 3 } else { 4 }));
+    // Told to go ahead, it tries (and here fails on the archive that isn't there).
+    let ahead = host.helper(&["install", "--from", "/nowhere/olo-9-x86_64.tar.zst", "--under-screens", "--no-chrome", "--no-emoji-font"]);
+    assert_eq!(ahead.status.code(), Some(1));
+    assert!(out(&ahead).contains("\"error\""), "{}", out(&ahead));
+    // With none running, the same.
+    host.with_olo(r#"[{"name":"old","state":"stopped"}]"#);
+    assert_eq!(host.helper(&["install", "--from", "/nowhere/olo-9-x86_64.tar.zst", "--no-chrome", "--no-emoji-font"]).status.code(), Some(1));
+}
+
 /// A screen started from a Rex tab is stopped when the tab's program
 /// ends, and not before; one started with `--keep`, or from no Rex tab,
 /// stays until it is stopped.
