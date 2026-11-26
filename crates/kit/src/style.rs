@@ -262,6 +262,15 @@ pub fn bevel(g: &mut Painter, b: Bounds<Pixels>, tl: Hsla, br: Hsla) {
     bevel_on_pixels(g, d, w, tl, br);
 }
 
+/// What fills a bar that says how much or how far and nothing more (a
+/// quota's meter, an install's progress): neutral slate, #5E6E84 on
+/// light, #8C9DB3 on dark. Never a colour that means something else in
+/// the same window: health's green, a warning's amber, a provider's or
+/// a series' own.
+pub fn neutral_bar(palette: &Palette) -> Hsla {
+    if palette.mode == olo_theme::ThemeMode::Dark { c([0x8c, 0x9d, 0xb3, 0xff]) } else { c([0x5e, 0x6e, 0x84, 0xff]) }
+}
+
 /// The BeOS sunken well of text fields, lists and scroll views: a dark
 /// and light outer bevel and a darker inner line on top and left (the
 /// keyboard's colour all round when focused).

@@ -1569,8 +1569,9 @@ pub struct HostStands {
     pub commands_sync_err: Option<String>,
     /// What it has for Agent Screens of its own; none: not asked yet.
     pub screens: Option<crate::host_screens::ScreensThere>,
-    /// How far putting Olo there is, while it is being put.
-    pub screens_doing: Option<String>,
+    /// How far putting Olo there is, while it is being put: in words,
+    /// and of the whole (0 to 1).
+    pub screens_doing: Option<(String, f32)>,
     /// This Olo's own release, if it is one: when it was made (a
     /// host's Olo from an earlier one can be updated) and its version.
     pub this_olo: Option<(u64, String)>,
@@ -1650,7 +1651,7 @@ pub struct HostRuntime {
     /// Agent Screens of its own (`host_screens`): what it has, and how
     /// far putting Olo there is.
     pub screens: Option<crate::host_screens::ScreensThere>,
-    pub screens_doing: Option<String>,
+    pub screens_doing: Option<(String, f32)>,
     /// What Passwords last answered when the host's programs asked the
     /// forwarded agent for the SSH keys: how many, or why none could be
     /// had; none: not asked on this connection. (Unsaid, a host was
@@ -1900,7 +1901,7 @@ impl HubState {
                 commands_current: there.then_some(!behind),
                 commands_sync_err: None,
                 screens: demo_screens().filter(|_| there),
-                screens_doing: (there && std::env::var("OLO_REX_DEMO_SCREENS").as_deref() == Ok("installing")).then(|| "Downloading Olo, 42%".to_owned()),
+                screens_doing: (there && std::env::var("OLO_REX_DEMO_SCREENS").as_deref() == Ok("installing")).then(|| ("Downloading Olo".to_owned(), 0.21)),
                 this_olo: Some((1_795_715_000, "2026.11.26-c2a7db3c".into())),
                 pool: Some(crate::pool::PoolStands {
                     wanted: there,
@@ -2023,6 +2024,9 @@ struct RexHubInner {
     keeping: Mutex<HashMap<(String, String), (Option<tokio::task::AbortHandle>, Arc<tokio::sync::Mutex<()>>)>>,
     /// Each connected host's agents service being followed (`follow_agents`).
     agents_following: Mutex<HashMap<String, tokio::task::AbortHandle>>,
+    /// Olo being put on a host for its screens (`change_host`, of
+    /// `HostThing::Screens`), by the host: stopped by `cancel_screens`.
+    screens_putting: Mutex<HashMap<String, tokio::task::AbortHandle>>,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -2318,13 +2322,36 @@ fn demo_screens() -> Option<crate::host_screens::ScreensThere> {
         bytes: 2_394_000_000,
         ..Default::default()
     };
+    // (The screens there, for the states that have some: two running,
+    // one named for what it shows; one stopped; `many`, past the list's
+    // room.)
+    use crate::host_screens::ScreenRow;
+    let on =
+        |name: &str, title: Option<&str>, started: u64| ScreenRow { name: name.into(), title: title.map(str::to_owned), running: true, archived: false, size: (1440, 900), started: Some(started) };
+    let off = |name: &str, archived: bool| ScreenRow { name: name.into(), title: None, running: false, archived, size: (1280, 800), started: None };
+    let some = vec![on("review", Some("Checkout flow"), 1_795_701_720), on("agent-2", None, 1_795_686_420), off("notes", false)];
+    let with = |mut rows: Vec<ScreenRow>, all: ScreensThere| {
+        crate::host_screens::in_order(&mut rows);
+        ScreensThere { running: rows.iter().filter(|r| r.running).map(|r| r.name.clone()).collect(), rows, ..all }
+    };
     Some(match std::env::var("OLO_REX_DEMO_SCREENS").ok().as_deref() {
         Some("asking") => return None,
         Some("nohelper") => ScreensThere::default(),
         Some("none" | "installing" | "failed") => ScreensThere { helper: true, software: true, ..Default::default() },
-        Some("refused") => ScreensThere { running: vec!["review".into(), "agent-2".into()], ..all },
-        Some("behind") => ScreensThere { installed: Some("2026.11.24-8f10fb11".into()), committed: Some(1_795_500_000), running: vec!["review".into(), "agent-2".into()], ..all },
-        Some("running") => ScreensThere { running: vec!["review".into()], ..all },
+        Some("refused") => with(some, all),
+        Some("behind") => with(some, ScreensThere { installed: Some("2026.11.24-8f10fb11".into()), committed: Some(1_795_500_000), ..all }),
+        Some("running" | "stopping" | "stopfailed" | "chosen") => with(some, all),
+        Some("many") => with(
+            vec![
+                on("review", Some("Checkout flow"), 1_795_701_720),
+                on("agent-2", None, 1_795_686_420),
+                on("docs-site", Some("Preview of the docs"), 1_795_690_000),
+                off("billing", false),
+                off("notes", false),
+                off("old-trial", true),
+            ],
+            all,
+        ),
         Some("lacking") => ScreensThere { missing: vec!["libEGL_mesa.so.0".into(), "libgbm.so.1".into()], software: false, ..all },
         Some("host") => ScreensThere { on_host: true, ..all },
         _ => all,
@@ -2624,6 +2651,7 @@ impl RexHub {
             agent_socks: Mutex::new(HashMap::new()),
             keeping: Mutex::new(HashMap::new()),
             agents_following: Mutex::new(HashMap::new()),
+            screens_putting: Mutex::new(HashMap::new()),
         });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
@@ -4754,7 +4782,8 @@ impl RexHub {
             return;
         };
         let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
-        self.rt.spawn(async move {
+        let (putting, putting_on) = (thing == HostThing::Screens && op != HostOp::Remove, host_key.clone());
+        let task = self.rt.spawn(async move {
             // (A shell's command there; what it wrote last, if it failed.)
             let run = |command: String| {
                 let (pool, target, askpass) = (pool.clone(), target.clone(), askpass.clone());
@@ -4840,7 +4869,7 @@ impl RexHub {
                     use crate::host_screens::{Heard, Installing, helper_script};
                     let mut heard = Installing::default();
                     let (mut error, mut held) = (None, None);
-                    let doing = |words: Option<String>| {
+                    let doing = |words: Option<(String, f32)>| {
                         if let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key) {
                             host.screens_doing = words;
                         }
@@ -4853,15 +4882,16 @@ impl RexHub {
                     // reviewer's.)
                     let helper_there = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).and_then(|h| h.screens.as_ref().map(|s| s.helper));
                     if helper_there == Some(false) && crate::link::carried() {
-                        doing(Some(olo_kit::words::tr("Putting the typing helper there").to_string()));
+                        doing(Some((olo_kit::words::tr("Putting the typing helper there").to_string(), 0.0)));
                         inner.helper_kept_off(&host_key, false);
                         let stands = olo_rex_client::helper::ensure(&pool, &target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await;
                         inner.helper_stands(&host_key, stands, false);
                     }
-                    doing(Some(olo_kit::words::tr("Asking Olo’s releases").to_string()));
+                    doing(Some((olo_kit::words::tr("Asking Olo’s releases").to_string(), 0.0)));
                     let ran = pool
-                        .exec(&target, askpass.clone(), &script(&helper_script("install")), &mut |line| match heard.hear(line) {
-                            Heard::Progress(words) => doing(Some(words)),
+                        // (Ended with its channel, where this is stopped: Cancel.)
+                        .exec(&target, askpass.clone(), &script(&olo_rex_client::ready::cancellable(&helper_script("install"))), &mut |line| match heard.hear(line) {
+                            Heard::Progress(words, far) => doing(Some((words, far))),
                             Heard::Error(said) => error = Some(said),
                             Heard::Held(names) => held = Some(names),
                             Heard::Nothing => {}
@@ -4886,7 +4916,110 @@ impl RexHub {
             if thing != HostThing::Helper && thing != HostThing::Pool {
                 inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
             }
+            inner.screens_putting.lock().unwrap_or_else(|e| e.into_inner()).remove(&host_key);
             (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+        if putting {
+            self.inner.screens_putting.lock().unwrap_or_else(|e| e.into_inner()).insert(putting_on, task.abort_handle());
+        }
+    }
+
+    /// Olo being put on a far host for its screens is stopped where it
+    /// is (the Host window's Cancel): what was running there ends with
+    /// its channel (`ready::cancellable`), what was fetched is kept for
+    /// the next try, and the host is asked again what it has. Whether
+    /// anything was stopped.
+    pub fn cancel_screens(&self, host_key: &str, done: impl FnOnce() + Send + 'static) -> bool {
+        let Some(task) = self.inner.screens_putting.lock().unwrap_or_else(|e| e.into_inner()).remove(host_key) else { return false };
+        task.abort();
+        if let Some(host) = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
+            host.screens_doing = None;
+        }
+        (self.inner.notify)(HubNotice::StateChanged);
+        self.check_host(host_key, done);
+        true
+    }
+
+    /// One of a far host's screens stopped (what ran on it ends; it is
+    /// kept there, stopped), by the host's helper; the host is asked
+    /// again what it has.
+    pub fn stop_screen(&self, host_key: &str, name: &str, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return;
+        };
+        let (inner, host_key, name) = (self.inner.clone(), host_key.to_owned(), name.to_owned());
+        self.rt.spawn(async move {
+            let command = format!("sh -c {}", shell_quote(&crate::host_screens::helper_script(&format!("stop {}", shell_quote(&name)))));
+            let result = match pool.exec(&target, askpass.clone(), &command, &mut |_| {}).await {
+                Ok(ran) if ran.ok() => Ok(()),
+                Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().trim_start_matches("olo-screen: ").to_owned()),
+                Err(e) => Err(e.to_string()),
+            };
+            inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
+            (inner.notify)(HubNotice::StateChanged);
+            done(result);
+        });
+    }
+
+    /// A picture of one of a far host's screens as it is now: taken
+    /// there by the host's helper (`screen look`), read over the link,
+    /// and put in this computer's cache (one file a screen, written over
+    /// by the next look). Where it is here.
+    pub fn look_at_screen(&self, host_key: &str, name: &str, done: impl FnOnce(Result<PathBuf, String>) + Send + 'static) {
+        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+            done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
+            return;
+        };
+        let label = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default();
+        let (inner, host_key, name) = (self.inner.clone(), host_key.to_owned(), name.to_owned());
+        self.rt.spawn(async move {
+            use tokio::io::AsyncReadExt as _;
+            // (Taken into a file of the helper's choosing among the
+            // screen's own pictures there, whose path it prints; then
+            // that file's bytes, by a command that writes nothing else.)
+            let look = format!("sh -c {}", shell_quote(&crate::host_screens::helper_script(&format!("look {}", shell_quote(&name)))));
+            let taken = match pool.exec(&target, askpass.clone(), &look, &mut |_| {}).await {
+                Ok(ran) if ran.ok() => ran
+                    .output
+                    .lines()
+                    .rev()
+                    .map(str::trim)
+                    .find(|l| l.starts_with('/') && l.ends_with(".png"))
+                    .map(str::to_owned)
+                    .ok_or_else(|| olo_kit::words::tr("The host didn’t say where its picture is.").to_string()),
+                Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().trim_start_matches("olo-screen: ").to_owned()),
+                Err(e) => Err(e.to_string()),
+            };
+            let result = match taken {
+                Err(why) => Err(why),
+                Ok(there) => match pool.exec_io(&target, askpass.clone(), &format!("cat {}", shell_quote(&there))).await {
+                    Err(e) => Err(e.to_string()),
+                    Ok(mut stream) => {
+                        let mut bytes = Vec::new();
+                        // (A screen's picture is a few megabytes at the most.)
+                        match (&mut stream).take(64 << 20).read_to_end(&mut bytes).await {
+                            Err(e) => Err(e.to_string()),
+                            Ok(_) if !bytes.starts_with(b"\x89PNG") => Err(olo_kit::words::tr("What came from the host isn’t a picture.").to_string()),
+                            Ok(_) => {
+                                let dir = olo_xdg::cache_dir().join("rex-screens");
+                                let safe = |s: &str| s.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect::<String>();
+                                let here = dir.join(format!("{}-{}.png", safe(&label), safe(&name)));
+                                std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&here, &bytes)).map(|()| here).map_err(|e| e.to_string())
+                            }
+                        }
+                    }
+                },
+            };
+            // (It couldn't be looked at: the list here is behind what is
+            // there, most likely a screen that stopped since. Asked again.)
+            if result.is_err() {
+                inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
+                (inner.notify)(HubNotice::StateChanged);
+            }
             done(result);
         });
     }
@@ -5815,7 +5948,7 @@ impl RexHubInner {
         let mut commands_err: Option<String> = None;
         // (Its screens of its own, as its helper says: `host_screens`.
         // Not told, what was last heard stands.)
-        let screens = match pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(&crate::host_screens::helper_script("status"))), &mut |_| {}).await {
+        let screens = match pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(&crate::host_screens::asked_script())), &mut |_| {}).await {
             Ok(ran) => crate::host_screens::ScreensThere::read(ran.status, &ran.output),
             Err(_) => None,
         };

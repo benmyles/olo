@@ -700,7 +700,7 @@ fn warning_confirm(p: &olo_kit::palette::Palette, question: String, consequence:
 /// Neutral slate fill for quota and indeterminate progress bars so provider identity
 /// colours (Claude orange, Codex blue) never collide with generic meters.
 fn neutral_bar_color(p: &olo_kit::palette::Palette) -> Hsla {
-    if p.mode == olo_theme::ThemeMode::Dark { style::c([0x8c, 0x9d, 0xb3, 0xff]) } else { style::c([0x5e, 0x6e, 0x84, 0xff]) }
+    style::neutral_bar(p)
 }
 
 /// Compact inline single-row quota meter with fixed right-aligned percentage column

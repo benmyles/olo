@@ -980,6 +980,8 @@ pub enum WinMsg {
     AccountChanged,
     AccountDo(crate::account_panel::AccountDo),
     ReposChosen,
+    /// A row of the Host window's list of screens chosen.
+    HostChosen,
     ReposDo(crate::repos::ReposDo),
     /// The repository form: done (true), or cancelled.
     RepoEditDone(bool),
@@ -1192,6 +1194,12 @@ pub struct RexWindow {
     /// three fields (address, folder, set-up).
     pub repos_list: widgets::ListModel,
     pub repos_rows: Rc<Vec<crate::repos::RepoRow>>,
+    /// The Host window's Screens tab: the host's screens as its list
+    /// has them, and the one chosen, kept by its name as others come,
+    /// stop and go.
+    pub host_screens_list: widgets::ListModel,
+    pub host_screen_lines: Rc<Vec<crate::host_panel::ScreenLine>>,
+    pub host_screen_chosen: Option<String>,
     repo_fields: Option<[Child<TextField>; 3]>,
     /// The Agent Settings batch review window's lists, rows, and preview scrollers.
     pub carry_changes_list: widgets::ListModel,
@@ -1450,6 +1458,9 @@ impl RexWindow {
             server_list: widgets::ListModel::new(false),
             repos_list: widgets::ListModel::new(false),
             repos_rows: Rc::default(),
+            host_screens_list: widgets::ListModel::new(false),
+            host_screen_lines: Rc::default(),
+            host_screen_chosen: None,
             repo_fields: None,
             carry_changes_list: widgets::ListModel::new(true),
             carry_changes_rows: Rc::default(),
@@ -1685,6 +1696,9 @@ impl RexWindow {
             server_list: widgets::ListModel::new(false),
             repos_list,
             repos_rows: Rc::default(),
+            host_screens_list: widgets::ListModel::new(false),
+            host_screen_lines: Rc::default(),
+            host_screen_chosen: None,
             repo_fields,
             carry_changes_list,
             carry_changes_rows: Rc::default(),
@@ -2303,7 +2317,27 @@ impl RexWindow {
             // agents: `host.put:KEY:helper|skill|commands|pool|screens`,
             // `host.update:…`, `host.take:…`, `host.update-all:KEY`. In the Host
             // window, where it shows. And where an agent's screen opens there:
-            // `host.screens:KEY:host|desktop`.)
+            // `host.screens:KEY:host|desktop`; one of the host's screens
+            // looked at or stopped: `host.screen:KEY:look|stop:NAME`; Olo
+            // being put there for its screens, stopped: `host.cancel:KEY:screens`.)
+            c if c.starts_with("host.screen:") => {
+                let mut parts = c.trim_start_matches("host.screen:").rsplitn(3, ':');
+                if let (Some(name), Some(what @ ("look" | "stop")), Some(key)) = (parts.next(), parts.next(), parts.next()) {
+                    open_host(&hub, key);
+                    if crate::host::current().is_some_and(|shown| shown.key == key) {
+                        crate::host::show_tab(3);
+                        crate::host::screen(&hub, name, if what == "stop" { crate::host::ScreenDo::Stop } else { crate::host::ScreenDo::Look });
+                    }
+                }
+            }
+            c if c.starts_with("host.cancel:") => {
+                if let Some((key, "screens")) = c.trim_start_matches("host.cancel:").rsplit_once(':') {
+                    open_host(&hub, key);
+                    if crate::host::current().is_some_and(|shown| shown.key == key) {
+                        crate::host::cancel_screens(&hub);
+                    }
+                }
+            }
             c if c.starts_with("host.screens:") => {
                 let rest = c.trim_start_matches("host.screens:");
                 if let Some((key, word @ ("host" | "desktop"))) = rest.rsplit_once(':') {
@@ -5176,7 +5210,23 @@ impl RexWindow {
                     return div();
                 };
                 let managed = managed_host(&hub, &shown.key).is_some();
-                div().w_full().child(crate::host_panel::render_host_panel(&stands, &shown, managed, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone()))))
+                // The host's screens for the Screens tab's list to draw
+                // from; the one chosen kept by its name (a screen that
+                // stops goes down the list, and stays the one chosen).
+                self.host_screen_lines = Rc::new(crate::host_panel::screen_lines(&stands, &shown));
+                let chosen = self.host_screen_chosen.as_ref().and_then(|name| self.host_screen_lines.iter().position(|l| &l.row.name == name));
+                if chosen.is_none() {
+                    self.host_screen_chosen = None;
+                }
+                if self.host_screens_list.state().single() != chosen {
+                    match chosen {
+                        Some(i) => self.host_screens_list.state_mut().select(i),
+                        None => self.host_screens_list.state_mut().selected.clear(),
+                    }
+                }
+                let (lines, list) = (self.host_screen_lines.clone(), self.host_screens_list.clone());
+                let screens = crate::host_panel::screens_section(cx, &list, &lines, &stands, &shown, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone())));
+                div().w_full().child(crate::host_panel::render_host_panel(&stands, &shown, managed, screens, cx.msg_with(|what: &crate::host_panel::HostDo| WinMsg::HostDo(what.clone()))))
             }
             WinRole::Move => {
                 let Some(mv) = crate::moving::current() else {
@@ -6010,6 +6060,11 @@ impl View for RexWindow {
                 }
             }
             WinMsg::ReposChosen => cx.invalidate(),
+            WinMsg::HostChosen => {
+                let row = self.host_screens_list.state().single();
+                self.host_screen_chosen = row.and_then(|i| self.host_screen_lines.get(i)).map(|l| l.row.name.clone());
+                cx.invalidate();
+            }
             WinMsg::ReposDo(what) => {
                 use crate::repos::ReposDo;
                 let hub = app().hub.clone();
@@ -6146,6 +6201,9 @@ impl View for RexWindow {
                     HostDo::RemoveAll(things) => crate::host::remove_all(&hub, &things),
                     HostDo::Tab(tab) => crate::host::show_tab(tab),
                     HostDo::ScreensDefault(on_host) => crate::host::screens_default(&hub, on_host),
+                    HostDo::ScreensCancel => crate::host::cancel_screens(&hub),
+                    HostDo::ScreenStop(name) => crate::host::screen(&hub, &name, crate::host::ScreenDo::Stop),
+                    HostDo::ScreenLook(name) => crate::host::screen(&hub, &name, crate::host::ScreenDo::Look),
                     // (Its copy here, in Tracker; or the host's own folder
                     // here, made if nothing came from it yet.)
                     HostDo::ShowKept(there) => {

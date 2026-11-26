@@ -866,6 +866,22 @@ goes to them:
 - Lines that wrap with one or two words over are rewritten to fit, in
   every state: read every state's picture for them before the round.
 
+And of its second part (the list of a host's screens, the install's
+bar and Cancel, the same day), two things a real trial on the rig
+showed that nothing else had:
+
+- **`jato test -p PKG` doesn't build the program the rig runs.** It
+  builds the test binary; `target/debug/olo-rex` stays as the last
+  `jato build -p olo-rex` left it. A trial run after edits and a green
+  test run was of the app from before the edits (its words said so:
+  "Downloading Olo, 0%", which the code no longer wrote), and three of
+  its failures were commands that app didn't have. Build the program,
+  then run the rig; and nothing builds that package while a rig runs.
+- **A list's row is one node for agents**: role `Row`, its cells'
+  words joined in its name, `selected` on it (`ColumnListView`); there
+  are no nodes for cells. A check that looked for a node named
+  "review" found none with the row on the screen.
+
 And of the picture script (`/var/tmp` scratch, each state a session of
 its own): a window that fits its content has its frame for good only a
 moment after it first shows, so ask for the frame until two looks a
