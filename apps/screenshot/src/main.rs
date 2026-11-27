@@ -622,11 +622,13 @@ impl View for Screenshot {
                         let _ = std::fs::remove_file(capture::scratch_path());
                         std::thread::spawn(move || {
                             // (The card once the path is on the clipboard,
-                            // or with no clipboard at all: `saved`.)
+                            // or with no clipboard at all: `saved`. Where
+                            // the person is, who has just pressed Save.)
+                            let display = recording::pointer_display();
                             let mut card = Some(path.clone());
                             let mut show = || {
                                 if let Some(path) = card.take() {
-                                    show_card(&path);
+                                    show_card(&path, display.as_deref());
                                 }
                             };
                             if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&path.display().to_string()), &mut show) {
@@ -823,6 +825,8 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
     settings.window = window;
     settings.window_id = window_id;
     settings.delay = 0;
+    // (The display that is about to be pictured: the pointer's, now.)
+    let display = recording::pointer_display();
     let result = capture::take(&settings, false).and_then(|shot| {
         let folder = settings.folder();
         let path = folder.join(capture::file_name(&capture::next_name(&folder), settings.format));
@@ -831,7 +835,7 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
         r
     });
     match result {
-        Ok(path) => saved(&path),
+        Ok(path) => saved(&path, display),
         Err(e) => {
             eprintln!("olo-screenshot: {e}");
             std::process::ExitCode::FAILURE
@@ -842,17 +846,20 @@ fn silent(window: bool, window_id: Option<olo_protocol::WindowId>) -> std::proce
 /// The card for a picture just saved (after.rs: its thumbnail in the
 /// screen's lower left, to drag out as the file), in a process of its
 /// own, detached: it outlives this one's window, and this one may go on
-/// holding the clipboard. On the display the pointer is on, which is the
-/// one that was pictured. Not for the Screenshot portal's (`--for-app`:
-/// the app that asked has the picture) nor where whoever runs this says
-/// so (`--no-card`: a script's own picture).
-fn show_card(path: &Path) {
-    if std::env::args().any(|a| a == "--for-app" || a == "--no-card") {
+/// holding the clipboard. On `display`, the one that was pictured (said
+/// by whoever took the picture, when it was taken: asked for here, the
+/// pointer had moved on, and the asking stood between the clipboard and
+/// the card). Not for the Screenshot portal's (`--for-app`: the app that
+/// asked has the picture), nor where whoever runs this says so
+/// (`--no-card`: a script's own picture), nor on an Agent Screen
+/// (`after::shown_here`).
+fn show_card(path: &Path, display: Option<&str>) {
+    if !after::shown_here() || std::env::args().any(|a| a == "--for-app" || a == "--no-card") {
         return;
     }
     let Ok(exe) = std::env::current_exe() else { return };
     let mut argv: Vec<std::ffi::OsString> = vec![exe.into_os_string(), "--after".into(), path.as_os_str().to_owned(), "--picture".into()];
-    if let Some(display) = recording::pointer_display() {
+    if let Some(display) = display {
         argv.extend(["--display".into(), display.into()]);
     }
     if let Err(e) = olo_xdg::open::spawn(&argv) {
@@ -865,7 +872,7 @@ fn show_card(path: &Path) {
 /// portal's, which hands the file to the app that asked). Its card comes
 /// up once the path is on the clipboard (before, a Copy pressed on the
 /// card at once was overwritten by the path).
-fn saved(path: &Path) -> std::process::ExitCode {
+fn saved(path: &Path, display: Option<String>) -> std::process::ExitCode {
     let said = path.display().to_string();
     println!("{said}");
     if std::env::args().any(|a| a == "--for-app") {
@@ -874,7 +881,7 @@ fn saved(path: &Path) -> std::process::ExitCode {
     let mut card = Some(path.to_owned());
     let mut show = || {
         if let Some(path) = card.take() {
-            show_card(&path);
+            show_card(&path, display.as_deref());
         }
     };
     if let Err(e) = held_clipboard::hold_then(held_clipboard::text(&said), &mut show) {
@@ -966,7 +973,7 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--region") {
         return match region::run() {
-            Ok(Some(path)) => saved(&path),
+            Ok(Some((path, display))) => saved(&path, display),
             Ok(None) => std::process::ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("olo-screenshot: {e}");

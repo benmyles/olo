@@ -801,7 +801,12 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         STOP.store(false, Ordering::SeqCst);
         let gif_path = made.path.with_extension("gif");
         let g = make_gif(&made.path, &gif_path, &olo_video::gif::Options::default())?;
-        let _ = std::fs::remove_file(&made.path);
+        // (Not where the video was given the GIF's own name, `--to
+        // demo.gif`: the GIF has taken its place, and removing "the
+        // video" removed what was made.)
+        if made.path != gif_path {
+            let _ = std::fs::remove_file(&made.path);
+        }
         made.path = gif_path;
         (made.width, made.height) = (g.width, g.height);
         made.gif = Some(g);
@@ -1445,7 +1450,7 @@ pub fn toggle(args: &[String]) -> i32 {
             // What it made, in a card in the corner (`after.rs`); told in
             // a notification if that can't start, or something went wrong
             // on the way (it says what).
-            let card = (made.encoder_note.is_none() && made.stopped_early.is_none()).then(|| std::env::current_exe().ok()).flatten().and_then(|exe| {
+            let card = (crate::after::shown_here() && made.encoder_note.is_none() && made.stopped_early.is_none()).then(|| std::env::current_exe().ok()).flatten().and_then(|exe| {
                 std::process::Command::new(exe)
                     .arg("--after")
                     .arg(&made.path)

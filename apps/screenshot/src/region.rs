@@ -478,12 +478,12 @@ fn freeze(cut: Arc<Mutex<Option<Cut>>>, pick: Option<Arc<Mutex<Option<[u8; 3]>>>
     });
 }
 
-/// Run the region picker; save what was chosen. Returns the file, or None
-/// if cancelled.
-pub fn run() -> Result<Option<PathBuf>, String> {
+/// Run the region picker; save what was chosen. Returns the file and the
+/// display it was cut from, or None if cancelled.
+pub fn run() -> Result<Option<(PathBuf, Option<String>)>, String> {
     let cut: Arc<Mutex<Option<Cut>>> = Arc::default();
     freeze(cut.clone(), None);
-    let Some((image, [x, y, w, h], _)) = cut.lock().unwrap_or_else(|e| e.into_inner()).take() else { return Ok(None) };
+    let Some((image, [x, y, w, h], display)) = cut.lock().unwrap_or_else(|e| e.into_inner()).take() else { return Ok(None) };
     let settings = Settings::load();
     let crop = image::imageops::crop_imm(image.as_ref(), x, y, w, h).to_image();
     let png = capture::scratch_path();
@@ -492,7 +492,7 @@ pub fn run() -> Result<Option<PathBuf>, String> {
     let path = folder.join(capture::file_name(&capture::next_name(&folder), settings.format));
     let r = capture::save(&Shot { png: png.clone(), image: Arc::new(crop) }, &path, settings.format);
     let _ = std::fs::remove_file(&png);
-    r.map(|()| Some(path))
+    r.map(|()| Some((path, display)))
 }
 
 /// Drag out the part of the screen to record (`--record --region`): the

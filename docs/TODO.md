@@ -471,6 +471,41 @@ something nobody here has is in "Blocked", with what it waits for.
     `std::env::args().collect()` panics"; 22, the rest, "All captures
     use `--silent`, leaving windowed Save, region, portal, Copy and
     recording behavior outside this script".
+  - The confirming code review (Astra 6.2, `/var/tmp/olo-reviews/
+    astra-b0455d495b/astra-review.md`, 28 findings, "hold"; fixed
+    after it, with no further review: its 1, 2 by showing no card on
+    an Agent Screen, 4, 5, 7, 8, 10, 11, 14, 16, 17, 18, 19, 20, 22,
+    25, 28). Left, in its words: 3, "Another helper can map a card
+    between that call and the compositor drawing the shot. A windowed
+    New screenshot with zero configured delay even has a 250 ms
+    minimize wait after its only dismissal"; 6, "Start a region
+    recording, start a second recorder while the first is picking,
+    then finish the pick. The first publishes over the second's status
+    without checking ownership"; 9, "Close the window while its save
+    worker is finishing … leaving a saved file with neither its card
+    nor its clipboard update"; 12, "Press a point inside the right
+    edge and make the first motion five points to the right. The kit
+    re-hit-tests before sending element-local `on_mouse_move`. The
+    picture misses the threshold-crossing event … Track an armed press
+    with the kit's `on_drag_move`"; 13, "Leave a video player
+    fullscreen and press Print Screen … The fullscreen renderer
+    gathers the fullscreen window, windows in front and custom
+    overlays, while the normal branch gathers Top layers … The card
+    can expire while the player remains fullscreen"; 15, "Save the
+    same MP4 as `demo.gif` with GIF export off and the helper selects
+    the GIF decoder, yielding an empty frame and no duration"; 21, "A
+    sample covering equal areas of opaque white and transparent black
+    should be half-opaque white. Both thumbnails average straight
+    RGBA, obtaining half-opaque gray"; 23, "Cancel an unsuccessful
+    drag over the card after the final enter has been delivered.
+    `Dropped(None)` arms a fresh timer unconditionally, so the card
+    can close under the resting pointer"; 24, "During an output share,
+    a Top-layer card's xdg-popup is collected a second way from the
+    unfiltered layer map. A cut-text tip opened over a clipped card
+    label can therefore appear by itself in the share"; 26 and 27 (the
+    check: "`LayerClients` includes newly registered surfaces before
+    their first painted buffer"; "A five-second `until` can enter a
+    90-second `ts` call").
   - Opus 5.5, of the card's own look (the kit's card, as notification
     banners and Deskbar's Inbox have it: for all of them at once):
     "The card is a web toast, not an Olo panel … Corners: square

@@ -83,15 +83,22 @@ const DRAG_AFTER: f32 = 4.0;
 /// How long whatever is about to take a picture waits for a card to go.
 const AWAY_WITHIN: Duration = Duration::from_millis(1500);
 
-/// Copied: the window is gone and the process serves the clipboard. No
-/// card any more: a putting away that was on its way when Copy was
-/// pressed must not end it (the copied picture went with it).
+/// Copied: the window is gone and the process serves the clipboard. An
+/// upgrade in place waits for that to end (`upgrade_waits_while`: begun
+/// again as the upgrade's copy, the card came back and the copied
+/// picture was gone from the clipboard).
 static HOLDING: AtomicBool = AtomicBool::new(false);
 
 enum Msg {
     /// The picture made for a scale (and the picture a drag carries), or
-    /// none (it couldn't be read).
-    Picture(Option<(f32, Arc<RenderImage>, Option<DragImage>)>),
+    /// none (it couldn't be made).
+    Picture(f32, Option<(Arc<RenderImage>, Option<DragImage>)>),
+    /// The file couldn't be read as a picture.
+    NoPicture,
+    /// Asked to go (the next picture is about to be taken, or the next
+    /// card is coming). Decided here, on the window's looper, where Copy
+    /// is: one that only holds the clipboard stays.
+    PutAway,
     /// The original picture, to make again at another scale.
     Original(Arc<image::RgbaImage>),
     /// `STAYS` since the pointer left (the wait numbered so: an older
@@ -137,8 +144,9 @@ pub fn put_away() {
     }
     // SAFETY: pidfd_open makes a new descriptor, ours to close.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
-    let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into());
-    let told = instance::forward_on(APP_ID, &display, &["--put-away".to_owned()]);
+    // (By the display's name as the card listens on it: a display given
+    // as a whole path has its last part for a name.)
+    let told = instance::forward_on(APP_ID, &olo_xdg::display_name(), &["--put-away".to_owned()]);
     if fd < 0 {
         return;
     }
@@ -190,17 +198,24 @@ struct Shown {
 /// enough, where that fits.
 fn shown(w: u32, h: u32, scale: f32) -> Shown {
     let (w, h) = (w.max(1), h.max(1));
-    let pixels = |points: f32| ((points * scale).round() as u32).max(1);
-    let (col, tall, least) = (pixels(PICTURE_W - 4.0), pixels(PICTURE_MOST_H - 4.0), pixels(PICTURE_LEAST_H - 4.0));
+    // (What a frame of so many points has inside its two lines a side, in
+    // device pixels: the frame's own arithmetic, `frame_size`, so that a
+    // picture as wide as it may be has a frame exactly the column's width
+    // at every scale. Counted from points less four, the frame was one to
+    // three device pixels short of the column at 1.25×, 1.5× and 1.75×.)
+    let lines = (4.0 * style::line_pixels(scale)) as u32;
+    let inside = |points: f32| (((points * scale).round() as u32).saturating_sub(lines)).max(1);
+    let (col, tall, least) = (inside(PICTURE_W), inside(PICTURE_MOST_H), inside(PICTURE_LEAST_H));
     if w <= col && h <= tall {
         // (As many points at every scale as the pixels allow: the least
-        // whole number of points a pixel that makes it tall enough at
-        // 1×, then the whole device pixels a pixel that come nearest
-        // under it. Counted in device pixels alone it was 60 points wide
-        // at 2× and 80 at 1× and 1.5×.)
+        // whole number of points a pixel that makes its short side tall
+        // enough at 1×, then the whole device pixels a pixel that come
+        // nearest under it. Counted in device pixels alone it was 60
+        // points wide at 2× and 80 at 1× and 1.5×.)
         let points = (PICTURE_LEAST_H - 4.0).round() as u32;
-        let by = ((points.div_ceil(h).max(1) as f32 * scale).floor() as u32).max(1);
-        let by = if h * by < least { by + 1 } else { by }.min(col / w).min(tall / h).max(1);
+        let short = w.min(h);
+        let by = ((points.div_ceil(short).max(1) as f32 * scale).floor() as u32).max(1);
+        let by = if short * by < least { by + 1 } else { by }.min(col / w).min(tall / h).max(1);
         return Shown { part: (w, h), pixels: (w * by, h * by), blocks: by > 1, cut: Cut::None };
     }
     let by = (col as f32 / w as f32).min(tall as f32 / h as f32);
@@ -221,20 +236,19 @@ fn shown(w: u32, h: u32, scale: f32) -> Shown {
 
 /// The picture as [`shown`] says (BGRA, a pixel to a device pixel).
 fn made(original: &image::RgbaImage, how: Shown) -> Option<Arc<RenderImage>> {
+    if original.width() == 0 || original.height() == 0 {
+        return None;
+    }
     let part = (how.part.0.min(original.width()).max(1), how.part.1.min(original.height()).max(1));
-    let cropped;
-    let from = if part == (original.width(), original.height()) {
-        original
-    } else {
-        cropped = image::imageops::crop_imm(original, 0, 0, part.0, part.1).to_image();
-        &cropped
-    };
+    // (The part as a view of the picture, never a copy of it: a strip's
+    // part can be most of a very large picture, to make a few pixels of.)
+    let from = image::imageops::crop_imm(original, 0, 0, part.0, part.1);
     let small = if how.blocks {
-        image::imageops::resize(from, how.pixels.0, how.pixels.1, image::imageops::FilterType::Nearest)
+        image::imageops::resize(&*from, how.pixels.0, how.pixels.1, image::imageops::FilterType::Nearest)
     } else if how.pixels == part {
-        from.clone()
+        from.to_image()
     } else {
-        image::imageops::thumbnail(from, how.pixels.0, how.pixels.1)
+        image::imageops::thumbnail(&*from, how.pixels.0, how.pixels.1)
     };
     let (w, h) = (small.width(), small.height());
     let mut bgra = small.into_raw();
@@ -245,14 +259,15 @@ fn made(original: &image::RgbaImage, how: Shown) -> Option<Arc<RenderImage>> {
 }
 
 /// What a drag of the picture carries under the pointer: the picture
-/// itself, small (128 points at most) and a little faded, as the kit's
-/// own drags are; the pointer in its middle.
+/// itself, small (128 points at most; a few pixels as blocks, 48 points
+/// or so) and a little faded, as the kit's own drags are; the pointer in
+/// its middle. Its size in device pixels is a whole number of points
+/// times its scale: a buffer whose size isn't a multiple of its scale is
+/// an error to the display (a 1000 × 667 window's at 2× was 256 × 171).
 fn drag_picture(original: &image::RgbaImage, scale: f32) -> Option<DragImage> {
-    let by = scale.ceil().max(1.0) as u32;
-    let most = (128 * by) as f32;
-    let shrink = (most / original.width().max(original.height()).max(1) as f32).min(1.0);
-    let (w, h) = (((original.width() as f32 * shrink).round() as u32).max(1), ((original.height() as f32 * shrink).round() as u32).max(1));
-    let mut rgba = image::imageops::thumbnail(original, w, h).into_raw();
+    let (size, by, blocks) = drag_size(original.width(), original.height(), scale)?;
+    let small = if blocks { image::imageops::resize(original, size.0, size.1, image::imageops::FilterType::Nearest) } else { image::imageops::thumbnail(original, size.0, size.1) };
+    let mut rgba = small.into_raw();
     // (Premultiplied, at seven tenths.)
     for p in rgba.chunks_exact_mut(4) {
         let a = p[3] as f32 / 255.0 * 0.7;
@@ -261,7 +276,26 @@ fn drag_picture(original: &image::RgbaImage, scale: f32) -> Option<DragImage> {
         }
         p[3] = (a * 255.0).round() as u8;
     }
-    Some(DragImage { rgba: Arc::from(rgba), width: w, height: h, scale: by, hotspot: point(px(w as f32 / by as f32 / 2.0), px(h as f32 / by as f32 / 2.0)) })
+    Some(DragImage { rgba: Arc::from(rgba), width: size.0, height: size.1, scale: by, hotspot: point(px(size.0 as f32 / by as f32 / 2.0), px(size.1 as f32 / by as f32 / 2.0)) })
+}
+
+/// A drag's picture for one of `w` × `h` pixels: its size in device
+/// pixels, the whole scale its buffer has, and whether it is made of
+/// blocks (a picture smaller than 48 points, made larger).
+fn drag_size(w: u32, h: u32, scale: f32) -> Option<((u32, u32), u32, bool)> {
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let by = scale.ceil().max(1.0) as u32;
+    let long = w.max(h);
+    // (In points, whole: then times the scale.)
+    let points = |pixels: f32| ((pixels / by as f32).round() as u32).max(1);
+    if long < 48 * by {
+        let times = (48 * by).div_ceil(long);
+        return Some(((points((w * times) as f32) * by, points((h * times) as f32) * by), by, true));
+    }
+    let shrink = ((128 * by) as f32 / long as f32).min(1.0);
+    Some(((points(w as f32 * shrink) * by, points(h as f32 * shrink) * by), by, false))
 }
 
 /// A file's name cut in its middle to what `fits`, its end kept (the
@@ -271,21 +305,45 @@ fn middle_cut(name: &str, fits: &dyn Fn(&str) -> bool) -> String {
     if fits(name) {
         return name.to_owned();
     }
+    // (Its kind: the last dot and at most five letters after it, counted
+    // as letters.)
     let (stem, kind) = match name.rfind('.') {
-        Some(at) if at > 0 && name.len() - at <= 6 => name.split_at(at),
+        Some(at) if at > 0 && name[at..].chars().count() <= 6 => name.split_at(at),
         _ => (name, ""),
     };
     let letters: Vec<char> = stem.chars().collect();
     let kept = letters.len().saturating_sub(6);
-    // (Its end from a letter or a figure on: "….44.13.png" read as four dots.)
-    let end: String = letters[kept..].iter().collect::<String>().trim_start_matches(|c: char| !c.is_alphanumeric()).to_owned() + kind;
+    // (Its end from past a divider on: "….44.13.png" read as four dots.
+    // Only a divider: six signs at a name's end are its end.)
+    let end: String = letters[kept..].iter().collect::<String>().trim_start_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace()).to_owned() + kind;
     let with = |n: usize| format!("{}…{end}", letters[..n].iter().collect::<String>().trim_end());
+    // (Where not even its end fits, the name whole: the line's own cut,
+    // at its end, does what can be done.)
+    if !fits(&with(0)) {
+        return name.to_owned();
+    }
     let (mut least, mut most) = (0, kept);
     while least < most {
         let half = (least + most).div_ceil(2);
         if fits(&with(half)) { least = half } else { most = half - 1 }
     }
     with(least)
+}
+
+/// A file as it was when its card came up (its device and its number
+/// there): what the card deletes, copies and drags out is that file, and
+/// not another that has its name by now.
+fn identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    std::fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
+}
+
+/// Whether a card is shown here at all. Not on an Agent Screen: who
+/// watches one sees its picture as a recording has it, the card left
+/// out, and a click meant for what shows there would land on the card's
+/// Delete.
+pub fn shown_here() -> bool {
+    std::env::var_os("OLO_SCREEN").is_none()
 }
 
 struct After {
@@ -296,6 +354,11 @@ struct After {
     name_cut: Option<String>,
     /// "0:12 · 1280 × 800 · 4.2 MB".
     details: String,
+    /// The file it came up for ([`identity`]).
+    file: Option<(u64, u64)>,
+    /// The card's column (points): the picture's frame at its widest, or
+    /// the buttons' row where their words in this language need more.
+    column: f32,
     /// The picture's size in its own pixels (a screen's shape where it
     /// isn't known).
     dims: (u32, u32),
@@ -341,10 +404,10 @@ fn frame_size(how: Shown, scale: f32) -> (f32, f32) {
     ((how.pixels.0 as f32 + lines) / scale, (how.pixels.1 as f32 + lines) / scale)
 }
 
-/// The card's size (points) round a frame `frame_h` tall, its parts'
-/// positions following from it.
-fn card_size(frame_h: f32) -> (f32, f32) {
-    (PICTURE_W + 2.0 * m::CARD_INSET, m::CARD_INSET + frame_h.ceil() + GAP_NAME + NAME_ROW + FACTS_ROW + GAP_BUTTONS + SMALL_BUTTON_HEIGHT + m::CARD_INSET)
+/// The card's size (points) round a frame `frame_h` tall in a column
+/// `column` wide, its parts' positions following from it.
+fn card_size(frame_h: f32, column: f32) -> (f32, f32) {
+    (column + 2.0 * m::CARD_INSET, m::CARD_INSET + frame_h.ceil() + GAP_NAME + NAME_ROW + FACTS_ROW + GAP_BUTTONS + SMALL_BUTTON_HEIGHT + m::CARD_INSET)
 }
 
 /// Move `path` to the Trash (freedesktop's: Tracker restores it).
@@ -357,7 +420,24 @@ pub(crate) fn to_trash(path: &Path) -> std::io::Result<PathBuf> {
     moved.map(|()| target)
 }
 
+/// The card's column for its buttons' words as they are shown (the
+/// kit's own widths for them, in the person's language): the picture's
+/// at least, and wide enough that Delete stands apart. (In French the
+/// four need 304 points and in Russian 322, where the column had 280:
+/// Delete ran into the rest, and Copy out of the card. The confirming
+/// review.)
+fn column_for(kind: Kind) -> f32 {
+    let labels = ["Delete", "Show in Tracker", if kind == Kind::Picture { "Open" } else { "Edit" }, "Copy"];
+    let row: f32 = labels.iter().map(|l| olo_kit::widgets::button_width(l, true)).sum::<f32>() + 2.0 * m::TIGHT + 2.0 * GAP_BUTTONS;
+    row.max(PICTURE_W)
+}
+
 impl After {
+    /// The file is still the one the card came up for.
+    fn still_it(&self) -> bool {
+        self.file.is_some() && identity(&self.path) == self.file
+    }
+
     /// The picture made for `scale` on a worker (exact device pixels).
     fn ask_picture(&mut self, scale: f32, cx: &mut Cx<Self>) {
         let Some(original) = self.original.clone() else { return };
@@ -366,7 +446,7 @@ impl After {
         }
         self.asked = Some(scale);
         let how = shown(original.width(), original.height(), scale);
-        cx.work(move || made(&original, how).map(|picture| (scale, picture, drag_picture(&original, scale))), Msg::Picture);
+        cx.work(move || (scale, made(&original, how).map(|picture| (picture, drag_picture(&original, scale)))), |(scale, made)| Msg::Picture(scale, made));
     }
 
     /// It goes `STAYS` after the pointer left it. (One wait, armed as
@@ -387,6 +467,11 @@ impl After {
     /// pastes); the window goes, the process serving it till something
     /// else is copied.
     fn copy(&mut self, cx: &mut Cx<Self>) {
+        if !self.still_it() {
+            eprintln!("olo-screenshot: {} is not the file this card came up for any more: not copied", self.path.display());
+            olo_kit::quit();
+            return;
+        }
         self.holding = true;
         HOLDING.store(true, Ordering::Release);
         // (No window from now on, and still running; and no card for a
@@ -433,6 +518,13 @@ impl After {
     }
 
     fn delete(&mut self) {
+        // (Another file that has its name by now is not this card's to
+        // put in the Trash.)
+        if !self.still_it() {
+            eprintln!("olo-screenshot: {} is not the file this card came up for any more: left alone", self.path.display());
+            olo_kit::quit();
+            return;
+        }
         if let Err(e) = to_trash(&self.path) {
             eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", self.path.display());
         }
@@ -444,6 +536,9 @@ impl After {
     /// the picture isn't in yet).
     fn drag(&mut self, cx: &mut Cx<Self>) {
         self.press = None;
+        if !self.still_it() {
+            return;
+        }
         let mut drag = dnd::files(std::slice::from_ref(&self.path), true, false);
         drag.icon =
             self.drag_picture.clone().or_else(|| dnd::picture(cx, if self.kind == Kind::Picture { "image-x-generic" } else { "video-x-generic" }, 48.0, Some(&self.name), point(px(24.0), px(24.0))));
@@ -456,16 +551,32 @@ impl View for After {
 
     fn message(&mut self, m: Msg, cx: &mut Cx<Self>) {
         match m {
-            Msg::Picture(made) => {
-                self.asked = None;
-                match made {
-                    Some((scale, picture, drag)) => {
-                        self.picture = Some((scale, picture));
-                        self.drag_picture = drag;
-                    }
-                    None => self.picture = None,
+            // (For the scale it was asked for, and shown only at that
+            // one: a slow one for a scale since left would take the
+            // place of the right one, and be asked for again.)
+            Msg::Picture(scale, made) => {
+                if self.asked == Some(scale) {
+                    self.asked = None;
                 }
+                if scale == cx.scale_factor() {
+                    match made {
+                        Some((picture, drag)) => {
+                            self.picture = Some((scale, picture));
+                            self.drag_picture = drag;
+                        }
+                        None => self.picture = None,
+                    }
+                    cx.invalidate();
+                }
+            }
+            Msg::NoPicture => {
+                self.picture = None;
                 cx.invalidate();
+            }
+            Msg::PutAway => {
+                if !self.holding {
+                    olo_kit::quit();
+                }
             }
             Msg::Original(original) => {
                 self.dims = (original.width(), original.height());
@@ -493,7 +604,8 @@ impl View for After {
         self.ask_picture(scale, cx);
         let how = shown(self.dims.0, self.dims.1, scale);
         let (fw, fh) = frame_size(how, scale);
-        let (cw, ch) = card_size(fh);
+        let wide = self.column;
+        let (cw, ch) = card_size(fh, wide);
         let (w, h) = (cw + 2.0 * SHADOW, ch + 2.0 * SHADOW);
         if (w, h) != self.size {
             self.size = (w, h);
@@ -501,13 +613,13 @@ impl View for After {
         }
         let card_at = point(px(SHADOW), px(SHADOW * 0.7));
         let column = card_at.x + px(m::CARD_INSET);
-        let frame_at = point(column + px((PICTURE_W - fw) / 2.0), card_at.y + px(m::CARD_INSET));
+        let frame_at = point(column + px((wide - fw) / 2.0), card_at.y + px(m::CARD_INSET));
         let name_y = f32::from(card_at.y) + m::CARD_INSET + fh.ceil() + GAP_NAME;
         // (Its × has a margin of its own in its box: the box stands that
         // far past the column's edge, so the × ends on the edge; on the
         // name's row, its middle the name's. Measured in its pictures.)
-        let close_at = point(column + px(PICTURE_W - CLOSE + 3.0), px(name_y + (NAME_ROW - CLOSE) / 2.0));
-        let name_w = PICTURE_W - CLOSE - GAP_NAME;
+        let close_at = point(column + px(wide - CLOSE + 3.0), px(name_y + (NAME_ROW - CLOSE) / 2.0));
+        let name_w = wide - CLOSE - GAP_NAME;
         let name = self.name_cut.get_or_insert_with(|| middle_cut(&self.name, &|text| style::text_width(text.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD)) <= px(name_w))).clone();
         let ink = style::card_ink(&p);
         let back = cx
@@ -651,7 +763,7 @@ impl View for After {
                     .absolute()
                     .left(column)
                     .top(px(name_y + NAME_ROW + FACTS_ROW + GAP_BUTTONS))
-                    .w(px(PICTURE_W))
+                    .w(px(wide))
                     .flex()
                     .justify_between()
                     .child(Button::new("Delete").small().on_click(cx.listener(|a: &mut After, _: &ClickEvent, _| a.delete())))
@@ -704,17 +816,12 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     let dims = if width > 0 && height > 0 { (width, height) } else { (1280, 800) };
     // One card at a time: the one showing goes first.
     put_away();
+    let file = identity(&path);
+    olo_kit::upgrade_waits_while(|| HOLDING.load(Ordering::Acquire));
     olo_kit::run(APP_ID, move |app| {
-        // (Told to go by whatever takes the next picture, or by the next
-        // card: any launch that reaches this one is that. Not once it
-        // only holds the clipboard.)
         instance::listen(APP_ID, olo_kit::proxy());
-        olo_kit::message_handler(app, |message, _| {
-            if message.is::<Launch>() && !HOLDING.load(Ordering::Acquire) {
-                olo_kit::quit();
-            }
-        });
-        let (cw, ch) = card_size(frame_size(shown(dims.0, dims.1, 1.0), 1.0).1);
+        let column = column_for(kind);
+        let (cw, ch) = card_size(frame_size(shown(dims.0, dims.1, 1.0), 1.0).1, column);
         let options = WindowOptions::new(if kind == Kind::Picture { "Screenshot Saved" } else { "Recording Saved" }, cw + 2.0 * SHADOW, ch + 2.0 * SHADOW)
             .no_panel()
             .layer(AFTER_NAMESPACE, LayerShellLayer::Top, (false, true, true, false))
@@ -733,6 +840,8 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
                 name,
                 name_cut: None,
                 details: details.join(" · "),
+                file,
+                column,
                 dims,
                 original: None,
                 picture: None,
@@ -748,6 +857,16 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
             after.hold(cx);
             after
         });
+        // (Told to go by whatever takes the next picture, or by the next
+        // card: any launch that reaches this one is that. The window
+        // decides, on its own looper, where Copy is: decided here, a
+        // card just copied from was ended between the look and the end.)
+        let asked = window.messenger();
+        olo_kit::message_handler(app, move |message, _| {
+            if message.is::<Launch>() {
+                asked.send(Msg::PutAway);
+            }
+        });
         // The picture: a recording's a moment in (past a countdown's last frame).
         let to = window.messenger();
         std::thread::spawn(move || {
@@ -757,9 +876,9 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
                 let at = seconds.map_or(0.0, |s| (s * 0.1).min(1.0));
                 olo_preview::video::picture_at(&input, at).ok().and_then(|b| image::RgbaImage::from_raw(b.size[0] as u32, b.size[1] as u32, b.rgba.clone()))
             };
-            match picture {
+            match picture.filter(|p| p.width() > 0 && p.height() > 0) {
                 Some(p) => to.send(Msg::Original(Arc::new(p))),
-                None => to.send(Msg::Picture(None)),
+                None => to.send(Msg::NoPicture),
             };
         });
     });
@@ -787,16 +906,20 @@ mod tests {
         // A 16:10 screen's picture fills the column (276 × 173 points inside its frame), at each scale.
         assert_eq!(shown(1280, 800, 1.0), plain((1280, 800), (276, 173)));
         assert_eq!(shown(2560, 1600, 2.0), plain((2560, 1600), (552, 345)));
-        assert_eq!(shown(2240, 1400, 1.75), plain((2240, 1400), (483, 302)));
+        assert_eq!(shown(2240, 1400, 1.75), plain((2240, 1400), (486, 304)));
         // A tall window's: as tall as the frame may be, as wide as its shape says.
         assert_eq!(shown(426, 720, 1.0), plain((426, 720), (102, 173)));
-        // A few pixels dragged out of the screen: blocks of whole device pixels until 44 points tall.
-        assert_eq!(shown(40, 30, 1.0), Shown { part: (40, 30), pixels: (80, 60), blocks: true, cut: Cut::None });
-        assert_eq!(shown(40, 30, 1.25), Shown { part: (40, 30), pixels: (80, 60), blocks: true, cut: Cut::None });
-        assert_eq!(shown(40, 30, 1.5), Shown { part: (40, 30), pixels: (120, 90), blocks: true, cut: Cut::None });
-        assert_eq!(shown(40, 30, 1.75), Shown { part: (40, 30), pixels: (120, 90), blocks: true, cut: Cut::None });
-        // (As many points at 2× as at 1× and 1.5×: 80 × 60.)
-        assert_eq!(shown(40, 30, 2.0), Shown { part: (40, 30), pixels: (160, 120), blocks: true, cut: Cut::None });
+        // A few pixels dragged out of the screen: blocks of whole device pixels, 80 × 60 points at 1×, 1.5×
+        // and 2× (64 × 48 at 1.25×, 69 × 51 at 1.75×).
+        let blocks = |pixels| Shown { part: (40, 30), pixels, blocks: true, cut: Cut::None };
+        assert_eq!(shown(40, 30, 1.0), blocks((80, 60)));
+        assert_eq!(shown(40, 30, 1.25), blocks((80, 60)));
+        assert_eq!(shown(40, 30, 1.5), blocks((120, 90)));
+        assert_eq!(shown(40, 30, 1.75), blocks((120, 90)));
+        assert_eq!(shown(40, 30, 2.0), blocks((160, 120)));
+        // (By its short side, whichever that is: a 4 × 8 was 24 × 48, an 8 × 4 88 × 44.)
+        assert_eq!(shown(4, 8, 1.0).pixels, (44, 88));
+        assert_eq!(shown(8, 4, 1.0).pixels, (88, 44));
         // (One that is already tall enough: as it is.)
         assert_eq!(shown(200, 100, 1.0), plain((200, 100), (200, 100)));
         // (One no blocks of which would fit: as it is.)
@@ -808,12 +931,49 @@ mod tests {
         assert_eq!(shown(4000, 100, 1.0), Shown { part: (627, 100), pixels: (276, 44), blocks: false, cut: Cut::Right });
         // Nothing: no division by nothing.
         assert_eq!(shown(0, 0, 1.0).pixels, (44, 44));
-        // The frame is the picture and two lines round it, on whole pixels at every scale.
-        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
-            let how = shown(2240, 1400, scale);
+        // A picture as wide as it may be has a frame exactly the column's width in device pixels, at every
+        // scale (it was one to three short at 1.25×, 1.5× and 1.75×), and the frame is the picture and two
+        // lines round it.
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 3.0] {
+            let how = shown((1280.0 * scale) as u32, (800.0 * scale) as u32, scale);
             let (w, h) = frame_size(how, scale);
+            assert_eq!((w * scale).round(), (PICTURE_W * scale).round(), "{scale}");
             assert_eq!(((w * scale).round(), (h * scale).round()), (how.pixels.0 as f32 + 4.0 * style::line_pixels(scale), how.pixels.1 as f32 + 4.0 * style::line_pixels(scale)), "{scale}");
         }
+    }
+
+    /// A drag's picture has a size its buffer may have: a whole number of points times its scale.
+    #[test]
+    fn a_drags_picture_is_whole_points() {
+        // (A 1000 × 667 window's at 2× was 256 × 171: no multiple of 2.)
+        for (w, h, scale) in [(1000, 667, 2.0), (1000, 667, 1.5), (1280, 800, 1.0), (333, 1001, 1.75), (3, 1001, 2.0), (4, 8, 2.0), (1, 1, 3.0)] {
+            let ((dw, dh), by, _) = drag_size(w, h, scale).unwrap();
+            assert!(dw > 0 && dh > 0 && dw % by == 0 && dh % by == 0 && by == scale.ceil() as u32, "{w} × {h} at {scale}: {dw} × {dh}, scale {by}");
+            assert!(dw.max(dh) <= 128 * by + by, "{w} × {h} at {scale}: {dw} × {dh}");
+        }
+        // A few pixels are carried as blocks, large enough to see; nothing is nothing.
+        assert_eq!(drag_size(4, 8, 1.0), Some(((24, 48), 1, true)));
+        assert_eq!(drag_size(0, 8, 1.0), None);
+        let tiny = image::RgbaImage::from_pixel(4, 8, image::Rgba([10, 20, 30, 255]));
+        let carried = drag_picture(&tiny, 2.0).unwrap();
+        assert_eq!((carried.width, carried.height, carried.scale, carried.rgba.len()), (48, 96, 2, 48 * 96 * 4));
+    }
+
+    /// The file a card acts on is the one it came up for.
+    #[test]
+    fn a_card_knows_its_file_from_another_of_its_name() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-shot-card-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("screenshot1.png");
+        std::fs::write(&path, b"one").unwrap();
+        let was = identity(&path);
+        assert!(was.is_some() && identity(&path) == was);
+        // Moved away, and another put under its name: not the same file.
+        std::fs::rename(&path, dir.join("kept.png")).unwrap();
+        assert_eq!(identity(&path), None);
+        std::fs::write(&path, b"two").unwrap();
+        assert!(identity(&path).is_some() && identity(&path) != was);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The picture made is exactly the pixels asked for: blocks repeated, a strip's start, never smoothed.
@@ -826,6 +986,12 @@ mod tests {
         assert_eq!(blocks.as_bytes(0).unwrap(), [30, 20, 10, 255, 30, 20, 10, 255, 50, 100, 200, 255, 50, 100, 200, 255].repeat(2));
         let strip = made(&tiny, Shown { part: (1, 1), pixels: (1, 1), blocks: false, cut: Cut::Right }).unwrap();
         assert_eq!(strip.as_bytes(0).unwrap(), [30, 20, 10, 255]);
+        // A picture with nothing in it makes none (it made one of the wrong size).
+        assert!(made(&image::RgbaImage::new(0, 50), shown(0, 50, 1.0)).is_none());
+        // A long strip's start is made from a view of it, its few pixels alone: the part it shows.
+        let long = image::RgbaImage::from_pixel(4000, 100, image::Rgba([1, 2, 3, 255]));
+        let how = shown(4000, 100, 1.0);
+        assert_eq!(made(&long, how).unwrap().size(0), olo_kit::size(olo_kit::DevicePixels(276), olo_kit::DevicePixels(44)));
     }
 
     /// A long name is cut in its middle, its end kept.
@@ -837,7 +1003,12 @@ mod tests {
         assert_eq!(middle_cut("Screenshot 2026-11-27 at 16.44.13.png", &fits(24)), "Screenshot 202…44.13.png");
         // (No kind: its last six letters. Nothing fits: its end alone.)
         assert_eq!(middle_cut("a-very-long-name-with-no-kind", &fits(12)), "a-ver…o-kind");
-        assert_eq!(middle_cut("abcdefghijkl.png", &fits(3)), "…ghijkl.png");
+        // (Not even its end fits: whole, for the line's own cut at its end. It was given back longer
+        // than its room.)
+        assert_eq!(middle_cut("abcdefghijkl.png", &fits(3)), "abcdefghijkl.png");
+        // Six signs at a name's end are its end, kept; a kind is counted in letters.
+        assert_eq!(middle_cut("holiday pictures 🎉🎉🎉🎉🎉🎉.png", &fits(20)), "holiday p…🎉🎉🎉🎉🎉🎉.png");
+        assert_eq!(middle_cut("screenshot of the board.画像", &fits(18)), "screensho…board.画像");
     }
 
     #[test]

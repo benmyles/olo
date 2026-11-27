@@ -234,7 +234,9 @@ pub fn file_name(name: &str, format: Format) -> String {
         .iter()
         .find_map(|f| {
             let ext = format!(".{}", f.extension());
-            name.len().checked_sub(ext.len()).filter(|&i| name[i..].eq_ignore_ascii_case(&ext)).map(|i| &name[..i])
+            // (Where its end begins on a letter's edge: "café123" has none
+            // four bytes from its end, and cutting there ended the window.)
+            name.len().checked_sub(ext.len()).filter(|&i| name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(&ext)).map(|i| &name[..i])
         })
         .or_else(|| name.strip_suffix(".jpeg"))
         .unwrap_or(name);
@@ -272,6 +274,15 @@ pub fn save(shot: &Shot, path: &Path, format: Format) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A name is given its format's ending, whatever letters it is in.
+    #[test]
+    fn a_name_in_any_letters_gets_its_ending() {
+        assert_eq!(file_name("café123", Format::Png), "café123.png");
+        assert_eq!(file_name("画像", Format::Jpeg), "画像.jpg");
+        assert_eq!(file_name("shot.PNG", Format::WebP), "shot.webp");
+        assert_eq!(file_name(" shot.jpeg ", Format::Png), "shot.png");
+    }
 
     #[test]
     fn sweeping_takes_only_dead_screenshots_pictures() {

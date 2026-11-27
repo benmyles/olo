@@ -13631,8 +13631,13 @@ Screens' Export Video uses too).
   use the screenshot in (just like in macos)"): a picture saved by a
   shortcut (`--silent`, `--region`) or by Save in the window starts
   `--after PATH --picture` for it (`show_card`, main.rs: detached, on
-  the display the pointer is on, once the path is on the clipboard, so
-  that a Copy pressed on the card at once is not overwritten by it).
+  the display that was pictured, said when the picture is taken (the
+  pointer's then; the region picker's own), once the path is on the
+  clipboard, so that a Copy pressed on the card at once is not
+  overwritten by it). **Not on an Agent Screen** (`after::shown_here`,
+  `OLO_SCREEN`; a recording's card neither): who watches one sees its
+  picture as a recording has it, the card left out, and a click meant
+  for what shows there would land on the card's Delete.
   Its card says its size in pixels and bytes, and has Open (in the
   program that opens its kind) where a recording has Edit; Copy offers
   the picture itself first (its own type, what a chat or an editor
@@ -13652,7 +13657,13 @@ Screens' Export Video uses too).
   names differ, a number, a date, its kind); the facts are small under
   it, 8 points from the frame, 12 from the buttons. The buttons span
   the column: Delete by itself at its start, far from the close box,
-  then Show in Tracker, Open and Copy at its end. The pointer over the
+  then Show in Tracker, Open and Copy at its end; **the column is as
+  wide as the buttons' words need in the person's language**
+  (`column_for`, the kit's `button_width`: 304 points in French, 322
+  in Russian, where 280 had Delete run into the rest). What the card
+  deletes, copies and drags out is **the file it came up for**
+  (`identity`: its device and number; another file that has its name
+  by now is left alone). The pointer over the
   picture is the open hand and the frame's edge lights (the keyboard's
   colour): it can be taken hold of; a drag carries the picture itself
   (128 points at most, seven tenths opaque). One wait for its going,
@@ -13665,10 +13676,11 @@ Screens' Export Video uses too).
   again after a delayed shot's wait; the region picker's freeze; a
   recording's start, before it looks whether one is going), tells the
   card showing to go (a launch on its own instance socket,
-  `olo.screenshot-after`, by the display's name) and waits for its
-  process's end on a pidfd, a second and a half at most; a card that
-  only holds the clipboard (Copy: no window) has stopped listening,
-  and a putting-away already on its way to it is passed over. And
+  `olo.screenshot-after`, by the display's name as the card listens on
+  it) and waits for its process's end on a pidfd, a second and a half
+  at most; the card decides on its window's own looper, where Copy
+  is: one that only holds the clipboard (Copy: no window) stays, and
+  an upgrade in place waits for it (`upgrade_waits_while`). And
   app_server leaves the card's layer out of every recording and share
   (`olo_protocol::recording::only_on_the_screen`: the controls' rule,
   for the card's namespace too): a picture taken while the screen was
@@ -13678,18 +13690,25 @@ Screens' Export Video uses too).
   shots in a row, none with a card in its picture and its own card
   standing after each; `--no-card`, its picture's pixels too; the
   picture dragged onto a Tracker window is the file there, whole, and
-  the card goes): it fails at the second shot with the putting away
-  taken out. Pictured in seven states (a screen's picture with the
+  the card goes; a recording made as a GIF onto a name that ends in
+  .gif is there after: the recorder removed "the video", which was the
+  GIF by then, an old fault of `--as-gif --to X.gif`; no card on an
+  Agent Screen): it fails at the second shot with the putting away
+  taken out, and at the GIF with that one line put back. Pictured in seven states (a screen's picture with the
   scale changed under it, a window's, a few pixels, a strip, a long
   name, the close box lit, the picture lit), light and dark, at 1×,
   1.25×, 1.5×, 1.75× and 2× (`tsession review --all`: nothing found
   in any). At rest on release builds: 0.0% of a core, 0 wakeups a
   second, no frames in ten seconds (`tools/dev/cost`). The compositor
   while a display is recorded (release, a pointer moved for forty
-  seconds, its own `timings`): gathering the upper layers 0.55 µs a
-  call and a look 102 µs before the card's namespace was left out
-  (a busier moment), 0.10 µs and 60 µs after: no cost that can be
-  told.
+  seconds, its own `timings`): a whole look 102 µs before the card's
+  namespace was left out and 60 µs after, two runs under different
+  loads: what one more comparison of a layer's name costs a frame is
+  not in what was measured (the stopwatch for the upper layers starts
+  after the list is made), and can't be told from the whole. A plain
+  screenshot, an agent's look and Agent Screens' history are the
+  screen as it is, the card with it: only recordings and shares leave
+  it out.
 - **Recordings** (`library.rs`, `olo-screenshot --library`; Record ▸
   Recordings…, Deskbar's recording menu; one window, a second
   `--library` brings it forward): every screen recording in the Videos

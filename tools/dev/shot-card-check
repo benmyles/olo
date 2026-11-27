@@ -12,7 +12,12 @@ tried in a headless desktop of its own.
   `--no-card` takes the picture, puts the card before it away and shows
   none;
   the card's picture pressed and dragged onto a Tracker window is the
-  file there, and the card goes.
+  file there, and the card goes;
+  a recording made as a GIF onto a name that ends in .gif is there after
+  (the recorder removed "the video", which was the GIF by then);
+  on an Agent Screen (OLO_SCREEN) a shot brings no card: who watches one
+  sees it as a recording has it, the card left out, and would click it
+  unseen.
 
 Needs olo-app-server, olo-screenshot and olo-tracker built in the profile
 it runs (dev; TSESSION_PROFILE=release for release). /usr/bin/python3: it
@@ -163,6 +168,40 @@ def main():
             sys.exit("FAILED: what was dropped is not the picture's file")
         until("the card to go once its picture was dropped", lambda: not cards(), 5)
         print(f"ok: the card's picture dragged onto Tracker is the file there ({os.path.basename(newest)}), and the card goes")
+        # 5. A recording made as a GIF, onto a name that is the GIF's own: there after.
+        gif = os.path.join(HOME, "demo.gif")
+        ts("run", NAME, "olo-screenshot", "--record", "--as-gif", "--to", gif, "--countdown", "0", check=True)
+        until("the recording to be going", lambda: glob.glob(os.path.join(HOME, "demo*")), 20)
+        for i in range(12):
+            ts("move", NAME, str(400 + 20 * i), "300")
+            time.sleep(0.12)
+        ts("run", NAME, "olo-screenshot", "--stop", check=True)
+
+        def recorders():
+            mine = []
+            for d in glob.glob("/proc/[0-9]*"):
+                try:
+                    argv = open(d + "/cmdline", "rb").read().split(b"\0")
+                    env = open(d + "/environ", "rb").read().split(b"\0")
+                except OSError:
+                    continue
+                if b"--record" in argv and f"HOME={HOME}".encode() in env:
+                    mine.append(d)
+            return mine
+
+        until("the recorder to end", lambda: not recorders(), 60)
+        if not os.path.exists(gif) or open(gif, "rb").read(4) != b"GIF8":
+            sys.exit(f"FAILED: a recording made as a GIF onto {os.path.basename(gif)} is not there after (the folder has {sorted(os.path.basename(p) for p in glob.glob(os.path.join(HOME, 'demo*')))})")
+        print("ok: a recording made as a GIF onto a .gif name is there after")
+        # 6. On an Agent Screen: the picture, and no card.
+        had = len(shots())
+        ts("run", NAME, "OLO_SCREEN=check", "olo-screenshot", "--silent", check=True)
+        newest = until("the picture taken on an Agent Screen", lambda: len(shots()) > had and shots()[-1])
+        until("its file to be whole", lambda: os.path.getsize(newest) > 0 and Image.open(newest).size == (1280, 800))
+        time.sleep(1.5)
+        if cards() or shown():
+            sys.exit("FAILED: a card came up on an Agent Screen")
+        print("ok: on an Agent Screen a shot brings no card")
     finally:
         ts("stop", NAME)
         shutil.rmtree(SCRATCH, ignore_errors=True)
