@@ -96,7 +96,11 @@ fn codex_status(line: &str) -> bool {
     let mut chars = l.chars();
     // (A bullet or a spinner. Not the marks Codex sets before what a
     // command printed or what waits in its queue: those lines are quoted.)
-    let led = chars.next().is_some_and(|c| !c.is_alphanumeric() && !c.is_ascii_punctuation() && !matches!(c, '└' | '↳' | '│')) && chars.next() == Some(' ');
+    // (Nor Codex's own mark, which begins its field and every message
+    // of the person's shown above it: "› Explain Working (4s • esc to
+    // interrupt)" typed at a finished Codex kept it "at work". A code
+    // review, 2026-11-27.)
+    let led = chars.next().is_some_and(|c| !c.is_alphanumeric() && !c.is_ascii_punctuation() && !matches!(c, '└' | '↳' | '│' | '›')) && chars.next() == Some(' ');
     let Some(at) = l.find(" • esc to interrupt)").filter(|_| led) else { return false };
     let Some(open) = l[..at].rfind('(') else { return false };
     // (Its clock: "4s", "1m 43s", "2h 03m 10s".)
@@ -129,16 +133,24 @@ fn codex_at_work(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
     let numbered = |s: &str| s.trim_start().split_once('.').is_some_and(|(n, rest)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && rest.starts_with(' '));
     let Some(field) = lines.iter().rposition(|l| l.starts_with('›')) else { return false };
-    // (A chooser: the mark on one numbered choice, another numbered one under or over it.)
+    // (A chooser: the mark on one numbered choice, another numbered one
+    // under or over it, and Codex's own words under a list of choices,
+    // "Press enter to confirm or esc to cancel". Without those words a
+    // message in its field that begins "2. Verify" with "3. Repeat"
+    // under it was a chooser.)
     let choice = numbered(lines[field].trim_start_matches('›'));
     let beside = |i: usize| lines.get(i).is_some_and(|l| !l.starts_with('›') && numbered(l));
-    if choice && (beside(field + 1) || field.checked_sub(1).is_some_and(beside)) {
+    let foot = lines[field + 1..].iter().rev().find(|l| !l.trim().is_empty()).map(|l| l.trim().to_ascii_lowercase()).unwrap_or_default();
+    let asks = foot.contains("enter to confirm") || foot.contains("esc to cancel") || foot.contains("enter to select");
+    if choice && asks && (beside(field + 1) || field.checked_sub(1).is_some_and(beside)) {
         return false;
     }
     // What Codex draws only while a turn is on: under its field, "tab
     // to queue message" (its footer while something is typed there);
     // over it, "shift+← edit last queued message" under what was queued.
-    if lines[field + 1..].iter().any(|l| l.trim().eq_ignore_ascii_case("tab to queue message")) {
+    // (Its footer: the screen's last line. Those words on a line of a
+    // message in the field are the person's.)
+    if foot == "tab to queue message" {
         return true;
     }
     // (Sixteen lines: what is queued stands between the status line and
@@ -1459,6 +1471,17 @@ mod tests {
         // (What says its turn is on then is its conversation's file: `olo_rex_link::agents::state::turn_on`.)
         let streaming = "› Run the full phased turn.\n\n• Line 1 of commentary streaming slowly.\n  Line 2 of commentary streaming slowly.\n\n› Ask Codex to do anything\n\n  gpt-5.4-codex high · /var/tmp/work · Run the full phased turn.\n  ← for agents · ? for shortcuts\n";
         assert_eq!(classify(Agent::Codex, streaming), State::Idle, "an answer coming: no word of it on its screen");
+        // (The confirming review's, 2026-11-27.) Codex's own mark begins no status line: typed at a
+        // finished Codex, the line's very words are the person's.
+        let typed = "• Done.\n\n  Worked for 3s • 1:04 PM\n\n› Explain Working (4s • esc to interrupt)\n\n  gpt-5.4-codex high · /var/tmp/work\n  ← for agents · ? for shortcuts\n";
+        assert_eq!(classify(Agent::Codex, typed), State::Idle, "the status line's words typed into its field");
+        // The queue's hint is its footer, not a line of a message in the field.
+        let hint_typed = "• Done.\n\n  Worked for 3s • 1:04 PM\n\n› What does this mean:\n  tab to queue message\n\n  gpt-5.4-codex high · /var/tmp/work\n  ← for agents · ? for shortcuts\n";
+        assert_eq!(classify(Agent::Codex, hint_typed), State::Idle, "the queue's hint typed into its field");
+        let hint = "• Explored\n\n• Working (9s • esc to interrupt)\n\n› LINE_1: follow-up\n  LINE_2\n  LINE_3\n  LINE_4\n  LINE_5\n  LINE_6\n  LINE_7\n  LINE_8\n  LINE_9\n  LINE_10\n  LINE_11\n  LINE_12\n  LINE_13\n  LINE_14\n  LINE_15\n  LINE_16\n  LINE_17\n\n  gpt-5.4-codex high · /var/tmp/work\n  tab to queue message\n";
+        assert_eq!(classify(Agent::Codex, hint), State::Working, "its footer while something waits to be queued");
+        // A message in its field that begins like two choices is its field still (no chooser's words under it).
+        assert_eq!(classify(Agent::Codex, &codex_field(&format!("2. Verify the result\n  3. Repeat\n  {long}"))), State::Working, "two numbered lines in its field");
         // A list of choices with its mark on one is no field, whatever stands over it.
         let chooser = "• Working (2s • esc to interrupt)\n\n  Would you like to run the following command?\n\n  $ touch x\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again (a)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n";
         assert_ne!(classify(Agent::Codex, chooser), State::Working, "a question under a status line of before");

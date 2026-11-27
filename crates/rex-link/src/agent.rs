@@ -821,7 +821,11 @@ struct TranscriptInspection {
 /// A time as the agents write it in their files ("2026-11-27T13:04:34.832Z",
 /// in UTC), in milliseconds since 1970.
 fn iso_ms(s: &str) -> Option<u64> {
-    let (date, time) = s.trim().trim_end_matches('Z').split_once('T')?;
+    // (In UTC and said so, as both write it. A time with an offset of
+    // its own, "13:00:00+01:00", read as UTC would be hours out, and a
+    // turn of before would pass for one since: not read at all. A code
+    // review, 2026-11-27.)
+    let (date, time) = s.trim().strip_suffix('Z')?.split_once('T')?;
     let mut d = date.split('-').map(|p| p.parse::<i64>().ok());
     let (y, m, day) = (d.next()??, d.next()??, d.next()??);
     let (hms, frac) = time.split_once('.').unwrap_or((time, "0"));
@@ -882,7 +886,10 @@ fn inspect_claude_transcript(path: &Path) -> TranscriptInspection {
             v["type"].as_str() == Some("user")
                 && !v["isMeta"].as_bool().unwrap_or(false)
                 && !v.pointer("/message/content").and_then(Value::as_array).is_some_and(|parts| !parts.is_empty() && parts.iter().all(|p| p["type"].as_str() == Some("tool_result")))
-                && !extract_claude_text(v).is_some_and(|t| t.contains("<local-command-") || t.contains("<command-name>"))
+                // (What Claude Code writes in their name *begins* so. A
+                // person's own message that speaks of such a tag,
+                // "Explain <command-name> in this transcript", is theirs.)
+                && !extract_claude_text(v).is_some_and(|t| t.trim_start().starts_with("<local-command-") || t.trim_start().starts_with("<command-name>"))
         })
         .and_then(|v| v["timestamp"].as_str())
         .and_then(iso_ms);
@@ -1161,6 +1168,12 @@ fn inspect_codex_transcript(path: &Path) -> TranscriptInspection {
             {
                 // (A turn's end names its last words itself.)
                 last_message = Some(m.trim().to_owned());
+            } else if p["type"].as_str() == Some("task_started") {
+                // (A turn's words are its own: one that ends with none,
+                // or is cut short, has none, not the turn before's. A
+                // code review, 2026-11-27: "a silent turn can succeed
+                // with a previous turn's text".)
+                last_message = None;
             }
         }
     }
@@ -1424,8 +1437,13 @@ mod tests {
         assert_eq!(iso_ms("2026-11-27T13:04:34.832Z"), Some(1_795_784_674_832));
         assert_eq!(iso_ms("2024-02-29T23:59:59Z"), Some(1_709_251_199_000));
         assert_eq!(iso_ms("2026-11-27 13:04"), None);
-        let dir = std::env::temp_dir().join(format!("olo-turn-began-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        // (With an offset of its own, or none said: not read, rather than read as UTC.)
+        assert_eq!(iso_ms("2026-11-27T13:00:00.250+01:00"), None);
+        assert_eq!(iso_ms("2026-11-27T13:00:00"), None);
+        // (A folder of this run's own, on disk: never one left by another run, never in /tmp.)
+        let dir =
+            std::path::PathBuf::from(format!("/var/tmp/olo-turn-began-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())));
+        std::fs::create_dir(&dir).unwrap();
         // Claude Code: the person's last message; not what a tool gave back, nor what Claude Code writes in
         // their name, though both are later.
         let claude = dir.join("c.jsonl");
@@ -1441,6 +1459,13 @@ mod tests {
         std::fs::write(&claude, lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
         let read = inspect_claude_transcript(&claude);
         assert_eq!((read.state, read.turn_started_ms), ("done", iso_ms("2026-11-27T11:00:00.250Z")));
+        // A person's own message that speaks of one of Claude Code's tags is theirs; what begins with the tag is not.
+        let more = [
+            json!({ "type": "user", "timestamp": "2026-11-27T12:00:00.000Z", "message": { "role": "user", "content": "Explain <command-name> in this transcript" } }),
+            json!({ "type": "user", "timestamp": "2026-11-27T12:00:09.000Z", "message": { "role": "user", "content": "<command-name>/effort</command-name>" } }),
+        ];
+        std::fs::write(&claude, lines.iter().chain(more.iter()).map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+        assert_eq!(inspect_claude_transcript(&claude).turn_started_ms, iso_ms("2026-11-27T12:00:00.000Z"));
         // Codex: its last `task_started`.
         let codex = dir.join("x.jsonl");
         let lines = [
@@ -1456,6 +1481,20 @@ mod tests {
         std::fs::write(&codex, format!("{}\n{}\n", lines[2], json!({ "timestamp": "2026-11-27T12:30:02.000Z", "type": "event_msg", "payload": { "type": "task_complete", "last_agent_message": null, "error": { "message": "stream disconnected" } } }))).unwrap();
         let read = inspect_codex_transcript(&codex);
         assert_eq!((read.state, read.error.as_deref()), ("error", Some("stream disconnected")));
+        // A turn that ends with no words has none: not the words of the turn before it.
+        std::fs::write(
+            &codex,
+            format!(
+                "{}\n{}\n{}\n{}\n",
+                lines[0],
+                lines[1],
+                lines[2],
+                json!({ "timestamp": "2026-11-27T12:30:02.000Z", "type": "event_msg", "payload": { "type": "task_complete", "last_agent_message": null } })
+            ),
+        )
+        .unwrap();
+        let read = inspect_codex_transcript(&codex);
+        assert_eq!((read.state, read.last_message), ("done", None));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

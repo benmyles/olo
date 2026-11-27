@@ -2121,6 +2121,101 @@ fn a_conversation_taken_up_again_is_not_done_by_its_old_last_words() {
     assert_eq!((&told["last_message"], &told["answers"]), (&json!("The second answer."), &started["cursor"]), "{told}");
 }
 
+/// What a conversation's file says of a turn before the one a child was
+/// given is not of this turn, and a turn's end that only its file says
+/// is told without waiting for its screen. (The confirming code review
+/// of the Codex fix, 2026-11-27: its 2, 4 and 6; each fails with its
+/// fix taken out.)
+#[test]
+fn a_turn_before_is_not_this_turn_and_a_files_word_is_looked_for() {
+    let Some(rig) = Rig::start("turnbefore") else { return };
+    rig.stand_in("codex");
+    rig.stand_in("claude");
+    let work = rig.work();
+    let rollout = |id: &str| {
+        let dir = rig.dir.join("home/.codex/sessions/2026/11/27");
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join(format!("rollout-2026-11-27T10-00-00-{id}.jsonl"))
+    };
+    let add = |file: &Path, records: &[Value]| {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file).unwrap();
+        f.write_all(records.iter().map(|r| format!("{r}\n")).collect::<String>().as_bytes()).unwrap();
+    };
+    let meta = |id: &str| json!({ "type": "session_meta", "payload": { "id": id, "cwd": rig.work() } });
+    let started_at = |at: &str| json!({ "timestamp": at, "type": "event_msg", "payload": { "type": "task_started" } });
+    let said = |at: &str, text: &str| json!({ "timestamp": at, "type": "response_item", "payload": { "type": "message", "role": "assistant", "phase": "final_answer", "content": [{ "type": "output_text", "text": text }] } });
+    let complete = |at: &str, error: Value| json!({ "timestamp": at, "type": "event_msg", "payload": { "type": "task_complete", "error": error } });
+    // (The clock's own time, in the files' form, some milliseconds ago.)
+    let ago = |ms: u64| {
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64 - ms as i64;
+        let (days, of_day) = (at.div_euclid(86_400_000), at.rem_euclid(86_400_000));
+        // (A day's number to its date: Howard Hinnant's `civil_from_days`.)
+        let z = days + 719_468;
+        let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let (d, m) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+        let y = yoe + era * 400 + i64::from(m <= 2);
+        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z", of_day / 3_600_000, of_day / 60_000 % 60, of_day / 1000 % 60, of_day % 1000)
+    };
+    assert!(ago(0).starts_with("20") && ago(0).len() == 24, "{}", ago(0));
+    let watch = |name: &str, since: &Value, on: &str, secs: &str| rig.olo(&["watch", name, "--since", &since.to_string(), "--on", on, "--timeout", secs, "--json"]);
+
+    // 1. A conversation whose last turn failed, taken up again with a prompt. The old failure is on file and
+    //    its prompt is clean: not this turn's error, and nothing is told of it.
+    const FAILED: &str = "5f0c1f0e-7777-4a77-8a77-2f8f0e0a0007";
+    let file = rollout(FAILED);
+    add(&file, &[meta(FAILED), started_at("2020-01-01T00:00:00.000Z"), complete("2020-01-01T00:00:05.000Z", json!({ "message": "stream disconnected" }))]);
+    let retry = rig.start_child("codex", "retry", &["--resume", FAILED, "--prompt", "Try again.", "--cwd", &work]);
+    rig.show("retry", &codex_idle("Ready."));
+    rig.wait("its conversation to be found", || rig.status("retry")["transcript_path"].is_string());
+    let (code, out, _) = watch("retry", &retry["cursor"], "error,idle,done", "3");
+    assert_eq!(code, 124, "an old turn's failure was told as the new prompt's: {out}");
+    assert_ne!(rig.status("retry")["state"], "error", "{}", rig.status("retry"));
+    //    Its own turn, quicker than any reading of its screen, and nothing more written to the screen after:
+    //    its file says so, and that is looked for (it waited out its two minutes, or for ever).
+    let at = Instant::now();
+    add(&file, &[started_at(&ago(0)), said(&ago(0), "Done this time."), complete(&ago(0), Value::Null)]);
+    let (code, out, err) = watch("retry", &retry["cursor"], "error,idle,done", "15");
+    assert_eq!(code, 0, "a turn's end that only its file says was never told: {out}{err}\n{}", rig.said());
+    let told: Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!((&told["last_message"], &told["answers"]), (&json!("Done this time."), &retry["cursor"]), "{told}");
+    assert!(at.elapsed() < Duration::from_secs(6), "told only after {:?}", at.elapsed());
+
+    // 2. A conversation whose last turn began a second before this child was asked for (a quick one, stopped,
+    //    and taken up again at once): the turn before, not this one's.
+    const QUICK: &str = "5f0c1f0e-8888-4a88-8a88-2f8f0e0a0008";
+    let file = rollout(QUICK);
+    add(&file, &[meta(QUICK), started_at(&ago(1200)), said(&ago(1100), "The answer before."), complete(&ago(1000), Value::Null)]);
+    let next = rig.start_child("codex", "next", &["--resume", QUICK, "--prompt", "And now?", "--cwd", &work]);
+    rig.show("next", &codex_idle("The answer before."));
+    rig.wait("its conversation to be found", || rig.status("next")["transcript_path"].is_string());
+    let (code, out, _) = watch("next", &next["cursor"], "error,idle,done", "3");
+    assert_eq!(code, 124, "the turn of a second before was told as this prompt's: {out}");
+
+    // 3. A watch of two children with no cursor: one at rest by its screen and in a turn by its file, another
+    //    with a question standing since before the watch. The question is told. (That a child *turned down*
+    //    doesn't end the looking at the others needs the first to change between two readings of one asking:
+    //    not staged here; the watch goes on to the others by its own loop, `'scan`.)
+    const BUSY: &str = "5f0c1f0e-9999-4a99-8a99-2f8f0e0a0009";
+    let file = rollout(BUSY);
+    add(&file, &[meta(BUSY)]);
+    rig.start_child("codex", "busy", &["--resume", BUSY, "--cwd", &work]);
+    rig.show("busy", &codex_idle("I will read the file first."));
+    rig.wait("its conversation to be found", || rig.status("busy")["transcript_path"].is_string());
+    rig.start_child("claude", "asks", &[]);
+    rig.show("asks", &asking("cargo test", 0));
+    rig.wait_state("asks", "waiting_approval");
+    add(&file, &[started_at(&ago(0))]);
+    rig.wait("the busy one to be at work by its file", || rig.status("busy")["state"] == "working");
+    let (code, out, err) = rig.olo(&["watch", "busy", "asks", "--on", "approval,idle", "--timeout", "2", "--json"]);
+    assert_eq!(code, 0, "a question standing before the watch waited behind a child turned down: {out}{err}");
+    let told: Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!((&told["name"], &told["state"]), (&json!("asks"), &json!("waiting_approval")), "{told}");
+}
+
 #[test]
 fn a_rest_is_the_end_of_the_turn_it_says() {
     let Some(rig) = Rig::start("turns") else { return };

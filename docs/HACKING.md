@@ -32177,7 +32177,29 @@ agents through the night, could not move to it.
   and a turn so quick that it was over before the service had noted
   its prompt as given had "not been written since", and its end was
   kept back two minutes (a start's turn can have begun from the
-  moment its tab was made, not from when the service came to note it).
+  moment its tab was asked for, `started_at`, not from when the
+  service came to note it; and no sooner, where a turn that began a
+  second before in the conversation's life before would pass for it).
+  The same of what else a file says of its last turn
+  (`state::of_the_turn_given`, in `standing` and the confirmation):
+  the failure an old turn ended with, beside the clean prompt of a
+  conversation taken up again to try once more, was told as the new
+  prompt's error, and `run` closed the tab. A Codex turn's last words
+  are its own (none, where it ended with none: not the turn
+  before's). **A rest kept back is looked at again**, each second
+  until it is told (one timer a child, `Live::relook`): what ends the
+  wait is the file saying the turn is over, and nothing on a screen
+  says when a file changes; with no such look a turn whose file said
+  so after its screen had come to rest was told when its time ran
+  out, and one whose rest was "done" by its own word, never. A
+  giving has a number of its own (`Expected::seq`), which a reading
+  is tagged with: the cursor doesn't tell two messages sent with
+  nothing told between. A screen that couldn't be read takes up
+  nothing and is not kept as a reading of now; a child's status
+  records asked for as it is attached to are not written over a word
+  of its own that came meanwhile. (The confirming code review of this
+  change, and `a_turn_before_is_not_this_turn_and_a_files_word_is_
+  looked_for`, whose cases each fail with their fix taken out.)
 - *A reading takes up what stood when it began* (`state::takes_up`,
   `Looked::expected`; a code review, 2026-11-27). A reading of a
   screen that sees a turn on takes up what the child had been given

@@ -45,20 +45,21 @@ mod tests {
     #[test]
     fn a_reading_takes_up_what_stood_when_it_began_and_a_codex_in_a_turn_is_not_at_rest() {
         use super::state::{Expected, TURN_ON_MS, takes_up, turn_on};
-        let given = |cursor| Some(Expected { cursor, given_ms: 0, until_ms: 0, transcript_len: None, turn_from_ms: 0 });
+        let given = |cursor| Some(Expected { cursor, given_ms: 0, until_ms: 0, transcript_len: None, turn_from_ms: 0, seq: 1 });
         // The message that stood when the reading began, seen begun: taken up.
-        assert!(takes_up(true, Some(7), given(7)));
+        assert!(takes_up(true, Some(1), given(7)));
         // A reading begun while turn A was on (nothing given then), and a
         // message noted since: not that one's beginning.
         assert!(!takes_up(true, None, given(8)));
-        // One given at the reading, another since.
-        assert!(!takes_up(true, Some(7), given(8)));
+        // One given at the reading, another since (each giving has its own number, whatever its cursor).
+        assert!(!takes_up(true, Some(1), Some(Expected { seq: 2, ..given(7).unwrap() })));
         // No turn seen on; nothing given.
-        assert!(!takes_up(false, Some(7), given(7)));
+        assert!(!takes_up(false, Some(1), given(7)));
         assert!(!takes_up(true, None, None));
 
         let now = 1_000_000;
-        let (made, this_life, life_before) = (900_000, Some(905_000), Some(100_000));
+        // (A turn of the life before can have begun a moment before this child was asked for.)
+        let (made, this_life, life_before) = (900_000, Some(900_000), Some(899_999));
         // Codex's file says a task is started and not complete, begun in this child's life, and it wrote to
         // its screen a second ago: in a turn, whatever the screen reads.
         assert!(turn_on(AgentCli::Codex, Some("working"), this_life, made, 0, now - 1_000, now, TURN_ON_MS));
@@ -440,7 +441,7 @@ mod tests {
         assert_eq!(rest_now(now, started, true, false, None, None), Rest::Told { answered: None });
 
         // Given work it hasn't been seen at: the rest before that turn, at its prompt or not, worked before or not.
-        let given = Expected { cursor: 41, given_ms: now, until_ms: now + 30_000, transcript_len: Some(900), turn_from_ms: now };
+        let given = Expected { cursor: 41, given_ms: now, until_ms: now + 30_000, transcript_len: Some(900), turn_from_ms: now, seq: 1 };
         for (seen, at_prompt) in [(false, true), (true, true), (true, false)] {
             assert_eq!(rest_now(now, started, seen, at_prompt, Some(given), None), Rest::Kept { until_ms: now + 30_000 });
         }
@@ -455,7 +456,7 @@ mod tests {
 
         // Given a prompt at its start, its file's length then not known (a new child has none yet). At its own
         // prompt a moment later, nothing written: the rest before its turn, for as long as it is given to come to it.
-        let at_start = Expected { cursor: 7, given_ms: started, until_ms: started + 120_000, transcript_len: None, turn_from_ms: started - 2000 };
+        let at_start = Expected { cursor: 7, given_ms: started, until_ms: started + 120_000, transcript_len: None, turn_from_ms: started, seq: 1 };
         assert_eq!(rest_now(now, started, true, true, Some(at_start), None), Rest::Kept { until_ms: started + 120_000 });
         // A file last written before it was given (a conversation resumed: the old one's), with a message and its
         // turn over: says nothing of this turn.

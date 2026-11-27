@@ -198,10 +198,16 @@ pub struct Expected {
     pub until_ms: u64,
     pub transcript_len: Option<u64>,
     /// The earliest its turn can have begun: when the message was about
-    /// to be typed; for a prompt at its start, a moment before the child
-    /// was made (its program is up, and can have begun, before the
-    /// service has noted anything of it).
+    /// to be typed; for a prompt at its start, when the service asked
+    /// for the child's tab (`started_at`: its program is up, and can
+    /// have begun, before the service has noted anything of it; and no
+    /// sooner, where a turn of the conversation's life just before
+    /// would pass for this one).
     pub turn_from_ms: u64,
+    /// Which giving this is, of this child's (each its own number): what
+    /// a reading of its screen is tagged with ([`takes_up`]). The cursor
+    /// doesn't tell two messages sent with nothing told between them.
+    pub seq: u64,
 }
 
 /// Whether a reading that sees a turn on takes up what the child has
@@ -213,7 +219,24 @@ pub struct Expected {
 /// rest with A's last words was told as B's answer (a code review,
 /// 2026-11-27).
 pub fn takes_up(in_turn: bool, at_reading: Option<u64>, now: Option<Expected>) -> bool {
-    in_turn && at_reading.is_some() && now.map(|x| x.cursor) == at_reading
+    in_turn && at_reading.is_some() && now.map(|x| x.seq) == at_reading
+}
+
+/// Whether what a conversation's file says of its last turn's end (an
+/// error it ended with) is of the turn the child has been given, where
+/// it has been given one it wasn't yet seen at: only where that last
+/// turn began no earlier than the giving. A conversation that ended in
+/// an error, taken up again with a prompt, showed that old error beside
+/// its clean prompt for the moment before its new turn began, and it
+/// was told: `run` took it for this turn's and closed the tab (a code
+/// review, 2026-11-27: "an old failed turn can stop a healthy retry").
+pub fn of_the_turn_given(turn_ms: Option<u64>, expected: Option<Expected>) -> bool {
+    match (expected, turn_ms) {
+        (Some(x), Some(began)) => began >= x.turn_from_ms,
+        // (Nothing given that it hasn't been seen at; or a file that
+        // doesn't say when its last turn began, Antigravity's: as before.)
+        _ => true,
+    }
 }
 
 /// How long an agent's conversation file is believed that a turn is on
@@ -247,7 +270,7 @@ pub const TURN_ON_LOOK_MS: u64 = 500;
 ///
 /// And only of a turn that began in this child's own life (`turn_ms`,
 /// the time on the file's last `task_started`, against `started_ms`,
-/// when the child was made, two seconds' leave): a conversation taken
+/// when the service asked for the child's tab): a conversation taken
 /// up again brings its file with it, and a turn that was killed in its
 /// life before says "working" there still. Started again with nothing
 /// to do, and slow to say so itself on a loaded host, such a Codex was
@@ -255,10 +278,7 @@ pub const TURN_ON_LOOK_MS: u64 = 500;
 /// 2026-11-27: "resumed-after-kill Codex at rest must NEVER be stuck
 /// working").
 pub fn turn_on(cli: AgentCli, transcript_state: Option<&str>, turn_ms: Option<u64>, started_ms: u64, written_ms: u64, output_ms: u64, now_ms: u64, believed_ms: u64) -> bool {
-    cli == AgentCli::Codex
-        && transcript_state == Some("working")
-        && turn_ms.is_some_and(|began| began.saturating_add(2000) >= started_ms)
-        && now_ms < written_ms.max(output_ms).saturating_add(believed_ms)
+    cli == AgentCli::Codex && transcript_state == Some("working") && turn_ms.is_some_and(|began| began >= started_ms) && now_ms < written_ms.max(output_ms).saturating_add(believed_ms)
 }
 
 /// A child's conversation's file as it stands at a rest: how long it

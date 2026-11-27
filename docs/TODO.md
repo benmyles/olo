@@ -945,6 +945,68 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Left by the confirming review of the Codex fix** (Astra 6.2,
+  2026-11-27, `/var/tmp/olo-reviews/astra-0123b09798/astra-review.md`,
+  16 findings and five on cost and tests; fixed after it, with no
+  further review: its 2, 4, 5, 6, 8, 9's first half, 10, 12, 15, 16,
+  the blocking stat and the test's folder; its words for the rest):
+  - 1: "A queued turn can replace the answer that `run` requested …
+    The queued turn … started 61 ms later … The new file reader selects
+    the latest start and completion, and the final event still carries
+    the original `answers` cursor … Bind the given prompt to the first
+    new rollout `turn_id` and deliver that ID's
+    `task_complete.last_agent_message` even if a later turn has
+    started."
+  - 3 (a Codex that says nothing of itself, by its file): "The agent
+    writes its first commentary, loses its status row while streaming,
+    then receives no next chunk and writes no bytes for eleven seconds.
+    The next check drops the hold … Conversely … let an idle footer
+    redraw once per second. Every redraw extends the hold."
+  - 7: "The Claude and Codex readers seek to the last 512 KiB … a large
+    completed tool result followed by commentary can displace the
+    start, user input and function call … On resume the reverse happens
+    when the tail contains A's completion but its start has fallen
+    out."
+  - 9, its second half: "A long-lived launcher can keep a named Working
+    record while Codex's own record says Done. The highest-ranked record
+    wins. Even an unrelated Idle record disables the rollout fallback
+    for a nonreporting Codex."
+  - 10, its second half: "streamed prose beginning `• API Error:
+    investigating the retry` on the investigator's statusless screen
+    can hold long enough to be classified Error before OSC Working is
+    consulted."
+  - 11: "Run `watch NAME --on done` without a cursor during the
+    pre-prompt rest of a resumed child … It finds the previous Done in
+    the file and synthesizes an event without consulting `live.expects`
+    or `rest_now` … A minder similarly accepts its last unread Done as
+    still standing … Followers can also receive raw Done before
+    confirmation because only raw Idle is withheld."
+  - 13: "During a file-confirmed no-OSC turn, `send --enter --wait` can
+    install a fresh expectation because `began_turn` tests only
+    `before.cls.state` … A turn begun by typing directly in the tab can
+    also be invisible to `watch --since`."
+  - 14: "Two Codex tabs share a checkout. While A's own rollout is
+    unavailable, the resolver accepts the first unclaimed loaded thread
+    in that directory … If B keeps writing an open turn, its mtime
+    sustains A's hold."
+  - Cost: "The half-second retry repeatedly inspects the whole child
+    and the account's rollout directories … Observe the known rollout's
+    writes, keep one timer per deadline, and update state age only on
+    an effective transition" (the same of the new look each second at
+    a rest kept back: an inotify watch on the one file would be the
+    thing); "Repeated identical screens can prevent the first file
+    confirmation … let the terminal repaint its idle-looking screen
+    every 180 ms … Each repaint … increments `check_gen` before the
+    preceding 250 ms confirmation wakes."
+  - The investigator's live tests: "Both sends discard their exit
+    status. A failed paste or Tab leaves a perfectly ordinary running
+    command that passes both Working assertions … The kill case waits
+    only for a path, then accepts Error or Exited after a fixed 2.5 s
+    wait."
+  - Of the first review's, still partly open by its count: its 3 (done
+    since: a giving's own number), its 4 ("a different short-lived
+    sibling can exit during each read of `children`").
+
 - **Left by the code review of the missed shell and the working Codex**
   (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/astra-acd8dc5c6d/
   astra-review.md`, 29 findings; fixed at once: its 1, 2, 3, 5's race,

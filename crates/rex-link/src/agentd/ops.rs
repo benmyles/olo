@@ -1806,6 +1806,10 @@ impl Service {
                 opts["size"]["cell_height_px"] = json!(h);
             }
         }
+        // (When its tab was asked for: its program is up, and can have
+        // begun its turn, before the server has answered; and nothing
+        // of its is from before this. `started_at`.)
+        let asked_ms = now_unix_ms();
         let created = match self
             .rex
             .call(
@@ -1847,7 +1851,7 @@ impl Service {
             transcript_path: None,
             desktop_policy: spec.desktop.clone(),
             stream_mode: spec.print_mode,
-            started_at: now_unix_ms() as i64,
+            started_at: asked_ms as i64,
             exited_at: None,
             exit_code: None,
             last_pid: None,
@@ -2060,9 +2064,9 @@ impl Service {
         let mut text = String::new();
         for row in &rows {
             let looked = self.look(&row.entry, false).await;
-            let (cls, output_ms, reports) = (looked.cls, looked.last_output_at, looked.reports);
+            let (cls, how) = (looked.cls, (looked.last_output_at, looked.reports, looked.expects));
             let info = inspected.get(&row.entry.id);
-            let (state, _, _) = super::service::standing(&row.entry, &cls, info, true, output_ms, reports);
+            let (state, _, _) = super::service::standing(&row.entry, &cls, info, true, how);
             let kids = self.lock().reg.direct_children(HOST, &sid, &row.entry.window_id, &live_windows).len();
             let mut item = summary_json(&row.entry, state, cls.summary.as_deref(), row.depth, kids);
             let minder = self.lock().reg.minder_of(&row.entry.id).map(|m| m.id.clone());
@@ -2218,7 +2222,7 @@ impl Service {
         // showed before does not make it "running" beside its own
         // `exited_at`. A code review, 2026-11-27.)
         let alive = cls.state != SubagentLiveState::Exited && entry.exited_at.is_none();
-        let (state, error, aborted) = super::service::standing(&entry, &cls, info, alive, looked.last_output_at, looked.reports);
+        let (state, error, aborted) = super::service::standing(&entry, &cls, info, alive, (looked.last_output_at, looked.reports, looked.expects));
         let tail = tail_of(&screen, 8);
 
         let mut payload = summary_json(&entry, state, cls.summary.as_deref(), 1, 0);
@@ -2792,86 +2796,99 @@ impl Service {
             // (A minder's is answered above, by what stands.)
             let check_live = spec.since.is_none() && minding.is_none();
             if check_live || check_text {
-                let mut candidate: Option<(NativeSubagent, ScreenClassification, String, Option<String>)> = None;
-                for entry in &current {
-                    let looked = self.look(entry, false).await;
-                    let (cls, screen) = (looked.cls, looked.screen);
-                    if check_text {
-                        let base = baseline_lines.entry(entry.id.clone()).or_default();
-                        let new_lines: Vec<String> = screen.lines().map(str::trim).filter(|l| !l.is_empty() && !base.contains(*l)).map(str::to_owned).collect();
-                        let is_match = regex.as_ref().map(|re| move |l: &str| re.is_match(l));
-                        if let Some((name, line)) = spec.check_new_lines(&new_lines, is_match.as_ref().map(|f| f as &dyn Fn(&str) -> bool)) {
-                            candidate = Some((entry.clone(), cls, name, line));
-                            break;
-                        }
-                    }
-                    if check_live {
-                        if cls.state == SubagentLiveState::Idle && baseline_idle.get(&entry.id).is_some_and(|fp| *fp == olo_agent_screen::fingerprint(&screen)) {
-                            continue;
-                        }
-                        if cls.state != SubagentLiveState::Idle {
-                            baseline_idle.remove(&entry.id);
-                        }
-                        if spec.matches_state(cls.state) && !Self::minders_own(&self.lock().reg, caller, &entry.id, cls.state) {
-                            let name = cls.state.as_str().to_owned();
-                            candidate = Some((entry.clone(), cls, name, None));
-                            break;
-                        }
-                        // `--on done` of a child at rest: its transcript says whether its turn is over.
-                        if wants_done && cls.state == SubagentLiveState::Idle {
-                            let inspected = self.inspect(std::slice::from_ref(entry)).await;
-                            let info = inspected.get(&entry.id);
-                            let (eff, _, _) = effective_state(&cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
-                            if spec.matches_state(eff) {
-                                candidate = Some((entry.clone(), cls, eff.as_str().to_owned(), None));
+                // (One child after another until one is told or none is
+                // left: a child turned down, at rest by its screen and in
+                // a turn by its file, or no longer this minder's, doesn't
+                // end the looking. It did, and another child's question,
+                // standing since before the watch, waited out the watch's
+                // time behind it. A code review, 2026-11-27.)
+                let mut turned_down: std::collections::HashSet<String> = std::collections::HashSet::new();
+                'scan: loop {
+                    let mut candidate: Option<(NativeSubagent, ScreenClassification, String, Option<String>)> = None;
+                    for entry in current.iter().filter(|e| !turned_down.contains(&e.id)) {
+                        let looked = self.look(entry, false).await;
+                        let (cls, screen) = (looked.cls, looked.screen);
+                        if check_text {
+                            let base = baseline_lines.entry(entry.id.clone()).or_default();
+                            let new_lines: Vec<String> = screen.lines().map(str::trim).filter(|l| !l.is_empty() && !base.contains(*l)).map(str::to_owned).collect();
+                            let is_match = regex.as_ref().map(|re| move |l: &str| re.is_match(l));
+                            if let Some((name, line)) = spec.check_new_lines(&new_lines, is_match.as_ref().map(|f| f as &dyn Fn(&str) -> bool)) {
+                                candidate = Some((entry.clone(), cls, name, line));
                                 break;
                             }
                         }
-                    }
-                }
-                if let Some((entry, first, name, matched_line)) = candidate {
-                    let is_text = name == "match" || name == "regex";
-                    // (A state must hold; text that came is there.)
-                    let holds = if first.state == SubagentLiveState::Exited || is_text {
-                        true
-                    } else {
-                        tokio::time::sleep(super::service::CONFIRM).await;
-                        self.look(&entry, true).await.cls.state == first.state
-                    };
-                    if holds {
-                        let inspected = self.inspect(std::slice::from_ref(&entry)).await;
-                        if let Some(me) = &minding {
-                            if let Some(ended) = lost_named_target(me) {
-                                return ended;
-                            }
-                            if !Self::minder_owns(&self.lock(), me, &entry.id) {
+                        if check_live {
+                            if cls.state == SubagentLiveState::Idle && baseline_idle.get(&entry.id).is_some_and(|fp| *fp == olo_agent_screen::fingerprint(&screen)) {
                                 continue;
                             }
-                        }
-                        let info = inspected.get(&entry.id);
-                        let entry = self.entry(&entry.id).unwrap_or(entry);
-                        let now = self.look(&entry, false).await;
-                        let pending = Self::pending_tools(info);
-                        let (state, error, _) = super::service::standing(&entry, &now.cls, info, now.cls.state != SubagentLiveState::Exited, now.last_output_at, now.reports);
-                        // (A rest that stood on its screen, and a turn on
-                        // by its conversation's file: not the rest that
-                        // was waited for. `state::turn_on`.)
-                        let in_turn_yet = !is_text && first.state == SubagentLiveState::Idle && state == SubagentLiveState::Working;
-                        if !in_turn_yet {
-                            // (Answered from what stands, not written into the
-                            // log: the log is what happened, once each.)
-                            let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());
-                            ev.seq = self.cursor();
-                            if is_text {
-                                ev.event = name;
+                            if cls.state != SubagentLiveState::Idle {
+                                baseline_idle.remove(&entry.id);
                             }
-                            ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
-                            ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
-                            ev.error = error;
-                            ev.tail = tail_of(&now.screen, 10);
-                            return answer(&ev, matched_line, had_gap);
+                            if spec.matches_state(cls.state) && !Self::minders_own(&self.lock().reg, caller, &entry.id, cls.state) {
+                                let name = cls.state.as_str().to_owned();
+                                candidate = Some((entry.clone(), cls, name, None));
+                                break;
+                            }
+                            // `--on done` of a child at rest: its transcript says whether its turn is over.
+                            if wants_done && cls.state == SubagentLiveState::Idle {
+                                let inspected = self.inspect(std::slice::from_ref(entry)).await;
+                                let info = inspected.get(&entry.id);
+                                let (eff, _, _) = effective_state(&cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
+                                if spec.matches_state(eff) {
+                                    candidate = Some((entry.clone(), cls, eff.as_str().to_owned(), None));
+                                    break;
+                                }
+                            }
                         }
                     }
+                    let Some((entry, first, name, matched_line)) = candidate else { break 'scan };
+                    let turned = entry.id.clone();
+                    {
+                        let is_text = name == "match" || name == "regex";
+                        // (A state must hold; text that came is there.)
+                        let holds = if first.state == SubagentLiveState::Exited || is_text {
+                            true
+                        } else {
+                            tokio::time::sleep(super::service::CONFIRM).await;
+                            self.look(&entry, true).await.cls.state == first.state
+                        };
+                        if holds {
+                            let inspected = self.inspect(std::slice::from_ref(&entry)).await;
+                            if let Some(me) = &minding {
+                                if let Some(ended) = lost_named_target(me) {
+                                    return ended;
+                                }
+                                if !Self::minder_owns(&self.lock(), me, &entry.id) {
+                                    turned_down.insert(turned);
+                                    continue 'scan;
+                                }
+                            }
+                            let info = inspected.get(&entry.id);
+                            let entry = self.entry(&entry.id).unwrap_or(entry);
+                            let now = self.look(&entry, false).await;
+                            let pending = Self::pending_tools(info);
+                            let (state, error, _) = super::service::standing(&entry, &now.cls, info, now.cls.state != SubagentLiveState::Exited, (now.last_output_at, now.reports, now.expects));
+                            // (A rest that stood on its screen, and a turn on
+                            // by its conversation's file: not the rest that
+                            // was waited for. `state::turn_on`.)
+                            let in_turn_yet = !is_text && first.state == SubagentLiveState::Idle && state == SubagentLiveState::Working;
+                            if !in_turn_yet {
+                                // (Answered from what stands, not written into the
+                                // log: the log is what happened, once each.)
+                                let mut ev = self.event_of(&entry, state, now.cls.summary.clone(), String::new());
+                                ev.seq = self.cursor();
+                                if is_text {
+                                    ev.event = name;
+                                }
+                                ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
+                                ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
+                                ev.error = error;
+                                ev.tail = tail_of(&now.screen, 10);
+                                return answer(&ev, matched_line, had_gap);
+                            }
+                        }
+                    }
+                    turned_down.insert(turned);
                 }
             }
 

@@ -130,6 +130,15 @@ pub struct Live {
     /// load, 2026-11-27: "resumed-after-kill Codex at rest must NEVER
     /// be stuck working").
     reported: bool,
+    /// Counts what it has said of itself, each word as it came: a
+    /// snapshot of its records asked for meanwhile is older than a word
+    /// that came while it was asked (`learn`).
+    status_seq: u64,
+    /// Counts what it has been given ([`state::Expected::seq`]).
+    given: u64,
+    /// A rest of its is kept back and will be looked at again (one
+    /// timer, not one for each look: `transition`'s confirmation).
+    relook: bool,
     pub exit_code: Option<i32>,
     /// The terminal's own process (the shell the server started).
     pub pid: Option<i32>,
@@ -178,6 +187,9 @@ impl Live {
             read: None,
             statuses: Vec::new(),
             reported: false,
+            status_seq: 0,
+            given: 0,
+            relook: false,
             exit_code: None,
             pid: None,
             rows: 0,
@@ -330,22 +342,28 @@ fn transcript_written_ms(entry: &NativeSubagent, info: Option<&Value>) -> u64 {
 /// (`state::turn_on`: then it is at work). `output_ms`: when its screen
 /// was last written. One rule for `list`, `status`, `watch` and the
 /// events, so that none calls at rest what another calls at work.
-pub(super) fn standing(entry: &NativeSubagent, cls: &ScreenClassification, info: Option<&Value>, alive: bool, output_ms: u64, reports: bool) -> (SubagentLiveState, Option<String>, bool) {
-    let tx = info.and_then(|v| v["transcript_state"].as_str());
-    let (state, error, aborted) = olo_rex_link::agents::effective_state(cls, tx, info.and_then(|v| v["transcript_error"].as_str()), alive);
+pub(super) fn standing(
+    entry: &NativeSubagent,
+    cls: &ScreenClassification,
+    info: Option<&Value>,
+    alive: bool,
+    (output_ms, reports, expects): (u64, bool, Option<state::Expected>),
+) -> (SubagentLiveState, Option<String>, bool) {
+    let turn_ms = info.and_then(|v| v["turn_started_ms"].as_u64());
+    // (What the file says of a turn before the one it was given is not
+    // of this turn: its end, an error it ended with. `of_the_turn_given`.)
+    let its_turn = state::of_the_turn_given(turn_ms, expects);
+    let tx = info.and_then(|v| v["transcript_state"].as_str()).filter(|_| its_turn);
+    let tx_error = info.and_then(|v| v["transcript_error"].as_str()).filter(|_| its_turn);
+    let (state, error, aborted) = olo_rex_link::agents::effective_state(cls, tx, tx_error, alive);
+    // (The file's own times last, and only where they are asked for: a
+    // file is looked up for nobody else.)
     if state == SubagentLiveState::Idle
         && !aborted
         && !reports
-        && state::turn_on(
-            entry.cli,
-            tx,
-            info.and_then(|v| v["turn_started_ms"].as_u64()),
-            to_unix_ms(entry.started_at).max(0) as u64,
-            transcript_written_ms(entry, info),
-            output_ms,
-            now_unix_ms(),
-            turn_on_ms(),
-        )
+        && entry.cli == olo_rex_link::agents::AgentCli::Codex
+        && tx == Some("working")
+        && state::turn_on(entry.cli, tx, turn_ms, to_unix_ms(entry.started_at).max(0) as u64, transcript_written_ms(entry, info), output_ms, now_unix_ms(), turn_on_ms())
     {
         return (SubagentLiveState::Working, None, false);
     }
@@ -388,6 +406,9 @@ pub struct Looked {
     /// record of its own). Where a Codex does, that is its turn's word
     /// and its conversation's file is not asked (`state::turn_on`).
     pub reports: bool,
+    /// What it has been given and not yet been seen at, as that stands
+    /// now (`state::of_the_turn_given`).
+    pub expects: Option<state::Expected>,
 }
 
 pub struct Service {
@@ -612,7 +633,7 @@ impl Service {
                     None => exited("tab closed".into()),
                 };
                 let (out, chg) = st.live.get(&entry.id).map(|l| (l.last_output_at, l.last_state_change_at)).unwrap_or((0, 0));
-                return Looked { cls, screen: String::new(), last_output_at: out, last_state_change_at: chg, pid: entry.last_pid, survey: false, expected: None, reports: false };
+                return Looked { cls, screen: String::new(), last_output_at: out, last_state_change_at: chg, pid: entry.last_pid, survey: false, expected: None, reports: false, expects: None };
             };
             if let Some(code) = live.exit_code {
                 return Looked {
@@ -624,6 +645,7 @@ impl Service {
                     survey: false,
                     expected: None,
                     reports: false,
+                    expects: None,
                 };
             }
             let (activity, status_msg) = live.activity();
@@ -637,9 +659,10 @@ impl Service {
                     survey: live.survey_stays,
                     expected: read.expected,
                     reports: live.reported,
+                    expects: live.expects,
                 };
             }
-            (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.cursor))
+            (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq))
         };
         let mut survey = false;
         let mut live_read = false;
@@ -658,9 +681,15 @@ impl Service {
             Err(_) => reading.map(|r| (r.cls, r.screen)).unwrap_or_else(|| (starting(), String::new())),
         };
         let mut st = self.lock();
-        let (mut out, mut chg, mut pid, mut reports) = (0, 0, entry.last_pid, false);
+        let (mut out, mut chg, mut pid, mut reports, mut expects) = (0, 0, entry.last_pid, false, None);
         if let Some(live) = st.live.get_mut(&entry.id) {
-            if cls.state != SubagentLiveState::Exited {
+            // (Kept as a reading only where the screen was read: what the
+            // server couldn't say is answered by the last reading, and
+            // that keeps the count and the giving it was made at. Stored
+            // under this asking's, an old "at work" passed for a reading
+            // of the screen after its turn's end, and nothing was told
+            // of that end. A code review, 2026-11-27.)
+            if live_read && cls.state != SubagentLiveState::Exited {
                 live.read = Some(Reading { out_seq, activity, cls: cls.clone(), screen: screen.clone(), expected });
             }
             // Any live reading that sees a turn on (`cls.in_turn`) proves the
@@ -687,9 +716,10 @@ impl Service {
                 live.box_now = None;
             }
             live.survey_stays = survey;
-            (out, chg, pid, reports) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported);
+            (out, chg, pid, reports, expects) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported, live.expects);
         }
-        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected, reports }
+        // (And a screen that wasn't read takes up nothing.)
+        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected: expected.filter(|_| live_read), reports, expects }
     }
 
     /// A child's screen as the server has it, with a feedback survey
@@ -878,10 +908,11 @@ impl Service {
         if let Some(live) = self.lock().live.get_mut(&entry.id) {
             let now = now_unix_ms();
             // (A prompt at its start: its turn can have begun from the
-            // moment the tab was made, two seconds' leave for the tab's
-            // making itself. A message: from now, before it is typed.)
-            let turn_from_ms = if transcript_known { now } else { (to_unix_ms(entry.started_at).max(0) as u64).saturating_sub(2000) };
-            live.expects = Some(state::Expected { cursor, given_ms: now, until_ms: now + within.as_millis() as u64, transcript_len, turn_from_ms });
+            // moment the service asked for its tab, `started_at`. A
+            // message: from now, before it is typed.)
+            let turn_from_ms = if transcript_known { now } else { to_unix_ms(entry.started_at).max(0) as u64 };
+            live.given += 1;
+            live.expects = Some(state::Expected { cursor, given_ms: now, until_ms: now + within.as_millis() as u64, transcript_len, turn_from_ms, seq: live.given });
         }
     }
 
@@ -1483,7 +1514,13 @@ impl Service {
             let last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
             let pending = Self::pending_tools(info);
             let approval = again.cls.approval.as_ref().map(|ap| service.approval_json(&id, ap, &pending));
-            let (state, error, _) = olo_rex_link::agents::effective_state(&again.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
+            // (What its file says of a turn before the one it was given is
+            // not of this turn: `state::of_the_turn_given`.)
+            let given = service.lock().live.get(&id).and_then(|l| l.expects);
+            let turn_ms = info.and_then(|v| v["turn_started_ms"].as_u64());
+            let its_turn = state::of_the_turn_given(turn_ms, given);
+            let tx = info.and_then(|v| v["transcript_state"].as_str()).filter(|_| its_turn);
+            let (state, error, _) = olo_rex_link::agents::effective_state(&again.cls, tx, info.and_then(|v| v["transcript_error"].as_str()).filter(|_| its_turn), true);
             // At rest by its screen, and in a turn by its conversation's
             // file (`state::turn_on`): no rest to tell. Followers are
             // told it works, and its screen and file are read again in a
@@ -1493,16 +1530,9 @@ impl Service {
             // believed.
             if state == SubagentLiveState::Idle
                 && !again.reports
-                && state::turn_on(
-                    entry.cli,
-                    info.and_then(|v| v["transcript_state"].as_str()),
-                    info.and_then(|v| v["turn_started_ms"].as_u64()),
-                    to_unix_ms(entry.started_at).max(0) as u64,
-                    transcript_written_ms(&entry, info),
-                    again.last_output_at,
-                    now_unix_ms(),
-                    turn_on_ms(),
-                )
+                && entry.cli == olo_rex_link::agents::AgentCli::Codex
+                && tx == Some("working")
+                && state::turn_on(entry.cli, tx, turn_ms, to_unix_ms(entry.started_at).max(0) as u64, transcript_written_ms(&entry, info), again.last_output_at, now_unix_ms(), turn_on_ms())
             {
                 {
                     let mut st = service.lock();
@@ -1536,6 +1566,28 @@ impl Service {
                 match state::rest_now(now_unix_ms(), started_ms, live.seen_working, at_prompt, live.expects, written) {
                     state::Rest::Kept { until_ms } => {
                         live.held_until = Some(until_ms);
+                        // Looked at again in a moment, and so on until it
+                        // is told: what ends the wait is its
+                        // conversation's file saying the turn is over,
+                        // and nothing on a screen says when a file
+                        // changes. With no such look, a turn that was
+                        // over by its screen before its file said so (or
+                        // whose rest was "done" by its own word, which
+                        // armed no look at all) was told when its time
+                        // ran out, two minutes on, or never (a code
+                        // review, and the live suite under load,
+                        // 2026-11-27). One timer a child.
+                        if !std::mem::replace(&mut live.relook, true) {
+                            let (service, id) = (service.clone(), id.clone());
+                            let wait = until_ms.saturating_sub(now_unix_ms()).clamp(50, 1000);
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(wait)).await;
+                                if let Some(live) = service.lock().live.get_mut(&id) {
+                                    live.relook = false;
+                                }
+                                service.poke(&id);
+                            });
+                        }
                         return;
                     }
                     state::Rest::Told { answered } => {
@@ -1737,6 +1789,7 @@ impl Service {
     /// What a child's terminal is: its process, its size, what its
     /// program has said of itself.
     async fn learn(self: &Arc<Self>, entry: &NativeSubagent) {
+        let said_before = self.lock().live.get(&entry.id).map_or(0, |l| l.status_seq);
         let (process, size, status) = tokio::join!(
             self.rex.terminal(&entry.session_id, &entry.block_id, "process", json!({})),
             self.rex.terminal(&entry.session_id, &entry.block_id, "size", json!({})),
@@ -1752,7 +1805,14 @@ impl Service {
             if let Ok(s) = &size {
                 live.rows = s["rows"].as_u64().unwrap_or(0) as u16;
             }
-            if let Ok(s) = &status {
+            // (Its records as they stood when asked. A word of its own
+            // that came while the three were asked is newer than that:
+            // "done", come between, was written over with the "working"
+            // of the asking, and a still terminal stayed at work. A code
+            // review, 2026-11-27.)
+            if let Ok(s) = &status
+                && live.status_seq == said_before
+            {
                 live.statuses = s["records"]
                     .as_array()
                     .into_iter()
@@ -1817,6 +1877,7 @@ impl Service {
                                     let Some(live) = st.live.get_mut(&id) else { return };
                                     let before = live.activity().0;
                                     live.reported = true;
+                                    live.status_seq += 1;
                                     match live.statuses.iter_mut().find(|(name, _, _)| *name == said.0) {
                                         Some(old) => *old = said,
                                         None => live.statuses.push(said),
@@ -1833,6 +1894,7 @@ impl Service {
                                 if let Some(live) = self.lock().live.get_mut(&id) {
                                     live.statuses.retain(|(name, _, _)| !gone.contains(&name.as_str()));
                                     live.reported = true;
+                                    live.status_seq += 1;
                                 }
                                 self.poke(&id);
                             }
