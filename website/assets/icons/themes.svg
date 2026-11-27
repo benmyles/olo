@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.2" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="sw0" x1="-6.8" y1="-41" x2="6.8" y2="5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6fd66a"/><stop offset="1" stop-color="#2a9a36"/></linearGradient>
+<linearGradient id="sw1" x1="-6.8" y1="-41" x2="6.8" y2="5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="1" stop-color="#d92a22"/></linearGradient>
+<linearGradient id="sw2" x1="-6.8" y1="-41" x2="6.8" y2="5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe066"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+<linearGradient id="sw3" x1="-6.8" y1="-41" x2="6.8" y2="5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#62b1ff"/><stop offset="1" stop-color="#1f6fe8"/></linearGradient>
+<linearGradient id="pin" x1="-2.6" y1="-2.6" x2="2.6" y2="2.6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.2" rx="24" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 15.5 49)">
+<g transform="rotate(84)"><rect class="o" x="-6.8" y="-41" width="13.6" height="46" rx="3" fill="url(#sw0)"/><path class="h from48" stroke-opacity=".5" stroke-width=".6" d="M-5.6 1V-37.6Q-5.6 -39.8 -3.4 -39.8H4"/></g>
+<g transform="rotate(61)"><rect class="o" x="-6.8" y="-41" width="13.6" height="46" rx="3" fill="url(#sw1)"/><path class="h from48" stroke-opacity=".5" stroke-width=".6" d="M-5.6 1V-37.6Q-5.6 -39.8 -3.4 -39.8H4"/></g>
+<g transform="rotate(38)"><rect class="o" x="-6.8" y="-41" width="13.6" height="46" rx="3" fill="url(#sw2)"/><path class="h from48" stroke-opacity=".5" stroke-width=".6" d="M-5.6 1V-37.6Q-5.6 -39.8 -3.4 -39.8H4"/></g>
+<g transform="rotate(15)"><rect class="o" x="-6.8" y="-41" width="13.6" height="46" rx="3" fill="url(#sw3)"/><path class="h from48" stroke-opacity=".5" stroke-width=".6" d="M-5.6 1V-37.6Q-5.6 -39.8 -3.4 -39.8H4"/></g>
+
+<circle r="3.3" fill="#1b1b1f"/><circle r="2.6" fill="url(#pin)"/>
+</g>
+</svg>

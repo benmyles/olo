@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="36" y1="55" x2="37" y2="59.2" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="2" y1="2" x2="34" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f4f5f9"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="fold" x1="26" y1="10" x2="32.5" y2="3.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+<linearGradient id="ring1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fafbfc"/><stop offset=".5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="lens1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9f0ff"/><stop offset=".5" stop-color="#8fcbff"/><stop offset="1" stop-color="#4f9df0"/></linearGradient>
+<linearGradient id="grip1" x1="0" y1="-3.4" x2="0" y2="3.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffb21e"/><stop offset="1" stop-color="#d97f00"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M22.5 58.6L58 49.7L61 52.8L26 61.8Z"/>
+<g transform="matrix(1 -.25 0 1 25 11.5)"><path class="o" fill="#e3e5ed" d="M1.2 0H34.8Q36 0 36 1.2V43.8Q36 45 34.8 45H1.2Q0 45 0 43.8V1.2Q0 0 1.2 0Z"/></g>
+<g transform="matrix(1 -.25 0 1 22 14.5)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V43.8Q36 45 34.8 45H1.2Q0 45 0 43.8V1.2Q0 0 1.2 0Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<g class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.8" stroke-linecap="round"><path d="M17 14.5H22M20 20H30M22 25.5H30M20 31H30M12 36.5H30M6 41H21"/></g>
+<g class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.8"><path d="M22 23.5H30M20 31H30M8 38.5H30"/></g>
+</g>
+<g transform="translate(25 26) rotate(132)">
+<rect class="o" x="11.9" y="-1.7" width="6.4" height="3.4" fill="#b9bcc6"/>
+<rect class="o" x="16.9" y="-3.4" width="11.5" height="6.8" rx="3.2" fill="url(#grip1)"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".6" d="M19.0 -2H26.0"/>
+</g>
+<circle class="o" cx="25" cy="26" r="12.5" fill="url(#ring1)"/>
+<circle cx="25" cy="26" r="9.9" fill="#1b1b1f" fill-opacity=".75"/>
+<circle cx="25" cy="26" r="9.4" fill="url(#lens1)"/>
+<path class="from48" fill="#fff" fill-opacity=".65" d="M18.522 23.63A7.9 7.9 0 0 1 24.21 18.732A9.5 9.5 0 0 0 18.522 23.63Z"/>
+</svg>

@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Build olo-desktop.com and deploy it to Cloudflare.
+# Deploy olo-desktop.com to Cloudflare.
 #
-#   tools/deploy-website.sh            build website/dist, then deploy it
-#   tools/deploy-website.sh --build    build only
+#   tools/deploy-website.sh            stage website/dist, then deploy it
+#   tools/deploy-website.sh --build    stage only
 #   tools/deploy-website.sh --preview  deploy to a preview URL, not the site
 #   tools/deploy-website.sh --yes      don't ask before deploying
 #
 # The site is the Cloudflare project "olo-desktop" (OLO_SITE_PROJECT names
-# another), which serves website/dist as it is. Deploying is Cloudflare's
+# another), which serves website/dist as it is. The site needs no build:
+# website/ is the page as it is served (website/README.md), and staging is
+# copying what is served (index.html, index.md, llms.txt, assets/) into
+# website/dist, without its tools and README. Deploying is Cloudflare's
 # own tool's work (wrangler). Whatever is missing, this asks before it
-# does anything about it: Rust's cargo to build the site, Node's npx to run
+# does anything about it: Node's npx to run
 # wrangler (run from npm each time, nothing installed globally), and being
 # signed in to Cloudflare (wrangler opens the browser). With
 # CLOUDFLARE_API_TOKEN set (a token that may edit Workers or Pages), no
@@ -63,14 +66,6 @@ ask() {
 
 # ---- what it needs ----------------------------------------------------------
 
-if ! command -v cargo >/dev/null; then
-  say "Rust isn't installed (the site's builder is a Rust program)."
-  ask "Install Rust with rustup, into your home folder?" || fail "it needs cargo: https://rustup.rs"
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-  # shellcheck disable=SC1091
-  . "$HOME/.cargo/env"
-fi
-
 if [ "$build_only" = 0 ] && ! command -v npx >/dev/null; then
   say "Node.js isn't installed (Cloudflare's wrangler runs on it)."
   if command -v mise >/dev/null; then
@@ -88,9 +83,13 @@ fi
 
 # ---- build ------------------------------------------------------------------
 
-say "Building the site…"
-(cd "$site" && cargo run --release --quiet)
-[ -f "$site/dist/index.html" ] || fail "the build made no $site/dist/index.html"
+say "Staging the site…"
+rm -rf "$site/dist"
+mkdir -p "$site/dist"
+for f in index.html index.md llms.txt assets; do
+  [ -e "$site/$f" ] || fail "website/ has no $f"
+  cp -r "$site/$f" "$site/dist/"
+done
 files=$(find "$site/dist" -type f | wc -l)
 size=$(du -sh "$site/dist" | cut -f1)
 echo "website/dist: $files files, $size."
@@ -152,15 +151,15 @@ if [ "$kind" = pages ]; then
   [ "$preview" = 1 ] && branch=preview
   wrangler pages deploy "$site/dist" --project-name "$project" --branch "$branch" --commit-hash "$commit" --commit-message "$message" --commit-dirty=true
 else
-  # (A Worker with nothing but static files: Cloudflare serves them, with
-  # website/dist's own 404.html for what isn't there.)
-  config=$(mktemp /var/tmp/olo-site-XXXXXX.jsonc)
+  # (A Worker with nothing but static files: Cloudflare serves them; the
+  # site is one page, with no 404 page of its own.)
+  config=$(mktemp /var/tmp/olo-website-XXXXXX.jsonc)
   trap 'rm -f "$config"' EXIT
   cat >"$config" <<JSON
 {
   "name": "$project",
   "compatibility_date": "2026-01-01",
-  "assets": { "directory": "$site/dist", "not_found_handling": "404-page", "html_handling": "auto-trailing-slash" }
+  "assets": { "directory": "$site/dist", "not_found_handling": "none", "html_handling": "auto-trailing-slash" }
 }
 JSON
   if [ "$preview" = 1 ]; then

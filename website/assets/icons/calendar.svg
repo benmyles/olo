@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="block"><path d="M9 19L49 9L57 13V49L17 59L9 55Z"/></clipPath>
+<linearGradient id="leaf" x1="0" y1="8" x2="40" y2="36" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+<linearGradient id="edge" x1="9" y1="27" x2="17" y2="59" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9bcc6"/><stop offset="1" stop-color="#858994"/></linearGradient>
+<linearGradient id="redg" x1="0" y1="0" x2="0" y2="9" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="1" stop-color="#d92a22"/></linearGradient>
+<linearGradient id="redtop" x1="9" y1="19" x2="57" y2="13" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff9c8f"/><stop offset="1" stop-color="#f4675a"/></linearGradient>
+<linearGradient id="redside" x1="9" y1="19" x2="17" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c2332a"/><stop offset="1" stop-color="#9c1f18"/></linearGradient>
+<linearGradient id="today" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a9bff"/><stop offset="1" stop-color="#0f5fd8"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60" rx="27" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#858994" d="M9 19L49 9L57 13V49L17 59L9 55Z"/>
+<g clip-path="url(#block)">
+<path fill="url(#edge)" d="M9 19L17 23V59L9 55Z"/>
+<path fill="url(#redside)" d="M9 19L17 23V32L9 28Z"/>
+<g class="from96" fill="none" stroke="#6d717c" stroke-width=".35"><path d="M9 34L17 38M9 40L17 44M9 46L17 50"/></g>
+<path fill="url(#redtop)" d="M9 19L49 9L57 13L17 23Z"/>
+<g transform="matrix(1 -.25 0 1 17 23)">
+<path fill="url(#leaf)" d="M0 0H40V36H0Z"/>
+<path fill="url(#redg)" d="M0 0H40V9H0Z"/>
+<path class="from48" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".4" d="M0 9H40"/>
+<g class="from48" fill="#a9adb8"><rect x="4.4" y="13" width="4.6" height="4.4"/><rect x="11.05" y="13" width="4.6" height="4.4"/><rect x="17.7" y="13" width="4.6" height="4.4"/><rect x="24.35" y="13" width="4.6" height="4.4"/><rect x="31" y="13" width="4.6" height="4.4"/><rect x="4.4" y="19.8" width="4.6" height="4.4"/><rect x="11.05" y="19.8" width="4.6" height="4.4"/><rect x="24.35" y="19.8" width="4.6" height="4.4"/><rect x="31" y="19.8" width="4.6" height="4.4"/><rect x="4.4" y="26.6" width="4.6" height="4.4"/><rect x="11.05" y="26.6" width="4.6" height="4.4"/><rect x="17.7" y="26.6" width="4.6" height="4.4"/><rect x="24.35" y="26.6" width="4.6" height="4.4"/></g>
+<rect class="from48" x="17.2" y="19.3" width="5.6" height="5.4" fill="url(#today)"/>
+<g class="from24"><g class="upto32"><rect x="5" y="13" width="8" height="7" fill="#a9adb8"/><rect x="16" y="13" width="8" height="7" fill="#a9adb8"/><rect x="27" y="13" width="8" height="7" fill="#a9adb8"/><rect x="5" y="23" width="8" height="7" fill="#a9adb8"/><rect x="16" y="23" width="8" height="7" fill="url(#today)"/><rect x="27" y="23" width="8" height="7" fill="#a9adb8"/></g></g>
+<g class="upto16"><rect x="4" y="13" width="14" height="9" fill="#a9adb8"/><rect x="22" y="13" width="14" height="9" fill="#a9adb8"/><rect x="4" y="25" width="14" height="9" fill="#a9adb8"/><rect x="22" y="25" width="14" height="9" fill="url(#today)"/></g>
+<g class="from32" fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="2.6" d="M11-3V3.4M29-3V3.4"/><path stroke="#e3e6ee" stroke-width="1.3" d="M11-3V3.4M29-3V3.4"/></g>
+</g>
+</g>
+<path class="h from48" stroke-opacity="0.75" stroke-width=".55" d="M10.2 19.4L48.8 9.75"/>
+</svg>

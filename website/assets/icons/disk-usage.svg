@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="59.8" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.03) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="side" x1="-26" y1="-20" x2="-18" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0f5ad0"/><stop offset="1" stop-color="#b61818"/></linearGradient>
+<linearGradient id="hub" x1="-7" y1="-7" x2="7" y2="7" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6e8ed"/><stop offset="1" stop-color="#9a9ea9"/></linearGradient>
+<linearGradient id="ring1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fafbfc"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="lens1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9f0ff"/><stop offset="0.5" stop-color="#8fcbff"/><stop offset="1" stop-color="#4f9df0"/></linearGradient>
+<linearGradient id="grip1" x1="0" y1="-3.4" x2="0" y2="3.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6d7280"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<linearGradient id="gloss" x1="-14" y1="-18" x2="6" y2="10" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".4"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="59.8" rx="24" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 28.2 28.5)">
+<path class="o" fill="url(#side)" d="M12 -16A20 20 0 0 1 -12 16L-17 12.25A20 20 0 0 1 7 -19.75Z"/>
+<circle cx="0" cy="0" r="20" fill="#2380f4"/>
+<path class="h from48" stroke-opacity="0" stroke-width=".55" d="M-18.8 4A19.4 19.4 0 0 1 5 -18.6"/>
+<path fill="#2380f4" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M-7.33 1.03L-19.81 2.78A20 20 0 0 1 4.16 -19.56L1.54 -7.24A7.4 7.4 0 0 0 -7.33 1.03Z"/><path fill="#ffc21a" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M1.54 -7.24L4.16 -19.56A20 20 0 0 1 19.32 -5.18L7.15 -1.92A7.4 7.4 0 0 0 1.54 -7.24Z"/><path fill="#2fb536" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M7.15 -1.92L19.32 -5.18A20 20 0 0 1 15.32 12.86L5.67 4.76A7.4 7.4 0 0 0 7.15 -1.92Z"/><path fill="#f03a30" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M5.67 4.76L15.32 12.86A20 20 0 0 1 -19.81 2.78L-7.33 1.03A7.4 7.4 0 0 0 5.67 4.76Z"/>
+<circle r="20" fill="url(#gloss)"/>
+<circle r="7.8" fill="#1b1b1f"/><circle r="7" fill="url(#hub)"/>
+<path class="h from48" stroke-opacity=".6" stroke-width=".55" d="M-18.6 4A19.2 19.2 0 0 1 5 -18.6"/>
+</g>
+<g transform="translate(42 42) rotate(45)">
+<rect class="o" x="9.9" y="-1.7" width="6.4" height="3.4" fill="#b9bcc6"/>
+<rect class="o" x="14.9" y="-3.4" width="9.5" height="6.8" rx="3.2" fill="url(#grip1)"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".6" d="M17 -2H22"/>
+</g>
+<circle class="o" cx="42" cy="42" r="10.5" fill="url(#ring1)"/>
+<circle cx="42" cy="42" r="7.9" fill="#1b1b1f" fill-opacity=".75"/>
+<circle cx="42" cy="42" r="7.4" fill="url(#lens1)"/>
+<path class="from48" fill="#fff" fill-opacity=".65" d="M37.16 40.23A5.9 5.9 0 0 1 41.41 36.57A7.5 7.5 0 0 0 37.16 40.23Z"/>
+</svg>

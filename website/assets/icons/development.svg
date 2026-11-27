@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="33" y1="53.4" x2="34.1" y2="57.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="2" y1="2" x2="34" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#f4f5f9"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="fold" x1="26" y1="10" x2="32.5" y2="3.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="-8" x2="0" y2="8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="wood" x1="0" y1="-2.8" x2="0" y2="2.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd070"/><stop offset="0.5" stop-color="#f0a21c"/><stop offset="1" stop-color="#c27a08"/></linearGradient>
+<linearGradient id="head" x1="-5" y1="-12" x2="5" y2="10" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d5d8df"/><stop offset="0.5" stop-color="#8b8f9b"/><stop offset="1" stop-color="#5a5f6b"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M15 60.4L50 51.6L53 54.6L19 63Z"/>
+<g transform="matrix(1 -.25 0 1 14 13.5)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V45.8Q36 47 34.8 47H1.2Q0 47 0 45.8V1.2Q0 0 1.2 0Z"/>
+<path class="from48" fill="#1b1b1f" fill-opacity=".14" d="M26 10.6H36V13.2L27 11.6Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<g fill="none" stroke="#2380f4" stroke-linecap="round" stroke-linejoin="round"><path class="from32" stroke-width="2.6" d="M12 31.5L6.6 36.5L12 41.5M24.4 31.5L29.8 36.5L24.4 41.5M20.4 29.6L16 43.4"/><path class="upto24" stroke-width="3.4" d="M12 31L6 36.5L12 42M24.4 31L30.4 36.5L24.4 42"/></g></g>
+<g transform="translate(33 28.5) rotate(-32.9)"><g class="o" fill="url(#steel)"><path fill-rule="evenodd" d="M-31.5 0A6.5 6.5 0 1 0 -18.5 0A6.5 6.5 0 1 0 -31.5 0ZM-27.8 0A2.8 2.8 0 1 1 -22.2 0A2.8 2.8 0 1 1 -27.8 0Z"/><path d="M-22 -2.8H20V2.8H-22Z"/><path d="M30.9 -3.2A7.6 7.6 0 1 0 30.9 3.2H26L23.6 0L26 -3.2Z"/></g><g fill="url(#steel)"><path fill-rule="evenodd" d="M-31.5 0A6.5 6.5 0 1 0 -18.5 0A6.5 6.5 0 1 0 -31.5 0ZM-27.8 0A2.8 2.8 0 1 1 -22.2 0A2.8 2.8 0 1 1 -27.8 0Z"/><path d="M-22 -2.8H20V2.8H-22Z"/><path d="M30.9 -3.2A7.6 7.6 0 1 0 30.9 3.2H26L23.6 0L26 -3.2Z"/></g><path class="h from48" stroke-opacity=".7" stroke-width=".6" d="M-20 -1.4H18"/></g>
+<g transform="translate(23 15) rotate(47.1)">
+<rect class="o" x="2" y="-2.9" width="36" height="5.8" rx="2.2" fill="url(#wood)"/>
+<path class="h from48" stroke="#fff3c9" stroke-opacity=".8" stroke-width=".6" d="M6 -1.6H35"/>
+<path class="o" fill="url(#head)" d="M-4.4-3.6Q-6-10-1.2-13.4Q1.4-8.6 4.6-4.4V7.4Q4.6 10 2.4 10H-2.4Q-4.6 10-4.6 7.4Z"/>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width=".6" stroke-linecap="round" d="M-3.2-3.4Q-4.2-8.6-1.4-11.4M-3.4-1V7.4"/>
+</g>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".2"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="40" y2="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe066"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+<linearGradient id="glass" x1="9" y1="13" x2="31" y2="29" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6f1ff"/><stop offset="1" stop-color="#a9cdf8"/></linearGradient>
+<linearGradient id="frame" x1="7" y1="8" x2="33" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4c9dff"/><stop offset="1" stop-color="#1259d0"/></linearGradient>
+<linearGradient id="tab" x1="7" y1="8" x2="33" y2="13" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe066"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M12 59L52 49L55 52L16 62.6Z"/>
+<g transform="matrix(1 -.25 0 1 12.5 19.5)">
+<path class="o" fill="#b97a07" d="M0 0L11 0L11 4L4 4L4 11L0 11ZM-2.4 -1.8L8.6 -1.8L8.6 2.2L1.6 2.2L1.6 9.2L-2.4 9.2ZM-2.4 -1.8L8.6 -1.8L11 0L0 0ZM11 0L11 4L8.6 2.2L8.6 -1.8ZM11 4L4 4L1.6 2.2L8.6 2.2ZM4 4L4 11L1.6 9.2L1.6 2.2ZM4 11L0 11L-2.4 9.2L1.6 9.2ZM-2.4 9.2L-2.4 -1.8L0 0L0 11Z"/><path fill="#fff3b0" d="M-2.4 -1.8L8.6 -1.8L11 0L0 0Z"/><path fill="url(#gold)" d="M0 0L11 0L11 4L4 4L4 11L0 11Z"/>
+<path class="o" fill="#b97a07" d="M40 11L36 11L36 4L29 4L29 0L40 0ZM37.6 9.2L33.6 9.2L33.6 2.2L26.6 2.2L26.6 -1.8L37.6 -1.8ZM40 11L36 11L33.6 9.2L37.6 9.2ZM33.6 9.2L33.6 2.2L36 4L36 11ZM36 4L29 4L26.6 2.2L33.6 2.2ZM26.6 2.2L26.6 -1.8L29 0L29 4ZM26.6 -1.8L37.6 -1.8L40 0L29 0ZM40 0L40 11L37.6 9.2L37.6 -1.8Z"/><path fill="#fff3b0" d="M26.6 -1.8L37.6 -1.8L40 0L29 0Z"/><path fill="url(#gold)" d="M40 11L36 11L36 4L29 4L29 0L40 0Z"/>
+<path class="o" fill="#b97a07" d="M0 27L4 27L4 34L11 34L11 38L0 38ZM-2.4 25.2L1.6 25.2L1.6 32.2L8.6 32.2L8.6 36.2L-2.4 36.2ZM-2.4 25.2L1.6 25.2L4 27L0 27ZM4 27L4 34L1.6 32.2L1.6 25.2ZM1.6 32.2L8.6 32.2L11 34L4 34ZM11 34L11 38L8.6 36.2L8.6 32.2ZM11 38L0 38L-2.4 36.2L8.6 36.2ZM-2.4 36.2L-2.4 25.2L0 27L0 38Z"/><path fill="#fff3b0" d="M-2.4 25.2L1.6 25.2L4 27L0 27ZM1.6 32.2L8.6 32.2L11 34L4 34Z"/><path fill="url(#gold)" d="M0 27L4 27L4 34L11 34L11 38L0 38Z"/>
+<path class="o" fill="#b97a07" d="M40 38L29 38L29 34L36 34L36 27L40 27ZM37.6 36.2L26.6 36.2L26.6 32.2L33.6 32.2L33.6 25.2L37.6 25.2ZM40 38L29 38L26.6 36.2L37.6 36.2ZM26.6 36.2L26.6 32.2L29 34L29 38ZM26.6 32.2L33.6 32.2L36 34L29 34ZM33.6 32.2L33.6 25.2L36 27L36 34ZM33.6 25.2L37.6 25.2L40 27L36 27ZM40 27L40 38L37.6 36.2L37.6 25.2Z"/><path fill="#fff3b0" d="M26.6 32.2L33.6 32.2L36 34L29 34ZM33.6 25.2L37.6 25.2L40 27L36 27Z"/><path fill="url(#gold)" d="M40 38L29 38L29 34L36 34L36 27L40 27Z"/>
+
+<path class="o" fill="#0b3fa6" d="M7 8H33V30H7Z" transform="translate(-2.4 -1.8)"/>
+<path class="o" fill="url(#frame)" d="M7 8H33V30H7Z"/>
+<path fill="url(#tab)" d="M7 8H33V13H7Z"/>
+<rect x="9" y="15" width="22" height="13" fill="#1b1b1f" fill-opacity=".5"/><rect x="9.6" y="15.6" width="20.8" height="11.8" fill="url(#glass)"/>
+<g class="from48"><circle cx="24.6" cy="10.5" r="1.2" fill="#f03a30" stroke="#1b1b1f" stroke-width=".3"/><circle cx="27.6" cy="10.5" r="1.2" fill="#ffc21a" stroke="#1b1b1f" stroke-width=".3"/><circle cx="30.6" cy="10.5" r="1.2" fill="#2fb536" stroke="#1b1b1f" stroke-width=".3"/></g>
+<path class="from48" fill="#fff" fill-opacity=".6" d="M9.6 15.6H20L11 27.4H9.6Z"/>
+</g>
+</svg>

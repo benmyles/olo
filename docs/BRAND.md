@@ -45,7 +45,7 @@ kit loads it with Olo's other faces; `style::brand_font(weight)` (family
 as the brand, never for a control's or a document's text (that is Noto
 Sans). ExtraBold (800) for "Olo", SemiBold (600) for "DESKTOP"
 (`olo_theme::fonts::BRAND_WEIGHT`, `BRAND_SUB_WEIGHT`). The website
-carries it as a Latin subset (`website/static/fonts/sora.woff2`).
+carries it as a Latin subset (`website/assets/fonts/sora.woff2`).
 
 ## Where each is used
 

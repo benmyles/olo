@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#0b0d14;stroke-width:1.2;stroke-linejoin:round}.l{fill:none;stroke:#0b0d14;stroke-width:.7}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="59.8" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52) scale(1 .13)"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="body"><ellipse cx="29.7" cy="32.7" rx="31.4" ry="24.2"/></clipPath>
+<clipPath id="hole"><ellipse cx="30.53" cy="28.11" rx="15.16" ry="8.57" transform="rotate(-5.3 30.53 28.11)"/></clipPath>
+<clipPath id="face"><ellipse cx="30.4" cy="27.85" rx="29.2" ry="19.2"/></clipPath>
+<mask id="through" maskUnits="userSpaceOnUse" x="-12" y="-12" width="88" height="88"><path fill="#fff" d="M-12-12H76V76H-12Z"/><ellipse cx="28.63" cy="35.41" rx="15.16" ry="8.57" transform="rotate(-5.3 28.63 35.41)" fill="#000" clip-path="url(#hole)"/></mask>
+<linearGradient id="rim" x1="30" y1="42" x2="28.8" y2="57.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd21a"/><stop offset=".35" stop-color="#ffc400"/><stop offset=".7" stop-color="#f8a900"/><stop offset="1" stop-color="#dc8000"/></linearGradient>
+<linearGradient id="blue" x1="30" y1="8.6" x2="30" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3f97ff"/><stop offset=".4" stop-color="#1177fe"/><stop offset="1" stop-color="#0661f6"/></linearGradient>
+<radialGradient id="glow" cx="15" cy="16" r="15" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".62"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="wall" x1="15" y1="0" x2="46" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd20a"/><stop offset=".35" stop-color="#ffe21a"/><stop offset=".72" stop-color="#f0a800"/><stop offset="1" stop-color="#c27300"/></linearGradient>
+</defs>
+
+<g transform="rotate(-40.2 30.05 28.36)">
+<g mask="url(#through)">
+<ellipse class="o" cx="29.7" cy="32.7" rx="31.4" ry="24.2" fill="url(#rim)"/>
+<g clip-path="url(#body)">
+<ellipse class="from48" cx="30.3" cy="28.4" rx="29.2" ry="19.2" fill="none" stroke="#fff3a8" stroke-opacity=".85" stroke-width=".6"/>
+<ellipse cx="30.4" cy="27.85" rx="29.2" ry="19.2" fill="url(#blue)"/>
+<g class="from48" clip-path="url(#face)"><ellipse cx="15" cy="16" rx="17" ry="8.5" fill="url(#glow)" transform="rotate(-20 15 16)"/></g>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width=".55" stroke-linecap="round" d="M2.6 23.2A28.4 18.4 0 0 1 41 10.8"/>
+</g>
+<g clip-path="url(#hole)"><path fill="url(#wall)" d="M13 16H48V40H13Z"/></g>
+</g>
+<ellipse class="l" cx="30.53" cy="28.11" rx="15.16" ry="8.57" transform="rotate(-5.3 30.53 28.11)"/>
+<ellipse class="l" cx="28.63" cy="35.41" rx="15.16" ry="8.57" transform="rotate(-5.3 28.63 35.41)" clip-path="url(#hole)"/>
+<path class="from48" fill="none" stroke="#9dccff" stroke-opacity=".9" stroke-width=".45" stroke-linecap="round" d="M17 33.4A15.8 9.2 -5.3 0 0 45.4 29.6"/>
+</g>
+</svg>

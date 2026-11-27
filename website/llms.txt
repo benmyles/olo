@@ -1,0 +1,18 @@
+# Olo Desktop
+
+> A whole desktop for Linux in the spirit of BeOS, from the Wayland window server to two dozen apps, written in Rust on one shared kit. Fast and light, measured, and made for people and their AI agents alike: every window is also a tree an agent can read and drive through `olo-screen`. Beta, for Fedora 44 and 45. MIT licence.
+
+## This site
+
+- [The page as Markdown](index.md): everything on olo-desktop.com, for agents
+
+## Docs
+
+- [README](https://github.com/benmyles/olo/blob/main/README.md): what Olo is, its apps, and how to install it
+- [The Olo Book](https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md): how the kits work and how to build with them
+- [Hacking](https://github.com/benmyles/olo/blob/main/docs/HACKING.md): the layout, the kit, the look-and-feel rules, testing
+- [The brand](https://github.com/benmyles/olo/blob/main/docs/BRAND.md): the mark, the wordmark, the colours, Sora
+
+## Install
+
+- [Releases](https://github.com/benmyles/olo/releases): each with the Installer, `olo-installer-x86_64`

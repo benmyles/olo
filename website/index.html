@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olo Desktop: a desktop for Linux in the spirit of BeOS</title>
+<meta name="description" content="Olo is a whole desktop for Linux, from the Wayland window server to two dozen apps, written in Rust on one shared kit. Fast and light, measured, and made for people and their AI agents alike.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#C9DCFA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#030C2A" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/brand/mark.svg" type="image/svg+xml">
+<link rel="alternate" type="text/markdown" href="index.md" title="This page as Markdown, for agents">
+<link rel="preload" href="assets/fonts/sora.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/noto-sans.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:title" content="Olo Desktop">
+<meta property="og:description" content="A desktop for Linux in the spirit of BeOS. Fast, light, native, and made for people and AI agents alike.">
+<meta property="og:image" content="assets/img/desktop-1280.webp">
+<script>
+/* Before the first paint: the look asked for (?theme=), else the one chosen last time, else the system's. */
+(function () {
+  var t = (location.search.match(/[?&]theme=(light|dark|night)\b/) || [])[1] || null;
+  if (!t) try { t = localStorage.getItem("olo-theme"); } catch (e) {}
+  if (t !== "light" && t !== "dark" && t !== "night") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+})();
+</script>
+<link rel="stylesheet" href="assets/site.css">
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+
+<!-- Deskbar: the page's own, as Olo's sits on every display, top right. -->
+<aside class="deskbar" id="deskbar" aria-label="Deskbar" data-folded="auto">
+  <div class="db-head">
+    <a class="db-mark" href="#top" aria-label="Olo Desktop, to the top"><img src="assets/brand/mark.svg" alt="" width="22" height="22"></a>
+    <span class="db-front" id="db-front" aria-hidden="true">Olo</span>
+    <button class="db-fold" type="button" aria-controls="deskbar" aria-expanded="true" aria-label="Fold Deskbar" title="Fold Deskbar">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5 6 6 2.5 9.5M6.5 2.5 10 6 6.5 9.5"/></svg>
+    </button>
+  </div>
+  <div class="db-body">
+    <div class="db-clock"><span id="db-date">Olo</span><span id="db-time"></span></div>
+    <div class="db-tray" role="group" aria-label="Look">
+      <button type="button" data-set-theme="light" aria-pressed="false">Light</button>
+      <button type="button" data-set-theme="dark" aria-pressed="false">Dark</button>
+      <button type="button" data-set-theme="night" aria-pressed="false" title="Dark, and warmer, as Olo's night light makes the screen">Night</button>
+    </div>
+    <label class="db-agent" title="This page as an agent reads it">
+      <input type="checkbox" id="agent-toggle">
+      <span class="db-check" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.2 5 8.6 9.6 3.4"/></svg></span>
+      <span>Agent view</span>
+    </label>
+    <nav class="db-apps" aria-label="Sections">
+      <a href="#desktop"><img src="assets/icons/desktop.svg" alt="" width="16" height="16">The desktop</a>
+      <a href="#two-readers"><img src="assets/icons/query.svg" alt="" width="16" height="16">Two readers</a>
+      <a href="#agents"><img src="assets/icons/ai.svg" alt="" width="16" height="16">Agents</a>
+      <a href="#measured"><img src="assets/icons/performance.svg" alt="" width="16" height="16">Measured</a>
+      <a href="#apps"><img src="assets/icons/application.svg" alt="" width="16" height="16">Apps</a>
+      <a href="#looks"><img src="assets/icons/themes.svg" alt="" width="16" height="16">Looks</a>
+      <a href="#install"><img src="assets/icons/installer.svg" alt="" width="16" height="16">Install</a>
+    </nav>
+  </div>
+</aside>
+
+<div class="night-light" aria-hidden="true"></div>
+
+<!-- The page as an agent reads it: made from the page itself when asked. -->
+<section class="agent-view" id="agent-view" aria-label="This page as an agent reads it" hidden>
+  <div class="av-win win" data-menus="terminal">
+    <span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Terminal: olo-screen tree<span class="tab-zoom" aria-hidden="true"></span></span>
+    <div class="win-body av-body">
+      <button type="button" class="button small av-back" id="agent-back">Back to the page</button>
+      <pre class="av-tree" id="av-tree"></pre>
+    </div>
+  </div>
+</section>
+
+<main id="main">
+
+<!-- ============ The desktop, with nothing open yet ============ -->
+<header class="hero" id="top">
+  <div class="hero-wall" aria-hidden="true"></div>
+  <a class="hero-logo" href="#top" aria-label="Olo Desktop">
+    <img class="logo-mark" src="assets/brand/mark.svg" alt="" width="64" height="64">
+    <span class="logo-olo" aria-hidden="true"></span>
+  </a>
+  <span class="fold-line" id="fold-line" aria-hidden="true"></span>
+  <nav class="desk-icons" aria-label="Elsewhere">
+    <a href="https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md"><img src="assets/icons/document.svg" alt="" width="48" height="48"><span>The Olo Book</span></a>
+    <a href="https://github.com/benmyles/olo/releases"><img src="assets/icons/software-update.svg" alt="" width="48" height="48"><span>Releases</span></a>
+    <a href="https://github.com/benmyles/olo"><img src="assets/icons/development.svg" alt="" width="48" height="48"><span>Source</span></a>
+  </nav>
+  <div class="hero-copy">
+    <p class="eyebrow"><span class="pill" aria-label="Beta:">Beta</span> <span>For Fedora 44 and 45, on x86_64</span></p>
+    <h1>A whole desktop for Linux, in&nbsp;the&nbsp;spirit of&nbsp;BeOS.</h1>
+    <p class="lead">From the Wayland window server to two dozen apps, written in Rust on one shared kit. Fast and light, measured. Made for people and their AI agents alike.</p>
+    <div class="hero-actions">
+      <a class="button primary" href="#install">Install on Fedora</a>
+      <a class="button" href="https://github.com/benmyles/olo">Source on GitHub</a>
+    </div>
+    <p class="hero-small">Installs beside GNOME, which stays as it is. Under the MIT&nbsp;License.</p>
+  </div>
+</header>
+
+<!-- ============ 1. The desktop ============ -->
+<section class="sec" id="desktop" aria-labelledby="desktop-h">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>The desktop<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="desktop-h">Yellow tabs, a&nbsp;Deskbar, and a&nbsp;menu bar in every&nbsp;window.</h2>
+    <p class="sec-lead">Olo keeps what BeOS got right and adds what work in 2026 needs: a place for coding agents and the machines they run on, seven tiling layouts, five looks, and upgrades in place that keep every window open.</p>
+  </div>
+
+  <figure class="plate" id="plate">
+    <div class="plate-pic">
+      <img class="only-light" src="assets/img/desktop-1920.webp" srcset="assets/img/desktop-1280.webp 1280w, assets/img/desktop-1920.webp 1920w, assets/img/desktop-2560.webp 2560w" sizes="(min-width: 1240px) 1050px, 100vw" width="1920" height="1080" alt="Olo's desktop: Rex with an agent and its child agents, Tracker showing a picture, Calendar's month, and Deskbar at the top right" loading="lazy" decoding="async">
+      <img class="only-dark" src="assets/img/desktop-dark-1920.webp" srcset="assets/img/desktop-dark-1280.webp 1280w, assets/img/desktop-dark-1920.webp 1920w, assets/img/desktop-dark-2560.webp 2560w" sizes="(min-width: 1240px) 1050px, 100vw" width="1920" height="1080" alt="Olo's desktop in dark mode: Rex with an agent and its child agents, Tracker showing a picture, Calendar's month, and Deskbar at the top right" loading="lazy" decoding="async">
+      <a class="note top" href="#n1" style="--x: 7.3%; --y: 6.4%" aria-label="1: the tab"><b>1</b></a>
+      <a class="note top" href="#n2" style="--x: 26%; --y: 9.2%" aria-label="2: the menu bar"><b>2</b></a>
+      <a class="note left" href="#n5" style="--x: 6%; --y: 40%" aria-label="5: agents in Rex"><b>5</b></a>
+      <a class="note top" href="#n4" style="--x: 92.6%; --y: 1.4%" aria-label="4: Deskbar"><b>4</b></a>
+      <a class="note left" href="#n6" style="--x: 2.3%; --y: 71%" aria-label="6: Tracker"><b>6</b></a>
+      <a class="note top" href="#n3" style="--x: 85.6%; --y: 4.3%" aria-label="3: the desktop's icons"><b>3</b></a>
+    </div>
+    <figcaption>
+      <p class="plate-scale"><span class="wide">The whole desktop, at half its size.</span><span class="narrow">The whole desktop, small.</span> Every other picture on this page is at its own size: one of its pixels to one of&nbsp;yours.</p>
+      <ol class="legend">
+        <li id="n1"><b>The tab.</b> Every window wears its name on a tab, yellow on the one you're in. Fan Out (⌃⌘/) sets the tabs side by side, so each can be&nbsp;seen.</li>
+        <li id="n2"><b>A menu bar in every window,</b> as in BeOS: the commands live with what they act&nbsp;on.</li>
+        <li id="n3"><b>The desktop</b> is Tracker's too: your disks, Home and what you keep on&nbsp;it.</li>
+        <li id="n4"><b>Deskbar.</b> The Olo menu, the clock with your next events, the tray, live meters, and this workspace's&nbsp;windows.</li>
+        <li id="n5"><b>Rex.</b> A coding agent, the agents it started under it, and its transcript, here or on a far&nbsp;host.</li>
+        <li id="n6"><b>Tracker.</b> Spatial folders, Quick Look for pictures, PDFs, video and archives, and any host's folders, at&nbsp;<code>rex://</code> addresses.</li>
+      </ol>
+    </figcaption>
+  </figure>
+
+  <div class="trio grid3">
+    <figure>
+      <div class="shot" style="--w: 326px; --h: 205px">
+        <img class="only-light" src="assets/img/palette-1to1-1x.webp" srcset="assets/img/palette-1to1-1x.webp 1x, assets/img/palette-1to1-2x.webp 2x" width="326" height="205" alt="The command palette answering “term”: a window, an app, a Preferences panel and settings inside it" loading="lazy" decoding="async">
+        <img class="only-dark" src="assets/img/palette-dark-1to1-1x.webp" srcset="assets/img/palette-dark-1to1-1x.webp 1x, assets/img/palette-dark-1to1-2x.webp 2x" width="326" height="205" alt="The command palette in dark mode answering “term”" loading="lazy" decoding="async">
+      </div>
+      <figcaption><b>The command palette, <kbd>⌘Space</kbd></b>: apps, the front app's menu commands, single settings, windows, Rex panes, passwords, events and sums, ranked by a small model trained on your choices, on the computer.</figcaption>
+    </figure>
+    <figure>
+      <div class="layouts" role="img" aria-label="Olo's seven tiling layouts: Main and Stack, Halves, Columns, Rows, Grid, Spiral and Scrolling">
+        <svg viewBox="0 0 360 180" aria-hidden="true">
+          <defs><clipPath id="lay-clip"><rect width="66" height="46"/></clipPath></defs>
+          <g transform="translate(27 16)"><rect class="screen" width="66" height="46"/><rect class="tile front" x="3" y="3" width="36" height="40"/><rect class="tile" x="42" y="3" width="21" height="12"/><rect class="tile" x="42" y="17" width="21" height="12"/><rect class="tile" x="42" y="31" width="21" height="12"/><rect class="tabmark" x="3" y="3" width="12" height="4"/><text x="33" y="61">Main and Stack</text></g>
+          <g transform="translate(107 16)"><rect class="screen" width="66" height="46"/><rect class="tile front" x="3" y="3" width="28" height="40"/><rect class="tile" x="35" y="3" width="28" height="40"/><rect class="tabmark" x="3" y="3" width="12" height="4"/><text x="33" y="61">Halves</text></g>
+          <g transform="translate(187 16)"><rect class="screen" width="66" height="46"/><rect class="tile front" x="3" y="3" width="18" height="40"/><rect class="tile" x="24" y="3" width="18" height="40"/><rect class="tile" x="45" y="3" width="18" height="40"/><rect class="tabmark" x="3" y="3" width="12" height="4"/><text x="33" y="61">Columns</text></g>
+          <g transform="translate(267 16)"><rect class="screen" width="66" height="46"/><rect class="tile front" x="3" y="3" width="60" height="12"/><rect class="tile" x="3" y="17" width="60" height="12"/><rect class="tile" x="3" y="31" width="60" height="12"/><rect class="tabmark" x="3" y="3" width="12" height="4"/><text x="33" y="61">Rows</text></g>
+          <g transform="translate(67 104)"><rect class="screen" width="66" height="46"/><rect class="tile front" x="3" y="3" width="28" height="18"/><rect class="tile" x="35" y="3" width="28" height="18"/><rect class="tile" x="3" y="25" width="28" height="18"/><rect class="tile" x="35" y="25" width="28" height="18"/><rect class="tabmark" x="3" y="3" width="12" height="4"/><text x="33" y="61">Grid</text></g>
+          <g transform="translate(147 104)"><rect class="screen" width="66" height="46"/><rect class="tile front" x="3" y="3" width="30" height="40"/><rect class="tile" x="36" y="3" width="27" height="19"/><rect class="tile" x="36" y="25" width="13" height="18"/><rect class="tile" x="52" y="25" width="11" height="8"/><rect class="tile" x="52" y="36" width="11" height="7"/><rect class="tabmark" x="3" y="3" width="12" height="4"/><text x="33" y="61">Spiral</text></g>
+          <g transform="translate(227 104)"><rect class="screen" width="66" height="46"/><g clip-path="url(#lay-clip)"><rect class="tile front" x="13" y="3" width="30" height="40"/><rect class="tile ghost" x="46" y="3" width="30" height="40"/><rect class="tile ghost" x="-20" y="3" width="30" height="40"/><rect class="tabmark" x="13" y="3" width="12" height="4"/></g><text x="33" y="61">Scrolling</text></g>
+        </svg>
+      </div>
+      <figcaption><b>Seven tiling layouts,</b> per workspace, or windows that float as BeOS's did. Every app is made to fit a half, a third and a quarter of the&nbsp;screen.</figcaption>
+    </figure>
+    <figure>
+      <div class="shot" style="--w: 326px; --h: 205px">
+        <img class="only-light" src="assets/img/tracker-1to1-1x.webp" srcset="assets/img/tracker-1to1-1x.webp 1x, assets/img/tracker-1to1-2x.webp 2x" width="326" height="205" alt="Tracker: the Pictures folder as icons, in a window grouped with Home under one tab bar" loading="lazy" decoding="async">
+        <img class="only-dark" src="assets/img/tracker-dark-1to1-1x.webp" srcset="assets/img/tracker-dark-1to1-1x.webp 1x, assets/img/tracker-dark-1to1-2x.webp 2x" width="326" height="205" alt="Tracker in dark mode: the Pictures folder as icons" loading="lazy" decoding="async">
+      </div>
+      <figcaption><b>Tracker,</b> with Quick Look for pictures, PDFs, video, documents, spreadsheets and archives, read in process. Windows group under their tabs; each folder keeps its own&nbsp;view.</figcaption>
+    </figure>
+  </div>
+</div></div>
+</section>
+
+<!-- ============ 2. Two readers ============ -->
+<section class="sec" id="two-readers" aria-labelledby="readers-h" data-viewmenu="xray">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Two readers<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="readers-h">Everything you can see,<br class="wide"> an&nbsp;agent can&nbsp;read.</h2>
+    <p class="sec-lead">Every Olo window is also a tree of named things, each with its place on the screen. Agents read it and act on it by name, through a documented command, on a screen of their own: never by guessing at pixels, and never with your pointer.</p>
+  </div>
+
+  <div class="xray grid3" id="xray">
+    <div class="xray-side">
+    <div class="xray-desk">
+        <div class="xray-win">
+          <img class="only-light" src="assets/img/deskcalc-552.webp" width="276" height="269" alt="DeskCalc on an Agent Screen, its field showing 8.33333333333333" decoding="async" loading="lazy">
+          <img class="only-dark" src="assets/img/deskcalc-dark-552.webp" width="276" height="269" alt="DeskCalc on an Agent Screen in dark mode, its field showing 8.33333333333333" decoding="async" loading="lazy">
+          <svg class="xray-boxes" viewBox="0 0 276 269" aria-hidden="true" id="xray-boxes"></svg>
+        </div>
+        </div>
+      <div class="xray-switch" role="group" aria-label="What to show on DeskCalc">
+          <button type="button" data-xray="person" aria-pressed="true">What You See</button>
+          <button type="button" data-xray="agent" aria-pressed="false">What It Reads</button>
+        </div>
+      <p class="xray-note"><b>1000 ÷ 120 = 8.3.</b> The sum on DeskCalc is the budget every frame in Olo is measured against: 8.3 milliseconds at 120 Hz. <span class="hover-only">Point at a line of the tree, or at a key, to light one in the other.</span><span class="touch-only">Tap “What It Reads” to see the boxes the tree names.</span> Then turn on <b>Agent view</b> in the Deskbar to read this page the same&nbsp;way.</p>
+    </div>
+    <div class="term span2" aria-label="An agent's terminal">
+      <p class="term-label" aria-hidden="true">An agent's terminal</p>
+<pre class="term-body" id="xray-tree"><span class="ln i0"><span class="p">$</span> olo-screen tree agent</span>
+<span class="ln i0">window 1 "DeskCalc" (olo.deskcalc) focused</span>
+<span class="ln i2">  Window "DeskCalc" at 53,66 266x238</span>
+<span class="ln i4" data-i="0">    Button "7" at 69,134 42x34</span>
+<span class="ln i4" data-i="1">    Button "8" at 117,134 42x34</span>
+<span class="ln i4" data-i="2">    Button "9" at 165,134 42x34</span>
+<span class="ln i4" data-i="3">    Button "(" at 213,134 42x34</span>
+<span class="ln i4" data-i="4">    Button ")" at 261,134 42x34</span>
+<span class="ln i4" data-i="5">    Button "4" at 69,174 42x34</span>
+<span class="ln i4" data-i="6">    Button "5" at 117,174 42x34</span>
+<span class="ln i4" data-i="7">    Button "6" at 165,174 42x34</span>
+<span class="ln i4" data-i="8">    Button "×" at 213,174 42x34</span>
+<span class="ln i4" data-i="9">    Button "÷" at 261,174 42x34</span>
+<span class="ln i4" data-i="10">    Button "1" at 69,214 42x34</span>
+<span class="ln i4" data-i="11">    Button "2" at 117,214 42x34</span>
+<span class="ln i4" data-i="12">    Button "3" at 165,214 42x34</span>
+<span class="ln i4" data-i="13">    Button "+" at 213,214 42x34</span>
+<span class="ln i4" data-i="14">    Button "−" at 261,214 42x34</span>
+<span class="ln i4" data-i="15">    Button "0" at 69,254 42x34</span>
+<span class="ln i4" data-i="16">    Button "." at 117,254 42x34</span>
+<span class="ln i4" data-i="17">    Button "⌫" at 165,254 42x34</span>
+<span class="ln i4" data-i="18">    Button "=" at 213,254 42x34</span>
+<span class="ln i4" data-i="19">    Button "C" at 261,254 42x34</span>
+<span class="ln i4" data-i="20">    TextInput "Expression" value="1000/120" at 75,82 222x36 focused</span>
+<span class="ln i0"><span class="p">$</span> olo-screen click agent <span class="nb">--role Button</span> <span class="nb">--name "="</span></span>
+<span class="ln i0"><span class="p">$</span> olo-screen tree agent <span class="nb">--role TextInput</span></span>
+<span class="ln i4" data-i="20">    TextInput "Expression" value="8.33333333333333" at 75,82 222x36</span></pre>
+    </div>
+  </div>
+
+  <div class="facts grid3">
+    <div>
+      <h3>Read as structure</h3>
+      <p>The tree reads Olo's widgets, a web page's text and fields, and GTK and Qt windows alike. Every action answers with what is on the screen after it, so an agent always acts on what is there&nbsp;now.</p>
+    </div>
+    <div>
+      <h3>Never in your way</h3>
+      <p>An agent works on a screen of its own, so nothing it does moves your pointer or takes your keyboard. Every action is kept in the screen's history, to scrub back through or export as a&nbsp;video.</p>
+    </div>
+    <div>
+      <h3>On a far host too</h3>
+      <p>An agent on a remote machine can have a screen there, drawn in software where there's no GPU, with no root. It costs no processor time at rest, and stops when the agent's tab&nbsp;ends.</p>
+    </div>
+  </div>
+</div></div>
+</section>
+
+<!-- ============ 3. Agents ============ -->
+<section class="sec" id="agents" aria-labelledby="agents-h">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Agents<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="agents-h">A place for coding agents, and the machines they work&nbsp;on.</h2>
+    <p class="sec-lead">Claude Code, Codex and Antigravity are part of the desktop here: each one's state on its tab, in Deskbar and in a notification that jumps to the right pane, with the hosts they run on and the subscriptions they&nbsp;spend.</p>
+  </div>
+
+  <div class="feature grid3">
+    <figure class="feature-pic span2">
+      <div class="shot bare" style="--w: 688px; --h: 431px">
+        <img class="only-light" src="assets/img/rex-1to1-1x.webp" srcset="assets/img/rex-1to1-1x.webp 1x, assets/img/rex-1to1-2x.webp 2x" width="688" height="431" alt="Rex's Activity: an agent with its child agents under it, and its transcript with a tool call opened" loading="lazy" decoding="async">
+        <img class="only-dark" src="assets/img/rex-dark-1to1-1x.webp" srcset="assets/img/rex-dark-1to1-1x.webp 1x, assets/img/rex-dark-1to1-2x.webp 2x" width="688" height="431" alt="Rex in dark mode: an agent with its child agents, and its transcript" loading="lazy" decoding="async">
+      </div>
+    </figure>
+    <div class="feature-text">
+      <h3>Rex</h3>
+      <p>Olo's client for local and remote workspaces, over SSH or Tailscale. Sessions live on the server, so they outlast a reload, a closed lid and a change of network; what you type shows at once, even over a slow&nbsp;link.</p>
+      <p>An agent starts its own subagents as child tabs under its tab, on the host's agents service: they keep working with your laptop shut, and every one is there when you&nbsp;reconnect.</p>
+<pre class="code"><span class="p">$</span> olo agent start claude \
+    --name api-audit \
+    --model claude-opus-5-5 \
+    --effort max \
+    --prompt-file brief.md
+<span class="p">$</span> olo agent watch --all</pre>
+    </div>
+  </div>
+
+  <div class="feature grid3">
+    <figure class="feature-pic span2">
+      <div class="shot bare" style="--w: 688px; --h: 431px">
+        <img class="only-light" src="assets/img/screens-1to1-1x.webp" srcset="assets/img/screens-1to1-1x.webp 1x, assets/img/screens-1to1-2x.webp 2x" width="688" height="431" alt="Agent Screens: an agent's own desktop shown live, with its history, and Take Control" loading="lazy" decoding="async">
+        <img class="only-dark" src="assets/img/screens-dark-1to1-1x.webp" srcset="assets/img/screens-dark-1to1-1x.webp 1x, assets/img/screens-dark-1to1-2x.webp 2x" width="688" height="431" alt="Agent Screens in dark mode: an agent's own desktop shown live" loading="lazy" decoding="async">
+      </div>
+    </figure>
+    <div class="feature-text">
+      <h3>Agent Screens</h3>
+      <p>A whole desktop of the agent's own at 120 Hz, with its own session bus and Chrome profile. Watch it live with no copying, scrub back through its recorder, export an MP4, or take control with <kbd>⌘K</kbd> and hand it&nbsp;back.</p>
+<pre class="code"><span class="p">$</span> olo-screen start
+<span class="p">$</span> olo-screen run agent olo-styled-edit
+<span class="p">$</span> olo-screen click agent --name Save</pre>
+    </div>
+  </div>
+
+  <div class="feature grid3">
+    <figure class="feature-pic span2">
+      <div class="shot bare" style="--w: 688px; --h: 431px">
+        <img class="only-light" src="assets/img/pool-1to1-1x.webp" srcset="assets/img/pool-1to1-1x.webp 1x, assets/img/pool-1to1-2x.webp 2x" width="688" height="431" alt="Token Pool's accounts: Claude and ChatGPT subscriptions, each with its five-hour and weekly quota" loading="lazy" decoding="async">
+        <img class="only-dark" src="assets/img/pool-dark-1to1-1x.webp" srcset="assets/img/pool-dark-1to1-1x.webp 1x, assets/img/pool-dark-1to1-2x.webp 2x" width="688" height="431" alt="Token Pool in dark mode: subscriptions and their quotas" loading="lazy" decoding="async">
+      </div>
+    </figure>
+    <div class="feature-text">
+      <h3>Token Pool</h3>
+      <p>Your Claude and ChatGPT subscriptions in one pool for Claude Code and Codex: the quota that runs out first is spent first, and every model's limits are followed. Each host gets a pool of its own that keeps serving with your desktop&nbsp;off.</p>
+      <p>Pin its quota bars, or a heatmap of every account, in&nbsp;Deskbar.</p>
+    </div>
+  </div>
+
+  <div class="trio-text grid3">
+    <div>
+      <h3>Terminal</h3>
+      <p>Shells that outlive reloads and upgrades, tab groups by repository with their worktrees, each tab's pull request and checks, and <b>Keep It Going</b> and <b>Auto Approve</b> for the agents in them, each yours to turn&nbsp;on.</p>
+    </div>
+    <div>
+      <h3>The bridge</h3>
+      <p>Inside any Rex session, <code>olo</code> reaches back to your desktop: open a link, forward a port, send a file, keep a folder in sync, borrow a password. Every permission starts off, per&nbsp;host.</p>
+    </div>
+    <div>
+      <h3>Integrations</h3>
+      <p>Google, Fastmail, CalDAV, GitHub and Telegram accounts in one place. Adding a Google account has Claude Code make its Cloud app for you, on an Agent Screen you can&nbsp;follow.</p>
+    </div>
+  </div>
+</div></div>
+</section>
+
+<!-- ============ 4. Measured ============ -->
+<section class="sec" id="measured" aria-labelledby="measured-h">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Measured<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="measured-h">At rest, Olo does nothing at&nbsp;all.</h2>
+    <p class="sec-lead">No polling, and no frame when nothing changed. Every change to what runs each frame, each event or at rest is measured on release builds before and after, and the numbers go in its commit. A few, from the&nbsp;log:</p>
+  </div>
+
+  <ol class="ledger">
+    <li class="grid3">
+      <p class="fig"><span class="was">4 to 10</span><span class="arrow" aria-hidden="true">→</span><span class="now">0</span></p>
+      <p class="what"><b>Calendar at rest, frames in ten seconds.</b> Now none, 0.0% of a core and 0 wakeups a second, in its month, week and agenda. Stepping through months: 0.71 ms a frame, of the 8.3 it&nbsp;has.</p>
+      <p class="src"><a href="https://github.com/benmyles/olo/commit/a5e17ca28">a5e17ca28</a> <time datetime="2026-11-18">18 Nov</time></p>
+    </li>
+    <li class="grid3">
+      <p class="fig"><span class="was">1.9%</span><span class="arrow" aria-hidden="true">→</span><span class="now">0.1%</span></p>
+      <p class="what"><b>An Agent Screen with nothing to do, its share of a core.</b> Its wakes went from 90 a second to 8; from a click to its first new frame, 37 to 42&nbsp;ms.</p>
+      <p class="src"><a href="https://github.com/benmyles/olo/commit/281482885">281482885</a> <time datetime="2026-11-20">20 Nov</time></p>
+    </li>
+    <li class="grid3">
+      <p class="fig"><span class="was">200</span><span class="arrow" aria-hidden="true">→</span><span class="now">0</span></p>
+      <p class="what"><b>A chart drawn again the same, frames in ten seconds.</b> The same picture is never a frame: 8.60% of a processor became&nbsp;0.90%.</p>
+      <p class="src"><a href="https://github.com/benmyles/olo/commit/6069d2d5f">6069d2d5f</a> <time datetime="2026-11-21">21 Nov</time></p>
+    </li>
+    <li class="grid3">
+      <p class="fig"><span class="was">244</span><span class="arrow" aria-hidden="true">→</span><span class="now">44<small> MiB</small></span></p>
+      <p class="what"><b>A window filling a 5K display, its GPU memory</b> once it has rested thirty seconds and isn't the one you're in. It comes back in 1.4 to 3.1 ms when you&nbsp;return.</p>
+      <p class="src"><a href="https://github.com/benmyles/olo/commit/965bdefd3">965bdefd3</a> <time datetime="2026-11-17">17 Nov</time></p>
+    </li>
+    <li class="grid3">
+      <p class="fig"><span class="was">3.9%</span><span class="arrow" aria-hidden="true">→</span><span class="now">~0</span></p>
+      <p class="what"><b>The command palette at rest, its share of a core,</b> following all 36,873 folders of a home: a folder made or removed costs only what&nbsp;changed.</p>
+      <p class="src"><a href="https://github.com/benmyles/olo/commit/7c02d4d12">7c02d4d12</a> <time datetime="2026-11-14">14 Nov</time></p>
+    </li>
+  </ol>
+  <p class="ledger-foot">Each is judged in absolute terms: a frame's work against its budget, the processor at rest and while animating, and the wait from a key to its pixel. Never against another&nbsp;toolkit.</p>
+</div></div>
+</section>
+
+<!-- ============ 5. Apps ============ -->
+<section class="sec" id="apps" aria-labelledby="apps-h">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Apps<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="apps-h">Twenty-four apps of its own,<br class="wide"> all on one&nbsp;kit.</h2>
+    <p class="sec-lead">Native through and through: Bluetooth phone profiles, SSH, Telegram's protocol, CalDAV, PDFs, OCR, video and archives are read and spoken in Rust, in process, so the whole desktop looks and behaves as&nbsp;one.</p>
+  </div>
+
+  <div class="tracker" id="tracker">
+    <div class="tracker-win view">
+      <ul class="icons" role="list" id="app-icons">
+        <li><button type="button" data-app="rex" data-w="840" data-h="479" data-shot="an agent's workspace, its child agents and its transcript" aria-haspopup="dialog" data-about="Local and remote workspaces for coding agents, with child tabs, live transcripts and predictive typing over SSH and Tailscale."><img src="assets/icons/rex.svg" alt="" width="48" height="48" loading="lazy"><span>Rex</span></button><div class="app-more" hidden><p>An agent's children open as nested tabs under it (<code>olo agent</code>), each with a transcript you can read as it works.</p><p>Typing on a far host is predicted, so it feels near.</p><p>Hosts and accounts are set up from Rex itself; <code>olo sync</code> and Move to Another Host carry a workspace between machines.</p></div></li>
+        <li><button type="button" data-app="terminal" data-w="840" data-h="479" data-shot="a tab group across two repositories and a worktree, each tab titled by its coding agent" aria-haspopup="dialog" data-about="Shells that outlive upgrades, tab groups and worktrees, pull request badges, Keep It Going and Auto Approve."><img src="assets/icons/terminal.svg" alt="" width="48" height="48" loading="lazy"><span>Terminal</span></button><div class="app-more" hidden><p>Its shells live in <code>olo-termd</code>, apart from the window, so an upgrade or a reload never ends one.</p><p>Worktrees are made in process with libgit2, and a pull request's checks show as a badge on its tab.</p><p>A coding agent titles its own tab. The shell is <code>brush</code>, with <code>olo-complete</code>'s suggestions.</p></div></li>
+        <li><button type="button" data-app="agent-screens" data-w="840" data-h="479" data-shot="an agent's screen, live, with its history and controls" aria-haspopup="dialog" data-about="Headless desktops for agents at 120 Hz: watch live, take control, scrub the history, export video."><img src="assets/icons/agent-screens.svg" alt="" width="48" height="48" loading="lazy"><span>Agent Screens</span></button><div class="app-more" hidden><p>Each agent's screen is a whole Olo desktop of its own. It reads windows and web pages as trees and acts by name, never with your pointer.</p><p>Take control with <kbd>⌘K</kbd>; recordings keep only the frames that changed.</p><p>Passwords are shared with a screen one item at a time.</p></div></li>
+        <li><button type="button" data-app="token-pool" data-w="840" data-h="479" data-shot="two subscriptions and their limits, one signed out" aria-haspopup="dialog" data-about="Claude and ChatGPT subscriptions pooled across Claude Code and Codex, here and on your hosts."><img src="assets/icons/token-pool.svg" alt="" width="48" height="48" loading="lazy"><span>Token Pool</span></button><div class="app-more" hidden><p>One window, in three tabs: Accounts, Activity and Machines.</p><p>Each remote host can keep a pool of its own (<code>olo-pool-host</code>).</p><p>It upgrades without a gap in service.</p></div></li>
+        <li><button type="button" data-app="tracker" data-w="840" data-h="479" data-shot="the Pictures folder in Icon view" aria-haspopup="dialog" data-about="The desktop and spatial folders: Icon, List and Column views, Quick Look, archives, and rex:// hosts."><img src="assets/icons/tracker.svg" alt="" width="48" height="48" loading="lazy"><span>Tracker</span></button><div class="app-more" hidden><p>Folders open spatially, as BeOS's did, each keeping its own view, or in one window.</p><p>Quick Look reads pictures, PDFs, video, documents, spreadsheets and archives (zip, tar, 7z, RAR, ISO and more) in process.</p><p>DiskBackup's Older Versions of a file are in its menu.</p></div></li>
+        <li><button type="button" data-app="styled-edit" data-w="840" data-h="479" data-shot="the welcome document, in Markdown, with a table" aria-haspopup="dialog" data-about="Styled text, Markdown and code, tables, pictures, spelling and print; .docx, .odt, .rtf and PDF out."><img src="assets/icons/styled-edit.svg" alt="" width="48" height="48" loading="lazy"><span>StyledEdit</span></button><div class="app-more" hidden><p>Styles are kept in the file's attributes, as BeOS's StyledEdit kept them, so the text itself stays plain.</p><p>Code is highlighted; Page View and a ruler show the printed page.</p><p>It opens and saves <code>.docx</code>, <code>.odt</code>, <code>.rtf</code>, HTML and Markdown.</p></div></li>
+        <li><button type="button" data-app="viewer" data-w="840" data-h="479" data-shot="a picture" aria-haspopup="dialog" data-about="Pictures with OCR text you can select, PDFs you can fill and sign, slide decks, and video decoded on the GPU."><img src="assets/icons/show-image.svg" alt="" width="48" height="48" loading="lazy"><span>Viewer</span></button><div class="app-more" hidden><p>Pictures to crop, rotate, flip and resize; their text is read on the computer.</p><p>PDFs to search and to present full screen, and <code>.pptx</code> decks.</p><p>Video from 0.25× to 2×, and audio.</p></div></li>
+        <li><button type="button" data-app="deskcalc" data-w="276" data-h="248" data-shot="1000 ÷ 120" aria-haspopup="dialog" data-about="BeOS's desk calculator, with scientific keys. It knows the frame budget."><img src="assets/icons/calculator.svg" alt="" width="48" height="48" loading="lazy"><span>DeskCalc</span></button><div class="app-more" hidden><p>Its keys are in the tree an agent reads, as every Olo window's are: an agent presses <b>=</b> by name.</p><p>Here it works out Olo's frame budget: 1000 ÷ 120, in milliseconds.</p></div></li>
+        <li><button type="button" data-app="calendar" data-w="840" data-h="479" data-shot="a week of a made-up month" aria-haspopup="dialog" data-about="Google, Fastmail and CalDAV in one: day, week, month and agenda, invitations, and drafts that wait for your click."><img src="assets/icons/calendar.svg" alt="" width="48" height="48" loading="lazy"><span>Calendar</span></button><div class="app-more" hidden><p>Events are kept as lossless iCalendar, so what another calendar wrote comes back as it was.</p><p>Drag to move or resize; answer invitations; set reminders.</p><p>Deskbar's widgets show what's next.</p></div></li>
+        <li><button type="button" data-app="todo" data-w="840" data-h="479" data-shot="Today's tasks, one open beside them" aria-haspopup="dialog" data-about="Task lists as .ics: Today, Upcoming, Kanban boards, reminders, and quick entry from the palette."><img src="assets/icons/todo.svg" alt="" width="48" height="48" loading="lazy"><span>To-Do</span></button><div class="app-more" hidden><p>Lists of your own beside Today, Upcoming, All and Done, as a list or a board.</p><p>Quick entry understands plain words; tasks take reminders and attachments.</p><p>And Deskbar widgets.</p></div></li>
+        <li><button type="button" data-app="passwords" data-w="840" data-h="479" data-shot="an unlocked vault, an item open" aria-haspopup="dialog" data-about="An encrypted vault with passkeys, one-time codes and SSH keys, a drop-in op command, and sharing with agents' screens."><img src="assets/icons/passwords.svg" alt="" width="48" height="48" loading="lazy"><span>Passwords</span></button><div class="app-more" hidden><p>The vault is yours, on the computer, sealed with XChaCha20-Poly1305; sync with 1Password accounts is optional, and reviewed.</p><p>Scan a QR code to set up a one-time code.</p><p>An SSH agent for the session, and items shared with an agent's screen one at a time.</p></div></li>
+        <li><button type="button" data-app="phone" data-w="840" data-h="479" data-shot="a conversation in Messages" aria-haspopup="dialog" data-about="Your iPhone or Android phone over Bluetooth, nothing installed on it: messages, contacts, calls and music."><img src="assets/icons/phone.svg" alt="" width="48" height="48" loading="lazy"><span>Phone</span></button><div class="app-more" hidden><p>Bluetooth's own profiles, spoken natively: MAP, PBAP, ANCS and HFP.</p><p>One-time codes that arrive by text or email go straight to the tab that's waiting for them.</p></div></li>
+        <li><button type="button" data-app="telegram" data-w="840" data-h="479" data-shot="a group chat with a poll" aria-haspopup="dialog" data-about="A Telegram client written in Rust: folders, forums, voice notes, stickers and replies from a notification."><img src="assets/icons/telegram.svg" alt="" width="48" height="48" loading="lazy"><span>Telegram</span></button><div class="app-more" hidden><p>It speaks Telegram's protocol (MTProto) itself, in pure Rust.</p><p>Unknown Senders kept apart, and an outbox that survives restarts.</p><p>Voice notes in Ogg Opus; Lottie and WebM stickers.</p></div></li>
+        <li><button type="button" data-app="weather" data-w="840" data-h="479" data-shot="a place's forecast, and its assistant's questions" aria-haspopup="dialog" data-about="Forty-four forecast layers, timelines down to the cloud base, and an assistant that marks the hours that suit you."><img src="assets/icons/weather.svg" alt="" width="48" height="48" loading="lazy"><span>Weather</span></button><div class="app-more" hidden><p>Forecasts from tomorrow.io, hour by hour.</p><p>Ask the assistant when to go for a run, and its answer is marked on the charts.</p><p>And Deskbar widgets.</p></div></li>
+        <li><button type="button" data-app="screenshot" data-w="590" data-h="312" data-shot="its window, ready to take the screen" aria-haspopup="dialog" data-about="The screen, a window or a region, a colour picker, and recordings in H.264 or AV1 that take only changed frames."><img src="assets/icons/screenshot.svg" alt="" width="48" height="48" loading="lazy"><span>Screenshot</span></button><div class="app-more" hidden><p>Recordings are MP4s, encoded on the GPU, or on the processor where there's none.</p><p>What you take goes to the clipboard, or to a folder you choose.</p></div></li>
+        <li><button type="button" data-app="activity" data-w="880" data-h="499" data-shot="its Processes, a build at work" aria-haspopup="dialog" data-about="Processes, the supervisor, every engine of every GPU, sensors, fans and battery, with graphs you can click back through."><img src="assets/icons/activity.svg" alt="" width="48" height="48" loading="lazy"><span>Activity Monitor</span></button><div class="app-more" hidden><p>Overview, CPU, memory and zram, disks, network, displays and inputs, and kernel tunables beside them.</p><p>The Supervisor keeps the desktop smooth: it lowers builds and indexers, and says when a process spins or leaks.</p><p>Inspect any process: its threads, files, memory and limits.</p></div></li>
+        <li><button type="button" data-app="doctor" data-w="840" data-h="479" data-shot="its findings, each with its fix" aria-haspopup="dialog" data-about="What is wrong with the computer and what could be better, by how much it matters, each with a button that fixes it."><img src="assets/icons/doctor.svg" alt="" width="48" height="48" loading="lazy"><span>Olo Doctor</span></button><div class="app-more" hidden><p>It looks at the whole computer: drivers, disks, backups and services.</p><p>What you don't care about, Ignore, and it stays ignored.</p></div></li>
+        <li><button type="button" data-app="updates" data-w="840" data-h="479" data-shot="updates waiting, with their advisories" aria-haspopup="dialog" data-about="Fedora's updates through DNF5, with advisories and changelogs, offline updates, Undo and version upgrades."><img src="assets/icons/software-update.svg" alt="" width="48" height="48" loading="lazy"><span>OS Updates</span></button><div class="app-more" hidden><p>It speaks to the DNF5 daemon itself: no <code>dnf</code> command runs underneath.</p><p>Security advisories with their CVEs; Copr and RPM Fusion repositories.</p><p>Undo takes back a whole transaction.</p></div></li>
+        <li><button type="button" data-app="logs" data-w="840" data-h="479" data-shot="the journal, a GPU reset among its lines" aria-haspopup="dialog" data-about="The systemd journal and agents' screens' logs, live, with a query language and Show in Context."><img src="assets/icons/logs.svg" alt="" width="48" height="48" loading="lazy"><span>Log Viewer</span></button><div class="app-more" hidden><p>It reads the journal's files itself, and follows them as they grow.</p><p>Syntax highlighting picks out what matters in a line; Show in Context brings back the lines around one.</p></div></li>
+        <li><button type="button" data-app="drive-setup" data-w="840" data-h="479" data-shot="a disk's map and its partitions" aria-haspopup="dialog" data-about="Disks and partitions: LUKS, format, resize, write an image and benchmark."><img src="assets/icons/drive-setup.svg" alt="" width="48" height="48" loading="lazy"><span>DriveSetup</span></button><div class="app-more" hidden><p>A map of each disk, its partitions to scale.</p><p>Everything through UDisks2.</p><p>Write an image to a stick, and benchmark a disk.</p></div></li>
+        <li><button type="button" data-app="disk-usage" data-w="840" data-h="479" data-shot="a home folder as a sunburst" aria-haspopup="dialog" data-about="Where the space went, as a sunburst, with a Collector and an undoable Trash."><img src="assets/icons/disk-usage.svg" alt="" width="48" height="48" loading="lazy"><span>DiskUsage</span></button><div class="app-more" hidden><p>Click a ring to go into a folder, the middle to come back.</p><p>Drag what you don't need into the Collector, then move it to the Trash, which can be undone.</p></div></li>
+        <li><button type="button" data-app="diskbackup" data-w="730" data-h="320" data-shot="where to back up to, as it first asks" aria-haspopup="dialog" data-about="Continuous, versioned, deduplicated and encrypted backups to a folder or Google Drive, with Older Versions in Tracker."><img src="assets/icons/diskbackup.svg" alt="" width="48" height="48" loading="lazy"><span>DiskBackup</span></button><div class="app-more" hidden><p>Only what changed, in FastCDC chunks, compressed with zstd and sealed with XChaCha20-Poly1305.</p><p>Your home folder by default, leaving out what can be downloaded or built again.</p><p>Fast and full validation, and speed limits.</p></div></li>
+        <li><button type="button" data-app="speed-test" data-w="770" data-h="712" data-shot="a test's results, with the connection's own numbers" aria-haspopup="dialog" data-about="Download, upload and latency under load, with the kernel's own view of the connection."><img src="assets/icons/speed-test.svg" alt="" width="48" height="48" loading="lazy"><span>Speed Test</span></button><div class="app-more" hidden><p>Against Cloudflare's speed test servers, four connections each way.</p><p>Beside its numbers, the kernel's own (<code>TCP_INFO</code>, BBRv3) and the server's diagnostics.</p></div></li>
+        <li><button type="button" data-app="kache" data-w="840" data-h="479" data-shot="the build cache at work, by the hour" aria-haspopup="dialog" data-about="A dashboard for Rust's build cache: why each miss missed, by the hour."><img src="assets/icons/kache.svg" alt="" width="48" height="48" loading="lazy"><span>Kache</span></button><div class="app-more" hidden><p>Kache keeps what Rust builds made, so what was built once isn't built again.</p><p>Its slots and tests, its settings as sliders, and a Deskbar widget.</p></div></li>
+      </ul>
+      <p class="tracker-status" id="tracker-status" aria-live="polite"><span class="ts-count">24 items</span><span class="ts-about" id="ts-about">Point at an app to read what it does; open it for more, and a picture.</span></p>
+    </div>
+  </div>
+  <p class="apps-also">And <b>Preferences</b>, twenty-nine panels the palette opens to any single setting, and <b>Notifications</b>, with an inbox and snooze. Google Chrome and Slack come set up to run as Wayland programs; GTK, Qt and Electron programs follow Olo's&nbsp;colours.</p>
+</div></div>
+</section>
+
+<!-- ============ 6. Looks ============ -->
+<section class="sec" id="looks" aria-labelledby="looks-h" data-viewmenu="looks">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Looks<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="looks-h">Five classic looks,<br class="wide"> twenty&#8209;three colour&nbsp;schemes.</h2>
+    <p class="sec-lead">Each look brings its own window frames, icons and wallpaper; each scheme recolours them, in light, dark and night. Pixel-exact at 1×, 1.25×, 1.5×, 1.75× and 2×: Olo never resamples a&nbsp;picture.</p>
+  </div>
+  <div class="looks grid3">
+    <div class="looks-pick view" role="radiogroup" aria-label="Look">
+      <p class="pick-head" aria-hidden="true">Look</p>
+      <label><input type="radio" name="look" value="classic" checked><span class="lk"><img class="only-light" src="assets/img/tab-classic-1x.webp" srcset="assets/img/tab-classic-1x.webp 1x, assets/img/tab-classic-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><img class="only-dark" src="assets/img/tab-classic-dark-1x.webp" srcset="assets/img/tab-classic-dark-1x.webp 1x, assets/img/tab-classic-dark-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><b>Classic</b><small>after BeOS, Olo's own</small></span></label>
+      <label><input type="radio" name="look" value="platinum"><span class="lk"><img class="only-light" src="assets/img/tab-platinum-1x.webp" srcset="assets/img/tab-platinum-1x.webp 1x, assets/img/tab-platinum-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><img class="only-dark" src="assets/img/tab-platinum-dark-1x.webp" srcset="assets/img/tab-platinum-dark-1x.webp 1x, assets/img/tab-platinum-dark-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><b>Platinum</b><small>after Mac OS 9</small></span></label>
+      <label><input type="radio" name="look" value="beos"><span class="lk"><img class="only-light" src="assets/img/tab-beos-1x.webp" srcset="assets/img/tab-beos-1x.webp 1x, assets/img/tab-beos-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><img class="only-dark" src="assets/img/tab-beos-dark-1x.webp" srcset="assets/img/tab-beos-dark-1x.webp 1x, assets/img/tab-beos-dark-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><b>BeOS</b><small>R5's palette and icons</small></span></label>
+      <label><input type="radio" name="look" value="amigaos"><span class="lk"><img class="only-light" src="assets/img/tab-amigaos-1x.webp" srcset="assets/img/tab-amigaos-1x.webp 1x, assets/img/tab-amigaos-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><img class="only-dark" src="assets/img/tab-amigaos-dark-1x.webp" srcset="assets/img/tab-amigaos-dark-1x.webp 1x, assets/img/tab-amigaos-dark-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><b>AmigaOS</b><small>Workbench 3</small></span></label>
+      <label><input type="radio" name="look" value="aqua"><span class="lk"><img class="only-light" src="assets/img/tab-aqua-1x.webp" srcset="assets/img/tab-aqua-1x.webp 1x, assets/img/tab-aqua-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><img class="only-dark" src="assets/img/tab-aqua-dark-1x.webp" srcset="assets/img/tab-aqua-dark-1x.webp 1x, assets/img/tab-aqua-dark-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><b>Aqua</b><small>early Mac OS X</small></span></label>
+      <hr class="looks-sep">
+      <label><input type="radio" name="look" value="tokyo-night"><span class="lk"><img class="only-light" src="assets/img/tab-tokyo-night-1x.webp" srcset="assets/img/tab-tokyo-night-1x.webp 1x, assets/img/tab-tokyo-night-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><img class="only-dark" src="assets/img/tab-tokyo-night-dark-1x.webp" srcset="assets/img/tab-tokyo-night-dark-1x.webp 1x, assets/img/tab-tokyo-night-dark-2x.webp 2x" width="96" height="28" alt="" loading="lazy" decoding="async"><b>Tokyo Night</b><small>one of 23 schemes</small></span></label>
+    </div>
+    <div class="looks-pic span2">
+      <div class="shot edge" style="--w: 688px; --h: 303px">
+        <img class="only-light" data-look="classic" src="assets/img/look-classic-1to1-1x.webp" srcset="assets/img/look-classic-1to1-1x.webp 1x, assets/img/look-classic-1to1-2x.webp 2x" width="688" height="303" alt="Olo's Classic look, after BeOS: Tracker's Pictures window, its tab, menu bar and list" loading="lazy" decoding="async">
+        <img class="only-dark" data-look="classic" src="assets/img/look-classic-dark-1to1-1x.webp" srcset="assets/img/look-classic-dark-1to1-1x.webp 1x, assets/img/look-classic-dark-1to1-2x.webp 2x" width="688" height="303" alt="Olo's Classic look, after BeOS: Tracker's Pictures window, its tab, menu bar and list" loading="lazy" decoding="async">
+        <img class="only-light" data-look="platinum" src="assets/img/look-platinum-1to1-1x.webp" srcset="assets/img/look-platinum-1to1-1x.webp 1x, assets/img/look-platinum-1to1-2x.webp 2x" width="688" height="303" alt="The Platinum look, after Mac OS 9" loading="lazy" decoding="async">
+        <img class="only-dark" data-look="platinum" src="assets/img/look-platinum-dark-1to1-1x.webp" srcset="assets/img/look-platinum-dark-1to1-1x.webp 1x, assets/img/look-platinum-dark-1to1-2x.webp 2x" width="688" height="303" alt="The Platinum look, after Mac OS 9" loading="lazy" decoding="async">
+        <img class="only-light" data-look="beos" src="assets/img/look-beos-1to1-1x.webp" srcset="assets/img/look-beos-1to1-1x.webp 1x, assets/img/look-beos-1to1-2x.webp 2x" width="688" height="303" alt="The BeOS look: R5's palette and its 8-bit icons" loading="lazy" decoding="async">
+        <img class="only-dark" data-look="beos" src="assets/img/look-beos-dark-1to1-1x.webp" srcset="assets/img/look-beos-dark-1to1-1x.webp 1x, assets/img/look-beos-dark-1to1-2x.webp 2x" width="688" height="303" alt="The BeOS look: R5's palette and its 8-bit icons" loading="lazy" decoding="async">
+        <img class="only-light" data-look="amigaos" src="assets/img/look-amigaos-1to1-1x.webp" srcset="assets/img/look-amigaos-1to1-1x.webp 1x, assets/img/look-amigaos-1to1-2x.webp 2x" width="688" height="303" alt="The AmigaOS look: Workbench 3's flat frames and sixteen-pen icons" loading="lazy" decoding="async">
+        <img class="only-dark" data-look="amigaos" src="assets/img/look-amigaos-dark-1to1-1x.webp" srcset="assets/img/look-amigaos-dark-1to1-1x.webp 1x, assets/img/look-amigaos-dark-1to1-2x.webp 2x" width="688" height="303" alt="The AmigaOS look: Workbench 3's flat frames and sixteen-pen icons" loading="lazy" decoding="async">
+        <img class="only-light" data-look="aqua" src="assets/img/look-aqua-1to1-1x.webp" srcset="assets/img/look-aqua-1to1-1x.webp 1x, assets/img/look-aqua-1to1-2x.webp 2x" width="688" height="303" alt="The Aqua look: early Mac OS X's blue gel" loading="lazy" decoding="async">
+        <img class="only-dark" data-look="aqua" src="assets/img/look-aqua-dark-1to1-1x.webp" srcset="assets/img/look-aqua-dark-1to1-1x.webp 1x, assets/img/look-aqua-dark-1to1-2x.webp 2x" width="688" height="303" alt="The Aqua look: early Mac OS X's blue gel" loading="lazy" decoding="async">
+        <img class="only-light" data-look="tokyo-night" src="assets/img/look-tokyo-night-1to1-1x.webp" srcset="assets/img/look-tokyo-night-1to1-1x.webp 1x, assets/img/look-tokyo-night-1to1-2x.webp 2x" width="688" height="303" alt="The Tokyo Night colour scheme, with its city wallpaper" loading="lazy" decoding="async">
+        <img class="only-dark" data-look="tokyo-night" src="assets/img/look-tokyo-night-dark-1to1-1x.webp" srcset="assets/img/look-tokyo-night-dark-1to1-1x.webp 1x, assets/img/look-tokyo-night-dark-1to1-2x.webp 2x" width="688" height="303" alt="The Tokyo Night colour scheme, with its city wallpaper" loading="lazy" decoding="async">
+      </div>
+    </div>
+  </div>
+  <div class="icons-row grid3">
+    <div class="looks-pick iconset-pick view" role="radiogroup" aria-label="Icon set">
+      <p class="pick-head" aria-hidden="true">Icon set</p>
+      <label><input type="radio" name="iconset" value="classic" data-about="After BeOS: glossy, bright and friendly." checked><span class="lk lk-set"><b>Classic</b><small>glossy, bright and friendly</small></span></label>
+      <label><input type="radio" name="iconset" value="platinum" data-about="After Mac OS 9: black outlines, lilac greys."><span class="lk lk-set"><b>Platinum</b><small>black outlines, lilac greys</small></span></label>
+      <label><input type="radio" name="iconset" value="beos" data-about="As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines."><span class="lk lk-set"><b>BeOS</b><small>R5's 8-bit colours</small></span></label>
+      <label><input type="radio" name="iconset" value="amiga" data-about="As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines."><span class="lk lk-set"><b>AmigaOS</b><small>a screen's sixteen pens</small></span></label>
+      <label><input type="radio" name="iconset" value="aqua" data-about="After Mac OS X's Aqua: shinier and bluer, with soft outlines."><span class="lk lk-set"><b>Aqua</b><small>shinier and bluer</small></span></label>
+      <label><input type="radio" name="iconset" value="flat" data-about="Modern and flat: each thing seen straight on, in plain faces, no outlines. Any look can wear it."><span class="lk lk-set"><b>Flat</b><small>plain faces, for any look</small></span></label>
+    </div>
+    <div class="iconset span2" id="iconset">
+      <ul class="iconset-icons view" role="list" aria-label="Sixteen of Olo's icons, in the Classic set" id="iconset-icons">
+        <li><i style="--i: 0"></i><span>Folder</span></li>
+        <li><i style="--i: 1"></i><span>Home</span></li>
+        <li><i style="--i: 2"></i><span>Disk</span></li>
+        <li><i style="--i: 3"></i><span>Trash</span></li>
+        <li><i style="--i: 4"></i><span>Terminal</span></li>
+        <li><i style="--i: 5"></i><span>Tracker</span></li>
+        <li><i style="--i: 6"></i><span>StyledEdit</span></li>
+        <li><i style="--i: 7"></i><span>Mail</span></li>
+        <li><i style="--i: 8"></i><span>Music</span></li>
+        <li><i style="--i: 9"></i><span>Pictures</span></li>
+        <li><i style="--i: 10"></i><span>Calendar</span></li>
+        <li><i style="--i: 11"></i><span>DeskCalc</span></li>
+        <li><i style="--i: 12"></i><span>Preferences</span></li>
+        <li><i style="--i: 13"></i><span>Network</span></li>
+        <li><i style="--i: 14"></i><span>Printer</span></li>
+        <li><i style="--i: 15"></i><span>Rex</span></li>
+      </ul>
+      <p class="iconset-about" id="iconset-about" aria-live="polite"><b>Classic.</b> After BeOS: glossy, bright and friendly.</p>
+      <p class="looks-note">This page has Olo's three modes too, in the Deskbar: light, dark, and night, which warms the whole screen as Olo's night light&nbsp;does.</p>
+    </div>
+  </div>
+</div></div>
+</section>
+
+<!-- ============ 7. Install ============ -->
+<section class="sec" id="install" aria-labelledby="install-h">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>Install<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body">
+  <div class="sec-head">
+    <h2 id="install-h">Try it beside GNOME. Going back costs&nbsp;nothing.</h2>
+    <p class="sec-lead">On a stock Fedora 44 or 45 Workstation, download the Installer from the latest release and run it. It asks for your password once; you choose Olo or GNOME each time you log&nbsp;in.</p>
+  </div>
+
+  <div class="get grid3">
+    <div class="get-button">
+      <a class="button primary big" href="https://github.com/benmyles/olo/releases/latest/download/olo-installer-x86_64">Download the Installer</a>
+      <p class="small">The latest release, for x86_64. Then make it executable and run it, or do both in a terminal:</p>
+    </div>
+    <div class="term install-cmd span2">
+      <p class="term-label" aria-hidden="true">Terminal, on Fedora</p>
+      <button type="button" class="copy" data-copy="install-cmd">Copy</button>
+<pre class="term-body" id="install-cmd"><span class="p" aria-hidden="true">$ </span>curl -LO \
+    https://github.com/benmyles/olo/releases/latest/download/olo-installer-x86_64
+<span class="p" aria-hidden="true">$ </span>chmod +x olo-installer-x86_64 &amp;&amp; ./olo-installer-x86_64</pre>
+    </div>
+  </div>
+
+  <div class="install grid3">
+    <div class="install-steps">
+      <ol class="steps">
+        <li><b>Agree, then Begin.</b> The Installer is one full-screen program, after BeOS's own. It installs what Olo needs from Fedora, downloads Olo and checks it, and puts it in your home&nbsp;folder.</li>
+        <li><b>Log out, choose Olo.</b> If you like, it also installs Olo's own login screen and boot splash. GNOME stays installed and&nbsp;untouched.</li>
+        <li><b>Upgrade from the tray.</b> Deskbar checks for releases and offers each one; its Upgrade installs it and reloads in&nbsp;place.</li>
+      </ol>
+      <details class="more">
+        <summary>Build it from source instead</summary>
+        <p>On Fedora 44 or 45, Workstation or an atomic desktop such as Silverblue, on x86_64 or aarch64. <code>tools/setup.sh</code> installs what's missing, builds Olo into <code>~/.local/bin</code> and adds it to the login screen; run it again any&nbsp;time.</p>
+<pre class="code"><span class="p">$</span> git clone https://github.com/benmyles/olo
+<span class="p">$</span> cd olo &amp;&amp; tools/setup.sh</pre>
+      </details>
+    </div>
+    <figure class="install-pic span2">
+      <div class="shot blue" style="--w: 621px; --h: 415px">
+        <img src="assets/img/installer-1to1-1x.webp" srcset="assets/img/installer-1to1-1x.webp 1x, assets/img/installer-1to1-2x.webp 2x" width="621" height="415" alt="Olo's Installer: its licence, where to install from and onto, and Begin" loading="lazy" decoding="async">
+      </div>
+      <figcaption>The Installer fills the screen in BeOS's blue, as BeOS's own&nbsp;did.</figcaption>
+    </figure>
+  </div>
+
+  <div class="caveat grid3">
+    <div>
+      <h3>Olo is beta software</h3>
+      <p>It is developed and tested on a few computers, a Lenovo ThinkPad P1 Gen 9 above all, on Fedora 44 and 45. On hardware it hasn't met yet, expect rough edges: a special key that does nothing, a touchpad that needs tuning, a display mode not offered&nbsp;yet.</p>
+    </div>
+    <div class="span2">
+      <h3>Make your computer one it knows</h3>
+      <p>The <code>olo-hardware</code> skill has your coding agent read what your computer has, compare it with what Olo supports, agree with you what to do, then build, test and measure it, as the ThinkPad's support was&nbsp;made.</p>
+<pre class="code"><span class="p">$</span> claude --model claude-opus-5-5 --effort xhigh   <span class="c"># then: /olo-hardware</span></pre>
+    </div>
+  </div>
+</div></div>
+</section>
+
+</main>
+
+<!-- An app's Get Info window, as Tracker's: opened from the Apps window. -->
+<dialog class="app-info" id="app-info" aria-labelledby="ai-name">
+  <div class="win ai-win">
+    <span class="tab win-tab"><button type="button" class="tab-box ai-close-box" aria-label="Close" title="Close"></button><span class="ai-tab-name" id="ai-tab">Get Info</span><span class="tab-zoom" aria-hidden="true"></span></span>
+    <div class="win-body ai-body">
+      <div class="ai-pic">
+        <div class="shot ai-shot" id="ai-shot">
+          <img id="ai-shot-img" alt="" decoding="async">
+        </div>
+      </div>
+      <div class="ai-text">
+        <div class="ai-head">
+          <img class="ai-icon" id="ai-icon" src="assets/icons/application.svg" alt="" width="64" height="64">
+          <div>
+            <h3 id="ai-name">Olo</h3>
+            <p class="ai-count" id="ai-count"></p>
+          </div>
+        </div>
+        <p class="ai-about" id="ai-about"></p>
+        <div class="ai-more" id="ai-more"></div>
+        <div class="ai-nav">
+          <button type="button" class="button small" id="ai-prev" aria-label="Previous app">Previous</button>
+          <button type="button" class="button small" id="ai-next" aria-label="Next app">Next</button>
+          <button type="button" class="button primary" id="ai-close" autofocus>Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<footer class="foot sec" id="about" aria-label="About Olo">
+<div class="win"><span class="tab win-tab"><span class="tab-box" aria-hidden="true"></span>About Olo<span class="tab-zoom" aria-hidden="true"></span></span><div class="win-body about">
+  <div class="about-head">
+    <img class="about-mark" src="assets/brand/mark.svg" alt="" width="72" height="72">
+    <div>
+      <p class="about-name"><span class="logo-olo" role="img" aria-label="Olo"></span></p>
+      <p class="about-ver">Beta, for Fedora 44 and 45. Under the MIT License.</p>
+    </div>
+  </div>
+  <div class="about-text view">
+    <p>Olo carries others' work under their own licences: Smithay, the Noto fonts and Sora, Haiku's cursors, code that began in Zed's GPUI (the Interface Kit's renderer, Olo's own now), and the crates listed in its source. It was called Tabula until October&nbsp;2026.</p>
+    <p class="foot-weight" id="foot-weight">This page weighs what the Deskbar says, and does nothing while you read it.</p>
+  </div>
+  <nav class="about-links" aria-label="More">
+    <a class="button" href="https://github.com/benmyles/olo">Source</a>
+    <a class="button" href="https://github.com/benmyles/olo/releases">Releases</a>
+    <a class="button" href="https://github.com/benmyles/olo/blob/main/docs/OLO-BOOK.md">The Olo Book</a>
+    <a class="button" href="https://github.com/benmyles/olo/blob/main/docs/HACKING.md">Hacking</a>
+    <a class="button" href="https://github.com/benmyles/olo/blob/main/docs/BRAND.md">The brand</a>
+    <a class="button" href="index.md">This page for agents</a>
+  </nav>
+</div></div>
+</footer>
+</body>
+</html>

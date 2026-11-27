@@ -42,6 +42,13 @@ that can only show this computer's own (Activity Monitor's processes
 and hardware, the Log Viewer's journal, OS Updates' packages) have no
 picture.
 
+The website's scene, `website-apps`, is run only when named, and only
+with OLO_SHOTS_OUT: each app with a demo alone on it, its window below
+its tab, light and dark, for the website's Get Info windows
+(OLO_SHOTS_APPS=rex,todo: only those; website/README.md). Activity
+Monitor, the Log Viewer, OS Updates, DriveSetup and Passwords have no
+demo here: they are left out, never pictured on this computer's own.
+
 In the environment:
   OLO_SHOTS_BUILD=DIR       the build pictured (default target/release)
   OLO_SHOTS_OUT=DIR         where the pictures go (default docs/img)
@@ -49,6 +56,15 @@ In the environment:
                             computer has none (a server)
   OLO_SHOTS_SOFTWARE=1      draw on the processors (by itself where
                             there is no GPU)
+  OLO_SHOTS_WINDOW=WxH      the size of the one window the rex, pool and
+                            agents scenes picture (the website's, where a
+                            picture is shown at its own size in a column
+                            of WxH points); only with OLO_SHOTS_OUT
+  OLO_SHOTS_FLIP=1          every scene in its other mode (its light
+                            pictures dark, its dark ones light: the
+                            website shows each in the look it's read
+                            in); only with OLO_SHOTS_OUT, whose names
+                            are then the scene's own, in the other mode
 """
 
 import json
@@ -67,6 +83,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # look at them before any replaces one that is there).
 RELEASE = os.environ.get("OLO_SHOTS_BUILD") or os.path.join(ROOT, "target/release")
 OUT = os.environ.get("OLO_SHOTS_OUT") or os.path.join(ROOT, "docs/img")
+# Each scene in its other mode (the website's pictures in both), never
+# over docs/img's own.
+FLIP = os.environ.get("OLO_SHOTS_FLIP") == "1"
+if FLIP and not os.environ.get("OLO_SHOTS_OUT"):
+    sys.exit("readme-shots: OLO_SHOTS_FLIP=1 needs OLO_SHOTS_OUT (its pictures aren't docs/img's)")
+# A window of a size of its own, for the website's columns, never over docs/img's.
+WINDOW = tuple(int(v) for v in os.environ["OLO_SHOTS_WINDOW"].split("x")) if os.environ.get("OLO_SHOTS_WINDOW") else None
+if WINDOW and not os.environ.get("OLO_SHOTS_OUT"):
+    sys.exit("readme-shots: OLO_SHOTS_WINDOW needs OLO_SHOTS_OUT (its pictures aren't docs/img's)")
+
+
+def window_size(default):
+    """The scene's window size, or OLO_SHOTS_WINDOW's."""
+    return WINDOW or default
+
+
 WORK = "/var/tmp/olo-readme-shots"
 HOME = os.path.join(WORK, "home")
 RUN = os.path.join(WORK, "run")
@@ -235,6 +267,9 @@ def look(theme="light", icons="classic", wallpaper=None):
     """Light or dark (`theme`), in the theme `icons` names (its id:
     classic, platinum, beos, dracula, …), on `wallpaper` (else the
     theme's own)."""
+    if FLIP:
+        theme = {"light": "dark", "dark": "light"}.get(theme, theme)
+
     def change(s):
         a = s["appearance"]
         a["theme"] = theme
@@ -512,7 +547,7 @@ def scene_agents():
     display = os.path.join(RUN, SCREEN_ENV["WAYLAND_DISPLAY"]) if not SCREEN_ENV["WAYLAND_DISPLAY"].startswith("/") else SCREEN_ENV["WAYLAND_DISPLAY"]
     run("env", f"XDG_RUNTIME_DIR={agents_run}", f"WAYLAND_DISPLAY={display}", "olo-screen")
     viewer = wait_for(lambda w: w["app_id"] == "olo.screen")
-    place(viewer, 60, 60, 1560, 980)
+    place(viewer, 60, 60, *window_size((1560, 980)))
     settle(7)
     shot("olo-agent-screens")
     research("stop")
@@ -794,11 +829,11 @@ def scene_rex():
     close_all()
     widgets([])
     look("dark", wallpaper=DESKTOP_WALLPAPER)
-    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(120, 80), size=(960, 620))
+    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1"}, at=(120, 80), size=window_size((960, 620)))
     settle(6)
     shot_of("olo-rex", w)
     close_all()
-    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_ACTIVITY": "transcript"}, at=(120, 80), size=(960, 620))
+    w = one("olo.rex", "olo-rex", env={"OLO_REX_DEMO": "1", "OLO_REX_DEMO_ACTIVITY": "transcript"}, at=(120, 80), size=window_size((960, 620)))
     settle(6)
     shot_of("olo-rex-agents", w)
     look("light", wallpaper=DESKTOP_WALLPAPER)
@@ -811,7 +846,7 @@ def scene_pool():
     close_all()
     widgets([])
     look("dark", wallpaper=DESKTOP_WALLPAPER)
-    w = one("olo.pool", "olo-pool", env={"OLO_POOL_DEMO": "1", "OLO_POOL_DEMO_HOSTS": "1"}, at=(200, 90), size=(700, 760))
+    w = one("olo.pool", "olo-pool", env={"OLO_POOL_DEMO": "1", "OLO_POOL_DEMO_HOSTS": "1"}, at=(200, 90), size=window_size((700, 760)))
     settle(5)
     shot_of("olo-token-pool", w)
     screen("click", "--window", w["id"], "--role", "Tab", "--name", "Machines")
@@ -974,7 +1009,169 @@ def scene_themes():
     look("light")
 
 
+# ---- The website's apps: each alone, at a size of the site's own -------------
+
+# Each app's window for the website's Get Info (website/index.html, Apps):
+# the window below its tab (the website's window wears that), at its own
+# size, in light and dark, NAME-light.png and NAME-dark.png. On demo data
+# only, as everything here; apps whose demo is a switch of their own say so.
+WEBSITE_APP = (840, 500)
+
+
+def website_app_shot(name, w):
+    """The window below its tab, both looks."""
+    def take(mode):
+        f = next((x for x in windows() if x["id"] == w["id"]), w)
+        fr, tab = f["frame"], f.get("tab_frame")
+        top = tab["y"] + tab["height"] if tab else fr["y"]
+        shot(f"{name}-{mode}", crop=(fr["x"], top, fr["width"], fr["y"] + fr["height"] - top))
+
+    for mode in ("light", "dark"):
+        look(mode, wallpaper=DESKTOP_WALLPAPER)
+        settle(3)
+        take(mode)
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def website_app(name):
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    at, size = (120, 90), WEBSITE_APP
+    demo = lambda app, cmd, **env: one(app, cmd, env=env or None, at=at, size=size)
+    if name == "rex":
+        w = demo("olo.rex", "olo-rex", OLO_REX_DEMO="1", OLO_REX_DEMO_ACTIVITY="transcript")
+        settle(6)
+    elif name == "terminal":
+        src, bin = agents_world()
+        refunds = os.path.join(HOME, "worktrees", "shop-api", "refunds")
+        w = agents_terminal(src, bin, [os.path.join(src, "shop-web"), os.path.join(src, "shop-api"), refunds], (*at, *size))
+        for i, words in ((2, ' codex "Migrate the ledger"'), (1, ' claude "Add the refunds endpoint"'), (0, ' claude "Refund button on an order"')):
+            screen("invoke", f"tab:{i}")
+            settle(0.6)
+            type_text(words + "\n")
+            settle(3.5)
+        settle(3)
+    elif name == "agent-screens":
+        agents_run = os.path.join(WORK, "run-agents")
+        os.makedirs(agents_run, mode=0o700, exist_ok=True)
+        research = lambda *a: screen(*a, run_dir=agents_run, name="research")
+        research("stop")
+        research("start", "--size", "1280x800")
+        research("run", "olo-styled-edit", os.path.join(HOME, "Documents", "Welcome.md"))
+        time.sleep(6)
+        research("key", "Esc")
+        display = os.path.join(RUN, SCREEN_ENV["WAYLAND_DISPLAY"]) if not SCREEN_ENV["WAYLAND_DISPLAY"].startswith("/") else SCREEN_ENV["WAYLAND_DISPLAY"]
+        run("env", f"XDG_RUNTIME_DIR={agents_run}", f"WAYLAND_DISPLAY={display}", "olo-screen")
+        w = wait_for(lambda x: x["app_id"] == "olo.screen")
+        place(w, *at, *size)
+        settle(7)
+        website_app_shot(name, w)
+        research("stop")
+        return
+    elif name == "token-pool":
+        w = demo("olo.pool", "olo-pool", OLO_POOL_DEMO="1", OLO_POOL_DEMO_HOSTS="1")
+        settle(5)
+    elif name == "tracker":
+        run("olo-tracker", os.path.join(HOME, "Pictures"))
+        w = wait_for(by_app("olo.tracker", "Pictures"))
+        place(w, *at, *size)
+        settle(2)
+        screen("invoke", "view-icons", "--window", w["id"])
+        settle(2)
+    elif name == "styled-edit":
+        run("olo-styled-edit", os.path.join(HOME, "Documents", "Welcome.md"))
+        w = wait_for(by_app("olo.styled-edit"))
+        place(w, *at, *size)
+        settle(3)
+    elif name == "viewer":
+        run("olo-viewer", os.path.join(HOME, "Pictures", "Glass.jpg"))
+        w = wait_for(by_app("olo.viewer"))
+        place(w, *at, *size)
+        settle(4)
+    elif name == "deskcalc":
+        run("olo-deskcalc")
+        w = wait_for(by_app("olo.deskcalc"))
+        place(w, *at)
+        settle(1.5)
+        activate(w)
+        type_text("1000/120\n")
+        settle(1)
+    elif name == "calendar":
+        w = demo("olo.calendar", "olo-calendar", OLO_CALENDAR_DEMO="1")
+        settle(5)
+        screen("click", "--window", w["id"], "--role", "Tab", "--name", "Week")
+        settle(2)
+    elif name == "todo":
+        w = demo("olo.todo", "olo-todo", OLO_TODO_DEMO="1", OLO_TODO_DIR=os.path.join(WORK, "todo"))
+        settle(5)
+        screen("click", "--window", w["id"], "--role", "ListItem", "--name", "Call Ann about the trip")
+        settle(1.5)
+    elif name == "phone":
+        w = demo("olo.phone", "olo-phone", OLO_PHONE_DEMO="1")
+        settle(5)
+    elif name == "telegram":
+        w = telegram()
+        place(w, *at, *size)
+        settle(5)
+        screen("click", "--window", w["id"], "--role", "ListItem", "--name", "Design Crew")
+        settle(3)
+    elif name == "weather":
+        w = demo("olo.weather", "olo-weather", OLO_WEATHER_DEMO="1")
+        settle(7)
+    elif name == "screenshot":
+        run("olo-screenshot")
+        w = wait_for(by_app("olo.screenshot"))
+        place(w, *at)
+        settle(2)
+    elif name == "doctor":
+        w = demo("olo.doctor", "olo-doctor", OLO_DOCTOR_DEMO="1")
+        settle(3)
+    elif name == "disk-usage":
+        run("olo-disk-usage", HOME)
+        w = wait_for(by_app("olo.disk-usage"))
+        place(w, *at, *size)
+        settle(5)
+    elif name == "diskbackup":
+        run("olo-diskbackup")
+        w = wait_for(by_app("olo.diskbackup"))
+        place(w, *at, *size)
+        settle(4)
+    elif name == "speed-test":
+        w = demo("olo.speedtest", "olo-speedtest", OLO_SPEEDTEST_DEMO="1")
+        settle(7)
+    elif name == "kache":
+        w = demo("olo.kache", "olo-kache", OLO_KACHE_DEMO="1")
+        settle(7)
+    else:
+        sys.exit(f"website-apps: no app {name}")
+    activate(w)
+    settle(1)
+    website_app_shot(name, w)
+
+
+# (Not Activity Monitor, the Log Viewer, OS Updates, DriveSetup nor
+# Passwords: they have no demo, and would show this computer's own.)
+WEBSITE_APPS = ["rex", "terminal", "agent-screens", "token-pool", "tracker", "styled-edit", "viewer", "deskcalc",
+                "calendar", "todo", "phone", "telegram", "weather", "screenshot",
+                "doctor", "disk-usage", "diskbackup", "speed-test", "kache"]
+
+
+def scene_website_apps():
+    """Every app with a demo alone, for the website's Get Info windows (OLO_SHOTS_APPS=a,b: only those)."""
+    if not os.environ.get("OLO_SHOTS_OUT"):
+        sys.exit("readme-shots: website-apps needs OLO_SHOTS_OUT (its pictures are the website's, not docs/img's)")
+    wanted = [a for a in os.environ.get("OLO_SHOTS_APPS", "").split(",") if a] or WEBSITE_APPS
+    unknown = [a for a in wanted if a not in WEBSITE_APPS]
+    if unknown:
+        sys.exit(f"readme-shots: no demo to picture {', '.join(unknown)} on (the apps: {', '.join(WEBSITE_APPS)})")
+    for name in wanted:
+        print(f"website-apps: {name}")
+        website_app(name)
+
+
 SCENES = {
+    "website-apps": scene_website_apps,
     "desktop": scene_desktop,
     "rex": scene_rex,
     "rex-host": scene_rex_host,
@@ -1086,7 +1283,8 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--list"]:
         print("\n".join(SCENES))
         sys.exit()
-    wanted = sys.argv[1:] or list(SCENES)
+    # (The website's apps only when named: they go to OLO_SHOTS_OUT, never docs/img.)
+    wanted = sys.argv[1:] or [n for n in SCENES if n != "website-apps"]
     unknown = [s for s in wanted if s not in SCENES]
     if unknown:
         sys.exit(f"no scene {unknown}; the scenes: {', '.join(SCENES)}")

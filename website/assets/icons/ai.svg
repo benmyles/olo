@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60.4" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.55) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="chip"><path d="M5 27.4Q5 26 6.36 25.66L32.64 19.09Q34 18.75 34.63 20L46.87 44.5Q47.5 45.75 47.5 47.15L47.5 47.75Q47.5 49.15 46.14 49.49L19.86 56.06Q18.5 56.4 17.87 55.15L5.63 30.65Q5 29.4 5 28Z"/></clipPath>
+<linearGradient id="pcb" x1="0" y1="0" x2="29" y2="27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#58c684"/><stop offset="1" stop-color="#2f9e5c"/></linearGradient>
+<linearGradient id="lidg" x1="5" y1="5" x2="24" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#d5d8df"/><stop offset="1" stop-color="#aeb2bc"/></linearGradient>
+<linearGradient id="slate" x1="0" y1="0" x2="29" y2="27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c9ccd4"/><stop offset="1" stop-color="#9a9ea9"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60.4" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 .5 1 5 29.1)"><rect class="o" x="-2.7" y="2.6" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="6.54" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="10.48" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="14.42" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="18.36" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="22.3" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="2.6" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="6.22" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="9.83" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="13.45" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="17.07" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="20.68" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="24.3" y="26.3" width="2.1" height="3.4" fill="#f7c531"/></g>
+<path class="o" fill="#6b6e79" d="M5 27.4Q5 26 6.36 25.66L32.64 19.09Q34 18.75 34.63 20L46.87 44.5Q47.5 45.75 47.5 47.15L47.5 47.75Q47.5 49.15 46.14 49.49L19.86 56.06Q18.5 56.4 17.87 55.15L5.63 30.65Q5 29.4 5 28Z"/>
+<g clip-path="url(#chip)"><path fill="#4b4e58" d="M3 22L18.5 53L18.5 58.4L3 31.4Z"/></g>
+<g transform="matrix(1 -.25 .5 1 5 26)"><rect x="0" y="0" width="29" height="27" rx="1.4" fill="url(#slate)"/><rect x="5" y="5" width="19" height="17" rx="1.6" fill="#8d919c" stroke="#1b1b1f" stroke-width=".7"/><path class="h from48" stroke-opacity="0.8" stroke-width=".45" d="M.8 25.6V1.4Q.8 .8 1.4 .8H27.6"/></g>
+<g transform="matrix(1 -.25 .5 1 5 24.2)"><rect x="5" y="5" width="19" height="17" rx="1.6" fill="url(#lidg)" stroke="#1b1b1f" stroke-width=".5"/><path class="h from48" stroke-opacity=".9" stroke-width=".45" d="M5.9 20.4V7Q5.9 5.9 7 5.9H22.4"/></g>
+<ellipse class="from48" cx="26.25" cy="34.68" rx="6" ry="2.2" fill="#1b1b1f" fill-opacity=".22"/>
+<g transform="matrix(1 -.25 0 1 26.25 20.48)">
+<path class="o" fill="#2380f4" d="M0 -16.2L3.9 -3.9L13.5 0L3.9 3.5L0 13.4L-3.9 3.5L-13.5 0L-3.9 -3.9Z"/>
+<path fill="#a9dbff" d="M0-16.2L0-.2L-13.5 0L-3.9-3.9Z"/>
+<path fill="#4ea4ff" d="M0-16.2L3.9-3.9L13.5 0L0-.2Z"/>
+<path fill="#2c84f2" d="M-13.5 0L0-.2L0 13.4L-3.9 3.5Z"/>
+<path fill="#0f5ad0" d="M13.5 0L3.9 3.5L0 13.4L0-.2Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".45" d="M-.7-13.4L-4.2-4.3L-11-.6"/>
+</g>
+</svg>

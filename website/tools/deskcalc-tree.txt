@@ -1,0 +1,23 @@
+window 1 "DeskCalc" (olo.deskcalc) focused content 53,66 266x238
+  Window "DeskCalc" at 53,66 266x238
+    Button "7" at 69,134 42x34
+    Button "8" at 117,134 42x34
+    Button "9" at 165,134 42x34
+    Button "(" at 213,134 42x34
+    Button ")" at 261,134 42x34
+    Button "4" at 69,174 42x34
+    Button "5" at 117,174 42x34
+    Button "6" at 165,174 42x34
+    Button "×" at 213,174 42x34
+    Button "÷" at 261,174 42x34
+    Button "1" at 69,214 42x34
+    Button "2" at 117,214 42x34
+    Button "3" at 165,214 42x34
+    Button "+" at 213,214 42x34
+    Button "−" at 261,214 42x34
+    Button "0" at 69,254 42x34
+    Button "." at 117,254 42x34
+    Button "⌫" at 165,254 42x34
+    Button "=" at 213,254 42x34
+    Button "C" at 261,254 42x34
+    TextInput "Expression" value="8.33333333333333" at 75,82 222x36 clickable

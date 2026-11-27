@@ -1,0 +1,761 @@
+/* Olo Desktop's website. One stylesheet, no framework.
+   The page is an Olo desktop: Olo's own wallpaper at the top, then each
+   part of the page a window on the desktop, its tab on its top edge,
+   the tabs fanned out as Olo's Fan Out sets them; the window you're
+   reading is the one in front (its tab yellow: the one yellow on the
+   screen). Deskbar sits top right. Every picture of Olo is shown at its
+   own size, one of its pixels to a device pixel, but the desktop's plate.
+   Colours: the brand's (docs/BRAND.md) and Olo's own palette (olo_theme:
+   the window tab's yellow and its bevel). Type: Sora for the brand's
+   voice, Noto Sans and Noto Sans Mono as Olo's UI sets its text. */
+
+@font-face { font-family: "Sora"; src: url(fonts/sora.woff2) format("woff2"); font-weight: 300 800; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url(fonts/noto-sans.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: "Noto Sans Mono"; src: url(fonts/noto-mono.woff2) format("woff2"); font-weight: 400 600; font-display: swap; }
+@font-face { font-family: "Olo Symbols"; src: url(fonts/symbols2.woff2) format("woff2"); unicode-range: U+2318, U+2325, U+21E7, U+232B, U+2713, U+25B8; }
+@font-face { font-family: "Olo Symbols"; src: url(fonts/symbols1.woff2) format("woff2"); unicode-range: U+2303; }
+
+/* ---------- Tokens ---------- */
+:root {
+  --f-display: "Sora", "Noto Sans", system-ui, sans-serif;
+  --f-text: "Noto Sans", "Olo Symbols", system-ui, sans-serif;
+  --f-mono: "Noto Sans Mono", "Olo Symbols", ui-monospace, monospace;
+
+  --gutter: clamp(16px, 4.4vw, 64px);
+  --col: 1188px;                 /* the windows' width: inside, 3 x 326 + 2 x 36 (a picture 688 wide fills two thirds) */
+  --desk-w: 216px;
+  --pad: clamp(20px, 4.4vw, 64px);  /* inside a window */
+  --gap: 36px;                   /* the grid's gutter */
+  --tab-h: 22px;                 /* Olo's tab: 21 points and its edge */
+  /* Olo's window frame (measured from its DeskCalc): an outer line, a bevel, a face, an inner bevel. */
+  --wf-outer: #777F8A; --wf-light: #FAFBFC; --wf-face: #DBE3EE; --wf-shadow: #9FA7B2;
+  --menu-sel: #C5D3EA;
+
+  /* Light */
+  --desk: #D3DFF2;               /* the desktop under the windows */
+  --surface: #FFFFFF;            /* a window */
+  --well: #F3F6FA;               /* a sunken view in a window */
+  --ink: #0B0D14;                /* Olo Charcoal */
+  --ink-2: #353C4A;
+  --ink-3: #5B6372;
+  --rule: #D5DBE5;
+  --frame: #7C8696;              /* a window's edge */
+  --frame-in: #B9C1CD;           /* a view's edge */
+  --frame-soft: rgba(11, 13, 20, .12);
+  --link: #0B5ED7;               /* Olo Blue, deepened to read as text */
+  --blue: #0D6EFD;               /* Olo Blue */
+  --blue-edge: #0A4FB8;
+  --tab: #FFCB00;                /* olo_theme: tab_focused */
+  --tab-light: #FFE680;
+  --tab-shadow: #B08800;
+  --tab-box: #7A5E00;
+  --tab-off: #E2E5EA;            /* tab_unfocused */
+  --tab-off-light: #FAFAFA;
+  --tab-off-shadow: #A0A4AA;
+  --tab-off-ink: #4A4F58;
+  --sel: #D3E1F7;                /* a chosen row */
+  --band: #CDD2DA;               /* Deskbar's workspace row: grey, a chosen row blue */
+  --button-top: #FFFFFF;
+  --button-bottom: #E4E8EF;
+  --button-edge: #6E7787;
+  --pressed: #D5DBE4;
+  --term-bg: #FFFFFF;
+  --term-ink: #26292E;           /* BeOS Light terminal */
+  --term-dim: #6B7280;
+  --code-bg: #F3F6FA;
+  --desk-blue: #336698;          /* BeOS's desktop */
+  --desk-blue-2: #28567F;
+  --deskbar: rgba(244, 246, 250, .96);
+  --deskbar-edge: #8D97A7;
+  --shadow-win: 0 30px 60px -32px rgba(16, 36, 80, .5), 0 2px 6px rgba(16, 36, 80, .1);
+  --olo-word: url(brand/olo.svg);
+  --wall-ground: #AFD1F8;        /* Dunes' sky */
+  --wall-s: url(img/wall-dunes-1280.webp);
+  --wall-m: url(img/wall-dunes-1920.webp);
+  --wall-l: url(img/wall-dunes-2880.webp);
+  --wall-xl: url(img/wall-dunes-3840.webp);
+  --hero-ink: #0B0D14;
+  --hero-ink-2: #222B3B;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"], :root[data-theme="night"] {
+  --desk: #07102A;
+  --wf-outer: #060A0C; --wf-light: #54636E; --wf-face: #293B45; --wf-shadow: #111E26;
+  --menu-sel: #2D4466;
+  --surface: #121725;
+  --well: #0C111C;
+  --ink: #F4F6FA;
+  --ink-2: #C5CBD6;
+  --ink-3: #9AA2B1;
+  --rule: #252C3B;
+  --frame: #4A556C;
+  --frame-in: #2F3747;
+  --frame-soft: rgba(255, 255, 255, .10);
+  --link: #78AEFF;
+  --blue: #0D6EFD;
+  --blue-edge: #3D8BFF;
+  --tab: #E8B400;                /* olo_theme dark: the tab kept, deepened */
+  --tab-light: #FAD046;
+  --tab-shadow: #8C6800;
+  --tab-box: #5C4500;
+  --tab-off: #464A52;
+  --tab-off-light: #5E636C;
+  --tab-off-shadow: #24272D;
+  --tab-off-ink: #C4C8CF;
+  --sel: #22314B;
+  --band: #2B303B;
+  --button-top: #3A404D;
+  --button-bottom: #2B303B;
+  --button-edge: #12161E;
+  --pressed: #2C3342;
+  --term-bg: #080B12;
+  --term-ink: #E6E8EC;
+  --term-dim: #8F97A6;
+  --code-bg: #0C111C;
+  --desk-blue: #16304F;          /* the desktop blue, at night */
+  --desk-blue-2: #0E2038;
+  --deskbar: rgba(26, 31, 44, .96);
+  --deskbar-edge: #3A4356;
+  --shadow-win: 0 34px 64px -30px rgba(0, 0, 0, .85), 0 2px 8px rgba(0, 0, 0, .35);
+  --olo-word: url(brand/olo-on-dark.svg);
+  --wall-ground: #011248;
+  --wall-s: url(img/wall-dunes-dark-1280.webp);
+  --wall-m: url(img/wall-dunes-dark-1920.webp);
+  --wall-l: url(img/wall-dunes-dark-2880.webp);
+  --wall-xl: url(img/wall-dunes-dark-3840.webp);
+  --hero-ink: #F4F6FA;
+  --hero-ink-2: #C9D2E3;
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 72px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font: 400 17px/1.6 var(--f-text);
+  font-kerning: normal;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img, svg { display: block; max-width: 100%; }
+img { height: auto; }
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: .18em; }
+a:hover { text-decoration-thickness: 2px; }
+b, strong { font-weight: 700; }
+code, kbd, pre { font-family: var(--f-mono); }
+code { font-size: .88em; background: var(--code-bg); padding: 0 .28em; border-radius: 2px; border: 1px solid var(--frame-soft); }
+kbd { font: 600 .82em/1 var(--f-mono); border: 1px solid var(--frame-in); border-bottom-width: 2px; border-radius: 3px; padding: .16em .3em .12em; background: var(--surface); white-space: nowrap; }
+h1, h2, h3 { margin: 0; font-family: var(--f-display); color: var(--ink); }
+p { margin: 0; }
+:focus-visible { outline: 1px dotted var(--ink); outline-offset: 2px; box-shadow: 0 0 0 3px rgba(13,110,253,.35); }
+.skip { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--surface); padding: 8px 14px; border: 1px solid var(--frame); }
+.skip:focus { top: 12px; }
+[hidden] { display: none !important; }
+:root:not([data-theme="dark"]):not([data-theme="night"]) .only-dark { display: none !important; }
+:root[data-theme="dark"] .only-light, :root[data-theme="night"] .only-light { display: none !important; }
+@media (hover: hover) { .touch-only { display: none; } }
+@media (hover: none) { .hover-only { display: none; } }
+
+/* ---------- One grid: three columns in every window ---------- */
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: var(--gap); }
+.span2 { grid-column: span 2; }
+@media (max-width: 899px) { .grid3 { grid-template-columns: minmax(0, 1fr); row-gap: 28px; } .span2 { grid-column: auto; } }
+
+/* ---------- The window tab: Olo's, after BeOS's ---------- */
+.tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: var(--tab-h); padding: 0 6px 0 5px;
+  font: 700 12.5px/1 var(--f-text); white-space: nowrap;
+  background: var(--tab); color: #000;
+  border: 1px solid var(--tab-shadow); border-bottom: 0;
+  box-shadow: inset 1px 1px 0 var(--tab-light), inset -1px 0 0 var(--tab-shadow);
+  transition: background-color .3s, color .3s, border-color .3s, box-shadow .3s;
+}
+.tab-box, .tab-zoom { flex: none; width: 12px; height: 12px; position: relative; }
+.tab-box {
+  border: 1px solid var(--tab-box);
+  background: linear-gradient(135deg, var(--tab-light) 15%, var(--tab) 60%, var(--tab-shadow));
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .55);
+}
+/* The zoom box: two squares, the small one over the big. */
+.tab-zoom { margin-left: 6px; }
+.tab-zoom::before, .tab-zoom::after { content: ""; position: absolute; border: 1px solid var(--tab-box); background: linear-gradient(135deg, var(--tab-light), var(--tab)); }
+.tab-zoom::before { right: 0; bottom: 0; width: 9px; height: 9px; }
+.tab-zoom::after { left: 0; top: 0; width: 7px; height: 7px; }
+/* Behind: grey, as a window that isn't the one you're in. */
+.js .sec:not(.is-front) .win-tab, .has-dialog .sec .win-tab { background: var(--tab-off); color: var(--tab-off-ink); border-color: var(--tab-off-shadow); box-shadow: inset 1px 1px 0 var(--tab-off-light), inset -1px 0 0 var(--tab-off-shadow); }
+.js .sec:not(.is-front) .win-tab .tab-box,
+.js .sec:not(.is-front) .win-tab .tab-zoom::before,
+.js .sec:not(.is-front) .win-tab .tab-zoom::after,
+.has-dialog .sec .win-tab .tab-box, .has-dialog .sec .win-tab .tab-zoom::before, .has-dialog .sec .win-tab .tab-zoom::after { border-color: var(--tab-off-shadow); background: linear-gradient(135deg, var(--tab-off-light) 15%, var(--tab-off)); }
+
+/* ---------- A window, on the desktop ---------- */
+.sec { max-width: calc(var(--col) + 2 * var(--gutter)); margin: 0 auto; padding: calc(clamp(64px, 8vw, 104px) + var(--tab-h)) var(--gutter) 0; }
+#desktop { padding-top: calc(24px + var(--tab-h)); }
+.win { position: relative; background: var(--wf-face); border: 1px solid var(--wf-outer); padding: 3px; box-shadow: inset 1px 1px 0 var(--wf-light), inset -1px -1px 0 var(--wf-shadow), var(--shadow-win); }
+/* Each tab at its window's left corner. */
+.win-tab { position: absolute; bottom: 100%; left: -1px; }
+.win-body { position: relative; padding: calc(var(--pad) * .8) var(--pad) var(--pad); background: var(--surface); border: 1px solid; border-color: var(--wf-shadow) var(--wf-light) var(--wf-light) var(--wf-shadow); }
+.sec-head { display: grid; gap: 18px; margin-bottom: clamp(30px, 3.6vw, 48px); max-width: 860px; }
+h2 { font-size: clamp(29px, 3.2vw, 44px); line-height: 1.1; font-weight: 750; letter-spacing: -.022em; text-wrap: balance; }
+h3 { font-size: 19px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
+.sec-lead { font-size: clamp(17px, 1.4vw, 19.5px); line-height: 1.58; color: var(--ink-2); max-width: 62ch; text-wrap: pretty; }
+.small, .trio figcaption, .feature-text p, .facts p, .trio-text p, .steps li, .caveat p { font-size: 15.5px; line-height: 1.6; color: var(--ink-2); }
+/* A sunken view inside a window: a terminal, a list: darker above and left, lighter below and right. */
+.view { border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); box-shadow: inset 1px 1px 0 var(--frame-soft); background: var(--well); }
+
+/* ---------- A picture at its own size ---------- */
+/* The picture is never scaled: a narrower column shows less of it, from its top left. */
+.shot { position: relative; overflow: hidden; max-width: var(--w); height: min(var(--h), var(--show, var(--h))); border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); background: var(--well); }
+.shot img { width: var(--w); height: var(--h); max-width: none; }
+.shot.edge { border-left: 0; }
+/* A whole window, its own frame round it: nothing more round it. */
+.shot.bare { border: 0; background: none; box-shadow: 0 18px 30px -24px rgba(16,36,80,.5); }
+/* The Installer on its own blue, across the column, never scaled. */
+.shot.blue { max-width: none; display: grid; place-items: center; background: #336698; border-color: var(--frame-in); }
+.nb { white-space: nowrap; }
+
+/* ---------- Buttons: Olo's, bevelled ---------- */
+.button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 40px; padding: 0 20px;
+  font: 600 15.5px/1 var(--f-text); color: var(--ink); text-decoration: none;
+  background: linear-gradient(var(--button-top), var(--button-bottom));
+  border: 1px solid var(--button-edge); border-radius: 3px;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,.65), inset -1px -1px 0 rgba(0,0,0,.08);
+  transition: transform .06s, box-shadow .12s;
+}
+.button:hover { text-decoration: none; background: linear-gradient(var(--button-top), var(--button-top)); }
+.button:active { transform: translateY(1px); background: var(--pressed); box-shadow: inset 1px 1px 2px rgba(0,0,0,.28); }
+/* The default button: Olo blue, with BeOS's darker ring round it. */
+.button.primary { color: #fff; background: linear-gradient(#2E84FF, var(--blue)); border-color: var(--blue-edge); box-shadow: inset 1px 1px 0 rgba(255,255,255,.3), 0 0 0 1px var(--surface), 0 0 0 3px var(--button-edge); margin: 3px; }
+.hero .button.primary { box-shadow: inset 1px 1px 0 rgba(255,255,255,.3), 0 0 0 1px rgba(255,255,255,.5), 0 0 0 3px #16305A; }
+.button.primary:active { background: #0A5BD6; box-shadow: inset 1px 1px 3px rgba(0,0,0,.35), 0 0 0 1px var(--surface), 0 0 0 3px var(--button-edge); }
+.button.big { min-height: 48px; padding: 0 26px; font-size: 16.5px; }
+
+/* ---------- Deskbar ---------- */
+.deskbar {
+  position: fixed; top: 0; right: 0; z-index: 50;
+  width: var(--desk-w);
+  color: var(--ink);
+  background: var(--deskbar);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  border-left: 1px solid var(--deskbar-edge); border-bottom: 1px solid var(--deskbar-edge);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,.5), 0 12px 30px -18px rgba(11,13,20,.55);
+  font: 400 13px/1.3 var(--f-text);
+}
+.db-head { position: relative; height: 34px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--frame-soft); }
+.db-mark { display: block; padding: 4px; border-radius: 3px; flex: none; }
+.db-mark img { width: 22px; height: 22px; }
+.db-front { display: none; font: 700 13px/1.35 var(--f-text); max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-fold {
+  position: absolute; right: 4px; top: 4px; width: 26px; height: 26px;
+  display: grid; place-items: center; border: 0; border-radius: 3px; background: none; color: var(--ink-3); cursor: pointer;
+}
+.db-fold:hover { background: var(--frame-soft); color: var(--ink); }
+.db-fold svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.db-clock { display: flex; justify-content: space-between; height: 30px; align-items: center; padding: 0 12px; font-variant-numeric: tabular-nums; }
+/* The look: three buttons in a sunken well; the one chosen sits pressed in. */
+.db-tray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 0 8px 6px; padding: 2px; border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); border-radius: 3px; background: var(--well); }
+.db-tray button { height: 24px; border: 1px solid transparent; border-radius: 2px; background: none; color: var(--ink-2); font: 600 12px/1 var(--f-text); cursor: pointer; }
+.db-tray button:hover { color: var(--ink); background: var(--frame-soft); }
+.db-tray button[aria-pressed="true"] { color: var(--ink); background: var(--pressed); border-color: transparent; box-shadow: inset 1px 1px 0 rgba(0,0,0,.3), inset -1px -1px 0 rgba(255,255,255,.75); }
+:root[data-theme="dark"] .db-tray button[aria-pressed="true"], :root[data-theme="night"] .db-tray button[aria-pressed="true"] { background: #04070B; box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 rgba(255,255,255,.14); }
+.db-agent { position: relative; display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); height: 28px; margin: 0 8px 6px; padding: 0 6px; border-radius: 3px; color: var(--ink); font: 600 13px/1 var(--f-text); cursor: pointer; }
+.db-agent input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.db-agent input:focus-visible + .db-check { outline: 1px dotted var(--ink); outline-offset: 2px; }
+.db-agent:hover { background: var(--frame-soft); }
+.db-check { width: 15px; height: 15px; display: grid; place-items: center; flex: none; border: 1px solid var(--button-edge); border-radius: 2px; background: linear-gradient(var(--button-top), var(--button-bottom)); box-shadow: inset 1px 1px 0 rgba(255,255,255,.5); }
+.db-check svg { width: 11px; height: 11px; fill: none; stroke: transparent; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.db-agent input:checked + .db-check { background: var(--blue); border-color: var(--blue-edge); }
+.db-agent input:checked + .db-check svg { stroke: #fff; }
+:root[data-theme="dark"] .db-check, :root[data-theme="night"] .db-check { border-color: #8C96A6; }
+.db-apps { display: flex; flex-direction: column; padding: 2px 0 4px; }
+.db-apps a { display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 12px; color: var(--ink); text-decoration: none; font-size: 13.5px; }
+.db-apps a:hover { background: var(--frame-soft); }
+.db-apps a[aria-current="true"] { background: var(--sel); font-weight: 700; }
+.db-apps img { width: 16px; height: 16px; flex: none; }
+
+/* Folded to its corner button (Olo's ⌃⌘D), saying the window in front. */
+.deskbar.is-folded { width: 176px; border-radius: 0 0 0 4px; }
+.deskbar.is-folded .db-body { display: none; }
+.deskbar.is-folded .db-head { border-bottom: 0; justify-content: flex-start; gap: 6px; padding: 0 38px 0 6px; }
+.deskbar.is-folded .db-front { display: block; }
+.deskbar.is-folded .db-front:empty { display: none; }
+.deskbar.is-folded .db-fold svg { transform: rotate(180deg); }
+html:not(.js) .deskbar .db-fold { display: none; }
+@media (max-width: 1239px) { html:not(.js) .deskbar .db-body { display: none; } html:not(.js) .deskbar { width: auto; } }
+/* On a phone, past the top: a slim bar across, so it covers no line. */
+@media (max-width: 599px) {
+  .past-hero .deskbar.is-folded { left: 0; border-left: 0; border-radius: 0; }
+  .past-hero .deskbar.is-folded .db-head { height: 44px; padding: 0 44px 0 10px; }
+  .past-hero .deskbar.is-folded .db-fold { top: 9px; right: 8px; }
+  .deskbar:not(.is-folded) { left: 0; width: auto; border-left: 0; }
+}
+
+/* ---------- Hero: the desktop, nothing open yet ---------- */
+.hero {
+  position: relative; isolation: isolate;
+  container-type: inline-size;
+  min-height: min(calc(100svh - 170px), 860px);
+  display: grid;
+  background: var(--wall-ground);
+  color: var(--hero-ink);
+  overflow: hidden;
+}
+/* Dunes, Olo's own, its 21:9 band: never enlarged (each width is there,
+   lossless, to 3840), its dunes along the foot, the words in its sky. */
+.hero-wall { position: absolute; inset: 0; z-index: -2; background: var(--wall-ground) 30% 100% / cover no-repeat; background-image: image-set(var(--wall-m) 1x, var(--wall-xl) 2x); }
+@media (min-width: 1921px) { .hero-wall { background-image: image-set(var(--wall-l) 1x, var(--wall-xl) 2x); } }
+/* The wallpaper goes on under the windows: the desktop's own colour. */
+.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 24%; z-index: -1; background: linear-gradient(to bottom, transparent, var(--desk)); pointer-events: none; }
+.hero-logo { position: absolute; top: clamp(20px, 3vw, 36px); left: max(var(--gutter), (100cqw - var(--col)) / 2); display: flex; align-items: center; gap: 14px; text-decoration: none; --cap: 30px; }
+.logo-mark { width: calc(var(--cap) * 1.9); height: calc(var(--cap) * 1.9); }
+/* "Olo", its cap height --cap: the box is its ink's, 1738 x 772 to a cap of 730 (the rounds overshoot). */
+.logo-olo { width: calc(var(--cap) * 2.381); height: calc(var(--cap) * 1.0575); background: var(--olo-word) center / contain no-repeat; }
+/* Where Deskbar folds: just above the desktop icons under it, so the two never meet. */
+.fold-line { position: absolute; left: 0; top: 370px; width: 1px; height: 1px; pointer-events: none; }
+/* Desktop icons, under Deskbar as on Olo's own desktop. */
+.desk-icons { position: absolute; right: 0; width: var(--desk-w); top: 378px; display: none; flex-direction: row; justify-content: space-around; gap: 0; }
+.desk-icons a { display: grid; justify-items: center; align-content: start; gap: 4px; width: 72px; color: #fff; text-decoration: none; font: 400 12.5px/1.25 var(--f-text); text-align: center; text-shadow: none; }
+.desk-icons img { width: 48px; height: 48px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+.desk-icons a:hover span { background: rgba(11, 30, 70, .55); border-radius: 2px; }
+:root:not([data-theme="dark"]):not([data-theme="night"]) .desk-icons a { color: #0B0D14; text-shadow: none; }
+:root:not([data-theme="dark"]):not([data-theme="night"]) .desk-icons a:hover span { background: rgba(255,255,255,.7); }
+@media (min-width: 1240px) and (min-height: 700px) { .desk-icons { display: flex; } }
+/* The words, on the windows' grid: its second and third columns. */
+.hero-copy {
+  --win-l: max(var(--gutter), (100cqw - var(--col)) / 2);
+  --inner: min(var(--col), 100cqw - 2 * var(--gutter)) - 2 * var(--pad) - 2px;
+  align-self: end;
+  position: relative;
+  /* Its foot on Dunes' horizon, 30% up the band: of the hero's height
+     where the band is fitted to it, of the band's own (its width / 2.33)
+     on a wider screen. */
+  margin: 0 0 max(min(30svh - 63px, 246px), 12.9cqw - 12px) calc(var(--win-l) + 1px + var(--pad) + (var(--inner) - 2 * var(--gap)) / 3 + var(--gap));
+  width: min(640px, 100cqw - var(--desk-w) - 24px - (var(--win-l) + 1px + var(--pad) + (var(--inner) - 2 * var(--gap)) / 3 + var(--gap)));
+  display: grid; gap: 20px;
+}
+.eyebrow { display: flex; align-items: center; gap: 10px; font: 600 14px/1 var(--f-text); color: var(--hero-ink-2); letter-spacing: .01em; }
+.pill { font: 700 10.5px/1 var(--f-text); text-transform: uppercase; letter-spacing: .14em; padding: 4px 6px 3px; border-radius: 2px; color: var(--hero-ink); background: color-mix(in srgb, var(--wall-ground) 80%, #fff); box-shadow: inset 0 0 0 1px currentColor; }
+:root[data-theme="dark"] .pill, :root[data-theme="night"] .pill { background: var(--wall-ground); }
+h1 { font-size: clamp(38px, 4.2vw, 62px); line-height: 1.03; font-weight: 800; letter-spacing: -.035em; color: var(--hero-ink); text-wrap: balance; }
+.lead { font-size: clamp(17.5px, 1.4vw, 20px); line-height: 1.5; color: var(--hero-ink-2); max-width: 34em; text-wrap: pretty; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 0 -3px; }
+.hero-small { font-size: 14px; color: var(--hero-ink-2); }
+
+/* Phones and tall screens: the words above, the dunes below. */
+@media (max-width: 899px), (max-width: 1199px) and (max-aspect-ratio: 4/5) {
+  .hero { min-height: 0; grid-template-rows: auto auto; }
+  .hero-wall { position: relative; inset: auto; grid-row: 2; height: clamp(120px, 34vw, 300px); background: var(--wall-ground) 30% 100% / cover no-repeat; background-image: image-set(var(--wall-s) 1x, var(--wall-m) 2x); z-index: 0;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); margin-top: 24px; }
+  .hero-copy { grid-row: 1; justify-self: start; align-self: start; margin: 96px var(--gutter) 0; width: auto; max-width: 640px; }
+  .hero-logo { --cap: 22px; gap: 10px; }
+}
+/* A phone draws its strip from 1280 pixels at 2x (a 390-point screen is 780); at 3x, from 1920. */
+@media (max-width: 599px) { .hero-wall { background-image: image-set(var(--wall-s) 1x, var(--wall-s) 2x, var(--wall-m) 3x); } }
+
+/* ---------- The desktop: a plate, its notes in the margins as in a manual ---------- */
+.plate { margin: 0; }
+.plate-pic { position: relative; margin: 34px 0 0; border: 1px solid var(--frame-in); background: var(--well); }
+.plate-pic img { width: 100%; }
+.note { position: absolute; color: var(--link); text-decoration: none; }
+.note b { position: absolute; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--f-display); color: var(--link); background: var(--surface); box-shadow: inset 0 0 0 1.5px currentColor; transition: background-color .15s, color .15s; }
+.note::after { content: ""; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 1.5px #fff; }
+/* From the top margin, straight down to the spot. */
+.note.top { left: var(--x); top: -22px; height: calc(var(--y) + 22px); border-left: 1px solid currentColor; }
+.note.top b { left: -12px; top: -14px; }
+.note.top::after { left: -3px; bottom: -3px; }
+/* From the left margin, straight across. */
+.note.left { top: var(--y); left: -30px; width: calc(var(--x) + 30px); border-top: 1px solid currentColor; }
+.note.left b { left: -14px; top: -12px; }
+.note.left::after { right: -3px; top: -3px; }
+.note:hover b, .note:focus-visible b, .note.lit b { background: var(--blue); color: #fff; box-shadow: none; }
+/* A note chosen: its words in a balloon where its line ends, as Olo's tooltips. */
+.balloon { position: absolute; z-index: 3; left: var(--bx); top: var(--by); width: max-content; max-width: min(320px, 62%); margin: 14px 0 0 14px; padding: 9px 12px 10px; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); background: var(--surface); border: 1px solid var(--frame); border-radius: 3px; box-shadow: 0 12px 28px -10px rgba(10, 20, 40, .45), 0 1px 3px rgba(10, 20, 40, .12); }
+.balloon[hidden] { display: none; }
+.balloon b { color: var(--ink); }
+.balloon.fx { transform: translateX(-100%); margin-left: -14px; }
+.balloon.fy { transform: translateY(-100%); margin-top: -14px; }
+.balloon.fx.fy { transform: translate(-100%, -100%); }
+/* On a phone the plate is smaller than the balloon: it opens under the picture. */
+@media (max-width: 699px) { .balloon, .balloon.fx, .balloon.fy, .balloon.fx.fy { left: -1px; right: -1px; top: calc(100% + 6px); width: auto; max-width: none; margin: 0; transform: none; } }
+.plate-scale { margin: 14px 0 0; font-size: 13.5px; color: var(--ink-3); }
+.legend { list-style: none; margin: 26px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px var(--gap); counter-reset: n; }
+.legend li { position: relative; padding-left: 36px; font-size: 15.5px; line-height: 1.5; color: var(--ink-2); counter-increment: n; scroll-margin-top: 40vh; }
+.legend li::before { content: counter(n); position: absolute; left: 0; top: -1px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--f-display); color: var(--link); box-shadow: inset 0 0 0 1.5px currentColor; }
+.legend li.lit::before, .legend li:target::before { background: var(--blue); color: #fff; box-shadow: none; }
+.legend b { color: var(--ink); }
+@media (max-width: 899px) { .legend { grid-template-columns: minmax(0, 1fr); } }
+
+.trio { margin-top: clamp(40px, 5vw, 64px); padding-top: clamp(30px, 3.6vw, 44px); border-top: 1px solid var(--rule); }
+.trio figure { margin: 0; display: grid; gap: 14px; align-content: start; }
+.trio .shot { height: 205px; }
+.trio figcaption b { color: var(--ink); }
+/* Seven tiling layouts, drawn. */
+.layouts { height: 205px; border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); background: var(--desk-blue); overflow: hidden; }
+.layouts { display: grid; place-items: center; }
+.layouts svg { width: 100%; height: auto; max-height: 100%; }
+.layouts .screen { fill: rgba(255,255,255,.08); stroke: rgba(255,255,255,.55); stroke-width: 1; }
+.layouts .tile { fill: #F4F6FA; stroke: #1B3150; stroke-width: 1; }
+.layouts .tile.ghost { fill: #C9D3E2; }
+.layouts .tile.front { fill: #fff; }
+.layouts .tabmark { fill: #FFCB00; stroke: #1B3150; stroke-width: 1; }
+.layouts .cover { fill: var(--desk-blue); }
+.layouts text { font: 600 11px var(--f-text); fill: #fff; text-anchor: middle; }
+:root[data-theme="dark"] .layouts .tile, :root[data-theme="night"] .layouts .tile { fill: #2A3346; stroke: #0A1424; }
+:root[data-theme="dark"] .layouts .tile.front, :root[data-theme="night"] .layouts .tile.front { fill: #3A4559; }
+:root[data-theme="dark"] .layouts .tile.ghost, :root[data-theme="night"] .layouts .tile.ghost { fill: #1E2636; }
+:root[data-theme="dark"] .layouts .tabmark, :root[data-theme="night"] .layouts .tabmark { fill: #E8B400; }
+
+/* ---------- Two readers ---------- */
+.xray { align-items: start; }
+.xray-side { display: grid; gap: 22px; align-content: start; }
+.xray-desk {
+  position: relative; display: grid; justify-items: center; gap: 22px;
+  padding: 26px 0 22px;
+  background: radial-gradient(120% 80% at 30% 20%, color-mix(in srgb, var(--desk-blue) 80%, #fff), var(--desk-blue) 60%, var(--desk-blue-2));
+  border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in);
+}
+.xray-win { position: relative; width: 276px; height: 269px; filter: drop-shadow(0 14px 18px rgba(0, 20, 50, .4)); }
+.xray-win img { width: 276px; height: 269px; max-width: none; transition: opacity .2s; }
+.xray-boxes { position: absolute; inset: 0; width: 276px; height: 269px; overflow: visible; }
+.xray-boxes rect { fill: transparent; stroke: transparent; stroke-width: 1; cursor: pointer; transition: fill .12s, stroke .12s; }
+.xray-boxes text { font: 600 11px var(--f-mono); fill: #A9CBFF; text-anchor: middle; dominant-baseline: central; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.xray-boxes .lit rect { fill: rgba(13, 110, 253, .18); stroke: #0D6EFD; stroke-width: 2; }
+.xray[data-mode="agent"] .xray-win img { opacity: .08; }
+.xray[data-mode="agent"] .xray-boxes rect { stroke: rgba(169, 203, 255, .9); fill: #163B66; }
+.xray[data-mode="agent"] .xray-boxes .lit rect { stroke: #fff; fill: rgba(13, 110, 253, .45); stroke-width: 2; }
+.xray[data-mode="agent"] .xray-boxes text { opacity: 1; }
+.xray[data-mode="agent"] .xray-boxes .win-box rect { stroke: rgba(169, 203, 255, .5); fill: none; stroke-dasharray: 3 3; }
+/* What to show: an Olo segmented control on the blue; the one chosen pressed in. */
+.xray-switch { display: inline-grid; grid-auto-flow: column; gap: 2px; padding: 2px; border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); border-radius: 3px; background: var(--well); justify-self: start; }
+.xray-switch button { border: 1px solid transparent; border-radius: 2px; background: none; color: var(--ink-2); font: 600 12.5px/1 var(--f-text); padding: 6px 11px; cursor: pointer; white-space: nowrap; }
+.xray-switch button:hover { background: var(--frame-soft); color: var(--ink); }
+.xray-switch button[aria-pressed="true"] { background: var(--pressed); color: var(--ink); box-shadow: inset 1px 1px 0 rgba(0,0,0,.3), inset -1px -1px 0 rgba(255,255,255,.75); }
+:root[data-theme="dark"] .xray-switch button[aria-pressed="true"], :root[data-theme="night"] .xray-switch button[aria-pressed="true"] { background: #04070B; box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 rgba(255,255,255,.14); }
+
+.term { position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--term-bg); border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); box-shadow: inset 1px 1px 0 var(--frame-soft); }
+.term-label { display: flex; align-items: center; height: 32px; padding: 0 14px; border-bottom: 1px solid var(--rule); background: var(--well); font: 600 12px/1 var(--f-text); color: var(--ink-3); letter-spacing: .02em; }
+.term-body { margin: 0; padding: 12px 16px 16px; overflow-x: auto; color: var(--term-ink); font: 400 13px/1.62 var(--f-mono); tab-size: 4; scrollbar-width: thin; }
+.term-body .p { color: var(--term-dim); user-select: none; }
+.term-body [data-i] { display: inline-block; min-width: 100%; border-radius: 2px; cursor: default; }
+.term-body [data-i].lit { background: rgba(13, 110, 253, .16); box-shadow: inset 2px 0 0 var(--blue); }
+.term-body .c { color: var(--term-dim); }
+.xray-note { font-size: 15.5px; line-height: 1.6; color: var(--ink-2); }
+.xray-note b { color: var(--ink); }
+.copy { position: absolute; top: 4px; right: 5px; height: 24px; padding: 0 10px; border: 1px solid var(--button-edge); border-radius: 3px; background: linear-gradient(var(--button-top), var(--button-bottom)); color: var(--ink); font: 600 12px/1 var(--f-text); cursor: pointer; box-shadow: inset 1px 1px 0 rgba(255,255,255,.6); }
+.copy:active { background: var(--pressed); box-shadow: inset 1px 1px 2px rgba(0,0,0,.25); }
+.facts, .trio-text, .caveat { margin-top: clamp(40px, 5vw, 60px); padding-top: clamp(28px, 3.4vw, 40px); border-top: 1px solid var(--rule); }
+.facts h3, .trio-text h3, .caveat h3 { margin-bottom: 8px; }
+@media (max-width: 1099px) and (min-width: 900px) { .xray.grid3 { grid-template-columns: 1fr; row-gap: 24px; } .xray .span2 { grid-column: auto; } }
+
+/* ---------- Agents ---------- */
+.feature { align-items: start; }
+.feature + .feature { margin-top: clamp(44px, 5vw, 64px); padding-top: clamp(44px, 5vw, 64px); border-top: 1px solid var(--rule); }
+.feature-pic { margin: 0; }
+.feature-text { display: grid; gap: 14px; align-content: start; }
+.feature-text h3 + p { margin-top: -4px; }
+.code { margin: 6px 0 0; padding: 11px 13px; overflow-x: auto; background: var(--code-bg); color: var(--ink); font: 400 12.5px/1.6 var(--f-mono); border: 1px solid; border-color: var(--frame-in) var(--rule) var(--rule) var(--frame-in); box-shadow: inset 1px 1px 0 var(--frame-soft); scrollbar-width: thin; }
+.code .p, .code .c { color: var(--ink-3); user-select: none; }
+
+/* ---------- Measured ---------- */
+.ledger { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--rule); }
+.ledger li { align-items: start; padding: 26px 0 24px; border-top: 1px solid var(--rule); }
+.fig { display: grid; grid-template-columns: 5.5rem 2.2rem auto; align-items: baseline; font-family: var(--f-display); font-variant-numeric: lining-nums tabular-nums; }
+.fig .was { justify-self: end; font-size: clamp(20px, 1.9vw, 26px); font-weight: 600; color: var(--ink-3); letter-spacing: -.02em; white-space: nowrap; }
+.fig .arrow { justify-self: center; font-size: clamp(18px, 1.7vw, 23px); color: var(--ink-3); font-weight: 300; }
+.fig .now { font-size: clamp(44px, 5vw, 70px); line-height: .86; font-weight: 800; letter-spacing: -.045em; color: var(--ink); white-space: nowrap; }
+.fig .now small { font-size: .34em; letter-spacing: -.01em; font-weight: 700; margin-left: .14em; }
+.what { padding-top: 2px; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+.what b { color: var(--ink); }
+.src { padding-top: 4px; font: 400 12.5px/1.5 var(--f-mono); color: var(--ink-3); text-align: left; display: grid; justify-items: start; }
+.src a { color: var(--link); }
+.ledger-foot { margin-top: 20px; font-size: 15px; color: var(--ink-3); max-width: 72ch; }
+@media (max-width: 899px) {
+  .ledger li { row-gap: 10px; }
+  .fig { grid-template-columns: auto 2rem auto; justify-content: start; }
+  .src { text-align: left; display: flex; gap: 12px; }
+}
+
+/* ---------- Apps: Tracker's icon view ---------- */
+.tracker-win { display: flex; flex-direction: column; }
+.icons { list-style: none; margin: 0; padding: 18px clamp(8px, 1.4vw, 18px) 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px 4px; background: var(--surface); }
+.icons button { width: 100%; display: grid; justify-items: center; gap: 7px; padding: 10px 4px 8px; border: 0; background: none; color: var(--ink); cursor: default; font: 400 13.5px/1.25 var(--f-text); border-radius: 3px; }
+.icons img { width: 48px; height: 48px; transition: filter .1s; }
+.icons span { padding: 1px 5px 2px; border-radius: 2px; text-align: center; }
+.icons button:hover img, .icons button:focus-visible img, .icons button.chosen img { filter: brightness(.7) saturate(1.1); }
+.icons button:hover span, .icons button.chosen span { background: var(--ink); color: var(--surface); }
+.icons button:focus-visible { outline: none; box-shadow: none; }
+.icons button:focus-visible span { background: var(--blue); color: #fff; }
+.tracker-status { display: flex; gap: 18px; align-items: center; min-height: 30px; padding: 4px 12px; border-top: 1px solid var(--rule); background: var(--well); font-size: 13px; color: var(--ink-2); }
+.ts-count { flex: none; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ts-about b { color: var(--ink); }
+.apps-also { margin-top: 20px; font-size: 15px; color: var(--ink-3); max-width: 68ch; }
+.apps-also b { color: var(--ink-2); }
+
+/* ---------- Looks ---------- */
+.looks { align-items: start; }
+.looks-pick { display: grid; gap: 2px; align-content: start; }
+.looks-sub { margin: 14px 0 4px 12px; font: 700 11px/1.2 var(--f-text); text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+.looks-sub:first-child { margin-top: 0; }
+.looks-pick label { position: relative; display: block; cursor: pointer; }
+.looks-pick input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.looks-pick span { display: block; padding: 8px 12px; border-radius: 2px; font: 600 15.5px/1.2 var(--f-text); color: var(--ink-2); }
+.looks-pick label:hover span { background: var(--frame-soft); color: var(--ink); }
+.looks-pick input:checked + span { background: var(--sel); color: var(--ink); }
+.looks-pick input:focus-visible + span { outline: 1px dotted var(--ink); outline-offset: -3px; }
+.looks-pic .shot { height: var(--h); }
+.looks-pic .shot img { display: none; }
+.looks:has(input[value="classic"]:checked) img[data-look="classic"],
+.looks:has(input[value="platinum"]:checked) img[data-look="platinum"],
+.looks:has(input[value="beos"]:checked) img[data-look="beos"],
+.looks:has(input[value="amigaos"]:checked) img[data-look="amigaos"],
+.looks:has(input[value="aqua"]:checked) img[data-look="aqua"],
+.looks:has(input[value="tokyo-night"]:checked) img[data-look="tokyo-night"] { display: block; }
+.looks-note { margin-top: 14px; font-size: 14.5px; color: var(--ink-3); max-width: 70ch; }
+/* Its icons: sixteen of them as Olo draws them in each set (one strip a
+   set, 64 points at 1x and 2x), in a Tracker icon view; the sets in a list
+   beside them as the looks are beside their picture. */
+.icons-row { margin-top: 40px; align-items: start; }
+.iconset { --set-1: url(img/iconset-classic-1x.webp); --set-2: url(img/iconset-classic-2x.webp); }
+.icons-row:has(input[value="platinum"]:checked) .iconset { --set-1: url(img/iconset-platinum-1x.webp); --set-2: url(img/iconset-platinum-2x.webp); }
+.icons-row:has(input[value="beos"]:checked) .iconset { --set-1: url(img/iconset-beos-1x.webp); --set-2: url(img/iconset-beos-2x.webp); }
+.icons-row:has(input[value="amiga"]:checked) .iconset { --set-1: url(img/iconset-amiga-1x.webp); --set-2: url(img/iconset-amiga-2x.webp); }
+.icons-row:has(input[value="aqua"]:checked) .iconset { --set-1: url(img/iconset-aqua-1x.webp); --set-2: url(img/iconset-aqua-2x.webp); }
+.icons-row:has(input[value="flat"]:checked) .iconset { --set-1: url(img/iconset-flat-1x.webp); --set-2: url(img/iconset-flat-2x.webp); }
+.looks-pick .lk.lk-set { grid-template-columns: 1fr; }
+.iconset-icons { list-style: none; margin: 0; padding: 16px 6px 12px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); row-gap: 14px; background: var(--surface); }
+.iconset-icons li { display: grid; justify-items: center; gap: 6px; min-width: 0; }
+.iconset-icons i { display: block; width: 64px; height: 64px; background: image-set(var(--set-1) 1x, var(--set-2) 2x) calc(var(--i) * -64px) 0 / 1024px 64px no-repeat; }
+.iconset-icons span { font-size: 12.5px; line-height: 1.2; color: var(--ink-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iconset-about { margin-top: 14px; font-size: 14.5px; color: var(--ink-3); max-width: 70ch; }
+.iconset-about b { color: var(--ink-2); }
+@media (max-width: 719px) { .iconset-icons { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 899px) {
+  .looks-sub { display: none; }
+  .looks-pick { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .looks-pick span { text-align: center; padding: 9px 4px; font-size: 14.5px; }
+  .looks-pic .shot { height: auto; aspect-ratio: auto; }
+  .looks-pic .shot { height: min(var(--h), 62vw); }
+}
+
+/* ---------- Install ---------- */
+.get { align-items: start; margin-bottom: clamp(36px, 4.4vw, 52px); }
+.get-button { display: grid; gap: 14px; justify-items: start; }
+.get-button .button { margin-left: 3px; }
+.install-cmd .term-body { white-space: pre; overflow-x: auto; }
+.install-cmd .cmd { display: block; padding-left: 2ch; text-indent: -2ch; overflow-wrap: normal; }
+.install-cmd .cmd + .cmd { margin-top: 8px; }
+.install-cmd .cmd.cont { margin-top: 0; padding-left: 2ch; text-indent: 0; }
+.install { align-items: start; }
+/* Steps: the legend's numbers, one style on the page. */
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 18px; }
+.steps li { position: relative; padding-left: 36px; counter-increment: s; }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--f-display); color: var(--link); box-shadow: inset 0 0 0 1.5px currentColor; }
+.steps b { color: var(--ink); }
+.more { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.more summary { cursor: pointer; font-weight: 400; color: var(--ink); font-size: 15px; list-style: none; display: flex; align-items: center; gap: 8px; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary::before { content: ""; width: 0; height: 0; border-style: solid; border-width: 4px 0 4px 6px; border-color: transparent transparent transparent var(--ink-3); transition: transform .15s; }
+.more[open] summary::before { transform: rotate(90deg); }
+.more p { margin-top: 12px; font-size: 15px; color: var(--ink-2); }
+.install-pic { margin: 0; }
+.install-pic figcaption { margin-top: 10px; font-size: 14px; color: var(--ink-3); }
+.caveat .code { margin-top: 14px; }
+
+/* ---------- Footer: the desktop, under the windows ---------- */
+.foot { margin-top: clamp(80px, 10vw, 136px); border-top: 1px solid var(--frame-soft); }
+.foot-inner { max-width: calc(var(--col) + 2 * var(--gutter)); margin: 0 auto; padding: 44px var(--gutter) 60px; display: grid; grid-template-columns: auto 1fr; gap: 24px 56px; align-items: center; }
+.foot-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; --cap: 20px; }
+.foot-links { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: flex-end; font-size: 15px; }
+.foot-links a { color: var(--ink); text-decoration: none; }
+.foot-links a:hover { color: var(--link); text-decoration: underline; }
+.foot-note, .foot-weight { grid-column: 1 / -1; font-size: 13.5px; line-height: 1.6; color: var(--ink-2); max-width: 82ch; }
+.foot-weight { font-family: var(--f-mono); font-size: 12.5px; margin-top: -10px; color: var(--ink-3); }
+@media (max-width: 899px) { .foot-inner { grid-template-columns: 1fr; } .foot-links { justify-content: flex-start; } }
+
+/* ---------- Agent view: the page as a Terminal window, on the desktop ---------- */
+.agent-view { min-height: 100vh; padding: calc(56px + var(--tab-h)) var(--gutter) 96px; }
+.av-win { max-width: var(--col); margin: 0 auto; }
+.av-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--rule); background: var(--well); }
+.av-note { max-width: 70ch; font-size: 14.5px; color: var(--ink-2); }
+.av-back { flex: none; }
+.av-tree { margin: 0; padding: 18px 20px 24px; background: var(--term-bg); color: var(--term-ink); font: 400 13px/1.65 var(--f-mono); white-space: pre; overflow-x: auto; scrollbar-width: thin; }
+.av-tree .g { color: var(--term-dim); }
+.av-tree .cmd { font-weight: 600; }
+.av-tree a { color: inherit; text-decoration: none; border-radius: 2px; }
+.av-tree a .n { color: var(--link); text-decoration: underline; text-underline-offset: .2em; }
+.av-tree a:hover { background: var(--sel); }
+:root[data-view="agent"] main, :root[data-view="agent"] .foot { display: none; }
+
+/* ---------- Night: dark, and warmer, as Olo's night light moves the white point ---------- */
+.night-light { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none; background: #FFB46B; mix-blend-mode: multiply; opacity: 0; transition: opacity 1.5s ease; visibility: hidden; }
+:root[data-theme="night"] .night-light { opacity: .8; visibility: visible; }
+
+/* ---------- Narrow screens ---------- */
+@media (max-width: 599px) {
+  body { font-size: 16px; }
+  .win-body { padding: 22px 18px 24px; }
+  .term-body { font-size: 11.5px; padding: 10px 11px 12px; }
+  #xray-tree { white-space: normal; }
+  #xray-tree .ln { display: block; white-space: pre-wrap; padding-left: 2ch; text-indent: -2ch; min-width: 0; }
+  #xray-tree .ln.i2 { padding-left: 4ch; text-indent: -4ch; }
+  #xray-tree .ln.i4 { padding-left: 6ch; text-indent: -6ch; }
+  .shot { overflow-x: auto; scrollbar-width: thin; }
+  .code { font-size: 11.5px; padding: 10px 11px; }
+  .plate-pic { margin: 40px 0 0 14px; }
+  .note::after { width: 4px; height: 4px; }
+  .plate-scale { margin-left: 0; }
+  .note b { width: 16px; height: 16px; font-size: 9.5px; }
+  .note.top { top: -16px; height: calc(var(--y) + 16px); }
+  .note.top b { left: -8px; top: -10px; }
+  .note.left { left: -14px; width: calc(var(--x) + 14px); }
+  .note.left b { left: -9px; top: -9px; }
+  .icons { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .hero-actions .button { flex: 1 1 auto; }
+  .install-cmd .term-body { padding-right: 14px; padding-top: 12px; }
+  .install-cmd .copy { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+/* ---------- Round 3: menus, the default button, Looks' list, About ---------- */
+/* A menu bar in every window, with menus that work. */
+.menubar { position: relative; z-index: 5; display: flex; align-items: center; height: 22px; padding: 0 3px; background: var(--wf-face); border-bottom: 1px solid var(--wf-face); }
+:root[data-theme="dark"] .menubar, :root[data-theme="night"] .menubar, :root[data-theme="dark"] .menu-list, :root[data-theme="night"] .menu-list { background: #232A38; }
+.menu { position: relative; }
+.menu-title { height: 20px; padding: 0 9px; border: 0; border-radius: 0; background: none; color: var(--ink); font: 400 13px/20px var(--f-text); cursor: default; }
+.menu-title:hover, .menu.open .menu-title { background: var(--menu-sel); }
+.menu-list { position: absolute; top: 21px; left: 0; min-width: 190px; padding: 3px 0; background: var(--wf-face); border: 1px solid var(--wf-outer); box-shadow: inset 1px 1px 0 var(--wf-light), 3px 4px 10px rgba(0,0,0,.25); }
+.menu-list[hidden] { display: none !important; }
+.menu-list button { position: relative; display: flex; width: 100%; justify-content: space-between; gap: 24px; padding: 4px 16px 4px 24px; border: 0; background: none; color: var(--ink); font: 400 13px/1.35 var(--f-text); text-align: left; cursor: default; white-space: nowrap; }
+.menu-list button:hover, .menu-list button:focus-visible { background: var(--menu-sel); outline: none; box-shadow: none; }
+.menu-list button[aria-checked="true"]::before { content: "✓"; position: absolute; left: 8px; }
+.menu-list button[disabled] { color: var(--ink-3); }
+.menu-list kbd { border: 0; background: none; padding: 0; font: 400 12px/1.35 var(--f-text); color: var(--ink-3); }
+.menu-list hr { margin: 3px 0; border: 0; border-top: 1px solid var(--rule); }
+.menu-list .done { color: var(--ink-3); }
+
+/* The default button: Olo's grey face, its bevel, and the default ring round it in Olo blue. */
+.button { min-height: 32px; padding: 0 16px; font-size: 15px; }
+.button.small { min-height: 24px; padding: 0 10px; font-size: 13px; }
+.button.big { min-height: 34px; padding: 0 18px; font-size: 15.5px; font-weight: 700; }
+.button.primary, .hero .button.primary { color: var(--ink); background: linear-gradient(var(--button-top), var(--button-bottom)); border-color: var(--button-edge); font-weight: 700;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,.65), inset -1px -1px 0 rgba(0,0,0,.08), 0 0 0 2px var(--surface), 0 0 0 4px var(--blue); margin: 4px; }
+.hero .button.primary { box-shadow: inset 1px 1px 0 rgba(255,255,255,.65), inset -1px -1px 0 rgba(0,0,0,.08), 0 0 0 2px rgba(255,255,255,.75), 0 0 0 4px var(--blue); }
+:root[data-theme="dark"] .hero .button.primary, :root[data-theme="night"] .hero .button.primary { box-shadow: inset 1px 1px 0 rgba(255,255,255,.12), 0 0 0 2px var(--wall-ground), 0 0 0 4px var(--blue); }
+.button.primary:active { background: var(--pressed); }
+.hero-actions { margin-left: -4px; align-items: center; }
+.get-button .button { margin-left: 4px; }
+
+
+/* Looks: an Olo list, each look's own tab beside its name. */
+.looks-pick.view { gap: 0; padding: 3px; background: var(--surface); }
+.looks-pick .lk { display: grid; grid-template-columns: 96px 1fr; grid-template-rows: auto auto; column-gap: 12px; align-items: center; padding: 6px 8px; border-radius: 0; }
+.looks-pick .lk img { grid-row: span 2; width: 96px; height: 28px; max-width: none; }
+.looks-pick .lk b { font: 600 14.5px/1.2 var(--f-text); color: var(--ink); align-self: end; }
+.looks-pick .lk small { font-size: 12.5px; color: var(--ink-3); align-self: start; }
+.looks-pick input:checked + .lk { background: var(--sel); box-shadow: none; }
+.looks-pick label:hover .lk { background: var(--frame-soft); }
+.looks-pick input:checked + .lk { background: var(--sel); }
+.looks-pick span.lk { font-weight: 400; }
+
+/* About Olo: the last window, Fan Out's last step. */
+.foot { margin-top: 0; border-top: 0; padding-bottom: clamp(72px, 9vw, 120px); }
+#about .win { max-width: 780px; margin: 0 auto; }
+.about { display: grid; gap: 20px; }
+.about-head { display: flex; align-items: center; gap: 18px; }
+.about-mark { width: 72px; height: 72px; }
+.about-name { --cap: 34px; }
+.about-name .logo-olo { display: block; }
+.about-ver { margin-top: 6px; font-size: 14px; color: var(--ink-2); }
+.about-text { padding: 14px 16px; display: grid; gap: 10px; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+.about-text .foot-weight { margin: 0; font: 400 12.5px/1.55 var(--f-mono); color: var(--ink-3); }
+.about-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.about-links .button { min-height: 28px; font-size: 14px; font-weight: 600; padding: 0 12px; }
+
+/* Agent view: the tree with its notes as comments; Back as a small Olo button. */
+.av-body { padding: 0; }
+.av-back { position: absolute; top: 10px; right: 12px; z-index: 2; }
+.av-tree .c { color: var(--term-dim); }
+
+/* Words that change with the width. */
+.narrow { display: none; }
+@media (max-width: 899px) { br.wide, span.wide { display: none; } .narrow { display: inline; } }
+
+@media (max-width: 599px) {
+  .button, .button.big { min-height: 44px; }
+  .note.left { left: -12px; width: calc(var(--x) + 12px); }
+  .note.left b { left: -9px; }
+  .deskbar:not(.is-folded) { box-shadow: 0 6px 14px rgba(0,0,0,.3); }
+  .about-head { align-items: flex-start; }
+}
+@media (hover: none) { .note:hover b, .legend li.lit::before { background: var(--surface); color: var(--link); box-shadow: inset 0 0 0 1.5px currentColor; } }
+
+/* ---------- Round 3's last ---------- */
+/* The two-thirds picture keeps its 688 where the window has it. */
+@media (min-width: 900px) { .feature.grid3 { grid-template-columns: minmax(0, 688px) minmax(200px, 1fr); } .feature .span2 { grid-column: auto; } }
+.looks-sep { margin: 6px 6px; border: 0; border-top: 1px solid var(--rule); }
+.deskbar.is-folded .db-head { justify-content: flex-start; }
+@media (max-width: 899px) { .looks-sep { display: none; } }
+/* Phones: the art shorter, so the first window's heading shows; Deskbar's controls a finger's size. */
+@media (max-width: 899px) { .hero-wall { height: clamp(96px, 30vw, 200px); margin-top: 12px; } }
+@media (max-width: 480px) {
+  .deskbar:not(.is-folded) .db-apps a, .deskbar:not(.is-folded) .db-agent { height: 44px; }
+  .deskbar:not(.is-folded) .db-tray button { height: 40px; }
+  .db-fold::after { content: ""; position: absolute; inset: -9px; }
+  .deskbar:not(.is-folded) .db-head { height: 44px; }
+  .deskbar:not(.is-folded) .db-fold { top: 9px; right: 9px; }
+}
+@media (max-width: 599px) { .past-hero .deskbar.is-folded { width: auto; } }
+.deskbar.is-folded:has(.db-front:empty) { width: auto; }
+
+/* ---------- An app's Get Info window (Apps): Olo's window, in front ---------- */
+.app-info { padding: var(--tab-h) 0 0; margin: auto; border: 0; background: none; color: var(--ink); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: visible; }
+.app-info::backdrop { background: rgba(8, 14, 28, .5); }
+:root[data-theme="night"] .app-info::backdrop { background: rgba(40, 22, 6, .62); }
+.app-info .win { box-shadow: inset 1px 1px 0 var(--wf-light), inset -1px -1px 0 var(--wf-shadow), 0 40px 90px -30px rgba(0, 0, 0, .7), 0 4px 14px rgba(0, 0, 0, .3); }
+/* (The top layer is above the night light: the window warms itself.) */
+:root[data-theme="night"] .app-info .win::after,
+:root[data-theme="night"] .app-info .win-tab::after { content: ""; position: absolute; inset: -1px; background: #FFB46B; mix-blend-mode: multiply; opacity: .8; pointer-events: none; }
+.ai-close-box { padding: 0; cursor: pointer; font: inherit; }
+.ai-close-box:focus-visible { outline: 1px dotted currentColor; outline-offset: 1px; }
+.ai-tab-name { margin: 0 2px 0 7px; }
+.app-info .ai-body { padding: 0; display: grid; grid-template-columns: auto 300px; max-height: calc(100dvh - 32px - var(--tab-h) - 10px); overflow: auto; background: var(--surface); }
+.ai-pic { padding: 18px 0 18px 18px; min-width: 0; }
+.app-info .ai-shot { box-sizing: content-box; width: var(--w); height: var(--h); max-width: none; overflow: hidden; border: 1px solid var(--frame-in); }
+.ai-shot img { display: block; }
+.ai-text { display: flex; flex-direction: column; gap: 14px; padding: 22px 22px 20px 26px; min-width: 0; }
+.ai-head { display: flex; align-items: center; gap: 14px; }
+.ai-icon { width: 64px; height: 64px; flex: none; }
+.ai-head h3 { font: 800 26px/1.1 var(--f-display); letter-spacing: -.02em; margin: 0; }
+.ai-count { margin: 4px 0 0; font-size: 13px; color: var(--ink-3); }
+.ai-about { margin: 0; font-size: 15.5px; line-height: 1.5; color: var(--ink); font-weight: 600; }
+.ai-more { display: grid; gap: 10px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.ai-more p { margin: 0; }
+.ai-nav { margin-top: auto; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ai-nav #ai-close { margin-left: auto; }
+/* One height for the three, the default button marked by its ring alone, as a BeOS window's. */
+.app-info .ai-nav .button { min-height: 30px; padding: 0 14px; font-size: 14px; }
+.icons button[data-app] { cursor: pointer; }
+/* Narrower than the picture and its words side by side: the words above,
+   the picture under them at its own size, from its top left. */
+@media (max-width: 1239px) {
+  .app-info .ai-body { grid-template-columns: minmax(0, 1fr); }
+  .ai-text { order: -1; padding: 18px 18px 4px; }
+  .ai-nav { margin-top: 4px; }
+  .ai-pic { padding: 14px 18px 18px; overflow-x: auto; }
+}
+@media (max-width: 599px) {
+  .app-info { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .app-info .ai-body { max-height: calc(100dvh - 16px - var(--tab-h) - 10px); }
+  .ai-head h3 { font-size: 22px; }
+}
+/* A list's column title, as a BListView's in a Tracker window. */
+.pick-head { grid-column: 1 / -1; margin: -3px -3px 3px; padding: 6px 12px 5px; font: 700 12.5px/1.2 var(--f-text); color: var(--ink-2); background: var(--wf-face); border-bottom: 1px solid var(--wf-shadow); box-shadow: inset 0 1px 0 var(--wf-light); }
+.looks-note { margin-top: 18px; }
