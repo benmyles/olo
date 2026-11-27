@@ -1,15 +1,9 @@
 #!/bin/bash
-# A second pair of eyes on what a change looks like (Ben, 2026-11-18:
-# "provide all screenshots of changes to a … agent … for a second review
-# / set of eyes to identify anything you missed"; 2026-11-22: "stop
-# using codex/astra for olo qa/dev tasks and … replace it with
-# antigravity (`agy`) and gemini 4 neon on xhigh"; 2026-11-25:
-# "everything should be either opus 5.5 max or neon 4 xhigh"): Gemini 4
-# Neon at xhigh, in the Antigravity CLI, is shown the
-# pictures and says what a careful designer would catch that the layout
-# lint and `tsession review` can't: a line set right under another,
-# uneven gaps, edges and baselines not lined up, text cut or crowded,
-# something out of keeping with the rest of the window.
+# A second pair of eyes on what a change looks like: Gemini 4 Neon at xhigh in
+# the Antigravity CLI is shown the pictures and says what a careful designer
+# would catch that the layout lint and `tsession review` can't: a line set
+# right under another, uneven gaps, edges and baselines not lined up, text cut
+# or crowded, something out of keeping with the rest of the window.
 #
 #   tools/dev/agy-look [--about "WHAT CHANGED"] PICTURE.png…
 #
@@ -18,8 +12,9 @@
 # It prints its findings and writes them to agy-look.md beside the first
 # picture (what it did, to agy-look.log). Check each finding against the
 # picture yourself, and fix what's real. Beside tools/dev/opus-look
-# (Opus 5.5's review of the design itself): every change's pictures go
-# to both before it's committed.
+# (Claude Opus 5.5 at xhigh for visual design) and tools/dev/astra-review +
+# tools/dev/agy-review (for code): changes with visual design work use all
+# three reviewers.
 #
 # The look is an agy in a tmux session, as every agent here is
 # (`tools/dev/agents look`: this is that), so it can be read while it

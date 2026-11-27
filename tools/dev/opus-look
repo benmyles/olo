@@ -1,10 +1,9 @@
 #!/bin/bash
-# A designer's review of what a change looks like, from Claude Opus 5.5
-# (Ben, 2026-11-19, of a new app's first pictures: "omg so much is ugly
-# make sure you get visual design reviews from opus 5.5 and astra 6.2";
-# the other look is Gemini 4 Neon's now). Beside tools/dev/agy-look:
-# every change's pictures go to both before it's committed. Where
-# agy-look hunts what's wrong by a pixel, this judges the design: what
+# A designer's review of what a change looks like, from Claude Opus 5.5 at xhigh
+# (Ben, 2026-11-27: any visual design work is reviewed by all three reviewers —
+# Antigravity Gemini 4 Neon at xhigh, Codex Astra 6.2 at xhigh, and Claude Opus
+# 5.5 at xhigh — while non-visual changes use the agy and codex reviewers).
+# Where agy-look hunts what's wrong by a pixel, this judges the design: what
 # the eye lands on, hierarchy, rhythm, colour, what looks amateur or
 # unfinished, and what to do about each, most important first.
 #
@@ -19,15 +18,13 @@
 # yourself, fix what's real, and say in the commit what it found and
 # what you did.
 #
-# The review is the Claude CLI in a tmux session, as every agent here
-# is (`tools/dev/agents look --by opus`: this is that; Ben, 2026-11-22:
-# "always do it through tmux never a script that just goes silent"), so
-# it can be read while it looks (`tools/dev/agents peek opus-FOLDER`)
-# and told more (`agents say`). Run this in the background: it prints a
-# line a minute of what the review is doing, and returns when the
-# review is written (0), or as soon as it needs you (3: answer it, then
-# run this again with the same pictures to go on waiting). It works
-# from the pictures' folder, not the repository, with the tools to read
-# and write files there and no other: nothing of the project is loaded,
-# nothing can be run.
+# The review is the Claude CLI in a child tab (a tmux session where there is
+# no Rex pane), as every agent here is (`tools/dev/agents look --by opus`: this
+# is that), so it can be read while it looks (`tools/dev/agents peek opus-FOLDER`)
+# and told more (`agents say`). Run this in the background: it prints a line a
+# minute of what the review is doing, and returns when the review is written (0),
+# or as soon as it needs you (3: answer it, then run this again with the same
+# pictures to go on waiting). It works from the pictures' folder, not the
+# repository, with the tools to read and write files there and no other: nothing
+# of the project is loaded, nothing can be run.
 exec /usr/bin/python3 "$(dirname "$0")/agents" look --by opus "$@"

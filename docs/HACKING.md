@@ -22677,45 +22677,70 @@ tested on few computers. **When a kind of hardware gets a new home in
 Olo (a new section here, a new place per-machine data lives), say so in
 that skill**: it is the map a stranger's agent follows.
 
-**Help with Olo's development, each helper a child tab of the lead's**
-(2026-11-26; Ben: "when you use subagents for review/qa please use the
-new olo/rex native subagent support you built"; "make sure you have an
-olo agents watch going whenever you're running olo agents"). The tool
-below starts each helper with `olo agent start` as a child tab of the
-tab the lead is in (agy and the Claude CLI as the agents they are, so
-Rex says of each what it is doing, under the lead's tab and in
-Activity), reads it with `olo agent read`, types into it with `olo agent
-send` (`--paste --text`, `--key`), stops it with `olo agent stop --force
---save transcript.txt`, and its `watch` waits on `olo agent watch`
-between its looks (the moment a child asks, comes to rest, fails or
-ends; ten seconds otherwise, for its own clocks), where it slept five
-seconds and read every screen. `rex_here` chooses: in a Rex pane whose
-host answers `olo agent`, child tabs; else, or with
-`OLO_AGENTS_VIA=tmux`, a tmux session as below; an agent goes on the
-way it was started (`via` and `rex_id` in its `meta.json`). What may go
-ahead unasked, the briefs, peek, say, approve and the minder are the
-same either way. A watch is going whenever one runs, and one watcher an
-agent. What follows is the tmux way, kept for where there is no Rex
-pane.
+**Help with Olo's development: Lead ▸ Minder (`agy` Neon 4 `high`) ▸
+Builders & Reviewers** (updated 2026-11-27; `tools/dev/agents` and the
+`olo-agents` and `olo-debug-help` skills in `.claude/skills/`). Every
+helper runs interactively as a native Rex child tab through `olo agent`
+(never the harness Agent tool, never headless print scripts; tmux via
+`OLO_AGENTS_VIA=tmux` only when not in a Rex pane):
+
+- **Minder** (`tools/dev/agents minder start [BRIEF.md]`): ALWAYS
+  Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`,
+  `--effort high`), running directly under the lead tab (`OLO_MINDER`
+  set, not `OLO_SUBAGENT`). All builders, investigators, and reviewers
+  run as child tabs nested under the minder (`Lead ▸ minder ▸
+  subagents`). The minder watches all subagents continuously via `olo
+  agent watch --all`, answers routine approvals and brief-covered
+  questions promptly by `.claude/skills/olo-agents/minder-rules.md`,
+  coordinates the review rounds, and escalates to the lead via `olo
+  agent escalate` whenever a builder finishes, whenever critical
+  outstanding issues remain after 2 review rounds (so the lead can
+  decide on alignment, design rethink, steering, or granting extra
+  review rounds), or when any risky approval/blocker needs the lead.
+- **Builders** (`tools/dev/agents start [--tree DIR] NAME CRATE
+  BRIEF.md`, `agents resume`): Antigravity (`agy`) **Gemini 4 Neon on
+  `xhigh`** (`gemini-4-neon-xhigh`), up to five at once per checkout,
+  each scoped to its own crate(s) with `OLO_SUBAGENT=<name>` set so it
+  cannot spawn subagents of its own.
+- **Second investigator** (`tools/dev/agy-help BRIEF.md`, `agents
+  investigate`): Antigravity (`agy`) **Gemini 4 Neon on `xhigh`**, for
+  root-causing hard bugs in parallel without editing the working tree.
+- **Code reviews (every change, max 2 rounds each):**
+  - `tools/dev/astra-review` (`agents review --by astra`): **Codex
+    Astra 6.2 on `xhigh`** (`gpt-6.2-astra`,
+    `model_reasoning_effort="xhigh"`), read-only sandbox writing only
+    to `/var/tmp/olo-reviews/astra-HASH/astra-review.md`.
+  - `tools/dev/agy-review` (`agents review --by agy`): **Antigravity
+    Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`), read-only
+    commands (`READING + GIT`) writing only to
+    `/var/tmp/olo-reviews/agyrev-HASH/agy-review.md`.
+- **Visual design reviews (any change involving visual design work —
+  all three reviewers):** alongside `astra-review` (`xhigh`) and
+  `agy-review` (`xhigh`) on the code, screenshots go to both
+  `tools/dev/agy-look` (**Gemini 4 Neon on `xhigh`**, pixel-level
+  spacing/alignment) and `tools/dev/opus-look` (**Claude Opus 5.5 on
+  `xhigh`**, `claude --model claude-opus-5-5 --effort xhigh
+  --restricted --tools Read,Write`, product/visual design quality).
+  Changes with no visual design work use only the `agy` (`xhigh`) and
+  `codex` (`xhigh`) reviewers.
+- **Multi-lead isolation:** `tools/dev/agents` records `root` in each
+  helper's `meta.json` and filters `list`, `room`, `watch`, `tidy`, and
+  `sweep_builds` to helpers belonging to the current tab's `olo agent`
+  subtree and checkout, so concurrent leads sharing `/var/tmp/olo-agents`
+  never count or tidy each other's workers. `--no-wait` on `review` and
+  `look` (paired with `agents collect NAME`) lets a minder drive
+  multiple reviewers in parallel under one `olo agent watch --all` loop.
+
+What follows records the older tmux-era mechanics and review-tool
+hardening still shared by `tools/dev/agents`:
 
 **Help with Olo's development, each helper in a tmux session**
-(`tools/dev/agents`; the `olo-agents` and `olo-debug-help` skills in
-`.claude/skills/`, the repository's own, for whoever works on Olo;
-`.claude/` is ignored but for `.claude/skills/`). Three kinds of help
-CLAUDE.md's "Subagents" allows, all Gemini 4 Neon at xhigh in the
-Antigravity CLI (`agy`) but the design review, which is Opus 5.5 in the
-Claude CLI. Until 2026-11-22 they were Codex (gpt-6.2-astra), the looks
-and the investigator as headless runs; Ben then: "stop using
-codex/astra for olo qa/dev tasks and everywhere we use codex/astra at
-the moment for olo dev/qa replace it with antigravity (`agy`) and
-gemini 4 neon on xhigh … i don't mean getting rid of astra support in
-olo itself" (and the same day: "switch the reasoning level to high for
-both of them"), run "via tmux … so that you will get notified when it
-needs you and be able to steer it and approve things", with "the auto
-approval stuff [configured] to auto approve all the most common
-commands it might need to run", and, when a headless look had sat
-silent for eight minutes, "always do it through tmux never a script
-that just goes silent … for all the subagents/reviewers etc".
+(`tools/dev/agents`; kept for where there is no Rex pane; `.claude/` is
+ignored but for `.claude/skills/`). Earlier history: until 2026-11-22
+helpers ran on Codex; from 2026-11-22 to 2026-11-27 builders ran on
+Gemini 4 Neon `xhigh` with Opus 5.5 `max` minders/looks and Astra 6.2
+`max` code reviews, superseded by the Lead ▸ `agy` Neon 4 `high`
+minder ▸ `agy` Neon 4 `xhigh` builders + `xhigh` reviewers flow above.
 
 So every helper is its program's own interactive screen in a session
 of one tmux server (`tmux -L olo-agents`), its pane kept when the
@@ -22855,37 +22880,36 @@ minutes. What it says is checked against the picture, as the
 investigator's is.
 
 **And a designer's review of them** (`tools/dev/opus-look`, which is
-`agents look --by opus`; Ben, 2026-11-19, of To-Do's first pictures:
-"omg so much is ugly make sure you get visual design reviews from opus
-5.5 and astra 6.2"): `opus-look --about "WHAT IT IS, WHAT CHANGED"
-PICTURE.png…` hands copies of the same pictures to Claude Opus 5.5 in
-a session named `opus-FOLDER` (`claude --model claude-opus-5-5
---effort max --restricted --strict-mcp-config --tools Read,Write
+`agents look --by opus`): `opus-look --about "WHAT IT IS, WHAT CHANGED"
+PICTURE.png…` hands copies of the same pictures to Claude Opus 5.5 at
+`xhigh` in a session named `opus-FOLDER` (`claude --model claude-opus-5-5
+--effort xhigh --restricted --strict-mcp-config --tools Read,Write
 --permission-mode acceptEdits`: no tool that runs anything, the file
 tools kept to the look's folder, none of the person's settings, hooks
 or MCP servers) with a product designer's brief: composition,
 hierarchy, rhythm, colour, what looks amateur or unfinished or out of
 keeping with the desktop, and what to do about each, the most important
 first. It keeps its review as `opus-look.md` beside the first picture.
-It can only look, so give it whole windows and enlarged crops. Every
-change's pictures go to both before a commit, and something new goes to
-both early, before it's built out: agy-look is for what's wrong by a
-pixel, opus-look for whether the design is any good. Run both in the
-background at once; each returns when its review is written, or when
-it needs its lead.
+It can only look, so give it whole windows and enlarged crops. Any
+change with visual design work goes to all three reviewers (`agy-look`
++ `opus-look` on screenshots, plus `astra-review` and `agy-review` on
+code); non-visual changes use only `astra-review` and `agy-review`.
 
-**And a review of its code** (`tools/dev/astra-review`, which is
-`agents review`; Ben, 2026-11-27: "please start getting a code review
-from a codex subagent running astra 6.2 on max for all changes (in
-addition to the existing reviews)"): `astra-review --about "WHAT IT IS,
-WHAT CHANGED" --working [PATH…]` (what isn't committed, new files too)
-or `… FROM..TO [PATH…]` (commits) writes the diff, and what the commits
+**And code reviews of every change** (`tools/dev/astra-review`, which is
+`agents review --by astra`, and `tools/dev/agy-review`, which is `agents
+review --by agy`; max 2 rounds each by default, with the minder
+escalating to the lead if critical issues remain):
+`astra-review --about "WHAT IT IS, WHAT CHANGED" --working [PATH…]`
+(or `… FROM..TO [PATH…]`) writes the diff, and what the commits
 said of themselves, into a folder of the review's own and starts Astra
-6.2 there in the Codex CLI (`codex -m gpt-6.2-astra -c
-model_reasoning_effort="max" -s workspace-write -a never`, its agents
+6.2 at `xhigh` in the Codex CLI (`codex -m gpt-6.2-astra -c
+model_reasoning_effort="xhigh" -s workspace-write -a never`, its agents
 and hooks off: its sandbox reads the disk, writes only that folder, and
 has no network; it is never asked leave and asks none) as a child tab
-with a minder, like every helper. "Only that folder" takes two settings
+under the minder. `agy-review` runs the same diff review with Gemini 4
+Neon at `xhigh` (`gemini-4-neon-xhigh`) using read-only commands and
+write access only to its own review folder, saving its review to
+`/var/tmp/olo-reviews/agyrev-HASH/agy-review.md`. "Only that folder" takes two settings
 more than `workspace-write` (`sandbox_workspace_write.exclude_slash_tmp`
 and `.exclude_tmpdir_env_var`): Codex lets /tmp and whatever TMPDIR
 names be written, and TMPDIR here is /var/tmp, where the tree under

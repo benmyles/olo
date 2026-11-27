@@ -148,64 +148,55 @@ are universal and non-negotiable:
     failure counts, and host statuses agree 100% across every tab, and
     include light/dark empty lists, error/stopped states across tabs,
     disabled controls, and dark-mode menus/confirmations in the batch.
-- **Two more pairs of eyes on every picture: Gemini 4 Neon's and Opus
-  5.5's.** Give all the pictures of a change to both for a design
-  review before it's committed (Ben, 2026-11-19, of a new app's first
-  pictures: "omg so much is ugly make sure you get visual design reviews
-  from opus 5.5 and astra 6.2"; 2026-11-25: "everything should be
-  either opus 5.5 max or neon 4 xhigh"):
-  `tools/dev/agy-look --about "WHAT CHANGED" PICTURE.png…`
-  (Gemini 4 Neon at xhigh, in the Antigravity CLI: what's wrong by a
-  pixel) and `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
-  PICTURE.png…` (Claude Opus 5.5 at max: the design itself, what looks
-  amateur or unfinished). Each looks in a tmux session of its own: run both in
-  the background, read what each is doing as it goes (`tools/dev/agents
-  peek`), and take each one's end: its review written, or a question
-  for you. Whole windows and enlarged crops, each state, look and
-  scale. Something new (an app, a window, a widget) goes to both early,
-  before it's built out, and again when it's done. Check each thing
-  they find against the picture yourself, fix what's real, and say in
-  the commit what each found and what you did about it.
-- **A third reviewer, on every change's code: Astra 6.2's.** Every
-  change gets a code review from a Codex subagent running Astra 6.2 at
-  max, beside the two looks at its pictures, and a change with no
-  pictures gets it all the same (Ben, 2026-11-27: "please start getting
-  a code review from a codex subagent running astra 6.2 on max for all
-  changes (in addition to the existing reviews)"):
-  `tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working
-  [PATH…]` for what isn't committed yet (name the paths where others
-  are at work in the tree), `tools/dev/astra-review … RANGE` for
-  commits. Run it in the background with the looks, in the same batch;
-  it reads the diff and the tree, runs nothing, and its review is kept
-  with the diff it read under `/var/tmp/olo-reviews`. It is asked what
-  is wrong, each with a case in which it goes wrong: check each against
-  the code yourself (a finding is a claim until you have made it
-  happen), fix what's real with a test that fails before the fix, and
-  say in the commit what it found and what you did about it. Where
-  something broken now can't wait for it, commit, ask for the review at
-  once, and fix what it finds in a commit after: nothing is released
-  with a commit in it that hasn't been reviewed. One review a change,
-  and one more only to confirm what the first said must be fixed.
-- **Three rounds of looks at most, each a whole batch.** (Ben,
-  2026-11-23, after one button's change took six rounds: "all these
-  reviewer rounds are getting kinda crazy and taking a very long time.
-  i think you need to batch more stuff each time instead of giving
-  them super granular things to review and also we need to cap the
-  number of rounds at maybe 3 or something".) A change gets at most
-  three rounds: an early one where it is new, one when it is built,
-  and a third only to confirm what the second said must be fixed.
-  Each round is everything at once: every state, both looks, every
-  scale (1.25× and 1.75× too where anything is sized in rows or
-  pixels), and several small changes together rather than one each.
-  Before a round, do your own designer's pass and measure the
-  pictures, so the reviewers aren't spent on what you could have
-  seen. The brief says what changed and asks for what is wrong in
-  that, most important first; what they find elsewhere in the window,
-  there before the change, goes to docs/TODO.md with their words, not
-  into this change (but for a real defect that is a line to fix). A
-  fix is confirmed by measuring its picture yourself, not by another
-  round. After the third round what is left goes to the TODO, and
-  the change is committed.
+- **Reviewers on every change: Codex Astra 6.2 (`xhigh`), Antigravity
+  Gemini 4 Neon (`xhigh`), and Claude Opus 5.5 (`xhigh`) for visual
+  design work.** (Ben, 2026-11-27: builders get code reviews from a
+  Codex Astra 6.2 on `xhigh` (max 2 rounds) as well as another
+  Antigravity Gemini 4 Neon on `xhigh` (max 2 rounds); any change with
+  visual design work is also reviewed by Claude Opus 5.5 on `xhigh`, so
+  visual changes use all three reviewers while non-visual changes use
+  the Astra and Neon reviewers.)
+  - **Code review (every change, max 2 rounds each):** run both
+    `tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working
+    [PATH…]` (Codex Astra 6.2 at `xhigh`) and `tools/dev/agy-review
+    --about "WHAT IT IS, WHAT CHANGED" --working [PATH…]` (Antigravity
+    Gemini 4 Neon at `xhigh`), or pass `FROM..TO` for commits. Each
+    reads the diff and the tree, runs nothing, changes nothing in the
+    repo, and keeps its review with the diff under
+    `/var/tmp/olo-reviews`. Check each finding against the code (a
+    finding is a claim until reproduced), fix what is real with a test
+    that fails before the fix, and note in the commit what each reviewer
+    found and what was done. Nothing is released with an unreviewed
+    commit.
+  - **Visual design review (any change with visual design work, all
+    three reviewers):** give all screenshots (whole windows and enlarged
+    crops, every state, light and dark, every scale) to
+    `tools/dev/agy-look --about "WHAT CHANGED" PICTURE.png…` (Gemini 4
+    Neon at `xhigh`: pixel-level spacing, alignment, edges) and
+    `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
+    PICTURE.png…` (Claude Opus 5.5 at `xhigh`: design quality,
+    hierarchy, rhythm, colour, native feel), alongside the `astra-review`
+    and `agy-review` code reviews. Something new (an app, a window, a
+    widget) goes to visual review early, before it is built out, and
+    again when built. Check each finding against the pictures yourself,
+    fix what is real, and record in the commit what each found and what
+    was done.
+- **Two review rounds max by default; escalate to the lead if critical
+  issues persist.** Each builder gets at most two rounds of review from
+  each required reviewer, batched whole (every state, every scale
+  including 1.25× and 1.75× where anything is sized in rows or pixels,
+  and related changes together rather than piecemeal). Before a round,
+  do a designer's/engineer's pass and measure the pictures so reviewers
+  are not spent on obvious mistakes. What reviewers find elsewhere in a
+  window (pre-existing outside the change) goes to `docs/TODO.md` in
+  their words. If critical outstanding issues remain after 2 rounds of
+  review, the minder escalates to the lead to decide whether the builder
+  has become misaligned, whether the design needs rethinking, how to
+  steer it, and whether to grant additional review rounds (the lead is
+  authorized to grant extra rounds when warranted). Fixes confirmed by
+  measurement or tests do not need another round; after the final round
+  any non-critical remainder goes to `docs/TODO.md` and the change is
+  committed.
 - **Leave the person's session alone.** Never reload, upgrade or install
   into it unless asked. Work reaches it as a release (below): their
   session asks GitHub for Olo's releases and offers a newer one in
@@ -331,159 +322,97 @@ are universal and non-negotiable:
   the right-pane progress board (Ben, 2026-11-26: "remove the
   screenshots from the right pane progress board for me please they're
   too intrusive").
-- **Helpers are Rex's own subagents: child tabs of yours, through `olo
-  agent`.** (Ben, 2026-11-26: "when you use subagents for review/qa
-  please use the new olo/rex native subagent support you built"; "it
-  should all be available to you as skills if not you need to add
-  them".) Every helper below (a worker, the second investigator, both
-  reviewers) is started by `tools/dev/agents` and its front doors as a
-  child tab of the tab you are in (`olo agent start`), read, answered
-  and stopped through `olo agent` (the `olo-agents` and `olo-rex-bridge`
-  skills): the person sees each under your tab in Rex, with what it is
-  doing, and can read and answer it there. A tmux session only where
-  you aren't in a Rex pane (no `REX_BLOCK`) or the host's `olo agent`
-  doesn't answer; what the rules below say of tmux is of that case, and
-  the rest of them (never a run that goes silent, the minder, what is
-  never approved, stopping each when done) holds either way.
-  **A watch is going whenever a child runs** (Ben, the same day: "make
-  sure you have an olo agents watch going whenever you're running olo
-  agents"): from the first child's start to the last one's end,
-  `tools/dev/agents watch` (or the front door that started it, or the
-  minder's) waits in the background and is started again each time it
-  returns; for children you start with `olo agent start` yourself, `olo
-  agent watch --all --since CURSOR --timeout 90` the same way. It
-  returns the moment a child asks, comes to rest, fails or ends, and
-  polls nothing. Never children running with no watch on them, and
-  never two watches on the same ones.
-- **Subagents: Antigravity, narrow, watched, reviewed.** Do
-  the work yourself, in this session, but for three kinds of help, all
-  Gemini 4 Neon at xhigh in the Antigravity CLI (`agy`) but Opus's
-  design review and Astra's code review (Codex and Astra for nothing
-  else: Ben, 2026-11-22, "stop using codex/astra for
-  olo qa/dev tasks and everywhere we use codex/astra at the moment for
-  olo dev/qa replace it with antigravity (`agy`) and gemini 4 neon on
-  xhigh"; then, 2026-11-27, Astra 6.2 at max for the code review of
-  every change, above; never a Claude fork, and never the Agent tool:
-  every helper, its minder too, is a native Rex agent, below). That is for the
-  help Olo's development gets: Olo's own support for Codex and Astra
-  (Terminal, Rex, the pool, Preferences) is the product's and stays.
-  - Narrow, targeted work items that can go on in parallel: subagents,
-    each an interactive `agy` in a tmux session of its own, started,
-    watched and steered with `tools/dev/agents` (the `olo-agents`
-    skill). Up to five at once, all in this working tree, each in one
-    crate that no other agent, nor you, is changing meanwhile, so none
-    clobbers another. Each gets a clear brief: the task, its crate,
-    what done is, how to test it. They never start helpers of their own
-    (the tooling refuses, and their brief says so); the agent programs
-    themselves (`claude`, `codex`, `agy`) they may run where their task
-    is about them. When one finishes,
-    review its work as your own before anything is committed: read the
-    whole diff, run its tests, picture every visual change and judge it
-    closely (expect to redo some of what a subagent designs), then
-    commit it yourself (2026-11-19).
-  - A second investigator for debugging and root-causing, with the
-    `olo-debug-help` skill (`tools/dev/agy-help BRIEF.md`: an `agy` in
-    a tmux session, asking leave for what isn't routine), started as
-    soon as a bug's cause isn't plain (below), while you keep working
-    on your own line: two brains are better than one. It looks and
-    reports; you check what it found and do the work.
-  - `tools/dev/agy-look`, the second look at every change's pictures
-    (above): Gemini 4 Neon in the Antigravity CLI, in a tmux session,
-    on copies of the pictures; and, the one Claude among them,
-    `tools/dev/opus-look`, Opus 5.5's design review of the same
-    pictures (the Claude CLI in a tmux session, with the tools to read
-    and write files in a folder of the pictures' copies and no other).
-  - `tools/dev/astra-review`, the code review of every change (above):
-    Astra 6.2 at max in the Codex CLI, in a folder of its own with the
-    diff, reading the tree and writing nothing but its review.
-- **Every helper on a screen of its own, never a script that goes
-  silent.** A subagent, the investigator and the reviewers (of
-  pictures, of code) each run
-  their program's own interactive screen in a child tab of yours (a
-  tmux session where there is no Rex pane: above)
-  (`tools/dev/agents`; `agy-help`, `agy-look`, `opus-look` and
-  `astra-review` are its front doors), so what each is doing can be read at any moment
-  (`agents peek NAME`), it can be told more (`agents say`), and what it
-  asks leave for reaches you (`agents approve`). Never `agy --print`,
-  `claude -p` or any other run that answers only at its end (Ben,
-  2026-11-22: "always do it through tmux never a script that just goes
-  silent … for all the subagents/reviewers etc … you can add tooling to
-  launch and work with them efficiently but they should use tmux"; a
-  headless look had sat eight minutes with nothing to show whether it
-  was thinking or stuck). While any runs, something of yours waits on
-  it in the background: `tools/dev/agents watch`, or the front door
-  that started it; each returns the moment an agent asks, finishes or
-  stalls, and prints a line a minute meanwhile. Start it again after
-  each answer, and look at `agents list` now and then: answer
-  questions promptly, steer what drifts, unstick what stalls. What is
-  routine goes ahead without you (reading, searching, building,
-  testing: `tools/dev/agents allowed`, given to that run alone, the
-  person's own agy settings never touched); what is dangerous is
-  refused outright; the rest asks, and **a helper is given whatever its
-  task reasonably needs**: refuse only what is dangerous, out of line
-  with the task, or done safer another way, and then say which way
-  (Ben, 2026-11-27, of a builder refused the help text of the very
-  programs its task was about: "how is it supposed to do its job
-  blind? you're micromanaging these subagents way too much let them do
-  whatever they need to reasonably do to do their job. only deny
-  dangerous commands that are out of alignment with the task at hand
-  or where they could be done safer"). A brief says what a task needs
-  that isn't routine (a program to run, something of the person's to
-  read), so its minder says yes at once. Never approve a push, a
-  commit, anything on the person's session, deletion outside its
-  scope, or sudo.
-- **Every helper has a minder, and every one of them is a native Rex
-  agent.** (Ben, 2026-11-27: "as a standing rule please setup a minder
-  for all subagents you launch (add this to the project rules) and
-  also for all subagents use a native rex olo agent".) Each subagent
-  you start (a worker, the second investigator, each reviewer) is a
-  child tab of yours through `olo agent`, and has a minder of its own
-  from its start: `olo agent start … --minder claude:claude-opus-5-5:max
-  --rules .claude/skills/olo-agents/minder-rules.md`, which
-  `tools/dev/agents` and its front doors do by themselves (for one
-  that runs already, `olo agent mind NAME --with … --rules …`). The
-  minder is Rex's own too: a Claude Code (Opus 5.5 at max) in a child
-  tab of the helper's, held by the agents service to that one helper
-  and to its one command. It says yes or no at once to what its
-  written rules cover, and hands you the rest, every question about
-  the work itself, and its report when the helper ends: on your own
-  watch, as an `escalation` (`tools/dev/agents watch` says "is handed
-  back to you by its minder"). So no helper waits on a busy lead (Ben,
-  2026-11-22, when a helper's question had waited 66 seconds: "i think
-  you're not getting the approval requests or not responding to them
-  quick enough … launch a … subagent whose only job is to … manage the
-  … subagents so that they get their responses quickly"; 2026-11-25:
-  "everything should be either opus 5.5 max or neon 4 xhigh"). A
-  minder does none of the work and starts nothing. Its report is
-  checked like any helper's (read the results yourself), and what it
-  says went wrong with the tooling is fixed in the tooling. Never the
-  Agent tool for any of this: a minder that is a subagent of the
-  harness is seen by nobody, held to nothing, and was the one helper
-  that wasn't Rex's (it is still what `.claude/skills/olo-agents/
-  minder.md` describes, for a session that isn't in a Rex pane).
-- **Stop each helper when you have what you need of it.** Once an
-  agent's result is read and nothing more is to be asked of it,
-  `tools/dev/agents stop NAME` (its transcript is kept in its folder,
-  and any test session it left is stopped), then `forget` it when its
-  work is in; a look ends by itself when its review is written. Nothing
-  of yours is left running or waiting at a prompt: before you finish a
-  piece of work, `tools/dev/agents list` and `tools/dev/tsession list`
-  show nothing of it (Ben, 2026-11-22: "make sure that the tmux agents
-  / screens are getting properly stopped when they are no longer
-  needed"). The tool tidies behind you all the same (an agent whose
-  program exited, one done and untouched for half an hour, one idle
-  for three hours: `agents tidy`, which `list`, `watch` and `start`
-  run), but that is the net, not the way.
-- **Opus 5.5 at max, Gemini 4 Neon at xhigh, Astra 6.2 at max for the
-  code review: nothing else.** Every helper is one of them (Ben,
-  2026-11-25: "NOTHING should still be using fable -- everything should
-  be either opus 5.5 max or neon 4 xhigh"; 2026-11-27: "a code review
-  from a codex subagent running astra 6.2 on max"): wherever Gemini
-  reasons for Olo (a subagent, the second investigator, the look at
-  pictures) it is Gemini 4 Neon at xhigh (`gemini-4-neon-xhigh`); Opus
-  5.5's design review and the minder run at max; the code review is
-  Astra 6.2 at max (`gpt-6.2-astra`), and Astra does nothing else. No
-  Fable, no other model, at no other effort.
+- **Agent hierarchy through `olo agent`: Lead ▸ Minder (`agy` Neon 4
+  `high`) ▸ Builders & Reviewers.** (Ben, 2026-11-26 & 2026-11-27: all
+  helpers are native Rex subagents via `olo agent` — never the harness
+  Agent tool, never headless print scripts, and tmux only when not in a
+  Rex pane.)
+  - **Lead** (autonomous coordinator): keeps everyone aligned, makes
+    architectural decisions, steers workers, reviews and integrates
+    finished work, handles escalations from the minder, and authorizes
+    additional review rounds when warranted.
+  - **Minder** (ALWAYS **`agy` Gemini 4 Neon on `high`**,
+    `gemini-4-neon-high` / `--effort high`): a single native `olo agent`
+    child tab directly under the lead (`tools/dev/agents minder start`,
+    following `.claude/skills/olo-agents/minder.md` and
+    `minder-rules.md`). All builders, investigators, and reviewers run
+    as native `olo agent` child tabs nested under the minder (`Lead ▸
+    minder ▸ subagents`), so the person sees the entire tree cleanly in
+    Rex. The minder watches all subagents continuously via `olo agent
+    watch`, answers routine approvals and brief-covered questions at
+    once, coordinates the 2-round code/visual reviews, and escalates to
+    the lead via `olo agent escalate` whenever a builder finishes and
+    is ready to land, whenever critical issues remain after 2 review
+    rounds, or whenever architectural alignment, risky approvals, or
+    blockers need the lead's call. The minder does none of the coding
+    or committing itself.
+  - **A watch is always going whenever a child runs.** The lead keeps an
+    active background `olo agent watch` on the minder from its start to
+    its end (and starts it again each time it returns); the minder keeps
+    a watch on all subagents under it. Never run children without an
+    active watch, and never double-watch the same child.
+- **Builders, investigators, and reviewers: exact models and efforts.**
+  Every helper uses one of these exact models and efforts — nothing
+  else (no Fable, no Claude Opus minders, no `max` effort for
+  reviewers/minders):
+  - **Minders:** Antigravity (`agy`), **Gemini 4 Neon on `high`**
+    (`gemini-4-neon-high`, `--effort high`). Always `agy` Neon 4 `high`.
+  - **Builders:** Antigravity (`agy`), **Gemini 4 Neon on `xhigh`**
+    (`gemini-4-neon-xhigh`, `--effort xhigh`). Started, watched, and
+    steered with `tools/dev/agents` (the `olo-agents` skill), up to five
+    at once in the working tree, each scoped to its own crate(s) so none
+    clobbers another. Builders never start subagents of their own (the
+    tooling refuses via `OLO_SUBAGENT`, and their brief forbids it);
+    they may run `claude`/`codex`/`agy` only when their task is about
+    testing those CLIs. When a builder finishes and clears review, the
+    lead reads the whole diff, runs its tests, inspects any visual
+    changes, and commits it.
+  - **Second investigator** (`tools/dev/agy-help BRIEF.md`, the
+    `olo-debug-help` skill): Antigravity (`agy`), **Gemini 4 Neon on
+    `xhigh`**, for root-causing hard bugs in parallel.
+  - **Code reviewers (every change, max 2 rounds each):**
+    1. **Codex Astra 6.2 on `xhigh`** (`gpt-6.2-astra`,
+       `model_reasoning_effort="xhigh"`) via `tools/dev/astra-review`.
+       (Codex/Astra is used ONLY for code review — never for dev/QA
+       building. Olo's own product support for Codex/Astra in Terminal,
+       Rex, Token Pool, and Preferences stays.)
+    2. **Antigravity Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`)
+       via `tools/dev/agy-review`.
+  - **Visual design reviewers (any change involving visual design work —
+    ALL THREE reviewers):**
+    1. **Antigravity Gemini 4 Neon on `xhigh`** (`tools/dev/agy-look`
+       for screenshots + `tools/dev/agy-review` for code).
+    2. **Codex Astra 6.2 on `xhigh`** (`tools/dev/astra-review` for
+       code).
+    3. **Claude Opus 5.5 on `xhigh`** (`claude-opus-5-5`,
+       `--effort xhigh`) via `tools/dev/opus-look` for visual design
+       review of screenshots.
+    Changes with no visual design work use only the `agy` (`xhigh`) and
+    `codex` (`xhigh`) reviewers.
+- **Every helper on an interactive screen of its own, never silent.**
+  Every minder, builder, investigator, and reviewer runs interactively
+  in its own Rex child tab (`olo agent`, or tmux only where there is no
+  Rex pane) via `tools/dev/agents` and its front doors (`agy-help`,
+  `agy-review`, `astra-review`, `agy-look`, `opus-look`), so what each
+  is doing can be read (`agents peek NAME`), steered (`agents say`),
+  and approved (`agents approve`). Never use `agy --print`, `claude -p`,
+  or any script that goes silent until completion. What is routine goes
+  ahead unasked (`tools/dev/agents allowed`, session-only `--settings`,
+  never touching the person's own settings); what is dangerous is
+  refused outright; for the rest, **give a helper whatever its task
+  reasonably needs** — deny only what is dangerous, out of line with
+  the task, or done safer another way (and say which way). Never
+  approve a push, a commit, anything on the person's session, deletion
+  outside scope, `olo agent prune`, or `sudo`.
+- **Stop each helper when done.** Once an agent's result is read and
+  nothing more is needed of it, stop it (`tools/dev/agents stop NAME`,
+  which keeps its transcript and stops any `agy-NAME…` test session it
+  left), then `forget` it when its work is committed; reviewers end
+  themselves once their review is saved. Before finishing a piece of
+  work, `tools/dev/agents list` and `tools/dev/tsession list` show
+  nothing of yours left running. (`agents tidy` cleans up exited/stale
+  own-subtree helpers as a safety net, never touching other leads'
+  agents.)
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`

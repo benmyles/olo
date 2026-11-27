@@ -35,4 +35,38 @@ for what, got, want in wrong:
     print(f"FAILED: {what}: its field read as {got!r}, not {want!r}")
 if wrong:
     sys.exit(1)
-print(f"ok: a helper's field is read rightly on {len(CASES)} screens")
+
+# Verify exact model / effort policy (Ben, 2026-11-27):
+# - Minders: agy Neon 4 high
+# - Builders & agy reviewers: agy Neon 4 xhigh
+# - Codex code reviewers: Astra 6.2 xhigh
+# - Claude visual design reviewers: Opus 5.5 xhigh
+assert agents.MINDER_MODEL == "gemini-4-neon-high", agents.MINDER_MODEL
+assert agents.MINDER_EFFORT == "high", agents.MINDER_EFFORT
+assert agents.MODEL == "gemini-4-neon-xhigh", agents.MODEL
+assert agents.ASTRA == "gpt-6.2-astra", agents.ASTRA
+assert agents.ASTRA_EFFORT == "xhigh", agents.ASTRA_EFFORT
+assert agents.OPUS == "claude-opus-5-5", agents.OPUS
+assert agents.OPUS_EFFORT == "xhigh", agents.OPUS_EFFORT
+
+# Verify minder vs subagent permissions and nesting boundaries:
+ms = agents.settings(["/repo", "/d"], commands="minder", own=["/d"])
+assert "command(olo agent watch)" in ms["permissions"]["allow"]
+assert "command(tools/dev/astra-review)" in ms["permissions"]["allow"]
+assert "command(tools/dev/agy-review)" in ms["permissions"]["allow"]
+assert "command(olo agent prune)" in ms["permissions"]["deny"]
+assert "command(git push)" in ms["permissions"]["deny"]
+assert "command(tools/dev/agents minder)" in ms["permissions"]["deny"]
+
+rs = agents.settings(["/d", "/repo"], commands="review", own=["/d"])
+assert "command(git show)" in rs["permissions"]["allow"]
+assert "write_file(/d)" in rs["permissions"]["allow"]
+assert not any("cargo" in x or "jato" in x for x in rs["permissions"]["allow"])
+
+# Verify sweep_builds ignores non-helper files such as tmux.conf without raising:
+import tempfile
+with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-agents-check-") as td:
+    open(os.path.join(td, "tmux.conf"), "w").write("set -g remain-on-exit on\n")
+    assert agents.sweep_builds(now=1e12, home=td, is_live=lambda _: False) == []
+
+print(f"ok: field reader ({len(CASES)} screens), model/effort policy, minder/reviewer permissions, and sweep isolation")

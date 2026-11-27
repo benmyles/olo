@@ -1,12 +1,12 @@
 #!/bin/bash
-# A code review of a change, from Astra 6.2 at max in the Codex CLI
-# (Ben, 2026-11-27: "please start getting a code review from a codex
-# subagent running astra 6.2 on max for all changes (in addition to the
-# existing reviews)"). Every change gets one before it is released,
-# beside the two looks at its pictures: what is wrong in the code (logic,
-# error paths, races, waits with no end, what an older build meeting a
-# newer one breaks), what it breaks elsewhere, the project's rules, and
-# what its tests don't hold, each with a case in which it goes wrong.
+# A code review of a change, from Astra 6.2 at xhigh in the Codex CLI
+# (Ben, 2026-11-27: builders get code reviews from Codex Astra 6.2 on xhigh
+# (max 2 rounds) alongside Antigravity Gemini 4 Neon on xhigh (max 2 rounds);
+# changes with visual design work also get Claude Opus 5.5 on xhigh). Every
+# change gets reviewed before it is released: what is wrong in the code (logic,
+# error paths, races, waits with no end, what an older build meeting a newer
+# one breaks), what it breaks elsewhere, the project's rules, and what its
+# tests don't hold, each with a case in which it goes wrong.
 #
 #   tools/dev/astra-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] RANGE [PATH…]
 #   tools/dev/astra-review [--about …] [--tree DIR] --working [PATH…]
@@ -22,12 +22,12 @@
 # the code yourself, fix what's real, and say in the commit what it
 # found and what you did.
 #
-# The review is the Codex CLI in a child tab of yours (a tmux session
-# where you aren't in a Rex pane), as every agent here is
-# (`tools/dev/agents review`: this is that), so it can be read while it
-# works (`tools/dev/agents peek astra-…`) and told more (`agents say`).
+# The review is the Codex CLI in a child tab of the minder/lead (a tmux
+# session where you aren't in a Rex pane), as every agent here is
+# (`tools/dev/agents review --by astra`: this is that), so it can be read
+# while it works (`tools/dev/agents peek astra-…`) and told more (`agents say`).
 # Run this in the background: it prints a line a minute of what the
 # review is doing, and returns when the review is written (0), or as
 # soon as it needs you (3: answer it, then run this again with the same
 # arguments to go on waiting).
-exec /usr/bin/python3 "$(dirname "$0")/agents" review "$@"
+exec /usr/bin/python3 "$(dirname "$0")/agents" review --by astra "$@"

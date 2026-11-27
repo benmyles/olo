@@ -1,356 +1,87 @@
 ---
 name: olo-agents
-description: Run subagents on narrow, targeted Olo work items in parallel - each an interactive Antigravity CLI (agy, Gemini 4 Neon at xhigh) in a child tab of your own Rex tab (Rex's native subagents, through `olo agent`; a tmux session where you aren't in a Rex pane), in this working tree, scoped to one crate no other agent is in, running routine commands without asking and asking leave for the rest - and start, watch, steer, approve, review and commit their work with tools/dev/agents. Also how every helper here is run and watched (the second investigator, Gemini's look at pictures, Opus 5.5's design review). Use when a task splits into independent pieces in separate crates (one app each; a big feature built in parallel; the same kind of change across several apps), at most five at once, and whenever a helper is running and needs reading, answering or steering. Not for finding a bug's cause (olo-debug-help).
+description: Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead -> Minder (agy Gemini 4 Neon high) -> Builders (agy Gemini 4 Neon xhigh), Second Investigator (agy Neon 4 xhigh), Code Reviewers (Codex Astra 6.2 xhigh + agy Gemini 4 Neon xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 xhigh alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations.
 ---
 
-# Subagents: narrow work, in parallel, each a child tab of yours
+# Subagents: Lead ▸ Minder (`agy` Neon 4 `high`) ▸ Builders & Reviewers
 
-**Every helper is one of Rex's own subagents now** (Ben, 2026-11-26:
-"when you use subagents for review/qa please use the new olo/rex native
-subagent support you built"; "it should all be available to you as
-skills if not you need to add them"). `tools/dev/agents` and its front
-doors (`agy-look`, `opus-look`, `agy-help`) start each one with `olo
-agent start` as a **child tab of the tab you are in**, and read, answer
-and stop it with `olo agent read`, `send` and `stop`: the host's own
-agents service, which needs no desktop (the `olo-rex-bridge` skill,
-"Subagents in Rex", says what `olo agent` is). The person sees each one
-under your tab in Rex, in its tree menu and in Activity, with what it is
-doing, and can open it, read it and answer it there. Everything below
-(the briefs, the lists of what may go ahead, peek, say, approve, watch,
-the minder) is the same whichever way it runs: the tool's commands are
-the way in, and `tools/dev/agents list` says who runs.
+Every helper runs as a native Rex child tab through `olo agent` (never the harness Agent tool, never headless print scripts; tmux only where there is no Rex pane).
 
-- **A watch is going whenever a helper runs**, from its start to its
-  end (Ben, 2026-11-26: "make sure you have an olo agents watch going
-  whenever you're running olo agents"): `tools/dev/agents watch` as a
-  background command of yours, started again each time it returns, or
-  the front door that started the helper (each waits as `watch` does),
-  or the minder's. For child tabs it waits on `olo agent watch`: it
-  returns the moment one asks, comes to rest, fails or ends, and reads
-  no screen meanwhile. One watcher an agent, not two: a second `watch`
-  of the same agents takes the news the first was to give (a minder's
-  agents are the minder's to watch; yours are the ones you started
-  without one). Children you start with `olo agent start` yourself, not
-  through the tool, are watched with `olo agent watch --all --since
-  CURSOR …` the same way (the `olo-rex-bridge` skill).
-- You can ask the service too: `olo agent list` (your children),
-  `olo agent status NAME --json`, `olo agent read NAME`, `olo agent
-  focus NAME` (show its tab). Leave starting and stopping to the tool:
-  it keeps each agent's folder, brief and rules.
-- A child's screen is as wide as your pane when it starts (tmux gave
-  each 200 columns): long commands fold sooner in what it asks.
-- Where you are not in a Rex pane (no `REX_BLOCK`), or the host's `olo
-  agent` doesn't answer, or with `OLO_AGENTS_VIA=tmux`, each runs in a
-  tmux session of its own as before (`tmux -L olo-agents`); an agent
-  goes on the way it was started. What is said of tmux below is of that
-  way.
+## Hierarchy and Exact Models / Efforts
 
-CLAUDE.md, "Subagents": besides the debug helper and the looks at
-pictures, narrow, targeted work items that can go on in parallel may be
-handed to subagents (Ben, 2026-11-19). Each is an interactive
-Antigravity CLI (`agy`: Gemini 4 Neon, reasoning at xhigh; Ben,
-2026-11-22: "stop using codex/astra for olo qa/dev tasks and … replace
-it with antigravity (`agy`) and gemini 4 neon on xhigh"; 2026-11-25:
-"everything should be either opus 5.5 max or neon 4 xhigh") in a tmux
-session of its own, so its work can be read as it goes, its questions
-answered and its course steered. All work in this same working tree,
-each in one crate that no other agent, nor you, changes meanwhile: that
-is what keeps them from clobbering each other. You own the result: the
-design, every visual decision, the review, the commit.
-
-Every helper is run this way, never as a script that answers only at
-its end (Ben, 2026-11-22: "always do it through tmux never a script
-that just goes silent … for all the subagents/reviewers etc"): the
-second investigator (`tools/dev/agy-help`, the `olo-debug-help` skill),
-Gemini 4 Neon's look at a change's pictures (`tools/dev/agy-look`), Opus
-5.5's design review of them (`tools/dev/opus-look`) and Astra 6.2's
-review of the change's code (`tools/dev/astra-review`, the Codex CLI at
-max: below) are front doors to the same `tools/dev/agents`, and
-everything under "Running them" below (peek, say, approve, the
-watching) holds for them too.
-
-## The code review of every change
-
-Ben, 2026-11-27: "please start getting a code review from a codex
-subagent running astra 6.2 on max for all changes (in addition to the
-existing reviews)". Run in the background, with the looks at the
-change's pictures where it has any:
-
-    tools/dev/astra-review --about "WHAT IT IS, WHAT CHANGED" --working [PATH…]   # not committed yet
-    tools/dev/astra-review --about "…" FROM..TO [PATH…]                            # commits: main~2..main (one: C^..C)
-    tools/dev/astra-review --tree /var/tmp/NAME/tree …                             # another checkout
-    tools/dev/astra-review --dry-run …                                             # what it would read; starts nothing
-
-- It works in a folder of its own with the diff (`change.diff`) and
-  what the commits said (`commits.txt`); its sandbox lets it read the
-  disk, write only there, and reach no network; it is never asked leave
-  and asks none; it runs nothing. `--about` is the lead's own account:
-  what the change is for and where its risk is (a lock, a signal, what
-  two builds share), so the hardest part is read hardest.
-- Its review is printed and kept, with the diff it read, in
-  `/var/tmp/olo-reviews/astra-HASH/` (`astra-review.md`, its screen in
-  `astra-review.log`). The name is the change's own: the same diff
-  asked again prints the review written, a changed one is reviewed
-  anew. Asked twice at once, the second waits for the first's. A
-  review written and never kept (its front door ended first) is kept
-  by asking for it again: never `forget` a reviewer to "start over".
-- The reviewer is told the last commit's id and reads files as of it
-  (`git show ID:PATH`): the tree moves on under a long review.
-- A finding is a claim. Make each happen (a test that fails) before
-  fixing it; say in the commit what it found and what you did, and
-  what you checked and found not to be so, with why.
-- Astra at max thinks for a long while: ten minutes and more for a
-  thousand lines. Go on with other work; `agents peek astra-HASH`
-  shows where it is.
-
-## The minder
-
-Every helper has a minder of its own, and the minder is a native Rex
-agent as the helper is (Ben, 2026-11-27: "as a standing rule please
-setup a minder for all subagents you launch (add this to the project
-rules) and also for all subagents use a native rex olo agent"; before
-it, 2026-11-22: "launch a … subagent whose only job is to … manage the
-… subagents so that they get their responses quickly").
-
-**You do nothing to start one: the tool does.** `tools/dev/agents
-start`, `agy-help`, `agy-look` and `opus-look` start each helper with
-`olo agent start … --minder claude:claude-opus-5-5:max --rules
-.claude/skills/olo-agents/minder-rules.md`: a Claude Code (Opus 5.5 at
-max) in a child tab of the helper's, held by the agents service to
-that one helper and to its one command (the `olo-rex-bridge` skill,
-"Give a child a minder"). The person sees it under the helper in Rex.
-For a child you start with `olo agent start` yourself, give the same
-two options; for one that runs already, `olo agent mind NAME --with
-claude:claude-opus-5-5:max --rules FILE`.
-
-**What it does.** By its rules (`minder-rules.md`) it answers the
-helper's questions at once, and it judges as Ben said to (2026-11-27:
-"let them do whatever they need to reasonably do to do their job. only
-deny dangerous commands that are out of alignment with the task at
-hand or where they could be done safer"): it reads the helper's brief,
-and says yes to whatever that task reasonably needs (reading, `jato`'s
-build, check and test, Olo's test tools, files in the helper's own
-scratch folders or crate, a script of its own, the agent programs
-themselves where the task is about them, the network to read
-documentation); it says no, with the reason and the safer way, only to
-the dangerous (git that changes anything, sudo, the person's session
-and desktop, files elsewhere, processes by name, another machine, the
-live agents service or Rex server, a helper of the helper's own).
-**So say in the brief what the task needs that isn't routine** (a
-program to run, a folder of the person's to look in): then the yes is
-immediate. What the rules don't cover, every question about
-the work itself, and its report when the helper ends, it hands to you:
-an `escalation` on your own watch.
-
-**What you do.** Write the brief yourself first (it is the work's
-hand-over, and yours), start the helper through the tool, and keep a
-watch going (`tools/dev/agents watch`, in the background, started
-again each time it returns). It tells you "NAME is handed back to you
-by its minder" with the minder's words: answer the helper (`approve
-NAME y|no`, `answer`, `say`). A question its minder hasn't answered
-within a minute and a half reaches you all the same ("its minder
-hasn't answered it"). Read each result yourself; stop and forget the
-helpers once their results are read (a minder ends with its helper).
-What a minder's report says went wrong with the tooling is fixed in
-the tooling.
-
-**Never the Agent tool.** It was the minder until 2026-11-27: one
-subagent of the harness, seen by nobody in Rex and held to nothing.
-`minder.md` is that minder's instructions, kept for a session that
-isn't in a Rex pane (no `REX_BLOCK`), where helpers are tmux sessions
-and nothing of Rex's can mind them. `OLO_AGENTS_MINDER=off` starts a
-helper with none: for the tool's own tests only.
-
-## When
-
-- The task splits into pieces in different crates that don't depend on
-  each other's unfinished work: one app each, a crate under `crates/`
-  each, the same change across several apps.
-- Each piece can be briefed in a page: what to change, where, what done
-  is, how to test it.
-- Not for: a design that needs your eye at each step (visual design is
-  yours: brief the look precisely, or do it yourself), a change across
-  crates that must land together (do it yourself, or split it by crate
-  and run the pieces in order), anything in a crate you are changing
-  yourself, a bug's cause (`olo-debug-help`).
-- At most five at once. Fewer, well briefed, beat more.
-
-## The brief
-
-`tools/dev/agents start` puts the rules in front of it (its crate only,
-`cargo fmt -p` its package only, no git that changes anything, no new
-dependencies, no agents of its own, nothing on the person's screen or
-session, tsession named `agy-NAME`, scratch in its folder, never a
-process looked up by its name, nothing of the person's sent outside,
-what goes ahead without asking, ask when unsure, `report.md` then
-DONE). Write the task itself, specific enough that it needn't guess:
-
-```markdown
-# What, in a line
-
-Crate: apps/foo (olo-foo), nothing outside it.
-
-Why: the person's words if they asked, the problem it solves.
-
-What to change: the files and functions (file:line), the kit APIs to
-use (and how other apps use them: point at one), the behaviour wanted,
-step by step. The look, exactly: which widgets, which metrics, where;
-or "keep the look as it is".
-
-Constraints: words through the words layer (`tr!`, literals the kit
-looks up); nothing that blocks the UI or polls; no new dependencies.
-
-Done when: the behaviour; `cargo test -p olo-foo` passes with new tests
-for X; `cargo ui-lint` clean if it draws.
-
-Report: anything new on screen described, what to look at closely.
+```text
+Lead (autonomous coordinator)
+└── minder  (ALWAYS agy, Gemini 4 Neon at high: gemini-4-neon-high)
+    ├── builders       (agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
+    ├── investigator   (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
+    ├── code review 1  (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
+    ├── code review 2  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
+    └── visual design  (changes with visual design work use ALL THREE reviewers:
+                        agy-look [Neon 4 xhigh] + opus-look [Opus 5.5 xhigh]
+                        + astra-review [Astra 6.2 xhigh] & agy-review [Neon 4 xhigh])
 ```
 
-Nothing private goes in a brief (it leaves this computer): not the
-person's name, email, accounts, hosts, files, nor what their windows
-show.
+- **Minders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`, `--effort high`). Started directly under the lead with `tools/dev/agents minder start [BRIEF.md]`. All builders, investigators, and reviewers run as child tabs under the minder.
+- **Builders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`, `--effort xhigh`). Up to five at once per checkout, each scoped to its own crate(s) so none clobbers another. Builders get `OLO_SUBAGENT=<name>` and cannot spawn subagents of their own.
+- **Code Reviews (non-visual and visual changes, max 2 rounds each):**
+  1. **Codex Astra 6.2 on `xhigh`** (`tools/dev/astra-review [--about "..."] [--tree DIR] [--no-wait] --working [PATH…] | FROM..TO [PATH…]`)
+  2. **Antigravity Gemini 4 Neon on `xhigh`** (`tools/dev/agy-review [--about "..."] [--tree DIR] [--no-wait] --working [PATH…] | FROM..TO [PATH…]`)
+  Non-visual changes use these two reviewers only.
+- **Visual Design Reviews (any change with visual design work — all three reviewers):**
+  1. **Antigravity Gemini 4 Neon on `xhigh`**: `tools/dev/agy-look` (pixel-level screenshot review) + `tools/dev/agy-review` (code review)
+  2. **Codex Astra 6.2 on `xhigh`**: `tools/dev/astra-review` (code review)
+  3. **Claude Opus 5.5 on `xhigh`**: `tools/dev/opus-look` (product/visual design review of screenshots)
+- **Escalation after 2 rounds:** Each builder gets at most 2 review rounds per reviewer by default. If critical outstanding issues remain after 2 rounds, the minder escalates to the lead (`olo agent escalate "..."`) so the lead can decide whether the builder misaligned, whether the design needs rethinking, how to steer it, and whether to authorize additional review rounds.
 
-## Running them
+## Active Watches (Mandatory)
+
+- **Lead:** keeps a background `olo agent watch minder --since CURSOR --on escalation,question,approval,idle,done,error,exit --timeout 90 --json` running from the moment the minder starts until it stops, restarting it after every return.
+- **Minder:** keeps an active watch (`olo agent watch --all --since CURSOR --on question,approval,escalation,idle,done,error,exit --timeout 90 --json`) on all subagents nested under it at all times.
+- Never run children without a watch, and never double-watch the same child.
+
+## Commands (`tools/dev/agents`)
 
 ```sh
-tools/dev/agents start NAME CRATE BRIEF.md   # NAME: lowercase, dashes
-tools/dev/agents watch [--for MIN]           # in the background, always (below)
-tools/dev/agents list                        # each: what it's on, its state, since when
-                                             #   (working, asking, idle, done, exited, gone)
-tools/dev/agents peek NAME [LINES]           # its screen
-tools/dev/agents log NAME                    # its whole transcript
-tools/dev/agents say NAME [--now] "…"        # answer, steer (--now: at once, mid-step)
-tools/dev/agents approve NAME y|p|no         # what it asks leave for
-tools/dev/agents answer NAME N               # the Nth choice of another question
-tools/dev/agents keys NAME down enter        # keys, where choices have no numbers; esc stops its step
-tools/dev/agents stop NAME                   # end it; its folder stays
-tools/dev/agents resume NAME [--result FILE] "TEXT…"   # bring a stopped one back with its conversation, told TEXT
-tools/dev/agents forget NAME                 # remove its folder
-tools/dev/agents attach NAME                 # what the person runs to watch it
-tools/dev/agents allowed                     # what goes ahead unasked, what is refused
+# Lead: start and talk to the minder (agy Neon 4 high)
+tools/dev/agents minder start [BRIEF.md] [--name minder]
+tools/dev/agents minder peek|log|say|stop
+
+# Minder: start / resume / steer / approve / stop builders (agy Neon 4 xhigh)
+tools/dev/agents start [--tree DIR] NAME CRATE BRIEF.md
+tools/dev/agents resume NAME [--result FILE] [--session ID] "TEXT…"
+tools/dev/agents list
+tools/dev/agents watch [--for MIN] [--only NAME[,NAME…]]
+tools/dev/agents peek NAME [LINES]
+tools/dev/agents log NAME
+tools/dev/agents say NAME [--now] "…"
+tools/dev/agents approve NAME y|p|no
+tools/dev/agents answer NAME N
+tools/dev/agents keys NAME KEY…
+tools/dev/agents stop NAME
+tools/dev/agents forget NAME
+
+# Code reviews (max 2 rounds each)
+tools/dev/astra-review [--about "…"] [--tree DIR] [--no-wait] --working [PATH…]
+tools/dev/agy-review   [--about "…"] [--tree DIR] [--no-wait] --working [PATH…]
+tools/dev/astra-review [--about "…"] [--tree DIR] [--no-wait] FROM..TO [PATH…]
+tools/dev/agy-review   [--about "…"] [--tree DIR] [--no-wait] FROM..TO [PATH…]
+
+# Visual design reviews (visual changes only; run alongside code reviews)
+tools/dev/agy-look  [--about "…"] [--no-wait] PICTURE.png…
+tools/dev/opus-look [--about "…"] [--no-wait] PICTURE.png…
+
+# Collect a finished --no-wait review or look
+tools/dev/agents collect NAME
 ```
 
-- **Watch, always.** `agents watch` returns as soon as one needs you: it
-  asks leave, it finished a turn (DONE, or a question), it exited, or
-  it showed nothing new for 15 minutes while working (a long build can;
-  a loop or a hang shouldn't). Meanwhile it prints a line a minute for
-  each agent (its state, and the last line of its screen), so its
-  output reads as a running account. Run it with `run_in_background`
-  whenever any agent runs; when it returns, deal with every agent it
-  names (`peek` first), then start it again. Look at `agents list` now
-  and then besides, between your own steps, so nothing waits on you
-  unseen. (`agy-help`, `agy-look` and `opus-look` do this waiting
-  themselves for the one they started: run those in the background the
-  same way, and run the same command again after answering.)
-- **What goes ahead, what is refused, what comes to you.** An agent
-  runs in agy's accept-edits mode, with lists given to that run alone
-  (`agy --settings`; the person's own agy settings are never read for
-  them nor written). Its file edits go ahead. So does a command that
-  starts as one on the allowed list does (reading and searching,
-  `cargo build/check/test/clippy/fmt -p`, git's reading commands,
-  `tools/dev/tsession`, `ui-lint`, `cost`, `bench`; several piped or
-  joined go ahead when each does), and so does output sent to a file
-  inside its own scratch folder. A command on the refused list (any
-  git that changes something, `sudo`, a helper of its own through this
-  tool, `pkill`, `systemctl`) is refused without asking. Everything
-  else stops and asks: read the command, and answer `y` (this once),
-  `p` (this, and commands that start the same, for the rest of its
-  conversation) or `no` (then `say` what to do instead). **Give it what
-  its task reasonably needs**: no is for what is dangerous, out of line
-  with the task, or done safer another way (say which). The agent
-  programs (`claude`, `codex`, `agy`) are a helper's to run where its
-  task is about them: their help and version go ahead unasked. Never
-  approve a push, a
-  commit, anything on the person's session, deletion outside its
-  crate, sudo, or what its rules forbid. The tool never takes agy's
-  choice that would save a rule in the person's settings.
-- **Steer** with `say`: a correction, an answer, "stop and report". It
-  is pasted into its field and sent. While the agent works, agy queues
-  it for the end of the step it is on, and a long think is one step:
-  `say NAME --now "…"` delivers it at once. `keys NAME esc` stops the
-  step it is on.
-- **Stay out of its crate** while it works; your own work goes on
-  elsewhere. Each agent builds in its own target folder (its folder's
-  `target/`, kache behind it), so its builds and yours never wait on one
-  another.
+## Multi-Lead Isolation
 
-## Review: its work becomes yours
+`/var/tmp/olo-agents` may hold helpers from sibling checkouts (such as `olo.webv2`). `tools/dev/agents` records `root` and checks `olo agent list --all --fast --json` so `list`, `room`, `watch`, `tidy`, and `sweep_builds` operate strictly on this tab's subtree and checkout — never counting, modifying, or stopping another lead's helpers.
 
-When it says DONE:
+## Lead Final Verification and Landing
 
-1. Read `/var/tmp/olo-agents/NAME/report.md`, then the whole diff
-   (`git diff -- CRATE`), and check nothing outside its crate changed
-   (`git status`).
-2. Read it as code you'd have written: the code's conventions and its
-   comments' voice, tests for what it added, HACKING updated, words
-   through the words layer, nothing blocking the UI or polling, measured
-   where it runs per frame or event (CLAUDE.md, "Fast and light").
-3. Build it (`cargo build -p` what it changed), run its tests and the
-   lints (`cargo ui-lint`, `tools/dev/ui-lint`, `--tiles`), and picture
-   every window and state it changed at 1×, 1.5× and 2×, light and dark,
-   judging each closely as a designer. Expect spacing, alignment,
-   hierarchy and words to need your hand. Then `agy-look` and
-   `opus-look`, as every change's pictures get.
-4. Fix what isn't right yourself, or, while it still runs, `say` it back
-   with exact instructions.
-5. Commit it yourself, saying what the agent did and what you changed;
-   then `stop` and `forget` it.
-
-## Nothing left running
-
-Stop each agent as soon as you have what you need of it (`agents stop
-NAME`: its transcript goes to `transcript.txt` in its folder, and a
-test session it left running, `agy-NAME…`, is stopped with it), and
-`forget` it once its work is in. A look ends itself when its review is
-written. Before a piece of work is called finished, `tools/dev/agents
-list` and `tools/dev/tsession list` show nothing of it (Ben,
-2026-11-22: "make sure that the tmux agents / screens are getting
-properly stopped when they are no longer needed"). Behind that, `agents
-tidy` (run by `list`, `watch`, `start` and the front doors) ends an
-agent whose program has exited, one done and untouched for half an
-hour, one idle for three hours, and removes a folder whose agent ended
-over a week ago; the tmux server goes with its last session.
-
-## How it works (agy 1.5.14, Claude Code 2.1.330)
-
-- One tmux server (`tmux -L olo-agents`), a session per agent, its pane
-  kept when its program ends; both programs draw inline, so a session's
-  screen and history read as text (`tmux capture-pane`). The program's
-  banner, which names the account it is signed in to, is left out of
-  everything the tool prints.
-- An agy agent is `agy --model gemini-4-neon-xhigh --mode accept-edits
-  --settings ITS/settings.json --add-dir ITS -i "Read ITS/brief.md …"`,
-  started in the repository (a look: in its own folder, on copies of
-  the pictures, with no command allowed unasked). The settings hold
-  its folders as trusted (agy asks at its start otherwise, and waits)
-  and `permissions.allow` / `permissions.deny`, lists of
-  `command(PREFIX)`. `OLO_SUBAGENT` and `CARGO_TARGET_DIR` are set,
-  `WAYLAND_DISPLAY` and `OLO_SOCKET` unset (nothing it runs can reach
-  the person's screen). `tools/dev/agents` and its front doors refuse
-  to run with `OLO_SUBAGENT` set.
-- Never agy's `auto` mode (what it starts in when no mode is named): it
-  judges for itself what is safe, and runs a command outside its
-  sandbox when the sandbox refuses it. A `sudo -n true` went through
-  unasked when tried (2026-11-22).
-- What agy asks about though its command is allowed: output sent to a
-  file with `>` (the rules tell an agent to pipe, and to write files
-  with its file tool).
-- What the watcher reads, agy: its last line begins "esc to cancel"
-  while it works and "? for shortcuts" when its turn is over; a
-  question has "↑/↓ Navigate" under its numbered choices ("Requesting
-  permission for: … Run this command? 1. Yes, run command 2. Yes, and
-  always allow in this conversation for commands that start with '…'
-  3. … (Persist to settings.json) 4. No, cancel"); a digit takes a
-  choice.
-- Opus's design review is `claude --model claude-opus-5-5 --effort max
-  --restricted --strict-mcp-config --tools Read,Write --permission-mode
-  acceptEdits --disable-slash-commands BRIEF`, in its own folder on
-  copies of the pictures: no tool that runs anything, the file tools
-  kept to that folder, none of the person's settings, hooks or MCP
-  servers. The brief goes last, after an option that takes no value
-  (`--tools` and `--add-dir` take every word that follows them). Its
-  last line holds "esc to interrupt" while it works; a question has
-  "Esc to cancel" under its choices.
-- Text for an agent is pasted (`tmux paste-buffer -p`), so a new line
-  in it is a new line and not a send; Enter goes by itself a moment
-  later, and again if the field still holds the words.
+When the minder escalates that a builder's work has passed review and is ready:
+1. Read the builder's report, the reviews under `/var/tmp/olo-reviews` (and screenshot reviews if visual), and inspect the diff (`git diff -- CRATE`).
+2. Run the crate's tests and lints yourself (`jato test -p …`, `jato clippy`, and for visual changes `tsession review` / `ui-lint --tiles` and visually inspect the screenshots).
+3. Commit cleanly (staging by path, never `-A`; recording what each reviewer found and what was done; checking no machine hostname or account leaks into the diff or message).
+4. Have the minder stop (and once committed, `forget`) any finished builders no longer needed.

@@ -1,0 +1,18 @@
+#!/bin/bash
+# A code review of a change, from Gemini 4 Neon at xhigh in the Antigravity CLI
+# (Ben, 2026-11-27: builders get code reviews from a Codex Astra 6.2 on xhigh
+# (max 2 rounds) as well as another Antigravity Gemini 4 Neon on xhigh (max 2
+# rounds); visual design changes also get Claude Opus 5.5 on xhigh).
+#
+#   tools/dev/agy-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] RANGE [PATH…]
+#   tools/dev/agy-review [--about …] [--tree DIR] --working [PATH…]
+#
+# RANGE: the commits to review, as git names them (`main~2..main`,
+# `v2026.11.27.7..HEAD`). --working: what isn't committed yet, new files
+# too (PATHs: only those; name them where others are at work in the
+# tree). --tree: another checkout than this one. It reads the diff and
+# whatever it needs of the tree, runs nothing and changes nothing; its
+# review is printed and kept, with the diff it read, in a folder of its
+# own under /var/tmp/olo-reviews. The same change asked again returns the
+# review as written, not a second one.
+exec /usr/bin/python3 "$(dirname "$0")/agents" review --by agy "$@"

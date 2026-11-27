@@ -1,146 +1,61 @@
 #!/usr/bin/python3
-"""Every agent that helps with Olo, each a child tab of the lead's own
-Rex tab (started, read, answered and stopped through `olo agent`: Rex's
-own support for an agent's children, which needs no desktop; Ben,
-2026-11-26: "when you use subagents for review/qa please use the new
-olo/rex native subagent support you built"), or, where the lead isn't in
-a Rex pane, a tmux session of its own as all of them were until then:
-narrow, parallel work items, second investigators and the looks at a
-change's pictures. Each is an interactive Antigravity CLI (`agy`: Gemini
-4 Neon, its reasoning at xhigh), the look at pictures for what is wrong
-by a pixel too, but the design review, Opus 5.5 at max in the Claude CLI
-(Ben, 2026-11-25: "NOTHING should still be using fable -- everything
-should be either opus 5.5 max or neon 4 xhigh"); all are read, answered and steered from here
-(CLAUDE.md, "Subagents"; the olo-agents and olo-debug-help skills say
-how to use them). Ben, 2026-11-22: "stop using codex/astra for olo
-qa/dev tasks and … replace it with antigravity (`agy`) and gemini 4
-neon on xhigh", run "via tmux … so that you will get notified when it
-needs you and be able to steer it and approve things", with "the auto
-approval stuff [configured] to auto approve all the most common
-commands it might need to run"; and of every helper, the reviewers
-too: "always do it through tmux never a script that just goes silent".
+"""Every agent that helps with Olo, each a child tab through `olo agent`
+(Rex's native subagent support, which needs no desktop), or a tmux session
+where there is no Rex pane.
 
-  agents start NAME CRATE BRIEF.md   start a worker on CRATE (a folder, apps/updates; or a
-                                     file or folder that isn't a crate, data/words/de.txt)
+Hierarchy and exact models / efforts (Ben, 2026-11-27):
+  Lead
+  └── minder  (agy, Gemini 4 Neon at high: gemini-4-neon-high)
+      ├── builders      (agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
+      ├── investigator  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
+      ├── code review 1 (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
+      ├── code review 2 (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
+      └── visual design (any visual change uses all three reviewers:
+                         agy-look [Neon 4 xhigh], opus-look [Opus 5.5 xhigh],
+                         plus astra-review [Astra 6.2 xhigh] & agy-review [Neon 4 xhigh])
+
+If critical outstanding issues remain after 2 review rounds, the minder
+escalates to the lead to assess alignment / design / steering and optionally
+authorize additional review rounds.
+
+  agents minder start [BRIEF.md] [--name NAME]
+                                     start the agy Neon 4 high minder as a child
+                                     tab directly under the lead (OLO_MINDER set,
+                                     so it can launch/watch/approve/review
+                                     builders and reviewers under itself)
+  agents start NAME CRATE BRIEF.md   start a builder (agy Neon 4 xhigh) on CRATE
                                      with the task in BRIEF.md; at most 5 at once
-  agents investigate BRIEF.md [DIR]  start a second investigator on the bug in
-                                     BRIEF.md (tools/dev/agy-help is this), its
-                                     answer written to DIR (the brief's folder),
-                                     and wait as `watch` does, for it alone; run
-                                     again, it goes on waiting for the same one
-  agents look [--by opus] [--about TEXT] PICTURE…   (Neon's look by default)
-                                     have a change's pictures looked at: by Gemini 4
-                                     Neon at xhigh for what's wrong by a pixel
-                                     (tools/dev/agy-look is this), or by Opus 5.5 at
-                                     max for the design itself (--by opus:
-                                     tools/dev/opus-look). The review is
-                                     written beside the first picture and printed,
-                                     waited for as `investigate` waits
-  agents review [--about TEXT] [--tree DIR] [--dry-run] FROM..TO [PATH…]
-  agents review [--about TEXT] [--tree DIR] [--dry-run] --working [PATH…]
-                                     have a change's code reviewed by Astra 6.2 at
-                                     max in the Codex CLI (tools/dev/astra-review is
-                                     this): the commits of RANGE (`main~3..main`,
-                                     `v2026.11.27.7..HEAD`), or with --working what
-                                     isn't committed yet (PATHs: only those). It
-                                     reads the diff and the tree (DIR: another
-                                     checkout than this one), runs nothing, and
-                                     writes its review under /var/tmp/olo-reviews;
-                                     waited for and printed as a look is
-  agents list                        each one: what it's on, its state (working, asking,
-                                     idle: a question or waiting, done: its result
-                                     written, exited, gone), when it was started
+  agents investigate BRIEF.md [DIR]  start a second investigator (agy Neon 4 xhigh;
+                                     tools/dev/agy-help is this)
+  agents look [--by gemini|opus] [--about TEXT] [--no-wait] PICTURE…
+                                     visual review of screenshots: Neon 4 xhigh
+                                     (tools/dev/agy-look) or Opus 5.5 xhigh
+                                     (--by opus: tools/dev/opus-look)
+  agents review [--by astra|agy] [--about TEXT] [--tree DIR] [--dry-run] [--no-wait] FROM..TO [PATH…]
+  agents review [--by astra|agy] [--about TEXT] [--tree DIR] [--dry-run] [--no-wait] --working [PATH…]
+                                     code review: Codex Astra 6.2 at xhigh
+                                     (tools/dev/astra-review) or Antigravity
+                                     Gemini 4 Neon at xhigh (tools/dev/agy-review).
+                                     Reads the diff and tree, runs nothing, keeps
+                                     its review under /var/tmp/olo-reviews
+  agents collect NAME                publish a finished --no-wait look/review and stop it
+  agents list                        each one of this subtree/repo: state & age
   agents watch [--stuck MIN] [--for MIN] [--only NAME[,NAME…]]
-                                     return once one needs you: an approval asked,
-                                     a turn finished (DONE, a question), gone, or
-                                     nothing new for MIN minutes (15) while working.
-                                     Run it in the background and re-run it after
-                                     each answer: it's how you hear from them. It
-                                     prints a line a minute for each meanwhile
-                                     (what it is doing), to read as it goes. With
-                                     --for, it returns after that long at most (for
-                                     a minder, who waits on it in the foreground).
-                                     --only: the agents whose names begin with one
-                                     of those alone (`--only words-`: a minder's own)
+                                     return once an agent needs attention
   agents peek NAME [LINES]           the last LINES (60) of its screen
   agents log NAME                    its whole transcript
-  agents say NAME [--now] TEXT...    a message to it: an answer, steering. While it
-                                     works it is queued for the end of its step;
-                                     --now delivers it at once (stops a long think)
-  agents approve NAME [y|p|no]       answer what it asks leave for: yes this once (y),
-                                     yes and don't ask again in this conversation for
-                                     commands that start the same (p), or no (then
-                                     `say` why); says if its screen didn't move on
-                                     (status 4: look before answering again), or if
-                                     the same is asked a second time (answer it too)
-  agents answer NAME N               take the Nth choice of any other question it
-                                     shows with choices
-  agents keys NAME KEY…              press keys in it (up, down, enter, esc, tab, a
-                                     digit, a letter): for a question whose choices
-                                     have no numbers, or esc to stop what it's doing
-  agents stop NAME                   end it, when you have what you need of it: its
-                                     transcript is kept in its folder, and any test
-                                     session it left (agy-NAME…) is stopped. (Its
-                                     folder, /var/tmp/olo-agents/NAME, with its
-                                     report, stays until `forget`; its builds a day
-                                     more: below)
+  agents say NAME [--now] TEXT...    a message to it: an answer, steering
+  agents approve NAME [y|p|no]       answer what it asks leave for
+  agents answer NAME N               take the Nth choice of another question
+  agents keys NAME KEY…              press keys in it
+  agents stop NAME                   end it; its folder stays
   agents resume NAME [--result FILE] [--session ID] TEXT…
                                      bring a stopped worker back with its
-                                     conversation (a child tab: `olo agent resume`),
-                                     told TEXT, with a minder as at its start; FILE
-                                     is what it is to write this time (DONE is then
-                                     that file's, not its last report's). For a
-                                     second pass on its own work, after its review.
-                                     Where the service has trimmed its record, it
-                                     is started anew on its own conversation (by
-                                     the id kept at its stop, or ID)
-  agents tidy                        end what nobody needs any more (list, watch and
-                                     start do this too): an agent whose program has
-                                     exited, one done and untouched for half an hour,
-                                     one idle for three hours; remove a folder whose
-                                     agent ended over a week ago
+                                     conversation (under the caller's tab)
+  agents tidy                        end stale/exited helpers of THIS subtree
   agents forget NAME                 remove a stopped one's folder
-  agents attach NAME                 how the person can watch it live (read-only)
-  agents allowed                     what an agent runs without asking, and what
-                                     it is refused outright
-
-A worker's folder holds brief.md (the rules, then the task), report.md
-(what it says it did, when done), meta.json, settings.json (what it may
-run without asking: below) and target/ (its own CARGO_TARGET_DIR, so its
-builds never wait on another's). An investigator's answer.md and
-notes.md go in its DIR, yours, with its builds in DIR/target. An agent
-that has ended keeps its builds for a day after the last one: then
-`list`, `watch` and `start` remove target/ (16 GB of one sat for nobody,
-2026-11-21; kache doesn't know these folders, so nothing else would).
-The rest of the folder stays until `forget`.
-
-What needs you, and what doesn't. An agent runs in agy's accept-edits
-mode: its edits to files go ahead, and so does every command that
-starts as one of ALLOW does (reading, searching, building, testing,
-git's reading commands, Olo's own test tools); a command line of
-several (a pipe, `&&`) goes ahead when each of them does. What starts
-as one of DENY does is refused without asking (anything that changes
-git, sudo, a helper of its own started with this tool). Everything else
-stops and asks, and is given leave wherever it is what the task
-reasonably needs: refused is only what is dangerous, out of line with
-the task, or better done a safer way (Ben, 2026-11-27: "you're
-micromanaging these subagents way too much let them do whatever they
-need to reasonably do to do their job. only deny dangerous commands
-that are out of alignment with the task at hand or where they could be
-done safer"). `watch` tells you of what asks: `approve` it, or say no. The lists are given to that one
-run (`agy --settings`): the person's own agy settings are never read
-for it nor written (the tool never takes the choice that would save a
-rule there).
-
-An agent can't start helpers of its own: OLO_SUBAGENT is set in its
-environment, which this script and its front doors (agy-help, agy-look,
-opus-look) refuse. The agent programs themselves (`claude`, `codex`,
-`agy`) it may run where its task is about them: their `--help` and
-`--version` go ahead unasked, anything else of theirs asks (a test of
-how one reads a file is the task's; handing its own work to one is
-not). They were refused outright until 2026-11-27, and a builder whose
-task was the three programs' own instruction files could not read
-their help.
+  agents attach NAME                 how the person can watch it live
+  agents allowed                     what goes ahead unasked, what is refused
 """
 import contextlib
 import fcntl
@@ -160,37 +75,25 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 HOME = os.environ.get("OLO_AGENTS_DIR") or "/var/tmp/olo-agents"
 SOCKET = "olo-agents"
 MOST = 5
-# The model's name carries its effort (`agy models`): xhigh, wherever
-# Gemini reasons for Olo (CLAUDE.md; Ben, 2026-11-25: "NOTHING should
-# still be using fable -- everything should be either opus 5.5 max or
-# neon 4 xhigh"; it was high from 2026-11-22).
+# Builders, investigators, and agy code/visual reviewers: Gemini 4 Neon at xhigh.
 MODEL = "gemini-4-neon-xhigh"
-# The one Claude among them: Opus 5.5, for the design review of a
-# change's pictures (`look --by opus`, tools/dev/opus-look).
+# Minders: ALWAYS agy Gemini 4 Neon at high (Ben, 2026-11-27).
+MINDER_MODEL = "gemini-4-neon-high"
+MINDER_EFFORT = "high"
+MINDER_GUIDE = os.path.join(ROOT, ".claude/skills/olo-agents/minder.md")
+MINDER_RULES = os.path.join(ROOT, ".claude/skills/olo-agents/minder-rules.md")
+# Visual design reviewer (changes involving visual design work use all three
+# reviewers: agy Neon 4 xhigh, codex Astra 6.2 xhigh, and claude Opus 5.5 xhigh).
 OPUS = "claude-opus-5-5"
-# Every helper has a minder of its own, and the minder is Rex's own too
-# (Ben, 2026-11-27: "as a standing rule please setup a minder for all
-# subagents you launch (add this to the project rules) and also for all
-# subagents use a native rex olo agent"): `olo agent start --minder`, a
-# Claude Code (Opus 5.5 at max) in a child tab of the helper's, held by
-# the agents service to that one helper. It answers at once what its
-# rules cover and hands the rest to the lead, on the lead's own watch
-# (an `escalation`). OLO_AGENTS_MINDER=off: none (the tool's own tests).
-MINDER = f"claude:{OPUS}:max"
-MINDER_RULES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".claude/skills/olo-agents/minder-rules.md")
-# How long a helper with a minder may stand on a question before the
-# lead is told all the same: its minder's to answer first.
-MINDER_HAS = 90
-# What a helper's minder handed back and the lead hasn't been told yet.
-ESCALATED = {}
-# Astra 6.2, in the Codex CLI. At max, the code review of every change
-# (`review`; Ben, 2026-11-27: "please start getting a code review from a
-# codex subagent running astra 6.2 on max for all changes (in addition
-# to the existing reviews)"). At high, kept for `look --by astra`, by
-# name only and never by default: every other helper is Gemini 4 Neon at
-# xhigh or Opus 5.5 at max (Ben, 2026-11-25: "everything should be
-# either opus 5.5 max or neon 4 xhigh").
+OPUS_EFFORT = "xhigh"
+# Code reviewer in Codex CLI: Astra 6.2 at xhigh (max 2 rounds alongside
+# agy-review at xhigh; Astra is used ONLY for code review).
 ASTRA = "gpt-6.2-astra"
+ASTRA_EFFORT = "xhigh"
+# How long a helper may wait before the watcher flags it.
+MINDER_HAS = 90
+# What a minder handed back via `olo agent escalate`.
+ESCALATED = {}
 # Where code reviews are kept: each in a folder of its name, with the
 # diff it read.
 REVIEWS = os.environ.get("OLO_REVIEWS_DIR") or "/var/tmp/olo-reviews"
@@ -259,9 +162,10 @@ ABOUT_AGENTS = [f"{cli} {word}" for cli in ("claude", "codex", "agy") for word i
 # Refused without asking: what an agent's rules forbid outright, so it
 # hears no at once and no approval waits on you that you'd never give.
 DENY = ["git push", "git commit", "git add", "git stash", "git checkout", "git switch", "git reset", "git restore", "git rebase", "git merge", "git clean", "git rm",
-        "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "tools/dev/agents",
-        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/astra-look", "tools/dev/astra-review", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
+        "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "olo agent prune", "tools/dev/agents",
+        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/agy-review", "tools/dev/astra-look", "tools/dev/astra-review", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
         "systemctl", "loginctl", "reboot", "shutdown", "poweroff"]
+MINDER_DENY = [c for c in DENY if not c.startswith("tools/dev/")] + ["tools/dev/agents minder"]
 
 
 def allow():
@@ -274,20 +178,43 @@ def allow():
     return out
 
 
+def minder_allow():
+    """What the agy Neon 4 high minder may run without asking: read-only
+    inspection, read-only git, `olo agent` subcommands (never `prune`),
+    and the helper/reviewer tools under `tools/dev/`."""
+    out = READING + GIT + [
+        "olo agent list", "olo agent status", "olo agent read", "olo agent watch",
+        "olo agent start", "olo agent resume", "olo agent approve", "olo agent send",
+        "olo agent stop", "olo agent escalate", "olo agent focus",
+    ]
+    for t in ("agents", "astra-review", "agy-review", "agy-look", "opus-look", "agy-help", "tsession list"):
+        for path in (f"tools/dev/{t}", f"./tools/dev/{t}", f"{ROOT}/tools/dev/{t}"):
+            out += [path, f"/usr/bin/python3 {path}"]
+    return out
+
+
 def settings(folders, commands=True, own=()):
     """An agent's settings, for its run alone: its folders trusted (agy
-    asks at its start otherwise, and waits), what it may run (nothing
-    without asking, for one that only looks at pictures). In the
-    folders that are its `own` (its folder here, an investigator's
-    scratch) a command's output may be sent to a file unasked. (Not
-    `rm` there: a rule matches a command by its whole words, so
-    `command(rm FOLDER/)` allows nothing; a file removed there asks,
-    and the minder says yes in seconds.)"""
-    # (A look reads and no more: it listed its own folder of pictures,
-    # and that waited on the minder.)
-    yes = [f"command({c})" for c in (allow() if commands is True else READING if commands == "read" else [])]
-    yes += [f"write_file({d})" for d in own] if commands is True else []
-    return {"trustedWorkspaces": folders, "permissions": {"allow": yes, "deny": [f"command({c})" for c in DENY]}}
+    asks at its start otherwise, and waits), what it may run.
+      commands=True     builder / investigator (READING + CARGO + GIT + TOOLS)
+      commands="review" agy code reviewer (READING + GIT, write_file in own only)
+      commands="read"   agy picture look (READING, write_file in own only)
+      commands="minder" agy Neon 4 high minder (orchestrates builders & reviewers)
+    """
+    if commands == "minder":
+        yes = [f"command({c})" for c in minder_allow()] + [f"write_file({d})" for d in own]
+        deny = [f"command({c})" for c in MINDER_DENY]
+    else:
+        allowed_cmds = (
+            allow() if commands is True
+            else (READING + GIT) if commands == "review"
+            else READING if commands == "read"
+            else []
+        )
+        yes = [f"command({c})" for c in allowed_cmds]
+        yes += [f"write_file({d})" for d in own] if commands in (True, "review", "read") else []
+        deny = [f"command({c})" for c in DENY]
+    return {"trustedWorkspaces": folders, "permissions": {"allow": yes, "deny": deny}}
 
 
 # The server's options, read whenever it starts (it ends with its last
@@ -306,6 +233,73 @@ OLO = shutil.which("olo") or os.path.expanduser("~/.local/bin/olo")
 # (What tmux calls a key, as `olo agent send --key` takes it.)
 OLO_KEYS = {"C-m": "Enter", "M-m": "Alt+m"}
 _REX = []
+_SUBTREE_IDS = [None]
+
+
+def my_window_id():
+    """The Rex window_id of the tab running this command, or None."""
+    try:
+        r = subprocess.run(["rex", "whoami", "--json"], capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            return json.loads(r.stdout).get("window_id")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def subtree_ids(refresh=False):
+    """Set of `olo agent` subagent IDs belonging strictly to THIS tab's
+    descendant tree (including exited ones), or None if unavailable. Used so
+    multiple leads sharing /var/tmp/olo-agents never count, list, or tidy
+    each other's agents."""
+    if not rex_here():
+        return None
+    if refresh or _SUBTREE_IDS[0] is None:
+        r = olo("list", "--all", "--fast", "--json", timeout=40)
+        try:
+            said = json.loads(r.stdout) if r.returncode == 0 else None
+        except ValueError:
+            said = None
+        if isinstance(said, dict) and isinstance(said.get("subagents"), list):
+            subs = said["subagents"]
+            me = my_window_id()
+            if me:
+                by_parent = {}
+                for s in subs:
+                    by_parent.setdefault(s.get("parent_window_id"), []).append(s)
+                owned, stack = set(), [me]
+                while stack:
+                    w = stack.pop()
+                    for s in by_parent.get(w, ()):
+                        sid = s.get("id")
+                        if sid and sid not in owned:
+                            owned.add(sid)
+                            if s.get("window_id"):
+                                stack.append(s["window_id"])
+                _SUBTREE_IDS[0] = owned
+            else:
+                _SUBTREE_IDS[0] = {s.get("id") for s in subs if s.get("id")}
+        else:
+            _SUBTREE_IDS[0] = None
+    return _SUBTREE_IDS[0]
+
+
+def is_ours(name):
+    """Whether `name` belongs to this tab's subtree / repository checkout.
+    Prevents another lead's active helpers in a different worktree (e.g.
+    olo.webv2 sharing /var/tmp/olo-agents) from blocking `room()` or being
+    touched by `tidy()`."""
+    m = meta(name) or {}
+    root = m.get("root")
+    if root and os.path.realpath(root) != os.path.realpath(ROOT):
+        return False
+    if m.get("via") == "rex":
+        ids = subtree_ids()
+        if ids is not None:
+            rid = m.get("rex_id")
+            if rid and rid not in ids:
+                return False
+    return True
 
 
 def olo(*args, check=False, timeout=180):
@@ -961,193 +955,198 @@ else), then reply DONE and wait: the lead may ask more.
 UNSET = ["WAYLAND_DISPLAY", "DISPLAY", "OLO_SOCKET", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]
 
 
-def session(name, cwd, env, program, native=None):
+def session(name, cwd, env, program, native=None, subagent=True):
     """Where one agent's program runs, nothing of the person's screen in
-    its reach: a child tab of the lead's Rex tab (`native`: what `olo
+    its reach: a child tab of the caller's Rex tab (`native`: what `olo
     agent start` is asked for, its agent first), or a tmux session of
-    its own (`program`; one tmux server for them all, its options from
-    CONF)."""
+    its own (`program`). Under the new Lead ▸ Minder (agy Neon 4 high) ▸
+    Builders/Reviewers flow, minders run with `subagent=False` and
+    `OLO_MINDER=<name>` so they can orchestrate child agents under their
+    own tab, while builders/reviewers/investigators run with
+    `OLO_SUBAGENT=<name>` so they cannot spawn nested agents."""
+    marker = f"OLO_SUBAGENT={name}" if subagent else f"OLO_MINDER={name}"
     if native and rex_here():
-        args = ["start", *native[:1], "--name", name, "--title", name, "--cwd", cwd, "--desktop", "none", "--env", f"OLO_SUBAGENT={name}"]
+        args = ["start", *native[:1], "--name", name, "--title", name, "--cwd", cwd, "--desktop", "none", "--env", marker]
         for e in env:
             args += ["--env", e]
         for u in UNSET:
             args += ["--unset-env", u]
-        minded = os.environ.get("OLO_AGENTS_MINDER") != "off" and os.path.exists(MINDER_RULES)
-        if minded:
-            args += ["--minder", MINDER, "--rules", MINDER_RULES]
         r = olo(*args, "--json", *native[1:], check=True)
         try:
             said = json.loads(r.stdout)
         except ValueError:
             sys.exit(f"agents: olo agent start {name}: {r.stdout.strip() or r.stderr.strip()}")
-        # (Started, and its minder not: the session at its most tabs,
-        # as it was on 2026-11-27, when three helpers ran with none and
-        # this tool said nothing, their record saying they had one. A
-        # helper with no minder is the lead's to answer, at once.)
-        if minded and said.get("minder_error"):
-            print(f"agents: {name} runs WITHOUT a minder ({said['minder_error']}): what it asks comes to you; `olo agent mind {name} --with {MINDER} --rules {MINDER_RULES}` once there is room", file=sys.stderr, flush=True)
-            minded = False
+        _SUBTREE_IDS[0] = None
         m = meta(name) or {}
-        m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id"), "minded": minded})
+        m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id"), "root": ROOT, "minded": bool(os.environ.get("OLO_MINDER"))})
         save_meta(name, m)
         return
-    env = ["env", *[x for u in UNSET for x in ("-u", u)], f"OLO_SUBAGENT={name}", *env]
+    env = ["env", *[x for u in UNSET for x in ("-u", u)], marker, *env]
     tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", cwd, *env, *program, check=True)
 
 
 def launch_opus(name, cwd, brief):
-    """Opus 5.5, for a design review: the Claude CLI in a session here,
-    able to read and write files in `cwd` and to do nothing else.
-    (--restricted: no tool that runs anything, the file tools kept to
-    that folder, and none of the person's settings, hooks or MCP
-    servers; so nothing it does needs leave. The brief is its first
-    message, after an option that takes no value: `--tools` and
-    `--add-dir` take as many as follow them, and took the brief for a
-    folder's name, 2026-11-22.)"""
-    # (As a child tab its first message is short and names its brief's
-    # file, written beside the pictures: its rules are a page.)
+    """Opus 5.5 at xhigh, for a visual design review: the Claude CLI in a
+    child tab here, able to read and write files in `cwd` and to do nothing
+    else."""
     first = f"Read {cwd}/brief.md (the rules, then what it is and what changed) and do what it says."
-    session(name, cwd, [], ["claude", "--model", OPUS, "--effort", "max", "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
+    session(name, cwd, [], ["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
                             "--permission-mode", "acceptEdits", "--disable-slash-commands", brief],
-            native=["claude", "--model", OPUS, "--effort", "max", "--permission-mode", "acceptEdits", "--strict-mcp-config", "--prompt", first,
+            native=["claude", "--model", OPUS, "--effort", OPUS_EFFORT, "--permission-mode", "acceptEdits", "--strict-mcp-config", "--prompt", first,
                     "--", "--restricted", "--tools", "Read,Write", "--disable-slash-commands"])
 
 
 def launch_astra(name, cwd):
-    """Astra 6.2 at high, for the look at pictures: the Codex CLI in a
-    session here, drawn inline so its screen reads as text. It may write
-    in `cwd` and nowhere else, has no network, and is never asked leave
-    nor asks it (`-a never`: what its sandbox refuses is refused); none
-    of the person's Codex hooks run, and it starts no agents. (`cwd` is
-    said to be trusted for this run alone: unsaid, Codex asks whether to
-    trust a folder it hasn't been in, and waits.)"""
-    session(name, cwd, [], ["codex", "-m", ASTRA, "-c", 'model_reasoning_effort="high"', "-s", "workspace-write", "-a", "never",
+    """Astra 6.2 at xhigh, explicit-only visual look (`look --by astra`)."""
+    session(name, cwd, [], ["codex", "-m", ASTRA, "-c", f'model_reasoning_effort="{ASTRA_EFFORT}"', "-s", "workspace-write", "-a", "never",
                             "--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-C", cwd,
                             "-c", f'projects."{cwd}".trust_level="trusted"', f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."])
 
 
 def launch_astra_review(name, cwd):
-    """Astra 6.2 at max, for a code review: the Codex CLI in a child tab
-    (a tmux session where there is no Rex pane), working in `cwd`, its
-    own folder. Its sandbox lets it read the disk and write only there,
-    with no network; it is never asked leave nor asks it (`never`: what
-    the sandbox refuses is refused), none of the person's Codex hooks
-    run, and it starts no agents.
-
-    "Only there" took two settings more than `workspace-write`: Codex
-    adds /tmp and the folder TMPDIR names to what may be written, and
-    TMPDIR here is /var/tmp, where the tree under review, the other
-    helpers' folders and the kept reviews all are. Its own review found
-    it (2026-11-27: "the reviewer can write to the tree it is
-    reviewing"), and it was so: from the reviewer's sandbox a file was
-    made in a neighbouring folder under /var/tmp and in /tmp; with the
-    two exclusions both are refused and its own folder is written
-    (`codex sandbox -c … -- sh -c 'touch …'`, how to check it again).
-    Its temporary files go in a folder of its own."""
+    """Astra 6.2 at xhigh, for a code review: the Codex CLI in a child tab
+    working in `cwd`, its own folder. Its sandbox lets it read the disk and
+    write only there, with no network; it is never asked leave nor asks it
+    (`never`), none of the person's Codex hooks run, and it starts no agents."""
     first = f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."
     os.makedirs(os.path.join(cwd, "tmp"), exist_ok=True)
     plain = ["--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-c", f'projects."{cwd}".trust_level="trusted"',
              "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true"]
-    session(name, cwd, [f"TMPDIR={os.path.join(cwd, 'tmp')}"], ["codex", "-m", ASTRA, "-c", 'model_reasoning_effort="max"', "-s", "workspace-write", "-a", "never", *plain, "-C", cwd, first],
-            native=["codex", "--model", ASTRA, "--effort", "max", "--sandbox", "workspace-write", "--approval", "never", "--prompt", first, "--", *plain])
+    session(name, cwd, [f"TMPDIR={os.path.join(cwd, 'tmp')}"], ["codex", "-m", ASTRA, "-c", f'model_reasoning_effort="{ASTRA_EFFORT}"', "-s", "workspace-write", "-a", "never", *plain, "-C", cwd, first],
+            native=["codex", "--model", ASTRA, "--effort", ASTRA_EFFORT, "--sandbox", "workspace-write", "--approval", "never", "--prompt", first, "--", *plain])
+
+
+def launch_agy_review(name, cwd, tree):
+    """Gemini 4 Neon at xhigh, for a code review: the Antigravity CLI in a
+    child tab working in `cwd`, reading the diff and `tree` with read-only
+    commands and writing only its review in `cwd`."""
+    folders = list(dict.fromkeys([cwd, tree]))
+    json.dump(settings(folders, commands="review", own=[cwd]), open(os.path.join(cwd, "settings.json"), "w"), indent=1)
+    add = [a for x in folders[1:] for a in ("--add-dir", x)]
+    first = f"Read {cwd}/brief.md (the rules, then what changed) and do what it says."
+    agy = ["agy", "--model", MODEL, "--mode", "accept-edits", "--settings", os.path.join(cwd, "settings.json"), *add, "-i", first]
+    session(name, cwd, [], agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--mode", "accept-edits",
+                                        "--settings", os.path.join(cwd, "settings.json"), *add, "--trust", "--prompt", first])
+
+
+def launch_minder(name, d, cwd):
+    """The minder: ALWAYS agy Gemini 4 Neon at high, directly under the lead
+    (`Lead ▸ minder ▸ builders & reviewers`). Runs with OLO_MINDER set (not
+    OLO_SUBAGENT) so it can launch, watch, approve, steer, and review
+    builders and reviewers under its own tab."""
+    others = [x for x in (HOME, REVIEWS, "/var/tmp/olo-hs") if os.path.isdir(x)]
+    folders = list(dict.fromkeys([cwd, d, *others]))
+    json.dump(settings(folders, commands="minder", own=[d]), open(os.path.join(d, "settings.json"), "w"), indent=1)
+    add = [a for x in folders[1:] for a in ("--add-dir", x)]
+    first = f"Read {d}/brief.md (your minder rules, review pipeline, and current instructions) and begin minding."
+    agy = ["agy", "--model", MINDER_MODEL, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
+    session(name, cwd, [], agy, native=["agy", "--model", MINDER_MODEL, "--effort", MINDER_EFFORT, "--mode", "accept-edits",
+                                        "--settings", os.path.join(d, "settings.json"), *add, "--trust", "--prompt", first],
+            subagent=False)
 
 
 def launch(name, d, cwd, others, target=None, commands=True, again=None):
-    """An agy of its own in a tmux session, working in `cwd` (and
-    reading `d`, its folder here, and `others`): started on its brief,
-    with what it may run, and nothing of the person's screen in reach."""
+    """An agy of its own (Gemini 4 Neon at xhigh) in a child tab, working in
+    `cwd` (and reading `d`, its folder here, and `others`): started on its
+    brief, with what it may run, and nothing of the person's screen in reach."""
     folders = list(dict.fromkeys([cwd, d, *others]))
     json.dump(settings(folders, commands, own=[d, *others]), open(os.path.join(d, "settings.json"), "w"), indent=1)
     env = [f"CARGO_TARGET_DIR={target}"] if target else []
-    # (accept-edits: its edits go ahead, its commands by ALLOW and DENY,
-    # the rest asks. Not agy's `auto` mode, which decides for itself what
-    # is safe and runs it outside its sandbox when the sandbox refuses:
-    # a `sudo -n true` went through unasked, tried 2026-11-22. The
-    # settings are this run's alone, the person's neither read for the
-    # lists nor written.)
     add = [a for x in folders[1:] for a in ("--add-dir", x)]
     first = f"Read {d}/brief.md (the rules, then your task) and do what it says."
-    # (`again`: its own conversation taken up where it was left, by the
-    # id its CLI knows it by, and told these words: `resume`.)
     taken_up = []
     if again:
         taken_up, first = ["--resume", again[0]], again[1]
     agy = ["agy", "--model", MODEL, *taken_up, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
     session(name, cwd, env, agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--mode", "accept-edits",
-                                         "--settings", os.path.join(d, "settings.json"), *add, *taken_up, "--prompt", first])
+                                         "--settings", os.path.join(d, "settings.json"), *add, *taken_up, "--trust", "--prompt", first])
 
 
 # Looks, code reviews and second investigators at once, apart from the
-# workers. (Three until 2026-11-27: a change now has three reviewers,
-# two of its pictures and one of its code, and every session on this
-# computer counts in the same folder; a second session's two looks
-# left room for one.)
-HELPERS_MOST = 6
+# workers (up to 4 builders × 2 code reviewers, or 3 reviewers for visual).
+HELPERS_MOST = 10
 # The most diff a code review is given: what is more is generated, or a
 # folder named by mistake, and is read into memory whole here.
 REVIEW_MOST = 16 * 2**20
 
 
 def room(name, program="agy", kind="worker"):
-    """Refuse a name in use, or a sixth worker (CLAUDE.md's five
-    subagents at once); those running. A look or a second investigator
-    (`kind` "helper") is counted apart, three of them at most: a review
-    waited on five translators, 2026-11-24."""
+    """Refuse a name in use, or more concurrent workers/helpers than allowed
+    within THIS tab's subtree (ignoring other leads' helpers that share HOME)."""
     if not shutil.which(program):
         sys.exit(f"agents: no {program} on PATH ({ {'agy': 'the Antigravity CLI', 'codex': 'the Codex CLI'}.get(program, 'the Claude CLI')}, signed in)")
-    running = [n for n in names() if live(n)]
+    running = [n for n in names() if is_ours(n) and live(n)]
     if name in running:
         sys.exit(f"agents: {name} is running")
-    # (One that has finished, its result written and its turn over, holds
-    # no place: a minder told to start a queue of nine, five at a time and
-    # stopping none, was refused the sixth by two that were done.)
-    working = [n for n in running if not (finished(n) and state(n) == "idle")]
-    # (A worker's meta names its crate; a look or an investigator's don't.)
+    working = [n for n in running if not (finished(n) and state(n) == "idle") and (meta(n) or {}).get("role") != "minder"]
     same = [n for n in working if bool((meta(n) or {}).get("crate")) == (kind == "worker")]
     most = MOST if kind == "worker" else HELPERS_MOST
     if len(same) >= most:
-        what = "workers" if kind == "worker" else "looks and investigators"
+        what = "workers" if kind == "worker" else "reviewers, looks and investigators"
         sys.exit(f"agents: {most} {what} are working ({', '.join(same)}): stop one first")
     return running
 
 
-def start(name, crate, brief):
+def start_minder(brief=None, name="minder"):
+    """Start the agy Neon 4 high minder directly under the lead tab."""
+    refuse_nested()
+    if os.environ.get("OLO_MINDER"):
+        sys.exit("agents: you are already a minder; minders do not start nested minders")
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,30}", name):
+        sys.exit("agents: a minder NAME of lowercase letters, digits and dashes")
+    if not shutil.which("agy"):
+        sys.exit("agents: no agy on PATH (the Antigravity CLI, signed in)")
+    if is_ours(name) and live(name):
+        sys.exit(f"agents: minder `{name}` is already running (use `tools/dev/agents say {name} …` or `stop {name}`)")
+    d = folder(name)
+    os.makedirs(d, exist_ok=True)
+    guide = open(MINDER_GUIDE).read().strip() if os.path.exists(MINDER_GUIDE) else ""
+    rules = open(MINDER_RULES).read().strip() if os.path.exists(MINDER_RULES) else ""
+    task = open(brief).read().strip() if brief else ""
+    parts = [p for p in (guide, rules, "## Lead's current assignment\n\n" + task if task else "") if p]
+    open(os.path.join(d, "brief.md"), "w").write("\n\n---\n\n".join(parts) + "\n")
+    save_meta(name, {"role": "minder", "cli": "agy", "root": ROOT, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
+    launch_minder(name, d, ROOT)
+    m = meta(name) or {}
+    print(f"agents: minder `{name}` started ({MINDER_MODEL}, effort {MINDER_EFFORT}, id={m.get('rex_id', name)}); folder {d}")
+    print(f"agents: keep a watch on it: `olo agent watch {m.get('rex_id', name)} --since $(olo agent list --fast --json | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get(\"cursor\",0))') --on escalation,question,approval,idle,done,error,exit --timeout 90 --json`")
+
+
+def start(name, crate, brief, tree=None):
     refuse_nested()
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,30}", name):
         sys.exit("agents: a NAME of lowercase letters, digits and dashes")
-    crate_dir = os.path.normpath(os.path.join(ROOT, crate))
-    # (A scope that isn't a crate, a data file or a folder of them: a
-    # language's word catalog, say, five translated at once. Nothing of
-    # it is built; its own task says how it is checked.)
+    repo = os.path.abspath(tree) if tree else ROOT
+    crate_dir = os.path.normpath(os.path.join(repo, crate))
     is_crate = os.path.isfile(os.path.join(crate_dir, "Cargo.toml"))
     if not is_crate and not os.path.exists(crate_dir):
-        sys.exit(f"agents: no {crate} in the repository")
-    if not is_crate and not os.path.realpath(crate_dir).startswith(os.path.realpath(ROOT) + os.sep):
-        sys.exit(f"agents: {crate} is outside the repository")
-    crate = os.path.relpath(crate_dir, ROOT)
+        sys.exit(f"agents: no {crate} in {repo}")
+    if not is_crate and not os.path.realpath(crate_dir).startswith(os.path.realpath(repo) + os.sep):
+        sys.exit(f"agents: {crate} is outside {repo}")
+    crate = os.path.relpath(crate_dir, repo)
     task = open(brief).read().strip()
     if not task:
         sys.exit("agents: the brief is empty")
     for n in room(name):
-        other = meta(n).get("crate")
-        if other and (other == crate or other.startswith(crate + "/") or crate.startswith(other + "/")):
-            sys.exit(f"agents: {n} is working in {other}: one agent to a crate")
+        other_m = meta(n) or {}
+        other = other_m.get("crate")
+        other_repo = os.path.realpath(other_m.get("worktree") or other_m.get("root") or ROOT)
+        if other and other_repo == os.path.realpath(repo) and (other == crate or other.startswith(crate + "/") or crate.startswith(other + "/")):
+            sys.exit(f"agents: {n} is working in {other} ({repo}): one agent to a crate")
     package = next((l.split('"')[1] for l in open(os.path.join(crate_dir, "Cargo.toml")) if l.startswith("name")), crate) if is_crate else None
     d = folder(name)
     if os.path.exists(d):
         shutil.rmtree(d)
     os.makedirs(os.path.join(d, "target"))
     open(os.path.join(d, "task.md"), "w").write(task + "\n")
-    rules = RULES.format(root=ROOT, crate=crate, package=package or "-", name=name, dir=d, approvals=APPROVALS)
+    rules = RULES.format(root=repo, crate=crate, package=package or "-", name=name, dir=d, approvals=APPROVALS)
     if not is_crate:
-        # (Its scope a file or a folder, not a crate: the rules' crate words read for it.)
         rules = rules.replace(f"- Change files under {crate}/ only", f"- Change {crate} only (it isn't a crate: build nothing of Olo's unless the task says how it is checked)")
     open(os.path.join(d, "brief.md"), "w").write(rules + task + "\n")
-    save_meta(name, {"crate": crate, "package": package, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
-    launch(name, d, ROOT, [], os.path.join(d, "target"))
-    print(f"agents: {name} started on {crate} ({package}); its folder is {d}")
-    print(f"agents: now wait on `tools/dev/agents watch` to hear from it (a lead: in the background; a minder: `watch --for 2`)")
+    save_meta(name, {"crate": crate, "package": package, "root": ROOT, "worktree": repo, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
+    launch(name, d, repo, [], os.path.join(d, "target"))
+    print(f"agents: {name} started on {crate} ({package}) in {repo}; its folder is {d}")
+    print(f"agents: now wait on `olo agent watch --all` or `tools/dev/agents watch` to hear from it")
 
 
 def investigate(brief, where, wait=True):
@@ -1227,6 +1226,10 @@ def sweep_builds(now=None, home=None, is_live=None):
     except OSError:
         return gone
     for n in agents:
+        if not NAMED.fullmatch(n):
+            continue
+        if home == HOME and not is_ours(n):
+            continue
         target = os.path.join(home, n, "target")
         # (A folder of ours: with its record, and a target/ that is a real
         # folder, not a link to somewhere else.)
@@ -1257,13 +1260,14 @@ def look(args):
     # (Neon's by default, with Opus's beside it: Ben, 2026-11-25,
     # "everything should be either opus 5.5 max or neon 4 xhigh". Astra's
     # only when asked by name.)
-    by, about = "gemini", ""
-    while len(args) >= 2 and args[0] in ("--by", "--about"):
-        if args[0] == "--by":
-            by = args[1]
+    by, about, wait = "gemini", "", True
+    while args and (args[0] == "--no-wait" or (len(args) >= 2 and args[0] in ("--by", "--about"))):
+        if args[0] == "--no-wait":
+            wait, args = False, args[1:]
+        elif args[0] == "--by":
+            by, args = args[1], args[2:]
         else:
-            about = args[1]
-        args = args[2:]
+            about, args = args[1], args[2:]
     if by not in ("astra", "gemini", "opus"):
         sys.exit("agents: look [--by gemini], or --by opus (--by astra by name)")
     front = {"astra": "astra-look", "gemini": "agy-look", "opus": "opus-look"}[by]
@@ -1331,58 +1335,69 @@ def look(args):
         print(f"agents: {name} is looking at {len(pictures)} picture{'s' if len(pictures) != 1 else ''}; its review will be {out}", flush=True)
     else:
         print(f"agents: {name} is on them already; waiting for it", flush=True)
+    if not wait:
+        print(f"agents: {name} started (--no-wait); collect when done with `tools/dev/agents collect {name}` (result -> {out})", flush=True)
+        return
     rc = watch(15, only=name)
     if rc == 0:
-        # (Done: its review beside the first picture and printed, what
-        # it did kept beside that, and the session ended with its
-        # folder, so it doesn't count among those running.)
-        shutil.copyfile(review, out)
-        if via(name) == "rex":
-            # (All a child tab said is kept by the service as it stops
-            # it: a read gives its last screen and little more, and the
-            # first native look's log began partway through its review.)
-            end(name)
-            kept = os.path.join(d, "transcript.txt")
-            if os.path.exists(kept):
-                shutil.copyfile(kept, out[:-3] + ".log")
-        else:
-            open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
-        print(open(out).read().rstrip())
-        end(name)
-        shutil.rmtree(d, ignore_errors=True)
+        collect_one(name, print_out=True)
     sys.exit(rc)
+
+
+def collect_one(name, print_out=False):
+    """Publish a finished look/review's result to its `kept` path and stop it."""
+    m = meta(name) or {}
+    d = folder(name)
+    written, out = m.get("done"), m.get("kept")
+    if not (written and out and whole(written)):
+        sys.exit(f"agents: {name} has no finished review at {written}")
+    screen_said = None if via(name) == "rex" else (screen(name, 200000) or "") + "\n"
+    ended = end(name, sessions=False)
+    publish(written, out)
+    log_path = os.path.join(d, "transcript.txt")
+    if screen_said is not None:
+        open(log_path, "w").write(screen_said)
+    if whole(log_path):
+        publish(log_path, out[:-3] + ".log")
+    if print_out:
+        print(open(out).read().rstrip())
+    else:
+        print(f"agents: collected {name} -> {out}")
+    if ended:
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def review(args):
     """Start a code review of a change (or find the one started on it),
-    wait until it needs the lead or has written its review, and print
-    it: Astra 6.2 at max, in the Codex CLI (Ben, 2026-11-27: "a code
-    review from a codex subagent running astra 6.2 on max for all
-    changes"). The change is a range of commits, or with `--working`
-    what isn't committed (of the PATHs given, or everything)."""
+    wait until it needs attention or has written its review, and print it:
+      --by astra (default): Codex Astra 6.2 at xhigh (tools/dev/astra-review)
+      --by agy:             Antigravity Gemini 4 Neon at xhigh (tools/dev/agy-review)
+    The change is a range of commits, or with `--working` what isn't committed
+    (of the PATHs given, or everything)."""
     refuse_nested()
-    about, tree, working, dry = "", ROOT, False, False
-    while args and args[0] in ("--about", "--tree", "--working", "--dry-run"):
+    by, about, tree, working, dry, wait = "astra", "", ROOT, False, False, True
+    while args and args[0] in ("--by", "--about", "--tree", "--working", "--dry-run", "--no-wait"):
         if args[0] == "--dry-run":
             dry, args = True, args[1:]
         elif args[0] == "--working":
             working, args = True, args[1:]
+        elif args[0] == "--no-wait":
+            wait, args = False, args[1:]
         elif len(args) < 2:
             break
+        elif args[0] == "--by":
+            by, args = args[1], args[2:]
         elif args[0] == "--about":
             about, args = args[1], args[2:]
         else:
             tree, args = os.path.abspath(args[1]), args[2:]
-    usage = ('usage: tools/dev/astra-review [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] [--dry-run] FROM..TO [PATH…]\n'
-             '       tools/dev/astra-review [--about …] [--tree DIR] [--dry-run] --working [PATH…]')
+    if by not in ("astra", "agy"):
+        sys.exit("agents: review --by astra | agy")
+    front = "astra-review" if by == "astra" else "agy-review"
+    usage = (f'usage: tools/dev/{front} [--about "WHAT IT IS, WHAT CHANGED"] [--tree DIR] [--dry-run] [--no-wait] FROM..TO [PATH…]\n'
+             f'       tools/dev/{front} [--about …] [--tree DIR] [--dry-run] [--no-wait] --working [PATH…]')
     if (not working and not args) or any(a.startswith("-") for a in args):
         sys.exit(usage)
-    # (Git asked in bytes, each asking checked, its own diff and no
-    # other: a name git quotes (`café.rs`) was passed back with the
-    # quotes and its file left out of the review without a word; a
-    # failed asking gave an empty part; a range that began with a dash
-    # was an option to `git diff`. A code review of this tool,
-    # 2026-11-27.)
     def git(*a, ok=(0,)):
         try:
             ran = subprocess.run(["git", "-C", tree, "--literal-pathspecs", "-c", "core.quotepath=off", *a], capture_output=True, stdin=subprocess.DEVNULL, timeout=120)
@@ -1402,9 +1417,6 @@ def review(args):
         head = commit("HEAD")
         diff = git("diff", *plain, head, "--", *paths)
         changed = git("diff", "--name-only", "-z", head, "--", *paths).split(b"\0")
-        # (New files nobody has added yet: whole, as a diff shows them. By
-        # a path that is plainly one: a file named `-` is standard input
-        # to `git diff --no-index`.)
         for new in git("ls-files", "-z", "--others", "--exclude-standard", "--", *paths).split(b"\0"):
             if new:
                 diff += git("diff", *plain, "--no-index", "--", "/dev/null", os.path.join(".", os.fsdecode(new)), ok=(0, 1))
@@ -1428,27 +1440,17 @@ def review(args):
         sys.exit(f"agents: nothing to review ({of}" + (f", {' '.join(paths)}" if paths else "") + f" in {tree}: no difference)")
     if len(diff) > REVIEW_MOST:
         sys.exit(f"agents: {len(diff) / 2**20:.0f} MiB of diff ({of}): more than a review reads ({REVIEW_MOST // 2**20} MiB). Name the paths to be reviewed, or leave out what is generated")
-    # (Named by what it reads, the diff's own bytes and nothing of how it
-    # was asked for: the same change asked again, by its range or from
-    # the working tree, is the same review.)
     digest = hashlib.sha256(diff).hexdigest()
-    name = "astra-" + digest[:10]
+    prefix = "astra-" if by == "astra" else "agyrev-"
+    name = prefix + digest[:10]
     lines = diff.count(b"\n")
     if dry:
-        # (What would be reviewed, and nothing started: the files as the
-        # diff names them.)
         files = [os.fsdecode(f) for f in changed if f]
-        print(f"agents: dry run: {name} would review {of}: {lines} lines of diff in {len(files)} files\n  " + "\n  ".join(files))
+        print(f"agents: dry run: {name} ({by}) would review {of}: {lines} lines of diff in {len(files)} files\n  " + "\n  ".join(files))
         return
     kept = os.path.join(REVIEWS, name)
-    out = os.path.join(kept, "astra-review.md")
+    out = os.path.join(kept, f"{front}.md")
     os.makedirs(kept, mode=0o700, exist_ok=True)
-    # One asking owns a review from its start to its keeping: two at
-    # once each found "none running", and the second removed the folder
-    # the first had just filled; or both waited, and both kept, stopped
-    # and removed it. The second waits here for the first's, and reads
-    # what it kept. (The lock is beside the kept review, not in the
-    # folder that is removed.)
     lock = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
     until, said_waiting = time.time() + 3 * 3600, False
     while True:
@@ -1465,7 +1467,6 @@ def review(args):
     asked_file = os.path.join(kept, "asked.json")
 
     def kept_already():
-        """The review of these very bytes, where one is kept whole."""
         if not whole(out):
             return False
         there = os.path.join(kept, "change.diff")
@@ -1487,10 +1488,6 @@ def review(args):
     d = folder(name)
     written = os.path.join(d, "review.md")
     if not (m and live(name)):
-        # (A review written whose front door ended before keeping it, or
-        # whose reviewer had exited by the time it looked: kept now. The
-        # same change asked again used to remove the folder, and the only
-        # copy of the review with it.)
         if m and whole(written):
             publish(written, out)
             if whole(os.path.join(d, "transcript.txt")):
@@ -1499,14 +1496,14 @@ def review(args):
             print(open(out).read().rstrip())
             shutil.rmtree(d, ignore_errors=True)
             return
-        # (Asked here, not at the start: a review that is kept is read
-        # by a lead who isn't signed in, too.)
-        if not shutil.which("codex"):
-            sys.exit("agents: no codex on PATH (the Codex CLI, signed in): Astra can't review")
-        status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True)
-        if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
-            sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
-        room(name, "codex", kind="helper")
+        prog = "codex" if by == "astra" else "agy"
+        if not shutil.which(prog):
+            sys.exit(f"agents: no {prog} on PATH: {by} can't review")
+        if by == "astra":
+            status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True)
+            if status.returncode != 0 or "Not logged in" in status.stdout + status.stderr:
+                sys.exit("agents: Codex isn't signed in on this computer, so Astra can't review: the person signs in (`codex login`, or `codex login --device-auth` over SSH)")
+        room(name, prog, kind="helper")
         if os.path.exists(d):
             shutil.rmtree(d)
         os.makedirs(d, mode=0o700)
@@ -1514,32 +1511,23 @@ def review(args):
         open(said["diff"], "wb").write(diff)
         open(said["commits"], "wb").write(commits or b"(Not committed yet: there is no message. What the lead says of it is below.)\n")
         publish(said["diff"], os.path.join(kept, "change.diff"))
-        json.dump({"of": of, "paths": paths, "tree": tree, "about": about, "sha256": digest, "asked": time.time()}, open(asked_file, "w"), indent=1)
+        json.dump({"of": of, "paths": paths, "tree": tree, "about": about, "sha256": digest, "by": by, "asked": time.time()}, open(asked_file, "w"), indent=1)
         brief = REVIEW_RULES.format(**said) + (f"\nWhat it is, and what changed, in the lead's words: {about}\n" if about else "")
         open(os.path.join(d, "brief.md"), "w").write(brief)
-        save_meta(name, {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": "codex", "kind": "review"})
-        launch_astra_review(name, d)
-        print(f"agents: {name} is reviewing {of} ({lines} lines of diff); its review will be {out}", flush=True)
+        save_meta(name, {"work": kept, "review_of": of + (f" ({' '.join(paths)})" if paths else ""), "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": written, "kept": out, "cli": prog, "kind": "review", "root": ROOT})
+        if by == "astra":
+            launch_astra_review(name, d)
+        else:
+            launch_agy_review(name, d, tree)
+        print(f"agents: {name} ({by}) is reviewing {of} ({lines} lines of diff); its review will be {out}", flush=True)
     else:
         print(f"agents: {name} is on it already; waiting for it", flush=True)
+    if not wait:
+        print(f"agents: {name} started (--no-wait); collect when done with `tools/dev/agents collect {name}` (result -> {out})", flush=True)
+        return
     rc = watch(20, only=name)
-    # (Its review written, however the wait ended: an exited reviewer
-    # with its review in its folder ended the wait with 1 and nothing
-    # kept.)
     if rc == 0 or (whole(written) and not live(name)):
-        screen_said = None if via(name) == "rex" else (screen(name, 200000) or "") + "\n"
-        # (Ended once; no test sessions swept by its name: it may start
-        # none, and another helper's name may begin with its own.)
-        ended = end(name, sessions=False)
-        publish(written, out)
-        log = os.path.join(d, "transcript.txt")
-        if screen_said is not None:
-            open(log, "w").write(screen_said)
-        if whole(log):
-            publish(log, out[:-3] + ".log")
-        print(open(out).read().rstrip())
-        if ended:
-            shutil.rmtree(d, ignore_errors=True)
+        collect_one(name, print_out=True)
         rc = 0
     sys.exit(rc)
 
@@ -1575,20 +1563,20 @@ def finished(n):
 
 
 def list_():
-    rows = names()
+    rows = [n for n in names() if is_ours(n)]
     if not rows:
         print("agents: none")
         return
     for n in rows:
         m = meta(n)
         st = state(n)
-        # (Its turn over and its result written: done. Idle without it:
-        # a question, or waiting to be told more.)
         st = "done" if st == "idle" and finished(n) else st
-        # (In its first moments it shows its prompt before it has begun:
-        # not a turn over. The watch waits as long for it.)
         st = "starting" if st == "idle" and time.time() - m.get("started", 0) < 30 else st
-        on = m.get("crate") or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"code ({m['review_of']})" if m.get("review_of") else f"a bug ({m.get('work', '?')})")
+        on = (
+            "minder (agy neon 4 high)" if m.get("role") == "minder"
+            else m.get("crate")
+            or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"code ({m['review_of']})" if m.get("review_of") else f"a bug ({m.get('work', '?')})")
+        )
         done = f" {os.path.basename(done_file(n))}" if os.path.exists(done_file(n)) else ""
         print(f"{n:16} {st:8} {on:28} started {ago(m['started'])} ago{done}")
 
@@ -1657,7 +1645,7 @@ def watch(stuck_min, only=None, at_most=None, among=None):
         # last moments was said as "nothing has needed you", and waited a
         # minute on a minder that took it at its word, 2026-11-24.)
         out_of_time = bool(at_most) and time.time() - began >= at_most * 60
-        rows = [n for n in names() if only in (None, n) and (not among or any(n.startswith(p) for p in among))]
+        rows = [n for n in names() if (only == n or (only is None and is_ours(n))) and (not among or any(n.startswith(p) for p in among))]
         if not any(state(n) in ("starting", "working", "asking", "idle") for n in rows):
             # (One waited for alone: how it ended, which "none running"
             # didn't say; a look stopped partway read as one that had
@@ -2134,11 +2122,8 @@ def tidy(now=None):
     now = time.time() if now is None else now
     said = []
     for n in names():
-        # (Every session on this computer keeps its helpers in this one
-        # folder, and another's may be forgotten between the listing and
-        # the look at it: a review's front door ended on exactly that,
-        # its reviewer still at work with nothing waiting on it,
-        # 2026-11-27. One that has gone is nothing to tidy.)
+        if not is_ours(n):
+            continue
         try:
             tidy_one(n, now, said)
         except OSError:
@@ -2254,41 +2239,26 @@ def resume(name, text, result=None, session=None):
     except ValueError:
         said = {}
     if not said.get("id"):
-        # The service keeps an ended child's record only so long (its
-        # list is trimmed as children come and go: two builders stopped
-        # in the morning had none by noon, 2026-11-27). The conversation
-        # itself is the CLI's, by its own id: a worker is started anew on
-        # it, as at its start (its folder, its settings, its builds).
         session = session or m.get("cli_session")
         if not (session and m.get("crate")):
             sys.exit(f"agents: {name} couldn't be brought back ({(r.stderr or r.stdout).strip()[:300]})" + ("" if session else f"; and its conversation's id isn't known here: `agents resume {name} --session ID …` with it (the service's events.jsonl has it as cli_session_id), or start it anew with a brief that says what it did"))
         d = folder(name)
         launch(name, d, ROOT, [], os.path.join(d, "target"), again=(session, text))
         m = meta(name)
-        m.update({"seen": "", "seen_state": "", "said_at": told_at, "cli_session": session})
+        m.update({"seen": "", "seen_state": "", "said_at": told_at, "cli_session": session, "root": ROOT})
         m.pop("ended", None)
         if result:
             m["done"] = os.path.abspath(result)
         save_meta(name, m)
-        print(f"agents: {name} is back, by its conversation's own id (the service had its record no more), and told; now wait on `tools/dev/agents watch`")
+        print(f"agents: {name} is back, by its conversation's own id, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
         return
-    minded = os.environ.get("OLO_AGENTS_MINDER") != "off" and os.path.exists(MINDER_RULES)
-    # (Brought back with what it was started with, a minder too: the
-    # service says which in its answer. Asked for another on top, the one
-    # just started was stopped for it. A code review, 2026-11-27.)
-    if minded and said.get("minder") and not said.get("minder_error"):
-        pass
-    elif minded:
-        asked = olo("mind", said["id"], "--with", MINDER, "--rules", MINDER_RULES, "--json")
-        if asked.returncode != 0:
-            print(f"agents: {name} runs WITHOUT a minder ({(asked.stderr or asked.stdout).strip()[:200]}): what it asks comes to you; `olo agent mind {said['id']} --with {MINDER} --rules {MINDER_RULES}` once there is room", file=sys.stderr, flush=True)
-            minded = False
-    m.update({"rex_id": said["id"], "window": said.get("window_id"), "minded": minded, "seen": "", "seen_state": "", "said_at": told_at})
+    _SUBTREE_IDS[0] = None
+    m.update({"rex_id": said["id"], "window": said.get("window_id"), "minded": bool(os.environ.get("OLO_MINDER")), "root": ROOT, "seen": "", "seen_state": "", "said_at": told_at})
     m.pop("ended", None)
     if result:
         m["done"] = os.path.abspath(result)
     save_meta(name, m)
-    print(f"agents: {name} is back with its conversation, and told; now wait on `tools/dev/agents watch`")
+    print(f"agents: {name} is back with its conversation, and told; now wait on `tools/dev/agents watch` or `olo agent watch`")
 
 
 def forget(name):
@@ -2332,8 +2302,48 @@ def main():
     if cmd in ("start", "list", "watch", "investigate", "look", "review", "tidy") and "--dry-run" not in rest:
         say_swept(sweep_builds())
         say_tidied(tidy())
-    if cmd == "start" and len(rest) == 3:
-        start(*rest)
+    if cmd == "start":
+        tree = None
+        sargs = list(rest)
+        if len(sargs) >= 2 and sargs[0] == "--tree":
+            tree, sargs = sargs[1], sargs[2:]
+        if len(sargs) != 3:
+            sys.exit("usage: tools/dev/agents start [--tree DIR] NAME CRATE BRIEF.md")
+        start(sargs[0], sargs[1], sargs[2], tree=tree)
+    elif cmd == "minder":
+        if not rest or rest[0] == "start":
+            args = rest[1:] if rest else []
+            mname, mbrief = "minder", None
+            while args:
+                if args[0] == "--name" and len(args) >= 2:
+                    mname, args = args[1], args[2:]
+                elif not args[0].startswith("-") and mbrief is None:
+                    mbrief, args = args[0], args[1:]
+                else:
+                    sys.exit("usage: tools/dev/agents minder start [BRIEF.md] [--name NAME]")
+            start_minder(mbrief, mname)
+        elif rest[0] in ("peek", "log", "say", "stop", "watch"):
+            sub, sub_rest = rest[0], rest[1:]
+            mname = "minder"
+            if sub == "peek":
+                peek(mname, int(sub_rest[0]) if sub_rest else 60)
+            elif sub == "log":
+                log(mname)
+            elif sub == "stop":
+                stop(mname)
+            elif sub == "watch":
+                watch(15, only=mname)
+            elif sub == "say" and sub_rest:
+                if sub_rest[0] == "--now" and len(sub_rest) >= 2:
+                    say(mname, " ".join(sub_rest[1:]), now=True)
+                else:
+                    say(mname, " ".join(sub_rest))
+            else:
+                sys.exit("usage: tools/dev/agents minder start|peek|log|say|watch|stop ...")
+        else:
+            sys.exit("usage: tools/dev/agents minder start [BRIEF.md] [--name NAME] | peek | log | say | watch | stop")
+    elif cmd == "collect" and len(rest) == 1:
+        collect_one(rest[0], print_out=False)
     elif cmd == "investigate" and len([r for r in rest if r != "--no-wait"]) in (1, 2):
         given = [r for r in rest if r != "--no-wait"]
         investigate(given[0], given[1] if len(given) > 1 else None, wait="--no-wait" not in rest)

@@ -1,14 +1,9 @@
 #!/bin/bash
-# A second pair of eyes on what a change looks like (Ben, 2026-11-18:
-# "provide all screenshots of changes to a … agent … for a second review
-# / set of eyes to identify anything you missed"; 2026-11-23, after a
-# day of Gemini 4 Neon's looks: "for the visual reviews please go back
-# to using astra 6.2 on high -- neon is missing too much stuff"): Astra
-# 6.2 at high, in the Codex CLI, is shown the pictures and says what a
-# careful designer would catch that the layout lint and `tsession
-# review` can't: a line set right under another, uneven gaps, edges and
-# baselines not lined up, text cut or crowded, something out of keeping
-# with the rest of the window.
+# Legacy explicit-only visual look (`agents look --by astra`, Astra 6.2 at
+# xhigh). Visual design reviews use tools/dev/agy-look (Gemini 4 Neon xhigh)
+# and tools/dev/opus-look (Claude Opus 5.5 xhigh) alongside code reviews from
+# tools/dev/astra-review (Codex Astra 6.2 xhigh) and tools/dev/agy-review
+# (Gemini 4 Neon xhigh).
 #
 #   tools/dev/astra-look [--about "WHAT CHANGED"] PICTURE.png…
 #

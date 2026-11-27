@@ -4506,3 +4506,17 @@ argument '--full-auto'`; pass `-a on-request -s workspace-write` (or
 instead, and set reasoning effort via `-c model_reasoning_effort="<LEVEL>"`.
 Rex's `olo agent start codex` maps `--full-auto` to `-a on-request -s
 workspace-write` automatically unless `-a`/`-s` are specified explicitly.
+
+**Multi-lead isolation & `agy` Neon 4 `high` minder in `tools/dev/agents`**
+(2026-11-27): multiple leads (e.g. `~/src/olo` and `~/src/olo.webv2`)
+share `/var/tmp/olo-agents`. `tools/dev/agents` filters `list`, `room`,
+`watch`, `tidy`, and `sweep_builds` to helpers owned by the caller's
+`olo agent` subtree and checkout root (`is_ours`), skipping non-helper
+files like `tmux.conf`, so another lead's workers never block `room()` or
+get tidied. Under the Lead ▸ Minder (`agy` Neon 4 `high`,
+`tools/dev/agents minder start`, `OLO_MINDER` set) ▸ Builders (`agy` Neon
+4 `xhigh`) + Reviewers (`astra-review` Codex Astra 6.2 `xhigh`,
+`agy-review` Agy Neon 4 `xhigh`, and `opus-look` Claude Opus 5.5 `xhigh`
+for visual changes) flow, all child tabs launched by the minder nest
+cleanly beneath the minder in Rex, and `tools/dev/agents` no longer
+spawns legacy Claude Opus `max` auto-minders.
