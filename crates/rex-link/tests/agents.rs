@@ -2685,6 +2685,105 @@ fn a_childs_tab_is_never_the_services_to_size() {
     assert_eq!((again["columns"].as_u64(), again["rows"].as_u64()), (Some(91), Some(33)), "the size a desktop gave it holds: {again}");
 }
 
+/// A folded approval command (`⋯ N lines hidden`) is judged by `--approve-all-but`
+/// only when its whole text is matched in the agent's transcript: (a) a hidden
+/// excepted command (`git push`) is never auto-approved; (b) a folded command
+/// whose matched whole text has nothing excepted is allowed once; (c) a folded
+/// command with no matching transcript is asked, not allowed; (d) an unfolded
+/// command is allowed as before.
+#[test]
+fn a_folded_command_is_allowed_by_a_list_only_when_its_whole_text_is_known() {
+    let Some(rig) = Rig::start("folded") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "\\bgit\\s+push\\b\n").unwrap();
+    const SID: &str = "5f0c1f0e-4444-4a44-8a44-2f8f0e0a0004";
+    let work = rig.work();
+    let started = rig.start_child("claude", "worker", &["--cwd", &work, "--session-id", SID, "--approve-all-but", "not-these.txt"]);
+    let _ = started;
+
+    let write_pending_bash = |full_cmd: Option<&str>| {
+        let folder: String = work.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let dir = rig.dir.join("home/.claude/projects").join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{SID}.jsonl"));
+        match full_cmd {
+            Some(cmd) => {
+                let line = json!({
+                    "type": "assistant",
+                    "message": {
+                        "id": "msg_pending",
+                        "role": "assistant",
+                        "content": [{ "type": "tool_use", "id": "toolu_1", "name": "Bash", "input": { "command": cmd } }],
+                        "stop_reason": "tool_use"
+                    }
+                });
+                std::fs::write(&path, format!("{line}\n")).unwrap();
+            }
+            None => {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    };
+    let folded_asking = |head: &str, hidden: usize| -> String {
+        let dashed = "╌".repeat(60);
+        format!(
+            "● Bash({head})\n{0}\n Bash command\n Make it so\n{dashed}\n │ {head}\n │ ⋯ {hidden} lines hidden\n{dashed}\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: {head}\n   3. No\n Esc to cancel · Tab to amend\n",
+            rule()
+        )
+    };
+    let woken = |since: u64, secs: &str| rig.olo(&["watch", "--all", "--since", &since.to_string(), "--on", "approval,question", "--timeout", secs, "--json"]);
+
+    // (a) Folded command whose hidden tail holds `git push`: NO key sent, reaches parent's watch!
+    write_pending_bash(Some("cargo test --workspace\necho step 2\ngit push origin main"));
+    let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let before = rig.keys("worker").len();
+    rig.show("worker", &folded_asking("cargo test --workspace", 19));
+    let (code, out, err) = woken(c, "15");
+    assert_eq!(code, 0, "folded command with hidden git push should wake parent: {out}{err}");
+    assert_eq!(rig.keys("worker").len(), before, "list must NOT send Return when hidden tail matches exception");
+    let ev: Value = serde_json::from_str(out.trim()).unwrap();
+    assert!(ev["approval"]["command"].as_str().is_some_and(|s| s.contains("git push")), "expected whole reconciled command: {ev}");
+    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("cargo test --workspace", 2));
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.json(&["approve", "worker", "--no", "--json"]);
+    assert!(moved.join().unwrap() && gone.join().unwrap());
+    rig.wait_state("worker", "working");
+
+    // (b) Same folded command with nothing excepted in the hidden tail, matched in transcript: allowed once!
+    write_pending_bash(Some("cargo test --workspace\necho all checks ok\necho done"));
+    let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.show("worker", &folded_asking("cargo test --workspace", 19));
+    assert!(gone.join().unwrap(), "folded command with clean whole text in transcript should be allowed");
+    rig.typed_since("worker", before, b"\r", "Return on Yes once");
+    assert_eq!(woken(c, "1").0, 124, "clean folded command should not wake parent");
+    rig.wait_state("worker", "working");
+
+    // (c) Folded command with NO transcript to match: NO key sent, wakes parent!
+    write_pending_bash(None);
+    let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let before = rig.keys("worker").len();
+    rig.show("worker", &folded_asking("cargo check --workspace", 12));
+    let (code, out, err) = woken(c, "15");
+    assert_eq!(code, 0, "folded command without transcript match must wake parent: {out}{err}");
+    assert_eq!(rig.keys("worker").len(), before, "list must NOT send Return when folded command has no transcript match");
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.json(&["approve", "worker", "--once", "--json"]);
+    assert!(gone.join().unwrap());
+    rig.wait_state("worker", "working");
+
+    // (d) Unfolded command (not cut): allowed once as before, even without transcript.
+    let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.show("worker", &asking("cargo fmt --check", 0));
+    assert!(gone.join().unwrap(), "unfolded command should still be allowed");
+    rig.typed_since("worker", before, b"\r", "Return on Yes once");
+    assert_eq!(woken(c, "1").0, 124, "unfolded clean command should not wake parent");
+    rig.json(&["stop", "worker", "--force", "--json"]);
+}
+
 /// `prune` takes the records of the asking tab's own exited children, and nobody else's. (2026-11-27: it took
 /// every exited record of the session, and two leads' tabs are one session: 124 records went with one check
 /// child's, most of them another lead's.)

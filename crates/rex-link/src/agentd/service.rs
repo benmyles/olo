@@ -1147,12 +1147,38 @@ impl Service {
             // service says yes, once, itself and at once, to anything no
             // pattern of the list names, and nobody is told there was a
             // question (`leave.rs`). What a pattern names, what couldn't
-            // be read off the screen whole, and a box with no plain
-            // "yes, this once" go to whoever answers for it, as before.
+            // be read off the screen whole (a folded or truncated command
+            // with no certain transcript match for the same tool), and a
+            // box with no plain "yes, this once" go to whoever answers
+            // for it, as before.
+            let whole_asked = again.cls.approval.as_ref().and_then(|ap| {
+                let cut = ap.folded_lines.is_some()
+                    || ap.command.as_deref().is_some_and(|c| {
+                        let t = c.trim_end();
+                        t.ends_with('…') || t.ends_with("...")
+                    });
+                if !cut {
+                    return super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question);
+                }
+                let rec = approval.as_ref()?;
+                if rec["command_from"].as_str() != Some("transcript") {
+                    return None;
+                }
+                let full_cmd = rec["command"].as_str().filter(|c| !c.trim().is_empty())?;
+                let rec_tool = rec["tool"].as_str();
+                if let (Some(st), Some(rt)) = (ap.tool.as_deref(), rec_tool) {
+                    let (sl, rl) = (st.to_ascii_lowercase(), rt.to_ascii_lowercase());
+                    let same_tool = sl == rl || (sl == "bash" && matches!(rl.as_str(), "bash" | "run_command" | "exec_command"));
+                    if !same_tool {
+                        return None;
+                    }
+                }
+                super::leave::asked(rec_tool.or(ap.tool.as_deref()), Some(full_cmd), &ap.question)
+            });
             if state == SubagentLiveState::WaitingApproval
                 && let Some(list) = service.leave_of(&id)
                 && let Some(ap) = &again.cls.approval
-                && let Some(asked) = super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)
+                && let Some(asked) = whole_asked
                 && list.excepts(&asked).is_none()
                 && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1
             {
