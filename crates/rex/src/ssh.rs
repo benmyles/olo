@@ -560,6 +560,85 @@ pub struct SshSessionPool {
     keys: std::sync::Mutex<HashMap<SshTarget, KeyCell>>,
 }
 
+/// Line-buffering collector for [`SshSessionPool::exec`] and
+/// [`SshSessionPool::exec_bounded`]: separates stdout from stderr so
+/// half-written lines never mix, and applies optional `(max_output, max_line)`
+/// caps only when requested (`None` keeps all bytes whole).
+struct ExecCollector {
+    bounds: Option<(usize, usize)>,
+    out: Vec<u8>,
+    err: Vec<u8>,
+    ran: crate::provision::Ran,
+}
+
+impl ExecCollector {
+    fn new(bounds: Option<(usize, usize)>) -> Self {
+        Self { bounds, out: Vec::new(), err: Vec::new(), ran: crate::provision::Ran::default() }
+    }
+
+    fn take(&mut self, bytes: &[u8], is_stdout: bool, said: &mut (dyn FnMut(&str) + Send)) {
+        let pending = if is_stdout { &mut self.out } else { &mut self.err };
+        for chunk in bytes.split_inclusive(|b| *b == b'\n') {
+            if chunk.ends_with(b"\n") {
+                let body = &chunk[..chunk.len() - 1];
+                if let Some((_, max_line)) = self.bounds {
+                    let room = max_line.saturating_sub(pending.len());
+                    if body.len() > room {
+                        self.ran.truncated = true;
+                    }
+                    pending.extend_from_slice(&body[..body.len().min(room)]);
+                } else {
+                    pending.extend_from_slice(body);
+                }
+                let line = String::from_utf8_lossy(pending).trim_end_matches('\r').to_owned();
+                pending.clear();
+                said(&line);
+                if let Some((max_output, _)) = self.bounds {
+                    if self.ran.output.len() + line.len() + 1 <= max_output {
+                        self.ran.output.push_str(&line);
+                        self.ran.output.push('\n');
+                    } else {
+                        self.ran.truncated = true;
+                    }
+                    if is_stdout {
+                        if self.ran.stdout.len() + line.len() + 1 <= max_output {
+                            self.ran.stdout.push_str(&line);
+                            self.ran.stdout.push('\n');
+                        } else {
+                            self.ran.truncated = true;
+                        }
+                    }
+                } else {
+                    self.ran.output.push_str(&line);
+                    self.ran.output.push('\n');
+                    if is_stdout {
+                        self.ran.stdout.push_str(&line);
+                        self.ran.stdout.push('\n');
+                    }
+                }
+            } else if let Some((_, max_line)) = self.bounds {
+                let room = max_line.saturating_sub(pending.len());
+                if chunk.len() > room {
+                    self.ran.truncated = true;
+                }
+                pending.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            } else {
+                pending.extend_from_slice(chunk);
+            }
+        }
+    }
+
+    fn finish(mut self, said: &mut (dyn FnMut(&str) + Send)) -> crate::provision::Ran {
+        if !self.out.is_empty() {
+            self.take(b"\n", true, said);
+        }
+        if !self.err.is_empty() {
+            self.take(b"\n", false, said);
+        }
+        self.ran
+    }
+}
+
 /// A command's channel, closed if it is let go of before the command
 /// ended ([`SshSessionPool::exec`]).
 struct CloseWhenLetGo(Option<russh::ChannelWriteHalf<client::Msg>>);
@@ -931,7 +1010,37 @@ impl SshSessionPool {
     /// what it writes (both its outputs, as they come) goes to `said`
     /// line by line and comes back whole with its exit status. For
     /// setting a host up and looking after it ([`crate::provision`]).
+    /// Unbounded so whole-record callers (Tracker directory listings,
+    /// base64 accounts files) never lose data.
     pub async fn exec(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, RexError> {
+        self.exec_inner(target, askpass, command, None, said).await
+    }
+
+    /// Runs `command` like [`Self::exec`], capping stored output at
+    /// `max_output` bytes per stream and each pending line at `max_line`
+    /// bytes, setting [`crate::provision::Ran::truncated`] whenever any
+    /// byte is dropped. Used solely by [`crate::manage::look`]'s tweaks
+    /// probe.
+    pub async fn exec_bounded(
+        &self,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        command: &str,
+        max_output: usize,
+        max_line: usize,
+        said: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<crate::provision::Ran, RexError> {
+        self.exec_inner(target, askpass, command, Some((max_output, max_line)), said).await
+    }
+
+    async fn exec_inner(
+        &self,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        command: &str,
+        bounds: Option<(usize, usize)>,
+        said: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<crate::provision::Ran, RexError> {
         use russh::ChannelMsg;
         let channel = self.session(target, askpass).await?;
         channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
@@ -944,38 +1053,19 @@ impl SshSessionPool {
         // there six seconds later.)
         let (mut channel, told) = channel.split();
         let mut let_go = CloseWhenLetGo(Some(told));
-        let mut ran = crate::provision::Ran::default();
-        // (Each of its two outputs is cut into lines by itself: a line
-        // half written on one isn't finished by the other.)
-        fn take(pending: &mut Vec<u8>, bytes: &[u8], ran: &mut crate::provision::Ran, said: &mut (dyn FnMut(&str) + Send)) {
-            pending.extend_from_slice(bytes);
-            while let Some(end) = pending.iter().position(|b| *b == b'\n') {
-                let line: Vec<u8> = pending.drain(..=end).collect();
-                let line = String::from_utf8_lossy(&line[..line.len() - 1]).trim_end_matches('\r').to_owned();
-                said(&line);
-                ran.output.push_str(&line);
-                ran.output.push('\n');
-            }
-        }
-        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let mut collector = ExecCollector::new(bounds);
         loop {
             match channel.wait().await {
-                Some(ChannelMsg::Data { data }) => take(&mut out, &data, &mut ran, said),
-                Some(ChannelMsg::ExtendedData { data, .. }) => take(&mut err, &data, &mut ran, said),
-                Some(ChannelMsg::ExitStatus { exit_status }) => ran.status = Some(exit_status),
+                Some(ChannelMsg::Data { data }) => collector.take(&data, true, said),
+                Some(ChannelMsg::ExtendedData { data, .. }) => collector.take(&data, false, said),
+                Some(ChannelMsg::ExitStatus { exit_status }) => collector.ran.status = Some(exit_status),
                 Some(ChannelMsg::Close) | None => break,
                 _ => {}
             }
         }
         // (Ended by itself: nothing to close.)
         let_go.0 = None;
-        // (A last line with no end.)
-        for pending in [&mut out, &mut err] {
-            if !pending.is_empty() {
-                take(pending, b"\n", &mut ran, said);
-            }
-        }
-        Ok(ran)
+        Ok(collector.finish(said))
     }
 
     /// [`Self::exec`] with `input` given to the command on its input,
@@ -1948,5 +2038,43 @@ mod dial_tests {
         assert_eq!(set("x; rm -rf ~"), None);
         assert_eq!(set("a'b"), None);
         assert_eq!(set(""), None);
+    }
+
+    /// Finding 13: ordinary `SshSessionPool::exec` stays unbounded so
+    /// whole-record callers (Tracker listings, base64 accounts files) get a
+    /// 200 KiB single line intact; `exec_bounded` (used only by tweaks LOOK)
+    /// caps lines and total output and marks `Ran::truncated`.
+    #[test]
+    fn exec_ordinary_path_keeps_200k_single_line_whole_and_bounded_caps_it() {
+        let payload = "a".repeat(200 * 1024);
+        let wire = format!("{payload}\n");
+
+        // Ordinary (unbounded) path: 200 KiB single line delivered whole across chunks.
+        let mut unbounded = ExecCollector::new(None);
+        let mut seen = Vec::new();
+        for chunk in wire.as_bytes().chunks(4096) {
+            unbounded.take(chunk, true, &mut |line| seen.push(line.to_owned()));
+        }
+        let ran = unbounded.finish(&mut |line| seen.push(line.to_owned()));
+        assert!(!ran.truncated, "ordinary exec must never truncate");
+        assert_eq!(ran.stdout, wire);
+        assert_eq!(ran.output, wire);
+        assert_eq!(seen, vec![payload.clone()]);
+
+        // Bounded path (tweaks LOOK): 64 KiB single-line cap clips and marks truncated.
+        let mut bounded = ExecCollector::new(Some((4 * 1024 * 1024, 64 * 1024)));
+        for chunk in wire.as_bytes().chunks(4096) {
+            bounded.take(chunk, true, &mut |_| {});
+        }
+        let clipped = bounded.finish(&mut |_| {});
+        assert!(clipped.truncated, "bounded exec must report truncation when clipping a long line");
+        assert_eq!(clipped.stdout.len(), 64 * 1024 + 1);
+
+        // Bounded total output cap also sets `truncated`.
+        let mut capped = ExecCollector::new(Some((32, 64 * 1024)));
+        capped.take(b"01234567890123456789\n01234567890123456789\n", true, &mut |_| {});
+        let capped_ran = capped.finish(&mut |_| {});
+        assert!(capped_ran.truncated, "bounded exec must report truncation when total output cap is hit");
+        assert_eq!(capped_ran.stdout, "01234567890123456789\n");
     }
 }

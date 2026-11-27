@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn what_a_host_answers_says_what_it_needs() {
         let builds = [Build { system: "Linux", machines: &["x86_64"], bytes: b"x" }];
-        let ran = |status, output: &str| crate::provision::Ran { status: Some(status), output: output.to_owned() };
+        let ran = |status, output: &str| crate::provision::Ran { status: Some(status), output: output.to_owned(), stdout: output.to_owned(), ..Default::default() };
         assert!(matches!(asked(&ran(0, "Linux x86_64\nhere\n"), &builds), Ok(Ok(Asked::Here))));
         assert!(matches!(asked(&ran(0, "Linux x86_64\nolder\n"), &builds), Ok(Ok(Asked::Outdated(b))) if b.bytes == b"x"));
         assert!(matches!(asked(&ran(0, "Linux x86_64\n"), &builds), Ok(Ok(Asked::Needs(b))) if b.bytes == b"x"));

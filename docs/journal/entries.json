@@ -5512,5 +5512,17 @@
   "title": "Deskbar's Inbox: what was cleared, and Undo",
   "caption": "After Clear All the card says how many went, for eight seconds, with Undo: the service puts back exactly that batch.",
   "image": "2026-11-27/132806-deskbar-s-inbox-what-was-cleared-and-undo.png"
+ },
+ {
+  "time": "2026-11-27T15:55:45",
+  "title": "Rex's Host window: Rex server limits in Tweaks",
+  "caption": "A tweak that raises a Rex server's own limits (512 tabs a session, 128 panes, 128 sessions, 4,096 blocks; Rex's are 64, 64, 64, 1,024) by a systemd drop-in, written only where Olo is certain of the server's command. No server is restarted: the row says what it has now and what it will have. Ben: 'at least 2x what they are now'.",
+  "image": "2026-11-27/155545-rex-s-host-window-rex-server-limits-in-tweaks.png"
+ },
+ {
+  "time": "2026-11-27T15:55:45",
+  "title": "Rex server limits: what will change, and for whom",
+  "caption": "The confirmation for a shared server says that everyone on the host shares it and that a restart ends the programs in everyone's tabs; a personal server's says whose it is and gives the command to restart it.",
+  "image": "2026-11-27/155545-rex-server-limits-what-will-change-and-for-whom.png"
  }
 ]

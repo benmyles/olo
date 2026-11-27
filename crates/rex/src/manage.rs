@@ -327,10 +327,29 @@ pub async fn look(runner: &mut impl Runner, check: bool) -> Result<Server, Faile
     if ran.ok() {
         server.add(&ran.output);
     }
-    if let Ok(ran) = runner.run(true, &format!("sh -c {}", shell_word(crate::tune::LOOK)), &mut |_| {}).await
+    const TUNE_LOOK_MAX_OUTPUT: usize = 4 * 1024 * 1024;
+    const TUNE_LOOK_MAX_LINE: usize = 64 * 1024;
+    let scope = runner.rex_scope();
+    let mode_val = match scope {
+        Some(crate::tune::RexScope::Shared) => "shared",
+        Some(crate::tune::RexScope::User) => "user",
+        None => "skip",
+    };
+    let account_val = runner.account().filter(|a| !a.is_empty() && *a != "root").unwrap_or("");
+    let look_script = format!("OLO_REX_MODE={mode_val}\nOLO_REX_USER={}\n{}", shell_word(account_val), crate::tune::LOOK);
+    if let Ok(Ok(ran)) =
+        tokio::time::timeout(std::time::Duration::from_secs(30), runner.run_bounded(true, &format!("sh -c {}", shell_word(&look_script)), TUNE_LOOK_MAX_OUTPUT, TUNE_LOOK_MAX_LINE, &mut |_| {})).await
         && ran.ok()
     {
-        server.tuning = Some(crate::tune::Tuning::read(&ran.output));
+        let mut tuning = crate::tune::Tuning::read(ran.stdout_only());
+        match scope {
+            None => tuning.block_rex("This host connects to a custom Rex socket; raise its limits where that server is configured."),
+            Some(expected) if ran.truncated || tuning.rex_limits.scope != expected => {
+                tuning.block_rex("Olo couldn’t read this host’s Rex service.");
+            }
+            Some(_) => {}
+        }
+        server.tuning = Some(tuning);
     }
     match provision::read_accounts(runner).await {
         Ok(file) => server.accounts = Some(file),
@@ -447,6 +466,13 @@ impl Action {
     /// What it does, in a sentence, where its title doesn't say it all:
     /// said before it is done, over what it costs.
     pub fn what(&self, server: &Server) -> String {
+        self.what_on(server, None)
+    }
+
+    /// Like [`Self::what`], naming `host` where a shared server's scope is
+    /// stated ("everyone on dev-box shares").
+    pub fn what_on(&self, server: &Server, host: Option<&str>) -> String {
+        let where_on = host.filter(|h| !h.is_empty()).unwrap_or("this host");
         match self {
             Action::Start(_) => "It starts now, and whenever the machine starts.".to_owned(),
             Action::Stop(_) => "It stays stopped, even when the machine restarts, until you start it here.".to_owned(),
@@ -470,20 +496,61 @@ impl Action {
             Action::Tune(kinds) => match kinds.as_slice() {
                 [crate::tune::Tune::Shell] => {
                     format!(
-                        "{} It can be put back here: new accounts get the shell they were given before, and each account Rex changed gets its own again.",
+                        "{} It can be put back with Put Back… in Tweaks: new accounts get the shell they were given before, and each account Rex changed gets its own again.",
                         crate::tune::Tune::Shell.note().unwrap_or_default()
                     )
                 }
-                [kind] => format!("{} The new values are kept across restarts and can be put back here.", kind.note().unwrap_or_default()).trim().to_owned(),
+                [crate::tune::Tune::RexLimits] => {
+                    let tuning = server.tuning.as_ref();
+                    let shared = tuning.is_some_and(|t| t.rex_limits.scope == crate::tune::RexScope::Shared);
+                    let user = tuning.and_then(|t| t.rex_limits.user.as_deref()).filter(|a| !a.is_empty() && *a != "you");
+                    let stale_only = tuning.is_some_and(|t| t.rex_limits.stale && t.of(crate::tune::Tune::RexLimits).met());
+                    let pending = tuning.is_some_and(|t| t.rex_limits_pending_restart().is_some());
+                    let pending_note = if pending { " The table shows what is configured for the next start; the running server still holds its earlier limits." } else { "" };
+                    match (shared, stale_only, user) {
+                        (true, true, _) => format!(
+                            "Rex’s service changed; Olo writes its limit file again from the new one, keeping your limits. This changes the Rex server everyone on {where_on} shares. They take effect when it next starts. Restarting it ends the programs in everyone’s tabs, so Rex leaves that to you: restart it from the Server window when you’re ready.{pending_note}"
+                        ),
+                        (true, false, _) => format!(
+                            "This changes the Rex server everyone on {where_on} shares. The new limits take effect when it next starts. Restarting it ends the programs in everyone’s tabs, so Rex leaves that to you: restart it from the Server window when you’re ready. You can put the old limits back with Put Back… in Tweaks.{pending_note}"
+                        ),
+                        (false, true, Some(acct)) => format!(
+                            "Rex’s service changed; Olo writes {acct}’s limit file again from the new one, keeping your limits. Only {acct}’s Rex server on this host is changed; other accounts aren’t touched. Restarting ends every tab’s program.{pending_note}\nTo restart: systemctl --user restart rex.service"
+                        ),
+                        (false, true, None) => format!(
+                            "Rex’s service changed; Olo writes your limit file again from the new one, keeping your limits. Only your Rex server on this host is changed; other accounts aren’t touched. Restarting ends every tab’s program.{pending_note}\nTo restart: systemctl --user restart rex.service"
+                        ),
+                        (false, false, Some(acct)) => format!(
+                            "Only {acct}’s Rex server on this host is changed; other accounts aren’t touched. The new limits take effect when it next starts. You can put the old limits back with Put Back… in Tweaks. Restarting ends every tab’s program.{pending_note}\nTo restart: systemctl --user restart rex.service"
+                        ),
+                        (false, false, None) => format!(
+                            "Only your Rex server on this host is changed; other accounts aren’t touched. The new limits take effect when it next starts. You can put the old limits back with Put Back… in Tweaks. Restarting ends every tab’s program.{pending_note}\nTo restart: systemctl --user restart rex.service"
+                        ),
+                    }
+                }
+                [kind] => format!("{} The new values are kept across reboots and can be put back with Put Back… in Tweaks.", kind.note().unwrap_or_default()).trim().to_owned(),
                 kinds => {
                     let mut said = Vec::new();
                     if kinds.contains(&crate::tune::Tune::Sessions) {
-                        said.push("Connections already open aren’t touched.");
+                        said.push("Connections already open aren’t touched.".to_owned());
                     }
                     if kinds.iter().any(|kind| matches!(kind, crate::tune::Tune::Files | crate::tune::Tune::TempFiles)) {
-                        said.push("Open files and temporary files take effect from each program’s next sign-in or start.");
+                        said.push("Open files and temporary files take effect from each program’s next sign-in or start.".to_owned());
                     }
-                    said.push("Each is kept across restarts and can be put back here. Nothing already set higher is lowered.");
+                    if kinds.contains(&crate::tune::Tune::RexLimits) {
+                        let rex_note = match server.tuning.as_ref() {
+                            Some(t) if t.rex_limits.scope == crate::tune::RexScope::User => match t.rex_limits.user.as_deref().filter(|a| !a.is_empty() && *a != "you") {
+                                Some(acct) => format!("{acct}’s Rex server gets its new limits when it next starts. Restarting it ends every tab’s program, so it isn’t restarted for you."),
+                                None => "Your Rex server gets its new limits when it next starts. Restarting it ends every tab’s program, so it isn’t restarted for you.".to_owned(),
+                            },
+                            Some(_) => format!(
+                                "Rex’s server, shared by everyone on {where_on}, gets its new limits when it next starts. Restarting it ends the programs in everyone’s tabs, so it isn’t restarted for you."
+                            ),
+                            None => "Rex’s server gets its new limits when it next starts. Restarting it ends every tab’s program, so it isn’t restarted for you.".to_owned(),
+                        };
+                        said.push(rex_note);
+                    }
+                    said.push("Everything is kept across reboots and can be put back with Put Back… in Tweaks. Nothing already set higher is lowered.".to_owned());
                     said.join(" ")
                 }
             },
@@ -502,6 +569,32 @@ impl Action {
                 }
             }
             Action::Untune(crate::tune::Tune::TempFiles) => "Programs use /tmp again, from their next sign-in or start.".to_owned(),
+            Action::Untune(crate::tune::Tune::RexLimits) => match server.tuning.as_ref() {
+                Some(t) if t.rex_limits.scope == crate::tune::RexScope::User => {
+                    let mut msg = match t.rex_limits.user.as_deref().filter(|a| !a.is_empty() && *a != "you") {
+                        Some(acct) => format!(
+                            "Only {acct}’s limit file is removed; other accounts aren’t touched. {acct}’s Rex server goes back to its own limits when it next starts. The running server isn’t restarted."
+                        ),
+                        None => "Only your limit file is removed; other accounts aren’t touched. Your Rex server goes back to its own limits when it next starts. The running server isn’t restarted."
+                            .to_owned(),
+                    };
+                    if t.rex_limits.kept_sys {
+                        msg.push_str(&format!(" The shared server’s limit file ({}) stays as it is.", crate::tune::REX_SYSTEM_DROPIN));
+                    }
+                    msg
+                }
+                Some(t) => {
+                    let mut msg = "Olo’s file is removed, and the shared Rex server goes back to its limits when it next starts. It isn’t restarted.".to_owned();
+                    if t.rex_limits.kept_usr {
+                        match t.rex_limits.user.as_deref().filter(|a| !a.is_empty() && *a != "you") {
+                            Some(acct) => msg.push_str(&format!(" {acct}’s own Rex server keeps its limits.")),
+                            None => msg.push_str(" Your own Rex server keeps its limits."),
+                        }
+                    }
+                    msg
+                }
+                None => "Olo’s file is removed, and Rex goes back to its limits when it next starts. It isn’t restarted.".to_owned(),
+            },
             Action::Untune(kind) => format!("Olo’s {} taken away, and the host’s own settings again.", if kind.files().len() == 1 { "file is" } else { "files are" }),
         }
     }
@@ -544,6 +637,12 @@ impl Action {
                                 rows.extend(tuning.accounts.iter().take(SHOWN_ACCOUNTS).map(|(name, shell)| (name.as_str(), shell.clone(), crate::tune::BRUSH.to_owned())));
                             }
                             return (*kind, rows);
+                        }
+                        if *kind == crate::tune::Tune::RexLimits && tuning.rex_limits.blocked.is_some() {
+                            return (*kind, Vec::new());
+                        }
+                        if *kind == crate::tune::Tune::RexLimits && tuning.of(*kind).met() && tuning.rex_limits.stale {
+                            return (*kind, vec![("Rex service file", "out of date".to_owned(), "updated".to_owned())]);
                         }
                         let rows = tuning
                             .of(*kind)
@@ -588,6 +687,10 @@ impl Action {
                 }
                 lines.join("\n")
             }
+            Action::Untune(crate::tune::Tune::RexLimits) => match server.tuning.as_ref() {
+                Some(t) if t.rex_limits.scope == crate::tune::RexScope::User => t.rex_limits.file_usr.clone().unwrap_or_else(|| crate::tune::REX_USER_DROPIN_FALLBACK.to_owned()),
+                _ => crate::tune::REX_SYSTEM_DROPIN.to_owned(),
+            },
             Action::Untune(kind) => kind.files().join("\n"),
             other => other.command(server).unwrap_or_default(),
         }
@@ -604,7 +707,16 @@ impl Action {
         let unset = || "not set".to_owned();
         match self {
             Action::Tune(kinds) => {
-                let short: Vec<Tune> = kinds.iter().copied().filter(|kind| !tuning.of(*kind).met()).collect();
+                let short: Vec<Tune> = kinds
+                    .iter()
+                    .copied()
+                    .filter(|kind| {
+                        if *kind == Tune::RexLimits && tuning.rex_limits.blocked.is_some() {
+                            return false;
+                        }
+                        !tuning.of(*kind).met() || (*kind == Tune::RexLimits && tuning.rex_limits.stale)
+                    })
+                    .collect();
                 let several = short.len() > 1;
                 let mut lines = Vec::new();
                 for kind in short {
@@ -623,6 +735,12 @@ impl Action {
                                     lines.push(Change::Note(format!("and {} more accounts", tuning.accounts.len() - SHOWN_ACCOUNTS)));
                                 }
                             }
+                        }
+                        // Rex server limits drop-in gone stale after a Rex upgrade,
+                        // with all four numeric limits already met.
+                        Tune::RexLimits if stands.met() && tuning.rex_limits.stale => {
+                            let label = if several { kind.title() } else { "Rex service file" };
+                            lines.push(value(label, "out of date".to_owned(), "updated".to_owned(), true, false, false));
                         }
                         // Temporary files, by itself: each variable Rex sets. Among
                         // others: one line of it, by its own name.
@@ -659,6 +777,22 @@ impl Action {
                 Some(lines)
             }
             Action::Untune(Tune::TempFiles) => Some(tuning.temp.iter().map(|(name, now)| value(name, now.clone().unwrap_or_else(unset), unset(), false, false, false)).collect()),
+            Action::Untune(Tune::RexLimits) => {
+                let back = tuning.rex_limits.without_olo?;
+                let stands = tuning.of(Tune::RexLimits);
+                let rows: Vec<Change> = stands
+                    .values
+                    .iter()
+                    .filter_map(|v| {
+                        let new = back.get(v.name)?;
+                        if v.now == Some(new) {
+                            return None;
+                        }
+                        Some(value(v.name, v.now.map_or("?".to_owned(), |now| crate::tune::said(v.name, now)), crate::tune::said(v.name, new), false, false, true))
+                    })
+                    .collect();
+                (!rows.is_empty()).then_some(rows)
+            }
             _ => None,
         }
     }
@@ -684,15 +818,39 @@ impl Action {
             }
             Action::Tune(kinds) => {
                 let tuning = server.tuning.as_ref()?;
-                let scripts: Vec<String> = kinds.iter().filter_map(|k| k.apply(tuning)).collect();
+                let scripts: Vec<(crate::tune::Tune, String)> = kinds.iter().copied().filter_map(|k| k.apply(tuning).map(|s| (k, s))).collect();
                 if scripts.is_empty() {
                     return None;
                 }
-                // (Each kind by itself: one that can't be applied
-                // doesn't keep the next from it.)
-                scripts.iter().map(|s| format!("( {} )", s.trim_end())).collect::<Vec<_>>().join("\n")
+                if scripts.len() == 1 {
+                    return Some(format!("( {} )", scripts[0].1.trim_end()));
+                }
+                // (Each kind runs in a fresh `sh -c` shell so `set -e` inside
+                // each script stays active — POSIX disables `set -e` inside
+                // `if ! (...)` — and every failure is collected so a later
+                // success can never hide an earlier failure.)
+                let mut out = String::from("set +e; rc=0; failed=''\n");
+                for (kind, script) in scripts {
+                    let title = shell_word(kind.title());
+                    out.push_str(&format!("sh -c {}\nif [ \"$?\" != 0 ]; then rc=1; failed=\"${{failed:+$failed, }}\"{title}; fi\n", shell_word(script.trim_end())));
+                }
+                out.push_str("if [ \"$rc\" != 0 ]; then printf 'Rex: Couldn’t apply: %s.\\n' \"$failed\"; exit \"$rc\"; fi");
+                out
             }
-            Action::Untune(kind) => kind.undo(),
+            Action::Untune(kind) => {
+                let mut script = kind.undo();
+                if *kind == crate::tune::Tune::RexLimits
+                    && let Some(tuning) = server.tuning.as_ref()
+                {
+                    let mode = match tuning.rex_limits.scope {
+                        crate::tune::RexScope::Shared => "shared",
+                        crate::tune::RexScope::User => "user",
+                    };
+                    let user = tuning.rex_limits.user.as_deref().filter(|u| !u.is_empty() && *u != "root").unwrap_or("");
+                    script = format!("OLO_REX_MODE={mode}\nOLO_REX_USER={}\n{script}", shell_word(user));
+                }
+                script
+            }
             Action::Allow(_) | Action::Remove(_) => return None,
         })
     }
@@ -724,7 +882,33 @@ pub async fn act(runner: &mut impl Runner, server: &Server, action: &Action, sai
             }
         }
         other => {
-            let command = other.command(server).ok_or_else(|| Failed::from("nothing to run".to_owned()))?;
+            let touches_rex = matches!(other, Action::Untune(crate::tune::Tune::RexLimits)) || matches!(other, Action::Tune(kinds) if kinds.contains(&crate::tune::Tune::RexLimits));
+            let mut effective = server.clone();
+            let command = if touches_rex {
+                let Some(scope) = runner.rex_scope() else {
+                    return Err("This host connects to a custom Rex socket; raise its limits where that server is configured.".to_owned().into());
+                };
+                if let Some(tuning) = effective.tuning.as_mut() {
+                    if tuning.rex_limits.scope != scope {
+                        return Err("This host’s Rex server mode doesn’t match the connection; look again.".to_owned().into());
+                    }
+                    if let Some(acct) = runner.account().filter(|a| !a.is_empty() && *a != "root") {
+                        tuning.rex_limits.user = Some(acct.to_owned());
+                    }
+                }
+                if matches!(other, Action::Untune(crate::tune::Tune::RexLimits)) {
+                    let mode = match scope {
+                        crate::tune::RexScope::Shared => "shared",
+                        crate::tune::RexScope::User => "user",
+                    };
+                    let acct = runner.account().or_else(|| effective.tuning.as_ref().and_then(|t| t.rex_limits.user.as_deref())).filter(|a| !a.is_empty() && *a != "root").unwrap_or("");
+                    format!("OLO_REX_MODE={mode}\nOLO_REX_USER={}\n{}", shell_word(acct), crate::tune::Tune::RexLimits.undo())
+                } else {
+                    other.command(&effective).ok_or_else(|| Failed::from("nothing to run".to_owned()))?
+                }
+            } else {
+                other.command(server).ok_or_else(|| Failed::from("nothing to run".to_owned()))?
+            };
             // (A script of several lines goes to a shell as one word.)
             let command = if matches!(other, Action::Tune(_) | Action::Untune(_)) { format!("sh -c {}", shell_word(&command)) } else { command };
             let ran = runner.run(true, &command, said).await?;
@@ -871,7 +1055,9 @@ mod tests {
         use crate::tune::{Tune, Tuning};
         let comes = "vm.dirty_background_ratio 10\nvm.dirty_ratio 20\nram 67108864\nMaxSessions 10\nopen files 1048576\nDefaultLimitNOFILE 1048576\nDefaultTasksMax infinity\nfs.file-max 9223372036854775807\n\
             fs.inotify.max_user_watches 524288\nfs.inotify.max_user_instances 8192\nfs.inotify.max_queued_events 65536\nfs.aio-max-nr 1048576\nkernel.pid_max 4194304\nvm.max_map_count 1048576\n\
-            vm.dirty_background_bytes 0\nvm.dirty_bytes 0\nvm.dirty_expire_centisecs 3000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\ntemporary files 1\ndefault shell /usr/local/bin/brush\nbrush there\nbrush 1\n";
+            vm.dirty_background_bytes 0\nvm.dirty_bytes 0\nvm.dirty_expire_centisecs 3000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\ntemporary files 1\n\
+            rex.v1.mode=shared\nrex.v1.kept.system=0\nrex.v1.kept.user=0\nrex.v1.status.system=ok\nrex.v1.unit.system=/usr/bin/rex server run --log-format text\nrex.v1.loaded.system=/usr/bin/rex server run --log-format text --max-windows 512 --max-panes 128 --max-sessions 128 --max-blocks 4096\nrex.v1.stale.system=0\n\
+            default shell /usr/local/bin/brush\nbrush there\nbrush 1\n";
         let server = Server { tuning: Some(Tuning::read(comes)), ..Server::default() };
         // (Its words, column by column; and the columns are columns:
         // every line of settings as long as the head's.)
@@ -904,9 +1090,21 @@ mod tests {
         assert!(all.what(&server).contains("Connections already open aren’t touched") && !all.what(&server).contains("sign-in"), "what it does besides: of the kinds applied alone");
         // One kind alone says its own note, whole.
         assert!(Action::Tune(vec![Tune::Files]).what(&server).starts_with("The open files hold from the next sign-in"));
-        // What is run is each kind's script, each by itself.
+        // What is run is each kind's script in its own `sh -c` shell so `set -e` stays active inside each tweak.
         let command = all.command(&server).unwrap();
-        assert_eq!(command.matches("\n( set -e").count() + usize::from(command.starts_with("( set -e")), 3);
+        assert_eq!(command.matches("sh -c ").count(), 3, "{command}");
+        assert!(command.contains("Rex: Couldn’t apply:"), "{command}");
+        assert!(std::process::Command::new("sh").args(["-n", "-c", &command]).status().unwrap().success());
+        // Verify the exact batch error-collection pattern: earlier failure is never hidden by later success.
+        let batch_fail = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "rc=0; failed=''\nif ! ( exit 1 ); then rc=1; failed=\"${failed:+$failed, }\"'SSH sessions'; fi\nif ! ( exit 0 ); then rc=1; failed=\"${failed:+$failed, }\"'Rex server limits'; fi\nif [ \"$rc\" != 0 ]; then printf 'Rex: Couldn’t apply: %s.\\n' \"$failed\"; exit \"$rc\"; fi",
+            ])
+            .output()
+            .unwrap();
+        assert!(!batch_fail.status.success());
+        assert_eq!(String::from_utf8_lossy(&batch_fail.stdout), "Rex: Couldn’t apply: SSH sessions.\n");
         assert_eq!(Action::Untune(Tune::Files).shown(&server).lines().count(), 4);
         // Temporary files and brush, on a host short of both: one line of one; and of brush, who is given
         // it, each with the shell it has, only where the person chose the accounts there are.
@@ -984,6 +1182,80 @@ mod tests {
         assert!(back.what(&server).ends_with("Brush stays installed: carol still uses it."), "{}", back.what(&server));
         assert_eq!(table(&Action::Untune(Tune::TempFiles), &server)[0], "TMPDIR: /var/tmp -> not set");
         assert!(Action::Untune(Tune::Kernel).changes(&server).is_none() && Action::Update.changes(&server).is_none());
+        // Rex server limits: short, put back, batch sentence, scope-aware copy, and stale refresh.
+        let rex_short = comes.replace("--max-windows 512 --max-panes 128 --max-sessions 128 --max-blocks 4096", "");
+        let rex_server = Server { tuning: Some(Tuning::read(&rex_short)), ..Server::default() };
+        let apply_rex = Action::Tune(vec![Tune::RexLimits]);
+        assert_eq!(table(&apply_rex, &rex_server), ["--max-windows: 64 -> 512 #", "--max-panes: 64 -> 128 #", "--max-sessions: 64 -> 128 #", "--max-blocks: 1,024 -> 4,096 #"]);
+        assert_eq!(
+            apply_rex.what_on(&rex_server, Some("dev-box")),
+            "This changes the Rex server everyone on dev-box shares. The new limits take effect when it next starts. Restarting it ends the programs in everyone’s tabs, so Rex leaves that to you: restart it from the Server window when you’re ready. You can put the old limits back with Put Back… in Tweaks."
+        );
+        // User-scope host says only that account's server changes (never touches other accounts), gives the restart command, and does not point to the Server window.
+        let rex_user_short = rex_short
+            .replace("rex.v1.mode=shared", "rex.v1.mode=user\nrex.v1.user=alice\nrex.v1.file.user=/home/alice/.config/systemd/user/rex.service.d/90-olo-limits.conf")
+            .replace(".system=", ".user=");
+        let rex_user_server = Server { tuning: Some(Tuning::read(&rex_user_short)), ..Server::default() };
+        assert!(
+            apply_rex.what(&rex_user_server).contains("Only alice’s Rex server on this host is changed; other accounts aren’t touched.")
+                && apply_rex.what(&rex_user_server).contains("Restarting ends every tab’s program.\nTo restart: systemctl --user restart rex.service")
+                && apply_rex.what(&rex_user_server).contains("Put Back… in Tweaks")
+                && !apply_rex.what(&rex_user_server).contains("back here")
+                && !apply_rex.what(&rex_user_server).contains("Server window"),
+            "{}",
+            apply_rex.what(&rex_user_server)
+        );
+        assert_eq!(apply_rex.warning(&rex_server), None);
+        let batch_with_rex = Action::Tune(vec![Tune::Sessions, Tune::RexLimits]);
+        assert!(
+            batch_with_rex.what_on(&rex_server, Some("dev-box")).contains("Rex’s server, shared by everyone on dev-box, gets its new limits when it next starts.")
+                && batch_with_rex.what_on(&rex_server, Some("dev-box")).contains("Everything is kept across reboots and can be put back with Put Back… in Tweaks."),
+            "{}",
+            batch_with_rex.what_on(&rex_server, Some("dev-box"))
+        );
+        assert!(
+            batch_with_rex.what(&rex_user_server).contains("alice’s Rex server gets its new limits when it next starts. Restarting it ends every tab’s program, so it isn’t restarted for you."),
+            "{}",
+            batch_with_rex.what(&rex_user_server)
+        );
+        assert_eq!(Action::Untune(Tune::RexLimits).shown(&rex_server), crate::tune::REX_SYSTEM_DROPIN);
+        assert_eq!(Action::Untune(Tune::RexLimits).shown(&rex_user_server), "/home/alice/.config/systemd/user/rex.service.d/90-olo-limits.conf");
+        assert_eq!(Action::Untune(Tune::RexLimits).what(&rex_server), "Olo’s file is removed, and the shared Rex server goes back to its limits when it next starts. It isn’t restarted.");
+        // Put Back mentions the other scope's file when both scopes have an Olo file.
+        let rex_user_both = Server { tuning: Some(Tuning::read(&format!("{rex_user_short}rex.v1.kept.system=1\n").replace("rex.v1.kept.user=0", "rex.v1.kept.user=1"))), ..Server::default() };
+        assert!(
+            Action::Untune(Tune::RexLimits).what(&rex_user_both).contains("Only alice’s limit file is removed; other accounts aren’t touched.")
+                && Action::Untune(Tune::RexLimits).what(&rex_user_both).contains(crate::tune::REX_SYSTEM_DROPIN),
+            "{}",
+            Action::Untune(Tune::RexLimits).what(&rex_user_both)
+        );
+        let rex_shared_both =
+            Server { tuning: Some(Tuning::read(&comes.replace("rex.v1.kept.system=0", "rex.v1.kept.system=1").replace("rex.v1.kept.user=0", "rex.v1.kept.user=1"))), ..Server::default() };
+        assert_eq!(
+            Action::Untune(Tune::RexLimits).what(&rex_shared_both),
+            "Olo’s file is removed, and the shared Rex server goes back to its limits when it next starts. It isn’t restarted. Your own Rex server keeps its limits."
+        );
+        // Put Back shows Now -> New values going back to the unit file's own limits.
+        let rex_applied = Server { tuning: Some(Tuning::read(&comes.replace("rex.v1.kept.system=0", "rex.v1.kept.system=1"))), ..Server::default() };
+        assert_eq!(table(&Action::Untune(Tune::RexLimits), &rex_applied), ["--max-windows: 512 -> 64 #", "--max-panes: 128 -> 64 #", "--max-sessions: 128 -> 64 #", "--max-blocks: 4,096 -> 1,024 #"]);
+        assert_eq!(Action::Untune(Tune::RexLimits).shown(&rex_applied), crate::tune::REX_SYSTEM_DROPIN);
+        let rex_with_unit_hi = comes
+            .replace("rex.v1.kept.system=0", "rex.v1.kept.system=1")
+            .replace("rex.v1.unit.system=/usr/bin/rex server run --log-format text\n", "rex.v1.unit.system=/usr/bin/rex server run --log-format text --max-windows 1024 --max-blocks 8192\n");
+        let rex_other_server = Server { tuning: Some(Tuning::read(&rex_with_unit_hi)), ..Server::default() };
+        assert_eq!(
+            table(&Action::Untune(Tune::RexLimits), &rex_other_server),
+            ["--max-windows: 512 -> 1,024 #", "--max-panes: 128 -> 64 #", "--max-sessions: 128 -> 64 #", "--max-blocks: 4,096 -> 8,192 #"]
+        );
+        let rex_stale =
+            comes.replace("rex.v1.kept.system=0", "rex.v1.kept.system=1").replace("rex.v1.stale.system=0", "rex.v1.stale.system=1\nrex.v1.pkg.system=/usr/bin/rex server run --log-format text --old");
+        let stale_server = Server { tuning: Some(Tuning::read(&rex_stale)), ..Server::default() };
+        assert_eq!(table(&apply_rex, &stale_server), ["Rex service file: out of date -> updated (plain)"]);
+        assert!(
+            apply_rex.what(&stale_server).contains("take effect when it next starts") && !apply_rex.what(&stale_server).contains("drop-in") && !apply_rex.what(&stale_server).contains("hold from"),
+            "{}",
+            apply_rex.what(&stale_server)
+        );
     }
 
     /// A host that answers as written: each command run is kept, and
@@ -1030,12 +1302,12 @@ mod tests {
         async fn run(&mut self, root: bool, command: &str, _: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
             assert!(root, "everything here is root's: {command}");
             self.ran.push(command.to_owned());
-            Ok(self.rules.iter().find(|(has, _)| command.contains(has)).map(|(_, ran)| ran.clone()).unwrap_or(Ran { status: Some(0), output: String::new() }))
+            Ok(self.rules.iter().find(|(has, _)| command.contains(has)).map(|(_, ran)| ran.clone()).unwrap_or(Ran { status: Some(0), ..Ran::default() }))
         }
     }
 
     fn says(output: &str) -> Ran {
-        Ran { status: Some(0), output: output.to_owned() }
+        Ran { status: Some(0), output: output.to_owned(), stdout: output.to_owned(), ..Ran::default() }
     }
 
     const FACTS: &str = "os=Linux\ndistro=ubuntu\nuser=root\nuid=0\ngroups=root\nrex=/usr/bin/rex\nversion=rex 0.1.0-snapshot.2506\npackaged=1\nsystemd=1\nunit.rex.service=inactive,disabled\nunit.rex.socket=inactive,disabled\nunit.rex-login-server.service=active,enabled\nunit.rex-login-server.socket=active,enabled\nown=inactive,disabled\nlinger=no\nrexshell=/usr/sbin/nologin\nfetch=curl\n";
@@ -1136,7 +1408,7 @@ mod tests {
     async fn a_service_that_wont_start_says_what_its_log_says() {
         let mut h = host();
         let server = look(&mut h, false).await.unwrap();
-        h.rules.insert(0, ("systemctl enable --now rex.service", Ran { status: Some(1), output: "Job for rex.service failed.\n".into() }));
+        h.rules.insert(0, ("systemctl enable --now rex.service", Ran { status: Some(1), output: "Job for rex.service failed.\n".into(), ..Ran::default() }));
         h.rules.insert(0, ("journalctl -u rex.service", says("2026-11-22T14:10:00+0000 host rex[9]: error: the rex account has no shell\n")));
         let failed = act(&mut h, &server, &Action::Start(Service::Shared), &mut |_| {}).await.unwrap_err();
         assert!(failed.why.contains("Job for rex.service failed.") && failed.why.contains("14:10:00 error: the rex account has no shell"), "{}", failed.why);
@@ -1197,5 +1469,170 @@ mod tests {
         // (A service that never began: nothing.)
         assert_eq!(micros("0"), None);
         assert_eq!(micros(""), None);
+    }
+
+    /// Finding 2 & Finding 13: connection scope (`Runner::rex_scope`) and
+    /// account flow authoritatively into `look`, `act(Tune)` and
+    /// `act(Untune)`; custom sockets refuse RexLimits; truncated LOOK output
+    /// marks RexLimits unreadable with `kept = false`.
+    #[tokio::test]
+    async fn connection_scope_flows_into_look_apply_and_undo() {
+        struct ScopedHost {
+            scope: Option<crate::tune::RexScope>,
+            account: Option<&'static str>,
+            look_ran: Ran,
+            ran: Vec<String>,
+            used_bounded: bool,
+        }
+        impl Runner for ScopedHost {
+            async fn run(&mut self, _root: bool, command: &str, _: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
+                self.ran.push(command.to_owned());
+                if command.contains("uname -s") {
+                    return Ok(says(FACTS));
+                }
+                if command.contains("ActiveEnterTimestampMonotonic") {
+                    return Ok(says(MORE_SAID));
+                }
+                Ok(Ran { status: Some(0), ..Ran::default() })
+            }
+            async fn run_bounded(&mut self, root: bool, command: &str, max_output: usize, max_line: usize, said: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
+                self.used_bounded = true;
+                assert_eq!((max_output, max_line), (4 * 1024 * 1024, 64 * 1024));
+                self.ran.push(command.to_owned());
+                let _ = (root, said);
+                Ok(self.look_ran.clone())
+            }
+            fn account(&self) -> Option<&str> {
+                self.account
+            }
+            fn rex_scope(&self) -> Option<crate::tune::RexScope> {
+                self.scope
+            }
+        }
+
+        let user_out = "ram 65536000\nrex.v1.mode=user\nrex.v1.user=alice\nrex.v1.kept.system=0\nrex.v1.kept.user=0\nrex.v1.status.user=ok\n\
+            rex.v1.unit.user=/usr/bin/rex server run --log-format text\nrex.v1.loaded.user=/usr/bin/rex server run --log-format text\nrex.v1.stale.user=0\n";
+        let mut h = ScopedHost { scope: Some(crate::tune::RexScope::User), account: Some("alice"), look_ran: says(user_out), ran: Vec::new(), used_bounded: false };
+        let server = look(&mut h, false).await.unwrap();
+        assert!(h.used_bounded, "manage::look must use run_bounded for the tweaks probe");
+        let look_cmd = h.ran.iter().find(|c| c.contains("rex.v1.mode")).unwrap();
+        assert!(look_cmd.contains("OLO_REX_MODE=user") && look_cmd.contains("OLO_REX_USER=alice"), "{look_cmd}");
+        assert_eq!(server.tuning.as_ref().unwrap().rex_limits.scope, crate::tune::RexScope::User);
+
+        // Apply and Untune carry authoritative user mode & account.
+        h.ran.clear();
+        act(&mut h, &server, &Action::Tune(vec![crate::tune::Tune::RexLimits]), &mut |_| {}).await.unwrap();
+        let apply_cmd = h.ran.iter().find(|c| c.contains("_baked_mode=")).unwrap();
+        assert!(apply_cmd.contains("_baked_mode=user") && apply_cmd.contains("_baked_user=alice"), "{apply_cmd}");
+
+        h.ran.clear();
+        act(&mut h, &server, &Action::Untune(crate::tune::Tune::RexLimits), &mut |_| {}).await.unwrap();
+        let undo_cmd = h.ran.iter().find(|c| c.contains("rex_undo_one")).unwrap();
+        assert!(undo_cmd.contains("OLO_REX_MODE=user") && undo_cmd.contains("OLO_REX_USER=alice"), "{undo_cmd}");
+
+        // Shared runner refuses to act on a User-scoped tuning snapshot (scope mismatch).
+        let mut shared_h = ScopedHost { scope: Some(crate::tune::RexScope::Shared), account: Some("alice"), look_ran: says(user_out), ran: Vec::new(), used_bounded: false };
+        assert!(act(&mut shared_h, &server, &Action::Tune(vec![crate::tune::Tune::RexLimits]), &mut |_| {}).await.is_err());
+        assert!(act(&mut shared_h, &server, &Action::Untune(crate::tune::Tune::RexLimits), &mut |_| {}).await.is_err());
+        // Shared runner seeing a user-mode LOOK reply marks RexLimits unreadable!
+        let mismatched = look(&mut shared_h, false).await.unwrap();
+        let mt = mismatched.tuning.unwrap();
+        assert_eq!(mt.rex_limits.blocked.as_deref(), Some("Olo couldn’t read this host’s Rex service."));
+        assert!(!mt.of(crate::tune::Tune::RexLimits).kept);
+
+        // Truncated LOOK output marks RexLimits unreadable with kept=false.
+        let mut trunc_ran = says(&user_out.replace("rex.v1.kept.user=0", "rex.v1.kept.user=1"));
+        trunc_ran.truncated = true;
+        let mut trunc_h = ScopedHost { scope: Some(crate::tune::RexScope::User), account: Some("alice"), look_ran: trunc_ran, ran: Vec::new(), used_bounded: false };
+        let ts = look(&mut trunc_h, false).await.unwrap();
+        let tt = ts.tuning.unwrap();
+        assert_eq!(tt.rex_limits.blocked.as_deref(), Some("Olo couldn’t read this host’s Rex service."));
+        assert!(!tt.of(crate::tune::Tune::RexLimits).kept && !tt.short().contains(&crate::tune::Tune::RexLimits));
+
+        // Custom/unidentified socket (`rex_scope() == None`): LOOK skips Rex inspection & blocks; act refuses.
+        let mut custom_h = ScopedHost { scope: None, account: Some("alice"), look_ran: says("ram 65536000\n"), ran: Vec::new(), used_bounded: false };
+        let cs = look(&mut custom_h, false).await.unwrap();
+        let custom_look = custom_h.ran.iter().find(|c| c.contains("OLO_REX_MODE=")).unwrap();
+        assert!(custom_look.contains("OLO_REX_MODE=skip"), "{custom_look}");
+        assert!(cs.tuning.as_ref().unwrap().rex_limits.blocked.as_deref().is_some_and(|w| w.contains("custom Rex socket")));
+        assert!(act(&mut custom_h, &server, &Action::Tune(vec![crate::tune::Tune::RexLimits]), &mut |_| {}).await.is_err());
+        assert!(act(&mut custom_h, &server, &Action::Untune(crate::tune::Tune::RexLimits), &mut |_| {}).await.is_err());
+    }
+
+    /// Finding 14: an intermediate command failing inside one tweak in a
+    /// production `Action::Tune` batch MUST abort that tweak (`set -e`) and
+    /// make the batch exit non-zero naming that tweak, even when the next
+    /// tweak succeeds.
+    #[test]
+    fn batch_tune_fails_when_an_intermediate_command_inside_a_tweak_fails() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let comes = "ram 65536000\nMaxSessions 10\nopen files 1024\nDefaultLimitNOFILE 1024\nDefaultTasksMax 1000\n";
+        let server = Server { tuning: Some(crate::tune::Tuning::read(comes)), ..Server::default() };
+        let batch = Action::Tune(vec![crate::tune::Tune::Files, crate::tune::Tune::Sessions]).command(&server).unwrap();
+
+        let root = std::path::PathBuf::from(format!("/var/tmp/olo-rex-batch-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for d in ["bin", "etc/security/limits.d", "etc/systemd/system.conf.d", "etc/systemd/user.conf.d", "etc/systemd/logind.conf.d", "etc/ssh/sshd_config.d"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        std::fs::write(root.join("etc/ssh/sshd_config"), "Include /etc/ssh/sshd_config.d/*.conf\n").unwrap();
+        let write_bin = |name: &str, body: &str| {
+            let p = root.join("bin").join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        write_bin("sysctl", "echo 1048576");
+        // Intermediate command in Tune::Files fails (`daemon-reexec` exits 1),
+        // while `su` (the last command in Tune::Files) and `systemctl reload sshd` (Tune::Sessions) succeed!
+        write_bin("systemctl", "if [ \"$1\" = daemon-reexec ]; then echo 'reexec failed' >&2; exit 1; fi\nexit 0");
+        write_bin("su", "exit 0");
+        write_bin("sshd", "exit 0");
+
+        let rewritten = batch.replace("/etc/", &format!("{}/etc/", root.display()));
+        let path = format!("{}/bin:{}", root.display(), std::env::var("PATH").unwrap_or_default());
+        let out = std::process::Command::new("sh").args(["-c", &rewritten]).env("PATH", path).output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(!out.status.success(), "intermediate failure inside Tune::Files must fail the batch! stdout={stdout:?} stderr={stderr:?}");
+        assert!(stdout.contains("Rex: Couldn’t apply: Open files and tasks."), "must name failing tweak, got stdout={stdout:?} stderr={stderr:?}");
+        assert!(!stdout.contains("SSH sessions"), "succeeding second tweak must not be listed as failed: {stdout:?}");
+    }
+
+    /// Finding 22: Put Back's changes table lists and counts ONLY the Rex
+    /// limits whose value differs from what the unit file has without Olo's
+    /// drop-in, and avoids "you's" in personal-scope prose.
+    #[test]
+    fn put_back_rex_limits_lists_only_differing_values() {
+        use crate::tune::{Tune, Tuning};
+        let partial = "ram 65536000\nrex.v1.mode=user\nrex.v1.user=alice\nrex.v1.kept.system=0\nrex.v1.kept.user=1\nrex.v1.status.user=ok\n\
+            rex.v1.unit.user=/usr/bin/rex server run --max-windows 1024 --max-blocks 8192\n\
+            rex.v1.loaded.user=/usr/bin/rex server run --max-windows 1024 --max-panes 128 --max-sessions 128 --max-blocks 8192\n\
+            rex.v1.stale.user=0\n";
+        let server = Server { tuning: Some(Tuning::read(partial)), ..Server::default() };
+        let changes = Action::Untune(Tune::RexLimits).changes(&server).unwrap();
+        let names: Vec<(&str, &str, &str)> = changes
+            .iter()
+            .filter_map(|c| match c {
+                Change::Value { name, now, new, .. } => Some((name.as_str(), now.as_str(), new.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names, [("--max-panes", "128", "64"), ("--max-sessions", "128", "64")]);
+
+        // If all four values already equal the unit file's, no fake table is shown.
+        let same = "ram 65536000\nrex.v1.mode=user\nrex.v1.user=alice\nrex.v1.kept.system=0\nrex.v1.kept.user=1\nrex.v1.status.user=ok\n\
+            rex.v1.unit.user=/usr/bin/rex server run --max-windows 1024 --max-panes 128 --max-sessions 128 --max-blocks 8192\n\
+            rex.v1.loaded.user=/usr/bin/rex server run --max-windows 1024 --max-panes 128 --max-sessions 128 --max-blocks 8192\n\
+            rex.v1.stale.user=0\n";
+        let same_server = Server { tuning: Some(Tuning::read(same)), ..Server::default() };
+        assert_eq!(Action::Untune(Tune::RexLimits).changes(&same_server), None);
+
+        // User named "you" renders natural "your" rather than "you's".
+        let you_server = Server { tuning: Some(Tuning::read(&partial.replace("rex.v1.user=alice", "rex.v1.user=you"))), ..Server::default() };
+        let apply_text = Action::Tune(vec![Tune::RexLimits]).what(&you_server);
+        let undo_text = Action::Untune(Tune::RexLimits).what(&you_server);
+        assert!(apply_text.contains("Only your Rex server") && !apply_text.contains("you’s"), "{apply_text}");
+        assert!(undo_text.contains("Only your limit file") && !undo_text.contains("you’s"), "{undo_text}");
     }
 }

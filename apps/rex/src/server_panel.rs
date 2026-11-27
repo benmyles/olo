@@ -22,7 +22,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use olo_kit::{
-    Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
+    Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, metrics as m, px, style, theme,
     widgets::{AlertFrame, Button, Column, ColumnListView, ListModel, MenuField, StatusBar, StringView, TAB_HEIGHT, TabView, TextView, alert_title, button_row, divider_for, separator},
 };
 use olo_rex_client::manage::{Action, LogRange, Server, Service};
@@ -503,7 +503,7 @@ pub fn render_stage(
     Some(match &managed.stage {
         Stage::Confirm { action, choose } => {
             let warning = action.warning(server);
-            let what = action.what(server);
+            let what = action.what_on(server, Some(&managed.name));
             let costly = warning.is_some();
             // (An update says to what, where the repository said.)
             let title: SharedString = match (action, &server.newer) {
@@ -517,7 +517,22 @@ pub fn render_stage(
                 said.extend([gap(m::TIGHT), cost(olo_kit::words::of(warning).to_string())]);
             }
             if !what.is_empty() {
-                said.extend([gap(m::TIGHT), body(olo_kit::words::of(what).to_string())]);
+                if let Some((prose, cmd)) = what.split_once("\nTo restart: ") {
+                    let sp = f32::from(style::text_width(" ", style::PLAIN_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
+                    let restart_line = div()
+                        .w_full()
+                        .h(px(m::LABEL_ROW))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(sp))
+                        .child(StringView::new(olo_kit::words::tr("To restart:").to_owned()).height(m::LABEL_ROW))
+                        .child(StringView::new(cmd.to_owned()).mono(true).size(panels::COMMAND_SIZE).height(m::LABEL_ROW).beside(style::PLAIN_SIZE))
+                        .into_element();
+                    said.extend([gap(m::TIGHT), body(olo_kit::words::of(prose.to_owned()).to_string()), gap(m::TIGHT), restart_line]);
+                } else {
+                    said.extend([gap(m::TIGHT), body(olo_kit::words::of(what).to_string())]);
+                }
             }
             // Who, where somebody is to be chosen: the alert's title,
             // its words and what is run follow the choice.
@@ -554,24 +569,18 @@ pub fn render_stage(
             // (A change of the machine's settings: a table of each from
             // what it is to what it will be, where the action has one.)
             let changes = action.changes(server);
-            let changed = changes.as_ref().map_or(0, |lines| lines.iter().filter(|line| matches!(line, olo_rex_client::manage::Change::Value { .. })).count());
-            let over: String = match (command, action) {
-                (true, _) => olo_kit::tr!("Rex runs this as {}:", managed.root()).into(),
-                // (One of them is "this".)
-                (false, Action::Tune(_)) if changed == 1 => olo_kit::tr!("Rex sets this as {}:", managed.root()).into(),
-                (false, Action::Tune(_)) => olo_kit::tr!("Rex sets these as {}:", managed.root()).into(),
-                (false, Action::Untune(_)) if changed == 1 => olo_kit::tr!("Rex sets this back as {}:", managed.root()).into(),
-                (false, Action::Untune(_)) if changes.is_some() => olo_kit::tr!("Rex sets these back as {}:", managed.root()).into(),
-                (false, Action::Untune(_)) if lines.len() == 1 => olo_kit::tr!("Rex removes this as {}:", managed.root()).into(),
-                (false, Action::Untune(_)) => olo_kit::tr!("Rex removes these as {}:", managed.root()).into(),
-                (false, Action::Allow(_)) => olo_kit::tr!("Rex adds these entries to {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()).into(),
-                (false, _) => olo_kit::tr!("Rex changes {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()).into(),
-            };
+            let actor = confirm_actor(action, server, managed);
+            let over = confirm_over(command, action, &actor, changes.as_deref(), lines.len());
             let well = match &changes {
-                Some(changes) => panels::well(changes_table(changes)),
+                Some(changes) => changes_well(changes, in_tab, managed.confirm_id),
                 None => panels::well(panels::mono_lines(lines)),
             };
             said.extend([gap(m::SPACING), small(over).into_element(), gap(m::TIGHT - 2.0), well]);
+            if matches!(action, Action::Untune(olo_rex_client::tune::Tune::RexLimits)) && changes.is_some() {
+                let path = action.shown(server);
+                let paths = div().w_full().flex().flex_col().children(path.lines().map(|p| StringView::new(p.to_owned()).mono(true).size(panels::COMMAND_SIZE).dim(true).height(CHANGE_ROW)));
+                said.extend([gap(m::TIGHT), paths.into_element()]);
+            }
             // (The safe button is the one Return presses where
             // something ends by it: a server stopped under its
             // sessions. A change of settings can be put back, its
@@ -589,7 +598,7 @@ pub fn render_stage(
                 Action::Start(_) | Action::Stop(_) | Action::Restart(_) => olo_kit::tr!("Running systemctl as {}", managed.root()),
                 Action::Allow(_) | Action::Remove(_) => olo_kit::tr!("Changing {} as {}", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()),
                 Action::Join(_) | Action::Leave(_) => olo_kit::tr!("Changing the rex group as {}", managed.root()),
-                Action::Tune(_) | Action::Untune(_) => olo_kit::tr!("Changing the machine’s settings as {}", managed.root()),
+                Action::Tune(_) | Action::Untune(_) => olo_kit::tr!("Changing the machine’s settings as {}", confirm_actor(action, server, managed)),
             }
             .into(),
             Some(said.clone()),
@@ -611,20 +620,77 @@ pub fn render_stage(
     })
 }
 
+/// Who writes the settings on the host for `action`: the connected account
+/// for a personal-only Rex server limits change (written in that account's
+/// own config directory as that account), and root otherwise.
+fn confirm_actor(action: &Action, server: &Server, managed: &Managed) -> String {
+    use olo_rex_client::tune::{RexScope, Tune};
+    let personal_rex = matches!(action, Action::Untune(Tune::RexLimits)) || matches!(action, Action::Tune(kinds) if kinds.as_slice() == [Tune::RexLimits]);
+    if personal_rex
+        && server.tuning.as_ref().is_some_and(|t| t.rex_limits.scope == RexScope::User)
+        && let Some(acct) = server.tuning.as_ref().and_then(|t| t.rex_limits.user.as_deref()).or(managed.target.user.as_deref()).filter(|u| !u.is_empty() && *u != "root")
+    {
+        return format!("{acct}@{}", managed.target.host);
+    }
+    managed.root()
+}
+
+/// Caption over a confirmation's well, counting the settings in its
+/// table whenever more than one setting changes.
+fn confirm_over(command: bool, action: &Action, root: &str, changes: Option<&[olo_rex_client::manage::Change]>, lines_len: usize) -> String {
+    use olo_rex_client::tune::Tune;
+    let changed = changes.map_or(0, |lines| lines.iter().filter(|line| matches!(line, olo_rex_client::manage::Change::Value { .. })).count());
+    let shell_only = matches!(action, Action::Untune(Tune::Shell)) || matches!(action, Action::Tune(kinds) if kinds.as_slice() == [Tune::Shell]);
+    match (command, action) {
+        (true, _) => olo_kit::tr!("Rex runs this as {}:", root).into(),
+        // (One of them is "this".)
+        (false, Action::Tune(_)) if changed == 1 => olo_kit::tr!("Rex sets this as {}:", root).into(),
+        (false, Action::Tune(_)) if changed > 1 && !shell_only => olo_kit::tr!("Rex sets these {} settings as {}:", changed, root).into(),
+        (false, Action::Tune(_)) => olo_kit::tr!("Rex sets these as {}:", root).into(),
+        (false, Action::Untune(_)) if changed == 1 => olo_kit::tr!("Rex sets this back as {}:", root).into(),
+        (false, Action::Untune(_)) if changed > 1 && !shell_only => olo_kit::tr!("Rex sets these {} settings back as {}:", changed, root).into(),
+        (false, Action::Untune(_)) if changes.is_some() => olo_kit::tr!("Rex sets these back as {}:", root).into(),
+        (false, Action::Untune(_)) if lines_len == 1 => olo_kit::tr!("Rex removes this as {}:", root).into(),
+        (false, Action::Untune(_)) => olo_kit::tr!("Rex removes these as {}:", root).into(),
+        (false, Action::Allow(_)) => olo_kit::tr!("Rex adds these entries to {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, root).into(),
+        (false, _) => olo_kit::tr!("Rex changes {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, root).into(),
+    }
+}
+
 /// From the column of what a setting is now to the column of what it
-/// will be; and how tall a line of the table is.
+/// will be; how tall a line of the table is; and the tallest a
+/// confirmation's table of changes may grow before scrolling inside its
+/// well (chosen so the bottom edge bisects a row in half, never looking
+/// complete when more rows lie below).
 const NOW_TO_NEW: f32 = 24.0;
 const CHANGE_ROW: f32 = 14.0;
+const CHANGES_SCROLL_AT: usize = 15;
+const CHANGES_MAX_H: f32 = 237.0;
 
-/// What a change of the machine's settings changes, in its question's
-/// well: each setting from what it is to what it will be, under "Now"
-/// and "New", the two columns at the well's right edge. A tweak's own
-/// name and the head are words, in the window's face; a setting's name
-/// as the host has it and its values are in the fixed-width one, a
-/// step in under their tweak's name. Amounts end at their column's
-/// right edge; words and paths begin at its left (a table of one or of
-/// the other, never by the line).
-fn changes_table(changes: &[olo_rex_client::manage::Change]) -> Element {
+/// Returns the [`ScrollHandle`] for the current confirmation in the Server
+/// window (`in_tab = false`) or Tweaks tab (`in_tab = true`), retained
+/// across redraws of the same question and reset to a fresh handle at the
+/// top whenever a new confirmation (`confirm_id`) opens.
+fn changes_scroll(in_tab: bool, confirm_id: u64) -> olo_kit::ScrollHandle {
+    thread_local! {
+        static SCROLLS: std::cell::RefCell<[(u64, olo_kit::ScrollHandle); 2]> =
+            std::cell::RefCell::new([(u64::MAX, olo_kit::ScrollHandle::new()), (u64::MAX, olo_kit::ScrollHandle::new())]);
+    }
+    SCROLLS.with(|cell| {
+        let mut slots = cell.borrow_mut();
+        let slot = &mut slots[usize::from(in_tab)];
+        if slot.0 != confirm_id {
+            *slot = (confirm_id, olo_kit::ScrollHandle::new());
+        }
+        slot.1.clone()
+    })
+}
+
+/// The sunken well holding what a change of settings changes: a plain
+/// `panels::well` when every row fits, and a flush-scrollbar scroll well
+/// with an opaque pinned Now / New header and hairline divider across
+/// the well's whole inner width when it scrolls.
+fn changes_well(changes: &[olo_rex_client::manage::Change], in_tab: bool, confirm_id: u64) -> Element {
     use olo_rex_client::manage::Change;
     let mono = style::mono_font(olo_kit::FontWeight::NORMAL);
     // (What the host has, as it has it: a number, a path. Anything else
@@ -641,8 +707,29 @@ fn changes_table(changes: &[olo_rex_client::manage::Change]) -> Element {
     let head_wide = |text: &'static str| f32::from(style::text_width(olo_kit::words::tr(text).to_owned(), style::DETAIL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL))).ceil() + 1.0;
     let values = || changes.iter().filter_map(|line| if let Change::Value { now, new, number, .. } = line { Some((now.as_str(), new.as_str(), *number)) } else { None });
     let right = values().any(|(_, _, number)| number);
-    let now_wide = values().map(|(now, _, _)| wide(now)).fold(head_wide("Now"), f32::max);
-    let new_wide = values().map(|(_, new, _)| wide(new)).fold(head_wide("New"), f32::max);
+    let has_rex_limits = changes.iter().any(|line| matches!(line, Change::Value { name, plain: false, .. } if olo_rex_client::tune::rex_limit_note(name).is_some()));
+    let mut now_wide = values().map(|(now, _, _)| wide(now)).fold(head_wide("Now"), f32::max);
+    let mut new_wide = values().map(|(_, new, _)| wide(new)).fold(head_wide("New"), f32::max);
+    if has_rex_limits && changes.len() <= CHANGES_SCROLL_AT {
+        // Keep Now and New at one fixed width across all four Rex confirmation
+        // sheets so the columns never shift between Apply and Put Back.
+        now_wide = now_wide.max(56.0);
+        new_wide = new_wide.max(56.0);
+    }
+    let note_flag_wide = if has_rex_limits {
+        let min_flag = f32::from(style::text_width("--max-sessions", panels::COMMAND_SIZE, mono.clone())).ceil() + 1.0;
+        changes
+            .iter()
+            .filter_map(|line| match line {
+                Change::Value { name, plain: false, .. } if olo_rex_client::tune::rex_limit_note(name).is_some() => {
+                    Some(f32::from(style::text_width(name.clone(), panels::COMMAND_SIZE, mono.clone())).ceil() + 1.0)
+                }
+                _ => None,
+            })
+            .fold(min_flag, f32::max)
+    } else {
+        0.0
+    };
     let cell = move |text: StringView, wide: f32| {
         let cell = div().w(px(wide)).flex_shrink_0().flex().flex_row();
         if right { cell.justify_end().child(text) } else { cell.child(text) }
@@ -675,7 +762,8 @@ fn changes_table(changes: &[olo_rex_client::manage::Change]) -> Element {
     };
     let key = |text: &str| StringView::new(text.to_owned()).mono(true).size(panels::COMMAND_SIZE);
     let apart = || div().h(px(4.0)).flex_shrink_0().into_element();
-    let mut rows = vec![line(div(), words("Now").dim(true), words("New").dim(true)), apart()];
+    let header = line(div(), words("Now").dim(true), words("New").dim(true));
+    let mut rows = Vec::new();
     for (i, change) in changes.iter().enumerate() {
         match change {
             Change::Group(name) => {
@@ -690,17 +778,84 @@ fn changes_table(changes: &[olo_rex_client::manage::Change]) -> Element {
                 if *plain && !*inside && i > 0 {
                     rows.push(apart());
                 }
-                // (A setting's name the host has no one word for, "open
-                // files", is words too.)
-                let name = if *plain || name.contains(' ') { words(name) } else { key(name) }.cut(true);
-                rows.push(line(div().pl(px(if *inside { 12.0 } else { 0.0 })).child(name), value(now), value(new)));
+                let name_el = if !*plain && let Some(note) = olo_rex_client::tune::rex_limit_note(name) {
+                    div()
+                        .w_full()
+                        .h(px(row))
+                        .pl(px(if *inside { 12.0 } else { 0.0 }))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(20.0))
+                        .child(div().w(px(note_flag_wide)).flex_shrink_0().child(key(name).height(row).beside(style::DETAIL_SIZE)))
+                        .child(div().flex_1().min_w_0().child(words(note).dim(true).height(row).cut(true)))
+                        .into_element()
+                } else {
+                    // (A setting's name the host has no one word for, "open
+                    // files", is words too.)
+                    let name = if *plain || name.contains(' ') { words(name) } else { key(name) }.cut(true);
+                    div().pl(px(if *inside { 12.0 } else { 0.0 })).child(name).into_element()
+                };
+                rows.push(line(name_el, value(now), value(new)));
             }
             Change::Note(said) => rows.push(div().w_full().h(px(row)).pl(px(12.0)).flex().flex_row().items_center().child(words(said).dim(true)).into_element()),
         }
     }
-    // (A well's own foot is nearer its last line's descenders than its
-    // head is to its first line: two points made up here.)
-    div().w_full().pb(px(2.0)).flex().flex_col().children(rows).into_element()
+    let scrolls = changes.len() > CHANGES_SCROLL_AT;
+    if !scrolls && !has_rex_limits {
+        // (A well's own foot is nearer its last line's descenders than its
+        // head is to its first line: two points made up here. Other non-scrolling
+        // tables stay as they were.)
+        return panels::well(div().w_full().pb(px(2.0)).flex().flex_col().child(header).child(apart()).children(rows).into_element());
+    }
+    // Header band over a 1 px rule across the well's whole inner width, with
+    // matching paddings (and a flush scrollbar when the table scrolls).
+    let s = olo_kit::scale_factor();
+    let bevel = style::line_pixels(s) * 2.0 / s;
+    let rule_h = style::line_pixels(s) / s;
+    let pad_x = (panels::WELL_INSET - bevel).max(0.0);
+    let head_top = (5.0 - bevel).max(0.0);
+    let well_fill = |p: &olo_theme::Palette| {
+        if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::BLACK, 0.28)) } else { style::tint(p.panel_background, 1.06) }
+    };
+    let back = canvas(move |g, b| {
+        let p = theme::palette();
+        style::fill_rect(g, b, well_fill(&p));
+    })
+    .paint_key(0)
+    .absolute()
+    .inset_0();
+    let head_bg = canvas(move |g, b| {
+        let p = theme::palette();
+        style::fill_rect(g, b, well_fill(&p));
+    })
+    .paint_key(0)
+    .absolute()
+    .inset_0();
+    let head_pr = if scrolls { olo_kit::widgets::SCROLL_BAR + panels::WELL_INSET } else { pad_x };
+    let head_strip = div().relative().w_full().child(head_bg).child(div().relative().w_full().pt(px(head_top)).pb(px(3.0)).pl(px(pad_x)).pr(px(head_pr)).child(header));
+    let rule = canvas(|g, b| {
+        let p = theme::palette();
+        style::hline(g, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.35));
+    })
+    .paint_key(0)
+    .w_full()
+    .h(px(rule_h))
+    .flex_shrink_0();
+    let body: Element = if scrolls {
+        let scroll = changes_scroll(in_tab, confirm_id);
+        let sv = olo_kit::widgets::ScrollView::new(&scroll).border(false).child(div().w_full().pt(px(4.0)).pb(px(6.0)).pl(px(pad_x)).pr(px(panels::WELL_INSET)).flex().flex_col().children(rows));
+        div().w_full().h(px(CHANGES_MAX_H)).flex().flex_col().child(sv).into_element()
+    } else {
+        div().w_full().pt(px(4.0)).pb(px(6.0)).pl(px(pad_x)).pr(px(pad_x)).flex().flex_col().children(rows).into_element()
+    };
+    let frame = canvas(|g, b| {
+        style::sunken(g, b, &theme::palette(), false);
+    })
+    .paint_key(0)
+    .absolute()
+    .inset_0();
+    div().relative().w_full().child(back).child(div().relative().w_full().p(px(bevel)).flex().flex_col().child(head_strip).child(rule).child(body)).child(frame).into_element()
 }
 
 /// What didn't go: in a few words, how things stand, and what the host
@@ -1057,5 +1212,59 @@ mod tests {
         assert_eq!(line.fract(), 0.0);
         assert_eq!((log_room() - 2.0 * TextView::MARGINS.1 - olo_kit::widgets::SCROLL_BAR) / line, LOG_LINES);
         assert_eq!(frame_height() - page_height(), 4.0 * m::WINDOW_INSET + TAB_HEIGHT);
+    }
+
+    #[test]
+    fn confirm_caption_counts_settings_from_the_table() {
+        use olo_rex_client::manage::Change;
+        use olo_rex_client::tune::Tune;
+        let val = |name: &str| Change::Value { name: name.into(), now: "1".into(), new: "2".into(), plain: false, inside: false, number: true };
+        let one = [val("MaxSessions")];
+        assert_eq!(confirm_over(false, &Action::Tune(vec![Tune::Sessions]), "root@dev-box.example", Some(&one), 1), "Rex sets this as root@dev-box.example:");
+        let four = [val("--max-windows"), val("--max-panes"), val("--max-sessions"), val("--max-blocks")];
+        assert_eq!(confirm_over(false, &Action::Tune(vec![Tune::RexLimits]), "root@dev-box.example", Some(&four), 4), "Rex sets these 4 settings as root@dev-box.example:");
+        assert_eq!(confirm_over(false, &Action::Untune(Tune::RexLimits), "root@dev-box.example", Some(&four), 2), "Rex sets these 4 settings back as root@dev-box.example:");
+        // Groups are not counted as settings.
+        let grouped = [Change::Group("A".into()), val("a"), val("b"), Change::Group("B".into()), val("c")];
+        assert_eq!(confirm_over(false, &Action::Tune(vec![Tune::Kernel, Tune::Memory]), "root@dev-box.example", Some(&grouped), 5), "Rex sets these 3 settings as root@dev-box.example:");
+        // Shell lists accounts rather than numeric settings.
+        assert_eq!(confirm_over(false, &Action::Untune(Tune::Shell), "root@dev-box.example", Some(&four), 2), "Rex sets these back as root@dev-box.example:");
+
+        // Finding 22: personal-only RexLimits Apply and Put Back name the account, not root
+        // (even under sudo), while shared RexLimits and multi-tweak batches keep root.
+        let mut user_managed = crate::server::demo("confirm-rex-user").unwrap();
+        let user_server = user_managed.server.as_ref().unwrap();
+        assert_eq!(confirm_actor(&Action::Tune(vec![Tune::RexLimits]), user_server, &user_managed), "alice@build.example");
+        assert_eq!(confirm_actor(&Action::Untune(Tune::RexLimits), user_server, &user_managed), "alice@build.example");
+        assert_eq!(confirm_actor(&Action::Tune(vec![Tune::Sessions, Tune::RexLimits]), user_server, &user_managed), "root@build.example");
+        user_managed.root_by = Some(olo_rex_client::provision::RootBy::Sudo);
+        assert_eq!(confirm_actor(&Action::Tune(vec![Tune::RexLimits]), user_server, &user_managed), "alice@build.example");
+        assert_eq!(confirm_actor(&Action::Tune(vec![Tune::Sessions]), user_server, &user_managed), "root, with sudo as alice");
+
+        let shared_managed = crate::server::demo("confirm-rex").unwrap();
+        let shared_server = shared_managed.server.as_ref().unwrap();
+        assert_eq!(confirm_actor(&Action::Tune(vec![Tune::RexLimits]), shared_server, &shared_managed), "root@build.example");
+        assert_eq!(confirm_actor(&Action::Untune(Tune::RexLimits), shared_server, &shared_managed), "root@build.example");
+
+        // Personal Put Back demo lists & counts only the 2 differing settings as alice@build.example.
+        let pb_user = crate::server::demo("confirm-put-back-rex-user").unwrap();
+        let pb_server = pb_user.server.as_ref().unwrap();
+        let pb_action = Action::Untune(Tune::RexLimits);
+        let pb_changes = pb_action.changes(pb_server).unwrap();
+        assert_eq!(pb_changes.len(), 2);
+        let pb_actor = confirm_actor(&pb_action, pb_server, &pb_user);
+        assert_eq!(confirm_over(false, &pb_action, &pb_actor, Some(&pb_changes), 1), "Rex sets these 2 settings back as alice@build.example:");
+    }
+
+    #[test]
+    fn each_confirmation_gets_its_own_scroll_handle_reset_at_top() {
+        let a1 = changes_scroll(true, 101);
+        let a2 = changes_scroll(true, 101);
+        assert_eq!(a1.id(), a2.id(), "redraws of the same confirmation keep one handle");
+        let b = changes_scroll(true, 102);
+        assert_ne!(a1.id(), b.id(), "a new confirmation gets a fresh handle");
+        assert_eq!(b.offset(), olo_kit::Point::default(), "a new confirmation starts at top");
+        let srv = changes_scroll(false, 102);
+        assert_ne!(b.id(), srv.id(), "Server window and Tweaks tab keep independent handles");
     }
 }

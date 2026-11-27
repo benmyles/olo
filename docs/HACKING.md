@@ -30469,7 +30469,7 @@ it persist across restarts, also Raise dirty page writeback thresholds
 rust builds etc"). They were a page of the Server window, Limits, and
 are a tab of the Host window since 2026-11-27 (Ben: "they really
 belong in manage host. please move those into a new tab in the manage
-host window called 'Tweaks'"), with two more. Seven kinds (`Tune`),
+host window called 'Tweaks'"), with three more. Eight kinds (`Tune`),
 each a few settings:
 - *SSH sessions*: `MaxSessions 1024`
   (`/etc/ssh/sshd_config.d/00-olo.conf`; tried with `sshd -t` before
@@ -30514,6 +30514,54 @@ each a few settings:
   last two only where the host reads such a folder, and neither keeps
   the rest from being applied. A host whose `/tmp` is on disk, or that
   says where already, is as the machine has it.
+- *Rex server limits* (Ben, 2026-11-27, of the Rex server's own
+  ceilings, when a session several agents' leads shared stood at 61
+  of its 64 tabs: "at least 2x what they are now"): `rex server run`'s
+  `--max-windows 512` (tabs in a session), `--max-panes 128`,
+  `--max-sessions 128`, `--max-blocks 4096`, where Rex's own are 64,
+  64, 64 and 1,024; `0` is no limit, and nothing already higher is
+  lowered (compared as decimal strings: a shell's numbers round past
+  2^53). They are the server's own, read when it starts: the tweak
+  writes a systemd drop-in that sets the server's command with them
+  (`90-olo-limits.conf`, known as Olo's by its first line), and **no
+  server is restarted**: restarting ends every tab's program, so the
+  row says what the running server has and what it will have ("applied,
+  512 tabs after Rex restarts"), a shared server's row links to the
+  Server window, a personal one's gives the command. **Olo writes
+  only where it is certain what the server's command is, asked of
+  systemd** (`systemctl show`: `LoadState`, `FragmentPath`,
+  `DropInPaths`, `ExecStart`, `NeedDaemonReload`, `User`): one
+  `ExecStart` of plain words that is `…/rex server run …`, in a unit
+  file of a usual place, no other drop-in setting the command, nothing
+  saved that systemd hasn't loaded, and the server's own program
+  saying it knows the four flags (asked as the service's own account
+  or `nobody`: nothing a unit names is ever run as root). Anything
+  else is a refusal in plain words with nothing written, and the row
+  reads "can't apply here" with the reason and no button. One scope a
+  change, and the connection says which: a shared server's file is
+  `/etc/systemd/system/rex.service.d/`; a personal server's is that
+  account's own, `~/.config/systemd/user/rex.service.d/`, written as
+  that account (never a file under `/etc/systemd/user`, which every
+  account's manager reads). Written beside its place and renamed,
+  under a lock that is never truncated, the manager reloaded and the
+  loaded command read back, and put back as it was on any failure;
+  Put Back checks the unit still has a command without Olo's file, or
+  leaves it. One inspection text serves the look and the change
+  (`rex_inspect_script!`), so they can't read a command two ways. The
+  look's answer comes as typed `rex.v1.*` records on its standard
+  output alone, bounded for this one probe (`run_bounded`: every other
+  caller of the SSH pool gets all of its output, as before); an answer
+  without complete records for the connection's scope offers nothing.
+  Tried as root in disposable systemd containers on Fedora 44 and
+  Debian (`rex_limits_enforced_by_systemd_in_a_container`, ignored
+  unless `OLO_TUNE_CONTAINER_IMAGE` names an image): an administrator's
+  own drop-in refused, a pending unit change refused, a plain apply
+  without the server restarted, its sessions kept across the restart,
+  the 512th tab opened and the 513th refused by Rex in its own words,
+  Put Back, a unit with `User=build` whose program is never run as
+  root, and two accounts, the second's own drop-in untouched. Three
+  rounds of both picture reviewers and two code reviews (25 findings,
+  then 25 more, "hold": what is left is in the TODO).
 - *Brush shell* (Ben: "add one for installing brush shell and making
   it the default for all users with an option to also change for all
   existing users"): brush's own static build for the machine

@@ -1944,7 +1944,7 @@ mod tests {
         async fn run(&mut self, root: bool, command: &str, _: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, crate::provision::Failed> {
             self.ran.push((root, command.to_owned()));
             let (status, output) = self.answers.iter().find(|(w, _, _)| command.contains(w)).map(|(_, s, o)| (*s, o.clone())).unwrap_or((0, String::new()));
-            Ok(crate::provision::Ran { status: Some(status), output })
+            Ok(crate::provision::Ran { status: Some(status), output: output.clone(), stdout: output, ..Default::default() })
         }
     }
 

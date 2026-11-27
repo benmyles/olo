@@ -978,6 +978,58 @@ something nobody here has is in "Blocked", with what it waits for.
     quoted; "a legend rendered across two rows also fails the one-line
     match". To check against a capture of the real box.
 
+- **Rex server limits (the Host window's tweak): left by its reviews**
+  (2026-11-27).
+  - The confirming code review (Astra 6.2, `/var/tmp/olo-reviews/
+    astra-27bf8eb640/astra-review.md`, 25 findings; fixed after it,
+    with no further review: its 1, 2, 3, 7, 8, 13, 14, 19, 22). Left,
+    in its words: 4, "A vendor `rex.service.d/90-olo-limits.conf` …
+    Installing Olo's same-named file under `/etc` shadows the entire
+    vendor file"; 5, "Two different argument vectors can pass the
+    exact-command check … Both `ExecStart` properties printed by
+    systemctl join argv with spaces"; 6, "A foreign file saved during
+    Apply or Put Back can be lost … Use a no-replace install for an
+    absent destination"; 9, "Rollback can lose the previous version
+    while saying it was restored … a full destination filesystem";
+    10, "`emit` replaces CR/LF with spaces and cuts every value at
+    12,000 characters"; 11, "A service with `RootDirectory=` or
+    `RootImage=` can see an older `/usr/bin/rex` than the host shell";
+    12, "A symlink at `~/.config` itself passes"; 15, "Refresh can
+    still lower a valid large ceiling" (mawk, two numbers past 2^53
+    of one length); 16, "the documented global `-v` and `-C`
+    shorthands can be clustered as `-vC`"; 17, "Confirmation does not
+    bind the command or the numbers that will be installed"; 18, "The
+    desktop's SSH bounds do not bound the remote inspection"; 20,
+    "The stale row misstates what is loaded and hides recovery"; 21,
+    23, 24, 25; and of the base, "The older SSH-session tweak
+    overwrites its fixed drop-in and deletes it if `sshd -t` fails. A
+    pre-existing site file at that path is lost."
+  - The reviewers' third look (Opus 5.5, Gemini 4 Neon: the layout
+    holds; eight points of words and the tables done after it). Left,
+    their words. Opus: "limits-blocked opens with a path and never
+    says what to raise … Put the words first and give the path its
+    own line … 'Suggested Limits…' opens confirm-rex's Now/New table
+    read-only"; "Two names for whoever writes the files … Use Olo
+    everywhere … and keep 'Rex' for the server" (every tweak's
+    caption, "Rex sets these N settings"); "limits-blocked uses the
+    'not applied yet' dot … draw it as a ring … 'set by this host'";
+    "Apply never names the file it writes"; "In the confirmation
+    tables, the jargon column is the loudest … Put the meaning first";
+    "In the light theme the amber dot reads brown" (the kit's);
+    elsewhere: "The confirmation sheets are pinned to the top of the
+    tab panel with about half of it empty below"; "The batch list cuts
+    through a row"; "The not-applied statuses are worded in different
+    ways". Gemini: "Low contrast on the `Server window` link in dark
+    mode" (the kit's link); "Row button vertical alignment: `Apply...`
+    and `Put Back...` sit closer to the top title line of each tweak
+    row than to the vertical centre".
+  - The pane's stream tests (`olo-screen-pane`) fail one run in three
+    under this host's load, a different one each time
+    (`review2_f16_drop_returns_immediately_and_cancels_blocked_writer`,
+    `backoff_gives_up_cleanly_and_screen_gone_ends_without_retry`):
+    barriers that are elapsed time (the review of the whole said so):
+    to make them wait on what they wait for.
+
 - **Left by the code review of `Request::OwnInput`** (Astra 6.2,
   2026-11-27, `/var/tmp/olo-reviews/astra-6e79d82c80/astra-review.md`,
   16 findings, "hold for fixes"; fixed: its 1, 2, 3 for another's

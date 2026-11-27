@@ -532,11 +532,21 @@ pub struct Ran {
     pub status: Option<u32>,
     /// What it wrote, both of its outputs, in order.
     pub output: String,
+    /// What it wrote to standard output alone (empty for stderr-only lines).
+    pub stdout: String,
+    /// Whether any output or line was clipped by a caller-requested bound
+    /// (`Runner::run_bounded`); always `false` for ordinary `run` calls.
+    pub truncated: bool,
 }
 
 impl Ran {
     pub fn ok(&self) -> bool {
         self.status == Some(0)
+    }
+
+    /// Standard output alone, never mixing in standard error lines.
+    pub fn stdout_only(&self) -> &str {
+        &self.stdout
     }
 }
 
@@ -569,6 +579,28 @@ impl std::fmt::Display for Failed {
 /// root. Each line a command writes goes to `said` as it comes.
 pub trait Runner {
     fn run(&mut self, root: bool, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> impl std::future::Future<Output = Result<Ran, Failed>> + Send;
+
+    /// Runs `command` with explicit output and single-line caps, setting
+    /// [`Ran::truncated`] if any byte is dropped. Used solely by
+    /// [`crate::manage::look`]'s tweaks probe so every other caller stays
+    /// unbounded.
+    fn run_bounded(&mut self, root: bool, command: &str, _max_output: usize, _max_line: usize, said: &mut (dyn FnMut(&str) + Send)) -> impl std::future::Future<Output = Result<Ran, Failed>> + Send {
+        self.run(root, command, said)
+    }
+
+    /// The account Rex connects as on this host, if known: carried through
+    /// root elevation so per-user service checks ask that account's manager.
+    fn account(&self) -> Option<&str> {
+        None
+    }
+
+    /// Which Rex server this connection targets: `Some(Shared)` for the
+    /// shared server socket (`/run/rex/server.sock`), `Some(User)` for the
+    /// account's own personal server (no custom socket path), or `None` for
+    /// a custom/unidentified socket endpoint.
+    fn rex_scope(&self) -> Option<crate::tune::RexScope> {
+        None
+    }
 
     /// Root's connection is let go of: what is run next signs in
     /// anew. For looking at what only a new sign-in is given (its
@@ -645,6 +677,30 @@ impl Runner for OverSsh {
             crate::error::RexError::SshRefused(who) => Failed { refused: true, cant: false, why: format!("{who} let nobody in with the keys offered") },
             other => Failed { why: other.to_string(), ..Failed::default() },
         })
+    }
+
+    async fn run_bounded(&mut self, root: bool, command: &str, max_output: usize, max_line: usize, said: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
+        let (target, command) = match (root, self.root_by) {
+            (true, RootBy::Login) => (self.target.as_root(self.root_key.clone()), command.to_owned()),
+            (true, RootBy::Sudo) => (self.target.clone(), by_sudo(command)),
+            (false, _) => (self.target.clone(), as_account(command)),
+        };
+        self.pool.exec_bounded(&target, self.askpass.clone(), &command, max_output, max_line, said).await.map_err(|e| match e {
+            crate::error::RexError::SshRefused(who) => Failed { refused: true, cant: false, why: format!("{who} let nobody in with the keys offered") },
+            other => Failed { why: other.to_string(), ..Failed::default() },
+        })
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.target.user.as_deref()
+    }
+
+    fn rex_scope(&self) -> Option<crate::tune::RexScope> {
+        match self.target.socket_path.as_deref() {
+            Some(SHARED_SOCKET) => Some(crate::tune::RexScope::Shared),
+            None => Some(crate::tune::RexScope::User),
+            Some(_) => None,
+        }
     }
 
     async fn afresh(&mut self) {
@@ -1067,33 +1123,35 @@ mod tests {
             }
             if !root && command == "sudo -n true" {
                 self.ran.push((root, command.to_owned()));
-                return Ok(if self.sudo { Ran { status: Some(0), output: String::new() } } else { Ran { status: Some(1), output: "sudo: a password is required\n".into() } });
+                return Ok(if self.sudo { Ran { status: Some(0), ..Ran::default() } } else { Ran { status: Some(1), output: "sudo: a password is required\n".into(), ..Ran::default() } });
             }
             if command.starts_with("sh -c '") && !self.says.is_empty() {
                 let says = if self.says.len() > 1 { self.says.remove(0) } else { self.says[0].clone() };
-                return Ok(Ran { status: Some(0), output: says });
+                return Ok(Ran { status: Some(0), output: says.clone(), stdout: says, ..Ran::default() });
             }
             self.ran.push((root, command.to_owned()));
             if command.starts_with("journalctl ") {
-                return Ok(Ran { status: Some(if self.journal.is_some() { 0 } else { 1 }), output: self.journal.unwrap_or("No journal files were found.").to_owned() });
+                let text = self.journal.unwrap_or("No journal files were found.").to_owned();
+                return Ok(Ran { status: Some(if self.journal.is_some() { 0 } else { 1 }), output: text.clone(), stdout: text, ..Ran::default() });
             }
             if let Some(why) = self.wont_start.filter(|_| command.starts_with("systemctl enable --now ")) {
                 said(why);
-                return Ok(Ran { status: Some(1), output: format!("{why}\n") });
+                return Ok(Ran { status: Some(1), output: format!("{why}\n"), ..Ran::default() });
             }
             if let Some(why) = self.fails.filter(|_| !command.starts_with("if [ -e") && command.contains("apt-get")) {
                 said(why);
-                return Ok(Ran { status: Some(1), output: format!("{why}\n") });
+                return Ok(Ran { status: Some(1), output: format!("{why}\n"), ..Ran::default() });
             }
             if command.starts_with("if [ -e /etc/rex/accounts.jsonc ]") {
-                return Ok(Ran { status: Some(0), output: self.accounts.as_deref().map(|text| B64.encode(text)).unwrap_or_default() });
+                let out = self.accounts.as_deref().map(|text| B64.encode(text)).unwrap_or_default();
+                return Ok(Ran { status: Some(0), output: out.clone(), stdout: out, ..Ran::default() });
             }
             if let Some(rest) = command.strip_prefix("umask 022 && mkdir -p /etc/rex && printf %s ") {
                 let encoded = rest.split_whitespace().next().unwrap().trim_matches('\'');
                 self.accounts = Some(String::from_utf8(B64.decode(encoded).unwrap()).unwrap());
             }
             said("done");
-            Ok(Ran { status: Some(0), output: "done\n".into() })
+            Ok(Ran { status: Some(0), output: "done\n".into(), stdout: "done\n".into(), ..Ran::default() })
         }
     }
 
@@ -1244,14 +1302,14 @@ mod tests {
         let mut host = Host { fails: Some("E: Unable to locate package rex"), ..Default::default() };
         let why = block(carry_out(&mut host, &root("", "", "apt-get install rex"), &mut |_| {})).unwrap_err();
         assert_eq!(why, Failed { why: "E: Unable to locate package rex".into(), ..Failed::default() });
-        assert_eq!(failure(&Ran { status: Some(3), output: String::new() }), "it ended with status 3");
-        assert_eq!(failure(&Ran { status: None, output: "half\n".into() }), "the connection ended before it finished (half)");
+        assert_eq!(failure(&Ran { status: Some(3), ..Ran::default() }), "it ended with status 3");
+        assert_eq!(failure(&Ran { status: None, output: "half\n".into(), stdout: "half\n".into(), ..Ran::default() }), "the connection ended before it finished (half)");
         // The probe, asked through a runner.
         struct Says(&'static str);
         impl Runner for Says {
             async fn run(&mut self, _: bool, command: &str, _: &mut (dyn FnMut(&str) + Send)) -> Result<Ran, Failed> {
                 assert!(command.starts_with("sh -c '"));
-                Ok(Ran { status: Some(0), output: self.0.to_owned() })
+                Ok(Ran { status: Some(0), output: self.0.to_owned(), stdout: self.0.to_owned(), ..Ran::default() })
             }
         }
         assert_eq!(block(probe(&mut Says(BARE), false)).unwrap().user, "alice");

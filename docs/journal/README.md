@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### Rex server limits: what will change, and for whom
+
+*15:55* — The confirmation for a shared server says that everyone on the host shares it and that a restart ends the programs in everyone's tabs; a personal server's says whose it is and gives the command to restart it.
+
+![Rex server limits: what will change, and for whom](2026-11-27/155545-rex-server-limits-what-will-change-and-for-whom.png)
+
+### Rex's Host window: Rex server limits in Tweaks
+
+*15:55* — A tweak that raises a Rex server's own limits (512 tabs a session, 128 panes, 128 sessions, 4,096 blocks; Rex's are 64, 64, 64, 1,024) by a systemd drop-in, written only where Olo is certain of the server's command. No server is restarted: the row says what it has now and what it will have. Ben: 'at least 2x what they are now'.
+
+![Rex's Host window: Rex server limits in Tweaks](2026-11-27/155545-rex-s-host-window-rex-server-limits-in-tweaks.png)
+
 ### Deskbar's Inbox: what was cleared, and Undo
 
 *13:28* — After Clear All the card says how many went, for eight seconds, with Undo: the service puts back exactly that batch.

@@ -641,27 +641,101 @@ fn section(title: &'static str) -> Element {
 }
 
 /// On Tweaks: from a tweak's reason to the next tweak's line, and how
-/// tall a reason is at least (its one line, in whole points: at 14.5
-/// the rows stood 50 and 51 device pixels apart by turns at 1×). A
-/// reason is set right under its line (19 points from the name's
-/// baseline to its own, 28 on to the next name's), so each tweak reads
-/// as one thing: at three nearly equal steps the page was an even
-/// stack of lines (Opus's look, 2026-11-27).
-const ROW_GAP: f32 = 8.0;
-const ROW_REASON: f32 = 15.0;
-/// On Tweaks: from a section's foot (its button, or its last reason)
-/// to the next section's heading: 24 points to the heading's cap top,
-/// as on the window's other tabs, with the button or without (it was
-/// 19 with and 33 without). And from a section's last reason to its
-/// own button: hung close under it, the section's foot and no part of
-/// the next (it stood as far from the one as from the other: Opus's
-/// look).
-const SECTION_GAP: f32 = 20.0;
-const SECTION_FOOT: f32 = 5.0;
-/// On Tweaks: the most lines a question's table of changes has room for
-/// in the panel (with the question's words over it and its buttons
-/// under it).
-const LONGEST_TABLE: usize = 19;
+/// tall a reason is (14 pt exact, matching `m::CONTROL_HEIGHT = 24 pt`
+/// so every row's pitch is `24 + 14 + 6 = 44 pt`, a whole pixel count
+/// at 1×, 1.25×, 1.5×, 1.75× and 2×: 44, 55, 66, 77, 88 px).
+const ROW_GAP: f32 = 6.0;
+const ROW_REASON: f32 = 14.0;
+/// On Tweaks: from Heavy work's last reason to Sign-in shell's 24 pt
+/// heading box (whose cap top sits 8 pt down -> 24 pt to the heading's
+/// cap top, matching the window's other tabs).
+const SECTION_GAP: f32 = 16.0;
+/// The seven tweaks under "Heavy work" (Brush shell is in its own
+/// section below).
+pub(crate) const HEAVY_WORK: [olo_rex_client::tune::Tune; 7] = [
+    olo_rex_client::tune::Tune::Sessions,
+    olo_rex_client::tune::Tune::Files,
+    olo_rex_client::tune::Tune::Kernel,
+    olo_rex_client::tune::Tune::Writeback,
+    olo_rex_client::tune::Tune::Memory,
+    olo_rex_client::tune::Tune::TempFiles,
+    olo_rex_client::tune::Tune::RexLimits,
+];
+
+/// Heavy-work tweaks that can be applied on this host. "Apply Suggested…"
+/// is offered only when two or more rows can be applied (one row's own
+/// Apply… is the same thing).
+pub(crate) fn tweaks_suggested(tuning: &olo_rex_client::tune::Tuning) -> Vec<olo_rex_client::tune::Tune> {
+    tuning.short().into_iter().filter(|kind| HEAVY_WORK.contains(kind)).collect()
+}
+
+/// Plain-word amount for one Rex server limit value ("512 tabs", "1 tab",
+/// "no limit on tabs").
+fn rex_limit_amount(flag: &str, value: u64) -> String {
+    use olo_rex_client::tune::said;
+    let (singular, plural, none) = match flag {
+        "--max-windows" => ("1 tab", "{} tabs", "no limit on tabs"),
+        "--max-panes" => ("1 pane", "{} panes", "no limit on panes"),
+        "--max-sessions" => ("1 session", "{} sessions", "no limit on sessions"),
+        _ => ("1 block", "{} blocks", "no limit on blocks"),
+    };
+    if value == u64::MAX {
+        olo_kit::words::tr(none).into()
+    } else if value == 1 {
+        olo_kit::words::tr(singular).into()
+    } else {
+        olo_kit::words::tr(plural).replace("{}", &said(flag, value))
+    }
+}
+
+/// Plain-word waiting-for-restart status for [`Tune::RexLimits`]: names the
+/// state first (`applied` or `put back`) followed by what holds after Rex
+/// restarts (`applied, 512 tabs after Rex restarts` / `put back, 64 tabs after Rex restarts`).
+fn pending_restart_status(kept: bool, running: olo_rex_client::tune::RexLimitValues, configured: olo_rex_client::tune::RexLimitValues) -> String {
+    let state = olo_kit::words::tr(if kept { "applied" } else { "put back" });
+    let next_said = if running.windows != configured.windows {
+        rex_limit_amount("--max-windows", configured.windows)
+    } else if running.panes != configured.panes {
+        rex_limit_amount("--max-panes", configured.panes)
+    } else if running.sessions != configured.sessions {
+        rex_limit_amount("--max-sessions", configured.sessions)
+    } else {
+        rex_limit_amount("--max-blocks", configured.blocks)
+    };
+    olo_kit::tr!("{}, {} after Rex restarts", state, next_said).into()
+}
+
+/// How one tweak's line stands in the Tweaks tab: its light and its
+/// status words (after the dot beside the tweak's name).
+pub(crate) fn tweak_state(tuning: &olo_rex_client::tune::Tuning, tune: olo_rex_client::tune::Tune) -> (Light, String) {
+    use olo_rex_client::tune::{Tune, said};
+    let stands = tuning.of(tune);
+    let short: Vec<_> = stands.values.iter().filter(|v| !v.met()).collect();
+    if tune == Tune::RexLimits && tuning.rex_limits.blocked.is_some() {
+        return (Light::Off, olo_kit::words::tr("can’t apply here").into());
+    }
+    if tune == Tune::RexLimits && tuning.rex_limits.stale {
+        return (Light::Waiting, olo_kit::words::tr("no longer applied").into());
+    }
+    if tune == Tune::RexLimits
+        && let Some((running, configured)) = tuning.rex_limits_pending_restart()
+    {
+        return (Light::Waiting, pending_restart_status(stands.kept, running, configured));
+    }
+    match (tune, short.as_slice()) {
+        (_, []) if stands.kept => (Light::On, olo_kit::words::tr("applied").into()),
+        (_, []) => (Light::On, olo_kit::words::tr("as the machine has it").into()),
+        (Tune::Shell, _) if tuning.brush_there => (Light::Off, olo_kit::words::tr("installed, not what new accounts are given").into()),
+        (Tune::Shell, _) => (Light::Off, olo_kit::words::tr("not installed").into()),
+        (Tune::RexLimits, [first, ..]) => {
+            let now_said = first.now.map_or_else(|| "?".to_owned(), |now| rex_limit_amount(first.name, now));
+            (Light::Off, olo_kit::tr!("{} now, {} suggested", now_said, said(first.name, first.wanted)).into())
+        }
+        (_, [one]) if stands.values.len() == 1 => (Light::Off, olo_kit::tr!("{} now, {} suggested", one.now.map_or("?".to_owned(), |now| said(one.name, now)), said(one.name, one.wanted)).into()),
+        (_, all) if all.len() == stands.values.len() => (Light::Off, olo_kit::tr!("{} settings to change", all.len()).into()),
+        (_, some) => (Light::Off, olo_kit::tr!("{} of {} settings to change", some.len(), stands.values.len()).into()),
+    }
+}
 
 /// The Tweaks tab's page, and whether it fills the tab's panel to its
 /// frame: the machine's own settings, as root found them
@@ -688,7 +762,7 @@ fn tweaks_page(host: &HostStands, managed: bool, tweaks: Option<&crate::server::
     use crate::server::Stage;
     use crate::server_panel::ServerDo;
     use olo_rex_client::manage::Action;
-    use olo_rex_client::tune::{Tune, said};
+    use olo_rex_client::tune::Tune;
     let ask = |what: ServerDo| HostDo::Tweak(what);
     // (At least as wide as the window's column of buttons, whose right
     // edge it ends at: "Apply Suggested…" and "Read Settings" are a
@@ -699,33 +773,54 @@ fn tweaks_page(host: &HostStands, managed: bool, tweaks: Option<&crate::server::
         let on_do = on_do.clone();
         Button::new(label).id(id.to_owned()).min_width(wide).enabled(enabled).on_click(move |_, cx| on_do(&what, cx))
     };
-    let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
+    let reason_text = |text: String| {
+        let p = olo_kit::theme::palette();
+        div().w_full().text_size(px(style::SMALL_SIZE)).line_height(px(ROW_REASON)).text_color(style::secondary_text(&p)).child(text).into_element()
+    };
     let gap = |h: f32| div().h(px(h)).flex_shrink_0().into_element();
     let under = panels::LIGHT + m::TIGHT;
     let short_of = wide + m::SECTION;
     // A line of the page, in the window's own grammar: its light, its
     // name, how it stands after a dot, its button in the window's
-    // column; and its reason right under it.
-    let line = |lamp: Light, name: String, state: Option<String>, action: Option<Button>, reason: String| {
+    // column; and its reason right under it. The title row is fixed at
+    // 24 pt and a single-line reason at 14 pt (`24 + 14 + 6 = 44 pt`
+    // pitch, whole pixels at all five scales).
+    let line = |lamp: Light, name: String, state: Option<String>, action: Option<Button>, reason: Element, span_full: bool| {
         let mut words = div().flex_1().min_w_0().flex().flex_row().items_center().gap(px(m::TIGHT)).child(panels::light(lamp)).child(StringView::new(name));
         if let Some(state) = state {
             words = words.child(div().flex_1().min_w_0().child(StringView::new(format!("·  {state}")).dim(true).cut(true)));
         }
-        // (As tall as a button, with one or without: one pitch down the page.)
-        let mut row = div().w_full().min_h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().gap(px(m::SPACING)).child(words);
+        // (Fixed at a control's 24 pt height, with a button or without: one exact pitch down the page.)
+        let mut row = div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().gap(px(m::SPACING)).child(words);
         let buttoned = action.is_some();
         if let Some(action) = action {
             row = row.child(action);
         }
         // (Short of the buttons' column where the line has a button; to
-        // the page's edge where it has none.)
-        let why = div().w_full().min_h(px(ROW_REASON)).pl(px(under)).pr(px(if buttoned { short_of } else { 0.0 })).child(small(reason));
+        // the page's edge where it has none or carries a full-width
+        // single-line restart instruction beneath the button row.)
+        let why = div().w_full().min_h(px(ROW_REASON)).pl(px(under)).pr(px(if buttoned && !span_full { short_of } else { 0.0 })).child(reason);
         div().w_full().flex().flex_col().child(row).child(why).into_element()
     };
-    let titled = |title: &'static str, under: Vec<Element>| div().w_full().flex().flex_col().child(section(title)).child(gap(m::TIGHT)).children(under).into_element();
-    let page = |sections: Vec<Element>| div().w_full().p(px(m::SPACING)).flex().flex_col().children(sections).into_element();
-    let nothing =
-        |name: &'static str, reason: String, action: Option<Button>| (page(vec![titled("Settings", vec![line(Light::Off, olo_kit::words::tr(name).to_string(), None, action, reason)])]), false);
+    // Both sections share one 24 pt heading line with 4 pt clear above
+    // the rule so "Apply Suggested…" sits centred on "Heavy work" and
+    // hiding it moves nothing.
+    let tweak_section = |title: &'static str, action: Option<Button>| {
+        let mut head = div().w_full().h(px(m::CONTROL_HEIGHT)).flex().flex_row().items_center().child(div().flex_1().min_w_0().child(StringView::new(title).bold(true).height(m::CONTROL_HEIGHT)));
+        if let Some(action) = action {
+            head = head.child(action);
+        }
+        div().w_full().flex().flex_col().child(head).child(gap(4.0)).child(separator()).into_element()
+    };
+    let titled =
+        |title: &'static str, action: Option<Button>, under: Vec<Element>| div().w_full().flex().flex_col().child(tweak_section(title, action)).child(gap(m::TIGHT)).children(under).into_element();
+    // (Top and bottom inset 4 pt less because the 24 pt heading row centres
+    // its 16 pt text 4 pt lower, keeping the first heading text level with
+    // other tabs and keeping Tweaks within the other tabs' height at every scale.)
+    let page = |sections: Vec<Element>| div().w_full().py(px(m::SPACING - 4.0)).px(px(m::SPACING)).flex().flex_col().children(sections).into_element();
+    let nothing = |name: &'static str, reason: String, action: Option<Button>| {
+        (page(vec![titled("Settings", None, vec![line(Light::Off, olo_kit::words::tr(name).to_string(), None, action, reason_text(reason), false)])]), false)
+    };
     if !managed {
         return nothing("Not reached over SSH", olo_kit::tr!("Rex changes a machine’s settings as root, over SSH. Olo reaches {} another way.", host.name).into(), None);
     }
@@ -779,64 +874,75 @@ fn tweaks_page(host: &HostStands, managed: bool, tweaks: Option<&crate::server::
         let on_do = on_do.clone();
         move |i: &usize, cx: &mut WindowCx| on_do(&HostDo::TweakKey(*i), cx)
     };
-    // (A question whose table is longer than the panel has room for is a
-    // page like the list, which the window grows to: in the panel to
-    // its frame its buttons would be cut by the frame. All that the
-    // demo's machine is short of is nineteen lines, and fits.)
-    let long = match (&tweaks.stage, tweaks.server.as_ref()) {
-        (Stage::Confirm { action, .. }, Some(server)) => action.changes(server).is_some_and(|lines| lines.len() > LONGEST_TABLE),
-        _ => false,
-    };
     if let Some(stage) = crate::server_panel::render_stage(tweaks, phase, width, true, extra, &wrap, &stage_button, on_key, |_: &usize, _: &mut WindowCx| {}) {
-        return if long { (div().w_full().flex().flex_col().child(stage).into_element(), false) } else { (stage, true) };
+        return (stage, true);
     }
     let Some(tuning) = tweaks.server.as_ref().and_then(|server| server.tuning.as_ref()) else {
         return nothing("Not read", olo_kit::tr!("{} didn’t say how it is set.", host.name).into(), Some(button("Try Again", "host-tweaks-read", ask(ServerDo::Again), true)));
     };
     // One tweak: how it stands, and what its button asks.
+    let space = f32::from(style::text_width(" ", style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
     let row = |tune: Tune| {
         let stands = tuning.of(tune);
-        let short: Vec<_> = stands.values.iter().filter(|v| !v.met()).collect();
-        // How it stands: applied; as the host has it by itself; or what
-        // is short (one setting: from what to what; several: how many
-        // of them; brush: whether it is there at all).
-        let (lamp, state): (Light, String) = match (tune, short.as_slice()) {
-            (_, []) if stands.kept => (Light::On, olo_kit::words::tr("applied").into()),
-            (_, []) => (Light::On, olo_kit::words::tr("as the machine has it").into()),
-            (Tune::Shell, _) if tuning.brush_there => (Light::Off, olo_kit::words::tr("installed, not what new accounts are given").into()),
-            (Tune::Shell, _) => (Light::Off, olo_kit::words::tr("not installed").into()),
-            (_, [one]) if stands.values.len() == 1 => (Light::Off, olo_kit::tr!("{} now, {} suggested", one.now.map_or("?".to_owned(), |now| said(one.name, now)), said(one.name, one.wanted)).into()),
-            (_, all) if all.len() == stands.values.len() => (Light::Off, olo_kit::tr!("{} settings to change", all.len()).into()),
-            (_, some) => (Light::Off, olo_kit::tr!("{} of {} settings to change", some.len(), stands.values.len()).into()),
-        };
+        let blocked = (tune == Tune::RexLimits).then(|| tuning.rex_limits.blocked.as_deref()).flatten();
+        let needs_apply = blocked.is_none() && (!stands.met() || (tune == Tune::RexLimits && tuning.rex_limits.stale));
+        let (lamp, state) = tweak_state(tuning, tune);
         let id = format!("host-tweak-{}", tune.id());
-        let action = match (short.is_empty(), stands.kept) {
-            (false, _) => button("Apply…", &id, ask(ServerDo::Ask(Action::Tune(vec![tune]))), true),
-            (true, true) => button("Put Back…", &id, ask(ServerDo::Ask(Action::Untune(tune))), true),
-            (true, false) => button("Apply…", &id, ask(ServerDo::Back), false),
+        let action = match (blocked.is_some(), needs_apply, stands.kept) {
+            (true, _, true) => Some(button("Put Back…", &id, ask(ServerDo::Ask(Action::Untune(tune))), true)),
+            (true, _, false) => None,
+            (false, true, _) => Some(button("Apply…", &id, ask(ServerDo::Ask(Action::Tune(vec![tune]))), true)),
+            (false, false, true) => Some(button("Put Back…", &id, ask(ServerDo::Ask(Action::Untune(tune))), true)),
+            (false, false, false) => Some(button("Apply…", &id, ask(ServerDo::Back), false)),
         };
-        line(lamp, olo_kit::words::tr(tune.title()).to_string(), Some(state), Some(action), olo_kit::words::tr(tune.why()).into())
+        let (reason, span_full): (Element, bool) = if let Some(why) = blocked {
+            (reason_text(why.to_owned()), false)
+        } else if tune == Tune::RexLimits && tuning.rex_limits.stale {
+            (reason_text(olo_kit::words::tr("Rex’s service changed after these limits were set. Apply them again.").into()), false)
+        } else if tune == Tune::RexLimits && tuning.rex_limits_pending_restart().is_some() {
+            if tuning.rex_limits.scope == olo_rex_client::tune::RexScope::Shared {
+                let link_label = olo_kit::words::tr("Server window").to_string();
+                let link_tw = f32::from(style::text_width(link_label.clone(), style::SMALL_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL)));
+                let link_extra = (((link_tw / 2.0).ceil() * 2.0) - link_tw).max(0.0);
+                let on_server = on_do.clone();
+                let link = olo_kit::widgets::LinkButton::new(link_label)
+                    .size(style::SMALL_SIZE)
+                    .line(ROW_REASON)
+                    .id("host-tweak-rex-server")
+                    .enabled(host.conn == HostConnState::Connected)
+                    .on_click(move |_, cx| on_server(&HostDo::Server, cx));
+                let template = olo_kit::words::tr("Restarting ends the programs in everyone’s tabs. Open the {} to restart.");
+                let (before, after) = template.split_once("{}").unwrap_or((template, ""));
+                let piece = |w: &str| StringView::new(w.trim().to_owned()).size(style::SMALL_SIZE).dim(true).line(ROW_REASON);
+                let mut r = div().w_full().h(px(ROW_REASON)).flex().flex_row().items_center().gap(px(space));
+                if !before.trim().is_empty() {
+                    r = r.child(piece(before));
+                }
+                r = r.child(link);
+                if !after.trim().is_empty() {
+                    let trim = if after.starts_with(' ') { -link_extra } else { -space - link_extra };
+                    r = r.child(div().ml(px(trim)).child(piece(after)));
+                }
+                (r.into_element(), true)
+            } else {
+                let lead = StringView::new(olo_kit::words::tr("Restarting ends every tab’s program. To restart:").to_owned()).size(style::SMALL_SIZE).dim(true).line(ROW_REASON);
+                let cmd = StringView::new("systemctl --user restart rex.service".to_owned()).mono(true).size(panels::COMMAND_SIZE).height(ROW_REASON).beside(style::SMALL_SIZE);
+                (div().w_full().h(px(ROW_REASON)).flex().flex_row().items_center().gap(px(space)).child(lead).child(cmd).into_element(), true)
+            }
+        } else {
+            (reason_text(olo_kit::words::tr(tune.why()).into()), false)
+        };
+        line(lamp, olo_kit::words::tr(tune.title()).to_string(), Some(state), action, reason, span_full)
     };
     let rows = |kinds: &[Tune]| div().w_full().flex().flex_col().gap(px(ROW_GAP)).children(kinds.iter().map(|kind| row(*kind))).into_element();
-    // What the machine comes with, changed for heavy work: the section
-    // says so under its heading, and all that are short at once is the
-    // section's own button, at its foot in the buttons' column, there
-    // while something is short. (Beside the caption, over the first
-    // tweak's, it read as an eighth row that had lost its light and
-    // its name, and stayed, greyed, over seven Put Back…: both looks.
-    // Brush is a choice of its own, in a section of its own.)
-    let work = [Tune::Sessions, Tune::Files, Tune::Kernel, Tune::Writeback, Tune::Memory, Tune::TempFiles];
-    let suggested: Vec<Tune> = tuning.short().into_iter().filter(|kind| work.contains(kind)).collect();
-    // (The caption as far under the heading's rule as a tweak's words
-    // are: a line of text is three points nearer its top than a
-    // button's label is.)
-    let mut heavy = vec![gap(3.0), small(olo_kit::words::tr("Changes a Linux machine’s defaults for long builds and many sessions.").into()).into_element(), gap(m::SPACING), rows(&work)];
-    let quiet = suggested.is_empty();
-    if !quiet {
-        heavy.push(gap(SECTION_FOOT));
-        heavy.push(div().w_full().flex().flex_row().child(div().flex_1()).child(button("Apply Suggested…", "host-tweaks-all", ask(ServerDo::Ask(Action::Tune(suggested))), true)).into_element());
-    }
-    (page(vec![titled("Heavy work", heavy), gap(SECTION_GAP), titled("Sign-in shell", vec![rows(&[Tune::Shell])])]), false)
+    // What the machine comes with, changed for heavy work: "Apply Suggested…"
+    // sits on the "Heavy work" heading's line, offered only when two or more
+    // rows can be applied (one row's own Apply… is the same thing), so hiding
+    // it moves nothing and the window keeps one height in every state.
+    let suggested = tweaks_suggested(tuning);
+    let apply_all = (suggested.len() >= 2).then(|| button("Apply Suggested…", "host-tweaks-all", ask(ServerDo::Ask(Action::Tune(suggested))), true));
+    let heavy = vec![reason_text(olo_kit::words::tr("Changes a Linux machine’s defaults for long builds and many sessions.").into()), gap(m::STACK), rows(&HEAVY_WORK)];
+    (page(vec![titled("Heavy work", apply_all, heavy), gap(SECTION_GAP), titled("Sign-in shell", None, vec![rows(&[Tune::Shell])])]), false)
 }
 
 /// The window's content for `host`: `managed` whether its Rex server
@@ -1883,5 +1989,82 @@ mod tests {
         assert_eq!((said(&ss), ss.busy), ((Light::On, "Syncing…", None), true));
         let gone = Kept { state: KeptState::Gone, conflicts: vec![], ..base_kept };
         assert_eq!(said(&kept_stands(&gone)), (Light::Off, "Gone from the host", None));
+    }
+
+    #[test]
+    fn rex_server_limits_row_says_short_pending_restart_met_and_stale() {
+        use olo_rex_client::tune::{RexLimitValues, Tune, Tuning};
+        let base = "ram 65536000\nrex.v1.mode=shared\nrex.v1.kept.system=0\nrex.v1.kept.user=0\nrex.v1.status.system=ok\nrex.v1.unit.system=/usr/bin/rex server run --log-format text\nrex.v1.stale.system=0\n";
+        let short = Tuning::read(&format!("{base}rex.v1.loaded.system=/usr/bin/rex server run --log-format text\n"));
+        assert_eq!(tweak_state(&short, Tune::RexLimits), (Light::Off, "64 tabs now, 512 suggested".into()));
+        let partial = Tuning::read(&format!("{base}rex.v1.loaded.system=/usr/bin/rex server run --log-format text --max-windows 512 --max-blocks 4096\n"));
+        assert_eq!(tweak_state(&partial, Tune::RexLimits), (Light::Off, "64 panes now, 128 suggested".into()));
+        // Waiting for restart: state word first (`applied` / `put back`), then what holds after restart.
+        let with_run = |loaded: &str, running: RexLimitValues, kept: bool| {
+            let mut t = Tuning::read(&format!(
+                "ram 65536000\nrex.v1.mode=shared\nrex.v1.kept.system={}\nrex.v1.kept.user=0\nrex.v1.status.system=ok\n\
+                 rex.v1.unit.system=/usr/bin/rex server run --log-format text\nrex.v1.loaded.system={loaded}\nrex.v1.stale.system=0\n",
+                usize::from(kept)
+            ));
+            t.rex_limits.running = Some(running);
+            t
+        };
+        let wanted_cmd = "/usr/bin/rex server run --log-format text --max-windows 512 --max-panes 128 --max-sessions 128 --max-blocks 4096";
+        assert_eq!(tweak_state(&with_run(wanted_cmd, RexLimitValues::defaults(), true), Tune::RexLimits), (Light::Waiting, "applied, 512 tabs after Rex restarts".into()));
+        // Put Back pending decrease while server still runs at 512 tabs:
+        assert_eq!(
+            tweak_state(&with_run("/usr/bin/rex server run --log-format text", RexLimitValues::wanted(), false), Tune::RexLimits),
+            (Light::Waiting, "put back, 64 tabs after Rex restarts".into())
+        );
+        // Unlimited tabs pending restart (both directions):
+        assert_eq!(
+            tweak_state(&with_run("/usr/bin/rex server run --log-format text --max-windows 0 --max-panes 128 --max-sessions 128 --max-blocks 4096", RexLimitValues::defaults(), true), Tune::RexLimits),
+            (Light::Waiting, "applied, no limit on tabs after Rex restarts".into())
+        );
+        assert_eq!(
+            tweak_state(&with_run("/usr/bin/rex server run --log-format text", RexLimitValues { windows: u64::MAX, ..RexLimitValues::defaults() }, false), Tune::RexLimits),
+            (Light::Waiting, "put back, 64 tabs after Rex restarts".into())
+        );
+        assert_eq!(
+            tweak_state(&with_run(wanted_cmd, RexLimitValues { windows: 512, ..RexLimitValues::defaults() }, true), Tune::RexLimits),
+            (Light::Waiting, "applied, 128 panes after Rex restarts".into())
+        );
+        assert_eq!(
+            tweak_state(&with_run(wanted_cmd, RexLimitValues { windows: 512, panes: 128, ..RexLimitValues::defaults() }, true), Tune::RexLimits),
+            (Light::Waiting, "applied, 128 sessions after Rex restarts".into())
+        );
+        assert_eq!(
+            tweak_state(&with_run(wanted_cmd, RexLimitValues { windows: 512, panes: 128, sessions: 128, blocks: 1024 }, true), Tune::RexLimits),
+            (Light::Waiting, "applied, 4,096 blocks after Rex restarts".into())
+        );
+        assert_eq!(tweak_state(&with_run(wanted_cmd, RexLimitValues::wanted(), true), Tune::RexLimits), (Light::On, "applied".into()));
+
+        // Blocked ("not here") state: grey light, "can’t apply here", excluded from Apply Suggested.
+        let blocked = Tuning::read(
+            "ram 65536000\nrex.v1.mode=shared\nrex.v1.kept.system=0\nrex.v1.kept.user=0\nrex.v1.status.system=blocked\n\
+             rex.v1.why.system=/etc/systemd/system/rex.service.d/20-site.conf sets this server’s command: raise its limits there.\n",
+        );
+        assert_eq!(tweak_state(&blocked, Tune::RexLimits), (Light::Off, "can’t apply here".into()));
+        assert!(!tweaks_suggested(&blocked).contains(&Tune::RexLimits));
+
+        let stale = Tuning::read(&format!(
+            "ram 65536000\nrex.v1.mode=shared\nrex.v1.kept.system=1\nrex.v1.kept.user=0\nrex.v1.status.system=ok\n\
+             rex.v1.unit.system=/usr/bin/rex server run --log-format text\nrex.v1.loaded.system={wanted_cmd}\n\
+             rex.v1.pkg.system=/usr/bin/rex server run --old\nrex.v1.stale.system=1\n"
+        ));
+        assert_eq!(tweak_state(&stale, Tune::RexLimits), (Light::Waiting, "no longer applied".into()));
+        // Two-or-more rule for "Apply Suggested…": hidden for 0 or 1 Heavy work rows, shown for 2+.
+        let all_met = "ram 65536000\nMaxSessions 1024\nopen files 1048576\nDefaultLimitNOFILE 1048576\nDefaultTasksMax infinity\nfs.file-max 9223372036854775807\nfs.inotify.max_user_watches 1048576\n\
+            fs.inotify.max_user_instances 8192\nfs.inotify.max_queued_events 65536\nfs.aio-max-nr 1048576\nkernel.pid_max 4194304\nvm.max_map_count 1048576\nvm.dirty_background_bytes 8589934592\n\
+            vm.dirty_bytes 33554432000\nvm.dirty_expire_centisecs 6000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\ntemporary files 1\n\
+            rex.v1.mode=shared\nrex.v1.kept.system=1\nrex.v1.kept.user=0\nrex.v1.status.system=ok\nrex.v1.unit.system=/usr/bin/rex server run --log-format text\n\
+            rex.v1.loaded.system=/usr/bin/rex server run --log-format text --max-windows 512 --max-panes 128 --max-sessions 128 --max-blocks 4096\nrex.v1.stale.system=0\nbrush 0\n";
+        assert_eq!(tweaks_suggested(&Tuning::read(all_met)).len(), 0);
+        // Only RexLimits stale (+ Brush short, which is in Sign-in shell): still 1 Heavy work row -> hidden.
+        let one_stale = all_met.replace("rex.v1.stale.system=0", "rex.v1.pkg.system=/usr/bin/rex server run --old\nrex.v1.stale.system=1");
+        assert_eq!(tweaks_suggested(&Tuning::read(&one_stale)), vec![Tune::RexLimits]);
+        // Two Heavy work rows short -> shown.
+        let two_short = one_stale.replace("MaxSessions 1024", "MaxSessions 10");
+        assert_eq!(tweaks_suggested(&Tuning::read(&two_short)), vec![Tune::Sessions, Tune::RexLimits]);
     }
 }

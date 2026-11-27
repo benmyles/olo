@@ -85,6 +85,9 @@ pub struct Managed {
     pub log_of: Service,
     pub log_range: LogRange,
     pub log_reading: bool,
+    /// Identifies each confirmation opened so its scroll view starts at the
+    /// top when opened and keeps its position across redraws of the same one.
+    pub confirm_id: u64,
 }
 
 impl Managed {
@@ -146,6 +149,11 @@ pub enum Of {
 
 static LIVE: [Mutex<Option<Live>>; 2] = [Mutex::new(None), Mutex::new(None)];
 static TURNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CONFIRMS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_confirm() -> u64 {
+    CONFIRMS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 thread_local! {
     /// Whose record what is asked on this thread is of ([`for_tweaks`]).
@@ -282,6 +290,7 @@ pub fn open(hub: &Arc<RexHub>, name: String, target: SshTarget) {
         log_of: Service::Login,
         log_range: LogRange::default(),
         log_reading: false,
+        confirm_id: 0,
     };
     *live() = Some(Live { managed, turn: next_turn(), task: None, pending_update: false });
     look(hub);
@@ -332,6 +341,7 @@ fn look(hub: &Arc<RexHub>) {
                         let should_confirm = wants_update && (server.newer.is_some() || !server.checked);
                         shown(&mut live.managed, server);
                         if should_confirm {
+                            live.managed.confirm_id = next_confirm();
                             live.managed.stage = Stage::Confirm { action: Action::Update, choose: false };
                         }
                     }
@@ -408,6 +418,7 @@ pub fn ask(action: Action) {
     if let Some(live) = live().as_mut()
         && live.managed.stage == Stage::Shown
     {
+        live.managed.confirm_id = next_confirm();
         live.managed.stage = Stage::Confirm { action, choose: false };
     }
     told(which());
@@ -421,6 +432,7 @@ pub fn ask_to_let_in() {
         && live.managed.stage == Stage::Shown
         && let Some(first) = live.managed.could_join().first()
     {
+        live.managed.confirm_id = next_confirm();
         live.managed.stage = Stage::Confirm { action: live.managed.letting_in(first), choose: true };
     }
     told(which());
@@ -432,6 +444,7 @@ pub fn choose_person(i: usize) {
         && matches!(live.managed.stage, Stage::Confirm { choose: true, .. })
         && let Some(person) = live.managed.could_join().get(i)
     {
+        live.managed.confirm_id = next_confirm();
         live.managed.stage = Stage::Confirm { action: live.managed.letting_in(person), choose: true };
     }
     told(which());
@@ -750,6 +763,7 @@ pub fn demo(named: &str) -> Option<Managed> {
         log_of: Service::Login,
         log_range: LogRange::default(),
         log_reading: false,
+        confirm_id: 0,
     };
     let enabled = Unit { active: false, enabled: true };
     Some(match named {
@@ -784,25 +798,96 @@ pub fn demo(named: &str) -> Option<Managed> {
         // without; one being applied; and one that couldn't be.)
         "limits" => base,
         "limits-some" => Managed { server: Some(Server { tuning: Some(limits(2)), ..login }), ..base },
-        "limits-ready" => Managed { server: Some(Server { tuning: Some(limits(7)), ..login }), ..base },
+        "limits-restart" => {
+            let mut tuning = limits(olo_rex_client::tune::Tune::ALL.len() - 1);
+            tuning.rex_limits.scope = olo_rex_client::tune::RexScope::Shared;
+            tuning.rex_limits.running = Some(olo_rex_client::tune::RexLimitValues::defaults());
+            Managed { server: Some(Server { tuning: Some(tuning), ..login }), ..base }
+        }
+        "limits-restart-user" => {
+            let mut tuning = limits(olo_rex_client::tune::Tune::ALL.len() - 1);
+            tuning.rex_limits.scope = olo_rex_client::tune::RexScope::User;
+            tuning.rex_limits.user = Some("alice".into());
+            tuning.rex_limits.running = Some(olo_rex_client::tune::RexLimitValues::defaults());
+            Managed { server: Some(Server { tuning: Some(tuning), ..login }), ..base }
+        }
+        "limits-put-back-pending" => {
+            let mut tuning = limits(olo_rex_client::tune::Tune::ALL.len() - 2);
+            tuning.rex_limits.scope = olo_rex_client::tune::RexScope::Shared;
+            tuning.rex_limits.running = Some(olo_rex_client::tune::RexLimitValues::wanted());
+            Managed { server: Some(Server { tuning: Some(tuning), ..login }), ..base }
+        }
+        "limits-blocked" => {
+            let mut tuning = limits(olo_rex_client::tune::Tune::ALL.len() - 2);
+            tuning.rex_limits.blocked = Some("/etc/systemd/system/rex.service.d/20-site.conf sets this server’s command: raise its limits there.".into());
+            Managed { server: Some(Server { tuning: Some(tuning), ..login }), ..base }
+        }
+        "limits-stale" => {
+            let mut tuning = limits(olo_rex_client::tune::Tune::ALL.len());
+            tuning.rex_limits.stale = true;
+            tuning.rex_limits.stale_was = Some("/usr/bin/rex server run --log-format text".into());
+            tuning.rex_limits.stale_now = Some("/usr/bin/rex server run --log-format text --new-flag".into());
+            Managed { server: Some(Server { tuning: Some(tuning), ..login }), ..base }
+        }
+        "limits-ready" => Managed { server: Some(Server { tuning: Some(limits(olo_rex_client::tune::Tune::ALL.len())), ..login }), ..base },
         "confirm-limits" => {
             Managed { stage: Stage::Confirm { action: Action::Tune(olo_rex_client::tune::Tune::ALL.into_iter().filter(|t| *t != olo_rex_client::tune::Tune::Shell).collect()), choose: false }, ..base }
         }
         "confirm-limit" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Kernel]), choose: false }, ..base },
         "confirm-writeback" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Writeback]), choose: false }, ..base },
         "confirm-tmp" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::TempFiles]), choose: false }, ..base },
+        "confirm-rex" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::RexLimits]), choose: false }, ..base },
+        "confirm-rex-user" => {
+            let mut tuning = limits(0);
+            tuning.rex_limits.scope = olo_rex_client::tune::RexScope::User;
+            tuning.rex_limits.user = Some("alice".into());
+            tuning.rex_limits.file_usr = Some("/home/alice/.config/systemd/user/rex.service.d/90-olo-limits.conf".into());
+            Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::RexLimits]), choose: false }, server: Some(Server { tuning: Some(tuning), ..login }), ..base }
+        }
         "confirm-shell" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Shell]), choose: false }, ..base },
         "confirm-shell-everyone" => Managed {
             stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Shell]), choose: false },
             server: Some(Server { tuning: Some(olo_rex_client::tune::Tuning { everyone: true, ..limits(0) }), ..login }),
             ..base
         },
-        "confirm-put-back" => {
-            Managed { stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::TempFiles), choose: false }, server: Some(Server { tuning: Some(limits(7)), ..login }), ..base }
+        "confirm-put-back" => Managed {
+            stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::TempFiles), choose: false },
+            server: Some(Server { tuning: Some(limits(olo_rex_client::tune::Tune::ALL.len())), ..login }),
+            ..base
+        },
+        "confirm-put-back-rex" => Managed {
+            stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::RexLimits), choose: false },
+            server: Some(Server { tuning: Some(limits(olo_rex_client::tune::Tune::ALL.len())), ..login }),
+            ..base
+        },
+        "confirm-put-back-rex-user" => {
+            // Personal server whose unit already has higher --max-windows (1,024)
+            // and --max-blocks (8,192), so Put Back only changes the 2 differing
+            // limits (--max-panes and --max-sessions) as the connected account.
+            let mut tuning = limits(olo_rex_client::tune::Tune::ALL.len());
+            tuning.rex_limits.scope = olo_rex_client::tune::RexScope::User;
+            tuning.rex_limits.user = Some("alice".into());
+            tuning.rex_limits.file_usr = Some("/home/alice/.config/systemd/user/rex.service.d/90-olo-limits.conf".into());
+            tuning.rex_limits.kept_sys = false;
+            tuning.rex_limits.kept_usr = true;
+            tuning.rex_limits.without_olo = Some(olo_rex_client::tune::RexLimitValues { windows: 1024, panes: 64, sessions: 64, blocks: 8192 });
+            tuning.rex_limits.running = Some(olo_rex_client::tune::RexLimitValues { windows: 1024, panes: 128, sessions: 128, blocks: 8192 });
+            if let Some(stands) = tuning.stands.iter_mut().find(|s| s.tune == olo_rex_client::tune::Tune::RexLimits) {
+                for v in &mut stands.values {
+                    match v.name {
+                        "--max-windows" => v.now = Some(1024),
+                        "--max-blocks" => v.now = Some(8192),
+                        _ => {}
+                    }
+                }
+            }
+            Managed { stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::RexLimits), choose: false }, server: Some(Server { tuning: Some(tuning), ..login }), ..base }
         }
-        "confirm-put-back-shell" => {
-            Managed { stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::Shell), choose: false }, server: Some(Server { tuning: Some(limits(7)), ..login }), ..base }
-        }
+        "confirm-put-back-shell" => Managed {
+            stage: Stage::Confirm { action: Action::Untune(olo_rex_client::tune::Tune::Shell), choose: false },
+            server: Some(Server { tuning: Some(limits(olo_rex_client::tune::Tune::ALL.len())), ..login }),
+            ..base
+        },
         "working-limits" => Managed { stage: Stage::Working { action: Action::Tune(vec![olo_rex_client::tune::Tune::Shell]), said: "Downloading brush 0.5.0 from GitHub".into() }, ..base },
         // (And the host couldn't be looked at: nothing of it is known.)
         "failed-look" => Managed {
@@ -860,13 +945,20 @@ fn limits(applied: usize) -> olo_rex_client::tune::Tuning {
     use olo_rex_client::tune::{Tune, Tuning};
     let comes = "ram 67108864\nMaxSessions 10\nopen files 524288\nDefaultLimitNOFILE 524288\nDefaultTasksMax 76000\nfs.file-max 9223372036854775807\nfs.inotify.max_user_watches 524288\n\
         fs.inotify.max_user_instances 128\nfs.inotify.max_queued_events 16384\nfs.aio-max-nr 65536\nkernel.pid_max 4194304\nvm.max_map_count 1048576\nvm.dirty_background_bytes 0\nvm.dirty_bytes 0\n\
-        vm.dirty_expire_centisecs 3000\nvm.swappiness 60\nvm.vfs_cache_pressure 100\ntemporary files 0\ndefault shell /bin/bash\nbrush 0\naccount alice /bin/bash\naccount bo /bin/bash\naccount carmen /usr/bin/zsh\n";
+        vm.dirty_expire_centisecs 3000\nvm.swappiness 60\nvm.vfs_cache_pressure 100\ntemporary files 0\n\
+        rex.v1.mode=shared\nrex.v1.kept.system=0\nrex.v1.kept.user=0\nrex.v1.status.system=ok\nrex.v1.unit.system=/usr/bin/rex server run --log-format text\nrex.v1.loaded.system=/usr/bin/rex server run --log-format text\nrex.v1.stale.system=0\nrex.v1.running.system=b64:L3Vzci9iaW4vcmV4AHNlcnZlcgBydW4ALS1sb2ctZm9ybWF0AHRleHQA\n\
+        default shell /bin/bash\nbrush 0\naccount alice /bin/bash\naccount bo /bin/bash\naccount carmen /usr/bin/zsh\n";
     let mut tuning = Tuning::read(comes);
     for stands in tuning.stands.iter_mut().filter(|s| Tune::ALL.iter().position(|t| *t == s.tune).is_some_and(|at| at < applied)) {
         stands.kept = true;
         for value in &mut stands.values {
             value.now = Some(value.wanted);
         }
+    }
+    if tuning.of(Tune::RexLimits).kept {
+        tuning.rex_limits.kept_sys = true;
+        tuning.rex_limits.kept_usr = true;
+        tuning.rex_limits.running = Some(olo_rex_client::tune::RexLimitValues::wanted());
     }
     if tuning.of(Tune::Shell).kept {
         tuning.default_shell = Some(olo_rex_client::tune::BRUSH.to_owned());
@@ -903,6 +995,12 @@ pub fn show_demo_tweaks(named: &str, host: &str, target: SshTarget) -> bool {
         *why = why.replace(&was, host);
         *said = said.replace(&format!("{was}.example"), &target.host);
     }
+    if let Some(tuning) = managed.server.as_mut().and_then(|s| s.tuning.as_mut())
+        && tuning.rex_limits.scope == olo_rex_client::tune::RexScope::User
+    {
+        tuning.rex_limits.user = target.user.clone();
+        tuning.rex_limits.file_usr = target.user.as_deref().map(|u| format!("/home/{u}/.config/systemd/user/rex.service.d/90-olo-limits.conf"));
+    }
     managed.name = host.to_owned();
     managed.target = target;
     *live_of(Of::Tweaks) = Some(Live { managed, turn: next_turn(), task: None, pending_update: false });
@@ -938,17 +1036,26 @@ mod tests {
     ];
 
     /// The demo's stages of the Host window's Tweaks tab.
-    const TWEAK_STAGES: [&str; 14] = [
+    const TWEAK_STAGES: [&str; 23] = [
         "limits",
         "limits-some",
+        "limits-restart",
+        "limits-restart-user",
+        "limits-put-back-pending",
+        "limits-blocked",
+        "limits-stale",
         "limits-ready",
         "confirm-limits",
         "confirm-limit",
         "confirm-writeback",
         "confirm-tmp",
+        "confirm-rex",
+        "confirm-rex-user",
         "confirm-shell",
         "confirm-shell-everyone",
         "confirm-put-back",
+        "confirm-put-back-rex",
+        "confirm-put-back-rex-user",
         "confirm-put-back-shell",
         "working-limits",
         "failed-look",
@@ -1033,9 +1140,13 @@ mod tests {
         assert!(show_demo("login"));
         let stop = Action::Stop(Service::Login);
         ask(stop.clone());
-        assert_eq!(current().unwrap().stage, Stage::Confirm { action: stop, choose: false });
+        let first_confirm = current().unwrap().confirm_id;
+        assert_eq!(current().unwrap().stage, Stage::Confirm { action: stop.clone(), choose: false });
         back();
         assert_eq!(current().unwrap().stage, Stage::Shown);
+        ask(stop);
+        assert_ne!(current().unwrap().confirm_id, first_confirm, "re-opening a confirmation gives it a new id so its scroll starts at the top");
+        back();
         // Nothing is asked over what is being asked, or while it looks.
         assert!(show_demo("looking"));
         ask(Action::Update);
@@ -1109,6 +1220,19 @@ mod tests {
         let Stage::Failed { what, why, said, .. } = for_tweaks(current).unwrap().stage else { panic!("it failed") };
         assert_eq!((what.as_str(), why.as_str()), ("Couldn’t read dev-box’s settings", "Nothing was changed on dev-box."));
         assert!(said.contains("dev-box.example") && !said.contains("build"), "{said}");
+        // Finding 22: personal demo stages align header account, paragraph, caption actor and drop-in path to one account.
+        for stage in ["confirm-rex-user", "confirm-put-back-rex-user"] {
+            assert!(show_demo_tweaks(stage, "dev-box", SshTarget::parse("ssh://you@dev-box.example").unwrap()));
+            let m = for_tweaks(current).unwrap();
+            let s = m.server.as_ref().unwrap();
+            let t = s.tuning.as_ref().unwrap();
+            assert_eq!(t.rex_limits.user.as_deref(), Some("you"), "{stage}");
+            assert_eq!(t.rex_limits.file_usr.as_deref(), Some("/home/you/.config/systemd/user/rex.service.d/90-olo-limits.conf"), "{stage}");
+            let Stage::Confirm { action, .. } = &m.stage else { panic!("{stage} must be Confirm") };
+            let what = action.what(s);
+            assert!(!what.contains("alice") && !what.contains("you’s"), "{stage}: {what}");
+            assert_eq!(action.shown(s).contains("alice"), false, "{stage}");
+        }
         *live_of(Of::Tweaks) = None;
     }
 }
