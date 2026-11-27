@@ -1584,6 +1584,32 @@ Three smaller things from the same work:
   (`.env("PWD", …)`). That the service takes a conversation by folder at
   all is ShiftUp's item 33 for agy, and is in the TODO for both.
 
+### A test that passed is run again, many times, before it is believed (2026-11-27)
+
+A test written and passed on the 26th (two Antigravity children, the
+second waited for at rest) failed one run in eight the next hour, and
+not from anything changed since: the behaviour it waited on was a race
+in the service itself (whether a child's first rest was told hung on
+whether the first reading of its tab was of an empty one: HACKING,
+"Which turn a rest belongs to"). One green run of a test that waits on
+an event says the event came that time. For anything that waits on
+what a program does in its own time: run the suite in a loop while the
+next thing is written (`for i in 1 2 3 4; do jato test -p PKG …; done`,
+and the one test's own binary a hundred times, four at once:
+`target/debug/build/PKG/*/out/TEST-* NAME`), and treat one failure in
+twenty as a fault found, not a flake met. That loop found three things
+in ten minutes: the race; a test that copies a program and runs the
+copy at once, refused one run in ten as "text file busy" (another
+thread of the test binary, starting a program in the same instant,
+carries the file open for writing into its child until that child
+becomes its own program: the copy is run again for up to a second,
+`run_just_written` in `tests/agents.rs`; any test that writes a
+program and has it run can meet it); and one failure not yet explained
+(TODO, "A test that failed twice and is not explained").
+
+Don't build the package while such a loop runs on its binaries: the
+loop then tries whichever build is there at each turn.
+
 ### Whose conversation is it: read it from two agents at once (2026-11-26)
 
 An Antigravity's conversation was taken from "a database it holds

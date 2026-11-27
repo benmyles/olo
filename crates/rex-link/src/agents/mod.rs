@@ -348,6 +348,36 @@ mod tests {
         assert_eq!(sanitize_paste_text("hi\x1b[201~\r\n/exit\x1b[200~\t\x03ok"), "hi\n/exit\tok");
     }
 
+    /// When a child read at rest is told to be so (`state::rest_now`).
+    #[test]
+    fn a_rest_is_told_when_it_can_be_a_turns_end() {
+        use crate::agents::state::{Expected, Rest, UNDRAWN_MS, rest_now};
+        let (started, now) = (1_000_000, 1_002_000);
+        // Started with nothing to do: at its own prompt it is at rest, at once, worked or not.
+        assert_eq!(rest_now(now, started, false, true, None, None), Rest::Told { answered: None });
+        // What is on its screen isn't its own yet (the tab's shell): not for its first fifteen seconds; then as it stands.
+        assert_eq!(rest_now(now, started, false, false, None, None), Rest::Kept { until_ms: started + UNDRAWN_MS });
+        assert_eq!(rest_now(started + UNDRAWN_MS, started, false, false, None, None), Rest::Told { answered: None });
+        // (One that has worked rests wherever it stands.)
+        assert_eq!(rest_now(now, started, true, false, None, None), Rest::Told { answered: None });
+
+        // Given work it hasn't been seen at: the rest before that turn, at its prompt or not, worked before or not.
+        let given = Expected { cursor: 41, until_ms: now + 30_000, transcript_len: Some(900) };
+        for (seen, at_prompt) in [(false, true), (true, true), (true, false)] {
+            assert_eq!(rest_now(now, started, seen, at_prompt, Some(given), None), Rest::Kept { until_ms: now + 30_000 });
+        }
+        // Its conversation's file the same, or longer with the turn not over (its message written, no reply yet): still before it.
+        assert_eq!(rest_now(now, started, true, true, Some(given), Some((900, true))), Rest::Kept { until_ms: now + 30_000 });
+        assert_eq!(rest_now(now, started, true, true, Some(given), Some((1400, false))), Rest::Kept { until_ms: now + 30_000 });
+        // Longer, and its turn over: the turn came and went unseen. This rest is its end, and answers what was given.
+        assert_eq!(rest_now(now, started, true, true, Some(given), Some((1400, true))), Rest::Told { answered: Some(41) });
+        // Its time up and nothing taken: told as it stands, answering nothing.
+        assert_eq!(rest_now(now + 30_000, started, true, true, Some(given), Some((900, true))), Rest::Told { answered: None });
+        // (Where its file's length when it was given isn't known, the file says nothing either way.)
+        let at_start = Expected { cursor: 7, until_ms: started + 120_000, transcript_len: None };
+        assert_eq!(rest_now(now, started, false, true, Some(at_start), Some((5000, true))), Rest::Kept { until_ms: started + 120_000 });
+    }
+
     /// A child's conversation is kept only by what is sure. What was
     /// guessed for it is forgotten when a registry is read, what its own
     /// process says now replaces what it said before, and a weaker word
@@ -369,7 +399,7 @@ mod tests {
             title: id.into(),
             role: None,
             cwd: None,
-            resume_id: (id == "resumed").then(|| "given-at-start".to_owned()),
+            resume_id: matches!(id, "resumed" | "given-at-start").then(|| "given-at-start".to_owned()),
             cli_session_id: Some(sid.into()),
             transcript_path: Some(format!("/t/{sid}")),
             desktop_policy: DesktopPolicy::None,
@@ -392,6 +422,8 @@ mod tests {
             ("agy-guess", AgentCli::Agy, "anothers-2", "guess"),
             ("claude-written", AgentCli::Claude, "anothers-3", "written"),
             ("resumed", AgentCli::Agy, "anothers-4", "guess"),
+            ("kept-as-known", AgentCli::Agy, "anothers-5", "known"),
+            ("given-at-start", AgentCli::Claude, "given-at-start", "known"),
             ("claude-record", AgentCli::Claude, "own-1", "record"),
             ("codex-open", AgentCli::Codex, "own-2", "open"),
             ("agy-argv", AgentCli::Agy, "own-3", "argv"),
@@ -405,7 +437,7 @@ mod tests {
         kept.save_to(&file);
         let mut reg = SubagentRegistry::read_from(&file).unwrap_or_else(|e| panic!("{e}"));
         let of = |reg: &SubagentRegistry, id: &str| reg.entries.iter().find(|e| e.id == id).map(|e| (e.cli_session_id.clone(), e.session_confidence.clone(), e.transcript_path.is_some())).unwrap();
-        for forgotten in ["agy-open", "agy-guess", "claude-written", "resumed"] {
+        for forgotten in ["agy-open", "agy-guess", "claude-written", "resumed", "kept-as-known"] {
             assert_eq!(of(&reg, forgotten), (None, None, false), "{forgotten}");
         }
         // (What it was started with is its own, guess or no guess.)
@@ -413,7 +445,9 @@ mod tests {
         for (sure, sid, how) in [("claude-record", "own-1", "record"), ("codex-open", "own-2", "open"), ("agy-argv", "own-3", "argv"), ("agy-lock", "own-4", "lock")] {
             assert_eq!(of(&reg, sure), (Some(sid.to_owned()), Some(how.to_owned()), true), "{sure}");
         }
-        assert_eq!(SubagentRegistry::load_from(&file).entries.iter().filter(|e| e.cli_session_id.is_some()).count(), 4, "the other reading forgets the same");
+        // ("Known" is true of what a child was started with, and kept; of anything else it is a guess told back.)
+        assert_eq!(of(&reg, "given-at-start"), (Some("given-at-start".to_owned()), Some("known".to_owned()), true));
+        assert_eq!(SubagentRegistry::load_from(&file).entries.iter().filter(|e| e.cli_session_id.is_some()).count(), 5, "the other reading forgets the same");
         let _ = std::fs::remove_dir_all(&dir);
 
         // Read again as it runs: the lock it holds now is its conversation (a new one begun), and its command line's word doesn't take that back.
@@ -515,6 +549,7 @@ mod tests {
             error: None,
             tail: Vec::new(),
             dedupe_key: dk.into(),
+            answers: None,
         };
         let c1 = log.push(mk_ev("sa-1", SubagentLiveState::Done, "msg:1"));
         // Duplicate push for same (id, state, key) is dropped (`H7`), while new key advances (`H5`)!

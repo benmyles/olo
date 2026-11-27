@@ -77,6 +77,9 @@ enum MockReply {
     HttpError { status: u16, body: String },
     /// Start streaming SSE then drop the TCP connection mid-response.
     MidStreamDrop { partial_text: String },
+    /// Plain text after a wait: a model that takes a while to begin (a
+    /// turn that has begun and not ended, for that long).
+    SlowText { after_ms: u64, text: String },
 }
 
 #[derive(Clone, Debug)]
@@ -353,7 +356,15 @@ async fn handle_mock_http(mut stream: TcpStream, state: Arc<std::sync::Mutex<Moc
         (id, rep)
     };
 
+    let reply = match reply {
+        MockReply::SlowText { after_ms, text } => {
+            tokio::time::sleep(Duration::from_millis(after_ms)).await;
+            MockReply::Text(text)
+        }
+        reply => reply,
+    };
     match reply {
+        MockReply::SlowText { .. } => unreachable!("made plain above"),
         MockReply::HttpError { status, body } => {
             write_json(&mut stream, status, &body).await;
         }
@@ -1478,7 +1489,24 @@ fn live_mock_api_an_agents_own_background_shell_is_listed() {
         }
         assert!(matches!(status["state"].as_str(), Some("done" | "idle")), "{status}");
         let shells = status["background_shells"].as_array().unwrap_or_else(|| panic!("{status}"));
-        assert_eq!(shells.len(), 1, "its one shell, once (not its `sleep` as another): {status}");
+        // (What the made-up API was asked and in what order, should the shell not be there: whether the
+        // command was ever given to this conversation.)
+        let asked: Vec<String> = rig
+            .mock
+            .requests()
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} bytes, tools {}, a tool's result {}, the background command asked {}, says OWN_SHELL {}",
+                    r.body.len(),
+                    r.body.contains("\"Bash\""),
+                    r.body.contains("tool_result"),
+                    r.body.contains("run_in_background\\\":true") || r.body.contains("\"run_in_background\":true"),
+                    r.body.contains("OWN_SHELL_STARTED")
+                )
+            })
+            .collect();
+        assert_eq!(shells.len(), 1, "its one shell, once (not its `sleep` as another): {status}\nwhat the API was asked:\n  {}", asked.join("\n  "));
         let shell = &shells[0];
         assert_eq!((&shell["cmd"], &shell["kind"]), (&json!("echo STARTED_WAITING; sleep 45"), &json!("task")), "its own command, as it gave it: {shell}");
         assert_eq!(status["waiting_on"], "own_run", "{status}");
@@ -1493,5 +1521,75 @@ fn live_mock_api_an_agents_own_background_shell_is_listed() {
         let parent: i64 = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap().rsplit_once(')').unwrap().1.split_whitespace().nth(1).unwrap().parse().unwrap();
         assert_eq!(parent, status["pid"].as_i64().unwrap(), "{status}");
         rig.run_olo_json(&["agent", "stop", "waiter", "--force", "--json"]).await;
+    });
+}
+
+/// No turn's end is told before the prompt's own turn has ended (the ShiftUp lead's item 27, 2026-11-26:
+/// "`start agy --resume ID --prompt …` reports `done` 1.4 s after the start, carrying the old conversation's
+/// last message, before the prompt is read … Please tell no turn's end until the prompt's own turn has
+/// ended"; and the same seen of a Claude child started with `--prompt`: told at rest a second after its
+/// start). The model takes four seconds over each prompt here, so what is told before then is told too soon.
+#[test]
+fn live_mock_api_no_rest_is_told_before_the_prompts_own_turn() {
+    if !std::path::Path::new("/usr/bin/rex").exists() {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = &LiveRexHarness::start("ownturn").await;
+        for (cli, model, effort) in [("claude", "claude-opus-5-5", "max"), ("agy", "gemini-3-flash-preview", "high")] {
+            if !have_program(cli) {
+                continue;
+            }
+            rig.mock.clear_queues();
+            let cli_static: &'static str = if cli == "claude" { "claude" } else { "agy" };
+            let start = |name: &str, more: &[&str]| {
+                let mut args: Vec<String> = ["agent", "start", cli, "--model", model, "--effort", effort, "--name", name, "--trust", "--json", "--cwd"].iter().map(|s| (*s).to_owned()).collect();
+                args.push(rig.work.display().to_string());
+                args.extend(more.iter().map(|s| (*s).to_owned()));
+                args.extend(rig.cli_env_args(cli));
+                args
+            };
+            async fn first_rest(rig: &LiveRexHarness, since: String, name: String) -> (Instant, Value) {
+                let told = rig.run_olo_json(&["agent", "watch", &name, "--since", &since, "--on", "done,idle,error,exit", "--timeout", "40", "--json"]).await;
+                (Instant::now(), told)
+            }
+
+            // A new conversation, started with a prompt.
+            let name = format!("{cli}-new");
+            rig.mock.push(cli_static, MockReply::SlowText { after_ms: 4000, text: format!("FIRST_REPLY_{cli}") });
+            let began = Instant::now();
+            let started = rig.run_olo_json(&start(&name, &["--prompt", "Say the first thing."]).iter().map(String::as_str).collect::<Vec<_>>()).await;
+            let (at, told) = first_rest(rig, started["cursor"].to_string(), name.clone()).await;
+            assert!(
+                told["last_message"].as_str().is_some_and(|m| m.contains(&format!("FIRST_REPLY_{cli}"))) && at.duration_since(began) >= Duration::from_millis(3500),
+                "{cli}: the first rest told of a child started with a prompt isn't its prompt's turn's end (after {:?}): {told}",
+                at.duration_since(began)
+            );
+            assert_eq!(told["answers"], started["cursor"], "{cli}: its turn's end answers its start: {told}");
+            let conversation =
+                rig.run_olo_json(&["agent", "status", &name, "--json"]).await["cli_session_id"].as_str().unwrap_or_else(|| panic!("{cli}: it has a conversation after its turn")).to_owned();
+            rig.run_olo_json(&["agent", "stop", &name, "--force", "--json"]).await;
+
+            // That conversation taken up again with a prompt: its old last message is not this turn's.
+            let name = format!("{cli}-again");
+            rig.mock.push(cli_static, MockReply::SlowText { after_ms: 4000, text: format!("SECOND_REPLY_{cli}") });
+            let began = Instant::now();
+            let started = rig.run_olo_json(&start(&name, &["--resume", &conversation, "--prompt", "Say the second thing."]).iter().map(String::as_str).collect::<Vec<_>>()).await;
+            let (at, told) = first_rest(rig, started["cursor"].to_string(), name.clone()).await;
+            assert!(
+                told["last_message"].as_str().is_some_and(|m| m.contains(&format!("SECOND_REPLY_{cli}"))) && at.duration_since(began) >= Duration::from_millis(3500),
+                "{cli}: the first rest told of a conversation taken up again with a prompt isn't the prompt's turn's end (after {:?}): {told}",
+                at.duration_since(began)
+            );
+            assert_eq!(told["answers"], started["cursor"], "{cli}: {told}");
+            // A message sent to it at rest: the next rest is that message's turn's end, and says so.
+            rig.mock.push(cli_static, MockReply::SlowText { after_ms: 1500, text: format!("THIRD_REPLY_{cli}") });
+            let sent = rig.run_olo_json(&["agent", "send", &name, "Say the third thing.", "--enter", "--json"]).await;
+            let (_, told) = first_rest(rig, sent["cursor"].to_string(), name.clone()).await;
+            assert!(told["last_message"].as_str().is_some_and(|m| m.contains(&format!("THIRD_REPLY_{cli}"))), "{cli}: the rest told after a send isn't its turn's end: {told}");
+            assert_eq!(told["answers"], sent["cursor"], "{cli}: {told}");
+            rig.run_olo_json(&["agent", "stop", &name, "--force", "--json"]).await;
+        }
     });
 }

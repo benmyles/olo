@@ -624,6 +624,12 @@ impl Service {
         if let Err(e) = self.begin(entry.clone()).await {
             return err(format!("the new tab couldn't be watched: {e}"), 1);
         }
+        // Started with a prompt, an agent works as soon as it is up: no
+        // rest of its is its turn's end before then (two minutes for it
+        // to come to it, after which it is told as it stands).
+        if cli.is_agent() && spec.prompt.as_deref().is_some_and(|p| !p.trim().is_empty()) {
+            self.expect_work(&entry, start_cursor, Duration::from_secs(120), false);
+        }
 
         // Where the folder is asked about all the same, it is answered
         // by where the mark stands (never by timing), for the child's
@@ -877,6 +883,8 @@ impl Service {
 
         let mut payload = summary_json(&entry, state, cls.summary.as_deref(), 1, 0);
         payload["minder"] = json!(self.lock().reg.minder_of(&entry.id).map(|m| m.id.clone()));
+        // (The turn it is in, or last ended: the cursor of what it answers.)
+        payload["answers"] = json!(self.lock().live.get(&entry.id).and_then(|l| l.answers));
         if let Some(p) = looked.pid {
             payload["pid"] = json!(p);
         }
@@ -1100,6 +1108,8 @@ impl Service {
                 "last_message": ev.last_message,
                 "approval": ev.approval,
                 "error": ev.error,
+                // (The turn it is of: the cursor of the `start` or `send` it answers.)
+                "answers": ev.answers,
                 "matched_line": matched_line,
                 "elapsed_ms": started.elapsed().as_millis() as u64,
                 "tail": ev.tail,
@@ -1302,6 +1312,14 @@ impl Service {
         // (From before the typing: a watch from this cursor has what follows it.)
         let pre_cursor = self.cursor();
         self.reset_edge(&entry, !spec.body.is_empty());
+        // A message submitted to an agent at rest is a turn given: the
+        // rest it shows until it takes that up is not that turn's end,
+        // and the turn's end says which message it answers (`answers`:
+        // this cursor). Sent into a turn already going, it is that
+        // turn's, and nothing is told apart.
+        if entry.cli.is_agent() && !spec.body.is_empty() && spec.enter && matches!(before.cls.state, SubagentLiveState::Idle | SubagentLiveState::Done) {
+            self.expect_work(&entry, pre_cursor, super::service::taken_up(), true);
+        }
 
         let (rex, to) = (&self.rex, &entry);
         let write = |data: String| async move { rex.write(&to.session_id, &to.block_id, &data).await.map_err(|e| e.to_string()) };

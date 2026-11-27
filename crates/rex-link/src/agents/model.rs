@@ -402,6 +402,12 @@ impl SubagentRegistry {
             let guessed = match e.session_confidence.as_deref() {
                 Some("written" | "guess") => true,
                 Some("open") => e.cli == AgentCli::Agy,
+                // ("Known" is the service's own word told back to it:
+                // true of what the child was started with, and of
+                // nothing else. A guess once kept came back as known
+                // and was kept as that: one was still on a host after
+                // the guesses had been forgotten, 2026-11-26.)
+                Some("known") => e.cli_session_id != e.resume_id,
                 _ => false,
             };
             if guessed && e.cli_session_id.is_some() {
@@ -621,7 +627,9 @@ impl SubagentRegistry {
                 e.cli_session_id = Some(sid.to_owned());
                 e.session_confidence = confidence.map(str::to_owned);
                 changed = true;
-            } else if e.cli_session_id.as_deref() == Some(sid) && new_rank > old_rank {
+            } else if e.cli_session_id.as_deref() == Some(sid) && new_rank > old_rank && confidence != Some("known") {
+                // (Never by "known": what is kept, told back, says
+                // nothing more of itself than it did.)
                 e.session_confidence = confidence.map(str::to_owned);
                 changed = true;
             }

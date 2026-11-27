@@ -119,6 +119,8 @@ impl Rig {
             .env("OLO_REX_AGENTS_DIR", dir.join("agents"))
             // (How long a minder has to report once its agent has ended: three seconds here, of three minutes.)
             .env("OLO_REX_AGENTS_MINDER_REPORTS_MS", "3000")
+            // (How long an agent at rest has to take up a message sent to it before its rest is told all the same: 2.5 s here, of thirty.)
+            .env("OLO_REX_AGENTS_TAKEN_UP_MS", "2500")
             .env_remove("REX_SESSION")
             .env_remove("REX_BLOCK")
             .env_remove("SSH_AUTH_SOCK");
@@ -762,7 +764,7 @@ fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
         let mut cmd = Command::new(helper);
         cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work")).env("REX_BLOCK", &rig.lead_block);
         Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
-        let out = cmd.arg("agent").args(args).output().expect("the helper");
+        let out = run_just_written(cmd.arg("agent").args(args));
         serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}: {}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
     };
     let pid = |helper: &Path| ask(helper, &["ping"])["pid"].as_i64().unwrap() as i32;
@@ -795,7 +797,7 @@ fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
     let retire = |more: &[&str]| {
         let mut cmd = Command::new(&later_build);
         Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
-        let out = cmd.args(["agent", "retire"]).args(more).output().expect("the helper");
+        let out = run_just_written(cmd.args(["agent", "retire"]).args(more));
         (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stderr).into_owned())
     };
     let (code, said) = retire(&[]);
@@ -1117,6 +1119,22 @@ fn what_a_child_is_started_with_is_in_its_environment() {
     let (code, _, err) = rig.olo(&["start", "--command", "--env", "BAD NAME=1", "--", "true"]);
     assert_eq!(code, 2, "{err}");
     rig.json(&["stop", "guarded", "--force", "--json"]);
+}
+
+/// Runs a program this test has just written (a copy of the helper).
+/// Run at once it can be refused as "busy" (`ETXTBSY`): another test's
+/// thread that started a program in the same instant carried this
+/// file, still open for writing, into its child until that child became
+/// its own program. It is free a moment later: asked again, for a
+/// second at most. (It failed one run in ten, 2026-11-26.)
+fn run_just_written(cmd: &mut Command) -> std::process::Output {
+    let until = Instant::now() + Duration::from_secs(1);
+    loop {
+        match cmd.output() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && Instant::now() < until => std::thread::sleep(Duration::from_millis(5)),
+            out => return out.expect("the helper"),
+        }
+    }
 }
 
 /// The minder's side of a test: its folder in the service's own, its
@@ -1468,4 +1486,81 @@ fn a_minder_that_fell_behind_answers_only_what_stands() {
     assert!(first["approval"]["command"].as_str().unwrap().contains("cargo test"), "{first}");
     let second = rig.json(&["watch", "worker", "--since", &first["cursor"].to_string(), "--on", "approval", "--timeout", "15", "--json"]);
     assert!(second["approval"]["command"].as_str().unwrap().contains("git push"), "{second}");
+}
+
+/// Which turn a rest belongs to (the ShiftUp lead's items 27 and 34, 2026-11-26: "tell no turn's end until
+/// the prompt's own turn has ended"; "A turn's end event … carries the cursor or id of the `send` it answers.
+/// Then a launcher can tell a turn's reply from an earlier turn's without comparing times"). A child started
+/// with nothing to do is at rest once it is at its own prompt, and not before; a child given a message is not
+/// told at rest again until it has taken that up, and its turn's end says which message it answers.
+#[test]
+fn a_rest_is_the_end_of_the_turn_it_says() {
+    let Some(rig) = Rig::start("turns") else { return };
+    rig.stand_in("claude");
+    let started = rig.start_child("claude", "alpha", &[]);
+    let from = started["cursor"].as_u64().unwrap();
+    let watch = |since: u64, secs: &str| rig.olo(&["watch", "alpha", "--since", &since.to_string(), "--on", "idle,done,question,approval,error,exit", "--timeout", secs, "--json"]);
+    let told = |since: u64| -> Value {
+        let (code, out, err) = watch(since, "15");
+        assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
+        serde_json::from_str(out.trim()).unwrap()
+    };
+
+    // What stands in its tab before its own screen is drawn (the tab's shell, here as it stood on the day)
+    // is not the agent at rest, whatever was read of the tab first.
+    rig.show("alpha", "[systemd]\nFailed Units: 1\n  systemd-zram-setup@zram0.service\n");
+    let (code, out, _) = watch(from, "2");
+    assert_eq!(code, 124, "the tab's shell was told as the agent at rest: {out}");
+    // At its own prompt, with nothing to do: at rest, told at once, answering nothing.
+    let at = Instant::now();
+    rig.show("alpha", &idle("Ready."));
+    let up = told(from);
+    assert_eq!((&up["state"], &up["summary"], &up["answers"]), (&json!("idle"), &json!("at prompt"), &Value::Null), "{up}");
+    assert!(at.elapsed() < Duration::from_secs(5), "told only when the fifteen seconds were up: {:?}", at.elapsed());
+
+    // A message sent to it at rest. It still stands at its prompt for a moment: that is not the message's turn's end.
+    let sent = rig.json(&["send", "alpha", "Do the first thing.", "--enter", "--json"]);
+    let first = sent["cursor"].as_u64().unwrap();
+    rig.show("alpha", &idle("Ready."));
+    let (code, out, _) = watch(first, "1");
+    assert_eq!(code, 124, "the rest before the message's turn was told: {out}");
+    // It takes it up, and its turn ends: that rest answers the message.
+    rig.show("alpha", &working());
+    rig.wait_state("alpha", "working");
+    assert_eq!(rig.status("alpha")["answers"], first, "at work on it");
+    rig.show("alpha", &idle("The first thing is done."));
+    let ended = told(first);
+    assert_eq!((&ended["state"], &ended["answers"]), (&json!("idle"), &json!(first)), "{ended}");
+
+    // The next message's turn answers the next message; a question in it is of that turn too.
+    let sent = rig.json(&["send", "alpha", "Do the second thing.", "--enter", "--json"]);
+    let second = sent["cursor"].as_u64().unwrap();
+    assert!(second > first);
+    rig.show("alpha", &asking("cargo test", 0));
+    let asked = told(second);
+    assert_eq!((&asked["state"], &asked["answers"]), (&json!("waiting_approval"), &json!(second)), "{asked}");
+    // (A message sent into a turn that is going is that turn's: nothing new is expected of it.)
+    rig.show("alpha", &working());
+    rig.wait_state("alpha", "working");
+    rig.json(&["send", "alpha", "And mind the tests.", "--enter", "--json"]);
+    rig.show("alpha", &idle("The second thing is done."));
+    let ended = told(asked["cursor"].as_u64().unwrap());
+    assert_eq!((&ended["state"], &ended["answers"]), (&json!("idle"), &json!(second)), "{ended}");
+
+    // A message it never takes up: its rest is told when its time is up (2.5 s here), as it stands, answering nothing new.
+    let sent = rig.json(&["send", "alpha", "Do the third thing.", "--enter", "--json"]);
+    let third = sent["cursor"].as_u64().unwrap();
+    let at = Instant::now();
+    rig.show("alpha", &idle("The second thing is done."));
+    let (code, out, _) = watch(third, "1");
+    assert_eq!(code, 124, "{out}");
+    let stood = told(third);
+    assert!(at.elapsed() >= Duration::from_millis(2300) && at.elapsed() < Duration::from_secs(8), "told when its time was up: {:?}", at.elapsed());
+    assert_eq!((&stood["state"], &stood["answers"]), (&json!("idle"), &json!(second)), "it never took the third up: {stood}");
+    // (Taken up late all the same, the turn is the third's.)
+    rig.show("alpha", &working());
+    rig.wait_state("alpha", "working");
+    rig.show("alpha", &idle("The third thing is done."));
+    let ended = told(stood["cursor"].as_u64().unwrap());
+    assert_eq!(ended["answers"], third, "{ended}");
 }

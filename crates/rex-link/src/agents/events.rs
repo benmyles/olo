@@ -41,6 +41,13 @@ pub struct SubagentEvent {
     /// what was last said of each child; never part of what a watcher is told.
     #[serde(default)]
     pub dedupe_key: String,
+    /// The turn this is of: the cursor its giver was answered with (a
+    /// `start` with a prompt, a `send` that submitted a message), where
+    /// the child was seen to take it up. A turn's reply is told from an
+    /// earlier turn's by it, with no clock compared (the ShiftUp lead's
+    /// item 34, 2026-11-26).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answers: Option<u64>,
 }
 
 const MAX_EVENT_LOG: usize = 2000;

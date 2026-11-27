@@ -110,13 +110,8 @@ something nobody here has is in "Blocked", with what it waits for.
     a dialog's identity is its call and its choices, never its
     countdown."
   - 26 is done (HACKING, "An agent's own shells").
-  - 27: "`start agy --resume ID --prompt …` reports `done` 1.4 s after
-    the start, carrying the old conversation's last message, before the
-    prompt is read … tell no turn's end until the prompt's own turn has
-    ended."
-    (Claude Code too, seen 2026-11-26 in item 26's test: started with
-    `--prompt`, a `watch --on done,idle` returned its prompt's rest a
-    second after the start, before the prompt's turn had begun.)
+  - 27 and 34 are done together (HACKING, "Which turn a rest belongs
+    to").
   - 28: "In `approval`: when the box opened, and when its CLI will
     refuse it by itself (Claude Code 2.1.332's 'will automatically
     block this request in M:SS')."
@@ -127,6 +122,25 @@ something nobody here has is in "Blocked", with what it waits for.
     20:25), said in the guide."
   - 32 is done (`doing_line`: Claude Code's "◈ max · /effort" is not
     what it is doing).
+  - 35 (23:35 UTC): "`stop` answers only once the tab's own program has
+    ended, or says it has not, with its pid. Then a launcher doesn't
+    have to watch the program go itself."
+- **A test that failed twice and is not explained** (2026-11-26, 23:51
+  UTC): `agents_live.rs`,
+  `live_mock_api_an_agents_own_background_shell_is_listed`, in two
+  runs of the whole suite one after the other: Claude Code's turn had
+  ended with the closing text and `background_shells` was empty. It
+  has not failed in 121 runs since (the whole suite four times, the
+  real-agent tests fourteen, the one test a hundred times four at
+  once). The service's reading is not suspected: with no shell started
+  there is none to list. Suspected: the made-up API hands its scripted
+  replies to whichever request asks next, and Claude Code asks more
+  than its conversation does (a title, and whatever else it sends as
+  it starts); if another request took "run this in the background",
+  the conversation got the closing text at once. The test prints what
+  the API was asked, in order, when the shell is missing: read that
+  when it next fails, and bind the scripted replies to the
+  conversation's own requests.
 - **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
   "currently we have under manager rex server a limits tab for applying
   tweaks to the host but they really belong in manage host. please move

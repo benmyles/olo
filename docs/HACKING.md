@@ -31490,6 +31490,54 @@ agents through the night, could not move to it.
   screen is where item 32 was read: a working Claude agent's `summary`
   was Claude Code's word of its effort, "◈ max · /effort", set at the
   right under its work. `doing_line` passes over it.)
+- *Which turn a rest belongs to* (`state::rest_now`, `Live::expects`,
+  `answers`; the ShiftUp lead's items 27 and 34, 2026-11-26: "`start
+  agy --resume ID --prompt …` reports `done` 1.4 s after the start,
+  carrying the old conversation's last message, before the prompt is
+  read … tell no turn's end until the prompt's own turn has ended"; "A
+  turn's end event (`done`, `idle`, `waiting_question`) carries the
+  cursor or id of the `send` it answers. Then a launcher can tell a
+  turn's reply from an earlier turn's without comparing times"). A rest
+  is told as a turn's end, so it must be one.
+  - *What was wrong.* One rule kept a just-started child's rest back
+    (at rest, never seen at work, under fifteen seconds old), and "seen
+    at work" was set by anything but rest, the word for an empty tab
+    among them ("starting"). So whether a child's first rest was told
+    hung on whether the very first reading of its tab was of an empty
+    one: read empty, the next thing on its screen was told as a rest
+    (0.7 s after the start of a child with a prompt, and what stood on
+    the screen was the tab's own shell saying which systemd unit had
+    failed); read with anything on it, the rest was never told at all,
+    and whoever waited for the child to be up waited out their time
+    (one run in eight of a test here). After a `send` the same rule was
+    all that kept the rest *before* the message's turn from being told,
+    which holds only for a child under fifteen seconds old.
+  - *The rule now*, one function (`rest_now`), tried branch by branch.
+    A child **given work** it has not yet been seen at (a prompt at its
+    start: two minutes; a message sent and submitted while it rested:
+    thirty seconds) shows the rest before that turn: kept back, and
+    read again at whatever it shows and when its time is up (then told
+    as it stands: it never came to it). Seen at work (really at work:
+    not "starting"), the turn it is in **answers** what it was given:
+    every event of that turn, its end among them, carries `answers`,
+    the cursor the `start` or the `send` was answered with (`status`
+    has it too). A turn too quick to be seen at all is not lost: the
+    child's conversation's file, longer than when the message was sent
+    and saying its turn is over, makes the rest that turn's end. A
+    child started with **nothing to do** is at rest once it is at its
+    own prompt (`at prompt`), told at once (it is up: who waits to send
+    to it waits on that); what stands in its tab before its own screen
+    is drawn is not that, for fifteen seconds. A message sent into a
+    turn already going is that turn's.
+  - *Tried*: `agents.rs` (stand-ins): the tab's shell on the screen is
+    not told; the agent at its prompt is, at once; the rest after a
+    send isn't; the turn's end is, with the send's cursor; a question
+    in the turn carries it; a message never taken up is told when its
+    time is up, and taken up late its turn is its own. `agents_live.rs`
+    (Claude Code and Antigravity themselves, a model that takes four
+    seconds): started with a prompt, and a conversation taken up again
+    with one, the first rest told is the prompt's own turn's end and
+    answers the start; after a send, the send.
 - *The service keeps to the hold* (`Service::held`). While
   `~/.local/state/olo/host-upgrade.hold` is there (beside the services'
   folder: whoever has agents at work on a host puts it there, its words

@@ -302,6 +302,7 @@ fn start_service(server: &Path, paths: &Paths) -> std::io::Result<std::process::
         "REX_SERVER_SOCKET",
         "OLO_REX_AGENTS_DIR",
         "OLO_REX_AGENTS_MINDER_REPORTS_MS",
+        "OLO_REX_AGENTS_TAKEN_UP_MS",
     ] {
         if let Some(value) = std::env::var_os(name) {
             command.env(name, value);

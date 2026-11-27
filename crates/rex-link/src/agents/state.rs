@@ -117,6 +117,72 @@ pub fn doing_line(screen_text: &str) -> Option<String> {
     working.or_else(last_said).map(str::to_owned)
 }
 
+/// What is said of a tab in which nothing has been drawn yet: at work,
+/// but not yet on anything.
+pub const STARTING: &str = "starting";
+
+/// What is said of an agent at rest at its own prompt (its field
+/// drawn, nothing asked): it is up, and what is sent to it is read.
+pub const AT_PROMPT: &str = "at prompt";
+
+/// How long a child whose own screen isn't drawn yet is not said to be
+/// at rest (the tab's shell has the screen first).
+pub const UNDRAWN_MS: u64 = 15_000;
+
+/// What a child was given to work on and has not yet been seen at work
+/// on: a prompt at its start, or a message sent and submitted while it
+/// rested. `cursor` is what the giver was answered with (the turn that
+/// follows answers it); until `until_ms` a rest is the rest *before*
+/// that turn; `transcript_len` is how long its conversation's file was
+/// when it was given (where that was known).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Expected {
+    pub cursor: u64,
+    pub until_ms: u64,
+    pub transcript_len: Option<u64>,
+}
+
+/// What is made of a child read at rest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rest {
+    /// A rest to tell. `answered`: the turn it ends is the one the
+    /// child was given at that cursor, begun and ended unseen.
+    Told { answered: Option<u64> },
+    /// Not yet one: looked at again by `until_ms` (and at whatever it
+    /// shows before then).
+    Kept { until_ms: u64 },
+}
+
+/// Whether a child read at rest *now* is told to be so.
+///
+/// A rest is a turn's end, and is told as one, except where it can't be
+/// one yet: (1) the child was given work it has not been seen at
+/// ([`Expected`]): what it shows is the rest before that turn (the
+/// ShiftUp lead's item 27, 2026-11-26: "tell no turn's end until the
+/// prompt's own turn has ended"), unless its conversation's file has
+/// grown since and says the turn is over (a turn too quick to be seen:
+/// `transcript` is that file's length and whether its last turn is
+/// over), or its time is up (it never came to it: told as it stands).
+/// (2) It has never worked and what is on its screen isn't its own
+/// prompt: the tab's shell, before the agent has drawn anything, for
+/// [`UNDRAWN_MS`]. A child started with nothing to do, at its own
+/// prompt, is at rest and is told so at once: it is up, and whoever
+/// waits to send to it waits on that.
+pub fn rest_now(now_ms: u64, started_ms: u64, seen_working: bool, at_prompt: bool, expected: Option<Expected>, transcript: Option<(u64, bool)>) -> Rest {
+    if let Some(x) = expected {
+        if let (Some(was), Some((len, true))) = (x.transcript_len, transcript)
+            && len > was
+        {
+            return Rest::Told { answered: Some(x.cursor) };
+        }
+        return if now_ms < x.until_ms { Rest::Kept { until_ms: x.until_ms } } else { Rest::Told { answered: None } };
+    }
+    if !seen_working && !at_prompt && now_ms < started_ms + UNDRAWN_MS {
+        return Rest::Kept { until_ms: started_ms + UNDRAWN_MS };
+    }
+    Rest::Told { answered: None }
+}
+
 pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str, alive: bool) -> ScreenClassification {
     if !alive {
         return ScreenClassification { state: SubagentLiveState::Exited, summary: Some("tab closed".into()), approval: None, folder_trust: None, api_error: None, usage: None };
@@ -181,11 +247,11 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
         // an event, whatever is still running … 'working' should mean
         // the model is in a turn"). What it still has running is said
         // beside the state (`waiting_on`, `background_shells`).
-        Activity::Working if olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some("at prompt".into())),
+        Activity::Working if olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some(AT_PROMPT.into())),
         Activity::Working => (SubagentLiveState::Working, doing_line(screen_text)),
         Activity::Blocked => {
             if screen_text.trim().is_empty() {
-                (SubagentLiveState::Working, Some("starting".into()))
+                (SubagentLiveState::Working, Some(STARTING.into()))
             } else {
                 (SubagentLiveState::WaitingQuestion, Some("needs input (unrecognised dialog)".into()))
             }
@@ -194,9 +260,9 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
         Activity::Done => (SubagentLiveState::Done, last_nonempty()),
         Activity::Idle => {
             if screen_text.trim().is_empty() {
-                (SubagentLiveState::Working, Some("starting".into()))
+                (SubagentLiveState::Working, Some(STARTING.into()))
             } else {
-                let summary = if olo_agent_screen::at_prompt(agent, screen_text) { Some("at prompt".into()) } else { last_nonempty() };
+                let summary = if olo_agent_screen::at_prompt(agent, screen_text) { Some(AT_PROMPT.into()) } else { last_nonempty() };
                 (SubagentLiveState::Idle, summary)
             }
         }

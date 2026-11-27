@@ -32,6 +32,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use olo_rex_link::agents::state;
 use olo_rex_link::agents::wire::{AgentView, Frame, PROTO, Paths, Request, Response};
 use olo_rex_link::agents::{Activity, NativeSubagent, ScreenClassification, SubagentEvent, SubagentEventLog, SubagentLiveState, SubagentRegistry, classify_screen_rich, now_unix_ms, to_unix_ms};
 use serde_json::{Value, json};
@@ -95,7 +96,18 @@ pub struct Live {
     last_state: Option<SubagentLiveState>,
     last_key: Option<String>,
     check_gen: u64,
+    /// Seen at work since it started (or since it was last typed to):
+    /// really at work, not the word for an empty tab.
     seen_working: bool,
+    /// What it was given and has not yet been seen at work on
+    /// (`state::Expected`): a rest meanwhile is the rest before that
+    /// turn.
+    expects: Option<olo_rex_link::agents::state::Expected>,
+    /// The cursor of what the turn it is in, or last ended, answers.
+    pub answers: Option<u64>,
+    /// Its rest is kept back until then (`state::Rest::Kept`): read
+    /// again at whatever it shows meanwhile, and when that time comes.
+    held_until: Option<u64>,
     /// Asks its watcher to read the screen now.
     poke: Arc<Notify>,
     task: Option<tokio::task::AbortHandle>,
@@ -122,6 +134,9 @@ impl Live {
             last_key: None,
             check_gen: 0,
             seen_working: false,
+            expects: None,
+            answers: None,
+            held_until: None,
             poke: Arc::new(Notify::new()),
             task: None,
             told: None,
@@ -163,6 +178,13 @@ pub struct State {
 /// the parent what it did before it is stopped (its report ends it
 /// sooner: `escalate`).
 pub const MINDER_REPORTS: Duration = Duration::from_secs(180);
+
+/// How long an agent at rest has to take up a message sent to it
+/// before its rest is told all the same (thirty seconds; a test's own
+/// time for it: `OLO_REX_AGENTS_TAKEN_UP_MS`).
+pub fn taken_up() -> Duration {
+    std::env::var("OLO_REX_AGENTS_TAKEN_UP_MS").ok().and_then(|v| v.parse().ok()).map_or(Duration::from_secs(30), Duration::from_millis)
+}
 
 /// [`MINDER_REPORTS`], or what a test of it set in its place
 /// (`OLO_REX_AGENTS_MINDER_REPORTS_MS`).
@@ -446,6 +468,19 @@ impl Service {
         Ok(screen)
     }
 
+    /// A child was given work (a prompt at its start, a message sent and
+    /// submitted while it rested): `cursor` is what its giver was
+    /// answered with, and for `within` its rest is the rest before that
+    /// turn (`state::Expected`).
+    pub fn expect_work(&self, entry: &NativeSubagent, cursor: u64, within: Duration, transcript_known: bool) {
+        // (How long its conversation's file is now, where it has one:
+        // grown later, with its turn over, a turn was there unseen.)
+        let transcript_len = transcript_known.then(|| entry.transcript_path.as_deref().and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len()));
+        if let Some(live) = self.lock().live.get_mut(&entry.id) {
+            live.expects = Some(state::Expected { cursor, until_ms: now_unix_ms() + within.as_millis() as u64, transcript_len });
+        }
+    }
+
     /// Forgets what was last made of a child (after typing into it: the
     /// next thing it shows is an event even where it looks the same).
     pub fn reset_edge(&self, entry: &NativeSubagent, clear_seen_working: bool) {
@@ -598,6 +633,8 @@ impl Service {
             error: None,
             tail: Vec::new(),
             dedupe_key,
+            // (The turn it is of, where its child was seen to take one up.)
+            answers: self.lock().live.get(&entry.id).and_then(|l| l.answers),
         }
     }
 
@@ -757,25 +794,63 @@ impl Service {
             self.changed.notify_waiters();
         }
         let key = subkey(&cls);
+        let started_ms = to_unix_ms(entry.started_at).max(0) as u64;
+        let at_prompt = cls.summary.as_deref() == Some(state::AT_PROMPT);
+        let mut look_again = None;
         let generation = {
             let mut st = self.lock();
             let Some(live) = st.live.get_mut(id) else { return };
-            // (Anything but rest says it has begun: at work, asking, failed.)
-            if cls.state != SubagentLiveState::Idle {
+            // Anything but rest says it has begun: at work, asking,
+            // failed. Not the word for a tab with nothing drawn in it
+            // yet, "starting": that counted as work, and whether a
+            // child's first rest was then told hung on whether the very
+            // first reading of its tab was of an empty one (told a
+            // turn's end 0.6 s after its start, the tab's own shell on
+            // the screen; or never told at all, and whoever waited for
+            // it to be up waited out their time). What it was given, it
+            // has now taken up: the turn that follows answers that.
+            if cls.state != SubagentLiveState::Idle && !(cls.state == SubagentLiveState::Working && cls.summary.as_deref() == Some(state::STARTING)) {
                 live.seen_working = true;
+                if let Some(given) = live.expects.take() {
+                    live.answers = Some(given.cursor);
+                }
             }
-            // (A child just started is at rest before it ever worked: not an event.)
-            let age_ms = (now_unix_ms() as i64).saturating_sub(to_unix_ms(entry.started_at));
-            let unstarted = cls.state == SubagentLiveState::Idle && !live.seen_working && age_ms < 15_000;
-            if live.last_state == Some(cls.state) && live.last_key.as_deref() == Some(key.as_str()) {
+            // At rest: is that to tell (`state::rest_now`)? Not while it
+            // has been given work it hasn't been seen at, nor while what
+            // is on its screen isn't yet its own.
+            let kept = match cls.state {
+                SubagentLiveState::Idle => match state::rest_now(now_unix_ms(), started_ms, live.seen_working, at_prompt, live.expects, None) {
+                    state::Rest::Kept { until_ms } => Some(until_ms),
+                    state::Rest::Told { .. } => None,
+                },
+                _ => None,
+            };
+            // (A rest kept back is read again at whatever the child
+            // shows, the same or not, and when its time is up.)
+            let was_kept = live.held_until.is_some();
+            if kept.is_some() && live.held_until != kept {
+                look_again = kept;
+            }
+            live.held_until = kept;
+            if live.last_state == Some(cls.state) && live.last_key.as_deref() == Some(key.as_str()) && !was_kept && kept.is_none() {
                 return;
             }
             live.last_state = Some(cls.state);
             live.last_key = Some(key.clone());
             live.last_state_change_at = now_unix_ms();
             live.check_gen = live.check_gen.wrapping_add(1);
-            if unstarted || cls.state == SubagentLiveState::Working { None } else { Some(live.check_gen) }
+            // (Kept back with work given: its conversation's file may
+            // say the turn came and went unseen, which is read below.
+            // Kept back as not yet drawn: nothing more to read.)
+            if (kept.is_some() && live.expects.is_none()) || cls.state == SubagentLiveState::Working { None } else { Some(live.check_gen) }
         };
+        if let Some(until_ms) = look_again {
+            let (service, id) = (self.clone(), id.to_owned());
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(until_ms.saturating_sub(now_unix_ms()) + 150)).await;
+                service.poke(&id);
+            });
+        }
         // Followers are told what its screen says now that it differs
         // from what it said (it works, it asks): at once, before it is
         // settled with its transcript below. Not at every reading of a
@@ -820,6 +895,26 @@ impl Service {
             let pending = Self::pending_tools(info);
             let approval = again.cls.approval.as_ref().map(|ap| olo_rex_link::agents::approval_to_json(ap, &pending));
             let (state, error, _) = olo_rex_link::agents::effective_state(&again.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
+            // At rest, with what its conversation's file says: told, or
+            // kept back still (`state::rest_now`).
+            if matches!(state, SubagentLiveState::Idle | SubagentLiveState::Done) {
+                let over = matches!(info.and_then(|v| v["transcript_state"].as_str()), Some("done" | "idle" | "waiting" | "aborted"));
+                let written = info.and_then(|v| v["transcript_path"].as_str()).or(entry.transcript_path.as_deref()).and_then(|p| std::fs::metadata(p).ok()).map(|m| (m.len(), over));
+                let mut st = service.lock();
+                let Some(live) = st.live.get_mut(&id) else { return };
+                match state::rest_now(now_unix_ms(), started_ms, live.seen_working, at_prompt, live.expects, written) {
+                    state::Rest::Kept { until_ms } => {
+                        live.held_until = Some(until_ms);
+                        return;
+                    }
+                    state::Rest::Told { answered } => {
+                        if let Some(cursor) = answered {
+                            (live.answers, live.expects, live.seen_working) = (Some(cursor), None, true);
+                        }
+                        live.held_until = None;
+                    }
+                }
+            }
             let dedupe = if !key.is_empty() {
                 key
             } else if let Some(message) = &last_message {
