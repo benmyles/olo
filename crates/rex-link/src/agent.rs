@@ -474,6 +474,36 @@ fn classify_bg_process(cmd: &str) -> &'static str {
     "task"
 }
 
+/// Whether a process under an agent is the agent program's own doing,
+/// not a run of the agent's: a server or helper its CLI keeps (an MCP
+/// server, a language server, its search), or a bare `sleep`. Codex
+/// keeps one of its own for as long as it runs
+/// (`…/.codex/packages/…/bin/codex-code-mode-host --listen …`): told as
+/// the agent's task, every Codex was "at rest on a run of its own" for
+/// good, so a reviewer that had written its review and said DONE was
+/// never seen to have finished, and a lead's list said `waiting_on:
+/// own_run` of every one (the ShiftUp lead's item 51, and a review of
+/// Olo's own lost for it, 2026-11-27). Anything run from the CLI's own
+/// package is the CLI's.
+fn clis_own_process(cmd: &str, comm: &str, argc: usize) -> bool {
+    let low = cmd.to_ascii_lowercase();
+    low.contains("olo-rex-link")
+        || low.contains("ripgrep")
+        || low.contains("app-server")
+        || low.contains("mcp-server")
+        || low.contains("modelcontextprotocol")
+        || low.contains("language-server")
+        || low.contains("rust-analyzer")
+        || low.contains("pyright")
+        || low.contains("gopls")
+        || low.contains("clangd")
+        || low.contains("tsserver")
+        || low.contains("playwright-mcp")
+        || low.contains("codex-code-mode-host")
+        || low.split_whitespace().next().is_some_and(|program| program.contains("/.codex/packages/"))
+        || (comm == "sleep" && argc == 2)
+}
+
 fn find_background_shells(cli: &str, agent_pid: i32, by_ppid: &HashMap<i32, Vec<&Proc>>) -> Vec<BackgroundShellInfo> {
     let mut out = Vec::new();
     // The agent's own shells first, each one whole: a shell the agent
@@ -518,22 +548,7 @@ fn find_background_shells(cli: &str, agent_pid: i32, by_ppid: &HashMap<i32, Vec<
             continue;
         }
         let cmd = argv.join(" ");
-        // Skip internal MCP/language/helper daemons that belong to the CLI itself.
-        let low = cmd.to_ascii_lowercase();
-        if low.contains("olo-rex-link")
-            || low.contains("ripgrep")
-            || low.contains("app-server")
-            || low.contains("mcp-server")
-            || low.contains("modelcontextprotocol")
-            || low.contains("language-server")
-            || low.contains("rust-analyzer")
-            || low.contains("pyright")
-            || low.contains("gopls")
-            || low.contains("clangd")
-            || low.contains("tsserver")
-            || low.contains("playwright-mcp")
-            || (p.comm == "sleep" && argv.len() == 2)
-        {
+        if clis_own_process(&cmd, &p.comm, argv.len()) {
             continue;
         }
         // Skip wrapper shells whose direct child is already in the list (keep the leaf command).
@@ -1285,6 +1300,32 @@ mod tests {
     }
 
     use super::*;
+
+    /// What an agent's program keeps for itself is not a run of the
+    /// agent's: Codex's own helper as its process list has it, a server
+    /// of the CLI's, a bare sleep. A build, a test or a script of the
+    /// agent's is.
+    #[test]
+    fn a_clis_own_helper_is_not_the_agents_run() {
+        for (cmd, comm, argc) in [
+            ("/home/u/.codex/packages/standalone/releases/0.172.0-x86_64-unknown-linux-musl/bin/codex-code-mode-host --listen unix:///run/user/1000/c.sock", "codex-code-mode", 3),
+            ("/home/u/.codex/packages/standalone/releases/0.173.0-x86_64-unknown-linux-musl/bin/some-later-helper", "some-later-help", 1),
+            ("node /usr/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js /tmp", "node", 3),
+            ("rust-analyzer", "rust-analyzer", 1),
+            ("sleep 45", "sleep", 2),
+        ] {
+            assert!(clis_own_process(cmd, comm, argc), "{cmd}");
+        }
+        for (cmd, comm, argc) in [
+            ("cargo test -p olo-rex", "cargo", 4),
+            ("python3 /var/tmp/x/verify.py --all", "python3", 3),
+            // (A script of the agent's that happens to be kept under a folder of that name elsewhere.)
+            ("bash /srv/work/.codex/packages/run-tests.sh", "bash", 2),
+            ("sleep 5 10", "sleep", 3),
+        ] {
+            assert!(!clis_own_process(cmd, comm, argc), "{cmd}");
+        }
+    }
 
     /// The command of an agent's own shell, from the script Claude Code
     /// gives it (2.1.332, copied from two that ran): the word after

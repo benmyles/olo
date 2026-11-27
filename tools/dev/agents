@@ -484,7 +484,13 @@ def state(name):
             return "gone" if (meta(name) or {}).get("ended") else "exited"
         # (Its turn ended on a run of its own that still goes, a test or
         # a build it will be woken by: the service knows, `waiting_on`.)
-        own_run = said.get("waiting_on") == "own_run"
+        # (But for what is the agent program's own: Codex keeps a helper
+        # of its own for as long as it runs, `codex-code-mode-host`,
+        # which the service told as the agent's run until 2026-11-27: a
+        # reviewer that had written its review and said DONE read as
+        # working for good, and its front door never saw it finish.)
+        runs = [str(b.get("cmd") or "") for b in said.get("background_shells") or []]
+        own_run = said.get("waiting_on") == "own_run" and not (runs and all("codex-code-mode-host" in c or "/.codex/packages/" in c.split(" ")[0] for c in runs))
     else:
         if tmux("has-session", "-t", f"={name}").returncode:
             return "gone"
@@ -521,6 +527,20 @@ def state(name):
     if cli(name) == "agy" and any(re.search(r"\b[1-9][0-9]* task\(s\)", l) for l in lines[-3:]):
         own_run = True
     return "working" if own_run else "idle"
+
+
+def at_rest(name):
+    """Whether the agents service itself says a child's turn is over
+    (done, or idle with nothing asked): its own reading of the agent's
+    conversation, where this tool reads the screen."""
+    if via(name) != "rex":
+        return False
+    r = olo("status", child(name), "--json")
+    try:
+        said = json.loads(r.stdout) if r.returncode == 0 else {}
+    except ValueError:
+        said = {}
+    return said.get("state") in ("done", "idle") and not said.get("approval")
 
 
 def asked(name):
@@ -903,6 +923,13 @@ def session(name, cwd, env, program, native=None):
             said = json.loads(r.stdout)
         except ValueError:
             sys.exit(f"agents: olo agent start {name}: {r.stdout.strip() or r.stderr.strip()}")
+        # (Started, and its minder not: the session at its most tabs,
+        # as it was on 2026-11-27, when three helpers ran with none and
+        # this tool said nothing, their record saying they had one. A
+        # helper with no minder is the lead's to answer, at once.)
+        if minded and said.get("minder_error"):
+            print(f"agents: {name} runs WITHOUT a minder ({said['minder_error']}): what it asks comes to you; `olo agent mind {name} --with {MINDER} --rules {MINDER_RULES}` once there is room", file=sys.stderr, flush=True)
+            minded = False
         m = meta(name) or {}
         m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id"), "minded": minded})
         save_meta(name, m)
@@ -1510,7 +1537,11 @@ def watch(stuck_min, only=None, at_most=None, among=None):
         if alerts:
             # (One waited for alone, and done: what it wrote is what its
             # front door prints, not its screen besides.)
-            finished = bool(only) and os.path.exists(done_file(only)) and state(only) == "idle"
+            # (At rest by this tool's reading or by the service's own
+            # word: its minder's "it has finished" came a moment before
+            # the screen read as at rest, and a review's front door took
+            # it for a question and ended without keeping the review.)
+            finished = bool(only) and os.path.exists(done_file(only)) and (state(only) == "idle" or at_rest(only))
             for n, why, text in alerts:
                 print(f"=== {n} {why}")
                 if not finished:
@@ -1818,10 +1849,30 @@ def say_tidied(said):
         print(f"agents: {line}", file=sys.stderr)
 
 
+def keep_result(name):
+    """A look's or a review's result put where it is kept (beside the
+    pictures, with the diff) if its front door never got to: the path,
+    or None where there is nothing to keep or it is kept already."""
+    m = meta(name) or {}
+    written, kept = m.get("done"), m.get("kept")
+    if not (written and kept) or os.path.exists(kept) or not (os.path.isfile(written) and os.path.getsize(written)):
+        return None
+    os.makedirs(os.path.dirname(kept), exist_ok=True)
+    shutil.copyfile(written, kept)
+    return kept
+
+
 def forget(name):
     refuse_nested()
     if live(name):
         sys.exit(f"agents: {name} is running: stop it first")
+    # (What it wrote is kept before its folder goes. A review's front
+    # door had ended early, its review still in the folder alone, and
+    # the folder was removed with it: put back from the lead's own
+    # reading of it, 2026-11-27.)
+    kept = keep_result(name)
+    if kept:
+        print(f"agents: {name}'s result wasn't kept yet: it is now, at {kept}")
     shutil.rmtree(folder(name), ignore_errors=True)
     print(f"agents: {name}'s folder removed")
 
