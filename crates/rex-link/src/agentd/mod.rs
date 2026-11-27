@@ -7,6 +7,7 @@
 //! and how it is said are the library's (`olo_rex_link::agents`).
 
 mod client;
+mod leave;
 mod ops;
 pub mod rex;
 pub mod service;

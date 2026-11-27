@@ -308,7 +308,23 @@ impl Service {
                 Err(e) => return Response::err("start", e, 2),
             },
         };
+        // (Its list of what is not allowed without asking: one that
+        // isn't a list is said now, with nothing started.)
+        if let Some(text) = &spec.approve_all_but
+            && let Err(e) = super::leave::LeaveList::parse(text)
+        {
+            return Response::err("start", format!("--approve-all-but: {e}"), 2);
+        }
         let mut answer = self.start_spec(req, spec.clone(), caller).await;
+        if let (true, Some(text), Some(id)) = (answer.ok, &spec.approve_all_but, answer.data["id"].as_str()) {
+            match self.set_leave(id, text) {
+                Ok(n) => answer.data["approve_all_but"] = json!(n),
+                Err(e) => answer.stderr.push_str(&format!("olo agent start: its list couldn't be kept ({e}): everything it asks is asked\n")),
+            }
+            if spec.json {
+                answer.stdout = format!("{}\n", answer.data);
+            }
+        }
         if let (true, Some((who, rules))) = (answer.ok, minder)
             && let Some(child) = answer.data["id"].as_str().and_then(|id| self.entry(id))
         {
@@ -454,11 +470,36 @@ impl Service {
         let dir = self.paths.dir.join("minders").join(&it.id);
         let now = self.lock().reg.minder_of(&it.id).cloned();
         let told = |m: &NativeSubagent| json!({ "id": m.id, "name": m.name, "window_id": m.window_id, "cli": m.cli.binary(), "model": m.model, "effort": m.effort });
+        // Its list of what is not allowed without asking: given (or
+        // another in its place), or taken away. By itself, or with
+        // what is asked of its minder in the same command.
+        let mut listed = None::<String>;
+        if let Some(text) = &spec.leave {
+            match self.set_leave(&it.id, text) {
+                Ok(n) => {
+                    listed =
+                        Some(format!("{its_name}: the service allows what it asks leave for, once, except what {n} pattern{} name{}\n", if n == 1 { "" } else { "s" }, if n == 1 { "s" } else { "" }))
+                }
+                Err(e) => return err(format!("--approve-all-but: {e}"), 2),
+            }
+        } else if spec.leave_off {
+            listed = Some(if self.clear_leave(&it.id) { format!("{its_name}: everything it asks leave for is asked again\n") } else { format!("{its_name} had no list\n") });
+        }
+        let patterns = || self.leave_of(&it.id).map(|l| l.patterns().iter().map(|p| (*p).to_owned()).collect::<Vec<_>>());
+        if let Some(said) = listed
+            && !spec.off
+            && spec.with.is_none()
+            && spec.rules.is_none()
+            && spec.rules_file.is_none()
+        {
+            let payload = json!({ "ok": true, "id": it.id, "name": it.name, "approve_all_but": patterns(), "minder": now.as_ref().map(&told) });
+            return Response::ok(if spec.json { format!("{payload}\n") } else { said }, payload);
+        }
         // Told of: who minds it, by what rules, and what was answered.
         if !spec.off && spec.with.is_none() && spec.rules.is_none() && spec.rules_file.is_none() {
             let rules = std::fs::read_to_string(dir.join("rules.md")).ok();
             let answered: Vec<Value> = std::fs::read_to_string(dir.join("answers.jsonl")).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
-            let payload = json!({ "ok": true, "id": it.id, "name": it.name, "minder": now.as_ref().map(&told), "rules": rules, "answered": answered });
+            let payload = json!({ "ok": true, "id": it.id, "name": it.name, "minder": now.as_ref().map(&told), "rules": rules, "approve_all_but": patterns(), "answered": answered });
             let stdout = if spec.json {
                 format!("{payload}\n")
             } else {
@@ -466,6 +507,12 @@ impl Service {
                     Some(m) => format!("{its_name} is minded by {} ({}:{}:{})\n", m.name.as_deref().unwrap_or(&m.id), m.cli.binary(), m.model, m.effort),
                     None => format!("{its_name} has no minder\n"),
                 };
+                if let Some(patterns) = patterns() {
+                    out.push_str(&format!(
+                        "  what it asks leave for is allowed by the service, once, except what these name: {}\n",
+                        if patterns.is_empty() { "(nothing)".to_owned() } else { patterns.join("  |  ") }
+                    ));
+                }
                 for a in answered.iter().rev().take(20).rev() {
                     out.push_str(&format!("  {}  {}\n", a["did"].as_str().unwrap_or_default(), a["said"]));
                 }
@@ -1504,7 +1551,7 @@ impl Service {
 
     // ---- approve ----
 
-    async fn approve(self: &Arc<Self>, raw: &Value, caller: &Caller) -> Response {
+    pub(super) async fn approve(self: &Arc<Self>, raw: &Value, caller: &Caller) -> Response {
         let err = |msg: String, code: i32| Response::err("approve", msg, code);
         let spec = match ApproveSpec::parse(Some(raw)) {
             Ok(s) => s,
@@ -1831,32 +1878,80 @@ impl Service {
 
     // ---- prune, focus ----
 
+    /// `olo agent prune`: the records of children that have exited,
+    /// taken out of the list. **Of the asking tab's own children, and of
+    /// nobody else's.** It used to take every exited record of the
+    /// whole session, and two leads' tabs are one session: a tidying
+    /// after one check child took 124 records with it, most of them
+    /// another lead's, their conversations' ids among them (2026-11-27,
+    /// 00:50 UTC; 120 were rebuilt from the event log, four were not).
+    /// What isn't the asker's own is taken only when asked for by what
+    /// it is: `--session` (every tab's of this session), `--all` (every
+    /// session's).
     fn prune(&self, raw: &Value, caller: &Caller) -> Response {
         if caller.child.is_some() {
             return Response::err("prune", "refused from child subagent tab", 69);
         }
-        let (mut all, mut as_json) = (false, false);
+        let (mut all, mut session, mut as_json) = (false, false, false);
         if let Some(args) = args_of(raw) {
             for a in &args {
                 match a.as_str() {
                     "--all" | "-a" => all = true,
+                    "--session" => session = true,
                     "--json" => as_json = true,
-                    _ => {}
+                    other => {
+                        return Response::err(
+                            "prune",
+                            format!(
+                                "unknown option `{other}`\nusage: olo agent prune [--session | --all] [--json]   (this tab's own exited children; --session: every tab's of this session; --all: every session's)"
+                            ),
+                            2,
+                        );
+                    }
                 }
             }
         } else {
             all = raw["all"].as_bool().unwrap_or(false);
+            session = raw["session"].as_bool().unwrap_or(false);
             as_json = raw["json"].as_bool().unwrap_or(false);
         }
-        let gone: Vec<String> = {
+        let (gone, others): (Vec<String>, usize) = {
             let mut st = self.lock();
-            let scope = if all { None } else { caller.session.clone() };
-            let gone: Vec<String> = st.reg.entries.iter().filter(|e| e.exited_at.is_some() && scope.as_deref().is_none_or(|s| e.session_id == s)).map(|e| e.id.clone()).collect();
-            st.reg.prune_exited(HOST, scope.as_deref());
+            // (Under the asking tab: its child, or a child of one, by
+            // the records' own tabs, whether those still stand or not.)
+            let under = |e: &NativeSubagent, tab: &str| {
+                let mut parent = e.parent_window_id.as_str();
+                for _ in 0..32 {
+                    if parent == tab {
+                        return true;
+                    }
+                    match st.reg.entries.iter().find(|p| p.host_key == e.host_key && p.session_id == e.session_id && p.window_id == parent) {
+                        Some(above) => parent = above.parent_window_id.as_str(),
+                        None => return false,
+                    }
+                }
+                false
+            };
+            let exited: Vec<&NativeSubagent> = st.reg.entries.iter().filter(|e| e.host_key == HOST && e.exited_at.is_some()).collect();
+            let gone: Vec<String> = exited
+                .iter()
+                .filter(|e| {
+                    if all {
+                        true
+                    } else if session {
+                        caller.session.as_deref() == Some(e.session_id.as_str())
+                    } else {
+                        caller.session.as_deref() == Some(e.session_id.as_str()) && caller.window.as_deref().is_some_and(|tab| under(e, tab))
+                    }
+                })
+                .map(|e| e.id.clone())
+                .collect();
+            let others = exited.len() - gone.len();
+            st.reg.entries.retain(|e| !gone.contains(&e.id));
             for id in &gone {
                 st.live.remove(id);
             }
-            gone
+            (gone, others)
         };
         if !gone.is_empty() {
             self.saved();
@@ -1864,8 +1959,16 @@ impl Service {
                 self.said(Frame::Gone { id: id.clone() });
             }
         }
-        let payload = json!({ "ok": true, "pruned": gone.len() });
-        Response::ok(if as_json { format!("{payload}\n") } else { format!("Pruned {} exited subagent record(s).\n", gone.len()) }, payload)
+        let whose = if all {
+            "of every session"
+        } else if session {
+            "of this session, every tab's"
+        } else {
+            "of this tab's own children"
+        };
+        let payload = json!({ "ok": true, "pruned": gone.len(), "scope": if all { "all" } else if session { "session" } else { "own" }, "left": others });
+        let left = if others > 0 && !all { format!(" {others} of other tabs' are left as they are.") } else { String::new() };
+        Response::ok(if as_json { format!("{payload}\n") } else { format!("Pruned {} exited subagent record(s) {whose}.{left}\n", gone.len()) }, payload)
     }
 
     async fn focus(&self, raw: &Value, caller: &Caller) -> Response {

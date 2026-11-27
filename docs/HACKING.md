@@ -31576,6 +31576,101 @@ agents through the night, could not move to it.
   The answer has `ended` (all of them) and `programs` (each: `id`,
   `name`, `pid`, `ended`), and in words says which still runs, with its
   pid. `--keep-tab` only interrupts: its program goes on, said at once.
+- *One agent for one prompt, and a watch that goes on* (`agentd/
+  client.rs`, `one_shot` and `follow_watch`; the ShiftUp lead's items
+  36 and 38, 2026-11-27, with Ben's words through them: "ergonomics
+  matter i want it to work as seamlessly for you as possible"). Both
+  are several askings of the service made by the command itself:
+  nothing new in the service, so a helper put on a host brings them
+  without its service being replaced.
+  - `olo agent run <claude|codex|agy> --model … --effort … (--prompt
+    TEXT | --prompt-file FILE) [--name N] [--out FILE] [--keep-tab]
+    [--timeout SECS] [--json]` and whatever `start` takes (`--minder`
+    among it): "starts it, returns when the prompt's own turn has ended
+    (or it exited or failed), prints its whole last message (and writes
+    it to `--out`), and stops the tab unless told to keep it; non-zero
+    when the turn did not end as a turn". It is `start`, a `watch` of
+    that child from the start's cursor until a rest whose `answers` is
+    that cursor (the prompt's own turn's end, never a rest before it:
+    "Which turn a rest belongs to"), then `stop`. Status 0, its turn
+    ended; 1, it failed, exited, or came to rest without taking its
+    prompt up; 3, it stands on a question or asks leave and nobody is
+    set to answer (its tab kept, the words say how to answer it); 124,
+    `--timeout` passed (kept). From a parent's shell it is a background
+    command that ends when the reading is in.
+  - `olo agent watch … --follow`: each thing waited for is printed as
+    it comes and the watch goes on from it until it is stopped; without
+    `--since` it begins from now. A line that says who and what
+    (`NAME: escalation`, `NAME: asks leave: COMMAND`, `NAME: done`,
+    `NAME: exited (code 0)`), then the message whole where there is one
+    (an escalation's words, a turn's last message), or with `--json`
+    each event as the watch gives it. It is for a harness that hands
+    each line of a running command to its agent as it is printed
+    (Claude Code's Monitor): a word to the parent with no wait of its
+    own to keep and start again. Olo itself types nothing into a
+    parent's pane.
+  - *Tried*: `agents.rs` (stand-ins): a run whose turn ends (and is not
+    answered by the rest before its turn), one that asks leave, one
+    that exits, one whose time passes; a follower that says a question,
+    a rest, a second child's two-line escalation and an exit, in order,
+    from one command that still runs. `agents_live.rs`: Claude Code
+    itself run for one prompt: its message whole in JSON, in the file
+    (its folder made), and printed plainly; its tab stopped.
+- *Leave given by a list* (`agentd/leave.rs`; `start … --approve-all-but
+  FILE`, `mind NAME --approve-all-but FILE | --approve-none`; the
+  ShiftUp lead's item 37, 2026-11-27, with Ben's words: "they follow
+  instructions great honestly i don't care much about requiring
+  approvals from them at all only in the most extreme cases"; "A minder
+  answers in 6 to 16 s and costs a model turn each; most of our boxes
+  need no judgement … the service itself answers 'yes, once' to any
+  approval box of that child at once, EXCEPT one whose whole command
+  (every part of a chain, redirections included) matches a pattern in
+  FILE, which goes to its minder if it has one, else to the parent's
+  watch as today. Never a kept yes"). The list is the parent's: a
+  regular expression a line, `#` for a remark, read by the asking
+  command and kept by the service in the child's folder
+  (`minders/ID/approve-all-but.txt`, so a service started in this
+  one's place goes by it); a line that is no pattern is refused and
+  nothing changes (a list that half holds allows what it was written
+  to stop). Where a question a child asks leave with has held
+  (`transition`, before anything is written down), the service reads
+  what is asked as one text (`leave::asked`: `TOOL: COMMAND`, the
+  command whole as the agent shows it, its lines joined: a pattern
+  sees `cd x && git push > log`, never only its first words, which is
+  all an agent's own allow rules judge; for what has no command, the
+  tool and the question's words); if no pattern is found in it and the
+  box has exactly one plain "yes, this once", it answers through
+  `approve --once`'s own steps (the choice by what it means, the mark
+  seen on it, the box seen to go) and nobody is told there was a
+  question. What a pattern names, what couldn't be read off the screen
+  whole, and a box with no such choice are written down and told as
+  before: to its minder if it has one, else on the parent's watch.
+  Each thing allowed is kept with what a minder answered (`mind NAME`:
+  `did: "allowed"`, `by: "list"`, the whole of what was asked), and
+  `mind NAME` lists the patterns. No model reads any of it: nothing is
+  weighed, and a box is answered in the time of a reading. *Tried*
+  (`agents.rs`): a chain with a redirection that no pattern names is
+  answered within four seconds, Return on Yes and nothing else, the
+  parent's watch not woken; a chain whose later part a pattern names
+  is told on the parent's watch with nothing typed; a list with a line
+  that is no pattern refused before anything starts; the list changed
+  as the child runs and taken away.
+- *`prune` takes the asking tab's own records* (`ops.rs`, `prune`).
+  The records of children that have exited, taken out of the list: of
+  the asking tab's own children (its child, or a child of one), and of
+  nobody else's. It used to take every exited record of the whole Rex
+  session, and two leads' tabs are one session: a tidying after one
+  check child took 124 records with it, most of them another lead's
+  (2026-11-27, 00:50 UTC, by the agent that wrote this, who had
+  promised that lead never to run it). `--session` takes every tab's
+  of the session and `--all` every session's: only by those names. A
+  word it doesn't know is refused, not taken for a yes. The app's own
+  command is "Prune This Tab's Exited Subagent Records". *Putting
+  pruned records back*: the event log has each child's id, name, tabs
+  and conversation ids, and the service's `adopt` takes records given
+  to it (`olo-rex-link agent adopt < {"agents":[…]}`): 120 of the 124
+  were rebuilt and given back so; what the log doesn't hold (effort,
+  title, a command's own words, when it truly started) is gone.
 - *The service keeps to the hold* (`Service::held`). While
   `~/.local/state/olo/host-upgrade.hold` is there (beside the services'
   folder: whoever has agents at work on a host puts it there, its words

@@ -1603,3 +1603,44 @@ fn live_mock_api_no_rest_is_told_before_the_prompts_own_turn() {
         }
     });
 }
+
+/// `olo agent run`, with Claude Code itself (the made-up API its model, which takes a second and a half): one
+/// command starts it, waits for its prompt's own turn, prints its whole last message and writes it to the file
+/// named, and stops its tab (the ShiftUp lead's item 36).
+#[test]
+fn live_mock_api_one_agent_for_one_prompt() {
+    if !std::path::Path::new("/usr/bin/rex").exists() || !have_program("claude") {
+        return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let rig = LiveRexHarness::start("oneshot").await;
+        rig.mock.clear_queues();
+        let run = |name: &'static str, more: Vec<String>| {
+            let mut args: Vec<String> =
+                ["agent", "run", "claude", "--model", "claude-opus-5-5", "--effort", "max", "--name", name, "--trust", "--prompt", "Read the file and say what it says.", "--cwd"]
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect();
+            args.push(rig.work.display().to_string());
+            args.extend(more);
+            args.extend(rig.cli_env_args("claude"));
+            args
+        };
+        // In JSON, with its file.
+        let reading = "ONE_SHOT_READING:\nThe file says forty-two — “quoted”.\n\nDONE";
+        rig.mock.push("claude", MockReply::SlowText { after_ms: 1500, text: reading.into() });
+        let out = rig.dir.join("readings/first.md");
+        let ran = rig.run_olo_json(&run("reader", vec!["--out".into(), out.display().to_string(), "--json".into()]).iter().map(String::as_str).collect::<Vec<_>>()).await;
+        assert_eq!((&ran["ok"], &ran["ended_as"], &ran["last_message"], &ran["stopped"]), (&json!(true), &json!("done"), &json!(reading), &json!(true)), "{ran}");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), reading, "its message whole, in the file (its folder made)");
+        assert!(ran["cli_session_id"].as_str().is_some_and(|s| s.len() == 36), "its conversation, to take up again: {ran}");
+        let listed = rig.run_olo_json(&["agent", "list", "--all", "--json"]).await;
+        assert_eq!(listed["subagents"].as_array().unwrap().iter().find(|s| s["name"] == "reader").unwrap()["state"], "exited", "its tab is stopped: {listed}");
+        // Plainly: its message and nothing else, status 0.
+        let plain = "A second reading,\nof two lines.";
+        rig.mock.push("claude", MockReply::SlowText { after_ms: 1000, text: plain.into() });
+        let (code, said, err) = rig.run_olo(&run("reader-2", Vec::new()).iter().map(String::as_str).collect::<Vec<_>>()).await;
+        assert_eq!((code, said.as_str()), (0, format!("{plain}\n").as_str()), "{err}");
+    });
+}

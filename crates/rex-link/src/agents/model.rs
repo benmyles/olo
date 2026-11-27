@@ -606,12 +606,6 @@ impl SubagentRegistry {
         self.entries.len() != before
     }
 
-    pub fn prune_exited(&mut self, host_key: &str, session_id: Option<&str>) -> usize {
-        let before = self.entries.len();
-        self.entries.retain(|e| !(e.host_key == host_key && session_id.is_none_or(|s| e.session_id == s) && e.exited_at.is_some()));
-        before - self.entries.len()
-    }
-
     pub fn update_discovered(&mut self, id: &str, cli_session_id: Option<&str>, confidence: Option<&str>, transcript_path: Option<&str>, pid: Option<i32>) -> bool {
         let Some(e) = self.entries.iter_mut().find(|e| e.id == id) else { return false };
         let mut changed = false;

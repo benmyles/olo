@@ -82,10 +82,16 @@ pub struct MindSpec {
     pub env: Vec<(String, String)>,
     pub off: bool,
     pub json: bool,
+    /// `--approve-all-but FILE` (its text): leave given by a list, by
+    /// the service itself, from now; `--approve-none`: no longer.
+    pub leave: Option<String>,
+    pub leave_off: bool,
 }
 
 pub fn mind_usage() -> String {
-    "usage: olo agent mind <ID|NAME> [--with claude:MODEL:EFFORT] [--rules FILE | --rules-text TEXT] [--env K=V]... [--off] [--json]\n  \
+    "usage: olo agent mind <ID|NAME> [--with claude:MODEL:EFFORT] [--rules FILE | --rules-text TEXT] [--env K=V]... [--off] [--approve-all-but FILE | --approve-none] [--json]\n  \
+     --approve-all-but FILE   the service itself says yes, once, to what it asks leave for, except what a pattern of FILE names (a regular expression a line), which is asked as before\n  \
+     --approve-none      no longer: everything it asks leave for is asked\n  \
      --with …            attach a minder to it, or replace the one it has\n  \
      --rules FILE        what the minder may approve, must refuse, how to steer, when to tell you (your own words)\n  \
      --off               end its minder\n  \
@@ -112,6 +118,8 @@ impl MindSpec {
                     spec.env.push((k.to_owned(), v.to_owned()));
                 }
                 "--off" | "--stop" => spec.off = true,
+                "--approve-all-but-text" => spec.leave = Some(value(&mut i, "--approve-all-but")?),
+                "--approve-none" => spec.leave_off = true,
                 "--json" => spec.json = true,
                 flag if flag.starts_with("--") => return Err(format!("unknown option `{flag}`\n{}", mind_usage())),
                 target if spec.target.is_empty() => spec.target = target.to_owned(),
@@ -127,6 +135,9 @@ impl MindSpec {
         }
         if spec.rules.is_some() && spec.rules_file.is_some() {
             return Err("`--rules FILE` or `--rules-text TEXT`, not both".into());
+        }
+        if spec.leave.is_some() && spec.leave_off {
+            return Err("`--approve-all-but FILE` or `--approve-none`, not both".into());
         }
         Ok(spec)
     }

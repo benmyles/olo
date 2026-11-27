@@ -1584,6 +1584,36 @@ Three smaller things from the same work:
   (`.env("PWD", …)`). That the service takes a conversation by folder at
   all is ShiftUp's item 33 for agy, and is in the TODO for both.
 
+### Never `olo agent prune` on this host; and what a habit cost (2026-11-27)
+
+The lead of the other agents on this host asked, on the 26th, that
+`olo agent prune` never be run here, and was told it would not be. At
+00:50:33 UTC on the 27th, three seconds after a handover that had gone
+exactly as told, it was run: a check child of this tab had been
+started and stopped, and its record was "tidied". `prune` took every
+exited record of the whole Rex session (124 besides the check's), most
+of them that lead's, their conversations' ids with them.
+
+What is to keep from it:
+- **A promise made to someone is checked against each command before
+  it is run, not remembered in general.** The list of them is short
+  (CLAUDE.md, "Leave the host's agents alone too", and the hold file's
+  own words): read it before anything is done to the live service
+  beyond reading it. Tidying is the kind of thing done without
+  thinking, which is why it is the kind to think about.
+- **On the live service, only what the task needs.** The check needed a
+  start and a stop. The record of a stopped check child harms nobody.
+- **What was put back, and how**, in case it is ever needed again:
+  HACKING, "`prune` takes the asking tab's own records". The service's
+  `events.jsonl` is the second copy of most of a record; `agent adopt`
+  gives records back to a running service.
+- The tool is changed so that the same command now takes only the
+  asking tab's own children's records. That makes the mistake harmless
+  next time; it does not make the promise optional.
+
+It was said to that lead at once, in their file, with what was lost,
+what was rebuilt and what could not be; and to Ben.
+
 ### A test that passed is run again, many times, before it is believed (2026-11-27)
 
 A test written and passed on the 26th (two Antigravity children, the
@@ -1609,6 +1639,16 @@ program and has it run can meet it); and one failure not yet explained
 
 Don't build the package while such a loop runs on its binaries: the
 loop then tries whichever build is there at each turn.
+
+And every wait in a test has its own end. One copy of a new test sat
+ten minutes: it had told a stand-in two things one after the other,
+the stand-in (which opened its pipe anew for each line) lost the
+second, and the command under test, rightly, waited for an exit that
+was never asked for. The stand-in now holds its pipe open
+(`stand-in.sh`, `exec 4<>`), which was also behind several of the
+"once in a while" failures of other tests; and a command a test starts
+that can wait is given a time (`--timeout`) even where time is not
+what is tried.
 
 ### Whose conversation is it: read it from two agents at once (2026-11-26)
 

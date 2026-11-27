@@ -9,7 +9,7 @@ for me so that the agents working on stuff relying on olo agent fixes
 etc get it as soon as they're ready (i'll be stepping away for a while
 and won't be able to upgrade my desktop for a bit)").
 
-    tools/dev/host-upgrade [--dry-run] [--work DIR] [--even-if-held] [--under-screens]
+    tools/dev/host-upgrade [--dry-run] [--work DIR] [--even-if-held] [--under-screens] [--keep-service]
 
 DIR: where the release was built (tools/publish-release.sh's work folder:
 /var/tmp/olo-release, or OLO_RELEASE_WORK). tools/publish-release.sh runs
@@ -60,6 +60,16 @@ The agents service keeps to it too (2026-11-26): while it is there a
 running service is handed to no later build of the helper (a desktop
 that upgraded and connected is answered by the one that runs) and
 `olo-rex-link agent retire` is refused without `--even-if-held`.
+
+--keep-service: the helper, the skill and the commands are put and the
+agents service that runs is left running (asked nothing). For a release
+whose helper changes only what the `olo agent` command itself does
+(`run`, `watch --follow`: several askings of the service, made by the
+command), which a service of the same protocol answers as it is. It
+goes ahead where a hold is there too: nothing a hold is for is touched.
+On a host whose service doesn't keep to a hold yet (before update 30)
+there must be a hold or none of this: a later helper asking is what
+hands such a service over.
 
 It prints what it did, and its last line is "host-upgrade: done: …",
 "host-upgrade: nothing to do: …" or "host-upgrade: failed: WHY" (exit 1).
@@ -160,7 +170,14 @@ def main():
     # (2026-11-26: a service replaced under four agents hours into their
     # work, for 2 min 21 s, by a build of mine; their lead asked to be
     # told before the service is replaced. A hold is how they say no.)
-    if os.path.exists(HOLD) and "--even-if-held" not in args:
+    keep_service = "--keep-service" in args
+    kept = None
+    # (A service is handed to a later helper that asks it, where no hold
+    # is there for it to keep to: with none, putting the helper alone
+    # would replace the service all the same, at the next asking.)
+    if keep_service and not os.path.exists(HOLD):
+        fail(f"--keep-service needs a hold in place ({HOLD}): without one the service hands itself to the new helper the first time it is asked")
+    if os.path.exists(HOLD) and "--even-if-held" not in args and not keep_service:
         why = " ".join(open(HOLD).read().split())[:200]
         print(f"host-upgrade: nothing to do: held by {HOLD} ({why or 'no word of why'}): remove it, or --even-if-held")
         return
@@ -216,6 +233,12 @@ def main():
         return
     pid, exe = service(helper)
     for attempt in range(1, 13):
+        # (Left as it is: asked which it is, which a service that keeps
+        # to its hold answers for a later helper without handing over.)
+        if keep_service:
+            if pid is not None and exe != helper:
+                kept = f"the agents service left as it is (pid {pid}, {os.path.basename(exe)})"
+            break
         if pid is None:
             # (No Rex server here, or it can't be asked: nothing runs to be upgraded.)
             print(f"host-upgrade: the agents service couldn't be asked ({exe}): it starts from the new helper at the next `olo agent`")
@@ -267,10 +290,13 @@ def main():
             if said["changed"] or version() != was:
                 did.append(f"Olo for this host's screens ({was} to {version()}: {said['changed']} programs written)")
     if not did:
-        print(f"host-upgrade: nothing to do: this host has release {commit}'s helper ({build}), skill and commands, and its service is the helper's (pid {pid})")
+        print(f"host-upgrade: nothing to do: this host has release {commit}'s helper ({build}), skill and commands, and " + (kept or f"its service is the helper's (pid {pid})"))
         return
     for line in did:
         print(f"host-upgrade: put {line}")
+    if kept:
+        print(f"host-upgrade: done: this host has release {commit}'s helper ({build}), skill and commands; {kept}")
+        return
     print(f"host-upgrade: done: this host has release {commit}'s helper ({build}), skill and commands" + (f"; the agents service is pid {pid}" if pid else ""))
 
 

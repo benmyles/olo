@@ -124,6 +124,68 @@ its judgment matters.
   `escalation` on the parent's watch at once. Say so in a child's brief
   where you want to hear of something without it stopping to ask.
 
+**One agent for one prompt: `olo agent run`.** For a reading, a check,
+a review: anything that is a brief in and a final message out.
+
+    olo agent run claude --model claude-opus-5-5 --effort max --name reading-7 \
+        --prompt-file brief.md --out reading-7.md
+
+It starts the agent, waits for the prompt's own turn to end, prints its
+whole last message (and writes it to `--out`), and stops its tab; run
+it as a background command of your harness and it ends when the answer
+is in. `--json` gives one object (`ok`, `ended_as`, `last_message`,
+`cli_session_id`, `out`, `stopped`); `--keep-tab` leaves the tab;
+`--timeout SECS` gives up waiting (the tab is kept); everything `start`
+takes goes with it (`--cwd`, `--trust`, `--env`, `--minder … --rules …`).
+Its status says how it went: 0, its turn ended; 1, it failed, exited,
+or never took its prompt up; 3, it stands on a question or asks leave
+and nobody is set to answer (its tab is kept: answer it with `approve`
+or `send`, or give it a minder next time); 124, your time passed.
+
+**A watch that goes on: `olo agent watch --all --follow`.** In a harness
+that hands you each line a running command prints (Claude Code's
+Monitor tool), start this once and every word from your children
+reaches you as it comes, with no wait of your own to keep going:
+
+    olo agent watch --all --follow --on escalation,question,approval,done,error,exit
+
+Each event is a line that says who and what (`reading-7: done`,
+`api-audit: asks leave: git push`, `api-audit: escalation`,
+`tests: exited (code 0)`) followed by the message whole where there is
+one; `--json` prints each event as `watch` gives it. It begins from now
+unless you pass `--since CURSOR`, and runs until it is stopped. (A
+monitor that ends after a time is started again from the last cursor
+it printed.) Olo itself never types into your pane.
+
+**Leave by a list: `--approve-all-but FILE`.** Where a child's asking
+leave needs no judgement, give it a list of what must *not* be done
+without asking, and the service itself says "yes, once" to everything
+else, at once (no model, no wait, nobody woken):
+
+    olo agent start claude --model … --effort … --name builder --prompt-file brief.md \
+        --approve-all-but not-without-asking.txt
+
+The file is a pattern a line (a regular expression, looked for anywhere
+in what is asked; `#` begins a remark), read against the whole of what
+the child asks as `TOOL: COMMAND` (`Bash: cd /w && git push > log`:
+every part of a chain and its redirections, which an agent's own allow
+rules don't see), e.g.
+
+    \bgit\s+(push|commit)\b
+    \brm\s+-[a-zA-Z]*r
+    \bsudo\b
+    ^(Write|Edit): .*\.env\b
+
+What a pattern names is asked as before: of the child's minder if it
+has one, else on your watch. It is never a yes that is kept, and what
+couldn't be read off the screen whole is never allowed by a list. For
+a child that runs: `olo agent mind NAME --approve-all-but FILE` (or
+another list in its place), `olo agent mind NAME --approve-none` (ask
+everything again); `olo agent mind NAME` lists the patterns and each
+thing the service allowed (`did: "allowed"`, `by: "list"`). A list and
+a minder go together well: the list for leave, the minder for
+questions and steering.
+
 **It works with no Olo desktop connected.** Every `olo agent` command
 is answered by this host's own agents service (Olo's helper here, which
 `olo` runs: `olo-rex-link agent`), through this host's Rex server. The
@@ -227,7 +289,7 @@ model or reasoning effort is used.
   `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`
   It answers once each stopped tab's own program has ended (five seconds for it), or says which has not, with its pid: `ended` (all of them) and `programs` (`id`, `name`, `pid`, `ended` each) in its JSON, so nothing of yours has to watch a program go.
   Gracefully interrupts (double Ctrl-C) and closes the child tab (`--save PATH` archives full scrollback to `PATH` before closing; `--tree` stops all nested descendants bottom-up; `--force` closes immediately; `--force` and `--keep-tab` cannot be combined; keeps `cli_session_id` in registry for `list --all` and `--resume`).
-- **Prune exited child records**: `olo agent prune [--all] [--json]`
+- **Prune exited child records**: `olo agent prune [--json]` takes your own tab's exited children out of the list (their conversations' ids go with them: keep what you may want to take up again). It never takes another tab's: those only with `--session` (every tab's of this session) or `--all`, which are not yours to use where others work in the session.
 - **Focus a child tab in Rex**: `olo agent focus <ID|NAME>`
 - **Feedback surveys are never yours to answer.** Claude Code's ("How is
   Claude doing this session? … 0: Dismiss") and Antigravity's ("How's

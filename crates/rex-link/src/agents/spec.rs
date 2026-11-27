@@ -80,6 +80,9 @@ pub struct StartSpec {
     /// Set by the service alone, never asked for: the agent this one is
     /// the minder of (its id).
     pub minds: Option<String>,
+    /// `--approve-all-but FILE` (its text, read by the asking command):
+    /// leave given by a list, by the service itself (`agentd/leave.rs`).
+    pub approve_all_but: Option<String>,
 }
 
 fn looks_like_tool_token(tok: &str) -> bool {
@@ -212,6 +215,7 @@ impl StartSpec {
                 None => None,
             },
             rules: raw_str_opt("rules_text"),
+            approve_all_but: raw_str_opt("approve_all_but"),
             rules_file: str_opt("rules"),
             minder_env: match v.get("minder_env").and_then(Value::as_object) {
                 Some(obj) => obj.iter().map(|(k, val)| (k.clone(), val.as_str().map(str::to_owned).unwrap_or_else(|| val.to_string()))).collect(),
@@ -294,6 +298,7 @@ impl StartSpec {
                 "--minder" => s.minder = Some(super::minder::MinderSpec::parse(&next(&mut i, flag, inline)?)?),
                 "--rules" | "--rules-file" => s.rules_file = Some(next(&mut i, flag, inline)?),
                 "--rules-text" => s.rules = Some(next(&mut i, flag, inline)?),
+                "--approve-all-but-text" => s.approve_all_but = Some(next(&mut i, flag, inline)?),
                 "--minder-env" => {
                     let kv = next(&mut i, flag, inline)?;
                     let Some((k, v)) = kv.split_once('=') else {

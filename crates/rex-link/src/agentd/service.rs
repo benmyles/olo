@@ -176,6 +176,11 @@ pub struct State {
     /// told (its number in the log). What stands and is later than
     /// that, it is told; nothing twice.
     pub seen: HashMap<String, u64>,
+    /// By child: its list of what is not allowed without asking
+    /// (`leave::LeaveList`), where its parent gave one: everything else
+    /// it asks leave for, the service itself allows, once. None kept
+    /// for a child that has none (looked for once, in its folder).
+    pub leave: HashMap<String, Option<Arc<super::leave::LeaveList>>>,
 }
 
 /// How long a minder has, once the agent it minded has ended, to tell
@@ -470,6 +475,64 @@ impl Service {
         }
         *survey = olo_agent_screen::parse_survey(agent, &screen).is_some();
         Ok(screen)
+    }
+
+    /// Where a child's list is kept: in its folder of the service's
+    /// own, beside its minder's rules, so that a service started in this
+    /// one's place still goes by it.
+    fn leave_file(&self, id: &str) -> PathBuf {
+        self.paths.dir.join("minders").join(id).join("approve-all-but.txt")
+    }
+
+    /// Gives the child `id` a list (`text`: a pattern a line) from now,
+    /// in another's place if it had one: how many patterns. A line that
+    /// is no pattern is refused, and nothing changes.
+    pub fn set_leave(&self, id: &str, text: &str) -> Result<usize, String> {
+        let list = super::leave::LeaveList::parse(text)?;
+        let file = self.leave_file(id);
+        std::fs::create_dir_all(file.parent().unwrap_or(&self.paths.dir)).and_then(|()| std::fs::write(&file, text)).map_err(|e| format!("{}: {e}", file.display()))?;
+        let n = list.patterns().len();
+        self.lock().leave.insert(id.to_owned(), Some(Arc::new(list)));
+        Ok(n)
+    }
+
+    /// Takes the child's list away: everything it asks leave for is
+    /// asked again. Whether it had one.
+    pub fn clear_leave(&self, id: &str) -> bool {
+        let had = std::fs::remove_file(self.leave_file(id)).is_ok();
+        self.lock().leave.insert(id.to_owned(), None).flatten().is_some() || had
+    }
+
+    /// The child's list, if it has one.
+    pub fn leave_of(&self, id: &str) -> Option<Arc<super::leave::LeaveList>> {
+        if let Some(known) = self.lock().leave.get(id) {
+            return known.clone();
+        }
+        // (Its file, read once: a list that can't be read as it was
+        // written allows nothing, and says so in the log.)
+        let list = std::fs::read_to_string(self.leave_file(id)).ok().and_then(|text| match super::leave::LeaveList::parse(&text) {
+            Ok(list) => Some(Arc::new(list)),
+            Err(e) => {
+                eprintln!("olo agents: the list kept for {id} isn't one any more ({e}): everything it asks is asked");
+                None
+            }
+        });
+        self.lock().leave.insert(id.to_owned(), list.clone());
+        list
+    }
+
+    /// What the service allowed by a child's list, kept with what its
+    /// minder answered (`olo agent mind NAME`): the whole of what was
+    /// asked.
+    fn leave_given(&self, id: &str, asked: &str) {
+        use std::io::Write as _;
+        let line = json!({ "at_ms": now_unix_ms(), "did": "allowed", "said": asked, "by": "list" }).to_string();
+        let dir = self.paths.dir.join("minders").join(id);
+        if std::fs::create_dir_all(&dir).is_ok()
+            && let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("answers.jsonl"))
+        {
+            let _ = writeln!(f, "{line}");
+        }
     }
 
     /// A child was given work (a prompt at its start, a message sent and
@@ -925,6 +988,27 @@ impl Service {
                         live.held_until = None;
                     }
                 }
+            }
+            // Leave it asks for, given by its list where it has one: the
+            // service says yes, once, itself and at once, to anything no
+            // pattern of the list names, and nobody is told there was a
+            // question (`leave.rs`). What a pattern names, what couldn't
+            // be read off the screen whole, and a box with no plain
+            // "yes, this once" go to whoever answers for it, as before.
+            if state == SubagentLiveState::WaitingApproval
+                && let Some(list) = service.leave_of(&id)
+                && let Some(ap) = &again.cls.approval
+                && let Some(asked) = super::leave::asked(ap.tool.as_deref(), ap.command.as_deref(), &ap.question)
+                && list.excepts(&asked).is_none()
+                && ap.choices.iter().filter(|c| c.kind == olo_agent_screen::ChoiceKind::Once).count() == 1
+            {
+                let from = super::ops::Caller { session: Some(entry.session_id.clone()), window: None, block: None, child: None };
+                let answered = service.approve(&json!({ "args": [id.clone(), "--once", "--json"] }), &from).await;
+                if answered.ok {
+                    service.leave_given(&id, &asked);
+                    return;
+                }
+                eprintln!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
             }
             let dedupe = if !key.is_empty() {
                 key
@@ -1529,7 +1613,19 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     let service = Arc::new(Service {
         rex,
         paths: paths.clone(),
-        st: Mutex::new(State { reg, log, live: HashMap::new(), sessions: HashMap::new(), clients: 0, doing: 0, idle_since: None, let_go: HashSet::new(), told: HashMap::new(), seen: HashMap::new() }),
+        st: Mutex::new(State {
+            reg,
+            log,
+            live: HashMap::new(),
+            sessions: HashMap::new(),
+            clients: 0,
+            doing: 0,
+            idle_since: None,
+            let_go: HashSet::new(),
+            told: HashMap::new(),
+            seen: HashMap::new(),
+            leave: HashMap::new(),
+        }),
         changed: Notify::new(),
         frames,
         text_watchers: AtomicUsize::new(0),

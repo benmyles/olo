@@ -1747,3 +1747,297 @@ fn a_minder_that_begins_is_told_what_stands() {
     let (said, _) = first_watch(&m5, &told(&said), 1);
     assert!(said.contains("status=124"), "{said}");
 }
+
+/// `olo agent run`: one agent for one prompt, start to finish (the ShiftUp lead's item 36). What comes in a
+/// turn's place is said, with a status of its own, and the tab kept where somebody is to answer it. (Its
+/// last message whole, and its file, are tried with Claude Code itself: `agents_live.rs`.)
+#[test]
+fn one_agent_for_one_prompt_from_start_to_finish() {
+    let Some(rig) = Rig::start("oneshot") else { return };
+    rig.stand_in("claude");
+    let run = |name: &str, more: &[&str]| -> (i32, String, String) {
+        assert!(Command::new("mkfifo").arg(rig.staged(name, "fifo")).status().unwrap().success());
+        let (stage, path, named) = (format!("STAND_IN_DIR={}", rig.dir.join("stage").display()), format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display()), format!("STAND_IN_NAME={name}"));
+        // (A time of its own for each, so that none waits for ever on a stand-in that was never told: said, where it isn't the case tried.)
+        let mut args = vec!["run", "claude", "--model", "stand-in", "--effort", "none", "--name", name, "--env", &stage, "--env", &named, "--env", &path];
+        if !more.contains(&"--timeout") {
+            args.extend(["--timeout", "40"]);
+        }
+        args.extend_from_slice(more);
+        rig.olo(&args)
+    };
+    // A prompt is what it runs: none, nothing started.
+    let (code, _, err) = rig.olo(&["run", "claude", "--model", "stand-in", "--effort", "none", "--name", "nothing"]);
+    assert!(code == 2 && err.contains("--prompt"), "{err}");
+    assert!(rig.json(&["list", "--all", "--json"])["subagents"].as_array().unwrap().is_empty());
+
+    std::thread::scope(|scope| {
+        // Its prompt's turn ends: status 0, its tab stopped, and what it rested on before its turn told to nobody.
+        let done = scope.spawn(|| run("reads", &["--prompt", "Read the file and say what it says.", "--json"]));
+        rig.wait("the stand-in to listen", || rig.staged("reads", "ready").exists());
+        rig.show("reads", &idle("Ready."));
+        std::thread::sleep(Duration::from_millis(700));
+        assert!(!done.is_finished(), "it answered on the rest before its prompt's turn");
+        rig.show("reads", &working());
+        rig.wait("the service to have seen it at work", || rig.status("reads")["answers"].is_u64());
+        rig.show("reads", &idle("It says forty-two."));
+        let (code, out, err) = done.join().unwrap();
+        assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
+        let said: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{e}: {out}"));
+        assert_eq!((&said["ok"], &said["ended_as"], &said["stopped"], &said["name"]), (&json!(true), &json!("done"), &json!(true), &json!("reads")), "{said}");
+        assert_eq!(rig.status("reads")["running"], false, "its tab is stopped");
+
+        // It asks leave and nobody is set to answer: status 3, said, its tab kept, and it can be answered.
+        let asks = scope.spawn(|| run("asks", &["--prompt", "Push it."]));
+        rig.wait("the stand-in to listen", || rig.staged("asks", "ready").exists());
+        rig.show("asks", &asking("git push origin main", 0));
+        let (code, out, err) = asks.join().unwrap();
+        assert!(code == 3 && out.is_empty() && err.contains("`asks` asks leave") && err.contains("git push origin main") && err.contains("olo agent approve asks"), "{code}: {out}{err}");
+        assert_eq!(rig.status("asks")["state"], "waiting_approval", "kept, and still asking");
+        rig.json(&["stop", "asks", "--force", "--json"]);
+
+        // It exits before its turn ends: status 1, said.
+        let dies = scope.spawn(|| run("dies", &["--prompt", "Do it."]));
+        rig.wait("the stand-in to listen", || rig.staged("dies", "ready").exists());
+        rig.show("dies", &working());
+        rig.tell("dies", "exit 7");
+        let (code, _, err) = dies.join().unwrap();
+        assert!(code == 1 && err.contains("`dies` exited before its turn ended"), "{code}: {err}");
+
+        // Kept open when told to; and a time given that passes: status 124, kept.
+        let slow = scope.spawn(|| run("slow", &["--prompt", "Take your time.", "--timeout", "2"]));
+        rig.wait("the stand-in to listen", || rig.staged("slow", "ready").exists());
+        rig.show("slow", &working());
+        let (code, _, err) = slow.join().unwrap();
+        assert!(code == 124 && err.contains("had not ended its turn after 2 s"), "{code}: {err}");
+        assert_eq!(rig.status("slow")["running"], true);
+        rig.json(&["stop", "slow", "--force", "--json"]);
+    });
+}
+
+/// `olo agent watch --follow`: a watch that goes on (the ShiftUp lead's item 38: "a lead must keep one wait
+/// running over all its children and start it again each time it returns"). One command, each thing as it
+/// comes, until it is stopped.
+#[test]
+fn a_watch_that_goes_on_says_each_thing_as_it_comes() {
+    let Some(rig) = Rig::start("follow") else { return };
+    rig.stand_in("claude");
+    rig.start_child("claude", "alpha", &[]);
+    rig.show("alpha", &idle("Ready."));
+    rig.wait("its rest to be written down", || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().is_some_and(|c| c >= 1));
+    // (Begun now: what was before it is not said again.)
+    let mut follower = rig.helper();
+    let mut follower = follower
+        .args(["agent", "watch", "--all", "--follow", "--on", "approval,idle,escalation,exit"])
+        .env("REX_BLOCK", &rig.lead_block)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let reader = {
+        let (lines, out) = (lines.clone(), follower.stdout.take().unwrap());
+        std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                lines.lock().unwrap().push(line);
+            }
+        })
+    };
+    let said = || lines.lock().unwrap().clone();
+    let heard = |what: &str| rig.wait(&format!("the follower to say `{what}`"), || said().iter().any(|l| l.contains(what)));
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(said().is_empty(), "said what was there before it began: {:?}", said());
+
+    rig.show("alpha", &asking("cargo test", 0));
+    heard("alpha: asks leave: cargo test");
+    let gone = rig.when_typed("alpha", b"\r", working());
+    rig.json(&["approve", "alpha", "--once", "--json"]);
+    assert!(gone.join().unwrap());
+    rig.wait_state("alpha", "working");
+    rig.show("alpha", &idle("All tests pass."));
+    heard("alpha: idle");
+    // A second child started while it follows is followed too; and a child's own word to its parent.
+    rig.start_child("claude", "beta", &[]);
+    let helper = format!("OLO_REX_AGENTS_DIR={} REX_SERVER_SOCKET={} {HELPER} agent", rig.dir.join("agents").display(), rig.sock.display());
+    // (Two lines of it: made by the shell, a stand-in being told one line at a time.)
+    rig.tell("beta", &format!("run {helper} escalate \"$(printf 'beta has a word:\\nof two lines.')\""));
+    heard("beta: escalation");
+    heard("of two lines.");
+    rig.tell("alpha", "exit 0");
+    heard("alpha: exited (code 0)");
+    // One command said all of it, in order, and still runs.
+    let all = said();
+    let at = |what: &str| all.iter().position(|l| l.contains(what)).unwrap_or_else(|| panic!("{what}: {all:?}"));
+    assert!(at("asks leave") < at("alpha: idle") && at("alpha: idle") < at("beta: escalation") && at("beta: escalation") < at("alpha: exited"), "{all:?}");
+    assert!(all[at("beta: escalation") + 1].starts_with("beta has a word:"), "its message whole, under its line: {all:?}");
+    assert!(follower.try_wait().unwrap().is_none(), "it goes on until it is stopped");
+    let _ = follower.kill();
+    let _ = follower.wait();
+    let _ = reader.join();
+    rig.json(&["stop", "beta", "--force", "--json"]);
+}
+
+/// Leave given by a list, by the service itself (the ShiftUp lead's item 37, with Ben's words: "i don't care
+/// much about requiring approvals from them at all only in the most extreme cases"): yes, once, at once, to
+/// whatever a child asks leave for, except what a pattern of the parent's list names, which is asked as before
+/// (of its minder if it has one, else on the parent's watch). Never a kept yes; and what it allowed is kept.
+#[test]
+fn leave_is_given_by_a_list_and_what_it_names_is_asked() {
+    let Some(rig) = Rig::start("leave") else { return };
+    rig.stand_in("claude");
+    std::fs::write(rig.dir.join("work/not-these.txt"), "# What is never done without asking.\n\\bgit\\s+(push|commit)\\b\n\\brm\\s+-[a-zA-Z]*r\n").unwrap();
+    // A list that isn't one: said, and nothing started.
+    std::fs::write(rig.dir.join("work/broken.txt"), "\\bsudo\\b\n(unclosed\n").unwrap();
+    let (code, _, err) = rig.olo(&["start", "claude", "--model", "m", "--effort", "e", "--name", "nobody", "--approve-all-but", "broken.txt"]);
+    assert!(code == 2 && err.contains("line 2 of the list isn't a pattern"), "{err}");
+    assert!(rig.json(&["list", "--all", "--json"])["subagents"].as_array().unwrap().is_empty());
+
+    let started = rig.start_child("claude", "worker", &["--approve-all-but", "not-these.txt"]);
+    assert_eq!(started["approve_all_but"], 2, "{started}");
+    let from = started["cursor"].as_u64().unwrap();
+    let woken = |since: u64, secs: &str| rig.olo(&["watch", "--all", "--since", &since.to_string(), "--on", "approval,question", "--timeout", secs, "--json"]);
+
+    // What no pattern names: the service says yes, once, itself, and nobody is told there was a question.
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    let at = Instant::now();
+    rig.show("worker", &asking("cd /w && cargo test -p olo-kit > test.log", 0));
+    assert!(gone.join().unwrap(), "the service didn't answer it\n{}", rig.said());
+    assert!(at.elapsed() < Duration::from_secs(4), "{:?}", at.elapsed());
+    rig.typed_since("worker", before, b"\r", "Return on Yes, the first choice: once, and nothing else");
+    let (code, out, _) = woken(from, "1");
+    assert_eq!(code, 124, "the parent was told of a question its list answers: {out}");
+
+    // What a pattern names (a later part of a chain): asked as before, on the parent's watch, nothing typed.
+    let before = rig.keys("worker").len();
+    rig.show("worker", &asking("cargo build && git push origin main", 0));
+    let (code, out, err) = woken(from, "15");
+    assert_eq!(code, 0, "{out}{err}");
+    let asked: Value = serde_json::from_str(out.trim()).unwrap();
+    assert!(asked["approval"]["command"].as_str().unwrap().contains("git push"), "{asked}");
+    assert_eq!(rig.keys("worker").len(), before, "the service answered what its list names");
+    let gone = rig.when_typed("worker", b"\r", working());
+    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("cargo build && git push origin main", 2));
+    rig.json(&["approve", "worker", "--no", "--json"]);
+    assert!(moved.join().unwrap() && gone.join().unwrap());
+
+    // What it allowed is kept, with the whole of what was asked.
+    let of = rig.json(&["mind", "worker", "--json"]);
+    assert_eq!(of["approve_all_but"], json!(["\\bgit\\s+(push|commit)\\b", "\\brm\\s+-[a-zA-Z]*r"]), "{of}");
+    let allowed: Vec<(&str, &str, &str)> = of["answered"].as_array().unwrap().iter().map(|a| (a["did"].as_str().unwrap(), a["by"].as_str().unwrap(), a["said"].as_str().unwrap())).collect();
+    assert_eq!(allowed, [("allowed", "list", "Bash: cd /w && cargo test -p olo-kit > test.log")], "{of}");
+
+    // With a minder too: what the list names goes to the minder, not to the parent; what it allows, to nobody.
+    Minding::expect(&rig, "lm");
+    let minded = rig.json(&[
+        "mind",
+        "worker",
+        "--with",
+        "claude:stand-in-big:max",
+        "--rules-text",
+        "Refuse commits.",
+        "--json",
+        "--env",
+        &format!("STAND_IN_DIR={}", rig.dir.join("stage").display()),
+        "--env",
+        &format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display()),
+        "--env",
+        "STAND_IN_NAME=lm",
+    ]);
+    let lm = Minding::of(&rig, "lm", started["id"].as_str().unwrap());
+    let c = minded["cursor"].as_u64().unwrap();
+    rig.show("worker", &asking("git commit -am wip", 0));
+    let told = lm.mind(&format!("watch --since {c} --on question,approval,idle,error,exit --timeout 15 --json"));
+    assert!(told["approval"]["command"].as_str().unwrap().contains("git commit"), "{told}");
+    let (code, out, _) = woken(c, "1");
+    assert_eq!(code, 124, "what the list names went to the parent though the child has a minder: {out}");
+    let moved = rig.when_typed("worker", b"\x1b[B\x1b[B", asking("git commit -am wip", 2));
+    let gone = rig.when_typed("worker", b"\r", working());
+    lm.mind("approve --no --json");
+    assert!(moved.join().unwrap() && gone.join().unwrap());
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.show("worker", &asking("cargo fmt --check", 0));
+    assert!(gone.join().unwrap(), "what the list allows is the service's to answer, minder or no minder");
+    rig.typed_since("worker", before, b"\r", "once");
+    let said = lm.run(&format!("{} {} watch --since {} --on question,approval --timeout 1 --json; echo status=$?", lm.env(), lm.dir.join("mind").display(), told["cursor"]));
+    assert!(said.contains("status=124"), "the minder was told of a question the list answered: {said}");
+    rig.json(&["mind", "worker", "--off", "--json"]);
+
+    // The list changed as it runs (what was allowed is now named), and taken away (everything is asked).
+    std::fs::write(rig.dir.join("work/stricter.txt"), "cargo\n").unwrap();
+    let (code, said, err) = rig.olo(&["mind", "worker", "--approve-all-but", "stricter.txt"]);
+    assert!(code == 0 && said.contains("except what 1 pattern names"), "{said}{err}");
+    let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.show("worker", &asking("cargo test", 0));
+    assert_eq!(woken(c, "15").0, 0, "what the new list names is asked");
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.json(&["approve", "worker", "--once", "--json"]);
+    assert!(gone.join().unwrap());
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    rig.show("worker", &asking("ls -la", 0));
+    assert!(gone.join().unwrap(), "what the new list doesn't name is allowed");
+    rig.typed_since("worker", before, b"\r", "once");
+    let (code, said, _) = rig.olo(&["mind", "worker", "--approve-none"]);
+    assert!(code == 0 && said.contains("asked again"), "{said}");
+    let c = rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    rig.show("worker", &asking("ls -la /w", 0));
+    assert_eq!(woken(c, "15").0, 0, "with no list everything is asked");
+    assert_eq!(rig.json(&["mind", "worker", "--json"])["approve_all_but"], Value::Null);
+    rig.json(&["stop", "worker", "--force", "--json"]);
+}
+
+/// `prune` takes the records of the asking tab's own exited children, and nobody else's. (2026-11-27: it took
+/// every exited record of the session, and two leads' tabs are one session: 124 records went with one check
+/// child's, most of them another lead's.)
+#[test]
+fn prune_takes_the_asking_tabs_own_records_and_no_others() {
+    let Some(rig) = Rig::start("prune") else { return };
+    // Another lead, in a tab of its own in the same session.
+    let other = rig.rex(
+        "session.new_window",
+        json!({ "session_id": rig.session, "window_label": "other lead", "layout": { "block": { "flavor": "com.superlogical.terminal.shell", "options": { "size": { "columns": 110, "rows": 40 } } } } }),
+    );
+    let other_block = other["block_ids"][0].as_str().unwrap().to_owned();
+    let start = |block: &str, name: &str| {
+        let (code, out, err) = rig.olo_from(Some(block), &["start", "--command", "--name", name, "--json", "--", "true"]);
+        assert_eq!(code, 0, "{out}{err}");
+    };
+    let names = |listed: &Value| -> Vec<String> {
+        let mut names: Vec<String> = listed["subagents"].as_array().unwrap().iter().map(|s| format!("{} {}", s["name"].as_str().unwrap(), s["state"].as_str().unwrap())).collect();
+        names.sort();
+        names
+    };
+    // Each lead has children that have exited; mine has one that still runs, and one's own child that exited.
+    start(&rig.lead_block, "mine-1");
+    start(&rig.lead_block, "mine-2");
+    start(&other_block, "theirs-1");
+    start(&other_block, "theirs-2");
+    rig.json(&["start", "--command", "--name", "mine-runs", "--json", "--", "sleep", "300"]);
+    rig.wait("the four to have exited", || {
+        let all = rig.json(&["list", "--all", "--fast", "--json"]);
+        all["subagents"].as_array().unwrap().iter().filter(|s| s["state"] == "exited").count() == 4
+    });
+
+    // Asked from my tab: my two, and nothing of the other lead's, nor anything that runs.
+    let (code, said, _) = rig.olo(&["prune"]);
+    assert!(code == 0 && said.starts_with("Pruned 2 exited subagent record(s) of this tab's own children. 2 of other tabs' are left as they are."), "{said}");
+    assert_eq!(names(&rig.json(&["list", "--all", "--fast", "--json"])), ["mine-runs working", "theirs-1 exited", "theirs-2 exited"]);
+    // Again: nothing more of mine to take; theirs still left.
+    let pruned = rig.json(&["prune", "--json"]);
+    assert_eq!((&pruned["pruned"], &pruned["left"], &pruned["scope"]), (&json!(0), &json!(2), &json!("own")), "{pruned}");
+    // From a shell that is no tab: nothing is its own.
+    let (code, out, _) = rig.olo_from(None, &["prune", "--json"]);
+    assert!(code == 0 && out.contains("\"pruned\":0"), "{out}");
+    // A word it doesn't know is refused, not taken for a yes.
+    let (code, _, err) = rig.olo(&["prune", "--everything"]);
+    assert!(code == 2 && err.contains("unknown option"), "{err}");
+    assert_eq!(names(&rig.json(&["list", "--all", "--fast", "--json"])).len(), 3);
+    // Every tab's of the session, only when asked for by that name.
+    let (code, said, _) = rig.olo(&["prune", "--session"]);
+    assert!(code == 0 && said.starts_with("Pruned 2 exited subagent record(s) of this session, every tab's."), "{said}");
+    assert_eq!(names(&rig.json(&["list", "--all", "--fast", "--json"])), ["mine-runs working"]);
+    rig.json(&["stop", "mine-runs", "--force", "--json"]);
+}

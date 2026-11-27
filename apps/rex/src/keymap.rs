@@ -515,10 +515,13 @@ pub fn bridge_catalog() -> Vec<ActionSpec> {
         },
         ActionSpec {
             id: "olo.agent.prune",
-            title: "Prune Exited Subagent Records from This Session’s Registry",
+            title: "Prune This Tab’s Exited Subagent Records",
             category: "Olo Bridge",
             keywords: &["agent", "subagent", "prune", "clean", "exited"],
-            args_schema: Some(json!({"type":"object","properties":{"all":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}})),
+            // (`session`: every tab's of the session; `all`: every session's. Neither by default: 2026-11-27.)
+            args_schema: Some(
+                json!({"type":"object","properties":{"session":{"type":"boolean"},"all":{"type":"boolean"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"},"json":{"type":"boolean"}}}),
+            ),
         },
         ActionSpec {
             id: "olo.agent.focus",

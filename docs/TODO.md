@@ -131,28 +131,15 @@ something nobody here has is in "Blocked", with what it waits for.
   approvals: "they follow instructions great honestly i don't care much
   about requiring approvals from them at all only in the most extreme
   cases"). In their words, shortened:
-  - 36: "One command for a one-shot agent … `olo agent run <claude|agy>
-    --model … --effort … --name N --prompt-file BRIEF [--out FILE]
-    [--keep-tab] [--minder … --rules …]`: starts it, returns when the
-    prompt's own turn has ended (or it exited or failed), prints its
-    whole last message (and writes it to `--out`), and stops the tab
-    unless told to keep it; non-zero when the turn did not end as a
-    turn (error, exit, a question left standing: said which)."
-  - 37: "Leave given by a list, by the service, with no model in the
-    way … `--approve-all-but FILE` (and `mind NAME --approve-all-but
-    FILE`): the service itself answers 'yes, once' to any approval box
-    of that child at once, EXCEPT one whose whole command (every part
-    of a chain, redirections included) matches a pattern in FILE, which
-    goes to its minder if it has one, else to the parent's watch as
-    today. Never a kept yes. `mind NAME --json` lists what the service
-    answered this way, with each command."
-  - 38: "A word to the parent without a wait … as an option on the
-    parent (`olo agent notify on|off`, or `watch --push`): an
-    `escalation`, a `done` whose last line begins `DONE` or
-    `QUESTION:`, an `error` and an `exit` are delivered into the
-    parent's own CLI as a message at its next rest or tool round (as
-    Claude Code's own cross-session messages arrive), each once, with
-    the child's name and the message whole. The cursor'd watch stays."
+  - 36 is done (`olo agent run`; HACKING, "One agent for one prompt,
+    and a watch that goes on").
+  - 37 is done (`--approve-all-but FILE`; HACKING, "Leave given by a
+    list").
+  - 38 is done as `olo agent watch --follow` (the same entry): the
+    lead's harness hands it each line as it is printed. Not done, and
+    not meant to be without Ben's word: Olo typing into a parent's own
+    pane, or speaking Claude Code's own socket between sessions (its
+    protocol is Claude Code's to change).
 - **The stand-in tests on a busy computer** (2026-11-27): six copies of
   `tests/agents.rs` at once (126 scratch Rex servers) found five places
   where a test took something for done before it was, each fixed in

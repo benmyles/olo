@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use olo_rex_link::agents::wire::{PROTO, Paths, Request, Response, server_socket};
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: olo agent <start|list|status|read|watch|send|approve|mind|escalate|stop|prune|focus> [ARGS…]";
+const USAGE: &str = "usage: olo agent <start|run|list|status|read|watch|send|approve|mind|escalate|stop|prune|focus> [ARGS…]";
 
 /// 69: what can't be done from here (no Rex server, no service); 75:
 /// try again (the service ended while it answered).
@@ -43,7 +43,10 @@ pub fn run(mut args: Vec<String>) -> i32 {
             return 0;
         }
         "-h" | "--help" | "help" => {
-            println!("{USAGE}\n\n{}", olo_rex_link::agents::start_usage());
+            println!(
+                "{USAGE}\n\n{}\n\n{RUN_USAGE}\n\nolo agent watch … --follow: a watch that goes on: each thing as it comes, a line each (its message under it), until it is stopped.",
+                olo_rex_link::agents::start_usage()
+            );
             return 0;
         }
         // (The same asked by hand, as before there was a service.)
@@ -115,8 +118,239 @@ pub fn run(mut args: Vec<String>) -> i32 {
             let env = |name: &str| std::env::var(name).unwrap_or_default();
             let cwd = Some(env("PWD")).filter(|p| p.starts_with('/')).or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string())).unwrap_or_default();
             let req = Request { proto: PROTO, op: sub.clone(), args, obj: None, cwd, block: env("REX_BLOCK"), session: env("REX_SESSION"), inherit: inherited() };
-            print_answer(ask(&server, &paths, &req, retriable(&sub)))
+            // Two commands are several askings, made here: one agent for
+            // one prompt, start to finish; and a watch that goes on.
+            let asked = |op: &str, args: Vec<String>| ask(&server, &paths, &Request { op: op.to_owned(), args, ..req.clone() }, retriable(op));
+            match sub.as_str() {
+                "run" => one_shot(req.args.clone(), &asked),
+                "watch" | "wait" if req.args.iter().any(|a| a == "--follow") => follow_watch(req.args.clone(), &asked),
+                _ => print_answer(ask(&server, &paths, &req, retriable(&sub))),
+            }
         }
+    }
+}
+
+pub const RUN_USAGE: &str = "usage: olo agent run <claude|codex|agy> --model MODEL --effort EFFORT (--prompt TEXT | --prompt-file FILE) [--name NAME] [--out FILE] [--keep-tab] [--timeout SECS] [--json] [what `olo agent start` takes: --cwd, --trust, --env, --minder … --rules …]\n\nOne agent for one prompt: starts it, waits for the prompt's own turn to end, prints its whole last message (and writes it to --out), and stops its tab (unless --keep-tab).\nStatus: 0 its turn ended; 1 it failed or exited before that; 3 it stands on a question or asks leave (its tab is kept: answer it, or look); 124 --timeout passed (its tab is kept).";
+
+/// `olo agent run …`: one agent for one prompt, start to finish (the
+/// ShiftUp lead's item 36, 2026-11-27: "One command for a one-shot
+/// agent … starts it, returns when the prompt's own turn has ended (or
+/// it exited or failed), prints its whole last message (and writes it
+/// to `--out`), and stops the tab unless told to keep it; non-zero when
+/// the turn did not end as a turn (error, exit, a question left
+/// standing: said which)". Every reading of theirs is an agent started
+/// for it: a start, a wait loop, a read and a stop of their own.)
+///
+/// Several askings of the service, made by this command: `start`, a
+/// `watch` of that one child from the start's cursor until a rest that
+/// answers the start (`answers`: the prompt's own turn's end and no
+/// rest before it), then `stop`. From a parent's shell it is a
+/// background command that ends when the reading is in.
+fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+    let fail = |msg: &str, code: i32| {
+        eprintln!("olo agent run: {msg}");
+        code
+    };
+    // What is this command's own, taken out; the rest is `start`'s.
+    let (mut out, mut keep, mut as_json, mut timeout) = (None::<String>, false, false, None::<u64>);
+    let mut start = Vec::with_capacity(args.len() + 1);
+    let mut it = args.into_iter();
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--" => {
+                start.push(arg);
+                start.extend(it.by_ref());
+            }
+            "--out" => match it.next() {
+                Some(path) => out = Some(path),
+                None => return fail("--out requires a file path", 2),
+            },
+            "--timeout" => match it.next().and_then(|s| s.parse().ok()) {
+                Some(secs) => timeout = Some(secs),
+                None => return fail("--timeout requires a number of seconds", 2),
+            },
+            "--keep-tab" => keep = true,
+            "--json" => as_json = true,
+            "-h" | "--help" => {
+                println!("{RUN_USAGE}");
+                return 0;
+            }
+            a if a.starts_with("--out=") => out = Some(a["--out=".len()..].to_owned()),
+            _ => start.push(arg),
+        }
+    }
+    if !start.iter().any(|a| a == "--prompt" || a == "-p") {
+        return fail(&format!("a prompt is what it runs: --prompt TEXT or --prompt-file FILE\n{RUN_USAGE}"), 2);
+    }
+    start.push("--json".to_owned());
+    let started = asked("start", start);
+    if !started.ok {
+        return print_answer(started);
+    }
+    let id = started.data["id"].as_str().unwrap_or_default().to_owned();
+    let name = started.data["name"].as_str().unwrap_or(&id).to_owned();
+    let given = started.data["cursor"].as_u64().unwrap_or(0);
+    let until = timeout.map(|secs| Instant::now() + Duration::from_secs(secs));
+
+    // Its prompt's own turn's end, or what came in its place.
+    let mut cursor = given;
+    let (how, event) = loop {
+        let wait = match until {
+            Some(until) if Instant::now() >= until => break ("timeout", Value::Null),
+            Some(until) => until.saturating_duration_since(Instant::now()).as_secs().clamp(1, 90),
+            None => 90,
+        };
+        let told = asked(
+            "watch",
+            vec![id.clone(), "--since".into(), cursor.to_string(), "--on".into(), "question,approval,idle,done,error,exit".into(), "--timeout".into(), wait.to_string(), "--json".into()],
+        );
+        if let Some(c) = told.data["cursor"].as_u64() {
+            cursor = c;
+        }
+        if !told.ok {
+            // (Its time up with nothing to say: asked again. Anything else is said.)
+            if told.code == 124 {
+                continue;
+            }
+            return print_answer(told);
+        }
+        let ev = told.data;
+        match ev["state"].as_str().unwrap_or_default() {
+            "idle" | "done" if ev["answers"].as_u64() == Some(given) => break ("done", ev),
+            // (At rest without having taken its prompt up: said as that.)
+            "idle" | "done" => break ("unanswered", ev),
+            "waiting_question" => break ("question", ev),
+            "waiting_approval" => break ("approval", ev),
+            "error" => break ("error", ev),
+            "exited" => break ("exit", ev),
+            _ => {}
+        }
+    };
+
+    // Its whole last message (a rest's own event has it; else as it stands now).
+    let status = asked("status", vec![id.clone(), "--json".into()]).data;
+    let last = event["last_message"].as_str().or(status["last_message"].as_str()).map(str::to_owned);
+    if let (Some(path), Some(text)) = (&out, &last) {
+        let dest = Path::new(path);
+        let tmp = dest.with_extension(format!("olo-tmp-{}", std::process::id()));
+        let written = dest.parent().filter(|d| !d.as_os_str().is_empty()).map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&tmp, text)).and_then(|()| std::fs::rename(&tmp, dest));
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&tmp);
+            // (Its message is still printed, and its tab kept: nothing is lost with the file.)
+            eprintln!("olo agent run: couldn't write {path}: {e}");
+            keep = true;
+        }
+    }
+    // Stopped when its turn is over or it can do no more; kept where
+    // somebody is to answer it or look.
+    let stop = !keep && matches!(how, "done" | "error" | "unanswered");
+    let stopped = stop && asked("stop", vec![id.clone(), "--force".into(), "--json".into()]).ok;
+    let (code, said) = match how {
+        "done" => (0, String::new()),
+        "unanswered" => (1, format!("`{name}` came to rest without taking its prompt up")),
+        "question" => (3, format!("`{name}` stands on a question (its tab is kept: `olo agent send {name} …`, or look): {}", event["summary"].as_str().unwrap_or_default())),
+        "approval" => {
+            (3, format!("`{name}` asks leave (its tab is kept: `olo agent approve {name} --once|--no`): {}", event["approval"]["command"].as_str().or(event["summary"].as_str()).unwrap_or_default()))
+        }
+        "error" => (1, format!("`{name}` failed: {}", event["error"].as_str().or(event["summary"].as_str()).unwrap_or_default())),
+        "exit" => (1, format!("`{name}` exited before its turn ended ({})", event["summary"].as_str().unwrap_or("exited"))),
+        _ => (124, format!("`{name}` had not ended its turn after {} s (its tab is kept)", timeout.unwrap_or(0))),
+    };
+    if as_json {
+        let payload = json!({
+            "ok": code == 0, "ended_as": how, "id": id, "name": name, "last_message": last, "answers": event["answers"],
+            "cli_session_id": status["cli_session_id"], "transcript_path": status["transcript_path"], "out": out.filter(|_| last.is_some()),
+            "stopped": stopped, "cursor": cursor, "minder": started.data["minder"],
+        });
+        println!("{payload}");
+    } else if let Some(text) = &last {
+        println!("{}", text.trim_end());
+    }
+    let _ = std::io::stdout().flush();
+    if code != 0 {
+        eprintln!("olo agent run: {said}");
+    }
+    code
+}
+
+/// `olo agent watch … --follow`: a watch that goes on. Each thing
+/// waited for is printed as it comes and the watch goes on from it,
+/// until it is stopped (the ShiftUp lead's item 38, 2026-11-27: "a lead
+/// must keep one wait running over all its children and start it again
+/// each time it returns, and a child nobody waits on waits unseen").
+/// Run by a harness that gives each line of a running command to its
+/// agent as it is printed (Claude Code's Monitor), it is a word to the
+/// parent with no wait of its own to keep: an escalation, a turn's end
+/// with its message whole, a failure, an end, each once. Without
+/// `--since` it begins from now (nothing that was is said again).
+fn follow_watch(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+    let (mut rest, mut since, mut as_json) = (Vec::with_capacity(args.len()), None::<u64>, false);
+    let mut it = args.into_iter();
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--follow" => {}
+            "--json" => as_json = true,
+            // (Each asking's own: this command's time is until it is stopped.)
+            "--timeout" => {
+                it.next();
+            }
+            "--since" => since = it.next().and_then(|s| s.parse().ok()),
+            a if a.starts_with("--since=") => since = a["--since=".len()..].parse().ok(),
+            a if a.starts_with("--timeout=") => {}
+            _ => rest.push(arg),
+        }
+    }
+    let mut cursor = match since {
+        Some(cursor) => cursor,
+        None => {
+            let listed = asked("list", vec!["--fast".into(), "--json".into()]);
+            match listed.data["cursor"].as_u64() {
+                Some(cursor) => cursor,
+                None => return print_answer(listed),
+            }
+        }
+    };
+    loop {
+        let mut args = rest.clone();
+        args.extend(["--since".to_owned(), cursor.to_string(), "--timeout".to_owned(), "90".to_owned(), "--json".to_owned()]);
+        let told = asked("watch", args);
+        if let Some(c) = told.data["cursor"].as_u64() {
+            cursor = c;
+        }
+        if !told.ok {
+            if told.code == 124 {
+                continue;
+            }
+            return print_answer(told);
+        }
+        let ev = &told.data;
+        if as_json {
+            println!("{ev}");
+        } else {
+            // (One line that says who and what, then its message whole:
+            // lines printed together reach an agent together.)
+            let who = ev["name"].as_str().or(ev["id"].as_str()).unwrap_or_default();
+            let what = ev["event"].as_str().unwrap_or_default();
+            let head = match what {
+                "reset" => "the cursor was past the log's end: watching from now".to_owned(),
+                "escalation" => format!("{who}: escalation"),
+                "waiting_approval" => format!("{who}: asks leave: {}", ev["approval"]["command"].as_str().or(ev["summary"].as_str()).unwrap_or_default()),
+                "waiting_question" => format!("{who}: asks: {}", ev["summary"].as_str().unwrap_or_default()),
+                "exited" => format!("{who}: {}", ev["summary"].as_str().unwrap_or("exited")),
+                "error" => format!("{who}: failed: {}", ev["error"].as_str().or(ev["summary"].as_str()).unwrap_or_default()),
+                other => format!("{who}: {other}"),
+            };
+            let body = match what {
+                "escalation" => ev["summary"].as_str(),
+                "idle" | "done" => ev["last_message"].as_str(),
+                _ => None,
+            };
+            match body.map(str::trim_end).filter(|b| !b.is_empty()) {
+                Some(body) => println!("{head} (cursor {cursor})\n{body}"),
+                None => println!("{head} (cursor {cursor})"),
+            }
+        }
+        let _ = std::io::stdout().flush();
     }
 }
 
@@ -157,9 +391,9 @@ fn with_files(sub: &str, args: Vec<String>) -> Result<Vec<String>, Refused> {
     // (The flag, what it is in a refusal, and what it becomes: the text
     // after these, and these after the text.)
     type Named = (&'static str, &'static str, &'static [&'static str], &'static [&'static str]);
-    const RULES: [Named; 2] = [("--rules", "rules", &["--rules-text"], &[]), ("--rules-file", "rules", &["--rules-text"], &[])];
+    const RULES: [Named; 3] = [("--rules", "rules", &["--rules-text"], &[]), ("--rules-file", "rules", &["--rules-text"], &[]), ("--approve-all-but", "list", &["--approve-all-but-text"], &[])];
     let named: Vec<Named> = match sub {
-        "start" | "spawn" => [("--prompt-file", "prompt", &["--prompt"][..], &[][..])].into_iter().chain(RULES).collect(),
+        "start" | "spawn" | "run" => [("--prompt-file", "prompt", &["--prompt"][..], &[][..])].into_iter().chain(RULES).collect(),
         "mind" | "minder" => RULES.to_vec(),
         "send" | "input" => vec![("--file", "send", &["--text"], &["--paste"])],
         _ => return Ok(args),
