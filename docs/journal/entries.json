@@ -5406,6 +5406,66 @@
   "image": "2026-11-21/231039-rex-its-keys-are-olo-s.png"
  },
  {
+  "time": "2026-11-26T09:04:01",
+  "title": "Rex: a command of your own as a child tab",
+  "caption": "olo agent start --command: a child tab that runs a command (Build Log), shown for the program it is: Running, the plain terminal icon, its command with its paths cut to their names. The children are their host's now: they run, are watched and answered with no desktop connected, and are all there when it connects.",
+  "image": "2026-11-26/090401-rex-a-command-of-your-own-as-a-child-tab.png"
+ },
+ {
+  "time": "2026-11-26T09:04:02",
+  "title": "Rex: a tab's tree menu names a command and stops by kind",
+  "caption": "The tab's tree menu: Build Log is a command, Running; stopping a tab's children says what would be stopped (Stop 2 Subagents and 1 Command\u2026). A menu's label with nothing to its right runs under the detail columns.",
+  "image": "2026-11-26/090402-rex-a-tab-s-tree-menu-names-a-command-and-stops-.png"
+ },
+ {
+  "time": "2026-11-26T09:04:04",
+  "title": "Alerts stand over their window; Rex's error banner has Try Again",
+  "caption": "An alert asked for by a menu's command stood in the middle of the screen with no parent: it opens over the window it was asked from now, centred across it. The error banner at Rex's foot offers Try Again at its right edge, under the close box.",
+  "image": "2026-11-26/090404-alerts-stand-over-their-window-rex-s-error-banne.png"
+ },
+ {
+  "time": "2026-11-26T13:42:11",
+  "title": "Rex: a transcript's times and results beside what they are of",
+  "caption": "Before (above), a turn's time and a tool's result stood at the pane's right edge, a window's width from the name and command they belong to. After (below), each follows what it is of: You 14:52:10; a command, then its check and how long it took. A capped column was tried first and both reviewers took it for a pane that had failed to resize.",
+  "image": "2026-11-26/134211-rex-a-transcript-s-times-and-results-beside-what.png"
+ },
+ {
+  "time": "2026-11-26T14:40:21",
+  "title": "Layout: every thing stands where its neighbour ends, at every scale",
+  "caption": "Three pairs, before over after, enlarged: Rex at 1.25x (a row of ground between the tab strip and the header under it, gone), Token Pool at 1.25x (a scroll arrow sitting on its well's frame, now inside it), Tracker at 1.75x (a scroll bar a pixel off its frame, now flush). The layout engine rounded a thing's offset in its parent by itself while sizes were cut to rounded edges: nested a few deep, things stood a pixel or two past where their neighbours ended.",
+  "image": "2026-11-26/144021-layout-every-thing-stands-where-its-neighbour-en.png"
+ },
+ {
+  "time": "2026-11-26T16:15:00",
+  "title": "A dark menu has an edge on every side",
+  "caption": "In a dark look a menu's right side and foot had only a nearly black outline, which is no edge on a dark panel: both have an inner line now, a step dimmer than the top and left. Its separators meet the frame at every scale (at 1.5\u00d7 each end stood a pixel short). Before and after at 1.5\u00d7, whole and its corner enlarged.",
+  "image": "2026-11-26/161500-a-dark-menu-has-an-edge-on-every-side.png"
+ },
+ {
+  "time": "2026-11-26T16:15:00",
+  "title": "Token Pool: a chosen account's tint runs to its rule",
+  "caption": "Under a chosen account the tint stopped short of the rule, a strip of the list's ground between them (both reviewers: \"end the band exactly on the rule\"). The rule is the next row's own top edge now. Before and after, light and dark, at 2\u00d7 enlarged twice.",
+  "image": "2026-11-26/161500-token-pool-a-chosen-account-s-tint-runs-to-its-r.png"
+ },
+ {
+  "time": "2026-11-26T16:15:00",
+  "title": "An Agent Screen on a Rex host itself",
+  "caption": "A whole Olo desktop of the host's own, drawn in software on a server with no GPU, with no desktop asked: `olo screen install` put Olo and Chrome under the account, `olo screen --on host start` started it, and Chrome shows a page served from the same machine, its button pressed through the tree (`click --role Button --name \"Press me\"`). The machine's name, under Tracker's disk, is painted out.",
+  "image": "2026-11-26/161500-an-agent-screen-on-a-rex-host-itself.png"
+ },
+ {
+  "time": "2026-11-26T19:33:43",
+  "title": "Rex's Host window: a Screens tab",
+  "caption": "A host's own Agent Screens from the desktop: Olo and Chrome put on the host, updated and removed here (its line says what is there, what it lacks, which screens run, and how far an install is), and where screens open by default. One round of both reviewers' looks: one structure in every state, both sizes by name, the host's copy never called a desktop, a greyed choice that says why.",
+  "image": "2026-11-26/193343-rex-s-host-window-a-screens-tab.png"
+ },
+ {
+  "time": "2026-11-26T20:37:19",
+  "title": "Rex's Host window: a host's screens, listed",
+  "caption": "The Screens tab lists a host's own Agent Screens (running first, the newest at the top), shows the one chosen as it is now (a picture brought over the link) and stops it; an install there has a bar for the whole of it and a Cancel that ends it on the host. One round of both reviewers: the list kept in every state, the title the widest column, a failed stop's line in the failures' ink with its room kept.",
+  "image": "2026-11-26/203719-rex-s-host-window-a-host-s-screens-listed.png"
+ },
+ {
   "time": "2026-11-27T03:12:19",
   "title": "Rex: a host's Tweaks",
   "caption": "The Host window has a fifth tab, Tweaks: the machine's own settings, changed as root. The limits that were a page of the Server window moved here (Ben: \"they really belong in manage host\"), each a line of the window's own grammar with its reason under it and Apply\u2026 or Put Back\u2026, with two more: temporary files kept on disk where /tmp is the machine's memory, and brush as the sign-in shell of new accounts.",
