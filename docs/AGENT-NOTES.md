@@ -1738,11 +1738,12 @@ entry to go. No child was lost; the host was served by three builds in
 turn for two minutes. Told to their lead as it was.
 
 - **A handover is one step now** (HACKING, "A handover is one step"):
-  the retiring service starts its successor with its own lock in hand,
-  and for a service from before, the upgrade tool takes it over in its
-  place (a child asleep on the lock becomes the new service). In the
-  note to the other lead, say which builds served meanwhile, from the
-  service's log, not only what stands after.
+  the retiring service starts its successor with its own lock in hand.
+  (For the one handover to the first build that had this, the upgrade
+  tool stood in for the old service; that code was removed once it had
+  run: what is true once is not kept.) In the note to the other lead,
+  say which builds served meanwhile, from the service's log, not only
+  what stands after.
 - **To try a change against the release that runs on a host, name its
   real helper**: a host keeps every helper it was given
   (`~/.local/share/olo/rex-link/olo-rex-link-ID-ARCH`); a copy of one

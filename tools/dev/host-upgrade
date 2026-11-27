@@ -158,6 +158,18 @@ def running(pid):
         return False
 
 
+def same_file(a, b):
+    """Whether two paths are one file (a link to it, another spelling):
+    by device and inode, never by name. `/proc/PID/exe` of a program
+    whose file was replaced since it started is a file that is gone
+    (its name says " (deleted)"): not the one now at that name."""
+    try:
+        sa, sb = os.stat(a), os.stat(b)
+    except OSError:
+        return False
+    return (sa.st_dev, sa.st_ino) == (sb.st_dev, sb.st_ino)
+
+
 def quietly(helper):
     """The running service `helper`'s would take over, found without
     disturbing it: (pid, its file, whether it starts its successor
@@ -170,7 +182,11 @@ def quietly(helper):
     here where one is named; and the one that serves among them (the
     others wait for its lock a moment and go) is asked for through the
     oldest of *their* files, which any of them answers as it is."""
-    beside, want = os.path.dirname(helper), os.environ.get("REX_SERVER_SOCKET")
+    beside, want = os.path.dirname(os.path.realpath(helper)), os.environ.get("REX_SERVER_SOCKET") or None
+    # (As the helper keeps a server's address in its own arguments: the
+    # path, without the scheme it may be given with.)
+    if want and want.startswith("unix://"):
+        want = want[len("unix://"):]
     found = {}
     for entry in os.listdir("/proc"):
         if not entry.isdigit():
@@ -181,109 +197,19 @@ def quietly(helper):
             cmd = open(f"/proc/{entry}/cmdline", "rb").read().split(b"\0")
             if cmd[1:3] != [b"agent", b"--server"] or cmd[4:5] != [b"serve"] or (want and os.fsdecode(cmd[3]) != want):
                 continue
-            exe = os.readlink(f"/proc/{entry}/exe").removesuffix(" (deleted)")
-            if os.path.dirname(exe) == beside and running(entry) and os.path.isfile(exe):
-                found[int(entry)] = exe
+            exe = os.readlink(f"/proc/{entry}/exe")
+            # (A file still there: one replaced since is not a helper to ask through.)
+            if exe.endswith(" (deleted)") or os.path.dirname(os.path.realpath(exe)) != beside or not running(entry):
+                continue
+            found[int(entry)] = (exe, os.path.getmtime(exe))
         except (OSError, IndexError):
             continue
     if not found:
         return None, "no agents service is running", False
-    said, err = asked(min(found.values(), key=os.path.getmtime), "ping")
+    said, err = asked(min(found.values(), key=lambda f: f[1])[0], "ping")
     if not said or said.get("pid") not in found:
         return None, err or "none answers yet", False
-    return said["pid"], found[said["pid"]], bool(said.get("hands_over"))
-
-
-def take_over(helper, pid, flags):
-    """One step for a service from before services started their own
-    successors (no `hands_over` in its `ping`): this tool plays the
-    retiring service's part. Such a service just ends, and the next is
-    whichever build takes its lock first: the services that askers of
-    older builds start look for the lock every 20 ms, and on a host with
-    thirty watches one of theirs nearly always has it before a service
-    this tool then asks for. So a child of this tool waits for that lock
-    *asleep in the kernel* (a blocking `flock`: woken the moment it is
-    released) and, the lock its own, **becomes** the new helper's
-    service (an exec, the lock's descriptor handed down as a retiring
-    service hands it: `OLO_REX_AGENTS_LOCK_FD`), in a session of its
-    own, with the old service's environment and its log; the tool then
-    asks the service to retire. The lock is released only when the old
-    service's process ends, its record written: the two never overlap.
-    One of the lookers can still get in between the release and the wake
-    (a few in a hundred): that one is retired too, and the child sleeps
-    on. Returns (whether the new helper's service runs, what to say)."""
-    try:
-        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0")
-        server = cmdline[cmdline.index(b"--server") + 1]
-        if b"serve" not in cmdline or b"agent" not in cmdline:
-            return False, f"pid {pid} isn't an agents service"
-        env = dict(e.split(b"=", 1) for e in open(f"/proc/{pid}/environ", "rb").read().split(b"\0") if b"=" in e)
-        lock = next(t for t in (os.readlink(f"/proc/{pid}/fd/{fd}") for fd in os.listdir(f"/proc/{pid}/fd")) if t.endswith("/lock"))
-        log = os.readlink(f"/proc/{pid}/fd/1")
-    except (OSError, ValueError, StopIteration) as e:
-        return False, f"what pid {pid} runs with couldn't be read ({e or 'no lock among its files'})"
-    if not log.endswith("/service.log"):
-        return False, f"pid {pid}'s log isn't a service's ({log})"
-    env.pop(b"OLO_REX_AGENTS_LOCK_FD", None)
-    sys.stdout.flush()
-    child = os.fork()
-    if child == 0:
-        try:
-            os.setsid()
-            held = os.open(lock, os.O_WRONLY)
-            fcntl.flock(held, fcntl.LOCK_EX)
-            os.set_inheritable(held, True)
-            out = os.open(log, os.O_WRONLY | os.O_APPEND)
-            os.dup2(os.open("/dev/null", os.O_RDONLY), 0)
-            os.dup2(out, 1)
-            os.dup2(out, 2)
-            os.chdir("/")
-            env[b"OLO_REX_AGENTS_LOCK_FD"] = str(held).encode()
-            os.execve(helper, [helper, "agent", "--server", server, "serve"], env)
-        finally:
-            os._exit(127)
-
-    def asleep():
-        # (The kernel's own list: a waiter is a line with "->" and its pid.)
-        try:
-            return any("->" in line and f" {child} " in line for line in open("/proc/locks"))
-        except OSError:
-            return False
-
-    until = time.time() + 3
-    while not asleep() and time.time() < until:
-        time.sleep(0.01)
-    retired, until = {pid}, time.time() + 60
-    _, refused = asked(helper, "retire", *flags)
-    if "held" in (refused or ""):
-        # (It keeps to a hold this tool wasn't told to pass: the child
-        # is this tool's own process still, asleep on the lock.)
-        os.kill(child, 9)
-        os.waitpid(child, 0)
-        return False, "the service is held at the build it runs"
-    while True:
-        now, runs, _ = quietly(helper)
-        if runs == helper:
-            between = len(retired) - 1
-            return True, "in one step" if not between else f"in one step but for {between} service{'s' if between > 1 else ''} of an older build that got in between and was retired too"
-        # (One that got in between: a service of an older build, retired like the first.)
-        if now is not None and now not in retired:
-            if len(retired) >= 6:
-                break
-            retired.add(now)
-            asked(helper, "retire", *flags)
-        if time.time() > until or not os.path.exists(f"/proc/{child}"):
-            break
-        time.sleep(0.05)
-    # Given up: the child, if it still sleeps (it is this tool's own
-    # process until it has the lock; once it is the service it stays).
-    try:
-        if os.readlink(f"/proc/{child}/exe") != helper:
-            os.kill(child, 9)
-            os.waitpid(child, 0)
-    except OSError:
-        pass
-    return False, f"the new helper's service didn't begin within a minute ({len(retired)} service{'s' if len(retired) > 1 else ''} retired)"
+    return said["pid"], found[said["pid"]][0], bool(said.get("hands_over"))
 
 
 def service(helper):
@@ -304,7 +230,7 @@ def service(helper):
         return None, err or "no answer"
     pid = int(said["pid"])
     try:
-        return pid, os.readlink(f"/proc/{pid}/exe").removesuffix(" (deleted)")
+        return pid, os.readlink(f"/proc/{pid}/exe")
     except OSError as e:
         return None, str(e)
 
@@ -312,61 +238,51 @@ def service(helper):
 def hand_over(helper, args, keep_service):
     """The service handed to `helper`'s. (What was done, or None; what
     was left as it is, or None; the pid of the service that runs, or
-    None where none could be asked.)"""
+    None where none runs.) A service that was there and is gone with
+    none of the new helper's in its place is a failure, said as one."""
     did, kept = None, None
-    # One step where it can be: a service that starts its successor is
-    # told which (`retire --to`); one from before is taken over by this
-    # tool itself (`take_over`). Asked quietly first: a service hands
-    # itself to the first asker of a later build, the old way.
-    took = None
-    if not keep_service:
-        was, runs, hands_over = quietly(helper)
-        flags = ["--even-if-held"] if "--even-if-held" in args else []
-        if was is not None and runs != helper:
-            if hands_over:
-                asked(helper, "retire", "--to", helper, *flags)
-                how = "in one step"
-            else:
-                ok, how = take_over(helper, was, flags)
-                if not ok:
-                    print(f"host-upgrade: the service couldn't be taken over in one step ({how}): asked the old way")
-            until = time.time() + 30
-            while time.time() < until and quietly(helper)[1] != helper:
-                time.sleep(0.05)
-            now, runs, _ = quietly(helper)
-            if runs == helper:
-                took = f"the agents service (pid {was} retired, pid {now} is the new helper's, {how})"
-    pid, exe = service(helper)
-    if took and exe == helper:
-        did = took
+    flags = ["--even-if-held"] if "--even-if-held" in args else []
+    # (Found without asking through the new helper: asked so, a service
+    # that isn't held hands itself over at that very question.)
+    was, runs, hands_over = quietly(helper)
+    if keep_service:
+        if was is not None and not same_file(runs, helper):
+            kept = f"the agents service left as it is (pid {was}, {os.path.basename(runs)})"
+        return did, kept, was
+    if was is None:
+        # (None runs, or no Rex server here: nothing to hand over. The
+        # new helper's starts at the next `olo agent`.)
+        return did, kept, None
+    if same_file(runs, helper):
+        return did, kept, was
+    retired, pid, exe = [], was, runs
     for attempt in range(1, 13):
-        # (Left as it is: asked which it is, which a service that keeps
-        # to its hold answers for a later helper without handing over.)
-        if keep_service:
-            if pid is not None and exe != helper:
-                kept = f"the agents service left as it is (pid {pid}, {os.path.basename(exe)})"
-            break
-        if pid is None:
-            # (No Rex server here, or it can't be asked: nothing runs to be upgraded.)
-            print(f"host-upgrade: the agents service couldn't be asked ({exe}): it starts from the new helper at the next `olo agent`")
-            break
-        if exe == helper:
-            break
-        was = pid
-        # (A service that is held keeps to the hold itself: it is ended
-        # only by one who says they know of it, as this was told to be.)
         # (`--to`: a service that knows the word starts the new helper's
         # itself as it ends, its lock handed down, so no asker of an
         # older build can start theirs in between: one step. One from
         # before the word just ends, and whoever asks first starts the
-        # next: the handover of 06:15, 2026-11-27, took six of these.)
-        asked(helper, "retire", "--to", helper, *(["--even-if-held"] if "--even-if-held" in args else []))
+        # next, so it is asked until the service is the new helper's:
+        # the handover of 06:15, 2026-11-27, took six of these. For the
+        # one handover to the first build that had the word, this tool
+        # stood in for the retiring service itself (a child asleep on
+        # its lock); every service since has the word, and that is
+        # gone: what is true once is not kept.)
+        said, err = asked(helper, "retire", "--to", helper, *flags, timeout=30)
+        if said is None and "held" in (err or ""):
+            # (It keeps to a hold this tool wasn't told to pass.)
+            fail(f"the agents service is held at the build it runs ({' '.join(err.split())[:200]})")
+        retired.append(pid)
         until = time.time() + 30
-        while running(was) and time.time() < until:
+        while running(pid) and time.time() < until:
             time.sleep(0.05)
+        # (The new helper's is asked for now: with none running, this
+        # asking starts it.)
         pid, exe = service(helper)
-        if exe == helper:
-            did = f"the agents service (pid {was} retired, pid {pid} is the new helper's" + (f", asked {attempt} times" if attempt > 1 else "") + ")"
+        if pid is None:
+            fail(f"the agents service (pid {was}, {os.path.basename(runs)}) was retired and none answers in its place ({exe}): `{helper} agent list` and look")
+        if same_file(exe, helper):
+            how = "in one step" if hands_over and attempt == 1 else f"asked {attempt} time{'s' if attempt > 1 else ''}"
+            did = f"the agents service (pid {was} retired, pid {pid} is the new helper's, {how})"
             break
     else:
         fail(f"the agents service is still pid {pid} running {exe} after 12 askings: an asker of the old build starts it again each time; `{helper} agent retire` and look")
@@ -378,10 +294,35 @@ def main():
     # The service alone, to a helper that is on the host already (its
     # whole path): nothing put, nothing else touched. Also how this step
     # is tried in a scratch place (crates/rex-link/tests/agents.rs).
+    # (Its ways of being run are read together, before anything is done:
+    # `--service-only HELPER --dry-run` handed the service over, the dry
+    # run not yet looked at; found by Astra's review, 2026-11-27.)
+    known = {"--dry-run", "--even-if-held", "--keep-service", "--under-screens", "--service-only", "--work"}
+    takes = {"--service-only", "--work"}
+    i = 0
+    while i < len(args):
+        if args[i] not in known:
+            fail(f"`{args[i]}` isn't one of its options ({', '.join(sorted(known))})")
+        if args[i] in takes:
+            if i + 1 >= len(args) or args[i + 1].startswith("--"):
+                fail(f"`{args[i]}` needs what it names")
+            i += 1
+        i += 1
+    if "--service-only" in args and "--keep-service" in args:
+        fail("--service-only hands the service over and --keep-service leaves it: one or the other")
     if "--service-only" in args:
         helper = os.path.abspath(args[args.index("--service-only") + 1])
         if not os.access(helper, os.X_OK):
             fail(f"{helper} isn't a helper that can be run")
+        if "--dry-run" in args:
+            was, runs, hands_over = quietly(helper)
+            if was is None:
+                print(f"host-upgrade: dry run: no agents service to hand over ({runs})")
+            elif same_file(runs, helper):
+                print(f"host-upgrade: dry run: the agents service (pid {was}) runs {os.path.basename(helper)} already: nothing to hand over")
+            else:
+                print(f"host-upgrade: dry run: the agents service is pid {was} running {os.path.basename(runs)}; it would be handed to {os.path.basename(helper)}" + (" in one step" if hands_over else ", asked until it is (it doesn't start its own successor)"))
+            return
         if os.path.exists(HOLD) and "--even-if-held" not in args:
             why = " ".join(open(HOLD).read().split())[:200]
             print(f"host-upgrade: nothing to do: held by {HOLD} ({why or 'no word of why'}): remove it, or --even-if-held")
@@ -476,8 +417,10 @@ def main():
 
     # 3. The service.
     if dry:
-        pid, exe = service(max(glob.glob(os.path.join(LINKS, f"olo-rex-link-*-{machine}")), key=os.path.getmtime))
-        print(f"host-upgrade: dry run for release {commit} (helper {build}): would put " + ("; ".join(did) or "nothing") + f"; the service is pid {pid} running {os.path.basename(exe or '?')}")
+        # (Looked at, never asked through a helper that could start one
+        # or be handed it: a dry run changes nothing.)
+        pid, exe, _ = quietly(helper)
+        print(f"host-upgrade: dry run for release {commit} (helper {build}): would put " + ("; ".join(did) or "nothing") + "; the service is " + (f"pid {pid} running {os.path.basename(exe)}" if pid is not None else f"not there ({exe})"))
         return
     # (The service's pid is the summary's last word: it was this
     # function's own until the step became `hand_over`, and the summary

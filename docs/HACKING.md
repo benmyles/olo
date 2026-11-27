@@ -17254,27 +17254,22 @@ has six askers of the old build asking without pause, and fails the old
 way with five services of the old build in between). What may be a
 successor is a program of the account's own named as a helper is, by
 its whole path (`successor_ok`); `ping` says `hands_over` of a service
-that knows the word. **A service from before the word is taken over by
-the upgrade tool in its place** (`tools/dev/host-upgrade`, `take_over`):
-a child of the tool, in a session of its own, sleeps on the service's
-lock in the kernel (a blocking `flock`, woken the moment the lock is
-released: the services that older builds' askers start only look for
-it every 20 ms), the service is asked to retire, and when its process
-has ended the child, the lock its own, *becomes* the new helper's
-service (an exec with the lock's descriptor named as a retiring service
-names it, the old service's environment, server and log, read from
-`/proc`). The tool finds the running service without asking it through
-the new helper (`quietly`: the services run from files beside the
-helper, asked through the oldest of their own files), since a service
-that isn't held hands itself to a later build's asker the old way.
-Where one of the lookers does get the lock in between, it is retired
-too and the tool's last line says how many. Tried against a copy of
-the real helper of the release before (`OLO_TEST_OLD_HELPER=FILE`,
-`a_service_from_before_is_taken_over_in_one_step`: twenty watches and
-six askers of the old build going on; 22 runs, one service after the
-old one each time, in half a second), and for a service that knows the
-word by `the_upgrade_tool_hands_a_service_over_in_one_step`.
-`host-upgrade --service-only HELPER` is that step alone. **What ends it
+that knows the word. For the one handover to the first build that had
+it, the upgrade tool stood in for the retiring service (a child of the
+tool asleep on the service's lock, which became the new helper's
+service: 07:40 UTC, 2026-11-27, one step and three seconds); every
+service since has the word, and that code is gone (a code review found
+a dozen ways it could go wrong for a path that would never run again).
+The tool (`tools/dev/host-upgrade`) finds the running service without
+asking it through the new helper (`quietly`: the services run from
+files beside the helper, told by the file itself, device and inode,
+never by a name; asked through the oldest of their own files), since a
+service that isn't held hands itself to a later build's asker at that
+very question; its dry runs only look; a service retired with none of
+the new helper's in its place is a failure, said as one; and a held
+service stops it at once. `host-upgrade --service-only HELPER` is the
+service's step alone (`the_upgrade_tool_hands_a_service_over_in_one_step`
+runs the whole tool against a release folder made for it). **What ends it
 is in its log with its sender**: `SIGTERM`
 and `SIGINT` are held back before the runtime starts and read from a
 `signalfd` (`end_signals`), so the log says "told to end by SIGTERM from
