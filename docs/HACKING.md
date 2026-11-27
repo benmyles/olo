@@ -31367,19 +31367,34 @@ agents through the night, could not move to it.
     places a watch finds something: the log, and how the child stands
     now); they stay in the log, so with the minder off or gone they are
     told from where the parent's cursor was.
-  - *It is told what stands, and answers what it was told.* A real
-    minder takes seconds to judge (below) and an agent asks again in
-    less. Told each event in turn, one that fell behind reported "it is
-    waiting" of a question long gone, after its agent had exited (the
-    first trial); and `approve` answers whatever is on the screen, so a
-    late yes would have been a yes to a later question. So a minder's
-    watch answers with the last thing written of its agent
-    (`last_state_of`) and passes over what came before it, and
-    `approve` from a minder is refused unless the dialog on the screen
-    is the one it was last told of by `watch` or `status` (`State::told`,
-    by the dialog's key): "what it asks now isn't what you were last
-    told of: nothing was answered. Look again". The parent's own watch
-    is unchanged: every event once, in order.
+  - *It is told what stands, once, and answers what it was told.* A
+    minder's watch is not answered by a cursor at all. A cursor says
+    what the asker has been told, and neither kind of minder that needs
+    telling can say that: one that has only just begun has been told
+    nothing (attached to an agent already asking, or put in another's
+    place while it asked, it was given the cursor of that moment and
+    waited on a question that stood before it for as long as it stood:
+    the ShiftUp lead's trial, 2026-11-27; Ben, watching it: "we
+    shouldn't have to wait for the first watch to timeout it should
+    see any outstanding questions when it connects"); and one that took
+    seconds to judge while its agent asked again was told each event in
+    turn, long stale (the first trial here: it reported "it is waiting"
+    of a question gone half a minute, after its agent had exited). So
+    the service keeps what each minder has been told (`State::seen`:
+    the last thing written of its agent, by its number in the log) and
+    a minder's watch answers with the last thing written of its agent
+    (`last_state_of`) where the agent *still stands so* (`still_stands`:
+    the same question by its key, still at rest, still failed; an end
+    stands for good) and this minder hasn't been told it: at its first
+    watch if something stands then, the moment it is written
+    otherwise, and never twice (a question it passed up and left
+    standing is not told to it again). And `approve` answers whatever is
+    on the screen, so a late yes would be a yes to a later question:
+    from a minder it is refused unless the dialog on the screen is the
+    one it was last told of by `watch` or `status` (`State::told`, by
+    the dialog's key): "what it asks now isn't what you were last told
+    of: nothing was answered. Look again". The parent's own watch is
+    unchanged: every event once, in order, by its cursor.
   - *How it ends.* When its agent exits, the minder's watch says so; its
     next `escalate` is its report and its last word (the service stops
     it half a second after), and one that says nothing is stopped when
@@ -31395,7 +31410,13 @@ agents through the night, could not move to it.
     saying it is the lead's pane), its escalation the first thing the
     parent hears, its report ending it, attached and changed and taken
     off, the one that ends by itself, the one that outlives its agent,
-    the one that fell behind. `tests/agents_live.rs`: Claude Code itself
+    the one that fell behind, and the one that begins (attached to an
+    agent already asking; its rules replaced while it asks; killed
+    while it asks and another attached: each told the question within
+    four seconds of its first watch, from a cursor that is after it;
+    the question it passed up and left standing not told again; an
+    agent at work, nothing; one at rest, that it rests).
+    `tests/agents_live.rs`: Claude Code itself
     (2.1.332) started as a minder is, the model's part played by the
     made-up API: its command runs with no leave asked and its output
     goes back to the model, another command is refused with none asked
@@ -31413,6 +31434,11 @@ agents through the night, could not move to it.
     yes or no took 3 to 7 s, and once 28 s went on a question it read
     the screen for: a minder is quick next to a busy parent and slow
     next to an agent, which is why it is told what stands.
+  - A minder's instructions say where its agent works (its folder): it
+    is shown the command the agent asks leave for and nothing of where
+    that would run, and rules that speak of a folder ("writes inside
+    …") are read against it. Each answer kept (`answered`) says which
+    minder gave it (`by`).
   - Only Claude Code minds for now (each program needs its own way to
     be held to one command without asking). A minder has its agent's
     `--env` and `--minder-env`; one attached later has what `mind …
@@ -31538,6 +31564,18 @@ agents through the night, could not move to it.
     seconds): started with a prompt, and a conversation taken up again
     with one, the first rest told is the prompt's own turn's end and
     answers the start; after a send, the send.
+- *`stop` answers once the program has ended* (`ops.rs`, `stop`,
+  `still_running_after`; the ShiftUp lead's item 35, 2026-11-26:
+  "`stop` answers only once the tab's own program has ended, or says it
+  has not, with its pid. Then a launcher doesn't have to watch the
+  program go itself"). A tab closed is a program told to go, not one
+  gone. Each stopped tab's own program is noted before the stop (its
+  pid and when it began: its number given to another later isn't it),
+  and the answer waits until none of them runs, five seconds at most
+  (a process ended and not yet collected by its parent has ended).
+  The answer has `ended` (all of them) and `programs` (each: `id`,
+  `name`, `pid`, `ended`), and in words says which still runs, with its
+  pid. `--keep-tab` only interrupts: its program goes on, said at once.
 - *The service keeps to the hold* (`Service::held`). While
   `~/.local/state/olo/host-upgrade.hold` is there (beside the services'
   folder: whoever has agents at work on a host puts it there, its words

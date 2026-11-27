@@ -27,7 +27,13 @@ keys=$!
 while :; do
 	IFS= read -r line < "$dir/$name.fifo" || continue
 	case $line in
-	"show "*) printf '\033[2J\033[H'; cat "${line#show }" ;;
+	"show "*)
+		# (Cleared and drawn in one write, as an agent draws a frame:
+		# cleared and then drawn, a reading between the two was of an
+		# empty screen, and a question read so had "disappeared".)
+		frame=$(cat "${line#show }"; printf x)
+		printf '\033[2J\033[H%s' "${frame%x}"
+		;;
 	"run "*)
 		sh -c "${line#run }" > "$dir/$name.out" 2>&1 < /dev/null
 		: > "$dir/$name.ran"

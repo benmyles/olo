@@ -172,6 +172,10 @@ pub struct State {
     /// the screen, and a minder that took a while would else say yes to
     /// a question that came after the one it judged.
     pub told: HashMap<String, String>,
+    /// By minder: the last thing written of its agent that it has been
+    /// told (its number in the log). What stands and is later than
+    /// that, it is told; nothing twice.
+    pub seen: HashMap<String, u64>,
 }
 
 /// How long a minder has, once the agent it minded has ended, to tell
@@ -832,7 +836,14 @@ impl Service {
                 look_again = kept;
             }
             live.held_until = kept;
-            if live.last_state == Some(cls.state) && live.last_key.as_deref() == Some(key.as_str()) && !was_kept && kept.is_none() {
+            // (The same as it last stood: nothing new to make of it.
+            // Unless it has been given work it was never seen at: then
+            // a rest that looks the same as the last may be the end of
+            // a turn that came and went between two readings, which its
+            // conversation's file says, below. Without this a message
+            // taken up late and answered quickly was never told: found
+            // by ten copies of a test at once, 2026-11-27.)
+            if live.last_state == Some(cls.state) && live.last_key.as_deref() == Some(key.as_str()) && !was_kept && kept.is_none() && live.expects.is_none() {
                 return;
             }
             live.last_state = Some(cls.state);
@@ -1518,7 +1529,7 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     let service = Arc::new(Service {
         rex,
         paths: paths.clone(),
-        st: Mutex::new(State { reg, log, live: HashMap::new(), sessions: HashMap::new(), clients: 0, doing: 0, idle_since: None, let_go: HashSet::new(), told: HashMap::new() }),
+        st: Mutex::new(State { reg, log, live: HashMap::new(), sessions: HashMap::new(), clients: 0, doing: 0, idle_since: None, let_go: HashSet::new(), told: HashMap::new(), seen: HashMap::new() }),
         changed: Notify::new(),
         frames,
         text_watchers: AtomicUsize::new(0),

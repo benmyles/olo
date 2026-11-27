@@ -122,25 +122,71 @@ something nobody here has is in "Blocked", with what it waits for.
     20:25), said in the guide."
   - 32 is done (`doing_line`: Claude Code's "◈ max · /effort" is not
     what it is doing).
-  - 35 (23:35 UTC): "`stop` answers only once the tab's own program has
-    ended, or says it has not, with its pid. Then a launcher doesn't
-    have to watch the program go itself."
-- **A test that failed twice and is not explained** (2026-11-26, 23:51
-  UTC): `agents_live.rs`,
-  `live_mock_api_an_agents_own_background_shell_is_listed`, in two
-  runs of the whole suite one after the other: Claude Code's turn had
-  ended with the closing text and `background_shells` was empty. It
-  has not failed in 121 runs since (the whole suite four times, the
-  real-agent tests fourteen, the one test a hundred times four at
-  once). The service's reading is not suspected: with no shell started
-  there is none to list. Suspected: the made-up API hands its scripted
-  replies to whichever request asks next, and Claude Code asks more
-  than its conversation does (a title, and whatever else it sends as
-  it starts); if another request took "run this in the background",
-  the conversation got the closing text at once. The test prints what
-  the API was asked, in order, when the shell is missing: read that
-  when it next fails, and bind the scripted replies to the
-  conversation's own requests.
+  - 35 is done (HACKING, "`stop` answers once the program has
+    ended").
+- **Three asks for ergonomics from the ShiftUp lead, 36 to 38**
+  (`/var/tmp/shiftup/olo-agent-needs.md`, 2026-11-27 00:30 UTC; Ben,
+  through them: "ask the olo agent to fix/improve it -- ergonomics
+  matter i want it to work as seamlessly for you as possible"; and of
+  approvals: "they follow instructions great honestly i don't care much
+  about requiring approvals from them at all only in the most extreme
+  cases"). In their words, shortened:
+  - 36: "One command for a one-shot agent … `olo agent run <claude|agy>
+    --model … --effort … --name N --prompt-file BRIEF [--out FILE]
+    [--keep-tab] [--minder … --rules …]`: starts it, returns when the
+    prompt's own turn has ended (or it exited or failed), prints its
+    whole last message (and writes it to `--out`), and stops the tab
+    unless told to keep it; non-zero when the turn did not end as a
+    turn (error, exit, a question left standing: said which)."
+  - 37: "Leave given by a list, by the service, with no model in the
+    way … `--approve-all-but FILE` (and `mind NAME --approve-all-but
+    FILE`): the service itself answers 'yes, once' to any approval box
+    of that child at once, EXCEPT one whose whole command (every part
+    of a chain, redirections included) matches a pattern in FILE, which
+    goes to its minder if it has one, else to the parent's watch as
+    today. Never a kept yes. `mind NAME --json` lists what the service
+    answered this way, with each command."
+  - 38: "A word to the parent without a wait … as an option on the
+    parent (`olo agent notify on|off`, or `watch --push`): an
+    `escalation`, a `done` whose last line begins `DONE` or
+    `QUESTION:`, an `error` and an `exit` are delivered into the
+    parent's own CLI as a message at its next rest or tool round (as
+    Claude Code's own cross-session messages arrive), each once, with
+    the child's name and the message whole. The cursor'd watch stays."
+- **The stand-in tests on a busy computer** (2026-11-27): six copies of
+  `tests/agents.rs` at once (126 scratch Rex servers) found five places
+  where a test took something for done before it was, each fixed in
+  the test (the rig's first call to a server whose socket is there
+  before it answers; a child's environment read while its process was
+  still the `env` it was started through; a stand-in that cleared its
+  screen and drew it in two writes, read between them as empty; keys
+  compared before they had reached the stand-in's record; which word
+  of a minder's end came first). Seventeen of eighteen suites then ran
+  clean; `a_feedback_survey_is_set_aside` failed once in a whole run
+  after and not in three alone: not looked into (the service presses a
+  survey's key again where the survey still stands 300 ms on, and a
+  slow stand-in would still be showing it).
+- **A test that fails once in a few hundred runs, not yet explained**
+  (`agents_live.rs`,
+  `live_mock_api_an_agents_own_background_shell_is_listed`; first met
+  2026-11-26 23:51 UTC, twice in one loop of the whole suite; then four
+  times in some 800 runs, each while the machine was busy: a release
+  build beside it, or twenty-four of the test at once). Claude Code's
+  turn has ended with its closing text, and `background_shells` is
+  empty. What the two catches with the test's own account showed: the
+  made-up API was asked what it should be, in order (the first guess,
+  a scripted reply taken by another request, is not it); and at that
+  moment the agent's process has *one* shell under it, a `bash -c
+  "source …/shell-snapshots/snapshot-bash-…"`, whose command line has
+  neither `STARTED_WAITING` nor `sleep 45` in it, while every other
+  run's has both and a `sleep 45` under it. So either Claude Code,
+  hurried, has not yet started the background command when it says it
+  has and is running some other script of its own in that instant, or
+  it runs the command in another form than `eval 'COMMAND'` there,
+  which `own_shell_command` then doesn't read. The test now prints that
+  shell's whole command line when it fails: read it at the next one.
+  To meet it: the test's own binary, twenty-four at once, a dozen
+  rounds (AGENT-NOTES, "A test that passed is run again").
 - **A "Tweaks" tab in Rex's Host window** (Ben, 2026-11-26 evening):
   "currently we have under manager rex server a limits tab for applying
   tweaks to the host but they really belong in manage host. please move

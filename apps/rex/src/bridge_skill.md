@@ -64,6 +64,11 @@ its judgment matters.
         --prompt-file brief.md \
         --minder claude:claude-fable-5-2:high --rules ui-check-rules.md --json
 
+- **Write the rules for what the minder sees.** It is shown the command
+  or the question its child asks, and it is told the child's working
+  folder: nothing else of the child's task. Say how a relative path is
+  to be read ("a path with no folder is inside its working folder"),
+  and name commands as they will appear.
 - **The rules are your words**, a file (`--rules FILE`) or a string
   (`--rules-text`): what to approve (name the commands or kinds: "cargo
   build and test, read-only git, reading files under the repository"),
@@ -91,17 +96,20 @@ its judgment matters.
   with them); `olo agent mind NAME --off` ends it, and the child's
   asking is yours again; `olo agent mind NAME [--json]` says who minds
   it, by what rules, and everything the minder answered (`answered`:
-  each `approve`, `send` and `escalate`, with its time), to check its
-  work.
+  each `approve`, `send` and `escalate`, with its time and `by`, the
+  minder that gave it), to check its work.
 - **What a minder can do is held by the service, not by its good
   sense.** It reaches the one child it minds and nothing else: it can
   watch it, read it, say yes once or no (never a yes that is kept), type
   to it, and escalate. It cannot start, stop or list anything, reach
   another child, or run any other program: the shell is its only tool
   and its one command the only thing allowed in it. It is told what
-  stands, not each thing that passed while it thought, and its yes or
-  no is for the question it was last told of: one that took a while
-  never answers a question that came since. (A minder at a high effort
+  stands, once: a question its child was already asking when the
+  minder began (attached with `mind`, or put in another's place) is
+  told to it at its first look, not each thing that passed while it
+  thought, and nothing twice. Its yes or no is for the question it was
+  last told of: one that took a while never answers a question that
+  came since. (A minder at a high effort
   answers a plain yes or no in some 3 to 7 seconds.)
 - **How it ends.** When the child exits, its minder tells you once what
   it approved, refused and passed up (an `escalation`), and is stopped.
@@ -217,6 +225,7 @@ model or reasoning effort is used.
   `olo agent escalate "TEXT" [--json]` (from a child's own tab)
 - **Stop & archive launched tabs cleanly**:
   `olo agent stop <ID|NAME> [--save PATH] [--force] [--tree] [--keep-tab] [--json]`
+  It answers once each stopped tab's own program has ended (five seconds for it), or says which has not, with its pid: `ended` (all of them) and `programs` (`id`, `name`, `pid`, `ended` each) in its JSON, so nothing of yours has to watch a program go.
   Gracefully interrupts (double Ctrl-C) and closes the child tab (`--save PATH` archives full scrollback to `PATH` before closing; `--tree` stops all nested descendants bottom-up; `--force` closes immediately; `--force` and `--keep-tab` cannot be combined; keeps `cli_session_id` in registry for `list --all` and `--resume`).
 - **Prune exited child records**: `olo agent prune [--all] [--json]`
 - **Focus a child tab in Rex**: `olo agent focus <ID|NAME>`

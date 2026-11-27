@@ -1506,7 +1506,17 @@ fn live_mock_api_an_agents_own_background_shell_is_listed() {
                 )
             })
             .collect();
-        assert_eq!(shells.len(), 1, "its one shell, once (not its `sleep` as another): {status}\nwhat the API was asked:\n  {}", asked.join("\n  "));
+        // (And what runs under its tab at this moment, as the system has it: whether the shell is there and under what.)
+        let under = |pid: i64| String::from_utf8_lossy(&Command::new("ps").args(["-o", "pid,ppid,stat,comm,args", "--ppid", &pid.to_string()]).output().map(|o| o.stdout).unwrap_or_default()).lines().map(|l| l.chars().take(1500).collect::<String>()).collect::<Vec<_>>().join("\n    ");
+        let pid = status["pid"].as_i64().unwrap_or(0);
+        let all = String::from_utf8_lossy(&Command::new("ps").args(["-eo", "pid,ppid,stat,comm,args"]).output().map(|o| o.stdout).unwrap_or_default()).lines().filter(|l| l.contains("STARTED_WAITING") || l.contains("sleep 45")).map(|l| l.chars().take(170).collect::<String>()).collect::<Vec<_>>().join("\n    ");
+        assert_eq!(
+            shells.len(),
+            1,
+            "its one shell, once (not its `sleep` as another): {status}\nwhat the API was asked:\n  {}\nunder the pid status gives ({pid}):\n    {}\nevery process of this command on the machine:\n    {all}",
+            asked.join("\n  "),
+            under(pid)
+        );
         let shell = &shells[0];
         assert_eq!((&shell["cmd"], &shell["kind"]), (&json!("echo STARTED_WAITING; sleep 45"), &json!("task")), "its own command, as it gave it: {shell}");
         assert_eq!(status["waiting_on"], "own_run", "{status}");

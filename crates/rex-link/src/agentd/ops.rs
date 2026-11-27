@@ -17,6 +17,80 @@ use serde_json::{Value, json};
 
 use super::service::{HOST, Service, tail_of};
 
+/// Whether an agent that now stands as `now` says still stands as the
+/// event `last` said of it: the same question (by its key), still at
+/// rest, still failed; its end stands for good.
+fn still_stands(last: &SubagentEvent, now: &ScreenClassification) -> bool {
+    match last.state {
+        SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion => now.state == last.state && super::service::subkey(now) == last.dedupe_key,
+        SubagentLiveState::Idle | SubagentLiveState::Done => matches!(now.state, SubagentLiveState::Idle | SubagentLiveState::Done),
+        SubagentLiveState::Error => now.state == SubagentLiveState::Error,
+        SubagentLiveState::Exited => true,
+        _ => false,
+    }
+}
+
+/// How long a stopped tab's own program has to end before `stop`
+/// answers that it has not.
+const STOPPED_WITHIN: Duration = Duration::from_secs(5);
+
+/// Whether the process `pid` that began at `began` (clock ticks after
+/// boot) still runs: there, the same one (its number given to another
+/// since isn't it), and not merely waiting to be collected by its
+/// parent (ended, to anyone but that parent).
+fn runs(pid: i32, began: u64) -> bool {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
+    let Some((_, rest)) = stat.rsplit_once(')') else { return false };
+    let mut fields = rest.split_whitespace();
+    let state = fields.next().unwrap_or("Z");
+    !matches!(state, "Z" | "X") && fields.nth(18).and_then(|t| t.parse::<u64>().ok()) == Some(began)
+}
+
+/// Waits until none of `programs` (each a pid and when it began) runs
+/// any more, `within` at most: which of them still does.
+async fn still_running_after(programs: &[(i32, u64)], within: Duration) -> Vec<bool> {
+    let until = tokio::time::Instant::now() + within;
+    while programs.iter().any(|(pid, began)| runs(*pid, *began)) && tokio::time::Instant::now() < until {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    programs.iter().map(|(pid, began)| runs(*pid, *began)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A program is waited for until it has ended and no longer; one
+    /// that hasn't is said to run still; one ended and not yet collected
+    /// by its parent has ended.
+    #[test]
+    fn a_stopped_program_is_waited_for_and_no_longer() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        rt.block_on(async {
+            let me = std::process::id() as i32;
+            let began = crate::panes::start_ticks(me);
+            assert!(runs(me, began) && !runs(me, began + 1), "this process, and not another that had its number");
+            // One that goes on: said so when its time is up, not before and not long after.
+            let at = std::time::Instant::now();
+            assert_eq!(still_running_after(&[(me, began)], Duration::from_millis(200)).await, [true]);
+            assert!(at.elapsed() >= Duration::from_millis(200) && at.elapsed() < Duration::from_millis(900), "{:?}", at.elapsed());
+            // One that ends: answered when it has, well before the time given; though nobody has collected it.
+            let mut child = std::process::Command::new("sleep").arg("0.3").spawn().unwrap();
+            let pid = child.id() as i32;
+            let began = crate::panes::start_ticks(pid);
+            let at = std::time::Instant::now();
+            assert_eq!(still_running_after(&[(pid, began), (me, crate::panes::start_ticks(me))], Duration::from_millis(1200)).await, [false, true]);
+            assert!(std::path::Path::new(&format!("/proc/{pid}")).exists(), "ended and not collected: still listed, and not running");
+            assert!(at.elapsed() >= Duration::from_millis(1200), "the other was waited for to its end: {:?}", at.elapsed());
+            let at = std::time::Instant::now();
+            assert_eq!(still_running_after(&[(pid, began)], Duration::from_secs(5)).await, [false]);
+            assert!(at.elapsed() < Duration::from_millis(300), "{:?}", at.elapsed());
+            let _ = child.wait();
+            assert!(!runs(pid, began));
+        });
+    }
+}
+
 /// Who asks: the pane it was asked from, and the child that pane is, if
 /// it is one (which may then act on its own descendants alone).
 pub struct Caller {
@@ -199,7 +273,8 @@ impl Service {
     fn minder_did(&self, caller: &Caller, what: &str, said: Value) {
         let Some(minded) = caller.child.as_ref().and_then(|c| c.minds.clone()) else { return };
         use std::io::Write as _;
-        let line = json!({ "at_ms": now_unix_ms(), "did": what, "said": said }).to_string();
+        // (`by`: which minder, where one was put in another's place.)
+        let line = json!({ "at_ms": now_unix_ms(), "did": what, "said": said, "by": caller.child.as_ref().map(|c| c.id.clone()) }).to_string();
         let dir = self.paths.dir.join("minders").join(&minded);
         if std::fs::create_dir_all(&dir).is_ok()
             && let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("answers.jsonl"))
@@ -313,7 +388,15 @@ impl Service {
         write(&dir.join("rules.md"), rules, 0o600)?;
         write(&command, &minder::script(&helper.to_string_lossy(), &child.id), 0o700)?;
         let its_name = child.name.clone().unwrap_or_else(|| child.id.clone());
-        let what = if child.cli.is_agent() { format!("{}, {}", child.cli.display_name(), child.model) } else { "a command".to_owned() };
+        // (And where it works: a minder is shown the command an agent
+        // asks leave for and nothing of where it would run; rules that
+        // speak of a folder are read against this.)
+        let what = match (child.cli.is_agent(), child.cwd.as_deref().filter(|c| !c.is_empty())) {
+            (true, Some(cwd)) => format!("{}, {}, working in {cwd}", child.cli.display_name(), child.model),
+            (true, None) => format!("{}, {}", child.cli.display_name(), child.model),
+            (false, Some(cwd)) => format!("a command, run in {cwd}"),
+            (false, None) => "a command".to_owned(),
+        };
         let spec = StartSpec {
             cli: Some(who.cli),
             model: Some(who.model.clone()),
@@ -1037,7 +1120,7 @@ impl Service {
 
         // A cursor from before the log began again, or older than what
         // the log still holds: said, never silently wrong.
-        let (mut since_floor, had_gap) = {
+        let (since_floor, had_gap) = {
             let st = self.lock();
             let latest = st.log.latest_seq();
             match spec.since {
@@ -1149,48 +1232,57 @@ impl Service {
             // kind; what a minded child asks is its minder's to answer,
             // and wakes no other watch while that minder runs. Left in
             // the log: with the minder gone it is told from here.)
-            let queued = {
-                let st = self.lock();
-                let wanted = |ev: &SubagentEvent| {
-                    event_in_scope(ev, &live_ids)
-                        && if ev.event == minder::ESCALATION { spec.wants_escalations() } else { spec.matches_state(ev.state) && !Self::minders_own(&st.reg, caller, &ev.id, ev.state) }
-                };
-                let found = st.log.find_since(since_floor, wanted);
-                // A minder is told what stands, never what has passed:
-                // one that took a while over the last question would
-                // else be told, one by one, of questions long answered
-                // or gone (a real one reported "it is waiting" of an
-                // agent that had exited, 2026-11-26). The last thing
-                // written of its agent is what stands; what came before
-                // it is passed over.
-                match found {
-                    Some(ev) if minding.is_some() && ev.event != minder::ESCALATION => match st.log.last_state_of(&ev.id).filter(|last| last.seq > ev.seq).cloned() {
-                        Some(last) if wanted(&last) => Some(last),
-                        Some(last) => {
-                            since_floor = last.seq;
-                            None
-                        }
-                        None => Some(ev),
-                    },
-                    found => found,
-                }
-            };
-            if let Some(ev) = queued {
-                // (What it asks, by its key: the one question this
-                // minder may now answer.)
-                if let Some(me) = &minding {
+            //
+            // A minder is told what stands of its agent, once: the last
+            // thing written of it, where the agent still stands so and
+            // this minder hasn't been told it. Not by a cursor at all.
+            // A cursor says what the asker has been told, and a minder
+            // that has only just begun has been told nothing: one
+            // attached to an agent already asking, or put in another's
+            // place while it asked, was given the cursor of that moment
+            // and waited on a question that stood before it for as long
+            // as it stood (the ShiftUp lead's trial, 2026-11-27; Ben,
+            // watching it: "we shouldn't have to wait for the first
+            // watch to timeout it should see any outstanding questions
+            // when it connects"). And one that took a while over the
+            // last question is not told, one by one, of questions long
+            // answered or gone (a real one reported "it is waiting" of
+            // an agent that had exited, 2026-11-26).
+            if let Some(me) = &minding {
+                if let Some(agent) = current.first().cloned().or_else(|| explicit.first().cloned()) {
+                    let now = if agent.exited_at.is_some() { None } else { Some(self.look(&agent, false).await.cls) };
                     let mut st = self.lock();
-                    match ev.state {
-                        SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion => st.told.insert(me.clone(), ev.dedupe_key.clone()),
-                        _ => st.told.remove(me),
-                    };
+                    let told_to = st.seen.get(me).copied().unwrap_or(0);
+                    let stands = st.log.last_state_of(&agent.id).filter(|last| last.seq > told_to && spec.matches_state(last.state) && now.as_ref().is_none_or(|cls| still_stands(last, cls))).cloned();
+                    if let Some(ev) = stands {
+                        st.seen.insert(me.clone(), ev.seq);
+                        // (What it asks, by its key: the one question
+                        // this minder may now answer.)
+                        match ev.state {
+                            SubagentLiveState::WaitingApproval | SubagentLiveState::WaitingQuestion => st.told.insert(me.clone(), ev.dedupe_key.clone()),
+                            _ => st.told.remove(me),
+                        };
+                        drop(st);
+                        return answer(&ev, None, false);
+                    }
                 }
-                return answer(&ev, None, had_gap);
+            } else {
+                let queued = {
+                    let st = self.lock();
+                    st.log.find_since(since_floor, |ev| {
+                        event_in_scope(ev, &live_ids)
+                            && if ev.event == minder::ESCALATION { spec.wants_escalations() } else { spec.matches_state(ev.state) && !Self::minders_own(&st.reg, caller, &ev.id, ev.state) }
+                    })
+                };
+                if let Some(ev) = queued {
+                    return answer(&ev, None, had_gap);
+                }
             }
 
             // 2. The screens themselves: for text, and (without a cursor)
             //    for a state that already stands.
-            let check_live = spec.since.is_none();
+            // (A minder's is answered above, by what stands.)
+            let check_live = spec.since.is_none() && minding.is_none();
             if check_live || check_text {
                 let mut candidate: Option<(NativeSubagent, ScreenClassification, String, Option<String>)> = None;
                 for entry in &current {
@@ -1655,9 +1747,50 @@ impl Service {
             None => None,
         };
 
+        // Each tab's own program, as it runs now (by its process and
+        // when that started: its number given to another later isn't
+        // it): what "stopped" must mean when this answers.
+        let mut running: Vec<(NativeSubagent, i32, u64)> = Vec::new();
+        {
+            let mut of = vec![entry.clone()];
+            if tree {
+                let live = self.live_windows(&entry.session_id);
+                of.extend(self.lock().reg.descendants_tree(HOST, &entry.session_id, &entry.window_id, &live).into_iter().map(|r| r.entry));
+            }
+            let st = self.lock();
+            for e in of.into_iter().filter(|e| e.exited_at.is_none()) {
+                if let Some(pid) = st.live.get(&e.id).and_then(|l| l.pid).or(e.last_pid).filter(|p| *p > 1) {
+                    let began = crate::panes::start_ticks(pid);
+                    if began > 0 {
+                        running.push((e, pid, began));
+                    }
+                }
+            }
+        }
         let stopped = self.stop_tabs(&entry, force, tree, keep_tab).await;
-        let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "stopped": stopped, "cli_session_id": entry.effective_session_id(), "transcript_path": entry.transcript_path, "saved_path": saved });
-        Response::ok(if as_json { format!("{payload}\n") } else { format!("Stopped {} subagent tab(s).\n", stopped.len()) }, payload)
+        // It answers once those programs have ended, or says which has
+        // not, with its pid (the ShiftUp lead's item 35, 2026-11-26:
+        // "`stop` answers only once the tab's own program has ended, or
+        // says it has not, with its pid. Then a launcher doesn't have to
+        // watch the program go itself"). A tab closed is a program told
+        // to go, not one gone: five seconds for it. (Kept open, its
+        // program was only interrupted: it goes on, and is said so.)
+        let pids: Vec<(i32, u64)> = running.iter().map(|(_, pid, began)| (*pid, *began)).collect();
+        let still = still_running_after(&pids, if keep_tab { Duration::ZERO } else { STOPPED_WITHIN }).await;
+        let programs: Vec<Value> = running.iter().zip(&still).map(|((e, pid, _), still)| json!({ "id": e.id, "name": e.name, "pid": pid, "ended": !still })).collect();
+        let left: Vec<String> = programs.iter().filter(|p| p["ended"] == false).map(|p| format!("{} (pid {})", p["name"].as_str().or(p["id"].as_str()).unwrap_or_default(), p["pid"])).collect();
+        let payload = json!({
+            "ok": true, "id": entry.id, "name": entry.name, "stopped": stopped,
+            // (Whether every program that ran in what was stopped has ended; each, with its pid.)
+            "ended": left.is_empty(), "programs": programs,
+            "cli_session_id": entry.effective_session_id(), "transcript_path": entry.transcript_path, "saved_path": saved,
+        });
+        let said = match (left.is_empty(), keep_tab) {
+            (true, _) => format!("Stopped {} subagent tab(s).\n", stopped.len()),
+            (false, true) => format!("Interrupted {} subagent tab(s), kept open: still running: {}.\n", stopped.len(), left.join(", ")),
+            (false, false) => format!("Stopped {} subagent tab(s), but not ended after {} s: {}.\n", stopped.len(), STOPPED_WITHIN.as_secs(), left.join(", ")),
+        };
+        Response::ok(if as_json { format!("{payload}\n") } else { said }, payload)
     }
 
     /// Interrupts a child (and, with `tree`, those under it, deepest

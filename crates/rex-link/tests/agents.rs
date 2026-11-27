@@ -151,9 +151,19 @@ impl Rig {
         let mut cmd = Command::new(REX);
         cmd.args(["-S", &format!("unix://{}", self.sock.display()), "api", "call", method, &payload.to_string()]);
         Self::scratch_env(&self.dir, &self.sock, &mut cmd);
-        let out = cmd.output().expect("rex api call");
-        assert!(out.status.success(), "rex api call {method}: {}", String::from_utf8_lossy(&out.stderr));
-        serde_json::from_slice(&out.stdout).unwrap_or(Value::Null)
+        // (A server just started has its socket's file before it
+        // answers on it: on a busy computer the first call met "no Rex
+        // server is running at …". Asked again for a few seconds.)
+        let until = Instant::now() + Duration::from_secs(8);
+        loop {
+            let out = cmd.output().expect("rex api call");
+            if out.status.success() {
+                return serde_json::from_slice(&out.stdout).unwrap_or(Value::Null);
+            }
+            let said = String::from_utf8_lossy(&out.stderr).into_owned();
+            assert!(said.contains("no Rex server is running") && Instant::now() < until, "rex api call {method}: {said}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     fn helper(&self) -> Command {
@@ -253,6 +263,20 @@ impl Rig {
     /// Every byte a stand-in was typed.
     fn keys(&self, name: &str) -> Vec<u8> {
         std::fs::read(self.staged(name, "keys")).unwrap_or_default()
+    }
+
+    /// What a stand-in was typed since `before`, which must be `keys`
+    /// and no more. (Waited for a moment: what the service has written
+    /// to a tab reaches the stand-in's own record of it a little after
+    /// the command that typed it has answered, on a busy computer.)
+    fn typed_since(&self, name: &str, before: usize, keys: &[u8], what: &str) {
+        let until = Instant::now() + Duration::from_secs(5);
+        while self.keys(name).len() < before + keys.len() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // (And nothing after it.)
+        std::thread::sleep(Duration::from_millis(60));
+        assert_eq!(String::from_utf8_lossy(&self.keys(name)[before..]), String::from_utf8_lossy(keys), "{what}");
     }
 
     fn wait(&self, what: &str, mut is: impl FnMut() -> bool) {
@@ -374,7 +398,7 @@ fn every_command_works_with_no_desktop_connected() {
     assert!(agent.join().unwrap());
     assert_eq!(approved["chosen_kind"], "once");
     assert_eq!(approved["dismissed"], true, "{approved}");
-    assert_eq!(&rig.keys("builder")[before..], b"\r", "Return and nothing else");
+    rig.typed_since("builder", before, b"\r", "Return and nothing else");
 
     // Its turn ends: an event after the cursor.
     rig.show("builder", &idle("Done with this part."));
@@ -390,7 +414,7 @@ fn every_command_works_with_no_desktop_connected() {
     let sent = rig.json(&["send", "builder", "--file", "message.txt", "--enter", "--json"]);
     assert!(agent.join().unwrap());
     assert_eq!(sent["delivered"], true, "{sent}");
-    assert_eq!(&rig.keys("builder")[before..], b"\x1b[200~Next: the tests.\nThen say DONE.\n\x1b[201~\r");
+    rig.typed_since("builder", before, b"\x1b[200~Next: the tests.\nThen say DONE.\n\x1b[201~\r", "what was typed into it");
 
     // What it shows is read.
     let read = rig.json(&["read", "builder", "--lines", "20", "--json"]);
@@ -400,7 +424,7 @@ fn every_command_works_with_no_desktop_connected() {
     let before = rig.keys("builder").len();
     rig.json(&["send", "builder", "--key", "Alt+m", "--json"]);
     rig.wait("the key", || rig.keys("builder").len() > before);
-    assert_eq!(&rig.keys("builder")[before..], b"\x1bm");
+    rig.typed_since("builder", before, b"\x1bm", "what was typed into it");
 
     // Stopped, what it showed saved here; its conversation's id kept.
     let stopped = rig.json(&["stop", "builder", "--save", "saved/builder.txt", "--json"]);
@@ -662,7 +686,7 @@ fn a_feedback_survey_is_set_aside() {
     assert!(agent.join().unwrap(), "the service set the survey aside");
     let rested = rig.json(&["watch", "surveyed", "--since", &started["cursor"].to_string(), "--on", "idle,done", "--timeout", "15", "--json"]);
     assert!(matches!(rested["event"].as_str(), Some("idle" | "done")), "{rested}");
-    assert_eq!(&rig.keys("surveyed")[before..], b"0", "once, and nothing else");
+    rig.typed_since("surveyed", before, b"0", "once, and nothing else");
     assert_eq!(rig.status("surveyed")["survey"], false);
     rig.json(&["stop", "surveyed", "--force", "--json"]);
 }
@@ -1027,7 +1051,7 @@ fn a_question_is_answered_by_what_a_choice_means() {
     let approved = rig.json(&["approve", "reader", "--once", "--json"]);
     assert!(moved.join().unwrap() && gone.join().unwrap());
     assert_eq!((&approved["chosen_label"], &approved["dismissed"]), (&json!("Yes, but ask again next time"), &json!(true)), "{approved}");
-    assert_eq!(&rig.keys("reader")[before..], b"\x1b[B\x1b[B\x1b[B\r");
+    rig.typed_since("reader", before, b"\x1b[B\x1b[B\x1b[B\r", "what was typed into it");
 
     // No, once: the third, not the no that blocks from now on.
     rig.show("reader", &read_outside(0));
@@ -1038,7 +1062,7 @@ fn a_question_is_answered_by_what_a_choice_means() {
     let refused = rig.json(&["approve", "reader", "--no", "--json"]);
     assert!(moved.join().unwrap() && gone.join().unwrap());
     assert_eq!(refused["chosen_label"], "No, and ask again next time", "{refused}");
-    assert_eq!(&rig.keys("reader")[before..], b"\x1b[B\x1b[B\r");
+    rig.typed_since("reader", before, b"\x1b[B\x1b[B\r", "what was typed into it");
     // (Where the mark doesn't come to stand on it, Escape and not Return.)
     rig.show("reader", &read_outside(0));
     rig.wait_state("reader", "waiting_approval");
@@ -1046,7 +1070,7 @@ fn a_question_is_answered_by_what_a_choice_means() {
     let (code, _, err) = rig.olo(&["approve", "reader", "--once", "--json"]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("Escape instead of Enter"), "{err}");
-    assert_eq!(&rig.keys("reader")[before..], b"\x1b[B\x1b[B\x1b[B\x1b", "never Return where the mark wasn't seen to land");
+    rig.typed_since("reader", before, b"\x1b[B\x1b[B\x1b[B\x1b", "never Return where the mark wasn't seen to land");
     // There is no yes for the session here: said, nothing typed.
     let before = rig.keys("reader").len();
     let (code, _, err) = rig.olo(&["approve", "reader", "--session"]);
@@ -1076,7 +1100,7 @@ fn a_question_is_answered_by_what_a_choice_means() {
     let allowed = rig.json(&["approve", "walker", "--session", "--json"]);
     assert!(moved.join().unwrap() && gone.join().unwrap());
     assert_eq!((&allowed["chosen_kind"], &allowed["chosen_label"]), (&json!("allow_session"), &json!("Yes, and always allow in this conversation")), "{allowed}");
-    assert_eq!(&rig.keys("walker")[before..], b"\x1b[B\r");
+    rig.typed_since("walker", before, b"\x1b[B\r", "what was typed into it");
     rig.json(&["stop", "reader", "--force", "--json"]);
     rig.json(&["stop", "walker", "--force", "--json"]);
 }
@@ -1098,7 +1122,13 @@ fn what_a_child_is_started_with_is_in_its_environment() {
     let read = rig.json(&["read", "guarded", "--json"]);
     assert!(read["output"].as_str().unwrap().replace('\n', "").contains(line), "{read}");
     // (And as the launcher reads it: from the process itself.)
+    // (Its process is the `env` it was started through for a moment,
+    // then the program's own, the same number: read once it is that.)
     let pid = rig.status("guarded")["pid"].as_i64().unwrap();
+    rig.wait("the child's program to be its own", || {
+        let own = |p: i64| std::fs::read(format!("/proc/{p}/environ")).unwrap_or_default().split(|b| *b == 0).any(|v| v == b"SHIFTUP_NO_AGENTS=1");
+        own(pid) || std::fs::read_to_string(format!("/proc/{pid}/task/{pid}/children")).unwrap_or_default().split_whitespace().filter_map(|c| c.parse::<i64>().ok()).any(own)
+    });
     let mut seen = false;
     for entry in std::fs::read_dir("/proc").unwrap().flatten() {
         let Some(child) = entry.file_name().to_str().and_then(|n| n.parse::<i64>().ok()) else { continue };
@@ -1218,7 +1248,12 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     assert_eq!(after("--allowed-tools"), format!("Bash({} *)", minder.dir.join("mind").display()));
     assert!(args.contains(&"--strict-mcp-config"), "{args:?}");
     let told = line.split("--append-system-prompt\n").nth(1).unwrap_or_default();
-    assert!(told.starts_with("You are a minder. Your whole job is one other agent, \"worker\" (Claude Code, stand-in)") && told.contains(&format!("----\n{rules}\n----")), "{told}");
+    // (With where its agent works: rules that speak of a folder are read against that.)
+    assert!(
+        told.starts_with(&format!("You are a minder. Your whole job is one other agent, \"worker\" (Claude Code, stand-in, working in {})", rig.dir.join("work").display()))
+            && told.contains(&format!("----\n{rules}\n----")),
+        "{told}"
+    );
     assert!(args.last().unwrap().starts_with("Begin minding \"worker\" now. Run: ") && args.last().unwrap().contains(&format!("watch --since {}", started["cursor"])), "{args:?}");
 
     // The agent asks leave. Its minder is told; the parent's watch is not woken by it.
@@ -1240,7 +1275,7 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     let approved = minder.mind("approve --once --json");
     assert!(gone.join().unwrap(), "{approved}");
     assert_eq!((&approved["chosen_label"], &approved["dismissed"]), (&json!("Yes"), &json!(true)), "{approved}");
-    assert_eq!(&rig.keys("worker")[before..], b"\r");
+    rig.typed_since("worker", before, b"\r", "what was typed into it");
     cursor = asked["cursor"].as_u64().unwrap();
 
     // What isn't a minder's: any other agent, and anything but watching, reading, answering and escalating, whatever pane it says it is.
@@ -1302,6 +1337,8 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     assert_eq!((&of["minder"]["id"], &of["rules"]), (&started["minder"]["id"], &json!(rules)), "{of}");
     let did: Vec<&str> = of["answered"].as_array().unwrap().iter().filter_map(|a| a["did"].as_str()).collect();
     assert_eq!(did, ["approve", "approve", "escalate"], "{of}");
+    // (Each with the minder that gave it.)
+    assert!(of["answered"].as_array().unwrap().iter().all(|a| a["by"] == started["minder"]["id"]), "{of}");
     assert_eq!(of["answered"][2]["said"], said);
     let (code, out, _) = rig.olo(&["mind", "worker"]);
     assert!(code == 0 && out.starts_with("worker is minded by worker-minder (claude:stand-in-big:max)\n") && out.contains("escalate"), "{out}");
@@ -1391,7 +1428,10 @@ fn a_minder_is_attached_changed_and_taken_off() {
     rig.tell("m2", "exit 3");
     let heard = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "escalation", "--timeout", "15", "--json"]);
     assert_eq!((&heard["event"], &heard["name"]), (&json!("escalation"), &json!("worker")), "{heard}");
-    assert!(heard["summary"].as_str().unwrap().starts_with("Its minder ended (exited (code 3))"), "{heard}");
+    // (How it ended is said as it was first heard: its program's status, or that its tab closed, whichever word came first.)
+    let how = heard["summary"].as_str().unwrap();
+    assert!(how.starts_with("Its minder ended (exited (code 3))") || how.starts_with("Its minder ended (its tab was closed)"), "{heard}");
+    assert!(how.ends_with("what it asks comes to you again."), "{heard}");
     assert_eq!(rig.json(&["mind", "worker", "--json"])["minder"], Value::Null);
     let now_mine = rig.json(&["watch", "--all", "--since", &from.to_string(), "--on", "approval", "--timeout", "15", "--json"]);
     assert!(now_mine["approval"]["command"].as_str().unwrap().contains("cargo test"), "{now_mine}");
@@ -1525,9 +1565,11 @@ fn a_rest_is_the_end_of_the_turn_it_says() {
     let (code, out, _) = watch(first, "1");
     assert_eq!(code, 124, "the rest before the message's turn was told: {out}");
     // It takes it up, and its turn ends: that rest answers the message.
+    // (Waited for until the service itself has seen it at work: `status` looks at the screen for itself, and
+    // sooner than the service's own reading of it on a busy computer.)
+    let at_work_on = |cursor: u64| rig.wait("the service to have seen it at work on what it was given", || rig.status("alpha")["answers"] == cursor);
     rig.show("alpha", &working());
-    rig.wait_state("alpha", "working");
-    assert_eq!(rig.status("alpha")["answers"], first, "at work on it");
+    at_work_on(first);
     rig.show("alpha", &idle("The first thing is done."));
     let ended = told(first);
     assert_eq!((&ended["state"], &ended["answers"]), (&json!("idle"), &json!(first)), "{ended}");
@@ -1559,8 +1601,149 @@ fn a_rest_is_the_end_of_the_turn_it_says() {
     assert_eq!((&stood["state"], &stood["answers"]), (&json!("idle"), &json!(second)), "it never took the third up: {stood}");
     // (Taken up late all the same, the turn is the third's.)
     rig.show("alpha", &working());
-    rig.wait_state("alpha", "working");
+    at_work_on(third);
     rig.show("alpha", &idle("The third thing is done."));
     let ended = told(stood["cursor"].as_u64().unwrap());
     assert_eq!(ended["answers"], third, "{ended}");
+}
+
+/// `stop` answers once the tab's own program has ended, or says it has not, with its pid (the ShiftUp lead's
+/// item 35, 2026-11-26: "Then a launcher doesn't have to watch the program go itself").
+#[test]
+fn a_stop_answers_once_the_program_has_ended_or_says_it_has_not() {
+    let Some(rig) = Rig::start("stopped") else { return };
+    let there = |pid: i64| Path::new(&format!("/proc/{pid}")).exists();
+    // A program that goes when its tab is closed: gone by the time `stop` has answered.
+    rig.json(&["start", "--command", "--name", "goes", "--json", "--", "sleep", "300"]);
+    rig.wait("its process to be known", || rig.status("goes")["pid"].as_i64().is_some_and(|p| p > 1));
+    let pid = rig.status("goes")["pid"].as_i64().unwrap();
+    assert!(there(pid));
+    let stopped = rig.json(&["stop", "goes", "--force", "--json"]);
+    assert!(!there(pid), "`stop` answered while its program still ran: {stopped}");
+    assert_eq!((&stopped["ended"], &stopped["programs"][0]["pid"], &stopped["programs"][0]["ended"]), (&json!(true), &json!(pid), &json!(true)), "{stopped}");
+
+    // One that will not go (it takes no hang-up, no interrupt, no asking): said, with its pid, when its five seconds are up.
+    rig.json(&["start", "--command", "--name", "stays", "--json", "--", "sh", "-c", "trap '' HUP INT TERM QUIT; while :; do sleep 1; done"]);
+    rig.wait("its process to be known", || rig.status("stays")["pid"].as_i64().is_some_and(|p| p > 1));
+    let pid = rig.status("stays")["pid"].as_i64().unwrap();
+    let at = Instant::now();
+    let (code, out, _) = rig.olo(&["stop", "stays", "--force"]);
+    let took = at.elapsed();
+    if there(pid) {
+        assert!(code == 0 && out.contains("not ended after 5 s") && out.contains(&format!("stays (pid {pid})")), "{out}");
+        assert!(took >= Duration::from_millis(4800) && took < Duration::from_secs(9), "{took:?}");
+        // (Asked again in JSON of the tab that is gone: its record says how it ended; the process is this test's to end.)
+        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+    } else {
+        // (Where the Rex server ends a closed tab's program whatever it traps, it has ended: said so, at once.)
+        assert!(out.starts_with("Stopped 1 subagent tab(s).") && took < Duration::from_secs(5), "{out} after {took:?}");
+    }
+
+    // Kept open, a child is only interrupted: its program goes on, and that is said, at once.
+    rig.stand_in("claude");
+    rig.start_child("claude", "kept", &[]);
+    rig.wait("its process to be known", || rig.status("kept")["pid"].as_i64().is_some_and(|p| p > 1));
+    let pid = rig.status("kept")["pid"].as_i64().unwrap();
+    let at = Instant::now();
+    let kept = rig.json(&["stop", "kept", "--keep-tab", "--json"]);
+    assert!(at.elapsed() < Duration::from_secs(3), "{:?}", at.elapsed());
+    assert_eq!((&kept["ended"], &kept["programs"][0]["pid"], &kept["programs"][0]["ended"]), (&json!(false), &json!(pid), &json!(false)), "{kept}");
+    assert!(there(pid));
+    rig.json(&["stop", "kept", "--force", "--json"]);
+}
+
+/// A minder that begins is told what stands (the ShiftUp lead's trial, 2026-11-27: a minder put in another's
+/// place while its agent stood on a question was given the cursor of that moment and "will never be told of
+/// it"; Ben, watching: "we shouldn't have to wait for the first watch to timeout it should see any outstanding
+/// questions when it connects"). Their three cases: attached to an agent already asking; its rules replaced
+/// while it asks; a minder killed while its agent asks.
+#[test]
+fn a_minder_that_begins_is_told_what_stands() {
+    let Some(rig) = Rig::start("begins") else { return };
+    rig.stand_in("claude");
+    let env = |name: &str| -> Vec<String> {
+        vec![
+            "--env".into(),
+            format!("STAND_IN_DIR={}", rig.dir.join("stage").display()),
+            "--env".into(),
+            format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display()),
+            "--env".into(),
+            format!("STAND_IN_NAME={name}"),
+        ]
+    };
+    let mind = |args: &[&str], stand_in: &str| -> Value {
+        Minding::expect(&rig, stand_in);
+        let env = env(stand_in);
+        let all: Vec<&str> = ["mind"].into_iter().chain(args.iter().copied()).chain(env.iter().map(String::as_str)).chain(["--json"]).collect();
+        rig.json(&all)
+    };
+    let started = rig.start_child("claude", "worker", &[]);
+    let worker_id = started["id"].as_str().unwrap().to_owned();
+    let cursor = || rig.json(&["list", "--fast", "--json"])["cursor"].as_u64().unwrap();
+    let shown = |screen: &str| {
+        let before = cursor();
+        rig.show("worker", screen);
+        rig.wait("the agent's new state to be written down", || cursor() > before);
+    };
+    // (A minder's first watch, from the cursor it was begun with: what it is told, and how soon.)
+    let first_watch = |m: &Minding, begun: &Value, secs: u32| {
+        let at = Instant::now();
+        let said = m.run(&format!("{} {} watch --since {} --on question,approval,idle,error,exit --timeout {secs} --json; echo status=$?", m.env(), m.dir.join("mind").display(), begun["cursor"]));
+        (said, at.elapsed())
+    };
+    let told = |said: &str| -> Value { serde_json::from_str(said.lines().next().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}: {said}")) };
+
+    // The agent asks, and nobody minds it.
+    shown(&asking("printf hello > out.txt", 0));
+
+    // 1. A minder attached while it asks. The cursor it begins with is after the question; it is told the question all the same, at once.
+    let one = mind(&["worker", "--with", "claude:stand-in-big:max", "--rules-text", "Escalate every write."], "m1");
+    let m1 = Minding::of(&rig, "m1", &worker_id);
+    let (said, took) = first_watch(&m1, &one, 20);
+    assert!(told(&said)["approval"]["command"].as_str().unwrap().contains("printf hello"), "a minder attached to an agent already asking wasn't told what it asks: {said}");
+    assert!(took < Duration::from_secs(4), "told only after {took:?}");
+    // It passes the question up and leaves it standing: it is not told it again.
+    m1.mind("escalate 'It asks to write out.txt.' --json");
+    let (said, _) = first_watch(&m1, &told(&said), 1);
+    assert!(said.contains("status=124"), "told the same standing question twice: {said}");
+
+    // 2. Its rules replaced while the agent still asks: the minder begun anew is told at once.
+    let two = mind(&["worker", "--rules-text", "Approve writes of out.txt."], "m2");
+    let m2 = Minding::of(&rig, "m2", &worker_id);
+    let (said, took) = first_watch(&m2, &two, 20);
+    assert!(told(&said)["approval"]["command"].as_str().unwrap().contains("printf hello") && took < Duration::from_secs(4), "after {took:?}: {said}");
+
+    // 3. That minder killed while the agent asks, and another attached: told at once, and its yes is typed.
+    rig.tell("m2", "exit 9");
+    rig.wait("the killed minder to be gone", || rig.json(&["mind", "worker", "--json"])["minder"].is_null());
+    let three = mind(&["worker", "--with", "claude:stand-in-big:max"], "m3");
+    let m3 = Minding::of(&rig, "m3", &worker_id);
+    let (said, took) = first_watch(&m3, &three, 20);
+    assert!(told(&said)["approval"]["command"].as_str().unwrap().contains("printf hello") && took < Duration::from_secs(4), "after {took:?}: {said}");
+    let before = rig.keys("worker").len();
+    let gone = rig.when_typed("worker", b"\r", working());
+    let approved = m3.mind("approve --once --json");
+    assert!(gone.join().unwrap(), "{approved}");
+    rig.typed_since("worker", before, b"\r", "what was typed into it");
+    // (Each answer is kept with the minder that gave it: the first's escalation, the third's yes.)
+    let of = rig.json(&["mind", "worker", "--json"]);
+    let by: Vec<(&str, &Value)> = of["answered"].as_array().unwrap().iter().map(|a| (a["did"].as_str().unwrap(), &a["by"])).collect();
+    assert_eq!(by, [("escalate", &one["minder"]["id"]), ("approve", &three["minder"]["id"])], "{of}");
+
+    // An agent at work: a minder that begins is told nothing (what was last written of it, its question, no longer stands).
+    rig.wait_state("worker", "working");
+    rig.json(&["mind", "worker", "--off", "--json"]);
+    let four = mind(&["worker", "--with", "claude:stand-in-big:max"], "m4");
+    let m4 = Minding::of(&rig, "m4", &worker_id);
+    let (said, _) = first_watch(&m4, &four, 1);
+    assert!(said.contains("status=124"), "told of a question that was answered before it began: {said}");
+    // …and an agent at rest: told that it rests, once.
+    shown(&idle("Wrote out.txt."));
+    rig.json(&["mind", "worker", "--off", "--json"]);
+    let five = mind(&["worker", "--with", "claude:stand-in-big:max"], "m5");
+    let m5 = Minding::of(&rig, "m5", &worker_id);
+    let (said, took) = first_watch(&m5, &five, 20);
+    assert!(told(&said)["state"] == "idle" && took < Duration::from_secs(4), "after {took:?}: {said}");
+    let (said, _) = first_watch(&m5, &told(&said), 1);
+    assert!(said.contains("status=124"), "{said}");
 }

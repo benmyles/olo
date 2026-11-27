@@ -207,7 +207,7 @@ pub fn brief(name: &str, what: &str, path: &str, cursor: u64, rules: &str) -> St
 You have one command, and every tool but it is closed to you (nobody is there to give you leave, so never try anything else):
 
   {path} watch --since CURSOR --on question,approval,idle,error,exit --timeout 90 --json
-      Waits for "{name}" to ask leave, ask a question, come to rest, fail or exit. It returns the moment one happens (exit code 0) with a "cursor"; with nothing to say it returns code 124 after 90 seconds: run it again with the same cursor. Begin with CURSOR = {cursor}. Always pass the cursor of the last answer. You are told what stands now: if several things happened while you were busy, you hear the last, not each.
+      Waits for "{name}" to ask leave, ask a question, come to rest, fail or exit. It returns the moment one happens (exit code 0) with a "cursor"; with nothing to say it returns code 124 after 90 seconds: run it again with the same cursor. Begin with CURSOR = {cursor}. Always pass the cursor of the last answer. You are told what stands, once: at your very first watch, how "{name}" stands at that moment if that is something to act on (a question it was already asking before you began is told to you at once); and if several things happened while you were busy, you hear the last, not each. What you have been told and left standing (a question you passed up) is not told to you again.
   {path} status --json            how it stands now (what it asks, with the choices)
   {path} read --lines 80          its screen, when you need to see what led to a question
   {path} approve --once           yes, this once.   {path} approve --no --reason "WHY"    no, and why.
