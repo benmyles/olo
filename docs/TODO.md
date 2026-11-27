@@ -945,6 +945,30 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Left by the code review of "Antigravity signing in is not a turn"**
+  (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/astra-7b8cd76428/
+  astra-review.md`, 10 findings; fixed: its 1, 2, 3, 4's field marks,
+  5, 6's "Designing interfaces", 8's queue hint, 9, 10; its words for
+  the rest):
+  - 4, the rest: "It also returns idle when a short pane shows only
+    the lower rule and `esc to cancel`, or when a two- or three-column
+    pane cannot show four consecutive dashes. Rex reads 16 physical
+    rows for its activity fallback, Terminal 30."
+  - 6, the rest: "If a fresh start stalls on the captured auth frame,
+    every reading yields `Working/starting`. The start prompt's
+    120-second expiry is checked on a rest. A working reading arms no
+    rest confirmation, and a default `run` renews its watch every 90
+    seconds indefinitely … arm one deadline on entry to the splash. If
+    it is still blocked at expiry, surface the auth question with the
+    tab available." (An empty screen is "starting" without an end in
+    the same way, from before this.)
+  - 7: "Given the physical rows `⣷  Signing` and `in...`, neither row
+    satisfies the predicate. If OSC auth stays blocked for the
+    confirmation interval, `run` exits 3 during automatic sign-in."
+  - 8, the rest: "Put four checklist rows between the spinner and the
+    upper rule, followed by the one-line field and lower rule. With the
+    footer absent, the spinner is … fifth above the field, which this
+    commit misses. agy can show up to seven checklist steps."
 - **Left by the confirming code review of the feedback-draft box and of
   "why a turn failed"** (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/
   astra-296aa23a9d/astra-review.md`, 19 findings, "hold the release";

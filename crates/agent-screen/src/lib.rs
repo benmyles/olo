@@ -164,22 +164,59 @@ fn codex_at_work(screen: &str) -> bool {
         .any(|l| codex_status(l) || l.trim().eq_ignore_ascii_case("shift+← edit last queued message"))
 }
 
+/// One of Antigravity's rules: dashes and nothing else. (A draft that
+/// ends in dashes is not one: "> Explain ────" was taken for the field's
+/// upper rule, the field for empty, and a turn for over. A code review,
+/// 2026-11-27.)
+fn agy_rule(l: &str) -> bool {
+    let t = l.trim();
+    t.chars().nth(3).is_some() && t.chars().all(|c| c == '─')
+}
+
+/// Antigravity's status line, and what it says it is doing: one braille
+/// figure (its spinner), a gap, words ("⣷  Generating..."). Braille art
+/// in what it wrote ("⣿⣿⣿", its figures together) is not one: a finished
+/// answer with such a line near its field read as at work for ever.
+fn agy_status(l: &str) -> Option<&str> {
+    let t = l.trim_start();
+    let mut chars = t.chars();
+    if !chars.next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)) {
+        return None;
+    }
+    let rest = chars.as_str();
+    let said = rest.trim_start();
+    (said.len() < rest.len() && said.starts_with(char::is_alphanumeric)).then_some(said)
+}
+
+/// How many lines may stand under Antigravity's field: its hints, and
+/// the rows of its tasks and agents at work (five of them in agy
+/// 1.5.18; at four under the field with "esc to cancel" below them, a
+/// limit of four lines here made the field no field and a working agy
+/// idle. The same review).
+const AGY_UNDER_MOST: usize = 10;
+
 /// Locates Antigravity's chat input field (`────` / `> …` / `────`) at the
 /// bottom of `lines`, returning `(top_rule, bottom_rule)`. Pre-chat screens
 /// (such as its `"Welcome to the Antigravity CLI ... ⣷  Signing in..."`
-/// startup splash) have no input field and return `None`.
+/// startup splash) have no input field and return `None`. The upper rule
+/// is the nearest above the lower whose first line is the field's own
+/// (`>`; `!` in its shell mode, `:` in its search): a line of dashes
+/// pasted into a draft is passed over.
 fn agy_input_box(lines: &[&str]) -> Option<(usize, usize)> {
-    let is_rule = |l: &str| {
-        let t = l.trim();
-        t.contains("────") && (t.starts_with('─') || t.ends_with('─'))
-    };
-    let bottom = lines.iter().rposition(|l| is_rule(l))?;
-    if lines[bottom + 1..].iter().filter(|l| !l.trim().is_empty()).count() > 4 {
+    let bottom = lines.iter().rposition(|l| agy_rule(l))?;
+    if lines[bottom + 1..].iter().filter(|l| !l.trim().is_empty()).count() > AGY_UNDER_MOST {
         return None;
     }
-    let top = lines[..bottom].iter().rposition(|l| is_rule(l))?;
-    let first_inside = lines[top + 1..bottom].iter().map(|l| l.trim_start()).find(|l| !l.is_empty())?;
-    first_inside.starts_with('>').then_some((top, bottom))
+    let mut under = bottom;
+    for _ in 0..4 {
+        let top = lines[..under].iter().rposition(|l| agy_rule(l))?;
+        let first_inside = lines[top + 1..bottom].iter().map(|l| l.trim_start()).find(|l| !l.is_empty());
+        if first_inside.is_some_and(|l| l.starts_with(['>', '!', ':'])) {
+            return Some((top, bottom));
+        }
+        under = top;
+    }
+    None
 }
 
 /// Whether `screen` is Antigravity's pre-chat `"Signing in..."` splash
@@ -188,6 +225,8 @@ fn agy_input_box(lines: &[&str]) -> Option<(usize, usize)> {
 /// `OSC 7501;state=blocked:kind=auth` while this splash is on screen, which
 /// must neither take up a pending prompt expectation nor fail as an
 /// unrecognised `waiting_question` dialog while automatic sign-in completes.
+/// Its status line's own words begin "Signing in" ("⠋ Designing
+/// interfaces" has the letters too, and is not it).
 pub fn is_agy_signing_in(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
     if agy_input_box(&lines).is_some() {
@@ -198,10 +237,7 @@ pub fn is_agy_signing_in(screen: &str) -> bool {
     if tail.iter().any(|l| l.to_ascii_lowercase().contains("↑/↓ navigate")) {
         return false;
     }
-    tail.iter().any(|l| {
-        let mut chars = l.chars();
-        chars.next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)) && l.to_ascii_lowercase().contains("signing in")
-    })
+    tail.iter().any(|l| agy_status(l).is_some_and(|said| said.get(..10).is_some_and(|w| w.eq_ignore_ascii_case("signing in"))))
 }
 
 /// What the agent is doing, from the bottom of its screen (where its
@@ -224,14 +260,19 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     if agent == Agent::Antigravity {
         // Check only the bottom 8 non-empty chrome lines (banner art / scrollback prose ignored).
         let bottom8 = tail_joined(8);
-        if bottom8.contains("↑/↓ navigate") || parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
+        // (A question of its own has its footer; a folder's trust is one
+        // of them. Its words alone in a draft, "> Yes, I trust this
+        // folder", are no question: read as one here, Auto Approve sent
+        // the draft. A code review, 2026-11-27.)
+        if bottom8.contains("↑/↓ navigate") || parse_approval(agent, screen).is_some() {
             return State::Blocked;
         }
         // Working chrome lives strictly around Antigravity's chat input field
         // (`────` / `> …` / `────`): `"esc to cancel"` / `"Press up to edit
-        // queued messages"` in the footer beneath the lower rule, or a braille
-        // spinner immediately above the upper rule (up to 4 non-empty lines,
-        // allowing a `└ Tip:` line between the spinner and the rule). Pre-chat
+        // queued messages"` (whatever key it is told to be: "Press %s to
+        // edit…") in the footer beneath the lower rule, or its status line
+        // (`agy_status`) immediately above the upper rule (up to 4 non-empty
+        // lines, allowing a `└ Tip:` line between it and the rule). Pre-chat
         // screens such as `"⣷  Signing in..."` have no input field and must
         // never read as `State::Working`.
         let lines: Vec<&str> = screen.lines().collect();
@@ -239,8 +280,8 @@ pub fn classify(agent: Agent, screen: &str) -> State {
             return State::Idle;
         };
         let footer = lines[bottom + 1..].iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n").to_ascii_lowercase();
-        let spinning = lines[..top].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(4).any(|l| l.chars().next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)));
-        return if footer.contains("esc to cancel") || footer.contains("press up to edit queued messages") || spinning { State::Working } else { State::Idle };
+        let spinning = lines[..top].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(4).any(|l| agy_status(l).is_some());
+        return if footer.contains("esc to cancel") || footer.contains("to edit queued messages") || spinning { State::Working } else { State::Idle };
     }
     if parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
         return State::Blocked;
@@ -341,10 +382,12 @@ pub fn at_prompt(agent: Agent, screen: &str) -> bool {
             Agent::Codex => t.strip_prefix('›').is_some_and(|rest| !numbered(rest.trim_start())),
             Agent::Antigravity => {
                 let ruled = |l: Option<&&str>| l.is_some_and(|l| rule(l));
-                classify(agent, screen) == State::Idle
-                    && t.starts_with('>')
+                // (The whole screen read once, for the one line that
+                // could be the field: it was read again for every line.)
+                t.starts_with('>')
                     && ruled(lines[..i].iter().rev().find(|l| !l.trim().is_empty()))
                     && ruled(lines[i + 1..].iter().find(|l| !l.trim().is_empty()))
+                    && classify(agent, screen) == State::Idle
             }
         }
     })
@@ -1890,6 +1933,40 @@ mod tests {
         println!("Codex at rest ({} lines): {least:?} a reading", screen.lines().count());
     }
 
+    /// What reading an Antigravity's screen costs (a reading for every
+    /// change of a child's screen, and again in Rex and Terminal):
+    /// `OLO_COST=1 cargo test --release -p olo-agent-screen -- --ignored
+    /// the_cost_of_reading_an_agy --nocapture`. 2026-11-27, release, a
+    /// screen of thirty lines, the least of forty rounds, a build each:
+    /// see the numbers in HACKING ("Antigravity signing in is not a
+    /// turn").
+    #[test]
+    #[ignore]
+    fn the_cost_of_reading_an_agy() {
+        let long = (0..22).map(|i| format!("● Ran step {i} of the work, and said so at some length")).collect::<Vec<_>>().join("\n");
+        for (what, screen) in [("at work", format!("{long}\n{}", agy_working())), ("at rest", format!("{long}\n{}", agy_idle()))] {
+            let least = |f: &dyn Fn()| {
+                (0..40)
+                    .map(|_| {
+                        let t = std::time::Instant::now();
+                        for _ in 0..500 {
+                            f();
+                        }
+                        t.elapsed() / 500
+                    })
+                    .min()
+                    .unwrap()
+            };
+            let told = least(&|| {
+                std::hint::black_box(classify(Agent::Antigravity, std::hint::black_box(&screen)));
+            });
+            let prompt = least(&|| {
+                std::hint::black_box(at_prompt(Agent::Antigravity, std::hint::black_box(&screen)));
+            });
+            println!("an agy {what} ({} lines): classify {told:?}, at_prompt {prompt:?} a reading", screen.lines().count());
+        }
+    }
+
     #[test]
     #[ignore]
     fn the_cost_of_reading_a_box() {
@@ -1984,6 +2061,39 @@ mod tests {
         // (A spinner with a Tip line between it and the upper rule is still Working.)
         let with_tip = agy(&format!("⡿  Generating...\n└ Tip: Use /help to see all commands.\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\nesc to cancel\n"));
         assert_eq!(classify(Agent::Antigravity, &with_tip), State::Working);
+        // What the code review of the fix found (Astra 6.2, 2026-11-27), each a screen agy can show.
+        let found = [
+            // Four of its tasks' rows under the field, then its hint (five lines under the field made the
+            // field no field, and a working agy idle).
+            (
+                "tasks under the field",
+                agy(&format!(
+                    "⡿  Generating...\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\n  ● Task one · running\n  ● Task two · running\n  ● Task three · running\n  ● Task four · running\nesc to cancel\n"
+                )),
+                State::Working,
+            ),
+            // A draft that ends in dashes, and one with a line of dashes pasted into it, while it works.
+            ("a draft ending in dashes", agy(&format!("⡿  Generating...\n{AGY_RULE}\n> Explain ────\n{AGY_RULE}\nesc to cancel\n")), State::Working),
+            ("dashes pasted into a draft", agy(&format!("⡿  Generating...\n{AGY_RULE}\n> Explain this:\n────────\n  and that\n{AGY_RULE}\nesc to cancel\n")), State::Working),
+            // Its shell and search modes' fields ("!", ":"), its status line over them.
+            ("its shell mode", agy(&format!("⣷  Generating...\n{AGY_RULE}\n! ls\n{AGY_RULE}\n? for shortcuts\n")), State::Working),
+            ("its search mode", agy(&format!("⣷  Generating...\n{AGY_RULE}\n: needle\n{AGY_RULE}\n? for shortcuts\n")), State::Working),
+            // Braille art at the end of a finished answer, a few lines over its field: not its status line.
+            ("braille art in an answer", agy(&format!("⣿⣿⣿⣿⣿⣿\n  That is the figure.\n  It has six cells.\n{AGY_RULE}\n> a draft\n{AGY_RULE}\n? for shortcuts\n")), State::Idle),
+            // A queue's hint with another key than "up" ("Press %s to edit queued messages").
+            (
+                "a queue's hint with another key",
+                agy(&format!("⡿  Generating...\n  some output\n  more\n  more\n  more\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\nPress ctrl+p to edit queued messages\n")),
+                State::Working,
+            ),
+            // "Yes, I trust this folder" typed into its field is a draft, not a question (Auto Approve sent it).
+            ("a trust phrase in a draft", agy(&format!("  DONE\n{AGY_RULE}\n> Yes, I trust this folder\n{AGY_RULE}\n? for shortcuts\n")), State::Idle),
+        ];
+        let wrong: Vec<_> = found.iter().filter(|(_, screen, is)| classify(Agent::Antigravity, screen) != *is).map(|(what, screen, _)| (what, classify(Agent::Antigravity, screen))).collect();
+        assert!(wrong.is_empty(), "read wrongly: {wrong:?}");
+        // "⠋ Designing interfaces" has the letters of "signing in": not the sign-in.
+        assert!(!is_agy_signing_in("\n Welcome to the Antigravity CLI.\n\n ⠋ Designing interfaces\n Paste the code:\n"), "Designing interfaces read as the sign-in");
+        assert!(is_agy_signing_in("\n Welcome to the Antigravity CLI. You are currently not signed in.\n\n ⣷  Signing in...\n"));
         // (Prose mentioning "esc to cancel" right above the idle input box is Idle.)
         let prose_near_box = agy(&format!("● Press esc to cancel to abort.\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\n? for shortcuts\n"));
         assert_eq!(classify(Agent::Antigravity, &prose_near_box), State::Idle);

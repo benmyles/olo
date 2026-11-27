@@ -32415,35 +32415,56 @@ agents through the night, could not move to it.
   change, and `a_turn_before_is_not_this_turn_and_a_files_word_is_
   looked_for`, whose cases each fail with their fix taken out.)
 - *Antigravity signing in is not a turn* (`olo_agent_screen::classify`,
-  `agy_input_box`, `is_agy_signing_in`; `classify_screen_rich`; the
-  ShiftUp lead's item 47, 2026-11-27: "`olo agent run agy …` still
-  comes to rest in seconds with 'never took its prompt up' about one
-  start in eight"). Found with the real agy (1.5.18) against the live
-  suite's made-up model by a second investigator, six such ends of
-  thirty-six caught with every reading of the screen: as it starts,
-  agy shows "⣷  Signing in..." under its welcome, before its field is
-  drawn, and says of itself `blocked:kind=auth`. A braille figure at a
-  line's start in the screen's last eight lines was "at work", so that
-  reading **took the prompt up**; agy then stood at its empty prompt
-  for half a second and more (it asks for its models again and looks
-  at the folder's git before it begins), and that rest "answered" the
-  prompt, with nothing said: `run` ended "silent", exit 1, and closed
-  the tab on an agy that began the turn a moment later. (Taken up
-  again with `--resume`, the same rest read the old conversation's
-  last words: the previous turn's answer, exit 0.) Antigravity's
-  words of work are now read **around its field** alone (the rules
-  with `>` between them: "esc to cancel" or the queue's line in the
-  foot under it, its spinner in the four lines over it); a screen
-  with no field is not at work, and the signing-in splash is
-  "starting" whatever agy says of itself meanwhile (said `blocked`
-  for longer than a quarter of a second, it would have been "needs
-  input"). Tried: `agy_signing_in_splash_does_not_take_up_prompt_or_
-  fail_silent` (the suite, agy's own sequence replayed: fails before,
-  "Signing in... splash must NOT take up prompt expectation") and the
-  classifier's cases; the live suite with the real agy. The lead had
-  asked whether `run` could hand the prompt over once more: the
-  prompt *is* taken, a moment later, so a second hand-over would have
-  run it twice.
+  `agy_input_box`, `agy_status`, `is_agy_signing_in`;
+  `classify_screen_rich`; the ShiftUp lead's item 47, 2026-11-27:
+  "`olo agent run agy …` still comes to rest in seconds with 'never
+  took its prompt up' about one start in eight"). Found with the real
+  agy (1.5.18) against the live suite's made-up model by a second
+  investigator, six such ends of thirty-six caught with every reading
+  of the screen: as it starts, agy shows "⣷  Signing in..." under its
+  welcome, before its field is drawn, and says of itself
+  `blocked:kind=auth`. A braille figure at a line's start in the
+  screen's last eight lines was "at work", so that reading **took the
+  prompt up**; agy then stood at its empty prompt for half a second
+  and more (it asks for its models again and looks at the folder's git
+  before it begins), and that rest "answered" the prompt, with nothing
+  said: `run` ended "silent", exit 1, and closed the tab on an agy
+  that began the turn a moment later. (Taken up again with `--resume`,
+  the same rest read the old conversation's last words: the previous
+  turn's answer, exit 0.) Antigravity's words of work are now read
+  **around its field** alone: the field is between two rules that are
+  dashes and nothing else (`agy_rule`: a draft that ends in dashes is
+  no rule, and a line of dashes pasted into a draft is passed over),
+  its first line the field's own (`>`; `!` in its shell mode, `:` in
+  its search), with up to ten lines under it (its hints, and the rows
+  of its tasks at work); "esc to cancel" or the queue's hint
+  ("… to edit queued messages", whatever its key) in that foot, or
+  its **status line** in the four lines over the field: one braille
+  figure, a gap, words (`agy_status`; braille art in an answer is
+  not one). A screen with no field is not at work, and the signing-in
+  splash (a status line whose words begin "Signing in": "⠋ Designing
+  interfaces" has the letters too) is "starting" while agy says
+  `idle`, `blocked` or `working` of itself (said `blocked` for longer
+  than a quarter of a second, it would have been "needs input"). A
+  folder's trust is a question by its own foot ("↑/↓ Navigate"), not
+  by its words alone: "Yes, I trust this folder" typed into the field
+  is a draft (read as a question, Auto Approve sent it). Tried:
+  `agy_signing_in_splash_does_not_take_up_prompt_or_fail_silent` (the
+  suite, agy's own sequence replayed: fails before, "Signing in...
+  splash must NOT take up prompt expectation") and the classifier's
+  cases, eight of them from the fix's own code review (Astra 6.2:
+  three that ended a working agy's turn or sent a draft; each read
+  wrongly by the fix as first committed); the live suite with the real
+  agy. What a reading costs (`the_cost_of_reading_an_agy`, release, a
+  screen of 31 lines, the least of forty rounds, a build each):
+  `classify` 10.9 µs at work and 9.9 at rest before any of this, 30.7
+  and 23.5 with the fix as first committed (a second whole-screen
+  scan for a trust question), 13.7 and 12.3 now; `at_prompt` 312 and
+  410 µs before (it read the whole screen again for every line), 551
+  and 708 with the first fix, **15.3 and 16.6 now** (one reading, for
+  the one line that could be the field). The lead had asked whether
+  `run` could hand the prompt over once more: the prompt *is* taken, a
+  moment later, so a second hand-over would have run it twice.
 - *Why a turn failed, and all that failed told at once*
   (`state::error_cause`, `olo_agent_screen::error_line`;
   `client::send_to_all_errored`; the ShiftUp lead's item 49,

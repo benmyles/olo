@@ -591,6 +591,9 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
         // second investigator. Its turn is not *taken up* by this word
         // (`in_turn` stays false below): Codex says "working" for a few
         // milliseconds as it starts with nothing to do.
+        // (Antigravity signing in is "starting" if it says "working" of itself
+        // too: its spinner's words as a summary would count as work seen.)
+        Activity::Working if agent == olo_agent_screen::Agent::Antigravity && olo_agent_screen::is_agy_signing_in(screen_text) => (SubagentLiveState::Working, Some(STARTING.into())),
         Activity::Working if agent != olo_agent_screen::Agent::Codex && olo_agent_screen::at_prompt(agent, screen_text) => (SubagentLiveState::Idle, Some(AT_PROMPT.into())),
         Activity::Working => (SubagentLiveState::Working, doing_line(screen_text)),
         Activity::Blocked => {
