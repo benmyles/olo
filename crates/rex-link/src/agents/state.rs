@@ -80,6 +80,15 @@ pub struct ScreenClassification {
     pub folder_trust: Option<olo_agent_screen::FolderTrustPrompt>,
     pub api_error: Option<String>,
     pub usage: Option<olo_agent_screen::UsageInfo>,
+    /// The agent's own screen says a turn of the model's is on, or was
+    /// cut short: it draws its working line, a tool call of its turn
+    /// asks leave, or the API failed under it. Not Rex's word for the
+    /// pane (a program running in it: the agent itself as it loads),
+    /// nor a question that isn't a tool's (the folder's trust, a
+    /// chooser at its start): those are there before any prompt is
+    /// taken up. What says a child has taken up what it was given
+    /// ([`Expected`]).
+    pub in_turn: bool,
 }
 
 /// Evaluates a child tab's current screen & activity against `olo_agent_screen`.
@@ -133,13 +142,25 @@ pub const UNDRAWN_MS: u64 = 15_000;
 /// on: a prompt at its start, or a message sent and submitted while it
 /// rested. `cursor` is what the giver was answered with (the turn that
 /// follows answers it); until `until_ms` a rest is the rest *before*
-/// that turn; `transcript_len` is how long its conversation's file was
-/// when it was given (where that was known).
+/// that turn; `given_ms` is when it was given; `transcript_len` is how
+/// long its conversation's file was then (where that was known).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Expected {
     pub cursor: u64,
+    pub given_ms: u64,
     pub until_ms: u64,
     pub transcript_len: Option<u64>,
+}
+
+/// A child's conversation's file as it stands at a rest: how long it
+/// is, whether its last turn is over, when it was last written, and
+/// whether it has a message of the agent's to give.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Written {
+    pub len: u64,
+    pub over: bool,
+    pub at_ms: u64,
+    pub said: bool,
 }
 
 /// What is made of a child read at rest.
@@ -159,20 +180,27 @@ pub enum Rest {
 /// one yet: (1) the child was given work it has not been seen at
 /// ([`Expected`]): what it shows is the rest before that turn (the
 /// ShiftUp lead's item 27, 2026-11-26: "tell no turn's end until the
-/// prompt's own turn has ended"), unless its conversation's file has
-/// grown since and says the turn is over (a turn too quick to be seen:
-/// `transcript` is that file's length and whether its last turn is
-/// over), or its time is up (it never came to it: told as it stands).
+/// prompt's own turn has ended"), unless its conversation's file says
+/// the turn is over (a turn too quick to be seen, or one the screen
+/// never said was on: the file has grown since it was given; or, where
+/// its length then isn't known, a new child's, it was written since
+/// and has a message of the agent's to give), or its time is up (it
+/// never came to it: told as it stands).
 /// (2) It has never worked and what is on its screen isn't its own
 /// prompt: the tab's shell, before the agent has drawn anything, for
 /// [`UNDRAWN_MS`]. A child started with nothing to do, at its own
 /// prompt, is at rest and is told so at once: it is up, and whoever
 /// waits to send to it waits on that.
-pub fn rest_now(now_ms: u64, started_ms: u64, seen_working: bool, at_prompt: bool, expected: Option<Expected>, transcript: Option<(u64, bool)>) -> Rest {
+pub fn rest_now(now_ms: u64, started_ms: u64, seen_working: bool, at_prompt: bool, expected: Option<Expected>, transcript: Option<Written>) -> Rest {
     if let Some(x) = expected {
-        if let (Some(was), Some((len, true))) = (x.transcript_len, transcript)
-            && len > was
-        {
+        let turn_there = transcript.is_some_and(|w| {
+            w.over
+                && match x.transcript_len {
+                    Some(was) => w.len > was,
+                    None => w.said && w.at_ms >= x.given_ms,
+                }
+        });
+        if turn_there {
             return Rest::Told { answered: Some(x.cursor) };
         }
         return if now_ms < x.until_ms { Rest::Kept { until_ms: x.until_ms } } else { Rest::Told { answered: None } };
@@ -185,7 +213,7 @@ pub fn rest_now(now_ms: u64, started_ms: u64, seen_working: bool, at_prompt: boo
 
 pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str, alive: bool) -> ScreenClassification {
     if !alive {
-        return ScreenClassification { state: SubagentLiveState::Exited, summary: Some("tab closed".into()), approval: None, folder_trust: None, api_error: None, usage: None };
+        return ScreenClassification { state: SubagentLiveState::Exited, summary: Some("tab closed".into()), approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false };
     }
     let last_nonempty = || screen_text.lines().rev().map(str::trim).find(|l| !l.is_empty()).map(str::to_owned);
     // A plain command (`start --command`): running until it exits, and
@@ -198,6 +226,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             folder_trust: None,
             api_error: None,
             usage: None,
+            in_turn: false,
         };
     };
     let usage = olo_agent_screen::parse_usage(screen_text);
@@ -208,28 +237,28 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             Some(f) => format!("Trust folder {f}?"),
             None => "Trust this folder?".into(),
         };
-        return ScreenClassification { state: SubagentLiveState::WaitingQuestion, summary: Some(sum), approval: None, folder_trust: Some(trust), api_error: None, usage };
+        return ScreenClassification { state: SubagentLiveState::WaitingQuestion, summary: Some(sum), approval: None, folder_trust: Some(trust), api_error: None, usage, in_turn: false };
     }
 
     // 2. Structured tool approval prompt (requires real choices + live cursor mark).
     if let Some(ap) = olo_agent_screen::parse_approval(agent, screen_text) {
         let sum = ap.command.clone().or_else(|| Some(ap.question.clone()));
-        return ScreenClassification { state: SubagentLiveState::WaitingApproval, summary: sum, approval: Some(ap), folder_trust: None, api_error: None, usage };
+        return ScreenClassification { state: SubagentLiveState::WaitingApproval, summary: sum, approval: Some(ap), folder_trust: None, api_error: None, usage, in_turn: true };
     }
 
     // 3. Genuine non-approval interactive question / chooser.
     if let Some(q) = olo_agent_screen::parse_question(agent, screen_text) {
-        return ScreenClassification { state: SubagentLiveState::WaitingQuestion, summary: Some(q), approval: None, folder_trust: None, api_error: None, usage };
+        return ScreenClassification { state: SubagentLiveState::WaitingQuestion, summary: Some(q), approval: None, folder_trust: None, api_error: None, usage, in_turn: false };
     }
 
     // 4. API error that cut a turn short without a normal Stop hook.
     if let Some(err) = olo_agent_screen::parse_api_error(agent, screen_text) {
-        return ScreenClassification { state: SubagentLiveState::Error, summary: Some(err.clone()), approval: None, folder_trust: None, api_error: Some(err), usage };
+        return ScreenClassification { state: SubagentLiveState::Error, summary: Some(err.clone()), approval: None, folder_trust: None, api_error: Some(err), usage, in_turn: true };
     }
 
     // 5. Working on screen takes precedence over stale Idle/Done.
     if olo_agent_screen::classify(agent, screen_text) == olo_agent_screen::State::Working {
-        return ScreenClassification { state: SubagentLiveState::Working, summary: doing_line(screen_text), approval: None, folder_trust: None, api_error: None, usage };
+        return ScreenClassification { state: SubagentLiveState::Working, summary: doing_line(screen_text), approval: None, folder_trust: None, api_error: None, usage, in_turn: true };
     }
 
     // 6. Fallback to Rex activity — an unrecognised Blocked dialog fails VISIBLE as WaitingQuestion
@@ -267,7 +296,7 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
             }
         }
     };
-    ScreenClassification { state, summary, approval: None, folder_trust: None, api_error: None, usage }
+    ScreenClassification { state, summary, approval: None, folder_trust: None, api_error: None, usage, in_turn: false }
 }
 
 /// Shared state reconciliation across `status`, `list`, `watch`, and `record_subagent_transition` (`H10`, `M2`, `M3`, `M22`).

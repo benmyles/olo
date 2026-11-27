@@ -382,7 +382,7 @@ mod tests {
     /// When a child read at rest is told to be so (`state::rest_now`).
     #[test]
     fn a_rest_is_told_when_it_can_be_a_turns_end() {
-        use crate::agents::state::{Expected, Rest, UNDRAWN_MS, rest_now};
+        use crate::agents::state::{Expected, Rest, UNDRAWN_MS, Written, rest_now};
         let (started, now) = (1_000_000, 1_002_000);
         // Started with nothing to do: at its own prompt it is at rest, at once, worked or not.
         assert_eq!(rest_now(now, started, false, true, None, None), Rest::Told { answered: None });
@@ -393,20 +393,58 @@ mod tests {
         assert_eq!(rest_now(now, started, true, false, None, None), Rest::Told { answered: None });
 
         // Given work it hasn't been seen at: the rest before that turn, at its prompt or not, worked before or not.
-        let given = Expected { cursor: 41, until_ms: now + 30_000, transcript_len: Some(900) };
+        let given = Expected { cursor: 41, given_ms: now, until_ms: now + 30_000, transcript_len: Some(900) };
         for (seen, at_prompt) in [(false, true), (true, true), (true, false)] {
             assert_eq!(rest_now(now, started, seen, at_prompt, Some(given), None), Rest::Kept { until_ms: now + 30_000 });
         }
+        let file = |len, over| Some(Written { len, over, at_ms: now + 500, said: true });
         // Its conversation's file the same, or longer with the turn not over (its message written, no reply yet): still before it.
-        assert_eq!(rest_now(now, started, true, true, Some(given), Some((900, true))), Rest::Kept { until_ms: now + 30_000 });
-        assert_eq!(rest_now(now, started, true, true, Some(given), Some((1400, false))), Rest::Kept { until_ms: now + 30_000 });
+        assert_eq!(rest_now(now, started, true, true, Some(given), file(900, true)), Rest::Kept { until_ms: now + 30_000 });
+        assert_eq!(rest_now(now, started, true, true, Some(given), file(1400, false)), Rest::Kept { until_ms: now + 30_000 });
         // Longer, and its turn over: the turn came and went unseen. This rest is its end, and answers what was given.
-        assert_eq!(rest_now(now, started, true, true, Some(given), Some((1400, true))), Rest::Told { answered: Some(41) });
+        assert_eq!(rest_now(now, started, true, true, Some(given), file(1400, true)), Rest::Told { answered: Some(41) });
         // Its time up and nothing taken: told as it stands, answering nothing.
-        assert_eq!(rest_now(now + 30_000, started, true, true, Some(given), Some((900, true))), Rest::Told { answered: None });
-        // (Where its file's length when it was given isn't known, the file says nothing either way.)
-        let at_start = Expected { cursor: 7, until_ms: started + 120_000, transcript_len: None };
-        assert_eq!(rest_now(now, started, false, true, Some(at_start), Some((5000, true))), Rest::Kept { until_ms: started + 120_000 });
+        assert_eq!(rest_now(now + 30_000, started, true, true, Some(given), file(900, true)), Rest::Told { answered: None });
+
+        // Given a prompt at its start, its file's length then not known (a new child has none yet). At its own
+        // prompt a moment later, nothing written: the rest before its turn, for as long as it is given to come to it.
+        let at_start = Expected { cursor: 7, given_ms: started, until_ms: started + 120_000, transcript_len: None };
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), None), Rest::Kept { until_ms: started + 120_000 });
+        // A file last written before it was given (a conversation resumed: the old one's), with a message and its
+        // turn over: says nothing of this turn.
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 5000, over: true, at_ms: started - 60_000, said: true })), Rest::Kept { until_ms: started + 120_000 });
+        // Written since, its turn over, and nothing of the agent's in it (its own message alone): not yet.
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 300, over: true, at_ms: now, said: false })), Rest::Kept { until_ms: started + 120_000 });
+        // Written since, and not over: not yet.
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: false, at_ms: now, said: true })), Rest::Kept { until_ms: started + 120_000 });
+        // Written since, its turn over, a message of the agent's there: the prompt's turn, come and gone unseen.
+        assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: true, at_ms: now, said: true })), Rest::Told { answered: Some(7) });
+    }
+
+    /// What says a child has taken up what it was given: its own
+    /// screen saying a turn is on, never Rex's word for its pane nor a
+    /// question at its start (the ShiftUp lead's item 46, 2026-11-27:
+    /// an agy started with a prompt was told done 1.3 s later, at its
+    /// own empty prompt, having been "at work" while it loaded).
+    #[test]
+    fn a_turn_is_on_by_the_agents_own_screen() {
+        use crate::agents::state::classify_screen_rich;
+        // Loading, as Rex has it: its pane is at work (the program runs), its screen not yet its own.
+        let loading = "$ agy --mode auto 'read this'\n\n  Antigravity CLI\n  loading…\n";
+        let cls = classify_screen_rich(AgentCli::Agy, Activity::Working, loading, true);
+        assert_eq!((cls.state, cls.in_turn), (SubagentLiveState::Working, false), "{:?}", cls.summary);
+        // At its own empty prompt, the pane still "at work": at rest, and no turn.
+        let prompt = "────────────────────\n>\n────────────────────\n? for shortcuts\n";
+        let cls = classify_screen_rich(AgentCli::Agy, Activity::Working, prompt, true);
+        assert_eq!((cls.state, cls.in_turn), (SubagentLiveState::Idle, false), "{:?}", cls.summary);
+        // The folder's trust, asked at a start: a question, and no turn.
+        let trust = "────────────────────\n Accessing workspace:\n /var/tmp/wt\n Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel\n";
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Blocked, trust, true);
+        assert_eq!((cls.state, cls.in_turn), (SubagentLiveState::WaitingQuestion, false));
+        // The API failing under a turn: a turn, cut short.
+        let failed = "● Working\n  ⎿  API Error: Connection lost mid-response\n────────────────────\n❯ \n";
+        let cls = classify_screen_rich(AgentCli::Claude, Activity::Idle, failed, true);
+        assert_eq!((cls.state, cls.in_turn), (SubagentLiveState::Error, true));
     }
 
     /// A child's conversation is kept only by what is sure. What was

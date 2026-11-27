@@ -141,8 +141,11 @@ is in. `--json` gives one object (`ok`, `ended_as`, `last_message`,
 `cli_session_id`, `out`, `stopped`); `--keep-tab` leaves the tab;
 `--timeout SECS` gives up waiting (the tab is kept); everything `start`
 takes goes with it (`--cwd`, `--trust`, `--env`, `--minder … --rules …`).
-Its status says how it went: 0, its turn ended; 1, it failed, exited,
-or never took its prompt up; 3, it stands on a question or asks leave
+Its status says how it went: 0, its turn ended and it has a message to
+give; 1, it failed, exited, never took its prompt up, or came to rest
+with no message of its own (`ended_as`: `error`, `exit`, `unanswered`,
+`silent`: never read "no findings" from one of these); 3, it stands on
+a question or asks leave
 and nobody is set to answer (its tab is kept: answer it with `approve`
 or `send`, or give it a minder next time); 124, your time passed.
 

@@ -221,6 +221,25 @@ impl Rig {
         self.dir.join("stage").join(format!("{name}.{what}"))
     }
 
+    /// The folder the rig's children work in, where they are told one (`--cwd`).
+    fn work(&self) -> String {
+        self.dir.join("work").display().to_string()
+    }
+
+    /// A stand-in Claude Code's conversation `session` (its `--session-id`), written as Claude Code keeps one, in
+    /// the rig's own home: what it was asked, and what it said last, its turn over. (A stand-in draws screens and
+    /// keeps no conversation; what a turn's end has to say is read from this file, as it is from the agent's own.)
+    fn says(&self, session: &str, asked: &str, said: &str) {
+        let folder: String = self.work().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let dir = self.dir.join("home/.claude/projects").join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        let lines = [
+            json!({ "type": "user", "message": { "role": "user", "content": asked } }),
+            json!({ "type": "assistant", "message": { "id": "msg_1", "role": "assistant", "content": [{ "type": "text", "text": said }], "stop_reason": "end_turn" } }),
+        ];
+        std::fs::write(dir.join(format!("{session}.jsonl")), lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+    }
+
     /// Starts a stand-in child and waits until it listens.
     fn start_child_from(&self, block: Option<&str>, cli: &str, name: &str, more: &[&str]) -> Value {
         let fifo = self.staged(name, "fifo");
@@ -1240,12 +1259,13 @@ fn a_minder_answers_for_its_agent_and_tells_the_parent() {
     assert_eq!((&row("worker")["minder"], &row("other")["minder"]), (&started["minder"]["id"], &Value::Null), "{listed}");
     assert_eq!(std::fs::read_to_string(minder.dir.join("rules.md")).unwrap(), rules);
     assert_eq!(std::fs::metadata(minder.dir.join("mind")).unwrap().permissions().mode() & 0o777, 0o700);
-    // What it was started with: the shell its one tool, its command the one thing allowed there, nothing asked; the parent's rules in its standing instructions.
+    // What it was started with: the shell and the three tools that read; its command the one thing allowed in the shell, reading allowed, nothing asked; the parent's rules in its standing instructions.
     let line = minder.run("tr '\\0' '\\n' < /proc/$PPID/cmdline");
     let args: Vec<&str> = line.lines().collect();
     let after = |flag: &str| args.iter().position(|a| *a == flag).and_then(|i| args.get(i + 1)).copied().unwrap_or_else(|| panic!("no {flag} in {args:?}"));
-    assert_eq!((after("--model"), after("--effort"), after("--permission-mode"), after("--tools")), ("stand-in-big", "max", "dontAsk", "Bash"), "{args:?}");
-    assert_eq!(after("--allowed-tools"), format!("Bash({} *)", minder.dir.join("mind").display()));
+    assert_eq!((after("--model"), after("--effort"), after("--permission-mode"), after("--tools")), ("stand-in-big", "max", "dontAsk", "Bash,Read,Grep,Glob"), "{args:?}");
+    let allowed = args.iter().position(|a| *a == "--allowed-tools").map(|i| &args[i + 1..i + 5]).unwrap_or_else(|| panic!("no --allowed-tools in {args:?}"));
+    assert_eq!(allowed, ["Read", "Grep", "Glob", &format!("Bash({} *)", minder.dir.join("mind").display())], "{args:?}");
     assert!(args.contains(&"--strict-mcp-config"), "{args:?}");
     let told = line.split("--append-system-prompt\n").nth(1).unwrap_or_default();
     // (With where its agent works: rules that speak of a folder are read against that.)
@@ -1748,6 +1768,37 @@ fn a_minder_that_begins_is_told_what_stands() {
     assert!(said.contains("status=124"), "{said}");
 }
 
+/// A prompt given at a start is taken up when the agent's own screen says a turn is on, and by nothing that
+/// comes before: the agent loading (Rex's word for its pane is "at work" then), the folder's trust asked and
+/// answered, its own empty prompt. None of those rests is told, and none answers the start. (The ShiftUp lead's
+/// item 46, 2026-11-27: an agy started with a prompt stood at its own empty prompt 1.3 s later, was told at rest
+/// *answering its start*, and `olo agent run` returned done and closed its tab: the agent had done nothing.)
+#[test]
+fn a_prompt_is_taken_up_by_a_turn_and_by_nothing_before_it() {
+    let Some(rig) = Rig::start("taken") else { return };
+    rig.stand_in("claude");
+    let started = rig.start_child("claude", "loads", &["--prompt", "Read the file and say what it says."]);
+    let cursor = started["cursor"].as_u64().unwrap_or_else(|| panic!("{started}")).to_string();
+    let rests = |within: &str| rig.olo(&["watch", "loads", "--since", &cursor, "--on", "idle,done", "--timeout", within, "--json"]);
+    // It loads: something on its screen, not its own prompt, no turn.
+    rig.show("loads", "Claude Code\n\n  Loading your project…\n");
+    std::thread::sleep(Duration::from_millis(600));
+    // The folder's trust, asked before any prompt is taken up; then its own prompt, empty.
+    rig.show("loads", &format!("{0}\n Accessing workspace:\n\n {1}\n\n Quick safety check: Is this a project you created or one you trust?\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n", rule(), rig.work()));
+    rig.wait_state("loads", "waiting_question");
+    rig.show("loads", &idle("Ready."));
+    let (code, out, err) = rests("3");
+    assert!(code == 124, "a rest before its prompt's turn was told: {code}: {out}{err}\n{}", rig.said());
+    assert!(rig.status("loads")["answers"].is_null(), "nothing has answered its start yet: {}", rig.status("loads"));
+    // Its turn, by its own screen; and its end: told, and it answers the start.
+    rig.show("loads", &working());
+    rig.wait("its turn to be the one that answers its start", || rig.status("loads")["answers"].as_u64().map(|a| a.to_string()) == Some(cursor.clone()));
+    rig.show("loads", &idle("It says forty-two."));
+    let (code, out, err) = rests("20");
+    let told: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{code}: {e}: {out}{err}"));
+    assert!(code == 0 && matches!(told["state"].as_str(), Some("idle" | "done")) && told["answers"].as_u64().map(|a| a.to_string()) == Some(cursor.clone()), "{told}");
+}
+
 /// `olo agent run`: one agent for one prompt, start to finish (the ShiftUp lead's item 36). What comes in a
 /// turn's place is said, with a status of its own, and the tab kept where somebody is to answer it. (Its
 /// last message whole, and its file, are tried with Claude Code itself: `agents_live.rs`.)
@@ -1759,7 +1810,8 @@ fn one_agent_for_one_prompt_from_start_to_finish() {
         assert!(Command::new("mkfifo").arg(rig.staged(name, "fifo")).status().unwrap().success());
         let (stage, path, named) = (format!("STAND_IN_DIR={}", rig.dir.join("stage").display()), format!("PATH={}:/usr/bin:/bin", rig.dir.join("bin").display()), format!("STAND_IN_NAME={name}"));
         // (A time of its own for each, so that none waits for ever on a stand-in that was never told: said, where it isn't the case tried.)
-        let mut args = vec!["run", "claude", "--model", "stand-in", "--effort", "none", "--name", name, "--env", &stage, "--env", &named, "--env", &path];
+        let work = rig.work();
+        let mut args = vec!["run", "claude", "--model", "stand-in", "--effort", "none", "--name", name, "--cwd", &work, "--env", &stage, "--env", &named, "--env", &path];
         if !more.contains(&"--timeout") {
             args.extend(["--timeout", "40"]);
         }
@@ -1772,20 +1824,36 @@ fn one_agent_for_one_prompt_from_start_to_finish() {
     assert!(rig.json(&["list", "--all", "--json"])["subagents"].as_array().unwrap().is_empty());
 
     std::thread::scope(|scope| {
-        // Its prompt's turn ends: status 0, its tab stopped, and what it rested on before its turn told to nobody.
-        let done = scope.spawn(|| run("reads", &["--prompt", "Read the file and say what it says.", "--json"]));
+        // Its prompt's turn ends: status 0, its last message whole, its tab stopped, and what it rested on before
+        // its turn told to nobody.
+        const READS: &str = "5f0c1f0e-1111-4a11-8a11-2f8f0e0a0001";
+        let done = scope.spawn(|| run("reads", &["--prompt", "Read the file and say what it says.", "--json", "--session-id", READS]));
         rig.wait("the stand-in to listen", || rig.staged("reads", "ready").exists());
         rig.show("reads", &idle("Ready."));
         std::thread::sleep(Duration::from_millis(700));
         assert!(!done.is_finished(), "it answered on the rest before its prompt's turn");
         rig.show("reads", &working());
         rig.wait("the service to have seen it at work", || rig.status("reads")["answers"].is_u64());
+        rig.says(READS, "Read the file and say what it says.", "It says forty-two.");
         rig.show("reads", &idle("It says forty-two."));
         let (code, out, err) = done.join().unwrap();
         assert_eq!(code, 0, "{out}{err}\n{}", rig.said());
         let said: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{e}: {out}"));
         assert_eq!((&said["ok"], &said["ended_as"], &said["stopped"], &said["name"]), (&json!(true), &json!("done"), &json!(true), &json!("reads")), "{said}");
+        assert_eq!(said["last_message"], "It says forty-two.", "{said}");
         assert_eq!(rig.status("reads")["running"], false, "its tab is stopped");
+
+        // A turn that ends with no message of the agent's to give is no reading: status 1, said, never "done"
+        // (the ShiftUp lead's item 46: an agent that had done nothing was reported done, exit 0, its message
+        // null, and "we nearly read 'no findings' from it").
+        let mute = scope.spawn(|| run("mute", &["--prompt", "Read the file and say what it says.", "--json"]));
+        rig.wait("the stand-in to listen", || rig.staged("mute", "ready").exists());
+        rig.show("mute", &working());
+        rig.wait("the service to have seen it at work", || rig.status("mute")["answers"].is_u64());
+        rig.show("mute", &idle("…"));
+        let (code, out, err) = mute.join().unwrap();
+        let said: Value = serde_json::from_str(out.trim()).unwrap_or_else(|e| panic!("{e}: {out}"));
+        assert!(code == 1 && said["ok"] == false && said["ended_as"] == "silent" && said["last_message"].is_null() && err.contains("no message of its own"), "{code}: {said}\n{err}");
 
         // It asks leave and nobody is set to answer: status 3, said, its tab kept, and it can be answered.
         let asks = scope.spawn(|| run("asks", &["--prompt", "Push it."]));

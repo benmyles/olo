@@ -262,11 +262,11 @@ pub struct Service {
 }
 
 fn exited(summary: String) -> ScreenClassification {
-    ScreenClassification { state: SubagentLiveState::Exited, summary: Some(summary), approval: None, folder_trust: None, api_error: None, usage: None }
+    ScreenClassification { state: SubagentLiveState::Exited, summary: Some(summary), approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false }
 }
 
 fn starting() -> ScreenClassification {
-    ScreenClassification { state: SubagentLiveState::Working, summary: Some("starting".into()), approval: None, folder_trust: None, api_error: None, usage: None }
+    ScreenClassification { state: SubagentLiveState::Working, summary: Some("starting".into()), approval: None, folder_trust: None, api_error: None, usage: None, in_turn: false }
 }
 
 /// What tells two readings of one state apart: the question asked, the
@@ -570,7 +570,8 @@ impl Service {
         // grown later, with its turn over, a turn was there unseen.)
         let transcript_len = transcript_known.then(|| entry.transcript_path.as_deref().and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len()));
         if let Some(live) = self.lock().live.get_mut(&entry.id) {
-            live.expects = Some(state::Expected { cursor, until_ms: now_unix_ms() + within.as_millis() as u64, transcript_len });
+            let now = now_unix_ms();
+            live.expects = Some(state::Expected { cursor, given_ms: now, until_ms: now + within.as_millis() as u64, transcript_len });
         }
     }
 
@@ -904,9 +905,23 @@ impl Service {
             // has now taken up: the turn that follows answers that.
             if cls.state != SubagentLiveState::Idle && !(cls.state == SubagentLiveState::Working && cls.summary.as_deref() == Some(state::STARTING)) {
                 live.seen_working = true;
-                if let Some(given) = live.expects.take() {
-                    live.answers = Some(given.cursor);
-                }
+            }
+            // What it was given, it has taken up once its own screen
+            // says a turn is on (`ScreenClassification::in_turn`): the
+            // turn that follows answers that. Not at anything else that
+            // isn't rest. (It was: an agy started with a prompt is "at
+            // work" by Rex's word for its pane while it loads, then
+            // stands at its own empty prompt for a moment before it
+            // takes the prompt up; that rest was told as the prompt's
+            // turn's end, 1.3 s after the start, and `olo agent run`
+            // returned done, with no message, and closed the tab on an
+            // agent that had done nothing. The ShiftUp lead, 2026-11-27,
+            // item 46: "we nearly read 'no findings' from it". A
+            // folder's trust asked at the start did the same.)
+            if cls.in_turn
+                && let Some(given) = live.expects.take()
+            {
+                live.answers = Some(given.cursor);
             }
             // At rest: is that to tell (`state::rest_now`)? Not while it
             // has been given work it hasn't been seen at, nor while what
@@ -999,7 +1014,12 @@ impl Service {
             // kept back still (`state::rest_now`).
             if matches!(state, SubagentLiveState::Idle | SubagentLiveState::Done) {
                 let over = matches!(info.and_then(|v| v["transcript_state"].as_str()), Some("done" | "idle" | "waiting" | "aborted"));
-                let written = info.and_then(|v| v["transcript_path"].as_str()).or(entry.transcript_path.as_deref()).and_then(|p| std::fs::metadata(p).ok()).map(|m| (m.len(), over));
+                let written = info.and_then(|v| v["transcript_path"].as_str()).or(entry.transcript_path.as_deref()).and_then(|p| std::fs::metadata(p).ok()).map(|m| state::Written {
+                    len: m.len(),
+                    over,
+                    at_ms: m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64),
+                    said: last_message.is_some(),
+                });
                 let mut st = service.lock();
                 let Some(live) = st.live.get_mut(&id) else { return };
                 match state::rest_now(now_unix_ms(), started_ms, live.seen_working, at_prompt, live.expects, written) {

@@ -31736,13 +31736,26 @@ agents through the night, could not move to it.
     start: two minutes; a message sent and submitted while it rested:
     thirty seconds) shows the rest before that turn: kept back, and
     read again at whatever it shows and when its time is up (then told
-    as it stands: it never came to it). Seen at work (really at work:
-    not "starting"), the turn it is in **answers** what it was given:
-    every event of that turn, its end among them, carries `answers`,
-    the cursor the `start` or the `send` was answered with (`status`
-    has it too). A turn too quick to be seen at all is not lost: the
-    child's conversation's file, longer than when the message was sent
-    and saying its turn is over, makes the rest that turn's end. A
+    as it stands: it never came to it). Seen **in a turn by its own
+    screen** (`ScreenClassification::in_turn`: its working line, a tool
+    call of the turn asking leave, the API failing under it), the turn
+    it is in **answers** what it was given: every event of that turn,
+    its end among them, carries `answers`, the cursor the `start` or
+    the `send` was answered with (`status` has it too). Nothing else
+    takes the work up (2026-11-27, the ShiftUp lead's item 46): not
+    Rex's word for the pane (a program runs in it: the agent itself as
+    it loads), not the folder's trust nor any chooser at a start. It
+    was "anything but rest": an agy started with a prompt is at work by
+    Rex's word while it loads, then stands at its own empty prompt for
+    a moment before it takes the prompt up, and that rest was told
+    *answering the start*, 1.3 s after it; `olo agent run` returned
+    done with a null message and closed the tab on an agent that had
+    done nothing. A turn too quick to be seen at all, or one the screen
+    never said was on, is not lost: the child's conversation's file
+    (`state::Written`), saying its turn is over and longer than when the
+    message was sent (or, for a child started with a prompt, whose file
+    wasn't there then: written since, with a message of the agent's in
+    it), makes the rest that turn's end. A
     child started with **nothing to do** is at rest once it is at its
     own prompt (`at prompt`), told at once (it is up: who waits to send
     to it waits on that); what stands in its tab before its own screen
@@ -31752,7 +31765,14 @@ agents through the night, could not move to it.
     not told; the agent at its prompt is, at once; the rest after a
     send isn't; the turn's end is, with the send's cursor; a question
     in the turn carries it; a message never taken up is told when its
-    time is up, and taken up late its turn is its own. `agents_live.rs`
+    time is up, and taken up late its turn is its own; a child started
+    with a prompt that loads, is asked the folder's trust and stands at
+    its empty prompt is told at rest by none of them, and its turn's
+    end answers the start (with the rule as it was, the test fails on
+    the first). The suite is behind a feature: `jato test -p
+    olo-rex-link --features agents --test agents`, whole, after any
+    change to the service (without the feature it isn't built, and an
+    assertion in it stood stale for a commit). `agents_live.rs`
     (Claude Code and Antigravity themselves, a model that takes four
     seconds): started with a prompt, and a conversation taken up again
     with one, the first rest told is the prompt's own turn's end and
@@ -31786,8 +31806,13 @@ agents through the night, could not move to it.
     that child from the start's cursor until a rest whose `answers` is
     that cursor (the prompt's own turn's end, never a rest before it:
     "Which turn a rest belongs to"), then `stop`. Status 0, its turn
-    ended; 1, it failed, exited, or came to rest without taking its
-    prompt up; 3, it stands on a question or asks leave and nobody is
+    ended and it has a message to give; 1, it failed, exited, came to
+    rest without taking its prompt up, or came to rest with no message
+    of its own (`ended_as: "silent"`: a turn's end with nothing of the
+    agent's to give is no reading, whatever it answers; one such was
+    reported done with a null message, the agent having done nothing:
+    the ShiftUp lead's item 46, 2026-11-27); 3, it stands on a question
+    or asks leave and nobody is
     set to answer (its tab kept, the words say how to answer it); 124,
     `--timeout` passed (kept). From a parent's shell it is a background
     command that ends when the reading is in.

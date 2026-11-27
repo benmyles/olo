@@ -230,6 +230,12 @@ fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) ->
     // Its whole last message (a rest's own event has it; else as it stands now).
     let status = asked("status", vec![id.clone(), "--json".into()]).data;
     let last = event["last_message"].as_str().or(status["last_message"].as_str()).map(str::to_owned);
+    // A turn's end with no message of the agent's is not its prompt's
+    // own turn's end, whatever it answers: said, and never a success.
+    // (An agent that had done nothing was once reported done, exit 0,
+    // `last_message` null: "we nearly read 'no findings' from it", the
+    // ShiftUp lead, 2026-11-27, item 46.)
+    let how = if how == "done" && last.as_deref().is_none_or(|m| m.trim().is_empty()) { "silent" } else { how };
     if let (Some(path), Some(text)) = (&out, &last) {
         let dest = Path::new(path);
         let tmp = dest.with_extension(format!("olo-tmp-{}", std::process::id()));
@@ -243,11 +249,12 @@ fn one_shot(args: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) ->
     }
     // Stopped when its turn is over or it can do no more; kept where
     // somebody is to answer it or look.
-    let stop = !keep && matches!(how, "done" | "error" | "unanswered");
+    let stop = !keep && matches!(how, "done" | "error" | "unanswered" | "silent");
     let stopped = stop && asked("stop", vec![id.clone(), "--force".into(), "--json".into()]).ok;
     let (code, said) = match how {
         "done" => (0, String::new()),
         "unanswered" => (1, format!("`{name}` came to rest without taking its prompt up")),
+        "silent" => (1, format!("`{name}` came to rest with no message of its own to give: it never took its prompt up (or its conversation couldn't be read)")),
         "question" => (3, format!("`{name}` stands on a question (its tab is kept: `olo agent send {name} …`, or look): {}", event["summary"].as_str().unwrap_or_default())),
         "approval" => {
             (3, format!("`{name}` asks leave (its tab is kept: `olo agent approve {name} --once|--no`): {}", event["approval"]["command"].as_str().or(event["summary"].as_str()).unwrap_or_default()))
