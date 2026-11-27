@@ -1264,6 +1264,28 @@ pub fn parse_question(agent: Agent, screen: &str) -> Option<String> {
     lines[dialog_top..].iter().rev().map(|l| l.trim()).find(|l| l.ends_with('?')).map(str::to_owned).or_else(|| Some("waiting for choice".into()))
 }
 
+/// What an agent that says it failed has on its screen of why: the
+/// last line among its last sixty that names an error of its model's
+/// service ("API Error: 529 …", as Claude Code writes it, whatever it
+/// stands in: a retry's count, a tool's result), without its bullet.
+/// For the *words* of a failure the agent has itself declared, where
+/// nothing else has them: the service gave its last line on the screen
+/// as the error, which was the last thing it had been doing (the
+/// ShiftUp lead's item 49, 2026-11-27: "every Claude child's turn ended
+/// as `error` with its last working sentence as the error's text").
+/// Never what makes a screen a failure: that is [`parse_api_error`]'s,
+/// which is strict about where such a line may stand.
+pub fn error_line(screen: &str) -> Option<String> {
+    screen
+        .lines()
+        .rev()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .take(60)
+        .find(|l| l.to_ascii_lowercase().contains("api error"))
+        .map(|l| l.trim_start_matches(['●', '•', '⎿', '└', '│', '*', ' ']).trim().to_owned())
+}
+
 /// Detects an API / stream mid-response error that ended the CURRENT turn without a normal Stop hook
 /// (e.g. Claude Code's `"API Error: Connection lost mid-response"` or Codex's `"■ ..."`).
 /// Stops scanning at prior turn boundaries so a stale error from an earlier turn never poisons
@@ -2230,6 +2252,17 @@ mod tests {
         assert!(parse_survey(Agent::Claude, "● Ratings:\n  1: Bad    2: Fine   3: Good   0: Dismiss\n❯ ").is_none());
         let far = format!("{claude}\n{}", (0..14).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n"));
         assert!(parse_survey(Agent::Claude, &far).is_none());
+    }
+
+    /// The words of a failure, where an agent that says it failed has them on its screen.
+    #[test]
+    fn a_failed_agents_screen_says_why() {
+        let rule = "─".repeat(40);
+        let failed = format!(
+            "● Read(src/main.rs)\n  ⎿  API Error: 503 upstream connect error or disconnect/reset before headers · Retrying in 8 seconds… (attempt 10/10)\n● I was reading the parser when it stopped.\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n"
+        );
+        assert_eq!(error_line(&failed).as_deref(), Some("API Error: 503 upstream connect error or disconnect/reset before headers · Retrying in 8 seconds… (attempt 10/10)"));
+        assert_eq!(error_line("● Done.\n❯ \n"), None);
     }
 
     /// Claude Code's drafted feedback report (the ShiftUp lead's item 48):

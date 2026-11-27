@@ -210,6 +210,68 @@ pub struct Expected {
     pub seq: u64,
 }
 
+/// Why a turn failed, from its error's own words: whose fault it is to
+/// whoever looks after the agent, and the status its provider gave
+/// where the words have one ("API Error: 529 Overloaded"). `provider`:
+/// the model's service or the way to it (overloaded, a server's error,
+/// a connection lost); `account`: the sign-in, its credit or what it
+/// may use; `rate_limit`; `request`: what was sent was refused (too
+/// long, malformed); else `other`. So that an outage is told from an
+/// agent's own fault at once (the ShiftUp lead's item 49, 2026-11-27,
+/// after a pool's outage ended every Claude child's turn as `error`:
+/// "the event saying WHY the turn ended (a provider or account error,
+/// with its status)").
+pub fn error_cause(text: &str) -> (&'static str, Option<u16>) {
+    let low = text.to_ascii_lowercase();
+    // (A status as the agents write one: three digits standing alone, 400 to 599.)
+    let status = low.split(|c: char| !c.is_ascii_digit()).filter(|w| w.len() == 3).filter_map(|w| w.parse::<u16>().ok()).find(|n| (400..600).contains(n));
+    let has = |words: &[&str]| words.iter().any(|w| low.contains(w));
+    let kind = match status {
+        Some(429) => "rate_limit",
+        Some(401 | 402 | 403) => "account",
+        Some(400 | 404 | 413 | 422) => "request",
+        Some(n) if n >= 500 => "provider",
+        _ if has(&["rate limit", "rate_limit", "usage limit", "quota", "too many requests"]) => "rate_limit",
+        _ if has(&[
+            "credit balance",
+            "billing",
+            "authentication",
+            "unauthorized",
+            "invalid api key",
+            "invalid x-api-key",
+            "not logged in",
+            "please run /login",
+            "oauth",
+            "permission_error",
+            "forbidden",
+        ]) =>
+        {
+            "account"
+        }
+        _ if has(&[
+            "overloaded",
+            "connection",
+            "stream disconnected",
+            "disconnected",
+            "timed out",
+            "timeout",
+            "network",
+            "econnreset",
+            "fetch failed",
+            "socket",
+            "internal server error",
+            "service unavailable",
+            "bad gateway",
+        ]) =>
+        {
+            "provider"
+        }
+        _ if has(&["prompt is too long", "invalid_request", "invalid request", "context length", "too large"]) => "request",
+        _ => "other",
+    };
+    (kind, status)
+}
+
 /// Whether a reading that sees a turn on takes up what the child has
 /// been given (`now`): only where that is what it had been given when
 /// the reading *began* (`at_reading`: [`Expected::cursor`] then). A

@@ -143,12 +143,68 @@ pub fn run(mut args: Vec<String>) -> i32 {
             let has_wait_flag = req.args.iter().take_while(|a| a.as_str() != "--").any(|a| a == "--wait");
             match sub.as_str() {
                 "run" => one_shot(req.args.clone(), &asked),
+                "send" if req.args.first().is_some_and(|a| a == "--all-errored") => send_to_all_errored(req.args[1..].to_vec(), &asked),
                 "send" if has_wait_flag => send_and_wait(req.args.clone(), &asked_send_wait, &asked),
                 "watch" | "wait" if req.args.iter().any(|a| a == "--follow") => follow_watch(req.args.clone(), &asked),
                 _ => print_answer(ask(&server, &paths, &req, retriable(&sub))),
             }
         }
     }
+}
+
+/// `olo agent send --all-errored TEXT… [--enter] [--json]`: the same
+/// message to every child of the asking tab whose turn ended in an error
+/// and that still runs, each as `send NAME …` would send it (the ShiftUp
+/// lead's item 49, 2026-11-27, after an outage ended every child's turn
+/// at once: "one command that says 'continue' to every child of mine
+/// that ended that way"). Says which it sent to and how each went; 0
+/// where all went (or none had failed), 1 where any didn't.
+fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
+    let as_json = rest.iter().take_while(|a| a.as_str() != "--").any(|a| a == "--json");
+    if rest.iter().all(|a| a.starts_with("--")) {
+        eprintln!("usage: olo agent send --all-errored TEXT… [--enter] [--paste] [--json]: what to send is missing");
+        return 2;
+    }
+    if rest.iter().take_while(|a| a.as_str() != "--").any(|a| matches!(a.as_str(), "--wait" | "--out" | "--force" | "--key" | "--ctrl" | "--file")) {
+        eprintln!("olo agent send --all-errored: only a message (with --enter, --paste, --json): each child is watched as any other");
+        return 2;
+    }
+    let listed = asked("list", vec!["--json".into()]);
+    if !listed.ok {
+        return print_answer(listed);
+    }
+    let failed: Vec<(String, String, Value)> = listed.data["subagents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["state"] == "error")
+        .filter_map(|c| Some((c["id"].as_str()?.to_owned(), c["name"].as_str().unwrap_or_default().to_owned(), c["summary"].clone())))
+        .collect();
+    let mut sent = Vec::new();
+    let mut all_went = true;
+    for (id, name, why) in failed {
+        let mut args = vec![id.clone()];
+        args.extend(rest.iter().filter(|a| a.as_str() != "--json").cloned());
+        args.push("--json".into());
+        let answer = asked("send", args);
+        all_went &= answer.ok;
+        sent.push(json!({ "id": id, "name": name, "was": why, "ok": answer.ok, "cursor": answer.data["cursor"], "error": (!answer.ok).then(|| answer.stderr.trim().to_owned()) }));
+    }
+    if as_json {
+        println!("{}", json!({ "ok": all_went, "count": sent.len(), "sent": sent }));
+    } else if sent.is_empty() {
+        println!("no child of this tab stands at an error");
+    } else {
+        for one in &sent {
+            let who = one["name"].as_str().filter(|n| !n.is_empty()).or(one["id"].as_str()).unwrap_or_default();
+            match one["error"].as_str() {
+                Some(why) => println!("{who}: not sent ({why})"),
+                None => println!("{who}: sent"),
+            }
+        }
+    }
+    let _ = std::io::stdout().flush();
+    i32::from(!all_went)
 }
 
 pub const RUN_USAGE: &str = "usage: olo agent run <claude|codex|agy> --model MODEL --effort EFFORT (--prompt TEXT | --prompt-file FILE) [--name NAME] [--out FILE] [--keep-tab] [--timeout SECS] [--json] [what `olo agent start` takes: --cwd, --trust, --env, --minder … --rules …]\n\nOne agent for one prompt: starts it, waits for the prompt's own turn to end, prints its whole last message (and writes it to --out), and stops its tab (unless --keep-tab).\nStatus: 0 its turn ended; 1 it failed or exited before that; 3 it stands on a question or asks leave (its tab is kept: answer it, or look); 124 --timeout passed (its tab is kept).";

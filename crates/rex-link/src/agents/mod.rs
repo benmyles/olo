@@ -42,6 +42,24 @@ mod tests {
     /// What a reading takes up, and when a Codex's conversation file is
     /// believed that a turn is on (a code review's case and the ShiftUp
     /// lead's items 50 and 51, 2026-11-27).
+    /// Why a turn failed, by its error's words (the ShiftUp lead's item 49).
+    #[test]
+    fn an_errors_words_say_whose_fault_it_is() {
+        use super::state::error_cause;
+        assert_eq!(error_cause("API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"), ("provider", Some(529)));
+        assert_eq!(error_cause("API Error: 503 upstream connect error or disconnect/reset before headers"), ("provider", Some(503)));
+        assert_eq!(error_cause("API Error: Connection lost mid-response"), ("provider", None));
+        assert_eq!(error_cause("stream disconnected before completion"), ("provider", None));
+        assert_eq!(error_cause("API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\"}}"), ("account", Some(401)));
+        assert_eq!(error_cause("Credit balance is too low"), ("account", None));
+        assert_eq!(error_cause("API Error: 429 rate_limit_error"), ("rate_limit", Some(429)));
+        assert_eq!(error_cause("You've hit your usage limit"), ("rate_limit", None));
+        assert_eq!(error_cause("API Error: 400 prompt is too long: 210000 tokens > 200000 maximum"), ("request", Some(400)));
+        // (Its last working sentence, with a number in it, is no status: only 400 to 599, three digits alone.)
+        assert_eq!(error_cause("Read 1529 lines of main.rs and 200 of lib.rs"), ("other", None));
+        assert_eq!(error_cause(""), ("other", None));
+    }
+
     #[test]
     fn a_reading_takes_up_what_stood_when_it_began_and_a_codex_in_a_turn_is_not_at_rest() {
         use super::state::{Expected, TURN_ON_MS, takes_up, turn_on};

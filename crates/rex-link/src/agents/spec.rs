@@ -1020,7 +1020,7 @@ pub fn parse_send_payload(args: &[String], raw_obj: Option<&Value>) -> Result<Se
     }
 
     let target = target.ok_or_else(|| {
-        "usage: olo agent send <ID|NAME> [TEXT | --file PATH] [--enter] [--paste] [--force] [--ctrl c|d|z] [--key Enter|Escape|Tab|Up|Down|Left|Right] [--wait [--timeout SECS] [--out FILE]]"
+        "usage: olo agent send <ID|NAME> [TEXT | --file PATH] [--enter] [--paste] [--force] [--ctrl c|d|z] [--key Enter|Escape|Tab|Up|Down|Left|Right] [--wait [--timeout SECS] [--out FILE]] | olo agent send --all-errored TEXT… [--enter] [--json] (every child of yours that stands at an error)"
             .to_owned()
     })?;
     let body = text_parts.join(" ");

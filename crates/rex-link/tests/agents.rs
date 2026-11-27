@@ -789,6 +789,59 @@ fn a_drafted_feedback_report_is_told_and_never_answered() {
     rig.json(&["stop", "drafted", "--force", "--json"]);
 }
 
+/// A turn that failed says why, and one command says "continue" to
+/// every child of the tab that stands at an error (the ShiftUp lead's
+/// item 49, 2026-11-27, after an outage ended every child's turn at
+/// once: "the event saying WHY the turn ended (a provider or account
+/// error, with its status), and one command that says 'continue' to
+/// every child of mine that ended that way").
+#[test]
+fn a_failed_turn_says_why_and_all_that_failed_are_told_at_once() {
+    let Some(rig) = Rig::start("failed") else { return };
+    rig.stand_in("claude");
+    let failed = |why: &str| format!("● Read(src/parser.rs)\n  ⎿  {why}\n{0}\n❯ \n{0}\n", rule());
+    let mut cursors = Vec::new();
+    for name in ["one", "two", "well"] {
+        cursors.push(rig.start_child("claude", name, &[])["cursor"].clone());
+        rig.show(name, &working());
+        rig.wait_state(name, "working");
+    }
+    rig.show("one", &failed("API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"));
+    rig.show("two", &failed("API Error: 401 authentication_error: invalid x-api-key"));
+    rig.show("well", &idle("All done."));
+    // Each event says why: the error's own words, whose fault, and its status.
+    let told = rig.json(&["watch", "one", "--since", &cursors[0].to_string(), "--on", "error", "--timeout", "15", "--json"]);
+    assert_eq!((&told["state"], &told["error_kind"], &told["error_status"]), (&json!("error"), &json!("provider"), &json!(529)), "{told}");
+    assert!(told["error"].as_str().is_some_and(|e| e.starts_with("API Error: 529")), "{told}");
+    let told = rig.json(&["watch", "two", "--since", &cursors[1].to_string(), "--on", "error", "--timeout", "15", "--json"]);
+    assert_eq!((&told["error_kind"], &told["error_status"]), (&json!("account"), &json!(401)), "{told}");
+    let status = rig.status("one");
+    assert_eq!((&status["error_kind"], &status["error_status"]), (&json!("provider"), &json!(529)), "{status}");
+    rig.wait_state("well", "idle");
+    assert_eq!(rig.status("well")["error_kind"], Value::Null);
+
+    // One message to all that failed: the two, not the one that is well.
+    let before: Vec<usize> = ["one", "two", "well"].iter().map(|n| rig.keys(n).len()).collect();
+    let (code, _, err) = rig.olo(&["send", "--all-errored"]);
+    assert!(code == 2 && err.contains("what to send"), "{err}");
+    let sent = rig.json(&["send", "--all-errored", "The outage is over: go on where you were.", "--enter", "--json"]);
+    assert_eq!((&sent["ok"], &sent["count"]), (&json!(true), &json!(2)), "{sent}");
+    let names: Vec<&str> = sent["sent"].as_array().unwrap().iter().filter_map(|s| s["name"].as_str()).collect();
+    assert!(names.contains(&"one") && names.contains(&"two") && !names.contains(&"well"), "{sent}");
+    for (i, name) in ["one", "two"].iter().enumerate() {
+        let typed = String::from_utf8_lossy(&rig.keys(name)[before[i]..]).into_owned();
+        assert!(typed.contains("The outage is over: go on where you were."), "{name} was not told: {typed:?}");
+    }
+    assert_eq!(rig.keys("well").len(), before[2], "the child that is well was told too");
+    // None left standing at an error (they work again): nothing to send, and said so.
+    rig.show("one", &working());
+    rig.show("two", &working());
+    rig.wait_state("one", "working");
+    rig.wait_state("two", "working");
+    let none = rig.json(&["send", "--all-errored", "Again.", "--enter", "--json"]);
+    assert_eq!((&none["ok"], &none["count"]), (&json!(true), &json!(0)), "{none}");
+}
+
 /// Forty children under one tab: started side by side, all there, and
 /// listed in well under a second.
 #[test]

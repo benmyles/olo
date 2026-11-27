@@ -379,6 +379,17 @@ model or reasoning effort is used.
   A key that plain bytes can't say is pressed as the keyboard would press it, by what the agent asked of its keys: `--key Ctrl+Enter` and `--key Shift+Enter` (a new line in Claude Code's field, not a send), `--key Ctrl+Tab`, `--key Shift+Backspace`.
   A single character is a key too: `--key 0`, `--key y` press that one key and nothing else (no Return, no paste), for a box that takes one key and must be given no text (Claude Code's "1 to review · 2 to send · 0 to dismiss").
   Refuses to type text, or to press a character key, while an approval/question dialog is active: there a character is an answer by its number (use `olo agent approve` for approvals, or pass `--force`). Always strips bracketed-paste escapes and returns a pre-write `cursor`.
+- **Why a turn failed, and going on after an outage.** An `error` (on
+  your watch, and in `status`) says whose fault it was: `error_kind` is
+  `provider` (the model's service or the way to it: overloaded, a
+  server's error, a connection lost), `account` (the sign-in, its
+  credit, what it may use), `rate_limit`, `request` (what was sent was
+  refused) or `other`, with `error_status` where the error's words have
+  one (529, 401) and `error` the words themselves. When a provider's
+  outage has ended every child's turn at once:
+  `olo agent send --all-errored "The outage is over: go on where you were." --enter --json`
+  sends the one message to every child of yours that stands at an
+  error (and to none that doesn't), and says which (`sent`, `count`).
 - **A minder for a child, and a word to the parent** (above):
   `olo agent start … --minder claude:MODEL:EFFORT [--rules FILE | --rules-text TEXT] [--minder-env K=V]…`
   `olo agent mind <ID|NAME> [--with claude:MODEL:EFFORT] [--rules FILE | --rules-text TEXT] [--env K=V]… [--off] [--json]`

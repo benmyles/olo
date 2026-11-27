@@ -1712,7 +1712,8 @@ impl Service {
             let mut event = service.event_of(&entry, state, again.cls.summary.clone(), dedupe);
             event.last_message = last_message;
             event.approval = approval;
-            event.error = error;
+            // (Where it says it failed and nothing has the words, its screen may.)
+            event.error = error.or_else(|| (state == SubagentLiveState::Error).then(|| olo_agent_screen::error_line(&again.screen)).flatten());
             event.tail = tail_of(&again.screen, 10);
             service.tell(&id, state, again.cls.summary);
             service.record(event);

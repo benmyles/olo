@@ -32213,6 +32213,27 @@ agents through the night, could not move to it.
   of its own that came meanwhile. (The confirming code review of this
   change, and `a_turn_before_is_not_this_turn_and_a_files_word_is_
   looked_for`, whose cases each fail with their fix taken out.)
+- *Why a turn failed, and all that failed told at once*
+  (`state::error_cause`, `olo_agent_screen::error_line`;
+  `client::send_to_all_errored`; the ShiftUp lead's item 49,
+  2026-11-27: "After the token pool's outage … every Claude child's
+  turn ended as `error` with its last working sentence as the error's
+  text. Two things would have helped the lead tell it from an agent's
+  own fault at once: the event saying WHY the turn ended (a provider
+  or account error, with its status), and one command that says
+  'continue' to every child of mine that ended that way"). An `error`
+  event and `status` have `error_kind` (`provider`, `account`,
+  `rate_limit`, `request`, `other`) and `error_status` (a status where
+  the error's words have one: three digits alone, 400 to 599), read
+  from the error's own words. Where an agent says itself that it
+  failed and neither its conversation's file nor the strict reading
+  of its screen has the words, they are the last line among its last
+  sixty that names an API error (it was its screen's last line: the
+  last thing it had been doing). `olo agent send --all-errored TEXT…
+  [--enter]` sends one message to every child of the asking tab that
+  stands at an error, each as `send` would, and says which and how
+  each went (only a message: no `--wait`, `--key`, `--force`). Tried:
+  `a_failed_turn_says_why_and_all_that_failed_are_told_at_once`.
 - *A reading takes up what stood when it began* (`state::takes_up`,
   `Looked::expected`; a code review, 2026-11-27). A reading of a
   screen that sees a turn on takes up what the child had been given

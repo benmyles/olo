@@ -2272,6 +2272,15 @@ impl Service {
                 }
             }
         }
+        // (Why it failed, by its error's own words: `state::error_cause`.
+        // Where it says it failed and nothing has the words, its screen
+        // may: `olo_agent_screen::error_line`.)
+        let error = error.or_else(|| (state == SubagentLiveState::Error).then(|| olo_agent_screen::error_line(&screen)).flatten());
+        if state == SubagentLiveState::Error {
+            let (kind, status) = olo_rex_link::agents::state::error_cause(error.as_deref().or(cls.summary.as_deref()).unwrap_or_default());
+            payload["error_kind"] = json!(kind);
+            payload["error_status"] = json!(status);
+        }
         payload["error"] = json!(error);
         payload["last_output_at"] = json!(looked.last_output_at);
         payload["last_state_change_at"] = json!(looked.last_state_change_at);
@@ -2538,6 +2547,12 @@ impl Service {
             });
             if let Some(m) = &ev.minding {
                 payload["minding"] = m.clone();
+            }
+            // (Why it failed, by its error's own words: `state::error_cause`.)
+            if ev.state == SubagentLiveState::Error {
+                let (kind, status) = olo_rex_link::agents::state::error_cause(ev.error.as_deref().or(ev.summary.as_deref()).unwrap_or_default());
+                payload["error_kind"] = json!(kind);
+                payload["error_status"] = json!(status);
             }
             if gap {
                 payload["gap"] = json!(true);
@@ -2884,7 +2899,7 @@ impl Service {
                                 }
                                 ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
                                 ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
-                                ev.error = error;
+                                ev.error = error.or_else(|| (state == SubagentLiveState::Error).then(|| olo_agent_screen::error_line(&now.screen)).flatten());
                                 ev.tail = tail_of(&now.screen, 10);
                                 return answer(&ev, matched_line, had_gap);
                             }
