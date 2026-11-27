@@ -168,6 +168,7 @@ try:
 
         make_helper("mine-live", {"via": "rex", "rex_id": "sa-mine", "owner_window": "win-lead-a", "root": agents.ROOT, "crate": "apps/rex", "worktree": agents.ROOT})
         make_helper("mine-trimmed", {"via": "rex", "rex_id": "sa-old", "owner_window": "win-lead-a", "root": agents.ROOT, "ended": 1000.0}, target_age=1000.0)
+        make_helper("legacy-no-owner", {"via": "rex", "rex_id": "sa-old-unk", "root": agents.ROOT, "ended": 1000.0}, target_age=1000.0)
         make_helper("other-trimmed", {"via": "rex", "rex_id": "sa-old-b", "owner_window": "win-lead-b", "root": agents.ROOT, "ended": 1000.0}, target_age=1000.0)
         make_helper("foreign-tab", {"via": "rex", "rex_id": "sa-other", "owner_window": "win-lead-b", "root": agents.ROOT, "crate": "apps/rex", "worktree": agents.ROOT}, target_age=1000.0)
         make_helper("foreign-ended", {"via": "rex", "rex_id": "sa-other-done", "owner_window": "win-lead-b", "root": agents.ROOT, "ended": 1000.0})
@@ -194,7 +195,12 @@ try:
         assert agents.is_ours("mine-live") is True
         assert agents.is_ours("mine-trimmed") is False, "trimmed ended helper must require allow_trimmed=True"
         assert agents.is_ours("mine-trimmed", allow_trimmed=True) is True
+        assert agents.is_ours("legacy-no-owner", allow_trimmed=True) is False, "unknown owner_window must fail closed"
         assert agents.is_ours("other-trimmed", allow_trimmed=True) is False, "another lead's trimmed record must fail closed"
+
+        # Tampering helper-writable meta.json cannot redirect child() to another Rex ID:
+        json.dump({"via": "rex", "rex_id": "sa-hijack", "root": agents.ROOT}, open(os.path.join(home, "mine-live", "meta.json"), "w"))
+        assert agents.child("mine-live") == "sa-mine", f"child() must prefer trusted_meta: {agents.child('mine-live')}"
         assert agents.is_ours("foreign-tab") is False
         assert agents.is_ours("foreign-repo") is False
         assert agents.is_ours("legacy-noroot") is False
@@ -300,6 +306,29 @@ try:
         assert len(data.strip()) == 40, data
         expect_exit(lambda: agents.git_bounded(agents.ROOT, ["rev-parse", "HEAD"], 8, timeout_secs=10), "exceeds")
         expect_exit(lambda: agents.git_bounded("/nonexistent-olo-dir", ["status"], 1024, timeout_secs=5), "git status")
+
+        # Exercise >64 KiB stderr without pipe deadlock and deadline expiry using a stub git on PATH:
+        stub_bin = os.path.join(td, "stub-bin")
+        os.makedirs(stub_bin)
+        stub_git = os.path.join(stub_bin, "git")
+        open(stub_git, "w").write(
+            "#!/usr/bin/python3\n"
+            "import sys, time\n"
+            "if 'noisy' in sys.argv:\n"
+            "    sys.stderr.write('E' * (128 * 1024)); sys.stderr.flush()\n"
+            "    sys.stdout.write('ok-after-stderr\\n'); sys.stdout.flush()\n"
+            "elif 'hang' in sys.argv:\n"
+            "    time.sleep(30)\n"
+        )
+        os.chmod(stub_git, 0o755)
+        orig_path = os.environ.get("PATH", "")
+        try:
+            os.environ["PATH"] = f"{stub_bin}:{orig_path}"
+            out_noisy = agents.git_bounded(td, ["noisy"], 1024, timeout_secs=5)
+            assert out_noisy == b"ok-after-stderr\n", out_noisy
+            expect_exit(lambda: agents.git_bounded(td, ["hang"], 1024, timeout_secs=0.4), "hadn't answered")
+        finally:
+            os.environ["PATH"] = orig_path
 finally:
     agents.HOME = orig_home
     agents.REVIEWS = orig_reviews
@@ -325,75 +354,164 @@ assert '"--mode", "default"' not in src, "invalid `--mode default` must not appe
 assert '"--no-auto"' in src.split("def launch_agy_review")[1].split("def launch_minder")[0], "launch_agy_review must pass --no-auto"
 assert '"--no-auto"' in src.split("def launch_minder")[1].split("def launch(")[0], "launch_minder must pass --no-auto"
 
-# 6. Test `tools/dev/agent-board` incremental updates, sanitization, path safety, and width-exact borders:
+# 6. Test `tools/dev/agent-board` containment, incremental updates, progress override, selectors, narrow+CJK rendering, open_pane, and live show() signals:
 with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as td:
+    clean_env = {k: v for k, v in os.environ.items() if k not in ("OLO_SUBAGENT", "OLO_MINDER", "REX_SESSION", "REX_BLOCK")}
+    clean_env["OLO_AGENTS_DIR"] = td
     bp = os.path.join(td, "builder-x", "board.json")
-    expect_exit(lambda: board.safe_path("/tmp/bad-board.json"), "/tmp")
-    expect_exit(lambda: board.safe_path(os.path.join(agents.ROOT, "board.json")), "inside repository")
-    sym_tmp = os.path.join(td, "sym-tmp.json")
-    os.symlink("/tmp/escape-board.json", sym_tmp)
-    expect_exit(lambda: board.safe_path(sym_tmp), "/tmp")
+
+    # Allowlist path safety + subagent confinement:
+    orig_ab_dir = os.environ.get("OLO_AGENTS_DIR")
+    orig_ab_sub = os.environ.get("OLO_SUBAGENT")
+    try:
+        os.environ["OLO_AGENTS_DIR"] = td
+        os.environ.pop("OLO_SUBAGENT", None)
+        expect_exit(lambda: board.safe_path("/tmp/bad-board.json", for_write=True), "/var/tmp")
+        expect_exit(lambda: board.safe_path(os.path.join(agents.ROOT, "board.json"), for_write=True), "/var/tmp")
+        expect_exit(lambda: board.safe_path("/home/someone/.bashrc", for_write=True), "/var/tmp")
+        expect_exit(lambda: board.safe_path(os.path.join(td, ".meta", "builder-x.json"), for_write=True), "protected metadata")
+        sym_tmp = os.path.join(td, "sym-tmp.json")
+        os.symlink("/tmp/escape-board.json", sym_tmp)
+        expect_exit(lambda: board.safe_path(sym_tmp, for_write=True), "symlink")
+
+        # Subagent confined strictly to its own folder:
+        os.environ["OLO_SUBAGENT"] = "builder-x"
+        assert board.safe_path(bp, for_write=True) == bp
+        expect_exit(lambda: board.safe_path(os.path.join(td, "other-builder", "board.json"), for_write=True), "may only write its own board")
+        expect_exit(lambda: board.safe_path(os.path.join(td, ".meta", "builder-x.json"), for_write=True), "protected metadata")
+    finally:
+        if orig_ab_dir is not None:
+            os.environ["OLO_AGENTS_DIR"] = orig_ab_dir
+        else:
+            os.environ.pop("OLO_AGENTS_DIR", None)
+        if orig_ab_sub is not None:
+            os.environ["OLO_SUBAGENT"] = orig_ab_sub
+        else:
+            os.environ.pop("OLO_SUBAGENT", None)
 
     run_init = subprocess.run([
         "/usr/bin/python3", os.path.join(HERE, "agent-board"), "init",
         "--file", bp, "--title", "rexside\x1b[31m-evil", "--role", "Builder", "--crate", "apps/rex",
         "--phase", "Step 5 final pass — long phase label",
-        "--goal", "Harden Rex host screen plumbing.\n\nKeep parity with the stand-in.",
+        "--goal", "Harden Rex host screen plumbing.\n\nKeep parity with the stand-in. 日本語テスト文字列の確認。",
         "--now", "Running full regression suite",
         "--did", "Fixed shutdown wait_true race",
         "--next", "Collect Round 2 agy-review",
         "--todo", "[x] Fix shutdown race",
         "--todo", "[>] Run live FarHost rig",
-        "--todo", "[ ] Collect agy-review",
+        "--todo", "[ ] Test Fedora 44",
+        "--todo", "[x]",  # empty text after prefix must be skipped
         "--note", "204/204 tests passing",
-    ], capture_output=True, text=True, check=True)
-    assert "33%" in run_init.stdout or "45%" in run_init.stdout, run_init.stdout
+    ], capture_output=True, text=True, check=True, env=clean_env)
+    assert "45%" in run_init.stdout, f"expected exact 45% (1 done + 0.35 active of 3): {run_init.stdout}"
 
-    # Incremental update supplying ONLY changed fields preserves goal, title, and earlier did items:
+    # Incremental update preserves goal, title, earlier did; strict numeric index & batch drop work accurately:
     subprocess.run([
         "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
         "--file", bp, "--status", "testing",
         "--check-todo", "FarHost", "--log-checked",
-        "--start-todo", "agy-review",
+        "--add-todo", "Clear agy-review",
+        "--drop-todo", "99",  # out-of-range digit must NOT substring-match "Test Fedora 44"
+        "--drop-todo", "1", "--drop-todo", "3",  # must drop #1 and #3 (NOT #4!)
         "--now", "Waiting on confirming review",
-    ], capture_output=True, text=True, check=True)
+    ], capture_output=True, text=True, check=True, env=clean_env)
     saved = board.load_board(bp)
     assert saved["title"] == "rexside-evil", f"ANSI escape was not stripped: {saved['title']!r}"
     assert "Harden Rex host screen plumbing." in saved["goal"], "incremental update dropped goal"
     assert len(saved["did"]) == 2 and "FarHost" in saved["did"][-1]["text"], saved["did"]
-    assert [t["state"] for t in saved["todos"]] == ["done", "done", "now"], saved["todos"]
+    assert [t["text"] for t in saved["todos"]] == ["Run live FarHost rig", "Clear agy-review"], saved["todos"]
 
-    # Render across narrow, standard, and wide widths and assert every box border fits exact `cols`:
-    for w in (34, 42, 50, 68, 100):
+    # Explicit --progress override must agree between CLI output and rendered bar even when all todos are done:
+    subprocess.run([
+        "/usr/bin/python3", os.path.join(HERE, "agent-board"), "update",
+        "--file", bp, "--check-todo", "Clear agy-review", "--progress", "40",
+    ], capture_output=True, text=True, check=True, env=clean_env)
+    ov = board.load_board(bp)
+    rendered_ov = board.ANSI_RE.sub("", board.render(ov, cols=60))
+    assert " 40%" in rendered_ov and "100%" not in rendered_ov, rendered_ov
+
+    # Corrupt JSON refuses `update` without resetting the file:
+    corrupt_p = os.path.join(td, "builder-x", "corrupt.json")
+    open(corrupt_p, "w").write("{broken json")
+    bad_upd = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--file", corrupt_p, "--phase", "x"], capture_output=True, text=True, env=clean_env)
+    assert bad_upd.returncode != 0 and open(corrupt_p).read() == "{broken json", bad_upd.stderr
+
+    # Render across narrow (24, 30), standard, and wide widths including CJK & short height (30x24):
+    for w in (24, 30, 34, 42, 50, 68, 100):
         out = board.render(saved, cols=w)
-        box_lines = [l for l in out.splitlines() if "╭" in l or "│" in l or "├" in l or "╰" in l]
+        all_lines = out.splitlines()
+        box_lines = [l for l in all_lines if "╭" in l or "│" in l or "├" in l or "╰" in l]
         assert len(box_lines) == 7, (w, len(box_lines))
         for bl in box_lines:
-            assert board.vis_len(bl) == w, f"width mismatch at cols={w}: got {board.vis_len(bl)} for {bl!r}"
+            assert board.vis_len(bl) == w, f"box width mismatch at cols={w}: got {board.vis_len(bl)} for {bl!r}"
+        for line in all_lines:
+            assert board.vis_len(line) <= w, f"line overflow at cols={w}: got {board.vis_len(line)} for {line!r}"
+    short_out = board.render(saved, cols=30, rows=20).splitlines()
+    assert len(short_out) <= 20 and "rexside-evil" in board.ANSI_RE.sub("", short_out[1]), short_out
 
-    # Verify resolve_rex_target discovers session_id + window_id when REX_SESSION is stripped (--desktop none):
-    orig_run = board.subprocess.run
-    orig_sess = os.environ.get("REX_SESSION")
-    orig_blk = os.environ.get("REX_BLOCK")
+    # Stub `rex` verifying open_pane works with REX_BLOCK-only, parses block_ids[0], dedups, and reports saved on split failure:
+    rex_dir = os.path.join(td, "rex-stub")
+    os.makedirs(rex_dir)
+    split_count_f = os.path.join(td, "split_count.txt")
+    stub_rex = os.path.join(rex_dir, "rex")
+    open(stub_rex, "w").write(
+        f"#!/usr/bin/python3\n"
+        f"import json, os, sys\n"
+        f"cf = {split_count_f!r}\n"
+        f"a = sys.argv[1:]\n"
+        f"if a[:2] == ['block', 'inspect']:\n"
+        f"    print(json.dumps({{'session_id': 'session:s1', 'block': {{'block_id': a[2], 'window_id': 'window:w1'}}}}))\n"
+        f"elif a[:2] == ['block', 'list']:\n"
+        f"    n = int(open(cf).read()) if os.path.exists(cf) else 0\n"
+        f"    blocks = [{{'block_id': 'block:standup-1', 'window_id': 'window:w1', 'label': 'Standup', 'placement': 'placed'}}] if n > 0 else []\n"
+        f"    print(json.dumps({{'blocks': blocks}}))\n"
+        f"elif a[:1] == ['split']:\n"
+        f"    if os.environ.get('FAIL_SPLIT') == '1':\n"
+        f"        sys.stderr.write('simulated split failure\\n'); sys.exit(1)\n"
+        f"    n = (int(open(cf).read()) if os.path.exists(cf) else 0) + 1\n"
+        f"    open(cf, 'w').write(str(n))\n"
+        f"    print(json.dumps({{'anchor_id': 'block:sub-1', 'block_ids': ['block:standup-1'], 'split_ids': ['split:1']}}))\n"
+    )
+    os.chmod(stub_rex, 0o755)
+    sub_env = dict(clean_env)
+    sub_env["PATH"] = f"{rex_dir}:{clean_env.get('PATH', '')}"
+    sub_env["REX_BLOCK"] = "block:sub-1"  # REX_SESSION intentionally unset (--desktop none)
+    sub_env["OLO_SUBAGENT"] = "builder-x"
+    op1 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, check=True, env=sub_env)
+    assert "block:standup-1" in op1.stdout, op1.stdout
+    op2 = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "open", "--file", bp], capture_output=True, text=True, check=True, env=sub_env)
+    assert "already open in block:standup-1" in op2.stdout and open(split_count_f).read() == "1", (op2.stdout, open(split_count_f).read())
+
+    # Failing split after update --open preserves update and prints standalone open hint:
+    fail_env = dict(sub_env)
+    fail_env["FAIL_SPLIT"] = "1"
+    bp2 = os.path.join(td, "builder-y", "board.json")
+    fail_env["OLO_SUBAGENT"] = "builder-y"
+    os.remove(split_count_f)
+    fr = subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "init", "--open", "--file", bp2, "--title", "by", "--did", "step-1"], capture_output=True, text=True, env=fail_env)
+    assert fr.returncode != 0 and "already saved" in fr.stderr and "agent-board open" in fr.stderr and os.path.exists(bp2), fr.stderr
+
+    # Live `show()` subprocess: verify inotify redraw, SIGWINCH redraw, and prompt SIGTERM exit (PEP 475 wakeup pipe):
+    import signal as _sig, time as _time
+    show_proc = subprocess.Popen(
+        ["/usr/bin/python3", os.path.join(HERE, "agent-board"), "show", bp],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=clean_env,
+    )
     try:
-        os.environ.pop("REX_SESSION", None)
-        os.environ["REX_BLOCK"] = "block:sub-1"
-        def fake_inspect(cmd, **kw):
-            assert cmd[:4] == ["/usr/bin/rex", "block", "inspect", "block:sub-1"], cmd
-            return subprocess.CompletedProcess(cmd, 0, json.dumps({"session_id": "session:s1", "block": {"block_id": "block:sub-1", "window_id": "window:w1"}}), "")
-        board.subprocess.run = fake_inspect
-        s, b, w = board.resolve_rex_target("/usr/bin/rex")
-        assert (s, b, w) == ("session:s1", "block:sub-1", "window:w1"), (s, b, w)
+        _time.sleep(0.25)
+        show_proc.send_signal(_sig.SIGWINCH)
+        _time.sleep(0.15)
+        subprocess.run(["/usr/bin/python3", os.path.join(HERE, "agent-board"), "update", "--file", bp, "--now", "inotify-live-marker"], capture_output=True, text=True, check=True, env=clean_env)
+        _time.sleep(0.2)
+        show_proc.send_signal(_sig.SIGTERM)
+        out_b, err_b = show_proc.communicate(timeout=3)
+        assert show_proc.returncode == 0, (show_proc.returncode, err_b)
+        assert b"inotify-live-marker" in out_b, "show() missed inotify update"
+        assert out_b.count(b"\x1b[H\x1b[2J\x1b[3J") >= 3, "show() missed SIGWINCH or inotify redraw"
     finally:
-        board.subprocess.run = orig_run
-        if orig_sess is not None:
-            os.environ["REX_SESSION"] = orig_sess
-        else:
-            os.environ.pop("REX_SESSION", None)
-        if orig_blk is not None:
-            os.environ["REX_BLOCK"] = orig_blk
-        else:
-            os.environ.pop("REX_BLOCK", None)
+        if show_proc.poll() is None:
+            show_proc.kill()
+            show_proc.wait()
 
 # 7. Test reliable `agents say` on a Rex sa-* ID (always sends --enter --paste --verify, never --force, retries safe Enter if still typed):
 orig_olo2 = agents.olo

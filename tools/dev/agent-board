@@ -2,10 +2,10 @@
 """Live standup & goal board in a Rex split pane to the right of a subagent.
 
 Opens a right-hand Rex split pane (`rex split --split=right --focus=false`)
-running an inotify-driven renderer (0% CPU at rest, instant redraw on update
-or terminal resize). Agents initialize it once with a plain-English 1-2
-paragraph goal + initial standup/todo list, then call `update` supplying ONLY
-the fields that changed.
+running an inotify + signal-wakeup-pipe renderer (0% CPU at rest, instant
+redraw on update or terminal resize, clean exit on SIGTERM/SIGHUP). Agents
+initialize it once with a plain-English 1-2 paragraph goal + initial standup
+and todo list, then call `update` supplying ONLY the fields that changed.
 
   agent-board init [--open] [--file PATH] --title TITLE --goal TEXT [...]
   agent-board update [--open] [--file PATH] [--status S] [--phase P]
@@ -15,25 +15,27 @@ the fields that changed.
                      [--check-todo MATCH ...] [--block-todo MATCH ...]
                      [--drop-todo MATCH ...] [--set-todos ITEM ...]
                      [--note TEXT | --clear-note]
-  agent-board open [--file PATH] [--ratio 38]
+  agent-board open [--file PATH] [--block BLOCK] [--ratio 38]
   agent-board show PATH
-  agent-board preview [--file PATH] [--width 64]
+  agent-board preview [--file PATH] [--width 64] [--height 0]
   agent-board path
 """
 import argparse
 import contextlib
 import ctypes
+import errno
 import fcntl
 import json
 import os
 import re
+import secrets
 import select
 import shutil
 import signal
+import stat
 import struct
 import subprocess
 import sys
-import textwrap
 import time
 import unicodedata
 
@@ -63,11 +65,23 @@ BG_MAGENTA = "\x1b[45m\x1b[97m"
 BG_RED = "\x1b[41m\x1b[97m"
 BG_CYAN = "\x1b[46m\x1b[30m"
 
-ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
+ANSI_RE = re.compile(r"\x1b(?:\[[0-9:;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
 CTRL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 AGENTS_HOME = os.environ.get("OLO_AGENTS_DIR") or "/var/tmp/olo-agents"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MAX_DID = 6
+MAX_BOARD_BYTES = 512 * 1024
+LOCK_TIMEOUT_SECS = 5.0
+
+IN_CLOSE_WRITE = 0x00000008
+IN_MOVED_FROM = 0x00000040
+IN_MOVED_TO = 0x00000080
+IN_CREATE = 0x00000100
+IN_DELETE = 0x00000200
+IN_DELETE_SELF = 0x00000400
+IN_Q_OVERFLOW = 0x00004000
+IN_IGNORED = 0x00008000
+WATCH_MASK = IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_DELETE_SELF
 
 STATUS_META = {
     "working": ("● WORKING", BG_CYAN, B_CYAN, [
@@ -142,51 +156,93 @@ def pad_vis(s, width):
     return s + (" " * max(0, gap))
 
 
-def default_path():
-    home = os.environ.get("OLO_AGENTS_DIR") or AGENTS_HOME
+def _inside(path, root):
+    rp = os.path.realpath(path)
+    rr = os.path.realpath(root)
+    return rp == rr or rp.startswith(rr + os.sep)
+
+
+def _agents_home():
+    return os.environ.get("OLO_AGENTS_DIR") or AGENTS_HOME
+
+
+def _caller_identity():
     who = os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER")
     if who and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", who):
+        return who
+    return None
+
+
+def default_path():
+    home = _agents_home()
+    who = _caller_identity()
+    if who:
         return os.path.join(home, who, "board.json")
     return os.path.join(home, "board.json")
 
 
-def safe_path(path):
+def safe_path(path, for_write=False):
+    """Allowlist board paths strictly under `/var/tmp` (never `/tmp`, never
+    inside `REPO_ROOT`, never inside `<agents_home>/.meta`). When invoked by
+    a subagent or minder for mutation (`for_write=True`), confine writes
+    strictly inside that agent's own folder under `<agents_home>/<name>`."""
     p = os.path.abspath(path or default_path())
     rp = os.path.realpath(p)
+    if os.path.islink(p):
+        sys.exit(f"agent-board: refusing symlink board path ({p})")
     if os.path.isdir(p) or os.path.isdir(rp):
         sys.exit(f"agent-board: {p} is a directory; pass a file path like /var/tmp/olo-agents/<name>/board.json")
-    for cand in (p, rp):
-        if cand == "/tmp" or cand.startswith("/tmp/"):
-            sys.exit(f"agent-board: {p} resolves to RAM (/tmp); store boards under /var/tmp")
-    real_repo = os.path.realpath(REPO_ROOT)
-    for cand in (p, rp):
-        if cand == real_repo or cand.startswith(real_repo + os.sep):
-            sys.exit(f"agent-board: refusing to write board inside repository ({p}); use /var/tmp/olo-agents/<name>/board.json")
+    var_tmp = os.path.realpath("/var/tmp")
+    if not (rp.startswith(var_tmp + os.sep) and p.startswith("/var/tmp" + os.sep)):
+        sys.exit(f"agent-board: board path must live under /var/tmp (refused {p})")
+    if _inside(rp, REPO_ROOT):
+        sys.exit(f"agent-board: refusing to write board inside repository ({p}); use /var/tmp/olo-agents/<name>/board.json")
+    meta_dir = os.path.join(_agents_home(), ".meta")
+    if _inside(rp, meta_dir):
+        sys.exit(f"agent-board: refusing protected metadata path ({p})")
+    if for_write:
+        who = _caller_identity()
+        if who:
+            own_dir = os.path.realpath(os.path.join(_agents_home(), who))
+            if not (rp == own_dir or rp.startswith(own_dir + os.sep)):
+                sys.exit(f"agent-board: subagent `{who}` may only write its own board under {own_dir} (refused {p})")
     return p
 
 
 @contextlib.contextmanager
-def board_lock(path):
+def board_lock(path, timeout=LOCK_TIMEOUT_SECS):
+    """Acquire an exclusive lock on `<path>.lock` without truncating or
+    following symlinks, bounded by `timeout` seconds."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    lf = open(f"{path}.lock", "w", encoding="utf-8")
+    lock_p = f"{path}.lock"
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW
     try:
-        fcntl.flock(lf, fcntl.LOCK_EX)
+        fd = os.open(lock_p, flags, 0o600)
+    except OSError as e:
+        sys.exit(f"agent-board: cannot open lock {lock_p}: {e}")
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            sys.exit(f"agent-board: lock path {lock_p} is not a regular file")
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    sys.exit(f"agent-board: timed out after {timeout:.0f}s waiting for lock on {path}")
+                time.sleep(0.05)
         yield
     finally:
         with contextlib.suppress(OSError):
-            fcntl.flock(lf, fcntl.LOCK_UN)
-        lf.close()
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        with contextlib.suppress(OSError):
+            os.close(fd)
 
 
-def load_board(path):
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except (OSError, ValueError):
-        pass
-    who = os.environ.get("OLO_SUBAGENT") or os.environ.get("OLO_MINDER") or "agent"
+def default_board_data():
+    who = _caller_identity() or "agent"
     return {
         "title": who,
         "role": "Minder" if os.environ.get("OLO_MINDER") else "Builder",
@@ -205,31 +261,161 @@ def load_board(path):
     }
 
 
+def normalize_board(raw):
+    """Coerce a parsed board dict into safe renderer/updater types so
+    malformed external edits never crash `update` or kill `show()`."""
+    base = default_board_data()
+    if not isinstance(raw, dict):
+        return base
+    for k in ("title", "role", "crate", "status", "phase", "goal", "now", "note", "updated_at"):
+        v = raw.get(k)
+        if v is not None:
+            base[k] = clean_text(v, keep_newlines=(k in ("goal", "now", "note")))
+    if base["status"].lower() not in STATUS_META:
+        base["status"] = "working"
+    else:
+        base["status"] = base["status"].lower()
+    prog = raw.get("progress")
+    if isinstance(prog, bool):
+        base["progress"] = None
+    elif isinstance(prog, (int, float)):
+        base["progress"] = max(0, min(100, int(prog)))
+    else:
+        base["progress"] = None
+    upd = raw.get("updates")
+    base["updates"] = int(upd) if isinstance(upd, int) and not isinstance(upd, bool) and upd >= 0 else 0
+
+    did_raw = raw.get("did")
+    if isinstance(did_raw, list):
+        did_out = []
+        for entry in did_raw[-MAX_DID:]:
+            if isinstance(entry, dict):
+                txt = clean_text(entry.get("text") or "").strip()
+                ts = clean_text(entry.get("at") or "").strip()
+                if txt:
+                    did_out.append({"at": ts, "text": txt})
+            elif entry is not None:
+                txt = clean_text(entry).strip()
+                if txt:
+                    did_out.append({"at": "", "text": txt})
+        base["did"] = did_out
+
+    nxt_raw = raw.get("next")
+    if isinstance(nxt_raw, list):
+        base["next"] = [clean_text(x).strip() for x in nxt_raw if x is not None and clean_text(x).strip()]
+
+    todos_raw = raw.get("todos")
+    if isinstance(todos_raw, list):
+        todos_out = []
+        for t in todos_raw:
+            if isinstance(t, dict):
+                st = str(t.get("state") or "todo").lower()
+                if st not in ("todo", "now", "done", "blocked"):
+                    st = "todo"
+                txt = clean_text(t.get("text") or "").strip()
+                if txt:
+                    todos_out.append({"state": st, "text": txt})
+            elif isinstance(t, str):
+                parsed = parse_todo_str(t)
+                if parsed is not None:
+                    todos_out.append(parsed)
+        base["todos"] = todos_out
+    return base
+
+
+def read_regular_json(path, max_bytes=MAX_BOARD_BYTES):
+    """Read and parse a regular, non-symlink JSON file with O_NONBLOCK so a
+    FIFO or oversized file can never hang or exhaust memory. Returns
+    `(exists, obj, err_str)`."""
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except FileNotFoundError:
+        return False, None, None
+    except OSError as e:
+        return True, None, str(e)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            return True, None, f"{path} is not a regular file"
+        chunks, total = [], 0
+        while True:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                return True, None, f"{path} exceeds {max_bytes} byte board limit"
+            chunks.append(chunk)
+    except OSError as e:
+        return True, None, str(e)
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+    try:
+        obj = json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        return True, None, f"invalid JSON in {path}: {e}"
+    if not isinstance(obj, dict):
+        return True, None, f"{path} does not contain a JSON object"
+    return True, obj, None
+
+
+def load_board(path, strict=False):
+    exists, obj, err = read_regular_json(path)
+    if not exists:
+        return default_board_data()
+    if err is not None:
+        if strict:
+            sys.exit(f"agent-board: refusing to overwrite corrupt/unreadable board ({err}); fix or re-run `init`")
+        fallback = default_board_data()
+        fallback["status"] = "blocked"
+        fallback["now"] = f"Board unreadable: {err}"
+        return fallback
+    return normalize_board(obj)
+
+
 def save_json_atomic(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = f"{path}.tmp.{os.getpid()}"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
-        f.flush()
-    os.replace(tmp, path)
+    if os.path.islink(path):
+        sys.exit(f"agent-board: refusing to replace symlink ({path})")
+    payload = (json.dumps(data, indent=2) + "\n").encode("utf-8")
+    if len(payload) > MAX_BOARD_BYTES:
+        sys.exit(f"agent-board: serialized board exceeds {MAX_BOARD_BYTES} byte limit")
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+    tmp = f"{path}.tmp.{os.getpid()}.{secrets.token_hex(4)}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def parse_todo_str(raw):
     s = clean_text(raw).strip()
     for prefix, st in (("[x]", "done"), ("[X]", "done"), ("[>]", "now"), ("[!]", "blocked"), ("[ ]", "todo")):
         if s.startswith(prefix):
-            return {"state": st, "text": s[3:].strip()}
-    return {"state": "todo", "text": s}
+            text = s[3:].strip()
+            return {"state": st, "text": text} if text else None
+    return {"state": "todo", "text": s} if s else None
 
 
 def match_todo(todos, needle):
-    """Match a todo by 1-based index or case-insensitive substring."""
-    if needle.isdigit():
-        idx = int(needle) - 1
-        if 0 <= idx < len(todos):
-            return idx
-    low = needle.lower()
+    """Match a todo by strict 1-based ASCII integer index or case-insensitive
+    substring. Out-of-range numeric indices never fall through to substring."""
+    q = clean_text(needle).strip()
+    if not q:
+        return None
+    if q.isascii() and q.isdigit():
+        idx = int(q) - 1
+        return idx if 0 <= idx < len(todos) else None
+    low = q.lower()
     for i, t in enumerate(todos):
         if low == t["text"].lower():
             return i
@@ -245,7 +431,7 @@ def compute_progress(data):
     active = sum(1 for t in todos if t.get("state") == "now")
     total = len(todos)
     explicit = data.get("progress")
-    if explicit is not None:
+    if explicit is not None and not isinstance(explicit, bool):
         pct = max(0, min(100, int(explicit)))
     elif total > 0:
         pct = int(round((done + 0.35 * active) * 100.0 / total))
@@ -260,28 +446,26 @@ def compute_progress(data):
     return pct, done, active, total
 
 
-def progress_bar(pct, done, active, total, max_width):
-    """Render a 2-tone progress bar guaranteed to fit within `max_width` cells."""
-    if total > 0 and done == total:
-        pct = 100
+def progress_bar(pct, done, active, total, max_width, explicit=False):
+    """Render a 2-tone progress bar guaranteed to fit within `max_width` cells.
+    Respects explicit `--progress` overrides consistently with `pct`."""
     long_cnt = f" ({done}/{total} todos)" if total > 0 else ""
     short_cnt = f" ({done}/{total})" if total > 0 else ""
     pct_plain = f" {pct:3d}%"
-    # Choose long count label if at least 10 cells remain for the bar, else short.
     if max_width - (2 + len(pct_plain) + len(long_cnt)) >= 10:
         cnt_plain = long_cnt
     elif max_width - (2 + len(pct_plain) + len(short_cnt)) >= 6:
         cnt_plain = short_cnt
     else:
         cnt_plain = ""
-    bar_w = max(4, min(36, max_width - 2 - len(pct_plain) - len(cnt_plain)))
+    bar_w = max(2, min(36, max_width - 2 - len(pct_plain) - len(cnt_plain)))
     filled = int(round(bar_w * pct / 100.0))
-    if total > 0:
-        done_cells = min(bar_w, int(round(bar_w * done / total)))
-        act_cells = min(bar_w - done_cells, max(1 if active and done_cells < bar_w else 0, filled - done_cells))
-    else:
+    if explicit or total == 0:
         done_cells = filled
         act_cells = 0
+    else:
+        done_cells = min(bar_w, int(round(bar_w * done / total)))
+        act_cells = min(bar_w - done_cells, max(1 if active and done_cells < bar_w else 0, filled - done_cells))
     rem_cells = max(0, bar_w - done_cells - act_cells)
     done_str = f"{B_GREEN}{'█' * done_cells}{RESET}" if done_cells else ""
     act_str = f"{B_YELLOW}{'▓' * act_cells}{RESET}" if act_cells else ""
@@ -291,8 +475,49 @@ def progress_bar(pct, done, active, total, max_width):
     return f"{DIM}▐{RESET}{done_str}{act_str}{rem_str}{DIM}▌{RESET} {BOLD}{pct_col}{pct:3d}%{RESET}{cnt_str}"
 
 
+def _wrap_para_cells(para, max_cols):
+    """Cell-width-aware word wrapper so wide CJK/emoji text never exceeds `max_cols`."""
+    max_cols = max(8, max_cols)
+    words = para.split()
+    if not words:
+        return []
+    out, cur, cur_w = [], [], 0
+
+    def flush():
+        nonlocal cur, cur_w
+        if cur:
+            out.append(" ".join(cur))
+            cur, cur_w = [], 0
+
+    for word in words:
+        ww = vis_len(word)
+        if ww <= max_cols:
+            if not cur:
+                cur, cur_w = [word], ww
+            elif cur_w + 1 + ww <= max_cols:
+                cur.append(word)
+                cur_w += 1 + ww
+            else:
+                flush()
+                cur, cur_w = [word], ww
+        else:
+            flush()
+            piece, pw = [], 0
+            for ch in word:
+                cw = char_width(ch)
+                if pw + cw > max_cols and piece:
+                    out.append("".join(piece))
+                    piece, pw = [], 0
+                piece.append(ch)
+                pw += cw
+            if piece:
+                cur, cur_w = ["".join(piece)], pw
+    flush()
+    return out
+
+
 def wrap_lines(text, width):
-    width = max(16, width)
+    width = max(8, width)
     out = []
     for para in clean_text(text, keep_newlines=True).splitlines():
         p = para.strip()
@@ -300,32 +525,32 @@ def wrap_lines(text, width):
             if out and out[-1] != "":
                 out.append("")
             continue
-        out.extend(textwrap.wrap(p, width=width, break_long_words=True, break_on_hyphens=True))
+        out.extend(_wrap_para_cells(p, width))
     return out
 
 
 def section_header(icon, title, color, total_w):
-    max_title = max(4, total_w - 6)
+    max_title = max(2, total_w - 6)
     shown = truncate_plain(title, max_title)
     label = f" {icon} {shown} "
-    dash_n = max(1, total_w - vis_len(label) - 1)
+    dash_n = max(0, total_w - vis_len(label) - 1)
     return f"{color}{BOLD}─{label}{RESET}{DIM}{'─' * dash_n}{RESET}"
 
 
-def render(data, cols=68):
-    cols = max(34, min(140, cols))
+def render(data, cols=68, rows=None):
+    data = normalize_board(data)
+    cols = max(18, min(140, int(cols)))
     inner = cols - 2
-    status = str(data.get("status") or "working").lower()
-    if status not in STATUS_META:
-        status = "working"
+    status = data["status"]
     badge_txt, badge_bg, accent, art = STATUS_META[status]
 
-    title = clean_text(data.get("title") or "Subagent").strip()
-    role = clean_text(data.get("role") or "").strip()
-    crate = clean_text(data.get("crate") or "").strip()
-    phase = clean_text(data.get("phase") or "").strip()
-    updated = clean_text(data.get("updated_at") or "").strip()
-    updates = int(data.get("updates") or 0)
+    title = data["title"] or "Subagent"
+    role = data["role"]
+    crate = data["crate"]
+    phase = data["phase"]
+    updated = data["updated_at"]
+    updates = data["updates"]
+    explicit_prog = data["progress"] is not None
     pct, done, active, total = compute_progress(data)
 
     lines = []
@@ -362,12 +587,12 @@ def render(data, cols=68):
         lines.append(f"{accent}│{RESET}{content}{accent}│{RESET}")
 
     lines.append(f"{accent}├{'─' * inner}┤{RESET}")
-    bar = progress_bar(pct, done, active, total, inner - 2)
+    bar = progress_bar(pct, done, active, total, inner - 2, explicit=explicit_prog)
     lines.append(f"{accent}│{RESET} {pad_vis(bar, inner - 2)} {accent}│{RESET}")
     lines.append(f"{accent}╰{'─' * inner}╯{RESET}")
 
     # Goal section (1-2 easy-to-understand paragraphs)
-    goal = clean_text(data.get("goal") or "", keep_newlines=True).strip()
+    goal = data["goal"].strip()
     lines.append("")
     lines.append(section_header("◎", "GOAL", B_CYAN, cols))
     if goal:
@@ -377,11 +602,11 @@ def render(data, cols=68):
             else:
                 lines.append(f" {CYAN}┃{RESET} {gl}")
     else:
-        lines.append(f" {DIM}┃ (goal not set yet){RESET}")
+        lines.append(f" {DIM}┃ {truncate_plain('(goal not set yet)', cols - 4)}{RESET}")
 
     # Standup: Doing Now
-    now = clean_text(data.get("now") or "", keep_newlines=True).strip()
-    note = clean_text(data.get("note") or "", keep_newlines=True).strip()
+    now = data["now"].strip()
+    note = data["note"].strip()
     lines.append("")
     lines.append(section_header("▸", "DOING NOW", B_YELLOW, cols))
     if now:
@@ -389,28 +614,20 @@ def render(data, cols=68):
             lead = f"{B_YELLOW}▸{RESET}" if idx == 0 else " "
             lines.append(f" {YELLOW}┃{RESET} {lead} {BOLD}{B_WHITE}{nl}{RESET}")
     else:
-        lines.append(f" {DIM}┃ (waiting for next step){RESET}")
+        lines.append(f" {DIM}┃ {truncate_plain('(waiting for next step)', cols - 4)}{RESET}")
     if note:
         for nl in wrap_lines(note, cols - 6):
             lines.append(f" {MAGENTA}┃{RESET} {B_MAGENTA}★ {nl}{RESET}")
 
     # Standup: Recently Did
-    did = list(data.get("did") or [])
+    did_rows = [(e.get("at", ""), e.get("text", "")) for e in data["did"][-MAX_DID:] if e.get("text")]
     lines.append("")
     lines.append(section_header("✓", "RECENTLY DID", B_GREEN, cols))
-    did_rows = []
-    for entry in did[-MAX_DID:]:
-        if isinstance(entry, dict):
-            txt = clean_text(entry.get("text") or "").strip()
-            ts = clean_text(entry.get("at") or "").strip()
-        else:
-            txt, ts = clean_text(entry).strip(), ""
-        if txt:
-            did_rows.append((ts, txt))
     if did_rows:
         for ts, txt in did_rows:
-            tag = f"{DIM}[{ts}]{RESET} " if ts else ""
-            indent = len(ts) + 3 if ts else 0
+            use_ts = bool(ts) and cols >= 28
+            tag = f"{DIM}[{ts}]{RESET} " if use_ts else ""
+            indent = len(ts) + 3 if use_ts else 0
             wlines = wrap_lines(txt, cols - 3 - indent)
             for i, wl in enumerate(wlines):
                 if i == 0:
@@ -418,29 +635,29 @@ def render(data, cols=68):
                 else:
                     lines.append(f"   {' ' * indent}{wl}")
     else:
-        lines.append(f" {DIM}· just getting started{RESET}")
+        lines.append(f" {DIM}· {truncate_plain('just getting started', cols - 3)}{RESET}")
 
     # Standup: Up Next
-    nxt = [clean_text(x).strip() for x in (data.get("next") or []) if clean_text(x).strip()]
+    nxt = data["next"]
     lines.append("")
     lines.append(section_header("→", "UP NEXT", B_BLUE, cols))
     if nxt:
         for item in nxt[:5]:
-            for i, wl in enumerate(wrap_lines(item, cols - 4)):
+            for i, wl in enumerate(wrap_lines(item, cols - 3)):
                 lead = f"{B_BLUE}→{RESET}" if i == 0 else " "
                 lines.append(f" {lead} {wl}")
     else:
-        lines.append(f" {DIM}· wrap up and report{RESET}")
+        lines.append(f" {DIM}· {truncate_plain('wrap up and report', cols - 3)}{RESET}")
 
     # Todo Checklist
-    todos = list(data.get("todos") or [])
+    todos = data["todos"]
     lines.append("")
     todo_hdr = f"TODO ({done}/{total})" if total else "TODO"
     lines.append(section_header("☑", todo_hdr, B_MAGENTA, cols))
     if todos:
         for idx, t in enumerate(todos, 1):
-            st = t.get("state") or "todo"
-            txt = clean_text(t.get("text") or "").strip()
+            st = t["state"]
+            txt = t["text"]
             if st == "done":
                 mark, style = f"{B_GREEN}✓{RESET}", DIM
             elif st == "now":
@@ -456,39 +673,70 @@ def render(data, cols=68):
                 else:
                     lines.append(f"       {style}{wl}{RESET}")
     else:
-        lines.append(f" {DIM}· no checklist items yet{RESET}")
+        lines.append(f" {DIM}· {truncate_plain('no checklist items yet', cols - 3)}{RESET}")
 
     # Footer
-    lines.append("")
     foot_l = f"Updated {updated or 'now'}" + (f" · #{updates}" if updates else "")
     foot_r = "live · inotify"
-    lines.append(f"{DIM}{'─' * cols}{RESET}")
     if len(foot_l) + 1 + len(foot_r) <= cols:
         gap = cols - len(foot_l) - len(foot_r)
-        lines.append(f"{DIM}{foot_l}{' ' * gap}{foot_r}{RESET}")
+        foot_line = f"{DIM}{foot_l}{' ' * gap}{foot_r}{RESET}"
     else:
-        lines.append(f"{DIM}{truncate_plain(foot_l, cols)}{RESET}")
+        foot_line = f"{DIM}{truncate_plain(foot_l, cols)}{RESET}"
+    footer = [f"{DIM}{'─' * cols}{RESET}", foot_line]
+
+    if rows is not None and rows >= 10 and len(lines) + 1 + len(footer) > rows:
+        # Keep the header box, Goal, and Doing Now pinned at the top of short panes.
+        body_keep = max(7, rows - len(footer) - 1)
+        hidden = len(lines) - body_keep
+        lines = lines[:body_keep]
+        lines.append(f"{DIM}{truncate_plain(f'… +{hidden} more lines (enlarge pane to see all)', cols)}{RESET}")
+        lines.extend(footer)
+        return "\n".join(lines)
+    lines.append("")
+    lines.extend(footer)
     return "\n".join(lines) + "\n"
 
 
 def draw_screen(path):
-    cols = shutil.get_terminal_size((68, 36)).columns
-    data = load_board(path)
+    sz = shutil.get_terminal_size((68, 36))
+    try:
+        data = load_board(path, strict=False)
+        out = render(data, cols=sz.columns, rows=sz.lines)
+    except Exception as e:
+        out = f"{B_RED}agent-board render error: {clean_text(e)}{RESET}\n"
     sys.stdout.write("\x1b[H\x1b[2J\x1b[3J")
-    sys.stdout.write(render(data, cols=cols))
+    sys.stdout.write(out)
     sys.stdout.flush()
 
 
+def _init_inotify():
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.inotify_init1.argtypes = [ctypes.c_int]
+    libc.inotify_init1.restype = ctypes.c_int
+    libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+    libc.inotify_add_watch.restype = ctypes.c_int
+    return libc
+
+
 def show(path):
-    path = safe_path(path)
+    path = safe_path(path, for_write=False)
     folder, name = os.path.split(path)
     os.makedirs(folder, exist_ok=True)
-    libc = ctypes.CDLL(None, use_errno=True)
-    fd = libc.inotify_init1(0)
-    if fd < 0 or libc.inotify_add_watch(fd, folder.encode(), 0x008 | 0x080 | 0x100) < 0:
-        if fd >= 0:
-            os.close(fd)
-        sys.exit(f"agent-board: can't watch {folder}")
+    libc = _init_inotify()
+    fd = libc.inotify_init1(0x80000 | 0x800)  # IN_CLOEXEC | IN_NONBLOCK
+    if fd < 0:
+        sys.exit(f"agent-board: inotify_init1 failed: errno {ctypes.get_errno()}")
+    wd = libc.inotify_add_watch(fd, folder.encode(), WATCH_MASK)
+    if wd < 0:
+        os.close(fd)
+        sys.exit(f"agent-board: can't watch {folder}: errno {ctypes.get_errno()}")
+
+    wake_r, wake_w = os.pipe()
+    os.set_blocking(wake_r, False)
+    os.set_blocking(wake_w, False)
+    prev_wake = signal.set_wakeup_fd(wake_w, warn_on_full_buffer=False)
+
     resized = [False]
     stopping = [False]
 
@@ -506,37 +754,60 @@ def show(path):
         draw_screen(path)
         while not stopping[0]:
             try:
-                rlist, _, _ = select.select([fd], [], [])
+                rlist, _, _ = select.select([fd, wake_r], [], [])
             except InterruptedError:
-                if stopping[0]:
-                    break
-                if resized[0]:
-                    resized[0] = False
-                    draw_screen(path)
                 continue
+            if wake_r in rlist:
+                with contextlib.suppress(BlockingIOError, OSError):
+                    while os.read(wake_r, 256):
+                        pass
             if stopping[0]:
                 break
+            redraw = False
             if resized[0]:
                 resized[0] = False
-                draw_screen(path)
+                redraw = True
             if fd in rlist:
-                buf = os.read(fd, 4096)
-                if not buf:
-                    break
-                i, changed = 0, False
+                try:
+                    buf = os.read(fd, 8192)
+                except BlockingIOError:
+                    buf = b""
+                i = 0
+                rewatch = False
                 while i + 16 <= len(buf):
-                    _, _, _, length = struct.unpack_from("iIII", buf, i)
-                    changed |= buf[i + 16:i + 16 + length].rstrip(b"\0").decode(errors="replace") == name
+                    _wd, mask, _cookie, length = struct.unpack_from("iIII", buf, i)
+                    ev_name = buf[i + 16:i + 16 + length].rstrip(b"\0").decode(errors="replace")
                     i += 16 + length
-                if changed:
-                    draw_screen(path)
+                    if mask & IN_Q_OVERFLOW:
+                        redraw = True
+                    if mask & (IN_IGNORED | IN_DELETE_SELF):
+                        rewatch = True
+                        redraw = True
+                    elif ev_name == name:
+                        redraw = True
+                if rewatch:
+                    if os.path.isdir(folder):
+                        new_wd = libc.inotify_add_watch(fd, folder.encode(), WATCH_MASK)
+                        if new_wd < 0:
+                            break
+                    else:
+                        break
+            if redraw:
+                draw_screen(path)
     except (KeyboardInterrupt, BrokenPipeError):
         pass
     finally:
+        with contextlib.suppress(OSError, ValueError):
+            signal.set_wakeup_fd(prev_wake)
+        with contextlib.suppress(OSError):
+            os.close(wake_r)
+        with contextlib.suppress(OSError):
+            os.close(wake_w)
         with contextlib.suppress(OSError):
             sys.stdout.write("\x1b[?25h")
             sys.stdout.flush()
-        os.close(fd)
+        with contextlib.suppress(OSError):
+            os.close(fd)
 
 
 def board_meta_path(path):
@@ -570,37 +841,53 @@ def resolve_rex_target(rex_bin, explicit_block=None):
 
 
 def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None):
-    """Return the live `block_id` of an already-placed Standup pane in this
-    tab (by saved `pane_id` or by `window_id` + `label == "Standup"`)."""
+    """Query Rex for a live placed Standup pane. Returns `(ok, block_id_or_none)`
+    so a transient Rex query error (`ok=False`) never triggers a duplicate split."""
     try:
         chk = subprocess.run(
-            [rex_bin, "block", "list", "-s", session, "--json"],
+            [rex_bin, "block", "list", "-s", session, "--short=false", "--json"],
             capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
-        return None
+        return False, None
     if chk.returncode != 0:
-        return None
+        return False, None
     try:
         said = json.loads(chk.stdout)
     except ValueError:
-        return None
+        return False, None
     blocks = said.get("blocks") if isinstance(said, dict) else (said if isinstance(said, list) else [])
     for b in blocks:
         if not isinstance(b, dict) or b.get("placement") != "placed":
             continue
         bid = b.get("block_id")
         if pane_id and bid == pane_id:
-            return bid
+            return True, bid
     if window_id:
         for b in blocks:
             if isinstance(b, dict) and b.get("placement") == "placed" and b.get("window_id") == window_id and b.get("label") == "Standup":
-                return b.get("block_id")
-    return None
+                return True, b.get("block_id")
+    return True, None
 
 
-def open_pane(path, ratio=38, explicit_block=None):
-    path = safe_path(path)
+def extract_split_block_id(stdout):
+    """Parse the newly created pane ID from `rex split --json` (`.block_ids[0]`,
+    with legacy fallbacks)."""
+    try:
+        said = json.loads(stdout)
+    except ValueError:
+        return stdout.strip()
+    if isinstance(said, dict):
+        bids = said.get("block_ids")
+        if isinstance(bids, list) and bids and isinstance(bids[0], str) and bids[0]:
+            return bids[0]
+        blk = said.get("block") if isinstance(said.get("block"), dict) else {}
+        return str(said.get("block_id") or said.get("id") or blk.get("block_id") or blk.get("id") or "")
+    return ""
+
+
+def open_pane(path, ratio=38, explicit_block=None, after_save=False):
+    path = safe_path(path, for_write=True)
     ratio = max(20, min(65, int(ratio)))
     rex_bin = shutil.which("rex") or "/usr/bin/rex"
     session, block, window_id = resolve_rex_target(rex_bin, explicit_block=explicit_block)
@@ -609,20 +896,23 @@ def open_pane(path, ratio=38, explicit_block=None):
         return
     meta_p = board_meta_path(path)
     with board_lock(path):
-        try:
-            with open(meta_p, encoding="utf-8") as f:
-                bm = json.load(f)
-        except (OSError, ValueError):
+        exists, bm, _err = read_regular_json(meta_p, max_bytes=65536)
+        if not exists or not isinstance(bm, dict):
             bm = {}
         saved_pane = bm.get("pane_block") if (bm.get("anchor_block") == block and bm.get("path") == path) else None
-        existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id)
+        ok_list, existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id)
+        if not ok_list and saved_pane:
+            print(f"agent-board: could not verify existing pane {saved_pane} (Rex busy); skipping duplicate split ({path})")
+            return
         if existing:
-            with contextlib.suppress(OSError):
+            try:
                 save_json_atomic(meta_p, {"anchor_block": block, "pane_block": existing, "session": session, "window_id": window_id, "path": path})
+            except OSError as e:
+                print(f"agent-board: warning: could not update {meta_p}: {e}", file=sys.stderr)
             print(f"agent-board: already open in {existing} ({path})")
             return
         if not os.path.exists(path):
-            save_json_atomic(path, load_board(path))
+            save_json_atomic(path, default_board_data())
         me = os.path.abspath(__file__)
         try:
             ran = subprocess.run(
@@ -635,21 +925,19 @@ def open_pane(path, ratio=38, explicit_block=None):
                 capture_output=True, text=True, timeout=30,
             )
         except (OSError, subprocess.SubprocessError) as e:
-            sys.exit(f"agent-board: rex split failed: {e}")
+            hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
+            sys.exit(f"agent-board: rex split failed: {e}{hint}")
         if ran.returncode:
-            sys.exit(f"agent-board: rex split failed: {(ran.stderr or ran.stdout).strip()}")
-        pane_id = ""
-        try:
-            said = json.loads(ran.stdout)
-            if isinstance(said, dict):
-                blk = said.get("block") if isinstance(said.get("block"), dict) else {}
-                pane_id = said.get("block_id") or said.get("id") or blk.get("block_id") or blk.get("id") or ""
-        except ValueError:
-            pane_id = ran.stdout.strip()
+            hint = f" (board update was already saved; retry with `tools/dev/agent-board open --file {path}`)" if after_save else ""
+            sys.exit(f"agent-board: rex split failed: {(ran.stderr or ran.stdout).strip()}{hint}")
+        pane_id = extract_split_block_id(ran.stdout)
         if not pane_id and window_id:
-            pane_id = find_existing_standup_pane(rex_bin, session, window_id=window_id) or ""
-        with contextlib.suppress(OSError):
+            _ok, found = find_existing_standup_pane(rex_bin, session, window_id=window_id)
+            pane_id = found or ""
+        try:
             save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "window_id": window_id, "path": path})
+        except OSError as e:
+            print(f"agent-board: warning: could not save {meta_p}: {e}", file=sys.stderr)
     print(f"agent-board: opened right split pane {pane_id or '(ok)'} watching {path}")
 
 
@@ -684,22 +972,13 @@ def add_common_flags(p):
 def apply_updates(data, args, is_init=False):
     now_hm = time.strftime("%H:%M", time.gmtime())
     if is_init:
-        data = {
-            "title": data.get("title", "Agent"),
-            "role": data.get("role", "Builder"),
-            "crate": "",
-            "status": "working",
-            "phase": "",
-            "progress": None,
-            "goal": "",
-            "did": [],
-            "now": "",
-            "next": [],
-            "todos": [],
-            "note": "",
-            "updated_at": "",
-            "updates": 0,
-        }
+        base = default_board_data()
+        base["title"] = data.get("title") or base["title"]
+        base["role"] = data.get("role") or base["role"]
+        data = base
+    else:
+        data = normalize_board(data)
+
     for k in ("title", "role", "crate", "status", "phase", "goal", "now"):
         v = getattr(args, k)
         if v is not None:
@@ -716,7 +995,7 @@ def apply_updates(data, args, is_init=False):
     for item in args.did:
         t = clean_text(item).strip()
         if t:
-            data.setdefault("did", []).append({"at": now_hm, "text": t})
+            data["did"].append({"at": now_hm, "text": t})
             data["did"] = data["did"][-MAX_DID:]
 
     if args.next is not None:
@@ -724,14 +1003,15 @@ def apply_updates(data, args, is_init=False):
     for item in args.add_next:
         t = clean_text(item).strip()
         if t:
-            data.setdefault("next", []).append(t)
+            data["next"].append(t)
 
-    todos = list(data.get("todos") or [])
+    todos = list(data["todos"])
     if args.set_todos is not None:
-        todos = [parse_todo_str(x) for x in args.set_todos if clean_text(x).strip()]
+        todos = [p for x in args.set_todos if (p := parse_todo_str(x)) is not None]
     for item in args.add_todo:
-        if clean_text(item).strip():
-            todos.append(parse_todo_str(item))
+        p = parse_todo_str(item)
+        if p is not None:
+            todos.append(p)
     for needle in args.start_todo:
         idx = match_todo(todos, needle)
         if idx is not None:
@@ -741,15 +1021,16 @@ def apply_updates(data, args, is_init=False):
         if idx is not None:
             todos[idx]["state"] = "done"
             if args.log_checked:
-                data.setdefault("did", []).append({"at": now_hm, "text": todos[idx]["text"]})
+                data["did"].append({"at": now_hm, "text": todos[idx]["text"]})
                 data["did"] = data["did"][-MAX_DID:]
     for needle in args.block_todo:
         idx = match_todo(todos, needle)
         if idx is not None:
             todos[idx]["state"] = "blocked"
-    for needle in args.drop_todo:
-        idx = match_todo(todos, needle)
-        if idx is not None:
+    if args.drop_todo:
+        # Resolve all drop selectors against the pre-drop snapshot, then delete descending.
+        drop_idxs = {idx for needle in args.drop_todo if (idx := match_todo(todos, needle)) is not None}
+        for idx in sorted(drop_idxs, reverse=True):
             todos.pop(idx)
     data["todos"] = todos
 
@@ -779,6 +1060,7 @@ def main():
     p_prev = sub.add_parser("preview", help="Render board once to stdout")
     p_prev.add_argument("--file", default=None)
     p_prev.add_argument("--width", type=int, default=68)
+    p_prev.add_argument("--height", type=int, default=0, help="Optional max terminal rows (0 = unconstrained)")
 
     sub.add_parser("path", help="Print default board path for this agent")
 
@@ -787,21 +1069,24 @@ def main():
         parser.print_help()
         return
     if args.cmd == "path":
-        print(safe_path(None))
+        print(safe_path(None, for_write=False))
     elif args.cmd == "show":
         show(args.path)
     elif args.cmd == "open":
         open_pane(args.file, ratio=args.ratio, explicit_block=args.block)
     elif args.cmd == "preview":
-        p = safe_path(args.file)
-        sys.stdout.write(render(load_board(p), cols=args.width))
+        p = safe_path(args.file, for_write=False)
+        rows = args.height if args.height and args.height > 0 else None
+        sys.stdout.write(render(load_board(p, strict=False), cols=args.width, rows=rows))
     elif args.cmd in ("init", "update"):
-        p = safe_path(args.file)
+        is_init = args.cmd == "init"
+        p = safe_path(args.file, for_write=True)
         with board_lock(p):
-            data = apply_updates(load_board(p), args, is_init=(args.cmd == "init"))
+            existing = default_board_data() if is_init else load_board(p, strict=True)
+            data = apply_updates(existing, args, is_init=is_init)
             save_json_atomic(p, data)
         if args.open:
-            open_pane(p, ratio=args.ratio, explicit_block=args.block)
+            open_pane(p, ratio=args.ratio, explicit_block=args.block, after_save=True)
         pct, done, _act, total = compute_progress(data)
         print(f"agent-board: updated {p} ({data['status']}, {pct}%, {done}/{total} todos)")
 

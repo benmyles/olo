@@ -348,7 +348,7 @@ def is_ours(name, allow_trimmed=False):
         if not (allow_trimmed and m.get("ended")):
             return False
         owner_win = m.get("owner_window")
-        return owner_win is None or owner_win in owned_wins
+        return bool(owner_win) and owner_win in owned_wins
     return True
 
 
@@ -406,14 +406,20 @@ def rex_here():
 
 
 def via(name):
-    """How it was started: "rex" (a child tab) or "tmux"."""
-    return (meta(name) or {}).get("via", "tmux")
+    """How it was started: "rex" (a child tab) or "tmux". Prefers parent-owned
+    trusted metadata when present."""
+    tm = trusted_meta(name)
+    m = tm if tm is not None else (meta(name) or {})
+    return m.get("via", "tmux")
 
 
 def child(name):
     """What `olo agent` knows it by: its id (a name is another's too,
-    once this one has ended and one like it is started)."""
-    return (meta(name) or {}).get("rex_id") or name
+    once this one has ended and one like it is started). Prefers parent-owned
+    trusted metadata so helper-writable meta.json cannot redirect status/stop."""
+    tm = trusted_meta(name)
+    m = tm if tm is not None else (meta(name) or {})
+    return m.get("rex_id") or name
 
 
 def press(name, key):
@@ -1115,10 +1121,12 @@ def session(name, cwd, env, program, native=None, subagent=True):
     env = list(env)
     if not any(e.startswith("PATH=") for e in env):
         env.append(f"PATH={clean_path()}")
-    if not subagent:
-        for k in ("OLO_AGENTS_DIR", "OLO_REVIEWS_DIR"):
-            if os.environ.get(k) and not any(e.startswith(f"{k}=") for e in env):
-                env.append(f"{k}={os.environ[k]}")
+    # Forward custom OLO_AGENTS_DIR to every board-owning child (and
+    # OLO_REVIEWS_DIR to minders) so isolated trials never touch live state.
+    forward_keys = ("OLO_AGENTS_DIR",) if subagent else ("OLO_AGENTS_DIR", "OLO_REVIEWS_DIR")
+    for k in forward_keys:
+        if os.environ.get(k) and not any(e.startswith(f"{k}=") for e in env):
+            env.append(f"{k}={os.environ[k]}")
     if native and rex_here():
         info = subtree_ids(refresh=True)
         if info is None:
@@ -1623,44 +1631,47 @@ def _already_collected_review(name):
 def collect_one(name, print_out=False, written_override=None, out_override=None, locked=False, force_ready=False):
     """Publish a finished look/review's result to its `kept` path and stop it.
     Reads trusted paths/role from parent-owned `HOME/.meta/{name}.json`
-    outside the helper's writable scratch folder and serializes under
-    `agents_lock()` + per-review lock."""
+    outside the helper's writable scratch folder. Always acquires any
+    per-review lock BEFORE `agents_lock()` (matching `review()`) to eliminate
+    lock-order deadlocks."""
     refuse_nested()
     lock_f = None
-    with agents_lock():
-        tm = trusted_meta(name)
-        m = tm if tm is not None else meta(name)
-        if not m:
-            already = _already_collected_review(name)
-            if already:
-                if print_out:
-                    print(open(already).read().rstrip())
-                else:
-                    print(f"agents: {name} already collected -> {already}")
-                return
-            sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
-        if not is_ours(name):
-            sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
-        if m.get("kind") not in ("review", "look") and not (m.get("review_of") or m.get("pictures")):
-            sys.exit(f"agents: {name} is not a look or review helper")
-        d = folder(name)
-        written = written_override or m.get("done")
-        out = out_override or m.get("kept")
-        if not (written and out):
-            sys.exit(f"agents: {name} has no recorded result paths")
-        if not _inside(written, d) or _inside(out, ROOT) or not out.endswith(".md"):
-            sys.exit(f"agents: refusing untrusted result path for {name} ({written} -> {out})")
-        is_review = m.get("kind") == "review" or bool(m.get("review_of"))
-        if is_review:
-            expected_dir = os.path.join(REVIEWS, name)
-            expected_file = "astra-review.md" if name.startswith("astra-") else "agy-review.md"
-            if os.path.realpath(out) != os.path.realpath(os.path.join(expected_dir, expected_file)):
-                sys.exit(f"agents: refusing review destination outside {expected_dir}/{expected_file}: {out}")
-        try:
-            if is_review and not locked:
-                os.makedirs(REVIEWS, mode=0o700, exist_ok=True)
-                lock_f = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
-                fcntl.flock(lock_f, fcntl.LOCK_EX)
+    try:
+        # Acquire per-review lock BEFORE agents_lock() so collect_one() and
+        # review() share one global lock ordering.
+        if not locked and name.startswith(("astra-", "agyrev-")):
+            os.makedirs(REVIEWS, mode=0o700, exist_ok=True)
+            lock_f = open(os.path.join(REVIEWS, f".{name}.lock"), "w")
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+        with agents_lock():
+            tm = trusted_meta(name)
+            m = tm if tm is not None else meta(name)
+            if not m:
+                already = _already_collected_review(name)
+                if already:
+                    if print_out:
+                        print(open(already).read().rstrip())
+                    else:
+                        print(f"agents: {name} already collected -> {already}")
+                    return
+                sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
+            if not is_ours(name):
+                sys.exit(f"agents: {name} does not belong to this tab/checkout: nothing collected")
+            if m.get("kind") not in ("review", "look") and not (m.get("review_of") or m.get("pictures")):
+                sys.exit(f"agents: {name} is not a look or review helper")
+            d = folder(name)
+            written = written_override or m.get("done")
+            out = out_override or m.get("kept")
+            if not (written and out):
+                sys.exit(f"agents: {name} has no recorded result paths")
+            if not _inside(written, d) or _inside(out, ROOT) or not out.endswith(".md"):
+                sys.exit(f"agents: refusing untrusted result path for {name} ({written} -> {out})")
+            is_review = m.get("kind") == "review" or bool(m.get("review_of"))
+            if is_review:
+                expected_dir = os.path.join(REVIEWS, name)
+                expected_file = "astra-review.md" if name.startswith("astra-") else "agy-review.md"
+                if os.path.realpath(out) != os.path.realpath(os.path.join(expected_dir, expected_file)):
+                    sys.exit(f"agents: refusing review destination outside {expected_dir}/{expected_file}: {out}")
             if not whole(written):
                 if whole(out):
                     if print_out:
@@ -1693,11 +1704,11 @@ def collect_one(name, print_out=False, written_override=None, out_override=None,
                 print(f"agents: collected {name} -> {out}")
             shutil.rmtree(d, ignore_errors=True)
             delete_trusted_meta(name)
-        finally:
-            if lock_f is not None:
-                with contextlib.suppress(OSError):
-                    fcntl.flock(lock_f, fcntl.LOCK_UN)
-                lock_f.close()
+    finally:
+        if lock_f is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(lock_f, fcntl.LOCK_UN)
+            lock_f.close()
 
 
 def git_bounded(tree, args, budget, ok=(0,), timeout_secs=120):
@@ -2585,10 +2596,18 @@ def end(name, sessions=True):
     except (OSError, subprocess.SubprocessError):
         pass
     m = meta(name)
+    now_ts = time.time()
     if m and ended:
         m["seen_state"] = "exited"
-        m["ended"] = time.time()
+        m["ended"] = now_ts
         save_meta(name, m)
+    tm = trusted_meta(name)
+    if tm is not None and ended:
+        tm["seen_state"] = "exited"
+        tm["ended"] = now_ts
+        if m and m.get("cli_session"):
+            tm["cli_session"] = m["cli_session"]
+        save_trusted_meta(name, tm)
     return ended
 
 def stop(name):
