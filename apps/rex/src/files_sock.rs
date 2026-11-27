@@ -331,7 +331,13 @@ async fn handle_client(stream: UnixStream, state: Arc<Mutex<HubState>>) {
                 Ok(host) => match ensure_helper(&state, &host).await {
                     Ok(()) => {
                         let flag = if unique { " --unique" } else { "" };
-                        let cmd = format!("{} fs write {}{flag}", helper_file(crate::link::ID), shell_word(&path));
+                        // (How long the file is, said to the helper, which
+                        // puts it in its place only where that much came: a
+                        // save cut short on its way, its time run out or the
+                        // link lost, ended the helper's input all the same,
+                        // and what had come took the file's place. A code
+                        // review, 2026-11-27. The helper is this build's own.)
+                        let cmd = format!("{} fs write {}{flag} --len {}", helper_file(crate::link::ID), shell_word(&path), bytes.len());
                         match host.pool.put(&host.target, host.askpass.clone(), &cmd, &bytes).await {
                             Ok(ran) => match parse_helper_json(&ran.output, &host.label) {
                                 Ok(mut v) => {

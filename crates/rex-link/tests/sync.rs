@@ -328,3 +328,38 @@ fn fs_subcommands_round_trip() {
 
     fs::remove_dir_all(dir).unwrap();
 }
+
+/// A save that is cut short on its way (its time run out, the link
+/// lost) ends the helper's input like a whole one: with the file's
+/// length said (`--len`, as Rex says it) what came is not put in the
+/// file's place, and the helper says so. (Without it the host's file
+/// became the part that had come. A code review, 2026-11-27.)
+#[test]
+fn a_file_cut_short_on_its_way_is_not_put_in_place() {
+    use std::io::Write;
+    let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-link-cut-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("notes.txt");
+    std::fs::write(&file, "the whole of it").unwrap();
+    let write = |came: &[u8], len: &str| {
+        let mut helper = Command::new(env!("CARGO_BIN_EXE_olo-rex-link"))
+            .args(["fs", "write", file.to_str().unwrap(), "--len", len])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        helper.stdin.take().unwrap().write_all(came).unwrap();
+        let out = helper.wait_with_output().unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr))
+    };
+    let (code, said) = write(b"the wh", "15");
+    assert!(code != Some(0) && said.contains("6 of 15 bytes came"), "{code:?} {said}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "the whole of it");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "a part was left beside it");
+    let (code, said) = write(b"another whole 1", "15");
+    assert_eq!(code, Some(0), "{said}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "another whole 1");
+    std::fs::remove_dir_all(dir).unwrap();
+}

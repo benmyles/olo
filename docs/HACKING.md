@@ -22029,6 +22029,13 @@ deferred so the Tracker can update the window back):
     backed by `olo-rex-link fs` (`list`, `stat`, `mkdir`, `rename`, `copy`,
     `remove`, `read`, `write` + `statvfs` free space) and `olo-rex-sync`
     streaming transfers (`upload`, `download` with live progress & Stop).
+    **A file is put in its place only where all of it came**: Rex says
+    how long it is (`fs write PATH --len N`) and the helper, which
+    writes beside the file and renames, removes the part and leaves the
+    file there as it was where fewer bytes or more arrived (its input
+    ends just the same when a save is cut short on its way, its time
+    run out or the link lost: the part took the file's place. A code
+    review, 2026-11-27).
     Tracker's `apps/tracker/src/rex.rs` talks to that socket on worker
     threads (never blocking the UI, with `OLO_TRACKER_DEMO_REX=1` fixtures
     for headless visual QA). Rex's own `PathBrowser` and `Go to Folder…`

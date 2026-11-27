@@ -30,7 +30,7 @@ usage: olo-rex-link fs list PATH [--hidden]
        olo-rex-link fs copy FROM TO
        olo-rex-link fs remove PATH
        olo-rex-link fs read PATH [--max N]
-       olo-rex-link fs write PATH";
+       olo-rex-link fs write PATH [--unique] [--len N]";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FsEntry {
@@ -154,7 +154,14 @@ fn copy_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn write_atomic(dst: &Path, mut input: impl Read) -> io::Result<u64> {
+/// Writes `input` beside `dst` and puts it in its place when it is all
+/// there. `whole`: how long the file is, where its sender said (`--len`):
+/// fewer bytes or more than that and nothing is put in place, the file
+/// there left as it was. (The input's end alone doesn't say the file is
+/// whole: a save cut short on its way, its time run out or the link
+/// lost, ends the input too, and what had come took the file's place.
+/// A code review, 2026-11-27.)
+fn write_atomic(dst: &Path, mut input: impl Read, whole: Option<u64>) -> io::Result<u64> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
@@ -166,6 +173,9 @@ fn write_atomic(dst: &Path, mut input: impl Read) -> io::Result<u64> {
         let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
         let n = io::copy(&mut input, &mut f)?;
         drop(f);
+        if let Some(whole) = whole.filter(|whole| *whole != n) {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, format!("{n} of {whole} bytes came: nothing was written")));
+        }
         if let Some(mode) = existing_mode {
             let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(mode));
         }
@@ -349,15 +359,21 @@ pub fn run(args: Vec<String>) -> ! {
         "write" => {
             let Some(raw) = it.next() else { fail_json(2, "write requires PATH") };
             let mut make_unique = false;
-            for a in it {
+            let mut whole = None;
+            let mut it = it;
+            while let Some(a) = it.next() {
                 match a.as_str() {
                     "--unique" => make_unique = true,
+                    "--len" => match it.next().and_then(|n| n.parse::<u64>().ok()) {
+                        Some(n) => whole = Some(n),
+                        None => fail_json(2, "--len requires a number of bytes"),
+                    },
                     other => fail_json(2, format!("unknown option {other}")),
                 }
             }
             let base = resolve_path(&raw);
             let target = if make_unique { unique_path(&base) } else { base };
-            match write_atomic(&target, io::stdin().lock()) {
+            match write_atomic(&target, io::stdin().lock(), whole) {
                 Ok(bytes) => print_json(serde_json::json!({ "ok": true, "path": target.to_string_lossy(), "bytes": bytes })),
                 Err(e) => fail_json(1, e),
             }
@@ -380,9 +396,21 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
 
         let f = dir.join("hello.txt");
-        let n = write_atomic(&f, &b"world"[..]).unwrap();
+        let n = write_atomic(&f, &b"world"[..], None).unwrap();
         assert_eq!(n, 5);
         assert_eq!(fs::read(&f).unwrap(), b"world");
+        // (A file that didn't all come, or more than was said, is not
+        // put in its place: the one there stays, and nothing is left
+        // beside it.)
+        for (came, said) in [(&b"wor"[..], 5), (&b"worlds"[..], 5), (&b""[..], 5)] {
+            let cut = write_atomic(&f, came, Some(said)).unwrap_err();
+            assert_eq!(cut.kind(), io::ErrorKind::UnexpectedEof, "{cut}");
+            assert_eq!(fs::read(&f).unwrap(), b"world");
+            assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "a part was left behind");
+        }
+        assert_eq!(write_atomic(&f, &b"there"[..], Some(5)).unwrap(), 5);
+        assert_eq!(fs::read(&f).unwrap(), b"there");
+        assert_eq!(write_atomic(&f, &b"world"[..], Some(5)).unwrap(), 5);
 
         let copy_dst = unique_path(&f);
         assert_eq!(copy_dst.file_name().unwrap(), "hello 2.txt");
