@@ -416,6 +416,17 @@ are universal and non-negotiable:
        review of screenshots.
     Changes with no visual design work use only the `agy` (`xhigh`) and
     `codex` (`xhigh`) reviewers.
+- **Reliably sending & submitting messages to subagents.**
+  (Ben, 2026-11-27: bare `olo agent send ID "TEXT"` without `--enter`
+  only fills the agent's prompt box and leaves it unsubmitted!) ALWAYS
+  send steering/follow-up messages with `tools/dev/agents say NAME|ID
+  "TEXT"` (or `tools/dev/agents minder say "TEXT"`), which passes
+  `--enter --paste --verify --text` and verifies that the input field
+  actually cleared (retrying a safe non-`--force` Enter once if needed
+  and failing loudly if text stays stuck). If calling `olo agent send`
+  directly, ALWAYS pass `--enter --paste --verify` (and single-quote
+  text containing backticks so the shell never expands them), never bare
+  `olo agent send ID "TEXT"`.
 - **Every helper on an interactive screen of its own, never silent.**
   Every minder, builder, investigator, and reviewer runs interactively
   in its own Rex child tab (`olo agent`, or tmux only where there is no

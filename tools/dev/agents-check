@@ -371,4 +371,76 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-board-check-") as t
         for bl in box_lines:
             assert board.vis_len(bl) == w, f"width mismatch at cols={w}: got {board.vis_len(bl)} for {bl!r}"
 
-print(f"ok: field reader ({len(CASES)} screens), policy, Default mode, clean PATH, multi-lead isolation, trusted_meta, fail-closed ownership, collisions, collect_one, git_bounded, and agent-board")
+    # Verify resolve_rex_target discovers session_id + window_id when REX_SESSION is stripped (--desktop none):
+    orig_run = board.subprocess.run
+    orig_sess = os.environ.get("REX_SESSION")
+    orig_blk = os.environ.get("REX_BLOCK")
+    try:
+        os.environ.pop("REX_SESSION", None)
+        os.environ["REX_BLOCK"] = "block:sub-1"
+        def fake_inspect(cmd, **kw):
+            assert cmd[:4] == ["/usr/bin/rex", "block", "inspect", "block:sub-1"], cmd
+            return subprocess.CompletedProcess(cmd, 0, json.dumps({"session_id": "session:s1", "block": {"block_id": "block:sub-1", "window_id": "window:w1"}}), "")
+        board.subprocess.run = fake_inspect
+        s, b, w = board.resolve_rex_target("/usr/bin/rex")
+        assert (s, b, w) == ("session:s1", "block:sub-1", "window:w1"), (s, b, w)
+    finally:
+        board.subprocess.run = orig_run
+        if orig_sess is not None:
+            os.environ["REX_SESSION"] = orig_sess
+        else:
+            os.environ.pop("REX_SESSION", None)
+        if orig_blk is not None:
+            os.environ["REX_BLOCK"] = orig_blk
+        else:
+            os.environ.pop("REX_BLOCK", None)
+
+# 7. Test reliable `agents say` on a Rex sa-* ID (always sends --enter --paste --verify, never --force, retries safe Enter if still typed):
+orig_olo2 = agents.olo
+orig_rex2 = list(agents._REX)
+orig_sub2 = agents._SUBTREE_IDS[0]
+orig_home2 = agents.HOME
+orig_env_sub2 = os.environ.get("OLO_SUBAGENT")
+try:
+    os.environ.pop("OLO_SUBAGENT", None)
+    with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-say-check-") as td:
+        agents.HOME = td
+        agents._REX[:] = [True]
+        calls = []
+        reads = [
+            f"{R}\n> Please fix the bug right now\n{R}\n  ● [21:26:40] bash verify.sh running\n{R}\n",
+            f"{R}\n>\n{R}\n  ● [21:26:40] bash verify.sh running\n{R}\n",
+            f"{R}\n>\n{R}\n",
+        ]
+        read_idx = [0]
+        def fake_olo(*a, **kw):
+            calls.append(a)
+            if a[0] == "list":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({
+                    "parent_certain": True, "parent_window_id": "win-lead",
+                    "subagents": [{"id": "sa-abc123", "parent_window_id": "win-lead", "window_id": "win-child", "state": "done"}],
+                }), "")
+            if a[0] == "status":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({"state": "done", "tail": []}), "")
+            if a[0] == "read":
+                out = reads[min(read_idx[0], len(reads) - 1)]
+                read_idx[0] += 1
+                return subprocess.CompletedProcess(list(a), 0, out, "")
+            if a[0] == "send":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({"ok": True, "delivered": True}), "")
+            return subprocess.CompletedProcess(list(a), 0, "", "")
+        agents.olo = fake_olo
+        agents._SUBTREE_IDS[0] = None
+        agents.say("sa-abc123", "Please fix the bug right now")
+        send_calls = [c for c in calls if c[0] == "send"]
+        assert send_calls and "--enter" in send_calls[0] and "--paste" in send_calls[0] and "--verify" in send_calls[0], send_calls
+        assert all("--force" not in c for c in send_calls), f"say must never pass --force: {send_calls}"
+finally:
+    agents.olo = orig_olo2
+    agents._REX[:] = orig_rex2
+    agents._SUBTREE_IDS[0] = orig_sub2
+    agents.HOME = orig_home2
+    if orig_env_sub2 is not None:
+        os.environ["OLO_SUBAGENT"] = orig_env_sub2
+
+print(f"ok: field reader ({len(CASES)} screens), policy, Default mode, clean PATH, multi-lead isolation, trusted_meta, fail-closed ownership, collisions, collect_one, git_bounded, agent-board, and verified say()")

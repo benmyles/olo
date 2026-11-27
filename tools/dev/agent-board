@@ -543,32 +543,70 @@ def board_meta_path(path):
     return f"{path}.meta.json"
 
 
-def pane_is_placed(rex_bin, session, pane_id):
+def resolve_rex_target(rex_bin, explicit_block=None):
+    """Return `(session, block, window_id)` for a Rex pane. Inside
+    `--desktop none` subagents, `REX_SESSION` is stripped while `REX_BLOCK`
+    remains set — discover `session_id` and `window_id` directly from
+    `rex block inspect <block> --json`."""
+    block = explicit_block or os.environ.get("REX_BLOCK")
+    if not block:
+        return None, None, None
+    session = os.environ.get("REX_SESSION") if not explicit_block else None
+    window_id = None
+    try:
+        cmd = [rex_bin, "block", "inspect", block, "--json"]
+        if session:
+            cmd[3:3] = ["-s", session]
+        ins = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if ins.returncode == 0:
+            said = json.loads(ins.stdout)
+            if isinstance(said, dict):
+                blk = said.get("block") if isinstance(said.get("block"), dict) else {}
+                session = session or said.get("session_id") or blk.get("session_id")
+                window_id = blk.get("window_id") or said.get("window_id")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return session, block, window_id
+
+
+def find_existing_standup_pane(rex_bin, session, pane_id=None, window_id=None):
+    """Return the live `block_id` of an already-placed Standup pane in this
+    tab (by saved `pane_id` or by `window_id` + `label == "Standup"`)."""
     try:
         chk = subprocess.run(
             [rex_bin, "block", "list", "-s", session, "--json"],
             capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
-        return False
+        return None
     if chk.returncode != 0:
-        return False
+        return None
     try:
         said = json.loads(chk.stdout)
     except ValueError:
-        return False
+        return None
     blocks = said.get("blocks") if isinstance(said, dict) else (said if isinstance(said, list) else [])
-    return any(isinstance(b, dict) and b.get("block_id") == pane_id and b.get("placement") == "placed" for b in blocks)
+    for b in blocks:
+        if not isinstance(b, dict) or b.get("placement") != "placed":
+            continue
+        bid = b.get("block_id")
+        if pane_id and bid == pane_id:
+            return bid
+    if window_id:
+        for b in blocks:
+            if isinstance(b, dict) and b.get("placement") == "placed" and b.get("window_id") == window_id and b.get("label") == "Standup":
+                return b.get("block_id")
+    return None
 
 
-def open_pane(path, ratio=38):
+def open_pane(path, ratio=38, explicit_block=None):
     path = safe_path(path)
     ratio = max(20, min(65, int(ratio)))
-    session, block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
+    rex_bin = shutil.which("rex") or "/usr/bin/rex"
+    session, block, window_id = resolve_rex_target(rex_bin, explicit_block=explicit_block)
     if not (session and block):
         print(f"agent-board: not in a Rex pane; board saved at {path}")
         return
-    rex_bin = shutil.which("rex") or "/usr/bin/rex"
     meta_p = board_meta_path(path)
     with board_lock(path):
         try:
@@ -576,10 +614,13 @@ def open_pane(path, ratio=38):
                 bm = json.load(f)
         except (OSError, ValueError):
             bm = {}
-        if bm.get("anchor_block") == block and bm.get("path") == path and bm.get("pane_block"):
-            if pane_is_placed(rex_bin, session, bm["pane_block"]):
-                print(f"agent-board: already open in {bm['pane_block']} ({path})")
-                return
+        saved_pane = bm.get("pane_block") if (bm.get("anchor_block") == block and bm.get("path") == path) else None
+        existing = find_existing_standup_pane(rex_bin, session, pane_id=saved_pane, window_id=window_id)
+        if existing:
+            with contextlib.suppress(OSError):
+                save_json_atomic(meta_p, {"anchor_block": block, "pane_block": existing, "session": session, "window_id": window_id, "path": path})
+            print(f"agent-board: already open in {existing} ({path})")
+            return
         if not os.path.exists(path):
             save_json_atomic(path, load_board(path))
         me = os.path.abspath(__file__)
@@ -600,17 +641,22 @@ def open_pane(path, ratio=38):
         pane_id = ""
         try:
             said = json.loads(ran.stdout)
-            pane_id = said.get("block_id") or said.get("id") or (said.get("block") or {}).get("block_id") or (said.get("block") or {}).get("id") or ""
+            if isinstance(said, dict):
+                blk = said.get("block") if isinstance(said.get("block"), dict) else {}
+                pane_id = said.get("block_id") or said.get("id") or blk.get("block_id") or blk.get("id") or ""
         except ValueError:
             pane_id = ran.stdout.strip()
+        if not pane_id and window_id:
+            pane_id = find_existing_standup_pane(rex_bin, session, window_id=window_id) or ""
         with contextlib.suppress(OSError):
-            save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "path": path})
+            save_json_atomic(meta_p, {"anchor_block": block, "pane_block": pane_id, "session": session, "window_id": window_id, "path": path})
     print(f"agent-board: opened right split pane {pane_id or '(ok)'} watching {path}")
 
 
 def add_common_flags(p):
     p.add_argument("--file", dest="file", default=None, help="Path to board.json (defaults to /var/tmp/olo-agents/$OLO_SUBAGENT/board.json)")
     p.add_argument("--open", action="store_true", help="Open the right-hand Rex split pane if not already open")
+    p.add_argument("--block", default=None, help="Explicit Rex block ID to split beside (defaults to $REX_BLOCK)")
     p.add_argument("--ratio", type=int, default=38, help="Split pane width percentage (20..65, default 38)")
     p.add_argument("--title", default=None)
     p.add_argument("--role", default=None)
@@ -724,6 +770,7 @@ def main():
 
     p_open = sub.add_parser("open", help="Open right-hand Rex split pane for board")
     p_open.add_argument("--file", default=None)
+    p_open.add_argument("--block", default=None)
     p_open.add_argument("--ratio", type=int, default=38)
 
     p_show = sub.add_parser("show", help="Live inotify renderer (run inside split pane)")
@@ -744,7 +791,7 @@ def main():
     elif args.cmd == "show":
         show(args.path)
     elif args.cmd == "open":
-        open_pane(args.file, ratio=args.ratio)
+        open_pane(args.file, ratio=args.ratio, explicit_block=args.block)
     elif args.cmd == "preview":
         p = safe_path(args.file)
         sys.stdout.write(render(load_board(p), cols=args.width))
@@ -754,7 +801,7 @@ def main():
             data = apply_updates(load_board(p), args, is_init=(args.cmd == "init"))
             save_json_atomic(p, data)
         if args.open:
-            open_pane(p, ratio=args.ratio)
+            open_pane(p, ratio=args.ratio, explicit_block=args.block)
         pct, done, _act, total = compute_progress(data)
         print(f"agent-board: updated {p} ({data['status']}, {pct}%, {done}/{total} todos)")
 

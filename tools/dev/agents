@@ -2252,11 +2252,85 @@ def field(name):
     return field_of(screen(name))
 
 
+def _resolve_say_target(name):
+    """Resolve `name` to `(via_kind, target_id, helper_name_or_none)`.
+    Accepts either a registered helper name under HOME or a direct Rex
+    subagent ID (`sa-...`) belonging to this tab's subtree."""
+    if os.path.exists(os.path.join(folder(name), "meta.json")) or trusted_meta(name) is not None:
+        require_ours(name)
+        return via(name), child(name), name
+    if rex_here() and re.fullmatch(r"sa-[a-z0-9]+", name or ""):
+        info = subtree_ids(refresh=True)
+        if info is not None and name in info[0]:
+            return "rex", name, None
+    sys.exit(f"agents: `{name}` does not belong to this tab/checkout: nothing done")
+
+
+def _rex_state_and_screen(target_id):
+    r = olo("status", target_id, "--json", timeout=40)
+    if r.returncode != 0:
+        return "unknown", ""
+    try:
+        said = json.loads(r.stdout)
+    except ValueError:
+        return "unknown", ""
+    st = said.get("state") or "unknown"
+    raw = olo("read", target_id, "--lines", "45", timeout=40)
+    return st, (raw.stdout if raw.returncode == 0 else "\n".join(said.get("tail") or []))
+
+
 def say(name, text, now=False):
-    """A message to it. While it works, its program queues the message
-    for the end of the step it is on; `now` has it delivered at once
-    (agy: alt+m), which is what stops a long think."""
+    """Reliably send and submit a message to a helper (by name or owned Rex
+    `sa-*` ID). For Rex tabs, ALWAYS passes `--enter --paste --verify` (bare
+    `olo agent send` without `--enter` only types into the prompt box without
+    submitting!) and verifies the prompt box actually cleared, retrying a
+    safe non-`--force` Enter once if the words still sit in the field."""
     refuse_nested()
+    kind, target_id, helper_name = _resolve_say_target(name)
+    if kind == "rex":
+        st, _ = _rex_state_and_screen(target_id)
+        if st in ("exited", "gone"):
+            sys.exit(f"agents: {name} isn't running")
+        if st in ("waiting_approval", "waiting_question"):
+            sys.exit(f"agents: {name} is asking you something ({st}): answer that first (`olo agent approve` or `agents approve`)")
+        if helper_name:
+            m = meta(helper_name)
+            if m is not None:
+                m["said_at"] = time.time()
+                save_meta(helper_name, m)
+        r = olo("send", target_id, "--enter", "--paste", "--verify", "--json", "--text", text, check=True)
+        words = " ".join(text.split())[:24]
+
+        def cleared(within):
+            until = time.time() + within
+            while time.time() < until:
+                cur_st, scr = _rex_state_and_screen(target_id)
+                if cur_st in ("waiting_approval", "waiting_question", "exited"):
+                    return True
+                held = field_of(scr)
+                if not held or (words and words not in " ".join(held.split())):
+                    return True
+                time.sleep(0.5)
+            return False
+
+        if not cleared(5):
+            # Retry Enter safely WITHOUT `--force` so an approval box that
+            # appeared in the meantime is never accidentally confirmed.
+            cur_st, _ = _rex_state_and_screen(target_id)
+            if cur_st not in ("waiting_approval", "waiting_question"):
+                olo("send", target_id, "--key", "Enter")
+            if not cleared(5):
+                sys.exit(f"agents: sent to {name}, but its input field still holds the draft: check `olo agent status {target_id}`")
+        _, scr_after = _rex_state_and_screen(target_id)
+        queued = "to send immediately" in "\n".join(scr_after.splitlines()[-12:]) or "Press up to edit queued messages" in "\n".join(scr_after.splitlines()[-6:])
+        if queued and now:
+            olo("send", target_id, "--key", "Alt+m")
+            time.sleep(1.0)
+        if helper_name:
+            seen(helper_name)
+        print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until current step ends (`agents say {name} --now …` delivers at once)"))
+        return
+
     st = state(name)
     if st in ("gone", "exited"):
         sys.exit(f"agents: {name} isn't running")
@@ -2273,11 +2347,6 @@ def say(name, text, now=False):
     # then Enter by itself, a moment later.)
     paste(name, text)
     time.sleep(0.5 + len(text) / 1500)
-    # (Enter once, and its field waited for: pressed again only where the
-    # field is seen to hold these very words still, and then once. It was
-    # pressed up to four times, a second and a half apart, for as long as
-    # anything at all stood where the field was looked for: on a busy
-    # computer the later ones went into whatever the program showed next.)
     words = " ".join(text.split())[:24]
 
     def sent(within):
@@ -2812,10 +2881,8 @@ def main():
     elif cmd == "log" and rest:
         log(rest[0])
     elif cmd == "say" and len(rest) >= 3 and rest[1] == "--now":
-        require_ours(rest[0])
         say(rest[0], " ".join(rest[2:]), now=True)
     elif cmd == "say" and len(rest) >= 2:
-        require_ours(rest[0])
         say(rest[0], " ".join(rest[1:]))
     elif cmd == "approve" and rest:
         require_ours(rest[0])

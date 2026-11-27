@@ -4529,3 +4529,19 @@ turns that the minder's own watch has not stalled or dropped. In
 git show/log` rather than `git -C {tree}` so `agy-review` hits `READING
 + GIT` (`cd` + `git show`/`git log`) without hitting repeated approval
 prompts while staying sandboxed to its scratch cwd.
+
+**Sending submitted messages to `olo agent` subagents & opening right-pane standup boards**
+(2026-11-27):
+- Bare `olo agent send <ID> "TEXT"` **does not press Enter** (`spec.rs`
+  defaults `add_enter = false`): it only fills the prompt box and leaves
+  the message unsubmitted while still printing `delivered=true`. Always
+  use `tools/dev/agents say <NAME|ID> "TEXT"` (which passes `--enter
+  --paste --verify --text` and verifies the prompt box actually cleared,
+  retrying one safe non-`--force` Enter if needed) or pass `--enter
+  --paste --verify` explicitly when calling `olo agent send`.
+- Subagents started with default `--desktop none` have `REX_SESSION`
+  stripped from their environment while `REX_BLOCK` stays set. Tools
+  that split or inspect the subagent's own Rex pane (such as
+  `tools/dev/agent-board`) discover `session_id` and `window_id` from
+  `rex block inspect "$REX_BLOCK" --json` rather than requiring
+  `REX_SESSION`.

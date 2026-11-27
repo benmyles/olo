@@ -372,7 +372,9 @@ model or reasoning effort is used.
   time passed. The child is left as it is. `--json` gives one object
   (`ok`, `ended_as`, `last_message`, `answers`, `cursor`, `delivered`).
 - **Send input reliably** (text, file paste, control chars, special keys, delivery verification):
+  **IMPORTANT: `--enter` is REQUIRED to submit a message.** Calling `olo agent send <ID|NAME> "text"` *without* `--enter` only types/pastes the text into the prompt box and leaves it sitting unsubmitted. Always include `--enter` (and `--paste --verify` for multi-line messages) when sending a prompt or steering message:
   `olo agent send <ID|NAME> "Please check tests/api.rs next" --enter --json`
+  `olo agent send <ID|NAME> --enter --paste --verify --text "Multi-line instructions..." --json`
   `olo agent send <ID|NAME> --file /var/tmp/prompt.md --enter --json`
   `olo agent send <ID|NAME> --ctrl c` (or `--ctrl d`, `--key Escape`, `--key Tab`, `--key Up`, `--key Down`, `--paste`)
   `--key` takes any key with any modifier a terminal can send, joined by `+` or `-`: `--key Alt+m` (what tmux sends for `M-m`), `--key Ctrl+Shift+Up`, `--key Alt+Enter`, `--key Shift+Tab`, `--key F5`, `--key C-M-c`; several `--key`s go one after another.

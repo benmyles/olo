@@ -41,6 +41,12 @@ Lead (autonomous coordinator)
 - **Minder:** keeps an active watch (`olo agent watch --all --since CURSOR --on question,approval,escalation,idle,done,error,exit --timeout 90 --json`) on all subagents nested under it at all times.
 - Never run children (or a minder) without an active watch, and never double-watch the same child.
 
+## Reliably Sending & Submitting Messages (CRITICAL)
+
+- **NEVER run bare `olo agent send <ID> "TEXT"` without `--enter`!** Without `--enter`, `olo agent send` ONLY types/pastes text into the agent's prompt box and leaves it sitting unsubmitted (even though it prints `delivered=true`).
+- **Prefer `tools/dev/agents say <NAME|ID> "TEXT"`** (or `tools/dev/agents minder say "TEXT"`). It accepts either a helper name or an owned `sa-*` Rex ID, ALWAYS sends `--enter --paste --verify --text`, and verifies that the prompt box actually cleared — safely retrying a single non-`--force` Enter if needed and failing loudly if the draft remains stuck.
+- When calling `olo agent send` directly, **ALWAYS pass `--enter --paste --verify` (and `--json`)** and use single quotes (or `--file`) whenever the text contains backticks so the shell never expands them. After sending a long multi-line message to an already-working `agy` tab, spot-check `olo agent status <ID>` if unsure and press `olo agent send <ID> --key Enter` (only when no approval/question dialog is active) if the draft is still sitting in `>`.
+
 ## Commands (`tools/dev/agents`)
 
 ```sh
