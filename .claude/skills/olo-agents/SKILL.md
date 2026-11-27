@@ -69,52 +69,52 @@ the same `tools/dev/agents`, and everything under "Running them" below
 
 ## The minder
 
-Start a minder with the helpers, so what they ask is answered in
-seconds and not when you next look up (Ben, 2026-11-22: "launch a …
-subagent whose only job is to launch and manage the tmux sessions for
-these tmux subagents so that they get their responses quickly";
-2026-11-25: "NOTHING should still be using fable -- everything should be
-either opus 5.5 max or neon 4 xhigh"). It is one subagent of the Agent tool, the only use of that
-tool here:
+Every helper has a minder of its own, and the minder is a native Rex
+agent as the helper is (Ben, 2026-11-27: "as a standing rule please
+setup a minder for all subagents you launch (add this to the project
+rules) and also for all subagents use a native rex olo agent"; before
+it, 2026-11-22: "launch a … subagent whose only job is to … manage the
+… subagents so that they get their responses quickly").
 
-```
-Agent(subagent_type: "general-purpose", model: "opus", effort: "max",
-      description: "Mind the tmux agents",
-      prompt: "You are the minder … read REPO/.claude/skills/olo-agents/minder.md
-               first, in full, and follow it exactly. The repository: REPO.
-               Start these, each exactly as written: … (or: start nothing,
-               these are running: …). For each: what it is, its brief, its
-               scratch folder, where its result will be, what it should and
-               shouldn't need.")
-```
+**You do nothing to start one: the tool does.** `tools/dev/agents
+start`, `agy-help`, `agy-look` and `opus-look` start each helper with
+`olo agent start … --minder claude:claude-opus-5-5:max --rules
+.claude/skills/olo-agents/minder-rules.md`: a Claude Code (Opus 5.5 at
+max) in a child tab of the helper's, held by the agents service to
+that one helper and to its one command (the `olo-rex-bridge` skill,
+"Give a child a minder"). The person sees it under the helper in Rex.
+For a child you start with `olo agent start` yourself, give the same
+two options; for one that runs already, `olo agent mind NAME --with
+claude:claude-opus-5-5:max --rules FILE`.
 
-Write the briefs yourself first (they are the work's hand-over, and
-yours); give the minder the commands, whole paths, and for each agent
-what it should need (so a request outside that stands out). `minder.md`
-has its lists: what it says yes to (reading; cargo's build, check, test
-and `fmt -p`; Olo's test tools; files in the agent's own scratch folder
-or crate), what it refuses and explains (git that changes anything,
-sudo, the person's session, files elsewhere, processes by name, the
-network, more agents), and that everything else, every question about
-the work, and anything stuck or exited comes back to you. It ends when
-every agent has its result or something is yours to decide; its report
-names each result's path and every answer it gave. Read the results
-yourself, answer what it handed back (`approve`, `say`), and start a
-minder again if agents still run. Stop and forget the agents yourself
-once their results are read.
+**What it does.** By its rules (`minder-rules.md`: yes to reading,
+`jato`'s build, check and test, Olo's test tools, files in the
+helper's own scratch folder or crate, a fenced script of its own; no,
+with the reason, to git that changes anything, sudo, the person's
+session, files elsewhere, processes by name, the network, the live
+agents service or Rex server, more agents) it answers the helper's
+questions at once. What the rules don't cover, every question about
+the work itself, and its report when the helper ends, it hands to you:
+an `escalation` on your own watch.
 
-Without a minder (one quick look, say), the waiting is yours: below.
+**What you do.** Write the brief yourself first (it is the work's
+hand-over, and yours), start the helper through the tool, and keep a
+watch going (`tools/dev/agents watch`, in the background, started
+again each time it returns). It tells you "NAME is handed back to you
+by its minder" with the minder's words: answer the helper (`approve
+NAME y|no`, `answer`, `say`). A question its minder hasn't answered
+within a minute and a half reaches you all the same ("its minder
+hasn't answered it"). Read each result yourself; stop and forget the
+helpers once their results are read (a minder ends with its helper).
+What a minder's report says went wrong with the tooling is fixed in
+the tooling.
 
-**Rex has minders of its own now** (2026-11-26; the `olo-rex-bridge`
-skill, "Give a child a minder"): `olo agent start … --minder
-claude:claude-opus-5-5:max --rules FILE` starts a child with an agent
-whose whole job is that child (held by the service to it alone, told
-what stands, its escalations on your own `olo agent watch`), and `olo
-agent mind NAME …` attaches, changes or ends one. Use it for a child
-you start with `olo agent start` yourself, with the lists of
-`minder.md` as its rules. `tools/dev/agents` and its front doors don't
-start one yet (docs/TODO.md): for them the Agent tool's minder above is
-still the rule.
+**Never the Agent tool.** It was the minder until 2026-11-27: one
+subagent of the harness, seen by nobody in Rex and held to nothing.
+`minder.md` is that minder's instructions, kept for a session that
+isn't in a Rex pane (no `REX_BLOCK`), where helpers are tmux sessions
+and nothing of Rex's can mind them. `OLO_AGENTS_MINDER=off` starts a
+helper with none: for the tool's own tests only.
 
 ## When
 

@@ -341,8 +341,8 @@ are universal and non-negotiable:
   design review (never Codex nor Astra: Ben, 2026-11-22, "stop using codex/astra for
   olo qa/dev tasks and everywhere we use codex/astra at the moment for
   olo dev/qa replace it with antigravity (`agy`) and gemini 4 neon on
-  xhigh"; never a Claude fork, and the Agent tool only for the minder,
-  below). That is for the
+  xhigh"; never a Claude fork, and never the Agent tool: every helper,
+  its minder too, is a native Rex agent, below). That is for the
   help Olo's development gets: Olo's own support for Codex and Astra
   (Terminal, Rex, the pool, Preferences) is the product's and stays.
   - Narrow, targeted work items that can go on in parallel: subagents,
@@ -394,25 +394,35 @@ are universal and non-negotiable:
   forbid is refused outright; only the rest comes to you. Never
   approve a push, a commit, anything on the person's session, deletion
   outside its scope, or sudo.
-- **A minder answers the helpers, so none waits on you.** Whenever a
-  helper runs for more than a moment, start the minder with it: one
-  subagent of the Agent tool (general-purpose, model `opus`, effort
-  max), told to read `.claude/skills/olo-agents/minder.md` and
-  given the commands to start and the agents to mind (Ben, 2026-11-22,
-  when a helper's question had waited 66 seconds on a busy lead: "i
-  think you're not getting the approval requests or not responding to
-  them quick enough … launch a … subagent whose only job is to launch
-  and manage the tmux sessions for these tmux subagents so that they
-  get their responses quickly"; 2026-11-25: "NOTHING should still be
-  using fable -- everything should be either opus 5.5 max or neon 4
-  xhigh"). It starts the
-  tmux agents, waits on `tools/dev/agents watch`, says yes or no at
-  once to what its written lists cover, and hands back to you what
-  they don't, every question about the work itself, and each result's
-  path. It does none of the work and starts nothing else. It is the
-  one use of the Agent tool here; its report is checked like any
-  helper's (read the results yourself), and what it says went wrong
-  with the tooling is fixed in the tooling.
+- **Every helper has a minder, and every one of them is a native Rex
+  agent.** (Ben, 2026-11-27: "as a standing rule please setup a minder
+  for all subagents you launch (add this to the project rules) and
+  also for all subagents use a native rex olo agent".) Each subagent
+  you start (a worker, the second investigator, both reviewers) is a
+  child tab of yours through `olo agent`, and has a minder of its own
+  from its start: `olo agent start … --minder claude:claude-opus-5-5:max
+  --rules .claude/skills/olo-agents/minder-rules.md`, which
+  `tools/dev/agents` and its front doors do by themselves (for one
+  that runs already, `olo agent mind NAME --with … --rules …`). The
+  minder is Rex's own too: a Claude Code (Opus 5.5 at max) in a child
+  tab of the helper's, held by the agents service to that one helper
+  and to its one command. It says yes or no at once to what its
+  written rules cover, and hands you the rest, every question about
+  the work itself, and its report when the helper ends: on your own
+  watch, as an `escalation` (`tools/dev/agents watch` says "is handed
+  back to you by its minder"). So no helper waits on a busy lead (Ben,
+  2026-11-22, when a helper's question had waited 66 seconds: "i think
+  you're not getting the approval requests or not responding to them
+  quick enough … launch a … subagent whose only job is to … manage the
+  … subagents so that they get their responses quickly"; 2026-11-25:
+  "everything should be either opus 5.5 max or neon 4 xhigh"). A
+  minder does none of the work and starts nothing. Its report is
+  checked like any helper's (read the results yourself), and what it
+  says went wrong with the tooling is fixed in the tooling. Never the
+  Agent tool for any of this: a minder that is a subagent of the
+  harness is seen by nobody, held to nothing, and was the one helper
+  that wasn't Rex's (it is still what `.claude/skills/olo-agents/
+  minder.md` describes, for a session that isn't in a Rex pane).
 - **Stop each helper when you have what you need of it.** Once an
   agent's result is read and nothing more is to be asked of it,
   `tools/dev/agents stop NAME` (its transcript is kept in its folder,

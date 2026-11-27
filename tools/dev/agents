@@ -130,6 +130,21 @@ MODEL = "gemini-4-neon-xhigh"
 # The one Claude among them: Opus 5.5, for the design review of a
 # change's pictures (`look --by opus`, tools/dev/opus-look).
 OPUS = "claude-opus-5-5"
+# Every helper has a minder of its own, and the minder is Rex's own too
+# (Ben, 2026-11-27: "as a standing rule please setup a minder for all
+# subagents you launch (add this to the project rules) and also for all
+# subagents use a native rex olo agent"): `olo agent start --minder`, a
+# Claude Code (Opus 5.5 at max) in a child tab of the helper's, held by
+# the agents service to that one helper. It answers at once what its
+# rules cover and hands the rest to the lead, on the lead's own watch
+# (an `escalation`). OLO_AGENTS_MINDER=off: none (the tool's own tests).
+MINDER = f"claude:{OPUS}:max"
+MINDER_RULES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".claude/skills/olo-agents/minder-rules.md")
+# How long a helper with a minder may stand on a question before the
+# lead is told all the same: its minder's to answer first.
+MINDER_HAS = 90
+# What a helper's minder handed back and the lead hasn't been told yet.
+ESCALATED = {}
 # Astra 6.2, in the Codex CLI at high: kept for `look --by astra`, by
 # name only and never by default. Every helper is Gemini 4 Neon at xhigh
 # or Opus 5.5 at max (Ben, 2026-11-25: "everything should be either opus
@@ -324,11 +339,17 @@ def wait_for_news(waited, cursor):
     if not ids or len(ids) != len(waited):
         time.sleep(5)
         return cursor
-    r = olo("watch", *ids, "--since", str(cursor), "--on", "question,approval,idle,done,error,exit", "--timeout", "10", "--json", timeout=60)
+    r = olo("watch", *ids, "--since", str(cursor), "--on", "question,approval,idle,done,error,exit,escalation", "--timeout", "10", "--json", timeout=60)
     try:
         said = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
     except ValueError:
         said = {}
+    # (What a helper's minder hands back: kept for the lead, by the
+    # helper's name here.)
+    for event in ([said] if said.get("event") else []) + list(said.get("events") or []):
+        if event.get("event") == "escalation":
+            name = next((n for n in waited if child(n) in (event.get("id"), event.get("name"))), event.get("name"))
+            ESCALATED[name] = (ESCALATED.get(name, "") + "\n" + str(event.get("last_message") or event.get("message") or event.get("text") or "")).strip()
     if r.returncode not in (0, 124) or "cursor" not in said:
         # (It couldn't be asked: never a loop that spins on a refusal.)
         time.sleep(5)
@@ -761,13 +782,16 @@ def session(name, cwd, env, program, native=None):
             args += ["--env", e]
         for u in UNSET:
             args += ["--unset-env", u]
+        minded = os.environ.get("OLO_AGENTS_MINDER") != "off" and os.path.exists(MINDER_RULES)
+        if minded:
+            args += ["--minder", MINDER, "--rules", MINDER_RULES]
         r = olo(*args, "--json", *native[1:], check=True)
         try:
             said = json.loads(r.stdout)
         except ValueError:
             sys.exit(f"agents: olo agent start {name}: {r.stdout.strip() or r.stderr.strip()}")
         m = meta(name) or {}
-        m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id")})
+        m.update({"via": "rex", "rex_id": said.get("id") or name, "window": said.get("window_id"), "minded": minded})
         save_meta(name, m)
         return
     env = ["env", *[x for u in UNSET for x in ("-u", u)], f"OLO_SUBAGENT={name}", *env]
@@ -1153,6 +1177,7 @@ def watch(stuck_min, only=None, at_most=None, among=None):
     minder was woken over and over by another's agent asking leave)."""
     last = {}
     idle_since = {}
+    asking_since = {}
     began = told = time.time()
     cursor = cursor_now() if rex_here() else 0
     while True:
@@ -1184,10 +1209,23 @@ def watch(stuck_min, only=None, at_most=None, among=None):
             if st == "starting":
                 trusts_own_folder(n)
                 continue
-            if st == "asking":
+            # (What its minder handed back: the lead's, at once.)
+            if n in ESCALATED:
+                alerts.append((n, f"is handed back to you by its minder (answer it: tools/dev/agents approve {n} y|no, `answer`, `say`)", ESCALATED.pop(n)))
+            elif st == "asking":
+                # (One with a minder is its minder's to answer first: the
+                # lead hears of it if the minder hands it back, or if it
+                # still stands after a minute and a half.)
+                if m.get("minded") and time.time() - asking_since.setdefault(n, time.time()) < MINDER_HAS:
+                    continue
                 question = asked(n)[0]
                 again = second_time(n, question)
-                alerts.append((n, f"asks you (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)" + (f": {again}" if again else ""), "\n".join(question)))
+                unanswered = " (its minder hasn't answered it)" if m.get("minded") else ""
+                alerts.append((n, f"asks you{unanswered} (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)" + (f": {again}" if again else ""), "\n".join(question)))
+            if st != "asking":
+                asking_since.pop(n, None)
+            if st == "asking" or n in ESCALATED:
+                pass
             elif st == "exited" and m.get("seen_state") != "exited":
                 # (One whose result is written has ended as it should: a
                 # look's front door ends its session once the review is
