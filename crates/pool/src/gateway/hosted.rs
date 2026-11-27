@@ -34,12 +34,27 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::Shared;
-use crate::model::{Account, Credential, Provider, now};
+use crate::model::{Account, Credential, ObservedLimit, Provider, RemoteClaim, now};
 use crate::upstream::Failure;
 
 /// Asks an account's keeper (a host, by its id) for its sign-in, good
 /// for at least so many seconds more: the app's way to that host.
 pub type Lender = Arc<dyn Fn(String, String, i64) -> Pin<Box<dyn Future<Output = Result<Credential, String>> + Send>> + Send + Sync>;
+
+/// What a borrower pool asks an account's keeper to claim (`Claimer`):
+/// either a specific account (manual "Use Reset Credit…"), or any account of
+/// `provider` kept by that host so a `family` request can proceed (carrying
+/// the borrower's exhaustion observations and a stable `op_id` + relative
+/// `timeout_secs`).
+#[derive(Debug, Clone)]
+pub enum ClaimAsk {
+    Account { id: String, credit: Option<String>, op_id: String, timeout_secs: Option<u64>, reconcile_only: bool, observed: Vec<ObservedLimit> },
+    For { provider: Provider, family: String, op_id: String, timeout_secs: Option<u64>, reconcile_only: bool, observed: Vec<ObservedLimit> },
+}
+
+/// Asks an account's keeper (a host, by its id) to claim a reset credit.
+/// Returns a distinct [`RemoteClaim`] (`Redeemed` vs `AlreadyReady`) on success.
+pub type Claimer = Arc<dyn Fn(String, ClaimAsk) -> Pin<Box<dyn Future<Output = Result<RemoteClaim, super::Claimed>> + Send>> + Send + Sync>;
 
 /// The pools on Rex hosts, as the gateway shows and changes them (the
 /// desktop's `hosts::Hosts`).
@@ -72,6 +87,11 @@ pub struct Carried {
     /// the host itself is the keeper.
     pub you: String,
     pub accounts: Vec<CarriedAccount>,
+    /// Set `true` by v2+ desktops that delegate claiming to the host keeper
+    /// (`Ask::Redeem`); absent (`false`) from legacy v1 desktops that still
+    /// claim borrowed accounts directly.
+    #[serde(default)]
+    pub host_claims: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -110,7 +130,7 @@ impl std::fmt::Debug for CarriedAccount {
 /// to `host` to keep: it is kept here, and not kept here for another host
 /// (a moving account's, for the host it moves to).
 fn handed_to(a: &crate::model::Account, renewable: bool, host: &str, now: i64) -> bool {
-    a.kept_on.is_none() && renewable && a.kept_for_host(now).is_none_or(|h| h == host)
+    a.kept_on.is_none() && renewable && a.redeeming.is_none() && a.kept_for_host(now).is_none_or(|h| h == host) && a.reauth_pending_host.as_deref().is_none_or(|h| h == host)
 }
 
 /// Whether a keeper's reply describes a sign-in/auth problem on the keeper
@@ -174,6 +194,15 @@ impl Shared {
     /// The way to the keepers of the accounts kept elsewhere.
     pub fn set_lender(&self, lender: Option<Lender>) {
         *self.lender.lock().unwrap() = lender;
+    }
+
+    /// The way to ask an account's keeper to claim a reset credit.
+    pub fn set_claimer(&self, claimer: Option<Claimer>) {
+        *self.claimer.lock().unwrap() = claimer;
+    }
+
+    pub(super) fn claimer(&self) -> Option<Claimer> {
+        self.claimer.lock().unwrap().clone()
     }
 
     /// The sign-in of an account kept on `keeper`, for `fresh`: the one
@@ -275,10 +304,19 @@ impl Shared {
     /// lost on the way loses nothing). Its refresh token goes from here
     /// when what is next carried says the account is kept elsewhere.
     pub async fn give_back(&self, id: &str, to: &str) -> Result<Credential, String> {
+        let provider = self.pool.lock().unwrap().account(id).map(|a| a.provider);
+        let gate = provider.map(|p| self.claims_gate(p));
+        let _gate_held = match &gate {
+            Some(g) => Some(g.lock().await),
+            None => None,
+        };
         let lock = self.lock_for(id);
         let _held = lock.lock().await;
         let c = {
             let mut p = self.pool.lock().unwrap();
+            if p.account(id).is_some_and(|a| a.redeeming.is_some()) {
+                return Err("A reset credit claim for this account is still pending; reconcile it before moving its sign-in.".into());
+            }
             let c = p.saved.credentials.get(id).cloned().ok_or("no sign-in for it here")?;
             if c.refresh.is_none() {
                 return Err("its sign-in isn’t kept here".into());
@@ -300,11 +338,16 @@ impl Shared {
     /// the pool stands after ([`Shared::hosted_status`]).
     pub fn carried(self: &Arc<Self>, carried: Carried) -> Result<Value, String> {
         let mut renewed = Vec::new();
+        let mut removed = Vec::new();
         {
             let mut p = self.pool.lock().unwrap();
             if !p.loaded {
                 return Err(p.error.clone().unwrap_or_else(|| "The pool’s accounts aren’t open yet.".into()));
             }
+            // If carried by a legacy v1 desktop (`host_claims == false`), let it
+            // keep claiming so we never double-claim; once a v2 desktop carries
+            // (`host_claims == true`), this host claims autonomously.
+            p.saved.legacy_desktop_claims = !carried.host_claims;
             for c in &carried.accounts {
                 if p.account(&c.id).is_none() {
                     p.saved.accounts.push(Account::new(c.id.clone(), c.name.clone(), c.provider));
@@ -354,33 +397,57 @@ impl Shared {
                 }
                 let a = p.account_mut(&c.id).expect("there or just added");
                 (a.name, a.created, a.enabled, a.separate) = (c.name.clone(), c.created, c.enabled, c.separate);
-                (a.email, a.plan, a.org) = (c.email.clone().or(a.email.take()), c.plan.clone().or(a.plan.take()), c.org.clone().or(a.org.take()));
+                let is_renewed = renewed.contains(&c.id);
+                a.email = c.email.clone().or(a.email.take());
+                a.plan = c.plan.clone().or(a.plan.take());
+                // On a replacement sign-in without an explicit org, drop any
+                // stale org UUID so `/api/oauth/profile` heals the real one.
+                a.org = if is_renewed && c.org.is_none() { None } else { c.org.clone().or(a.org.take()) };
                 a.kept_on = kept_elsewhere;
-                if renewed.contains(&c.id) {
+                if a.kept_on.is_some() {
+                    a.redeeming = None;
+                }
+                if is_renewed {
                     a.signed_out = None;
                     a.cooldown_until = None;
                 }
             }
             let gone: Vec<String> = p.saved.accounts.iter().filter(|a| !carried.accounts.iter().any(|c| c.id == a.id)).map(|a| a.id.clone()).collect();
             for id in gone {
-                if p.busy(&id) {
-                    // (Answering now: paused, and gone the next time.)
+                if p.busy(&id) || p.account(&id).is_some_and(|a| a.redeeming.is_some()) {
+                    // (Answering or claiming now: paused, and gone the next time.)
                     if let Some(a) = p.account_mut(&id) {
                         a.enabled = false;
                     }
                 } else {
                     p.saved.accounts.retain(|a| a.id != id);
                     p.saved.credentials.remove(&id);
+                    p.resets.remove(&id);
+                    p.reset_at.remove(&id);
+                    p.last_reset.remove(&id);
+                    p.keeper_reset_id.retain(|(_, aid), _| aid != &id);
+                    removed.push(id);
                 }
             }
         }
-        for id in &renewed {
+        for id in renewed.iter().chain(removed.iter()) {
             self.forget_kept(id);
         }
         self.touch();
         self.flush();
         self.sync_soon(None);
+        self.capture(false);
         Ok(self.hosted_status())
+    }
+
+    /// As [`Self::carry_to`], holding both provider claim gates across the
+    /// ownership transition so no in-flight local claim can race a handover.
+    pub async fn carry_to_checked(&self, host: &str, from: &str) -> Carried {
+        let g_claude = self.claims_gate(Provider::Claude);
+        let g_codex = self.claims_gate(Provider::Codex);
+        let _h1 = g_claude.lock().await;
+        let _h2 = g_codex.lock().await;
+        self.carry_to(host, from)
     }
 
     /// The desktop's side. What is carried to `host` now: every
@@ -425,10 +492,10 @@ impl Shared {
             .map(|a| {
                 // (One this pool still keeps would be handed to the host,
                 // unless it is kept here for another.)
-                let kept_for = a.kept_for_host(crate::model::now()).map(str::to_owned);
+                let kept_for = a.kept_for_host(crate::model::now()).map(str::to_owned).or_else(|| a.reauth_pending_host.clone());
                 let kept_on = a.kept_on.clone().or_else(|| match kept_for {
                     Some(other) if other != host => Some(other),
-                    _ => p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()).then(|| host.to_owned()),
+                    _ => (a.redeeming.is_none() && p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some())).then(|| host.to_owned()),
                 });
                 let credential = p.saved.credentials.get(&a.id).cloned().map(|mut c| {
                     if kept_on.as_deref() != Some(host) {
@@ -451,7 +518,7 @@ impl Shared {
                 }
             })
             .collect();
-        Carried { from: from.to_owned(), you: host.to_owned(), accounts }
+        Carried { from: from.to_owned(), you: host.to_owned(), accounts, host_claims: true }
     }
 
     /// `host` answered a carrying with how it stands: each account it
@@ -460,10 +527,17 @@ impl Shared {
     pub fn handed_over(&self, host: &str, status: &Value) -> bool {
         let kept: Vec<&str> = status["sign_ins"].as_array().map(|a| a.iter().filter(|s| s["kept"].as_bool() == Some(true)).filter_map(|s| s["id"].as_str()).collect()).unwrap_or_default();
         let mut went = false;
+        let mut cleared_pending = false;
         {
             let mut p = self.pool.lock().unwrap();
             let ours: Vec<String> = p.saved.accounts.iter().filter(|a| a.kept_on.as_deref() == Some(host) && kept.contains(&a.id.as_str())).map(|a| a.id.clone()).collect();
             for id in ours {
+                if let Some(a) = p.account_mut(&id)
+                    && a.reauth_pending_host.as_deref() == Some(host)
+                {
+                    a.reauth_pending_host = None;
+                    cleared_pending = true;
+                }
                 if let Some(c) = p.saved.credentials.get_mut(&id)
                     && c.refresh.take().is_some()
                 {
@@ -471,7 +545,7 @@ impl Shared {
                 }
             }
         }
-        if went {
+        if went || cleared_pending {
             self.touch();
             self.flush();
         }
@@ -493,6 +567,7 @@ impl Shared {
             p.saved.credentials.insert(id.to_owned(), credential);
             if let Some(a) = p.account_mut(id) {
                 a.kept_on = None;
+                a.reauth_pending_host = None;
                 a.kept_for = for_host.map(|h| (h.to_owned(), crate::model::now()));
             }
         }
@@ -509,6 +584,10 @@ impl Shared {
             for a in p.saved.accounts.iter_mut() {
                 if a.kept_for.as_ref().is_some_and(|(h, _)| !has_pool(h)) {
                     a.kept_for = None;
+                    changed = true;
+                }
+                if a.reauth_pending_host.as_deref().is_some_and(|h| !has_pool(h)) {
+                    a.reauth_pending_host = None;
                     changed = true;
                 }
             }
@@ -543,6 +622,10 @@ impl Shared {
         rx.recv_timeout(Duration::from_secs(90)).ok()
     }
 
+    pub fn has_runtime(&self) -> bool {
+        self.runtime.lock().unwrap().is_some()
+    }
+
     /// How this pool stands, for the pool that carries its accounts:
     /// the status agents read (no sign-ins), and for each account
     /// whether its sign-in is kept here and until when it lasts.
@@ -561,6 +644,7 @@ impl Shared {
         status["sign_ins"] = Value::Array(kept);
         status["hosted"] = json!(self.is_hosted());
         status["version"] = json!(crate::host::VERSION);
+        status["redeems"] = json!(!p.saved.legacy_desktop_claims);
         status
     }
 }

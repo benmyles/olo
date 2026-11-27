@@ -40,7 +40,9 @@ use crate::model::{Account, Provider};
 /// answered last).
 pub fn more(accounts: &[Account], provider: Provider, family: &str, serving: Option<&str>, now: i64, has_credential: impl Fn(&Account) -> bool) -> bool {
     let mut in_use = accounts.iter().filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && has_credential(a));
-    in_use.any(|a| (Some(a.id.as_str()) != serving && crate::schedule::eligible(a, provider, family, now, true)) || a.credits.iter().any(|c| c.usable_at(now)))
+    in_use.any(|a| {
+        (Some(a.id.as_str()) != serving && crate::schedule::eligible(a, provider, family, now, true)) || a.credits.iter().any(|c| c.usable_at_limit(now) && c.applies_to_family(a.provider, family))
+    })
 }
 
 /// An answer's headers as a client with all its allowance left would get

@@ -104,9 +104,9 @@ pub fn of(p: &Pool, paused: &[Provider], paces: &Paces, pid: u32) -> PoolMeters 
                     label: w.label.clone(),
                     used: w.used,
                     resets_at: w.resets_at,
-                    models: w.models.clone(),
+                    models: if w.name == "overage" { vec!["overage".to_owned()] } else { w.scoped_models() },
                     since: paces.since(&a.id, &w.name),
-                    resets: a.credits.iter().filter(|c| c.usable_at(now) && c.clears(a.provider, w)).map(|c| c.remaining).sum(),
+                    resets: a.credits.iter().filter(|c| c.usable_at_limit(now) && c.clears(a.provider, w)).map(|c| c.remaining).sum(),
                 })
                 .collect(),
         })

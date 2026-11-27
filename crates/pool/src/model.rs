@@ -71,7 +71,32 @@ pub struct Window {
 }
 
 impl Window {
+    /// Whether this window is an account-wide plan allowance meter (not
+    /// model-scoped, not a surface meter, and not extra-usage spend).
+    pub fn is_shared(&self) -> bool {
+        self.models.is_empty() && self.name != "overage" && self.name != "seven_day_overage_included"
+    }
+
+    /// Model families this window is scoped to (empty for shared plan
+    /// meters and extra-usage spend). Claude's `seven_day_overage_included`
+    /// (`7d_oi` header) is Fable's own weekly meter.
+    pub fn scoped_models(&self) -> Vec<String> {
+        if !self.models.is_empty() {
+            return self.models.clone();
+        }
+        if self.name == "seven_day_overage_included" {
+            return vec!["fable".to_owned()];
+        }
+        Vec::new()
+    }
+
     pub fn applies_to(&self, family: &str) -> bool {
+        if self.name == "overage" {
+            return false;
+        }
+        if self.name == "seven_day_overage_included" {
+            return family == "fable";
+        }
         self.models.is_empty() || self.models.iter().any(|m| m == family)
     }
     pub fn exhausted(&self, now: i64) -> bool {
@@ -247,13 +272,27 @@ impl ResetCredit {
     /// window's own name); one that doesn't say, the shared windows.
     pub fn clears(&self, provider: Provider, w: &Window) -> bool {
         if provider == Provider::Codex || self.clears.is_empty() {
-            return w.models.is_empty();
+            return w.is_shared();
         }
         // (Fable's week: `seven_day_overage_included` is a weekly limit,
         // never a 5-hour one.)
         let weekly = w.name.starts_with("seven_day") || w.name.ends_with("/seven_day");
         let fable_week = weekly && (w.models.iter().any(|m| m == "fable") || w.name.contains("fable"));
         (self.gives_back_weekly && w.name == "seven_day") || self.clears.iter().any(|c| *c == w.name || (fable_week && c == "seven_day_overage_included"))
+    }
+
+    /// Whether this credit can restore allowance for requests of `family`
+    /// (empty `family`: any model). A Fable-only credit does not apply to Opus.
+    pub fn applies_to_family(&self, provider: Provider, family: &str) -> bool {
+        if family.is_empty() || provider == Provider::Codex || self.clears.is_empty() || self.gives_back_weekly {
+            return true;
+        }
+        self.clears.iter().any(|c| {
+            c == "five_hour"
+                || c == "seven_day"
+                || (c == "seven_day_overage_included" && family == "fable")
+                || c.strip_prefix("seven_day_").or_else(|| c.strip_prefix("five_hour_")).is_some_and(|m| m == family)
+        })
     }
 
     /// How many limits it clears (giving the week back counts as one).
@@ -264,6 +303,15 @@ impl ResetCredit {
     /// Usable at `now`: started, not expired, some left.
     pub fn usable_at(&self, now: i64) -> bool {
         self.usable && self.remaining > 0 && self.starts_at.is_none_or(|s| s <= now) && self.expires_at.is_none_or(|e| e > now)
+    }
+
+    /// Usable once a limit it clears is reached: already usable now, or
+    /// waiting for a limit (`use_requires_limit`, with `unavailable_reason`
+    /// either `"needs_limit"` or absent — matching Claude Code's `Gr()`,
+    /// while rejecting explicit blockers like `"cooldown"` or `"unavailable"`).
+    pub fn usable_at_limit(&self, now: i64) -> bool {
+        let ready = self.usable || (self.needs_limit && matches!(self.unavailable_reason.as_deref(), None | Some("needs_limit")));
+        ready && self.remaining > 0 && self.starts_at.is_none_or(|s| s <= now) && self.expires_at.is_none_or(|e| e > now)
     }
 }
 
@@ -298,6 +346,10 @@ pub struct ResetCredit {
     /// Only at a limit it clears (Claude's `use_requires_limit`).
     #[serde(default)]
     pub needs_limit: bool,
+    /// Why the provider says it cannot be used right now (Claude's
+    /// `unavailable_reason`: e.g. `"needs_limit"` before a limit is hit).
+    #[serde(default)]
+    pub unavailable_reason: Option<String>,
     /// It gives back the week's use too (Claude's `gives_back_weekly`): a
     /// Fable reset claimed on 2026-11-19 took its account's week from 50%
     /// to 1% with its Fable week, though it `clears` Fable's alone.
@@ -312,6 +364,118 @@ pub struct ResetCredit {
 pub struct PaidFor {
     pub until: i64,
     pub meter: String,
+}
+
+/// Unexpired exhaustion evidence observed by a borrower pool for one of a
+/// keeper's accounts, carried in `Ask::Redeem` so the keeper never mistakes an
+/// account refused on a sparse/unlisted meter (e.g. `five_hour`) for ready.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ObservedLimit {
+    pub account: String,
+    /// Last keeper `reset_id` known to the borrower for this account before
+    /// observing the limit (causal token, immune to cross-machine clock skew).
+    #[serde(default)]
+    pub last_reset_id: Option<String>,
+    #[serde(default)]
+    pub windows: Vec<Window>,
+    #[serde(default)]
+    pub cooldown_until: Option<i64>,
+    #[serde(default)]
+    pub model_cooldown: Option<(String, i64)>,
+    #[serde(default)]
+    pub paid: Option<(String, bool, i64, String)>,
+}
+
+/// Proven scope of a completed reset on a keeper, attached to `AlreadyReady`
+/// so a borrower catching up on a concurrent keeper reset clears ONLY the
+/// windows/models/cooldowns that reset actually cleared (never unrelated ones).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ClearedScope {
+    pub reset_id: String,
+    #[serde(default)]
+    pub cleared_shared: bool,
+    #[serde(default)]
+    pub cleared_models: Vec<String>,
+    #[serde(default)]
+    pub cleared_windows: Vec<String>,
+}
+
+/// Distinct result returned by a keeper pool for a delegated reset request:
+/// never conflates an actual credit redemption with an already-ready account.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum RemoteClaim {
+    Redeemed {
+        account: String,
+        credit_id: String,
+        #[serde(default)]
+        reset_id: Option<String>,
+        #[serde(default)]
+        cleared_shared: bool,
+        #[serde(default)]
+        cleared_models: Vec<String>,
+        #[serde(default)]
+        cleared_windows: Vec<String>,
+        #[serde(default)]
+        windows: Vec<Window>,
+        #[serde(default)]
+        credits: Vec<ResetCredit>,
+    },
+    AlreadyReady {
+        account: String,
+        #[serde(default)]
+        last_reset: Option<ClearedScope>,
+        #[serde(default)]
+        windows: Vec<Window>,
+        #[serde(default)]
+        credits: Vec<ResetCredit>,
+    },
+}
+
+impl RemoteClaim {
+    pub fn account(&self) -> &str {
+        match self {
+            RemoteClaim::Redeemed { account, .. } | RemoteClaim::AlreadyReady { account, .. } => account,
+        }
+    }
+}
+
+/// Durable keeper-side record of a delegated claim operation (`op_id`),
+/// committed atomically with `a.redeeming` before upstream dispatch so a
+/// borrower retrying after a lost SSH reply or keeper crash/500 receives the
+/// original outcome (or triggers reconciliation) without spending a second
+/// reset credit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RemoteClaimRecord {
+    pub op_id: String,
+    pub at: i64,
+    #[serde(default)]
+    pub account: Option<String>,
+    #[serde(default)]
+    pub result: Option<RemoteClaim>,
+    #[serde(default)]
+    pub error_kind: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// Durable borrower-side record of an in-flight/unclear delegated claim
+/// operation (`op_id`), persisted so the borrower reconciles that exact op with
+/// its keeper before spending any other reset credit or falling back to paid
+/// usage credits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingRemoteClaim {
+    pub provider: Provider,
+    pub keeper: String,
+    pub op_id: String,
+    #[serde(default)]
+    pub account: Option<String>,
+    #[serde(default)]
+    pub credit: Option<String>,
+    #[serde(default)]
+    pub family: String,
+    pub at: i64,
+    pub tried_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -388,12 +552,35 @@ pub struct Account {
     /// gone).
     #[serde(default)]
     pub kept_for: Option<(String, i64)>,
+    /// Set when a host-kept account is re-signed-in on the desktop; blocks
+    /// local claiming until that host explicitly confirms handover or is removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reauth_pending_host: Option<String>,
 }
 
 impl Account {
-    /// The credit to use next: usable, the soonest to expire.
+    /// Whether `c` can be redeemed manually right now: either already usable
+    /// now, or a `needs_limit` credit whose cleared window is currently exhausted.
+    pub fn credit_claimable_now(&self, c: &ResetCredit, now: i64) -> bool {
+        c.usable_at(now) || (c.usable_at_limit(now) && self.windows.iter().any(|w| c.clears(self.provider, w) && w.exhausted(now)))
+    }
+
+    /// The best credit to redeem manually at `now`: one that is claimable now
+    /// (including `needs_limit` credits when a cleared window is exhausted),
+    /// giving back most now, then narrowest, then soonest to expire. Shared by
+    /// the UI menu/confirmation and `redeem_locked(Why::Asked)`.
+    pub fn manual_credit(&self, now: i64) -> Option<&ResetCredit> {
+        self.credits
+            .iter()
+            .filter(|c| self.credit_claimable_now(c, now))
+            .map(|c| (c, self.claim_worth(c, now, now)))
+            .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.breadth(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.breadth(), x.0.expires_at.unwrap_or(i64::MAX)))))
+            .map(|(c, _)| c)
+    }
+
+    /// The credit to use next by hand (for the UI menu and confirmation).
     pub fn credit(&self) -> Option<&ResetCredit> {
-        self.credits.iter().filter(|c| c.usable && c.remaining > 0).min_by_key(|c| c.expires_at.unwrap_or(i64::MAX))
+        self.manual_credit(now())
     }
 
     /// What claiming `c` at `at` gives back: the most it gives back of a
@@ -425,7 +612,7 @@ impl Account {
         let mut all: Vec<(&ResetCredit, f64)> = self
             .credits
             .iter()
-            .filter(|c| c.usable_at(now) && out.iter().all(|w| c.clears(self.provider, w)))
+            .filter(|c| c.usable_at_limit(now) && out.iter().all(|w| c.clears(self.provider, w)))
             .map(|c| (c, out.iter().filter(|w| c.clears(self.provider, w)).map(|w| w.reset_worth(self.provider, now, now)).fold(0.0, f64::max)))
             .filter(|(_, worth)| *worth >= WORTH_REDEEMING)
             .collect();
@@ -445,10 +632,11 @@ impl Account {
         // most, the soonest to expire of those as good.)
         self.credits
             .iter()
-            .filter(|c| c.usable_at(now) && c.expires_at.is_some_and(|e| e - now <= EXPIRY_LOOKAHEAD))
+            .filter(|c| c.expires_at.is_some_and(|e| e - now <= EXPIRY_LOOKAHEAD))
             .filter_map(|c| {
                 // (One that only works at a limit, only when one it clears is out.)
-                if c.needs_limit && !self.windows.iter().any(|w| c.clears(self.provider, w) && w.exhausted(now)) {
+                let ready = if c.needs_limit { self.windows.iter().any(|w| c.clears(self.provider, w) && w.exhausted(now)) && c.usable_at_limit(now) } else { c.usable_at(now) };
+                if !ready {
                     return None;
                 }
                 let last = c.expires_at? - EXPIRY_MARGIN;
@@ -495,6 +683,7 @@ impl Account {
             recent: VecDeque::new(),
             kept_on: None,
             kept_for: None,
+            reauth_pending_host: None,
         }
     }
 
@@ -752,5 +941,81 @@ mod tests {
     fn credentials_never_print() {
         let c = Credential { access: "sekrit".into(), refresh: Some("sekrit2".into()), expires_at: Some(5), account_id: None };
         assert!(!format!("{c:?}").contains("sekrit"));
+    }
+
+    /// Claude grants with `use_requires_limit: true` report `usable_now: false`
+    /// and `unavailable_reason: "needs_limit"` before 100% is reached. Once a
+    /// cleared window is exhausted they must be eligible for automatic claiming
+    /// (and counted as more-to-draw / expiring), while genuinely blocked grants
+    /// (`cooldown`, `unavailable`) must stay ineligible.
+    #[test]
+    fn needs_limit_credits_are_ready_at_limit_and_not_while_on_cooldown() {
+        let t = now();
+        let mut a = Account::new("a".into(), "a".into(), Provider::Claude);
+        a.windows = vec![Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(t + 3 * 24 * H), models: vec![] }];
+        let mk = |id: &str, reason: Option<&str>, expires: i64| ResetCredit {
+            id: id.into(),
+            expires_at: Some(expires),
+            remaining: 1,
+            usable: false,
+            needs_limit: true,
+            unavailable_reason: reason.map(str::to_owned),
+            clears: vec!["seven_day".into()],
+            ..Default::default()
+        };
+        let waiting = mk("waiting", Some("needs_limit"), t + 20 * H);
+        let legacy = mk("legacy", None, t + 30 * H);
+        let cooling = mk("cooling", Some("cooldown"), t + 10 * H);
+        let unavail = mk("unavail", Some("unavailable"), t + 10 * H);
+        assert!(!waiting.usable_at(t));
+        assert!(waiting.usable_at_limit(t));
+        assert!(legacy.usable_at_limit(t), "omitted reason with needs_limit matches Claude Code Gr()");
+        assert!(!cooling.usable_at_limit(t));
+        assert!(!unavail.usable_at_limit(t));
+
+        a.credits = vec![cooling, unavail, legacy, waiting];
+        assert_eq!(a.claim_for("opus", t).map(|(c, _)| c.id.as_str()), Some("waiting"));
+        assert_eq!(a.manual_credit(t).map(|c| c.id.as_str()), Some("waiting"));
+        assert_eq!(a.expiring_claim(t).map(|c| c.id.as_str()), Some("waiting"));
+        // Not at limit yet: `needs_limit` credit is neither auto-claimed nor manually claimable.
+        a.windows[0].used = 80.0;
+        assert!(a.claim_for("opus", t).is_none());
+        assert!(a.manual_credit(t).is_none());
+        assert!(a.expiring_claim(t).is_none());
+        // Still counted as available headroom for Opus / meters while waiting for limit.
+        assert!(crate::told::more(std::slice::from_ref(&a), Provider::Claude, "opus", Some("a"), t, |_| true));
+        // A Fable-only credit must NOT report headroom for Opus in `told::more`.
+        let mut fable_only = a.clone();
+        fable_only.credits =
+            vec![ResetCredit { id: "fable".into(), expires_at: Some(t + 20 * H), remaining: 1, usable: true, clears: vec!["seven_day_overage_included".into()], ..Default::default() }];
+        assert!(!crate::told::more(std::slice::from_ref(&fable_only), Provider::Claude, "opus", Some("a"), t, |_| true));
+        assert!(crate::told::more(std::slice::from_ref(&fable_only), Provider::Claude, "fable", Some("a"), t, |_| true));
+        let mut pool = crate::gateway::Pool::default();
+        pool.loaded = true;
+        pool.saved.accounts.push(a);
+        let m = crate::meters::of(&pool, &[], &crate::meters::Paces::default(), 1);
+        assert_eq!(m.accounts[0].windows[0].resets, 2);
+    }
+
+    /// `overage` (extra-usage spend) never blocks plan allowance;
+    /// `seven_day_overage_included` (`7d_oi` header) only applies to Fable,
+    /// never Opus, and never prevents a `seven_day`-only reset from clearing Opus.
+    #[test]
+    fn overage_and_seven_day_oi_window_scopes() {
+        let t = 1_000_000;
+        let overage = Window { name: "overage".into(), label: "Overage".into(), used: 100.0, resets_at: Some(t + 3 * 24 * H), models: vec![] };
+        let oi = Window { name: "seven_day_overage_included".into(), label: "Weekly Overage Included".into(), used: 100.0, resets_at: Some(t + 3 * 24 * H), models: vec![] };
+        let week = Window { name: "seven_day".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(t + 3 * 24 * H), models: vec![] };
+        assert!(!overage.is_shared() && !overage.applies_to("opus") && !overage.applies_to("fable"));
+        assert!(!oi.is_shared() && !oi.applies_to("opus") && oi.applies_to("fable") && oi.scoped_models() == ["fable"]);
+        assert!(week.is_shared() && week.applies_to("opus") && week.applies_to("fable"));
+
+        let mut a = Account::new("a".into(), "a".into(), Provider::Claude);
+        a.windows = vec![overage, oi, week];
+        a.credits = vec![ResetCredit { id: "weekly-only".into(), expires_at: Some(t + 10 * 24 * H), remaining: 1, usable: true, clears: vec!["seven_day".into()], ..Default::default() }];
+        // Opus is blocked only by `seven_day` (not `overage` or `7d_oi`), so `weekly-only` clears it.
+        assert_eq!(a.claim_for("opus", t).map(|(c, _)| c.id.as_str()), Some("weekly-only"));
+        // Fable is also blocked by `seven_day_overage_included`, which `weekly-only` does not clear.
+        assert!(a.claim_for("fable", t).is_none());
     }
 }

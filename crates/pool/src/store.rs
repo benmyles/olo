@@ -19,7 +19,7 @@ use chacha20poly1305::{
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::model::{Account, Credential};
+use crate::model::{Account, Credential, PendingRemoteClaim, RemoteClaimRecord};
 
 const MAGIC: &[u8; 4] = b"TABP";
 const FORMAT: u8 = 1;
@@ -27,11 +27,33 @@ const FORMAT: u8 = 1;
 #[cfg(feature = "desktop")]
 const KEY_ATTRS: &[(&str, &str)] = olo_system::secrets::POOL_KEY.attributes;
 
+fn default_true() -> bool {
+    true
+}
+
 /// Everything kept: the accounts and, by account id, their sign-ins.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Saved {
     pub accounts: Vec<Account>,
     pub credentials: BTreeMap<String, Credential>,
+    /// Recent keeper-side delegated claim outcomes keyed by `op_id`.
+    #[serde(default)]
+    pub remote_claims: Vec<RemoteClaimRecord>,
+    /// Unreconciled borrower-side delegated claims (persisted before dispatch).
+    #[serde(default)]
+    pub pending_remote_claims: Vec<PendingRemoteClaim>,
+    /// True until a v2+ desktop confirms delegation (`carried.host_claims == true`
+    /// or an `Ask::Redeem`). Defaults to `true` when deserializing a legacy v1
+    /// vault without this field so a v2 host never double-claims beside a v1
+    /// desktop; fresh in-memory `Saved::default()` starts `false`.
+    #[serde(default = "default_true")]
+    pub legacy_desktop_claims: bool,
+}
+
+impl Default for Saved {
+    fn default() -> Self {
+        Self { accounts: Vec::new(), credentials: BTreeMap::new(), remote_claims: Vec::new(), pending_remote_claims: Vec::new(), legacy_desktop_claims: false }
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -150,6 +172,12 @@ pub struct Store {
 }
 
 impl Store {
+    /// Construct a store at `path` with an explicit key (for isolated tests
+    /// without touching the login keyring or process environment).
+    pub fn with_key(path: PathBuf, key: [u8; 32]) -> Store {
+        Store { path, key: Zeroizing::new(key) }
+    }
+
     /// Open (blocks on the keyring): the store and what it holds.
     pub fn open() -> Result<(Store, Saved), String> {
         Store::open_at(path())

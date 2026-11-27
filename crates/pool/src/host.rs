@@ -21,11 +21,13 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::gateway::{Carried, Shared};
+use crate::gateway::{Carried, Claimed, Shared};
+use crate::model::{ObservedLimit, Provider, RemoteClaim};
 
 /// What the host's program speaks: raised when the desktop must put a
-/// newer one there before speaking to it.
-pub const VERSION: u32 = 1;
+/// newer one there before speaking to it (v2 adds `Ask::Redeem` with
+/// keeper-owned claiming and durable op-id reconciliation).
+pub const VERSION: u32 = 2;
 
 /// Where the service listens for the desktop's pool.
 pub fn socket() -> PathBuf {
@@ -44,6 +46,29 @@ pub enum Ask {
     Lend { id: String, at_least: i64 },
     /// An account's sign-in given back whole ([`Shared::give_back`]).
     GiveBack { id: String, to: String },
+    /// Claim a reset credit on this keeper: either a specific account (`id`,
+    /// manual) or any account of `provider` kept here for `family` (automatic,
+    /// serialized under this pool's claim gate with durable `op_id` deduplication).
+    Redeem {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        credit: Option<String>,
+        #[serde(default)]
+        provider: Option<Provider>,
+        #[serde(default)]
+        family: Option<String>,
+        #[serde(default)]
+        op_id: Option<String>,
+        /// Relative timeout in seconds stamped with the keeper's monotonic clock
+        /// on receipt (immune to cross-machine wall-clock skew).
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+        #[serde(default)]
+        reconcile_only: bool,
+        #[serde(default)]
+        observed: Vec<ObservedLimit>,
+    },
     /// The service ends (before it is removed, or replaced).
     Stop,
     /// The version the account's folder now links takes over, beside this
@@ -57,13 +82,16 @@ pub enum Ask {
 /// following the newer copy.
 pub const KEPT_ENV: &str = "OLO_POOL_HOST_KEPT";
 
-/// Answers one asking.
-fn answer(shared: &Arc<Shared>, ask: Ask) -> Value {
+/// Answers one asking (public for unit/integration tests over the wire).
+pub fn answer(shared: &Arc<Shared>, ask: Ask) -> Value {
     let failed = |why: String| json!({"error": why});
     match ask {
         Ask::Status => shared.hosted_status(),
         Ask::Carry { carried } => shared.carried(carried).unwrap_or_else(failed),
         Ask::Lend { id, at_least } => {
+            if !shared.has_runtime() {
+                return failed("the pool gateway isn’t running yet".into());
+            }
             let s = shared.clone();
             match shared.wait(async move { s.lend(&id, at_least).await }) {
                 Some(Ok(credential)) => json!({"credential": credential}),
@@ -72,6 +100,9 @@ fn answer(shared: &Arc<Shared>, ask: Ask) -> Value {
             }
         }
         Ask::GiveBack { id, to } => {
+            if !shared.has_runtime() {
+                return failed("the pool gateway isn’t running yet".into());
+            }
             let s = shared.clone();
             match shared.wait(async move { s.give_back(&id, &to).await }) {
                 Some(Ok(credential)) => json!({"credential": credential}),
@@ -79,8 +110,36 @@ fn answer(shared: &Arc<Shared>, ask: Ask) -> Value {
                 None => failed("the pool there didn’t answer in time".into()),
             }
         }
+        Ask::Redeem { id, credit, provider, family, op_id, timeout_secs, reconcile_only, observed } => {
+            let err_json = |e: Claimed| match e {
+                Claimed::Refused(why) => json!({"error": why, "kind": "refused"}),
+                Claimed::NotNow(why) | Claimed::Unsupported(why) => json!({"error": why, "kind": "not_now"}),
+                Claimed::NoRecord(why) => json!({"error": why, "kind": "no_record"}),
+                Claimed::Unreachable(why) => json!({"error": why, "kind": "unreachable"}),
+                Claimed::Unclear(why) => json!({"error": why, "kind": "unclear"}),
+            };
+            if !shared.has_runtime() {
+                return err_json(Claimed::NotNow("the pool gateway isn’t running yet".into()));
+            }
+            let s = shared.clone();
+            let res = shared.wait(async move { s.handle_remote_redeem(id, credit, provider, family, op_id, timeout_secs, reconcile_only, observed).await });
+            match res {
+                Some(Ok(claim)) => {
+                    let redeemed = matches!(claim, RemoteClaim::Redeemed { .. });
+                    let mut v = serde_json::to_value(&claim).unwrap_or_else(|_| json!({"error": "encoding failed", "kind": "unclear"}));
+                    if let Some(obj) = v.as_object_mut() {
+                        obj.insert("redeemed".into(), json!(redeemed));
+                    }
+                    v
+                }
+                Some(Err(e)) => err_json(e),
+                None => json!({"error": "the pool there didn’t answer in time", "kind": "unclear"}),
+            }
+        }
         Ask::Stop => {
+            // Flush pending writes BEFORE retiring drain (`save_once` skips writes once retired).
             shared.flush();
+            shared.drain.retire();
             json!({"stopping": true})
         }
         // (Done once answered: `serve`'s loop.)
@@ -100,11 +159,20 @@ fn answer(shared: &Arc<Shared>, ask: Ask) -> Value {
 /// through a host was cut at each upgrade of the desktop's pool, which
 /// stopped the program and restarted its service ("API Error: Connection
 /// lost mid-response", Ben, 2026-11-25). The new copy's pid.
-fn hand_over(shared: &Arc<Shared>) -> Result<u32, String> {
+enum HandOverError {
+    Deferred(String),
+    Failed(String),
+}
+
+fn hand_over(shared: &Arc<Shared>) -> Result<u32, HandOverError> {
     use std::os::{fd::AsRawFd as _, unix::process::CommandExt as _};
-    let here = std::env::current_exe().map_err(|e| e.to_string())?;
+    let here = std::env::current_exe().map_err(|e| HandOverError::Failed(e.to_string()))?;
     let next = PathBuf::from(here.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-pool-host");
-    let listeners = shared.drain.for_a_copy().ok_or("nothing listens to hand over")?;
+    // Hold every provider's claim gate from before the final flush until this
+    // copy has retired, so no reset claim can start or stay in flight across
+    // the successor reading the vault (matching `apps/pool/src/ui.rs`).
+    let _claims_held = shared.claims_closed(Duration::from_secs(30)).ok_or_else(|| HandOverError::Deferred("a reset credit claim is still under way; deferring upgrade".into()))?;
+    let listeners = shared.drain.for_a_copy().ok_or_else(|| HandOverError::Failed("nothing listens to hand over".into()))?;
     // (The asking socket's name is the copy's from now: it won't start
     // while something answers there.)
     let _ = std::fs::remove_file(socket());
@@ -124,10 +192,11 @@ fn hand_over(shared: &Arc<Shared>) -> Result<u32, String> {
             shared.drain.finished();
             // (Asked here again, as before.)
             let _ = serve(shared.clone());
-            return Err(format!("the new version couldn’t start: {e}"));
+            return Err(HandOverError::Failed(format!("the new version couldn’t start: {e}")));
         }
     };
     shared.drain.retire();
+    drop(_claims_held);
     let (shared, kept) = (shared.clone(), std::env::var_os(KEPT_ENV).is_some());
     let _ = std::thread::Builder::new().name("pool-host-handed-over".into()).spawn(move || {
         std::thread::sleep(Duration::from_millis(500));
@@ -147,9 +216,15 @@ fn hand_over(shared: &Arc<Shared>) -> Result<u32, String> {
 
 /// Listens on [`socket`] and answers the desktop's pool, on a thread of
 /// its own, for as long as the service runs. An asking to stop ends the
-/// process once it is answered.
+/// process once it is answered. Long-running asks (`Lend`, `GiveBack`,
+/// `Redeem`) are dispatched onto worker threads so a slow claim never blocks
+/// `Status`, `Carry`, `Lend`, `Upgrade`, or `Stop`.
 pub fn serve(shared: Arc<Shared>) -> std::io::Result<()> {
-    let path = socket();
+    serve_at(shared, socket())
+}
+
+/// Same as [`serve`], bound to `path` (for integration tests).
+pub fn serve_at(shared: Arc<Shared>, path: PathBuf) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -161,6 +236,10 @@ pub fn serve(shared: Arc<Shared>) -> std::io::Result<()> {
     let listener = UnixListener::bind(&path)?;
     std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     std::thread::Builder::new().name("pool-host".into()).spawn(move || {
+        let reply = |stream: &mut UnixStream, said: Value| {
+            let _ = stream.write_all(format!("{said}\n").as_bytes());
+            let _ = stream.flush();
+        };
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
             let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
@@ -168,32 +247,47 @@ pub fn serve(shared: Arc<Shared>) -> std::io::Result<()> {
             if BufReader::new(&stream).read_line(&mut line).is_err() {
                 continue;
             }
-            let (said, stop, upgrade) = match serde_json::from_str::<Ask>(line.trim()) {
-                Ok(ask) => {
-                    let (stop, upgrade) = (matches!(ask, Ask::Stop), matches!(ask, Ask::Upgrade));
-                    (answer(&shared, ask), stop, upgrade)
+            let ask = match serde_json::from_str::<Ask>(line.trim()) {
+                Ok(ask) => ask,
+                Err(e) => {
+                    reply(&mut stream, json!({"error": format!("not understood: {e}")}));
+                    continue;
                 }
-                Err(e) => (json!({"error": format!("not understood: {e}")}), false, false),
             };
-            // (An upgrade is said to have begun only once the new version
-            // has: the asker restarts the service otherwise.)
-            let said = if upgrade {
-                match hand_over(&shared) {
-                    Ok(pid) => json!({"upgrading": true, "pid": pid}),
-                    Err(why) => json!({"error": why}),
+            match ask {
+                Ask::Stop => {
+                    let said = answer(&shared, Ask::Stop);
+                    reply(&mut stream, said);
+                    let _ = std::fs::remove_file(&path);
+                    std::process::exit(0);
                 }
-            } else {
-                said
-            };
-            let _ = stream.write_all(format!("{said}\n").as_bytes());
-            let _ = stream.flush();
-            if stop {
-                let _ = std::fs::remove_file(socket());
-                std::process::exit(0);
-            }
-            if upgrade {
-                // (This socket is the copy's now: nothing more is heard here.)
-                return;
+                Ask::Upgrade => {
+                    // (An upgrade is said to have begun only once the new version
+                    // has: the asker restarts the service otherwise.)
+                    let said = match hand_over(&shared) {
+                        Ok(pid) => json!({"upgrading": true, "pid": pid}),
+                        Err(HandOverError::Deferred(why)) => json!({"error": why, "deferred": true}),
+                        Err(HandOverError::Failed(why)) => json!({"error": why}),
+                    };
+                    let upgrading = said["upgrading"] == true;
+                    reply(&mut stream, said);
+                    if upgrading {
+                        // (This socket is the copy's now: nothing more is heard here.)
+                        return;
+                    }
+                }
+                Ask::Status | Ask::Carry { .. } => {
+                    let said = answer(&shared, ask);
+                    reply(&mut stream, said);
+                }
+                slow @ (Ask::Lend { .. } | Ask::GiveBack { .. } | Ask::Redeem { .. }) => {
+                    let s = shared.clone();
+                    let _ = std::thread::Builder::new().name("pool-host-req".into()).spawn(move || {
+                        let said = answer(&s, slow);
+                        let _ = stream.write_all(format!("{said}\n").as_bytes());
+                        let _ = stream.flush();
+                    });
+                }
             }
         }
     })?;
@@ -222,6 +316,14 @@ mod tests {
     fn the_desktops_askings_read_as_written() {
         assert!(matches!(serde_json::from_str::<Ask>(r#"{"do":"upgrade"}"#), Ok(Ask::Upgrade)));
         assert!(matches!(serde_json::from_str::<Ask>(r#"{"do":"stop"}"#), Ok(Ask::Stop)));
+        assert!(matches!(
+            serde_json::from_str::<Ask>(r#"{"do":"redeem","id":"a","credit":"g1"}"#),
+            Ok(Ask::Redeem { id: Some(ref id), credit: Some(ref c), provider: None, family: None, .. }) if id == "a" && c == "g1"
+        ));
+        assert!(matches!(
+            serde_json::from_str::<Ask>(r#"{"do":"redeem","provider":"claude","family":"opus","op_id":"op-1","timeout_secs":90}"#),
+            Ok(Ask::Redeem { id: None, credit: None, provider: Some(Provider::Claude), family: Some(ref f), op_id: Some(ref op), timeout_secs: Some(90), .. }) if f == "opus" && op == "op-1"
+        ));
         assert!(serde_json::from_str::<Ask>(r#"{"do":"reboot"}"#).is_err());
     }
 }
