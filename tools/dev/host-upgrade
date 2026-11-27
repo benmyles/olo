@@ -38,9 +38,11 @@ What it does, each as the desktop's own install does it
    Rex server's tabs and go on, and a `watch` in flight is asked again by
    its own command), and the new helper's starts. From 2026-11-26 a
    service hands over by itself to an asker of a later build; one from
-   before must be told, and an asker of the old build may start the old
-   one again in that moment, so it is asked until the service is the new
-   helper's.
+   before must be told. From 2026-11-27 the service that retires starts
+   the new helper's itself, its lock handed down (`retire --to HELPER`):
+   one step, whoever else asks meanwhile. One from before that just
+   ends, and an asker of an old build may start the old one again in
+   that moment, so it is asked until the service is the new helper's.
 
 4. Olo itself, where this host has it for its agents' screens
    (~/.local/share/olo/desktop: `olo screen install` put it there):
@@ -131,6 +133,18 @@ def asked(helper, *args, timeout=60):
         return json.loads(r.stdout), r.stderr.strip()
     except ValueError:
         return None, (r.stderr or r.stdout).strip()
+
+
+def running(pid):
+    """Whether a process still runs. One that has ended and whose parent
+    hasn't collected it is still in /proc (a service started by a watch
+    of an older build, which never collects it): each asking of the
+    06:15 handover waited its whole thirty seconds on one."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return False
 
 
 def service(helper):
@@ -265,9 +279,14 @@ def main():
         was = pid
         # (A service that is held keeps to the hold itself: it is ended
         # only by one who says they know of it, as this was told to be.)
-        asked(helper, "retire", *(["--even-if-held"] if "--even-if-held" in args else []))
+        # (`--to`: a service that knows the word starts the new helper's
+        # itself as it ends, its lock handed down, so no asker of an
+        # older build can start theirs in between: one step. One from
+        # before the word just ends, and whoever asks first starts the
+        # next: the handover of 06:15, 2026-11-27, took six of these.)
+        asked(helper, "retire", "--to", helper, *(["--even-if-held"] if "--even-if-held" in args else []))
         until = time.time() + 30
-        while os.path.exists(f"/proc/{was}") and time.time() < until:
+        while running(was) and time.time() < until:
             time.sleep(0.05)
         pid, exe = service(helper)
         if exe == helper:

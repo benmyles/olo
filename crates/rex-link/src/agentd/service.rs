@@ -263,6 +263,10 @@ pub struct Service {
     idle: Notify,
     /// Set to end the service once what it has is written.
     retire: Notify,
+    /// The helper whose service takes over when this one retires
+    /// (`retire --to`, or the later build that asked): started by this
+    /// service as it ends, with this service's lock ([`start_successor`]).
+    successor: std::sync::Mutex<Option<PathBuf>>,
     /// Said in the log once: a later build asked while the service was
     /// held.
     said_held: std::sync::atomic::AtomicBool,
@@ -1596,6 +1600,11 @@ impl Service {
             match self.held() {
                 None => {
                     let _ = write.write_all(format!("\n{}", said(&Response { ok: false, stdout: String::new(), stderr: String::new(), code: 75, data: json!({ "handover": true }) })).as_bytes()).await;
+                    // (The asker's own helper is the one that takes over:
+                    // started by this service as it ends.)
+                    if let Some(theirs) = peer_pid.and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok()).filter(|exe| successor_ok(exe).is_ok()) {
+                        *self.successor.lock().unwrap_or_else(|e| e.into_inner()) = Some(theirs);
+                    }
                     self.retire.notify_one();
                     return;
                 }
@@ -1676,7 +1685,8 @@ impl Service {
 
     async fn answer(self: &Arc<Self>, req: &Request, peer_pid: Option<i32>) -> Response {
         match req.op.as_str() {
-            "ping" => Response::ok(String::new(), json!({ "ok": true, "proto": PROTO, "pid": std::process::id(), "cursor": self.lock().log.latest_seq() })),
+            // (`hands_over`: it starts its successor itself, `retire --to`.)
+            "ping" => Response::ok(String::new(), json!({ "ok": true, "proto": PROTO, "pid": std::process::id(), "cursor": self.lock().log.latest_seq(), "hands_over": true })),
             // (Held: only one that says it knows of the hold ends this
             // service; `tools/dev/host-upgrade --even-if-held`.)
             "retire" if !req.args.iter().any(|a| a == "--even-if-held") && self.held().is_some() => Response::err(
@@ -1685,6 +1695,17 @@ impl Service {
                 69,
             ),
             "retire" => {
+                // (`--to HELPER`: its successor, started by this service
+                // itself as it ends, so no other build's can start in
+                // between.)
+                let to = req.args.iter().position(|a| a == "--to").map(|i| req.args.get(i + 1).map(PathBuf::from));
+                if let Some(to) = to {
+                    let Some(to) = to else { return Response::err("retire", "--to requires the helper that takes over (its whole path)", 2) };
+                    if let Err(why) = successor_ok(&to) {
+                        return Response::err("retire", format!("--to {}: {why}", to.display()), 2);
+                    }
+                    *self.successor.lock().unwrap_or_else(|e| e.into_inner()) = Some(to);
+                }
                 self.retire.notify_one();
                 Response::ok(String::new(), json!({ "ok": true }))
             }
@@ -1732,7 +1753,132 @@ fn load_events(paths: &Paths, start_seq: u64) -> SubagentEventLog {
 /// Runs the service for the Rex server at `server` until it has nothing
 /// left to do. 0: ended in order, or another is running; 69: the server
 /// couldn't be reached.
-pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
+/// The lock's descriptor, where the service before this one handed it
+/// down ([`start_successor`]): named in the environment.
+const LOCK_FD: &str = "OLO_REX_AGENTS_LOCK_FD";
+
+/// Whether a file may be the helper whose service takes over: a
+/// program of this account's own, named as a helper is.
+fn successor_ok(exe: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    let meta = std::fs::metadata(exe).map_err(|e| e.to_string())?;
+    let named = exe.is_absolute() && exe.file_name().is_some_and(|n| n.to_string_lossy().starts_with("olo-rex-link"));
+    if !named || !meta.is_file() || meta.permissions().mode() & 0o111 == 0 || meta.uid() != unsafe { libc::geteuid() } {
+        return Err("not a helper of this account's own (a program named olo-rex-link…, by its whole path)".to_owned());
+    }
+    Ok(())
+}
+
+/// Starts the service that takes over from this one, as this one ends:
+/// `exe agent --server SERVER serve`, in a session of its own, with
+/// **this service's lock in its hand** (the lock's own descriptor, left
+/// open across the exec in the child alone and named in [`LOCK_FD`]:
+/// the lock is on the open file, so it is never free for another to
+/// take) and its input a
+/// pipe this service holds open until it has ended: the successor
+/// begins when that closes. Without this a service that retired just
+/// went, and the next one was whichever build asked first: on a host
+/// with thirty watchers begun under earlier builds, a handover took two
+/// minutes and six services, of three builds in turn (2026-11-27).
+/// What is returned is that pipe's end: kept until this process ends.
+fn start_successor(exe: &std::path::Path, server: &std::path::Path, paths: &Paths, lock: &std::fs::File) -> std::io::Result<std::process::ChildStdin> {
+    use std::os::fd::AsRawFd as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    use std::os::unix::process::CommandExt as _;
+    let log = std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(&paths.log)?;
+    let handed = lock.as_raw_fd();
+    let mut command = std::process::Command::new(exe);
+    command.args(["agent", "--server"]).arg(server).arg("serve").env(LOCK_FD, handed.to_string()).stdin(std::process::Stdio::piped()).stdout(log.try_clone()?).stderr(log).current_dir("/");
+    // SAFETY: between fork and exec, two calls that are safe there: a
+    // session of its own, and the lock's descriptor (the same number in
+    // the child) no longer closed at the exec. In the child alone: no
+    // other program this service might start is ever handed it.
+    unsafe {
+        command.pre_exec(move || {
+            libc::setsid();
+            if libc::fcntl(handed, libc::F_SETFD, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    command.spawn()?.stdin.take().ok_or_else(|| std::io::Error::other("its input couldn't be held"))
+}
+
+/// The lock the service before this one handed down, where it did: the
+/// descriptor [`LOCK_FD`] names, taken only if it is this service's own
+/// lock file (anything else named there is left alone).
+fn handed_lock(paths: &Paths) -> Option<std::fs::File> {
+    use std::os::fd::FromRawFd as _;
+    use std::os::unix::fs::MetadataExt as _;
+    let fd: i32 = std::env::var(LOCK_FD).ok()?.parse().ok()?;
+    // SAFETY: before the runtime has any other thread; nothing else reads the environment now.
+    unsafe { std::env::remove_var(LOCK_FD) };
+    let ours = std::fs::metadata(&paths.lock).ok()?;
+    // SAFETY: `fstat` on a number; nothing is owned until it is seen to be the lock.
+    let theirs = unsafe {
+        let mut st: libc::stat = std::mem::zeroed();
+        (libc::fstat(fd, &mut st) == 0).then_some(st)
+    }?;
+    if theirs.st_dev as u64 != ours.dev() || theirs.st_ino as u64 != ours.ino() {
+        return None;
+    }
+    // SAFETY: the descriptor is this process's, handed down for this.
+    unsafe {
+        libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+        Some(std::fs::File::from_raw_fd(fd))
+    }
+}
+
+/// `SIGTERM` and `SIGINT` held back from here on (asked before the
+/// runtime starts, so every thread of it holds them back too), and a
+/// descriptor they are read from instead, with who sent them
+/// (`signalfd`). The service's log said "told to end" of a signal and
+/// nothing of its sender; one night it was ended so by nobody that could
+/// be found afterwards (2026-11-27, 05:01:08 UTC: every sender in Olo's
+/// own code and in Rex's was ruled out, and the signal's own record of
+/// its sender had been thrown away).
+pub fn end_signals() -> Option<std::os::fd::OwnedFd> {
+    use std::os::fd::FromRawFd as _;
+    // SAFETY: a signal set of this function's own, and two calls on it.
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGTERM);
+        libc::sigaddset(&mut set, libc::SIGINT);
+        if libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) != 0 {
+            return None;
+        }
+        let fd = libc::signalfd(-1, &set, libc::SFD_CLOEXEC | libc::SFD_NONBLOCK);
+        if fd < 0 {
+            // (Not held back after all: they end it as they did.)
+            libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
+            return None;
+        }
+        Some(std::os::fd::OwnedFd::from_raw_fd(fd))
+    }
+}
+
+/// A signal as the log has it: which, and its sender (its pid, what it
+/// is and where it runs, read at once: it may be gone a moment later).
+fn signal_said(info: &libc::signalfd_siginfo) -> String {
+    let which = match info.ssi_signo as i32 {
+        libc::SIGTERM => "SIGTERM",
+        libc::SIGINT => "SIGINT",
+        _ => "a signal",
+    };
+    let pid = info.ssi_pid;
+    if pid == 0 {
+        return format!("{which} from the kernel (code {})", info.ssi_code);
+    }
+    let read = |what: &str| std::fs::read(format!("/proc/{pid}/{what}")).ok();
+    let command = read("cmdline").map(|b| b.split(|c| *c == 0).filter(|p| !p.is_empty()).map(|p| String::from_utf8_lossy(p).into_owned()).collect::<Vec<_>>().join(" ")).filter(|c| !c.is_empty());
+    let command = command.map_or_else(|| "a process that has gone".to_owned(), |c| c.chars().take(200).collect());
+    let cgroup = read("cgroup").and_then(|b| String::from_utf8_lossy(&b).lines().find_map(|l| l.strip_prefix("0::").map(str::to_owned))).map(|c| format!(", in {c}")).unwrap_or_default();
+    format!("{which} from pid {pid} (uid {}): {command}{cgroup}", info.ssi_uid)
+}
+
+pub async fn serve(server: PathBuf, paths: Paths, signals: Option<std::os::fd::OwnedFd>) -> i32 {
     if let Err(e) = private_dir(&paths.dir).and_then(|()| paths.socket.parent().map_or(Ok(()), private_dir)) {
         logged!("olo agents: {e}");
         return 1;
@@ -1740,16 +1886,30 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     // One service at a time. Another's lock is waited for a moment: it
     // may be on its way out (handing over, or with nothing left to do),
     // and whoever started this one is waiting for a service to answer.
+    // Handed its lock by the service before it (`start_successor`): it
+    // is the one that serves next, and begins when that one has ended
+    // (its input, a pipe that one holds open, closes), not before: two
+    // would write the same record.
     let waited = Instant::now();
-    let _lock = loop {
-        if let Some(lock) = take_lock(&paths) {
-            break lock;
+    let lock = if let Some(lock) = handed_lock(&paths) {
+        let before = tokio::task::spawn_blocking(|| {
+            use std::io::Read as _;
+            let mut said = [0u8; 64];
+            while std::io::stdin().read(&mut said).is_ok_and(|n| n > 0) {}
+        });
+        let _ = tokio::time::timeout(Duration::from_secs(60), before).await;
+        lock
+    } else {
+        loop {
+            if let Some(lock) = take_lock(&paths) {
+                break lock;
+            }
+            // (It serves: this one has nothing to do.)
+            if std::os::unix::net::UnixStream::connect(&paths.socket).is_ok() || waited.elapsed() > Duration::from_secs(20) {
+                return 0;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        // (It serves: this one has nothing to do.)
-        if std::os::unix::net::UnixStream::connect(&paths.socket).is_ok() || waited.elapsed() > Duration::from_secs(20) {
-            return 0;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
     };
     let (rex, mut events) = match Rex::connect(&server).await {
         Ok(connected) => connected,
@@ -1811,6 +1971,7 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         save: Notify::new(),
         idle: Notify::new(),
         retire: Notify::new(),
+        successor: std::sync::Mutex::new(None),
         said_held: std::sync::atomic::AtomicBool::new(false),
     });
     tokio::spawn(service.clone().writer());
@@ -1843,6 +2004,27 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     {
         let ended = ended_tx.clone();
         tokio::spawn(async move {
+            // Read with its sender, where the signals are held back for
+            // that (`end_signals`); as any program hears them otherwise.
+            // SAFETY: the descriptor is this task's own from here to its
+            // end (moved into it), and is closed only when what watches
+            // it is dropped.
+            if let Some(fd) = signals.and_then(|fd| unsafe { tokio::io::unix::AsyncFd::register(fd) }.ok()) {
+                use std::os::fd::AsRawFd as _;
+                loop {
+                    let Ok(mut ready) = fd.readable().await else { return };
+                    // SAFETY: one record of the kernel's own size, read into a zeroed one.
+                    let mut info: libc::signalfd_siginfo = unsafe { std::mem::zeroed() };
+                    let size = std::mem::size_of::<libc::signalfd_siginfo>();
+                    let read = unsafe { libc::read(fd.get_ref().as_raw_fd(), (&raw mut info).cast(), size) };
+                    if read == size as isize {
+                        logged!("olo agents: told to end by {}", signal_said(&info));
+                        let _ = ended.send("told to end");
+                        return;
+                    }
+                    ready.clear_ready();
+                }
+            }
             use tokio::signal::unix::{SignalKind, signal};
             let (Ok(mut term), Ok(mut int)) = (signal(SignalKind::terminate()), signal(SignalKind::interrupt())) else { return };
             tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
@@ -1904,6 +2086,19 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     // another at once); what is being done is done to its end (a tab
     // being started is written down, a key being typed is typed), a
     // while at most; and what it knows is written before it goes.
+    // Its successor, where it hands over to one: started now, this
+    // service's lock in its hand, and waiting for this one's end.
+    let heir = service.successor.lock().unwrap_or_else(|e| e.into_inner()).take().filter(|_| why == "handed over");
+    let _until_ended = heir.and_then(|exe| match start_successor(&exe, &server, &paths, &lock) {
+        Ok(held) => {
+            logged!("olo agents: its successor is started ({}): it has this service's lock, and serves once this one has ended", exe.display());
+            Some(held)
+        }
+        Err(e) => {
+            logged!("olo agents: its successor ({}) couldn't be started ({e}): whoever asks next starts a service", exe.display());
+            None
+        }
+    });
     drop(listener);
     let _ = std::fs::remove_file(&paths.socket);
     let finishing = Instant::now();

@@ -17235,6 +17235,38 @@ an asker running a later-written file of the helper
 (`asker_is_a_later_build`: before, only a change of protocol took over,
 and on a host whose agents never rest an upgrade that spoke the same
 never took effect), and is never handed back to an earlier one.
+**A handover is one step**: the service that retires starts its
+successor itself (`start_successor`: the helper of the later build that
+asked, or the one `retire --to HELPER` names, which the tool passes),
+with **its own lock in the successor's hand** (the lock's descriptor
+left open across the exec in that child alone, named in
+`OLO_REX_AGENTS_LOCK_FD`; the lock is on the open file, so it is never
+free for another to take) and the successor's input a pipe the retiring
+service holds until its process has ended: the successor begins when
+that closes, so two never write the same record. Whoever asks in the
+gap starts a service of their own build as before, which finds the lock
+taken, waits for the socket and ends; the asker is answered by the
+successor. Before, a retired service just went and the next was
+whichever build asked first: on a host with thirty watches begun under
+earlier builds a handover took two minutes and six services, of three
+builds in turn (2026-11-27; `a_handover_is_one_step_whoever_else_asks`
+has six askers of the old build asking without pause, and fails the old
+way with five services of the old build in between). What may be a
+successor is a program of the account's own named as a helper is, by
+its whole path (`successor_ok`); `ping` says `hands_over` of a service
+that knows the word, and the first handover *to* such a build is still
+the old kind. **What ends it is in its log with its sender**: `SIGTERM`
+and `SIGINT` are held back before the runtime starts and read from a
+`signalfd` (`end_signals`), so the log says "told to end by SIGTERM from
+pid N (uid U): COMMAND, in CGROUP", the sender's command line and cgroup
+read at once (one night the service was ended by a signal whose sender
+nobody could name afterwards: the handler had thrown the record away).
+The service starts no program but its successor, so nothing inherits
+the held-back signals. And a command that starts a service collects it
+when it ends (a thread that waits for it): a follower had two that had
+ended and were never collected, and the upgrade tool, which waited for
+the old service's `/proc` entry to go, waited its whole thirty seconds
+on each (it reads the state now: `running`).
 `OLO_NO_HOST_UPGRADE=1` leaves the host be, and so does a hold: while
 `~/.local/state/olo/host-upgrade.hold` is there (anyone's file, its
 words saying why), nothing on the host is replaced. On a host where

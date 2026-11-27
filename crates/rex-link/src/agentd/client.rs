@@ -61,6 +61,9 @@ pub fn run(mut args: Vec<String>) -> i32 {
     let paths = Paths::of(&server, &home, uid());
     match sub.as_str() {
         "serve" => {
+            // (Before any thread of the runtime's is there: what tells it
+            // to end is read with who sent it, `service::end_signals`.)
+            let signals = super::service::end_signals();
             let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                 Ok(runtime) => runtime,
                 Err(e) => {
@@ -68,7 +71,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
                     return 1;
                 }
             };
-            runtime.block_on(super::service::serve(server, paths))
+            runtime.block_on(super::service::serve(server, paths, signals))
         }
         "follow" => follow(&server, &paths),
         "request" => {
@@ -652,6 +655,15 @@ fn connected(server: &Path, paths: &Paths) -> Result<UnixStream, Box<Response>> 
     let until = Instant::now() + Duration::from_secs(25);
     loop {
         if let Ok(stream) = UnixStream::connect(&paths.socket) {
+            // (The one it started is its child for as long as this
+            // command lives, a watch that goes on for hours: waited for
+            // on a thread, so that when it ends, or ended at once because
+            // another was there first, it isn't left a process that has
+            // ended and is never collected. A follower had two such,
+            // found 2026-11-27.)
+            std::thread::spawn(move || {
+                let _ = service.wait();
+            });
             return Ok(stream);
         }
         if let Ok(Some(status)) = service.try_wait()

@@ -1724,6 +1724,41 @@ system journal names the machine and its addresses in every line;
 read for one fact, it put them in my context. Not again: the service's
 own log has what the service knew, and `/proc` the rest.
 
+### A handover that took two minutes and six services (2026-11-27, 06:15 UTC), and a signal nobody sent
+
+The announced handover of this host's agents service to a new release
+went 06:15:03 to 06:17:03 by the service's own log: the service
+retired as asked, and each time whoever asked first started a service
+of *their own* build. The ShiftUp lead's watches, begun under two
+earlier builds, got there before the tool five times; the tool retired
+each in turn ("asked 6 times"), and each round took thirty seconds
+because the retired service, started by one of those watches, was left
+ended and uncollected under it, and the tool waited for its `/proc`
+entry to go. No child was lost; the host was served by three builds in
+turn for two minutes. Told to their lead as it was.
+
+- **A handover is one step now** (HACKING, "A handover is one step"):
+  the retiring service starts its successor with its own lock in hand.
+  The first handover *to* a build that has it is still the old kind:
+  say so in the note to the other lead, and say which builds served
+  meanwhile, from the service's log, not only what stands after.
+- **Read the service's log for the minutes of a handover before
+  writing what it did.** The tool's one line ("pid A retired, pid B is
+  the new helper's, asked 6 times") was true and left out five
+  services.
+- **A process that has ended is still in `/proc` until its parent
+  collects it** (state `Z` in `/proc/PID/stat`): "wait until
+  `/proc/PID` is gone" waits for the parent, not the process.
+- **The signal of 05:01:08 UTC was never explained.** The second
+  investigator ruled out, on scratch, every sender in Olo's code and
+  in Rex's (the desktop's scripts over SSH, the helper, a closing SSH
+  session, Agent Screens, `tsession stop`, the Rex server: its answer
+  is summarised in the TODO), and this session's own record shows
+  nothing of mine ran in that minute. What made it unanswerable: the
+  service's handler kept "a signal came" and threw away from whom. Its
+  log names the sender now. When something ends a process of ours and
+  nobody knows who, the first fix is that the process says who.
+
 ### A hung test found 3 h 45 min later: three waits with no end, one behind the other (2026-11-27)
 
 A copy of the agents service's stand-in suite, started in the

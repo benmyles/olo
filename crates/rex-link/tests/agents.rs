@@ -876,6 +876,155 @@ fn a_helper_put_beside_it_later_takes_over_and_no_other_does() {
     ask(&later_build, &["stop", "steady", "--force", "--json"]);
 }
 
+/// A handover is one step, whoever else asks meanwhile: the service
+/// that retires starts its successor itself, its lock handed down, so
+/// no asker of an older build can start theirs in the gap. On a host
+/// with thirty watchers begun under earlier builds a handover took two
+/// minutes and six services, of three builds in turn (2026-11-27,
+/// 06:15 UTC: each time the service retired, whoever asked first
+/// started a service of their own build).
+#[test]
+fn a_handover_is_one_step_whoever_else_asks() {
+    let Some(rig) = Rig::start("onestep") else { return };
+    let kept = rig.dir.join("rex-link");
+    std::fs::create_dir_all(&kept).unwrap();
+    let build = |n: u32| kept.join(format!("olo-rex-link-000{n}-x86_64"));
+    std::fs::copy(HELPER, build(1)).unwrap();
+    let asking = |helper: &Path, args: &[&str]| {
+        let mut cmd = Command::new(helper);
+        cmd.current_dir(rig.dir.join("work")).env("PWD", rig.dir.join("work"));
+        Rig::scratch_env(&rig.dir, &rig.sock, &mut cmd);
+        cmd.env("REX_BLOCK", &rig.lead_block);
+        cmd.arg("agent").args(args);
+        cmd
+    };
+    let ask = |helper: &Path, args: &[&str]| -> Value {
+        let out = run_just_written(&mut asking(helper, args));
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}: {}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    };
+    let pid = |helper: &Path| ask(helper, &["ping"])["pid"].as_i64().unwrap() as i32;
+    let runs = |pid: i32| std::fs::read_link(format!("/proc/{pid}/exe")).unwrap();
+    let served = || rig.said().lines().filter(|l| l.contains("olo agents: serving (pid")).map(str::to_owned).collect::<Vec<_>>();
+    let started = ask(&build(1), &["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
+    let first = pid(&build(1));
+    assert_eq!(runs(first), build(1));
+
+    // The host's other askers, of the builds before: each asks without
+    // pause for as long as the test goes on, and starts its own build's
+    // service whenever none answers (as a watch does).
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let askers = |helper: PathBuf, n: usize| -> Vec<std::thread::JoinHandle<u32>> {
+        (0..n)
+            .map(|_| {
+                let (stop, mut cmd) = (stop.clone(), asking(&helper, &["list", "--fast", "--json"]));
+                std::thread::spawn(move || {
+                    let mut answered = 0;
+                    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                        answered += u32::from(cmd.output().is_ok_and(|out| out.status.success()));
+                    }
+                    answered
+                })
+            })
+            .collect()
+    };
+    let mut old = askers(build(1), 6);
+
+    // 1. A later build asks (nothing holds the service): its helper's
+    // service is the next one, and the only next one.
+    std::fs::copy(HELPER, build(2)).unwrap();
+    let listed = ask(&build(2), &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"], "the child is there, asked of the later build: {listed}");
+    rig.wait("the first service to end", || !Path::new(&format!("/proc/{first}")).exists());
+    let second = pid(&build(2));
+    assert_eq!(runs(second), build(2), "the later build's service");
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(pid(&build(2)), second, "and it stays, the older builds still asking");
+    let lines = served();
+    assert!(lines.len() == 2 && lines[1].contains(&format!("pid {second}, olo-rex-link-0002")), "one service after the first, the later build's: {lines:#?}");
+    assert!(rig.said().contains("its successor is started"), "{}", rig.said());
+
+    // 2. Held, and retired by one who knows of the hold, to a helper
+    // named: the same, with askers of both builds before it.
+    old.extend(askers(build(2), 3));
+    std::fs::copy(HELPER, build(3)).unwrap();
+    let hold = rig.dir.join("host-upgrade.hold");
+    std::fs::write(&hold, "Held by this test.\n").unwrap();
+    assert_eq!(pid(&build(3)), second, "held: answered by the one that runs");
+    let retire = |more: &[&str]| {
+        let out = run_just_written(asking(&build(3), &["retire"]).args(more));
+        (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stderr).into_owned())
+    };
+    // (What takes over is a helper of the account's own, by its whole path: nothing else is started.)
+    for not_one in ["/bin/sh", "olo-rex-link-0003-x86_64", "/nowhere/olo-rex-link-0003-x86_64"] {
+        let (code, said) = retire(&["--even-if-held", "--to", not_one]);
+        assert!(code == 2 && said.contains("--to"), "{not_one}: {code}: {said}");
+    }
+    let (code, said) = retire(&["--even-if-held", "--to"]);
+    assert!(code == 2 && said.contains("--to requires"), "{code}: {said}");
+    assert_eq!(pid(&build(2)), second, "refused: it stays");
+    let (code, said) = retire(&["--even-if-held", "--to", build(3).to_str().unwrap()]);
+    assert_eq!(code, 0, "{said}");
+    rig.wait("the second service to end", || !Path::new(&format!("/proc/{second}")).exists());
+    let third = pid(&build(3));
+    assert_eq!(runs(third), build(3), "the service of the helper it was retired to");
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(pid(&build(3)), third);
+    let lines = served();
+    assert!(lines.len() == 3 && lines[2].contains(&format!("pid {third}, olo-rex-link-0003")), "one service after the second, the named helper's: {lines:#?}");
+    std::fs::remove_file(&hold).unwrap();
+
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let answered: Vec<u32> = old.into_iter().map(|a| a.join().unwrap()).collect();
+    assert!(answered.iter().all(|n| *n > 0), "every asker of an older build was answered meanwhile: {answered:?}");
+    let listed = ask(&build(3), &["list", "--json"]);
+    assert_eq!(listed["subagents"][0]["id"], started["id"], "the child, through both handovers: {listed}");
+    ask(&build(3), &["stop", "steady", "--force", "--json"]);
+}
+
+/// A signal that ends the service is in its log with its sender: which
+/// signal, the sender's pid and what it is. (The log said "told to end"
+/// and no more; one night the service was ended so and its sender could
+/// not be found afterwards: 2026-11-27, 05:01:08 UTC.) And a service a
+/// long-lived command started is collected by it when it ends: a
+/// follower had two that had ended and were never collected.
+#[test]
+fn a_signal_that_ends_it_is_logged_with_its_sender() {
+    let Some(rig) = Rig::start("signalled") else { return };
+    // A follower starts the service, and goes on.
+    let mut follower = rig.helper().args(["agent", "watch", "--all", "--follow"]).env("REX_BLOCK", &rig.lead_block).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    rig.wait("a service", || rig.service_pid().is_some());
+    rig.json(&["start", "--command", "--name", "steady", "--json", "--", "sleep", "300"]);
+    // (Only a service of this test's own is ever signalled: its command line names the rig's own server.)
+    let own = |pid: i32| {
+        let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        let cmdline = String::from_utf8_lossy(&cmdline).replace('\0', " ");
+        assert!(cmdline.contains(rig.sock.to_str().unwrap()) && cmdline.trim_end().ends_with("serve"), "not this test's service: {cmdline}");
+        pid
+    };
+    let me = std::process::id();
+    for (signal, name) in [(libc::SIGTERM, "SIGTERM"), (libc::SIGINT, "SIGINT")] {
+        let pid = own(rig.service_pid().unwrap());
+        // SAFETY: a signal to a process just seen to be this test's own service.
+        assert_eq!(unsafe { libc::kill(pid, signal) }, 0);
+        // (Gone, not left ended and uncollected under the follower that started it.)
+        rig.wait("the service to end and be collected", || !Path::new(&format!("/proc/{pid}")).exists());
+        let said = rig.said();
+        let line = said.lines().find(|l| l.contains(&format!("told to end by {name} from pid {me} "))).unwrap_or_else(|| panic!("{name}: {said}"));
+        // SAFETY: asks who this process is.
+        assert!(line.contains(&format!("(uid {})", unsafe { libc::geteuid() })), "{line}");
+        let this = std::env::current_exe().unwrap();
+        assert!(line.contains(this.file_name().unwrap().to_str().unwrap()), "what the sender is: {line}");
+        assert!(said.contains("ending (told to end)"), "{said}");
+        // The next asking starts another, the child with it.
+        rig.wait("another service", || rig.service_pid().is_some_and(|next| next != pid));
+        assert_eq!(rig.json(&["list", "--json"])["subagents"][0]["name"], "steady");
+    }
+    assert!(follower.try_wait().unwrap().is_none(), "the follower goes on through both");
+    let _ = follower.kill();
+    let _ = follower.wait();
+    rig.json(&["stop", "steady", "--force", "--json"]);
+}
+
 /// A registry that is there and can't be read is a failure, said with
 /// its file's name: never an empty list, which would say of every child
 /// that it isn't. It is left as it is.

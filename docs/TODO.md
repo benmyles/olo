@@ -292,6 +292,25 @@ something nobody here has is in "Blocked", with what it waits for.
   - Codex reads `$CODEX_HOME/AGENTS.override.md` *instead of*
     `AGENTS.md` where a person has one: Olo's block in `AGENTS.md` is
     then not read (found with `codex debug prompt-input`).
+- **The agents service, where a host ends a login's processes** (the
+  second investigator, 2026-11-27, looking for who signalled the
+  service at 05:01:08 UTC; not this host's case, and not that night's
+  cause). A service started by an asker that came in over SSH (the
+  desktop's `agent follow`) lives in that login's `session-N.scope`,
+  in a session of its own all the same; where a host has
+  `KillUserProcesses=yes` or `StopIdleSessionSec`, or the session is
+  ended by name, systemd signals everything in the scope: "systemd
+  **will** send `SIGTERM` (followed by `SIGHUP`, then `SIGKILL`) to
+  every process in `session-NNN.scope`, including a `setsid()` `agent
+  serve`". The children are the Rex server's and go on, and the next
+  asking starts a service, so it is a restart, not a loss; to close it
+  the service would move itself to a cgroup that outlives the login
+  (beside `rex.service`'s, where that is delegated). The log now says
+  who sent the signal (HACKING), which is how such a host would show
+  it. And the sender of 05:01:08 itself was never found: every sender
+  in Olo's code and in Rex's was ruled out on scratch (the
+  investigator's answer), nothing of the lead's ran then, and the
+  signal's own record had been thrown away.
 - **A floating pane in Rex, what is left** (remade 2026-11-27 after
   Ben's "i can't select it or click on it or get rid of it"; HACKING,
   "*A floating pane*"). From the two reviews of its pictures, not
