@@ -214,8 +214,11 @@ something nobody here has is in "Blocked", with what it waits for.
     header's "inline blue web link where a button would be native".
   - "Tweaks" as the tab's name: Opus suggested "Machine" ("undersells
     root changes that reach every account"); it is Ben's word, kept.
-- **Every agent on a Rex host told where it is and what it can do
-  there** (Ben, 2026-11-27, of a screenshot of an agent's long search):
+- ~~**Every agent on a Rex host told where it is and what it can do
+  there**~~ (done 2026-11-27: `crates/agent-context`, the helper's
+  `context`; HACKING, "What every agent on a host is told before it
+  begins"; what is left is below. Ben, of a screenshot of an agent's
+  long search:
   "look how much this agent had to do to figure out where it was
   running and how to do something as simple as open a url in my
   browser. can we have it so that all agents on a rex host get a
@@ -311,10 +314,13 @@ something nobody here has is in "Blocked", with what it waits for.
   floating layer holds one pane (no splits in it), Pane > Close Pane
   on it goes by the pane, and its place isn't kept inside the area
   when the window is made smaller than the card's least size.
-- **Auto mode by default for `olo agent`'s agents** (Ben, 2026-11-27):
+- ~~**Auto mode by default for `olo agent`'s agents**~~ (done
+  2026-11-27: `StartSpec::auto_for`; `--no-auto`, or any mode of the
+  parent's own, turns it off. Ben:
   "enable auto mode by default for the olo rex agents but provide a
-  way for the parent/launching agent to disable it if they prefer".
-- **Settings above Keyboard Shortcuts in every app's first menu**
+  way for the parent/launching agent to disable it if they prefer".)
+- ~~**Settings above Keyboard Shortcuts in every app's first menu**~~
+  (done 2026-11-27: `Menu::app_items`)
   (Opus's suggestion of 2026-11-26; Ben, 2026-11-27: "makes sense to
   me").
 - **A screenshot's thumbnail, to drag** (Ben, 2026-11-27, "for

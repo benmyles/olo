@@ -30443,6 +30443,10 @@ Rex server, as every Rex client offers its own
     where Rex puts it (`~/.local/share/olo/rex-link`) does that: a
     build run from anywhere else writes nothing into the home it runs
     in. `tools/dev/host-upgrade` asks the same of the helper it puts.
+    A host can say no: while `~/.config/olo/agent-context.off` is there
+    (an empty file somebody put), `install` and the helper's keeping put
+    nothing and take away what is there (for a host whose agents have
+    their instructions from elsewhere).
   - *Tried*: the library's eleven tests (every case of the block) and
     its three live ones (`OLO_AGENT_CONTEXT_LIVE=claude,codex,agy jato
     test -p olo-agent-context --test live -- --ignored`: a scratch

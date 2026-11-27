@@ -56,5 +56,17 @@ fn the_hosts_own_helper_keeps_what_agents_are_told_and_no_other_build_does() {
     assert!(after.starts_with("# Mine\n") && told(), "{after}");
     run_as_a_link(&own, &home);
     assert_eq!(std::fs::read_to_string(&claude).unwrap(), after);
+
+    // Turned off on this host (a file somebody put there): taken away at the next connection, the person's text as
+    // it was, and not put back; and the command itself says so and puts nothing.
+    std::fs::create_dir_all(home.join(".config/olo")).unwrap();
+    std::fs::write(home.join(".config/olo/agent-context.off"), "").unwrap();
+    run_as_a_link(&own, &home);
+    assert_eq!(std::fs::read_to_string(&claude).unwrap(), "# Mine\n", "turned off, it is taken away");
+    let said = Command::new(&own).args(["context", "install"]).env("HOME", &home).env_remove("CLAUDE_CONFIG_DIR").env_remove("CODEX_HOME").output().unwrap();
+    assert!(said.status.success() && String::from_utf8_lossy(&said.stderr).contains("turned off on this host") && !told(), "{}", String::from_utf8_lossy(&said.stderr));
+    std::fs::remove_file(home.join(".config/olo/agent-context.off")).unwrap();
+    run_as_a_link(&own, &home);
+    assert!(told(), "the file gone, it is kept again");
     let _ = std::fs::remove_dir_all(&home);
 }

@@ -23,6 +23,9 @@
 //!   as Olo's (a stamp beside it), kept the same as Claude Code's, and
 //!   never written over one that isn't Olo's.
 //!
+//! A host can say no: while `~/.config/olo/agent-context.off` is there,
+//! nothing is put and what was there is taken away.
+//!
 //! Run by Rex when it puts its pieces on a host, and by
 //! `tools/dev/host-upgrade`; `remove` when they are taken off. Each is
 //! safe to run again: nothing is written that is already as it should be.
@@ -38,6 +41,12 @@ const SKILL: &str = ".claude/skills/olo-rex-bridge/SKILL.md";
 /// Where Codex and Antigravity look for skills, and Olo's stamp there.
 const SHARED_SKILL_DIR: &str = ".agents/skills/olo-rex-bridge";
 const STAMP: &str = ".olo-skill";
+/// Somebody's word that agents on this host are told nothing by Olo:
+/// while this file is there (`touch` it; its contents are nobody's),
+/// `install` and the helper's own keeping put nothing, and take away
+/// what is there. For a host whose agents have their instructions from
+/// elsewhere, and whose lead would rather they had only those.
+const OFF: &str = ".config/olo/agent-context.off";
 
 pub fn run(args: &[String]) -> i32 {
     let as_json = args.iter().any(|a| a == "--json");
@@ -48,6 +57,12 @@ pub fn run(args: &[String]) -> i32 {
     };
     let env = Env::current();
     let (lines, failed) = match what.as_slice() {
+        ["install"] if home.join(OFF).exists() => {
+            eprintln!("olo-rex-link context: turned off on this host ({}): nothing is put, and what was there is taken away", home.join(OFF).display());
+            let mut said = outcomes(olo_agent_context::remove_all(&home, &env), "removed");
+            said.0.push(skill_line(shared_skill(&home, &env, false)));
+            said
+        }
         ["install"] => {
             let mut said = outcomes(olo_agent_context::install_all(&home, &env), "written");
             said.0.push(skill_line(shared_skill(&home, &env, true)));
@@ -90,6 +105,11 @@ pub fn keep() {
         return;
     }
     let env = Env::current();
+    if home.join(OFF).exists() {
+        let _ = olo_agent_context::remove_all(&home, &env);
+        let _ = shared_skill(&home, &env, false);
+        return;
+    }
     let _ = olo_agent_context::install_all(&home, &env);
     let _ = shared_skill(&home, &env, true);
 }
