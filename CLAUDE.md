@@ -384,19 +384,21 @@ are universal and non-negotiable:
   reviewers/minders):
   - **Minders:** Antigravity (`agy`), **Gemini 4 Neon on `high`**
     (`gemini-4-neon-high`, `--effort high`). Always `agy` Neon 4 `high`.
-  - **Builders:** Antigravity (`agy`), **Gemini 4 Neon on `xhigh`**
-    (`gemini-4-neon-xhigh`, `--effort xhigh`). Started, watched, and
-    steered with `tools/dev/agents` (the `olo-agents` skill), up to five
-    at once in the working tree, each scoped to its own crate(s) so none
-    clobbers another. Builders never start subagents of their own (the
-    tooling refuses via `OLO_SUBAGENT`, and their brief forbids it);
-    they may run `claude`/`codex`/`agy` only when their task is about
-    testing those CLIs. When a builder finishes and clears review, the
-    lead reads the whole diff, runs its tests, inspects any visual
-    changes, and commits it.
+  - **Builders:** Antigravity (`agy`), **Gemini 4 Neon on `high`**
+    (`gemini-4-neon-high`, `--effort high`; Ben, 2026-11-27: Neon 4
+    builders run on `high`, while reviewers and the lead run on `xhigh`).
+    Started, watched, and steered with `tools/dev/agents` (the
+    `olo-agents` skill), **at most four active builders at once** (across
+    worktrees), each scoped to its own crate(s) so none clobbers another.
+    Builders never start subagents of their own (the tooling refuses via
+    `OLO_SUBAGENT`, and their brief forbids it); they may run
+    `claude`/`codex`/`agy` only when their task is about testing those
+    CLIs. When a builder finishes and clears review, the lead reads the
+    whole diff, runs its tests, inspects any visual changes, and commits
+    it.
   - **Second investigator** (`tools/dev/agy-help BRIEF.md`, the
     `olo-debug-help` skill): Antigravity (`agy`), **Gemini 4 Neon on
-    `xhigh`**, for root-causing hard bugs in parallel.
+    `high`**, for root-causing hard bugs in parallel.
   - **Code reviewers (every change, max 2 rounds each):**
     1. **Codex Astra 6.2 on `xhigh`** (`gpt-6.2-astra`,
        `model_reasoning_effort="xhigh"`) via `tools/dev/astra-review`.

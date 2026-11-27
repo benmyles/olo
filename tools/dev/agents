@@ -4,10 +4,10 @@
 where there is no Rex pane.
 
 Hierarchy and exact models / efforts (Ben, 2026-11-27):
-  Lead
+  Lead  (agy, Gemini 4 Neon at xhigh)
   └── minder  (agy, Gemini 4 Neon at high: gemini-4-neon-high)
-      ├── builders      (agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
-      ├── investigator  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
+      ├── builders      (agy, Gemini 4 Neon at high: gemini-4-neon-high, max 4 at once)
+      ├── investigator  (agy, Gemini 4 Neon at high: tools/dev/agy-help)
       ├── code review 1 (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
       ├── code review 2 (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
       └── visual design (any visual change uses all three reviewers:
@@ -24,9 +24,9 @@ authorize additional review rounds.
                                      so it can launch/watch/approve/review
                                      builders and reviewers under itself)
   agents start [--tree DIR] NAME CRATE BRIEF.md
-                                     start a builder (agy Neon 4 xhigh) on CRATE
-                                     with the task in BRIEF.md; at most 5 at once
-  agents investigate BRIEF.md [DIR]  start a second investigator (agy Neon 4 xhigh;
+                                     start a builder (agy Neon 4 high) on CRATE
+                                     with the task in BRIEF.md; at most 4 at once
+  agents investigate BRIEF.md [DIR]  start a second investigator (agy Neon 4 high;
                                      tools/dev/agy-help is this)
   agents look [--by gemini|opus] [--about TEXT] [--no-wait] PICTURE…
                                      visual review of screenshots: Neon 4 xhigh
@@ -76,9 +76,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # OLO_REVIEWS_DIR for where reviews are kept.)
 HOME = os.environ.get("OLO_AGENTS_DIR") or "/var/tmp/olo-agents"
 SOCKET = "olo-agents"
-MOST = 5
-# Builders, investigators, and agy code/visual reviewers: Gemini 4 Neon at xhigh.
+MOST = 4
+# agy code and visual reviewers (and the lead): Gemini 4 Neon at xhigh.
 MODEL = "gemini-4-neon-xhigh"
+# Builders and investigators: agy Gemini 4 Neon at high (Ben, 2026-11-27).
+BUILDER_MODEL = "gemini-4-neon-high"
+BUILDER_EFFORT = "high"
 # Minders: ALWAYS agy Gemini 4 Neon at high (Ben, 2026-11-27).
 MINDER_MODEL = "gemini-4-neon-high"
 MINDER_EFFORT = "high"
@@ -1275,10 +1278,11 @@ def launch_minder(name, d, cwd):
             subagent=False)
 
 
-def launch(name, d, cwd, others, target=None, commands=True, again=None):
-    """An agy of its own (Gemini 4 Neon at xhigh) in a child tab, working in
-    `cwd` (and reading `d`, its folder here, and `others`): started on its
-    brief, with what it may run, and nothing of the person's screen in reach."""
+def launch(name, d, cwd, others, target=None, commands=True, again=None, model=BUILDER_MODEL):
+    """An agy of its own in a child tab, working in `cwd` (and reading `d`,
+    its folder here, and `others`): started on its brief, with what it may
+    run, and nothing of the person's screen in reach. Builders default to
+    `BUILDER_MODEL` (Neon 4 high); agy reviewers pass `model=MODEL` (xhigh)."""
     folders = list(dict.fromkeys([cwd, d, *others]))
     json.dump(settings(folders, commands, own=[d, *others]), open(os.path.join(d, "settings.json"), "w"), indent=1)
     env = [f"CARGO_TARGET_DIR={target}"] if target else []
@@ -1287,8 +1291,9 @@ def launch(name, d, cwd, others, target=None, commands=True, again=None):
     taken_up = []
     if again:
         taken_up, first = ["--resume", again[0]], again[1]
-    agy = ["agy", "--model", MODEL, *taken_up, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
-    session(name, cwd, env, agy, native=["agy", "--model", MODEL, "--effort", MODEL.rsplit("-", 1)[-1], "--mode", "accept-edits",
+    effort = model.rsplit("-", 1)[-1]
+    agy = ["agy", "--model", model, *taken_up, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add, "-i", first]
+    session(name, cwd, env, agy, native=["agy", "--model", model, "--effort", effort, "--mode", "accept-edits",
                                          "--settings", os.path.join(d, "settings.json"), *add, *taken_up, "--trust", "--prompt", first])
 
 
@@ -1302,8 +1307,8 @@ REVIEW_MOST = 16 * 2**20
 
 def room(name, program="agy", kind="worker", worktree=None):
     """Refuse a name in use, a foreign folder collision, or more concurrent
-    workers/helpers than allowed within THIS tab's subtree (per worktree for
-    workers, ignoring other leads' helpers that share HOME)."""
+    workers/helpers than allowed within THIS tab's subtree (up to MOST active
+    builders total across worktrees, ignoring other leads' helpers)."""
     if not which_clean(program):
         sys.exit(f"agents: no {program} on PATH ({ {'agy': 'the Antigravity CLI', 'codex': 'the Codex CLI'}.get(program, 'the Claude CLI')}, signed in)")
     check_collision(name)
@@ -1312,12 +1317,7 @@ def room(name, program="agy", kind="worker", worktree=None):
         sys.exit(f"agents: {name} is running")
     working = [n for n in running if not (finished(n) and state(n) == "idle") and (meta(n) or {}).get("role") != "minder"]
     if kind == "worker":
-        target_repo = os.path.realpath(worktree or ROOT)
-        same = [
-            n for n in working
-            if (meta(n) or {}).get("crate")
-            and os.path.realpath((meta(n) or {}).get("worktree") or (meta(n) or {}).get("root") or ROOT) == target_repo
-        ]
+        same = [n for n in working if (meta(n) or {}).get("crate")]
     else:
         same = [n for n in working if not (meta(n) or {}).get("crate")]
     most = MOST if kind == "worker" else HELPERS_MOST
@@ -1635,7 +1635,7 @@ def look(args):
                 rec = {**record, "cli": "agy"}
                 save_meta(name, rec)
                 save_trusted_meta(name, rec)
-                launch(name, d, d, [], commands="read")
+                launch(name, d, d, [], commands="read", model=MODEL)
             else:
                 brief = OPUS_RULES.format(**said) + (f"\nWhat it is, and what changed: {about}\n" if about else "")
                 open(os.path.join(d, "brief.md"), "w").write(brief)
@@ -2860,6 +2860,7 @@ def resume(name, text, result=None, session=None):
             sys.exit(f"agents: {name} was a tmux session, or this isn't a Rex pane: only a child tab can be brought back with its conversation; start it anew with a brief that says what it did")
         repo = m.get("worktree") or ROOT
         if m.get("crate"):
+            room(name, worktree=repo)
             check_crate_overlap(repo, m["crate"], skip_name=name)
         told_at = time.time()
         legacy_minded = bool(m.get("minded") and not m.get("root"))

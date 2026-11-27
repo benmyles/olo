@@ -1,6 +1,6 @@
 ---
 name: olo-agents
-description: "Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead -> Minder (agy Gemini 4 Neon high) -> Builders (agy Gemini 4 Neon xhigh), Second Investigator (agy Neon 4 xhigh), Code Reviewers (Codex Astra 6.2 xhigh + agy Gemini 4 Neon xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 xhigh alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations."
+description: "Run Olo's native Rex subagent hierarchy through `olo agent` and `tools/dev/agents`: Lead (xhigh) -> Minder (agy Gemini 4 Neon high) -> Builders & Second Investigator (agy Gemini 4 Neon high, max 4 builders at once), Code Reviewers (Codex Astra 6.2 xhigh + agy Gemini 4 Neon xhigh, max 2 rounds each), and Visual Design Reviewer (Claude Opus 5.5 xhigh alongside agy-look and code reviewers whenever visual design work is involved). Use for parallel crate work, managing the minder, running code/visual reviews, and handling review escalations."
 ---
 
 # Subagents: Lead ▸ Minder (`agy` Neon 4 `high`) ▸ Builders & Reviewers
@@ -10,10 +10,10 @@ Every helper runs as a native Rex child tab through `olo agent` (never the harne
 ## Hierarchy and Exact Models / Efforts
 
 ```text
-Lead (autonomous coordinator)
+Lead (autonomous coordinator, agy Gemini 4 Neon at xhigh)
 └── minder  (ALWAYS agy, Gemini 4 Neon at high: gemini-4-neon-high)
-    ├── builders       (agy, Gemini 4 Neon at xhigh: gemini-4-neon-xhigh)
-    ├── investigator   (agy, Gemini 4 Neon at xhigh: tools/dev/agy-help)
+    ├── builders       (agy, Gemini 4 Neon at high: gemini-4-neon-high, max 4 at once)
+    ├── investigator   (agy, Gemini 4 Neon at high: tools/dev/agy-help)
     ├── code review 1  (codex, Astra 6.2 at xhigh: tools/dev/astra-review, max 2 rounds)
     ├── code review 2  (agy, Gemini 4 Neon at xhigh: tools/dev/agy-review, max 2 rounds)
     └── visual design  (changes with visual design work use ALL THREE reviewers:
@@ -22,7 +22,7 @@ Lead (autonomous coordinator)
 ```
 
 - **Minders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`, `--effort high`). Started directly under the lead with `tools/dev/agents minder start [BRIEF.md]`. All builders, investigators, and reviewers run as child tabs under the minder.
-- **Builders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `xhigh`** (`gemini-4-neon-xhigh`, `--effort xhigh`). Up to five at once per checkout, each scoped to its own crate(s) so none clobbers another. Builders get `OLO_SUBAGENT=<name>` and cannot spawn subagents of their own.
+- **Builders:** ALWAYS Antigravity (`agy`) **Gemini 4 Neon on `high`** (`gemini-4-neon-high`, `--effort high`; reviewers and the lead run on `xhigh`). **At most four active builders at once** (across worktrees), each scoped to its own crate(s) so none clobbers another. Builders get `OLO_SUBAGENT=<name>` and cannot spawn subagents of their own.
 - **Code Reviews (non-visual and visual changes, max 2 rounds each):**
   1. **Codex Astra 6.2 on `xhigh`** (`tools/dev/astra-review [--about "..."] [--tree DIR] [--no-wait] --working [PATH…] | FROM..TO [PATH…]`)
   2. **Antigravity Gemini 4 Neon on `xhigh`** (`tools/dev/agy-review [--about "..."] [--tree DIR] [--no-wait] --working [PATH…] | FROM..TO [PATH…]`)
@@ -54,7 +54,7 @@ Lead (autonomous coordinator)
 tools/dev/agents minder start [BRIEF.md] [--name minder]
 tools/dev/agents minder peek|log|say|stop
 
-# Minder: start / resume / steer / approve / stop builders (agy Neon 4 xhigh)
+# Minder: start / resume / steer / approve / stop builders (agy Neon 4 high, max 4 at once)
 tools/dev/agents start [--tree DIR] NAME CRATE BRIEF.md
 tools/dev/agents resume NAME [--result FILE] [--session ID] "TEXT…"
 tools/dev/agents list

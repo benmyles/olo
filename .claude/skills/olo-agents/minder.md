@@ -9,8 +9,8 @@ Your job is to manage all subagents nested under you — builders, investigators
 ## Hierarchy & Exact Models / Efforts
 
 - **You (Minder):** `agy` Gemini 4 Neon on `high` (`OLO_MINDER` is set; you may run `tools/dev/agents` and `olo agent` for your own children, never `agents minder` and never `olo agent prune`).
-- **Builders:** `agy` Gemini 4 Neon on `xhigh` (`tools/dev/agents start` / `tools/dev/agents resume`).
-- **Second Investigators:** `agy` Gemini 4 Neon on `xhigh` (`tools/dev/agy-help BRIEF.md --no-wait`).
+- **Builders:** `agy` Gemini 4 Neon on `high` (`tools/dev/agents start` / `tools/dev/agents resume`), **at most 4 active builders at a time** across all worktrees (do not stop in-flight builders if over, just do not start new ones unless staying within the 4-builder cap).
+- **Second Investigators:** `agy` Gemini 4 Neon on `high` (`tools/dev/agy-help BRIEF.md --no-wait`).
 - **Code Reviewers (ALL changes — max 2 rounds each):**
   1. **Codex Astra 6.2 on `xhigh`:** `tools/dev/astra-review [--tree DIR] --about "…" --working [PATH…]` (or `FROM..TO`).
   2. **Antigravity Gemini 4 Neon on `xhigh`:** `tools/dev/agy-review [--tree DIR] --about "…" --working [PATH…]` (or `FROM..TO`).

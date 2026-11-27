@@ -48,8 +48,11 @@ if wrong:
     sys.exit(1)
 
 # 1. Exact model / effort policy (Ben, 2026-11-27):
+assert agents.MOST == 4, agents.MOST
 assert agents.MINDER_MODEL == "gemini-4-neon-high", agents.MINDER_MODEL
 assert agents.MINDER_EFFORT == "high", agents.MINDER_EFFORT
+assert agents.BUILDER_MODEL == "gemini-4-neon-high", agents.BUILDER_MODEL
+assert agents.BUILDER_EFFORT == "high", agents.BUILDER_EFFORT
 assert agents.MODEL == "gemini-4-neon-xhigh", agents.MODEL
 assert agents.ASTRA == "gpt-6.2-astra", agents.ASTRA
 assert agents.ASTRA_EFFORT == "xhigh", agents.ASTRA_EFFORT
@@ -694,4 +697,58 @@ finally:
     if orig_env_sub2 is not None:
         os.environ["OLO_SUBAGENT"] = orig_env_sub2
 
-print(f"ok: field reader ({len(CASES)} screens), policy, Default mode, clean PATH, multi-lead isolation, trusted_meta, fail-closed ownership, collisions, collect_one, git_bounded, agent-board, and verified say()")
+# 8. Test cross-worktree MOST=4 builder cap & builder(high) vs reviewer(xhigh) launch defaults:
+orig_home3 = agents.HOME
+orig_olo3 = agents.olo
+orig_rex3 = list(agents._REX)
+orig_sub3 = agents._SUBTREE_IDS[0]
+orig_sess3 = agents.session
+try:
+    with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-cap4-check-") as td:
+        agents.HOME = td
+        agents._REX[:] = [True]
+        os.makedirs(os.path.join(td, ".meta"), exist_ok=True)
+        for i in range(4):
+            wname = f"worker-{i}"
+            os.makedirs(os.path.join(td, wname), exist_ok=True)
+            rec = {
+                "via": "rex", "rex_id": f"sa-w{i}", "owner_window": "win-lead",
+                "root": agents.ROOT, "crate": f"crates/c{i}",
+                "worktree": os.path.join(td, f"wt-{i}"), "started": 1000.0,
+            }
+            json.dump(rec, open(os.path.join(td, wname, "meta.json"), "w"))
+            json.dump(rec, open(os.path.join(td, ".meta", f"{wname}.json"), "w"))
+        def fake_olo3(*a, **kw):
+            if a[0] == "list":
+                return subprocess.CompletedProcess(list(a), 0, json.dumps({
+                    "parent_certain": True, "parent_window_id": "win-lead",
+                    "subagents": [
+                        {"id": f"sa-w{i}", "parent_window_id": "win-lead", "window_id": f"win-w{i}", "state": "working"}
+                        for i in range(4)
+                    ],
+                }), "")
+            return subprocess.CompletedProcess(list(a), 0, "", "")
+        agents.olo = fake_olo3
+        agents._SUBTREE_IDS[0] = None
+        expect_exit(lambda: agents.room("worker-4", kind="worker", worktree=os.path.join(td, "wt-new")), "4 workers are working")
+        # launch() defaults to BUILDER_MODEL (high), while explicit model=MODEL stays xhigh:
+        seen_launch = []
+        def fake_session(name, cwd, env, cmd, native=None, subagent=True):
+            seen_launch.append((name, list(cmd), list(native or [])))
+        agents.session = fake_session
+        bd = os.path.join(td, "b1")
+        os.makedirs(bd, exist_ok=True)
+        agents.launch("b1", bd, agents.ROOT, [])
+        agents.launch("rev1", bd, bd, [], commands="read", model=agents.MODEL)
+        assert "--model" in seen_launch[0][2] and seen_launch[0][2][seen_launch[0][2].index("--model") + 1] == "gemini-4-neon-high", seen_launch[0]
+        assert "--effort" in seen_launch[0][2] and seen_launch[0][2][seen_launch[0][2].index("--effort") + 1] == "high", seen_launch[0]
+        assert "--model" in seen_launch[1][2] and seen_launch[1][2][seen_launch[1][2].index("--model") + 1] == "gemini-4-neon-xhigh", seen_launch[1]
+        assert "--effort" in seen_launch[1][2] and seen_launch[1][2][seen_launch[1][2].index("--effort") + 1] == "xhigh", seen_launch[1]
+finally:
+    agents.HOME = orig_home3
+    agents.olo = orig_olo3
+    agents._REX[:] = orig_rex3
+    agents._SUBTREE_IDS[0] = orig_sub3
+    agents.session = orig_sess3
+
+print(f"ok: field reader ({len(CASES)} screens), policy, Default mode, clean PATH, multi-lead isolation, trusted_meta, fail-closed ownership, collisions, collect_one, git_bounded, agent-board, verified say(), and 4-builder high cap")
