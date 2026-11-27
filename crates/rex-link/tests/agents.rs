@@ -1768,6 +1768,104 @@ fn a_minder_that_begins_is_told_what_stands() {
     assert!(said.contains("status=124"), "{said}");
 }
 
+/// `--trust`: the folder's trust, asked of a child's own folder at its start, is answered by the service, by
+/// where the mark stands, whichever agent asks: Antigravity's "Do you trust the contents of this project?" (its
+/// mark on the yes already: Return) as Claude Code's (its mark on "No, exit": Down, the mark seen on the yes,
+/// then Return). Another folder's is nobody's to trust unasked: it stands, a question. (The ShiftUp lead's item
+/// 42, 2026-11-27: `olo agent run agy … --trust --cwd NEW_FOLDER` stood on Antigravity's question; the screens
+/// are the agents' own, read here that day.)
+#[test]
+fn a_childs_own_folder_is_trusted_at_its_start() {
+    let Some(rig) = Rig::start("trust") else { return };
+    rig.stand_in("claude");
+    rig.stand_in("agy");
+    let work = rig.work();
+    let agys = |folder: &str| {
+        format!(
+            "Accessing workspace:\n{folder}\nDo you trust the contents of this project?\nAntigravity CLI requires permission to read, edit, and execute files here.\n> Yes, I trust this folder\n  No, exit\n  ↑/↓ Navigate · enter Confirm\n"
+        )
+    };
+    let claudes = |marked: usize| {
+        let mark = |i: usize| if i == marked { "❯" } else { " " };
+        format!(
+            "{0}\n Accessing workspace:\n\n {work}\n\n Quick safety check: Is this a project you created or one you trust?\n\n {1} No, exit\n {2} Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n",
+            rule(),
+            mark(0),
+            mark(1)
+        )
+    };
+
+    // Antigravity's, of its own folder.
+    rig.start_child("agy", "reader", &["--trust", "--cwd", &work]);
+    let before = rig.keys("reader").len();
+    let gone = rig.when_typed("reader", b"\r", idle("Ready."));
+    rig.show("reader", &agys(&work));
+    assert!(gone.join().unwrap(), "Antigravity's question was left standing\n{}", rig.said());
+    rig.typed_since("reader", before, b"\r", "Return, on the yes its mark stood on");
+
+    // Claude Code's, of its own folder: never Return on "No, exit".
+    rig.start_child("claude", "builder", &["--trust", "--cwd", &work]);
+    let before = rig.keys("builder").len();
+    let moved = rig.when_typed("builder", b"\x1b[B", claudes(1));
+    let gone = rig.when_typed("builder", b"\r", idle("Ready."));
+    rig.show("builder", &claudes(0));
+    assert!(moved.join().unwrap() && gone.join().unwrap(), "Claude Code's question was left standing\n{}", rig.said());
+    rig.typed_since("builder", before, b"\x1b[B\r", "Down to the yes, then Return");
+
+    // Another folder than its own: left for whoever answers, nothing typed.
+    rig.start_child("agy", "stray", &["--trust", "--cwd", &work]);
+    let before = rig.keys("stray").len();
+    rig.show("stray", &agys("/var/tmp/somebody-elses"));
+    rig.wait_state("stray", "waiting_question");
+    std::thread::sleep(Duration::from_millis(600));
+    assert_eq!(rig.keys("stray").len(), before, "a folder that isn't the child's own was answered");
+}
+
+/// `approve --box KEY`: a yes lands only on the box it was judged for (the ShiftUp lead's item 40, 2026-11-27:
+/// "`approve` answers whatever stands when it arrives, so a yes judged for one box can land on the next"). A
+/// box has a key, in the event that tells of it and in `status` alike; another box has another, though its
+/// command differs by one digit (the screen's own key for a dialog holds those two for one), and so has the
+/// very same command asked again once it was answered.
+#[test]
+fn a_yes_lands_only_on_the_box_it_was_judged_for() {
+    let Some(rig) = Rig::start("box") else { return };
+    rig.stand_in("claude");
+    let worker = rig.start_child("claude", "worker", &[]);
+    let standing = || rig.status("worker")["approval"]["box"].as_str().map(str::to_owned);
+    rig.show("worker", &asking("sleep 5", 0));
+    let asked = rig.json(&["watch", "worker", "--since", &worker["cursor"].to_string(), "--on", "approval", "--timeout", "15", "--json"]);
+    let first = asked["approval"]["box"].as_str().unwrap_or_else(|| panic!("an approval's event has its box's key: {asked}")).to_owned();
+    assert_eq!(standing().as_deref(), Some(first.as_str()), "the same box read again has the same key");
+
+    // Another box takes its place before the yes arrives.
+    rig.show("worker", &asking("sleep 9", 0));
+    rig.wait("the other box to be the one that stands", || standing().is_some_and(|b| b != first));
+    let second = standing().unwrap();
+    let before = rig.keys("worker").len();
+    let (code, _, err) = rig.olo(&["approve", "worker", "--once", "--box", &first, "--json"]);
+    assert!(code == 1 && err.contains("isn't the one that stands now") && err.contains(&second), "{code}: {err}");
+    assert_eq!(rig.keys("worker").len(), before, "nothing was typed into it");
+
+    // Judged again, and answered by its own key.
+    let gone = rig.when_typed("worker", b"\r", working());
+    let approved = rig.json(&["approve", "worker", "--once", "--box", &second, "--json"]);
+    assert!(gone.join().unwrap() && approved["dismissed"] == true, "{approved}");
+
+    // The very same command asked again is another box: the key that was answered answers nothing.
+    rig.show("worker", &asking("sleep 9", 0));
+    rig.wait("its second asking to stand", || standing().is_some());
+    let third = standing().unwrap();
+    assert_ne!(third, second, "a box asked again after it was answered is another");
+    let before = rig.keys("worker").len();
+    let (code, _, err) = rig.olo(&["approve", "worker", "--once", "--box", &second, "--json"]);
+    assert!(code == 1 && err.contains("isn't the one that stands now"), "{code}: {err}");
+    assert_eq!(rig.keys("worker").len(), before, "nothing was typed into it");
+    // (With no key said, it answers what stands, as before.)
+    let gone = rig.when_typed("worker", b"\r", idle("Slept."));
+    let approved = rig.json(&["approve", "worker", "--once", "--json"]);
+    assert!(gone.join().unwrap() && approved["dismissed"] == true, "{approved}");
+}
+
 /// A prompt given at a start is taken up when the agent's own screen says a turn is on, and by nothing that
 /// comes before: the agent loading (Rex's word for its pane is "at work" then), the folder's trust asked and
 /// answered, its own empty prompt. None of those rests is told, and none answers the start. (The ShiftUp lead's

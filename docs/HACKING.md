@@ -31484,7 +31484,21 @@ agents through the night, could not move to it.
   by its first 24 characters, and a ShiftUp reader's `git -C …/cc-setup
   log …` box was told with the box before's `git -C …/cc-setup show …`
   and its own choices; a yes judged from that is a yes to another
-  command. A question is answered by what a
+  command. **An answer says which box it is for** (`approve --box KEY`,
+  2026-11-27; the ShiftUp lead's item 40: "`approve` answers whatever
+  stands when it arrives, so a yes judged for one box can land on the
+  next"): every approval told (an event's, `status`'s) has
+  `approval.box`, the key of the box that stands (`Service::box_key`:
+  its number among the child's boxes and what it is, `state::box_hash`:
+  its tool, its command as shown, its question and its choices to the
+  letter, the question's digits aside for a count that runs down in
+  it), and an answer given with a key is refused, nothing typed, where
+  another box stands by then. A box put away (answered here, or the
+  screen read with none on it) and asked again is another box. The
+  same exact identity is what `approve` itself checks before a second
+  Enter, and what an approval's event is told once by: the screen's own
+  key for a dialog has every digit aside, so `sleep 5` and `sleep 9`
+  were one box to both. A question is answered by what a
   choice means, wherever it stands (`approve --once | --session | --no`,
   `spec::Answer`): the one choice of that kind, the mark seen on its very
   label before Return and Escape otherwise; two of a kind, or none, is

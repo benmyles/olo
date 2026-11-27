@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use olo_rex_link::agents::minder;
 use olo_rex_link::agents::wire::{Frame, Request, Response};
 use olo_rex_link::agents::{
-    AgentCli, ApproveSpec, DesktopPolicy, NativeSubagent, ScreenClassification, StartSpec, SubagentEvent, SubagentLiveState, WatchSpec, approval_to_json, effective_state, new_subagent_id,
-    now_unix_ms, parse_send_payload, sanitize_paste_text, summary_json, to_unix_ms,
+    AgentCli, ApproveSpec, DesktopPolicy, NativeSubagent, ScreenClassification, StartSpec, SubagentEvent, SubagentLiveState, WatchSpec, effective_state, new_subagent_id, now_unix_ms,
+    parse_send_payload, sanitize_paste_text, summary_json, to_unix_ms,
 };
 use serde_json::{Value, json};
 
@@ -764,7 +764,12 @@ impl Service {
         // Where the folder is asked about all the same, it is answered
         // by where the mark stands (never by timing), for the child's
         // own folders alone.
-        if spec.trust && matches!(cli, AgentCli::Claude | AgentCli::Codex) {
+        // (Antigravity's too, 2026-11-27: it asks "Do you trust the contents
+        // of this project?" of a new folder, its mark on the yes already,
+        // and `--trust` left it standing: `olo agent run agy … --trust
+        // --cwd NEW_FOLDER` came back "question", its brief never taken
+        // up. The ShiftUp lead's item 42.)
+        if spec.trust && cli.is_agent() {
             let (service, entry) = (self.clone(), entry.clone());
             tokio::spawn(async move {
                 let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
@@ -1024,7 +1029,7 @@ impl Service {
         payload["exit_code"] = json!(entry.exit_code);
         payload["aborted"] = json!(aborted);
         payload["last_message"] = json!(last_message);
-        payload["approval"] = json!(cls.approval.as_ref().map(|ap| approval_to_json(ap, &pending)));
+        payload["approval"] = json!(cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending)));
         // (A minder that looks is told what stands asked: that is the
         // question it may answer.)
         if let Some(me) = caller.child.as_ref().filter(|c| c.minds.is_some()) {
@@ -1393,7 +1398,7 @@ impl Service {
                             ev.event = name;
                         }
                         ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
-                        ev.approval = now.cls.approval.as_ref().map(|ap| approval_to_json(ap, &pending));
+                        ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
                         ev.error = error;
                         ev.tail = tail_of(&now.screen, 10);
                         return answer(&ev, matched_line, had_gap);
@@ -1582,7 +1587,25 @@ impl Service {
         let Some(ap) = cls.approval else {
             return err(format!("`{}` has no active approval prompt (current state: {})", entry.id, cls.state.as_str()), 1);
         };
-        let orig_key = ap.key;
+        // The box it was judged for, where the caller says which
+        // (`--box KEY`): another that stands by now is not answered.
+        let standing = self.box_key(&entry.id, Some(&ap)).unwrap_or_default();
+        if let Some(meant) = spec.box_key.as_deref()
+            && meant != standing
+        {
+            return err(
+                format!(
+                    "the box you answer (`{meant}`) isn't the one that stands now (`{standing}`): nothing was answered. `olo agent status {} --json` has what it asks; judge that, then answer it by its own key",
+                    entry.name.as_deref().unwrap_or(&entry.id)
+                ),
+                1,
+            );
+        }
+        // (The box to the letter: by the screen's own key, digits aside,
+        // a box that took its place with a command a digit different
+        // was "the same question still standing", and Enter was pressed
+        // on it a second time.)
+        let same_box = |cur: &olo_agent_screen::ApprovalPrompt| olo_rex_link::agents::state::box_hash(cur) == olo_rex_link::agents::state::box_hash(&ap);
         // The one choice of the kind asked for: by what it means, never
         // by where it stands. Two of a kind is nobody's to choose between.
         let want = spec.answer.kind();
@@ -1614,7 +1637,9 @@ impl Service {
                 let Some(cur) = self.look(&entry, true).await.cls.approval else {
                     return err("approval dialog disappeared before confirmation".into(), 1);
                 };
-                if cur.key != orig_key {
+                // (The mark moved is the same box: its choices' labels and
+                // kinds are what it is, not which of them is marked.)
+                if !same_box(&cur) {
                     let _ = write("\x1b").await;
                     return err("approval dialog changed during navigation; aborted safely".into(), 1);
                 }
@@ -1649,7 +1674,7 @@ impl Service {
                     dismissed = true;
                     break;
                 }
-                Some(cur) if cur.key != orig_key => {
+                Some(cur) if !same_box(cur) => {
                     dismissed = true;
                     break;
                 }
@@ -1664,10 +1689,16 @@ impl Service {
             }
             if !retried && tokio::time::Instant::now() >= retry_at {
                 retried = true;
-                if self.look(&entry, true).await.cls.approval.as_ref().is_some_and(|cur| cur.key == orig_key && on_it(cur)) {
+                if self.look(&entry, true).await.cls.approval.as_ref().is_some_and(|cur| same_box(cur) && on_it(cur)) {
                     let _ = write("\r").await;
                 }
             }
+        }
+
+        // (Answered: whatever stands next is another box, though it
+        // asks the very same.)
+        if dismissed {
+            self.box_gone(&entry.id);
         }
 
         // A refusal's reason, only once the question is gone and none

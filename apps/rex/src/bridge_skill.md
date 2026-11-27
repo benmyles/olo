@@ -235,7 +235,7 @@ model or reasoning effort is used.
     `olo agent start agy --model gemini-4-neon --effort xhigh --resume SESSION_ID` (or `--continue`, `--stream`)
   - Isolation & trust:
     - `--desktop none|screens=NAME,…|inherit` (default **`none`** for all children: server-side strict allow-list blocks `op`, `olo screen`, `olo open`, clipboard, catch-all actions, and privilege escalation by grandchildren; strips `DISPLAY`, `WAYLAND_DISPLAY`, `OLO_SOCKET`, `OLO_SESSION`, `REX_SESSION`, `SSH_AUTH_SOCK`, and `DBUS_SESSION_BUS_ADDRESS`; children may only act on their own strict descendants. Note: on the person's local desktop account, `--desktop none` is an environment/bridge guardrail, not a kernel sandbox. Use `--desktop screens=qa-1` for screen-only QA walkers).
-    - `--trust`: for Claude Code (and Codex), atomically pre-trusts `--cwd` and every `--add-dir` in `~/.claude.json` (honouring `CLAUDE_CONFIG_DIR`) and auto-confirms matching startup folder-trust dialogs.
+    - `--trust`: the child's own folders (`--cwd`, every `--add-dir`) are trusted without anybody asked, whichever agent it is. For Claude Code they are written into `~/.claude.json` first (honouring `CLAUDE_CONFIG_DIR`); and where an agent asks all the same (Claude Code's "Is this a project you created or one you trust?", Codex's "Do you trust the contents of this directory?", Antigravity's "Do you trust the contents of this project?"), the question is answered with its yes, by where its mark is seen to stand, for those folders alone. A question about any other folder is left standing.
     - `--unset-env KEY` (repeatable): unsets additional environment variables before launch.
     - `--approve-for-me`: **Codex-only** (off by default; never enabled automatically; rejected on `claude` and `agy`). Passes Codex's own `--approve-for-me` flag to route Codex approvals through Codex's automated review.
   - Full CLI options supported: `--name` (unique among live children under your parent; target as `NAME` or `PARENT/NAME`), `--title`, `--role`, `--cwd`, `--prompt` / `--prompt-file PATH` (for prompts > 128 KiB, pass a file path in the prompt or paste via `send --file` after launch), `--env K=V`, `--unset-env K`, `--parent WINDOW_ID`, `--focus`, `--close-on-exit`, `--permission-mode`, `--approval`/`-a`, `--sandbox`/`-s`, `--mode`, `--full-auto`, `--approve-for-me` (Codex-only), `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--allowed-tools`, `--disallowed-tools` (variadic), `--add-dir`, `--worktree` / `--worktree=NAME`, `--agent`, `--session-id UUID` (Claude-only), `--profile`, `--config/-c K=V`, `--settings JSON_OR_FILE`, `--strict-mcp-config`, `--system-prompt`, `--append-system-prompt`, `--mcp-config`, `--project`, `--new-project`, `--remote-agent`, `--remote-control`, `--search`, `--enable`, `--disable`, `--image`, `--no-alt-screen`, `--no-daemon`, `--print`, `--stream`, `--input-format`, `--output-format`, plus `-- EXTRA_CLI_ARGS…` verbatim passthrough.
@@ -288,7 +288,17 @@ model or reasoning effort is used.
   rest). Never a likely one: a call that only began like the box's was
   once given as the box's command. Judge a yes from `command` only.
 - **Approve or deny a pending tool approval safely**:
-  `olo agent approve <ID|NAME> --once | --session | --no [--reason TEXT] [--json]`
+  `olo agent approve <ID|NAME> --once | --session | --no [--box KEY] [--reason TEXT] [--json]`
+  **Say which box you answer: `--box KEY`.** Every approval, in its
+  event and in `status --json`, has `approval.box` (as `b7-1f3a9c02`):
+  the key of the box that stands. Pass the key of the box you judged,
+  and the answer is given only if that box still stands; if another
+  has taken its place by then, nothing is typed and it says so, with
+  the key that stands now (status 1, "isn't the one that stands now"):
+  read that box, judge it, answer it by its own key. Another box is
+  another key, though its command differs by one digit, and so is the
+  very same command asked again after it was answered. Without `--box`
+  it answers whatever stands when it arrives, as before.
   Picks the one choice of that kind by what it means, wherever it stands in the list (`approval.choices[].kind`: `once`, `allow_session`, `dont_ask_again`, `switch_mode`, `no`, `no_always`, `other`): `--once` the yes for this once ("Yes", "Yes, run command", "Yes, but ask again next time"), `--session` the yes kept for this conversation alone (Antigravity's "Yes, and always allow in this conversation"), `--no` the no for this once (never "No, and block reads"). Two of the kind asked for, or none, is refused with the choices named.
   Never selects persistent (`don't ask again` / `always allow` / kept in settings) or mode-switching options; re-verifies cursor selection before pressing Enter, confirms the specific dialog key dismissed without touching any next dialog, and pastes sanitized `--reason` only after dismissal.
 - **Send input reliably** (text, file paste, control chars, special keys, delivery verification):

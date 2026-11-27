@@ -947,13 +947,17 @@ impl Answer {
     }
 }
 
-const APPROVE_USAGE: &str = "usage: olo agent approve <ID|NAME> --once | --session | --no [--reason TEXT] [--json]";
+const APPROVE_USAGE: &str = "usage: olo agent approve <ID|NAME> --once | --session | --no [--box KEY] [--reason TEXT] [--json]";
 
 /// Parsed options for `olo agent approve <ID|NAME> --once | --session | --no [--reason TEXT] [--json]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApproveSpec {
     pub target: String,
     pub answer: Answer,
+    /// The box this answers (`--box KEY`: `approval.box` of `status`
+    /// or of the event it was judged from): refused where another
+    /// stands by now.
+    pub box_key: Option<String>,
     pub reason: Option<String>,
     pub json: bool,
 }
@@ -966,6 +970,7 @@ impl ApproveSpec {
         let mut target: Option<String> = None;
         let (mut once, mut session, mut no) = (false, false, false);
         let mut reason: Option<String> = None;
+        let mut box_key: Option<String> = None;
         let mut json = false;
         if let Some(arr) = v.get("args").and_then(Value::as_array) {
             let strs: Vec<String> = arr.iter().map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| x.to_string())).collect();
@@ -981,6 +986,11 @@ impl ApproveSpec {
                         reason = Some(strs.get(i).ok_or("--reason requires text")?.clone());
                     }
                     s if s.starts_with("--reason=") => reason = Some(s["--reason=".len()..].to_owned()),
+                    "--box" => {
+                        i += 1;
+                        box_key = Some(strs.get(i).ok_or("--box requires the box's key (`approval.box` in `status --json`)")?.clone());
+                    }
+                    s if s.starts_with("--box=") => box_key = Some(s["--box=".len()..].to_owned()),
                     s if s.starts_with('-') => return Err(format!("unknown approve option `{s}` (use `--once`, `--session` or `--no`)")),
                     s if target.is_none() => target = Some(s.to_owned()),
                     s => return Err(format!("unexpected argument `{s}`")),
@@ -993,6 +1003,7 @@ impl ApproveSpec {
             session = v.get("session").and_then(Value::as_bool).unwrap_or(false);
             no = v.get("no").and_then(Value::as_bool).unwrap_or(false);
             reason = v.get("reason").and_then(Value::as_str).map(str::to_owned);
+            box_key = v.get("box").and_then(Value::as_str).map(str::to_owned);
             json = v.get("json").and_then(Value::as_bool).unwrap_or(false);
         }
         let target = target.ok_or_else(|| APPROVE_USAGE.to_owned())?;
@@ -1002,7 +1013,7 @@ impl ApproveSpec {
             (false, false, true) => Answer::No,
             _ => return Err("specify exactly one of `--once`, `--session` or `--no` (never a choice that is kept in settings or switches mode)".into()),
         };
-        Ok(Self { target, answer, reason, json })
+        Ok(Self { target, answer, box_key: box_key.filter(|k| !k.is_empty()), reason, json })
     }
 }
 

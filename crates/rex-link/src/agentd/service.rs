@@ -142,6 +142,11 @@ pub struct Live {
     /// A feedback survey on its screen wouldn't go when set aside: left
     /// alone until it has gone by itself.
     survey_stays: bool,
+    /// The approval box that stands (`state::box_hash`) and its number
+    /// among this child's boxes; none while none stands or once it was
+    /// answered here. See [`Service::box_key`].
+    box_now: Option<(u64, u64)>,
+    boxes: u64,
 }
 
 impl Live {
@@ -167,6 +172,8 @@ impl Live {
             task: None,
             told: None,
             survey_stays: false,
+            box_now: None,
+            boxes: 0,
         }
     }
 
@@ -273,7 +280,10 @@ fn starting() -> ScreenClassification {
 /// error said.
 pub fn subkey(cls: &ScreenClassification) -> String {
     if let Some(ap) = &cls.approval {
-        format!("ap:{}", ap.key)
+        // (The box to the letter, `state::box_hash`: by the screen's
+        // own key, digits aside, a box that followed one whose command
+        // differed by a digit was the same question, and told to nobody.)
+        format!("ap:{}", state::box_hash(ap))
     } else if let Some(tr) = &cls.folder_trust {
         format!("trust:{}:{}", tr.folder.as_deref().unwrap_or(""), tr.selected_index)
     } else if let Some(err) = &cls.api_error {
@@ -559,6 +569,51 @@ impl Service {
         {
             let _ = writeln!(f, "{line}");
         }
+    }
+
+    /// The key of the approval box that stands on a child's screen
+    /// (`approval.box`, and what `approve --box KEY` answers; the
+    /// ShiftUp lead's item 40, 2026-11-27: "`approve` answers whatever
+    /// stands when it arrives, so a yes judged for one box can land on
+    /// the next"): its number among the child's boxes and what it is
+    /// (`state::box_hash`), "b7-1f3a9c02". The same box read again has
+    /// the same key; another, the next number, and so has the very
+    /// same command asked again after it was answered (the box is put
+    /// away when it is answered here, `box_gone`, and when the screen
+    /// is read with none on it). Numbers begin again with the service:
+    /// a key from before then answers nothing, which is the safe way to
+    /// be wrong.
+    pub fn box_key(&self, id: &str, ap: Option<&olo_agent_screen::ApprovalPrompt>) -> Option<String> {
+        let mut st = self.lock();
+        let live = st.live.get_mut(id)?;
+        let Some(ap) = ap else {
+            live.box_now = None;
+            return None;
+        };
+        let what = state::box_hash(ap);
+        let number = match live.box_now {
+            Some((was, number)) if was == what => number,
+            _ => {
+                live.boxes += 1;
+                live.box_now = Some((what, live.boxes));
+                live.boxes
+            }
+        };
+        Some(format!("b{number}-{:08x}", what as u32))
+    }
+
+    /// The box that stood was answered: whatever stands next is another.
+    pub fn box_gone(&self, id: &str) {
+        if let Some(live) = self.lock().live.get_mut(id) {
+            live.box_now = None;
+        }
+    }
+
+    /// An approval as it is told (`approval_to_json`), with its box's key.
+    pub fn approval_json(&self, id: &str, ap: &olo_agent_screen::ApprovalPrompt, pending: &[Value]) -> Value {
+        let mut told = olo_rex_link::agents::approval_to_json(ap, pending);
+        told["box"] = json!(self.box_key(id, Some(ap)));
+        told
     }
 
     /// A child was given work (a prompt at its start, a message sent and
@@ -888,6 +943,9 @@ impl Service {
             self.changed.notify_waiters();
         }
         let key = subkey(&cls);
+        // (Which box stands, or that none does: a box come after one
+        // that went is another, though it asks the very same.)
+        self.box_key(id, cls.approval.as_ref());
         let started_ms = to_unix_ms(entry.started_at).max(0) as u64;
         let at_prompt = cls.summary.as_deref() == Some(state::AT_PROMPT);
         let mut look_again = None;
@@ -1008,7 +1066,7 @@ impl Service {
             let entry = service.lock().reg.entries.iter().rev().find(|e| e.id == id).cloned().unwrap_or(entry);
             let last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
             let pending = Self::pending_tools(info);
-            let approval = again.cls.approval.as_ref().map(|ap| olo_rex_link::agents::approval_to_json(ap, &pending));
+            let approval = again.cls.approval.as_ref().map(|ap| service.approval_json(&id, ap, &pending));
             let (state, error, _) = olo_rex_link::agents::effective_state(&again.cls, info.and_then(|v| v["transcript_state"].as_str()), info.and_then(|v| v["transcript_error"].as_str()), true);
             // At rest, with what its conversation's file says: told, or
             // kept back still (`state::rest_now`).

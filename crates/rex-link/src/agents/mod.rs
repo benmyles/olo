@@ -421,6 +421,35 @@ mod tests {
         assert_eq!(rest_now(now, started, true, true, Some(at_start), Some(Written { len: 900, over: true, at_ms: now, said: true })), Rest::Told { answered: Some(7) });
     }
 
+    /// What makes a box the box it is (`state::box_hash`): its command to the letter, its tool, its
+    /// question and its choices; not a count running down in its question, nor which choice is marked.
+    #[test]
+    fn a_box_is_its_command_and_choices_to_the_letter() {
+        use crate::agents::state::box_hash;
+        use olo_agent_screen::{Agent, parse_approval};
+        let (rule, dashed) = ("─".repeat(60), "╌".repeat(60));
+        let asks = |command: &str, question: &str, marked: usize| {
+            let mark = |i: usize| if i == marked { "❯" } else { " " };
+            let screen = format!(
+                "● Bash({command})\n{rule}\n Bash command\n Make it so\n{dashed}\n │ {command}\n{dashed}\n {question}\n {} 1. Yes\n {} 2. Yes, and don’t ask again for: {command}\n {} 3. No\n Esc to cancel · Tab to amend\n",
+                mark(0),
+                mark(1),
+                mark(2)
+            );
+            parse_approval(Agent::Claude, &screen).unwrap_or_else(|| panic!("not read as a box:\n{screen}"))
+        };
+        let (five, nine) = (asks("sleep 5", "Do you want to proceed?", 0), asks("sleep 9", "Do you want to proceed?", 0));
+        // (The screen's own key holds these two for one: every digit is aside in it.)
+        assert_eq!(five.key, nine.key, "the screen's key has changed: this test's premise");
+        assert_ne!(box_hash(&five), box_hash(&nine), "a command a digit different is another box");
+        // The mark moved to another choice: the same box.
+        assert_eq!(box_hash(&five), box_hash(&asks("sleep 5", "Do you want to proceed?", 2)));
+        // A count in its question, a second later: the same box.
+        assert_eq!(box_hash(&asks("sleep 5", "Do you want to proceed (blocked in 1:53)?", 0)), box_hash(&asks("sleep 5", "Do you want to proceed (blocked in 1:52)?", 0)));
+        // Another question, the same command: another box.
+        assert_ne!(box_hash(&five), box_hash(&asks("sleep 5", "Do you want to run this in the background?", 0)));
+    }
+
     /// What says a child has taken up what it was given: its own
     /// screen saying a turn is on, never Rex's word for its pane nor a
     /// question at its start (the ShiftUp lead's item 46, 2026-11-27:

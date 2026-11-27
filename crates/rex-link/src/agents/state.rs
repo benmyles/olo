@@ -71,6 +71,27 @@ impl SubagentLiveState {
     }
 }
 
+/// What makes an approval box the box it is: its tool, its command as
+/// the box shows it, its question and its choices, to the letter (the
+/// question's digits aside: a count that runs down in it is the same
+/// box a second later). Two boxes whose commands differ by a digit are
+/// two boxes: the screen's own key for a dialog
+/// (`olo_agent_screen::ApprovalPrompt::key`) has every digit aside, to
+/// be still across a countdown anywhere in it, and so held `sleep 5`
+/// and `sleep 9` for one. What an answer is checked against before it
+/// is given, and again before a second Enter.
+pub fn box_hash(ap: &olo_agent_screen::ApprovalPrompt) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    ap.tool.hash(&mut h);
+    ap.command.hash(&mut h);
+    ap.question.chars().map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>().hash(&mut h);
+    for c in &ap.choices {
+        (c.index, c.kind.as_str(), &c.label).hash(&mut h);
+    }
+    h.finish()
+}
+
 /// Rich screen classification without false positives from bare `"esc to cancel"` or empty repaint tails.
 #[derive(Clone, Debug)]
 pub struct ScreenClassification {
