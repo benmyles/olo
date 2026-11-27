@@ -31791,6 +31791,23 @@ agents through the night, could not move to it.
     seconds): started with a prompt, and a conversation taken up again
     with one, the first rest told is the prompt's own turn's end and
     answers the start; after a send, the send.
+- *A child's own folders are trusted at its start* (`start --trust`;
+  `ops.rs`; the ShiftUp lead's items 1 and 42). For Claude Code the
+  folders (`--cwd`, each `--add-dir`) are written as trusted into its
+  own config before it starts (`agent::trust`). Where an agent asks all
+  the same, the service answers the question for the first fifteen
+  seconds of the child, for those folders alone, by where the mark is
+  seen to stand and never by timing (`parse_folder_trust`: the mark
+  moved to the yes, the screen read again, Return only with the mark on
+  it; a Return that didn't take is given again, four times at most): a
+  key sent in a question's first moments is dropped by Claude Code, and
+  by timing that was a Return on "No, exit". Claude Code's, Codex's and,
+  since 2026-11-27, Antigravity's ("Do you trust the contents of this
+  project?", its mark on the yes already: `--trust` had left it
+  standing, and a `run` of an agy in a new folder came back
+  "question"). A question about another folder is nobody's to answer
+  unasked: it stands, a `waiting_question`. Tried with both agents'
+  real screens in `agents.rs` (`a_childs_own_folder_is_trusted_at_its_start`).
 - *`stop` answers once the program has ended* (`ops.rs`, `stop`,
   `still_running_after`; the ShiftUp lead's item 35, 2026-11-26:
   "`stop` answers only once the tab's own program has ended, or says it
