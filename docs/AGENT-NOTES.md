@@ -1646,6 +1646,84 @@ build before fails eleven). The rig's `look=` option had never done anything:
 it asked `tsession look`, which doesn't exist (`theme` is the word), so
 "dark" pictures from the rig came out light without a word.
 
+### Where each agent program reads its standing instructions, and how that was proven (2026-11-27)
+
+For `crates/agent-context` (a Neon builder's work, checked and run
+again by me): not from memory, each from the program itself.
+
+- **Claude Code** 2.1.332: `CLAUDE.md` in its folder (`~/.claude`, or
+  `CLAUDE_CONFIG_DIR`; that variable set to an empty word makes Claude
+  Code say it isn't signed in, where Olo's code takes it for unset).
+- **Codex** 0.172.0: `AGENTS.md` in `~/.codex` or `CODEX_HOME`; `codex
+  debug prompt-input` prints what it would send, with no model asked.
+  An `AGENTS.override.md` beside it is read instead of it.
+- **Antigravity** 1.5.18: a rule in `~/.gemini/config/rules/NAME.md` is
+  read in every folder only with `---\ntrigger: always_on\n---` at its
+  top; without it, never. `GEMINI.md` and `AGENTS.md` in `~/.gemini`
+  and `~/.gemini/config` are read too; nothing under
+  `~/.gemini/antigravity-cli`. No variable moves any of it: a test of
+  it sets `HOME`.
+- **A live test of a harness asks one question whose answer is only
+  in the file, with a way out** ("if you were told of no code word,
+  answer NONE"): asked the bare question with nothing to find, Claude
+  Code was still at it when 75 s were up, one run in three.
+- **The asking shell's proxy is the asking agent's own.** A Claude
+  Code session here names the Token Pool's proxy (`HTTPS_PROXY`, with
+  the pool's certificate in `NODE_EXTRA_CA_CERTS`); Codex started from
+  it with a scratch config ends "workspace routing discovery failed",
+  exit 1, and answers at once with no proxy named. The builder, an agy
+  child, had no such variable and saw all three pass; I saw Codex fail.
+  A test that runs another harness drops the proxy variables for it.
+
+### I ended the live agents service twice with a test script (2026-11-27, 05:34:57 and 05:35:07 UTC)
+
+Trying a change to the service, I wrote a script that started a
+scratch Rex server, then a child tab of my own whose shell asked a
+scratch agents service something, read the service's pid from a
+`ping`, closed the tab, and ended "its" service by that pid. The
+scratch environment stood in front of the first command of the tab's
+shell (`env A=… B=… helper agent list; helper agent ping`), so the
+`ping` after the `;` had none of it, went to the live service, and
+printed the live service's pid; the tidy-up sent it SIGTERM. Run
+twice. The service came back each time within a second (the children
+are the Rex server's tabs, a watch in flight asks again), but the
+second time an asker of an older helper started it, and the host ran
+the build before for two minutes. Told to the ShiftUp lead in their
+file with the times; put right by the tool's own handover.
+
+What I do now, and what a brief to a helper says:
+
+- **A scratch environment is exported for the whole script**, at its
+  top (`export REX_SERVER_SOCKET=… OLO_REX_AGENTS_DIR=… HOME=…`), never
+  written in front of one command: the next command after a `;`, a
+  `&&` or a pipe has none of it. And the script says where it is
+  before it does anything: the helper's `ping` must not answer when no
+  scratch service has been started yet (`no agents service is
+  running`): if it answers, the environment is wrong, and the script
+  stops.
+- **Never a signal to a pid that a command printed.** Only to a
+  process whose own command line, read from `/proc/PID/cmdline` at
+  that moment, shows the scratch folder (or is exactly what the script
+  started, `sleep 987`): one line, `case "$(tr '\0' ' ' <
+  /proc/$p/cmdline)" in *"$SCRATCH"*) kill $p;; esac`.
+- **The stand-in suite's rig is the way to try the service**
+  (`crates/rex-link/tests/agents.rs`: a Rex server, a home and an
+  agents folder of its own, set for every command by one function),
+  not a script written beside it.
+
+What the same hour showed and did not: the service lives in the cgroup
+of the Rex terminal whose command first started it
+(`rex.service/terminal-ID`), in a session of its own. I took that for
+why it had been "told to end" at 05:01:08 (a signal nobody of mine
+sent) and wrote a change to move it out; then measured: a process in a
+session of its own, left in a child tab's terminal cgroup, still runs
+thirty seconds after `olo agent stop --force` closes the tab. The
+change was taken out again, and the 05:01:08 signal has a second
+investigator. A cause is measured before it is fixed. Also: the
+system journal names the machine and its addresses in every line;
+read for one fact, it put them in my context. Not again: the service's
+own log has what the service knew, and `/proc` the rest.
+
 ### A hung test found 3 h 45 min later: three waits with no end, one behind the other (2026-11-27)
 
 A copy of the agents service's stand-in suite, started in the

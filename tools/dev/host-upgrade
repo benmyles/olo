@@ -226,6 +226,23 @@ def main():
         if changed:
             did.append(f"the desktop commands' {', '.join(changed)}")
 
+    # 2b. What every coding agent on this host is told before it begins
+    # (the helper's `context`: a section of Olo's in each agent's own
+    # standing instructions, and the skill where Codex and Antigravity
+    # look), by a helper that has it. Nothing is written that is
+    # already as it should be.
+    # (Only a helper that has the command is asked: one from before it
+    # takes any other first word for its link's own arguments. Known by
+    # the command's own usage line in the file, so nothing is run to
+    # find out.)
+    if not dry and b"usage: olo-rex-link context " in open(helper, "rb").read():
+        r = subprocess.run([helper, "context", "install"], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
+        written = [line.split(":")[0] for line in r.stdout.splitlines() if ": written (" in line]
+        if r.returncode:
+            print(f"host-upgrade: what agents here are told couldn't be put ({(r.stderr or r.stdout).strip()[:200]}): the rest goes on")
+        elif written:
+            did.append("what agents here are told (" + ", ".join(written) + ")")
+
     # 3. The service.
     if dry:
         pid, exe = service(max(glob.glob(os.path.join(LINKS, f"olo-rex-link-*-{machine}")), key=os.path.getmtime))

@@ -30387,6 +30387,74 @@ Rex server, as every Rex client offers its own
   the output. (Rex's Lua has no `os.execute`: a piece of a picture is
   decoded by the host's `base64` through `rex.exec`; decoded in Lua
   itself, a piece of 600 kB overflowed its stack.)
+- *What every agent on a host is told before it begins*
+  (`crates/agent-context`, `olo-agent-context`; the helper's
+  `olo-rex-link context install|remove|status [--json]`,
+  `crates/rex-link/src/context.rs`). Ben, 2026-11-27, of an agent on a
+  Rex host: "look how much this agent had to do to figure out where it
+  was running and how to do something as simple as open a url in my
+  browser. can we have it so that all agents on a rex host get a
+  section added to their system instructions or the closest to that
+  each harness allows that explains where they're running and an
+  overview of the relevant skills and capabilities of each. should
+  work for all of claude, codex and agy and be extensively tested".
+  - *The section* (`text.rs`, `SECTION`: one wording for every agent,
+    under 3,000 bytes with its markers; a test holds its size, the
+    facts it must have, and that it names no machine): where the agent
+    runs, how to tell a Rex pane from a plain shell (`REX_BLOCK`), that
+    there is no screen, browser or keyring here and what `olo` gives
+    instead (a link in the person's browser, an Agent Screen, a secret
+    they approve, files, subagents as child tabs), that each works only
+    for what the person allowed, and which skill to read first.
+  - *Where each agent reads it*, proven with each program itself
+    (Claude Code 2.1.332, codex-cli 0.172.0, agy 1.5.18: a live test
+    asks each one question whose answer is only in the file):
+    Claude Code, `CLAUDE.md` in its folder (`~/.claude`, or
+    `CLAUDE_CONFIG_DIR`); Codex, `AGENTS.md` in its folder (`~/.codex`,
+    or `CODEX_HOME`; a person's `AGENTS.override.md` there is read
+    *instead*, and Olo's block then isn't); Antigravity, a rule file in
+    its machine-wide folder, `~/.gemini/config/rules/olo-rex.md`, which
+    it reads only with `trigger: always_on` in its front matter
+    (without it the file is ignored; no variable moves that folder).
+  - *Whose file it is.* Claude Code's and Codex's files are the
+    person's: Olo keeps one block there between its own markers
+    (`<!-- olo:rex-host:begin v1 -->` … `end`), and everything else is
+    kept to the byte (their text before and after, CRLF, no newline at
+    the end, a symbolic link written through, permissions; a damaged
+    block repaired to one; written by a temporary file and a rename).
+    Antigravity's rule file is Olo's whole. Nothing is made for an
+    agent whose own folder isn't on the machine, and a second install
+    writes nothing, not even the file's time.
+  - *The bridge's skill where the others look*: Rex puts
+    `olo-rex-bridge` in `~/.claude/skills`, which only Claude Code
+    reads; Codex and Antigravity read `~/.agents/skills`. Where the
+    person has either, the helper puts the skill's `SKILL.md` there
+    too, with Olo's stamp, kept the same, never over one that isn't
+    Olo's.
+  - *When.* With the skill: the script that puts Rex's skill on a host
+    ends by asking the host's own helper `context install`, and the one
+    that takes it off begins with `context remove` (`bridge.rs`,
+    `CONTEXT_PUT`, `REMOVE_SKILL`; only a helper whose file has the
+    command's usage line is asked: one from before takes "context" for
+    its link's arguments). And at each connection the host's own helper
+    brings it to what it has (`context::keep`), where the skill's stamp
+    says the person had Olo's skill put there: so an upgraded desktop
+    brings the new wording with its new helper. Only a helper run from
+    where Rex puts it (`~/.local/share/olo/rex-link`) does that: a
+    build run from anywhere else writes nothing into the home it runs
+    in. `tools/dev/host-upgrade` asks the same of the helper it puts.
+  - *Tried*: the library's eleven tests (every case of the block) and
+    its three live ones (`OLO_AGENT_CONTEXT_LIVE=claude,codex,agy jato
+    test -p olo-agent-context --test live -- --ignored`: a scratch
+    config for each, linked to the person's sign-in and nothing else;
+    each harness but Claude Code run with no proxy named, the asking
+    shell's being its own agent's); the helper's command and its
+    keeping (`tests/context.rs`: the installed helper keeps, a build
+    from elsewhere doesn't, no stamp no section); the scripts with
+    stand-in helpers (`bridge.rs`); and end to end on the rig's far
+    host: Rex puts the skill, each agent's file has the section and
+    the person's text is as it was; the skill taken off, it is gone
+    from each and Claude Code's file is as the person wrote it.
 - *Forwards a host makes* (`apps/rex/src/forwards.rs`; Ben,
   2026-11-24, of an agent that had asked them to make one by hand:
   "add functionality to olo bridge or olo rex skills or whatever so

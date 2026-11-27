@@ -17,6 +17,7 @@ mod activity;
 mod agent;
 #[cfg(feature = "agents")]
 mod agentd;
+mod context;
 #[cfg(feature = "move")]
 mod fix;
 #[cfg(feature = "sync")]
@@ -94,6 +95,12 @@ fn main() {
     if args.first().is_some_and(|a| a == "--version") {
         println!("olo-rex-link {}", olo_rex_link::VERSION);
         return;
+    }
+    // (`context`: the section Olo keeps in each coding agent's standing
+    // instructions on this host, and the bridge's skill where the agents
+    // other than Claude Code look for skills.)
+    if args.first().is_some_and(|a| a == "context") {
+        std::process::exit(context::run(&args[1..]));
     }
     // (`quic`: the helper's own link over UDP, where it was built with it.)
     if args.first().is_some_and(|a| a == "quic") {
@@ -183,6 +190,11 @@ fn main() {
             std::process::exit(127);
         }
     };
+    // (At each connection, on a thread of its own: what the agents of
+    // this host are told is kept as this helper has it, where Olo's
+    // skill for agents is on the host. A few small files read and
+    // compared; nothing written that is already so.)
+    std::thread::spawn(context::keep);
     // (`OLO_REX_LINK_HELD_MS`: how long a request is held for another's
     // answer, for the tests of that; `HELD_AT_MOST` otherwise.)
     let gate = match std::env::var("OLO_REX_LINK_HELD_MS").ok().and_then(|ms| ms.parse().ok()) {

@@ -819,7 +819,12 @@ pub const OLD_SHIMS: &str = r#"rm -rf "$HOME/.local/share/olo-rex-bridge""#;
 /// Takes the skill for agents off a host (what
 /// [`generate_remote_skill_install_script`] put there; the skill that
 /// Rex's own `rex skill setup` installs is Rex's, and stays).
-pub const REMOVE_SKILL: &str = r#"rm -rf "$HOME/.claude/skills/olo-rex-bridge"; if [ -L "$HOME/.local/bin/olo" ] && [ ! -e "$HOME/.local/bin/olo" ]; then rm -f "$HOME/.local/bin/olo"; fi"#;
+/// (First what the agents there were told with it: the section in each
+/// one's standing instructions and the skill's copy for Codex and
+/// Antigravity, `olo-rex-link context remove`, by the host's helper
+/// where it has the command. The skill's stamp gone, the helper puts
+/// neither back.)
+pub const REMOVE_SKILL: &str = r#"h=$(ls -t "$HOME"/.local/share/olo/rex-link/olo-rex-link-*-"$(uname -m)" 2>/dev/null | head -n 1); if [ -n "$h" ] && grep -q 'usage: olo-rex-link context ' "$h" 2>/dev/null; then "$h" context remove </dev/null >/dev/null 2>&1 || true; fi; rm -rf "$HOME/.claude/skills/olo-rex-bridge"; if [ -L "$HOME/.local/bin/olo" ] && [ ! -e "$HOME/.local/bin/olo" ]; then rm -f "$HOME/.local/bin/olo"; fi"#;
 
 /// What a host answered [`PRESENT`]: whether the old shims are there,
 /// and the skill.
@@ -863,11 +868,23 @@ echo '{stamp}' > "$SKILL_DIR/.olo-skill.tmp.$$" && mv -f "$SKILL_DIR/.olo-skill.
 if command -v rex >/dev/null 2>&1; then
   rex skill setup 2>/dev/null || true
 fi
+{CONTEXT_PUT}
 echo "Installed Olo's skill for agents in $SKILL_DIR"
 "#,
         stamp = skill_stamp()
     )
 }
+
+/// With the skill: what every coding agent on the host is told before
+/// it begins (`olo-rex-link context install`, `crates/agent-context`:
+/// a section of Olo's in each agent's own standing instructions, and
+/// the skill where Codex and Antigravity look). By the host's helper,
+/// where it is there and has the command; where it isn't yet (a first
+/// connection, before the helper is put), the helper does it itself at
+/// its next connection (`context::keep`). It fails nothing of the
+/// skill's own.
+const CONTEXT_PUT: &str = r#"h=$(ls -t "$HOME"/.local/share/olo/rex-link/olo-rex-link-*-"$(uname -m)" 2>/dev/null | head -n 1); if [ -z "$h" ] || ! grep -q 'usage: olo-rex-link context ' "$h" 2>/dev/null; then h=; fi
+if [ -n "$h" ]; then "$h" context install </dev/null >/dev/null 2>&1 || true; fi"#;
 
 /// The desktop commands on a host (Ben, 2026-11-23: "have the rex client
 /// support installing shims for xdg-open and other desktop integration
@@ -1168,6 +1185,43 @@ mod present_tests {
             .output()
             .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(present(&run(PRESENT)), (false, true));
+        // With the skill, what agents there are told: asked of the
+        // host's own helper, the newest there, and only one that has
+        // the command (its usage line in its file). A helper from
+        // before it is never run: it would take "context" for its
+        // link's own arguments.
+        let helpers = home.join(".local/share/olo/rex-link");
+        std::fs::create_dir_all(&helpers).unwrap();
+        let machine = String::from_utf8_lossy(&std::process::Command::new("uname").arg("-m").output().unwrap().stdout).trim().to_owned();
+        let helper = |name: &str, has_it: bool| {
+            let file = helpers.join(format!("olo-rex-link-{name}-{machine}"));
+            let usage = if has_it { "# usage: olo-rex-link context install|remove|status\n" } else { "" };
+            std::fs::write(&file, format!("#!/bin/sh\n{usage}echo \"$*\" >> \"$HOME/asked\"\n")).unwrap();
+            std::fs::set_permissions(&file, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        };
+        let install = || {
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("sh -c {}", crate::hub::shell_quote(&generate_remote_skill_install_script())))
+                .env("HOME", &home)
+                .env("PATH", "/usr/bin:/bin")
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        };
+        helper("0001", false);
+        install();
+        assert!(!home.join("asked").exists(), "a helper from before the command was run");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        helper("0002", true);
+        install();
+        assert_eq!(std::fs::read_to_string(home.join("asked")).unwrap(), "context install\n");
+        run(&format!("sh -c {}", crate::hub::shell_quote(REMOVE_SKILL)));
+        assert_eq!(std::fs::read_to_string(home.join("asked")).unwrap(), "context install\ncontext remove\n", "taken away before the skill is");
+        assert_eq!(present(&run(PRESENT)), (false, false));
+        std::fs::remove_dir_all(&helpers).unwrap();
+        install();
         assert_eq!(present(&run(PRESENT)), (false, true));
         // (And it is seen to be this Olo's; another's isn't.)
         assert!(skill_is_current(&run(PRESENT)));

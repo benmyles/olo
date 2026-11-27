@@ -41,6 +41,10 @@ serde_json.workspace = true
 # (Agents' screens read: `agents`, what the host's agents service and the
 # Olo desktop agree on. No dependencies of its own.)
 olo-agent-screen.workspace = true
+# (What every coding agent on a host is told before it begins: the helper
+# puts it where each reads its standing instructions, `context`. No
+# dependencies of its own.)
+olo-agent-context.workspace = true
 # (In the build already, under serde_json: the search for a word in a
 # message, which is most of what the helper does to each one.)
 memchr = "2"

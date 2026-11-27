@@ -7245,6 +7245,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-agent-context"
+version = "0.1.0"
+
+[[package]]
 name = "olo-agent-screen"
 version = "0.1.0"
 
@@ -8666,6 +8670,7 @@ dependencies = [
  "futures-util",
  "libc",
  "memchr",
+ "olo-agent-context",
  "olo-agent-screen",
  "olo-release",
  "olo-rex-client",

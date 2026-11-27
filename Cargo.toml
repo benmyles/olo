@@ -12,6 +12,7 @@ license = "MIT"
 olo-protocol = { path = "crates/protocol" }
 olo-kit-base = { path = "crates/kit-base" }
 olo-agent-screen = { path = "crates/agent-screen" }
+olo-agent-context = { path = "crates/agent-context" }
 olo-color = { path = "crates/color" }
 olo-sync = { path = "crates/sync" }
 olo-yuv = { path = "crates/yuv" }

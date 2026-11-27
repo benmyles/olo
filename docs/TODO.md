@@ -259,6 +259,36 @@ something nobody here has is in "Blocked", with what it waits for.
   good. A pane marked for a question is read once the question is
   answered (`BlockRuntime::marked_unread`, `activity_went`); a bell's
   mark, or an error's, still waits for the pane to be looked at.
+- **What agents on a host are told, what is left** (built 2026-11-27,
+  HACKING, "What every agent on a host is told before it begins"): on
+  the desktop itself agents get nothing of the kind yet (Ben asked for
+  Rex hosts); the Host window doesn't show whether a host has it (the
+  helper's `context status --json` says); Codex with an
+  `AGENTS.override.md` doesn't read Olo's block; the empty folders the
+  helper made (`~/.agents/skills`, `~/.gemini/config/rules`) stay when
+  it is removed.
+- **What the builder of the agents' section found in the bridge's skill
+  and source** (2026-11-27, its report; none fixed yet, each to check):
+  - "Disallowed bridge commands exit `1` instead of `69`": the skill
+    says a command that isn't allowed fails with status 69, and
+    `bridge_shim.sh` falls back to the host's own command only on 69;
+    in the code a disabled `olo.run`, a child's refusal and the
+    clipboard's `None` answers come back as 1. Which is right is to
+    settle (the section says no number meanwhile).
+  - "Default download/screenshot directory mismatch": the skill says
+    `olo get` and `olo screen look` save to `/var/tmp/olo-rex-bridge`;
+    `bridge_olo.sh` uses `$XDG_RUNTIME_DIR/olo-rex-bridge-UID` where
+    that is set.
+  - The skill introduces its command only as
+    `~/.claude/skills/olo-rex-bridge/olo`, though both install scripts
+    also link `~/.local/bin/olo`.
+  - `crates/rex/src/carry.rs` carries `.gemini/GEMINI.md` and
+    `.gemini/AGENTS.md` and not Antigravity's global folder
+    (`~/.gemini/config/`: rules, skills); and Olo's own rule file there
+    (`rules/olo-rex.md`) is not the person's to carry.
+  - Codex reads `$CODEX_HOME/AGENTS.override.md` *instead of*
+    `AGENTS.md` where a person has one: Olo's block in `AGENTS.md` is
+    then not read (found with `codex debug prompt-input`).
 - **A floating pane in Rex, what is left** (remade 2026-11-27 after
   Ben's "i can't select it or click on it or get rid of it"; HACKING,
   "*A floating pane*"). From the two reviews of its pictures, not

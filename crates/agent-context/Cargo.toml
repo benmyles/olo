@@ -1,0 +1,8 @@
+[package]
+name = "olo-agent-context"
+description = "What every coding agent on a Rex host is told before it begins: where it is running and what Olo gives it there, written into each harness's own standing instructions (Claude Code, Codex, Antigravity)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
