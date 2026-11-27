@@ -551,11 +551,50 @@ fn strip_trailing_shortcut(s: &str) -> &str {
     t
 }
 
+/// A choice's label less what it quotes: the spans in quotes taken out
+/// ('…', "…", and `…`, which `normalize_choice_text` has made '…'). An
+/// apostrophe inside a word ("don't") opens nothing: a quote opens at
+/// the label's start or after a space or a bracket, and closes before
+/// a space, the end or punctuation. What a label quotes is a command
+/// or a path the agent chose, not the CLI's wording, and may say
+/// anything.
+fn own_words(lower: &str) -> String {
+    let chars: Vec<char> = lower.chars().collect();
+    let mut out = String::with_capacity(lower.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let opens = matches!(c, '\'' | '"') && (i == 0 || chars[i - 1].is_whitespace() || matches!(chars[i - 1], '(' | '[' | ':'));
+        if opens {
+            let closes = |j: usize| chars[j] == c && (j + 1 == chars.len() || chars[j + 1].is_whitespace() || matches!(chars[j + 1], ',' | '.' | ';' | ':' | ')' | ']' | '?'));
+            if let Some(end) = (i + 1..chars.len()).find(|&j| closes(j)) {
+                out.push(' ');
+                i = end + 1;
+                continue;
+            }
+        }
+        out.push(c);
+        i += 1;
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// What a choice does, from its label. From the CLI's own words alone
+/// (`own_words`): a label quotes the command or the path it would
+/// allow, and words in those moved a choice from one kind to another.
+/// Antigravity's "always allow in this conversation for commands that
+/// start with 'cat settings.json'" read as a grant kept in the
+/// settings; Claude Code's "always allow access to" a folder whose
+/// name had "this session" in it read as one for this session, which a
+/// caller asking for the session alone would then have taken, and it
+/// is kept for good (a code review, 2026-11-27). A yes for this once
+/// is only ever one of a list of whole labels, quoted words or not.
 pub fn classify_choice_kind(label: &str) -> ChoiceKind {
-    let lower = normalize_choice_text(label);
-    if lower.is_empty() {
+    let whole = normalize_choice_text(label);
+    if whole.is_empty() {
         return ChoiceKind::Other;
     }
+    let lower = own_words(&whole);
     if lower.contains("switch to auto")
         || lower.contains("auto-accept")
         || lower.contains("auto mode")
@@ -591,8 +630,12 @@ pub fn classify_choice_kind(label: &str) -> ChoiceKind {
     {
         return ChoiceKind::DontAskAgain;
     }
+    // (For this session or conversation only where the CLI says so
+    // before it names any path: a path is not in quotes, and its own
+    // words are not the CLI's.)
+    let head = lower.split(' ').take_while(|word| !word.contains('/') && !word.starts_with('~')).collect::<Vec<_>>().join(" ");
     if lower.contains("always allow") || lower.contains("always approve") || lower.contains("always run") {
-        if lower.contains("this conversation") || lower.contains("this session") {
+        if head.contains("this conversation") || head.contains("this session") {
             return ChoiceKind::AllowSession;
         }
         return ChoiceKind::DontAskAgain;
@@ -615,7 +658,8 @@ pub fn classify_choice_kind(label: &str) -> ChoiceKind {
     }
     // Strict allowlist for single-use `Once`: NEVER classify unknown `"Yes, and ..."` or
     // standing-permission phrasing as `Once`.
-    let clean = strip_trailing_shortcut(&lower).trim_end_matches('.');
+    // (Of the whole label: one that quotes anything is not on the list.)
+    let clean = strip_trailing_shortcut(&whole).trim_end_matches('.');
     if matches!(
         clean,
         "yes"
@@ -800,20 +844,48 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     })?;
 
     let rest = &lines[q_idx + 1..];
-    // Find `1. ...` strictly belonging to the chooser (not a numbered line inside a command preview:
-    // require it to be the last `1. ` block or followed by another choice + cursor mark).
-    let (first_choice_rel, choice_col) = rest.iter().enumerate().rev().find_map(|(idx, l)| {
-        let (_, num, _, col) = numbered_at(l)?;
-        if num != 1 {
-            return None;
+    // Where the chooser ends: its foot, the last such lines read (a run
+    // of them: Antigravity draws two). Looked for from the bottom: a
+    // line that only looks like one, quoted in an answer's label
+    // ("Ctrl+G opens the editor", in a script an answer shows), ended
+    // the chooser where it stood, the answers under it and its No lost
+    // (a code review, 2026-11-27).
+    let foot = rest.iter().rposition(|l| footer_marker(l)).map(|mut at| {
+        while let Some(before) = rest[..at].iter().rposition(|l| !l.trim().is_empty()) {
+            if !footer_marker(rest[before]) {
+                break;
+            }
+            at = before;
         }
-        // Confirm at least one choice in this trailing block has a live cursor mark: looked for to the
-        // chooser's foot (within twelve lines, a mark on the last answer of a chooser whose answers each
-        // quote a command over several lines was never found: the box read as no question at all once
-        // the mark had been moved there, which is what `approve --no` does before it presses Return).
-        let has_cursor = rest[idx..].iter().take(200).take_while(|cl| !footer_marker(cl)).any(|cl| numbered_at(cl).is_some_and(|(sel, _, _, c)| sel && c == col));
-        has_cursor.then_some((idx, col))
-    })?;
+        at
+    });
+    let region = &rest[..foot.unwrap_or(rest.len())];
+    // Every numbered line between the question and the foot, with its
+    // column; and the one that carries the mark, which says which
+    // column the answers stand in. One mark, or the box isn't read: a
+    // second marked number is a line an answer quotes (a blockquote,
+    // "> 3. …", where `>` is the mark), and which of the two the CLI's
+    // own cursor is can't be told. (The mark used to be looked for
+    // from a first answer down, and the *last* "1." with a mark under
+    // it began the chooser: a list an answer quoted, "1. …" at the
+    // answers' column with the mark moved to No, was read as a chooser
+    // of that line and No. The same review.)
+    let numbered: Vec<(usize, bool, u32, String, usize)> = region.iter().enumerate().filter_map(|(i, l)| numbered_at(l).map(|(selected, num, label, col)| (i, selected, num, label, col))).collect();
+    let mut marked = numbered.iter().filter(|n| n.1);
+    let (Some(mark), None) = (marked.next(), marked.next()) else { return None };
+    let choice_col = mark.4;
+    // The answers: the numbered lines at that column, all of them from
+    // the question to the foot. They count up from 1 (a number may be
+    // left out: Antigravity's 1, 2, 4), each once: a number seen twice
+    // or out of order there is a list quoted inside an answer (or in
+    // the command shown above them), indented as they are, and which
+    // lines are answers can't be told. Not read as a question at all:
+    // half its answers would be worse.
+    let answers: Vec<&(usize, bool, u32, String, usize)> = numbered.iter().filter(|n| n.4 == choice_col).collect();
+    if answers.first().map(|a| a.2) != Some(1) || !answers.windows(2).all(|w| w[1].2 > w[0].2 && w[1].2 <= w[0].2 + 3) {
+        return None;
+    }
+    let first_choice_rel = answers[0].0;
     if rest[..first_choice_rel].iter().map(|l| l.trim()).any(|l| l.ends_with('?') && !l.starts_with("Reason:")) {
         return None;
     }
@@ -821,73 +893,33 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
         return None;
     }
 
-    // Collect numbered choices in ascending order (supporting skipped numbers like agy's `1, 2, 4`
-    // and both indented AND column-0 wrapped continuation lines, while NEVER absorbing another numbered line).
-    let mut choices: Vec<ApprovalChoice> = Vec::new();
-    let mut last_num = 0u32;
-    let mut wrap_lines_for_last = 0u8;
+    // Each answer's label: its line, and what stands under it to the
+    // next answer. A label may quote the command it would allow, and a
+    // command of several lines is quoted with its line ends, blank
+    // lines and numbered lines of its own (at another column) among
+    // them: all of it is the label's. (A box whose "always allow"
+    // choices quoted `python3 -c '` and a script was read as two
+    // choices, its "No" never seen, and `olo agent approve --no` found
+    // no "No" to choose: a minder's report, 2026-11-27.) The last
+    // answer's goes on as a wrapped label does: three lines at most, to
+    // a blank line or a rule. One pass over the rows (each answer once:
+    // every line under an answer used to look ahead for the next).
     let is_rule_or_chrome =
         |t: &str| t.starts_with('─') || t.starts_with('╌') || t.starts_with('═') || t.starts_with('━') || t.starts_with('❯') || t.starts_with('›') || t.starts_with("> ") || t.starts_with("? for ");
-    // An answer: a numbered line at the answers' own column.
-    let answer = |raw: &str| numbered_at(raw).filter(|(_, _, _, col)| *col == choice_col).map(|(selected, num, label, _)| (selected, num, label));
-    // Whether a choice that goes on the sequence (`after`'s next numbers)
-    // stands further down, before the box's foot. A choice's label may
-    // quote the command it would allow, and a command of several lines
-    // is quoted with its line ends: a blank line in it, or more lines
-    // than a wrapped label has, is then still inside the choices. (A
-    // box whose "always allow" choices quoted `python3 -c '` and a
-    // script was read as two choices, its "No" never seen, and `olo
-    // agent approve --no` found no "No" to choose: a minder's report,
-    // 2026-11-27. Marked or not: the mark is moved onto the answer
-    // before Return, and the box is read again with it there.)
-    let block = &rest[first_choice_rel..];
-    let goes_on = |from: usize, after: u32| block[from..].iter().take_while(|l| !footer_marker(l)).any(|l| answer(l).is_some_and(|(_, num, _)| num > after && num <= after + 3));
-    for (at, line) in block.iter().enumerate() {
-        let t = line.trim();
-        if footer_marker(t) {
-            if !choices.is_empty() {
-                break;
-            }
-            continue;
+    let mut choices: Vec<ApprovalChoice> = Vec::with_capacity(answers.len());
+    for (index, a) in answers.iter().enumerate() {
+        let mut label = a.3.clone();
+        let under = region[a.0 + 1..answers.get(index + 1).map_or(region.len(), |next| next.0)].iter().map(|l| l.trim());
+        let mut add = |t: &str| {
+            label.push(' ');
+            label.push_str(t);
+        };
+        if index + 1 < answers.len() {
+            under.filter(|t| !t.is_empty()).for_each(&mut add);
+        } else {
+            under.take_while(|t| !t.is_empty() && !is_rule_or_chrome(t)).take(3).for_each(&mut add);
         }
-        if t.is_empty() {
-            if !choices.is_empty() && !goes_on(at + 1, last_num) {
-                break;
-            }
-            continue;
-        }
-        if let Some((selected, num, label)) = answer(line) {
-            if (choices.is_empty() && num == 1) || (!choices.is_empty() && num > last_num && num <= last_num + 3) {
-                let kind = classify_choice_kind(&label);
-                let idx = choices.len();
-                choices.push(ApprovalChoice { index: idx, number: Some(num), label, selected, kind });
-                last_num = num;
-                wrap_lines_for_last = 0;
-                continue;
-            } else if !choices.is_empty() {
-                // A number out of order at the answers' own column: which lines are answers can't be
-                // told (a list quoted inside one of them, indented as they are). Not read as a
-                // question at all: half its answers would be worse.
-                return None;
-            }
-        }
-        if let Some(last) = choices.last_mut() {
-            let inside = goes_on(at + 1, last_num);
-            if is_rule_or_chrome(t) && !inside {
-                break;
-            }
-            if wrap_lines_for_last < 3 || inside {
-                last.label.push(' ');
-                last.label.push_str(t);
-                wrap_lines_for_last = wrap_lines_for_last.saturating_add(1);
-            } else {
-                break;
-            }
-        }
-    }
-    // (Each answer's kind once, from its whole label.)
-    for c in &mut choices {
-        c.kind = classify_choice_kind(&c.label);
+        choices.push(ApprovalChoice { index, number: Some(a.2), kind: classify_choice_kind(&label), label, selected: a.1 });
     }
     if choices.len() < 2 {
         return None;
@@ -896,7 +928,7 @@ pub fn parse_approval(agent: Agent, screen: &str) -> Option<ApprovalPrompt> {
     if !choices.iter().any(|c| matches!(c.kind, ChoiceKind::Once | ChoiceKind::No)) {
         return None;
     }
-    // Must have a live cursor mark on one of the choices (prevents stale scrollback false positives).
+    // The answer the mark stands on (one, by the above).
     let selected_index = choices.iter().position(|c| c.selected)?;
 
     // Extract tool name, full command/arguments, and folded-line indicator from the dialog body above `q_start_idx`
@@ -1399,6 +1431,102 @@ mod tests {
             "● Bash(sh -c ')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   sh -c '…'\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'sh -c '\n\n  3. a line of the script, indented as the answers are\n...'\n  3. Yes, and always allow for commands that start with 'sh' (Persist to settings.json)\n  4. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n"
         ));
         assert!(parse_approval(Agent::Antigravity, &twice).is_none());
+        // The same wherever the mark stands, and wherever the list is: a list an answer quotes, numbered
+        // from 1 at the answers' own column, never begins the chooser. (With the mark moved to No, the
+        // quoted "1." was taken for the first answer and the box read as that line and No: a code review,
+        // 2026-11-27.) And a quoted line that carries the mark's own sign before a number ("> 3. …", a
+        // blockquote) is a second mark: which is the cursor can't be told.
+        for (what, quoted) in [("a list from 1 at the answers' column", "cat <<EOF\n  1. Gather\n  2. Sort\nEOF..."), ("a blockquote with a number", "cat <<EOF\n> 3. as they said\nEOF...")] {
+            for marked in 1..=4 {
+                assert!(parse_approval(Agent::Antigravity, &boxed(quoted, marked)).is_none(), "{what}, the mark on answer {marked}: read as a question");
+            }
+        }
+        // A line of a quoted script that begins as a chooser's foot does ("Ctrl+G …") is not the foot:
+        // that is the last such lines of the box. All four answers are read, wherever the mark stands
+        // (it ended the chooser at answer 2: with the mark on 1 the "No" was lost, on "No" nothing read).
+        for marked in 1..=4 {
+            let ap = parse_approval(Agent::Antigravity, &boxed("echo keys\nCtrl+G opens the editor\nEsc to cancel it\necho done...", marked))
+                .unwrap_or_else(|| panic!("a foot's words in the script, the mark on answer {marked}: no box read"));
+            assert_eq!(ap.choices.iter().map(|c| c.kind).collect::<Vec<_>>(), [ChoiceKind::Once, ChoiceKind::AllowSession, ChoiceKind::DontAskAgain, ChoiceKind::No], "the mark on answer {marked}");
+            assert_eq!((ap.selected_index, ap.choices[3].label.as_str()), (Some(marked - 1), "No, cancel"));
+        }
+    }
+
+    /// What a choice does is read from the CLI's own words, never from
+    /// what it quotes (a command, a path): words there moved a choice
+    /// from "this session" to "kept for good" and back.
+    #[test]
+    fn what_a_choice_quotes_does_not_say_what_it_does() {
+        use ChoiceKind::*;
+        for (label, kind) in [
+            // Antigravity's two, as they are.
+            ("Yes, and always allow in this conversation for commands that start with 'rm one.txt'", AllowSession),
+            ("Yes, and always allow for commands that start with 'rm one.txt' (Persist to settings.json)", DontAskAgain),
+            // Its session choice, quoting a command that names the settings, or the other choice's own words.
+            ("Yes, and always allow in this conversation for commands that start with 'cat settings.json'", AllowSession),
+            ("Yes, and always allow in this conversation for commands that start with 'echo (Persist to settings.json)'", AllowSession),
+            // A grant kept for good, quoting words of a session: still kept for good.
+            ("Yes, and always allow for commands that start with 'echo in this conversation' (Persist to settings.json)", DontAskAgain),
+            ("Yes, and don't ask again for `echo this session` commands", DontAskAgain),
+            ("Yes, and don't ask again for commands that start with 'git status'", DontAskAgain),
+            // Claude Code's folder, kept in the project's settings: its path is not in quotes, and says what it likes.
+            ("Yes, and always allow access to tmp/ from this project", DontAskAgain),
+            ("Yes, and always allow access to notes/for this session/ from this project", DontAskAgain),
+            ("Yes, and always allow access to ~/this conversation/ from this project", DontAskAgain),
+            // A no that quotes a yes; a yes that quotes: not on the list of yeses for this once.
+            ("No, and tell Codex what to do differently (esc)", No),
+            ("Yes, run 'ls'", Other),
+            ("Yes", Once),
+            ("Yes, proceed (y)", Once),
+            ("Yes, run command", Once),
+        ] {
+            assert_eq!(classify_choice_kind(label), kind, "{label}");
+        }
+        // (An apostrophe inside a word opens nothing.)
+        assert_eq!(own_words("yes, and don't ask again for commands that start with 'git status'"), "yes, and don't ask again for commands that start with");
+        assert_eq!(own_words("don't run 'a' or \"b c\" (ever)"), "don't run or (ever)");
+        assert_eq!(own_words("an unclosed 'quote stays"), "an unclosed 'quote stays");
+    }
+
+    /// What reading a box costs (a pane's screen is read at each change
+    /// of it): `jato test --release -p olo-agent-screen -- --ignored
+    /// the_cost --nocapture`, the least of twenty rounds a box. A plain
+    /// box of 16 lines; one of 216, whose two "always allow" answers
+    /// each quote a script of a hundred lines. (2026-11-27, when every
+    /// line under an answer stopped looking ahead for the next answer:
+    /// the long box 809 µs before and 78 µs after, the plain one 13.8
+    /// µs and 12.6 µs.)
+    #[test]
+    #[ignore]
+    fn the_cost_of_reading_a_box() {
+        let plain = agy_asking();
+        let script = (0..100).map(|i| format!("step_{i} = {i}")).collect::<Vec<_>>().join("\n");
+        let long = agy(&format!(
+            "● Bash(python3 -c ')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   python3 -c '…'\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'python3 -c '\n{script}'\n  3. Yes, and always allow for commands that start with 'python3 -c '\n{script}' (Persist to settings.json)\n  4. No, cancel\n  ↑/↓ Navigate · tab Amend\nesc to cancel\n"
+        ));
+        for (what, screen, answers) in [("a plain box", &plain, None), ("two answers quoting a hundred lines each", &long, Some(4))] {
+            let ap = parse_approval(Agent::Antigravity, screen).expect(what);
+            if let Some(n) = answers {
+                assert_eq!(ap.choices.len(), n, "{what}");
+            }
+            let least = (0..20)
+                .map(|_| {
+                    let t = std::time::Instant::now();
+                    for _ in 0..200 {
+                        std::hint::black_box(parse_approval(Agent::Antigravity, std::hint::black_box(screen)));
+                    }
+                    t.elapsed() / 200
+                })
+                .min()
+                .unwrap();
+            println!("{what} ({} lines): {least:?} a reading", screen.lines().count());
+        }
+    }
+
+    /// That a command is folded is said by its own mark alone, in each
+    /// of the forms it is drawn in.
+    #[test]
+    fn only_its_own_mark_says_a_command_is_folded() {
         // Words in a command are not the mark that says lines are folded: a command shown whole is whole.
         let whole = agy(&format!(
             "● Bash(python3 -c 'print(\"3 lines hidden\")')\nCommand\n{AGY_RULE}\nRequesting permission for:\n   python3 -c 'print(\"3 lines hidden\")'\nRun this command?\n> 1. Yes, run command\n  2. No, cancel\n  ↑/↓ Navigate\nesc to cancel\n"

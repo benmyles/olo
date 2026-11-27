@@ -19997,7 +19997,25 @@ An answer is a numbered line at the answers' own column, marked or not
 Return and the box read again with it there, and a numbered list
 inside the quoted command, at the line's start, is not the chooser's;
 where a number comes twice at that column the box is not read as a
-question at all, never as half its answers. And Antigravity's "⋯ (19
+question at all, never as half its answers. The chooser runs from the
+question to its foot, and the foot is the last such lines read (a
+quoted "Ctrl+G opens the editor" in an answer's script is not it);
+every numbered line at the answers' column between them is counted,
+from the question down, so a list an answer quotes, numbered from 1 at
+that column, declines the box wherever the mark stands (with the mark
+on No it was read as that list's first line and No); and there is one
+marked number, or the box isn't read (a blockquote an answer quotes,
+"> 3. …", is a second). What is left, and can't be told from the
+screen: a quoted line that fits the numbering at the answers' column
+(a "3." under Antigravity's 1, 2, 4) is read as an answer; it costs an
+Escape, never a wrong yes, since the mark is seen on the very choice
+before Return. A choice's kind is read from the CLI's own words
+(`own_words`: what it quotes taken out, and "this session" counted
+only before any path): quoted words moved choices between "this
+conversation" and "kept in settings". A yes for this once is only ever
+one of a list of whole labels. Reading a box is one pass over its rows
+(`the_cost_of_reading_a_box`: 13 µs a plain box; 78 µs one whose
+answers quote two hundred lines, 809 µs before). And Antigravity's "⋯ (19
 lines hidden)" is read with its brackets, which it never was, and only
 from its own line, never from words in a command:
 `ApprovalPrompt::folded_lines`)

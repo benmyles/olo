@@ -887,13 +887,6 @@ something nobody here has is in "Blocked", with what it waits for.
     person can see it. Read back to the question within the visible
     viewport and use the actual footer as the end." Measured cost first:
     the screen is read at each change.
-  - *The parser on long quoted labels* (its 26): "calls `goes_on` from
-    every continuation, scanning the remaining suffix again for the same
-    next answer. A run of 100 short quote lines before the next answer
-    costs roughly 5,000 line inspections … classify each ordinary answer
-    twice despite the commit's 'once' claim. Preparse each row once,
-    carry the next-answer information in a reverse pass." To measure
-    (`tools/dev/bench`), then do.
   - *The helpers' tool*: a helper's record is in a folder it can write
     (its 5: "keep the authoritative destinations in a parent-owned
     record outside the helper workspace"; what it names is now believed
