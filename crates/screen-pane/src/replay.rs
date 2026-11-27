@@ -89,16 +89,20 @@ impl PendingHistory {
 }
 
 pub(crate) enum ReplayMsg {
-    /// Wake the UI to drain the single coalesced `PendingHistory` mailbox.
-    HistoryReady,
+    /// Wake the UI to drain the single coalesced `PendingHistory` mailbox for
+    /// follower generation `u64` (retiring followers carry an older generation
+    /// and are ignored — Agy-review R1 #4).
+    HistoryReady(u64),
     Frame {
+        source_gen: u64,
         epoch: u64,
         want: u64,
         actual_at: u64,
         shot: Arc<Shot>,
     },
-    /// Frame fetch for `(epoch, want)` failed or returned nothing.
+    /// Frame fetch for `(source_gen, epoch, want)` failed or returned nothing.
     FrameMissed {
+        source_gen: u64,
         epoch: u64,
         want: u64,
         reason: Option<String>,
@@ -170,6 +174,29 @@ impl FrameTracker {
     fn on_index_grown(&mut self) {
         self.missed = None;
         self.missed_reason = None;
+    }
+
+    /// Rebind to a new source for the SAME screen without wiping the currently
+    /// displayed cached frame (Agy-review R1 #4). Clears any in-flight `asked`
+    /// ticket (and transient misses when online) so scrubbing after reconnect
+    /// fetches cleanly while cached offline History keeps showing its picture.
+    fn on_rebind(&mut self, connected: bool) {
+        self.asked = None;
+        if connected {
+            self.missed = None;
+            self.missed_reason = None;
+        }
+    }
+
+    /// Decide whether `want` needs to be fetched from the worker while `online`.
+    /// When `host_disconnected` (`!online`), never dispatches a worker fetch or
+    /// advances `asked` so scrubbing cached offline History keeps the displayed
+    /// picture intact and reconnect immediately fetches the current playhead.
+    fn request_for_if_online(&mut self, want: Option<u64>, online: bool) -> Option<u64> {
+        if !online {
+            return None;
+        }
+        self.request_for(want)
     }
 
     /// Decide whether `want` needs to be fetched from the worker.
@@ -328,17 +355,59 @@ pub(crate) struct Replay {
     ticking: Option<olo_kit::TimerId>,
     /// The timer the rest of the actions are picked on.
     picking_on: Option<olo_kit::TimerId>,
-    /// Coalesced mailbox between the history follower worker and this view.
-    pending_history: Arc<Mutex<PendingHistory>>,
-    history_queued: Arc<AtomicBool>,
+    /// Coalesced mailbox between the history follower worker and this view,
+    /// replaced fresh on every `rebind_source` and tagged by generation so an
+    /// asynchronously retiring follower can never push `HistoryEvent::Failed`
+    /// into the active view (Agy-review R1 #4).
+    history_mailbox: HistoryMailbox,
     /// Following the history through the source, for as long as this is shown.
     history: Box<dyn HistoryHandle>,
     history_active: bool,
 }
 
+/// Pure helper isolating one history follower generation's coalesced mailbox so
+/// retiring followers never clobber a rebound active mailbox (Agy-review R1 #4).
+struct HistoryMailbox {
+    generation: u64,
+    pending: Arc<Mutex<PendingHistory>>,
+    queued: Arc<AtomicBool>,
+}
+
+impl HistoryMailbox {
+    fn new(generation: u64) -> Self {
+        HistoryMailbox { generation, pending: Arc::new(Mutex::new(PendingHistory::default())), queued: Arc::new(AtomicBool::new(false)) }
+    }
+
+    fn make_callback(&self, notify: impl Fn(u64) + Send + Sync + 'static) -> Box<dyn Fn(HistoryEvent) + Send + Sync> {
+        let generation = self.generation;
+        let pending_cb = self.pending.clone();
+        let queued_cb = self.queued.clone();
+        Box::new(move |ev| {
+            {
+                let mut slot = pending_cb.lock().unwrap_or_else(|e| e.into_inner());
+                match ev {
+                    HistoryEvent::Loaded { actions, texts, reset, index_reset, frames } => slot.push_loaded(actions, texts, reset, index_reset, frames),
+                    HistoryEvent::Failed(message) => slot.push_failed(message),
+                }
+            }
+            if !queued_cb.swap(true, Ordering::AcqRel) {
+                notify(generation);
+            }
+        })
+    }
+
+    fn drain_if_current(&self, msg_gen: u64) -> Option<PendingHistory> {
+        if msg_gen != self.generation {
+            return None;
+        }
+        self.queued.store(false, Ordering::Release);
+        Some(self.pending.lock().unwrap_or_else(|e| e.into_inner()).take())
+    }
+}
+
 /// Build the frames asked for, the latest winning: played on from the
 /// last one shown while the frames kept stay the same (through `source`).
-fn make_frames(source: Arc<dyn ScreenSource>, me: Messenger<ReplayMsg>) -> Sender<(u64, u64, u64)> {
+fn make_frames(source_gen: u64, source: Arc<dyn ScreenSource>, me: Messenger<ReplayMsg>) -> Sender<(u64, u64, u64)> {
     let (tx, rx) = channel::<(u64, u64, u64)>();
     let _ = std::thread::Builder::new().name("screen-frames".into()).spawn(move || {
         let latest = |mut ask: (u64, u64, u64)| {
@@ -354,7 +423,7 @@ fn make_frames(source: Arc<dyn ScreenSource>, me: Messenger<ReplayMsg>) -> Sende
             match source.frame_at(playhead) {
                 Ok(Some((actual_at, f))) => {
                     let shot = Shot { size: [f.width, f.height], rgba: f.rgba };
-                    me.send(ReplayMsg::Frame { epoch, want, actual_at, shot: Arc::new(shot) });
+                    me.send(ReplayMsg::Frame { source_gen, epoch, want, actual_at, shot: Arc::new(shot) });
                 }
                 Ok(None) => {
                     // If superseded by a newer queued scrub (unblocked via
@@ -364,14 +433,14 @@ fn make_frames(source: Arc<dyn ScreenSource>, me: Messenger<ReplayMsg>) -> Sende
                         ask = latest(next);
                         continue;
                     }
-                    me.send(ReplayMsg::FrameMissed { epoch, want, reason: None });
+                    me.send(ReplayMsg::FrameMissed { source_gen, epoch, want, reason: None });
                 }
                 Err(reason) => {
                     if let Ok(next) = rx.try_recv() {
                         ask = latest(next);
                         continue;
                     }
-                    me.send(ReplayMsg::FrameMissed { epoch, want, reason: Some(reason) });
+                    me.send(ReplayMsg::FrameMissed { source_gen, epoch, want, reason: Some(reason) });
                 }
             }
             let Ok(next) = rx.recv() else { return };
@@ -413,13 +482,53 @@ fn action_matches(action: &Action, text: &str, query: &Query, now: u64) -> bool 
     })
 }
 
-/// An action's command line: its kind and arguments, quoted where they
+/// Shell-safe quoting for one command argument so pasting a `Latest:` line
+/// into bash/zsh never expands `$VAR`, backticks, globs, or loses quotes/tabs.
+pub(crate) fn shell_quote(arg: &str) -> String {
+    if arg.is_empty() {
+        return "''".to_owned();
+    }
+    let plain = arg.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'/' | b':' | b',' | b'+' | b'=' | b'@' | b'%'));
+    if plain {
+        return arg.to_owned();
+    }
+    if arg.chars().any(char::is_control) {
+        let mut out = String::from("$'");
+        for c in arg.chars() {
+            match c {
+                '\'' => out.push_str("\\'"),
+                '\\' => out.push_str("\\\\"),
+                '\t' => out.push_str("\\t"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                c if c.is_control() => out.push_str(&format!("\\x{:02x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out.push('\'');
+        return out;
+    }
+    // Single-quoted POSIX string (preserves $, `, ", \, spaces, globs verbatim).
+    let mut out = String::with_capacity(arg.len() + 2);
+    out.push('\'');
+    for c in arg.chars() {
+        if c == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// An action's command line: its kind and arguments, shell-quoted where they
 /// need it.
 pub(crate) fn command(a: &Action) -> String {
     if a.is_oversized() {
         return "Action too large to show".to_owned();
     }
-    let args: Vec<String> = a.args.iter().map(|x| if x.contains(' ') || x.is_empty() { format!("“{x}”") } else { x.clone() }).collect();
+    let args: Vec<String> = a.args.iter().map(|x| shell_quote(x)).collect();
     if args.is_empty() { a.kind.clone() } else { format!("{} {}", a.kind, args.join(" ")) }
 }
 
@@ -473,24 +582,16 @@ impl Replay {
         });
         // (Several rows chosen, ⇧ or ⌘: a part of the history to export.)
         let list = ListModel::new(true);
-        let frames_tx = make_frames(source.clone(), me.clone());
-        let pending_history = Arc::new(Mutex::new(PendingHistory::default()));
-        let history_queued = Arc::new(AtomicBool::new(false));
+        let active = !info.capabilities.host_disconnected;
+        let history_mailbox = HistoryMailbox::new(1);
+        let frames_tx = make_frames(history_mailbox.generation, source.clone(), me.clone());
         let hist_me = me.clone();
-        let pending_cb = pending_history.clone();
-        let queued_cb = history_queued.clone();
-        let history = source.follow_history(Box::new(move |ev| {
-            {
-                let mut slot = pending_cb.lock().unwrap_or_else(|e| e.into_inner());
-                match ev {
-                    HistoryEvent::Loaded { actions, texts, reset, index_reset, frames } => slot.push_loaded(actions, texts, reset, index_reset, frames),
-                    HistoryEvent::Failed(message) => slot.push_failed(message),
-                }
-            }
-            if !queued_cb.swap(true, Ordering::AcqRel) {
-                hist_me.send(ReplayMsg::HistoryReady);
-            }
-        }));
+        let history = source.follow_history_with_active(
+            active,
+            history_mailbox.make_callback(move |g| {
+                hist_me.send(ReplayMsg::HistoryReady(g));
+            }),
+        );
         Replay {
             source,
             id,
@@ -533,10 +634,9 @@ impl Replay {
             running: info.is_running(),
             ticking: None,
             picking_on: None,
-            pending_history,
-            history_queued,
+            history_mailbox,
             history,
-            history_active: true,
+            history_active: active,
         }
     }
 
@@ -544,6 +644,40 @@ impl Replay {
         if self.history_active != active {
             self.history_active = active;
             self.history.set_active(active);
+        }
+    }
+
+    /// Rebind this `Replay` to a fresh [`ScreenSource`] for the SAME verified
+    /// screen (B.6 / Astra #10, #13, #28; Agy-review R1 #4) without discarding
+    /// the cached action list, displayed frame, playhead, or search query:
+    /// retires the old transport/follower handles immediately with a brand-new
+    /// generation-tagged mailbox (so async `hist-reap` errors from the retiring
+    /// worker can never wipe the view) and starts the new follower ALREADY
+    /// inactive whenever the host is offline.
+    pub(crate) fn rebind_source(&mut self, source: Arc<dyn ScreenSource>, cx: &mut Cx<Self>) {
+        debug_assert_eq!(source.id(), &self.id);
+        self.source.cancel_frame_at();
+        let me = cx.messenger();
+        let info = source.info();
+        let next_gen = self.history_mailbox.generation.wrapping_add(1);
+        let mailbox = HistoryMailbox::new(next_gen);
+        let active = self.history_active && !info.capabilities.host_disconnected;
+        self.source = source.clone();
+        self.frames_tx = make_frames(next_gen, source.clone(), me.clone());
+        let hist_me = me;
+        let history = source.follow_history_with_active(
+            active,
+            mailbox.make_callback(move |g| {
+                hist_me.send(ReplayMsg::HistoryReady(g));
+            }),
+        );
+        self.history_mailbox = mailbox;
+        self.history = history;
+        self.history_active = active;
+        self.frame_track.on_rebind(!info.capabilities.host_disconnected);
+        self.running = info.is_running();
+        if let Some((w, h)) = info.size {
+            self.size = Some((w as f32, h as f32));
         }
     }
 
@@ -595,9 +729,10 @@ impl Replay {
 
     fn told(&mut self, msg: ReplayMsg, cx: &mut Cx<Self>) {
         match msg {
-            ReplayMsg::HistoryReady => {
-                self.history_queued.store(false, Ordering::Release);
-                let batch = self.pending_history.lock().unwrap_or_else(|e| e.into_inner()).take();
+            ReplayMsg::HistoryReady(msg_gen) => {
+                let Some(batch) = self.history_mailbox.drain_if_current(msg_gen) else {
+                    return;
+                };
                 if let Some(message) = batch.failed {
                     tracing::warn!("screen {} history: {message}", self.id_key);
                     self.unavailable = Some(message);
@@ -677,13 +812,19 @@ impl Replay {
                 cx.emit(ReplayUpdated);
                 cx.invalidate();
             }
-            ReplayMsg::Frame { epoch, want, actual_at, shot } => {
+            ReplayMsg::Frame { source_gen, epoch, want, actual_at, shot } => {
+                if source_gen != self.history_mailbox.generation {
+                    return;
+                }
                 let current_want = self.frames_index.frame_time(self.playhead);
                 if self.frame_track.accept_frame(epoch, want, actual_at, current_want) {
                     self.well.update(cx, |w, cx| w.set_shot(shot, cx));
                 }
             }
-            ReplayMsg::FrameMissed { epoch, want, reason } => {
+            ReplayMsg::FrameMissed { source_gen, epoch, want, reason } => {
+                if source_gen != self.history_mailbox.generation || self.source.info().capabilities.host_disconnected {
+                    return;
+                }
                 let current_want = self.frames_index.frame_time(self.playhead);
                 if self.frame_track.record_miss(epoch, want, current_want, reason.clone()) {
                     if let Some(err) = reason {
@@ -1371,7 +1512,8 @@ impl View for Replay {
             self.play_on(right_w, cx);
         }
         let want = self.frames_index.frame_time(self.playhead);
-        if let Some(want_at) = self.frame_track.request_for(want) {
+        let disconnected = self.source.info().capabilities.host_disconnected;
+        if let Some(want_at) = self.frame_track.request_for_if_online(want, !disconnected) {
             // Unblock `make_frames` immediately if it is already waiting on a
             // superseded remote `frame_at`, then enqueue the new playhead.
             self.source.cancel_frame_at();
@@ -1388,7 +1530,7 @@ impl View for Replay {
                 None
             }
         } else if !self.well.read(cx).has_shot() {
-            Some("Reading…".into())
+            Some(if disconnected { "Host is disconnected".into() } else { "Reading…".into() })
         } else {
             None
         };
@@ -1490,8 +1632,12 @@ mod tests {
             Some(serde_json::json!({"matched": {"role": "Button", "name": "Save Changes", "center": [120.0, 80.0]}, "after": {"window": {"title": "Notes"}, "settled": false}})),
             None,
         );
-        assert_eq!(command(&a), "click --name “Save Changes”");
+        assert_eq!(command(&a), "click --name 'Save Changes'");
         assert_eq!(outcome(&a).as_deref(), Some("Button \"Save Changes\" at 120,80 · then “Notes” in front · still changing"));
+
+        // Finding 37: shell metacharacters ($5), embedded quotes, and tabs preserve exact boundaries.
+        let dollar = act(1_500, 10, "type", &["cost $5 today", "it's \"ok\"", "a\tb"], None, None);
+        assert_eq!(command(&dollar), "type 'cost $5 today' 'it'\\''s \"ok\"' $'a\\tb'");
 
         let started = act(2_000, 10, "run", &["olo-chrome"], Some(serde_json::json!({"pid": 1234})), None);
         assert_eq!(outcome(&started).as_deref(), Some("started, pid 1234"));
@@ -1582,5 +1728,62 @@ mod tests {
         assert!(validate_loaded_batch(&actions, &[]).is_err());
         let texts = vec![search_text(&actions[0])];
         assert!(validate_loaded_batch(&actions, &texts).is_ok());
+    }
+
+    #[test]
+    fn agy_r1_f4_rebind_isolates_retiring_follower_and_skips_offline_scrub_fetches() {
+        // 1. Retiring follower pushing `HistoryEvent::Failed` during async teardown
+        //    writes only into its retired generation mailbox and NEVER wipes the
+        //    active rebound mailbox (Finding #4 part 2).
+        let (tx, rx) = std::sync::mpsc::channel::<u64>();
+        let old_mb = HistoryMailbox::new(1);
+        let old_cb = old_mb.make_callback({
+            let tx = tx.clone();
+            move |g| {
+                let _ = tx.send(g);
+            }
+        });
+        // Rebind replaces the mailbox with generation 2.
+        let new_mb = HistoryMailbox::new(2);
+        let new_cb = new_mb.make_callback(move |g| {
+            let _ = tx.send(g);
+        });
+        // Retiring worker emits Failed after rebind.
+        old_cb(HistoryEvent::Failed("retiring socket closed".into()));
+        let msg_gen = rx.recv().unwrap();
+        assert_eq!(msg_gen, 1);
+        assert!(new_mb.drain_if_current(msg_gen).is_none(), "retired generation message must be ignored");
+        assert!(new_mb.drain_if_current(2).unwrap().failed.is_none(), "active mailbox must stay clean");
+        // Active follower on gen 2 delivers normally.
+        let a = act(1_000, 10, "click", &[], None, None);
+        new_cb(HistoryEvent::Loaded { actions: vec![a.clone()], texts: vec![search_text(&a)], reset: true, index_reset: false, frames: Arc::new(FrameIndex::default()) });
+        let msg_gen2 = rx.recv().unwrap();
+        assert_eq!(msg_gen2, 2);
+        let drained = new_mb.drain_if_current(msg_gen2).expect("active generation drains");
+        assert!(drained.has_loaded && drained.failed.is_none() && drained.actions.len() == 1);
+
+        // 2. While `host_disconnected` (`online == false`), scrubbing does NOT
+        //    dispatch frame requests or clobber `showing`; after reconnect
+        //    `on_rebind(true)`, the new playhead fetches immediately (Finding #4 part 3).
+        let mut tr = FrameTracker::default();
+        assert_eq!(tr.request_for_if_online(Some(1_000), true), Some(1_000));
+        assert!(tr.accept_frame(0, 1_000, 1_000, Some(1_000)));
+        assert_eq!(tr.showing, Some(1_000));
+
+        // Host disconnects while another scrub was in flight -> rebind offline keeps `showing`.
+        assert_eq!(tr.request_for_if_online(Some(2_000), true), Some(2_000));
+        tr.on_rebind(false);
+        assert_eq!(tr.showing, Some(1_000), "disconnect rebind must preserve displayed frame");
+        assert_eq!(tr.asked, None, "disconnect rebind clears stale in-flight ticket");
+
+        // Scrubbing while offline emits ZERO frame requests and preserves `showing`.
+        assert_eq!(tr.request_for_if_online(Some(2_000), false), None);
+        assert_eq!(tr.request_for_if_online(Some(3_000), false), None);
+        assert_eq!(tr.showing, Some(1_000));
+        assert_eq!(tr.asked, None);
+
+        // Host reconnects -> `on_rebind(true)` + online check immediately fetches current playhead.
+        tr.on_rebind(true);
+        assert_eq!(tr.request_for_if_online(Some(3_000), true), Some(3_000));
     }
 }

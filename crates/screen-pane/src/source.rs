@@ -111,6 +111,10 @@ impl ScreenId {
         ScreenId { location: ScreenLocation::Host { host_id: host_id.into(), host_label: host_label.into() }, name: name.into() }
     }
 
+    pub fn is_local(&self) -> bool {
+        self.location.is_local()
+    }
+
     /// Stable key for widget IDs (`ColumnListView`, `Slider`, `Card`, `Graph`).
     /// For local screens this is the bare screen name so existing IDs remain
     /// unchanged.
@@ -193,8 +197,26 @@ pub struct PaneCapabilities {
     /// advertised by `"history-snapshot-done"`.
     pub history_snapshot_done: bool,
     /// Whether `olo-rex-link screen stop NAME --expected-started <u64>` is
-    /// supported, advertised by `"stop-expected-started"`.
+    /// advertised (older helper that checked before dropping its lock).
     pub stop_expected_started: bool,
+    /// Whether the host helper advertises `"stop-expected"` (atomic locked Stop
+    /// checking both `--expected-started` and `--expected-last-used` under
+    /// `NAME.lifecycle.lock`).
+    pub stop_expected: bool,
+    /// Whether the host helper advertises `"clear-expected"` (atomic locked
+    /// `history --clear` checking `--expected-started` / `--expected-last-used`).
+    pub clear_expected: bool,
+    /// Whether the host helper advertises `"delete-expected"` (atomic locked
+    /// `delete` checking `--expected-started` / `--expected-last-used`).
+    pub delete_expected: bool,
+    /// Whether the remote host carrying this screen is currently disconnected
+    /// in Rex (renders header status & dot as disconnected and disables live
+    /// lifecycle controls while preserving selection until reconnect).
+    pub host_disconnected: bool,
+    /// Whether the header subtitle should always name where the screen runs
+    /// (`Running on this computer` when any remote host is listed, or
+    /// `Running on <host>` for remote screens). `false` for local-only mode.
+    pub show_location: bool,
     /// How the Passwords tab renders for this screen.
     pub passwords: PasswordsMode,
 }
@@ -212,6 +234,11 @@ impl PaneCapabilities {
             history_frame_error: true,
             history_snapshot_done: true,
             stop_expected_started: true,
+            stop_expected: true,
+            clear_expected: true,
+            delete_expected: true,
+            host_disconnected: false,
+            show_location: false,
             passwords: PasswordsMode::Local(name.into()),
         }
     }
@@ -231,6 +258,11 @@ impl PaneCapabilities {
             history_frame_error: false,
             history_snapshot_done: false,
             stop_expected_started: false,
+            stop_expected: false,
+            clear_expected: false,
+            delete_expected: false,
+            host_disconnected: false,
+            show_location: true,
             passwords: PasswordsMode::Unavailable("Password sharing for remote host screens isn’t available yet.".into()),
         }
     }
@@ -248,6 +280,9 @@ impl PaneCapabilities {
             history_frame_error: true,
             history_snapshot_done: true,
             stop_expected_started: true,
+            stop_expected: true,
+            clear_expected: true,
+            delete_expected: true,
             ..Self::remote_default()
         }
     }
@@ -277,6 +312,11 @@ pub struct ScreenInfo {
     pub started_ms: Option<u64>,
     /// Last action timestamp (ms since epoch), if known.
     pub last_used_ms: Option<u64>,
+    /// Timestamp (ms since epoch) when contact with the remote host was lost,
+    /// used in the header (`Last seen running on host · 25 min ago · W × H`).
+    pub disconnected_at_ms: Option<u64>,
+    /// Total recorded actions if known before lazy history loads.
+    pub actions: Option<usize>,
     /// Whether a viewer currently holds Take Control on this screen.
     pub controlled: bool,
     /// Capabilities of this screen's source/host.
@@ -505,6 +545,16 @@ pub trait ScreenSource: Send + Sync {
     /// Follow this screen's action history and frame index incrementally.
     fn follow_history(&self, on_event: Box<dyn Fn(HistoryEvent) + Send + Sync>) -> Box<dyn HistoryHandle>;
 
+    /// Follow this screen's action history starting active only when `active` is
+    /// `true`, preventing an eager connection race before `set_active(false)`.
+    fn follow_history_with_active(&self, active: bool, on_event: Box<dyn Fn(HistoryEvent) + Send + Sync>) -> Box<dyn HistoryHandle> {
+        let mut handle = self.follow_history(on_event);
+        if !active {
+            handle.set_active(false);
+        }
+        handle
+    }
+
     /// Decode/fetch the recorded frame at or before `at_ms` (called on a worker
     /// thread, latest-wins for scrubbing).
     fn frame_at(&self, at_ms: u64) -> Result<Option<(u64, Frame)>, String>;
@@ -549,16 +599,45 @@ pub trait ScreenSource: Send + Sync {
     /// Stop this screen if running.
     fn stop(&self) -> Result<(), String>;
 
+    /// Notify the backend that the pane has accepted and displayed a live
+    /// picture from the current connection (gates remote Take Control — Astra #5).
+    fn note_live_frame_accepted(&self) {}
+
     /// Stop this screen only if its running generation still matches
     /// `expected_started` (seconds since Unix epoch), when supported by the
-    /// backend/host (`--expected-started`).
+    /// backend/host (`--expected-started`). Fails closed when a guard is
+    /// supplied on a backend that has not overridden it (Astra #2–#4).
     fn stop_if_generation(&self, expected_started: Option<u64>) -> Result<(), String> {
-        let _ = expected_started;
+        if expected_started.is_some() {
+            return Err("this screen backend doesn't support guarded stop".into());
+        }
         self.stop()
+    }
+
+    /// Stop this screen only if its running generation (`expected_started`)
+    /// and/or `expected_last_used` still match what the person confirmed.
+    /// Preserves a backend's earlier `stop_if_generation` override when only
+    /// `expected_started` is supplied, and fails closed if `expected_last_used`
+    /// is supplied without an override (Astra #2–#4).
+    fn stop_if_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        if expected_last_used.is_some() {
+            return Err("this screen backend doesn't support guarded stop with last-used check".into());
+        }
+        self.stop_if_generation(expected_started)
     }
 
     /// Clear this screen's recorded actions and frames.
     fn clear_history(&self) -> Result<(), String>;
+
+    /// Clear this screen's history only if it is still stopped and matches
+    /// `expected_started` / `expected_last_used` (`Some(0)` = observed empty).
+    /// Fails closed when guards are supplied on an overriding-free backend.
+    fn clear_history_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        if expected_started.is_some() || expected_last_used.is_some() {
+            return Err("this screen backend doesn't support guarded clear history".into());
+        }
+        self.clear_history()
+    }
 
     /// Rename this screen (`None` or blank clears the custom title).
     fn rename(&self, title: Option<&str>) -> Result<(), String>;
@@ -574,6 +653,16 @@ pub trait ScreenSource: Send + Sync {
         Err("deleting isn't supported for this screen".into())
     }
 
+    /// Move this stopped screen to the Trash only if it is still stopped and
+    /// matches `expected_started` / `expected_last_used` (`Some(0)` = observed empty).
+    /// Fails closed when guards are supplied on an overriding-free backend.
+    fn delete_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        if expected_started.is_some() || expected_last_used.is_some() {
+            return Err("this screen backend doesn't support guarded delete".into());
+        }
+        self.delete()
+    }
+
     /// Move all movable windows on this screen to the person's display
     /// (`to`: `Some((workspace_index, output_name))`, or `None` for active
     /// workspace). Returns descriptions of windows that stayed.
@@ -586,5 +675,153 @@ pub trait ScreenSource: Send + Sync {
     /// `Move Windows To…`.
     fn person_workspaces(&self) -> Result<Vec<(String, u32, String)>, String> {
         Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct BareSource {
+        id: ScreenId,
+        calls: Mutex<Vec<&'static str>>,
+    }
+
+    impl ScreenSource for BareSource {
+        fn id(&self) -> &ScreenId {
+            &self.id
+        }
+        fn info(&self) -> ScreenInfo {
+            ScreenInfo {
+                id: self.id.clone(),
+                title: None,
+                state: ScreenState::Stopped,
+                size: None,
+                scale: 1.0,
+                sound: false,
+                started_ms: None,
+                last_used_ms: None,
+                disconnected_at_ms: None,
+                actions: None,
+                controlled: false,
+                capabilities: PaneCapabilities::local(&self.id.name),
+            }
+        }
+        fn watch_live(&self, _: Vec<u64>, _: Box<dyn Fn(LiveEvent) + Send + Sync>) -> Box<dyn LiveHandle> {
+            Box::new(NoopHandle)
+        }
+        fn set_controlled(&self, _: bool) -> Result<(), String> {
+            Ok(())
+        }
+        fn send_input(&self, _: Vec<SyntheticEvent>) {}
+        fn join_clipboard(&self) -> Option<Box<dyn Send>> {
+            None
+        }
+        fn follow_history(&self, _: Box<dyn Fn(HistoryEvent) + Send + Sync>) -> Box<dyn HistoryHandle> {
+            Box::new(NoopHandle)
+        }
+        fn frame_at(&self, _: u64) -> Result<Option<(u64, Frame)>, String> {
+            Ok(None)
+        }
+        fn export_video(&self, _: Option<&[usize]>, _: usize, _: &Path, _: &mut dyn FnMut(f32) -> bool) -> Result<export::Made, String> {
+            Err("unsupported".into())
+        }
+        fn start(&self) -> Result<ScreenInfo, String> {
+            Ok(self.info())
+        }
+        fn stop(&self) -> Result<(), String> {
+            self.calls.lock().unwrap().push("stop");
+            Ok(())
+        }
+        fn clear_history(&self) -> Result<(), String> {
+            self.calls.lock().unwrap().push("clear");
+            Ok(())
+        }
+        fn rename(&self, _: Option<&str>) -> Result<(), String> {
+            Ok(())
+        }
+        fn delete(&self) -> Result<(), String> {
+            self.calls.lock().unwrap().push("delete");
+            Ok(())
+        }
+    }
+
+    struct GenOnlySource {
+        inner: BareSource,
+        gen_seen: Mutex<Option<u64>>,
+    }
+
+    impl ScreenSource for GenOnlySource {
+        fn id(&self) -> &ScreenId {
+            self.inner.id()
+        }
+        fn info(&self) -> ScreenInfo {
+            self.inner.info()
+        }
+        fn watch_live(&self, m: Vec<u64>, cb: Box<dyn Fn(LiveEvent) + Send + Sync>) -> Box<dyn LiveHandle> {
+            self.inner.watch_live(m, cb)
+        }
+        fn set_controlled(&self, on: bool) -> Result<(), String> {
+            self.inner.set_controlled(on)
+        }
+        fn send_input(&self, ev: Vec<SyntheticEvent>) {
+            self.inner.send_input(ev)
+        }
+        fn join_clipboard(&self) -> Option<Box<dyn Send>> {
+            None
+        }
+        fn follow_history(&self, cb: Box<dyn Fn(HistoryEvent) + Send + Sync>) -> Box<dyn HistoryHandle> {
+            self.inner.follow_history(cb)
+        }
+        fn frame_at(&self, at: u64) -> Result<Option<(u64, Frame)>, String> {
+            self.inner.frame_at(at)
+        }
+        fn export_video(&self, a: Option<&[usize]>, z: usize, p: &Path, cb: &mut dyn FnMut(f32) -> bool) -> Result<export::Made, String> {
+            self.inner.export_video(a, z, p, cb)
+        }
+        fn start(&self) -> Result<ScreenInfo, String> {
+            self.inner.start()
+        }
+        fn stop(&self) -> Result<(), String> {
+            self.inner.stop()
+        }
+        fn stop_if_generation(&self, expected_started: Option<u64>) -> Result<(), String> {
+            *self.gen_seen.lock().unwrap() = expected_started;
+            Ok(())
+        }
+        fn clear_history(&self) -> Result<(), String> {
+            self.inner.clear_history()
+        }
+        fn rename(&self, t: Option<&str>) -> Result<(), String> {
+            self.inner.rename(t)
+        }
+    }
+
+    #[test]
+    fn final_pass_b3_screen_source_defaults_fail_closed_and_preserve_generation_override() {
+        let bare = BareSource { id: ScreenId::local("qa"), calls: Mutex::new(Vec::new()) };
+        assert!(bare.stop_if_generation(Some(100)).is_err());
+        assert!(bare.stop_if_expected(Some(100), None).is_err());
+        assert!(bare.stop_if_expected(None, Some(500)).is_err());
+        assert!(bare.clear_history_expected(Some(0), None).is_err());
+        assert!(bare.clear_history_expected(None, Some(0)).is_err());
+        assert!(bare.delete_expected(Some(0), None).is_err());
+        assert!(bare.delete_expected(None, Some(0)).is_err());
+        assert!(bare.calls.lock().unwrap().is_empty(), "fail-closed defaults must never dispatch unguarded destructive verbs");
+
+        // Unguarded calls still reach the base verbs cleanly.
+        bare.stop_if_expected(None, None).unwrap();
+        bare.clear_history_expected(None, None).unwrap();
+        bare.delete_expected(None, None).unwrap();
+        assert_eq!(*bare.calls.lock().unwrap(), vec!["stop", "clear", "delete"]);
+
+        // An embedder overriding ONLY the earlier `stop_if_generation` still has
+        // `stop_if_expected(Some(ts), None)` reach its override, while supplying
+        // `expected_last_used` still fails closed.
+        let gen_only = GenOnlySource { inner: BareSource { id: ScreenId::local("qa"), calls: Mutex::new(Vec::new()) }, gen_seen: Mutex::new(None) };
+        gen_only.stop_if_expected(Some(1234), None).unwrap();
+        assert_eq!(*gen_only.gen_seen.lock().unwrap(), Some(1234));
+        assert!(gen_only.stop_if_expected(Some(1234), Some(99)).is_err());
     }
 }

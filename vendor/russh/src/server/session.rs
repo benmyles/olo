@@ -407,14 +407,19 @@ impl Handle {
                 }) => {
                     window_size_ref.grow(window_size).await;
 
+                    let peer_closed = window_size_ref.peer_closed_flag();
                     return Ok(Channel {
                         write_half: ChannelWriteHalf {
                             id,
                             sender: self.sender.clone(),
+                            close_sender: None,
                             max_packet_size,
                             window_size: window_size_ref,
                         },
-                        read_half: ChannelReadHalf { receiver },
+                        read_half: ChannelReadHalf {
+                            receiver,
+                            peer_closed,
+                        },
                     });
                 }
                 Some(ChannelMsg::OpenFailure(reason)) => {
@@ -1641,6 +1646,7 @@ mod tests {
                     server_mac: mac::NONE,
                     session_id: CryptoVec::new(),
                     channels: HashMap::new(),
+                    closing_channels: std::collections::HashSet::new(),
                     last_channel_id: Wrapping(0),
                     write: Vec::new(),
                     write_cursor: 0,

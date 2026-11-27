@@ -109,6 +109,9 @@ pub struct SavedAppState {
     /// connects (`hub::SavedForward`).
     #[serde(default)]
     pub forwards: Vec<crate::hub::SavedForward>,
+    /// Last-known remote host screens preserved across in-place Rex reloads.
+    #[serde(default)]
+    pub cached_host_screens: Vec<crate::screens_sock::SavedHostScreens>,
 }
 
 /// Under this width (points) a pane's Auto Approve countdown says only
@@ -423,12 +426,13 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
         },
         || broadcast_to_role(WinRole::RunApprove, || WinMsg::RunApproveChanged),
     );
-    let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), Some(run_approvals.clone()), move |notice| handle_hub_notice(notice));
+    let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), Some(run_approvals.clone()), handle_hub_notice);
     let keymap = KeymapEngine::new(&[], &[], &[]);
-    let _ = HUB.set(hub);
+    let _ = HUB.set(hub.clone());
     let _ = ASKPASS.set(askpass);
     let _ = RUN_APPROVALS.set(run_approvals);
     let _ = APP.set(Mutex::new(RexApp { keymap, ssh_agent: Default::default(), renaming: None, attention: Attention::new(), broadcast_windows: HashSet::new() }));
+    hub.start_screens_service();
 
     // How the SSH agent stands, asked once and off this thread, for Diagnostics.
     let agent_override = settings.ssh_agent_socket.map(PathBuf::from);
@@ -511,6 +515,20 @@ fn handle_hub_notice(notice: HubNotice) {
                 a.lock().unwrap_or_else(|e| e.into_inner()).attention.quiet(title, body);
             }
         }
+        HubNotice::OpenHost(host_key) => {
+            // Dispatch onto Rex's single app looper so concurrent `OpenHost`
+            // RPCs serialize cleanly around `open_or_raise_panel` and set the
+            // initial `Screens` tab before opening the window.
+            olo_kit::proxy().send(OpenHostOnApp { host_key, tab: crate::host::tab_named("screens") });
+        }
+    }
+}
+
+/// Cleanly tear down background listeners (such as Rex's local screens Unix
+/// socket and state file) when Rex exits normally.
+pub fn shutdown_app() {
+    if let Some(hub) = HUB.get() {
+        hub.shutdown_screens();
     }
 }
 
@@ -665,14 +683,33 @@ fn open_move(hub: &Arc<RexHub>, key: &str) {
     open_or_raise_panel(WinRole::Move);
 }
 
+/// Message sent through `olo_kit::proxy()` so `HubNotice::OpenHost` from a
+/// background Tokio thread runs on Rex's single app looper (serializing
+/// `open_or_raise_panel` and setting the initial tab before opening the window).
+pub struct OpenHostOnApp {
+    pub host_key: String,
+    pub tab: Option<usize>,
+}
+
+/// Handle [`OpenHostOnApp`] on Rex's app looper.
+pub fn open_host_on_app(host_key: &str, tab: Option<usize>) {
+    if let Some(hub) = HUB.get() {
+        open_host_with_tab(hub, host_key, tab);
+    }
+}
+
 fn open_host(hub: &Arc<RexHub>, key: &str) {
-    let Some(name) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| h.label.clone()) else { return };
+    open_host_with_tab(hub, key, None);
+}
+
+fn open_host_with_tab(hub: &Arc<RexHub>, key: &str, tab: Option<usize>) {
+    let Some((name, host_instance_id)) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(key).filter(|h| !h.is_local).map(|h| (h.label.clone(), h.host_instance_id)) else { return };
     // (Another host's in the window: what the one before said of its
     // settings goes, and root's connection to it.)
-    if crate::host::current().is_some_and(|shown| shown.key != key) {
+    if crate::host::current().is_some_and(|shown| shown.key != key || shown.host_instance_id != host_instance_id) {
         crate::server::for_tweaks(|| crate::server::close(hub));
     }
-    crate::host::open(key, &name);
+    crate::host::open_with_tab(key, &name, host_instance_id, tab);
     open_or_raise_panel(WinRole::Host);
     host_changed();
     // (How its Token Pool stands is this computer's Token Pool's to
@@ -2389,10 +2426,22 @@ impl RexWindow {
             c if c.starts_with("host.screen:") => {
                 let mut parts = c.trim_start_matches("host.screen:").rsplitn(3, ':');
                 if let (Some(name), Some(what @ ("look" | "stop")), Some(key)) = (parts.next(), parts.next(), parts.next()) {
-                    open_host(&hub, key);
-                    if crate::host::current().is_some_and(|shown| shown.key == key) {
-                        crate::host::show_tab(3);
-                        crate::host::screen(&hub, name, if what == "stop" { crate::host::ScreenDo::Stop } else { crate::host::ScreenDo::Look });
+                    open_host_with_tab(&hub, key, Some(3));
+                    if let Some(shown) = crate::host::current().filter(|shown| shown.key == key) {
+                        if what == "stop" {
+                            let expected_started = hub
+                                .state
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .hosts
+                                .get(key)
+                                .and_then(|h| h.screens.as_ref())
+                                .and_then(|s| s.rows.iter().find(|r| r.name == name && r.running))
+                                .and_then(|r| r.started);
+                            crate::host::stop_screen(&hub, &shown.key, shown.host_instance_id, name, expected_started);
+                        } else {
+                            crate::host::look_at_screen(&hub, name);
+                        }
                     }
                 }
             }
@@ -2467,7 +2516,10 @@ impl RexWindow {
             "app.diagnostics" => open_or_raise_panel(WinRole::Diagnostics),
             "app.new_window" => open_workspace_window(None),
             "app.close_window" => cx.request_close(),
-            "app.quit" => olo_kit::quit(),
+            "app.quit" => {
+                shutdown_app();
+                olo_kit::quit();
+            }
             "app.reload_config" => hub.reload_server_config(&self.active_host, Feedback::start(self.id).again(WinMsg::Command("app.reload_config".into()))),
             "host.reconnect" => hub.connect_host(&self.active_host),
             // (A host let go of, and connected again, by its key: what
@@ -6378,8 +6430,8 @@ impl View for RexWindow {
                     HostDo::TweakEveryone(on) => crate::server::for_tweaks(|| crate::server::everyone(on)),
                     HostDo::ScreensDefault(on_host) => crate::host::screens_default(&hub, on_host),
                     HostDo::ScreensCancel => crate::host::cancel_screens(&hub),
-                    HostDo::ScreenStop(name) => crate::host::screen(&hub, &name, crate::host::ScreenDo::Stop),
-                    HostDo::ScreenLook(name) => crate::host::screen(&hub, &name, crate::host::ScreenDo::Look),
+                    HostDo::ScreenStop { host_key, host_instance_id, name, expected_started } => crate::host::stop_screen(&hub, &host_key, host_instance_id, &name, expected_started),
+                    HostDo::ScreenLook(name) => crate::host::look_at_screen(&hub, &name),
                     // (Its copy here, in Tracker; or the host's own folder
                     // here, made if nothing came from it yet.)
                     HostDo::ShowKept(there) => {
@@ -6786,7 +6838,10 @@ impl View for RexWindow {
         }
         match command {
             "close" => cx.request_close(),
-            "quit" => olo_kit::quit(),
+            "quit" => {
+                shutdown_app();
+                olo_kit::quit();
+            }
             _ => self.execute_action(command, None, cx),
         }
         true
@@ -6886,6 +6941,12 @@ impl Drop for RexWindow {
         wins().map.remove(&self.id);
         if self.role == WinRole::Workspace && !wins().map.values().any(|s| s.role == WinRole::Workspace) {
             crate::activity_watch::stop_all();
+        }
+        if wins().map.is_empty() {
+            // Stop the screens service BEFORE `olo_interface::run` can linger
+            // windowless for the clipboard so a newly launched Rex instance can
+            // take over cleanly (Astra finding 6).
+            shutdown_app();
         }
     }
 }

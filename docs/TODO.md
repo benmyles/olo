@@ -555,16 +555,47 @@ something nobody here has is in "Blocked", with what it waits for.
     while at the bottom-left corner the light bottom bevel runs all
     the way across under the dark left edge."
 - **Agent Screens of Rex hosts, seen from the desktop and from Rex**
-  (Ben, 2026-11-27): "once you have built agent screens support for
-  rex hosts, also make it so that in the olo desktop agent screens app
-  you can see both the local screens and the screens for any of the
-  connected rex hosts. also, in the rex app itself you should see the
-  screens in the activity sidebar nested level under the agent that is
-  controlling them, and when selecting one it should show the same
-  pane we show in the agent screens app for the screen with the
-  history/stats/passwords and live view etc. this should work for both
-  when the agent is using a screen on the rex host and when it is
-  using one on the desktop. use an agy neon builder agent for this".
+  (Ben, 2026-11-27): Steps 1–6 done (`crates/rex` + `vendor/russh` raw
+  stream transport, `crates/rex-link` host screen helper with
+  `screen follow`/`stream`/`history-stream`/`export` and guarded
+  lifecycle RPCs, `apps/rex` authenticated Unix-socket screens service
+  `rex-<display>.sock` + `ScreensService`, `crates/screen-pane`
+  `RexSockClient`/`RexSockOpener`/`StreamScreenSource`, and `apps/screen`
+  multi-host `MultiSidebar` + host overview + live/history/export/control
+  over Rex, plus `style::fit_middle` / `label_fit_middle` in `crates/kit`).
+  Remaining:
+  - **Step 7 (next):** show each screen in Rex's Activity sidebar nested
+    under the agent controlling it (local desktop screens and remote host
+    screens alike) and mount the shared `ScreenPane` when selected.
+  - **Step 8 (Host Screen Passwords tab — security boundary):** remote
+    host screens currently show `PasswordsMode::Unavailable` rather than
+    copying or caching host vaults onto the desktop disk; a future
+    on-demand remote vault/unlock protocol would be needed to browse
+    host-side passwords from the desktop without copying secrets to disk.
+  - **Deferred review items ("Left", in reviewers' words):**
+    - Opus 5 (sidebar scaling at 8 hosts / 30 screens): *"While the
+      person scrolls, pin the current host's heading to the top of the
+      list, with a 1 pt rule under it."*; *"Add View ▸ Hide Stopped
+      Screens. Most of thirty screens will be stopped."*; *"Sort [hosts
+      not set up] after the hosts that can have screens, and add View ▸
+      Show Hosts Not Set Up (on by default) for people who have
+      several."*; *"Let the person drag the divider, between 180 and
+      320 pt."*
+    - Opus 9 (New Screen… & heading context menu): *"New Screen… once
+      hosts exist: the dialog needs a Computer pop-up, defaulting to the
+      host of the selected row. Without it, nothing says where the new
+      screen will run."*; *"Also a context menu on the heading with 'Show
+      in Rex'."*
+    - Opus 10 (pre-existing two-column top/bottom alignment): *"The
+      sidebar's first heading starts about 7 pt higher than the header:
+      its cap top is at about y 66, while the title and icon tops are at
+      about y 73. At the bottom, New Screen… is centred 20 pt lower than
+      Take Control (y 641 vs 621), so the window's two bottom buttons
+      sit on different lines."*
+    - Pre-existing `olo_protocol::app_keys` warning on `Screen ▸ Take
+      Screenshot…` (command `"screenshot"`).
+    - `apps/screenshot`'s card (`middle_cut`) can later move onto the
+      shared `style::fit_middle`.
 - **The Host window of a host that isn't connected is taller than the
   others, and of one that failed, taller than the smallest screen**
   (found 2026-11-27 picturing the Tweaks tab; there before it: the
@@ -5701,6 +5732,14 @@ something nobody here has is in "Blocked", with what it waits for.
   it, which run together into a soft band three pixels wide at 1× and
   1.25× (one line there, or the shadow a step off the fill). (Its
   " | olo" is the agent's own title, not Terminal's.)
+
+- **Fresh VM E2E test of installing Olo on Fedora 44 and Fedora 45 + Olo/GNOME switching (low priority)**
+  (Ben, 2026-11-27): spin up fresh Fedora 44 and Fedora 45 VMs, run the
+  Olo installer end-to-end (fixing any bugs found), and verify that
+  switching back and forth between the Olo desktop session and GNOME
+  works cleanly without Olo breaking anything in GNOME (default apps,
+  portals, MIME handlers, GDM/login entries, audio, input, or shell
+  config).
 
 ## Done, waiting for Ben to try or confirm
 

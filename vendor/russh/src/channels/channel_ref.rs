@@ -31,3 +31,12 @@ impl std::ops::Deref for ChannelRef {
         &self.sender
     }
 }
+
+// Olo: mark the channel closed and wake all window-credit waiters whenever
+// the driver removes or drops this channel (peer CLOSE, local close, or
+// session disconnect), independent of whether anyone polls `ChannelReadHalf`.
+impl Drop for ChannelRef {
+    fn drop(&mut self) {
+        self.window_size.close();
+    }
+}

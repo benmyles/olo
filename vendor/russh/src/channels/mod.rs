@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bytes::Bytes;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedSender};
 use tokio::sync::{Mutex, Notify};
 
 use crate::{ChannelId, ChannelOpenFailure, Error, Pty, Sig};
@@ -117,6 +118,15 @@ pub enum ChannelMsg {
 pub(crate) struct WindowSizeRef {
     value: Arc<Mutex<u32>>,
     notifier: Arc<Notify>,
+    // Olo: flipped to true when the session driver drops `ChannelRef` (peer
+    // CLOSE, local close, or disconnect) so blocked/later writers fail with
+    // BrokenPipe even when nobody polls `ChannelReadHalf`.
+    closed: Arc<AtomicBool>,
+    // Olo: set when peer sent explicit `CHANNEL_CLOSE` while the channel's
+    // `mpsc` buffer was full, so `ChannelReadHalf::wait()` delivers
+    // `Some(ChannelMsg::Close)` after draining buffered messages without
+    // blocking the session driver.
+    peer_closed: Arc<AtomicBool>,
 }
 
 impl WindowSizeRef {
@@ -125,6 +135,8 @@ impl WindowSizeRef {
         Self {
             value: Arc::new(Mutex::new(initial)),
             notifier,
+            closed: Arc::new(AtomicBool::new(false)),
+            peer_closed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -138,6 +150,23 @@ impl WindowSizeRef {
     pub(crate) fn subscribe(&self) -> Arc<Notify> {
         Arc::clone(&self.notifier)
     }
+
+    pub(crate) fn close(&self) {
+        self.closed.store(true, Ordering::Release);
+        self.notifier.notify_waiters();
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn mark_peer_closed(&self) {
+        self.peer_closed.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn peer_closed_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.peer_closed)
+    }
 }
 
 /// A handle to the reading part of a session channel.
@@ -145,6 +174,7 @@ impl WindowSizeRef {
 /// Allows you to read from a channel without borrowing the session
 pub struct ChannelReadHalf {
     pub(crate) receiver: Receiver<ChannelMsg>,
+    pub(crate) peer_closed: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for ChannelReadHalf {
@@ -156,7 +186,11 @@ impl std::fmt::Debug for ChannelReadHalf {
 impl ChannelReadHalf {
     /// Awaits an incoming [`ChannelMsg`], this method returns [`None`] if the channel has been closed.
     pub async fn wait(&mut self) -> Option<ChannelMsg> {
-        self.receiver.recv().await
+        match self.receiver.recv().await {
+            Some(msg) => Some(msg),
+            None if self.peer_closed.swap(false, Ordering::AcqRel) => Some(ChannelMsg::Close),
+            None => None,
+        }
     }
 
     /// Make a reader for the [`Channel`] to receive [`ChannelMsg::Data`]
@@ -178,6 +212,9 @@ impl ChannelReadHalf {
 pub struct ChannelWriteHalf<Send: From<(ChannelId, ChannelMsg)>> {
     pub(crate) id: ChannelId,
     pub(crate) sender: Sender<Send>,
+    // Olo: optional unbounded driver queue used by `ChannelCloseOnDrop` when
+    // `sender.try_send` is full so dropping from a plain OS thread never panics.
+    pub(crate) close_sender: Option<UnboundedSender<Send>>,
     pub(crate) max_packet_size: u32,
     pub(crate) window_size: WindowSizeRef,
 }
@@ -366,7 +403,13 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> ChannelWriteHalf<
             return Err(Error::Inconsistent);
         }
         loop {
+            if self.window_size.is_closed() {
+                return Err(Error::SendError);
+            }
             let mut window_size = self.window_size.value.lock().await;
+            if self.window_size.is_closed() {
+                return Err(Error::SendError);
+            }
             let writable = (self.max_packet_size as usize)
                 .min(*window_size as usize)
                 .min(remaining);
@@ -378,7 +421,12 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> ChannelWriteHalf<
                 return Ok(writable);
             }
             let notified = self.window_size.notifier.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             drop(window_size);
+            if self.window_size.is_closed() {
+                return Err(Error::SendError);
+            }
             notified.await;
         }
     }
@@ -438,6 +486,7 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> ChannelWriteHalf<
             self.id,
             self.window_size.value.clone(),
             self.window_size.subscribe(),
+            self.window_size.closed.clone(),
             self.max_packet_size,
             ext,
         )
@@ -470,10 +519,14 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> Channel<S> {
     ) -> (Self, ChannelRef) {
         let (tx, rx) = tokio::sync::mpsc::channel(channel_buffer_size);
         let window_size = WindowSizeRef::new(window_size);
-        let read_half = ChannelReadHalf { receiver: rx };
+        let read_half = ChannelReadHalf {
+            receiver: rx,
+            peer_closed: window_size.peer_closed_flag(),
+        };
         let write_half = ChannelWriteHalf {
             id,
             sender,
+            close_sender: None,
             max_packet_size,
             window_size: window_size.clone(),
         };
@@ -667,6 +720,7 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> Channel<S> {
                 self.write_half.id,
                 self.write_half.window_size.value.clone(),
                 self.write_half.window_size.subscribe(),
+                self.write_half.window_size.closed.clone(),
                 self.write_half.max_packet_size,
                 None,
             ),
@@ -717,6 +771,7 @@ mod tests {
             ChannelWriteHalf {
                 id: ChannelId(7),
                 sender,
+                close_sender: None,
                 max_packet_size,
                 window_size,
             },

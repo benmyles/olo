@@ -3874,7 +3874,7 @@ runuser -u bob -- env HOME=/home/bob XDG_RUNTIME_DIR="/run/user/$bob_uid" DBUS_S
                 let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 let output = if stderr.is_empty() { stdout.clone() } else { format!("{stdout}{stderr}") };
-                Ok(crate::provision::Ran { status: out.status.code().map(|c| c as u32), output, stdout, truncated: false })
+                Ok(crate::provision::Ran { status: out.status.code().map(|c| c as u32), output, stdout, stderr, truncated: false })
             }
             fn account(&self) -> Option<&str> {
                 Some(&self.account)

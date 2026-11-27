@@ -49,13 +49,15 @@ pub(crate) fn when(ms: u64, now: u64) -> String {
     }
 }
 
-/// "3 min ago", "just now": said again as it changes (`olo_kit::ago`).
-pub(crate) fn ago(ms: u64, _now: u64) -> String {
-    olo_kit::ago::ago_ms(ms, ago_words)
+/// "3 min ago", "just now": said again as it changes (`olo_kit::ago`), using
+/// `now` so live windows schedule `holds_until` wakeups while unit tests stay
+/// deterministic.
+pub(crate) fn ago(ms: u64, now: u64) -> String {
+    olo_kit::ago::age(std::time::Duration::from_millis(now.saturating_sub(ms)), ago_words)
 }
 
 /// An age as `ago` says it.
-fn ago_words(age: std::time::Duration) -> String {
+pub(crate) fn ago_words(age: std::time::Duration) -> String {
     match age.as_secs() {
         0..10 => "just now".into(),
         s @ 10..60 => format!("{s} s ago"),
@@ -63,17 +65,29 @@ fn ago_words(age: std::time::Duration) -> String {
     }
 }
 
+/// Empty/loading placeholder copy for the Stats tab (Agy-review R2 #3): matches
+/// `Replay::body` so an unloaded history shows `"Reading the history…"` rather
+/// than falsely claiming nothing has been done on the screen.
+fn empty_message(loaded: bool, empty: bool, unavailable: Option<&str>) -> Option<String> {
+    if !loaded {
+        return Some("Reading the history…".to_owned());
+    }
+    if empty {
+        return Some(unavailable.unwrap_or("Nothing has been done on this screen yet.").to_owned());
+    }
+    None
+}
+
 /// The Stats tab for `replay`'s screen: its cards, two abreast when
 /// `width` has room, scrolled with `scroll`.
 pub(crate) fn view(replay: &Child<Replay>, running: bool, width: f32, scroll: &ScrollHandle, cx: &mut WindowCx) -> Element {
-    let (key, st, (series, busiest), end, empty, unavailable) = replay.update(cx, |r, _| {
+    let (key, st, (series, busiest), end, loaded, empty, unavailable) = replay.update(cx, |r, _| {
         let st = r.stats(running).clone();
         let now = history::now_ms();
         let end = if running { now } else { st.last_used.unwrap_or(now) };
-        (r.id_key().to_owned(), st, per_minute(r.actions(), end), end, r.actions().is_empty(), r.unavailable().map(str::to_owned))
+        (r.id_key().to_owned(), st, per_minute(r.actions(), end), end, r.loaded(), r.actions().is_empty(), r.unavailable().map(str::to_owned))
     });
-    if empty {
-        let message = unavailable.unwrap_or_else(|| "Nothing has been done on this screen yet.".to_owned());
+    if let Some(message) = empty_message(loaded, empty, unavailable.as_deref()) {
         return div().size_full().child(EmptyState::new(message).icon("agent-screens"));
     }
     let p = theme::palette();
@@ -219,5 +233,13 @@ mod tests {
         assert!(today.contains(':'));
         let yesterday = when(now - 2 * 86_400_000, now);
         assert!(yesterday.contains(','), "{yesterday}");
+    }
+
+    #[test]
+    fn agy_r2_f3_unloaded_stats_shows_reading_history_not_empty() {
+        assert_eq!(empty_message(false, true, None).as_deref(), Some("Reading the history…"));
+        assert_eq!(empty_message(true, true, None).as_deref(), Some("Nothing has been done on this screen yet."));
+        assert_eq!(empty_message(true, true, Some("host unreachable")).as_deref(), Some("host unreachable"));
+        assert_eq!(empty_message(true, false, None), None);
     }
 }

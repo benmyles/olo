@@ -38,8 +38,7 @@
 use std::collections::VecDeque;
 use std::io::{self, BufRead, BufReader, Read as _, Seek as _, SeekFrom, Write as _};
 use std::net::Shutdown;
-use std::os::fd::{AsRawFd as _, FromRawFd as _};
-use std::os::unix::ffi::OsStrExt as _;
+use std::os::fd::AsRawFd as _;
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -52,9 +51,9 @@ use olo_screen_codec::{Frame, TileEncoding, tiles::encode_delta};
 use serde_json::{Value, json};
 
 use crate::screens::{
-    CancelFd, OwnedFd, RuntimeScreen, TrustedTempDir, disk_scratch_base, find_running_screen_pinned, host_cli_honors_helper_control, is_controller_pid_alive_with_ticks, open_regular_nonblock,
-    open_stable_control_lock, parse_control_lock_meta, pidfd_exited, proc_start_ticks, read_bounded_regular, read_runtime_screen, screens_runtime_dir_candidates, set_nonblocking, timeout_ms_ceil,
-    valid_name, verify_owned_dir, write_all_cancellable,
+    CancelFd, OwnedFd, RuntimeScreen, TrustedTempDir, connect_unix_nonblocking, disk_scratch_base, find_running_screen_pinned_checked, host_cli_honors_helper_control,
+    is_controller_pid_alive_with_ticks, open_regular_nonblock, open_stable_control_lock, parse_control_lock_meta, pidfd_exited, proc_start_ticks, read_bounded_regular, read_runtime_screen,
+    screens_runtime_dir_candidates_checked, set_nonblocking, valid_name, verify_owned_dir, write_all_cancellable,
 };
 
 /// Maximum unacknowledged frames in flight before capture waits for an `Ack`.
@@ -528,122 +527,6 @@ fn verify_socket_peer(stream: &UnixStream, session_pid: i32, screen_name: &str) 
         cur = p;
     }
     Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("socket peer pid {} does not belong to screen session {}", cred.pid, session_pid)))
-}
-
-/// Non-blocking `AF_UNIX` connect bounded by `timeout` and interruptible via
-/// `stop_rd`, handling both `EINPROGRESS` and Linux's full-backlog `EAGAIN`
-/// without ever blocking indefinitely in `unix_wait_for_peer` (Finding 25).
-fn connect_unix_nonblocking(path: &Path, timeout: Duration, stop_rd: Option<i32>) -> io::Result<UnixStream> {
-    let path_bytes = path.as_os_str().as_bytes();
-    let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
-    if path_bytes.is_empty() || path_bytes.len() >= addr.sun_path.len() || path_bytes.contains(&0) {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid unix socket path"));
-    }
-    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-    // SAFETY: bounds checked above (`path_bytes.len() < addr.sun_path.len()`), remaining bytes are NUL.
-    unsafe {
-        std::ptr::copy_nonoverlapping(path_bytes.as_ptr(), addr.sun_path.as_mut_ptr().cast(), path_bytes.len());
-    }
-    let addrlen = (std::mem::offset_of!(libc::sockaddr_un, sun_path) + path_bytes.len() + 1) as libc::socklen_t;
-    let deadline = Instant::now() + timeout;
-
-    let connected_fd = loop {
-        // Check stop pipe before each connect attempt.
-        if let Some(sfd) = stop_rd {
-            let mut p = libc::pollfd { fd: sfd, events: libc::POLLIN, revents: 0 };
-            // SAFETY: non-blocking poll on valid stop pipe descriptor.
-            if unsafe { libc::poll(&mut p, 1, 0) } > 0 && p.revents != 0 {
-                return Err(io::Error::new(io::ErrorKind::Interrupted, "stream stopped during connect"));
-            }
-        }
-        // SAFETY: standard AF_UNIX non-blocking close-on-exec socket.
-        let raw_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC, 0) };
-        if raw_fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let sock = OwnedFd::new(raw_fd);
-        // SAFETY: `sock` is valid and `addr`/`addrlen` describe a valid `sockaddr_un`.
-        let r = unsafe { libc::connect(sock.raw(), (&addr as *const libc::sockaddr_un).cast(), addrlen) };
-        if r == 0 {
-            break sock;
-        }
-        let err = io::Error::last_os_error();
-        let errno = err.raw_os_error().unwrap_or(0);
-        if errno == libc::EINPROGRESS {
-            loop {
-                let rem = deadline.saturating_duration_since(Instant::now());
-                if rem.is_zero() {
-                    return Err(io::Error::new(io::ErrorKind::TimedOut, "unix socket connect timed out"));
-                }
-                let mut pfds = [libc::pollfd { fd: sock.raw(), events: libc::POLLOUT, revents: 0 }, libc::pollfd { fd: stop_rd.unwrap_or(-1), events: libc::POLLIN, revents: 0 }];
-                let nfds: libc::nfds_t = if stop_rd.is_some() { 2 } else { 1 };
-                // SAFETY: `pfds[..nfds]` holds valid open fds.
-                let pr = unsafe { libc::poll(pfds.as_mut_ptr(), nfds, timeout_ms_ceil(rem)) };
-                if pr < 0 {
-                    if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
-                        continue;
-                    }
-                    return Err(io::Error::last_os_error());
-                }
-                if pr == 0 {
-                    return Err(io::Error::new(io::ErrorKind::TimedOut, "unix socket connect timed out"));
-                }
-                if stop_rd.is_some() && pfds[1].revents != 0 {
-                    return Err(io::Error::new(io::ErrorKind::Interrupted, "stream stopped during connect"));
-                }
-                if pfds[0].revents != 0 {
-                    let mut so_err: libc::c_int = 0;
-                    let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
-                    // SAFETY: querying `SO_ERROR` on our valid socket.
-                    if unsafe { libc::getsockopt(sock.raw(), libc::SOL_SOCKET, libc::SO_ERROR, (&raw mut so_err).cast(), &mut len) } != 0 {
-                        return Err(io::Error::last_os_error());
-                    }
-                    if so_err == 0 {
-                        break;
-                    }
-                    return Err(io::Error::from_raw_os_error(so_err));
-                }
-            }
-            break sock;
-        }
-        if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK || errno == libc::EINTR {
-            // On Linux, `AF_UNIX` `O_NONBLOCK` connect returns `EAGAIN` when the
-            // peer's accept backlog is full: sleep briefly (waking immediately on
-            // `stop_rd`) and retry until `deadline`.
-            let rem = deadline.saturating_duration_since(Instant::now());
-            if rem.is_zero() {
-                return Err(io::Error::new(io::ErrorKind::TimedOut, "unix socket connect timed out (peer backlog full)"));
-            }
-            let step = rem.min(Duration::from_millis(10));
-            if let Some(sfd) = stop_rd {
-                let mut p = libc::pollfd { fd: sfd, events: libc::POLLIN, revents: 0 };
-                // SAFETY: waiting on stop pipe with bounded timeout.
-                let pr = unsafe { libc::poll(&mut p, 1, timeout_ms_ceil(step)) };
-                if pr > 0 && p.revents != 0 {
-                    return Err(io::Error::new(io::ErrorKind::Interrupted, "stream stopped during connect"));
-                }
-            } else {
-                std::thread::sleep(step);
-            }
-            continue;
-        }
-        return Err(err);
-    };
-
-    // Switch back to blocking mode with explicit read/write timeouts for IPC I/O.
-    // SAFETY: valid connected socket fd.
-    unsafe {
-        let flags = libc::fcntl(connected_fd.raw(), libc::F_GETFL);
-        if flags >= 0 {
-            libc::fcntl(connected_fd.raw(), libc::F_SETFL, flags & !libc::O_NONBLOCK);
-        }
-    }
-    // SAFETY: transferring exclusive ownership of connected AF_UNIX fd to `UnixStream`.
-    let stream = unsafe { UnixStream::from_raw_fd(connected_fd.into_raw()) };
-    let io_timeout = deadline.saturating_duration_since(Instant::now()).max(Duration::from_millis(50));
-    stream.set_read_timeout(Some(io_timeout))?;
-    stream.set_write_timeout(Some(io_timeout))?;
-    Ok(stream)
 }
 
 /// Connect to a screen's `app_server` Unix socket with a non-blocking connect
@@ -1566,7 +1449,10 @@ fn find_same_session_screen(name: &str, session_pid: i32, session_pidfd: &OwnedF
     if pidfd_exited(session_pidfd) {
         return None;
     }
-    for rt in screens_runtime_dir_candidates() {
+    let Ok(rt_dirs) = screens_runtime_dir_candidates_checked() else {
+        return None;
+    };
+    for rt in rt_dirs {
         let path = rt.join(format!("{name}.json"));
         if let Some(screen) = read_runtime_screen(&path)
             && screen.name == name
@@ -1664,9 +1550,16 @@ fn stream_loop(name: &str) -> i32 {
     let sigfd = block_signals();
     set_nonblocking(1);
 
-    let Some((rt_dir, initial, session_pidfd)) = find_running_screen_pinned(name) else {
-        let _ = olo_rex_link::screen_wire::write_server_msg(&mut io::stdout().lock(), &ServerMsg::ScreenGone { reason: format!("screen {name} is not running") });
-        return 0;
+    let (rt_dir, initial, session_pidfd) = match find_running_screen_pinned_checked(name) {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            let _ = olo_rex_link::screen_wire::write_server_msg(&mut io::stdout().lock(), &ServerMsg::ScreenGone { reason: format!("screen {name} is not running") });
+            return 0;
+        }
+        Err(e) => {
+            let _ = olo_rex_link::screen_wire::write_server_msg(&mut io::stdout().lock(), &ServerMsg::ScreenGone { reason: format!("unsafe runtime directory: {e}") });
+            return 1;
+        }
     };
 
     let mut pipe_fds = [-1i32; 2];

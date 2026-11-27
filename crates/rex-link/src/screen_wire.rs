@@ -15,6 +15,11 @@ use serde::{Deserialize, Serialize};
 /// Wire protocol version for `screen follow` and `screen stream`.
 pub const PROTO: u32 = 1;
 
+/// Exit status returned by guarded `screen stop|delete|history --clear` when
+/// the screen's live `started` or `last_used` no longer matches the caller's
+/// expected value (checked and acted on under `NAME.lifecycle.lock`).
+pub const EXIT_STALE: i32 = 75;
+
 /// Magic header of `olo-screen-codec`'s `OLOT` tile-delta payload.
 pub const OLOT_MAGIC: &[u8; 4] = b"OLOT";
 
@@ -227,6 +232,11 @@ pub struct HostScreenStatus {
     /// Whether `olo screen` defaults to `"host"` (`true`) or `"desktop"` (`false`).
     #[serde(default)]
     pub default_on_host: bool,
+    /// Plain-words explanation when Agent Screens cannot run on this host yet
+    /// (not installed, older/missing system libraries, or missing Mesa
+    /// software EGL/renderer), matching `screen status`. `None` when ready.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub not_set_up_reason: Option<String>,
 }
 
 /// Lifecycle state of one screen on a host.
@@ -259,6 +269,11 @@ pub struct HostScreen {
     /// Milliseconds since the Unix epoch of the latest action (`at + ms`), if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_used: Option<u64>,
+    /// Number of recorded actions in `actions.jsonl` (`Some(0)` when empty;
+    /// `None` from older host helpers, while a large history is being scanned
+    /// or rescanned, or when `actions.jsonl` cannot be read).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actions: Option<usize>,
     /// Whether Take Control is currently held on this screen.
     #[serde(default)]
     pub controlled: bool,
@@ -279,9 +294,14 @@ pub enum FollowEvent {
     /// A screen was added or one of its fields (state, title, size, controlled,
     /// owner, …) changed.
     Screen { screen: Box<HostScreen> },
-    /// Lightweight update when only a screen's `last_used` timestamp advanced
-    /// (debounced to at most 2/s per screen).
-    LastUsed { name: String, last_used: u64 },
+    /// Lightweight update when only a screen's `last_used` timestamp / action
+    /// count advanced (debounced to at most 2/s per screen).
+    LastUsed {
+        name: String,
+        last_used: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        actions: Option<usize>,
+    },
     /// A screen no longer exists (removed from both runtime and state).
     Gone { name: String },
     /// Host Olo install state, version, or default-on-host setting changed.
@@ -1490,19 +1510,334 @@ pub fn parse_export_args(args: &[String]) -> Result<ExportArgs, String> {
     Ok(ExportArgs { name: name.clone(), from, to, part_ranges, zoom, encoder })
 }
 
+/// Optional generation/activity guard passed to `screen stop`, `screen delete`,
+/// and `screen history NAME --clear`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ExpectedScreen {
+    pub expected_started: Option<u64>,
+    pub expected_last_used: Option<u64>,
+}
+
+impl ExpectedScreen {
+    pub fn is_guarded(self) -> bool {
+        self.expected_started.is_some() || self.expected_last_used.is_some()
+    }
+}
+
+/// Which guarded one-shot screen lifecycle action is being requested.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GuardedVerb {
+    Stop,
+    Delete,
+    ClearHistory,
+}
+
+/// Parsed and validated guarded `screen` action (`stop`, `delete`, or
+/// `history NAME --clear` with `--expected-started` / `--expected-last-used`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GuardedAction {
+    pub verb: GuardedVerb,
+    pub name: String,
+    pub expected: ExpectedScreen,
+}
+
+/// True when `arg` looks like an `--expected*` guard flag (exact or malformed
+/// such as `--expected-started=10` or `--expected-bogus`), so callers never
+/// accidentally fall through to an unguarded destructive path (Finding 16).
+pub fn is_guard_like_arg(arg: &str) -> bool {
+    arg.starts_with("--expected")
+}
+
+/// Parse `--expected-started SECONDS` and `--expected-last-used MILLIS` flags
+/// (at most once each, in any order), rejecting unknown or malformed flags.
+pub fn parse_expected_flags(flags: &[String]) -> Result<ExpectedScreen, String> {
+    let mut out = ExpectedScreen::default();
+    let mut i = 0usize;
+    while i < flags.len() {
+        match flags[i].as_str() {
+            "--expected-started" => {
+                if out.expected_started.is_some() {
+                    return Err("duplicate --expected-started".into());
+                }
+                let v = flags.get(i + 1).ok_or("--expected-started needs a session timestamp (seconds)")?;
+                let n = v.parse::<u64>().map_err(|_| "--expected-started must be a non-negative integer")?;
+                out.expected_started = Some(n);
+                i += 2;
+            }
+            "--expected-last-used" => {
+                if out.expected_last_used.is_some() {
+                    return Err("duplicate --expected-last-used".into());
+                }
+                let v = flags.get(i + 1).ok_or("--expected-last-used needs an activity timestamp (milliseconds)")?;
+                let n = v.parse::<u64>().map_err(|_| "--expected-last-used must be a non-negative integer")?;
+                out.expected_last_used = Some(n);
+                i += 2;
+            }
+            other => return Err(format!("unexpected argument {other:?}")),
+        }
+    }
+    Ok(out)
+}
+
+/// Validate CLI/SSH arguments for a guarded one-shot action (`stop NAME`,
+/// `delete NAME`, or `history NAME --clear` with `--expected-started` /
+/// `--expected-last-used`), parsing sequentially left-to-right so missing
+/// option values (e.g. `--expected-started --clear 0`) and malformed forms
+/// (e.g. `--expected-started=0`) are rejected with a usage error (Finding 16).
+pub fn parse_guarded_action_args(args: &[String]) -> Result<GuardedAction, String> {
+    let Some(cmd) = args.first().map(String::as_str) else {
+        return Err("missing screen subcommand".into());
+    };
+    match cmd {
+        "stop" | "delete" => {
+            let Some(name) = args.get(1) else {
+                return Err(format!("{cmd} needs a screen's name"));
+            };
+            if !valid_screen_name(name) {
+                return Err(format!("invalid screen name {name:?}"));
+            }
+            let expected = parse_expected_flags(&args[2..])?;
+            let verb = if cmd == "stop" { GuardedVerb::Stop } else { GuardedVerb::Delete };
+            Ok(GuardedAction { verb, name: name.clone(), expected })
+        }
+        "history" => {
+            let Some(name) = args.get(1) else {
+                return Err("history needs a screen's name".into());
+            };
+            if !valid_screen_name(name) {
+                return Err(format!("invalid screen name {name:?}"));
+            }
+            let mut saw_clear = false;
+            let mut expected = ExpectedScreen::default();
+            let mut i = 2usize;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--clear" => {
+                        if saw_clear {
+                            return Err("duplicate --clear".into());
+                        }
+                        saw_clear = true;
+                        i += 1;
+                    }
+                    "--expected-started" => {
+                        if expected.expected_started.is_some() {
+                            return Err("duplicate --expected-started".into());
+                        }
+                        let v = args.get(i + 1).ok_or("--expected-started needs a session timestamp (seconds)")?;
+                        let n = v.parse::<u64>().map_err(|_| "--expected-started must be a non-negative integer")?;
+                        expected.expected_started = Some(n);
+                        i += 2;
+                    }
+                    "--expected-last-used" => {
+                        if expected.expected_last_used.is_some() {
+                            return Err("duplicate --expected-last-used".into());
+                        }
+                        let v = args.get(i + 1).ok_or("--expected-last-used needs an activity timestamp (milliseconds)")?;
+                        let n = v.parse::<u64>().map_err(|_| "--expected-last-used must be a non-negative integer")?;
+                        expected.expected_last_used = Some(n);
+                        i += 2;
+                    }
+                    other => return Err(format!("unexpected argument {other:?}")),
+                }
+            }
+            if !saw_clear {
+                return Err("--expected-started and --expected-last-used are only valid with `history NAME --clear`".into());
+            }
+            Ok(GuardedAction { verb: GuardedVerb::ClearHistory, name: name.clone(), expected })
+        }
+        other => Err(format!("`--expected-started` and `--expected-last-used` are not valid on `{other}`")),
+    }
+}
+
+/// Parsed entry-point decision for `stop`, `delete`, or `history` CLI commands
+/// (Item 9 / Finding 16): separates local help, guarded in-process actions,
+/// valid unguarded forwarding, and usage errors cleanly before any delegation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LifecycleCliAction {
+    /// Print local usage/help text and exit 0 (never invoke host destructive CLI).
+    Help,
+    /// Execute guarded mutation in-process under `NAME.lifecycle.lock`.
+    Guarded(GuardedAction),
+    /// Valid unguarded command: forward to installed host `olo-screen`.
+    Forward,
+}
+
+/// Strictly parse and classify `stop`, `delete`, and `history` CLI arguments
+/// left-to-right at the entry point (Finding 16):
+/// - Handles `-h` / `--help` locally (so `delete qa --help` never deletes `qa`).
+/// - Rejects unknown options and typos like `--expectd-started` (exit 2) before
+///   forwarding to host `olo-screen`.
+/// - Preserves documented unguarded options (`stop qa --quick`, `history qa
+///   --search --expected-started`, `--look N [OUT]`, `--export`, etc.).
+pub fn classify_lifecycle_cli_args(args: &[String]) -> Result<LifecycleCliAction, String> {
+    let Some(cmd) = args.first().map(String::as_str) else {
+        return Err("missing screen subcommand".into());
+    };
+    match cmd {
+        "stop" | "delete" => {
+            let mut name: Option<String> = None;
+            let mut expected = ExpectedScreen::default();
+            let mut saw_guard = false;
+            let mut saw_quick = false;
+            let mut i = 1usize;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "-h" | "--help" => return Ok(LifecycleCliAction::Help),
+                    "--quick" if cmd == "stop" => {
+                        saw_quick = true;
+                        i += 1;
+                    }
+                    "--expected-started" => {
+                        if expected.expected_started.is_some() {
+                            return Err("duplicate --expected-started".into());
+                        }
+                        let v = args.get(i + 1).ok_or("--expected-started needs a session timestamp (seconds)")?;
+                        let n = v.parse::<u64>().map_err(|_| "--expected-started must be a non-negative integer")?;
+                        expected.expected_started = Some(n);
+                        saw_guard = true;
+                        i += 2;
+                    }
+                    "--expected-last-used" => {
+                        if expected.expected_last_used.is_some() {
+                            return Err("duplicate --expected-last-used".into());
+                        }
+                        let v = args.get(i + 1).ok_or("--expected-last-used needs an activity timestamp (milliseconds)")?;
+                        let n = v.parse::<u64>().map_err(|_| "--expected-last-used must be a non-negative integer")?;
+                        expected.expected_last_used = Some(n);
+                        saw_guard = true;
+                        i += 2;
+                    }
+                    other if other.starts_with('-') => return Err(format!("unexpected option {other:?}")),
+                    positional => {
+                        if name.is_some() {
+                            return Err(format!("unexpected argument {positional:?}"));
+                        }
+                        if !valid_screen_name(positional) {
+                            return Err(format!("invalid screen name {positional:?}"));
+                        }
+                        name = Some(positional.to_owned());
+                        i += 1;
+                    }
+                }
+            }
+            let Some(name) = name else {
+                return Err(format!("{cmd} needs a screen's name"));
+            };
+            if saw_guard {
+                if saw_quick {
+                    return Err("unexpected option \"--quick\"".into());
+                }
+                let verb = if cmd == "stop" { GuardedVerb::Stop } else { GuardedVerb::Delete };
+                Ok(LifecycleCliAction::Guarded(GuardedAction { verb, name, expected }))
+            } else {
+                Ok(LifecycleCliAction::Forward)
+            }
+        }
+        "history" => {
+            if matches!(args.get(1).map(String::as_str), Some("-h" | "--help")) {
+                return Ok(LifecycleCliAction::Help);
+            }
+            let Some(name) = args.get(1) else {
+                return Err("history needs a screen's name".into());
+            };
+            if name.starts_with('-') {
+                return Err(format!("unexpected option {name:?}"));
+            }
+            if !valid_screen_name(name) {
+                return Err(format!("invalid screen name {name:?}"));
+            }
+            let mut saw_clear = false;
+            let mut saw_guard = false;
+            let mut saw_read_opt = false;
+            let mut expected = ExpectedScreen::default();
+            let mut i = 2usize;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "-h" | "--help" => return Ok(LifecycleCliAction::Help),
+                    "--clear" => {
+                        if saw_clear {
+                            return Err("duplicate --clear".into());
+                        }
+                        saw_clear = true;
+                        i += 1;
+                    }
+                    "--expected-started" => {
+                        if expected.expected_started.is_some() {
+                            return Err("duplicate --expected-started".into());
+                        }
+                        let v = args.get(i + 1).ok_or("--expected-started needs a session timestamp (seconds)")?;
+                        let n = v.parse::<u64>().map_err(|_| "--expected-started must be a non-negative integer")?;
+                        expected.expected_started = Some(n);
+                        saw_guard = true;
+                        i += 2;
+                    }
+                    "--expected-last-used" => {
+                        if expected.expected_last_used.is_some() {
+                            return Err("duplicate --expected-last-used".into());
+                        }
+                        let v = args.get(i + 1).ok_or("--expected-last-used needs an activity timestamp (milliseconds)")?;
+                        let n = v.parse::<u64>().map_err(|_| "--expected-last-used must be a non-negative integer")?;
+                        expected.expected_last_used = Some(n);
+                        saw_guard = true;
+                        i += 2;
+                    }
+                    opt @ ("--search" | "--kind" | "--last" | "--export" | "--part" | "--from" | "--to" | "--zoom" | "--encoder") => {
+                        if args.get(i + 1).is_none() {
+                            return Err(format!("{opt} needs a value"));
+                        }
+                        saw_read_opt = true;
+                        i += 2;
+                    }
+                    "--look" => {
+                        if args.get(i + 1).is_none() {
+                            return Err("--look needs an action number".into());
+                        }
+                        saw_read_opt = true;
+                        i += 2;
+                        if args.get(i).is_some_and(|next| !next.starts_with('-')) {
+                            i += 1;
+                        }
+                    }
+                    "--json" => {
+                        saw_read_opt = true;
+                        i += 1;
+                    }
+                    other => return Err(format!("unexpected argument {other:?}")),
+                }
+            }
+            if saw_clear && saw_read_opt {
+                return Err("--clear cannot be combined with history query or export options".into());
+            }
+            if saw_guard && !saw_clear {
+                return Err("--expected-started and --expected-last-used are only valid with `history NAME --clear`".into());
+            }
+            if saw_guard { Ok(LifecycleCliAction::Guarded(GuardedAction { verb: GuardedVerb::ClearHistory, name: name.clone(), expected })) } else { Ok(LifecycleCliAction::Forward) }
+        }
+        other => Err(format!("unexpected lifecycle command {other:?}")),
+    }
+}
+
 /// Validate arguments for a QUIC `SCREEN` stream (`follow`, `stream NAME`,
 /// `history NAME`, `history-stream NAME`, `export NAME [--part …] [--from N] [--to N] [--zoom Z] [--encoder E]`).
+///
+/// One-shot mutating actions (`stop`, `delete`, `history NAME --clear`) and
+/// `--expected-started` / `--expected-last-used` guards are strictly refused on
+/// QUIC `SCREEN` streams (they run over SSH exec so exit 75 and stderr reach
+/// the caller).
 pub fn validate_quic_screen_args(args: &[String]) -> io::Result<()> {
     if args.is_empty() || args.len() > MAX_QUIC_SCREEN_ARGS {
         return Err(invalid(format!("invalid QUIC screen arg count {}", args.len())));
-    }
-    if !QUIC_SCREEN_SUBCOMMANDS.contains(&args[0].as_str()) {
-        return Err(invalid(format!("disallowed QUIC screen subcommand {:?}", args[0])));
     }
     for a in args {
         if a.as_bytes().contains(&0) {
             return Err(invalid("NUL byte in QUIC screen argument"));
         }
+    }
+    if !QUIC_SCREEN_SUBCOMMANDS.contains(&args[0].as_str()) {
+        return Err(invalid(format!("disallowed QUIC screen subcommand {:?}", args[0])));
+    }
+    if args[1..].iter().any(|a| is_guard_like_arg(a)) {
+        return Err(invalid(format!("QUIC `{}` does not accept --expected-started or --expected-last-used", args[0])));
     }
     match args[0].as_str() {
         "follow" => {
@@ -1662,6 +1997,7 @@ mod tests {
             pid: Some(4242),
             started: Some(1_795_716_120),
             last_used: Some(1_795_716_400_000),
+            actions: Some(7),
             controlled: true,
             owner: Some(OwnerPane { host_key: None, session_id: "s-1".into(), block_id: "b-9".into() }),
             started_by: Some(OwnerPane { host_key: None, session_id: "s-1".into(), block_id: "b-1".into() }),
@@ -1669,13 +2005,15 @@ mod tests {
         let events = vec![
             FollowEvent::Snapshot {
                 proto: PROTO,
-                status: HostScreenStatus { installed: Some("2026.11.27-a1b2c3d4".into()), committed: Some(1_795_715_000), default_on_host: true },
+                status: HostScreenStatus { installed: Some("2026.11.27-a1b2c3d4".into()), committed: Some(1_795_715_000), default_on_host: true, not_set_up_reason: None },
                 screens: vec![screen.clone()],
             },
             FollowEvent::Screen { screen: Box::new(screen) },
-            FollowEvent::LastUsed { name: "review".into(), last_used: 1_795_716_450_000 },
+            FollowEvent::LastUsed { name: "review".into(), last_used: 1_795_716_450_000, actions: Some(8) },
             FollowEvent::Gone { name: "old".into() },
-            FollowEvent::Status { status: HostScreenStatus { installed: None, committed: None, default_on_host: false } },
+            FollowEvent::Status {
+                status: HostScreenStatus { installed: None, committed: None, default_on_host: false, not_set_up_reason: Some("Olo isn't installed on this host yet (`olo screen install`).".into()) },
+            },
         ];
         let mut wire = Vec::new();
         for ev in &events {
@@ -1889,5 +2227,152 @@ mod tests {
             many_lines.extend_from_slice(b"{}\n");
         }
         assert!(decode_history_msg(MSG_HISTORY_ACTIONS, &many_lines).is_err(), "250k action lines in one msg must be rejected");
+    }
+
+    /// Round 3 Req 3: Older readers lacking `not_set_up_reason` and `actions`
+    /// deserialize new `FollowEvent` lines cleanly, and new readers deserialize
+    /// legacy lines lacking those fields with `None`.
+    #[test]
+    fn round3_follow_new_fields_compatible_with_older_readers_and_helpers() {
+        #[derive(Debug, PartialEq, Deserialize)]
+        struct OldStatus {
+            #[serde(default)]
+            installed: Option<String>,
+            #[serde(default)]
+            committed: Option<u64>,
+            #[serde(default)]
+            default_on_host: bool,
+        }
+        #[derive(Debug, PartialEq, Deserialize)]
+        struct OldScreen {
+            name: String,
+            state: HostScreenState,
+            width: u32,
+            height: u32,
+            scale: f64,
+            #[serde(default)]
+            last_used: Option<u64>,
+        }
+        #[derive(Debug, PartialEq, Deserialize)]
+        #[serde(tag = "t", rename_all = "snake_case")]
+        enum OldEvent {
+            Snapshot { proto: u32, status: OldStatus, screens: Vec<OldScreen> },
+            Screen { screen: OldScreen },
+            LastUsed { name: String, last_used: u64 },
+            Status { status: OldStatus },
+        }
+
+        let sc = HostScreen {
+            name: "qa".into(),
+            title: None,
+            state: HostScreenState::Stopped,
+            width: 1440,
+            height: 900,
+            scale: 1.0,
+            sound: false,
+            pid: None,
+            started: None,
+            last_used: Some(42_000),
+            actions: Some(12),
+            controlled: false,
+            owner: None,
+            started_by: None,
+        };
+        let status = HostScreenStatus { installed: None, committed: None, default_on_host: false, not_set_up_reason: Some("Olo isn't installed on this host yet (`olo screen install`).".into()) };
+        for ev in [
+            FollowEvent::Snapshot { proto: PROTO, status: status.clone(), screens: vec![sc.clone()] },
+            FollowEvent::Screen { screen: Box::new(sc) },
+            FollowEvent::LastUsed { name: "qa".into(), last_used: 43_000, actions: Some(13) },
+            FollowEvent::Status { status },
+        ] {
+            let bytes = serde_json::to_vec(&ev).unwrap();
+            let _: OldEvent = serde_json::from_slice(&bytes).expect("older reader must ignore unknown fields");
+        }
+
+        // Legacy host helper JSON (no `not_set_up_reason`, no `actions`) -> new reader gets `None`.
+        let old_snap = br#"{"t":"snapshot","proto":1,"status":{"installed":null,"default_on_host":false},"screens":[{"name":"qa","state":"stopped","width":800,"height":600,"scale":1.0}]}"#;
+        let parsed: FollowEvent = serde_json::from_slice(old_snap).unwrap();
+        let FollowEvent::Snapshot { status, screens, .. } = parsed else { panic!("expected snapshot") };
+        assert_eq!(status.not_set_up_reason, None);
+        assert_eq!(screens[0].actions, None);
+
+        let old_lu = br#"{"t":"last_used","name":"qa","last_used":99000}"#;
+        let parsed_lu: FollowEvent = serde_json::from_slice(old_lu).unwrap();
+        assert_eq!(parsed_lu, FollowEvent::LastUsed { name: "qa".into(), last_used: 99_000, actions: None });
+    }
+
+    /// Round 3 Req 4: `parse_guarded_action_args` accepts `--expected-started` /
+    /// `--expected-last-used` strictly on `stop`, `delete`, and `history NAME --clear`,
+    /// while `validate_quic_screen_args` refuses them on every QUIC stream.
+    #[test]
+    fn round3_req4_guarded_action_and_quic_arg_validation() {
+        let s = |xs: &[&str]| xs.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+
+        // Valid guarded CLI/SSH actions.
+        assert_eq!(
+            parse_guarded_action_args(&s(&["stop", "qa", "--expected-started", "100", "--expected-last-used", "200"])).unwrap(),
+            GuardedAction { verb: GuardedVerb::Stop, name: "qa".into(), expected: ExpectedScreen { expected_started: Some(100), expected_last_used: Some(200) } }
+        );
+        assert_eq!(
+            parse_guarded_action_args(&s(&["delete", "qa", "--expected-last-used", "0"])).unwrap(),
+            GuardedAction { verb: GuardedVerb::Delete, name: "qa".into(), expected: ExpectedScreen { expected_started: None, expected_last_used: Some(0) } }
+        );
+        assert_eq!(
+            parse_guarded_action_args(&s(&["history", "qa", "--clear", "--expected-started", "0", "--expected-last-used", "555"])).unwrap(),
+            GuardedAction { verb: GuardedVerb::ClearHistory, name: "qa".into(), expected: ExpectedScreen { expected_started: Some(0), expected_last_used: Some(555) } }
+        );
+        assert_eq!(parse_guarded_action_args(&s(&["history", "qa", "--expected-last-used", "555", "--clear"])).unwrap().verb, GuardedVerb::ClearHistory);
+
+        // Invalid guarded CLI/SSH invocations (including Finding 16 malformed forms).
+        for bad in [
+            s(&["history", "qa", "--expected-last-used", "555"]),
+            s(&["history", "qa", "--expected-started", "--clear", "0"]),
+            s(&["history", "qa", "--clear", "--expected-last-used=555"]),
+            s(&["follow", "--expected-started", "1"]),
+            s(&["stream", "qa", "--expected-started", "1"]),
+            s(&["export", "qa", "--expected-last-used", "1"]),
+            s(&["stop", "qa", "--expected-started"]),
+            s(&["stop", "qa", "--expected-started=1"]),
+            s(&["stop", "qa", "--expected-started", "abc"]),
+            s(&["stop", "qa", "--expected-started", "1", "--expected-started", "2"]),
+            s(&["delete", "../bad", "--expected-last-used", "0"]),
+            s(&["delete", "qa", "--expected-started=0"]),
+            s(&["delete", "qa", "--expected-bogus", "0"]),
+            s(&["delete", "qa", "--bogus"]),
+        ] {
+            assert!(parse_guarded_action_args(&bad).is_err(), "expected error for {bad:?}");
+        }
+        assert!(is_guard_like_arg("--expected-started=0"));
+        assert!(is_guard_like_arg("--expected-bogus"));
+        assert!(!is_guard_like_arg("--clear"));
+
+        // QUIC `SCREEN` streams must refuse one-shot mutations and `--expected-*` everywhere.
+        for bad_quic in [
+            s(&["stop", "qa", "--expected-started", "1"]),
+            s(&["delete", "qa", "--expected-last-used", "1"]),
+            s(&["history", "qa", "--clear"]),
+            s(&["history", "qa", "--clear", "--expected-last-used", "1"]),
+            s(&["history", "qa", "--expected-last-used", "1"]),
+            s(&["history-stream", "qa", "--expected-last-used", "1"]),
+            s(&["follow", "--expected-started", "1"]),
+            s(&["stream", "qa", "--expected-started", "1"]),
+            s(&["export", "qa", "--expected-last-used", "1"]),
+        ] {
+            assert!(validate_quic_screen_args(&bad_quic).is_err(), "QUIC must refuse {bad_quic:?}");
+        }
+
+        // Item 9 / Finding 16: entry-point CLI classifier for stop/delete/history.
+        assert_eq!(classify_lifecycle_cli_args(&s(&["delete", "qa", "--help"])).unwrap(), LifecycleCliAction::Help);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["stop", "qa", "--help"])).unwrap(), LifecycleCliAction::Help);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["history", "qa", "--clear", "--help"])).unwrap(), LifecycleCliAction::Help);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["stop", "qa", "--quick"])).unwrap(), LifecycleCliAction::Forward);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["stop", "--quick", "qa"])).unwrap(), LifecycleCliAction::Forward);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["history", "qa", "--search", "--expected-started"])).unwrap(), LifecycleCliAction::Forward);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["history", "qa", "--search", "--clear"])).unwrap(), LifecycleCliAction::Forward);
+        assert_eq!(classify_lifecycle_cli_args(&s(&["history", "qa", "--look", "1", "/var/tmp/out.png"])).unwrap(), LifecycleCliAction::Forward);
+        assert!(classify_lifecycle_cli_args(&s(&["history", "qa", "--clear", "--expectd-started", "10"])).is_err());
+        assert!(classify_lifecycle_cli_args(&s(&["delete", "qa", "--expectd-started", "10"])).is_err());
+        assert!(classify_lifecycle_cli_args(&s(&["stop", "qa", "--expectd-started", "10"])).is_err());
+        assert!(classify_lifecycle_cli_args(&s(&["history", "qa", "--clear", "--json"])).is_err());
     }
 }

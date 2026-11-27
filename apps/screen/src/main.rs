@@ -5,6 +5,7 @@
 
 mod atspi;
 mod find;
+mod sidebar;
 mod viewer;
 
 pub(crate) use olo_screen_pane::{export, history, moving, record, screens};
@@ -20,13 +21,14 @@ const APP_ID: &str = "olo.screen";
 
 const USAGE: &str = "\
 usage: olo-screen                         open Agent Screens (watch, take control)
-       olo-screen watch [NAME]            the same, showing NAME
+       olo-screen watch [[HOST:]NAME]     the same, showing NAME (or HOST:NAME on a Rex host)
        olo-screen start [NAME] [--size WxH] [--scale N] [--sound]
                                              start a screen (default: agent, 1440x900, 1x, silent),
                                              or start a stopped or archived one again (as it was,
                                              unless given); prints it as JSON
-       olo-screen list                    every screen, as JSON: its state (running, stopped,
-                                             archived) and the name each was given
+       olo-screen list [--all [--json]] [--host HOST [--json]]
+                                             local screens as JSON; --all includes connected Rex
+                                             hosts; --host HOST lists one Rex host's screens
        olo-screen rename NAME [TITLE]     give a screen a name to show by (none: its own)
        olo-screen stop NAME               end a screen and everything on it; the screen is kept
                                              (stopped: its history, Chrome profile, passwords)
@@ -166,6 +168,19 @@ fn stayed_why(o: &moving::Outcome) -> String {
         Some(s) => format!("nothing moved: {} {}", if s.app_id.is_empty() { "the window" } else { s.app_id.as_str() }, s.why),
         None => "nothing moved".into(),
     }
+}
+
+/// JSON payload printed by `olo-screen take`, including `"pid"` and `"started"`
+/// so bridged `take --new` callers (and Rex's desktop owner tracker) always
+/// observe the newly started screen's exact session generation (`agyrev-da27b4f6e1` #3).
+fn take_result_json(s: &screens::Screen, outcome: &moving::Outcome) -> serde_json::Value {
+    json!({
+        "name": s.name,
+        "pid": s.pid,
+        "started": s.started,
+        "went": outcome.went,
+        "stayed": outcome.stayed,
+    })
 }
 
 fn number(s: Option<&String>, what: &str) -> Result<f64, String> {
@@ -495,7 +510,20 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             println!("{USAGE}");
             Ok(())
         }
-        "watch" => return None,
+        "watch" => {
+            if rest.len() > 1 {
+                return Some(Err("watch takes at most one [HOST:]NAME target".into()));
+            }
+            if let Some(target) = rest.first() {
+                if target.starts_with('-') {
+                    return Some(Err(format!("unknown watch option {target:?} (expected [HOST:]NAME)")));
+                }
+                if let Err(e) = validate_watch_target(target) {
+                    return Some(Err(e));
+                }
+            }
+            return None;
+        }
         "start" => (|| {
             let given = rest.first().filter(|a| !a.starts_with("--")).cloned();
             if let Some(ref g) = given
@@ -518,38 +546,24 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             print_json(&json!(screen));
             Ok(())
         })(),
-        "list" => {
-            let running = screens::list();
-            let listed: Vec<serde_json::Value> = screens::all()
-                .into_iter()
-                .map(|(name, state)| {
-                    let title = history::title(&name);
-                    let mut v = match running.iter().find(|s| s.name == name) {
-                        Some(s) => json!(s),
-                        None => {
-                            let kept = screens::kept(&name).unwrap_or_default();
-                            json!({ "name": name, "width": kept.width, "height": kept.height, "scale": kept.scale, "sound": kept.sound })
-                        }
-                    };
-                    v["state"] = json!(state);
-                    v["title"] = json!(title);
-                    v
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&listed).unwrap_or_default());
-            Ok(())
-        }
+        "list" => list_screens_cli(rest),
         "rename" => name().and_then(|n| history::set_title(&n, rest.get(1).map(String::as_str))),
         "stop" => (|| {
             let n = name()?;
-            let expected = option(&rest[1..], "--expected-started")
-                .map(|v| v.parse::<u64>().map_err(|_| "--expected-started must be an integer".to_owned()))
-                .transpose()?;
-            screens::stop_if_generation(&n, expected)
+            let (_, expected_started, expected_last_used) = screens::parse_expected_flags_strict(&rest[1..], false)?;
+            screens::stop_if_expected(&n, expected_started, expected_last_used)
         })(),
         "archive" => name().and_then(|n| screens::archive(&n, true)),
         "unarchive" => name().and_then(|n| screens::archive(&n, false)),
-        "delete" => name().and_then(|n| screens::delete(&n)),
+        "delete" => (|| {
+            let n = name()?;
+            let (_, expected_started, expected_last_used) = screens::parse_expected_flags_strict(&rest[1..], false)?;
+            if expected_started.is_some() || expected_last_used.is_some() {
+                screens::delete_if_stopped_expected(&n, expected_started, expected_last_used)
+            } else {
+                screens::delete(&n)
+            }
+        })(),
         "env" => screen().map(|s| {
             for (k, v) in s.env() {
                 println!("export {k}={}", shell_quote(&v));
@@ -568,7 +582,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 screen()?
             };
             let outcome = moving::move_windows(&person, &ids, &moving::Place::screen(&s))?;
-            let v = json!({ "name": s.name, "went": outcome.went, "stayed": outcome.stayed });
+            let v = take_result_json(&s, &outcome);
             print_json(&v);
             if outcome.went.is_empty() { Err(stayed_why(&outcome)) } else { Ok(()) }
         })(),
@@ -708,8 +722,13 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             }
             // Scope all history flags strictly to arguments AFTER the screen name.
             let flags = &rest[1..];
-            if has(flags, "--clear") {
-                return screens::clear_history_if_stopped(&n);
+            let has_expected_flag = flags.iter().any(|f| f == "--expected-started" || f == "--expected-last-used" || f.starts_with("--expected-"));
+            if has(flags, "--clear") || has_expected_flag {
+                let (saw_clear, expected_started, expected_last_used) = screens::parse_expected_flags_strict(flags, true)?;
+                if !saw_clear {
+                    return Err("--expected-started and --expected-last-used are only valid with `history NAME --clear`".into());
+                }
+                return screens::clear_history_if_stopped_expected(&n, expected_started, expected_last_used);
             }
             // The screen as it was when action N (from 1, as listed)
             // ended, as a picture.
@@ -1863,6 +1882,211 @@ fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+fn local_list_json() -> Vec<serde_json::Value> {
+    let running = screens::list();
+    screens::all()
+        .into_iter()
+        .map(|(name, state)| {
+            let title = history::title(&name);
+            let mut v = match running.iter().find(|s| s.name == name) {
+                Some(s) => json!(s),
+                None => {
+                    let kept = screens::kept(&name).unwrap_or_default();
+                    json!({ "name": name, "width": kept.width, "height": kept.height, "scale": kept.scale, "sound": kept.sound })
+                }
+            };
+            v["state"] = json!(state);
+            v["title"] = json!(title);
+            v
+        })
+        .collect()
+}
+
+/// Validate a `watch` target (`NAME` or `HOST:NAME`, splitting on the LAST colon
+/// so host labels containing colons like `lab:west:qa` work cleanly — Finding 32).
+fn validate_watch_target(target: &str) -> Result<(), String> {
+    if target.is_empty() {
+        return Err("watch target cannot be empty".into());
+    }
+    if let Some((host, name)) = target.rsplit_once(':') {
+        if host.trim().is_empty() {
+            return Err(format!("invalid watch target {target:?}: missing host before ':'"));
+        }
+        if !screens::valid_name(name) {
+            return Err(format!("invalid screen name {name:?} in {target:?} (letters, digits, - and _)"));
+        }
+        Ok(())
+    } else if screens::valid_name(target) {
+        Ok(())
+    } else {
+        Err(format!("{target:?} can't name a screen (letters, digits, - and _)"))
+    }
+}
+
+/// Resolve a Rex host spec by exact `key` first, then exact `label`, then a
+/// unique case-insensitive `label` match (Finding 32).
+fn resolve_rex_host<'a>(hosts: &'a [olo_screen_pane::rex_sock::RexHost], spec: &str) -> Result<&'a olo_screen_pane::rex_sock::RexHost, String> {
+    if let Some(h) = hosts.iter().find(|h| h.key == spec) {
+        return Ok(h);
+    }
+    let exact_label: Vec<&olo_screen_pane::rex_sock::RexHost> = hosts.iter().filter(|h| h.label == spec).collect();
+    if exact_label.len() == 1 {
+        return Ok(exact_label[0]);
+    }
+    if exact_label.len() > 1 {
+        return Err(format!("multiple Rex hosts are named {spec:?}; pass the host key instead"));
+    }
+    let ci: Vec<&olo_screen_pane::rex_sock::RexHost> = hosts.iter().filter(|h| h.label.eq_ignore_ascii_case(spec)).collect();
+    match ci.as_slice() {
+        [only] => Ok(only),
+        [] => Err(format!("no Rex host named {spec:?}")),
+        _ => Err(format!("host name {spec:?} is ambiguous; pass the exact spelling or host key")),
+    }
+}
+
+/// Query the live, peer-authenticated Rex Screens socket (Finding 9: never
+/// trust a stale on-disk state file as live authority for `list --all`/`--host`).
+fn read_live_rex_state() -> Option<olo_screen_pane::rex_sock::RexScreensState> {
+    olo_screen_pane::RexSockClient::new().list().ok()
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ListCliArgs {
+    all: bool,
+    as_json: bool,
+    host_filter: Option<String>,
+}
+
+fn parse_list_cli_args(rest: &[String]) -> Result<ListCliArgs, String> {
+    let mut out = ListCliArgs::default();
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--all" => {
+                out.all = true;
+                i += 1;
+            }
+            "--json" => {
+                out.as_json = true;
+                i += 1;
+            }
+            "--host" => {
+                let Some(val) = rest.get(i + 1) else {
+                    return Err("--host requires a host name or key".into());
+                };
+                if val.is_empty() || val.starts_with('-') {
+                    return Err(format!("--host requires a host name or key (got {val:?})"));
+                }
+                if out.host_filter.is_some() {
+                    return Err("--host may only be given once".into());
+                }
+                out.host_filter = Some(val.clone());
+                i += 2;
+            }
+            other => return Err(format!("unknown list option {other:?}")),
+        }
+    }
+    if out.all && out.host_filter.is_some() {
+        return Err("--all and --host cannot be combined".into());
+    }
+    Ok(out)
+}
+
+fn list_screens_cli(rest: &[String]) -> Result<(), String> {
+    let parsed = parse_list_cli_args(rest)?;
+    if !parsed.all && parsed.host_filter.is_none() {
+        let listed = local_list_json();
+        println!("{}", serde_json::to_string_pretty(&listed).unwrap_or_default());
+        return Ok(());
+    }
+    let rex_state = read_live_rex_state();
+    if let Some(target_host) = parsed.host_filter.as_deref() {
+        let Some(state) = rex_state else {
+            return Err("Rex isn’t running or has no hosts published.".into());
+        };
+        let host = resolve_rex_host(&state.hosts, target_host)?;
+        if parsed.as_json {
+            println!("{}", serde_json::to_string_pretty(host).unwrap_or_default());
+        } else {
+            print_host_text(host, &state.hosts);
+        }
+        return Ok(());
+    }
+    let local = local_list_json();
+    let hosts = rex_state.map(|s| s.hosts).unwrap_or_default();
+    if parsed.as_json {
+        println!("{}", serde_json::to_string_pretty(&json!({ "local": local, "hosts": hosts })).unwrap_or_default());
+    } else {
+        println!("This Computer");
+        if local.is_empty() {
+            println!("  No screens");
+        } else {
+            for s in &local {
+                let name = s["name"].as_str().unwrap_or("");
+                let st = s["state"].as_str().unwrap_or("");
+                let w = s["width"].as_i64().unwrap_or(0);
+                let h = s["height"].as_i64().unwrap_or(0);
+                let title = s["title"].as_str().map(|t| format!("  ({})", olo_screen_pane::rex_sock::sanitize_display_text(t))).unwrap_or_default();
+                println!("  {name:<20} {st:<10} {w}x{h}{title}");
+            }
+        }
+        for host in &hosts {
+            println!();
+            print_host_text(host, &hosts);
+        }
+    }
+    Ok(())
+}
+
+/// Format one Rex host's screens for text output, printing the stable `host.key`
+/// in copyable `HOST:NAME` targets whenever `host.label` contains `:` or fails
+/// to resolve uniquely back to this host (Final pass B.10 / Astra #32).
+fn format_host_text(host: &olo_screen_pane::rex_sock::RexHost, all_hosts: &[olo_screen_pane::rex_sock::RexHost]) -> String {
+    use std::fmt::Write;
+    let sanitize = olo_screen_pane::rex_sock::sanitize_display_text;
+    let label = sanitize(&host.label);
+    let key = sanitize(&host.key);
+    let label_resolves_here = !host.label.is_empty() && !host.label.contains(':') && resolve_rex_host(all_hosts, &host.label).ok().map(|h| h.key.as_str()) == Some(host.key.as_str());
+    let target_prefix = if label_resolves_here { label.clone() } else { key.clone() };
+    let mut out = String::new();
+    let tag = match host.state {
+        olo_screen_pane::rex_sock::RexHostConn::Connected if !host.has_olo_screens() => " (not set up)",
+        olo_screen_pane::rex_sock::RexHostConn::Connected => "",
+        olo_screen_pane::rex_sock::RexHostConn::Disconnected => " (disconnected)",
+        olo_screen_pane::rex_sock::RexHostConn::Reconnecting => " (reconnecting)",
+        olo_screen_pane::rex_sock::RexHostConn::Connecting => " (connecting)",
+        olo_screen_pane::rex_sock::RexHostConn::Error => " (error)",
+    };
+    if target_prefix != label {
+        let _ = writeln!(out, "{label} [{key}]{tag}");
+    } else {
+        let _ = writeln!(out, "{label}{tag}");
+    }
+    if !host.has_olo_screens() && host.state.is_connected() {
+        let why = host.not_set_up_reason.as_deref().map(sanitize).filter(|s| !s.is_empty()).unwrap_or_else(|| "Not set up".into());
+        let _ = writeln!(out, "  {why}");
+        return out;
+    }
+    if host.screens.is_empty() {
+        let _ = writeln!(out, "  No screens");
+        return out;
+    }
+    for s in &host.screens {
+        let st = match s.state {
+            olo_screen_pane::rex_sock::HostScreenState::Running => "running",
+            olo_screen_pane::rex_sock::HostScreenState::Stopped => "stopped",
+            olo_screen_pane::rex_sock::HostScreenState::Archived => "archived",
+        };
+        let title = s.title.as_deref().map(sanitize).filter(|t| !t.is_empty()).map(|t| format!("  ({t})")).unwrap_or_default();
+        let _ = writeln!(out, "  {target_prefix}:{:<16} {st:<10} {}x{}{title}", s.name, s.width, s.height);
+    }
+    out
+}
+
+fn print_host_text(host: &olo_screen_pane::rex_sock::RexHost, all_hosts: &[olo_screen_pane::rex_sock::RexHost]) {
+    print!("{}", format_host_text(host, all_hosts));
+}
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -1883,7 +2107,7 @@ fn main() {
         // (Re-executed by an upgrade, the same pid: what it said it
         // controlled before isn't so now.)
         screens::clear_controlled_by_me();
-        let window = olo_kit::open_window(olo_kit::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(660.0, 420.0).keep_size("main"), move |cx| viewer::Viewer::new(show, cx));
+        let window = olo_kit::open_window(olo_kit::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(380.0, 320.0).keep_size("main"), move |cx| viewer::Viewer::new(show, cx));
         // What the workers and other starts say goes to the window.
         olo_kit::message_handler(app, move |message, _| {
             window.messenger().send(message);
@@ -2131,5 +2355,160 @@ mod tests {
         }
         let err = cli(&args(&["history", "../escape", "--clear"])).expect("history returns Some").unwrap_err();
         assert!(err.contains("can't name a screen"), "history ../escape --clear -> {err}");
+    }
+
+    #[test]
+    fn step6_watch_rejects_flag_and_accepts_host_target() {
+        assert!(cli(&args(&["watch", "dev-box:review"])).is_none(), "watch HOST:NAME hands off to window");
+        assert!(cli(&args(&["watch", "lab:west:qa"])).is_none(), "watch HOST_WITH_COLON:NAME splits on last colon");
+        assert!(cli(&args(&["watch", "agent"])).is_none(), "watch NAME hands off to window");
+        let err = cli(&args(&["watch", "--bogus"])).expect("watch --bogus fails cleanly").unwrap_err();
+        assert!(err.contains("unknown watch option"), "{err}");
+        // Finding 32: reject malformed targets and extra operands.
+        assert!(cli(&args(&["watch", "a", "b"])).expect("extra operand fails").is_err());
+        assert!(cli(&args(&["watch", ":qa"])).expect("missing host fails").is_err());
+        assert!(cli(&args(&["watch", "dev-box:../bad"])).expect("invalid screen fails").is_err());
+    }
+
+    #[test]
+    fn round3_f15_f32_cli_list_arity_host_resolution_and_sanitization() {
+        use olo_screen_pane::rex_sock::{HostScreenState, RexHost, RexHostConn, RexScreen};
+        // Finding 32: bare `--host` without value fails instead of returning local JSON.
+        assert!(parse_list_cli_args(&args(&["--host"])).is_err());
+        assert!(parse_list_cli_args(&args(&["--host", "--json"])).is_err());
+        assert!(parse_list_cli_args(&args(&["--all", "--host", "dev"])).is_err());
+        assert!(parse_list_cli_args(&args(&["--bogus"])).is_err());
+        assert_eq!(parse_list_cli_args(&args(&["--host", "dev-box", "--json"])).unwrap(), ListCliArgs { all: false, as_json: true, host_filter: Some("dev-box".into()) });
+
+        // Exact label beats earlier case-insensitive match; ambiguity rejected.
+        let mk = |key: &str, label: &str| RexHost {
+            key: key.into(),
+            label: label.into(),
+            state: RexHostConn::Connected,
+            error: None,
+            disconnected_at: None,
+            installed: Some("1.0".into()),
+            committed: None,
+            default_on_host: true,
+            not_set_up_reason: None,
+            can_control: Some(true),
+            control_disabled_reason: None,
+            capabilities: Vec::new(),
+            screens: Vec::new(),
+        };
+        let hosts = vec![mk("k1", "Build"), mk("k2", "build")];
+        assert_eq!(resolve_rex_host(&hosts, "build").unwrap().key, "k2", "exact label must beat earlier case-insensitive match");
+        assert_eq!(resolve_rex_host(&hosts, "k1").unwrap().key, "k1", "exact key match");
+        assert!(resolve_rex_host(&hosts, "BUILD").is_err(), "ambiguous case-insensitive match must fail");
+
+        // Finding 15: text-mode output sanitizes terminal escape/control sequences.
+        let mut hostile = mk("k3", "dev\x1b[31m-box\n");
+        hostile.screens.push(RexScreen {
+            name: "qa".into(),
+            title: Some("Check\x1b]0;pwn\x07\tout".into()),
+            state: HostScreenState::Running,
+            width: 1440,
+            height: 900,
+            scale: 1.0,
+            sound: false,
+            pid: None,
+            started: None,
+            last_used: None,
+            actions: None,
+            controlled: false,
+            owner: None,
+            started_by: None,
+            controlled_by: None,
+        });
+        let text = format_host_text(&hostile, std::slice::from_ref(&hostile));
+        assert!(!text.contains('\x1b') && !text.contains('\x07'), "control chars must be sanitized: {text:?}");
+    }
+
+    #[test]
+    fn final_pass_b3_b10_strict_guard_cli_and_colliding_host_key_listing() {
+        use olo_screen_pane::rex_sock::{HostScreenState, RexHost, RexHostConn, RexScreen};
+
+        // B.3 (#2–#4): malformed/duplicate/unknown guard flags MUST fail cleanly before
+        // dispatching unguarded delete/stop/history!
+        for bad in [
+            &["delete", "qa", "--expected-started=0"][..],
+            &["delete", "qa", "--expected-started", "1", "--expected-started", "2"],
+            &["delete", "qa", "--expected-started", "abc"],
+            &["delete", "qa", "--bogus"],
+            &["stop", "qa", "--expected-started=0"],
+            &["stop", "qa", "--expected-last-used"],
+            &["history", "qa", "--expected-started", "0"],
+            &["history", "qa", "--clear", "--expected-started=0"],
+            &["history", "qa", "--clear", "--clear"],
+        ] {
+            let err = cli(&args(bad)).expect("strict guard error returns Some").unwrap_err();
+            assert!(!err.is_empty(), "expected error for {bad:?}");
+        }
+
+        // B.10 (#32): host 1 has key="lab" (label="Lab Primary"), host 2 has key="k2" (label="lab");
+        // host 2's text listing MUST print `k2:qa` (never `lab:qa`, which resolves to host 1!).
+        let mk_screen = |name: &str| RexScreen {
+            name: name.into(),
+            title: None,
+            state: HostScreenState::Running,
+            width: 1280,
+            height: 800,
+            scale: 1.0,
+            sound: false,
+            pid: None,
+            started: None,
+            last_used: None,
+            actions: None,
+            controlled: false,
+            owner: None,
+            started_by: None,
+            controlled_by: None,
+        };
+        let mk_host = |key: &str, label: &str| RexHost {
+            key: key.into(),
+            label: label.into(),
+            state: RexHostConn::Connected,
+            error: None,
+            disconnected_at: None,
+            installed: Some("1.0".into()),
+            committed: None,
+            default_on_host: true,
+            not_set_up_reason: None,
+            can_control: Some(true),
+            control_disabled_reason: None,
+            capabilities: Vec::new(),
+            screens: vec![mk_screen("qa")],
+        };
+        let all = vec![mk_host("lab", "Lab Primary"), mk_host("k2", "lab"), mk_host("a1", "prod"), mk_host("a2", "prod")];
+        let h2_text = format_host_text(&all[1], &all);
+        assert!(h2_text.contains("k2:qa"), "colliding label must print stable host key: {h2_text}");
+        assert!(!h2_text.contains("  lab:qa"), "must not print lab:qa for host k2: {h2_text}");
+        let prod1_text = format_host_text(&all[2], &all);
+        let prod2_text = format_host_text(&all[3], &all);
+        assert!(prod1_text.contains("a1:qa") && prod2_text.contains("a2:qa"), "duplicate labels must print stable keys");
+    }
+
+    #[test]
+    fn agy_da27_f3_take_result_json_includes_pid_and_started_for_rex_owner_tracking() {
+        let s = screens::Screen {
+            name: "agent".into(),
+            wayland_display: "wayland-test".into(),
+            olo_socket: PathBuf::from("/var/tmp/olo-test.sock"),
+            pid: 4242,
+            width: 1280,
+            height: 800,
+            scale: 1.0,
+            sound: false,
+            started: 1_750_000_123,
+            bus: None,
+            a11y: None,
+        };
+        let outcome = moving::Outcome { went: vec![moving::Went { pid: 100, now: 100, app_id: "olo.styled-edit".into(), windows: vec![7], how: "kit", note: None }], stayed: Vec::new() };
+        let v = take_result_json(&s, &outcome);
+        assert_eq!(v["name"], "agent");
+        assert_eq!(v["pid"], 4242);
+        assert_eq!(v["started"], 1_750_000_123u64);
+        assert_eq!(v["went"].as_array().map(Vec::len), Some(1));
+        assert_eq!(v["stayed"], json!([]));
     }
 }

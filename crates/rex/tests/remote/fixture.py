@@ -26,6 +26,12 @@ def outer(binary, case):
         programs += ["openssl"]
     if case == "remote_slow":
         programs += ["tc"]
+    helper_bin = None
+    if case.startswith("ssh_screen"):
+        helper_bin = os.environ.get("OLO_REX_LINK_BIN")
+        if not helper_bin or not Path(helper_bin).is_file():
+            print(f"SKIP {case}: olo-rex-link (quic,screens) missing", flush=True)
+            return
     for program in programs:
         if not shutil.which(program):
             print(f"SKIP {case}: {program} missing", flush=True)
@@ -58,6 +64,20 @@ def outer(binary, case):
                 "--setenv", "USER", "scratch", "--setenv", "SHELL", "/bin/sh", "--setenv", "XDG_RUNTIME_DIR", "/fixture/run",
                 "--setenv", "XDG_STATE_HOME", "/fixture/state", "--setenv", "REX_SERVER_SOCKET", str(SOCKET),
                 "--chdir", "/fixture/home", "--", "/usr/bin/python3", "-I", "/fixture.py", "inside", case]
+        if helper_bin:
+            idx = args.index("--")
+            extra = ["--ro-bind", helper_bin, "/fixture/olo-rex-link", "--setenv", "OLO_REX_LINK_BIN", "/fixture/olo-rex-link"]
+            if case == "ssh_screen_fallback_protocol_follow_and_drop" or case == "ssh_screen_unread_isolation":
+                extra += ["--setenv", "OLO_REX_QUIC", "no"]
+            elif case == "ssh_screen_over_quic_link":
+                extra += ["--setenv", "OLO_REX_QUIC", "yes"]
+            args[idx:idx] = extra
+        elif case.startswith(("ssh_exec_", "ssh_bench_", "ssh_r3_", "ssh_final_")):
+            idx = args.index("--")
+            extra = ["--setenv", "OLO_REX_QUIC", "no"]
+            if os.environ.get("OLO_REX_BENCH_PERF") == "1":
+                extra += ["--setenv", "OLO_REX_BENCH_PERF", "1"]
+            args[idx:idx] = extra
         if case == "remote_slow":
             args[1:1] = ["--uid", "0", "--gid", "0", "--cap-add", "CAP_NET_ADMIN", "--cap-add", "CAP_SETFCAP"]
         elif os.getuid() == 0 or os.getgid() == 0:
@@ -194,6 +214,34 @@ def inside(case):
                 wrapper.write_text("#!/bin/sh\nexport PATH=/fixture/no-rex\nexec rex -S unix:///fixture/rex/rex.sock __internal dial-stdio\n")
             if case == "ssh_closes_after_auth":
                 wrapper.write_text("#!/bin/sh\nexit 42\n")
+            if case.startswith("ssh_screen"):
+                import platform
+                arch = platform.machine()
+                helper_dir = ROOT / "home/.local/share/olo/rex-link"
+                helper_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+                installed = helper_dir / f"olo-rex-link-test-{arch}"
+                shutil.copyfile("/fixture/olo-rex-link", installed)
+                installed.chmod(0o755)
+                (ROOT / "run/olo-screens").mkdir(parents=True, mode=0o700, exist_ok=True)
+                wrapper.write_text("#!/bin/sh\n"
+                                   "export HOME=/fixture/home XDG_RUNTIME_DIR=/fixture/run XDG_STATE_HOME=/fixture/state "
+                                   "XDG_CONFIG_HOME=/fixture/home/.config OLO_HOST_DESKTOP=/fixture/desktop "
+                                   "REX_SERVER_SOCKET=/fixture/rex/rex.sock\n"
+                                   "exec /bin/sh -c \"$SSH_ORIGINAL_COMMAND\"\n")
+            if case.startswith(("ssh_exec_", "ssh_bench_", "ssh_r3_", "ssh_final_")):
+                wrapper.write_text("#!/bin/sh\n"
+                                   "export HOME=/fixture/home XDG_RUNTIME_DIR=/fixture/run XDG_STATE_HOME=/fixture/state\n"
+                                   "exec /bin/sh -c \"$SSH_ORIGINAL_COMMAND\"\n")
+            if case == "ssh_r3_finished_stream_kept":
+                # For `open_rex_channel` (Dial), run a half-closing peer that
+                # prints a banner, closes stdout (EOF), then reads upload bytes
+                # on stdin; for `exec_io` (`exec cat`), run the command directly.
+                wrapper.write_text("#!/bin/sh\n"
+                                   "export HOME=/fixture/home XDG_RUNTIME_DIR=/fixture/run XDG_STATE_HOME=/fixture/state\n"
+                                   "case \"$SSH_ORIGINAL_COMMAND\" in\n"
+                                   "*'__internal dial-stdio'*) printf 'ready\\n'; exec 1>&- 2>&-; exec cat > /dev/null ;;\n"
+                                   "*) exec /bin/sh -c \"$SSH_ORIGINAL_COMMAND\" ;;\n"
+                                   "esac\n")
             sshd = resources.enter_context(service([shutil.which("sshd"), "-D", "-e", "-f", "/fixture/sshd.conf"], "sshd.log"))
             wait_ready(sshd, ("127.0.0.1", 2222), "sshd.log")
             if case == "ssh_agent":
@@ -201,7 +249,12 @@ def inside(case):
                 wait_ready(agent, "/fixture/agent.sock", "agent.log")
                 subprocess.run(["ssh-add", "/fixture/identity"], env={**os.environ, "SSH_AUTH_SOCK": "/fixture/agent.sock"}, check=True)
         try:
-            subprocess.run(["/suite", "--exact", case, "--nocapture"], check=True, timeout=170)
+            run_cmd = ["/suite", "--exact", case, "--nocapture"]
+            if case.startswith("ssh_bench_"):
+                run_cmd = ["/suite", "--ignored", "--exact", case, "--nocapture"]
+                if os.environ.get("OLO_REX_BENCH_PERF") == "1" and shutil.which("perf"):
+                    run_cmd = ["perf", "stat", "--no-scale", "-e", "instructions:u", "--", *run_cmd]
+            subprocess.run(run_cmd, check=True, timeout=170)
         except BaseException:
             for logfile in ["sshd.log", "rex.log"]:
                 if (ROOT / logfile).exists():

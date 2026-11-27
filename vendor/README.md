@@ -29,6 +29,43 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   without the crate's `rsa` feature, which a crate of the registry
   doesn't say). Drop it once upstream's client uses the handler's
   answer.
+  A second patch (`src/client/session.rs`, `src/client/encrypted.rs`,
+  `src/client/mod.rs`, `src/session.rs`, `src/channels/mod.rs`,
+  `src/channels/channel_ref.rs`, `src/channels/io/mod.rs`,
+  `src/channels/io/tx.rs`, each marked "Olo:", 2026-11-27):
+  - Client-initiated `Session::close`, deferred `pending_close` flushes
+    (`CHANNEL_WINDOW_ADJUST` and `kex_done` rekey flush), and peer-echoed
+    `CHANNEL_CLOSE` all remove `Session.channels` alongside `enc.channels`
+    so closed channels never leak `ChannelRef`s.
+  - On peer `CHANNEL_CLOSE`, `Encrypted::close_on_peer_close` discards
+    unsendable pending outbound data and replies `CHANNEL_CLOSE` at once
+    so a closed window-blocked channel cannot stall sibling channels via
+    `has_any_pending_data()`.
+  - `Encrypted::closing_channels` reserves locally closed channel IDs
+    until the peer's echoed `CHANNEL_CLOSE` arrives (bounded at 65,536)
+    so a late echo cannot close a reused ID across 32-bit wraparound.
+  - Cancelling `channel_open_*` closes the channel across both boundaries:
+    when `ChannelMsg::Open` fails to send (receiver dropped before
+    confirmation) and via `UnclaimedOpenGuard` inside
+    `wait_channel_confirmation` (confirmation already queued before
+    cancellation, sending `Close` synchronously on `priority_sender`).
+  - `ChannelRef::drop` and peer `CHANNEL_CLOSE` mark `WindowSizeRef` closed
+    and wake all credit waiters (`notify_waiters`), so `ChannelTx` and
+    `reserve_writable_chunk` fail blocked or later writes with
+    `BrokenPipe` / `SendError` on peer `CLOSE` or disconnect even when
+    nobody polls `ChannelReadHalf` (keeping peer `EOF` alone writable).
+    Peer `CHANNEL_CLOSE` delivers `ChannelMsg::Close` non-blockingly via
+    `try_send` with a `peer_closed` fallback read by `ChannelReadHalf::wait`
+    after buffered messages drain, and `CHANNEL_WINDOW_ADJUST` leaves
+    headroom (`capacity() > 8`) so write-before-read uploads cannot fill
+    the channel queue and deadlock `Eof`/`ExitStatus`/`Close`.
+  - `ChannelCloseOnDrop` sends `Close` synchronously via FIFO `try_send`
+    with unbounded `priority_sender` fallback instead of ambient
+    `tokio::spawn` (preventing panics when dropped on a plain OS thread).
+  - `CHANNEL_OPEN_FAILURE` no longer pushes an unread duplicate
+    `Reply::ChannelOpenFailure` onto `Handle::receiver`.
+  - Adds `Handle::open_channel_count` and hidden test helpers so tests
+    verify zero leaked channels, replies, and wraparound collisions.
 - **hayro 0.8.0** (Apache-2.0 OR MIT), the PDF renderer (Viewer, Quick
   Look, thumbnails): a picture drawn smaller than it is came out with a
   column and a row of it missing somewhere across, and softer than other

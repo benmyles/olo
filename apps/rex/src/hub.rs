@@ -86,6 +86,9 @@ pub enum HubNotice {
         title: String,
         body: String,
     },
+    /// Bring Rex's Host window forward for `host_key` (requested via Rex's
+    /// local screens socket `{"op":"open_host","host":"..."}`).
+    OpenHost(String),
 }
 
 /// Connection lifecycle state for one Rex host.
@@ -1428,8 +1431,14 @@ static SAVED_FORWARDS: std::sync::Mutex<Vec<SavedForward>> = std::sync::Mutex::n
 static POLICIES_SAID: std::sync::LazyLock<std::sync::Mutex<HashMap<(String, String, u32), (Instant, Option<crate::subagents::DesktopPolicy>)>>> = std::sync::LazyLock::new(Default::default);
 
 /// (As Rex comes back from an upgrade, before its hub starts.)
+static SAVED_HOST_SCREENS: Mutex<Vec<crate::screens_sock::SavedHostScreens>> = Mutex::new(Vec::new());
+
 pub fn set_saved_forwards(forwards: Vec<SavedForward>) {
     *SAVED_FORWARDS.lock().unwrap_or_else(|e| e.into_inner()) = forwards;
+}
+
+pub fn set_saved_host_screens(screens: Vec<crate::screens_sock::SavedHostScreens>) {
+    *SAVED_HOST_SCREENS.lock().unwrap_or_else(|e| e.into_inner()) = screens;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1666,6 +1675,9 @@ pub struct HostHas {
 /// Full live state of one connected (or connecting) Rex host.
 pub struct HostRuntime {
     pub key: String,
+    pub host_instance_id: u64,
+    pub screens_conn_id: u64,
+    pub screens_state_seq: u64,
     pub label: String,
     pub endpoint_raw: String,
     pub endpoint: Option<RexEndpoint>,
@@ -1824,10 +1836,95 @@ pub struct HubState {
     pub subagents: crate::subagents::SubagentRegistry,
     /// The hosts whose service has said its children since they connected.
     pub agents_told: HashSet<String>,
+    /// Controlling Rex pane for each desktop Agent Screen (from `NAME.owner.json`
+    /// and bridged `olo.screen` calls), keyed by screen name.
+    pub desktop_screen_owners: HashMap<String, olo_rex_link::screen_wire::ScreenOwner>,
+    /// Live Agent Screens reported by each connected (or last-known disconnected)
+    /// remote host's `olo-rex-link screen follow`, keyed by host key.
+    pub host_screens: HashMap<String, crate::screens_sock::LiveHostScreens>,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
 }
 
+impl HostRuntime {
+    #[cfg(test)]
+    pub(crate) fn test_connected(key: &str, sessions: HashMap<String, SessionView>) -> Self {
+        Self {
+            key: key.to_owned(),
+            host_instance_id: crate::screens_sock::next_host_instance_id(),
+            screens_conn_id: crate::screens_sock::next_conn_id(),
+            screens_state_seq: 0,
+            label: key.to_owned(),
+            endpoint_raw: format!("ssh://{key}"),
+            endpoint: None,
+            is_local: false,
+            conn_state: HostConnState::Connected,
+            connection_lost: None,
+            client_id: None,
+            reconnect_token: None,
+            retry: None,
+            server_status: None,
+            server_version: None,
+            server_newer: None,
+            helper: HostHelper::Used,
+            helper_current: Some(true),
+            helper_sync_err: None,
+            bridge_there: None,
+            skill_there: None,
+            skill_current: None,
+            skill_sync_err: None,
+            commands_there: None,
+            commands_current: None,
+            commands_sync_err: None,
+            screens: None,
+            screens_doing: None,
+            agent_keys: None,
+            account: None,
+            carried: None,
+            agent_sessions: None,
+            repos_there: None,
+            tailscale: None,
+            tailscale_seq: 0,
+            synced_hosts: Vec::new(),
+            session_summaries: Vec::new(),
+            sessions,
+            pending_focus: HashMap::new(),
+            keymap_bindings: Vec::new(),
+            keymap_modes: Vec::new(),
+            keymap_diagnostics: Vec::new(),
+            control: None,
+            input_tx: None,
+        }
+    }
+}
+
 impl HubState {
+    #[cfg(test)]
+    pub(crate) fn test_empty() -> Self {
+        Self {
+            hosts: HashMap::new(),
+            host_order: Vec::new(),
+            blocks: HashMap::new(),
+            forwards: Vec::new(),
+            kept_forwards: Vec::new(),
+            kept_forward_errors: HashMap::new(),
+            kept_forwards_starting: HashSet::new(),
+            settings: Settings::default(),
+            active_theme: TerminalTheme::default(),
+            pools: None,
+            repos: Vec::new(),
+            carry_choices: Vec::new(),
+            kept: Vec::new(),
+            sessions_window: olo_rex_client::sessions::Window::default(),
+            git_cache: GitCache::new(),
+            local_bin_dir: None,
+            subagents: crate::subagents::SubagentRegistry::default(),
+            agents_told: HashSet::new(),
+            desktop_screen_owners: HashMap::new(),
+            host_screens: HashMap::new(),
+            quick_look_cache: HashMap::new(),
+        }
+    }
+
     /// How long a host has been silent about something typed into one
     /// of its terminals, where that is long enough to say: the longest
     /// of them. What the status bar says and the sidebar's light for
@@ -2071,6 +2168,18 @@ struct RexHubInner {
     /// Olo being put on a host for its screens (`change_host`, of
     /// `HostThing::Screens`), by the host: stopped by `cancel_screens`.
     screens_putting: Mutex<HashMap<String, tokio::task::AbortHandle>>,
+    /// Remote host Agent Screens follower, ownership resolver, state file, and
+    /// local Unix socket server (`screens_sock`).
+    screens_service: Arc<crate::screens_sock::ScreensService>,
+    /// Tokio runtime handle for waking/spawning screen tasks from sync callbacks.
+    rt_handle: tokio::runtime::Handle,
+    /// Set true once `ui::init_app` has installed `HUB` so `OpenHost` never drops notices.
+    ui_ready: Arc<std::sync::atomic::AtomicBool>,
+    /// Whether this hub is running in isolated demo mode (`OLO_REX_DEMO=1`).
+    demo_mode: bool,
+    /// Zero-polling inotify watch on desktop screens folders keeping
+    /// `HubState::desktop_screen_owners` current.
+    desktop_screens_watch: Mutex<Option<crate::screens_sock::DesktopOwnersWatch>>,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -2573,6 +2682,9 @@ impl RexHub {
             "local".to_owned(),
             HostRuntime {
                 key: "local".to_owned(),
+                host_instance_id: crate::screens_sock::next_host_instance_id(),
+                screens_conn_id: 0,
+                screens_state_seq: 0,
                 // (As Preferences ▸ Rex names it.)
                 label: if home_is_local { olo_kit::words::tr("This computer").into() } else { home_addr.clone() },
                 endpoint_raw: home_addr,
@@ -2624,6 +2736,9 @@ impl RexHub {
                     sh.id.clone(),
                     HostRuntime {
                         key: sh.id.clone(),
+                        host_instance_id: crate::screens_sock::next_host_instance_id(),
+                        screens_conn_id: 0,
+                        screens_state_seq: 0,
                         label: sh.label.clone(),
                         endpoint_raw: sh.endpoint.clone(),
                         endpoint: None,
@@ -2689,8 +2804,143 @@ impl RexHub {
             local_bin_dir,
             subagents: crate::subagents::SubagentRegistry::default(),
             agents_told: HashSet::new(),
+            desktop_screen_owners: HashMap::new(),
+            host_screens: HashMap::new(),
             quick_look_cache: HashMap::new(),
         }));
+
+        let demo_mode = std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1");
+        let (sock_path, state_path) = if demo_mode { crate::screens_sock::demo_screens_paths().unwrap_or_else(|| (PathBuf::new(), PathBuf::new())) } else { crate::screens_sock::default_paths() };
+        let ui_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let screen_opener = Arc::new(crate::screens_sock::HubScreenOpener::new(state.clone(), notify.clone(), ui_ready.clone()));
+        let owner_resolver = {
+            let state = state.clone();
+            Arc::new(move |host_key: &str, pane: &olo_rex_link::screen_wire::OwnerPane| crate::screens_sock::resolve_controlled_by_in_hub(&state, host_key, pane))
+        };
+        let on_host_screens = {
+            let state = state.clone();
+            let notify = notify.clone();
+            Arc::new(move |upd: crate::screens_sock::HostScreensUpdate| {
+                let changed = {
+                    let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+                    // Verify live host membership and instance ID BEFORE mutating
+                    // `host_screens` so a queued update can never reinsert a
+                    // removed or replaced host (Finding 14).
+                    let live_inst_matches = st.hosts.get(&upd.host_key).is_some_and(|h| !h.is_local && h.host_instance_id == upd.host_instance_id);
+                    if !live_inst_matches {
+                        return;
+                    }
+                    let mut changed = false;
+                    let accept = st.host_screens.get(&upd.host_key).is_none_or(|prev| prev.host_instance_id != upd.host_instance_id || upd.rev >= prev.rev);
+                    if !accept {
+                        return;
+                    }
+                    let next_live = crate::screens_sock::LiveHostScreens {
+                        host_instance_id: upd.host_instance_id,
+                        conn_id: upd.conn_id,
+                        rev: upd.rev,
+                        has_follow_snapshot: upd.has_follow_snapshot,
+                        status: upd.status.clone(),
+                        screens: upd.screens.clone(),
+                    };
+                    if st.host_screens.get(&upd.host_key) != Some(&next_live) {
+                        st.host_screens.insert(upd.host_key.clone(), next_live);
+                        changed = true;
+                    }
+                    // Only merge follower rows/status into `host.screens` once a
+                    // real follower snapshot arrived for the current connection
+                    // AND `ask_what_the_host_has` has populated machine fields
+                    // (never clobbering older helpers' `status/list` rows or
+                    // guessing `software: true` before the machine answers).
+                    let live_ref = st.host_screens.get(&upd.host_key).cloned();
+                    if let (Some(live), Some(host)) = (live_ref.as_ref(), st.hosts.get_mut(&upd.host_key))
+                        && host.host_instance_id == upd.host_instance_id
+                        && let Some(there) = host.screens.as_mut()
+                        && merge_live_screens_into_there(there, live, host.screens_conn_id)
+                    {
+                        changed = true;
+                    }
+                    changed
+                };
+                if changed {
+                    notify(HubNotice::StateChanged);
+                }
+            })
+        };
+        let on_host_removed = {
+            let state = state.clone();
+            let notify = notify.clone();
+            Arc::new(move |host_key: String, host_instance_id: u64| {
+                let removed = {
+                    let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+                    if st.host_screens.get(&host_key).is_some_and(|l| l.host_instance_id == host_instance_id || !st.hosts.contains_key(&host_key)) {
+                        st.host_screens.remove(&host_key).is_some()
+                    } else {
+                        false
+                    }
+                };
+                if removed {
+                    notify(HubNotice::StateChanged);
+                }
+            })
+        };
+        let on_last_used = {
+            let state = state.clone();
+            Arc::new(move |upd: crate::screens_sock::LastUsedUpdate| {
+                let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+                // Match live host instance + connection ID so a delayed activity
+                // tick for a replaced host never touches the replacement's row (Finding 15).
+                let matches_live = st.hosts.get(&upd.host_key).is_some_and(|h| !h.is_local && h.host_instance_id == upd.host_instance_id && h.screens_conn_id == upd.conn_id);
+                if !matches_live {
+                    return;
+                }
+                if let Some(live) = st.host_screens.get_mut(&upd.host_key)
+                    && live.host_instance_id == upd.host_instance_id
+                    && live.conn_id == upd.conn_id
+                    && let Some(sc) = live.screens.iter_mut().find(|s| s.name == upd.name)
+                {
+                    if sc.last_used.is_none_or(|prev| upd.last_used > prev) {
+                        sc.last_used = Some(upd.last_used);
+                    }
+                    if let Some(a) = upd.actions {
+                        sc.actions = Some(a);
+                    }
+                }
+            })
+        };
+        let screens_service = crate::screens_sock::ScreensService::new(sock_path, state_path, std::process::id(), screen_opener, owner_resolver, Some(on_host_screens), Some(on_last_used));
+        screens_service.set_on_host_removed(on_host_removed);
+        // Start the bounded ordered publisher independently of socket startup so
+        // the Host window still receives updates even if socket bind fails (Findings 9, 24, 35).
+        screens_service.start_publisher(rt.handle());
+        {
+            let st = state.lock().unwrap_or_else(|e| e.into_inner());
+            let let_go_list = let_go();
+            let auto_set: HashSet<&str> = st.settings.saved_hosts.iter().filter(|h| h.auto_connect && !let_go_list.contains(&h.id)).map(|h| h.id.as_str()).collect();
+            let initial_hosts: Vec<(String, u64, String, olo_screen_pane::rex_sock::RexHostConn)> = st
+                .host_order
+                .iter()
+                .filter_map(|k| st.hosts.get(k))
+                .filter(|h| !h.is_local && crate::screens_sock::is_ssh_endpoint(&h.endpoint_raw))
+                .map(|h| {
+                    let init_conn = if auto_set.contains(h.key.as_str()) { olo_screen_pane::rex_sock::RexHostConn::Connecting } else { olo_screen_pane::rex_sock::RexHostConn::Disconnected };
+                    (h.key.clone(), h.host_instance_id, h.label.clone(), init_conn)
+                })
+                .collect();
+            let endpoints: HashMap<String, String> = st.hosts.values().filter(|h| !h.is_local).map(|h| (h.key.clone(), h.endpoint_raw.clone())).collect();
+            screens_service.set_initial_hosts(initial_hosts);
+            let restored = std::mem::take(&mut *SAVED_HOST_SCREENS.lock().unwrap_or_else(|e| e.into_inner()));
+            if !restored.is_empty() {
+                drop(st);
+                let seeded = screens_service.restore_cached_hosts(restored, &endpoints);
+                let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+                for (host_key, live) in seeded {
+                    if st.hosts.get(&host_key).is_some_and(|h| h.host_instance_id == live.host_instance_id) {
+                        st.host_screens.insert(host_key, live);
+                    }
+                }
+            }
+        }
 
         let inner = Arc::new(RexHubInner {
             state: state.clone(),
@@ -2705,6 +2955,11 @@ impl RexHub {
             keeping: Mutex::new(HashMap::new()),
             agents_following: Mutex::new(HashMap::new()),
             screens_putting: Mutex::new(HashMap::new()),
+            screens_service,
+            rt_handle: rt.handle().clone(),
+            ui_ready,
+            demo_mode,
+            desktop_screens_watch: Mutex::new(None),
         });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
@@ -2712,7 +2967,7 @@ impl RexHub {
         // Isolated demo workspace (`OLO_REX_DEMO=1`) for `tools/dev/ui-lint` and offline visual QA:
         // populates realistic multi-pane splits, agent activity, git status, and a remote host
         // without touching any real Rex server socket or user files.
-        if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") {
+        if demo_mode {
             hub.populate_demo_workspace();
             // (`OLO_REX_DEMO_CHILD_ENDS=SECONDS`: the child "Unit Tests"
             // ends that long after the start, as a child stopped on its
@@ -2730,6 +2985,18 @@ impl RexHub {
             }
             if std::env::var_os("OLO_REX_FILES_SOCKET").is_some() {
                 crate::files_sock::spawn(hub.rt.handle(), hub.state.clone());
+            }
+            if crate::screens_sock::demo_screens_paths().is_some() {
+                let initial_demo: Vec<(String, u64, String, olo_screen_pane::rex_sock::RexHostConn)> = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.host_order
+                        .iter()
+                        .filter_map(|k| st.hosts.get(k))
+                        .filter(|h| !h.is_local && crate::screens_sock::is_ssh_endpoint(&h.endpoint_raw))
+                        .map(|h| (h.key.clone(), h.host_instance_id, h.label.clone(), crate::screens_sock::conn_state_to_rex(&h.conn_state).0))
+                        .collect()
+                };
+                hub.inner.screens_service.set_initial_hosts(initial_demo);
             }
             return hub;
         }
@@ -3189,6 +3456,9 @@ impl RexHub {
         st.blocks.insert(BlockKey { host_key: "dev-box".into(), session_id: remote.session_id.clone(), block_id: "remote-shell".into() }, Arc::new(Mutex::new(shell)));
         let demo_host = |key: &str, label: &str, endpoint: &str, conn_state: HostConnState, sessions: Vec<SessionView>| HostRuntime {
             key: key.to_owned(),
+            host_instance_id: crate::screens_sock::next_host_instance_id(),
+            screens_conn_id: 0,
+            screens_state_seq: 0,
             label: label.to_owned(),
             endpoint_raw: endpoint.to_owned(),
             endpoint: None,
@@ -3454,7 +3724,7 @@ impl RexHub {
                 st.settings.save();
             }
         }
-        let (changes, agents) = {
+        let (changes, agents, renamed_info) = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             // (What Rex's own file held from before, if this start
             // couldn't read the desktop's settings to carry it over.)
@@ -3479,8 +3749,19 @@ impl RexHub {
                 .filter(|now| !before.contains(now))
                 .filter_map(|(id, _)| st.hosts.get(&id).filter(|h| h.control.is_some()).and_then(|h| h.endpoint.clone()).map(|endpoint| (id, endpoint)))
                 .collect();
-            (changes, agents)
+            let renamed_info: Vec<(String, u64, String)> = changes
+                .renamed
+                .iter()
+                .filter_map(|host| {
+                    let h = st.hosts.get(&host.id)?;
+                    (!h.is_local && crate::screens_sock::is_ssh_endpoint(&h.endpoint_raw)).then(|| (host.id.clone(), h.host_instance_id, host.label.clone()))
+                })
+                .collect();
+            (changes, agents, renamed_info)
         };
+        for (id, inst_id, label) in &renamed_info {
+            self.inner.screens_service.host_renamed(id, *inst_id, label);
+        }
         if !agents.is_empty() {
             let _in_runtime = self.rt.enter();
             for (id, endpoint) in &agents {
@@ -3508,20 +3789,27 @@ impl RexHub {
     /// `tell_desktop`: written to the desktop's settings too (not when it
     /// came from there). `connect`: connected now.
     fn add_host_as(&self, id: String, label: String, endpoint: String, save_remote: bool, tell_desktop: bool, connect: bool) {
-        {
+        let inst_id = crate::screens_sock::next_host_instance_id();
+        let is_ssh = crate::screens_sock::is_ssh_endpoint(&endpoint);
+        let init_conn_state = if connect { HostConnState::Connecting } else { HostConnState::Disconnected };
+        let init_rex_conn = if connect { olo_screen_pane::rex_sock::RexHostConn::Connecting } else { olo_screen_pane::rex_sock::RexHostConn::Disconnected };
+        let replaced_inst = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if !st.hosts.contains_key(&id) {
                 st.host_order.push(id.clone());
             }
-            st.hosts.insert(
+            let replaced = st.hosts.insert(
                 id.clone(),
                 HostRuntime {
                     key: id.clone(),
+                    host_instance_id: inst_id,
+                    screens_conn_id: 0,
+                    screens_state_seq: 0,
                     label: label.clone(),
                     endpoint_raw: endpoint.clone(),
                     endpoint: None,
                     is_local: false,
-                    conn_state: HostConnState::Connecting,
+                    conn_state: init_conn_state,
                     connection_lost: None,
                     client_id: None,
                     reconnect_token: None,
@@ -3559,10 +3847,29 @@ impl RexHub {
                     input_tx: None,
                 },
             );
+            let old_inst = if let Some(mut old) = replaced {
+                if let Some(retry) = old.retry.take() {
+                    retry.notify_one();
+                }
+                if let Some(ctrl) = old.control.take() {
+                    ctrl.close();
+                }
+                st.host_screens.remove(&id);
+                Some(old.host_instance_id)
+            } else {
+                None
+            };
             if !st.settings.saved_hosts.iter().any(|h| h.id == id) {
                 st.settings.saved_hosts.push(SavedHost { id: id.clone(), label: label.clone(), endpoint: endpoint.clone(), icon: None, auto_connect: true, ssh_agent_socket: None });
                 st.settings.save();
             }
+            old_inst
+        };
+        if let Some(old_inst) = replaced_inst {
+            self.inner.screens_service.host_removed(&id, old_inst);
+        }
+        if is_ssh {
+            self.inner.screens_service.host_added(&id, inst_id, &label, init_rex_conn);
         }
         (self.notify)(HubNotice::StateChanged);
         if tell_desktop {
@@ -3586,6 +3893,45 @@ impl RexHub {
 
     /// A host the person removes in Rex itself: let go of here, in the
     /// desktop's settings and in the server's own list.
+    /// Start Rex's local Agent Screens Unix socket server and desktop screen
+    /// owner watch on the background runtime once `ui::init_app` has installed
+    /// `HUB` (Findings 24 & 35: never blocks GUI startup, and `OpenHost` can
+    /// only be accepted once `HUB` is ready).
+    pub fn start_screens_service(self: &Arc<Self>) {
+        self.inner.ui_ready.store(true, std::sync::atomic::Ordering::Release);
+        if self.inner.demo_mode && crate::screens_sock::demo_screens_paths().is_none() {
+            return;
+        }
+        let svc = self.inner.screens_service.clone();
+        let rt_handle = self.rt.handle().clone();
+        self.rt.spawn_blocking(move || {
+            if let Err(e) = svc.start_server(&rt_handle) {
+                tracing::warn!("Rex screens socket start failed: {e}");
+            }
+        });
+        if !self.inner.demo_mode {
+            *self.inner.desktop_screens_watch.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(crate::screens_sock::watch_desktop_screen_owners(self.rt.handle().clone(), self.state.clone(), self.notify.clone()));
+        }
+    }
+
+    /// Snapshot last-known remote host screens for in-place upgrade survival
+    /// (`SavedAppState::cached_host_screens`, Finding 26).
+    pub fn saved_host_screens(&self) -> Vec<crate::screens_sock::SavedHostScreens> {
+        let endpoints: HashMap<String, String> = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.values().filter(|h| !h.is_local).map(|h| (h.key.clone(), h.endpoint_raw.clone())).collect()
+        };
+        self.inner.screens_service.saved_hosts_for_upgrade(&endpoints)
+    }
+
+    /// Stop Rex's local screens Unix socket server, host screen followers,
+    /// desktop screen owner watch, and unlink the socket and state file.
+    pub fn shutdown_screens(&self) {
+        *self.inner.desktop_screens_watch.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.inner.screens_service.shutdown();
+    }
+
     pub fn remove_host(&self, host_key: &str) {
         self.remove_host_as(host_key, true, true);
     }
@@ -3602,9 +3948,15 @@ impl RexHub {
         if host_key == "local" {
             return None;
         }
-        let endpoint = {
+        let (endpoint, inst_id, prev_conn_id, state_seq, is_ssh) = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let host = st.hosts.get_mut(host_key)?;
+            let inst_id = host.host_instance_id;
+            let prev_conn_id = host.screens_conn_id;
+            let is_ssh = matches!(host.endpoint, Some(RexEndpoint::Ssh { .. })) || crate::screens_sock::is_ssh_endpoint(&host.endpoint_raw);
+            host.screens_conn_id = 0;
+            host.screens_state_seq += 1;
+            let state_seq = host.screens_state_seq;
             // (The loop that keeps it connected ends at its next look:
             // it is no longer the one the host names.)
             if let Some(retry) = host.retry.take() {
@@ -3626,13 +3978,16 @@ impl RexHub {
                 f.state = ForwardState::Waiting;
             }
             st.retain_blocks(|k| k.host_key != host_key);
-            endpoint
+            (endpoint, inst_id, prev_conn_id, state_seq, is_ssh)
         };
         {
             let mut let_go = LET_GO.lock().unwrap_or_else(|e| e.into_inner());
             if !let_go.iter().any(|k| k == host_key) {
                 let_go.push(host_key.to_owned());
             }
+        }
+        if is_ssh {
+            self.inner.screens_service.host_state_changed(host_key, inst_id, (prev_conn_id != 0).then_some(prev_conn_id), state_seq, olo_screen_pane::rex_sock::RexHostConn::Disconnected, None, None);
         }
         self.inner.write_palette_index();
         (self.notify)(HubNotice::StateChanged);
@@ -3662,21 +4017,30 @@ impl RexHub {
             return;
         }
         let key = host_key.to_owned();
-        {
+        let removed_inst_id = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(host) = st.hosts.remove(&key) {
+            let inst_id = if let Some(host) = st.hosts.remove(&key) {
+                let id = host.host_instance_id;
                 if let Some(ctrl) = host.control {
                     ctrl.close();
                 }
                 if let Some(retry) = host.retry {
                     retry.notify_one();
                 }
-            }
+                Some(id)
+            } else {
+                None
+            };
             st.host_order.retain(|k| k != &key);
+            st.host_screens.remove(&key);
             st.forwards.retain(|f| f.host_key != key);
             st.retain_blocks(|bk| bk.host_key != key);
             st.settings.saved_hosts.retain(|h| h.id != key);
             st.settings.save();
+            inst_id
+        };
+        if let Some(inst_id) = removed_inst_id {
+            self.inner.screens_service.host_removed(&key, inst_id);
         }
         if tell_desktop {
             let id = key.clone();
@@ -4981,8 +5345,8 @@ impl RexHub {
     /// said if it couldn't. The host is asked what it has again
     /// before that.
     pub fn change_host(&self, host_key: &str, thing: HostThing, op: HostOp, done: impl FnOnce(Result<(), String>) + Send + 'static) {
-        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
-        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+        let sampled = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| Some((h.endpoint.clone()?, h.host_instance_id)));
+        let Some((RexEndpoint::Ssh { target, pool, askpass }, inst_id)) = sampled else {
             done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
             return;
         };
@@ -5017,7 +5381,7 @@ impl RexHub {
                         Err(failed) => Err(failed.to_string()),
                         Ok(_) => Ok(()),
                     };
-                    inner.helper_stands(&host_key, stands, false);
+                    inner.helper_stands(&host_key, inst_id, stands, false);
                     said
                 }
                 (HostThing::Helper, HostOp::Remove) => {
@@ -5033,6 +5397,7 @@ impl RexHub {
                                 host.helper = HostHelper::None;
                             }
                         }
+                        inner.screens_service.wake_host_follower(&inner.rt_handle, &host_key, inst_id);
                     }
                     ran
                 }
@@ -5090,7 +5455,7 @@ impl RexHub {
                         doing(Some((olo_kit::words::tr("Putting the typing helper there").to_string(), 0.0)));
                         inner.helper_kept_off(&host_key, false);
                         let stands = olo_rex_client::helper::ensure(&pool, &target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await;
-                        inner.helper_stands(&host_key, stands, false);
+                        inner.helper_stands(&host_key, inst_id, stands, false);
                     }
                     doing(Some((olo_kit::words::tr("Asking Olo’s releases").to_string(), 0.0)));
                     let ran = pool
@@ -5146,25 +5511,26 @@ impl RexHub {
         true
     }
 
-    /// One of a far host's screens stopped (what ran on it ends; it is
-    /// kept there, stopped), by the host's helper; the host is asked
-    /// again what it has.
-    pub fn stop_screen(&self, host_key: &str, name: &str, done: impl FnOnce(Result<(), String>) + Send + 'static) {
-        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
-        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+    /// Stop one displayed screen from the Host window through Rex's guarded
+    /// Stop path (`stop-expected` + `--expected-started`), pinned to the exact
+    /// `(host_key, host_instance_id)` the button was drawn for.
+    pub fn stop_screen_guarded(&self, host_key: &str, host_instance_id: u64, name: &str, expected_started: Option<u64>, done: impl FnOnce(Result<(), String>) + Send + 'static) {
+        let sampled = {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).filter(|h| h.host_instance_id == host_instance_id).and_then(|h| h.endpoint.clone())
+        };
+        let Some(RexEndpoint::Ssh { target, pool, askpass }) = sampled else {
             done(Err(olo_kit::words::tr("This host isn’t reached over SSH.").into()));
             return;
         };
         let (inner, host_key, name) = (self.inner.clone(), host_key.to_owned(), name.to_owned());
         self.rt.spawn(async move {
-            let command = format!("sh -c {}", shell_quote(&crate::host_screens::helper_script(&format!("stop {}", shell_quote(&name)))));
-            let result = match pool.exec(&target, askpass.clone(), &command, &mut |_| {}).await {
-                Ok(ran) if ran.ok() => Ok(()),
-                Ok(ran) => Err(ran.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn’t say why").trim().trim_start_matches("olo-screen: ").to_owned()),
-                Err(e) => Err(e.to_string()),
-            };
-            inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
-            (inner.notify)(HubNotice::StateChanged);
+            let result = inner.screens_service.stop_screen_for_host_instance(&host_key, host_instance_id, &name, expected_started).await;
+            let still_same = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).is_some_and(|h| h.host_instance_id == host_instance_id);
+            if still_same {
+                inner.ask_what_the_host_has(&host_key, &pool, &target, askpass, false).await;
+                (inner.notify)(HubNotice::StateChanged);
+            }
             done(result);
         });
     }
@@ -5303,8 +5669,8 @@ impl RexHub {
     }
 
     pub fn check_host(&self, host_key: &str, done: impl FnOnce() + Send + 'static) {
-        let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
-        let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
+        let sampled = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| Some((h.endpoint.clone()?, h.host_instance_id)));
+        let Some((RexEndpoint::Ssh { target, pool, askpass }, inst_id)) = sampled else {
             done();
             return;
         };
@@ -5313,31 +5679,47 @@ impl RexHub {
             use olo_rex_client::helper::{Asked, ask};
             inner.ask_what_the_host_has(&host_key, &pool, &target, askpass.clone(), false).await;
             inner.ask_the_pools().await;
-            if crate::link::carried()
+            let wake_kind = if crate::link::carried()
                 && let Ok(Ok(asked)) = ask(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await
-                && let Some(host) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key)
             {
-                match asked {
-                    Asked::Here => {
-                        host.helper_current = Some(true);
-                        host.helper_sync_err = None;
-                        if matches!(host.helper, HostHelper::None | HostHelper::Without(_)) {
-                            host.helper = HostHelper::Ready;
+                let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(host) = st.hosts.get_mut(&host_key).filter(|h| h.host_instance_id == inst_id) {
+                    let prev_helper = host.helper.clone();
+                    let prev_current = host.helper_current;
+                    match asked {
+                        Asked::Here => {
+                            host.helper_current = Some(true);
+                            host.helper_sync_err = None;
+                            if matches!(host.helper, HostHelper::None | HostHelper::Without(_)) {
+                                host.helper = HostHelper::Ready;
+                            }
+                            if prev_current != Some(true) || matches!(prev_helper, HostHelper::None | HostHelper::Without(_)) { Some(true) } else { Some(false) }
+                        }
+                        Asked::Outdated(_) => {
+                            host.helper_current = Some(false);
+                            if matches!(host.helper, HostHelper::None) {
+                                host.helper = HostHelper::Ready;
+                            }
+                            if matches!(prev_helper, HostHelper::None | HostHelper::Without(_)) || prev_current == Some(true) { Some(true) } else { Some(false) }
+                        }
+                        Asked::Needs(_) => {
+                            host.helper_current = if host.helper == HostHelper::Used { Some(false) } else { None };
+                            if matches!(host.helper, HostHelper::Ready) {
+                                host.helper = HostHelper::None;
+                            }
+                            if prev_current.is_some() || !matches!(prev_helper, HostHelper::None) { Some(true) } else { None }
                         }
                     }
-                    Asked::Outdated(_) => {
-                        host.helper_current = Some(false);
-                        if matches!(host.helper, HostHelper::None) {
-                            host.helper = HostHelper::Ready;
-                        }
-                    }
-                    Asked::Needs(_) => {
-                        host.helper_current = if host.helper == HostHelper::Used { Some(false) } else { None };
-                        if matches!(host.helper, HostHelper::Ready) {
-                            host.helper = HostHelper::None;
-                        }
-                    }
+                } else {
+                    None
                 }
+            } else {
+                None
+            };
+            match wake_kind {
+                Some(true) => inner.screens_service.wake_host_follower(&inner.rt_handle, &host_key, inst_id),
+                Some(false) => inner.screens_service.wake_host_if_parked(&inner.rt_handle, &host_key, inst_id),
+                None => {}
             }
             (inner.notify)(HubNotice::StateChanged);
             done();
@@ -5846,8 +6228,10 @@ impl RexHubInner {
     /// the status bar's word (something of Olo's now lies on the
     /// person's host: said, once, as it happens). `in_use`: the
     /// connection about to be made goes through it.
-    fn helper_stands(&self, host_key: &str, stands: Result<olo_rex_client::helper::Stands, olo_rex_client::provision::Failed>, in_use: bool) {
+    fn helper_stands(&self, host_key: &str, expected_inst_id: u64, stands: Result<olo_rex_client::helper::Stands, olo_rex_client::provision::Failed>, in_use: bool) {
         use olo_rex_client::helper::Stands;
+        let newly_installed = matches!(stands, Ok(Stands::Installed { .. }));
+        let already_there = matches!(stands, Ok(Stands::Already));
         let (helper, current, sync_err) = match stands {
             Ok(Stands::Already) => {
                 tracing::info!("rex: Olo's helper is on host {host_key} already");
@@ -5877,14 +6261,27 @@ impl RexHubInner {
                 (HostHelper::Without(why.clone()), Some(false), Some(why))
             }
         };
-        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key) {
-            if host.helper == HostHelper::Used {
-                host.helper_current = current;
-                host.helper_sync_err = sync_err;
+        let matched = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(host) = st.hosts.get_mut(host_key).filter(|h| expected_inst_id == 0 || h.host_instance_id == expected_inst_id) {
+                if host.helper == HostHelper::Used {
+                    host.helper_current = current;
+                    host.helper_sync_err = sync_err;
+                } else {
+                    host.helper = helper;
+                    host.helper_current = if current == Some(true) { Some(true) } else { None };
+                    host.helper_sync_err = None;
+                }
+                Some(host.host_instance_id)
             } else {
-                host.helper = helper;
-                host.helper_current = if current == Some(true) { Some(true) } else { None };
-                host.helper_sync_err = None;
+                None
+            }
+        };
+        if let Some(inst_id) = matched {
+            if newly_installed {
+                self.screens_service.wake_host_follower(&self.rt_handle, host_key, inst_id);
+            } else if already_there {
+                self.screens_service.wake_host_if_parked(&self.rt_handle, host_key, inst_id);
             }
         }
         (self.notify)(HubNotice::StateChanged);
@@ -5905,22 +6302,23 @@ impl RexHubInner {
     async fn helper_before_connecting(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) -> bool {
         use olo_rex_client::helper::{Asked, Stands, ask, put};
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return false };
-        {
+        let inst_id = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             // (Or it was taken off this host here: not put back by itself.)
             let known = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "yes" || word == "off" || word.strip_prefix("no:") == Some(crate::link::ID));
             if !crate::link::carried() || !st.settings.host_helper || known {
                 return false;
             }
-        }
+            st.hosts.get(host_key).map_or(0, |h| h.host_instance_id)
+        };
         let build = match ask(pool, target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await {
             Ok(Ok(Asked::Here)) => {
-                self.helper_stands(host_key, Ok(Stands::Already), true);
+                self.helper_stands(host_key, inst_id, Ok(Stands::Already), true);
                 return true;
             }
             Ok(Ok(Asked::Needs(build) | Asked::Outdated(build))) => build,
             Ok(Err(kind)) => {
-                self.helper_stands(host_key, Ok(Stands::NoBuild(kind)), true);
+                self.helper_stands(host_key, inst_id, Ok(Stands::NoBuild(kind)), true);
                 return true;
             }
             // (Why it can't be reached is the connection's to say.)
@@ -5932,14 +6330,14 @@ impl RexHubInner {
             Ok(done) => {
                 let done = done.unwrap_or_else(|e| Err(e.to_string().into()));
                 let there = done.is_ok();
-                self.helper_stands(host_key, done, true);
+                self.helper_stands(host_key, inst_id, done, true);
                 there
             }
             Err(_) => {
                 let (hub, host_key) = (self.clone(), host_key.to_owned());
                 tokio::spawn(async move {
                     let done = sending.await.unwrap_or_else(|e| Err(e.to_string().into()));
-                    hub.helper_stands(&host_key, done, false);
+                    hub.helper_stands(&host_key, inst_id, done, false);
                 });
                 // (It is on its way: not to be asked for again meanwhile.)
                 true
@@ -6124,6 +6522,10 @@ impl RexHubInner {
         askpass: Option<Arc<dyn olo_rex_client::SshAskpass>>,
         auto_sync: bool,
     ) {
+        let (probe_inst_id, probe_conn_id) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).map_or((0, 0), |h| (h.host_instance_id, h.screens_conn_id))
+        };
         let Ok(ran) = pool.exec(target, askpass.clone(), bridge::PRESENT, &mut |_| {}).await else { return };
         if !ran.ok() {
             return;
@@ -6165,9 +6567,18 @@ impl RexHubInner {
             }
         }
         let bridge_there = true;
+        let (lacking, helper_has_screens) = match &screens {
+            Some(s) => (s.lacking(), Some(s.helper_follow)),
+            None => (None, None),
+        };
         let changed = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let live_screens = st.host_screens.get(host_key).cloned();
             let Some(host) = st.hosts.get_mut(host_key) else { return };
+            // Drop stale probe completions if the host was replaced or reconnected.
+            if probe_inst_id != 0 && (host.host_instance_id != probe_inst_id || (probe_conn_id != 0 && host.screens_conn_id != probe_conn_id)) {
+                return;
+            }
             // On a read-only check (`!auto_sync`), preserve a prior auto-sync error
             // if the component is still out of date; clear it once up to date or removed.
             if !auto_sync {
@@ -6180,12 +6591,22 @@ impl RexHubInner {
             }
             let next = (Some(bridge_there), Some(skill_there), skill_cur, skill_err, Some(commands_there), commands_cur, commands_err);
             let prev = (host.bridge_there, host.skill_there, host.skill_current, host.skill_sync_err.clone(), host.commands_there, host.commands_current, host.commands_sync_err.clone());
-            let screens = screens.or_else(|| host.screens.clone());
+            // Merge live follower status and rows ON TOP of probe-owned fields
+            // (`chrome`, `missing`, `older`, `software`, `bytes`) ONLY when a
+            // real follower snapshot arrived for THIS connection (Findings 12 & 13).
+            // Older helpers without `screen follow` keep their probe rows intact!
+            let mut screens = screens.or_else(|| host.screens.clone());
+            if let (Some(there), Some(live)) = (screens.as_mut(), live_screens.as_ref()) {
+                let _ = merge_live_screens_into_there(there, live, probe_conn_id);
+            }
             let changed = prev != next || host.screens != screens;
             host.screens = screens;
             (host.bridge_there, host.skill_there, host.skill_current, host.skill_sync_err, host.commands_there, host.commands_current, host.commands_sync_err) = next;
             changed
         };
+        if helper_has_screens.is_some() && probe_inst_id != 0 {
+            self.screens_service.set_host_lacking(host_key, probe_inst_id, probe_conn_id, lacking, helper_has_screens);
+        }
         if changed {
             (self.notify)(HubNotice::StateChanged);
         }
@@ -6202,21 +6623,22 @@ impl RexHubInner {
     /// (`olo_rex_client::helper`).
     fn look_after_helper(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) {
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
-        {
+        let inst_id = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let cant = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off" || word.strip_prefix("no:") == Some(crate::link::ID));
             if !crate::link::carried() || !st.settings.host_helper || cant {
                 return;
             }
-        }
+            st.hosts.get(host_key).map_or(0, |h| h.host_instance_id)
+        };
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
-        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.helper != HostHelper::Used) {
+        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.host_instance_id == inst_id && h.helper != HostHelper::Used) {
             host.helper = HostHelper::Installing;
         }
         tokio::spawn(async move {
             let stands = olo_rex_client::helper::ensure(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await;
-            hub.helper_stands(&host_key, stands, false);
+            hub.helper_stands(&host_key, inst_id, stands, false);
         });
     }
 
@@ -7630,29 +8052,53 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
         let mut attempt = 0u32;
         let mut last_seq = 0;
         loop {
-            let (endpoint_raw, reconnect_token, user_overrides) = {
+            let (endpoint_raw, reconnect_token, user_overrides, is_local_host, host_inst_id, is_ssh_host, connecting_seq) = {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 let overrides = st.settings.keymap_overrides.clone();
                 let Some(h) = st.hosts.get_mut(&host_key) else { return };
                 if !h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry)) {
                     return;
                 }
-                if attempt == 0 {
+                let connecting_seq = if attempt == 0 {
                     h.conn_state = HostConnState::Connecting;
-                }
-                (h.endpoint_raw.clone(), h.reconnect_token.clone(), overrides)
+                    h.screens_state_seq += 1;
+                    Some(h.screens_state_seq)
+                } else {
+                    None
+                };
+                let is_ssh = crate::screens_sock::is_ssh_endpoint(&h.endpoint_raw);
+                (h.endpoint_raw.clone(), h.reconnect_token.clone(), overrides, h.is_local, h.host_instance_id, is_ssh, connecting_seq)
             };
+            if let Some(state_seq) = connecting_seq
+                && !is_local_host
+                && is_ssh_host
+            {
+                self.screens_service.host_state_changed(&host_key, host_inst_id, None, state_seq, olo_screen_pane::rex_sock::RexHostConn::Connecting, None, None);
+            }
             (self.notify)(HubNotice::StateChanged);
 
             let endpoint = match RexEndpoint::parse(&endpoint_raw, self.ssh_pool.clone(), self.askpass.clone()) {
                 Ok(ep) => ep,
                 Err(e) => {
-                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(h) = st.hosts.get_mut(&host_key) {
-                        h.conn_state = HostConnState::Error(e.to_string());
-                        h.retry = None;
+                    let err_msg = e.to_string();
+                    let err_seq = {
+                        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.host_instance_id == host_inst_id && h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
+                            h.conn_state = HostConnState::Error(err_msg.clone());
+                            h.screens_conn_id = 0;
+                            h.screens_state_seq += 1;
+                            h.retry = None;
+                            Some(h.screens_state_seq)
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(state_seq) = err_seq
+                        && !is_local_host
+                        && is_ssh_host
+                    {
+                        self.screens_service.host_state_changed(&host_key, host_inst_id, None, state_seq, olo_screen_pane::rex_sock::RexHostConn::Error, Some(err_msg), None);
                     }
-                    drop(st);
                     (self.notify)(HubNotice::StateChanged);
                     return;
                 }
@@ -7879,9 +8325,10 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         tokio::select! { biased; _=input_connection.disconnected()=>{}, _=write=>{} }
                     });
 
-                    {
+                    let screens_connected = {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
+                        let preferred_helper = (st.settings.host_helper && crate::link::carried()).then_some(crate::link::ID);
+                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.host_instance_id == host_inst_id && h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
                             h.conn_state = HostConnState::Connected;
                             h.connection_lost = None;
                             h.endpoint = Some(endpoint.clone());
@@ -7905,12 +8352,22 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.session_summaries = summaries;
                             h.control = Some(ctrl.clone());
                             h.input_tx = Some(in_tx);
+                            if !is_local_host && let RexEndpoint::Ssh { target, pool, askpass } = &endpoint {
+                                let conn_id = crate::screens_sock::next_conn_id();
+                                h.screens_conn_id = conn_id;
+                                h.screens_state_seq += 1;
+                                let state_seq = h.screens_state_seq;
+                                let pinned = Arc::new(crate::screens_sock::PinnedSshTarget { target: target.clone(), pool: pool.clone(), askpass: askpass.clone(), preferred_helper });
+                                Some((conn_id, state_seq, h.label.clone(), pinned))
+                            } else {
+                                None
+                            }
                         } else {
                             ctrl.close();
                             input_worker.abort();
                             return;
                         }
-                    }
+                    };
 
                     // (What is kept of the helper there follows what this
                     // connection found: gone from a host that had one, it
@@ -7928,6 +8385,18 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     self.look_at_what_the_host_has(&host_key, &endpoint);
                     self.give_the_agent(&host_key, &endpoint);
                     self.follow_agents(&host_key);
+                    if let Some((conn_id, state_seq, label, pinned)) = screens_connected {
+                        let still_live = self
+                            .state
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .hosts
+                            .get(&host_key)
+                            .is_some_and(|h| h.host_instance_id == host_inst_id && h.screens_conn_id == conn_id && h.screens_state_seq == state_seq);
+                        if still_live {
+                            self.screens_service.host_connected(&tokio::runtime::Handle::current(), &host_key, host_inst_id, conn_id, state_seq, &label, Some(pinned));
+                        }
+                    }
 
                     for view in initial_views {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;
@@ -7986,10 +8455,14 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                             h.session_summaries.clear();
                             h.control = None;
                             h.input_tx = None;
+                            let prev_conn_id = h.screens_conn_id;
+                            h.screens_conn_id = 0;
+                            h.screens_state_seq += 1;
+                            let state_seq = h.screens_state_seq;
                             attempt = 1;
                             h.connection_lost = Some(SystemTime::now());
                             h.conn_state = HostConnState::Reconnecting { attempt: 1, last_error: "Connection closed".to_owned() };
-                            h.label.clone()
+                            (h.label.clone(), prev_conn_id, state_seq)
                         } else {
                             return;
                         };
@@ -7999,9 +8472,20 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                         st.retain_blocks(|k| k.host_key != host_key);
                         label
                     };
+                    if !is_local_host && is_ssh_host {
+                        self.screens_service.host_state_changed(
+                            &host_key,
+                            host_inst_id,
+                            (dropped_host.1 != 0).then_some(dropped_host.1),
+                            dropped_host.2,
+                            olo_screen_pane::rex_sock::RexHostConn::Reconnecting,
+                            Some("Connection closed".to_owned()),
+                            None,
+                        );
+                    }
                     (self.notify)(HubNotice::Attention {
                         target: Target::Host(host_key.clone()),
-                        title: format!("{dropped_host} disconnected"),
+                        title: format!("{} disconnected", dropped_host.0),
                         body: "The connection to the Rex server closed.".into(),
                         kind: olo_kit::notify::NoteKind::Important,
                     });
@@ -8010,19 +8494,28 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 }
                 Err(e) => {
                     attempt += 1;
-                    let still_exists = {
+                    let err_msg = e.to_string();
+                    let reconnect_seq = {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
+                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.host_instance_id == host_inst_id && h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
                             h.control = None;
                             h.input_tx = None;
-                            h.conn_state = HostConnState::Reconnecting { attempt, last_error: e.to_string() };
-                            true
+                            h.screens_conn_id = 0;
+                            h.screens_state_seq += 1;
+                            h.conn_state = HostConnState::Reconnecting { attempt, last_error: err_msg.clone() };
+                            Some(h.screens_state_seq)
                         } else {
-                            false
+                            None
                         }
                     };
+                    if let Some(state_seq) = reconnect_seq
+                        && !is_local_host
+                        && is_ssh_host
+                    {
+                        self.screens_service.host_state_changed(&host_key, host_inst_id, None, state_seq, olo_screen_pane::rex_sock::RexHostConn::Reconnecting, Some(err_msg), None);
+                    }
                     (self.notify)(HubNotice::StateChanged);
-                    if !still_exists {
+                    if reconnect_seq.is_none() {
                         return;
                     }
                 }
@@ -8088,6 +8581,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
             self.spawn_block_data_stream(ctrl.clone(), ep.clone(), bk, br, pre_ticket);
         }
         self.write_palette_index();
+        self.screens_service.refresh_owner_labels(Some(host_key));
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -8935,7 +9429,39 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                     });
                     // (This computer's own sessions reach it directly: no forward.)
                     let policy = if is_local { crate::settings::HostBridgePolicy { allow_localhost_autoforward: false, ..policy } } else { policy };
-                    return Some(self.bridge_calls.answer(async move { bridge::handle_bridge_request(&label, &policy, req, &forward, &|_| {}).await }).await);
+                    let is_screen = cmd == "screen";
+                    let screen_args = if is_screen { req.args.clone() } else { Vec::new() };
+                    let owner_state = self.state.clone();
+                    let owner_hk = host_key.to_owned();
+                    let owner_sid = session_id.clone();
+                    let owner_bid = block_id.clone();
+                    return Some(
+                        self.bridge_calls
+                            .answer(async move {
+                                // Snapshot the target desktop screen's current running generation
+                                // BEFORE running `olo-screen` so a late completion can never
+                                // claim or unlink a replacement session (Finding 29).
+                                let pre_gen = if is_screen {
+                                    if let Some(target_name) = crate::screens_sock::target_name_for_bridge_args(&screen_args) {
+                                        tokio::task::spawn_blocking(move || crate::screens_sock::snapshot_desktop_screen_gen(&target_name)).await.ok().flatten()
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+                                let resp = bridge::handle_bridge_request(&label, &policy, req, &forward, &|_| {}).await;
+                                if is_screen && resp.ok {
+                                    let stdout = resp.stdout.clone().unwrap_or_default();
+                                    let _ = tokio::task::spawn_blocking(move || {
+                                        crate::screens_sock::record_bridge_screen_outcome(&owner_state, &owner_hk, owner_sid.as_deref(), owner_bid.as_deref(), &screen_args, &stdout, pre_gen);
+                                    })
+                                    .await;
+                                }
+                                resp
+                            })
+                            .await,
+                    );
                 }
                 // A host's `olo send PATH…`: its files and folders saved
                 // here, in Downloads ▸ Rex ▸ HOST, by the engine through
@@ -9251,6 +9777,7 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                 Frame::Gone { id } => st.subagents.entries.retain(|e| !(e.host_key == host_key && e.id == id)),
             }
         }
+        self.screens_service.refresh_owner_labels(Some(host_key));
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -9787,7 +10314,14 @@ mod tests {
             made: crate::forwards::Made::Agent,
             kept: true,
         };
-        let kept = serde_json::to_string(&crate::ui::SavedAppState { workspaces: Vec::new(), let_go: vec!["host-1".into()], help: Vec::new(), forwards: vec![forward.clone()] }).unwrap();
+        let kept = serde_json::to_string(&crate::ui::SavedAppState {
+            workspaces: Vec::new(),
+            let_go: vec!["host-1".into()],
+            help: Vec::new(),
+            forwards: vec![forward.clone()],
+            cached_host_screens: Vec::new(),
+        })
+        .unwrap();
         let read = serde_json::from_str::<crate::ui::SavedAppState>(&kept).unwrap();
         assert_eq!(read.let_go, ["host-1"]);
         assert_eq!(read.forwards, [forward]);
@@ -10123,6 +10657,114 @@ mod tests {
         assert!(parse_sync_ask(&s(&["/home/dev/a", "--to-host", "--from-host"])).is_err());
         assert!(parse_sync_ask(&s(&["/home/dev/a", "--bogus"])).is_err());
     }
+
+    #[test]
+    fn round3_f12_f13_f32_host_screens_merge_preserves_probe_fields_and_older_helpers() {
+        use olo_rex_link::screen_wire::{HostScreen, HostScreenState, HostScreenStatus};
+        use olo_screen_pane::rex_sock::RexScreen;
+
+        let initial_row = crate::host_screens::ScreenRow { name: "legacy-row".into(), title: Some("From Probe".into()), running: true, archived: false, size: (1280, 720), started: Some(100) };
+        let base_probe = crate::host_screens::ScreensThere {
+            helper: true,
+            helper_follow: false,
+            installed: Some("2026.11.20".into()),
+            committed: Some(100),
+            on_host: false,
+            chrome: Some("131.0".into()),
+            missing: vec!["libwayland-client.so.0".into()],
+            older: vec!["libc.so.6".into()],
+            software: false,
+            bytes: 12_345,
+            running: vec!["legacy-row".into()],
+            rows: vec![initial_row],
+        };
+
+        // Finding 12: when `has_follow_snapshot == false` (older helper lacking `follow`),
+        // probe rows and fields MUST stay untouched!
+        let no_snap = crate::screens_sock::LiveHostScreens { host_instance_id: 1, conn_id: 7, rev: 2, has_follow_snapshot: false, status: None, screens: vec![] };
+        let mut kept = base_probe.clone();
+        assert!(!merge_live_screens_into_there(&mut kept, &no_snap, 7));
+        assert_eq!(kept, base_probe);
+
+        // Stale conn_id must also be ignored!
+        let live_old_conn = crate::screens_sock::LiveHostScreens {
+            host_instance_id: 1,
+            conn_id: 6,
+            rev: 3,
+            has_follow_snapshot: true,
+            status: Some(HostScreenStatus { installed: Some("2026.11.27".into()), committed: Some(200), default_on_host: true, not_set_up_reason: None }),
+            screens: vec![],
+        };
+        assert!(!merge_live_screens_into_there(&mut kept, &live_old_conn, 7));
+        assert_eq!(kept, base_probe);
+
+        // Finding 13: matching conn_id with `has_follow_snapshot == true` updates rows/status
+        // while preserving probe-owned `chrome`, `missing`, `older`, `software`, and `bytes`!
+        let live_now = crate::screens_sock::LiveHostScreens {
+            host_instance_id: 1,
+            conn_id: 7,
+            rev: 4,
+            has_follow_snapshot: true,
+            status: Some(HostScreenStatus { installed: Some("2026.11.27".into()), committed: Some(200), default_on_host: true, not_set_up_reason: None }),
+            screens: vec![RexScreen::from(HostScreen {
+                name: "live-qa".into(),
+                title: Some("QA".into()),
+                state: HostScreenState::Running,
+                width: 1440,
+                height: 900,
+                scale: 1.0,
+                sound: true,
+                pid: Some(42),
+                started: Some(500),
+                last_used: Some(900),
+                actions: Some(3),
+                controlled: false,
+                owner: None,
+                started_by: None,
+            })],
+        };
+        assert!(merge_live_screens_into_there(&mut kept, &live_now, 7));
+        assert_eq!(kept.installed.as_deref(), Some("2026.11.27"));
+        assert_eq!(kept.committed, Some(200));
+        assert!(kept.on_host);
+        assert_eq!(kept.running, vec!["live-qa".to_owned()]);
+        assert_eq!(kept.rows.len(), 1);
+        assert_eq!(kept.rows[0].name, "live-qa");
+        // Probe-owned machine fields MUST survive verbatim:
+        assert_eq!(kept.chrome.as_deref(), Some("131.0"));
+        assert_eq!(kept.missing, vec!["libwayland-client.so.0".to_owned()]);
+        assert_eq!(kept.older, vec!["libc.so.6".to_owned()]);
+        assert!(!kept.software);
+        assert_eq!(kept.bytes, 12_345);
+
+        // Verify `HostRuntime::test_connected` constructs an SSH host runtime cleanly.
+        let rt_host = HostRuntime::test_connected("dev-box", HashMap::new());
+        assert_eq!(rt_host.key, "dev-box");
+        assert!(crate::screens_sock::is_ssh_endpoint(&rt_host.endpoint_raw));
+    }
+}
+
+/// Merge live follower rows and install metadata ON TOP of probe-owned machine
+/// fields (`chrome`, `missing`, `older`, `software`, `bytes`) ONLY when a real
+/// follower snapshot arrived for `expected_conn_id` (or `expected_conn_id == 0`).
+pub(crate) fn merge_live_screens_into_there(there: &mut crate::host_screens::ScreensThere, live: &crate::screens_sock::LiveHostScreens, expected_conn_id: u64) -> bool {
+    if !live.has_follow_snapshot || (expected_conn_id != 0 && live.conn_id != expected_conn_id) {
+        return false;
+    }
+    let Some(status) = live.status.as_ref() else { return false };
+    let rows = crate::screens_sock::rex_screens_to_rows(&live.screens);
+    let running: Vec<String> = rows.iter().filter(|r| r.running).map(|r| r.name.clone()).collect();
+    let changed =
+        !there.helper || there.installed != status.installed || there.committed != status.committed || there.on_host != status.default_on_host || there.running != running || there.rows != rows;
+    if changed {
+        there.helper = true;
+        there.installed = status.installed.clone();
+        there.committed = status.committed;
+        there.on_host = status.default_on_host;
+        there.running = running;
+        there.rows = rows;
+    }
+    changed
 }
 
 #[cfg(test)]

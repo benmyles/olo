@@ -35,8 +35,11 @@ impl Rgba for Shot {
     }
 }
 
-/// A resampling: of which frame, at what device size.
-type Made = (u64, (u32, u32));
+/// A resampling: of which binding generation, which frame, at what device size.
+/// Including `binding_gen` (advanced on every `clear` / `set_live`) ensures a
+/// late resize from a previous screen or retired connection never lands under
+/// another screen's controls (Astra #5).
+type Made = (u64, u64, (u32, u32));
 
 /// What the well is told: its drawing wants a frame resampled, or a
 /// worker made one.
@@ -47,6 +50,10 @@ pub(crate) enum Msg {
 
 pub(crate) struct PictureWell {
     shot: Option<Arc<Shot>>,
+    /// Counts screen/connection bindings; advances on every `clear` and
+    /// `set_live` so stale async resizes and fallback images from a retired
+    /// binding are always discarded.
+    binding_gen: u64,
     /// Counts frames shown, so what was made for one isn't kept for the
     /// next.
     generation: u64,
@@ -73,6 +80,7 @@ impl PictureWell {
         static KEYS: AtomicU64 = AtomicU64::new(1);
         PictureWell {
             shot: None,
+            binding_gen: 0,
             generation: 0,
             shape: None,
             text: None,
@@ -95,9 +103,11 @@ impl PictureWell {
             self.live = Some(size);
             self.text = None;
             self.shot = None;
+            self.binding_gen = self.binding_gen.wrapping_add(1);
             self.generation += 1;
             self.making = None;
             self.exact = None;
+            self.asked.set(None);
             cx.invalidate();
         }
     }
@@ -118,12 +128,14 @@ impl PictureWell {
 
     /// Show nothing: `text` in its place (None: just the well).
     pub(crate) fn clear(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
-        if self.shot.is_some() || self.live.is_some() || self.text != text {
+        if self.shot.is_some() || self.live.is_some() || self.text != text || self.exact.is_some() || self.making.is_some() {
             self.shot = None;
             self.live = None;
+            self.binding_gen = self.binding_gen.wrapping_add(1);
             self.generation += 1;
             self.making = None;
             self.exact = None;
+            self.asked.set(None);
             self.text = text;
             cx.invalidate();
         }
@@ -190,6 +202,8 @@ impl PictureWell {
             self.shown.set(None);
             let text = self.text.clone().unwrap_or_default();
             if !text.is_empty() {
+                let well_bg = p.shade(p.panel_background, 1.18);
+                let ink = style::c(olo_theme::readable(p.panel_text, well_bg, 7.0));
                 let r = style::label_fit(
                     g,
                     inner.center().x,
@@ -198,7 +212,7 @@ impl PictureWell {
                     text.clone(),
                     style::PLAIN_SIZE,
                     style::ui_font(FontWeight::NORMAL),
-                    style::disabled_text(&p),
+                    ink,
                     inner.size.width - px(2.0 * m::SPACING),
                 );
                 agent::record(g, agent::Node::label(text, r));
@@ -211,11 +225,13 @@ impl PictureWell {
         style::fill_rect(g, frame, style::c(p.control_border));
         let s = g.scale_factor();
         let device = ((f32::from(pic.size.width) * s).round().max(1.0) as u32, (f32::from(pic.size.height) * s).round().max(1.0) as u32);
-        let want = (self.generation, device);
-        // Made for this frame at this size: drawn as it is. Else the last
-        // one stands in (stretched, for the moment it takes) and this one
-        // is asked for.
-        if let Some((_, img)) = &self.exact {
+        let want = (self.binding_gen, self.generation, device);
+        // Made for this binding at this size: drawn as it is. Else only an
+        // image from the SAME binding generation stands in while resizing
+        // (never an image from a previous screen or retired connection).
+        if let Some((made, img)) = &self.exact
+            && made.0 == self.binding_gen
+        {
             let _ = g.paint_image(pic, Default::default(), img.clone(), 0, false);
         }
         if self.exact.as_ref().is_none_or(|(made, _)| *made != want) && self.making != Some(want) && self.asked.replace(Some(want)) != Some(want) {
@@ -228,6 +244,13 @@ impl PictureWell {
     }
 }
 
+/// Pure acceptance rule for async resize completions (Astra #5): a completed
+/// image may only be installed if it belongs to the well's current binding
+/// generation and the well currently holds a `shot`.
+fn should_accept_made(current_binding_gen: u64, has_shot: bool, want: Made) -> bool {
+    has_shot && want.0 == current_binding_gen
+}
+
 impl View for PictureWell {
     type Message = Msg;
 
@@ -235,16 +258,18 @@ impl View for PictureWell {
         match msg {
             Msg::Asked => {
                 let Some(want) = self.asked.take() else { return };
-                let Some(src) = self.shot.clone().filter(|_| want.0 == self.generation && self.making != Some(want)) else { return };
+                let Some(src) = self.shot.clone().filter(|_| want.0 == self.binding_gen && want.1 == self.generation && self.making != Some(want)) else { return };
                 self.making = Some(want);
                 let from = (src.size[0] as u32, src.size[1] as u32);
-                cx.work(move || olo_kit::pictures::resampled(&src.rgba, from, want.1), move |img| Msg::Made(want, img));
+                cx.work(move || olo_kit::pictures::resampled(&src.rgba, from, want.2), move |img| Msg::Made(want, img));
             }
             Msg::Made(want, img) => {
                 if self.making == Some(want) {
                     self.making = None;
                 }
-                if let Some(img) = img {
+                if should_accept_made(self.binding_gen, self.shot.is_some(), want)
+                    && let Some(img) = img
+                {
                     self.exact = Some((want, img));
                     cx.invalidate();
                 }
@@ -254,5 +279,21 @@ impl View for PictureWell {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         div().size_full().child(cx.canvas(|v: &PictureWell, g, b| v.paint(b, g)).size_full())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn final_pass_b1_f5_stale_binding_resize_is_rejected() {
+        let screen_a_want: Made = (1, 5, (640, 400));
+        let screen_b_want: Made = (2, 7, (640, 400));
+        // After clear() advances binding_gen from 1 to 2 and screen B's raw frame arrives,
+        // screen A's late Msg::Made MUST be rejected while screen B's is accepted.
+        assert!(!should_accept_made(2, true, screen_a_want));
+        assert!(should_accept_made(2, true, screen_b_want));
+        assert!(!should_accept_made(2, false, screen_b_want));
     }
 }

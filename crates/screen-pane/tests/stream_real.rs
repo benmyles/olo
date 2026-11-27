@@ -252,6 +252,8 @@ fn real_stream_matches_look_and_types_under_control() {
         sound: false,
         started_ms: None,
         last_used_ms: None,
+        disconnected_at_ms: None,
+        actions: None,
         controlled: false,
         capabilities: caps.clone(),
     };
@@ -339,6 +341,7 @@ fn real_stream_matches_look_and_types_under_control() {
     // Take control (ClientMsg::ControlSeq -> ServerMsg::Control { held: true, seq }),
     // verify second viewer gets an explicit refusal with reason words, click StyledEdit,
     // send a wheel notch + type "hello stream", save with Ctrl+S, and release via ack.
+    source.note_live_frame_accepted();
     source.set_controlled(true).expect("take control");
     let deadline = Instant::now() + Duration::from_secs(3);
     while (!control_file.exists() || !control_held.load(Ordering::Acquire)) && Instant::now() < deadline {
@@ -365,6 +368,7 @@ fn real_stream_matches_look_and_types_under_control() {
         }),
     );
     f2_rx.recv_timeout(Duration::from_secs(10)).expect("viewer 2 initial frame");
+    source2.note_live_frame_accepted();
     source2.set_controlled(true).expect("viewer 2 request control");
     let (held2, reason2) = c2_rx.recv_timeout(Duration::from_secs(5)).expect("viewer 2 control refusal");
     assert!(!held2, "second viewer must not be granted control while viewer 1 holds it");
@@ -442,6 +446,8 @@ fn real_history_scrub_20_frames_and_playable_export() {
         sound: false,
         started_ms: Some(real_started.saturating_mul(1000)),
         last_used_ms: None,
+        disconnected_at_ms: None,
+        actions: None,
         controlled: false,
         capabilities: PaneCapabilities::remote_default(),
     };
@@ -792,6 +798,8 @@ fn bench_desktop_frame_stages_and_memory() {
         sound: false,
         started_ms: None,
         last_used_ms: None,
+        disconnected_at_ms: None,
+        actions: None,
         controlled: false,
         capabilities: PaneCapabilities::remote_default(),
     };
@@ -925,6 +933,8 @@ fn bench_history_1000_actions_and_frame_at_release() {
         sound: false,
         started_ms: None,
         last_used_ms: None,
+        disconnected_at_ms: None,
+        actions: None,
         controlled: false,
         capabilities: PaneCapabilities::remote_default(),
     };
@@ -1101,6 +1111,8 @@ fn real_multichunk_history_oversized_frame_error_and_index_gen() {
         sound: false,
         started_ms: None,
         last_used_ms: None,
+        disconnected_at_ms: None,
+        actions: None,
         controlled: false,
         capabilities: PaneCapabilities::remote_default(),
     };

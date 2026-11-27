@@ -23,12 +23,17 @@ Coordinates are the screen's logical pixels from its top left. Cmd is ⌘
 olo-screen start                    # prints JSON; the name is "agent" (or agent-2, …)
 olo-screen start review --size 1280x800
 olo-screen run agent olo-styled-edit notes.txt     # prints its pid, and the screen once it shows
-olo-screen list                     # every screen, each with its "state": running, stopped, archived
+olo-screen list                     # local screens as JSON, each with "state": running, stopped, archived
+olo-screen list --all [--json]      # local screens and connected Rex hosts' screens
+olo-screen list --host HOST [--json] # screens on one Rex host
+olo-screen watch [HOST:]NAME        # open Agent Screens showing local NAME or remote HOST:NAME
 olo-screen stop agent               # ends the screen and everything on it; the screen is kept, stopped
 olo-screen start agent              # a stopped (or archived) one again, at the size it had
 olo-screen archive agent            # a stopped one out of the way; `unarchive` brings it back
 olo-screen delete agent             # it and everything it kept (history, Chrome profile), to the Trash
 ```
+
+In the Agent Screens window, each connected Rex host appears as its own collapsible `Heading` row beside `This Computer`, and every screen row in the tree is a selectable `ListItem` named `<name> · <location> · <state>` (for example `Checkout QA · dev-box · running`).
 
 `eval "$(olo-screen env agent)"` sets `WAYLAND_DISPLAY` and
 `OLO_SOCKET` for your shell, so programs you start yourself (tests, a

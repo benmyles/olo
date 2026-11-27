@@ -534,6 +534,8 @@ pub struct Ran {
     pub output: String,
     /// What it wrote to standard output alone (empty for stderr-only lines).
     pub stdout: String,
+    /// What it wrote to standard error alone (empty for stdout-only lines).
+    pub stderr: String,
     /// Whether any output or line was clipped by a caller-requested bound
     /// (`Runner::run_bounded`); always `false` for ordinary `run` calls.
     pub truncated: bool,

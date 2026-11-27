@@ -13,13 +13,16 @@
 //!   streams multiplex over a single SSH connection!
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs::File,
     io::{self, BufReader},
     net::Ipv6Addr,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -35,7 +38,7 @@ use russh::{
 };
 use ssh2_config::{ParseRule, SshConfig};
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, ReadBuf},
+    io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::Mutex,
 };
 use zeroize::Zeroizing;
@@ -321,8 +324,14 @@ struct SshClientHandler {
     fixed: bool,
     /// The host's agent relay, where it has one.
     agent: AgentCell,
-    /// The host's key once it was checked, where it went.
+    /// The host's key once it was checked, where it went (primary only;
+    /// secondary connections get a private cell and never overwrite the
+    /// primary target's verified key).
     verified: KeyCell,
+    /// When `Some`, secondary connections strictly require this exact OpenSSH
+    /// host key (the one verified by the primary connection) instead of
+    /// trusting any other known host or prompting `askpass` (Finding 6).
+    expected_key: Option<String>,
 }
 
 /// A forwarded agent connection (a program on the host asks its
@@ -402,15 +411,23 @@ impl client::Handler for SshClientHandler {
             PublicKeyOrCertificate::Certificate(cert) => russh::keys::PublicKey::from(cert.public_key().clone()),
         };
 
-        let verified = |pubkey: &russh::keys::PublicKey| {
-            if let Ok(key) = pubkey.to_openssh() {
-                let key = key.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
-                *self.verified.lock().unwrap_or_else(|e| e.into_inner()) = Some(Verified { hostname: self.host.clone(), port: self.port, key });
+        let openssh_key = pubkey.to_openssh().ok().map(|key| key.split_whitespace().take(2).collect::<Vec<_>>().join(" "));
+        if let Some(expected) = &self.expected_key {
+            if openssh_key.as_deref() == Some(expected.as_str()) {
+                return Ok(true);
+            }
+            tracing::warn!("rejecting secondary SSH connection to {}:{}: host key does not match primary connection", self.host, self.port);
+            return Ok(false);
+        }
+
+        let verified = |openssh_key: Option<&str>| {
+            if let Some(key) = openssh_key {
+                *self.verified.lock().unwrap_or_else(|e| e.into_inner()) = Some(Verified { hostname: self.host.clone(), port: self.port, key: key.to_owned() });
             }
         };
         match check_known_hosts(&self.host, self.port, &pubkey) {
             Ok(true) => {
-                verified(&pubkey);
+                verified(openssh_key.as_deref());
                 Ok(true)
             }
             Ok(false) => {
@@ -421,7 +438,7 @@ impl client::Handler for SshClientHandler {
                     let ok = ask.ask(move |ui| ui.confirm_host_key(&host, port, &fp, &kt, false)).await.map_err(io::Error::other)?;
                     if ok {
                         learn_known_hosts(&self.host, self.port, &pubkey)?;
-                        verified(&pubkey);
+                        verified(openssh_key.as_deref());
                     }
                     Ok(ok)
                 } else {
@@ -538,32 +555,165 @@ echo "$d/agent.sock" && exec cat"##;
 
 #[derive(Default)]
 pub struct SshSessionPool {
-    sessions: Mutex<HashMap<SshTarget, SessionSlot>>,
+    /// Per-target SSH connection pools: the outer sync lock is only held to
+    /// clone or remove an `Arc<TargetPool>`, never across any `.await` so one
+    /// stalled host can never block another host's opens or `close` (Finding 8).
+    targets: std::sync::Mutex<HashMap<SshTarget, Arc<TargetPool>>>,
+    /// Monotonic generation counter for target lifecycles and QUIC bootstrap
+    /// tasks (Findings 6, 8, 12).
+    next_gen: AtomicU64,
     /// The hosts' agent relays, and the channels that keep a forwarded
     /// agent's socket there ([`Self::forward_agent`]).
     agents: std::sync::Mutex<HashMap<SshTarget, AgentCell>>,
-    agent_channels: std::sync::Mutex<HashMap<SshTarget, russh::Channel<client::Msg>>>,
+    agent_channels: std::sync::Mutex<HashMap<SshTarget, GuardedChannel>>,
     /// Olo's helper on the hosts: the name of the build the app
     /// carries ([`Self::set_helper`]).
     helper: std::sync::Mutex<Option<String>>,
-    /// Further connections to a host, opened when its SSH server will
-    /// open no more sessions on those there are ([`Self::session`]).
-    further: Mutex<HashMap<SshTarget, Vec<Arc<Handle<SshClientHandler>>>>>,
-    /// The helper's own link over UDP to each host ([`crate::quic`]):
-    /// up, with the SSH channel that keeps its helper there; or not to
-    /// be tried again before a time.
-    links: Mutex<HashMap<SshTarget, Link>>,
-    /// Where each host's SSH connection went (none: through a proxy):
+    /// The helper's own link over UDP to each host ([`crate::quic`]): sync
+    /// lock (never held across `.await`) so `set_helper`, `close`, and
+    /// `invalidate` immediately drop keepers and abort in-flight bootstraps
+    /// (Finding 12).
+    links: std::sync::Mutex<HashMap<SshTarget, Link>>,
+    /// Where each host's primary SSH connection went (none: through a proxy):
     /// where its link goes too.
     peers: std::sync::Mutex<HashMap<SshTarget, PeerCell>>,
-    /// Each host's key as its connection checked it ([`Self::verified`]).
+    /// Each host's key as its primary connection checked it ([`Self::verified`]).
     keys: std::sync::Mutex<HashMap<SshTarget, KeyCell>>,
+}
+
+/// An authenticated `russh` session paired with the Tokio runtime that drives
+/// its connection task (so channel teardown always runs on the live driver's
+/// runtime even if a stream's opener runtime has shut down) and its pinned
+/// endpoint + verified host key (Findings 6 & 9).
+struct PooledHandle {
+    handle: Handle<SshClientHandler>,
+    runtime: tokio::runtime::Handle,
+    pinned: PinnedEndpoint,
+}
+
+impl PooledHandle {
+    fn is_closed(&self) -> bool {
+        self.handle.is_closed()
+    }
+}
+
+/// Dedicated SSH connection for Agent Screens fallback streams: tracks active
+/// leases so the connection is closed immediately once its last stream drops
+/// (zero idle keepalive wakeups — Finding 9) and marks itself unresponsive if
+/// an open times out behind an unread stream (Finding 8).
+struct ScreenHandle {
+    pooled: Arc<PooledHandle>,
+    leases: AtomicUsize,
+    unresponsive: AtomicBool,
+}
+
+/// RAII lease on a [`ScreenHandle`]; acquired and released under
+/// `TargetPool::state` so `1 -> 0` teardown is race-free with concurrent opens.
+struct ScreenLease {
+    target_pool: Arc<TargetPool>,
+    handle: Arc<ScreenHandle>,
+    released: bool,
+}
+
+impl ScreenLease {
+    async fn release(mut self) {
+        self.released = true;
+        let disconnect = {
+            let mut st = self.target_pool.state.lock().unwrap_or_else(|e| e.into_inner());
+            let prev = self.handle.leases.fetch_sub(1, Ordering::AcqRel);
+            if prev == 1 {
+                st.screens.retain(|h| !Arc::ptr_eq(h, &self.handle));
+                true
+            } else {
+                false
+            }
+        };
+        if disconnect {
+            let _ = self.handle.pooled.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+        }
+    }
+}
+
+impl Drop for ScreenLease {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        self.released = true;
+        let disconnect = {
+            let mut st = self.target_pool.state.lock().unwrap_or_else(|e| e.into_inner());
+            let prev = self.handle.leases.fetch_sub(1, Ordering::AcqRel);
+            if prev == 1 {
+                st.screens.retain(|h| !Arc::ptr_eq(h, &self.handle));
+                true
+            } else {
+                false
+            }
+        };
+        if disconnect {
+            let h = self.handle.clone();
+            let rt = h.pooled.runtime.clone();
+            rt.spawn(async move {
+                let _ = h.pooled.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+            });
+        }
+    }
+}
+
+#[derive(Default)]
+struct TargetState {
+    primary: Option<Arc<PooledHandle>>,
+    further: Vec<Arc<PooledHandle>>,
+    screens: Vec<Arc<ScreenHandle>>,
+    /// Primary generation for which silent secondary screen connect failed
+    /// (password-only or 1-connection host), avoiding repeated wasted dials.
+    screen_secondary_disabled_gen: Option<u64>,
+}
+
+impl TargetState {
+    fn prune_closed(&mut self) {
+        if self.primary.as_ref().is_some_and(|h| h.is_closed()) {
+            self.primary = None;
+        }
+        self.further.retain(|h| !h.is_closed());
+        self.screens.retain(|h| !h.pooled.is_closed() && !h.unresponsive.load(Ordering::Acquire));
+    }
+
+    fn live_connection_count(&mut self) -> usize {
+        self.prune_closed();
+        usize::from(self.primary.is_some()) + self.further.len() + self.screens.len()
+    }
+}
+
+struct TargetPool {
+    primary_connect: Mutex<()>,
+    secondary_connect: Mutex<()>,
+    generation: u64,
+    closed_tx: tokio::sync::watch::Sender<bool>,
+    state: std::sync::Mutex<TargetState>,
+}
+
+impl TargetPool {
+    fn new(generation: u64) -> Self {
+        let (closed_tx, _) = tokio::sync::watch::channel(false);
+        Self { primary_connect: Mutex::new(()), secondary_connect: Mutex::new(()), generation, closed_tx, state: std::sync::Mutex::new(TargetState::default()) }
+    }
+
+    fn is_closed(&self) -> bool {
+        *self.closed_tx.borrow()
+    }
+
+    async fn until_closed(&self) {
+        let mut rx = self.closed_tx.subscribe();
+        let _ = rx.wait_for(|&closed| closed).await;
+    }
 }
 
 /// Line-buffering collector for [`SshSessionPool::exec`] and
 /// [`SshSessionPool::exec_bounded`]: separates stdout from stderr so
-/// half-written lines never mix, and applies optional `(max_output, max_line)`
-/// caps only when requested (`None` keeps all bytes whole).
+/// half-written lines never mix, keeps `Ran::stdout` and `Ran::stderr` apart,
+/// and applies optional `(max_output, max_line)` caps only when requested
+/// (`None` keeps all bytes whole).
 struct ExecCollector {
     bounds: Option<(usize, usize)>,
     out: Vec<u8>,
@@ -594,27 +744,25 @@ impl ExecCollector {
                 pending.clear();
                 said(&line);
                 if let Some((max_output, _)) = self.bounds {
-                    if self.ran.output.len() + line.len() + 1 <= max_output {
+                    if self.ran.output.len() + line.len() < max_output {
                         self.ran.output.push_str(&line);
                         self.ran.output.push('\n');
                     } else {
                         self.ran.truncated = true;
                     }
-                    if is_stdout {
-                        if self.ran.stdout.len() + line.len() + 1 <= max_output {
-                            self.ran.stdout.push_str(&line);
-                            self.ran.stdout.push('\n');
-                        } else {
-                            self.ran.truncated = true;
-                        }
+                    let stream = if is_stdout { &mut self.ran.stdout } else { &mut self.ran.stderr };
+                    if stream.len() + line.len() < max_output {
+                        stream.push_str(&line);
+                        stream.push('\n');
+                    } else {
+                        self.ran.truncated = true;
                     }
                 } else {
                     self.ran.output.push_str(&line);
                     self.ran.output.push('\n');
-                    if is_stdout {
-                        self.ran.stdout.push_str(&line);
-                        self.ran.stdout.push('\n');
-                    }
+                    let stream = if is_stdout { &mut self.ran.stdout } else { &mut self.ran.stderr };
+                    stream.push_str(&line);
+                    stream.push('\n');
                 }
             } else if let Some((_, max_line)) = self.bounds {
                 let room = max_line.saturating_sub(pending.len());
@@ -636,20 +784,6 @@ impl ExecCollector {
             self.take(b"\n", false, said);
         }
         self.ran
-    }
-}
-
-/// A command's channel, closed if it is let go of before the command
-/// ended ([`SshSessionPool::exec`]).
-struct CloseWhenLetGo(Option<russh::ChannelWriteHalf<client::Msg>>);
-
-impl Drop for CloseWhenLetGo {
-    fn drop(&mut self) {
-        if let (Some(told), Ok(runtime)) = (self.0.take(), tokio::runtime::Handle::try_current()) {
-            runtime.spawn(async move {
-                let _ = told.close().await;
-            });
-        }
     }
 }
 
@@ -683,19 +817,91 @@ fn link_is_as_quick(link: Duration, ssh: Duration) -> bool {
 }
 
 enum Link {
-    Up(Arc<crate::quic::QuicLink>, #[allow(dead_code)] russh::Channel<client::Msg>),
-    /// Being made, behind the streams that go over SSH meanwhile.
-    Starting,
+    Up {
+        link: Arc<crate::quic::QuicLink>,
+        /// SSH keeper channel for `olo-rex-link quic`: dropping sends EOF +
+        /// CLOSE on the connection driver's runtime so the host QUIC helper
+        /// exits and frees its `MaxSessions` slot (Finding 6).
+        #[allow(dead_code)]
+        keeper: GuardedChannel,
+        /// Helper build ID that launched this link (Finding 12).
+        helper_id: String,
+        /// Target lifecycle generation this link belongs to (Finding 12).
+        target_gen: u64,
+        /// Flips to `false` if this helper resets `wire::SCREEN` with code 3
+        /// (built without `screens`), routing screen streams to SSH while
+        /// keeping terminals on UDP (Finding 12).
+        screens_supported: Arc<AtomicBool>,
+    },
+    /// Being made, behind the streams that go over SSH meanwhile. Dropping
+    /// aborts the bootstrap task and wakes any `OLO_REX_QUIC=yes` waiters.
+    Starting {
+        generation: u64,
+        target_gen: u64,
+        helper_id: String,
+        abort: tokio::task::AbortHandle,
+        done: tokio::sync::watch::Sender<bool>,
+    },
     Down(std::time::Instant),
+}
+
+impl Drop for Link {
+    fn drop(&mut self) {
+        if let Link::Starting { abort, done, .. } = self {
+            abort.abort();
+            let _ = done.send(true);
+        }
+    }
+}
+
+/// Ensures an aborted or runtime-shutdown QUIC bootstrap always clears its
+/// `Link::Starting` marker instead of stranding the target on SSH forever
+/// (Finding 12).
+struct LinkStartGuard {
+    pool: Arc<SshSessionPool>,
+    target: SshTarget,
+    link_gen: u64,
+    done: tokio::sync::watch::Sender<bool>,
+    finished: bool,
+}
+
+impl Drop for LinkStartGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            let mut links = self.pool.links.lock().unwrap_or_else(|e| e.into_inner());
+            if matches!(links.get(&self.target), Some(Link::Starting { generation, .. }) if *generation == self.link_gen) {
+                links.remove(&self.target);
+            }
+            let _ = self.done.send(true);
+        }
+    }
 }
 
 /// A link that couldn't be made isn't tried again for so long (UDP
 /// that doesn't get through to a host today won't in a minute).
 const LINK_AGAIN: Duration = Duration::from_secs(600);
 
+/// Maximum time allowed for opening an SSH session channel and receiving its
+/// initial `exec` / `request_pty` reply (Findings 10 & 13).
+const SSH_OPEN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Maximum bytes accepted while reading `olo-rex-link quic`'s single-line
+/// `olo-rex-quic 1 PORT PRINT\n` announcement (Finding 13).
+const ANNOUNCE_LINE_MAX: usize = 512;
+
+/// Maximum early `ChannelMsg`s / bytes buffered if a quirky server emits data
+/// ahead of `CHANNEL_SUCCESS` for `exec(true, ...)` (Finding 10).
+const EXEC_PREFETCH_MSG_LIMIT: usize = 64;
+const EXEC_PREFETCH_BYTES_LIMIT: usize = 256 * 1024;
+
 /// The most further connections to one host: with OpenSSH's ten
 /// sessions a connection, fifty sessions in all.
 const FURTHER_MOST: usize = 4;
+
+/// Unified per-target connection cap across primary + further + dedicated
+/// screen SSH connections (1 primary + at most 4 secondary = 5, matching
+/// docs/HACKING.md; Finding 9).
+const MAX_CONNECTIONS_PER_TARGET: usize = 1 + FURTHER_MOST;
 
 /// Whether a session channel was refused because the connection has
 /// all the sessions the host's SSH server allows it (OpenSSH's
@@ -706,7 +912,11 @@ fn sessions_full(e: &russh::Error) -> bool {
     matches!(e, russh::Error::ChannelOpenFailure(ConnectFailed | AdministrativelyProhibited | ResourceShortage))
 }
 
-type SessionSlot = Arc<Mutex<Option<Arc<Handle<SshClientHandler>>>>>;
+enum SessionOpenErr {
+    Full,
+    Timeout,
+    Other(russh::Error),
+}
 
 impl std::fmt::Debug for SshSessionPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -715,14 +925,32 @@ impl std::fmt::Debug for SshSessionPool {
 }
 
 impl SshSessionPool {
+    fn alloc_gen(&self) -> u64 {
+        self.next_gen.fetch_add(1, Ordering::AcqRel) + 1
+    }
+
+    fn target_pool(&self, target: &SshTarget) -> Arc<TargetPool> {
+        let mut map = self.targets.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(target.clone()).or_insert_with(|| Arc::new(TargetPool::new(self.alloc_gen()))).clone()
+    }
+
+    fn target_pool_if_same(&self, target: &SshTarget, target_gen: u64) -> bool {
+        self.targets.lock().unwrap_or_else(|e| e.into_inner()).get(target).is_some_and(|tp| tp.generation == target_gen && !tp.is_closed())
+    }
+
     /// Drop any cached SSH session for `target` (e.g. after disconnect/reconnect).
     pub async fn invalidate(&self, target: &SshTarget) {
-        self.sessions.lock().await.remove(target);
-        self.further.lock().await.remove(target);
-        // (A link that is up went with its SSH channel; one that
+        if let Some(tp) = self.targets.lock().unwrap_or_else(|e| e.into_inner()).remove(target) {
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.primary = None;
+            st.further.clear();
+            st.screens.clear();
+            st.screen_secondary_disabled_gen = None;
+        }
+        // (A link that is up or starting went with its SSH lifecycle; one that
         // couldn't be made is still not tried before its time.)
-        let mut links = self.links.lock().await;
-        if matches!(links.get(target), Some(Link::Up(..))) {
+        let mut links = self.links.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(links.get(target), Some(Link::Up { .. } | Link::Starting { .. })) {
             links.remove(target);
         }
     }
@@ -744,7 +972,63 @@ impl SshSessionPool {
     /// Whether the host's streams go over the helper's own link (UDP)
     /// now.
     pub async fn linked(&self, target: &SshTarget) -> bool {
-        matches!(self.links.lock().await.get(target), Some(Link::Up(link, _)) if link.alive())
+        matches!(self.links.lock().unwrap_or_else(|e| e.into_inner()).get(target), Some(Link::Up { link, .. }) if link.alive())
+    }
+
+    /// Close the live QUIC connection for `target` without touching its SSH
+    /// session, then demote the link (for tests verifying keeper cleanup on
+    /// link discard while SSH stays alive, Finding 6).
+    #[doc(hidden)]
+    pub async fn discard_dead_link_for_test(&self, target: &SshTarget) {
+        let link = match self.links.lock().unwrap_or_else(|e| e.into_inner()).get(target) {
+            Some(Link::Up { link, .. }) => link.clone(),
+            _ => return,
+        };
+        link.close_now();
+        self.demote_link_if_dead(target, &link, "test discard").await;
+    }
+
+    /// Count `(session_channels, encrypted_channels)` across all cached SSH
+    /// connections for `target` (for tests verifying zero channel leaks).
+    /// Returns an error if any cached handle's driver died or is wedged past 2 s.
+    #[doc(hidden)]
+    pub async fn open_channel_count(&self, target: &SshTarget) -> Result<(usize, usize), RexError> {
+        let handles = {
+            let tp = self.targets.lock().unwrap_or_else(|e| e.into_inner()).get(target).cloned();
+            let mut list = Vec::new();
+            if let Some(tp) = tp {
+                let st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(h) = &st.primary {
+                    list.push(h.clone());
+                }
+                list.extend(st.further.iter().cloned());
+                list.extend(st.screens.iter().map(|s| s.pooled.clone()));
+            }
+            list
+        };
+        let (mut sess, mut enc) = (0usize, 0usize);
+        for h in handles {
+            let (s, e) = tokio::time::timeout(Duration::from_secs(2), h.handle.open_channel_count())
+                .await
+                .map_err(|_| RexError::Timeout)?
+                .map_err(|e| RexError::Ssh(format!("open_channel_count failed: {e}")))?;
+            sess += s;
+            enc += e;
+        }
+        Ok((sess, enc))
+    }
+
+    /// Count live cached `(primary, further, screens)` SSH connections for
+    /// `target` (for tests verifying unified connection budget and immediate
+    /// idle screen-connection teardown, Finding 9).
+    #[doc(hidden)]
+    pub fn open_connection_count(&self, target: &SshTarget) -> (usize, usize, usize) {
+        let Some(tp) = self.targets.lock().unwrap_or_else(|e| e.into_inner()).get(target).cloned() else {
+            return (0, 0, 0);
+        };
+        let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.prune_closed();
+        (usize::from(st.primary.is_some()), st.further.len(), st.screens.len())
     }
 
     /// The helper's own link to the host, where it is up. Where it
@@ -758,76 +1042,149 @@ impl SshSessionPool {
     /// off (`OLO_REX_QUIC=no`). `OLO_REX_QUIC=yes`: waited for, and
     /// used whatever its round trip, for measuring.
     async fn link(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Option<Arc<crate::quic::QuicLink>> {
+        self.link_entry(target, askpass).await.map(|(link, _)| link)
+    }
+
+    async fn link_for_screens(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Option<(Arc<crate::quic::QuicLink>, Arc<AtomicBool>)> {
+        let (link, screens_supported) = self.link_entry(target, askpass).await?;
+        if !screens_supported.load(Ordering::Acquire) {
+            return None;
+        }
+        Some((link, screens_supported))
+    }
+
+    async fn link_entry(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Option<(Arc<crate::quic::QuicLink>, Arc<AtomicBool>)> {
         let knob = std::env::var("OLO_REX_QUIC").ok();
         if knob.as_deref() == Some("no") {
             return None;
         }
         let helper = self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone()?;
-        let mut links = self.links.lock().await;
-        match links.get(target) {
-            Some(Link::Up(link, _)) if link.alive() => return Some(link.clone()),
-            Some(Link::Down(until)) if std::time::Instant::now() < *until => return None,
-            Some(Link::Starting) => return None,
-            _ => {}
+        let tp = self.target_pool(target);
+        let target_gen = tp.generation;
+        let wait_sync = knob.as_deref() == Some("yes");
+
+        let mut wait_rx: Option<tokio::sync::watch::Receiver<bool>> = None;
+        {
+            let mut links = self.links.lock().unwrap_or_else(|e| e.into_inner());
+            match links.get(target) {
+                Some(Link::Up { link, helper_id, screens_supported, target_gen: g, .. }) if link.alive() && *helper_id == helper && *g == target_gen => {
+                    return Some((link.clone(), screens_supported.clone()));
+                }
+                Some(Link::Down(until)) if std::time::Instant::now() < *until => return None,
+                Some(Link::Starting { helper_id, target_gen: g, done, .. }) if *helper_id == helper && *g == target_gen => {
+                    if wait_sync {
+                        wait_rx = Some(done.subscribe());
+                    } else {
+                        return None;
+                    }
+                }
+                _ => {
+                    // Evict stale / dead / old-helper link immediately so its
+                    // `GuardedChannel` keeper sends SSH EOF + CLOSE right away
+                    // or its stale `Starting` task aborts.
+                    links.remove(target);
+                }
+            }
+            if wait_rx.is_none() {
+                let link_gen = self.alloc_gen();
+                let (done_tx, done_rx) = tokio::sync::watch::channel(false);
+                if wait_sync {
+                    wait_rx = Some(done_rx);
+                }
+                let runtime = tp.state.lock().unwrap_or_else(|e| e.into_inner()).primary.as_ref().filter(|h| !h.is_closed()).map(|h| h.runtime.clone()).unwrap_or_else(tokio::runtime::Handle::current);
+                let (pool, target_c, helper_c, tp_c, done_c) = (self.clone(), target.clone(), helper.clone(), tp.clone(), done_tx.clone());
+                let guard = LinkStartGuard { pool: pool.clone(), target: target_c.clone(), link_gen, done: done_c.clone(), finished: false };
+                let join = runtime.spawn(async move {
+                    let mut guard = guard;
+                    let made = tokio::select! {
+                        biased;
+                        _ = tp_c.until_closed() => Err("SSH target closed during QUIC bootstrap".to_owned()),
+                        res = pool.start_link(&target_c, askpass, &helper_c, target_gen) => res,
+                    };
+                    // Acquire `helper` -> `links` in canonical order, and only
+                    // publish if helper selection, target lifecycle, and start
+                    // generation ALL still match (Finding 12).
+                    let helper_cur = pool.helper.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut links = pool.links.lock().unwrap_or_else(|e| e.into_inner());
+                    let still_valid = helper_cur.as_deref() == Some(helper_c.as_str())
+                        && pool.target_pool_if_same(&target_c, target_gen)
+                        && matches!(links.get(&target_c), Some(Link::Starting { generation, .. }) if *generation == link_gen);
+                    if still_valid {
+                        pool.made(&mut links, &target_c, &helper_c, target_gen, made);
+                    }
+                    guard.finished = true;
+                    drop(links);
+                    drop(helper_cur);
+                    let _ = done_c.send(true);
+                });
+                links.insert(target.clone(), Link::Starting { generation: link_gen, target_gen, helper_id: helper.clone(), abort: join.abort_handle(), done: done_tx });
+            }
         }
-        if knob.as_deref() == Some("yes") {
-            let made = self.start_link(target, askpass, &helper).await;
-            return self.made(&mut links, target, made);
+
+        if let Some(mut rx) = wait_rx {
+            let _ = rx.wait_for(|&done| done).await;
+            let links = self.links.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(Link::Up { link, helper_id, screens_supported, target_gen: g, .. }) = links.get(target)
+                && link.alive()
+                && *helper_id == helper
+                && *g == target_gen
+            {
+                return Some((link.clone(), screens_supported.clone()));
+            }
         }
-        links.insert(target.clone(), Link::Starting);
-        let (pool, target) = (self.clone(), target.clone());
-        tokio::spawn(async move {
-            let made = pool.start_link(&target, askpass, &helper).await;
-            let mut links = pool.links.lock().await;
-            pool.made(&mut links, &target, made);
-        });
         None
     }
 
-    fn made(&self, links: &mut HashMap<SshTarget, Link>, target: &SshTarget, made: Result<(crate::quic::QuicLink, russh::Channel<client::Msg>), String>) -> Option<Arc<crate::quic::QuicLink>> {
+    fn made(&self, links: &mut HashMap<SshTarget, Link>, target: &SshTarget, helper_id: &str, target_gen: u64, made: Result<(crate::quic::QuicLink, GuardedChannel), String>) {
         match made {
-            Ok((link, held)) => {
+            Ok((link, keeper)) => {
                 tracing::info!("ssh: {}'s streams go over the helper's own link (UDP) from now", target.display());
                 let link = Arc::new(link);
-                links.insert(target.clone(), Link::Up(link.clone(), held));
-                Some(link)
+                let screens_supported = Arc::new(AtomicBool::new(true));
+                links.insert(target.clone(), Link::Up { link, keeper, helper_id: helper_id.to_owned(), target_gen, screens_supported });
             }
             Err(why) => {
                 tracing::info!("ssh: no link over UDP to {} ({why}); its streams go over SSH", target.display());
                 links.insert(target.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
-                None
             }
+        }
+    }
+
+    /// Demote a failed QUIC link to `Link::Down` ONLY when the connection
+    /// itself is actually dead (`!failed.alive()`) AND it is still the cached
+    /// `Link::Up` instance (Findings 5 & 6). Replacing `Link::Up` drops its
+    /// `GuardedChannel` keeper, sending SSH `EOF` + `CLOSE` to end the host
+    /// helper immediately.
+    async fn demote_link_if_dead(&self, target: &SshTarget, failed: &Arc<crate::quic::QuicLink>, why: &str) {
+        if failed.alive() {
+            tracing::info!("ssh: {}'s QUIC stream failed while link stays up ({why}); using SSH for this stream", target.display());
+            return;
+        }
+        tracing::info!("ssh: {}'s link over UDP failed ({why}); its streams go over SSH", target.display());
+        let mut links = self.links.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(links.get(target), Some(Link::Up { link, .. }) if Arc::ptr_eq(link, failed)) {
+            links.insert(target.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
         }
     }
 
     /// The helper started in its `quic` mode over SSH, given a token,
     /// and the link made to where it says it listens: the link, and
-    /// the SSH channel that keeps the helper there.
-    async fn start_link(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, helper: &str) -> Result<(crate::quic::QuicLink, russh::Channel<client::Msg>), String> {
-        use russh::ChannelMsg;
+    /// the guarded SSH channel that keeps the helper there.
+    async fn start_link(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, helper: &str, target_gen: u64) -> Result<(crate::quic::QuicLink, GuardedChannel), String> {
         // (Made first: the host's address is known once it is reached.)
-        self.get_or_connect(target, askpass.clone()).await.map_err(|e| e.to_string())?;
+        let primary = self.get_or_connect(target, askpass.clone()).await.map_err(|e| e.to_string())?;
+        if primary.pinned.generation != target_gen {
+            return Err("SSH target was closed or replaced during QUIC bootstrap".to_owned());
+        }
         let (peer, ssh_round_trip) = (*self.peer_cell(target).lock().unwrap_or_else(|e| e.into_inner())).ok_or("the host is reached through a proxy")?;
         let token = crate::quic::new_token()?;
         let mut channel = self.session(target, askpass).await.map_err(|e| e.to_string())?;
-        channel.exec(true, quic_command(target.socket_path.as_deref(), helper)).await.map_err(|e| e.to_string())?;
-        channel.data(format!("{}\n", crate::quic::hex(&token)).as_bytes()).await.map_err(|e| e.to_string())?;
-        let said = async {
-            let mut said = Vec::new();
-            loop {
-                match channel.wait().await {
-                    Some(ChannelMsg::Data { data }) => {
-                        said.extend_from_slice(&data);
-                        if let Some(end) = said.iter().position(|b| *b == b'\n') {
-                            return crate::quic::announced(&String::from_utf8_lossy(&said[..end])).ok_or("the helper said something else");
-                        }
-                    }
-                    Some(ChannelMsg::ExitStatus { .. } | ChannelMsg::Close | ChannelMsg::Failure) | None => return Err("the host hasn't the helper with its link"),
-                    _ => {}
-                }
-            }
-        };
-        let (port, print) = tokio::time::timeout(Duration::from_secs(5), said).await.map_err(|_| "the helper didn't say where it listens")??;
+        channel.exec_and_confirm(quic_command(target.socket_path.as_deref(), helper), SSH_OPEN_TIMEOUT, "the host hasn't the helper with its link").await.map_err(|e| e.to_string())?;
+        tokio::time::timeout(SSH_OPEN_TIMEOUT, channel.data(format!("{}\n", crate::quic::hex(&token)).as_bytes()))
+            .await
+            .map_err(|_| "timed out sending QUIC token over SSH".to_owned())?
+            .map_err(|e| e.to_string())?;
+        let (port, print) = tokio::time::timeout(Duration::from_secs(5), read_announce_line(&mut channel)).await.map_err(|_| "the helper didn't say where it listens")??;
         // (`OLO_REX_QUIC_DIAL=IP:PORT`: reached there instead, for the
         // rig, whose slow link for UDP stands in front of the helper.)
         let to = std::env::var("OLO_REX_QUIC_DIAL").ok().and_then(|v| v.parse().ok()).unwrap_or_else(|| std::net::SocketAddr::new(peer, port));
@@ -841,15 +1198,35 @@ impl SshSessionPool {
         Ok((link, channel))
     }
 
-    /// Drops `stale` from the primary slot if it is still the cached handle
-    /// there (leaving a fresher handle made by another task untouched).
-    async fn drop_stale(&self, target: &SshTarget, stale: &Arc<Handle<SshClientHandler>>) {
-        let slot = self.sessions.lock().await.get(target).cloned();
-        if let Some(slot) = slot {
-            let mut session = slot.lock().await;
-            if session.as_ref().is_some_and(|h| Arc::ptr_eq(h, stale)) {
-                *session = None;
-            }
+    /// Drops `stale` from the primary slot of `tp` if it is still cached there.
+    fn drop_stale_primary(tp: &TargetPool, stale: &Arc<PooledHandle>) {
+        let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+        if st.primary.as_ref().is_some_and(|h| Arc::ptr_eq(h, stale)) {
+            st.primary = None;
+        }
+    }
+
+    fn drop_stale_further(tp: &TargetPool, stale: &Arc<PooledHandle>) {
+        let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.further.retain(|h| !Arc::ptr_eq(h, stale));
+    }
+
+    /// Open a session channel on `pooled` directly (no detached wrapper task!)
+    /// bounded by `within` and cancelled immediately if `tp` closes (Findings 8,
+    /// 10, 15): russh's own `UnclaimedOpenGuard` + `encrypted.rs` send-error
+    /// close ensure cancellation or timeout at any point leaves zero detached
+    /// tasks and zero leaked channels.
+    async fn open_session_guarded(tp: &TargetPool, pooled: &Arc<PooledHandle>, within: Duration) -> Result<GuardedChannel, SessionOpenErr> {
+        let open = tokio::select! {
+            biased;
+            _ = tp.until_closed() => return Err(SessionOpenErr::Other(russh::Error::Disconnect)),
+            res = tokio::time::timeout(within, pooled.handle.channel_open_session()) => res,
+        };
+        match open {
+            Ok(Ok(ch)) => Ok(GuardedChannel::new(ch, pooled.runtime.clone())),
+            Ok(Err(e)) if sessions_full(&e) => Err(SessionOpenErr::Full),
+            Ok(Err(e)) => Err(SessionOpenErr::Other(e)),
+            Err(_) => Err(SessionOpenErr::Timeout),
         }
     }
 
@@ -857,55 +1234,269 @@ impl SshSessionPool {
     /// Everything Rex has on a host goes over one SSH connection, each
     /// stream to its server a session of it, and an SSH server opens
     /// only so many sessions on a connection (OpenSSH ten, its
-    /// `MaxSessions`): with eight panes open there, the control
-    /// connection and the agent's channel, the next thing asked of the
-    /// host was refused ("Failed to open channel (ConnectFailed)":
-    /// Ben, 2026-11-23, installing the skill for agents). Where the
-    /// connection is full, the session is opened on a further
-    /// connection to the host, made then (signed in to as the first
-    /// was) and used for what comes after too.
-    async fn session(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<russh::Channel<client::Msg>, RexError> {
-        let failed = |e: russh::Error| RexError::Ssh(format!("open ssh session channel: {e}"));
-        let handle = self.get_or_connect(target, askpass.clone()).await?;
-        match handle.channel_open_session().await {
+    /// `MaxSessions`). Where the connection is full, the session is opened on
+    /// a further connection pinned to the primary's endpoint and host key
+    /// (never re-resolving `~/.ssh/config`, never holding any global lock
+    /// across `.await`, and sharing the unified [`MAX_CONNECTIONS_PER_TARGET`]
+    /// budget; Findings 6, 8, 9, 10).
+    async fn session(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<GuardedChannel, RexError> {
+        let failed = |e: SessionOpenErr| match e {
+            SessionOpenErr::Timeout => RexError::Timeout,
+            SessionOpenErr::Full => RexError::Ssh("open ssh session channel: MaxSessions reached".into()),
+            SessionOpenErr::Other(e) => RexError::Ssh(format!("open ssh session channel: {e}")),
+        };
+        let tp = self.target_pool(target);
+        let primary = self.get_or_connect(target, askpass.clone()).await?;
+        match Self::open_session_guarded(&tp, &primary, SSH_OPEN_TIMEOUT).await {
             Ok(channel) => return Ok(channel),
-            Err(e) if sessions_full(&e) => {}
-            Err(_) => {
-                // (A cached handle closed between reuse and channel open —
-                // e.g. an idle connection the server dropped during a long
-                // copy: drop that stale handle and reconnect once.)
-                self.drop_stale(target, &handle).await;
+            Err(SessionOpenErr::Full) => {}
+            Err(SessionOpenErr::Timeout) => {
+                // Retire the nonresponding handle from the pool so retries do
+                // not pile abandoned OPENs onto a wedged connection (Finding 10).
+                Self::drop_stale_primary(&tp, &primary);
+                return Err(RexError::Timeout);
+            }
+            Err(SessionOpenErr::Other(_)) => {
+                Self::drop_stale_primary(&tp, &primary);
                 let fresh = self.get_or_connect(target, askpass.clone()).await?;
-                match fresh.channel_open_session().await {
+                match Self::open_session_guarded(&tp, &fresh, SSH_OPEN_TIMEOUT).await {
                     Ok(channel) => return Ok(channel),
-                    Err(e) if sessions_full(&e) => {}
+                    Err(SessionOpenErr::Full) => {}
+                    Err(SessionOpenErr::Timeout) => {
+                        Self::drop_stale_primary(&tp, &fresh);
+                        return Err(RexError::Timeout);
+                    }
                     Err(e) => return Err(failed(e)),
                 }
             }
         }
-        // (One at a time: two things asked at once of a full connection
-        // make one further connection between them, not two.)
-        let mut further = self.further.lock().await;
-        let list = further.entry(target.clone()).or_default();
-        list.retain(|handle| !handle.is_closed());
-        for handle in list.iter() {
-            match handle.channel_open_session().await {
+
+        // Try existing `further` handles WITHOUT holding any lock across awaits.
+        let snapshot: Vec<Arc<PooledHandle>> = {
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.prune_closed();
+            st.further.clone()
+        };
+        for handle in &snapshot {
+            match Self::open_session_guarded(&tp, handle, SSH_OPEN_TIMEOUT).await {
                 Ok(channel) => return Ok(channel),
-                Err(e) if sessions_full(&e) => {}
-                Err(e) => return Err(failed(e)),
+                Err(SessionOpenErr::Full) => {}
+                Err(SessionOpenErr::Timeout) => {
+                    Self::drop_stale_further(&tp, handle);
+                }
+                Err(SessionOpenErr::Other(_)) => {
+                    Self::drop_stale_further(&tp, handle);
+                }
             }
         }
-        if list.len() >= FURTHER_MOST {
+
+        // Single-flight secondary connection creation per target only.
+        let _sec = tp.secondary_connect.lock().await;
+        // Re-check any handle another task may have added while we waited.
+        let fresh_further: Vec<Arc<PooledHandle>> = {
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.prune_closed();
+            st.further.iter().filter(|h| !snapshot.iter().any(|old| Arc::ptr_eq(old, h))).cloned().collect()
+        };
+        for handle in &fresh_further {
+            match Self::open_session_guarded(&tp, handle, SSH_OPEN_TIMEOUT).await {
+                Ok(channel) => return Ok(channel),
+                Err(SessionOpenErr::Full) => {}
+                Err(SessionOpenErr::Timeout) => {
+                    Self::drop_stale_further(&tp, handle);
+                }
+                Err(SessionOpenErr::Other(_)) => {
+                    Self::drop_stale_further(&tp, handle);
+                }
+            }
+        }
+
+        let (total, pinned) = {
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            let total = st.live_connection_count();
+            let pinned = st.primary.as_ref().map(|p| p.pinned.clone()).unwrap_or_else(|| primary.pinned.clone());
+            (total, pinned)
+        };
+        if total >= MAX_CONNECTIONS_PER_TARGET {
             return Err(RexError::Ssh(format!(
                 "{} will open no more sessions: its SSH server allows only so many on a connection (MaxSessions), and Rex has {} connections to it, all full",
                 target.display(),
-                list.len() + 1
+                total
             )));
         }
         tracing::info!("ssh: {}'s connection has all the sessions its server allows; opening another", target.display());
-        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target), self.key_cell(target)).await?);
-        list.push(handle.clone());
-        handle.channel_open_session().await.map_err(failed)
+        let handle = tokio::select! {
+            biased;
+            _ = tp.until_closed() => return Err(RexError::Ssh("SSH connection closed".into())),
+            res = connect_and_authenticate(target, askpass, self.agent_cell(target), ConnectMode::Secondary { pinned, silent: false }) => Arc::new(res?),
+        };
+        if !self.target_pool_matches_install(&tp, target, |st| st.further.push(handle.clone())) {
+            let _ = handle.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+            return Err(RexError::Ssh("SSH connection closed".into()));
+        }
+        drop(_sec);
+        Self::open_session_guarded(&tp, &handle, SSH_OPEN_TIMEOUT).await.map_err(failed)
+    }
+
+    /// Install a newly opened handle under `tp.state` ONLY if `tp` is still
+    /// live and the active `TargetPool` for `target`; otherwise return `false`.
+    fn target_pool_matches_install(&self, tp: &TargetPool, target: &SshTarget, install: impl FnOnce(&mut TargetState)) -> bool {
+        if !self.target_pool_if_same(target, tp.generation) {
+            return false;
+        }
+        let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+        if tp.is_closed() {
+            return false;
+        }
+        install(&mut st);
+        true
+    }
+
+    /// A session channel for Agent Screens SSH fallback: tries a dedicated
+    /// SSH connection ONLY where it costs the person nothing (silent key/agent
+    /// auth with NO askpass, pinned to the primary connection's exact address
+    /// and host key, bounded by the unified [`MAX_CONNECTIONS_PER_TARGET`]
+    /// budget, and closed immediately when its last stream ends — Findings 6,
+    /// 7, 8, 9). Wherever a secondary connection is refused, needs interactive
+    /// auth, or exceeds the budget, falls back transparently to a channel on
+    /// the primary connection via [`Self::session`].
+    async fn screen_session(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<GuardedChannel, RexError> {
+        let tp = self.target_pool(target);
+        let primary = self.get_or_connect(target, askpass.clone()).await?;
+        let primary_gen = primary.pinned.generation;
+
+        // If silent secondary connect already failed for this primary generation
+        // (e.g. password-only or 1-connection host), go straight to primary.
+        if tp.state.lock().unwrap_or_else(|e| e.into_inner()).screen_secondary_disabled_gen == Some(primary_gen) {
+            return self.session(target, askpass).await;
+        }
+
+        // 1. Try existing dedicated screen connections (fewest active leases
+        //    first, zero locks held across `.await`).
+        let mut tried: Vec<Arc<ScreenHandle>> = Vec::new();
+        loop {
+            let next_lease = {
+                let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.prune_closed();
+                st.screens.iter().filter(|h| !tried.iter().any(|t| Arc::ptr_eq(t, h))).min_by_key(|h| h.leases.load(Ordering::Acquire)).cloned().map(|h| {
+                    h.leases.fetch_add(1, Ordering::AcqRel);
+                    ScreenLease { target_pool: tp.clone(), handle: h, released: false }
+                })
+            };
+            let Some(lease) = next_lease else { break };
+            let sh = lease.handle.clone();
+            tried.push(sh.clone());
+            match Self::open_session_guarded(&tp, &sh.pooled, SSH_OPEN_TIMEOUT).await {
+                Ok(mut channel) => {
+                    channel.set_screen_lease(lease);
+                    return Ok(channel);
+                }
+                Err(SessionOpenErr::Full) => {
+                    drop(lease);
+                }
+                Err(SessionOpenErr::Timeout) => {
+                    // Mark wedged screen driver unresponsive and remove from
+                    // active pool so other opens proceed without waiting on it.
+                    sh.unresponsive.store(true, Ordering::Release);
+                    tp.state.lock().unwrap_or_else(|e| e.into_inner()).screens.retain(|h| !Arc::ptr_eq(h, &sh));
+                    drop(lease);
+                }
+                Err(SessionOpenErr::Other(_)) => {
+                    tp.state.lock().unwrap_or_else(|e| e.into_inner()).screens.retain(|h| !Arc::ptr_eq(h, &sh));
+                    drop(lease);
+                }
+            }
+        }
+
+        // 2. Single-flight silent secondary screen connect per target.
+        let _sec = tp.secondary_connect.lock().await;
+        // Re-check handles added while waiting for `_sec`, and check budget / disabled flag.
+        enum ScreenRetry {
+            Disabled,
+            Lease(ScreenLease),
+            Connect,
+        }
+        let retry = {
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.prune_closed();
+            if st.screen_secondary_disabled_gen == Some(primary_gen) {
+                ScreenRetry::Disabled
+            } else if let Some(h) = st.screens.iter().filter(|h| !tried.iter().any(|t| Arc::ptr_eq(t, h))).min_by_key(|h| h.leases.load(Ordering::Acquire)).cloned() {
+                h.leases.fetch_add(1, Ordering::AcqRel);
+                ScreenRetry::Lease(ScreenLease { target_pool: tp.clone(), handle: h, released: false })
+            } else {
+                ScreenRetry::Connect
+            }
+        };
+        match retry {
+            ScreenRetry::Disabled => {
+                drop(_sec);
+                return self.session(target, askpass).await;
+            }
+            ScreenRetry::Lease(lease) => {
+                let sh = lease.handle.clone();
+                drop(_sec);
+                if let Ok(mut channel) = Self::open_session_guarded(&tp, &sh.pooled, SSH_OPEN_TIMEOUT).await {
+                    channel.set_screen_lease(lease);
+                    return Ok(channel);
+                }
+                drop(lease);
+                return self.session(target, askpass).await;
+            }
+            ScreenRetry::Connect => {}
+        }
+
+        let (total, pinned) = {
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            let total = st.live_connection_count();
+            let pinned = st.primary.as_ref().map(|p| p.pinned.clone()).unwrap_or_else(|| primary.pinned.clone());
+            (total, pinned)
+        };
+        if total >= MAX_CONNECTIONS_PER_TARGET {
+            drop(_sec);
+            return self.session(target, askpass).await;
+        }
+
+        // Connect SILENTLY (`askpass = None`, `silent = true`, pinned to primary):
+        // never prompts the user and never touches primary's verified key/peer.
+        let silent_res = tokio::select! {
+            biased;
+            _ = tp.until_closed() => return Err(RexError::Ssh("SSH connection closed".into())),
+            res = connect_and_authenticate(target, None, self.agent_cell(target), ConnectMode::Secondary { pinned, silent: true }) => res,
+        };
+        let pooled = match silent_res {
+            Ok(h) => Arc::new(h),
+            Err(why) => {
+                tracing::info!("ssh: silent secondary screen connection to {} unavailable ({why}); using primary SSH connection", target.display());
+                {
+                    let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if st.screens.is_empty() {
+                        st.screen_secondary_disabled_gen = Some(primary_gen);
+                    }
+                }
+                drop(_sec);
+                return self.session(target, askpass).await;
+            }
+        };
+
+        let sh = Arc::new(ScreenHandle { pooled, leases: AtomicUsize::new(1), unresponsive: AtomicBool::new(false) });
+        if !self.target_pool_matches_install(&tp, target, |st| st.screens.push(sh.clone())) {
+            let _ = sh.pooled.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+            return Err(RexError::Ssh("SSH connection closed".into()));
+        }
+        let lease = ScreenLease { target_pool: tp.clone(), handle: sh.clone(), released: false };
+        drop(_sec);
+
+        match Self::open_session_guarded(&tp, &sh.pooled, SSH_OPEN_TIMEOUT).await {
+            Ok(mut channel) => {
+                channel.set_screen_lease(lease);
+                Ok(channel)
+            }
+            Err(_) => {
+                drop(lease);
+                self.session(target, askpass).await
+            }
+        }
     }
 
     /// Olo's helper on the hosts, by the name of the build the app
@@ -915,9 +1506,29 @@ impl SshSessionPool {
     /// has only that, and straight to the server where it has none
     /// ([`Self::open_rex_channel`], [`dial_command`]). `None`: straight
     /// to the server everywhere.
+    ///
+    /// Disabling (`None`) or changing the helper ID immediately drops any
+    /// cached QUIC link / keeper and aborts any in-flight QUIC bootstrap for
+    /// a different helper ID (Finding 12).
     pub fn set_helper(&self, id: Option<&str>) {
-        let id = id.filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()));
-        *self.helper.lock().unwrap_or_else(|e| e.into_inner()) = id.map(str::to_owned);
+        let new_id = id.filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric())).map(str::to_owned);
+        let mut helper_guard = self.helper.lock().unwrap_or_else(|e| e.into_inner());
+        if *helper_guard == new_id {
+            return;
+        }
+        *helper_guard = new_id.clone();
+        let mut links = self.links.lock().unwrap_or_else(|e| e.into_inner());
+        match new_id {
+            None => {
+                links.retain(|_, link| matches!(link, Link::Down(_)));
+            }
+            Some(ref id) => {
+                links.retain(|_, link| match link {
+                    Link::Up { helper_id, .. } | Link::Starting { helper_id, .. } => helper_id == id,
+                    Link::Down(_) => false,
+                });
+            }
+        }
     }
 
     /// Open a bidirectional byte stream to the remote Rex server over SSH:
@@ -958,7 +1569,7 @@ impl SshSessionPool {
         let kept = async {
             let mut channel = self.session(target, askpass).await?;
             channel.agent_forward(false).await.map_err(|e| RexError::Ssh(format!("asking {} to forward the agent failed: {e}", target.display())))?;
-            channel.exec(true, format!("sh -c {}", shell_escape(AGENT_KEPT))).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+            channel.exec_and_confirm(format!("sh -c {}", shell_escape(AGENT_KEPT)), Duration::from_secs(15), &format!("exec on {} refused", target.display())).await?;
             let mut said = Vec::new();
             loop {
                 match channel.wait().await {
@@ -969,7 +1580,11 @@ impl SshSessionPool {
                             return Ok((path, channel));
                         }
                     }
-                    Some(ChannelMsg::ExitStatus { .. } | ChannelMsg::Close | ChannelMsg::Failure) | None => {
+                    Some(ChannelMsg::Close) | None => {
+                        channel.mark_peer_closed();
+                        return Err(RexError::Ssh(format!("{}’s SSH server doesn’t forward agents (AllowAgentForwarding)", target.display())));
+                    }
+                    Some(ChannelMsg::ExitStatus { .. } | ChannelMsg::Failure) => {
                         return Err(RexError::Ssh(format!("{}’s SSH server doesn’t forward agents (AllowAgentForwarding)", target.display())));
                     }
                     _ => {}
@@ -989,14 +1604,13 @@ impl SshSessionPool {
 
     pub async fn open_rex_channel(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, control: bool) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         // Over the helper's own link where there is one (UDP: `quic`);
-        // a link that fails a stream is given up for a while, and the
-        // stream goes over SSH as every stream did.
+        // a link that fails a stream is given up for a while only if it is
+        // actually dead, and the stream goes over SSH as every stream did.
         if let Some(link) = self.link(target, askpass.clone()).await {
             match link.open(control).await {
                 Ok(stream) => return Ok(stream),
                 Err(why) => {
-                    tracing::info!("ssh: {}'s link over UDP failed ({why}); its streams go over SSH", target.display());
-                    self.links.lock().await.insert(target.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
+                    self.demote_link_if_dead(target, &link, &why).await;
                 }
             }
         }
@@ -1004,6 +1618,79 @@ impl SshSessionPool {
         let helper = if control { self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone() } else { None };
         // (Longer where a further connection has to be made for it.)
         tokio::time::timeout(Duration::from_secs(30), self.channel(&handle, target, askpass, helper.as_deref())).await.map_err(|_| RexError::Timeout)?
+    }
+
+    /// Open a host Agent Screens byte stream (`follow`, `stream NAME`,
+    /// `history-stream NAME`, `history NAME`, legacy `history NAME --wire`,
+    /// `export NAME …`, `--protocol`):
+    /// - `["--protocol"]` is explicitly routed as a one-shot over SSH.
+    /// - Validated legacy `["history", NAME, "--wire"]` is routed over the
+    ///   isolated SSH screen path without touching QUIC (Finding 13).
+    /// - Valid streaming args are checked and encoded up front; disallowed
+    ///   arguments fail immediately with [`RexError::Protocol`], while valid
+    ///   selectors exceeding QUIC's 4 KiB JSON cap go straight over SSH
+    ///   without demoting the live UDP link (Finding 5).
+    /// - Over QUIC, send priority is `-1`; `Unsupported` (reset 3),
+    ///   `EmptyStartup` (pre-SCREEN helper or startup crash), and pre-dispatch
+    ///   `OpenTimeout` fall back to SSH while keeping healthy UDP alive for
+    ///   terminals, whereas post-dispatch `StartupTimeout` returns
+    ///   [`RexError::Timeout`] without re-running an already-dispatched host
+    ///   job a second time.
+    /// - Over SSH, streaming verbs try a silent dedicated screen connection
+    ///   pinned to the primary's endpoint and host key (no askpass), falling
+    ///   back transparently to the primary connection whenever a second
+    ///   connection is unavailable (Findings 6, 7, 8, 9).
+    pub async fn open_screen_stream(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, args: &[String]) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+        let helper = self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if args.len() == 1 && args[0] == "--protocol" {
+            let cmd = screen_command(helper.as_deref(), args);
+            return self.exec_io_kind(target, askpass, &cmd, ExecKind::Screen, false).await;
+        }
+        // Validated legacy binary history form (`history NAME --wire`): runs on
+        // the isolated SSH screen path without touching QUIC (Finding 13).
+        if args.len() == 3 && args[0] == "history" && args[2] == "--wire" && olo_rex_link::screen_wire::validate_quic_screen_args(&["history".to_owned(), args[1].clone()]).is_ok() {
+            let cmd = screen_command(helper.as_deref(), args);
+            return self.exec_io_kind(target, askpass, &cmd, ExecKind::Screen, true).await;
+        }
+        if let Err(e) = olo_rex_link::screen_wire::validate_quic_screen_args(args) {
+            return Err(RexError::Protocol(e.to_string()));
+        }
+        let quic_encodable = olo_rex_link::screen_wire::encode_quic_screen_args(args).is_ok();
+        if quic_encodable && let Some((link, screens_supported)) = self.link_for_screens(target, askpass.clone()).await {
+            use crate::quic::QuicScreenError;
+            match link.open_screen_checked(args, crate::quic::STREAM_OPEN_TIMEOUT).await {
+                Ok(stream) => return Ok(stream),
+                Err(QuicScreenError::Unsupported) => {
+                    tracing::info!("ssh: {}'s QUIC helper does not support screens (reset 3); using SSH for screens while keeping UDP up", target.display());
+                    screens_supported.store(false, Ordering::Release);
+                }
+                Err(QuicScreenError::EmptyStartup) => {
+                    // Either an older pre-SCREEN helper silently closed with 0-byte
+                    // FIN or the child crashed before emitting bytes (with stderr
+                    // discarded by QUIC): try validated SSH once so an eligible
+                    // helper works or surfaces the exact host stderr/exit status.
+                    tracing::info!("ssh: {}'s QUIC screen helper ended before replying; trying validated SSH once", target.display());
+                }
+                Err(QuicScreenError::Refused(code)) => {
+                    return Err(RexError::Protocol(format!("remote screen stream refused (code {code})")));
+                }
+                Err(QuicScreenError::InvalidArgs(msg)) => {
+                    return Err(RexError::Protocol(msg));
+                }
+                Err(QuicScreenError::OpenTimeout) => {
+                    self.demote_link_if_dead(target, &link, "screen stream open timed out before dispatch").await;
+                }
+                Err(QuicScreenError::StartupTimeout) => {
+                    self.demote_link_if_dead(target, &link, "screen helper startup timed out after dispatch").await;
+                    return Err(RexError::Timeout);
+                }
+                Err(QuicScreenError::Transport(why)) => {
+                    self.demote_link_if_dead(target, &link, &why).await;
+                }
+            }
+        }
+        let cmd = screen_command(helper.as_deref(), args);
+        self.exec_io_kind(target, askpass, &cmd, ExecKind::Screen, true).await
     }
 
     /// Runs `command` on the host, in a shell there, and waits for it:
@@ -1018,9 +1705,9 @@ impl SshSessionPool {
 
     /// Runs `command` like [`Self::exec`], capping stored output at
     /// `max_output` bytes per stream and each pending line at `max_line`
-    /// bytes, setting [`crate::provision::Ran::truncated`] whenever any
-    /// byte is dropped. Used solely by [`crate::manage::look`]'s tweaks
-    /// probe.
+    /// bytes, setting [`crate::provision::Ran::truncated`] and closing the SSH
+    /// channel immediately once any bound is exceeded (and keeping
+    /// [`crate::provision::Ran::stderr`] separate from `stdout`).
     pub async fn exec_bounded(
         &self,
         target: &SshTarget,
@@ -1042,29 +1729,33 @@ impl SshSessionPool {
         said: &mut (dyn FnMut(&str) + Send),
     ) -> Result<crate::provision::Ran, RexError> {
         use russh::ChannelMsg;
-        let channel = self.session(target, askpass).await?;
-        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
-        // (Whoever lets go of this before the command has ended, a
-        // step that was cancelled, has its channel closed: a channel
-        // is closed only when told to be, and the command ran on to
-        // its end on the host with nobody listening; one that waits
-        // for its input to end, to stop then, never heard. Found on
-        // the rig: an installer cancelled half way put its program
-        // there six seconds later.)
-        let (mut channel, told) = channel.split();
-        let mut let_go = CloseWhenLetGo(Some(told));
+        let mut channel = self.session(target, askpass).await?;
+        channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, &format!("exec on {} refused", target.display())).await?;
         let mut collector = ExecCollector::new(bounds);
         loop {
             match channel.wait().await {
-                Some(ChannelMsg::Data { data }) => collector.take(&data, true, said),
-                Some(ChannelMsg::ExtendedData { data, .. }) => collector.take(&data, false, said),
+                Some(ChannelMsg::Data { data }) => {
+                    collector.take(&data, true, said);
+                    if bounds.is_some() && collector.ran.truncated {
+                        break;
+                    }
+                }
+                Some(ChannelMsg::ExtendedData { data, .. }) => {
+                    collector.take(&data, false, said);
+                    if bounds.is_some() && collector.ran.truncated {
+                        break;
+                    }
+                }
                 Some(ChannelMsg::ExitStatus { exit_status }) => collector.ran.status = Some(exit_status),
-                Some(ChannelMsg::Close) | None => break,
+                Some(ChannelMsg::Close) | None => {
+                    channel.mark_peer_closed();
+                    break;
+                }
                 _ => {}
             }
         }
-        // (Ended by itself: nothing to close.)
-        let_go.0 = None;
+        // If we broke early on truncation, `channel` drops here with its guard
+        // still armed, immediately sending EOF + CLOSE on the driver runtime.
         Ok(collector.finish(said))
     }
 
@@ -1079,21 +1770,34 @@ impl SshSessionPool {
         let within = Duration::from_secs(120 + input.len() as u64 / 20_000);
         let sent = async {
             let mut channel = self.session(target, askpass).await?;
-            channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+            channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT.min(within), &format!("exec on {} refused", target.display())).await?;
             channel.data(input).await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
             channel.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
             let mut ran = crate::provision::Ran::default();
             let mut written = Vec::new();
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
             loop {
                 match channel.wait().await {
-                    Some(ChannelMsg::Data { data }) => written.extend_from_slice(&data),
-                    Some(ChannelMsg::ExtendedData { data, .. }) => written.extend_from_slice(&data),
+                    Some(ChannelMsg::Data { data }) => {
+                        written.extend_from_slice(&data);
+                        stdout.extend_from_slice(&data);
+                    }
+                    Some(ChannelMsg::ExtendedData { data, .. }) => {
+                        written.extend_from_slice(&data);
+                        stderr.extend_from_slice(&data);
+                    }
                     Some(ChannelMsg::ExitStatus { exit_status }) => ran.status = Some(exit_status),
-                    Some(ChannelMsg::Close) | None => break,
+                    Some(ChannelMsg::Close) | None => {
+                        channel.mark_peer_closed();
+                        break;
+                    }
                     _ => {}
                 }
             }
             ran.output = String::from_utf8_lossy(&written).into_owned();
+            ran.stdout = String::from_utf8_lossy(&stdout).into_owned();
+            ran.stderr = String::from_utf8_lossy(&stderr).into_owned();
             Ok(ran)
         };
         tokio::time::timeout(within, sent).await.map_err(|_| RexError::Timeout)?
@@ -1102,25 +1806,72 @@ impl SshSessionPool {
     /// A command on the host to talk with: what is written goes to its
     /// input, what it writes comes back (a program's own protocol over
     /// its input and output: Codex's server, told of copied sessions).
-    /// Let go of, its input ends and its channel goes.
+    /// Let go of, its input ends (`EOF`) and its channel closes.
+    ///
+    /// **Ending rule for command streams:**
+    /// - Any explicit failure (non-zero `ExitStatus` or `ExitSignal`) is
+    ///   returned as an `io::Error` after all received stdout bytes have been
+    ///   delivered, regardless of arrival order.
+    /// - Channel `EOF` certifies that output is complete: `EOF` followed by
+    ///   `ExitStatus(0)`, or `EOF` followed by explicit `CLOSE` (with status 0
+    ///   or with no status), ends cleanly (`Ok(0)`).
+    /// - Ending without `EOF` (lost transport, bare `CLOSE`, or dropped
+    ///   receiver) returns `io::ErrorKind::UnexpectedEof` regardless of any
+    ///   earlier `ExitStatus(0)`.
+    /// - After `EOF`, the reader waits for `ExitStatus`, `ExitSignal`, or
+    ///   `CLOSE` before returning so a failure reported after `EOF` is never
+    ///   lost. Consequently, a remote command that closes stdout/stderr and
+    ///   continues running will keep its reader waiting until it exits or the
+    ///   channel closes. All workspace callers were audited and none expects
+    ///   stdout EOF from a still-living process:
+    ///   `crates/rex/src/sync.rs` (`send_to`, `receive_from`, `fetch_index`,
+    ///   `mutate_host`, `receive_paths`, `send_paths`),
+    ///   `apps/rex/src/files_sock.rs` (`handle_read_to_cache`),
+    ///   `apps/rex/src/hub.rs` (`tell_codex`, `look_at_screen`, remote folder
+    ///   watcher), `apps/rex/src/activity_watch.rs` (`tail_command`,
+    ///   `run_host_link_within`, `follow_host_link`,
+    ///   `resolve_pane_transcript_once`), and `apps/rex/src/screens_sock.rs`
+    ///   (legacy `history --wire`, `open_screen_stream`).
     pub async fn exec_io(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
-        let channel = self.session(target, askpass).await?;
-        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
-        let writer = channel.make_writer();
-        let reader = ExecOutput::Starting(Some(channel));
-        Ok(Box::pin(tokio::io::join(reader, writer)))
+        self.exec_io_kind(target, askpass, command, ExecKind::Command, false).await
+    }
+
+    async fn exec_io_kind(
+        &self,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        command: &str,
+        kind: ExecKind,
+        isolate_screen: bool,
+    ) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+        let mut channel = if isolate_screen { self.screen_session(target, askpass).await? } else { self.session(target, askpass).await? };
+        let refused_msg = match kind {
+            ExecKind::Dial => "remote SSH server refused dial-stdio",
+            ExecKind::Screen => "remote SSH server refused screen helper",
+            ExecKind::Command => "remote SSH server refused exec",
+        };
+        channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, refused_msg).await?;
+        Ok(channel.into_exec_stream(kind))
     }
 
     /// Run a command on the host inside a remote PTY (`xterm-256color`, `cols × rows`):
     /// used for read-only `tmux attach -r -f ignore-size` viewers of nested subagents.
+    /// Waits for the server's PTY allocation reply before issuing `exec`, and
+    /// waits for the `exec` acknowledgement before returning (Findings 10 & 15).
     /// Dropping the returned stream closes the SSH channel and cleanly detaches tmux.
     pub async fn exec_pty(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, cols: u16, rows: u16, command: &str) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
-        let channel = self.session(target, askpass).await?;
-        channel.request_pty(true, "xterm-256color", u32::from(cols.max(20)), u32::from(rows.max(5)), 0, 0, &[]).await.map_err(|e| RexError::Ssh(format!("pty on {} failed: {e}", target.display())))?;
-        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
-        let writer = channel.make_writer();
-        let reader = ExecOutput::Starting(Some(channel));
-        Ok(Box::pin(tokio::io::join(reader, writer)))
+        let mut channel = self.session(target, askpass).await?;
+        tokio::time::timeout(SSH_OPEN_TIMEOUT, channel.request_pty(true, "xterm-256color", u32::from(cols.max(20)), u32::from(rows.max(5)), 0, 0, &[]))
+            .await
+            .map_err(|_| RexError::Timeout)?
+            .map_err(|e| RexError::Ssh(format!("pty on {} failed: {e}", target.display())))?;
+        match channel.wait_request_reply(SSH_OPEN_TIMEOUT).await {
+            Ok(true) => {}
+            Ok(false) => return Err(RexError::Ssh(format!("pty on {} refused by SSH server", target.display()))),
+            Err(e) => return Err(e),
+        }
+        channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, "remote SSH server refused exec").await?;
+        Ok(channel.into_exec_stream(ExecKind::Command))
     }
 
     /// [`Self::put`] for input too large to hold at once (a week of an
@@ -1137,14 +1888,11 @@ impl SshSessionPool {
         mut chunks: tokio::sync::mpsc::Receiver<Vec<u8>>,
     ) -> Result<crate::provision::Ran, RexError> {
         use russh::ChannelMsg;
-        let channel = self.session(target, askpass).await?;
-        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
-        let (mut channel, told) = channel.split();
-        let mut let_go = CloseWhenLetGo(Some(told));
+        let mut channel = self.session(target, askpass).await?;
+        channel.exec_and_confirm(command, SSH_OPEN_TIMEOUT, &format!("exec on {} refused", target.display())).await?;
         let mut refused = None;
         while let Some(chunk) = chunks.recv().await {
-            let Some(writer) = let_go.0.as_ref() else { break };
-            match tokio::time::timeout(Duration::from_secs(60), writer.data(&chunk[..])).await {
+            match tokio::time::timeout(Duration::from_secs(60), channel.data(&chunk[..])).await {
                 Ok(Ok(())) => {}
                 // (The command ended, or the link went: what it said is
                 // read below.)
@@ -1155,25 +1903,35 @@ impl SshSessionPool {
                 Err(_) => return Err(RexError::Timeout),
             }
         }
-        if refused.is_none()
-            && let Some(writer) = let_go.0.as_ref()
-        {
-            writer.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
+        if refused.is_none() {
+            channel.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
         }
         let mut ran = crate::provision::Ran::default();
         let mut written = Vec::new();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
         loop {
             match tokio::time::timeout(Duration::from_secs(120), channel.wait()).await {
-                Ok(Some(ChannelMsg::Data { data })) | Ok(Some(ChannelMsg::ExtendedData { data, .. })) => written.extend_from_slice(&data),
+                Ok(Some(ChannelMsg::Data { data })) => {
+                    written.extend_from_slice(&data);
+                    stdout.extend_from_slice(&data);
+                }
+                Ok(Some(ChannelMsg::ExtendedData { data, .. })) => {
+                    written.extend_from_slice(&data);
+                    stderr.extend_from_slice(&data);
+                }
                 Ok(Some(ChannelMsg::ExitStatus { exit_status })) => ran.status = Some(exit_status),
-                Ok(Some(ChannelMsg::Close)) | Ok(None) => break,
+                Ok(Some(ChannelMsg::Close)) | Ok(None) => {
+                    channel.mark_peer_closed();
+                    break;
+                }
                 Ok(Some(_)) => {}
                 Err(_) => return Err(RexError::Timeout),
             }
         }
-        // (Ended by itself: nothing to close.)
-        let_go.0 = None;
         ran.output = String::from_utf8_lossy(&written).into_owned();
+        ran.stdout = String::from_utf8_lossy(&stdout).into_owned();
+        ran.stderr = String::from_utf8_lossy(&stderr).into_owned();
         if let Some(refused) = refused.filter(|_| ran.output.trim().is_empty()) {
             ran.output = refused;
             ran.status.get_or_insert(1);
@@ -1181,25 +1939,22 @@ impl SshSessionPool {
         Ok(ran)
     }
 
-    async fn channel(
-        &self,
-        handle: &Handle<SshClientHandler>,
-        target: &SshTarget,
-        askpass: Option<Arc<dyn SshAskpass>>,
-        helper: Option<&str>,
-    ) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+    async fn channel(&self, pooled: &PooledHandle, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, helper: Option<&str>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         if let Some(sock) = target.socket_path.as_ref().filter(|_| helper.is_none()) {
-            match handle.channel_open_direct_streamlocal(sock.clone()).await {
-                Ok(ch) => return Ok(Box::pin(ch.into_stream())),
-                Err(e) => {
+            match tokio::time::timeout(SSH_OPEN_TIMEOUT, pooled.handle.channel_open_direct_streamlocal(sock.clone())).await {
+                Ok(Ok(ch)) => return Ok(Box::pin(ch.into_stream())),
+                Ok(Err(e)) => {
                     tracing::debug!("direct-streamlocal {sock} failed ({e}), falling back to dial-stdio");
+                }
+                Err(_) => {
+                    tracing::debug!("direct-streamlocal {sock} timed out, falling back to dial-stdio");
                 }
             }
         }
 
         // Standard Rex SSH transport: `rex __internal dial-stdio` (auto-discovers
         // remote Rex Unix socket and autostart if needed).
-        let channel = self.session(target, askpass).await?;
+        let mut channel = self.session(target, askpass).await?;
         let cmd = dial_command(target.socket_path.as_deref(), helper);
         // (Nothing can be sent behind this before the server has taken
         // it: OpenSSH's server opens a session's channel with a window
@@ -1209,94 +1964,599 @@ impl SshSessionPool {
         // rig's far host and timed against the test host, 2026-11-23;
         // not asking for the reply changes nothing, so it is asked for:
         // a server that refuses the command says so.)
-        channel.exec(true, cmd).await.map_err(|e| RexError::Ssh(format!("exec `{}` failed: {e}", target.display())))?;
-        let writer = channel.make_writer();
-        let reader = ExecOutput::Starting(Some(channel));
-        Ok(Box::pin(tokio::io::join(reader, writer)))
+        channel.exec_and_confirm(cmd, SSH_OPEN_TIMEOUT, "remote SSH server refused dial-stdio").await?;
+        Ok(channel.into_exec_stream(ExecKind::Dial))
     }
 
-    /// Lets go of a host: its link over UDP, the channel that keeps a
-    /// forwarded agent's socket there, and its SSH connections (the
-    /// first and any further), each told goodbye. Whatever is asked of
-    /// the host afterwards connects afresh. (A connection being made at
-    /// this moment is left to whoever is making it.)
+    /// Lets go of a host: its link over UDP (or in-flight bootstrap), the
+    /// channel that keeps a forwarded agent's socket there, and its SSH
+    /// connections (the primary, any further, and any screen connections),
+    /// cancelling any pending opens/connects on that host without blocking on
+    /// or stalling any other host (Findings 8 & 12).
     pub async fn close(&self, target: &SshTarget) {
         {
-            let mut links = self.links.lock().await;
-            if matches!(links.get(target), Some(Link::Up(..))) {
+            let mut links = self.links.lock().unwrap_or_else(|e| e.into_inner());
+            if matches!(links.get(target), Some(Link::Up { .. } | Link::Starting { .. })) {
                 links.remove(target);
             }
         }
         self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
-        let mut handles = self.further.lock().await.remove(target).unwrap_or_default();
-        if let Some(slot) = self.sessions.lock().await.remove(target)
-            && let Ok(mut session) = slot.try_lock()
-            && let Some(handle) = session.take()
-        {
-            handles.push(handle);
+        let mut handles = Vec::new();
+        if let Some(tp) = self.targets.lock().unwrap_or_else(|e| e.into_inner()).remove(target) {
+            let _ = tp.closed_tx.send(true);
+            let mut st = tp.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(h) = st.primary.take() {
+                handles.push(h);
+            }
+            handles.append(&mut st.further);
+            handles.extend(st.screens.drain(..).map(|s| s.pooled.clone()));
         }
-        for handle in handles {
-            let _ = handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+        for pooled in handles {
+            let _ = pooled.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
         }
     }
 
-    async fn get_or_connect(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Arc<Handle<SshClientHandler>>, RexError> {
-        let slot = self.sessions.lock().await.entry(target.clone()).or_default().clone();
-        let mut session = slot.lock().await;
-        if let Some(handle) = session.as_ref().filter(|h| !h.is_closed()) {
-            return Ok(handle.clone());
+    async fn get_or_connect(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Arc<PooledHandle>, RexError> {
+        let tp = self.target_pool(target);
+        if let Some(handle) = tp.state.lock().unwrap_or_else(|e| e.into_inner()).primary.as_ref().filter(|h| !h.is_closed()).cloned() {
+            return Ok(handle);
         }
-        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target), self.key_cell(target)).await?);
-        *session = Some(handle.clone());
+        let _guard = tp.primary_connect.lock().await;
+        if let Some(handle) = tp.state.lock().unwrap_or_else(|e| e.into_inner()).primary.as_ref().filter(|h| !h.is_closed()).cloned() {
+            return Ok(handle);
+        }
+        let handle = tokio::select! {
+            biased;
+            _ = tp.until_closed() => return Err(RexError::Ssh("SSH connection closed".into())),
+            res = connect_and_authenticate(
+                target,
+                askpass,
+                self.agent_cell(target),
+                ConnectMode::Primary { peer: self.peer_cell(target), verified: self.key_cell(target), generation: tp.generation },
+            ) => Arc::new(res?),
+        };
+        if !self.target_pool_matches_install(&tp, target, |st| {
+            st.primary = Some(handle.clone());
+            st.screen_secondary_disabled_gen = None;
+        }) {
+            let _ = handle.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+            return Err(RexError::Ssh("SSH connection closed".into()));
+        }
         Ok(handle)
     }
 }
 
-// Before the first HTTP byte, a shell's exit status explains why dial-stdio
-// didn't start. Once it replies, use russh's ordinary streaming reader.
-enum ExecOutput {
-    Starting(Option<russh::Channel<client::Msg>>),
-    Open(tokio::io::Chain<io::Cursor<bytes::Bytes>, russh::ChannelStream<client::Msg>>),
+/// Read `olo-rex-link quic`'s single-line `olo-rex-quic 1 PORT PRINT\n`
+/// announcement with a strict [`ANNOUNCE_LINE_MAX`] byte cap, scanning only
+/// newly appended bytes for `\n` (Findings 11 & 13).
+///
+/// Only marks `peer_closed` on explicit `ChannelMsg::Close` or receiver loss
+/// (`None`); `Failure` or `ExitStatus` before `Close` leaves `ChannelDropGuard`
+/// armed so dropping the channel sends `CHANNEL_CLOSE` and frees the server's
+/// `MaxSessions` slot.
+async fn read_announce_line(channel: &mut GuardedChannel) -> Result<(u16, String), &'static str> {
+    use russh::ChannelMsg;
+    let mut said = Vec::new();
+    loop {
+        match channel.wait().await {
+            Some(ChannelMsg::Data { data }) => {
+                let prev = said.len();
+                let room = ANNOUNCE_LINE_MAX.saturating_sub(prev);
+                let take = data.len().min(room);
+                said.extend_from_slice(&data[..take]);
+                if let Some(rel) = said[prev..].iter().position(|b| *b == b'\n') {
+                    let end = prev + rel;
+                    return crate::quic::announced(&String::from_utf8_lossy(&said[..end])).ok_or("the helper said something else");
+                }
+                if said.len() >= ANNOUNCE_LINE_MAX {
+                    return Err("the helper's announcement exceeded 512 bytes");
+                }
+            }
+            Some(ChannelMsg::Close) | None => {
+                channel.mark_peer_closed();
+                return Err("the host hasn't the helper with its link");
+            }
+            Some(ChannelMsg::ExitStatus { .. } | ChannelMsg::ExitSignal { .. } | ChannelMsg::Failure) => {
+                channel.mark_peer_exited();
+                return Err("the host hasn't the helper with its link");
+            }
+            _ => {}
+        }
+    }
 }
-impl AsyncRead for ExecOutput {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut ReadBuf<'_>) -> std::task::Poll<io::Result<()>> {
+
+/// Shared lifecycle flags between `ExecOutput`, `ExecWriter`, and
+/// `ChannelDropGuard` so writes fail immediately on local shutdown or peer
+/// exit/close, `EOF` is sent at most once, and a pending writer wakes
+/// promptly when the channel closes (Finding 10).
+#[derive(Default)]
+struct ExecShared {
+    shutdown_started: AtomicBool,
+    eof_sent: AtomicBool,
+    peer_exited: AtomicBool,
+    peer_closed: AtomicBool,
+    writer_waker: futures_util::task::AtomicWaker,
+}
+
+impl ExecShared {
+    fn mark_peer_exited(&self) {
+        self.peer_exited.store(true, Ordering::Release);
+        self.writer_waker.wake();
+    }
+
+    fn mark_peer_closed(&self) {
+        self.peer_closed.store(true, Ordering::Release);
+        self.peer_exited.store(true, Ordering::Release);
+        self.writer_waker.wake();
+    }
+}
+
+/// Drop guard attached to every SSH session channel from confirmation until
+/// peer close: dropping from any thread schedules `EOF` (if not already sent)
+/// and `CLOSE` on the SSH connection driver's own runtime, then releases any
+/// dedicated [`ScreenLease`] so an unused screen connection closes immediately
+/// (Findings 6, 8, 9).
+struct ChannelDropGuard {
+    write_half: Option<russh::ChannelWriteHalf<client::Msg>>,
+    shared: Arc<ExecShared>,
+    runtime: tokio::runtime::Handle,
+    screen_lease: Option<ScreenLease>,
+}
+
+impl Drop for ChannelDropGuard {
+    fn drop(&mut self) {
+        let lease = self.screen_lease.take();
+        if let Some(write_half) = self.write_half.take() {
+            if self.shared.peer_closed.load(Ordering::Acquire) {
+                if let Some(lease) = lease {
+                    self.runtime.spawn(async move {
+                        lease.release().await;
+                    });
+                }
+                return;
+            }
+            let send_eof = !self.shared.eof_sent.swap(true, Ordering::AcqRel) && !self.shared.peer_exited.load(Ordering::Acquire);
+            self.runtime.spawn(async move {
+                if send_eof {
+                    let _ = write_half.eof().await;
+                }
+                let _ = write_half.close().await;
+                if let Some(lease) = lease {
+                    lease.release().await;
+                }
+            });
+        } else if let Some(lease) = lease {
+            drop(lease);
+        }
+    }
+}
+
+/// An SSH session channel wrapped in [`ChannelDropGuard`] from the instant
+/// `channel_open_session` confirms, so cancellation or failure during `exec`,
+/// `request_pty`, `agent_forward`, or `start_link` never leaks a host session
+/// or local russh channel (Findings 6, 8, 9, 10, 11).
+struct GuardedChannel {
+    read: russh::ChannelReadHalf,
+    /// Early channel messages (e.g. `Data` / `ExtendedData` / `Eof` /
+    /// `ExitStatus`) received before `ChannelMsg::Success` during
+    /// [`Self::exec_and_confirm`], drained in order before polling `read`.
+    prefetched: VecDeque<russh::ChannelMsg>,
+    guard: ChannelDropGuard,
+}
+
+impl GuardedChannel {
+    fn new(channel: russh::Channel<client::Msg>, runtime: tokio::runtime::Handle) -> Self {
+        let (read, write_half) = channel.split();
+        let shared = Arc::new(ExecShared::default());
+        Self { read, prefetched: VecDeque::new(), guard: ChannelDropGuard { write_half: Some(write_half), shared, runtime, screen_lease: None } }
+    }
+
+    fn set_screen_lease(&mut self, lease: ScreenLease) {
+        self.guard.screen_lease = Some(lease);
+    }
+
+    fn write_half(&self) -> &russh::ChannelWriteHalf<client::Msg> {
+        self.guard.write_half.as_ref().expect("GuardedChannel write_half present")
+    }
+
+    async fn exec<A: Into<Vec<u8>>>(&self, want_reply: bool, command: A) -> Result<(), russh::Error> {
+        self.write_half().exec(want_reply, command).await
+    }
+
+    /// Send `exec(true, command)` and wait (bounded by `within`) for the
+    /// server's `ChannelMsg::Success` / `Failure` reply, preserving any early
+    /// messages that arrive ahead of `Success` (Finding 10). On `Failure`,
+    /// leaves `peer_closed` unset so dropping `GuardedChannel` closes the
+    /// channel on the server (Finding 11).
+    async fn exec_and_confirm<A: Into<Vec<u8>>>(&mut self, command: A, within: Duration, refused_msg: &str) -> Result<(), RexError> {
         use russh::ChannelMsg;
-        use std::task::{Poll, ready};
-        loop {
-            match self.as_mut().get_mut() {
-                Self::Open(stream) => return Pin::new(stream).poll_read(cx, buf),
-                Self::Starting(channel) => {
-                    let ch = channel.as_mut().expect("channel present until first response");
-                    let message = ready!(std::pin::pin!(ch.wait()).poll(cx));
-                    match message {
-                        Some(ChannelMsg::Data { data }) => {
-                            let stream = channel.take().unwrap().into_stream();
-                            *self = Self::Open(io::Cursor::new(data).chain(stream));
+        let deadline = tokio::time::Instant::now() + within;
+        tokio::time::timeout_at(deadline, self.exec(true, command)).await.map_err(|_| RexError::Timeout)?.map_err(|e| RexError::Ssh(format!("exec failed: {e}")))?;
+        let mut early_bytes = 0usize;
+        let wait_reply = async {
+            loop {
+                match self.read.wait().await {
+                    Some(ChannelMsg::Success) => return Ok(()),
+                    Some(ChannelMsg::Failure) => {
+                        self.mark_peer_exited();
+                        return Err(RexError::Ssh(refused_msg.to_owned()));
+                    }
+                    Some(ChannelMsg::Close) | None => {
+                        self.mark_peer_closed();
+                        return Err(RexError::Ssh("SSH channel closed before exec reply".into()));
+                    }
+                    Some(other) => {
+                        if let ChannelMsg::Data { ref data } | ChannelMsg::ExtendedData { ref data, .. } = other {
+                            early_bytes = early_bytes.saturating_add(data.len());
                         }
-                        Some(ChannelMsg::ExitStatus { exit_status: 127 }) => {
-                            return Poll::Ready(Err(io::Error::other("remote rex command not found; install Rex on the remote host and add it to PATH")));
+                        if self.prefetched.len() >= EXEC_PREFETCH_MSG_LIMIT || early_bytes > EXEC_PREFETCH_BYTES_LIMIT {
+                            return Err(RexError::Ssh("SSH server sent excessive data before exec reply".into()));
                         }
-                        Some(ChannelMsg::ExitStatus { exit_status }) => return Poll::Ready(Err(io::Error::other(format!("remote rex dial-stdio exited with status {exit_status}")))),
-                        Some(ChannelMsg::Failure) => return Poll::Ready(Err(io::Error::other("remote SSH server refused dial-stdio"))),
-                        Some(ChannelMsg::Close) | None => return Poll::Ready(Err(io::Error::other("remote SSH channel closed before dial-stdio replied"))),
-                        _ => {}
+                        self.prefetched.push_back(other);
                     }
                 }
+            }
+        };
+        tokio::time::timeout_at(deadline, wait_reply).await.map_err(|_| RexError::Timeout)?
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn request_pty(&self, want_reply: bool, term: &str, col_width: u32, row_height: u32, pix_width: u32, pix_height: u32, terminal_modes: &[(russh::Pty, u32)]) -> Result<(), russh::Error> {
+        self.write_half().request_pty(want_reply, term, col_width, row_height, pix_width, pix_height, terminal_modes).await
+    }
+
+    async fn agent_forward(&self, want_reply: bool) -> Result<(), russh::Error> {
+        self.write_half().agent_forward(want_reply).await
+    }
+
+    async fn data(&self, bytes: &[u8]) -> Result<(), russh::Error> {
+        self.write_half().data(bytes).await
+    }
+
+    async fn eof(&self) -> Result<(), russh::Error> {
+        self.guard.shared.shutdown_started.store(true, Ordering::Release);
+        let res = self.write_half().eof().await;
+        if res.is_ok() {
+            self.guard.shared.eof_sent.store(true, Ordering::Release);
+        }
+        res
+    }
+
+    async fn wait(&mut self) -> Option<russh::ChannelMsg> {
+        if let Some(msg) = self.prefetched.pop_front() {
+            return Some(msg);
+        }
+        self.read.wait().await
+    }
+
+    fn mark_peer_exited(&self) {
+        self.guard.shared.mark_peer_exited();
+    }
+
+    fn mark_peer_closed(&self) {
+        self.guard.shared.mark_peer_closed();
+    }
+
+    /// Wait for the server's `ChannelMsg::Success` / `Failure` reply to a
+    /// preceding `want_reply = true` request (e.g. `request_pty`, Finding 15).
+    async fn wait_request_reply(&mut self, within: Duration) -> Result<bool, RexError> {
+        use russh::ChannelMsg;
+        let fut = async {
+            loop {
+                match self.read.wait().await {
+                    Some(ChannelMsg::Success) => return Ok(true),
+                    Some(ChannelMsg::Failure) => {
+                        self.mark_peer_exited();
+                        return Ok(false);
+                    }
+                    Some(ChannelMsg::Close) | None => {
+                        self.mark_peer_closed();
+                        return Err(RexError::Ssh("SSH channel closed before request reply".into()));
+                    }
+                    Some(_) => {}
+                }
+            }
+        };
+        tokio::time::timeout(within, fut).await.map_err(|_| RexError::Timeout)?
+    }
+
+    fn into_exec_stream(self, kind: ExecKind) -> Pin<Box<dyn AsyncReadWrite + Send>> {
+        let shared = self.guard.shared.clone();
+        let writer = ExecWriter { inner: self.write_half().make_writer(), shared: shared.clone() };
+        let reader = ExecOutput {
+            read: Some(self.read),
+            prefetched: self.prefetched,
+            pending: None,
+            kind,
+            opened: false,
+            eof_seen: false,
+            done: false,
+            exit_status: None,
+            exit_signal: None,
+            stderr: Vec::new(),
+            shared,
+            _guard: self.guard,
+        };
+        Box::pin(tokio::io::join(reader, writer))
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ExecKind {
+    Dial,
+    Command,
+    Screen,
+}
+
+#[derive(Clone, Copy)]
+enum EndReason {
+    /// Both `ChannelMsg::Eof` and an explicit exit status or signal arrived.
+    EofWithStatus,
+    /// Peer sent explicit `ChannelMsg::Close`.
+    ExplicitClose,
+    /// Receiver ended (`None`) without explicit `ChannelMsg::Close`
+    /// (SSH transport lost or driver exited).
+    TransportLost,
+}
+
+/// Maximum stderr bytes retained across the lifetime of an exec stream so a
+/// failed remote command explains why it failed without unbounded buffering.
+const EXEC_STDERR_CAP: usize = 4096;
+
+struct ExecWriter<W> {
+    inner: W,
+    shared: Arc<ExecShared>,
+}
+
+impl<W: AsyncWrite + Unpin> AsyncWrite for ExecWriter<W> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<io::Result<usize>> {
+        use std::task::Poll;
+        if self.shared.shutdown_started.load(Ordering::Acquire) {
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "SSH channel stdin already shut down")));
+        }
+        if self.shared.peer_closed.load(Ordering::Acquire) || self.shared.peer_exited.load(Ordering::Acquire) {
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "SSH channel closed by peer")));
+        }
+        match Pin::new(&mut self.inner).poll_write(cx, buf) {
+            Poll::Ready(res) => Poll::Ready(res),
+            Poll::Pending => {
+                // Only pay for waker registration when actually stalled (e.g.
+                // waiting on window credit), then recheck peer state so a
+                // concurrent peer exit/close can never lose a wakeup. Note:
+                // russh's own driver ALSO wakes `ChannelTx` directly on peer
+                // CLOSE / disconnect even when nobody is reading (Finding 4).
+                self.shared.writer_waker.register(cx.waker());
+                if self.shared.peer_closed.load(Ordering::Acquire) || self.shared.peer_exited.load(Ordering::Acquire) {
+                    return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "SSH channel closed by peer")));
+                }
+                Poll::Pending
+            }
+        }
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<io::Result<()>> {
+        use std::task::Poll;
+        if self.shared.eof_sent.load(Ordering::Acquire) {
+            return Poll::Ready(Ok(()));
+        }
+        // Set `shutdown_started` BEFORE polling `inner.poll_shutdown` so even
+        // if shutdown is cancelled at `Pending`, a subsequent `poll_write`
+        // cannot complete russh's stored EOF permit (Finding 10).
+        self.shared.shutdown_started.store(true, Ordering::Release);
+        if self.shared.peer_closed.load(Ordering::Acquire) {
+            self.shared.eof_sent.store(true, Ordering::Release);
+            return Poll::Ready(Ok(()));
+        }
+        let res = std::task::ready!(Pin::new(&mut self.inner).poll_shutdown(cx));
+        if res.is_ok() {
+            self.shared.eof_sent.store(true, Ordering::Release);
+        }
+        Poll::Ready(res)
+    }
+}
+
+/// Streams bytes from an SSH exec channel with the final ending rule for
+/// `Command` / `Screen` streams (Findings 2, 3, 5):
+/// - Any non-zero `ExitStatus` or `ExitSignal` is an error after received
+///   stdout bytes, whenever it arrives (retaining bounded `ext == 1` stderr).
+/// - Channel `EOF` certifies output completeness: `EOF` + `ExitStatus(0)`, or
+///   `EOF` + explicit `CLOSE` (with status 0 or with no status), ends cleanly.
+/// - Any end without `EOF` (transport lost, bare `CLOSE`, dropped receiver)
+///   returns `UnexpectedEof` regardless of any earlier `ExitStatus(0)`.
+/// - After `EOF`, waits for `ExitStatus`, `ExitSignal`, or `CLOSE` before
+///   answering (see [`SshSessionPool::exec_io`] for the audited caller list).
+/// - Releases `read` immediately on terminal completion (`Command`/`Screen`
+///   end or `Dial` half-close `EOF`) so a kept stream never fills russh's
+///   channel buffer, while preserving duplex half-close writes on `Dial`.
+struct ExecOutput {
+    read: Option<russh::ChannelReadHalf>,
+    prefetched: VecDeque<russh::ChannelMsg>,
+    pending: Option<(bytes::Bytes, usize)>,
+    kind: ExecKind,
+    opened: bool,
+    eof_seen: bool,
+    done: bool,
+    exit_status: Option<u32>,
+    exit_signal: Option<russh::Sig>,
+    stderr: Vec<u8>,
+    shared: Arc<ExecShared>,
+    _guard: ChannelDropGuard,
+}
+
+impl ExecOutput {
+    fn format_with_stderr(&self, base: String) -> io::Error {
+        let err = String::from_utf8_lossy(&self.stderr).trim().to_owned();
+        if err.is_empty() { io::Error::other(base) } else { io::Error::other(format!("{base}: {err}")) }
+    }
+
+    fn finish_outcome(&mut self, reason: EndReason) -> io::Result<()> {
+        self.done = true;
+        // Drop the russh mpsc::Receiver immediately so no subsequent
+        // WindowAdjusted/ExitStatus/Close can fill its queue and stall the
+        // SSH packet driver while the stream is still held (Finding 2).
+        self.read = None;
+        self.prefetched.clear();
+        match self.kind {
+            ExecKind::Dial => {
+                if self.opened {
+                    return Ok(());
+                }
+                if let Some(127) = self.exit_status {
+                    return Err(io::Error::other("remote rex command not found; install Rex on the remote host and add it to PATH"));
+                }
+                if let Some(code) = self.exit_status {
+                    return Err(io::Error::other(format!("remote rex dial-stdio exited with status {code}")));
+                }
+                if let Some(sig) = &self.exit_signal {
+                    return Err(io::Error::other(format!("remote command terminated by signal {sig:?}")));
+                }
+                Err(io::Error::other("remote SSH channel closed before dial-stdio replied"))
+            }
+            ExecKind::Command | ExecKind::Screen => {
+                // 1. Explicit failure (non-zero exit status or exit signal) is
+                //    ALWAYS an error to the reader, whenever it arrived.
+                if let Some(code) = self.exit_status
+                    && code != 0
+                {
+                    if matches!(self.kind, ExecKind::Screen) && !self.opened {
+                        if code == 69 {
+                            return Err(io::Error::other("the host has no screens-capable Olo helper"));
+                        }
+                        if code == 127 {
+                            return Err(io::Error::other("Olo's helper was not found on the host"));
+                        }
+                    }
+                    let what = if matches!(self.kind, ExecKind::Screen) { "remote screen helper" } else { "remote command" };
+                    return Err(self.format_with_stderr(format!("{what} exited with status {code}")));
+                }
+                if let Some(sig) = &self.exit_signal {
+                    return Err(self.format_with_stderr(format!("remote command terminated by signal {sig:?}")));
+                }
+                // 2. Channel EOF certifies output is whole: EOF + ExitStatus(0)
+                //    or EOF + explicit CLOSE (with status 0 or none) is clean.
+                if self.eof_seen && matches!(reason, EndReason::EofWithStatus | EndReason::ExplicitClose) {
+                    return Ok(());
+                }
+                // 3. Ending without EOF (transport lost, bare CLOSE, or dropped
+                //    receiver), or losing transport after EOF before status or
+                //    CLOSE, is `UnexpectedEof` whatever status came before it.
+                let base = if self.opened { "remote SSH channel closed before command finished" } else { "remote SSH channel closed before replying" };
+                let err = String::from_utf8_lossy(&self.stderr).trim().to_owned();
+                let msg = if err.is_empty() { base.to_owned() } else { format!("{base}: {err}") };
+                Err(io::Error::new(io::ErrorKind::UnexpectedEof, msg))
             }
         }
     }
 }
 
-impl Drop for ExecOutput {
-    fn drop(&mut self) {
-        if let Self::Starting(ch) = self
-            && let Some(ch) = ch.take()
-        {
-            drop(ch.into_stream()); // ChannelStream sends SSH_MSG_CHANNEL_CLOSE on drop.
+impl AsyncRead for ExecOutput {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut ReadBuf<'_>) -> std::task::Poll<io::Result<()>> {
+        use russh::ChannelMsg;
+        use std::task::{Poll, ready};
+        let this = self.get_mut();
+        if buf.remaining() == 0 {
+            return Poll::Ready(Ok(()));
+        }
+        if let Some((data, idx)) = this.pending.as_mut() {
+            let n = buf.remaining().min(data.len() - *idx);
+            buf.put_slice(&data[*idx..*idx + n]);
+            *idx += n;
+            if *idx == data.len() {
+                this.pending = None;
+            }
+            return Poll::Ready(Ok(()));
+        }
+        if this.done {
+            return Poll::Ready(Ok(()));
+        }
+        loop {
+            let message = if let Some(msg) = this.prefetched.pop_front() {
+                Some(msg)
+            } else {
+                let Some(read) = this.read.as_mut() else {
+                    this.done = true;
+                    return Poll::Ready(Ok(()));
+                };
+                ready!(std::pin::pin!(read.wait()).poll(cx))
+            };
+            match message {
+                Some(ChannelMsg::Data { data }) => {
+                    if data.is_empty() || this.eof_seen {
+                        continue;
+                    }
+                    this.opened = true;
+                    let n = buf.remaining().min(data.len());
+                    buf.put_slice(&data[..n]);
+                    if n < data.len() {
+                        this.pending = Some((data, n));
+                    }
+                    return Poll::Ready(Ok(()));
+                }
+                Some(ChannelMsg::ExtendedData { data, ext: 1 }) if !matches!(this.kind, ExecKind::Dial) => {
+                    let room = EXEC_STDERR_CAP.saturating_sub(this.stderr.len());
+                    if room > 0 {
+                        this.stderr.extend_from_slice(&data[..data.len().min(room)]);
+                    }
+                }
+                Some(ChannelMsg::Eof) => {
+                    this.eof_seen = true;
+                    if matches!(this.kind, ExecKind::Dial) && this.opened {
+                        // Preserve duplex byte-stream half-close for dial-stdio:
+                        // drop receiver immediately (Finding 2) without marking
+                        // `peer_closed` so opposite-direction writes still work
+                        // (and russh's driver still wakes writes on peer CLOSE).
+                        this.done = true;
+                        this.read = None;
+                        return Poll::Ready(Ok(()));
+                    }
+                    if this.exit_status.is_some() || this.exit_signal.is_some() {
+                        return Poll::Ready(this.finish_outcome(EndReason::EofWithStatus));
+                    }
+                }
+                Some(ChannelMsg::ExitStatus { exit_status }) => {
+                    this.exit_status = Some(exit_status);
+                    this.shared.mark_peer_exited();
+                    if this.eof_seen && !matches!(this.kind, ExecKind::Dial) {
+                        return Poll::Ready(this.finish_outcome(EndReason::EofWithStatus));
+                    }
+                }
+                Some(ChannelMsg::ExitSignal { signal_name, .. }) => {
+                    this.exit_signal = Some(signal_name);
+                    this.shared.mark_peer_exited();
+                    if this.eof_seen && !matches!(this.kind, ExecKind::Dial) {
+                        return Poll::Ready(this.finish_outcome(EndReason::EofWithStatus));
+                    }
+                }
+                Some(ChannelMsg::Failure) => {
+                    this.shared.mark_peer_exited();
+                    this.done = true;
+                    this.read = None;
+                    let msg = match this.kind {
+                        ExecKind::Dial => "remote SSH server refused dial-stdio",
+                        ExecKind::Screen => "remote SSH server refused screen helper",
+                        ExecKind::Command => "remote SSH server refused exec",
+                    };
+                    return Poll::Ready(Err(io::Error::other(msg)));
+                }
+                Some(ChannelMsg::Close) => {
+                    this.shared.mark_peer_closed();
+                    return Poll::Ready(this.finish_outcome(EndReason::ExplicitClose));
+                }
+                None => {
+                    this.shared.mark_peer_closed();
+                    return Poll::Ready(this.finish_outcome(EndReason::TransportLost));
+                }
+                _ => {}
+            }
         }
     }
 }
 
+#[derive(Clone)]
 struct ResolvedSshConfig {
     hostname: String,
     port: u16,
@@ -1309,6 +2569,27 @@ struct ResolvedSshConfig {
     /// `Compression` in the person's SSH config, where it says.
     compression: Option<bool>,
 }
+
+/// Resolved endpoint & host identity pinned by a primary connection so every
+/// secondary (`further` or `screen`) connection dials the exact same machine
+/// and verifies the exact same host key (Finding 6).
+#[derive(Clone)]
+struct PinnedEndpoint {
+    resolved: ResolvedSshConfig,
+    peer_addr: Option<std::net::SocketAddr>,
+    verified_key: Option<String>,
+    generation: u64,
+}
+
+enum ConnectMode {
+    Primary { peer: PeerCell, verified: KeyCell, generation: u64 },
+    Secondary { pinned: PinnedEndpoint, silent: bool },
+}
+
+/// Cap connect and silent key/agent authentication on automatic secondary
+/// screen connections so a 1-connection gateway or firewall drop falls back
+/// promptly to the primary connection (Finding 7).
+const SILENT_SCREEN_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn resolve_ssh_config(target: &SshTarget) -> Result<ResolvedSshConfig, RexError> {
     let default_user = std::env::var("USER").unwrap_or_else(|_| "root".to_owned());
@@ -1437,8 +2718,14 @@ fn compresses(said: Option<bool>, knob: Option<bool>, opened_in: Option<Duration
     said.or(knob).unwrap_or_else(|| opened_in.is_none_or(|took| took >= FAR))
 }
 
-async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell, peer: PeerCell, verified: KeyCell) -> Result<Handle<SshClientHandler>, RexError> {
-    let resolved = resolve_ssh_config(target)?;
+async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell, mode: ConnectMode) -> Result<PooledHandle, RexError> {
+    let (resolved, pinned_addr, expected_key, peer, verified, silent, generation) = match mode {
+        ConnectMode::Primary { peer, verified, generation } => (resolve_ssh_config(target)?, None, None, peer, verified, false, generation),
+        ConnectMode::Secondary { pinned, silent } => {
+            let PinnedEndpoint { resolved, peer_addr, verified_key, generation } = pinned;
+            (resolved, peer_addr, verified_key, PeerCell::default(), KeyCell::default(), silent, generation)
+        }
+    };
     let mut config = client::Config::default();
     // A small write goes when it is written. russh leaves Nagle's
     // algorithm on, which holds one back until what went before it is
@@ -1480,7 +2767,7 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
     };
 
     let (waiting_tx, mut waiting) = tokio::sync::watch::channel(false);
-    let askpass = askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() });
+    let askpass = if silent { None } else { askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() }) };
     let mut handler = SshClientHandler {
         host: resolved.hostname.clone(),
         port: resolved.port,
@@ -1489,7 +2776,8 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
         came: (std::time::Instant::now(), 0),
         fixed: window_knob.is_some(),
         agent,
-        verified,
+        verified: verified.clone(),
+        expected_key: expected_key.clone(),
     };
     // (A key nobody could be asked about is its own error: what to do
     // about it is another thing than for a host that can't be reached.)
@@ -1498,6 +2786,8 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
         russh::Error::UnknownKey if unasked => RexError::SshHostUnknown(format!("{}:{}", resolved.hostname, resolved.port)),
         e => RexError::Ssh(format!("{how} failed: {e}")),
     };
+    let connected_addr: Arc<std::sync::Mutex<Option<std::net::SocketAddr>>> = Arc::new(std::sync::Mutex::new(pinned_addr));
+    let connected_addr_w = connected_addr.clone();
     let connection = async {
         if let Some(pc) = &resolved.proxy_command {
             let expanded = expand_proxy(pc, &resolved)?;
@@ -1517,9 +2807,13 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
         } else {
             // (The connection is opened here, not by russh, to know
             // how long it took: the host's name is looked up first, so
-            // that isn't counted.)
+            // that isn't counted. Secondary connections dial the exact
+            // `pinned_addr` of the primary without re-resolving DNS.)
             let failed = |e: std::io::Error| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port));
-            let addresses: Vec<std::net::SocketAddr> = tokio::net::lookup_host((resolved.hostname.as_str(), resolved.port)).await.map_err(failed)?.collect();
+            let addresses: Vec<std::net::SocketAddr> = match pinned_addr {
+                Some(addr) => vec![addr],
+                None => tokio::net::lookup_host((resolved.hostname.as_str(), resolved.port)).await.map_err(failed)?.collect(),
+            };
             let began = std::time::Instant::now();
             let stream = tokio::net::TcpStream::connect(&addresses[..]).await.map_err(failed)?;
 
@@ -1529,14 +2823,21 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
             // from its round trip, is then as on a real one.)
             let opened_in = std::env::var("OLO_REX_SSH_OPENED_IN_MS").ok().and_then(|v| v.parse().ok()).map_or(began.elapsed(), Duration::from_millis);
             handler.round_trip = Some(opened_in);
-            *peer.lock().unwrap_or_else(|e| e.into_inner()) = stream.peer_addr().ok().map(|a| (a.ip(), opened_in));
+            let peer_sock = stream.peer_addr().ok();
+            *connected_addr_w.lock().unwrap_or_else(|e| e.into_inner()) = peer_sock;
+            *peer.lock().unwrap_or_else(|e| e.into_inner()) = peer_sock.map(|a| (a.ip(), opened_in));
             stream.set_nodelay(true).map_err(failed)?;
             client::connect_stream(packed(config, Some(opened_in)), stream, handler).await.map_err(|e| failed_at(&format!("SSH connect {}:{}", resolved.hostname, resolved.port), e))
         }
     };
 
-    let session = network_timeout(resolved.connect_timeout, &mut waiting, connection).await?;
-    network_timeout(Duration::from_secs(120), &mut waiting, authenticate(session, target, &resolved, askpass)).await
+    let connect_limit = if silent { resolved.connect_timeout.min(SILENT_SCREEN_CONNECT_TIMEOUT) } else { resolved.connect_timeout };
+    let auth_limit = if silent { SILENT_SCREEN_CONNECT_TIMEOUT } else { Duration::from_secs(120) };
+    let session = network_timeout(connect_limit, &mut waiting, connection).await?;
+    let handle = network_timeout(auth_limit, &mut waiting, authenticate(session, target, &resolved, askpass)).await?;
+    let peer_addr = *connected_addr.lock().unwrap_or_else(|e| e.into_inner());
+    let verified_key = expected_key.or_else(|| verified.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|v| v.key.clone()));
+    Ok(PooledHandle { handle, runtime: tokio::runtime::Handle::current(), pinned: PinnedEndpoint { resolved, peer_addr, verified_key, generation } })
 }
 
 fn expand_proxy(command: &str, resolved: &ResolvedSshConfig) -> Result<String, RexError> {
@@ -1741,6 +3042,104 @@ fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
          run \"$d/olo-rex-link-{id}-$m\"; \
          for L in $(ls -t \"$d\"/olo-rex-link-*-\"$m\" 2> /dev/null); do run \"$L\"; done; \
          exec {dial}"
+    );
+    format!("sh -c {}", shell_escape(&script))
+}
+
+/// What is run on the host over SSH for an Agent Screens command or stream
+/// ([`SshSessionPool::open_screen_stream`] and one-shot `olo-rex-link screen`
+/// commands): prefers the app's own build of the helper (`helper`, from
+/// [`SshSessionPool::set_helper`]), else the newest eligible other build for
+/// this machine in `helper::DIR` (selected from quoted glob matches with
+/// `[ -nt ]`, never word-splitting `ls` output).
+///
+/// Each candidate is verified to be an account-owned regular file whose
+/// `PATH=/dev/null "$1" screen --protocol </dev/null 2>/dev/null` exits 0 and
+/// emits valid JSON carrying `"proto": <digit>` and a `"commands": [...]`
+/// array (allowing arbitrary JSON whitespace around `:` and `[`); for the
+/// streaming verbs (`follow`, `stream`, `history-stream`, `export`, and 2-arg
+/// `history NAME`), membership is tested strictly inside the `"commands"`
+/// array (never `"capabilities"`). For non-streaming commands (`--protocol`,
+/// one-shot CLI verbs, and legacy `history NAME --wire`), a `--protocol`-capable
+/// helper always wins over a newer help-only build, falling back to a legacy
+/// `screen --help` (`"usage: olo screen"*`) helper only when no
+/// `--protocol`-capable build exists on the host. Exits with status 69 if no
+/// eligible helper is found.
+///
+/// Mirrors `olo-rex-link`'s QUIC `SCREEN` dispatch by rewriting 2-arg
+/// `history NAME` to `history-stream NAME` so both transports speak the same
+/// binary wire protocol, and quotes every argument for the remote POSIX shell
+/// via [`shell_escape`].
+pub fn screen_command(helper: Option<&str>, args: &[String]) -> String {
+    let dir = crate::helper::DIR;
+    let helper = helper.filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()));
+    let streaming_verb = match args.first().map(String::as_str) {
+        Some("follow") => Some("follow"),
+        Some("stream") => Some("stream"),
+        Some("history-stream") => Some("history-stream"),
+        Some("history") if args.len() == 2 => Some("history-stream"),
+        Some("export") => Some("export"),
+        _ => None,
+    };
+    let mut quoted = String::new();
+    for (i, arg) in args.iter().enumerate() {
+        let arg = if i == 0 && arg == "history" && args.len() == 2 { "history-stream" } else { arg.as_str() };
+        quoted.push(' ');
+        quoted.push_str(&shell_escape(arg));
+    }
+    let verb_match = streaming_verb.map(|v| format!("case \"$cmds\" in *'\"{v}\"'*) ;; *) return 1 ;; esac; ")).unwrap_or_default();
+    let preferred_proto = helper.map(|id| format!("if probe_proto \"$d/olo-rex-link-{id}-$m\"; then exec \"$d/olo-rex-link-{id}-$m\" screen{quoted}; fi; ")).unwrap_or_default();
+    let legacy_fallback = if streaming_verb.is_none() {
+        let preferred_legacy = helper.map(|id| format!("if probe_legacy \"$d/olo-rex-link-{id}-$m\"; then exec \"$d/olo-rex-link-{id}-$m\" screen{quoted}; fi; ")).unwrap_or_default();
+        format!(
+            "probe_legacy() {{ \
+               [ -f \"$1\" ] && [ -O \"$1\" ] || return 1; \
+               case \"$(PATH=/dev/null \"$1\" screen --help </dev/null 2>/dev/null)\" in \"usage: olo screen\"*) return 0 ;; esac; \
+               return 1; \
+             }}; \
+             {preferred_legacy}\
+             best=\"\"; \
+             for p in \"$d\"/olo-rex-link-*-\"$m\"; do \
+               if probe_legacy \"$p\"; then \
+                 if [ -z \"$best\" ] || [ \"$p\" -nt \"$best\" ]; then best=\"$p\"; fi; \
+               fi; \
+             done; \
+             if [ -n \"$best\" ]; then exec \"$best\" screen{quoted}; fi; "
+        )
+    } else {
+        String::new()
+    };
+    // Pure POSIX `sh` JSON field extractor for `"proto": <digit>` and the
+    // `"commands": [...]` slice (allows spaces, tabs, CR, LF around `:`/`[`).
+    let skip_ws = "while :; do case \"$r\" in \" \"*|\"\t\"*|\"\r\"*|\"\n\"*) r=${r#?} ;; *) break ;; esac; done";
+    let script = format!(
+        "d=\"$HOME\"/{dir}; m=$(uname -m); \
+         probe_proto() {{ \
+           [ -f \"$1\" ] && [ -O \"$1\" ] || return 1; \
+           out=$(PATH=/dev/null \"$1\" screen --protocol </dev/null 2>/dev/null) || return 1; \
+           r=${{out#*'\"proto\"'}}; [ \"$r\" != \"$out\" ] || return 1; \
+           {skip_ws}; \
+           case \"$r\" in :*) r=${{r#:}} ;; *) return 1 ;; esac; \
+           {skip_ws}; \
+           case \"$r\" in [0-9]*) ;; *) return 1 ;; esac; \
+           r=${{out#*'\"commands\"'}}; [ \"$r\" != \"$out\" ] || return 1; \
+           {skip_ws}; \
+           case \"$r\" in :*) r=${{r#:}} ;; *) return 1 ;; esac; \
+           {skip_ws}; \
+           case \"$r\" in '['*) r=${{r#'['}} ;; *) return 1 ;; esac; \
+           cmds=${{r%%']'*}}; [ \"$cmds\" != \"$r\" ] || return 1; \
+           {verb_match}return 0; \
+         }}; \
+         {preferred_proto}\
+         best=\"\"; \
+         for p in \"$d\"/olo-rex-link-*-\"$m\"; do \
+           if probe_proto \"$p\"; then \
+             if [ -z \"$best\" ] || [ \"$p\" -nt \"$best\" ]; then best=\"$p\"; fi; \
+           fi; \
+         done; \
+         if [ -n \"$best\" ]; then exec \"$best\" screen{quoted}; fi; \
+         {legacy_fallback}\
+         exit 69"
     );
     format!("sh -c {}", shell_escape(&script))
 }
@@ -2076,5 +3475,1471 @@ mod dial_tests {
         let capped_ran = capped.finish(&mut |_| {});
         assert!(capped_ran.truncated, "bounded exec must report truncation when total output cap is hit");
         assert_eq!(capped_ran.stdout, "01234567890123456789\n");
+    }
+
+    /// Findings 7 & 15a: `screen_command` probes `screen --protocol` with
+    /// `PATH=/dev/null` and `</dev/null`, rejects old released helpers that
+    /// print `"usage: olo screen"` on `--help` without supporting streaming
+    /// verbs, never invokes an external `screen` binary or consumes queued
+    /// client stdin during probing, sorts eligible builds by mtime without
+    /// word-splitting filenames containing spaces, maps `history NAME` to
+    /// `history-stream NAME`, quotes every argument literally, and exits 69
+    /// when no capable helper exists.
+    #[test]
+    fn screen_command_selects_screens_capable_helper_and_quotes_args() {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::{Command, Stdio};
+
+        let dir = crate::quic::TestTempDir::new("olo-scmd");
+        let home = dir.path().join("home with spaces");
+        let there = home.join(crate::helper::DIR);
+        let fake_path_dir = dir.path().join("fake-bin");
+        std::fs::create_dir_all(&there).unwrap();
+        std::fs::create_dir_all(&fake_path_dir).unwrap();
+        let script = |path: &std::path::Path, body: &str| {
+            std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let screen_marker = dir.path().join("external-screen-ran");
+        script(&fake_path_dir.join("screen"), &format!("echo ran > {}; exit 0", shell_escape(&screen_marker.display().to_string())));
+
+        // Full streaming-capable helper (implements `screen --protocol` and echoes stdin).
+        let capable_helper = |name: &str, verbs: &str| {
+            format!(
+                "if [ \"$1\" = screen ] && [ \"$2\" = --protocol ]; then printf '{{\"proto\":1,\"commands\":[{verbs}],\"capabilities\":[]}}\\n'; exit 0; fi; \
+                 printf '{name}:'; for a in \"$@\"; do printf ' [%s]' \"$a\"; done; \
+                 in=$(cat); if [ -n \"$in\" ]; then printf ' stdin=[%s]' \"$in\"; fi; echo"
+            )
+        };
+        // Real old released helper (`1d97c88af`): prints `"usage: olo screen"` on `--help`,
+        // forwards unknown verbs (like `--protocol`) to non-existent `olo-screen` (exits 1).
+        let old_olo_cli_helper = "if [ \"$1\" = screen ] && [ \"$2\" = --help ]; then echo 'usage: olo screen install ...'; exit 0; fi; exit 1";
+        // Even older pre-screens helper that runs external `screen` from PATH and reads stdin.
+        let ancient_helper = "cat >/dev/null; exec screen \"$@\"";
+
+        let machine = String::from_utf8(Command::new("uname").arg("-m").output().unwrap().stdout).unwrap().trim().to_owned();
+        let file = |id: &str| there.join(format!("olo-rex-link-{id}-{machine}"));
+        let path_env = format!("{}:/usr/bin:/bin", fake_path_dir.display());
+        let run_with_stdin = |command: &str, stdin_bytes: &[u8]| {
+            let mut child = Command::new("sh").arg("-c").arg(command).env("HOME", &home).env("PATH", &path_env).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+            if !stdin_bytes.is_empty() {
+                child.stdin.take().unwrap().write_all(stdin_bytes).unwrap();
+            } else {
+                drop(child.stdin.take());
+            }
+            let out = child.wait_with_output().unwrap();
+            (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        };
+        let run = |command: &str| run_with_stdin(command, b"");
+
+        // 1. No helper at all -> exit 69.
+        assert_eq!(run(&screen_command(Some("cur"), &["follow".into()])), (69, String::new()));
+
+        // 2. Old released Olo helper (`usage: olo screen`, no `--protocol`) + ancient
+        //    helper that execs `screen` and drains stdin -> both skipped, fake `screen`
+        //    NEVER executed, exit 69.
+        script(&file("oldcli"), old_olo_cli_helper);
+        script(&file("ancient"), ancient_helper);
+        assert_eq!(run_with_stdin(&screen_command(Some("oldcli"), &["follow".into()]), b"queued-input"), (69, String::new()));
+        assert!(!screen_marker.exists(), "probe must never execute external `screen` from PATH");
+
+        // 3. Helper advertising only `follow` is skipped when asking for `stream qa`,
+        //    but accepted when asking for `follow`.
+        script(&file("followonly"), &capable_helper("followonly", "\"follow\""));
+        assert_eq!(run(&screen_command(Some("followonly"), &["stream".into(), "qa".into()])), (69, String::new()));
+        assert_eq!(run(&screen_command(Some("followonly"), &["follow".into()])), (0, "followonly: [screen] [follow]".to_owned()));
+
+        // 4. Preferred capable build wins over newer other build, passes queued stdin
+        //    intact (probing used `</dev/null`), maps `history NAME` -> `history-stream NAME`,
+        //    and quotes shell metacharacters literally.
+        let all_verbs = "\"follow\",\"stream\",\"history-stream\",\"export\"";
+        script(&file("cur"), &capable_helper("cur", all_verbs));
+        script(&file("other"), &capable_helper("other", all_verbs));
+        std::fs::File::options().write(true).open(file("cur")).unwrap().set_modified(std::time::SystemTime::now() - Duration::from_secs(3600)).unwrap();
+        assert_eq!(run(&screen_command(Some("cur"), &["--protocol".into()])), (0, format!("{{\"proto\":1,\"commands\":[{all_verbs}],\"capabilities\":[]}}")));
+        assert_eq!(run(&screen_command(Some("cur"), &["history".into(), "qa".into()])), (0, "cur: [screen] [history-stream] [qa]".to_owned()));
+        assert_eq!(run(&screen_command(Some("cur"), &["export".into(), "qa".into(), "--part".into(), "1-2,$(id);'x'".into()])), (0, "cur: [screen] [export] [qa] [--part] [1-2,$(id);'x']".to_owned()));
+        assert_eq!(run_with_stdin(&screen_command(Some("cur"), &["stream".into(), "qa".into()]), b"queued-input"), (0, "cur: [screen] [stream] [qa] stdin=[queued-input]".to_owned()));
+        assert!(!screen_marker.exists(), "probe must never execute external `screen` from PATH");
+
+        // 5. Fallback mtime selection across TWO eligible builds — flip mtime both ways
+        //    so removing `[ "$p" -nt "$best" ]` fails the test (Finding 7).
+        std::fs::remove_file(file("cur")).unwrap();
+        std::fs::remove_file(file("followonly")).unwrap();
+        script(&file("alpha"), &capable_helper("alpha", all_verbs));
+        script(&file("beta"), &capable_helper("beta", all_verbs));
+        let now = std::time::SystemTime::now();
+        std::fs::File::options().write(true).open(file("other")).unwrap().set_modified(now - Duration::from_secs(7200)).unwrap();
+        std::fs::File::options().write(true).open(file("alpha")).unwrap().set_modified(now - Duration::from_secs(600)).unwrap();
+        std::fs::File::options().write(true).open(file("beta")).unwrap().set_modified(now - Duration::from_secs(60)).unwrap();
+        assert_eq!(run(&screen_command(None, &["follow".into()])), (0, "beta: [screen] [follow]".to_owned()));
+        std::fs::File::options().write(true).open(file("beta")).unwrap().set_modified(now - Duration::from_secs(1200)).unwrap();
+        assert_eq!(run(&screen_command(None, &["follow".into()])), (0, "alpha: [screen] [follow]".to_owned()));
+
+        // 6. Finding 15a: eligible helper whose basename contains a space is NOT word-split.
+        for id in ["alpha", "beta", "other"] {
+            std::fs::remove_file(file(id)).unwrap();
+        }
+        script(&file("with space"), &capable_helper("spaced", all_verbs));
+        assert_eq!(run(&screen_command(None, &["follow".into()])), (0, "spaced: [screen] [follow]".to_owned()));
+        assert!(!screen_marker.exists());
+    }
+
+    #[tokio::test]
+    async fn open_screen_stream_rejects_disallowed_args_before_connecting() {
+        let pool = Arc::new(SshSessionPool::default());
+        // Unreachable target: if validation didn't reject upfront, this would
+        // try to connect and return an SSH connect error instead of Protocol.
+        let target = SshTarget::parse("ssh://nobody@127.0.0.1:1").unwrap();
+        for bad in [vec![], vec!["remove".into()], vec!["follow".into(), "extra".into()], vec!["stream".into(), "../bad".into()], vec!["export".into(), "qa".into(), "--out".into(), "/tmp/x".into()]] {
+            let err = pool.open_screen_stream(&target, None, &bad).await.err().expect("disallowed args must fail");
+            let expected = olo_rex_link::screen_wire::validate_quic_screen_args(&bad).unwrap_err().to_string();
+            assert!(matches!(err, RexError::Protocol(ref msg) if msg == &expected), "for {bad:?}: got {err:?}, expected Protocol({expected:?})");
+        }
+    }
+}
+
+/// Deterministic in-process `russh::server` tests covering Findings 8, 10, 11,
+/// 13 (bounded bootstrap announcement), 14 (local channel table count), 15b
+/// (`exec_pty` refused PTY), Test Finding 2 (exact EOF/CLOSE counts across
+/// double shutdown + drop beside a sibling channel), and Test Finding 4
+/// (byte-for-byte non-repeating integrity under 1- to 3-byte reads + stderr).
+#[cfg(test)]
+mod round3_mock_server_tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    struct TestClient;
+    impl client::Handler for TestClient {
+        type Error = russh::Error;
+        async fn check_server_key(&mut self, _key: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
+            Ok(true)
+        }
+    }
+
+    #[derive(Default)]
+    struct MockStats {
+        eof_count: AtomicUsize,
+        close_count: AtomicUsize,
+        data_after_eof: AtomicUsize,
+        exec_called: AtomicBool,
+        active_sessions: AtomicUsize,
+        max_sessions: AtomicUsize,
+        open_delay_ms: AtomicUsize,
+        never_confirm: AtomicBool,
+        deny_pty: AtomicBool,
+        no_window_refill: AtomicBool,
+        received_bytes: AtomicUsize,
+        writer_blocked_notify: tokio::sync::Notify,
+        received_on_dial: std::sync::Mutex<Vec<u8>>,
+        eof_channels: std::sync::Mutex<std::collections::HashSet<russh::ChannelId>>,
+        mode_by_channel: std::sync::Mutex<HashMap<russh::ChannelId, String>>,
+    }
+
+    struct MockServer {
+        stats: Arc<MockStats>,
+    }
+
+    impl russh::server::Server for MockServer {
+        type Handler = MockHandler;
+        fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self::Handler {
+            MockHandler { stats: self.stats.clone() }
+        }
+    }
+
+    struct MockHandler {
+        stats: Arc<MockStats>,
+    }
+
+    impl russh::server::Handler for MockHandler {
+        type Error = russh::Error;
+
+        async fn auth_none(&mut self, _user: &str) -> Result<russh::server::Auth, Self::Error> {
+            Ok(russh::server::Auth::Accept)
+        }
+
+        async fn channel_open_session(
+            &mut self,
+            channel: russh::Channel<russh::server::Msg>,
+            reply: russh::server::ChannelOpenHandle,
+            _session: &mut russh::server::Session,
+        ) -> Result<(), Self::Error> {
+            if self.stats.never_confirm.load(Ordering::SeqCst) {
+                // Hold the open handle without confirming or rejecting (Finding 10).
+                tokio::spawn(async move {
+                    let _keep = (channel, reply);
+                    std::future::pending::<()>().await;
+                });
+                return Ok(());
+            }
+            let max = self.stats.max_sessions.load(Ordering::SeqCst);
+            let cur = self.stats.active_sessions.fetch_add(1, Ordering::SeqCst);
+            if max > 0 && cur >= max {
+                self.stats.active_sessions.fetch_sub(1, Ordering::SeqCst);
+                reply.reject(russh::ChannelOpenFailure::ResourceShortage).await;
+                return Ok(());
+            }
+            let delay = self.stats.open_delay_ms.load(Ordering::SeqCst) as u64;
+            let _id = channel.id();
+            if delay > 0 {
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    reply.accept().await;
+                });
+            } else {
+                reply.accept().await;
+            }
+            Ok(())
+        }
+
+        fn adjust_window(&mut self, _channel: russh::ChannelId, current: u32) -> u32 {
+            if self.stats.no_window_refill.load(Ordering::SeqCst) || (self.stats.close_count.load(Ordering::SeqCst) > 0 && current <= 4096) { 0 } else { current }
+        }
+
+        async fn pty_request(
+            &mut self,
+            channel: russh::ChannelId,
+            _term: &str,
+            _col_width: u32,
+            _row_height: u32,
+            _pix_width: u32,
+            _pix_height: u32,
+            _modes: &[(russh::Pty, u32)],
+            session: &mut russh::server::Session,
+        ) -> Result<(), Self::Error> {
+            if self.stats.deny_pty.load(Ordering::SeqCst) {
+                session.channel_failure(channel)?;
+            } else {
+                session.channel_success(channel)?;
+            }
+            Ok(())
+        }
+
+        async fn exec_request(&mut self, channel: russh::ChannelId, data: &[u8], session: &mut russh::server::Session) -> Result<(), Self::Error> {
+            self.stats.exec_called.store(true, Ordering::SeqCst);
+            let cmd = String::from_utf8_lossy(data).into_owned();
+            self.stats.mode_by_channel.lock().unwrap().insert(channel, cmd.clone());
+            match cmd.as_str() {
+                "refuse_exec_leave_open" => {
+                    session.channel_failure(channel)?;
+                    return Ok(());
+                }
+                "hang_exec" => {
+                    // Deliberately never send CHANNEL_SUCCESS or CHANNEL_FAILURE (Finding 10).
+                    return Ok(());
+                }
+                "early_data_before_success" => {
+                    // Send early stdout BEFORE CHANNEL_SUCCESS (Finding 10).
+                    session.data(channel, bytes::Bytes::from_static(b"early-"))?;
+                    session.channel_success(channel)?;
+                    let handle = session.handle();
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"after")).await;
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        let _ = handle.close(channel).await;
+                    });
+                    return Ok(());
+                }
+                _ => {
+                    session.channel_success(channel)?;
+                }
+            }
+            let handle = session.handle();
+            match cmd.as_str() {
+                "echo" => {}
+                "pty_ok" => {
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"pty-ready\n")).await;
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "status_before_data" => {
+                    // Finding 11: ExitStatus(3) arrives BEFORE stderr and stdout!
+                    tokio::spawn(async move {
+                        let _ = handle.exit_status_request(channel, 3).await;
+                        let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"late-stderr\n")).await;
+                        let _ = handle.extended_data(channel, 2, bytes::Bytes::from_static(b"ignored-ext2\n")).await;
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"late-stdout")).await;
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "signal_with_stderr" => {
+                    tokio::spawn(async move {
+                        let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"oom stderr\n")).await;
+                        let _ = handle.exit_signal_request(channel, russh::Sig::TERM, false, String::new(), String::new()).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "close_no_status_with_stderr" => {
+                    tokio::spawn(async move {
+                        let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"abrupt stderr\n")).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "eof_then_illegal_data_and_status0_no_close" => {
+                    // Finding 11: EOF, illegal DATA after EOF, ExitStatus(0), NO CLOSE.
+                    tokio::spawn(async move {
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"MUST-NOT-APPEAR")).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        // Deliberately do NOT send Close yet — reader must still return Ok(0)!
+                    });
+                }
+                "data_exit0_disconnect_before_eof" => {
+                    // Finding 2: Data + ExitStatus(0) + transport disconnect BEFORE EOF/CLOSE.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"truncated-prefix")).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        let _ = handle.disconnect(russh::Disconnect::ConnectionLost, "lost".to_owned(), "en".to_owned()).await;
+                    });
+                }
+                "data_exit0_bare_close_no_eof" => {
+                    // Finding 2 / Rule 3: Data + ExitStatus(0) + bare CLOSE without EOF.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"prefix-no-eof")).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "data_eof_close_no_status" => {
+                    // Findings 3 & 5: complete `agent request` JSON refusal + EOF + CLOSE with NO exit status.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"{\"ok\":false,\"error\":\"refused by policy\"}\n")).await;
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "data_eof_exit3" => {
+                    // Rule 1 & 4: Data + EOF + ExitStatus(3) + CLOSE.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"partial-body")).await;
+                        let _ = handle.eof(channel).await;
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"failed late\n")).await;
+                        let _ = handle.exit_status_request(channel, 3).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "data_eof_disconnect_no_status" => {
+                    // Rule 4: Data + EOF + transport lost before status or CLOSE.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"partial-eof")).await;
+                        let _ = handle.eof(channel).await;
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        let _ = handle.disconnect(russh::Disconnect::ConnectionLost, "lost".to_owned(), "en".to_owned()).await;
+                    });
+                }
+                "dial_half_close" => {
+                    // Finding 10: peer sends banner + EOF (half-close), keeps reading stdin.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"hi")).await;
+                        let _ = handle.eof(channel).await;
+                    });
+                }
+                "dial_half_close_then_peer_close_on_fill" => {
+                    // Finding 4: peer sends banner + EOF, waits until client uploads >= 4096 bytes, then sends CLOSE.
+                    let stats = self.stats.clone();
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"hi")).await;
+                        let _ = handle.eof(channel).await;
+                        while stats.received_bytes.load(Ordering::SeqCst) < 4096 {
+                            let notified = stats.writer_blocked_notify.notified();
+                            if stats.received_bytes.load(Ordering::SeqCst) >= 4096 {
+                                break;
+                            }
+                            notified.await;
+                        }
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "close_on_window_fill" => {
+                    // Finding 4: deterministically wait until client uploads >= 256 KiB
+                    // (generating > 100 WINDOW_ADJUST on a 4 KiB window with no reader),
+                    // then send CHANNEL_CLOSE.
+                    let stats = self.stats.clone();
+                    tokio::spawn(async move {
+                        while stats.received_bytes.load(Ordering::SeqCst) < 256 * 1024 {
+                            let notified = stats.writer_blocked_notify.notified();
+                            if stats.received_bytes.load(Ordering::SeqCst) >= 256 * 1024 {
+                                break;
+                            }
+                            notified.await;
+                        }
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "close_after_zero_credit_wait" => {
+                    // Finding 4 & 15b: server starts with 0 window credit (no refill),
+                    // lets client park in zero-credit wait / pending_data, then sends CLOSE.
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(120)).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "close_immediately_with_credit" => {
+                    // Finding 4: close channel immediately while client still has unused credit.
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(30)).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "close_while_writing" => {
+                    // Finding 10: wait briefly while client fills write window, then Close channel.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"go")).await;
+                        tokio::time::sleep(Duration::from_millis(80)).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "flood_bounded" => {
+                    // Emits both stdout & stderr, then floods until client closes channel on truncation.
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"same-line\nout-line\n")).await;
+                        let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"same-line\nerr-line\n")).await;
+                        let chunk = bytes::Bytes::from(vec![b'Z'; 8192]);
+                        for _ in 0..1000 {
+                            if handle.data(channel, chunk.clone()).await.is_err() {
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_millis(5)).await;
+                        }
+                    });
+                }
+                "stdout_and_stderr_identical" => {
+                    tokio::spawn(async move {
+                        let _ = handle.data(channel, bytes::Bytes::from_static(b"dup\nonly-out\n")).await;
+                        let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"dup\nonly-err\n")).await;
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                "exit_status_no_close" => {
+                    // Finding 11: ExitStatus(127) without Close.
+                    tokio::spawn(async move {
+                        let _ = handle.exit_status_request(channel, 127).await;
+                    });
+                }
+                "long_banner" => {
+                    // Finding 13: stream > 512 bytes with no newline on quic announce.
+                    tokio::spawn(async move {
+                        let chunk = bytes::Bytes::from(vec![b'A'; 1024]);
+                        let _ = handle.data(channel, chunk.clone()).await;
+                        let _ = handle.data(channel, chunk).await;
+                    });
+                }
+                "integrity_stream" => {
+                    // Test Finding 4: 64 KiB non-repeating payload in irregular chunks
+                    // interleaved with stderr, ending in ExitStatus(0).
+                    tokio::spawn(async move {
+                        let mut state: u64 = 0x1234_5678_9abc_def0;
+                        let mut full = Vec::with_capacity(65536);
+                        for _ in 0..65536 {
+                            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                            full.push((state >> 56) as u8);
+                        }
+                        let mut off = 0usize;
+                        let mut step = 13usize;
+                        while off < full.len() {
+                            let end = (off + step).min(full.len());
+                            let _ = handle.data(channel, bytes::Bytes::copy_from_slice(&full[off..end])).await;
+                            if off % 4096 < step {
+                                let _ = handle.extended_data(channel, 1, bytes::Bytes::from_static(b"progress\n")).await;
+                            }
+                            off = end;
+                            step = (step * 3 + 7) % 1021 + 1;
+                        }
+                        let _ = handle.eof(channel).await;
+                        let _ = handle.exit_status_request(channel, 0).await;
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+
+        async fn data(&mut self, channel: russh::ChannelId, data: &[u8], session: &mut russh::server::Session) -> Result<(), Self::Error> {
+            if self.stats.eof_channels.lock().unwrap().contains(&channel) {
+                self.stats.data_after_eof.fetch_add(1, Ordering::SeqCst);
+            }
+            let mode = self.stats.mode_by_channel.lock().unwrap().get(&channel).cloned().unwrap_or_default();
+            if mode == "echo" {
+                session.data(channel, bytes::Bytes::copy_from_slice(data))?;
+            } else if mode == "dial_half_close" {
+                self.stats.received_on_dial.lock().unwrap().extend_from_slice(data);
+            } else if mode == "close_on_window_fill" || mode == "dial_half_close_then_peer_close_on_fill" {
+                self.stats.received_bytes.fetch_add(data.len(), Ordering::SeqCst);
+                self.stats.writer_blocked_notify.notify_waiters();
+            }
+            Ok(())
+        }
+
+        async fn channel_eof(&mut self, channel: russh::ChannelId, _session: &mut russh::server::Session) -> Result<(), Self::Error> {
+            self.stats.eof_count.fetch_add(1, Ordering::SeqCst);
+            self.stats.eof_channels.lock().unwrap().insert(channel);
+            Ok(())
+        }
+
+        async fn channel_close(&mut self, channel: russh::ChannelId, _session: &mut russh::server::Session) -> Result<(), Self::Error> {
+            self.stats.close_count.fetch_add(1, Ordering::SeqCst);
+            self.stats.active_sessions.fetch_sub(1, Ordering::SeqCst);
+            self.stats.mode_by_channel.lock().unwrap().remove(&channel);
+            Ok(())
+        }
+    }
+
+    async fn start_mock_ssh(stats: Arc<MockStats>, initial_window: u32) -> (russh::client::Handle<TestClient>, tokio::task::JoinHandle<()>) {
+        use russh::server::Server as _;
+        let seed = crate::quic::new_token().unwrap();
+        let key = russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&seed));
+        let mut cfg = russh::server::Config::default();
+        cfg.keys.push(key);
+        cfg.window_size = initial_window;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let srv_task = tokio::spawn(async move {
+            let mut srv = MockServer { stats };
+            let _ = srv.run_on_socket(Arc::new(cfg), &listener).await;
+        });
+        let client_cfg = Arc::new(client::Config::default());
+        let tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut handle = client::connect_stream(client_cfg, tcp, TestClient).await.unwrap();
+        assert!(handle.authenticate_none("tester").await.unwrap().success());
+        (handle, srv_task)
+    }
+
+    /// Findings 8 & 14: cancelling `channel_open_session` before delayed
+    /// confirmation closes the channel on a 1-slot server and leaves `(0, 0)`
+    /// entries in russh's channel tables so the next open succeeds immediately.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelled_channel_open_frees_single_slot_and_leaks_zero_channels() {
+        let stats = Arc::new(MockStats::default());
+        stats.max_sessions.store(1, Ordering::SeqCst);
+        stats.open_delay_ms.store(120, Ordering::SeqCst);
+        let (handle, srv) = start_mock_ssh(stats.clone(), 256 * 1024).await;
+
+        // Cancel mid-open while server delays CHANNEL_OPEN_CONFIRMATION.
+        assert!(tokio::time::timeout(Duration::from_millis(25), handle.channel_open_session()).await.is_err());
+
+        // Wait for the delayed confirmation + russh's automatic CLOSE to complete.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while (stats.close_count.load(Ordering::SeqCst) == 0 || handle.open_channel_count().await.unwrap() != (0, 0)) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(15)).await;
+        }
+        assert_eq!(stats.close_count.load(Ordering::SeqCst), 1, "cancelled open must send CHANNEL_CLOSE");
+        assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0), "cancelled open must leak zero russh channels");
+
+        // Now the single slot is free and a second channel opens cleanly!
+        stats.open_delay_ms.store(0, Ordering::SeqCst);
+        let ch = handle.channel_open_session().await.expect("1-slot server must admit next channel after cancelled open");
+        let rt = tokio::runtime::Handle::current();
+        let guarded = GuardedChannel::new(ch, rt);
+        drop(guarded);
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while handle.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+        srv.abort();
+    }
+
+    /// Finding 10 & Test Finding 2: write after shutdown fails with BrokenPipe
+    /// (zero DATA after EOF), double shutdown + drop sends EXACTLY 1 EOF and 1
+    /// CLOSE while a sibling channel keeps echoing, peer EOF alone still allows
+    /// writes in the opposite direction, and peer CLOSE wakes a stalled writer
+    /// with BrokenPipe.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exec_writer_shutdown_double_eof_half_close_and_peer_close_wakeup() {
+        let stats = Arc::new(MockStats::default());
+        // Small server receive window (4 KiB) so the stalled-writer test exhausts
+        // credit immediately and waits on WindowAdjust until peer sends CLOSE.
+        let (handle, srv) = start_mock_ssh(stats.clone(), 4096).await;
+        let rt = tokio::runtime::Handle::current();
+
+        // Sibling echo channel kept open throughout on the SAME SSH connection.
+        let sib_ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        sib_ch.exec(true, "echo").await.unwrap();
+        let mut sibling = sib_ch.into_exec_stream(ExecKind::Command);
+
+        // 1. Double shutdown + write-after-shutdown + drop => exactly 1 EOF, 1 CLOSE, 0 DATA after EOF.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "echo").await.unwrap();
+        let mut s = ch.into_exec_stream(ExecKind::Command);
+        s.shutdown().await.unwrap();
+        s.shutdown().await.unwrap();
+        let err = s.write(b"after-eof").await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        drop(s);
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while stats.close_count.load(Ordering::SeqCst) < 1 && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(stats.eof_count.load(Ordering::SeqCst), 1, "must send exactly ONE EOF across double shutdown + drop");
+        assert_eq!(stats.close_count.load(Ordering::SeqCst), 1, "must send exactly ONE CLOSE");
+        assert_eq!(stats.data_after_eof.load(Ordering::SeqCst), 0, "must never enqueue DATA after EOF");
+        // Sibling echo still works on the same connection.
+        sibling.write_all(b"sib").await.unwrap();
+        let mut sb = [0u8; 3];
+        sibling.read_exact(&mut sb).await.unwrap();
+        assert_eq!(&sb, b"sib");
+
+        // 2. Peer EOF alone on Dial still permits writes in the opposite direction.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "dial_half_close").await.unwrap();
+        let mut dial = ch.into_exec_stream(ExecKind::Dial);
+        let mut out = Vec::new();
+        dial.read_to_end(&mut out).await.unwrap();
+        assert_eq!(out, b"hi");
+        dial.write_all(b"upload-after-peer-eof").await.unwrap();
+        dial.shutdown().await.unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while stats.received_on_dial.lock().unwrap().as_slice() != b"upload-after-peer-eof" && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(stats.received_on_dial.lock().unwrap().as_slice(), b"upload-after-peer-eof");
+        drop(dial);
+
+        // 3. Pending writer stalled on 0 window credit wakes with BrokenPipe when peer closes.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "close_while_writing").await.unwrap();
+        let stream = ch.into_exec_stream(ExecKind::Command);
+        let (mut r, mut w) = tokio::io::split(stream);
+        let mut go = [0u8; 2];
+        r.read_exact(&mut go).await.unwrap();
+        let reader_task = tokio::spawn(async move {
+            let mut rest = Vec::new();
+            let _ = r.read_to_end(&mut rest).await;
+        });
+        let big = vec![b'X'; 32 * 1024];
+        let write_err = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                w.write_all(&big).await?;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), io::Error>(())
+        })
+        .await
+        .expect("writer must wake on peer CLOSE instead of hanging forever")
+        .unwrap_err();
+        assert_eq!(write_err.kind(), io::ErrorKind::BrokenPipe, "expected BrokenPipe, got: {write_err:?}");
+        let _ = reader_task.await;
+        drop(w);
+
+        drop(sibling);
+        srv.abort();
+    }
+
+    /// Finding 11 & Test Finding 4: out-of-order status before data/stderr,
+    /// stderr retained on ExitSignal and Close-without-status, ext!=1 ignored,
+    /// EOF+ExitStatus(0) finishes without waiting for Close while ignoring
+    /// illegal post-EOF DATA, and 64 KiB byte-for-byte integrity with 1-3 byte reads.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exec_output_packet_ordering_stderr_and_byte_for_byte_integrity() {
+        let stats = Arc::new(MockStats::default());
+        let (handle, srv) = start_mock_ssh(stats, 256 * 1024).await;
+        let rt = tokio::runtime::Handle::current();
+
+        // 1. ExitStatus(3) BEFORE stderr + stdout -> stdout delivered, stderr kept, ext=2 ignored.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "status_before_data").await.unwrap();
+        let mut s = ch.into_exec_stream(ExecKind::Command);
+        let mut out = Vec::new();
+        let err = s.read_to_end(&mut out).await.unwrap_err().to_string();
+        assert_eq!(out, b"late-stdout", "stdout arriving after ExitStatus must not be lost");
+        assert!(err.contains('3') && err.contains("late-stderr") && !err.contains("ignored-ext2"), "got: {err}");
+
+        // 2. ExitSignal preserves retained stderr.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "signal_with_stderr").await.unwrap();
+        let mut s = ch.into_exec_stream(ExecKind::Command);
+        let mut out = Vec::new();
+        let err = s.read_to_end(&mut out).await.unwrap_err().to_string();
+        assert!(err.contains("TERM") && err.contains("oom stderr"), "got: {err}");
+
+        // 3. Close without status preserves retained stderr and returns UnexpectedEof.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "close_no_status_with_stderr").await.unwrap();
+        let mut s = ch.into_exec_stream(ExecKind::Command);
+        let mut out = Vec::new();
+        let err = s.read_to_end(&mut out).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+        assert!(err.to_string().contains("abrupt stderr"), "got: {err}");
+
+        // 4. EOF + illegal DATA + ExitStatus(0) with NO Close -> clean Ok(0) immediately, no illegal bytes!
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        ch.exec(true, "eof_then_illegal_data_and_status0_no_close").await.unwrap();
+        let mut s = ch.into_exec_stream(ExecKind::Command);
+        let mut out = Vec::new();
+        tokio::time::timeout(Duration::from_secs(2), s.read_to_end(&mut out)).await.expect("EOF + ExitStatus(0) must finish without waiting for Close").unwrap();
+        assert!(out.is_empty(), "illegal post-EOF DATA must never be delivered: {out:?}");
+
+        // 5. Test Finding 4: 64 KiB non-repeating byte stream read in 1-, 2-, 3-byte chunks + interleaved stderr.
+        let ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt);
+        ch.exec(true, "integrity_stream").await.unwrap();
+        let mut s = ch.into_exec_stream(ExecKind::Command);
+        let mut got = Vec::with_capacity(65536);
+        let mut sizes = [1usize, 2, 3].into_iter().cycle();
+        let mut scratch = [0u8; 3];
+        loop {
+            let want = sizes.next().unwrap();
+            let n = s.read(&mut scratch[..want]).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            got.extend_from_slice(&scratch[..n]);
+        }
+        let mut expected = Vec::with_capacity(65536);
+        let mut state: u64 = 0x1234_5678_9abc_def0;
+        for _ in 0..65536 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            expected.push((state >> 56) as u8);
+        }
+        assert_eq!(got, expected, "every byte of non-repeating stream must match under 1-3 byte reads");
+
+        srv.abort();
+    }
+
+    /// Finding 15b & Finding 13: denied PTY never sends `exec` and reports PTY
+    /// refusal; oversized `quic` bootstrap announcement (> 512 bytes without
+    /// newline) is rejected immediately without buffering unbounded output.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn refused_pty_skips_exec_and_bootstrap_announcement_is_bounded() {
+        let stats = Arc::new(MockStats::default());
+        stats.deny_pty.store(true, Ordering::SeqCst);
+        let (handle, srv) = start_mock_ssh(stats.clone(), 256 * 1024).await;
+        let rt = tokio::runtime::Handle::current();
+
+        // 1. Finding 15b: PTY refused -> wait_request_reply returns Ok(false), exec is never sent.
+        let mut pty_ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+        pty_ch.request_pty(true, "xterm-256color", 80, 24, 0, 0, &[]).await.unwrap();
+        assert!(!pty_ch.wait_request_reply(Duration::from_secs(2)).await.unwrap());
+        assert!(!stats.exec_called.load(Ordering::SeqCst), "exec must never be sent after refused PTY");
+        drop(pty_ch);
+
+        // 2. Finding 13: oversized bootstrap banner (> 512 bytes without '\n') rejected immediately.
+        let mut boot_ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt);
+        boot_ch.exec(true, "long_banner").await.unwrap();
+        let err = tokio::time::timeout(Duration::from_secs(2), read_announce_line(&mut boot_ch)).await.expect("bounded announce read must not wait 5s").unwrap_err();
+        assert!(err.contains("512"), "expected 512-byte cap error, got: {err}");
+        drop(boot_ch);
+
+        srv.abort();
+    }
+
+    /// Finding 5b: `demote_link_if_dead` never demotes a still-alive link and
+    /// never lets a stale dead link A overwrite a freshly installed link B.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn demote_link_if_dead_preserves_healthy_and_fresh_links() {
+        let Some(bin) = crate::quic::find_test_helper(&std::env::current_exe().unwrap()) else { return };
+        let scratch = crate::quic::TestTempDir::new("olo-f5b");
+        for sub in ["home", "run", "state", "desktop"] {
+            std::fs::create_dir_all(scratch.path().join(sub)).unwrap();
+        }
+        let token = crate::quic::new_token().unwrap();
+        let mut child = tokio::process::Command::new(&bin)
+            .args(["quic", "--", "cat"])
+            .env("HOME", scratch.path().join("home"))
+            .env("XDG_RUNTIME_DIR", scratch.path().join("run"))
+            .env("XDG_STATE_HOME", scratch.path().join("state"))
+            .env("OLO_HOST_DESKTOP", scratch.path().join("desktop"))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(format!("{}\n", crate::quic::hex(&token)).as_bytes()).await.unwrap();
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(10), tokio::io::AsyncBufReadExt::read_line(&mut tokio::io::BufReader::new(child.stdout.take().unwrap()), &mut line)).await.unwrap().unwrap();
+        let (port, print) = crate::quic::announced(&line).unwrap();
+        let addr = (std::net::Ipv4Addr::LOCALHOST, port).into();
+
+        let link_a = Arc::new(crate::quic::QuicLink::connect(addr, &print, token).await.unwrap());
+        let link_b = Arc::new(crate::quic::QuicLink::connect(addr, &print, token).await.unwrap());
+        let stats = Arc::new(MockStats::default());
+        let (ssh_h, srv) = start_mock_ssh(stats, 65536).await;
+        let rt = tokio::runtime::Handle::current();
+        let keeper = GuardedChannel::new(ssh_h.channel_open_session().await.unwrap(), rt);
+
+        let pool = SshSessionPool::default();
+        let target = SshTarget::parse("ssh://tester@127.0.0.1:22").unwrap();
+        let target_gen = pool.target_pool(&target).generation;
+        pool.links.lock().unwrap().insert(target.clone(), Link::Up { link: link_b.clone(), keeper, helper_id: "h1".into(), target_gen, screens_supported: Arc::new(AtomicBool::new(true)) });
+
+        // 1. Healthy link_b failing one stream MUST NOT demote Link::Up.
+        pool.demote_link_if_dead(&target, &link_b, "stream refused").await;
+        assert!(pool.linked(&target).await, "healthy link must never be demoted");
+
+        // 2. Stale dead link_a reporting failure MUST NOT overwrite freshly installed link_b.
+        link_a.close_now();
+        assert!(!link_a.alive());
+        pool.demote_link_if_dead(&target, &link_a, "stale link died").await;
+        assert!(pool.linked(&target).await, "stale dead link A must not overwrite fresh link B");
+
+        // 3. When link_b itself actually dies, demote_link_if_dead transitions to Down.
+        link_b.close_now();
+        pool.demote_link_if_dead(&target, &link_b, "link_b died").await;
+        assert!(!pool.linked(&target).await);
+
+        drop((link_a, link_b, stdin, pool));
+        let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+        srv.abort();
+    }
+
+    /// Connect an `SshClientHandler` (pinned by `expected_key`, zero `$HOME`
+    /// access!) to a mock `russh::server` and install it as the primary
+    /// `PooledHandle` in `pool` so tests exercise the REAL public pool methods.
+    async fn attach_mock_primary(pool: &SshSessionPool, target: &SshTarget, stats: Arc<MockStats>, initial_window: u32) -> (Arc<PooledHandle>, tokio::task::JoinHandle<()>) {
+        use russh::server::Server as _;
+        let seed = crate::quic::new_token().unwrap();
+        let key = russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&seed));
+        let pub_openssh = key.public_key().to_openssh().unwrap().split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+        let mut cfg = russh::server::Config::default();
+        cfg.keys.push(key);
+        cfg.window_size = initial_window;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let srv_task = tokio::spawn(async move {
+            let mut srv = MockServer { stats };
+            let _ = srv.run_on_socket(Arc::new(cfg), &listener).await;
+        });
+        let client_cfg = Arc::new(client::Config::default());
+        let tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let handler = SshClientHandler {
+            host: "127.0.0.1".into(),
+            port: addr.port(),
+            askpass: None,
+            round_trip: Some(Duration::from_millis(1)),
+            came: (std::time::Instant::now(), 0),
+            fixed: false,
+            agent: AgentCell::default(),
+            verified: KeyCell::default(),
+            expected_key: Some(pub_openssh.clone()),
+        };
+        let mut handle = client::connect_stream(client_cfg, tcp, handler).await.unwrap();
+        assert!(handle.authenticate_none("tester").await.unwrap().success());
+        let tp = pool.target_pool(target);
+        let pooled = Arc::new(PooledHandle {
+            handle,
+            runtime: tokio::runtime::Handle::current(),
+            pinned: PinnedEndpoint {
+                resolved: ResolvedSshConfig {
+                    hostname: "127.0.0.1".into(),
+                    port: addr.port(),
+                    user: "tester".into(),
+                    identity_files: Vec::new(),
+                    keepalive_secs: 0,
+                    keepalive_max: 3,
+                    connect_timeout: Duration::from_secs(5),
+                    proxy_command: None,
+                    compression: None,
+                },
+                peer_addr: Some(addr),
+                verified_key: Some(pub_openssh),
+                generation: tp.generation,
+            },
+        });
+        tp.state.lock().unwrap().primary = Some(pooled.clone());
+        (pooled, srv_task)
+    }
+
+    /// Findings 2, 3, 5: verify every line of the final Command/Screen ending rule:
+    /// - data + exit 0 + disconnect before EOF -> UnexpectedEof (never clean!)
+    /// - data + exit 0 + bare CLOSE without EOF -> UnexpectedEof (never clean!)
+    /// - data + EOF + CLOSE with NO exit status (`agent request` refusal) -> clean Ok with full reply!
+    /// - data + EOF + exit 3 -> waits past EOF and returns Err with status 3 + stderr
+    /// - data + EOF + disconnect before status/CLOSE -> UnexpectedEof
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn final_ending_rule_all_packet_orders() {
+        let rt = tokio::runtime::Handle::current();
+
+        // 1. Finding 2: Data + ExitStatus(0) + transport disconnect BEFORE EOF -> UnexpectedEof!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 65536).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("data_exit0_disconnect_before_eof", Duration::from_secs(2), "refused").await.unwrap();
+            let mut s = ch.into_exec_stream(ExecKind::Command);
+            let mut out = Vec::new();
+            let err = s.read_to_end(&mut out).await.expect_err("exit 0 + disconnect before EOF MUST NOT certify prefix");
+            assert_eq!(out, b"truncated-prefix");
+            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof, "got: {err:?}");
+            srv.abort();
+        }
+
+        // 2. Rule 3: Data + ExitStatus(0) + bare CLOSE without EOF -> UnexpectedEof!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 65536).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("data_exit0_bare_close_no_eof", Duration::from_secs(2), "refused").await.unwrap();
+            let mut s = ch.into_exec_stream(ExecKind::Command);
+            let mut out = Vec::new();
+            let err = s.read_to_end(&mut out).await.expect_err("exit 0 + bare CLOSE without EOF MUST fail");
+            assert_eq!(out, b"prefix-no-eof");
+            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof, "got: {err:?}");
+            srv.abort();
+        }
+
+        // 3. Findings 3 & 5: Data + EOF + CLOSE with NO ExitStatus (`agent request` refusal shape) -> clean Ok!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 65536).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("data_eof_close_no_status", Duration::from_secs(2), "refused").await.unwrap();
+            let mut s = ch.into_exec_stream(ExecKind::Command);
+            let mut reply = String::new();
+            s.read_to_string(&mut reply).await.expect("EOF + CLOSE without optional exit status MUST succeed");
+            assert_eq!(reply, "{\"ok\":false,\"error\":\"refused by policy\"}\n");
+            srv.abort();
+        }
+
+        // 4. Rules 1 & 4: Data + EOF + ExitStatus(3) + CLOSE -> waits past EOF and reports status 3 + stderr!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 65536).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("data_eof_exit3", Duration::from_secs(2), "refused").await.unwrap();
+            let mut s = ch.into_exec_stream(ExecKind::Command);
+            let mut out = Vec::new();
+            let err = s.read_to_end(&mut out).await.expect_err("exit 3 after EOF must fail").to_string();
+            assert_eq!(out, b"partial-body");
+            assert!(err.contains('3') && err.contains("failed late"), "got: {err}");
+            srv.abort();
+        }
+
+        // 5. Rule 4: Data + EOF + transport lost before status or CLOSE -> UnexpectedEof!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 65536).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt);
+            ch.exec_and_confirm("data_eof_disconnect_no_status", Duration::from_secs(2), "refused").await.unwrap();
+            let mut s = ch.into_exec_stream(ExecKind::Command);
+            let mut out = Vec::new();
+            let err = s.read_to_end(&mut out).await.expect_err("disconnect after EOF without status or CLOSE must fail");
+            assert_eq!(out, b"partial-eof");
+            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof, "got: {err:?}");
+            srv.abort();
+        }
+    }
+
+    /// Finding 4 & Test Finding 2: peer CLOSE wakes a zero-credit blocked writer
+    /// AND fails subsequent writes with leftover credit when NOBODY is reading,
+    /// and ALSO wakes a `Dial` writer after its reader finished on peer EOF!
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn final_f4_writer_fails_on_peer_close_without_reader_and_after_dial_eof() {
+        let rt = tokio::runtime::Handle::current();
+
+        // 1a. Writer alone (NO reader!) deterministically parked in TRUE zero-credit wait
+        //     (`initial_window == 0`, verified still pending at 60 ms), then server sends
+        //     CHANNEL_CLOSE at 120 ms -> writer wakes and fails with BrokenPipe within 1 s!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 0).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("close_after_zero_credit_wait", Duration::from_secs(2), "refused").await.unwrap();
+            let stream = ch.into_exec_stream(ExecKind::Command);
+            let (_unread, mut w) = tokio::io::split(stream);
+            let mut write_task = tokio::spawn(async move { w.write_all(b"blocked-on-zero-credit").await });
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            assert!(!write_task.is_finished(), "writer must genuinely be blocked in zero-credit wait before peer CLOSE");
+            let err = tokio::time::timeout(Duration::from_secs(1), &mut write_task)
+                .await
+                .expect("zero-credit blocked writer with no reader must fail within 1s on peer CLOSE")
+                .unwrap()
+                .expect_err("write must error");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe, "got: {err:?}");
+            srv.abort();
+        }
+
+        // 1b. Write-before-read upload flooding > 256 KiB (> 100 WINDOW_ADJUST on a 4 KiB
+        //     window) with NOBODY reading: peer CLOSE must NOT deadlock behind full
+        //     WindowAdjusted queue and must fail writer within 1 s with BrokenPipe!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats.clone(), 4096).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("close_on_window_fill", Duration::from_secs(2), "refused").await.unwrap();
+            let stream = ch.into_exec_stream(ExecKind::Command);
+            let (_unread, mut w) = tokio::io::split(stream);
+            let payload = vec![b'U'; 16 * 1024];
+            let err = tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    w.write_all(&payload).await?;
+                }
+                #[allow(unreachable_code)]
+                Ok::<(), io::Error>(())
+            })
+            .await
+            .expect("upload with >100 WindowAdjusted and no reader must fail within 1s on peer CLOSE")
+            .expect_err("write must error");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe, "got: {err:?}");
+            assert!(stats.received_bytes.load(Ordering::SeqCst) >= 256 * 1024);
+            srv.abort();
+        }
+
+        // 2. Writer alone with UNUSED credit: peer sends CHANNEL_CLOSE -> next write
+        //    immediately returns BrokenPipe (does not silently accept and discard).
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats, 65536).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch.exec_and_confirm("close_immediately_with_credit", Duration::from_secs(2), "refused").await.unwrap();
+            let stream = ch.into_exec_stream(ExecKind::Command);
+            let (_unread, mut w) = tokio::io::split(stream);
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while handle.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+            let err = w.write(b"must-not-be-silently-dropped").await.expect_err("write after peer CLOSE must fail even with leftover credit");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+            srv.abort();
+        }
+
+        // 3. Dial writer AFTER reader finished on peer EOF (dropping ChannelReadHalf):
+        //    peer EOF alone stays writable, then peer CLOSE fails writer within 1 s!
+        {
+            let stats = Arc::new(MockStats::default());
+            stats.no_window_refill.store(true, Ordering::SeqCst);
+            let (handle, srv) = start_mock_ssh(stats.clone(), 4096).await;
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt);
+            ch.exec_and_confirm("dial_half_close_then_peer_close_on_fill", Duration::from_secs(2), "refused").await.unwrap();
+            let mut dial = ch.into_exec_stream(ExecKind::Dial);
+            let mut banner = Vec::new();
+            dial.read_to_end(&mut banner).await.unwrap();
+            assert_eq!(banner, b"hi");
+            // Reader has finished and dropped ChannelReadHalf; peer EOF alone must stay writable!
+            dial.write_all(b"still-writable").await.unwrap();
+            let payload = vec![b'D'; 16 * 1024];
+            let err = tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    dial.write_all(&payload).await?;
+                }
+                #[allow(unreachable_code)]
+                Ok::<(), io::Error>(())
+            })
+            .await
+            .expect("dial writer after reader EOF must fail within 1s on peer CLOSE")
+            .expect_err("write must error");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe, "got: {err:?}");
+            assert!(stats.received_bytes.load(Ordering::SeqCst) >= 4096);
+            srv.abort();
+        }
+    }
+
+    /// Findings 9 (dup reply), 10 (no detached OPEN task, bounded EXEC ack,
+    /// early data preserved), 11 (refused bootstrap / exit before close),
+    /// 15a (unclaimed open confirmation & plain-thread `into_stream` drop),
+    /// 15b (peer CLOSE with pending outbound data does not wedge sibling;
+    /// closing-ID wraparound reservation), Test Finding 3 (public `exec_pty`
+    /// & `open_channel_count` error), and `Ran.stderr` + `exec_bounded` early close.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn final_f9_f10_f11_f15_public_pty_and_bounded_stderr() {
+        let rt = tokio::runtime::Handle::current();
+
+        // 1. Test Finding 3: REAL public `pool.exec_pty` refused vs accepted!
+        {
+            let pool = SshSessionPool::default();
+            let target = SshTarget::parse("ssh://tester@127.0.0.1:2201").unwrap();
+            let stats = Arc::new(MockStats::default());
+            stats.deny_pty.store(true, Ordering::SeqCst);
+            let (_pooled, srv) = attach_mock_primary(&pool, &target, stats.clone(), 65536).await;
+
+            let err = pool.exec_pty(&target, None, 80, 24, "pty_ok").await.err().expect("refused PTY must error").to_string();
+            assert!(err.contains("pty"), "got: {err}");
+            assert!(!stats.exec_called.load(Ordering::SeqCst), "public exec_pty MUST NOT send EXEC when PTY is refused");
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while pool.open_channel_count(&target).await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(pool.open_channel_count(&target).await.unwrap(), (0, 0));
+
+            stats.deny_pty.store(false, Ordering::SeqCst);
+            let mut s = pool.exec_pty(&target, None, 80, 24, "pty_ok").await.expect("accepted PTY must succeed");
+            let mut out = String::new();
+            s.read_to_string(&mut out).await.unwrap();
+            assert_eq!(out, "pty-ready\n");
+
+            // Test Finding 3: `open_channel_count` returns Err on a dead handle (never false `(0, 0)`).
+            _pooled.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await.unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let mut saw_err = false;
+            while std::time::Instant::now() < deadline {
+                if pool.open_channel_count(&target).await.is_err() {
+                    saw_err = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(saw_err, "open_channel_count must propagate error from a disconnected handle");
+            srv.abort();
+        }
+
+        // 2. Extra request: `Ran.stderr` separates identical stdout/stderr lines
+        //    and `exec_bounded` closes the channel immediately on truncation!
+        {
+            let pool = SshSessionPool::default();
+            let target = SshTarget::parse("ssh://tester@127.0.0.1:2202").unwrap();
+            let stats = Arc::new(MockStats::default());
+            let (_pooled, srv) = attach_mock_primary(&pool, &target, stats.clone(), 65536).await;
+
+            let ran = pool.exec_bounded(&target, None, "stdout_and_stderr_identical", 4096, 1024, &mut |_| {}).await.unwrap();
+            assert!(!ran.truncated);
+            assert_eq!(ran.status, Some(0));
+            assert_eq!(ran.stdout, "dup\nonly-out\n");
+            assert_eq!(ran.stderr, "dup\nonly-err\n");
+
+            let t0 = std::time::Instant::now();
+            let trunc = pool.exec_bounded(&target, None, "flood_bounded", 64, 64, &mut |_| {}).await.unwrap();
+            assert!(trunc.truncated, "bounded flood must mark truncated");
+            assert!(t0.elapsed() < Duration::from_secs(1), "exec_bounded must close channel immediately on bound hit, took {:?}", t0.elapsed());
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while pool.open_channel_count(&target).await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(pool.open_channel_count(&target).await.unwrap(), (0, 0));
+            srv.abort();
+        }
+
+        // 3. Finding 10: timed-out OPEN leaves ZERO detached task holding `PooledHandle`,
+        //    unanswered EXEC times out, and early data before CHANNEL_SUCCESS is preserved!
+        {
+            let pool = SshSessionPool::default();
+            let target = SshTarget::parse("ssh://tester@127.0.0.1:2203").unwrap();
+            let stats = Arc::new(MockStats::default());
+            let (pooled, srv) = attach_mock_primary(&pool, &target, stats.clone(), 65536).await;
+            let tp = pool.target_pool(&target);
+
+            // 3a. Server never confirms OPEN -> timeout leaves Arc strong count unchanged (zero detached task!).
+            stats.never_confirm.store(true, Ordering::SeqCst);
+            let before_refs = Arc::strong_count(&pooled);
+            let res = SshSessionPool::open_session_guarded(&tp, &pooled, Duration::from_millis(80)).await;
+            assert!(matches!(res, Err(SessionOpenErr::Timeout)));
+            assert_eq!(Arc::strong_count(&pooled), before_refs, "timed-out OPEN must leave zero detached tasks holding PooledHandle");
+
+            // 3b. Server confirms OPEN, never replies to EXEC -> `exec_and_confirm` times out and drops cleanly.
+            stats.never_confirm.store(false, Ordering::SeqCst);
+            let mut ch = SshSessionPool::open_session_guarded(&tp, &pooled, Duration::from_secs(2)).await.ok().unwrap();
+            let err = ch.exec_and_confirm("hang_exec", Duration::from_millis(120), "refused").await.unwrap_err();
+            assert!(matches!(err, RexError::Timeout), "unanswered EXEC must time out, got: {err:?}");
+            drop(ch);
+
+            // 3c. Early DATA arriving before CHANNEL_SUCCESS is preserved verbatim!
+            let mut s = pool.exec_io(&target, None, "early_data_before_success").await.unwrap();
+            let mut out = String::new();
+            s.read_to_string(&mut out).await.unwrap();
+            assert_eq!(out, "early-after");
+            srv.abort();
+        }
+
+        // 4. Finding 11 & Finding 9 (no duplicate Reply::ChannelOpenFailure):
+        //    1-slot server refuses exec / sends ExitStatus without Close -> guard stays
+        //    armed, frees the sole slot, and repeated ChannelOpenFailure leaves 0 queued replies!
+        {
+            let stats = Arc::new(MockStats::default());
+            stats.max_sessions.store(1, Ordering::SeqCst);
+            let (handle, srv) = start_mock_ssh(stats.clone(), 65536).await;
+
+            // 4a. Refused exec (`Failure`) leaves close guard armed -> slot freed.
+            let mut ch = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            assert!(ch.exec_and_confirm("refuse_exec_leave_open", Duration::from_secs(2), "refused").await.is_err());
+            drop(ch);
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while handle.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+
+            // 4b. ExitStatus(127) without Close in `read_announce_line` leaves guard armed -> slot freed!
+            let mut ch2 = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch2.exec_and_confirm("exit_status_no_close", Duration::from_secs(2), "refused").await.unwrap();
+            assert!(read_announce_line(&mut ch2).await.is_err());
+            drop(ch2);
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while handle.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+
+            // 4c. Finding 9: 10 refused opens leave 0 unread Reply::ChannelOpenFailure on Handle::receiver!
+            let _held = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            for _ in 0..10 {
+                assert!(matches!(handle.channel_open_session().await, Err(russh::Error::ChannelOpenFailure(_))));
+            }
+            assert_eq!(handle.pending_reply_count_for_test(), 0, "CHANNEL_OPEN_FAILURE must not leak unread replies");
+            drop(_held);
+            srv.abort();
+        }
+
+        // 5. Finding 15a: plain-thread `into_stream()` drop never panics AND
+        //    dropping `channel_open_session` AFTER confirmation was already queued
+        //    closes the unclaimed channel synchronously via `UnclaimedOpenGuard`!
+        {
+            let stats = Arc::new(MockStats::default());
+            stats.max_sessions.store(1, Ordering::SeqCst);
+            let (handle, srv) = start_mock_ssh(stats.clone(), 65536).await;
+
+            // 5a. Plain OS thread drop of `into_stream()` must NOT panic and must close the channel.
+            let ch = handle.channel_open_session().await.unwrap();
+            let stream = ch.into_stream();
+            std::thread::spawn(move || drop(stream)).join().expect("plain-thread into_stream drop must not panic");
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while (stats.close_count.load(Ordering::SeqCst) < 1 || handle.open_channel_count().await.unwrap() != (0, 0)) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+
+            // 5b. Unclaimed open confirmation: poll future ONCE to send Msg::ChannelOpenSession,
+            //     wait for server to confirm (so ChannelMsg::Open sits in receiver unread),
+            //     then DROP the future without polling again -> UnclaimedOpenGuard closes it!
+            {
+                let mut open_fut = Box::pin(handle.channel_open_session());
+                let waker = futures_util::task::noop_waker();
+                let mut cx = std::task::Context::from_waker(&waker);
+                assert!(open_fut.as_mut().poll(&mut cx).is_pending(), "first poll submits open and awaits confirmation");
+                // Wait until server confirmed (active_sessions == 1) and confirmation reached client driver.
+                let wait_until = std::time::Instant::now() + Duration::from_secs(2);
+                while stats.active_sessions.load(Ordering::SeqCst) < 1 && std::time::Instant::now() < wait_until {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                // Drop WITHOUT polling again — confirmation is already queued inside `receiver`!
+                drop(open_fut);
+            }
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while (stats.close_count.load(Ordering::SeqCst) < 2 || handle.open_channel_count().await.unwrap() != (0, 0)) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(stats.close_count.load(Ordering::SeqCst), 2, "UnclaimedOpenGuard must close already-confirmed unclaimed channel");
+            assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+            // Single slot is free again!
+            let next = GuardedChannel::new(handle.channel_open_session().await.expect("1-slot server must admit next open"), rt.clone());
+            drop(next);
+            srv.abort();
+        }
+
+        // 6. Finding 15b: peer CLOSE on a 0-window channel with genuine `pending_data`
+        //    MUST discard pending data and NEVER freeze sibling channels; `rekey_soon`
+        //    prunes closed channels; and near-wraparound allocation skips closing IDs!
+        {
+            let stats = Arc::new(MockStats::default());
+            let (handle, srv) = start_mock_ssh(stats.clone(), 0).await;
+
+            // Open channel A with 0 peer window, enqueue raw data directly into
+            // `enc.channels[A].pending_data` (making `has_any_pending_data() == true`),
+            // and let server send CHANNEL_CLOSE without any WINDOW_ADJUST!
+            let mut ch_a = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            ch_a.exec_and_confirm("close_after_zero_credit_wait", Duration::from_secs(2), "refused").await.unwrap();
+            let id_a = ch_a.write_half().id();
+            handle.send_raw_channel_data_for_test(id_a, bytes::Bytes::from_static(b"stuck-in-pending-data")).await.unwrap();
+            // Open sibling channel B (control traffic) while channel A has pending_data.
+            let ch_b = GuardedChannel::new(handle.channel_open_session().await.unwrap(), rt.clone());
+            // Wait for server's CHANNEL_CLOSE on A -> `close_on_peer_close` discards pending_data and purges A.
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while handle.open_channel_count().await.unwrap() != (1, 1) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(handle.open_channel_count().await.unwrap(), (1, 1), "peer CLOSE must discard pending_data and remove channel A");
+            drop(ch_a);
+
+            // Trigger a rekey and open a new channel C right after to confirm the
+            // connection is NOT gated by A's discarded `pending_data` and rekey
+            // leaves `(1, 1)` (just ch_b) with zero leaked entries!
+            handle.rekey_soon().await.unwrap();
+            let mut ch_c =
+                tokio::time::timeout(Duration::from_secs(2), handle.channel_open_session()).await.expect("sibling channel open must not be wedged by closed channel's pending_data").unwrap();
+            ch_c.exec(true, "pty_ok").await.unwrap();
+            let mut saw_pty = false;
+            while let Some(msg) = ch_c.wait().await {
+                if let russh::ChannelMsg::Data { data } = msg
+                    && data.as_ref() == b"pty-ready\n"
+                {
+                    saw_pty = true;
+                }
+            }
+            assert!(saw_pty, "post-rekey sibling channel must complete cleanly");
+            drop(ch_b);
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while handle.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(handle.open_channel_count().await.unwrap(), (0, 0));
+
+            // Near-wraparound check: allocate u32::MAX, close it, wrap around, verify next open succeeds cleanly.
+            handle.set_last_channel_id_for_test(u32::MAX - 1).await.unwrap();
+            let c1 = handle.channel_open_session().await.unwrap();
+            assert_eq!(c1.id().to_string(), u32::MAX.to_string());
+            c1.close().await.unwrap();
+            let c2 = handle.channel_open_session().await.unwrap();
+            assert_ne!(c2.id(), c1.id(), "allocator wraps cleanly past u32::MAX");
+            c2.close().await.unwrap();
+            srv.abort();
+        }
+    }
+
+    /// Finding 12: `set_helper(None)` and changing helper ID immediately drop
+    /// `Link::Up` (closing its SSH keeper) and abort `Link::Starting`; `close`
+    /// and `invalidate` clear `Link::Starting`; and shutting down a bootstrap's
+    /// opener runtime clears `Link::Starting` via `LinkStartGuard`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn final_f12_helper_change_and_cancelled_bootstrap_clear_link_state() {
+        let stats = Arc::new(MockStats::default());
+        let (ssh_h, srv) = start_mock_ssh(stats.clone(), 65536).await;
+        let rt = tokio::runtime::Handle::current();
+
+        let (cert_der, key_der, print) = crate::quic::make_test_quic_cert();
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let mut tls = rustls::ServerConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(vec![rustls::pki_types::CertificateDer::from(cert_der)], rustls::pki_types::PrivateKeyDer::Pkcs8(key_der.into()))
+            .unwrap();
+        tls.alpn_protocols = vec![olo_rex_link::quic_wire::ALPN.to_vec()];
+        let scfg = quinn::ServerConfig::with_crypto(Arc::new(quinn::crypto::rustls::QuicServerConfig::try_from(tls).unwrap()));
+        let qsrv = quinn::Endpoint::server(scfg, (std::net::Ipv4Addr::LOCALHOST, 0).into()).unwrap();
+        let qaddr = qsrv.local_addr().unwrap();
+        let qtask = tokio::spawn(async move {
+            let mut _conns = Vec::new();
+            while let Some(inc) = qsrv.accept().await {
+                if let Ok(c) = inc.await {
+                    _conns.push(c);
+                }
+            }
+        });
+
+        let pool = Arc::new(SshSessionPool::default());
+        let target = SshTarget::parse("ssh://tester@127.0.0.1:2212").unwrap();
+        let token = crate::quic::new_token().unwrap();
+
+        // 1. `set_helper(None)` immediately drops Link::Up -> `linked()` false AND keeper closes!
+        pool.set_helper(Some("h1"));
+        let qlink = Arc::new(crate::quic::QuicLink::connect(qaddr, &print, token).await.unwrap());
+        let keeper = GuardedChannel::new(ssh_h.channel_open_session().await.unwrap(), rt.clone());
+        let tgen = pool.target_pool(&target).generation;
+        pool.links.lock().unwrap().insert(target.clone(), Link::Up { link: qlink, keeper, helper_id: "h1".into(), target_gen: tgen, screens_supported: Arc::new(AtomicBool::new(true)) });
+        assert!(pool.linked(&target).await);
+        pool.set_helper(None);
+        assert!(!pool.linked(&target).await, "set_helper(None) must immediately clear linked()");
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while ssh_h.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(ssh_h.open_channel_count().await.unwrap(), (0, 0), "set_helper(None) must close keeper channel immediately");
+
+        // 2. Changing helper ID ("h1" -> "h2") immediately evicts "h1" Link::Up and closes keeper!
+        pool.set_helper(Some("h1"));
+        let qlink2 = Arc::new(crate::quic::QuicLink::connect(qaddr, &print, token).await.unwrap());
+        let keeper2 = GuardedChannel::new(ssh_h.channel_open_session().await.unwrap(), rt.clone());
+        pool.links.lock().unwrap().insert(target.clone(), Link::Up { link: qlink2, keeper: keeper2, helper_id: "h1".into(), target_gen: tgen, screens_supported: Arc::new(AtomicBool::new(true)) });
+        assert!(pool.linked(&target).await);
+        pool.set_helper(Some("h2"));
+        assert!(!pool.linked(&target).await, "changing helper ID must evict old Link::Up immediately");
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while ssh_h.open_channel_count().await.unwrap() != (0, 0) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(ssh_h.open_channel_count().await.unwrap(), (0, 0));
+
+        // 3. `close` and `invalidate` clear `Link::Starting` and abort its task!
+        let (done_tx, _) = tokio::sync::watch::channel(false);
+        let j = tokio::spawn(std::future::pending::<()>());
+        let abort = j.abort_handle();
+        pool.links.lock().unwrap().insert(target.clone(), Link::Starting { generation: 99, target_gen: tgen, helper_id: "h2".into(), abort, done: done_tx });
+        pool.close(&target).await;
+        assert!(pool.links.lock().unwrap().get(&target).is_none(), "close() must clear Link::Starting");
+        assert!(j.await.unwrap_err().is_cancelled(), "close() must abort Starting task");
+
+        // 4. Opener runtime shutting down mid-bootstrap clears `Link::Starting` via `LinkStartGuard`!
+        let pool_c = pool.clone();
+        let target_c = target.clone();
+        tokio::task::spawn_blocking(move || {
+            let rt_b = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            let link_gen = pool_c.alloc_gen();
+            let (done_tx, _) = tokio::sync::watch::channel(false);
+            let p2 = pool_c.clone();
+            let t2 = target_c.clone();
+            let d2 = done_tx.clone();
+            let guard = LinkStartGuard { pool: p2, target: t2, link_gen, done: d2, finished: false };
+            let j = rt_b.spawn(async move {
+                let _guard = guard;
+                std::future::pending::<()>().await;
+            });
+            pool_c.links.lock().unwrap().insert(target_c.clone(), Link::Starting { generation: link_gen, target_gen: 1, helper_id: "h2".into(), abort: j.abort_handle(), done: done_tx });
+            // Shut down Runtime B while the task is pending!
+            drop(rt_b);
+        })
+        .await
+        .unwrap();
+        assert!(pool.links.lock().unwrap().get(&target).is_none(), "runtime shutdown mid-bootstrap must clear Link::Starting");
+
+        qtask.abort();
+        srv.abort();
+    }
+
+    /// Finding 13: `pub fn screen_command` parses `"proto"` and `"commands"`
+    /// array with arbitrary JSON whitespace, rejects verbs appearing only in
+    /// `"capabilities"`, prefers a `--protocol`-capable helper over a newer
+    /// help-only build for `--protocol` and one-shot commands, and preserves
+    /// legacy `--help` fallback when only a help-only build exists.
+    #[test]
+    fn final_f13_screen_command_json_array_and_two_tier_selection() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::process::{Command, Stdio};
+
+        let dir = crate::quic::TestTempDir::new("olo-f13");
+        let home = dir.path().join("home");
+        let there = home.join(crate::helper::DIR);
+        std::fs::create_dir_all(&there).unwrap();
+        let machine = String::from_utf8(Command::new("uname").arg("-m").output().unwrap().stdout).unwrap().trim().to_owned();
+        let file = |id: &str| there.join(format!("olo-rex-link-{id}-{machine}"));
+        let script = |path: &std::path::Path, body: &str| {
+            std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let run = |helper: Option<&str>, args: &[&str]| {
+            let a: Vec<String> = args.iter().map(|s| (*s).to_owned()).collect();
+            let out = Command::new("sh").arg("-c").arg(screen_command(helper, &a)).env("HOME", &home).stdin(Stdio::null()).output().unwrap();
+            (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        };
+
+        // 1. JSON with whitespace before `:` and `"export"` ONLY in `capabilities`:
+        //    `follow` MUST match, `export` MUST be rejected (exit 69)!
+        script(
+            &file("ws"),
+            "if [ \"$1\" = screen ] && [ \"$2\" = --protocol ]; then printf '{ \"proto\" : 1 , \"capabilities\" : [ \"export\" ] , \"commands\" : [ \"follow\" ] }\\n'; exit 0; fi; echo \"ws:$*\"",
+        );
+        assert_eq!(run(Some("ws"), &["follow"]), (0, "ws:screen follow".to_owned()));
+        assert_eq!(run(Some("ws"), &["export", "qa"]), (69, String::new()));
+
+        // 2. Newer help-only build beside older `--protocol`-capable build:
+        //    `--protocol` and one-shot `list` MUST pick the `--protocol`-capable build!
+        script(
+            &file("helponly"),
+            "if [ \"$1\" = screen ] && [ \"$2\" = --help ]; then echo 'usage: olo screen list'; exit 0; fi; if [ \"$1\" = screen ] && [ \"$2\" = --protocol ]; then exit 1; fi; echo \"helponly:$*\"",
+        );
+        let now = std::time::SystemTime::now();
+        std::fs::File::options().write(true).open(file("ws")).unwrap().set_modified(now - Duration::from_secs(3600)).unwrap();
+        std::fs::File::options().write(true).open(file("helponly")).unwrap().set_modified(now).unwrap();
+        assert_eq!(run(None, &["--protocol"]).0, 0, "older --protocol helper must beat newer help-only helper");
+        assert_eq!(run(None, &["list"]), (0, "ws:screen list".to_owned()));
+
+        // 3. Host with ONLY a legacy help-only build: `--protocol` runs it (exits 1 -> proto 0),
+        //    one-shot `list` works, legacy `history qa --wire` works, streaming `follow` exits 69!
+        std::fs::remove_file(file("ws")).unwrap();
+        assert_eq!(run(None, &["--protocol"]).0, 1, "legacy-only host runs legacy helper for --protocol");
+        assert_eq!(run(None, &["list"]), (0, "helponly:screen list".to_owned()));
+        assert_eq!(run(None, &["history", "qa", "--wire"]), (0, "helponly:screen history qa --wire".to_owned()));
+        assert_eq!(run(None, &["follow"]), (69, String::new()));
     }
 }

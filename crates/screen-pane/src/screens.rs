@@ -64,7 +64,7 @@ pub(crate) fn fallback_runtime_dir() -> PathBuf {
     // SAFETY: `geteuid()` has no preconditions.
     let uid = unsafe { libc::geteuid() };
     let std_run = PathBuf::from(format!("/run/user/{uid}"));
-    if std::fs::symlink_metadata(&std_run).is_ok_and(|m| m.file_type().is_dir() && m.uid() == uid) {
+    if std::fs::symlink_metadata(&std_run).is_ok_and(|m| m.file_type().is_dir() && m.uid() == uid && (m.mode() & 0o077) == 0) {
         return std_run;
     }
     let fallback = PathBuf::from(format!("/var/tmp/olo-runtime-{uid}"));
@@ -108,10 +108,6 @@ fn logs_dir(dir: &Path) -> PathBuf {
     let logs = dir.join("logs");
     let _ = std::fs::create_dir_all(&logs);
     logs
-}
-
-fn entry(name: &str) -> PathBuf {
-    dir().join(format!("{name}.json"))
 }
 
 /// Marks that the person has screen `name`'s pointer and keys (Agent
@@ -378,6 +374,15 @@ pub(crate) fn try_acquire_control_in(dir: &Path, name: &str) -> Result<ControlLo
     Err("Someone else is controlling this screen.".into())
 }
 
+/// Static capability markers kept in `.rodata` even under release `-O3`
+/// inlining so `olo-rex-link`'s ELF section check reliably detects that this
+/// `olo-screen` honors helper `.control.lock` leases, `.lifecycle.lock` guarded
+/// acts (`stop-expected`/`delete-expected`/`clear-expected`), and `--part`
+/// exports (LLVM otherwise folds short literals into immediate integer
+/// comparisons in `.text`).
+#[used]
+static HELPER_CONTROL_MARKERS: [u8; 50] = *b"olo-rex-link\0.control.lock\0.lifecycle.lock\0--part\0";
+
 /// Whether `exe` (resolved from `/proc/PID/exe`) is an Olo viewer or Rex
 /// helper permitted to hold a screen's `.control` lock (`olo-screen`,
 /// `olo-rex`, `olo-rex-link*`, or the current test executable).
@@ -621,6 +626,51 @@ impl Screen {
         self.client()?.request(request).map_err(|e| e.to_string())
     }
 
+    /// Send one IPC `request` to this screen's `app_server` under a single
+    /// monotonic deadline covering connect, write, and reply (B.5).
+    pub fn request_timeout(&self, request: &Request, limit: Duration) -> Result<Reply, String> {
+        request_unix_deadline(&self.olo_socket, request, limit)
+    }
+}
+
+/// Send one `olo_protocol::Request` to `socket` and read its `Reply` within a
+/// single monotonic deadline (nonblocking connect + poll-driven write/read so a
+/// wedged compositor or full accept queue can never hang under a lifecycle lock).
+pub(crate) fn request_unix_deadline(socket: &Path, request: &Request, limit: Duration) -> Result<Reply, String> {
+    let deadline = Instant::now() + limit;
+    let stream = crate::rex_sock::connect_compositor_verified(socket, deadline).map_err(|e| format!("compositor isn't answering: {e}"))?;
+    let mut line = serde_json::to_vec(request).map_err(|e| e.to_string())?;
+    line.push(b'\n');
+    crate::rex_sock::write_all_deadline(&stream, &line, deadline, None, None).map_err(|e| format!("compositor write failed: {e}"))?;
+    let mut leftover = Vec::new();
+    loop {
+        let raw = if let Some(pos) = leftover.iter().position(|&b| b == b'\n') {
+            let tail = leftover.split_off(pos + 1);
+            let mut l = std::mem::replace(&mut leftover, tail);
+            l.pop();
+            l
+        } else {
+            let Some((mut l, tail)) = crate::rex_sock::read_line_deadline(&stream, 4 * 1024 * 1024, deadline, None, None).map_err(|e| format!("compositor read failed: {e}"))? else {
+                return Err("compositor closed connection without replying".into());
+            };
+            if !leftover.is_empty() {
+                let mut combined = std::mem::take(&mut leftover);
+                combined.extend_from_slice(&l);
+                l = combined;
+            }
+            leftover = tail;
+            l
+        };
+        let reply: Reply = serde_json::from_slice(&raw).map_err(|e| format!("invalid compositor reply: {e}"))?;
+        match reply {
+            Reply::Event { .. } => continue,
+            Reply::Error { message } => return Err(message),
+            other => return Ok(other),
+        }
+    }
+}
+
+impl Screen {
     /// Its windows, front ones with where they are.
     pub fn windows(&self) -> Result<Vec<WindowInfo>, String> {
         match self.request(&Request::ListWindows)? {
@@ -745,6 +795,47 @@ pub(crate) fn list_in(runtime_screens_dir: &Path) -> Vec<Screen> {
     screens
 }
 
+/// Distinct result of inspecting a screen's runtime descriptor (Astra #2–#3:
+/// an unreadable or corrupt descriptor is NEVER treated as "stopped").
+pub(crate) enum InspectScreen {
+    Running(Screen),
+    Stopped,
+    Error(String),
+}
+
+pub(crate) fn inspect_screen_in(runtime_screens_dir: &Path, name: &str) -> InspectScreen {
+    use std::io::Read as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    if let Err(e) = require_valid_name(name) {
+        return InspectScreen::Error(e);
+    }
+    let path = runtime_screens_dir.join(format!("{name}.json"));
+    let f = match std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW | libc::O_CLOEXEC).open(&path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return InspectScreen::Stopped,
+        Err(e) => return InspectScreen::Error(format!("couldn't inspect runtime descriptor for screen {name:?}: {e}")),
+    };
+    let meta = match f.metadata() {
+        Ok(m) => m,
+        Err(e) => return InspectScreen::Error(format!("couldn't stat runtime descriptor for screen {name:?}: {e}")),
+    };
+    if !meta.file_type().is_file() || meta.len() > 64 * 1024 {
+        return InspectScreen::Error(format!("runtime descriptor for screen {name:?} is invalid"));
+    }
+    let mut bytes = Vec::with_capacity(meta.len() as usize);
+    if let Err(e) = f.take(64 * 1024 + 1).read_to_end(&mut bytes) {
+        return InspectScreen::Error(format!("couldn't read runtime descriptor for screen {name:?}: {e}"));
+    }
+    let screen: Screen = match serde_json::from_slice(&bytes) {
+        Ok(s) => s,
+        Err(e) => return InspectScreen::Error(format!("runtime descriptor for screen {name:?} is corrupt: {e}")),
+    };
+    if screen.name != name {
+        return InspectScreen::Error(format!("runtime descriptor for screen {name:?} names {:?} instead", screen.name));
+    }
+    if screen.running() { InspectScreen::Running(screen) } else { InspectScreen::Stopped }
+}
+
 /// Look up a single running screen directly from its bounded `NAME.json`
 /// descriptor (no full directory scan, no unbounded read).
 pub fn get(name: &str) -> Result<Screen, String> {
@@ -752,16 +843,10 @@ pub fn get(name: &str) -> Result<Screen, String> {
 }
 
 pub(crate) fn get_in(runtime_screens_dir: &Path, name: &str) -> Result<Screen, String> {
-    require_valid_name(name)?;
-    let path = runtime_screens_dir.join(format!("{name}.json"));
-    let Some(screen) = read_bounded_regular(&path, 64 * 1024).and_then(|b| serde_json::from_slice::<Screen>(&b).ok()) else {
-        return Err(format!("there's no screen {name:?} (olo-screen list)"));
-    };
-    if screen.name == name && screen.running() {
-        Ok(screen)
-    } else {
-        let _ = std::fs::remove_file(&path);
-        Err(format!("there's no screen {name:?} (olo-screen list)"))
+    match inspect_screen_in(runtime_screens_dir, name) {
+        InspectScreen::Running(screen) => Ok(screen),
+        InspectScreen::Stopped => Err(format!("there's no screen {name:?} (olo-screen list)")),
+        InspectScreen::Error(e) => Err(e),
     }
 }
 
@@ -882,32 +967,138 @@ pub fn delete(name: &str) -> Result<(), String> {
     crate::history::trash(name)
 }
 
+/// Strict sequential parser for `--expected-started SECONDS`,
+/// `--expected-last-used MILLIS`, and (when `allow_clear` is true) `--clear`
+/// flags (Final pass B.3 / Astra #2–#4).
+///
+/// Rejects malformed `--expected-*=VAL` forms, duplicate flags, missing or
+/// non-numeric values, and any unknown flag or extra positional word so a
+/// malformed guard can NEVER fall back to ordinary unguarded destructive verbs.
+pub fn parse_expected_flags_strict(flags: &[String], allow_clear: bool) -> Result<(bool, Option<u64>, Option<u64>), String> {
+    let mut saw_clear = false;
+    let mut expected_started: Option<u64> = None;
+    let mut expected_last_used: Option<u64> = None;
+    let mut i = 0usize;
+    while i < flags.len() {
+        match flags[i].as_str() {
+            "--clear" if allow_clear => {
+                if saw_clear {
+                    return Err("duplicate --clear".into());
+                }
+                saw_clear = true;
+                i += 1;
+            }
+            "--expected-started" => {
+                if expected_started.is_some() {
+                    return Err("duplicate --expected-started".into());
+                }
+                let val = flags.get(i + 1).ok_or("--expected-started requires an integer")?;
+                let n = val.parse::<u64>().map_err(|_| format!("--expected-started must be a non-negative integer (got {val:?})"))?;
+                expected_started = Some(n);
+                i += 2;
+            }
+            "--expected-last-used" => {
+                if expected_last_used.is_some() {
+                    return Err("duplicate --expected-last-used".into());
+                }
+                let val = flags.get(i + 1).ok_or("--expected-last-used requires an integer")?;
+                let n = val.parse::<u64>().map_err(|_| format!("--expected-last-used must be a non-negative integer (got {val:?})"))?;
+                expected_last_used = Some(n);
+                i += 2;
+            }
+            other => return Err(format!("unexpected argument {other:?}")),
+        }
+    }
+    Ok((saw_clear, expected_started, expected_last_used))
+}
+
+fn check_expected_last_used(state_root: &Path, name: &str, expected_last_used: Option<u64>) -> Result<(), String> {
+    let Some(expected) = expected_last_used else { return Ok(()) };
+    // Final pass B.3 (#2–#3): unreadable/corrupt actions.jsonl returns Err,
+    // NEVER treated as empty `Ok(None)`.
+    let actual = crate::history::last_used_fast_checked_in(state_root, name)?;
+    if expected == 0 {
+        if actual.is_some() {
+            return Err(format!("{name} has newer activity since you asked"));
+        }
+    } else if actual.is_some_and(|lu| lu > expected) {
+        return Err(format!("{name} has newer activity since you asked"));
+    } else if actual != Some(expected) {
+        return Err(format!("{name}'s activity changed since you asked"));
+    }
+    Ok(())
+}
+
 /// Delete screen `name` ONLY if it is currently stopped (refusing if a new
 /// session started while the confirmation dialog was open).
 pub fn delete_if_stopped(name: &str) -> Result<(), String> {
-    delete_if_stopped_in(&dir(), &crate::history::root_dir(), name)
+    delete_if_stopped_expected_in(&dir(), &crate::history::root_dir(), name, None, None)
 }
 
+/// Delete screen `name` ONLY if it is currently stopped and matches
+/// `expected_started` / `expected_last_used` (`Some(0)` = observed empty),
+/// verified atomically under `NAME.lifecycle.lock`.
+pub fn delete_if_stopped_expected(name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+    delete_if_stopped_expected_in(&dir(), &crate::history::root_dir(), name, expected_started, expected_last_used)
+}
+
+#[cfg(test)]
 pub(crate) fn delete_if_stopped_in(rt_dir: &Path, state_root: &Path, name: &str) -> Result<(), String> {
+    delete_if_stopped_expected_in(rt_dir, state_root, name, None, None)
+}
+
+pub(crate) fn delete_if_stopped_expected_in(rt_dir: &Path, state_root: &Path, name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
     let _life = lock_lifecycle_in(rt_dir, name)?;
-    if get_in(rt_dir, name).is_ok() {
-        return Err(format!("screen {name} is running; stop it first before deleting"));
+    match inspect_screen_in(rt_dir, name) {
+        InspectScreen::Running(_) => return Err(format!("{name} was started again since you asked")),
+        InspectScreen::Error(e) => return Err(e),
+        InspectScreen::Stopped => {}
     }
+    if let Some(exp_s) = expected_started
+        && exp_s > 0
+    {
+        return Err(format!("{name} was started again since you asked"));
+    }
+    check_expected_last_used(state_root, name, expected_last_used)?;
+    if !crate::history::has_screen_marker_in(state_root, name)? {
+        return Err(format!("there's no screen {name:?} (olo-screen list)"));
+    }
+    crate::history::trash_in(state_root, name)?;
     let _ = std::fs::remove_file(rt_dir.join(format!("{name}.owner.json")));
-    crate::history::trash_in(state_root, name)
+    Ok(())
 }
 
 /// Clear screen `name`'s history ONLY if it is currently stopped (refusing if
 /// the screen started while the confirmation dialog was open).
 pub fn clear_history_if_stopped(name: &str) -> Result<(), String> {
-    clear_history_if_stopped_in(&dir(), &crate::history::root_dir(), name)
+    clear_history_if_stopped_expected_in(&dir(), &crate::history::root_dir(), name, None, None)
 }
 
+/// Clear screen `name`'s history ONLY if it is currently stopped and matches
+/// `expected_started` / `expected_last_used` (`Some(0)` = observed empty),
+/// verified atomically under `NAME.lifecycle.lock`.
+pub fn clear_history_if_stopped_expected(name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+    clear_history_if_stopped_expected_in(&dir(), &crate::history::root_dir(), name, expected_started, expected_last_used)
+}
+
+#[cfg(test)]
 pub(crate) fn clear_history_if_stopped_in(rt_dir: &Path, state_root: &Path, name: &str) -> Result<(), String> {
+    clear_history_if_stopped_expected_in(rt_dir, state_root, name, None, None)
+}
+
+pub(crate) fn clear_history_if_stopped_expected_in(rt_dir: &Path, state_root: &Path, name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
     let _life = lock_lifecycle_in(rt_dir, name)?;
-    if get_in(rt_dir, name).is_ok() {
-        return Err(format!("screen {name} is running; stop it first before clearing its history"));
+    match inspect_screen_in(rt_dir, name) {
+        InspectScreen::Running(_) => return Err(format!("{name} was started again since you asked")),
+        InspectScreen::Error(e) => return Err(e),
+        InspectScreen::Stopped => {}
     }
+    if let Some(exp_s) = expected_started
+        && exp_s > 0
+    {
+        return Err(format!("{name} was started again since you asked"));
+    }
+    check_expected_last_used(state_root, name, expected_last_used)?;
     crate::history::clear_in(state_root, name)
 }
 
@@ -1028,25 +1219,40 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
         a11y,
     };
     loop {
-        if matches!(screen.request(&Request::Ping), Ok(Reply::Pong { .. })) {
-            break;
-        }
-        if Instant::now() > until {
+        let rem = until.saturating_duration_since(Instant::now());
+        if rem.is_zero() {
             stop_pid(pid);
             return Err(format!("the screen started but its app_server doesn't answer; see {}", log_path.display()));
         }
-        std::thread::sleep(Duration::from_millis(100));
+        if matches!(screen.request_timeout(&Request::Ping, rem.min(Duration::from_secs(2))), Ok(Reply::Pong { .. })) {
+            break;
+        }
+        if Instant::now() >= until {
+            stop_pid(pid);
+            return Err(format!("the screen started but its app_server doesn't answer; see {}", log_path.display()));
+        }
+        std::thread::sleep(Duration::from_millis(100).min(until.saturating_duration_since(Instant::now())));
     }
-    fastest(&screen);
+    fastest(&screen, until.saturating_duration_since(Instant::now()).min(Duration::from_secs(2)));
     // Kept, to be listed once stopped and started again as it was; out
     // of the archive if it was there.
     keep(name, opts);
     let _ = crate::history::set_archived(name, false);
-    let tmp = entry(name).with_extension("tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(&screen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, entry(name)).map_err(|e| e.to_string())?;
+    publish_started_screen_in(&dir, &screen)?;
     start_recorder(name, pid);
     Ok(screen)
+}
+
+/// Remove any leftover runtime owner file for `screen.name` from an earlier
+/// stopped/crashed session before atomically publishing `{name}.json` under
+/// `NAME.lifecycle.lock` (`agyrev-da27b4f6e1` Finding #3).
+fn publish_started_screen_in(rt_dir: &Path, screen: &Screen) -> Result<(), String> {
+    let _ = std::fs::remove_file(rt_dir.join(format!("{}.owner.json", screen.name)));
+    let target = rt_dir.join(format!("{}.json", screen.name));
+    let tmp = rt_dir.join(format!("{}.tmp", screen.name));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(screen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, target).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn is_executable_file(path: &Path) -> bool {
@@ -1197,14 +1403,24 @@ fn sockets(line: &str) -> Option<(String, PathBuf)> {
 /// screen. At rest it draws nothing either way; busy, it costs about the
 /// same (a window dragged for five seconds: 4.2% of a core at 60 Hz,
 /// 4.4% at 120).
-fn fastest(screen: &Screen) {
-    let Ok(Reply::Outputs { outputs }) = screen.request(&Request::Outputs) else { return };
+fn fastest(screen: &Screen, limit: Duration) {
+    let deadline = Instant::now() + limit;
+    let rem = || deadline.saturating_duration_since(Instant::now());
+    let left = rem();
+    if left.is_zero() {
+        return;
+    }
+    let Ok(Reply::Outputs { outputs }) = screen.request_timeout(&Request::Outputs, left) else { return };
     for o in outputs {
         let Some(now) = o.current_mode else { continue };
         let best = o.modes.iter().filter(|m| (m.width, m.height) == (now.width, now.height)).max_by_key(|m| m.refresh);
         if let Some(best) = best.filter(|b| b.refresh > now.refresh) {
+            let left = rem();
+            if left.is_zero() {
+                break;
+            }
             let config = olo_protocol::OutputConfig { mode: Some(best.clone()), ..Default::default() };
-            if let Err(e) = screen.request(&Request::ConfigureOutput { name: o.name.clone(), config }) {
+            if let Err(e) = screen.request_timeout(&Request::ConfigureOutput { name: o.name.clone(), config }, left) {
                 tracing::warn!("screen {}: its display stays at {} Hz: {e}", screen.name, now.refresh / 1000);
             }
         }
@@ -1276,16 +1492,142 @@ fn remove_unlocked_control_marker(rt_dir: &Path, name: &str) {
     }
 }
 
+/// Outcome of opening a Linux pidfd for a session PID so `ESRCH` (already exited)
+/// is distinguished from `EMFILE`/`ENOSYS` (`Unavailable`).
+enum PidfdOpen {
+    Opened(std::os::fd::OwnedFd),
+    Exited,
+    Unavailable,
+}
+
+/// Open a Linux pidfd pinning `pid` so subsequent signals reach ONLY that
+/// exact process instance (never a recycled PID — Final pass B.5 / Agy-review R1 #5).
+fn open_pidfd(pid: i32) -> PidfdOpen {
+    use std::os::fd::FromRawFd as _;
+    if pid <= 0 {
+        return PidfdOpen::Exited;
+    }
+    // SAFETY: `SYS_pidfd_open` is a standard Linux syscall returning a new fd or -1.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0u32) as i32 };
+    if fd >= 0 {
+        // SAFETY: `fd >= 0` is a freshly opened pidfd.
+        PidfdOpen::Opened(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) })
+    } else if std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+        PidfdOpen::Exited
+    } else {
+        PidfdOpen::Unavailable
+    }
+}
+
+/// Nonblocking check for whether the process pinned by `pidfd` has already exited.
+fn pidfd_is_exited(pidfd: &std::os::fd::OwnedFd) -> bool {
+    use std::os::fd::AsRawFd as _;
+    let mut pfd = libc::pollfd { fd: pidfd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+    // SAFETY: valid single pollfd pointer with zero timeout.
+    unsafe { libc::poll(&mut pfd, 1, 0) > 0 }
+}
+
+/// Signal the pinned process through its `pidfd` (`SYS_pidfd_send_signal`) and
+/// wait up to `wait` via `poll` for it to exit. Returns `true` once exited.
+fn signal_and_wait_pidfd(pidfd: &std::os::fd::OwnedFd, sig: i32, wait: Duration) -> bool {
+    use std::os::fd::AsRawFd as _;
+    // SAFETY: valid pidfd and null siginfo pointer per pidfd_send_signal(2).
+    let rc = unsafe { libc::syscall(libc::SYS_pidfd_send_signal, pidfd.as_raw_fd(), sig, std::ptr::null::<libc::siginfo_t>(), 0u32) };
+    if rc != 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+        return true;
+    }
+    let deadline = Instant::now() + wait;
+    loop {
+        let rem = deadline.saturating_duration_since(Instant::now());
+        if rem.is_zero() {
+            return false;
+        }
+        let mut pfd = libc::pollfd { fd: pidfd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+        let ms = rem.as_millis().min(i32::MAX as u128) as i32;
+        // SAFETY: valid single pollfd pointer.
+        let r = unsafe { libc::poll(&mut pfd, 1, ms) };
+        if r > 0 {
+            return true;
+        }
+        if r == 0 {
+            return false;
+        }
+        if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            return false;
+        }
+    }
+}
+
+/// Force-kill the pinned session leader AND its entire process group (`-pgid`,
+/// holding `app_server` and `olo-screen record`) ONLY while `pidfd` is still
+/// alive (`poll(0) == 0`, proving `pgid` has not exited and cannot be recycled),
+/// then wait on `pidfd` for termination (Agy-review R1 #5).
+fn sigkill_pinned_process_group(pidfd: &std::os::fd::OwnedFd, pgid: i32, wait: Duration) -> bool {
+    if pidfd_is_exited(pidfd) {
+        return true;
+    }
+    if pgid > 0 {
+        // SAFETY: `pidfd` is open and not yet readable, guaranteeing `pgid` has
+        // not exited or been recycled; signalling `-pgid` tears down the whole
+        // session group (`olo-session`, `app_server`, `olo-screen record`).
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
+    signal_and_wait_pidfd(pidfd, libc::SIGKILL, wait)
+}
+
 fn stop_locked(rt_dir: &Path, name: &str, expected_started: Option<u64>) -> Result<(), String> {
     let screen = get_in(rt_dir, name)?;
+    stop_resolved_screen_locked(rt_dir, &screen, expected_started)
+}
+
+fn stop_resolved_screen_locked(rt_dir: &Path, screen: &Screen, expected_started: Option<u64>) -> Result<(), String> {
+    let name = screen.name.as_str();
     if let Some(expected) = expected_started
         && screen.started != expected
     {
         return Err(format!("screen {name} was replaced by a newer session; refusing to stop it"));
     }
-    // The person's programs on it back to their display first.
-    crate::moving::send_home(&screen);
-    end_sessions(&[screen.pid]);
+    let cleanup_files = || {
+        let _ = std::fs::remove_file(rt_dir.join(format!("{name}.json")));
+        let _ = std::fs::remove_file(rt_dir.join(format!("{name}-settings.json")));
+        let _ = std::fs::remove_file(rt_dir.join(format!("{name}.owner.json")));
+        remove_unlocked_control_marker(rt_dir, name);
+        sweep_recorder_frames();
+    };
+    // Final pass B.5 / Agy-review R1 #5: pin the verified session via pidfd
+    // BEFORE `send_home` waits on the compositor so a recycled PID can never
+    // be signalled if the original session exits while `send_home` runs.
+    let pinned = open_pidfd(screen.pid);
+    match &pinned {
+        PidfdOpen::Exited => {
+            cleanup_files();
+            return Ok(());
+        }
+        PidfdOpen::Opened(_) | PidfdOpen::Unavailable => {
+            if !screen.running() {
+                cleanup_files();
+                return Ok(());
+            }
+        }
+    }
+    // The person's programs on it back to their display first (strictly bounded).
+    crate::moving::send_home(screen);
+    match &pinned {
+        PidfdOpen::Opened(pidfd) => {
+            if !signal_and_wait_pidfd(pidfd, libc::SIGTERM, Duration::from_secs(5)) {
+                tracing::warn!(pid = screen.pid, "a screen's session didn't end when asked; ending pinned session group");
+                let _ = sigkill_pinned_process_group(pidfd, screen.pid, Duration::from_secs(2));
+            }
+        }
+        PidfdOpen::Unavailable => {
+            if screen.running() {
+                end_sessions(&[screen.pid]);
+            }
+        }
+        PidfdOpen::Exited => {}
+    }
     end_strays(Some(name));
     // Programs `run` started are in process groups of their own, tied to
     // the screen's display: they end when it goes (Wayland clients exit
@@ -1295,11 +1637,7 @@ fn stop_locked(rt_dir: &Path, name: &str, expected_started: Option<u64>) -> Resu
         // or by the next start of its name.)
         return Err(format!("screen {name} is still ending"));
     }
-    let _ = std::fs::remove_file(rt_dir.join(format!("{name}.json")));
-    let _ = std::fs::remove_file(rt_dir.join(format!("{name}-settings.json")));
-    let _ = std::fs::remove_file(rt_dir.join(format!("{name}.owner.json")));
-    remove_unlocked_control_marker(rt_dir, name);
-    sweep_recorder_frames();
+    cleanup_files();
     Ok(())
 }
 
@@ -1311,11 +1649,24 @@ pub fn stop(name: &str) -> Result<(), String> {
 /// End screen `name`, verifying under its lifecycle lock that its session's
 /// `started` generation still matches `expected_started` (when supplied).
 pub fn stop_if_generation(name: &str, expected_started: Option<u64>) -> Result<(), String> {
-    stop_if_generation_in(&dir(), name, expected_started)
+    stop_if_expected_in(&dir(), &crate::history::root_dir(), name, expected_started, None)
 }
 
+/// End screen `name`, verifying under its lifecycle lock that both its
+/// `started` generation and `last_used` timestamp still match what the person
+/// confirmed.
+pub fn stop_if_expected(name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+    stop_if_expected_in(&dir(), &crate::history::root_dir(), name, expected_started, expected_last_used)
+}
+
+#[cfg(test)]
 pub(crate) fn stop_if_generation_in(rt_dir: &Path, name: &str, expected_started: Option<u64>) -> Result<(), String> {
+    stop_if_expected_in(rt_dir, &crate::history::root_dir(), name, expected_started, None)
+}
+
+pub(crate) fn stop_if_expected_in(rt_dir: &Path, state_root: &Path, name: &str, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
     let _life = lock_lifecycle_in(rt_dir, name)?;
+    check_expected_last_used(state_root, name, expected_last_used)?;
     stop_locked(rt_dir, name, expected_started)
 }
 
@@ -1901,6 +2252,227 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(marker.is_file(), "working fallback candidate must have executed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn round3_f2_f3_f4_expected_guards_enforce_last_used_and_zero_empty_under_lock() {
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-r3-f234-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt = dir.join("rt");
+        let state = dir.join("state");
+        std::fs::create_dir_all(&rt).unwrap();
+        std::fs::create_dir_all(state.join("qa")).unwrap();
+
+        // Observed empty (`Some(0)`): once an action arrives at T1=5000, clear & delete
+        // with `expected_last_used = Some(0)` MUST refuse rather than wiping unseen work!
+        let a1 = r#"{"at":4990,"ms":10,"kind":"type","args":["hi"]}"#;
+        std::fs::write(state.join("qa/actions.jsonl"), format!("{a1}\n")).unwrap();
+        assert!(clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).unwrap_err().contains("newer activity"));
+        assert!(delete_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).unwrap_err().contains("newer activity"));
+
+        // Stale T1=5000 after T2=9000 arrived MUST refuse!
+        let a2 = r#"{"at":8990,"ms":10,"kind":"click","args":["10","20"]}"#;
+        std::fs::write(state.join("qa/actions.jsonl"), format!("{a1}\n{a2}\n")).unwrap();
+        assert!(clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(5000)).unwrap_err().contains("newer activity"));
+        assert!(delete_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(5000)).unwrap_err().contains("newer activity"));
+
+        // Non-zero `expected_started` on a stopped screen MUST refuse!
+        assert!(clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(1700), Some(9000)).unwrap_err().contains("started again"));
+
+        // Matching `(Some(0), Some(9000))` succeeds cleanly!
+        clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(9000)).unwrap();
+        assert!(crate::history::last_used_fast_in(&state, "qa").is_none());
+
+        // Now screen is truly empty: `expected_last_used = Some(9000)` refuses ("changed"),
+        // whereas `Some(0)` matches empty cleanly!
+        assert!(clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(9000)).unwrap_err().contains("changed"));
+        clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).unwrap();
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn final_pass_b3_f2_f3_corrupt_descriptor_history_missing_marker_and_strict_flags() {
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-b3-f23-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt = dir.join("rt");
+        let state = dir.join("state");
+        std::fs::create_dir_all(&rt).unwrap();
+        std::fs::create_dir_all(state.join("qa")).unwrap();
+        std::fs::write(state.join("qa/screen.json"), "{}").unwrap();
+
+        // 1. Corrupt runtime descriptor `qa.json` MUST NOT be treated as stopped!
+        std::fs::write(rt.join("qa.json"), "{corrupt json").unwrap();
+        assert!(delete_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).is_err(), "corrupt descriptor must refuse Delete");
+        assert!(clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).is_err(), "corrupt descriptor must refuse Clear");
+        assert!(state.join("qa/screen.json").is_file());
+        std::fs::remove_file(rt.join("qa.json")).unwrap();
+
+        // 2. Corrupt non-empty `actions.jsonl` MUST NOT be treated as empty!
+        std::fs::write(state.join("qa/actions.jsonl"), "not-valid-json\n").unwrap();
+        assert!(delete_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).is_err(), "corrupt actions.jsonl must refuse Delete");
+        assert!(clear_history_if_stopped_expected_in(&rt, &state, "qa", Some(0), Some(0)).is_err(), "corrupt actions.jsonl must refuse Clear");
+        assert!(state.join("qa/actions.jsonl").is_file(), "corrupt actions.jsonl must not be unlinked on refusal");
+
+        // 3. Directory lacking both `screen.json` and `actions.jsonl` marker must be refused by guarded Delete!
+        std::fs::create_dir_all(state.join("not-a-screen")).unwrap();
+        std::fs::write(state.join("not-a-screen/notes.txt"), "keep").unwrap();
+        let err = delete_if_stopped_expected_in(&rt, &state, "not-a-screen", Some(0), Some(0)).unwrap_err();
+        assert!(err.contains("no screen"), "expected missing-marker refusal, got: {err}");
+        assert!(state.join("not-a-screen/notes.txt").is_file());
+
+        // 4. Strict guard flag parser rejects `=`, duplicates, missing/invalid values, and unknown flags.
+        let s = |xs: &[&str]| xs.iter().map(|v| (*v).to_owned()).collect::<Vec<_>>();
+        assert!(parse_expected_flags_strict(&s(&["--expected-started=0"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--expected-last-used=0"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--expected-started", "1", "--expected-started", "2"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--expected-last-used", "1", "--expected-last-used", "2"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--expected-started"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--expected-started", "nope"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--expected-started", "--clear", "0"]), true).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--clear", "--clear"]), true).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--clear"]), false).is_err());
+        assert!(parse_expected_flags_strict(&s(&["--bogus"]), false).is_err());
+        assert_eq!(parse_expected_flags_strict(&s(&["--expected-started", "10", "--expected-last-used", "20"]), false).unwrap(), (false, Some(10), Some(20)));
+        assert_eq!(parse_expected_flags_strict(&s(&["--clear", "--expected-started", "0", "--expected-last-used", "0"]), true).unwrap(), (true, Some(0), Some(0)));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn final_pass_b5_deadline_timeout_and_pidfd_stop() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-b5-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        // 1. Stalled Unix socket that accepts and never replies must time out promptly under deadline.
+        let sock = dir.join("stalled.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let srv = std::thread::spawn(move || {
+            let (_conn, _) = listener.accept().unwrap();
+            let _ = done_rx.recv_timeout(Duration::from_secs(3));
+        });
+        let t0 = Instant::now();
+        let err = request_unix_deadline(&sock, &Request::Ping, Duration::from_millis(120)).unwrap_err();
+        let elapsed = t0.elapsed();
+        assert!(elapsed < Duration::from_secs(1), "stalled request took too long: {elapsed:?} ({err})");
+        let _ = done_tx.send(());
+        srv.join().unwrap();
+
+        // 2. pidfd pins and signals ONLY the exact process instance.
+        let mut child = std::process::Command::new("/usr/bin/sleep").arg("30").spawn().expect("spawn sleep");
+        let pid = child.id() as i32;
+        let PidfdOpen::Opened(pidfd) = open_pidfd(pid) else { panic!("expected PidfdOpen::Opened") };
+        assert!(signal_and_wait_pidfd(&pidfd, libc::SIGTERM, Duration::from_secs(2)), "pidfd SIGTERM must end child");
+        let status = child.wait().unwrap();
+        assert!(!status.success());
+        // Signalling the already-exited pidfd returns ESRCH -> true without touching any recycled PID.
+        assert!(signal_and_wait_pidfd(&pidfd, libc::SIGTERM, Duration::from_millis(100)));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn agy_r1_f3_f5_and_da27_f3_non_0700_compositor_socket_pgid_sigkill_esrch_and_stale_owner() {
+        use std::io::{BufRead as _, Write as _};
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::os::unix::process::CommandExt as _;
+
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-screen-pane-agyr1-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dir_0755 = dir.join("rt-0755");
+        std::fs::create_dir_all(&dir_0755).unwrap();
+        std::fs::set_permissions(&dir_0755, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // 1. Finding #3: `request_unix_deadline` succeeds in a 0755 XDG_RUNTIME_DIR
+        //    (without Rex's 0700 parent-dir restriction) while still rejecting symlinks.
+        let sock = dir_0755.join("olo-comp.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let srv = std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let mut req = String::new();
+            std::io::BufReader::new(conn.try_clone().unwrap()).read_line(&mut req).unwrap();
+            let reply = serde_json::to_string(&Reply::Pong { version: "1".into() }).unwrap();
+            conn.write_all(format!("{reply}\n").as_bytes()).unwrap();
+        });
+        let rep = request_unix_deadline(&sock, &Request::Ping, Duration::from_secs(2)).expect("compositor socket in 0755 dir must succeed");
+        assert!(matches!(rep, Reply::Pong { .. }));
+        srv.join().unwrap();
+
+        let sym = dir_0755.join("sym.sock");
+        std::os::unix::fs::symlink(&sock, &sym).unwrap();
+        assert!(request_unix_deadline(&sym, &Request::Ping, Duration::from_secs(1)).is_err(), "symlinked socket must still be refused");
+
+        // 2. Finding #3: `fastest` honours its bounded deadline against a stalled socket.
+        let stalled_sock = dir_0755.join("stalled-fast.sock");
+        let stalled_listener = std::os::unix::net::UnixListener::bind(&stalled_sock).unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let stalled_srv = std::thread::spawn(move || {
+            let (_conn, _) = stalled_listener.accept().unwrap();
+            let _ = done_rx.recv_timeout(Duration::from_secs(3));
+        });
+        let dummy_screen = Screen {
+            name: "qa".into(),
+            wayland_display: "wayland-test".into(),
+            olo_socket: stalled_sock,
+            pid: std::process::id() as i32,
+            width: 1280,
+            height: 800,
+            scale: 1.0,
+            sound: false,
+            started: 1000,
+            bus: None,
+            a11y: None,
+        };
+        let t0 = Instant::now();
+        fastest(&dummy_screen, Duration::from_millis(120));
+        assert!(t0.elapsed() < Duration::from_secs(1), "fastest() must respect deadline");
+        let _ = done_tx.send(());
+        stalled_srv.join().unwrap();
+
+        // 3. Finding #5a: `open_pidfd` distinguishes `ESRCH` (`Exited`) so when a
+        //    session exits between `get_in` and `open_pidfd`, `stop_resolved_screen_locked`
+        //    cleans up files immediately without waiting on `send_home` or falling
+        //    back to unpinned `end_sessions`.
+        let mut short = std::process::Command::new("/usr/bin/true").spawn().expect("spawn true");
+        let dead_pid = short.id() as i32;
+        let _ = short.wait();
+        assert!(matches!(open_pidfd(dead_pid), PidfdOpen::Exited), "exited PID must map to PidfdOpen::Exited");
+        let dead_screen = Screen { pid: dead_pid, ..dummy_screen.clone() };
+        std::fs::write(dir_0755.join("qa.json"), serde_json::to_vec(&dead_screen).unwrap()).unwrap();
+        std::fs::write(dir_0755.join("qa.owner.json"), b"{\"block_id\":\"stale\"}").unwrap();
+        stop_resolved_screen_locked(&dir_0755, &dead_screen, Some(1000)).expect("exited pid between get_in and open_pidfd must clean up");
+        assert!(!dir_0755.join("qa.json").exists());
+        assert!(!dir_0755.join("qa.owner.json").exists());
+
+        // 4. Finding #5b: `sigkill_pinned_process_group` kills BOTH a SIGTERM-ignoring
+        //    session leader AND a background child inside its process group.
+        let mut leader =
+            std::process::Command::new("/bin/sh").arg("-c").arg("trap '' TERM; /usr/bin/sleep 30 & echo $!; wait").process_group(0).stdout(Stdio::piped()).spawn().expect("spawn pgid leader");
+        let leader_pid = leader.id() as i32;
+        let mut child_pid_line = String::new();
+        std::io::BufReader::new(leader.stdout.take().unwrap()).read_line(&mut child_pid_line).unwrap();
+        let child_pid: i32 = child_pid_line.trim().parse().expect("child sleep pid");
+        let PidfdOpen::Opened(leader_pidfd) = open_pidfd(leader_pid) else { panic!("leader pidfd") };
+        let PidfdOpen::Opened(child_pidfd) = open_pidfd(child_pid) else { panic!("child pidfd") };
+        assert!(sigkill_pinned_process_group(&leader_pidfd, leader_pid, Duration::from_secs(2)), "leader must be killed");
+        let _ = leader.wait();
+        // Child in the leader's process group must also exit immediately via `-pgid` SIGKILL.
+        let mut pfd = libc::pollfd { fd: std::os::fd::AsRawFd::as_raw_fd(&child_pidfd), events: libc::POLLIN, revents: 0 };
+        let pr = unsafe { libc::poll(&mut pfd, 1, 2000) };
+        assert!(pr > 0, "process-group child (pid {child_pid}) survived SIGKILL fallback");
+
+        // 5. `agyrev-da27b4f6e1` Finding #3: `publish_started_screen_in` unlinks stale
+        //    `{name}.owner.json` before atomically publishing `{name}.json`.
+        std::fs::write(dir_0755.join("qa.owner.json"), b"{\"block_id\":\"old-pane\"}").unwrap();
+        publish_started_screen_in(&dir_0755, &dummy_screen).expect("publish started screen");
+        assert!(!dir_0755.join("qa.owner.json").exists(), "stale owner.json must be removed on start");
+        assert!(dir_0755.join("qa.json").is_file(), "new screen.json must be published");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -5,6 +5,7 @@ use std::num::NonZeroUsize;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{ready, Context, Poll};
 
 use futures::FutureExt;
@@ -50,6 +51,7 @@ pub struct ChannelTx<S> {
     window_size: Arc<Mutex<u32>>,
     notify: Arc<Notify>,
     window_size_notication: WatchNotification,
+    closed: Arc<AtomicBool>,
     max_packet_size: u32,
     ext: Option<u32>,
 }
@@ -63,6 +65,7 @@ where
         id: ChannelId,
         window_size: Arc<Mutex<u32>>,
         window_size_notification: Arc<Notify>,
+        closed: Arc<AtomicBool>,
         max_packet_size: u32,
         ext: Option<u32>,
     ) -> Self {
@@ -74,18 +77,39 @@ where
             window_size_notication: WatchNotification::new(window_size_notification),
             window_size,
             window_size_fut: None,
+            closed,
             max_packet_size,
             ext,
         }
     }
 
-    fn poll_writable(&mut self, cx: &mut Context<'_>, buf_len: usize) -> Poll<NonZeroUsize> {
+    fn poll_writable(
+        &mut self,
+        cx: &mut Context<'_>,
+        buf_len: usize,
+    ) -> Poll<Result<NonZeroUsize, io::Error>> {
+        // Olo: fail immediately with BrokenPipe once the driver closes the
+        // channel (peer CLOSE, local close, or disconnect), even when credit
+        // remains or nobody is polling the read half.
+        if self.closed.load(Ordering::Acquire) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "channel closed",
+            )));
+        }
         let window_size = self.window_size.clone();
         let window_size_fut = self
             .window_size_fut
             .get_or_insert_with(|| Box::pin(window_size.lock_owned()));
         let mut window_size = ready!(window_size_fut.poll_unpin(cx));
         self.window_size_fut.take();
+
+        if self.closed.load(Ordering::Acquire) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "channel closed",
+            )));
+        }
 
         let writable = (self.max_packet_size).min(*window_size).min(buf_len as u32) as usize;
 
@@ -95,14 +119,28 @@ where
                 if *window_size > 0 {
                     self.notify.notify_one();
                 }
-                Poll::Ready(w)
+                Poll::Ready(Ok(w))
             }
             Err(_) => {
                 drop(window_size);
-                ready!(self.window_size_notication.poll_unpin(cx));
-                self.window_size_notication = WatchNotification::new(Arc::clone(&self.notify));
-                cx.waker().wake_by_ref();
-                Poll::Pending
+                let notified = self.window_size_notication.poll_unpin(cx);
+                // Olo: recheck `closed` AFTER registering on `Notify` so a
+                // concurrent driver close can never lose a wakeup.
+                if self.closed.load(Ordering::Acquire) {
+                    return Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "channel closed",
+                    )));
+                }
+                match notified {
+                    Poll::Ready(()) => {
+                        self.window_size_notication =
+                            WatchNotification::new(Arc::clone(&self.notify));
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    }
+                    Poll::Pending => Poll::Pending,
+                }
             }
         }
     }
@@ -111,8 +149,11 @@ where
         &mut self,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<(ChannelMsg, NonZeroUsize)> {
-        let writable = ready!(self.poll_writable(cx, buf.len()));
+    ) -> Poll<Result<(ChannelMsg, NonZeroUsize), io::Error>> {
+        let writable = match ready!(self.poll_writable(cx, buf.len())) {
+            Ok(w) => w,
+            Err(e) => return Poll::Ready(Err(e)),
+        };
 
         #[allow(clippy::indexing_slicing)] // Clamped to maximum `buf.len()` with `.poll_writable`
         let data = Bytes::copy_from_slice(&buf[..writable.into()]);
@@ -122,7 +163,7 @@ where
             Some(ext) => ChannelMsg::ExtendedData { data, ext },
         };
 
-        Poll::Ready((msg, writable))
+        Poll::Ready(Ok((msg, writable)))
     }
 
     fn activate(&mut self, msg: ChannelMsg, writable: usize) -> &mut OwnedPermitFuture<S> {
@@ -166,10 +207,19 @@ where
                 "cannot send empty buffer",
             )));
         }
+        if self.closed.load(Ordering::Acquire) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "channel closed",
+            )));
+        }
         let send_fut = if let Some(x) = self.send_fut.as_mut() {
             x
         } else {
-            let (msg, writable) = ready!(self.poll_mk_msg(cx, buf));
+            let (msg, writable) = match ready!(self.poll_mk_msg(cx, buf)) {
+                Ok(pair) => pair,
+                Err(e) => return Poll::Ready(Err(e)),
+            };
             self.activate(msg, writable.into())
         };
         let r = ready!(send_fut.as_mut().poll_unpin(cx));
@@ -184,6 +234,9 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
+        if self.closed.load(Ordering::Acquire) {
+            return Poll::Ready(Ok(()));
+        }
         let send_fut = if let Some(x) = self.send_fut.as_mut() {
             x
         } else {

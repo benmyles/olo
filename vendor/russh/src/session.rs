@@ -46,6 +46,10 @@ pub(crate) struct Encrypted {
     pub server_mac: mac::Name,
     pub session_id: CryptoVec,
     pub channels: HashMap<ChannelId, ChannelParams>,
+    // Olo: local channel IDs closed by us whose peer CHANNEL_CLOSE echo has
+    // not arrived yet; skipped by the allocator so a late echo can never close
+    // a newly allocated channel after 32-bit ID wraparound.
+    pub closing_channels: std::collections::HashSet<ChannelId>,
     pub last_channel_id: Wrapping<u32>,
     // Non-sensitive packet assembly buffer, analogous to
     // OpenSSH sshbuf (output side).  Not mlocked because it
@@ -179,6 +183,7 @@ impl<C> CommonSession<C> {
             session_id: newkeys.session_id,
             state,
             channels: HashMap::new(),
+            closing_channels: std::collections::HashSet::new(),
             last_channel_id: Wrapping(1),
             write: Vec::new(),
             write_cursor: 0,
@@ -289,8 +294,25 @@ impl Encrypted {
             channel.pending_close = true;
         } else {
             self.byte(channel, msg::CHANNEL_CLOSE)?;
-            self.channels.remove(&channel);
+            if self.channels.remove(&channel).is_some() && self.closing_channels.len() < 65_536 {
+                self.closing_channels.insert(channel);
+            }
         }
+        Ok(())
+    }
+
+    // Olo: peer sent CHANNEL_CLOSE and will send no further WINDOW_ADJUST on
+    // this channel. Discard unsendable pending outbound data and send
+    // CHANNEL_CLOSE immediately so dead channels never gate sibling channels.
+    pub fn close_on_peer_close(&mut self, channel: ChannelId) -> Result<(), crate::Error> {
+        if let Some(ch) = self.channels.get_mut(&channel) {
+            ch.pending_data.clear();
+            ch.pending_eof = false;
+            ch.pending_close = false;
+        }
+        self.byte(channel, msg::CHANNEL_CLOSE)?;
+        self.channels.remove(&channel);
+        self.closing_channels.remove(&channel);
         Ok(())
     }
 
@@ -760,6 +782,9 @@ impl Encrypted {
         while self
             .channels
             .contains_key(&ChannelId(self.last_channel_id.0))
+            || self
+                .closing_channels
+                .contains(&ChannelId(self.last_channel_id.0))
         {
             self.last_channel_id += Wrapping(1)
         }
@@ -768,12 +793,16 @@ impl Encrypted {
     pub fn new_channel(&mut self, window_size: u32, maxpacket: u32) -> ChannelId {
         loop {
             self.last_channel_id += Wrapping(1);
+            let id = ChannelId(self.last_channel_id.0);
+            if self.closing_channels.contains(&id) {
+                continue;
+            }
             if let std::collections::hash_map::Entry::Vacant(vacant_entry) =
-                self.channels.entry(ChannelId(self.last_channel_id.0))
+                self.channels.entry(id)
             {
                 vacant_entry.insert(ChannelParams {
                     recipient_channel: 0,
-                    sender_channel: ChannelId(self.last_channel_id.0),
+                    sender_channel: id,
                     sender_window_size: window_size,
                     recipient_window_size: 0,
                     sender_maximum_packet_size: maxpacket,
@@ -784,7 +813,7 @@ impl Encrypted {
                     pending_eof: false,
                     pending_close: false,
                 });
-                return ChannelId(self.last_channel_id.0);
+                return id;
             }
         }
     }
@@ -881,6 +910,7 @@ mod tests {
             server_mac: mac::NONE,
             session_id: CryptoVec::new(),
             channels: HashMap::new(),
+            closing_channels: std::collections::HashSet::new(),
             last_channel_id: Wrapping(0),
             write: Vec::new(),
             write_cursor: 0,

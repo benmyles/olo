@@ -167,7 +167,9 @@ pub fn screens_section(
 
     // (The one chosen, where it runs and nothing is being done to it.)
     let chosen = list.state().single().and_then(|i| lines.get(i));
-    let free = chosen.filter(|l| l.row.running && l.doing.is_none() && reached).map(|l| l.row.name.clone());
+    let free = chosen.filter(|l| l.row.running && l.doing.is_none() && reached);
+    let stop_action = free.map(|l| HostDo::ScreenStop { host_key: shown.key.clone(), host_instance_id: shown.host_instance_id, name: l.row.name.clone(), expected_started: l.row.started });
+    let look_action = free.map(|l| HostDo::ScreenLook(l.row.name.clone()));
     let wide = ["Look at Screen", "Stop Screen"].iter().map(|l| button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
     let button = |label: &'static str, id: &'static str, tip: &'static str, what: Option<HostDo>| {
         let on_do = on_do.clone();
@@ -193,8 +195,8 @@ pub fn screens_section(
         .flex_row()
         .items_center()
         .gap(px(m::SPACING))
-        .child(button("Look at Screen", "host-screen-look", "Shows a picture of the screen as it is now.", free.clone().map(HostDo::ScreenLook)))
-        .child(button("Stop Screen", "host-screen-stop", "Quits everything running on the screen. The screen stays in the list, stopped.", free.map(HostDo::ScreenStop)))
+        .child(button("Look at Screen", "host-screen-look", "Shows a picture of the screen as it is now.", look_action))
+        .child(button("Stop Screen", "host-screen-stop", "Quits everything running on the screen. The screen stays in the list, stopped.", stop_action))
         .child(div().flex_1());
     // Under them, what couldn't be done last: one line with the down
     // light, its first half ("Couldn’t stop agent-2") in the ink the
@@ -305,8 +307,10 @@ pub enum HostDo {
     ScreensDefault(bool),
     /// Olo being put on the host for its screens, stopped where it is.
     ScreensCancel,
-    /// One of the host's screens stopped, by its name.
-    ScreenStop(String),
+    /// One of the host's screens stopped, carrying the displayed host identity
+    /// and observed `started` generation so a queued click can never retarget
+    /// another host or stop a replacement run.
+    ScreenStop { host_key: String, host_instance_id: u64, name: String, expected_started: Option<u64> },
     /// A picture of one of the host's screens as it is now, shown here.
     ScreenLook(String),
     /// A kept folder (by its path there) let go of: `true` asks to confirm

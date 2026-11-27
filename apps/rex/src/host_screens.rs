@@ -24,21 +24,63 @@ exit 69"#
 
 /// What divides the two answers of [`asked_script`].
 const LISTED: &str = "--olo-screens-listed--";
+/// What divides the screen list from the `--protocol` capability answer of
+/// [`asked_script`], telling apart helpers that support `screen follow` from
+/// older pre-Step-5 helpers that only answer `screen --help`/`status`/`list`.
+const PROTO: &str = "--olo-screens-protocol--";
 
 /// What a host is asked of its screens in one command: the helper's
 /// `screen status`, then (where Olo is there) every screen it has, as
-/// `olo-screen list` writes them. Status 69, nothing said, where the
-/// host has no helper with screens.
+/// `olo-screen list` writes them, then `screen --protocol` so the hub knows
+/// whether this helper supports `screen follow`. Prefers the newest helper
+/// whose `screen --protocol` advertises `"follow"` (matching `screen_command`)
+/// before falling back to the newest legacy `screen --help` helper. Status 69,
+/// nothing said, where the host has no helper with screens.
 pub fn asked_script() -> String {
+    let skip_ws = "while :; do case \"$r\" in \" \"*|\"\t\"*|\"\r\"*|\"\n\"*) r=${r#?} ;; *) break ;; esac; done";
     format!(
-        r#"h=$(ls -t "$HOME"/.local/share/olo/rex-link/olo-rex-link-*-"$(uname -m)" 2>/dev/null | head -n 1)
-case "$([ -n "$h" ] && "$h" screen --help 2>/dev/null)" in
-"usage: olo screen"*) ;;
-*) exit 69 ;;
-esac
+        r#"d="$HOME"/.local/share/olo/rex-link; m=$(uname -m)
+probe_follow() {{
+  [ -f "$1" ] && [ -O "$1" ] || return 1
+  out=$(PATH=/dev/null "$1" screen --protocol </dev/null 2>/dev/null) || return 1
+  r=${{out#*'"proto"'}}; [ "$r" != "$out" ] || return 1
+  {skip_ws}
+  case "$r" in :*) r=${{r#:}} ;; *) return 1 ;; esac
+  {skip_ws}
+  case "$r" in [0-9]*) ;; *) return 1 ;; esac
+  r=${{out#*'"commands"'}}; [ "$r" != "$out" ] || return 1
+  {skip_ws}
+  case "$r" in :*) r=${{r#:}} ;; *) return 1 ;; esac
+  {skip_ws}
+  case "$r" in '['*) r=${{r#'['}} ;; *) return 1 ;; esac
+  cmds=${{r%%']'*}}; [ "$cmds" != "$r" ] || return 1
+  case "$cmds" in *'"follow"'*) return 0 ;; *) return 1 ;; esac
+}}
+best=""; best_proto=""
+legacy=""
+for p in "$d"/olo-rex-link-*-"$m"; do
+  if probe_follow "$p"; then
+    if [ -z "$best" ] || [ "$p" -nt "$best" ]; then best="$p"; best_proto="$out"; fi
+  elif [ -f "$p" ] && [ -O "$p" ]; then
+    case "$(PATH=/dev/null "$p" screen --help </dev/null 2>/dev/null)" in
+    "usage: olo screen"*)
+      if [ -z "$legacy" ] || [ "$p" -nt "$legacy" ]; then legacy="$p"; fi
+      ;;
+    esac
+  fi
+done
+h="$best"
+[ -n "$h" ] || h="$legacy"
+[ -n "$h" ] || exit 69
 "$h" screen status
 echo {LISTED}
 "$h" screen list 2>/dev/null
+echo {PROTO}
+if [ -n "$best_proto" ]; then
+  printf '%s\n' "$best_proto"
+else
+  "$h" screen --protocol 2>/dev/null
+fi
 exit 0"#
     )
 }
@@ -129,6 +171,10 @@ pub struct ScreensThere {
     /// Its helper has `screen` (one from before update 16, or none,
     /// hasn't: nothing can be put there until the helper is this Olo's).
     pub helper: bool,
+    /// Its helper answered `screen --protocol` with `proto >= 1` and
+    /// `"follow"` in `commands` (distinguishing live-follow helpers from
+    /// older pre-Step-5 helpers that only implement `status`/`list`).
+    pub helper_follow: bool,
     /// Olo's version there; none: not there.
     pub installed: Option<String>,
     /// When the release it was put from was made (its commit's time):
@@ -161,7 +207,14 @@ impl ScreensThere {
         if status == Some(69) {
             return Some(ScreensThere::default());
         }
-        // (What `asked_script` writes after its status: the screens.)
+        // (What `asked_script` writes after its status: the screens, then `--protocol`.)
+        let (output, proto_raw) = match output.split_once(PROTO) {
+            Some((before, proto)) => (before, Some(proto)),
+            None => (output, None),
+        };
+        let helper_follow = proto_raw
+            .and_then(|raw| raw.lines().rev().find_map(|line| serde_json::from_str::<Value>(line.trim()).ok().filter(Value::is_object)))
+            .is_some_and(|v| v["proto"].as_u64().is_some_and(|p| p >= 1) && v["commands"].as_array().is_some_and(|c| c.iter().any(|x| x.as_str() == Some("follow"))));
         let (output, listed) = match output.split_once(LISTED) {
             Some((status, listed)) => (status, Some(listed)),
             None => (output, None),
@@ -188,6 +241,7 @@ impl ScreensThere {
         let words = |v: &Value| v.as_array().map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_owned)).collect::<Vec<_>>()).unwrap_or_default();
         Some(ScreensThere {
             helper: true,
+            helper_follow,
             installed: said["installed"].as_str().map(str::to_owned),
             committed: said["committed"].as_u64(),
             chrome: said["chrome"].as_str().map(str::to_owned),
@@ -484,6 +538,91 @@ mod tests {
         let ran = std::process::Command::new("sh").arg("-c").arg(asked_script()).env("HOME", &home).output().unwrap();
         assert_eq!((ran.status.code(), ran.stdout.is_empty()), (Some(69), true));
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Agy Finding 4: `asked_script` distinguishes a pre-Step-5 helper (has
+    /// `screen --help`/`status`/`list` only) from a Step-5+ helper whose
+    /// `screen --protocol` advertises `"follow"` in `"commands"`.
+    #[test]
+    fn agy_f4_asked_script_distinguishes_legacy_help_from_protocol_follow() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let arch = String::from_utf8(std::process::Command::new("uname").arg("-m").output().unwrap().stdout).unwrap();
+        let arch = arch.trim();
+        let status_json = r#"{"bytes":100,"chrome":null,"default":"desktop","installed":"2026.11.27","missing":[],"older":{},"running":[],"software_drawing":true}"#;
+
+        // 1. Pre-Step-5 helper: answers `screen --help`/`status`/`list`, exits 2 on `--protocol`.
+        let home_old = std::path::PathBuf::from(format!("/var/tmp/olo-rex-host-screens-f4-old-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home_old);
+        let dir_old = home_old.join(".local/share/olo/rex-link");
+        std::fs::create_dir_all(&dir_old).unwrap();
+        let h_old = dir_old.join(format!("olo-rex-link-old-{arch}"));
+        std::fs::write(
+            &h_old,
+            format!(
+                "#!/bin/sh\ncase \"$2\" in\n--help) echo 'usage: olo screen <cmd>';;\nstatus) echo '{status_json}';;\nlist) echo '[]';;\n--protocol) echo 'unknown option --protocol' >&2; exit 2;;\n*) exit 2;;\nesac\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&h_old, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let out_old = std::process::Command::new("sh").arg("-c").arg(asked_script()).env("HOME", &home_old).output().unwrap();
+        let _ = std::fs::remove_dir_all(&home_old);
+        let there_old = ScreensThere::read(out_old.status.code().map(|c| c as u32), &String::from_utf8_lossy(&out_old.stdout)).unwrap();
+        assert!(there_old.helper, "pre-Step-5 helper must still set helper=true for Host window");
+        assert!(!there_old.helper_follow, "pre-Step-5 helper without --protocol follow must set helper_follow=false");
+
+        // 2. Step-5+ helper: answers `screen --protocol` with proto>=1 and `"follow"`.
+        let home_new = std::path::PathBuf::from(format!("/var/tmp/olo-rex-host-screens-f4-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home_new);
+        let dir_new = home_new.join(".local/share/olo/rex-link");
+        std::fs::create_dir_all(&dir_new).unwrap();
+        let h_new = dir_new.join(format!("olo-rex-link-new-{arch}"));
+        std::fs::write(
+            &h_new,
+            format!(
+                "#!/bin/sh\ncase \"$2\" in\n--help) echo 'usage: olo screen <cmd>';;\nstatus) echo '{status_json}';;\nlist) echo '[]';;\n--protocol) echo '{{\"proto\":1,\"commands\":[\"follow\",\"stream\"],\"capabilities\":[]}}';;\n*) exit 2;;\nesac\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&h_new, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let out_new = std::process::Command::new("sh").arg("-c").arg(asked_script()).env("HOME", &home_new).output().unwrap();
+        let _ = std::fs::remove_dir_all(&home_new);
+        let there_new = ScreensThere::read(out_new.status.code().map(|c| c as u32), &String::from_utf8_lossy(&out_new.stdout)).unwrap();
+        assert!(there_new.helper);
+        assert!(there_new.helper_follow, "Step-5+ helper with --protocol follow must set helper_follow=true");
+
+        // 3. Round 2 Confirming Finding 1 (multi-helper host): even when a
+        //    pre-Step-5 legacy helper has a NEWER mtime than a Step-5+ helper,
+        //    `asked_script` must prefer the follow-capable helper (matching `screen_command`).
+        let home_multi = std::path::PathBuf::from(format!("/var/tmp/olo-rex-host-screens-f4-multi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home_multi);
+        let dir_multi = home_multi.join(".local/share/olo/rex-link");
+        std::fs::create_dir_all(&dir_multi).unwrap();
+        let h_follow = dir_multi.join(format!("olo-rex-link-follow-{arch}"));
+        let h_legacy_newer = dir_multi.join(format!("olo-rex-link-legacy-{arch}"));
+        std::fs::write(
+            &h_follow,
+            format!(
+                "#!/bin/sh\ncase \"$2\" in\n--help) echo 'usage: olo screen <cmd>';;\nstatus) echo '{status_json}';;\nlist) echo '[]';;\n--protocol) echo '{{\"proto\":1,\"commands\":[\"follow\",\"stream\"],\"capabilities\":[]}}';;\n*) exit 2;;\nesac\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            &h_legacy_newer,
+            format!(
+                "#!/bin/sh\ncase \"$2\" in\n--help) echo 'usage: olo screen <cmd>';;\nstatus) echo '{status_json}';;\nlist) echo '[]';;\n--protocol) echo 'unknown option --protocol' >&2; exit 2;;\n*) exit 2;;\nesac\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&h_follow, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&h_legacy_newer, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Make legacy helper strictly newer in mtime than the follow-capable helper!
+        assert!(std::process::Command::new("touch").args(["-t", "202601010000"]).arg(&h_follow).status().unwrap().success());
+        assert!(std::process::Command::new("touch").args(["-t", "202601020000"]).arg(&h_legacy_newer).status().unwrap().success());
+        let out_multi = std::process::Command::new("sh").arg("-c").arg(asked_script()).env("HOME", &home_multi).output().unwrap();
+        let _ = std::fs::remove_dir_all(&home_multi);
+        let there_multi = ScreensThere::read(out_multi.status.code().map(|c| c as u32), &String::from_utf8_lossy(&out_multi.stdout)).unwrap();
+        assert!(there_multi.helper);
+        assert!(there_multi.helper_follow, "multi-helper host must prefer follow-capable helper over newer-mtime legacy helper");
     }
 
     /// Why Olo wasn't put there, in the window's words: the machine

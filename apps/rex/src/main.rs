@@ -32,6 +32,7 @@ mod panels;
 mod pool;
 mod predict;
 mod repos;
+mod screens_sock;
 mod server;
 mod server_panel;
 mod settings;
@@ -133,14 +134,21 @@ fn main() {
     hub::set_let_go(let_go);
     hub::set_helps(restored.as_ref().map(|a| a.help.clone()).unwrap_or_default());
     hub::set_saved_forwards(restored.as_ref().map(|a| a.forwards.clone()).unwrap_or_default());
+    hub::set_saved_host_screens(restored.as_ref().map(|a| a.cached_host_screens.clone()).unwrap_or_default());
     let restored_workspaces: Vec<SavedWorkspaceState> = restored.map(|a| a.workspaces).unwrap_or_default();
 
     // Register multi-window in-place upgrade hook so windows & sessions survive Olo upgrades!
     olo_kit::on_upgrade(|per_window| {
         let workspaces: Vec<SavedWorkspaceState> = per_window.into_iter().filter_map(|s| serde_json::from_str::<SavedWorkspaceState>(&s).ok()).collect();
         // (The hub taken from the app's lock before its own is.)
-        let forwards = ui::app_hub().map(|hub| hub.saved_forwards()).unwrap_or_default();
-        if workspaces.is_empty() { None } else { serde_json::to_string(&SavedAppState { workspaces, let_go: hub::let_go(), help: hub::helps(), forwards }).ok() }
+        let (forwards, cached_host_screens) = ui::app_hub().map(|hub| (hub.saved_forwards(), hub.saved_host_screens())).unwrap_or_default();
+        let let_go = hub::let_go();
+        let help = hub::helps();
+        if workspaces.is_empty() && let_go.is_empty() && help.is_empty() && forwards.is_empty() && cached_host_screens.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&SavedAppState { workspaces, let_go, help, forwards, cached_host_screens }).ok()
+        }
     });
 
     let mut settings = Settings::load();
@@ -167,7 +175,9 @@ fn main() {
             // after the launcher had been told "yes", and the launch
             // went nowhere: a second `olo-rex --hosts`, the palette's
             // jump to a pane.)
-            if let Some(launch) = msg.downcast_ref::<Launch>() {
+            if let Some(req) = msg.downcast_ref::<ui::OpenHostOnApp>() {
+                ui::open_host_on_app(&req.host_key, req.tab);
+            } else if let Some(launch) = msg.downcast_ref::<Launch>() {
                 let req = parse_args(&launch.args);
                 if let Some((h, s, b)) = req.focus_block {
                     ui::focus_block_from_cli(h, s, b);
@@ -247,4 +257,5 @@ fn main() {
             ui::open_demo_activity(mode.trim());
         }
     });
+    ui::shutdown_app();
 }

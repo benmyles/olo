@@ -545,6 +545,153 @@ pub fn fit_with(text_system: &olo_interface::WindowTextSystem, text: SharedStrin
     }
 }
 
+/// `text` cut in its middle with "…" to fit `max_width` (whole when it fits),
+/// preserving both the start and the distinguishing end (e.g. host suffixes
+/// like `-04.internal` or screen suffixes like `Suite v2`), measured as shaped.
+pub fn fit_middle(g: &mut Painter, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    fit_middle_with(g.text_system(), text, font_size, font, max_width)
+}
+
+/// [`fit_middle`], with the window's text system when no [`Painter`] is in hand.
+pub fn fit_middle_with(text_system: &olo_interface::WindowTextSystem, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    let shape = |t: SharedString| {
+        let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        text_system.shape_line(t, px(font_size), &[run], None)
+    };
+    if shape(text.clone()).width <= max_width {
+        return text;
+    }
+    fit_middle_overflow_chars(&text, |cand| shape(cand.to_owned().into()).width <= max_width).into()
+}
+
+/// [`fit_middle_with`] when the caller already verified `text` overflows
+/// `max_width`, avoiding a redundant full-text shape.
+fn fit_middle_overflow_with(text_system: &olo_interface::WindowTextSystem, text: &str, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    let shape = |t: SharedString| {
+        let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        text_system.shape_line(t, px(font_size), &[run], None)
+    };
+    fit_middle_overflow_chars(text, |cand| shape(cand.to_owned().into()).width <= max_width).into()
+}
+
+/// Pure character-level middle truncation driven by any width predicate `fits`
+/// (shared by [`fit_middle_with`] and unit tests). Performs strictly O(log N)
+/// calls to `fits` regardless of interior whitespace runs or variable glyph widths.
+#[cfg(test)]
+fn fit_middle_chars(text: &str, fits: impl Fn(&str) -> bool) -> String {
+    if fits(text) {
+        return text.to_owned();
+    }
+    fit_middle_overflow_chars(text, fits)
+}
+
+/// Character-level middle truncation for a `text` already known to overflow.
+/// Performs strictly O(log N) calls to `fits` and preserves 1 character on
+/// 2-character overflowing strings (e.g. `"開発"` → `"…発"`) whenever it fits.
+fn fit_middle_overflow_chars(text: &str, fits: impl Fn(&str) -> bool) -> String {
+    if !fits("…") {
+        return "…".to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    if n <= 1 {
+        return "…".to_owned();
+    }
+    let make = |head: usize, tail: usize| -> String {
+        let prefix: String = chars[..head].iter().collect();
+        let suffix: String = chars[n - tail..].iter().collect();
+        let p_clean = prefix.trim_end();
+        let s_clean = suffix.trim_start();
+        format!("{p_clean}…{s_clean}")
+    };
+    let split = |k: usize| -> (usize, usize) {
+        if k <= 1 {
+            return (0, k);
+        }
+        // Keep ~55% at the front and ~45% at the distinguishing end (at least 1 char each).
+        let head = ((k * 11 + 10) / 20).clamp(1, k - 1);
+        (head, k - head)
+    };
+
+    // 1. Primary binary search over kept char count `k` (O(log N) shapings).
+    let (mut lo, mut hi) = (0usize, n - 1);
+    let mut best_k = 0usize;
+    let mut best = "…".to_owned();
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let (h, t) = split(mid);
+        let cand = make(h, t);
+        if fits(&cand) {
+            lo = mid;
+            best_k = mid;
+            best = cand;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    let (mut head, mut tail) = split(best_k);
+    // Normalize boundary whitespace in O(1) shapings so further expansion never
+    // probes duplicate trimmed strings across long interior space runs.
+    while head > 0 && chars[head - 1].is_whitespace() {
+        head -= 1;
+    }
+    while tail > 0 && chars[n - tail].is_whitespace() {
+        tail -= 1;
+    }
+
+    // 2. Binary-search any extra visible tail chars that still fit (skipping
+    //    whitespace-boundary duplicates in O(1) shapings -> O(log N) total).
+    let max_tail = (n - 1).saturating_sub(head);
+    if tail < max_tail {
+        let cand_tails: Vec<usize> = ((tail + 1)..=max_tail).filter(|&t| !chars[n - t].is_whitespace()).collect();
+        if let Some(&first_t) = cand_tails.first() {
+            let first_s = make(head, first_t);
+            if fits(&first_s) {
+                let mut t_lo = 0usize;
+                let mut t_hi = cand_tails.len() - 1;
+                best = first_s;
+                while t_lo < t_hi {
+                    let mid = (t_lo + t_hi).div_ceil(2);
+                    let cand = make(head, cand_tails[mid]);
+                    if fits(&cand) {
+                        t_lo = mid;
+                        best = cand;
+                    } else {
+                        t_hi = mid - 1;
+                    }
+                }
+                tail = cand_tails[t_lo];
+            }
+        }
+    }
+
+    // 3. Binary-search any extra visible head chars that still fit (O(log N) total).
+    let max_head = (n - 1).saturating_sub(tail);
+    if head < max_head {
+        let cand_heads: Vec<usize> = ((head + 1)..=max_head).filter(|&h| !chars[h - 1].is_whitespace()).collect();
+        if let Some(&first_h) = cand_heads.first() {
+            let first_s = make(first_h, tail);
+            if fits(&first_s) {
+                let mut h_lo = 0usize;
+                let mut h_hi = cand_heads.len() - 1;
+                best = first_s;
+                while h_lo < h_hi {
+                    let mid = (h_lo + h_hi).div_ceil(2);
+                    let cand = make(cand_heads[mid], tail);
+                    if fits(&cand) {
+                        h_lo = mid;
+                        best = cand;
+                    } else {
+                        h_hi = mid - 1;
+                    }
+                }
+            }
+        }
+    }
+
+    best
+}
+
 /// [`fit`] for a sentence (a reason, a status: prose, not a name or a
 /// path): cut where a word ends, never inside one, and before a
 /// bracket it would leave open ("…your SSH agent offered…", not
@@ -777,6 +924,24 @@ pub fn label_fit(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, tex
     let shown = fit(g, text.clone(), font_size, &font, max_width.max(px(0.0)));
     let at = label(g, x, center_y, align, shown, font_size, font, color);
     // Its whole, in a tip for the pointer resting on it.
+    g.note_cut(text, at);
+    at
+}
+
+/// [`label`] cut in its middle with "…" to fit `max_width` ([`fit_middle`]),
+/// preserving both the start and end of host/screen names and recording the
+/// full text for hover tooltips.
+#[allow(clippy::too_many_arguments)]
+pub fn label_fit_middle(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+    let text = text.into();
+    let max_w = max_width.max(px(0.0));
+    let run = TextRun { len: text.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None };
+    let line = g.text_system().shape_line(text.clone(), px(font_size), &[run], None);
+    if line.width <= max_w {
+        return paint_label(g, x, center_y, align, text, font_size, line);
+    }
+    let shown = fit_middle_overflow_with(g.text_system(), &text, font_size, &font, max_w);
+    let at = label(g, x, center_y, align, shown, font_size, font, color);
     g.note_cut(text, at);
     at
 }
@@ -1648,6 +1813,76 @@ mod tests {
         assert_eq!(end_at_a_word("/a/very/long/path/of/one/word", 10), 10);
         assert_eq!(end_at_a_word("(all of it in brackets", 12), 12);
         assert_eq!(end_at_a_word("née Zoë", "née Zo".len() + 1), "née".len());
+    }
+
+    #[test]
+    fn fit_middle_preserves_distinguishing_suffixes() {
+        let fits = |max_chars: usize| move |s: &str| s.chars().count() <= max_chars;
+        assert_eq!(fit_middle_chars("dev-box", fits(12)), "dev-box");
+        let host = fit_middle_chars("prod-eu-west-runner-04.internal", fits(20));
+        assert!(host.starts_with("prod-eu-") && host.ends_with(".internal") && host.contains('…'), "{host}");
+        assert!(host.chars().count() <= 20, "{host}");
+        let screen = fit_middle_chars("Checkout Payment Regression Suite v2", fits(20));
+        assert!(screen.starts_with("Checkout") && screen.ends_with("Suite v2") && screen.contains('…'), "{screen}");
+        assert!(screen.chars().count() <= 20, "{screen}");
+        assert_eq!(fit_middle_chars("abcdef", fits(1)), "…");
+    }
+
+    #[test]
+    fn fit_middle_bounded_shapings_on_space_heavy_4k_title() {
+        use std::cell::Cell;
+        // 4 KiB title with a huge interior run of spaces before the distinguishing suffix
+        // (previously triggered >4,000 greedy trim/shape calls).
+        let title = format!("prod-eu-west-{}runner-04.internal", " ".repeat(4096));
+        let calls = Cell::new(0usize);
+        let out = fit_middle_chars(&title, |s| {
+            calls.set(calls.get() + 1);
+            s.chars().count() <= 24
+        });
+        assert!(out.chars().count() <= 24, "must fit: {out:?}");
+        assert!(out.starts_with("prod-") && out.ends_with(".internal") && out.contains('…'), "got: {out:?}");
+        assert!(calls.get() <= 32, "expected O(log N) <= 32 shapings on 4 KiB space-heavy title, got {}", calls.get());
+
+        // Also check 4 KiB dense variable-width text remains strictly O(log N).
+        let dense = format!("{}{}", "i".repeat(2048), "W".repeat(2048));
+        let dense_calls = Cell::new(0usize);
+        let out_dense = fit_middle_chars(&dense, |s| {
+            dense_calls.set(dense_calls.get() + 1);
+            let width: usize = s.chars().map(|c| if c == 'W' { 3 } else { 1 }).sum();
+            width <= 40
+        });
+        assert!(out_dense.contains('…'));
+        assert!(dense_calls.get() <= 48, "expected O(log N) <= 48 shapings on 4 KiB dense text, got {}", dense_calls.get());
+    }
+
+    #[test]
+    fn fit_middle_keeps_one_char_on_two_char_overflow_and_skips_redundant_full_shape() {
+        use std::cell::Cell;
+        // 2-char wide CJK string: each CJK char is width 2, "…" is width 1; max width 3
+        // cannot fit "開発" (4) but comfortably fits "…発" (3).
+        let wide_fits = |max: usize| {
+            move |s: &str| {
+                let w: usize = s.chars().map(|c| if c == '…' || c.is_ascii() { 1 } else { 2 }).sum();
+                w <= max
+            }
+        };
+        assert_eq!(fit_middle_chars("開発", wide_fits(3)), "…発");
+        assert_eq!(fit_middle_chars("開発", wide_fits(2)), "…");
+        // Width-4 string with trailing ideographic space overflows max=3 and keeps the visible head char.
+        assert_eq!(fit_middle_chars("開\u{3000}", wide_fits(3)), "開…");
+        assert_eq!(fit_middle_chars("開 ", wide_fits(3)), "開 ");
+
+        // `fit_middle_overflow_chars` must never re-measure the full overflowing input string.
+        let full = "prod-eu-west-runner-04.internal";
+        let saw_full = Cell::new(false);
+        let out = fit_middle_overflow_chars(full, |cand| {
+            if cand == full {
+                saw_full.set(true);
+            }
+            cand.chars().count() <= 16
+        });
+        assert!(!saw_full.get(), "overflow path must not re-shape full input");
+        assert!(out.contains('…') && out.chars().count() <= 16, "got: {out:?}");
     }
 
     #[test]

@@ -6,6 +6,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-27
 
+### Agent Screens — multi-host sidebar (dark, 2x)
+
+*22:58* — Dark mode multi-host Agent Screens sidebar with unbroken 1-device-pixel right divider, clear 3-level host/running/stopped ink hierarchy, and remote host live/history/stats view.
+
+![Agent Screens — multi-host sidebar (dark, 2x)](2026-11-27/225853-agent-screens-multi-host-sidebar-dark-2x.png)
+
+### Agent Screens — multi-host sidebar (light, 2x)
+
+*22:58* — Agent Screens shows This Computer and connected Rex hosts in one BeOS outline sidebar (MultiSidebar) with left disclosure latches, aligned status dots/rings, middle-truncated names (style::label_fit_middle), uniform 8 pt inter-host gaps, and live/history/export/control streaming over Rex.
+
+![Agent Screens — multi-host sidebar (light, 2x)](2026-11-27/225853-agent-screens-multi-host-sidebar-light-2x.png)
+
 ### The card shows a few pixels as blocks, a strip from its start
 
 *17:47* — A picture of a few pixels dragged out of the screen is shown as crisp blocks of whole device pixels, never smoothed; a long strip from its start at its own size, its far end going out into the card with its frame. The frame is always the picture's own edge.

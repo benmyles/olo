@@ -560,6 +560,11 @@ impl Default for ReconnectPolicy {
     }
 }
 
+/// Sentinel prefix returned by `StreamOpener::open_live` (e.g. `RexSockOpener`)
+/// when the bound session's `started` generation was replaced or stopped so
+/// `run_session` treats it as terminal `ScreenGone` without retrying (B.1 / #5).
+pub(crate) const OPEN_LIVE_SCREEN_GONE_PREFIX: &str = "__olo_screen_gone__:";
+
 type FrameReply = Result<Option<(u64, Frame)>, String>;
 
 /// Wire and CLI capabilities advertised once per host by
@@ -591,9 +596,18 @@ pub struct HostCapabilities {
     /// `"discontiguous_part"`: host `bin/olo-screen` also supports `--part`, so
     /// discontiguous exports succeed end-to-end.
     pub discontiguous_part: bool,
-    /// `"stop-expected-started"`: `screen stop NAME --expected-started <u64>` checks
-    /// session generation before stopping.
+    /// `"stop-expected-started"`: legacy helper flag (checked before dropping lock).
     pub stop_expected_started: bool,
+    /// `"stop-expected"`: atomic locked `screen stop NAME --expected-started <u64>
+    /// --expected-last-used <u64>` checking both expectations under `NAME.lifecycle.lock`
+    /// (Final pass B.3 / Astra #2–#4).
+    pub stop_expected: bool,
+    /// `"clear-expected"`: atomic locked `screen history NAME --clear --expected-started
+    /// <u64> --expected-last-used <u64>` under `NAME.lifecycle.lock` (Agy-review R1 #11).
+    pub clear_expected: bool,
+    /// `"delete-expected"`: atomic locked `screen delete NAME --expected-started <u64>
+    /// --expected-last-used <u64>` under `NAME.lifecycle.lock` (Agy-review R1 #11).
+    pub delete_expected: bool,
 }
 
 #[derive(Deserialize)]
@@ -627,6 +641,9 @@ impl HostCapabilities {
             export_part_ranges: has(&["export-part-ranges", "export_part_ranges"]),
             discontiguous_part: has(&["discontiguous_part", "discontiguous-part"]),
             stop_expected_started: has(&["stop-expected-started", "stop_expected_started"]),
+            stop_expected: has(&["stop-expected", "stop_expected"]),
+            clear_expected: has(&["clear-expected", "clear_expected"]),
+            delete_expected: has(&["delete-expected", "delete_expected"]),
         })
     }
 
@@ -635,7 +652,18 @@ impl HostCapabilities {
     /// directly without a shared [`HostProtocolCache`]).
     pub fn from_pane(caps: &PaneCapabilities) -> HostCapabilities {
         HostCapabilities {
-            proto: if caps.explicit_control_ack || caps.history_snapshot_done || caps.stop_expected_started || caps.can_export_discontiguous { 1 } else { 0 },
+            proto: if caps.explicit_control_ack
+                || caps.history_snapshot_done
+                || caps.stop_expected
+                || caps.stop_expected_started
+                || caps.clear_expected
+                || caps.delete_expected
+                || caps.can_export_discontiguous
+            {
+                1
+            } else {
+                0
+            },
             commands: Vec::new(),
             control_ack: caps.explicit_control_ack,
             warning_status: caps.warning_status,
@@ -644,6 +672,9 @@ impl HostCapabilities {
             export_part_ranges: caps.can_export_discontiguous,
             discontiguous_part: caps.can_export_discontiguous,
             stop_expected_started: caps.stop_expected_started,
+            stop_expected: caps.stop_expected,
+            clear_expected: caps.clear_expected,
+            delete_expected: caps.delete_expected,
         }
     }
 
@@ -673,6 +704,9 @@ impl HostCapabilities {
         caps.history_snapshot_done = self.history_snapshot_done;
         caps.can_export_discontiguous = self.discontiguous_part;
         caps.stop_expected_started = self.stop_expected_started;
+        caps.stop_expected = self.stop_expected;
+        caps.clear_expected = self.clear_expected;
+        caps.delete_expected = self.delete_expected;
     }
 
     /// Build [`PaneCapabilities`] for a screen on a host with these probed
@@ -1049,6 +1083,14 @@ struct WriteQueue {
     connected: bool,
     terminal: bool,
     paused: bool,
+    /// Monotonic connection generation incremented on every live connection
+    /// open and on every host-side `Reconnecting` status (B.1 / Astra #5).
+    conn_gen: u64,
+    /// Connection generation whose first keyframe has been decoded by `run_session`.
+    frame_decoded_gen: u64,
+    /// Connection generation whose decoded picture has been accepted and shown
+    /// by the pane via `note_live_frame_accepted()` (gates `set_controlled(true)`).
+    frame_accepted_gen: u64,
     control_state: ControlState,
     /// Monotonic non-zero sequence counter for `ClientMsg::ControlSeq`.
     next_control_seq: u64,
@@ -1149,6 +1191,9 @@ impl StreamControl {
                 connected: false,
                 terminal: false,
                 paused: false,
+                conn_gen: 0,
+                frame_decoded_gen: 0,
+                frame_accepted_gen: 0,
                 control_state: ControlState::Idle,
                 next_control_seq: 0,
                 pending_take_seq: None,
@@ -1488,6 +1533,16 @@ fn run_session(
         let LiveStream { reader, writer, cancel } = match opened {
             Ok(s) => s,
             Err(msg) => {
+                // B.1 (#5): a bound-session mismatch from `RexSockOpener::open_live`
+                // is terminal `ScreenGone` (never retry onto a replacement session).
+                if let Some(reason) = msg.strip_prefix(OPEN_LIVE_SCREEN_GONE_PREFIX) {
+                    let mut inf = info.lock().unwrap_or_else(|e| e.into_inner());
+                    inf.state = ScreenState::Stopped;
+                    inf.controlled = false;
+                    drop(inf);
+                    ctrl.push_event(LiveEvent::Status(LiveStatus::Disconnected(reason.to_owned())));
+                    break;
+                }
                 if attempt < reconnect.delays.len() {
                     ctrl.push_event(LiveEvent::Status(LiveStatus::Reconnecting));
                     if !ctrl.wait_backoff(reconnect.delays[attempt]) {
@@ -1525,6 +1580,9 @@ fn run_session(
             wq.queued_input_events = 0;
             wq.queued_input_bytes = 0;
             wq.connected = true;
+            wq.conn_gen = wq.conn_gen.wrapping_add(1).max(1);
+            wq.frame_decoded_gen = 0;
+            wq.frame_accepted_gen = 0;
             wq.control_state = ControlState::Idle;
             wq.pending_take_seq = None;
             if wq.paused {
@@ -1561,6 +1619,15 @@ fn run_session(
                     awaiting_keyframe = false;
                     saw_error_status = None;
                     attempt = 0;
+                    // B.1 (#5): mark this connection generation as having decoded
+                    // a full keyframe; control still stays gated until the pane
+                    // accepts and shows it via `note_live_frame_accepted()`.
+                    {
+                        let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
+                        if wq.connected && wq.frame_decoded_gen != wq.conn_gen {
+                            wq.frame_decoded_gen = wq.conn_gen;
+                        }
+                    }
                     // Update logical dimensions whenever the live canvas size changes
                     // so remote pointer mapping always tracks screen resizes.
                     if canvas.width > 0 && canvas.height > 0 {
@@ -1610,6 +1677,12 @@ fn run_session(
                         awaiting_keyframe = true;
                         let lost_ctl = {
                             let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
+                            // B.1 (#5): advance connection generation so Take Control
+                            // stays refused until a fresh keyframe arrives and is
+                            // accepted by the pane after reconnect.
+                            wq.conn_gen = wq.conn_gen.wrapping_add(1).max(1);
+                            wq.frame_decoded_gen = 0;
+                            wq.frame_accepted_gen = 0;
                             let had = matches!(wq.control_state, ControlState::Requested | ControlState::Held);
                             if had {
                                 wq.control_state = ControlState::Idle;
@@ -1910,12 +1983,12 @@ struct HistoryControl {
 }
 
 impl HistoryControl {
-    fn new() -> Arc<HistoryControl> {
+    fn new_with_active(active: bool) -> Arc<HistoryControl> {
         static NEXT_HIST: AtomicUsize = AtomicUsize::new(1);
         Arc::new(HistoryControl {
             stream_id: NEXT_HIST.fetch_add(1, Ordering::Relaxed),
             stop: Arc::new(AtomicBool::new(false)),
-            active: Arc::new(AtomicBool::new(true)),
+            active: Arc::new(AtomicBool::new(active)),
             resume_epoch: AtomicUsize::new(0),
             need_reactivation_emit: AtomicBool::new(false),
             conn_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
@@ -2181,12 +2254,7 @@ fn run_history_session(
         on_event(HistoryEvent::Failed(msg));
         return;
     }
-    let host_caps = protocol_cache.get_or_probe(&*opener);
-    let use_snapshot_done = {
-        let mut inf = info.lock().unwrap_or_else(|e| e.into_inner());
-        host_caps.apply_to(&mut inf.capabilities);
-        inf.capabilities.history_snapshot_done
-    };
+    let mut probed_snapshot_done: Option<bool> = None;
     let mut loaded_once = false;
     let mut delivered_actions: Vec<Action> = Vec::new();
     let mut delivered_bytes: Vec<usize> = Vec::new();
@@ -2200,6 +2268,22 @@ fn run_history_session(
         if !ctrl.wait_until_active() {
             break;
         }
+        let use_snapshot_done = match probed_snapshot_done {
+            Some(v) => v,
+            None => {
+                let host_caps = protocol_cache.get_or_probe(&*opener);
+                let v = {
+                    let mut inf = info.lock().unwrap_or_else(|e| e.into_inner());
+                    host_caps.apply_to(&mut inf.capabilities);
+                    inf.capabilities.history_snapshot_done
+                };
+                probed_snapshot_done = Some(v);
+                if ctrl.stop.load(Ordering::Acquire) || !ctrl.active.load(Ordering::Acquire) {
+                    continue;
+                }
+                v
+            }
+        };
         let open_epoch = ctrl.resume_epoch.load(Ordering::Acquire);
         let conn_cancel = Arc::new(AtomicBool::new(false));
         {
@@ -2886,6 +2970,11 @@ impl ScreenSource for StreamScreenSource {
             if wq.terminal || !wq.connected || ctrl.stop.load(Ordering::Acquire) {
                 return Err("Not connected to this screen yet.".into());
             }
+            // B.1 (#5): refuse Take Control in the transport until a keyframe
+            // from THIS connection has been decoded AND accepted by the pane.
+            if wq.conn_gen == 0 || wq.frame_accepted_gen != wq.conn_gen {
+                return Err("Waiting for the screen’s picture before taking control.".into());
+            }
             if matches!(wq.control_state, ControlState::Idle | ControlState::Releasing) {
                 let seq = wq.alloc_control_seq();
                 wq.control_state = ControlState::Requested;
@@ -3008,7 +3097,13 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn follow_history(&self, on_event: Box<dyn Fn(HistoryEvent) + Send + Sync>) -> Box<dyn HistoryHandle> {
-        let ctrl = HistoryControl::new();
+        let disconnected = self.info.lock().unwrap_or_else(|e| e.into_inner()).capabilities.host_disconnected;
+        self.follow_history_with_active(!disconnected, on_event)
+    }
+
+    fn follow_history_with_active(&self, active: bool, on_event: Box<dyn Fn(HistoryEvent) + Send + Sync>) -> Box<dyn HistoryHandle> {
+        let disconnected = self.info.lock().unwrap_or_else(|e| e.into_inner()).capabilities.host_disconnected;
+        let ctrl = HistoryControl::new_with_active(active && !disconnected);
         *self.history.lock().unwrap_or_else(|e| e.into_inner()) = Some(ctrl.clone());
 
         let session_ctrl = ctrl.clone();
@@ -3028,6 +3123,9 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn frame_at(&self, at_ms: u64) -> Result<Option<(u64, Frame)>, String> {
+        if self.info.lock().unwrap_or_else(|e| e.into_inner()).capabilities.host_disconnected {
+            return Ok(None);
+        }
         let ctrl = {
             let slot = self.history.lock().unwrap_or_else(|e| e.into_inner());
             slot.as_ref().filter(|c| c.active.load(Ordering::Acquire) && !c.stop.load(Ordering::Acquire)).cloned()
@@ -3082,6 +3180,9 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn frame_at_pinned(&self, at_ms: u64, cancel: &ExportCancel) -> Result<Option<(u64, Frame)>, String> {
+        if self.info.lock().unwrap_or_else(|e| e.into_inner()).capabilities.host_disconnected {
+            return Ok(None);
+        }
         self.frame_at_oneshot(at_ms, cancel)
     }
 
@@ -3270,19 +3371,45 @@ impl ScreenSource for StreamScreenSource {
         Ok(info.clone())
     }
 
+    fn note_live_frame_accepted(&self) {
+        let Some(ctrl) = self.active.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return };
+        let mut wq = ctrl.write_q.lock().unwrap_or_else(|e| e.into_inner());
+        if wq.connected && wq.conn_gen > 0 && wq.frame_decoded_gen == wq.conn_gen {
+            wq.frame_accepted_gen = wq.conn_gen;
+        }
+    }
+
     fn stop(&self) -> Result<(), String> {
         let expected = self.session_started();
-        self.stop_if_generation(expected)
+        self.stop_if_expected(expected, None)
     }
 
     fn stop_if_generation(&self, expected_started: Option<u64>) -> Result<(), String> {
-        let host_caps = self.probe_capabilities();
+        self.stop_if_expected(expected_started, None)
+    }
+
+    fn stop_if_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        // B.3 (#2–#4): guarded Stop requires the helper's atomic `"stop-expected"`
+        // capability (NOT `"stop-expected-started"` alone, which dropped its lock
+        // before stopping).
+        if expected_started.is_some() || expected_last_used.is_some() {
+            let caps = self.probe_capabilities();
+            if !caps.stop_expected {
+                let host = match &self.id.location {
+                    crate::source::ScreenLocation::Host { host_label, .. } => host_label.as_str(),
+                    crate::source::ScreenLocation::Local => "this host",
+                };
+                return Err(format!("Update Olo on “{host}” to stop a screen from here."));
+            }
+        }
         let mut args = vec!["stop".to_owned(), self.id.name.clone()];
-        if host_caps.stop_expected_started
-            && let Some(started) = expected_started
-        {
+        if let Some(started) = expected_started {
             args.push("--expected-started".to_owned());
             args.push(started.to_string());
+        }
+        if let Some(lu) = expected_last_used {
+            args.push("--expected-last-used".to_owned());
+            args.push(lu.to_string());
         }
         self.run_checked(&args)?;
         *self.expected_started.lock().unwrap_or_else(|e| e.into_inner()) = None;
@@ -3293,7 +3420,30 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn clear_history(&self) -> Result<(), String> {
-        self.run_checked(&["history".to_owned(), self.id.name.clone(), "--clear".to_owned()])?;
+        self.clear_history_expected(None, None)
+    }
+
+    fn clear_history_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        if expected_started.is_some() || expected_last_used.is_some() {
+            let caps = self.probe_capabilities();
+            if !caps.clear_expected {
+                let host = match &self.id.location {
+                    crate::source::ScreenLocation::Host { host_label, .. } => host_label.as_str(),
+                    crate::source::ScreenLocation::Local => "this host",
+                };
+                return Err(format!("Update Olo on “{host}” to clear a screen’s history from here."));
+            }
+        }
+        let mut args = vec!["history".to_owned(), self.id.name.clone(), "--clear".to_owned()];
+        if let Some(started) = expected_started {
+            args.push("--expected-started".to_owned());
+            args.push(started.to_string());
+        }
+        if let Some(lu) = expected_last_used {
+            args.push("--expected-last-used".to_owned());
+            args.push(lu.to_string());
+        }
+        self.run_checked(&args)?;
         self.info.lock().unwrap_or_else(|e| e.into_inner()).last_used_ms = None;
         Ok(())
     }
@@ -3317,7 +3467,30 @@ impl ScreenSource for StreamScreenSource {
     }
 
     fn delete(&self) -> Result<(), String> {
-        self.run_checked(&["delete".to_owned(), self.id.name.clone()])?;
+        self.delete_expected(None, None)
+    }
+
+    fn delete_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        if expected_started.is_some() || expected_last_used.is_some() {
+            let caps = self.probe_capabilities();
+            if !caps.delete_expected {
+                let host = match &self.id.location {
+                    crate::source::ScreenLocation::Host { host_label, .. } => host_label.as_str(),
+                    crate::source::ScreenLocation::Local => "this host",
+                };
+                return Err(format!("Update Olo on “{host}” to delete a screen from here."));
+            }
+        }
+        let mut args = vec!["delete".to_owned(), self.id.name.clone()];
+        if let Some(started) = expected_started {
+            args.push("--expected-started".to_owned());
+            args.push(started.to_string());
+        }
+        if let Some(lu) = expected_last_used {
+            args.push("--expected-last-used".to_owned());
+            args.push(lu.to_string());
+        }
+        self.run_checked(&args)?;
         let mut info = self.info.lock().unwrap_or_else(|e| e.into_inner());
         info.state = ScreenState::Stopped;
         info.controlled = false;
@@ -3359,6 +3532,8 @@ mod tests {
             sound: false,
             started_ms: None,
             last_used_ms: None,
+            disconnected_at_ms: None,
+            actions: None,
             controlled: false,
             capabilities: PaneCapabilities::remote_with_control(),
         }
@@ -3694,6 +3869,7 @@ mod tests {
         write_server_msg(&mut host, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f1, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
         assert_eq!(read_client_msg(&mut host).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
         let _ = recv_within(&ev_rx, "frame 1");
+        src.note_live_frame_accepted();
 
         src.send_input(vec![SyntheticEvent::Key { key: 30, pressed: true }]);
         handle.set_paused(true);
@@ -4788,6 +4964,7 @@ mod tests {
         assert_eq!(read_client_msg(&mut host).unwrap(), Some(ClientMsg::Ack { seq: 2 }));
         let _ = recv_within(&ev_rx, "frame 2");
         assert_eq!(src.info().size, Some((256, 128)));
+        src.note_live_frame_accepted();
 
         // Finding #37: while control is Requested (before host grants), input MUST be dropped.
         src.set_controlled(true).unwrap();
@@ -4808,6 +4985,15 @@ mod tests {
             LiveEvent::Control { held: false, reason: Some(ref r) } if r.contains("Compositor restarted")
         ));
         assert!(matches!(recv_within(&ev_rx, "reconnecting"), LiveEvent::Status(LiveStatus::Reconnecting)));
+
+        // B.1 (#5): after host-side Reconnecting, Take Control stays refused until a
+        // fresh keyframe arrives AND is accepted by the pane!
+        assert!(src.set_controlled(true).is_err(), "reconnecting stream must refuse control before new keyframe");
+        let f3 = solid_frame(256, 128, [7, 8, 9, 255]);
+        write_server_msg(&mut host, &ServerMsg::Frame { seq: 3, delta: encode_delta(&f3, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
+        assert_eq!(read_client_msg(&mut host).unwrap(), Some(ClientMsg::Ack { seq: 3 }));
+        let _ = recv_within(&ev_rx, "frame 3 after reconnecting");
+        src.note_live_frame_accepted();
 
         // Re-take control and test Finding #38: `release_control_and_wait` blocks until host sends Control(held=false, seq)!
         src.set_controlled(true).unwrap();
@@ -4877,6 +5063,7 @@ mod tests {
         write_server_msg(&mut host, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f1, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
         assert_eq!(read_client_msg(&mut host).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
         let _ = recv_within(&ev_rx, "frame 1");
+        src.note_live_frame_accepted();
 
         src.set_controlled(true).unwrap();
         let take_seq = match read_client_msg(&mut host).unwrap() {
@@ -4958,6 +5145,7 @@ mod tests {
         write_server_msg(&mut host, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f1, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
         assert_eq!(read_client_msg(&mut host).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
         let _ = recv_within(&ev_rx, "frame 1");
+        src.note_live_frame_accepted();
 
         // Take #1 -> granted -> release #2 -> immediately take #3 BEFORE release #2 ack arrives.
         src.set_controlled(true).unwrap();
@@ -5066,7 +5254,7 @@ mod tests {
     fn follow_wire_protocol_cache_probed_once_per_host_and_legacy_helper_fallback() {
         // 1. Modern helper: shared HostProtocolCache probes `screen --protocol` ONCE across
         //    multiple screens and operations (including concurrent probes).
-        let protocol_json = r#"{"proto":1,"commands":["follow","stream","history-stream","export"],"capabilities":["control-ack","warning-status","history-frame-error","history-snapshot-done","export-part-ranges","stop-expected-started","discontiguous_part"]}"#;
+        let protocol_json = r#"{"proto":1,"commands":["follow","stream","history-stream","export"],"capabilities":["control-ack","warning-status","history-frame-error","history-snapshot-done","export-part-ranges","stop-expected","stop-expected-started","discontiguous_part"]}"#;
         let opener = MockOpener::with_commands(vec![
             Ok(CommandOutput { status: 0, stdout: protocol_json.into(), stderr: String::new() }),
             Ok(CommandOutput { status: 0, stdout: String::new(), stderr: String::new() }),
@@ -5090,7 +5278,7 @@ mod tests {
         let c1 = t1.join().unwrap();
         let c2 = t2.join().unwrap();
         assert_eq!(c1, c2);
-        assert!(c1.control_ack && c1.warning_status && c1.history_frame_error && c1.history_snapshot_done && c1.discontiguous_part && c1.stop_expected_started);
+        assert!(c1.control_ack && c1.warning_status && c1.history_frame_error && c1.history_snapshot_done && c1.discontiguous_part && c1.stop_expected && c1.stop_expected_started);
         assert!(c1.has_history_stream());
         assert!(src1.info().capabilities.explicit_control_ack);
         assert!(src2.info().capabilities.can_export_discontiguous);
@@ -5132,6 +5320,7 @@ mod tests {
         write_server_msg(&mut live_host, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f1, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
         assert_eq!(read_client_msg(&mut live_host).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
         let _ = recv_within(&lev_rx, "legacy frame");
+        legacy_src.note_live_frame_accepted();
 
         legacy_src.set_controlled(true).unwrap();
         assert_eq!(read_client_msg(&mut live_host).unwrap(), Some(ClientMsg::Control { on: true }));
@@ -5170,9 +5359,172 @@ mod tests {
         assert_eq!(std::fs::read(&ok_path).unwrap(), payload);
         let _ = std::fs::remove_dir_all(&dir);
 
-        // Legacy `stop` omits `--expected-started` and never re-probed `--protocol`.
-        legacy_src.stop().unwrap();
+        // Final pass B.3 (#2–#4): a legacy helper lacking `"stop-expected"` fails
+        // closed with plain update words and never dispatches `stop`.
+        let stop_err = legacy_src.stop().unwrap_err();
+        assert_eq!(stop_err, "Update Olo on “Dev Box” to stop a screen from here.");
         let legacy_calls = legacy_opener.cmd_calls.lock().unwrap().clone();
-        assert_eq!(legacy_calls, vec![vec!["--protocol"], vec!["stop", "legacy"]]);
+        assert_eq!(legacy_calls, vec![vec!["--protocol"]]);
+    }
+
+    #[test]
+    fn final_pass_b1_f5_transport_gates_control_on_accepted_keyframe_and_screen_gone_is_terminal() {
+        // 1. After Ready, control is refused BEFORE keyframe, STILL refused after
+        //    keyframe decode until `note_live_frame_accepted()`, then succeeds,
+        //    and is refused again after transport disconnect/reconnect until the
+        //    new connection's keyframe is decoded AND accepted.
+        let (opener, mut hosts) = MockOpener::with_hosts(2);
+        let mut host1 = hosts.remove(0);
+        let mut host2 = hosts.remove(0);
+        let src = Arc::new(StreamScreenSource::with_reconnect(remote_info("qa"), opener.clone(), ReconnectPolicy { delays: vec![Duration::from_millis(10)] }));
+        let (ev_tx, ev_rx) = channel();
+        let handle = src.watch_live(
+            Vec::new(),
+            Box::new(move |ev| {
+                let _ = ev_tx.send(ev);
+            }),
+        );
+        // Wait until connection 1 is active by sending a status message.
+        write_server_msg(&mut host1, &ServerMsg::Status(StreamStatus { message: "ready".into(), reconnecting: false, error: false })).unwrap();
+        assert!(matches!(recv_within(&ev_rx, "ready status"), LiveEvent::Status(LiveStatus::Streaming)));
+        assert!(src.set_controlled(true).is_err(), "control must be refused after Ready before first keyframe");
+
+        let f1 = solid_frame(64, 64, [1, 2, 3, 255]);
+        write_server_msg(&mut host1, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f1, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
+        assert_eq!(read_client_msg(&mut host1).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
+        let _ = recv_within(&ev_rx, "conn 1 keyframe");
+        // Keyframe decoded, but pane has NOT accepted it yet -> still refused!
+        assert!(src.set_controlled(true).is_err(), "control must be refused until pane calls note_live_frame_accepted()");
+
+        src.note_live_frame_accepted();
+        src.set_controlled(true).expect("control allowed once conn 1 keyframe is accepted");
+        assert!(matches!(read_client_msg(&mut host1).unwrap(), Some(ClientMsg::ControlSeq { on: true, .. })));
+
+        // Drop conn 1 -> stream reconnects to host2 -> control MUST be refused again until conn 2 keyframe is accepted!
+        drop(host1);
+        loop {
+            match recv_within(&ev_rx, "reconnecting after drop") {
+                LiveEvent::Status(LiveStatus::Reconnecting) => break,
+                _ => continue,
+            }
+        }
+        write_server_msg(&mut host2, &ServerMsg::Status(StreamStatus { message: "ready".into(), reconnecting: false, error: false })).unwrap();
+        assert!(matches!(recv_within(&ev_rx, "conn 2 ready"), LiveEvent::Status(LiveStatus::Streaming)));
+        assert!(src.set_controlled(true).is_err(), "conn 2 must refuse control before conn 2 keyframe");
+
+        let f2 = solid_frame(64, 64, [9, 8, 7, 255]);
+        write_server_msg(&mut host2, &ServerMsg::Frame { seq: 1, delta: encode_delta(&f2, None, TileEncoding::PackedStream, 1).unwrap().encode_bytes() }).unwrap();
+        assert_eq!(read_client_msg(&mut host2).unwrap(), Some(ClientMsg::Ack { seq: 1 }));
+        let _ = recv_within(&ev_rx, "conn 2 keyframe");
+        assert!(src.set_controlled(true).is_err(), "conn 2 must refuse control until conn 2 keyframe accepted");
+        src.note_live_frame_accepted();
+        src.set_controlled(true).expect("conn 2 control allowed once keyframe accepted");
+        drop(handle);
+
+        // 2. OPEN_LIVE_SCREEN_GONE_PREFIX from open_live is terminal (zero retries!).
+        let gone_opener = Arc::new(MockOpener::empty());
+        gone_opener.plan.lock().unwrap().push_back(Err(format!("{OPEN_LIVE_SCREEN_GONE_PREFIX}Screen “qa” was replaced.")));
+        gone_opener.plan.lock().unwrap().push_back(Err("should never retry".into()));
+        let gone_src = StreamScreenSource::with_reconnect(remote_info("qa"), gone_opener.clone(), ReconnectPolicy { delays: vec![Duration::from_millis(5), Duration::from_millis(5)] });
+        let (gtx, grx) = channel();
+        let ghandle = gone_src.watch_live(
+            Vec::new(),
+            Box::new(move |ev| {
+                let _ = gtx.send(ev);
+            }),
+        );
+        match recv_within(&grx, "terminal screen gone") {
+            LiveEvent::Status(LiveStatus::Disconnected(msg)) => assert!(msg.contains("replaced"), "got: {msg}"),
+            other => panic!("expected Disconnected on ScreenGone sentinel, got {:?}", std::mem::discriminant(&other)),
+        }
+        assert_eq!(gone_opener.open_count(), 1, "ScreenGone sentinel from open_live must not retry");
+        assert_eq!(gone_src.info().state, ScreenState::Stopped);
+        drop(ghandle);
+    }
+
+    #[test]
+    fn final_pass_b3_f2_f4_stop_requires_stop_expected_not_stop_expected_started_alone() {
+        // Released older helper advertises `stop-expected-started` WITHOUT `stop-expected`.
+        let old_proto = r#"{"proto":1,"commands":["follow","stream"],"capabilities":["control-ack","stop-expected-started"]}"#;
+        let old_opener = MockOpener::with_commands(vec![Ok(CommandOutput { status: 0, stdout: old_proto.into(), stderr: String::new() })]);
+        let old_cache = Arc::new(HostProtocolCache::new());
+        let mut info = remote_info("qa");
+        info.id = ScreenId::host("k1", "lab-box", "qa");
+        info.capabilities = PaneCapabilities::remote_default();
+        let old_src = StreamScreenSource::with_host_cache(info.clone(), old_opener.clone(), old_cache);
+        let err = old_src.stop_if_expected(Some(1000), Some(0)).unwrap_err();
+        assert_eq!(err, "Update Olo on “lab-box” to stop a screen from here.");
+        assert_eq!(*old_opener.cmd_calls.lock().unwrap(), vec![vec!["--protocol"]], "must not send stop to helper lacking stop-expected");
+
+        // Current helper advertising `stop-expected` accepts atomic guarded Stop.
+        let new_proto = r#"{"proto":1,"commands":["follow","stream"],"capabilities":["control-ack","stop-expected","stop-expected-started"]}"#;
+        let new_opener = MockOpener::with_commands(vec![
+            Ok(CommandOutput { status: 0, stdout: new_proto.into(), stderr: String::new() }),
+            Ok(CommandOutput { status: 0, stdout: String::new(), stderr: String::new() }),
+        ]);
+        let new_cache = Arc::new(HostProtocolCache::new());
+        let new_src = StreamScreenSource::with_host_cache(info, new_opener.clone(), new_cache);
+        new_src.stop_if_expected(Some(1000), Some(0)).unwrap();
+        assert_eq!(*new_opener.cmd_calls.lock().unwrap(), vec![vec!["--protocol"], vec!["stop", "qa", "--expected-started", "1000", "--expected-last-used", "0"]]);
+    }
+
+    #[test]
+    fn agy_r1_f2_f4_f11_stop_if_generation_offline_history_and_clear_delete_capability_gates() {
+        // 1. Finding #2: `stop_if_generation(Some(...))` through `&dyn ScreenSource`
+        //    routes to `stop_if_expected` (never the fail-closed trait default).
+        let proto_stop = r#"{"proto":1,"commands":["follow","stream"],"capabilities":["control-ack","stop-expected"]}"#;
+        let stop_opener = MockOpener::with_commands(vec![
+            Ok(CommandOutput { status: 0, stdout: proto_stop.into(), stderr: String::new() }),
+            Ok(CommandOutput { status: 0, stdout: String::new(), stderr: String::new() }),
+        ]);
+        let mut info = remote_info("qa");
+        info.id = ScreenId::host("k1", "lab-box", "qa");
+        info.capabilities = PaneCapabilities::remote_default();
+        let stop_src = StreamScreenSource::with_host_cache(info.clone(), stop_opener.clone(), Arc::new(HostProtocolCache::new()));
+        let dyn_src: &dyn ScreenSource = &stop_src;
+        dyn_src.stop_if_generation(Some(4242)).expect("stop_if_generation must forward to stop_if_expected");
+        assert_eq!(*stop_opener.cmd_calls.lock().unwrap(), vec![vec!["--protocol"], vec!["stop", "qa", "--expected-started", "4242"]]);
+
+        // 2. Finding #11: `clear_history_expected` & `delete_expected` refuse when
+        //    helper lacks `clear-expected` / `delete-expected`, and succeed when advertised.
+        let old_proto = r#"{"proto":1,"commands":["follow","stream"],"capabilities":["stop-expected"]}"#;
+        let old_opener = MockOpener::with_commands(vec![Ok(CommandOutput { status: 0, stdout: old_proto.into(), stderr: String::new() })]);
+        let old_src = StreamScreenSource::with_host_cache(info.clone(), old_opener.clone(), Arc::new(HostProtocolCache::new()));
+        assert_eq!(old_src.clear_history_expected(Some(0), Some(0)).unwrap_err(), "Update Olo on “lab-box” to clear a screen’s history from here.");
+        assert_eq!(old_src.delete_expected(Some(0), Some(0)).unwrap_err(), "Update Olo on “lab-box” to delete a screen from here.");
+        assert_eq!(*old_opener.cmd_calls.lock().unwrap(), vec![vec!["--protocol"]], "must not run clear/delete without capability");
+
+        let full_proto = r#"{"proto":1,"commands":["follow","stream"],"capabilities":["stop-expected","clear-expected","delete-expected"]}"#;
+        let full_opener = MockOpener::with_commands(vec![
+            Ok(CommandOutput { status: 0, stdout: full_proto.into(), stderr: String::new() }),
+            Ok(CommandOutput { status: 0, stdout: String::new(), stderr: String::new() }),
+            Ok(CommandOutput { status: 0, stdout: String::new(), stderr: String::new() }),
+        ]);
+        let full_src = StreamScreenSource::with_host_cache(info.clone(), full_opener.clone(), Arc::new(HostProtocolCache::new()));
+        full_src.clear_history_expected(Some(0), Some(100)).unwrap();
+        full_src.delete_expected(Some(0), Some(100)).unwrap();
+        assert_eq!(
+            *full_opener.cmd_calls.lock().unwrap(),
+            vec![
+                vec!["--protocol"],
+                vec!["history", "qa", "--clear", "--expected-started", "0", "--expected-last-used", "100"],
+                vec!["delete", "qa", "--expected-started", "0", "--expected-last-used", "100"],
+            ]
+        );
+
+        // 3. Finding #4: disconnected source starts history follower ALREADY inactive
+        //    (zero `open_history` / `--protocol` calls) and `frame_at` returns `Ok(None)`
+        //    without falling back to `frame_at_oneshot`.
+        let mut disc_info = info;
+        disc_info.capabilities.host_disconnected = true;
+        let disc_opener = Arc::new(MockOpener::empty());
+        let disc_src = StreamScreenSource::with_host_cache(disc_info, disc_opener.clone(), Arc::new(HostProtocolCache::new()));
+        let handle = disc_src.follow_history_with_active(true, Box::new(|_| {}));
+        std::thread::sleep(Duration::from_millis(40));
+        assert_eq!(disc_opener.history_open_count(), 0, "disconnected follow_history must not open history");
+        assert!(disc_opener.cmd_calls.lock().unwrap().is_empty(), "disconnected follow_history must not probe --protocol");
+        assert!(disc_src.frame_at(1_000).unwrap().is_none(), "disconnected frame_at must return Ok(None) without oneshot RPC");
+        assert_eq!(disc_opener.history_open_count(), 0, "disconnected frame_at must not call open_history");
+        drop(handle);
     }
 }

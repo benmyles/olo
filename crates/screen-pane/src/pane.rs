@@ -20,16 +20,17 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 
 use olo_capture::live::XRGB8888;
 use olo_kit::{
-    Bounds, Child, Cx, Element, ExternalBuffer, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, KeyUpEvent, Keystroke, Menu, Messenger, Modifiers,
-    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, ScrollDelta, ScrollHandle, ScrollWheelEvent, SharedString, Styled as _, View,
-    WindowCx, agent, canvas, div, file_panel, icons, keys, metrics as m, point, px, size,
+    Bounds, Child, Cx, Element, ExternalBuffer, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, KeyDownEvent, KeyUpEvent, Keystroke, Menu, Messenger, Modifiers,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, ScrollDelta, ScrollHandle, ScrollWheelEvent,
+    SharedString, Styled as _, TextRun, View, WindowCx, agent, canvas, div, file_panel, icons, keys, metrics as m, point, px, size,
     style::{self, c},
     theme,
-    widgets::{Button, TabView, TextControl, TextField, TextFieldEvent, open_alert},
+    widgets::{Button, DISABLED_OPACITY, TabView, TextControl, TextField, TextFieldEvent, open_alert},
 };
 use olo_protocol::SyntheticEvent;
 use olo_sync::Mutex;
@@ -45,7 +46,43 @@ use crate::{
     stats,
 };
 
-const HEADER_H: f32 = 40.0;
+pub const HEADER_H: f32 = 40.0;
+
+/// Shared header bar layout used by both [`ScreenPane::header`] and host
+/// headers so icon, title, subtitle, and right-aligned action buttons always
+/// sit on the exact same vertical coordinates (no 2 pt jump between views).
+pub fn header_bar(face: Element, buttons: impl IntoIterator<Item = Element>) -> Element {
+    div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).children(buttons).into_any_element()
+}
+
+/// Capture `(expected_started, expected_last_used)` by value when opening a
+/// Stop confirmation dialog, shared by [`ScreenPane::ask_stop`] and
+/// `apps/screen`'s Stop path (Final pass B.3 / Astra #4).
+///
+/// Sends `Some(0)` for a screen known to have done nothing (`last_used == None`
+/// and not known to have `actions > 0`), and fails closed for a remote running
+/// screen whose `started` generation is unknown.
+pub fn capture_stop_expectations(
+    is_local: bool,
+    started: Option<u64>,
+    replay_last_used: Option<u64>,
+    info_last_used: Option<u64>,
+    actions: Option<usize>,
+) -> Result<(Option<u64>, Option<u64>), String> {
+    if !is_local && started.is_none() {
+        return Err("Couldn’t confirm which running session to stop because its start time isn’t known yet.".into());
+    }
+    let observed = match (replay_last_used, info_last_used) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    };
+    let expected_last_used = match observed {
+        Some(ts) => Some(ts),
+        None if actions.is_none_or(|n| n == 0) => Some(0),
+        None => None,
+    };
+    Ok((started, expected_last_used))
+}
 /// The field a screen's name is changed in.
 const RENAME_W: f32 = 320.0;
 /// The modifiers the screen is kept in step with: Ctrl, Shift, Alt.
@@ -164,6 +201,79 @@ pub enum ScreenPaneEvent {
     Controlling(ScreenId, bool),
     /// Active tab changed.
     TabChanged(Tab),
+    /// User asked to open/focus a remote host in Rex (`Show in Rex`).
+    OpenHost(String),
+}
+
+/// Draw a snapped filled semantic status dot (used identically in the pane
+/// header and multi-host sidebar).
+pub fn paint_status_dot(g: &mut Painter, center: Point<Pixels>, diameter_pt: f32, color: Hsla) {
+    let d = style::snap_centred(g, center, diameter_pt, diameter_pt);
+    g.paint_quad(olo_kit::fill(d, color).corner_radii(d.size.width / 2.0));
+}
+
+/// Draw a snapped hollow 1 pt semantic status ring for a disconnected host's
+/// screen (kept as a ring when selected and in the pane header). Uses the exact
+/// same `snap_centred` outer box and rounded-quad SDF shader as
+/// [`paint_status_dot`] with an inset 1 pt stroke so outer diameter and center
+/// match the solid dot to the device pixel at every scale.
+pub fn paint_status_ring(g: &mut Painter, center: Point<Pixels>, diameter_pt: f32, color: Hsla) {
+    let d = style::snap_centred(g, center, diameter_pt, diameter_pt);
+    let scale = g.scale_factor();
+    let stroke = px((1.0 * scale).round().max(1.0) / scale);
+    g.paint_quad(olo_kit::outline(d, color, olo_kit::BorderStyle::Solid).border_widths(stroke).corner_radii(d.size.width / 2.0));
+}
+
+/// Tertiary ink guaranteed >= 3.2:1 contrast against `bg` in both light and
+/// dark modes (used for disconnected host rings and labels).
+pub fn tertiary_ink(p: &olo_theme::Palette, bg: olo_theme::Rgba) -> Hsla {
+    let raw = olo_theme::mix(p.panel_text, bg, 0.50);
+    c(olo_theme::readable(raw, bg, 3.2))
+}
+
+/// Left-anchored BeOS diagonal barber-pole indeterminate progress bar inside a
+/// closed 11 pt recessed trough, filled with neutral slate (`style::neutral_bar`)
+/// and bounded by a four-sided border legible in both light and dark modes.
+fn barber_bar(width_pt: f32, height_pt: f32, label: SharedString) -> Element {
+    canvas(move |g, b| {
+        let p = theme::palette();
+        let snapped = style::snap(g, b);
+        let scale = g.scale_factor();
+        let border = px((1.0 * scale).round().max(1.0) / scale);
+        let inner = Bounds::from_corners(point(snapped.left() + border, snapped.top() + border), point(snapped.right() - border, snapped.bottom() - border));
+        let dark = p.mode == olo_theme::ThemeMode::Dark;
+        let well_bg = p.shade(p.panel_background, 1.18);
+        let track_bg = if dark { c(olo_theme::mix(p.panel_background, well_bg, 0.45)) } else { c(p.document_background) };
+        let fill_c = style::neutral_bar(&p);
+        style::fill_rect(g, inner, track_bg);
+        g.with_content_mask(Some(olo_kit::ContentMask { bounds: inner }), |g| {
+            let h = f32::from(inner.size.height);
+            let w = f32::from(inner.size.width);
+            let pitch = 10.0f32;
+            let stripe_w = 5.0f32;
+            let mut x = -h;
+            while x < w + h {
+                let mut poly = PathBuilder::fill();
+                let p0 = point(inner.left() + px(x), inner.bottom());
+                let p1 = point(inner.left() + px(x + stripe_w), inner.bottom());
+                let p2 = point(inner.left() + px(x + stripe_w + h), inner.top());
+                let p3 = point(inner.left() + px(x + h), inner.top());
+                poly.add_polygon(&[p0, p1, p2, p3], true);
+                if let Ok(built) = poly.build() {
+                    g.paint_path(built, fill_c);
+                }
+                x += pitch;
+            }
+        });
+        // Closed four-sided border legible against both the dark well and light well.
+        let frame_rgba = if dark { olo_theme::readable(p.shade(well_bg, 1.55), well_bg, 2.2) } else { olo_theme::readable(p.shade(well_bg, 1.45), well_bg, 2.2) };
+        g.paint_quad(olo_kit::outline(snapped, c(frame_rgba), olo_kit::BorderStyle::Solid).border_widths(border));
+        g.agent(agent::Node { role: "ProgressBar", name: Some(label.clone()), value: Some("busy".into()), bounds: snapped, enabled: true, ..Default::default() });
+    })
+    .w(px(width_pt))
+    .h(px(height_pt))
+    .flex_shrink_0()
+    .into_any_element()
 }
 
 /// Monotonic per-screenshot ID so each active screenshot request owns its own
@@ -192,6 +302,9 @@ type DetachedControl = (bool, Option<(Arc<dyn ScreenSource>, Vec<SyntheticEvent>
 struct PaneState {
     source: Option<Arc<dyn ScreenSource>>,
     info: Option<ScreenInfo>,
+    /// Monotonic counter bumped on every `set_source` change and `update_info`
+    /// so delayed Rename RPC replies never overwrite newer Follow metadata (B.8).
+    info_rev: u64,
     tab: Tab,
     controlling: bool,
     /// True while waiting for an asynchronous remote host to confirm Take
@@ -236,6 +349,7 @@ impl PaneState {
         PaneState {
             source: None,
             info: None,
+            info_rev: 0,
             tab,
             controlling: false,
             control_pending: false,
@@ -309,6 +423,7 @@ impl PaneState {
         };
         let changed = !same_instance;
         if changed {
+            self.info_rev = self.info_rev.wrapping_add(1);
             self.stop_controlling();
             self.live_pixel_size = None;
             self.failure = None;
@@ -328,11 +443,21 @@ impl PaneState {
         if self.info.as_ref().is_none_or(|cur| cur.id != info.id) {
             return false;
         }
+        let was_disconnected = self.info.as_ref().is_some_and(|cur| cur.capabilities.host_disconnected);
         let stopped = !info.is_running();
+        let disconnected = info.capabilities.host_disconnected;
         let lost_control_cap = !info.capabilities.can_control;
+        self.info_rev = self.info_rev.wrapping_add(1);
         self.info = Some(info);
-        if stopped || lost_control_cap {
+        if stopped || disconnected || lost_control_cap {
             self.stop_controlling();
+        }
+        if was_disconnected && !disconnected {
+            // Host came back: clear stale error/disconnected state so the live
+            // stream opens cleanly with the loading barber-pole view.
+            self.failure = None;
+            self.control_note = None;
+            self.live_status = LiveStatus::Connecting;
         }
         true
     }
@@ -354,7 +479,9 @@ impl PaneState {
     }
 
     fn should_watch_live(&self) -> Option<ScreenId> {
-        (self.visible && self.shown_tab() == Tab::Live && self.is_running()).then(|| self.info.as_ref().map(|i| i.id.clone())).flatten()
+        (self.visible && self.shown_tab() == Tab::Live && self.is_running() && !self.info.as_ref().is_some_and(|i| i.capabilities.host_disconnected))
+            .then(|| self.info.as_ref().map(|i| i.id.clone()))
+            .flatten()
     }
 
     /// Whether the current screen's history follower should be open/active.
@@ -363,6 +490,9 @@ impl PaneState {
     /// while History or Stats is shown or an export runs for that screen.
     fn should_follow_history(&self) -> bool {
         let Some(src) = &self.source else { return false };
+        if self.info.as_ref().is_some_and(|i| i.capabilities.host_disconnected) {
+            return false;
+        }
         if !src.lazy_history() {
             return true;
         }
@@ -474,11 +604,11 @@ impl PaneState {
     }
 
     fn take_control(&mut self) -> Result<ControlAcquire, String> {
-        if self.controlling || self.control_pending {
+        if !self.visible || self.controlling || self.control_pending {
             return Ok(ControlAcquire::Noop);
         }
         let Some(info) = &self.info else { return Ok(ControlAcquire::Noop) };
-        if !info.is_running() || !info.capabilities.can_control {
+        if !info.is_running() || !info.capabilities.can_control || info.capabilities.host_disconnected {
             return Ok(ControlAcquire::Noop);
         }
         let Some(source) = self.source.clone() else { return Ok(ControlAcquire::Noop) };
@@ -558,6 +688,14 @@ impl PaneState {
         self.pressed.clear();
         self.held = [false; 3];
         was_controlling.then_some(false)
+    }
+
+    /// Whether the pane is currently bound to the EXACT screen source and
+    /// session generation captured when a Stop dialog opened (Final pass B.2 /
+    /// Astra #5, #24: a stale Stop dialog must never release control on a
+    /// replacement session under the same screen name).
+    fn matches_captured_session(&self, id: &ScreenId, source: &Arc<dyn ScreenSource>, expected_started: Option<u64>) -> bool {
+        self.screen_id() == Some(id) && self.source.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, source) && (expected_started.is_none() || cur.session_started() == expected_started))
     }
 
     /// Drain held keys/buttons and detach the controlled source so a worker
@@ -694,36 +832,147 @@ impl PaneState {
         (!trimmed.is_empty() && trimmed != name).then(|| trimmed.to_owned())
     }
 
-    fn header_subtitle(&self, actions: usize, last_action_ms: Option<u64>, replay_started_ms: Option<u64>, now_ms: u64) -> String {
-        let Some(info) = &self.info else { return String::new() };
+    fn header_subtitle_parts(&self, actions: usize, last_action_ms: Option<u64>, replay_started_ms: Option<u64>, now_ms: u64) -> Vec<String> {
+        let Some(info) = &self.info else { return Vec::new() };
         let mut parts = Vec::new();
-        if info.is_running() {
-            parts.push("Running".to_owned());
-            if let ScreenLocation::Host { host_label, .. } = &info.id.location {
-                parts.push(host_label.clone());
-            }
+        let location_phrase = match &info.id.location {
+            ScreenLocation::Host { host_label, .. } => Some(format!("on {host_label}")),
+            ScreenLocation::Local if info.capabilities.show_location => Some("on this computer".to_owned()),
+            ScreenLocation::Local => None,
+        };
+        if info.capabilities.host_disconnected {
+            let state_word = match info.state {
+                ScreenState::Running => "Last seen running",
+                ScreenState::Archived => "Last seen archived",
+                ScreenState::Stopped => "Last seen stopped",
+            };
+            let base = match &location_phrase {
+                Some(loc) => format!("{state_word} {loc}"),
+                None => state_word.to_owned(),
+            };
+            let when = info.disconnected_at_ms.or(last_action_ms).or(info.last_used_ms).map(|t| stats::ago(t, now_ms));
+            // Single unbroken sentence ("Last seen running on build-farm 26 min ago") — no dot inside it.
+            parts.push(match when {
+                Some(ago) => format!("{base} {ago}"),
+                None => base,
+            });
             if let Some((w, h)) = info.size {
                 parts.push(format!("{w} × {h}"));
             }
-            if let Some(t) = replay_started_ms.or(info.started_ms) {
-                parts.push(olo_kit::ago::ago_ms(t, |a| format!("up {}", stats::span(a.as_millis() as u64))));
+            return parts;
+        }
+        // Unified order (Opus 2 / Gemini 2 / Opus 12):
+        // "Running [on X] · up T · N actions · W × H" so W × H drops first
+        // when room runs out, "Running [on X]" never drops, and "last …" is
+        // omitted (the Live footer already displays it).
+        let action_count = actions.max(info.actions.unwrap_or(0));
+        if info.is_running() {
+            parts.push(match &location_phrase {
+                Some(loc) => format!("Running {loc}"),
+                None => "Running".to_owned(),
+            });
+            if let Some(t) = replay_started_ms.or(info.started_ms)
+                && now_ms >= t
+            {
+                parts.push(olo_kit::ago::age(Duration::from_millis(now_ms - t), |a| format!("up {}", stats::span(a.as_millis() as u64))));
             }
         } else {
-            parts.push(match info.state {
-                ScreenState::Archived => "Archived".to_owned(),
-                ScreenState::Stopped | ScreenState::Running => "Stopped".to_owned(),
+            let state_word = match info.state {
+                ScreenState::Archived => "Archived",
+                ScreenState::Stopped | ScreenState::Running => "Stopped",
+            };
+            parts.push(match &location_phrase {
+                Some(loc) => format!("{state_word} {loc}"),
+                None => state_word.to_owned(),
             });
-            if let ScreenLocation::Host { host_label, .. } = &info.id.location {
-                parts.push(host_label.clone());
+        }
+        if action_count > 0 {
+            parts.push(format!("{} action{}", style::thousands(action_count), if action_count == 1 { "" } else { "s" }));
+        }
+        if info.is_running()
+            && let Some((w, h)) = info.size
+        {
+            parts.push(format!("{w} × {h}"));
+        }
+        parts
+    }
+
+    #[cfg(test)]
+    fn header_subtitle(&self, actions: usize, last_action_ms: Option<u64>, replay_started_ms: Option<u64>, now_ms: u64) -> String {
+        self.header_subtitle_parts(actions, last_action_ms, replay_started_ms, now_ms).join(" · ")
+    }
+
+    /// Whether the Live well should show the neutral barber-pole loading view
+    /// (`Opening <display_name>…`) instead of an explicit status/error line.
+    fn is_live_loading(&self, has_shot: bool) -> bool {
+        let Some(info) = &self.info else { return false };
+        info.is_running()
+            && !info.capabilities.host_disconnected
+            && !has_shot
+            && self.failure.is_none()
+            && matches!(self.live_status, LiveStatus::Connecting | LiveStatus::Streaming | LiveStatus::Reconnecting)
+    }
+
+    fn loading_label(&self) -> String {
+        let Some(info) = &self.info else { return "Opening…".to_owned() };
+        match &self.live_status {
+            LiveStatus::Reconnecting => match &info.id.location {
+                ScreenLocation::Host { host_label, .. } => format!("Reconnecting to {host_label}…"),
+                ScreenLocation::Local => format!("Opening {}…", info.display_name()),
+            },
+            _ => format!("Opening {}…", info.display_name()),
+        }
+    }
+
+    /// Whether a cached replay action `a` (from a replay holding `replay_len`
+    /// actions) is still the newest known action for this screen's observed
+    /// metadata (B.9 / Astra #30: never label a suspended replay's older action
+    /// as "Latest" after newer remote activity has arrived).
+    fn latest_action_is_current(&self, a: &history::Action, replay_len: usize) -> bool {
+        let Some(info) = &self.info else { return true };
+        let a_ts = a.at.saturating_add(a.ms);
+        if let Some(lu) = info.last_used_ms
+            && lu > a_ts
+        {
+            return false;
+        }
+        if let Some(n) = info.actions
+            && n > replay_len
+        {
+            return false;
+        }
+        true
+    }
+
+    /// When the Live footer bar should show `Latest: <mono-command><suffix>`,
+    /// returns `(command, suffix)` so the command alone renders in the
+    /// monospace face while `"Latest: "` and `" · <ago>"` (with both spaces)
+    /// render in the proportional UI face.
+    ///
+    /// Shown on Live, while Loading (as soon as known), and when Disconnected
+    /// (last known action in secondary ink — Opus 4).
+    fn live_latest_runs(&self, latest_action: Option<&history::Action>, now_ms: u64) -> Option<(String, String)> {
+        let disconnected = self.info.as_ref().is_some_and(|i| i.capabilities.host_disconnected);
+        if !disconnected {
+            if self.controlling || self.control_pending || self.control_note.is_some() || self.failure.is_some() {
+                return None;
+            }
+            if let Some(info) = &self.info
+                && !info.capabilities.can_control
+                && info.capabilities.control_disabled_reason.is_some()
+            {
+                return None;
+            }
+            if matches!(&self.live_status, LiveStatus::Reconnecting | LiveStatus::Warning(_) | LiveStatus::Message(_) | LiveStatus::Disconnected(_))
+                && !matches!(&self.live_status, LiveStatus::Warning(s) | LiveStatus::Message(s) | LiveStatus::Disconnected(s) if s.is_empty())
+            {
+                return None;
             }
         }
-        if actions > 0 {
-            parts.push(format!("{} action{}", style::thousands(actions), if actions == 1 { "" } else { "s" }));
-        }
-        if let Some(t) = last_action_ms {
-            parts.push(format!("last {}", stats::ago(t, now_ms)));
-        }
-        parts.join("  ·  ")
+        let a = latest_action?;
+        let what = replay::command(a);
+        let mark = if a.error.is_some() { "  ✗" } else { "" };
+        Some((what, format!("{mark} · {}", stats::ago(a.at.saturating_add(a.ms), now_ms))))
     }
 
     fn live_placeholder(&self) -> String {
@@ -774,9 +1023,18 @@ impl PaneState {
             Some(a) => {
                 let what = replay::command(a);
                 let mark = if a.error.is_some() { "  ✗" } else { "" };
-                (format!("Latest: {what}{mark}  ·  {}", stats::ago(a.at.saturating_add(a.ms), now_ms)), false)
+                (format!("Latest: {what}{mark} · {}", stats::ago(a.at.saturating_add(a.ms), now_ms)), false)
             }
-            None => ("Watching. Nothing has been done on it yet.".to_owned(), false),
+            None => {
+                // One consistent pattern (Opus 8): "No actions yet" when none exist;
+                // never "Watching.", and never contradict a remote header that says
+                // "N actions" before lazy history has fetched the command text.
+                if self.info.as_ref().is_some_and(|i| !i.id.is_local() && (i.actions.unwrap_or(0) > 0 || i.last_used_ms.is_some())) {
+                    (String::new(), false)
+                } else {
+                    ("No actions yet".to_owned(), false)
+                }
+            }
         }
     }
 
@@ -786,25 +1044,29 @@ impl PaneState {
 
     fn menu_state(&self, replay_loaded: bool, has_actions: bool, playing: bool, exporting: bool, has_frames: bool, live_has_shot: bool) -> ScreenMenuState {
         let Some(info) = &self.info else { return ScreenMenuState::default() };
+        let disconnected = info.capabilities.host_disconnected;
         let running = info.is_running();
         let shown_tab = self.shown_tab();
         let has_history = shown_tab == Tab::History && replay_loaded && has_actions;
-        let can_screenshot = if shown_tab == Tab::Live { live_has_shot || (replay_loaded && has_frames) } else { replay_loaded && has_frames };
+        let can_screenshot = !disconnected && if shown_tab == Tab::Live { live_has_shot || (replay_loaded && has_frames) } else { replay_loaded && has_frames };
+        // Finding 24: gate Take Control on first live frame ONLY for remote
+        // sources so local screens retain their menu/shortcut from History.
+        let remote_ready = info.id.is_local() || live_has_shot || self.controlling;
         ScreenMenuState {
             has_screen: true,
             running,
             shown_tab,
             has_history,
             playing,
-            can_export: replay_loaded && !exporting && has_actions,
+            can_export: !disconnected && replay_loaded && !exporting && has_actions,
             can_screenshot,
-            can_clear: !running,
-            can_control: running && info.capabilities.can_control,
+            can_clear: !disconnected && !running,
+            can_control: self.visible && !disconnected && running && info.capabilities.can_control && remote_ready,
             controlling: self.controlling,
-            can_move_windows: running && info.capabilities.can_move_windows,
+            can_move_windows: !disconnected && running && info.capabilities.can_move_windows,
             giving: self.giving,
             busy: self.busy,
-            can_airplay: running && info.capabilities.can_airplay,
+            can_airplay: !disconnected && running && info.capabilities.can_airplay,
         }
     }
 }
@@ -825,13 +1087,15 @@ pub enum PaneMsg {
     /// Wake the UI to pull the single latest RGBA frame from `pending_live`
     /// (coalesced so a busy UI never accumulates a backlog of pictures).
     LiveFrameReady,
-    /// A frame shown live: watch `watch`'s.
+    /// A frame shown live: watch `watch`'s, connection generation `conn_gen`.
     LiveDmabuf {
         watch: u64,
+        conn_gen: u64,
         buffer: ExternalBuffer,
     },
     LiveStatus {
         watch: u64,
+        conn_gen: u64,
         status: LiveStatus,
     },
     LiveControl {
@@ -841,12 +1105,13 @@ pub enum PaneMsg {
     },
     LiveFailed {
         watch: u64,
+        conn_gen: u64,
         message: String,
     },
     Started(ScreenId, Result<ScreenInfo, String>),
     Stopped(ScreenId, Result<(), String>),
     Cleared(ScreenId, Result<(), String>),
-    Renamed(ScreenId, Result<(), String>),
+    Renamed(ScreenId, Arc<dyn ScreenSource>, u64, Option<String>, Result<(), String>),
     /// The person's display-workspaces (display, index, name), where a
     /// screen's windows can be given.
     Spaces(Vec<(String, u32, String)>),
@@ -874,8 +1139,54 @@ pub enum PaneMsg {
     Shot(u64, Result<PathBuf, String>),
 }
 
-/// Single-slot mailbox holding only the newest RGBA frame from `watch_live`.
-type PendingLiveFrame = Arc<Mutex<Option<(u64, Arc<Shot>)>>>;
+/// Single-slot mailbox holding only the newest RGBA frame `(watch, conn_gen, shot)` from `watch_live`.
+type PendingLiveFrame = Arc<Mutex<Option<(u64, u64, Arc<Shot>)>>>;
+
+/// Tracks displayed vs retired `(watch, conn_gen)` so an asynchronous
+/// `Reconnecting` status for a retired generation never wipes a newer
+/// connection's first keyframe (Final pass B.1 / Astra #5, #10).
+#[derive(Debug, Default)]
+struct LiveGenTracker {
+    shown: Option<(u64, u64)>,
+    retired: Option<(u64, u64)>,
+}
+
+impl LiveGenTracker {
+    fn reset(&mut self) {
+        self.shown = None;
+        self.retired = None;
+    }
+
+    /// Clear `pending_live` only if it holds a frame from `watch` with
+    /// `gen <= retired_gen`. Returns `(clear_displayed, newer_already_shown)`.
+    fn retire(&mut self, pending_live: &PendingLiveFrame, watch: u64, retired_gen: u64) -> (bool, bool) {
+        {
+            let mut slot = pending_live.lock().unwrap_or_else(|e| e.into_inner());
+            if slot.as_ref().is_some_and(|(w, g, _)| *w == watch && *g <= retired_gen) {
+                *slot = None;
+            }
+        }
+        let prev = self.retired.filter(|(w, _)| *w == watch).map_or(0, |(_, g)| g);
+        self.retired = Some((watch, prev.max(retired_gen)));
+        match self.shown {
+            Some((w, g)) if w == watch && g > retired_gen => (false, true),
+            _ => {
+                self.shown = None;
+                (true, false)
+            }
+        }
+    }
+
+    /// Accept an incoming frame for `(watch, conn_gen)` iff its generation has
+    /// not already been retired.
+    fn accept_frame(&mut self, watch: u64, conn_gen: u64) -> bool {
+        if self.retired.is_some_and(|(w, rg)| w == watch && conn_gen <= rg) {
+            return false;
+        }
+        self.shown = Some((watch, conn_gen));
+        true
+    }
+}
 
 /// Reusable single-screen view embedded by `apps/screen` (and designed for
 /// `apps/rex`).
@@ -903,6 +1214,7 @@ pub struct ScreenPane {
     /// so a behind UI never queues older frames.
     pending_live: PendingLiveFrame,
     live_frame_queued: Arc<AtomicBool>,
+    live_gen: LiveGenTracker,
     /// The modifiers the window's compositor takes BGRx dmabufs with
     /// (empty: frames can't be shown live; `OLO_SCREEN_PICTURES` set:
     /// pictures taken anyway, to compare).
@@ -939,6 +1251,7 @@ impl ScreenPane {
             watching: None,
             pending_live: Arc::new(Mutex::new(None)),
             live_frame_queued: Arc::new(AtomicBool::new(false)),
+            live_gen: LiveGenTracker::default(),
             modifiers,
             live,
             live_at,
@@ -970,20 +1283,31 @@ impl ScreenPane {
     pub fn set_source(&mut self, source: Option<Arc<dyn ScreenSource>>, cx: &mut Cx<Self>) {
         let was_controlling = self.state.controlling();
         let prev_id = self.state.screen_id().cloned();
+        let next_id = source.as_ref().map(|s| s.id().clone());
+        let next_source = source.clone();
         let changed = self.state.set_source(source);
         if was_controlling
             && !self.state.controlling()
-            && let Some(id) = prev_id
+            && let Some(id) = prev_id.clone()
         {
             cx.emit(ScreenPaneEvent::Controlling(id, false));
         }
         if changed {
-            // (Another screen or source instance chosen: abandon rename, live
-            // stream, and previous replay before binding the new source.)
+            // (Another screen or source instance chosen: abandon rename and live
+            // stream before binding the new source. Preserve cached `Replay`
+            // read-only when rebinding the SAME screen across disconnect/reconnect
+            // — Final pass B.6 / Astra #10, #13, #28.)
             self.renaming = None;
             self.watching = None;
             self.forget_live(cx);
-            self.replay = None;
+            if prev_id.is_some()
+                && prev_id == next_id
+                && let (Some(r), Some(src)) = (&self.replay, next_source)
+            {
+                r.update(cx, |r, cx| r.rebind_source(src, cx));
+            } else {
+                self.replay = None;
+            }
             self.learn_spaces();
         }
         self.sync_watch(cx);
@@ -1204,26 +1528,34 @@ impl ScreenPane {
         let me = self.me.clone();
         let pending_live = self.pending_live.clone();
         let live_frame_queued = self.live_frame_queued.clone();
+        // B.1 (#5, #10): monotonic per-watch connection generation stamped on
+        // the sequential delivery thread so a retired generation's `Reconnecting`
+        // status can never wipe a newer connection's first keyframe.
+        let conn_gen = Arc::new(AtomicU64::new(1));
         let handle = source.watch_live(
             self.modifiers.clone(),
             Box::new(move |ev| match ev {
                 LiveEvent::Dmabuf(buffer) => {
-                    me.send(PaneMsg::LiveDmabuf { watch, buffer });
+                    let cg = conn_gen.load(Ordering::Acquire);
+                    me.send(PaneMsg::LiveDmabuf { watch, conn_gen: cg, buffer });
                 }
                 LiveEvent::Rgba(shot) => {
-                    *pending_live.lock().unwrap_or_else(|e| e.into_inner()) = Some((watch, shot));
+                    let cg = conn_gen.load(Ordering::Acquire);
+                    *pending_live.lock().unwrap_or_else(|e| e.into_inner()) = Some((watch, cg, shot));
                     if !live_frame_queued.swap(true, Ordering::AcqRel) {
                         me.send(PaneMsg::LiveFrameReady);
                     }
                 }
                 LiveEvent::Status(status) => {
-                    me.send(PaneMsg::LiveStatus { watch, status });
+                    let cg = if matches!(status, LiveStatus::Reconnecting | LiveStatus::Disconnected(_)) { conn_gen.fetch_add(1, Ordering::AcqRel) } else { conn_gen.load(Ordering::Acquire) };
+                    me.send(PaneMsg::LiveStatus { watch, conn_gen: cg, status });
                 }
                 LiveEvent::Control { held, reason } => {
                     me.send(PaneMsg::LiveControl { watch, held, reason });
                 }
                 LiveEvent::Failed(message) => {
-                    me.send(PaneMsg::LiveFailed { watch, message });
+                    let cg = conn_gen.fetch_add(1, Ordering::AcqRel);
+                    me.send(PaneMsg::LiveFailed { watch, conn_gen: cg, message });
                 }
             }),
         );
@@ -1233,9 +1565,12 @@ impl ScreenPane {
     /// Watch the chosen running screen when its Live tab is shown; keep the
     /// handle paused while on another tab or hidden so a remote host stops
     /// capturing without tearing down and re-keyframing the stream on every
-    /// tab switch, and close it immediately when switching screens or stopping.
+    /// tab switch. Drop the handle completely whenever switching screens,
+    /// stopping, or when the remote host disconnects so a longer outage never
+    /// leaves a dead/exhausted stream handle stuck after reconnect (Finding 10).
     fn sync_watch(&mut self, cx: &mut Cx<Self>) {
-        let running_id = self.state.running_screen_id();
+        let host_disconnected = self.state.info().is_some_and(|i| i.capabilities.host_disconnected);
+        let running_id = if host_disconnected { None } else { self.state.running_screen_id() };
         let want_live = self.state.should_watch_live();
         if self.watching.as_ref().map(|(id, _, _, _)| id) != running_id.as_ref() && self.watching.take().is_some() {
             self.forget_live(cx);
@@ -1258,15 +1593,41 @@ impl ScreenPane {
     /// too), once the window is free to be told.
     fn forget_live(&mut self, cx: &mut Cx<Self>) {
         *self.pending_live.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.live_gen.reset();
         self.state.live_pixel_size = None;
         let key = self.live.read(cx).external_key();
         self.live.update(cx, |w, cx| w.clear(None, cx));
         cx.set_external_buffer(key, None);
     }
 
+    /// Retire ONLY frames belonging to `(watch, <= retired_gen)` so a queued
+    /// `Reconnecting` status never erases a newer connection's first keyframe
+    /// (Final pass B.1 / Astra #5, #10). Returns `true` if a newer generation
+    /// is already displayed.
+    fn forget_live_retired(&mut self, watch: u64, retired_gen: u64, cx: &mut Cx<Self>) -> bool {
+        let (clear_displayed, newer_shown) = self.live_gen.retire(&self.pending_live, watch, retired_gen);
+        if clear_displayed {
+            self.state.live_pixel_size = None;
+            let key = self.live.read(cx).external_key();
+            self.live.update(cx, |w, cx| w.clear(None, cx));
+            cx.set_external_buffer(key, None);
+        }
+        newer_shown
+    }
+
     pub fn take_control(&mut self, cx: &mut Cx<Self>) {
+        if !self.state.visible {
+            return;
+        }
         let Some(info) = self.state.info() else { return };
-        if !info.is_running() || !info.capabilities.can_control {
+        if !info.is_running() || !info.capabilities.can_control || info.capabilities.host_disconnected {
+            return;
+        }
+        // Finding 5 & 24: enforce first-frame picture readiness inside
+        // `take_control` for remote screens (even if invoked directly via the
+        // agent command dispatcher), while letting local screens take control
+        // from History/shortcut before Live opens.
+        if !info.id.is_local() && !self.live.read(cx).has_shot() && !self.state.controlling() {
             return;
         }
         let id = info.id.clone();
@@ -1319,12 +1680,25 @@ impl ScreenPane {
     fn ask_stop(&mut self, cx: &mut Cx<Self>) {
         let Some(info) = self.state.info().filter(|i| i.is_running()).cloned() else { return };
         let Some(source) = self.state.source().cloned() else { return };
-        // Capture the screen's start generation (seconds since epoch) when
-        // opening the confirmation dialog so stopping never kills a restarted
-        // session that replaced this one while the dialog was open.
-        let expected_started = source.session_started();
+        // Capture BOTH `started` and `last_used` BY VALUE via the shared helper
+        // (sends `Some(0)` for known-empty screens and fails closed on remote
+        // screens whose `started` is unknown — Final pass B.3 / Astra #4).
+        let started = source.session_started().or_else(|| info.started_ms.map(|ms| ms / 1000));
+        let replay_lu = self.replay.as_ref().and_then(|r| r.read(cx).actions().iter().rev().find(|a| !a.is_oversized()).map(|a| a.at.saturating_add(a.ms)));
+        let (expected_started, expected_last_used) = match capture_stop_expectations(info.id.is_local(), started, replay_lu, info.last_used_ms, info.actions) {
+            Ok(v) => v,
+            Err(msg) => {
+                self.alert(&msg, cx);
+                return;
+            }
+        };
+        let where_str = match &info.id.location {
+            ScreenLocation::Host { host_label, .. } => format!(" on {host_label}"),
+            ScreenLocation::Local if info.capabilities.show_location => " on this computer".to_owned(),
+            ScreenLocation::Local => String::new(),
+        };
         let message = format!(
-            "Stop the screen “{}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. The screen is kept, with its history: Start Screen starts it again.",
+            "Stop the screen “{}”{where_str}? The agent’s programs on it are closed, and anything it hasn’t saved is lost. The screen is kept, with its history: Start Screen starts it again.",
             info.display_name()
         );
         let me = cx.view_ref();
@@ -1335,12 +1709,10 @@ impl ScreenPane {
             }
             let (source, id) = (source.clone(), id.clone());
             me.update(cx, move |p, cx| {
-                // Only release the pane's active control if it is still
-                // displaying the screen being stopped (never screen B), and
-                // wait on the stop worker for the release acknowledgement
-                // BEFORE issuing `source.stop_if_generation()` so remote stop
-                // never races the `.control` lock release.
-                let release_first = if p.state.screen_id() == Some(&id) {
+                // B.2 (#5/#24): only release the pane's active control if it is
+                // still bound to the EXACT screen source and session generation
+                // captured when the dialog opened (never a replacement session!).
+                let release_first = if p.state.matches_captured_session(&id, &source, expected_started) {
                     let (was_controlling, pending) = p.state.detach_control_for_worker();
                     if was_controlling {
                         cx.emit(ScreenPaneEvent::Controlling(id.clone(), false));
@@ -1354,7 +1726,7 @@ impl ScreenPane {
                     if let Some((ctrl_src, up)) = release_first {
                         let _ = ctrl_src.release_control_and_wait(up);
                     }
-                    messenger.send(PaneMsg::Stopped(id, source.stop_if_generation(expected_started)));
+                    messenger.send(PaneMsg::Stopped(id, source.stop_if_expected(expected_started, expected_last_used)));
                 });
                 cx.invalidate();
             });
@@ -1364,7 +1736,21 @@ impl ScreenPane {
     fn ask_clear(&mut self, cx: &mut Cx<Self>) {
         let Some(info) = self.state.info().filter(|i| !i.is_running()).cloned() else { return };
         let Some(source) = self.state.source().cloned() else { return };
-        let message = format!("Clear the history of “{}”? Its actions and the frames kept with them are deleted. This can’t be undone.", info.id.name);
+        // Capture `expected_started = Some(0)` (stopped) and `expected_last_used`
+        // BY VALUE at dialog-open time (`Some(0)` = observed empty; Finding 3).
+        let replay_lu = self.replay.as_ref().and_then(|r| r.read(cx).actions().iter().rev().find(|a| !a.is_oversized()).map(|a| a.at.saturating_add(a.ms)));
+        let observed_lu = match (replay_lu, info.last_used_ms) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
+        };
+        let expected_started = Some(0u64);
+        let expected_last_used = Some(observed_lu.unwrap_or(0));
+        let where_str = match &info.id.location {
+            ScreenLocation::Host { host_label, .. } => format!(" on {host_label}"),
+            ScreenLocation::Local if info.capabilities.show_location => " on this computer".to_owned(),
+            ScreenLocation::Local => String::new(),
+        };
+        let message = format!("Clear the history of “{}”{where_str}? Its actions and the frames kept with them are deleted. This can’t be undone.", info.display_name());
         let messenger = self.me.clone();
         let id = info.id.clone();
         open_alert(cx, "Clear History", "warning", &message, &["Cancel", "Clear History"], move |choice, _| {
@@ -1372,12 +1758,13 @@ impl ScreenPane {
                 return;
             }
             let (messenger, source, id) = (messenger.clone(), source.clone(), id.clone());
-            std::thread::spawn(move || messenger.send(PaneMsg::Cleared(id, source.clear_history())));
+            std::thread::spawn(move || messenger.send(PaneMsg::Cleared(id, source.clear_history_expected(expected_started, expected_last_used))));
         });
     }
 
     fn can_export(&self, cx: &WindowCx) -> bool {
-        !self.state.is_exporting_current()
+        !self.state.info().is_some_and(|i| i.capabilities.host_disconnected)
+            && !self.state.is_exporting_current()
             && self.replay.as_ref().is_some_and(|r| {
                 let r = r.read(cx);
                 r.loaded() && !r.actions().is_empty() && !r.export_discontiguous_blocked()
@@ -1387,6 +1774,9 @@ impl ScreenPane {
     /// Whether there's a picture to take: on Live, a live picture (or recorded
     /// history); on History/Stats, a history with recorded frames.
     fn can_shoot(&self, cx: &WindowCx) -> bool {
+        if self.state.info().is_some_and(|i| i.capabilities.host_disconnected) {
+            return false;
+        }
         if self.state.shown_tab() == Tab::Live && self.live.read(cx).has_shot() {
             return true;
         }
@@ -1635,12 +2025,24 @@ impl ScreenPane {
         if keep {
             let typed = field.read(cx).text().to_owned();
             let title = self.state.normalize_rename(&typed);
-            if let Some(info) = self.state.info.as_mut() {
-                info.title = title.clone();
+            // Finding 33: reject out-of-policy titles at edit time before
+            // mutating displayed state or sending a request that fails locally.
+            if let Some(ref t) = title
+                && t.len() > crate::rex_sock::MAX_LABEL_LEN
+            {
+                self.alert(&format!("Screen name is too long (at most {} bytes).", crate::rex_sock::MAX_LABEL_LEN), cx);
+                cx.invalidate();
+                return;
             }
-            cx.emit(ScreenPaneEvent::Renamed(id.clone(), title.clone()));
+            // Finding 26 & Final pass B.8: do not invent/commit the renamed title
+            // optimistically before the RPC succeeds, and capture `(source, info_rev)`
+            // so a delayed Rename reply never overwrites newer Follow metadata.
             let me = self.me.clone();
-            std::thread::spawn(move || me.send(PaneMsg::Renamed(id, source.rename(title.as_deref()))));
+            let info_rev = self.state.info_rev;
+            std::thread::spawn(move || {
+                let res = source.rename(title.as_deref());
+                me.send(PaneMsg::Renamed(id, source, info_rev, title, res));
+            });
         }
         cx.invalidate();
     }
@@ -1701,11 +2103,13 @@ impl ScreenPane {
             None => (0, None, None),
         };
         let running = info.is_running();
-        let line = self.state.header_subtitle(actions, last, started, now);
+        let disconnected = info.capabilities.host_disconnected;
+        let line_parts = self.state.header_subtitle_parts(actions, last, started, now);
         let title = SharedString::from(info.display_name().to_owned());
         let renaming_now = self.renaming.is_some();
         let title_at = self.title_at.clone();
         let face = canvas(move |g, r| {
+            olo_kit::review::own_grid(g, r);
             let p = theme::palette();
             let icon = style::snap(g, Bounds { origin: point(r.left(), r.center().y - px(16.0)), size: size(px(32.0), px(32.0)) });
             icons::paint(g, icon, "agent-screens");
@@ -1727,21 +2131,26 @@ impl ScreenPane {
                 return;
             }
             let line_y = r.top() + px(29.0);
-            let dot = if running { c(p.success) } else { style::disabled_text(&p) };
-            let d = style::snap_centred(g, point(x + px(4.0), line_y), 8.0, 8.0);
-            g.paint_quad(olo_kit::fill(d, dot).corner_radii(d.size.width / 2.0));
-            let t = style::label_fit(
-                g,
-                x + px(14.0),
-                line_y,
-                style::Align::Left,
-                line.clone(),
-                style::PLAIN_SIZE,
-                style::ui_font(FontWeight::NORMAL),
-                style::disabled_text(&p),
-                (w - px(14.0)).max(px(0.0)),
-            );
-            agent::record(g, agent::Node::label(line.clone(), t));
+            // Raise dot slightly to align optically with the x-height and `·` dividers.
+            let dot_center = point(x + px(4.0), line_y - px(0.5));
+            if disconnected {
+                paint_status_ring(g, dot_center, 8.0, tertiary_ink(&p, p.panel_background));
+            } else {
+                let dot = if running { c(p.success) } else { style::disabled_text(&p) };
+                paint_status_dot(g, dot_center, 8.0, dot);
+            }
+            let sub_w = (w - px(14.0)).max(px(0.0));
+            let plain = style::ui_font(FontWeight::NORMAL);
+            let mut shown = line_parts.clone();
+            let mut text = shown.join(" · ");
+            // Drop whole trailing segments rather than cutting mid-word.
+            while shown.len() > 1 && style::text_width(text.clone(), style::PLAIN_SIZE, plain.clone()) > sub_w {
+                shown.pop();
+                text = shown.join(" · ");
+            }
+            let sub_ink = if disconnected { tertiary_ink(&p, p.panel_background) } else { style::secondary_text(&p) };
+            let t = style::label_fit(g, x + px(14.0), line_y, style::Align::Left, text.clone(), style::PLAIN_SIZE, plain, sub_ink, sub_w);
+            agent::record(g, agent::Node::label(text, t));
         })
         .absolute()
         .inset_0();
@@ -1750,7 +2159,7 @@ impl ScreenPane {
         let face = div().flex_1().min_w_0().h_full().relative().child(face).on_mouse_down(
             MouseButton::Left,
             cx.listener(|p: &mut ScreenPane, e: &MouseDownEvent, cx| {
-                if p.renaming.is_none() && p.title_at.get().contains(&e.position) {
+                if p.renaming.is_none() && !p.state.info().is_some_and(|i| i.capabilities.host_disconnected) && p.title_at.get().contains(&e.position) {
                     // (The press goes no further: the field has the
                     // keyboard, not what's under.)
                     cx.prevent_default();
@@ -1780,7 +2189,7 @@ impl ScreenPane {
             None => face,
         };
         let first = if running {
-            Button::new("Stop Screen…").min_width(96.0).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+            Button::new("Stop Screen…").min_width(96.0).enabled(!disconnected).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
                 if p.host_lifecycle {
                     if let Some(id) = p.state.screen_id().cloned() {
                         cx.emit(ScreenPaneEvent::StopRequested(id));
@@ -1790,7 +2199,7 @@ impl ScreenPane {
                 }
             }))
         } else {
-            Button::new("Clear History…").min_width(96.0).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_clear(cx)))
+            Button::new("Clear History…").min_width(96.0).enabled(!disconnected).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_clear(cx)))
         };
         // Exporting, it shows how far (an export takes seconds to minutes),
         // History's bar too.
@@ -1800,30 +2209,122 @@ impl ScreenPane {
             None => Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_export(cx))),
         };
         let shot = Button::new("Take Screenshot…").min_width(96.0).enabled(self.can_shoot(cx)).on_click(cx.listener(|p: &mut ScreenPane, _, cx| p.ask_screenshot(cx)));
-        let row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(shot).child(first);
-        // Stopped: started again as it was.
-        if running {
-            row.into_any_element()
-        } else {
-            let busy = self.state.busy();
-            row.child(Button::new(if busy { "Starting…" } else { "Start Screen" }).id("start-screen").min_width(96.0).enabled(!busy).on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
-                if p.host_lifecycle {
-                    if let Some(id) = p.state.screen_id().cloned() {
-                        cx.emit(ScreenPaneEvent::StartRequested(id));
-                    }
-                } else {
-                    p.start_screen(cx);
-                }
-            })))
-            .into_any_element()
+        // Finding 31: on narrow panes (380 pt min window / 420 pt vertical third),
+        // fold secondary menu-accessible actions (Export Video…, Take Screenshot…)
+        // so the header never overflows its width.
+        let pane_w = self.width.unwrap_or_else(|| f32::from(cx.viewport_size().width));
+        let show_export = if running { pane_w >= 460.0 } else { pane_w >= 540.0 };
+        let show_shot = running || pane_w >= 540.0;
+        let mut buttons: Vec<Element> = Vec::new();
+        if show_export {
+            buttons.push(export.into_any_element());
         }
+        if show_shot {
+            buttons.push(shot.into_any_element());
+        }
+        buttons.push(first.into_any_element());
+        // Stopped: started again as it was.
+        if !running {
+            let busy = self.state.busy();
+            buttons.push(
+                Button::new(if busy { "Starting…" } else { "Start Screen" })
+                    .id("start-screen")
+                    .min_width(96.0)
+                    .enabled(!busy && !disconnected)
+                    .on_click(cx.listener(|p: &mut ScreenPane, _, cx| {
+                        if p.host_lifecycle {
+                            if let Some(id) = p.state.screen_id().cloned() {
+                                cx.emit(ScreenPaneEvent::StartRequested(id));
+                            }
+                        } else {
+                            p.start_screen(cx);
+                        }
+                    }))
+                    .into_any_element(),
+            );
+        }
+        header_bar(face.into_any_element(), buttons)
+    }
+
+    /// EmptyState-style disconnected host explanation (shared between the Live
+    /// well and offline History/Stats tabs when no cached replay is loaded).
+    fn disconnected_panel(&self, info: &ScreenInfo, on_well: bool, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
+        let (host_id, host_label) = match &info.id.location {
+            ScreenLocation::Host { host_id, host_label } => (host_id.clone(), host_label.clone()),
+            ScreenLocation::Local => (String::new(), "this computer".to_owned()),
+        };
+        let bg = if on_well { p.shade(p.panel_background, 1.18) } else { p.panel_background };
+        let title_ink = c(olo_theme::readable(p.panel_text, bg, 7.0));
+        // On the medium-grey Live viewport fill (`on_well`), render the second
+        // line in primary ink too so it reads crisply in light & dark (Gemini 4).
+        let body_ink = if on_well { title_ink } else { c(olo_theme::readable(olo_theme::mix(p.panel_text, bg, 0.30), bg, 4.5)) };
+        let title_str = SharedString::from(format!("{host_label} is disconnected."));
+        let detail_str = SharedString::from("Reconnect to it in Rex to see this screen again.");
+        let icon = canvas(|g, b| {
+            icons::paint_faded(g, b, "rex", DISABLED_OPACITY);
+        })
+        .w(px(32.0))
+        .h(px(32.0))
+        .flex_shrink_0();
+        let title_el = {
+            let s = title_str.clone();
+            canvas(move |g, b| {
+                let t = style::label_fit(g, b.center().x, b.center().y, style::Align::Center, s.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), title_ink, b.size.width);
+                agent::record(g, agent::Node::label(s.clone(), t));
+            })
+            .w_full()
+            .h(px(m::LABEL_ROW))
+        };
+        let detail_el = {
+            let s = detail_str.clone();
+            canvas(move |g, b| {
+                let t = style::label_fit(g, b.center().x, b.center().y, style::Align::Center, s.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), body_ink, b.size.width);
+                agent::record(g, agent::Node::label(s.clone(), t));
+            })
+            .w_full()
+            .h(px(m::LABEL_ROW))
+        };
+        let show_rex = (!host_id.is_empty()).then(|| {
+            let hid = host_id.clone();
+            Button::new("Show in Rex").id("show-in-rex").on_click(cx.listener(move |_: &mut ScreenPane, _, cx| {
+                cx.emit(ScreenPaneEvent::OpenHost(hid.clone()));
+            }))
+        });
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .px(px(m::WINDOW_INSET * 2.0))
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(360.0))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .child(icon)
+                    .child(div().h(px(16.0)))
+                    .child(title_el)
+                    .child(div().h(px(4.0)))
+                    .child(detail_el)
+                    .children(show_rex.map(|btn| div().mt(px(20.0)).child(btn))),
+            )
+            .into_any_element()
     }
 
     /// The screen as it is now, and Take Control.
     fn live_tab(&mut self, cx: &mut Cx<Self>) -> Element {
         let Some(info) = self.state.info().filter(|i| i.is_running()).cloned() else { return div().into_any_element() };
         let p = theme::palette();
-        if !self.live.read(cx).has_shot() {
+        let has_shot = self.live.read(cx).has_shot();
+        let disconnected = info.capabilities.host_disconnected;
+        let is_loading = self.state.is_live_loading(has_shot);
+        if disconnected || is_loading {
+            self.live.update(cx, |w, cx| w.clear(None, cx));
+        } else if !has_shot {
             let placeholder = SharedString::from(self.state.live_placeholder());
             self.live.update(cx, |w, cx| w.clear(Some(placeholder), cx));
         }
@@ -1842,6 +2343,38 @@ impl ScreenPane {
         })
         .absolute()
         .inset_0();
+        let well_overlay: Option<Element> = if disconnected {
+            Some(div().absolute().inset_0().child(self.disconnected_panel(&info, true, cx)).into_any_element())
+        } else if is_loading {
+            let well_bg = p.shade(p.panel_background, 1.18);
+            // Primary ink on the medium-grey Live viewport fill so the loading
+            // label meets >= 4.5:1 crisply in light & dark looks (Gemini 4).
+            let body_ink = c(olo_theme::readable(p.panel_text, well_bg, 7.0));
+            let label_str = SharedString::from(self.state.loading_label());
+            let label_el = {
+                let s = label_str.clone();
+                canvas(move |g, b| {
+                    let t = style::label_fit(g, b.center().x, b.center().y, style::Align::Center, s.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), body_ink, b.size.width);
+                    agent::record(g, agent::Node::label(s.clone(), t));
+                })
+                .w_full()
+                .h(px(m::LABEL_ROW))
+            };
+            Some(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .px(px(m::WINDOW_INSET * 2.0))
+                    .child(div().w_full().max_w(px(320.0)).flex().flex_col().items_center().child(label_el).child(div().h(px(10.0))).child(barber_bar(132.0, 11.0, label_str)))
+                    .into_any_element(),
+            )
+        } else {
+            None
+        };
         let mut input = div().absolute().inset_0().child(ring);
         if controlling {
             let (sw, sh) = self.state.live_logical_size();
@@ -1908,21 +2441,53 @@ impl ScreenPane {
                 }
             }))
             .child(&self.live)
+            .children(well_overlay)
             .child(input);
 
         // What is going on, and the control button.
         let now = history::now_ms();
-        let latest = self.replay.as_ref().and_then(|r| r.read(cx).actions().iter().rev().find(|a| !a.is_oversized()).cloned());
-        let (status_text, primary_ink) = self.state.live_status_line(latest.as_ref(), now);
-        let color = if primary_ink { c(p.panel_text) } else { style::disabled_text(&p) };
+        let latest = self.replay.as_ref().and_then(|r| {
+            let r = r.read(cx);
+            let acts = r.actions();
+            let a = acts.iter().rev().find(|a| !a.is_oversized())?;
+            self.state.latest_action_is_current(a, acts.len()).then(|| a.clone())
+        });
+        let latest_runs = self.state.live_latest_runs(latest.as_ref(), now);
+        let (mut status_text, primary_ink) = self.state.live_status_line(latest.as_ref(), now);
+        // State each status once: when the Live well has no picture yet and
+        // already displays the disconnected or loading overlay (or identical
+        // placeholder sentence), leave the footer line quiet unless there is
+        // an explicit version-skew/control note or a known `Latest:` action.
+        let has_skew_note = !info.capabilities.can_control && info.capabilities.control_disabled_reason.is_some();
+        if !has_shot && latest_runs.is_none() && !has_skew_note && (disconnected || is_loading || status_text == self.state.live_placeholder()) {
+            status_text.clear();
+        }
+        let color = if primary_ink && !disconnected { c(p.panel_text) } else { style::secondary_text(&p) };
         let status = canvas(move |g, b| {
+            if let Some((cmd, suffix)) = &latest_runs {
+                let prefix = "Latest: ";
+                let full: SharedString = format!("{prefix}{cmd}{suffix}").into();
+                let ui = style::ui_font(FontWeight::NORMAL);
+                let mono = style::mono_font(FontWeight::NORMAL);
+                let runs = [
+                    TextRun { len: prefix.len(), font: ui.clone(), color, background_color: None, underline: None, strikethrough: None, size: None },
+                    TextRun { len: cmd.len(), font: mono, color, background_color: None, underline: None, strikethrough: None, size: None },
+                    TextRun { len: suffix.len(), font: ui, color, background_color: None, underline: None, strikethrough: None, size: None },
+                ];
+                let t = style::label_runs_fit(g, b.left(), b.center().y, style::Align::Left, full.clone(), style::PLAIN_SIZE, &runs, b.size.width);
+                agent::record(g, agent::Node::label(full, t));
+                return;
+            }
+            if status_text.is_empty() {
+                return;
+            }
             let t = style::label_fit(g, b.left(), b.center().y, style::Align::Left, status_text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, b.size.width);
             agent::record(g, agent::Node::label(status_text.clone(), t));
         })
         .flex_1()
         .min_w_0()
         .h_full();
-        let can_control = info.capabilities.can_control;
+        let can_control = !disconnected && info.capabilities.can_control && (info.id.is_local() || has_shot || controlling);
         let pending = self.state.control_pending;
         let control_label = if controlling {
             "Stop Controlling"
@@ -1974,52 +2539,76 @@ impl ScreenPane {
         match msg {
             PaneMsg::LiveFrameReady => {
                 self.live_frame_queued.store(false, Ordering::Release);
-                if let Some((watch, shot)) = self.pending_live.lock().unwrap_or_else(|e| e.into_inner()).take()
+                if let Some((watch, conn_gen, shot)) = self.pending_live.lock().unwrap_or_else(|e| e.into_inner()).take()
                     && self.watching.as_ref().is_some_and(|(_, id, _, _)| *id == watch)
+                    && self.live_gen.accept_frame(watch, conn_gen)
                 {
+                    let had_shot = self.live.read(cx).has_shot();
                     let prev_size = self.state.live_pixel_size;
                     self.state.failure = None;
                     self.state.live_status = LiveStatus::Streaming;
                     self.state.on_live_frame_size(shot.size[0], shot.size[1]);
-                    if prev_size != self.state.live_pixel_size {
+                    self.live.update(cx, |w, cx| w.set_shot(shot, cx));
+                    // B.1 (#5): tell the backend that the pane has accepted and
+                    // displayed a live picture from this connection so remote
+                    // Take Control can now be granted.
+                    if let Some(src) = self.state.source() {
+                        src.note_live_frame_accepted();
+                    }
+                    if !had_shot || prev_size != self.state.live_pixel_size {
                         let shape = self.state.info().and_then(|i| i.size).map(|(w, h)| (w as f32, h as f32));
                         self.live.update(cx, |w, _| w.set_shape(shape));
                         cx.invalidate();
                     }
-                    self.live.update(cx, |w, cx| w.set_shot(shot, cx));
                 }
                 return;
             }
-            PaneMsg::LiveDmabuf { watch, buffer } => {
-                if !self.watching.as_ref().is_some_and(|(_, id, _, _)| *id == watch) {
+            PaneMsg::LiveDmabuf { watch, conn_gen, buffer } => {
+                if !self.watching.as_ref().is_some_and(|(_, id, _, _)| *id == watch) || !self.live_gen.accept_frame(watch, conn_gen) {
                     return (buffer.released)(buffer.id);
                 }
+                let had_shot = self.live.read(cx).has_shot();
                 let prev_size = self.state.live_pixel_size;
                 self.state.failure = None;
                 self.state.live_status = LiveStatus::Streaming;
                 self.state.on_live_frame_size(buffer.width as usize, buffer.height as usize);
-                if prev_size != self.state.live_pixel_size {
-                    cx.invalidate();
-                }
                 let size = (buffer.width, buffer.height);
                 let key = self.live.update(cx, |w, cx| {
                     w.set_live(size, cx);
                     w.external_key()
                 });
                 cx.set_external_buffer(key, Some(buffer));
+                if let Some(src) = self.state.source() {
+                    src.note_live_frame_accepted();
+                }
+                if !had_shot || prev_size != self.state.live_pixel_size {
+                    cx.invalidate();
+                }
                 return;
             }
-            PaneMsg::LiveStatus { watch, status } => {
+            PaneMsg::LiveStatus { watch, conn_gen, status } => {
                 if self.watching.as_ref().is_some_and(|(_, id, _, _)| *id == watch) {
-                    if let LiveStatus::Disconnected(ref msg) = status {
-                        self.forget_live(cx);
-                        self.live.update(cx, |w, cx| w.clear(Some(SharedString::from(msg.clone())), cx));
-                    }
-                    let id = self.state.screen_id().cloned();
-                    if self.state.on_live_status(status)
-                        && let Some(id) = id
-                    {
-                        cx.emit(ScreenPaneEvent::Controlling(id, false));
+                    let newer_shown = match &status {
+                        LiveStatus::Disconnected(msg) => {
+                            let stale = self.forget_live_retired(watch, conn_gen, cx);
+                            if !stale {
+                                self.live.update(cx, |w, cx| w.clear(Some(SharedString::from(msg.clone())), cx));
+                            }
+                            stale
+                        }
+                        // B.1 (#5, #10): clear ONLY the retired generation's
+                        // pixels so a newer connection's already-queued first
+                        // keyframe is never erased.
+                        LiveStatus::Reconnecting => self.forget_live_retired(watch, conn_gen, cx),
+                        _ => false,
+                    };
+                    if !newer_shown {
+                        let id = self.state.screen_id().cloned();
+                        if self.state.on_live_status(status)
+                            && let Some(id) = id
+                        {
+                            cx.emit(ScreenPaneEvent::Controlling(id, false));
+                        }
                     }
                 }
             }
@@ -2057,15 +2646,17 @@ impl ScreenPane {
                     }
                 }
             }
-            PaneMsg::LiveFailed { watch, message } => {
+            PaneMsg::LiveFailed { watch, conn_gen, message } => {
                 if self.watching.as_ref().is_some_and(|(_, id, _, _)| *id == watch) {
-                    self.forget_live(cx);
-                    self.live.update(cx, |w, cx| w.clear(Some(SharedString::from(message.clone())), cx));
-                    let id = self.state.screen_id().cloned();
-                    if self.state.on_live_failed(message)
-                        && let Some(id) = id
-                    {
-                        cx.emit(ScreenPaneEvent::Controlling(id, false));
+                    let stale = self.forget_live_retired(watch, conn_gen, cx);
+                    if !stale {
+                        self.live.update(cx, |w, cx| w.clear(Some(SharedString::from(message.clone())), cx));
+                        let id = self.state.screen_id().cloned();
+                        if self.state.on_live_failed(message)
+                            && let Some(id) = id
+                        {
+                            cx.emit(ScreenPaneEvent::Controlling(id, false));
+                        }
                     }
                 }
             }
@@ -2158,13 +2749,23 @@ impl ScreenPane {
                     cx.emit(ScreenPaneEvent::Stopped(id));
                 }
             }
-            PaneMsg::Renamed(id, r) => {
-                // (Shown at once; the list read again if it couldn't be kept.)
-                if let Err(e) = r {
+            PaneMsg::Renamed(id, source, captured_info_rev, title, r) => match r {
+                Ok(()) => {
+                    // B.8 (#26/#27): never let a delayed Rename reply overwrite
+                    // newer Follow metadata or a replacement source under the same ID.
+                    if self.state.matches_captured_session(&id, &source, None)
+                        && (id.is_local() || self.state.info_rev == captured_info_rev)
+                        && let Some(info) = self.state.info.as_mut()
+                    {
+                        info.title = title.clone();
+                    }
+                    cx.emit(ScreenPaneEvent::Renamed(id, title));
+                }
+                Err(e) => {
                     self.alert(&e, cx);
                     cx.emit(ScreenPaneEvent::RenameFailed(id));
                 }
-            }
+            },
             PaneMsg::Cleared(id, r) => {
                 if let Err(e) = r {
                     self.alert(&e, cx);
@@ -2213,28 +2814,40 @@ impl View for ScreenPane {
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
         let shown = self.state.shown_tab();
         let i = tabs.iter().position(|t| *t == shown).unwrap_or(0);
-        let content: Element = match (shown, &self.replay) {
-            (Tab::Live, _) => self.live_tab(cx),
-            (Tab::History, Some(replay)) => replay.element(),
-            (Tab::Stats, Some(replay)) => stats::view(replay, running, area_w, &self.stats_scroll, cx),
-            (Tab::Passwords, _) => match &info.capabilities.passwords {
-                PasswordsMode::Local(screen_name) => {
-                    if self.shares.as_ref().is_none_or(|(n, _)| n != screen_name) {
-                        let for_screen = screen_name.clone();
-                        self.shares = Some((screen_name.clone(), cx.new_view(|cx| Shares::new(Some(for_screen), cx))));
-                    }
-                    let (_, shares) = self.shares.as_ref().expect("made");
-                    shares.update(cx, |s, cx| {
-                        if s.width != area_w {
-                            s.width = area_w;
-                            cx.invalidate();
+        let show_disconnected_history = matches!(shown, Tab::History | Tab::Stats)
+            && should_show_disconnected_for_history(
+                info.capabilities.host_disconnected,
+                self.replay.as_ref().map(|r| {
+                    let r = r.read(cx);
+                    (r.loaded(), r.actions().is_empty(), r.unavailable().is_some())
+                }),
+            );
+        let content: Element = if show_disconnected_history {
+            self.disconnected_panel(&info, false, cx)
+        } else {
+            match (shown, &self.replay) {
+                (Tab::Live, _) => self.live_tab(cx),
+                (Tab::History, Some(replay)) => replay.element(),
+                (Tab::Stats, Some(replay)) => stats::view(replay, running, area_w, &self.stats_scroll, cx),
+                (Tab::Passwords, _) => match &info.capabilities.passwords {
+                    PasswordsMode::Local(screen_name) => {
+                        if self.shares.as_ref().is_none_or(|(n, _)| n != screen_name) {
+                            let for_screen = screen_name.clone();
+                            self.shares = Some((screen_name.clone(), cx.new_view(|cx| Shares::new(Some(for_screen), cx))));
                         }
-                    });
-                    shares.element()
-                }
-                PasswordsMode::Unavailable(reason) => shares::unavailable_view(reason.clone()),
-            },
-            (_, None) => div().into_any_element(),
+                        let (_, shares) = self.shares.as_ref().expect("made");
+                        shares.update(cx, |s, cx| {
+                            if s.width != area_w {
+                                s.width = area_w;
+                                cx.invalidate();
+                            }
+                        });
+                        shares.element()
+                    }
+                    PasswordsMode::Unavailable(reason) => shares::unavailable_view(reason.clone()),
+                },
+                (_, None) => div().into_any_element(),
+            }
         };
         let tab_view = TabView::new("screen-tabs", labels, i).on_select(cx.listener(move |p: &mut ScreenPane, i: &usize, cx| {
             if let Some(tab) = tabs.get(*i) {
@@ -2242,6 +2855,22 @@ impl View for ScreenPane {
             }
         }));
         div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(header).child(div().flex_1().min_h_0().child(tab_view.child(content))).into_any_element()
+    }
+}
+
+/// Whether `Tab::History` / `Tab::Stats` should render the disconnected panel
+/// instead of `Replay` / `stats::view` (Agy-review R2 #3): when disconnected,
+/// show `disconnected_panel` if no replay exists, if initial history never
+/// finished loading (`!loaded`), or if it has no cached actions and holds a
+/// disconnect/unavailable error — while preserving already-loaded cached
+/// read-only History & Stats.
+fn should_show_disconnected_for_history(host_disconnected: bool, replay_state: Option<(bool, bool, bool)>) -> bool {
+    if !host_disconnected {
+        return false;
+    }
+    match replay_state {
+        None => true,
+        Some((loaded, actions_empty, has_unavailable)) => !loaded || (actions_empty && has_unavailable),
     }
 }
 
@@ -2291,6 +2920,8 @@ mod tests {
                 sound: false,
                 started_ms: None,
                 last_used_ms: None,
+                disconnected_at_ms: None,
+                actions: None,
                 controlled: false,
                 capabilities: PaneCapabilities::local(name),
             };
@@ -2311,6 +2942,8 @@ mod tests {
                 sound: false,
                 started_ms: Some(1_000),
                 last_used_ms: None,
+                disconnected_at_ms: None,
+                actions: None,
                 controlled: false,
                 capabilities: caps,
             };
@@ -2469,23 +3102,72 @@ mod tests {
         assert!(ms.running && !ms.can_control && !ms.can_move_windows && !ms.can_airplay);
 
         let remote_sub = pane.header_subtitle(3, None, None, 10_000);
-        assert!(remote_sub.starts_with("Running  ·  build-box  ·  1280 × 800"), "{remote_sub}");
+        assert_eq!(remote_sub, "Running on build-box · up 9 s · 3 actions · 1280 × 800");
 
+        // Remote screen with known action count (lazy history unopened) leaves footer quiet
+        // instead of showing "Watching." or contradicting "3 actions" with "No actions yet".
+        let mut with_acts = MockSource::remote_running("h1", "build-box", "qa-acts", true, None).info();
+        with_acts.actions = Some(3);
+        let mut pane_acts = PaneState::new(Tab::Live);
+        pane_acts.set_source(Some(MockSource::remote_running("h1", "build-box", "qa-acts", true, None)));
+        pane_acts.update_info(with_acts);
+        assert_eq!(pane_acts.live_status_line(None, 10_000).0, "");
+
+        // Zero-action screen shows "No actions yet" uniformly on local and remote.
+        let mut pane_empty = PaneState::new(Tab::Live);
+        pane_empty.set_source(Some(MockSource::remote_running("h1", "build-box", "qa-empty", true, None)));
+        assert_eq!(pane_empty.live_status_line(None, 10_000).0, "No actions yet");
+
+        // Finding 24: local screen allows Take Control from History before Live opens,
+        // while remote screen still gates on first live frame.
+        let mut local_hist = PaneState::new(Tab::History);
+        local_hist.set_source(Some(MockSource::local_running("agent")));
+        assert!(local_hist.menu_state(true, false, false, false, false, false).can_control, "local Take Control must stay enabled on History");
+
+        // Take Control stays disabled in menu_state until the first live frame arrives on remote.
         let ok_remote = MockSource::remote_running("h1", "build-box", "qa-2", true, None);
         pane.set_source(Some(ok_remote.clone()));
+        assert!(!pane.menu_state(false, false, false, false, false, false).can_control, "Take Control disabled while loading");
+        assert!(pane.menu_state(false, false, false, false, false, true).can_control, "Take Control enabled once picture arrives");
+
+        // Finding 30: explicit non-empty LiveStatus::Message is NOT swallowed into generic loading overlay.
+        pane.on_live_status(LiveStatus::Message("Waiting for host display".into()));
+        assert!(!pane.is_live_loading(false));
+
+        // Disconnected host screen reports "Last seen running on … <ago>" with NO dot inside the sentence.
+        let mut disc = ok_remote.info();
+        disc.capabilities.host_disconnected = true;
+        let now = history::now_ms();
+        disc.disconnected_at_ms = Some(now.saturating_sub(25 * 60_000));
+        pane.update_info(disc);
+        let disc_sub = pane.header_subtitle(0, None, None, now);
+        assert_eq!(disc_sub, "Last seen running on build-box 25 min ago · 1280 × 800");
+        assert!(!pane.menu_state(false, false, false, false, false, true).can_control);
+
+        // Reconnect and verify Take Control acquires and releases cleanly without touching clipboard.
+        let ok_remote2 = MockSource::remote_running("h1", "build-box", "qa-2", true, None);
+        pane.set_source(Some(ok_remote2.clone()));
         assert_eq!(pane.take_control(), Ok(ControlAcquire::Acquired));
-        assert_eq!(ok_remote.log.lock().unwrap().clipboard_joins, 0);
+        assert_eq!(ok_remote2.log.lock().unwrap().clipboard_joins, 0);
         drop(pane);
-        assert_eq!(ok_remote.log.lock().unwrap().controlled_calls, vec![true, false]);
+        assert_eq!(ok_remote2.log.lock().unwrap().controlled_calls, vec![true, false]);
     }
 
     #[test]
     fn local_header_omits_host_and_rename_normalizes() {
         let src = MockSource::local_running("agent");
         let mut pane = PaneState::new(Tab::Live);
-        pane.set_source(Some(src));
-        assert_eq!(pane.header_subtitle(0, None, None, 10_000), "Running  ·  1440 × 900");
-        assert_eq!(pane.header_subtitle(1, None, None, 10_000), "Running  ·  1440 × 900  ·  1 action");
+        pane.set_source(Some(src.clone()));
+        // Final pass A.2: no-hosts local screens share the unified order
+        // ("Running · up T · N actions · W × H"), dropping resolution first and
+        // omitting "last …" (which lives in the Live footer).
+        assert_eq!(pane.header_subtitle(0, None, None, 10_000), "Running · 1440 × 900");
+        assert_eq!(pane.header_subtitle(1, None, Some(1_000), 10_000), "Running · up 9 s · 1 action · 1440 × 900");
+        // Once any remote host is listed (`show_location = true`), adds "on this computer".
+        let mut with_loc = src.info();
+        with_loc.capabilities.show_location = true;
+        pane.update_info(with_loc);
+        assert_eq!(pane.header_subtitle(2, None, Some(1_000), 10_000), "Running on this computer · up 9 s · 2 actions · 1440 × 900");
         assert_eq!(pane.normalize_rename("  Browser QA  "), Some("Browser QA".into()));
         assert_eq!(pane.normalize_rename("   "), None);
         assert_eq!(pane.normalize_rename("agent"), None);
@@ -2866,5 +3548,187 @@ mod tests {
         modern_info.capabilities = PaneCapabilities::remote_with_control();
         assert!(pane.update_info(modern_info));
         assert!(pane.can_export_selection(true));
+    }
+
+    #[test]
+    fn round3_f5_f6_f10_f24_f28_disconnect_visibility_and_frame_gate() {
+        // Finding 6: set_visible(false) releases control, drops clipboard, and pauses live.
+        let local = MockSource::local_running("local-a");
+        let mut pane = PaneState::new(Tab::Live);
+        pane.set_source(Some(local.clone()));
+        assert_eq!(pane.take_control(), Ok(ControlAcquire::Acquired));
+        assert!(pane.controlling());
+        assert!(pane.set_visible(false), "hiding while controlling must report change");
+        assert!(!pane.controlling(), "hiding pane must release control");
+        assert_eq!(pane.should_watch_live(), None, "hiding pane must stop live watching");
+        assert_eq!(local.log.lock().unwrap().controlled_calls, vec![true, false]);
+
+        // Finding 10 & 28: host_disconnected stops live watching and prevents history follow;
+        // reconnecting restores should_watch_live().
+        let remote = MockSource::remote_running("h1", "build-farm", "qa", true, None);
+        let mut rpane = PaneState::new(Tab::Live);
+        rpane.set_source(Some(remote.clone()));
+        assert_eq!(rpane.should_watch_live(), Some(remote.id().clone()));
+        let mut disc = remote.info();
+        disc.capabilities.host_disconnected = true;
+        rpane.update_info(disc);
+        assert_eq!(rpane.should_watch_live(), None, "disconnected host must not watch live");
+        assert!(!rpane.should_follow_history(), "disconnected host must not follow history");
+        // Reconnect resumes watch_live cleanly.
+        rpane.update_info(remote.info());
+        assert_eq!(rpane.should_watch_live(), Some(remote.id().clone()));
+
+        // Finding 28: stopped remote screen while offline defaults to History and reports host_disconnected.
+        let mut stopped_disc = remote.info();
+        stopped_disc.state = ScreenState::Stopped;
+        stopped_disc.capabilities.host_disconnected = true;
+        rpane.update_info(stopped_disc);
+        assert_eq!(rpane.shown_tab(), Tab::History);
+        assert!(rpane.info().unwrap().capabilities.host_disconnected);
+        assert!(!rpane.should_follow_history());
+    }
+
+    #[test]
+    fn final_pass_a4_b9_loading_disconnected_footer_and_stale_replay_latest() {
+        let now = history::now_ms();
+        let act_at = now.saturating_sub(60_050);
+        let act_end = act_at + 50;
+        let remote = MockSource::remote_running("h1", "dev-box", "qa", true, None);
+        let mut info = remote.info();
+        info.actions = Some(3);
+        info.last_used_ms = Some(act_end);
+        let mut pane = PaneState::new(Tab::Live);
+        pane.set_source(Some(remote.clone()));
+        pane.update_info(info.clone());
+
+        let act3 = history::Action { at: act_at, ms: 50, kind: "click".into(), args: vec!["810".into(), "420".into()], result: None, error: None };
+
+        // A.4: While loading (`LiveStatus::Connecting`), shows `Latest: ACTION · TIME` as soon as known.
+        assert_eq!(pane.live_status, LiveStatus::Connecting);
+        assert!(pane.latest_action_is_current(&act3, 3));
+        let (cmd, suf) = pane.live_latest_runs(Some(&act3), now).expect("loading footer must show known latest");
+        assert_eq!(cmd, "click 810 420");
+        assert_eq!(suf, " · 1 min ago");
+
+        // Agy-review R1 #7: `header_subtitle` uptime & `live_latest_runs` / `"Last seen"` relative times
+        // format through `olo_kit::ago::age` (scheduling `holds_until` wakeups while keeping `now_ms` deterministic).
+        let syn_act = history::Action { at: 4_000, ms: 50, kind: "click".into(), args: vec!["10".into(), "20".into()], result: None, error: None };
+        assert_eq!(pane.live_latest_runs(Some(&syn_act), 10_000).unwrap().1, " · just now");
+        assert_eq!(pane.live_latest_runs(Some(&syn_act), 70_050).unwrap().1, " · 1 min ago");
+        let up_fmt = |a: Duration| format!("up {}", stats::span(a.as_millis() as u64));
+        assert_eq!(olo_kit::ago::until_change(Duration::from_secs(9), &up_fmt, &up_fmt(Duration::from_secs(9))), Duration::from_secs(1));
+        assert_eq!(olo_kit::ago::until_change(Duration::from_secs(61), &up_fmt, &up_fmt(Duration::from_secs(61))), Duration::from_secs(59));
+        assert_eq!(olo_kit::ago::until_change(Duration::from_secs(3), &stats::ago_words, &stats::ago_words(Duration::from_secs(3))), Duration::from_secs(7));
+
+        // A.4: While disconnected (`host_disconnected = true`), still shows last known `Latest:`
+        // (painted in secondary ink by `live_tab`), and returns None only when nothing is known.
+        let mut disc = info.clone();
+        disc.capabilities.host_disconnected = true;
+        pane.update_info(disc);
+        let (cmd_d, suf_d) = pane.live_latest_runs(Some(&act3), now).expect("disconnected footer must show last known action");
+        assert_eq!(cmd_d, "click 810 420");
+        assert_eq!(suf_d, " · 1 min ago");
+        assert_eq!(pane.live_latest_runs(None, now), None);
+
+        // B.9 (#30): once host metadata advances (`last_used_ms` OR `actions` count) beyond the
+        // suspended replay's action 3, `latest_action_is_current` returns false so action 3 is
+        // NEVER labelled "Latest", and header subtitle uses the newer count `4 actions`.
+        let mut newer_ts = info.clone();
+        newer_ts.last_used_ms = Some(act_end + 10_000);
+        pane.update_info(newer_ts);
+        assert!(!pane.latest_action_is_current(&act3, 3), "stale replay timestamp must not be labelled Latest");
+
+        let mut newer_count = info.clone();
+        newer_count.actions = Some(4);
+        pane.update_info(newer_count);
+        assert!(!pane.latest_action_is_current(&act3, 3), "stale replay count must not be labelled Latest");
+        let sub = pane.header_subtitle(3, Some(act_end), None, now);
+        assert!(sub.contains("4 actions"), "header must show newest action count, got: {sub}");
+    }
+
+    #[test]
+    fn final_pass_b1_b2_b3_live_gen_race_hidden_control_stop_binding_and_capture() {
+        // B.1 (#5, #10): `Reconnecting` for retired gen 1 arriving AFTER `pending_live`
+        // already holds gen 2's first keyframe MUST preserve gen 2 and reject stale gen 1.
+        let pending: PendingLiveFrame = Arc::new(olo_sync::Mutex::new(None));
+        let mut tracker = LiveGenTracker::default();
+        let shot2 = Arc::new(Shot { size: [16, 16], rgba: vec![2; 16 * 16 * 4] });
+
+        assert!(tracker.accept_frame(7, 1));
+        // Delivery worker queued Reconnecting(gen=1), then new conn put (watch=7, gen=2, shot2) in pending_live.
+        *pending.lock().unwrap() = Some((7, 2, shot2.clone()));
+        let (clear_displayed, newer_shown) = tracker.retire(&pending, 7, 1);
+        assert!(clear_displayed, "old gen-1 displayed picture must be cleared");
+        assert!(!newer_shown);
+        // Gen-2 keyframe in pending_live MUST still be present!
+        let taken = pending.lock().unwrap().take().expect("gen-2 keyframe must survive gen-1 Reconnecting");
+        assert_eq!((taken.0, taken.1), (7, 2));
+        assert!(tracker.accept_frame(taken.0, taken.1), "gen-2 keyframe must be accepted");
+        assert!(!tracker.accept_frame(7, 1), "stale gen-1 frame must be rejected after gen-1 retired");
+
+        // If gen-2 was ALREADY shown before a late gen-1 status arrives, do not clear displayed or revert status!
+        let (clear_again, newer_already) = tracker.retire(&pending, 7, 1);
+        assert!(!clear_again);
+        assert!(newer_already);
+
+        // B.2 (#6): hidden local pane disables Control menu item AND refuses `take_control()`
+        // without calling source.set_controlled(true); unhiding restores immediate local control from History.
+        let local = MockSource::local_running("local-hidden");
+        let mut pane = PaneState::new(Tab::History);
+        pane.set_source(Some(local.clone()));
+        pane.set_visible(false);
+        assert!(!pane.menu_state(false, false, false, false, false, false).can_control, "hidden pane must disable Control menu");
+        assert_eq!(pane.take_control(), Ok(ControlAcquire::Noop));
+        assert!(!pane.controlling());
+        assert!(local.log.lock().unwrap().controlled_calls.is_empty(), "hidden pane must not acquire local control");
+
+        pane.set_visible(true);
+        assert!(pane.menu_state(false, false, false, false, false, false).can_control, "visible local History keeps Control enabled");
+        assert_eq!(pane.take_control(), Ok(ControlAcquire::Acquired));
+        assert!(pane.controlling());
+
+        // B.2 (#5/#24): Stop confirmation verifies exact captured source + generation before releasing control.
+        let captured: Arc<dyn ScreenSource> = local.clone();
+        assert!(pane.matches_captured_session(local.id(), &captured, local.session_started()));
+        let replacement = MockSource::local_running("local-hidden");
+        pane.set_source(Some(replacement.clone()));
+        assert!(!pane.matches_captured_session(local.id(), &captured, local.session_started()), "stale Stop dialog must not match replacement source under same ScreenId");
+
+        // B.3 (#4): shared `capture_stop_expectations` sends Some(0) for known-empty screens
+        // and fails closed on remote running screens without `started`.
+        assert_eq!(capture_stop_expectations(false, Some(1000), None, None, Some(0)).unwrap(), (Some(1000), Some(0)));
+        assert_eq!(capture_stop_expectations(true, Some(1000), None, None, None).unwrap(), (Some(1000), Some(0)));
+        assert_eq!(capture_stop_expectations(false, Some(1000), Some(5000), Some(9000), Some(3)).unwrap(), (Some(1000), Some(9000)));
+        assert!(capture_stop_expectations(false, None, None, None, Some(0)).is_err(), "remote Stop without started must fail closed");
+
+        // B.8 (#26): `PaneState::info_rev` advances on every `update_info` / `set_source`
+        // so a delayed `PaneMsg::Renamed` reply carrying an older revision cannot overwrite
+        // newer Follow metadata or a replacement source.
+        let rev_before = pane.info_rev;
+        let mut updated = replacement.info();
+        updated.title = Some("Follow Title".into());
+        pane.update_info(updated);
+        assert!(pane.info_rev > rev_before, "update_info must advance info_rev to guard delayed Rename replies");
+        let rev_after_info = pane.info_rev;
+        let replacement2 = MockSource::local_running("local-hidden");
+        pane.set_source(Some(replacement2));
+        assert!(pane.info_rev > rev_after_info, "set_source must advance info_rev to guard delayed Rename replies");
+    }
+
+    #[test]
+    fn agy_r2_f3_disconnected_history_and_stats_show_disconnected_panel_until_loaded_with_cache() {
+        // Online never shows disconnected_panel.
+        assert!(!should_show_disconnected_for_history(false, None));
+        assert!(!should_show_disconnected_for_history(false, Some((false, true, false))));
+        assert!(!should_show_disconnected_for_history(false, Some((true, true, true))));
+
+        // Offline with no replay, unloaded replay, or empty+unavailable replay shows disconnected_panel.
+        assert!(should_show_disconnected_for_history(true, None));
+        assert!(should_show_disconnected_for_history(true, Some((false, true, false))));
+        assert!(should_show_disconnected_for_history(true, Some((true, true, true))));
+
+        // Offline with already-loaded cached actions (or genuinely empty loaded history) stays readable!
+        assert!(!should_show_disconnected_for_history(true, Some((true, false, false))));
+        assert!(!should_show_disconnected_for_history(true, Some((true, true, false))));
     }
 }

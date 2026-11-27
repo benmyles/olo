@@ -876,6 +876,7 @@ mod tests {
             server_mac: mac::NONE,
             session_id: CryptoVec::new(),
             channels: std::collections::HashMap::new(),
+            closing_channels: std::collections::HashSet::new(),
             last_channel_id: Wrapping(0),
             write: Vec::new(),
             write_cursor: 0,

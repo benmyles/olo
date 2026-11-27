@@ -501,14 +501,22 @@ impl Session {
                 };
 
                 if let Some(channel) = self.channels.get(&local_id) {
-                    channel
+                    if channel
                         .send(ChannelMsg::Open {
                             id: local_id,
                             max_packet_size: msg.maximum_packet_size,
                             window_size: msg.initial_window_size,
                         })
                         .await
-                        .unwrap_or(());
+                        .is_err()
+                    {
+                        // Olo: the caller cancelled `channel_open_*` before
+                        // confirmation arrived; close the channel on the wire
+                        // and remove both local tables so the server's session
+                        // slot and `self.channels` do not leak.
+                        self.close(local_id)?;
+                        return Ok(());
+                    }
                 } else {
                     error!("no channel for id {local_id:?}");
                 }
@@ -527,20 +535,36 @@ impl Session {
                 let channel_num = map_err!(ChannelId::decode(&mut r))?;
                 map_err!(ensure_end(&r))?;
                 if !self.common.is_established_channel(channel_num) {
+                    // Olo: release any closing-ID reservation and drop any
+                    // leftover `self.channels` entry once the peer echoes CLOSE.
+                    if let Some(ref mut enc) = self.common.encrypted {
+                        enc.closing_channels.remove(&channel_num);
+                        if !enc.channels.contains_key(&channel_num) {
+                            self.channels.remove(&channel_num);
+                        }
+                    } else {
+                        self.channels.remove(&channel_num);
+                    }
                     return Ok(());
                 }
                 if let Some(ref mut enc) = self.common.encrypted {
-                    // The CHANNEL_CLOSE message must be sent to the server at this point or the session
-                    // will not be released.
-                    enc.close(channel_num)?;
+                    // Olo: peer sent CHANNEL_CLOSE and will send no further
+                    // WINDOW_ADJUST; discard unsendable pending data and send
+                    // CHANNEL_CLOSE immediately so other channels are not gated.
+                    enc.close_on_peer_close(channel_num)?;
                 }
-                // Forward the close to the channel before removing it, so that
-                // consumers waiting on `Channel::wait()` receive an explicit
-                // `ChannelMsg::Close` instead of just seeing `None`.
-                if let Some(chan) = self.channels.get(&channel_num) {
-                    let _ = chan.send(ChannelMsg::Close).await;
+                // Olo: remove the channel entry and wake writers immediately,
+                // delivering `ChannelMsg::Close` without blocking the driver
+                // if the channel queue is full (e.g. during an upload before
+                // the caller starts reading). If the queue is full,
+                // `mark_peer_closed` ensures `ChannelReadHalf::wait()` still
+                // yields `Some(ChannelMsg::Close)` once buffered messages drain.
+                if let Some(chan) = self.channels.remove(&channel_num) {
+                    chan.window_size().close();
+                    if chan.try_send(ChannelMsg::Close).is_err() {
+                        chan.window_size().mark_peer_closed();
+                    }
                 }
-                self.channels.remove(&channel_num);
                 client.channel_close(channel_num, self).await
             }
             Some((&msg::CHANNEL_EOF, mut r)) => {
@@ -581,7 +605,9 @@ impl Session {
                         .await;
                 }
 
-                let _ = self.sender.send(Reply::ChannelOpenFailure);
+                // Olo: do not push a redundant `Reply::ChannelOpenFailure` onto
+                // the unbounded `Handle::receiver` queue (nothing reads it after
+                // authentication; the channel waiter was notified above).
 
                 client
                     .channel_open_failure(channel_num, reason_code, &descr, &language, self)
@@ -777,13 +803,20 @@ impl Session {
                         channel_num,
                         is_rekeying,
                     )? as u32;
+                    // Olo: if flushing pending data committed a deferred
+                    // `pending_close`, drop the local `ChannelRef` entry too.
+                    if !enc.channels.contains_key(&channel_num) {
+                        self.channels.remove(&channel_num);
+                    }
                 }
                 if let Some(chan) = self.channels.get(&channel_num) {
                     chan.window_size().grow(amount).await;
-                    // Use try_send to avoid blocking the session loop when channel buffer is full.
-                    // WindowAdjusted is informational - the critical side effect (updating
-                    // WindowSizeRef and notifying ChannelTx) already happens in grow().
-                    let _ = chan.try_send(ChannelMsg::WindowAdjusted { new_size });
+                    // Olo: leave headroom in the channel buffer so informational
+                    // WindowAdjusted messages during a write-before-read upload
+                    // cannot fill the queue and stall Eof/ExitStatus/Close.
+                    if chan.capacity() > 8 {
+                        let _ = chan.try_send(ChannelMsg::WindowAdjusted { new_size });
+                    }
                 }
                 client.window_adjusted(channel_num, new_size, self).await
             }
@@ -1158,6 +1191,7 @@ mod tests {
             server_mac: crate::mac::NONE,
             session_id: CryptoVec::from(&b"session-id"[..]),
             channels: HashMap::new(),
+            closing_channels: std::collections::HashSet::new(),
             last_channel_id: Wrapping(0),
             write: Vec::new(),
             write_cursor: 0,

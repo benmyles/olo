@@ -122,6 +122,11 @@ impl Action {
 }
 
 /// Root folder holding all local screens' histories (`$XDG_STATE_HOME/olo/screens`).
+pub fn root() -> PathBuf {
+    root_dir()
+}
+
+/// Root folder holding all local screens' histories (`$XDG_STATE_HOME/olo/screens`).
 pub(crate) fn root_dir() -> PathBuf {
     olo_xdg::state_dir().join("screens")
 }
@@ -410,6 +415,415 @@ pub(crate) fn read_in(root: &Path, name: &str) -> Vec<Action> {
     let Ok(dfd) = open_screen_dir_fd(root, name) else { return Vec::new() };
     let Some(bytes) = read_regular_at(&dfd, "actions.jsonl", (MAX_BYTES as usize) * 2) else { return Vec::new() };
     String::from_utf8_lossy(&bytes).lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
+}
+
+/// Fast tail-only lookup of a screen's latest recorded action timestamp
+/// (`at + ms`, milliseconds since epoch) reading bounded chunks from the end of
+/// `actions.jsonl` instead of deserializing up to 16 MiB of history.
+pub fn last_used_fast(name: &str) -> Option<u64> {
+    last_used_fast_in(&root_dir(), name)
+}
+
+pub(crate) fn last_used_fast_in(root: &Path, name: &str) -> Option<u64> {
+    last_used_fast_checked_in(root, name).ok().flatten()
+}
+
+/// Extract `(at, ms)` from a single JSON action line without allocating or
+/// deserializing large `result` / `args` payloads (Astra #23: even an action
+/// record longer than 64 KiB can yield its timestamp without parsing a whole
+/// 16 MiB history).
+fn parse_action_timestamp_line(line: &str) -> Option<Result<Option<u64>, ()>> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(a) = serde_json::from_str::<Action>(trimmed) {
+        return Some(Ok(if a.is_oversized() { None } else { Some(a.at.saturating_add(a.ms)) }));
+    }
+    // Lightweight fallback for very large lines that only carry header fields:
+    #[derive(Deserialize)]
+    struct Head {
+        at: u64,
+        ms: u64,
+        #[serde(default)]
+        kind: String,
+    }
+    match serde_json::from_str::<Head>(trimmed) {
+        Ok(h) => Some(Ok(if h.kind == "oversized" { None } else { Some(h.at.saturating_add(h.ms)) })),
+        Err(_) => Some(Err(())),
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum OversizedPrefix {
+    Timestamp(u64),
+    OversizedPlaceholder,
+    Invalid,
+}
+
+fn skip_json_ws(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\r' | b'\n') {
+        i += 1;
+    }
+    i
+}
+
+/// Decode one JSON string literal starting at `bytes[start] == b'"'`, returning
+/// `(decoded, next_byte_index)` or `None` if malformed or truncated.
+fn parse_json_string_prefix(bytes: &[u8], start: usize) -> Option<(String, usize)> {
+    if bytes.get(start) != Some(&b'"') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut i = start + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => return Some((out, i + 1)),
+            b'\\' => {
+                i += 1;
+                let esc = *bytes.get(i)?;
+                match esc {
+                    b'"' => out.push('"'),
+                    b'\\' => out.push('\\'),
+                    b'/' => out.push('/'),
+                    b'b' => out.push('\u{0008}'),
+                    b'f' => out.push('\u{000C}'),
+                    b'n' => out.push('\n'),
+                    b'r' => out.push('\r'),
+                    b't' => out.push('\t'),
+                    b'u' => {
+                        let hex = std::str::from_utf8(bytes.get(i + 1..i + 5)?).ok()?;
+                        let code = u32::from_str_radix(hex, 16).ok()?;
+                        out.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
+                        i += 4;
+                    }
+                    _ => return None,
+                }
+                i += 1;
+            }
+            b if b < 0x20 => return None,
+            _ => {
+                let rest = std::str::from_utf8(&bytes[i..]).ok()?;
+                let ch = rest.chars().next()?;
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    None
+}
+
+/// Skip one complete JSON value starting at `bytes[start]` within the prefix.
+fn skip_json_value_prefix(bytes: &[u8], start: usize) -> Option<usize> {
+    let i = skip_json_ws(bytes, start);
+    let b = *bytes.get(i)?;
+    match b {
+        b'"' => parse_json_string_prefix(bytes, i).map(|(_, next)| next),
+        b'{' | b'[' => {
+            let mut depth = 0usize;
+            let mut pos = i;
+            while pos < bytes.len() {
+                match bytes[pos] {
+                    b'"' => {
+                        let (_, next) = parse_json_string_prefix(bytes, pos)?;
+                        pos = next;
+                        continue;
+                    }
+                    b'{' | b'[' => depth += 1,
+                    b'}' | b']' => {
+                        depth = depth.checked_sub(1)?;
+                        if depth == 0 {
+                            return Some(pos + 1);
+                        }
+                    }
+                    _ => {}
+                }
+                pos += 1;
+            }
+            None
+        }
+        _ => {
+            let mut pos = i;
+            while pos < bytes.len() && !matches!(bytes[pos], b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n') {
+                pos += 1;
+            }
+            (pos > i && pos < bytes.len()).then_some(pos)
+        }
+    }
+}
+
+/// Strictly parse top-level `"at"`, `"ms"`, and `"kind"` directly from the
+/// prefix of an oversized action line (> 64 KiB) without scanning into string
+/// payloads such as `"args"` (Agy-review R1 #6).
+fn parse_oversized_line_prefix(prefix: &str) -> OversizedPrefix {
+    let bytes = prefix.as_bytes();
+    let mut i = skip_json_ws(bytes, 0);
+    if bytes.get(i) != Some(&b'{') {
+        return OversizedPrefix::Invalid;
+    }
+    i += 1;
+    let mut at: Option<u64> = None;
+    let mut ms: Option<u64> = None;
+    let mut kind: Option<String> = None;
+    loop {
+        i = skip_json_ws(bytes, i);
+        if bytes.get(i) == Some(&b'}') {
+            break;
+        }
+        let Some((key, next)) = parse_json_string_prefix(bytes, i) else {
+            break;
+        };
+        i = skip_json_ws(bytes, next);
+        if bytes.get(i) != Some(&b':') {
+            return OversizedPrefix::Invalid;
+        }
+        i = skip_json_ws(bytes, i + 1);
+        match key.as_str() {
+            "at" | "ms" => {
+                let num_start = i;
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+                if i == num_start || i >= bytes.len() || !matches!(bytes[i], b',' | b'}' | b' ' | b'\t' | b'\r' | b'\n') {
+                    return OversizedPrefix::Invalid;
+                }
+                let Ok(val) = std::str::from_utf8(&bytes[num_start..i]).unwrap_or("").parse::<u64>() else {
+                    return OversizedPrefix::Invalid;
+                };
+                if key == "at" {
+                    at = Some(val);
+                } else {
+                    ms = Some(val);
+                }
+            }
+            "kind" => {
+                let Some((val, next)) = parse_json_string_prefix(bytes, i) else {
+                    return OversizedPrefix::Invalid;
+                };
+                kind = Some(val);
+                i = next;
+            }
+            _ => {
+                let Some(next) = skip_json_value_prefix(bytes, i) else {
+                    break;
+                };
+                i = next;
+            }
+        }
+        if let (Some(a), Some(m), Some(k)) = (at, ms, kind.as_deref()) {
+            return if k == "oversized" { OversizedPrefix::OversizedPlaceholder } else { OversizedPrefix::Timestamp(a.saturating_add(m)) };
+        }
+        i = skip_json_ws(bytes, i);
+        match bytes.get(i) {
+            Some(&b',') => i += 1,
+            Some(&b'}') => break,
+            _ => break,
+        }
+    }
+    match (at, ms, kind.as_deref()) {
+        (_, _, Some("oversized")) => OversizedPrefix::OversizedPlaceholder,
+        (Some(a), Some(m), Some(_)) => OversizedPrefix::Timestamp(a.saturating_add(m)),
+        _ => OversizedPrefix::Invalid,
+    }
+}
+
+/// Checked tail-only lookup of a screen's latest recorded action timestamp
+/// (`at + ms`, milliseconds since epoch) for guarded Delete / Clear / Stop
+/// (Astra #2–#3, #23; Agy-review R1 #6):
+/// - Missing screen directory or missing/empty `actions.jsonl` -> `Ok(None)`.
+/// - Symlinked/unreadable directory, non-regular/unreadable `actions.jsonl`, or
+///   a trailing corrupt/truncated line -> `Err(...)` immediately (NEVER falls
+///   back past a corrupt newest line to an earlier valid record).
+/// - If the final line is longer than 64 KiB or the tail holds only valid
+///   `"oversized"` placeholder lines, scans backwards in bounded 64 KiB chunks
+///   (up to 4 MiB) inspecting each record's top-level JSON header.
+pub(crate) fn last_used_fast_checked_in(root: &Path, name: &str) -> Result<Option<u64>, String> {
+    crate::screens::require_valid_name(name)?;
+    let root_fd = match open_root_dir(root) {
+        Ok(fd) => fd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("couldn't inspect screens folder: {e}")),
+    };
+    let cname = CString::new(name).map_err(|_| format!("{name:?} can't name a screen"))?;
+    // SAFETY: valid root dir fd and NUL-terminated single-component name.
+    let raw_dfd = unsafe { libc::openat(root_fd.as_raw_fd(), cname.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    let dfd = if raw_dfd < 0 {
+        let e = std::io::Error::last_os_error();
+        if e.kind() == std::io::ErrorKind::NotFound {
+            return Ok(None);
+        }
+        return Err(format!("couldn't inspect screen {name:?}'s history folder: {e}"));
+    } else {
+        // SAFETY: `raw_dfd >= 0` is a freshly opened directory descriptor.
+        unsafe { OwnedFd::from_raw_fd(raw_dfd) }
+    };
+    let mut f = match openat_regular(&dfd, "actions.jsonl", libc::O_RDONLY, 0) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("couldn't read {name:?}'s action log: {e}")),
+    };
+    let meta = f.metadata().map_err(|e| format!("couldn't stat {name:?}'s action log: {e}"))?;
+    if !meta.file_type().is_file() {
+        return Err(format!("{name:?}'s action log is not a regular file"));
+    }
+    let len = meta.len();
+    last_used_fast_checked_from_file(&mut f, len, name)
+}
+
+fn last_used_fast_checked_from_file(f: &mut std::fs::File, len: u64, name: &str) -> Result<Option<u64>, String> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+    const TAIL_BYTES: u64 = 64 * 1024;
+    const MAX_BACKSCAN_BYTES: u64 = 4 * 1024 * 1024;
+    if len == 0 {
+        return Ok(None);
+    }
+    let start = len.saturating_sub(TAIL_BYTES);
+    if start > 0 {
+        f.seek(SeekFrom::Start(start)).map_err(|e| format!("couldn't seek {name:?}'s action log: {e}"))?;
+    }
+    let cap = len - start;
+    let mut buf = Vec::with_capacity(cap as usize);
+    // Cap the tail read strictly to the snapshotted byte range `len - start` so
+    // a concurrent append from `history::record_in` can never slice mid-line
+    // past `len` and trigger a false corrupt-log error (Agy-review R2 #1).
+    std::io::Read::by_ref(f).take(cap).read_to_end(&mut buf).map_err(|e| format!("couldn't read {name:?}'s action log: {e}"))?;
+
+    // Check complete lines within the tail chunk first. Any trailing corrupt or
+    // truncated line MUST fail closed immediately rather than falling back to
+    // an older valid timestamp.
+    let (first_nl, slice) = if start > 0 {
+        match buf.iter().position(|&b| b == b'\n') {
+            Some(pos) => (Some(pos), &buf[pos + 1..]),
+            None => (None, &[][..]),
+        }
+    } else {
+        (Some(0), &buf[..])
+    };
+    let mut saw_any_nonempty = false;
+    let mut saw_valid_oversized = false;
+    if first_nl.is_some() {
+        let text = String::from_utf8_lossy(slice);
+        for line in text.lines().rev() {
+            if let Some(res) = parse_action_timestamp_line(line) {
+                saw_any_nonempty = true;
+                match res {
+                    Ok(Some(ts)) => return Ok(Some(ts)),
+                    Ok(None) => saw_valid_oversized = true,
+                    Err(()) => return Err(format!("{name:?}'s action log is unreadable or corrupt")),
+                }
+            }
+        }
+    }
+
+    // If earlier records exist before `start` (e.g. a final action line > 64 KiB,
+    // or a tail filled entirely with valid `"oversized"` placeholder lines),
+    // scan lines backwards up to `MAX_BACKSCAN_BYTES`.
+    if start > 0 {
+        let floor = len.saturating_sub(MAX_BACKSCAN_BYTES);
+        let mut line_end = match first_nl {
+            Some(pos) => start + pos as u64,
+            None => len,
+        };
+        let mut reached_bof = false;
+        while line_end > floor {
+            // Find the previous '\n' strictly before `line_end`.
+            let mut cursor = line_end;
+            let mut found_nl: Option<u64> = None;
+            while cursor > floor {
+                let chunk_start = cursor.saturating_sub(TAIL_BYTES).max(floor);
+                let chunk_len = (cursor - chunk_start) as usize;
+                f.seek(SeekFrom::Start(chunk_start)).map_err(|e| format!("couldn't seek {name:?}'s action log: {e}"))?;
+                let mut chunk = vec![0u8; chunk_len];
+                f.read_exact(&mut chunk).map_err(|e| format!("couldn't read {name:?}'s action log: {e}"))?;
+                if let Some(pos) = chunk.iter().rposition(|&b| b == b'\n') {
+                    found_nl = Some(chunk_start + pos as u64);
+                    break;
+                }
+                cursor = chunk_start;
+            }
+            let line_start = match found_nl {
+                Some(nl) => nl + 1,
+                None if floor == 0 => 0,
+                None => return Err(format!("couldn't determine latest activity from {name:?}'s action log")),
+            };
+            let line_len = line_end.saturating_sub(line_start);
+            if line_len > 0 {
+                if line_len <= 4096 {
+                    f.seek(SeekFrom::Start(line_start)).map_err(|e| format!("couldn't seek {name:?}'s action log: {e}"))?;
+                    let mut raw = vec![0u8; line_len as usize];
+                    f.read_exact(&mut raw).map_err(|e| format!("couldn't read {name:?}'s action log: {e}"))?;
+                    let s = String::from_utf8_lossy(&raw);
+                    if let Some(res) = parse_action_timestamp_line(&s) {
+                        saw_any_nonempty = true;
+                        match res {
+                            Ok(Some(ts)) => return Ok(Some(ts)),
+                            Ok(None) => saw_valid_oversized = true,
+                            Err(()) => return Err(format!("{name:?}'s action log is unreadable or corrupt")),
+                        }
+                    }
+                } else {
+                    // Verify the oversized line closes with `}` (not crash-truncated).
+                    let tail_probe_start = line_end.saturating_sub(64).max(line_start);
+                    let tail_probe_len = (line_end - tail_probe_start) as usize;
+                    f.seek(SeekFrom::Start(tail_probe_start)).map_err(|e| format!("couldn't seek {name:?}'s action log: {e}"))?;
+                    let mut tail_probe = vec![0u8; tail_probe_len];
+                    f.read_exact(&mut tail_probe).map_err(|e| format!("couldn't read {name:?}'s action log: {e}"))?;
+                    let last_non_ws = tail_probe.iter().rev().find(|b| !matches!(b, b' ' | b'\t' | b'\r' | b'\n'));
+                    if last_non_ws != Some(&b'}') {
+                        return Err(format!("{name:?}'s action log is unreadable or corrupt"));
+                    }
+                    f.seek(SeekFrom::Start(line_start)).map_err(|e| format!("couldn't seek {name:?}'s action log: {e}"))?;
+                    let mut head = Vec::with_capacity(512);
+                    std::io::Read::by_ref(f).take(512).read_to_end(&mut head).map_err(|e| format!("couldn't read {name:?}'s action log: {e}"))?;
+                    let head_str = String::from_utf8_lossy(&head);
+                    let first_line = head_str.lines().next().unwrap_or("");
+                    match parse_oversized_line_prefix(first_line) {
+                        OversizedPrefix::Timestamp(ts) => return Ok(Some(ts)),
+                        OversizedPrefix::OversizedPlaceholder => {
+                            saw_any_nonempty = true;
+                            saw_valid_oversized = true;
+                        }
+                        OversizedPrefix::Invalid => return Err(format!("couldn't determine latest activity from {name:?}'s action log")),
+                    }
+                }
+            }
+            match found_nl {
+                Some(nl) => line_end = nl,
+                None => {
+                    reached_bof = floor == 0;
+                    break;
+                }
+            }
+        }
+        if line_end == 0 && floor == 0 {
+            reached_bof = true;
+        }
+        if reached_bof && (!saw_any_nonempty || saw_valid_oversized) {
+            return Ok(None);
+        }
+        return Err(format!("couldn't determine latest activity from {name:?}'s action log"));
+    }
+
+    if !saw_any_nonempty || saw_valid_oversized { Ok(None) } else { Err(format!("{name:?}'s action log is unreadable or corrupt")) }
+}
+
+/// Verify that `root/name` is a real screen directory containing at least one
+/// screen marker (`screen.json` or `actions.jsonl`) via verified directory fds
+/// (Astra #2–#3: guarded Delete must never trash an unrelated directory).
+pub(crate) fn has_screen_marker_in(root: &Path, name: &str) -> Result<bool, String> {
+    let dfd = match open_screen_dir_fd(root, name) {
+        Ok(fd) => fd,
+        Err(e) if e.contains("No such file") => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    for marker in ["screen.json", "actions.jsonl"] {
+        match openat_regular(&dfd, marker, libc::O_RDONLY, 0) {
+            Ok(_) => return Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("couldn't inspect {marker} for screen {name:?}: {e}")),
+        }
+    }
+    Ok(false)
 }
 
 /// Reads a screen's history as it grows: what was added since the last
@@ -864,5 +1278,147 @@ mod tests {
         assert_eq!(s.actions.values().sum::<usize>(), 3);
         assert_eq!(s.last_used, Some(1_750_000_005_015));
         assert_eq!(s.active_ms, 5_015);
+    }
+
+    #[test]
+    fn round3_f20_f23_root_and_last_used_fast_tail() {
+        // Finding 20: history::root() must sit directly under olo_xdg::state_dir()/screens,
+        // never double-nesting `olo/olo/screens`.
+        let r = root();
+        assert_eq!(r, olo_xdg::state_dir().join("screens"));
+        let s = r.to_string_lossy();
+        assert!(!s.ends_with("/olo/olo/screens"), "unexpected double-nested history root: {s}");
+
+        // Finding 23: last_used_fast reads only the <=64 KiB tail and matches full read_in
+        // even when actions.jsonl is well over 64 KiB (and ignores trailing oversized placeholders).
+        let scratch = PathBuf::from("/var/tmp").join(format!("olo-hist-r3-f23-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(scratch.join("big")).unwrap();
+        let mut content = String::new();
+        for i in 0..800u64 {
+            let line = serde_json::to_string(&act(1_750_000_000_000 + i * 1000, 15, "type", &[&format!("padding-payload-{i:04}-{}", "x".repeat(80))], None)).unwrap();
+            content.push_str(&line);
+            content.push('\n');
+        }
+        assert!(content.len() > 80 * 1024, "fixture must exceed 64 KiB tail window");
+        let last_ts = 1_750_000_000_000 + 799 * 1000 + 15;
+        // Append an oversized placeholder after the final real action: must still find `last_ts`.
+        content.push_str(&serde_json::to_string(&Action { at: 0, ms: 0, kind: "oversized".into(), args: vec![], result: None, error: None }).unwrap());
+        content.push('\n');
+        std::fs::write(scratch.join("big/actions.jsonl"), content).unwrap();
+
+        assert_eq!(last_used_fast_in(&scratch, "big"), Some(last_ts));
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn final_pass_b11_f23_last_used_fast_handles_single_line_over_64kib_and_rejects_corrupt() {
+        let scratch = PathBuf::from("/var/tmp").join(format!("olo-hist-b11-f23-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(scratch.join("huge")).unwrap();
+
+        // Single action line whose payload is > 90 KiB (exceeds 64 KiB tail read):
+        // bounded reverse backscan must still find its timestamp without parsing a whole 16 MiB file.
+        let earlier = serde_json::to_string(&act(1_750_000_000_000, 10, "start", &[], None)).unwrap();
+        let big_payload = "Z".repeat(96 * 1024);
+        let huge_line = serde_json::to_string(&act(1_750_000_050_000, 42, "type", &[&big_payload], None)).unwrap();
+        assert!(huge_line.len() > 90 * 1024, "test line must exceed 64 KiB");
+        std::fs::write(scratch.join("huge/actions.jsonl"), format!("{earlier}\n{huge_line}\n")).unwrap();
+
+        assert_eq!(last_used_fast_checked_in(&scratch, "huge").unwrap(), Some(1_750_000_050_042));
+
+        // Corrupt non-empty file must return Err (never Ok(None)).
+        std::fs::create_dir_all(scratch.join("corrupt")).unwrap();
+        std::fs::write(scratch.join("corrupt/actions.jsonl"), "garbage-not-json\n").unwrap();
+        assert!(last_used_fast_checked_in(&scratch, "corrupt").is_err());
+
+        // Missing or empty file returns Ok(None).
+        std::fs::create_dir_all(scratch.join("empty")).unwrap();
+        std::fs::write(scratch.join("empty/actions.jsonl"), "").unwrap();
+        assert_eq!(last_used_fast_checked_in(&scratch, "empty").unwrap(), None);
+        assert_eq!(last_used_fast_checked_in(&scratch, "absent").unwrap(), None);
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn agy_r1_f6_corrupt_trailing_line_and_oversized_kind_in_args_and_placeholder_tail() {
+        let scratch = PathBuf::from("/var/tmp").join(format!("olo-hist-agyr1-f6-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+
+        // 1. Valid line 1 followed by truncated/corrupt line 2 MUST fail closed (never return line 1's timestamp).
+        std::fs::create_dir_all(scratch.join("trailing-corrupt")).unwrap();
+        let valid = serde_json::to_string(&act(1_750_000_000_000, 10, "click", &[], None)).unwrap();
+        std::fs::write(scratch.join("trailing-corrupt/actions.jsonl"), format!("{valid}\n{{\"at\":1750000010000,\"ms\":\n")).unwrap();
+        assert!(last_used_fast_checked_in(&scratch, "trailing-corrupt").is_err(), "trailing corrupt line must fail closed");
+
+        // 2. >64 KiB valid action whose `args` contain literal `"kind":"oversized"` must still return its timestamp!
+        std::fs::create_dir_all(scratch.join("args-literal")).unwrap();
+        let payload = format!(r#"prefix "kind":"oversized" {}"#, "A".repeat(80 * 1024));
+        let huge_with_literal = serde_json::to_string(&act(1_750_000_100_000, 33, "type", &[&payload], None)).unwrap();
+        assert!(huge_with_literal.len() > 70 * 1024);
+        std::fs::write(scratch.join("args-literal/actions.jsonl"), format!("{valid}\n{huge_with_literal}\n")).unwrap();
+        assert_eq!(last_used_fast_checked_in(&scratch, "args-literal").unwrap(), Some(1_750_000_100_033));
+
+        // 3. >64 KiB file ending with 70 KiB of valid `"oversized"` placeholders after an earlier real action
+        //    scans past placeholders to find the real timestamp; a >64 KiB file of ONLY placeholders returns Ok(None).
+        let ph_line = serde_json::to_string(&Action { at: 0, ms: 0, kind: "oversized".into(), args: vec![], result: None, error: None }).unwrap();
+        let repeat_n = (72 * 1024) / (ph_line.len() + 1) + 2;
+        let ph_block = format!("{ph_line}\n").repeat(repeat_n);
+        assert!(ph_block.len() > 70 * 1024);
+
+        std::fs::create_dir_all(scratch.join("ph-after-real")).unwrap();
+        std::fs::write(scratch.join("ph-after-real/actions.jsonl"), format!("{valid}\n{ph_block}")).unwrap();
+        assert_eq!(last_used_fast_checked_in(&scratch, "ph-after-real").unwrap(), Some(1_750_000_000_010));
+
+        std::fs::create_dir_all(scratch.join("ph-only")).unwrap();
+        std::fs::write(scratch.join("ph-only/actions.jsonl"), &ph_block).unwrap();
+        assert_eq!(last_used_fast_checked_in(&scratch, "ph-only").unwrap(), None);
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn agy_r2_f1_tail_read_capped_at_snapshotted_len_survives_concurrent_append() {
+        use std::io::Write as _;
+        let scratch = PathBuf::from("/var/tmp").join(format!("olo-hist-agyr2-f1-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        // 1. > 64 KiB log: snapshot `len` BEFORE a concurrent append writes another JSON line.
+        //    Reading `len - start` bytes (never `TAIL_BYTES + 1`) must NOT slice the appended `{`.
+        let p_big = scratch.join("big-actions.jsonl");
+        let mut content = String::new();
+        for i in 0..700u64 {
+            let line = serde_json::to_string(&act(1_750_000_000_000 + i * 1000, 15, "type", &[&format!("pad-{i:04}-{}", "x".repeat(80))], None)).unwrap();
+            content.push_str(&line);
+            content.push('\n');
+        }
+        assert!(content.len() > 64 * 1024);
+        std::fs::write(&p_big, &content).unwrap();
+        let snap_len = std::fs::metadata(&p_big).unwrap().len();
+        let expected_ts = 1_750_000_000_000 + 699 * 1000 + 15;
+        // Simulate concurrent `history::record_in` appending after `meta.len()` was snapshotted.
+        let appended = serde_json::to_string(&act(1_750_009_999_000, 12, "click", &["10", "20"], None)).unwrap();
+        let mut appender = std::fs::OpenOptions::new().append(true).open(&p_big).unwrap();
+        writeln!(appender, "{appended}").unwrap();
+        appender.flush().unwrap();
+        let mut reader = std::fs::File::open(&p_big).unwrap();
+        assert_eq!(last_used_fast_checked_from_file(&mut reader, snap_len, "qa").unwrap(), Some(expected_ts));
+
+        // 2. < 64 KiB log whose snapshotted length sits near 64 KiB so a concurrent append crosses 65,537 bytes.
+        let p_near = scratch.join("near-64k.jsonl");
+        let filler = serde_json::to_string(&act(1_750_000_100_000, 20, "type", &[&"y".repeat(65_400)], None)).unwrap();
+        let near_content = format!("{filler}\n");
+        assert!(near_content.len() < 64 * 1024 && near_content.len() > 65_400);
+        std::fs::write(&p_near, &near_content).unwrap();
+        let near_snap_len = std::fs::metadata(&p_near).unwrap().len();
+        let mut appender2 = std::fs::OpenOptions::new().append(true).open(&p_near).unwrap();
+        writeln!(appender2, "{}", serde_json::to_string(&act(1_750_009_999_500, 5, "type", &[&"z".repeat(200)], None)).unwrap()).unwrap();
+        appender2.flush().unwrap();
+        let mut reader2 = std::fs::File::open(&p_near).unwrap();
+        assert_eq!(last_used_fast_checked_from_file(&mut reader2, near_snap_len, "qa").unwrap(), Some(1_750_000_100_020));
+
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 }

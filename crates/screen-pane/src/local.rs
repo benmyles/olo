@@ -108,6 +108,8 @@ pub fn screen_info_for(name: &str, running: Option<&Screen>, title: Option<Strin
         // `apps/screen/src/viewer.rs`.
         started_ms: None,
         last_used_ms,
+        disconnected_at_ms: None,
+        actions: None,
         controlled: false,
         capabilities: PaneCapabilities::local(name),
     }
@@ -676,6 +678,32 @@ fn rename_in(state_root: &Path, runtime_dir: &Path, name: &str, title: Option<&s
     history::set_title_in(state_root, name, title)
 }
 
+impl LocalScreenSource {
+    pub(crate) fn set_controlled_in(&self, rt_dir: &Path, on: bool) -> Result<(), String> {
+        if on {
+            if self.control.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+                return Ok(());
+            }
+            let screen = screens::get_in(rt_dir, &self.id.name)?;
+            // Final pass B.2 (#5/#24): verify the session we are about to
+            // control still matches the start token this source was created for
+            // so a replacement session under the same name is never controlled.
+            if let Some(expected) = *self.expected_started.lock().unwrap_or_else(|e| e.into_inner())
+                && screen.started != expected
+            {
+                return Err(format!("screen {} was replaced by a newer session; refusing to take control", self.id.name));
+            }
+            let lock = screens::try_acquire_control_in(rt_dir, &self.id.name)?;
+            let pinned = PinnedSession::pin(screen.pid, screen.olo_socket);
+            self.begin_control_session(pinned, screen.wayland_display, lock, INPUT_IPC_TIMEOUT);
+            Ok(())
+        } else {
+            self.finish_control_session(Vec::new(), false);
+            Ok(())
+        }
+    }
+}
+
 impl ScreenSource for LocalScreenSource {
     fn id(&self) -> &ScreenId {
         &self.id
@@ -741,19 +769,7 @@ impl ScreenSource for LocalScreenSource {
     }
 
     fn set_controlled(&self, on: bool) -> Result<(), String> {
-        if on {
-            if self.control.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
-                return Ok(());
-            }
-            let screen = screens::get(&self.id.name)?;
-            let lock = screens::try_acquire_control(&self.id.name)?;
-            let pinned = PinnedSession::pin(screen.pid, screen.olo_socket);
-            self.begin_control_session(pinned, screen.wayland_display, lock, INPUT_IPC_TIMEOUT);
-            Ok(())
-        } else {
-            self.finish_control_session(Vec::new(), false);
-            Ok(())
-        }
+        self.set_controlled_in(&screens::dir(), on)
     }
 
     fn release_control(&self, final_events: Vec<SyntheticEvent>) -> Result<(), String> {
@@ -888,13 +904,17 @@ impl ScreenSource for LocalScreenSource {
 
     fn stop(&self) -> Result<(), String> {
         let expected_started = *self.expected_started.lock().unwrap_or_else(|e| e.into_inner());
-        self.stop_if_generation(expected_started)
+        self.stop_if_expected(expected_started, None)
     }
 
     fn stop_if_generation(&self, expected_started: Option<u64>) -> Result<(), String> {
+        self.stop_if_expected(expected_started, None)
+    }
+
+    fn stop_if_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
         // Ensure any in-flight local release completes before stopping.
         self.finish_control_session(Vec::new(), true);
-        screens::stop_if_generation(&self.id.name, expected_started)?;
+        screens::stop_if_expected(&self.id.name, expected_started, expected_last_used)?;
         *self.expected_started.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut info = self.info.lock().unwrap_or_else(|e| e.into_inner());
         info.state = ScreenState::Stopped;
@@ -903,7 +923,11 @@ impl ScreenSource for LocalScreenSource {
     }
 
     fn clear_history(&self) -> Result<(), String> {
-        screens::clear_history_if_stopped(&self.id.name)?;
+        self.clear_history_expected(None, None)
+    }
+
+    fn clear_history_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        screens::clear_history_if_stopped_expected(&self.id.name, expected_started, expected_last_used)?;
         self.player.lock().unwrap_or_else(|e| e.into_inner()).reset();
         *self.seg_cache.lock().unwrap_or_else(|e| e.into_inner()) = SegmentCache::new();
         self.info.lock().unwrap_or_else(|e| e.into_inner()).last_used_ms = None;
@@ -926,6 +950,10 @@ impl ScreenSource for LocalScreenSource {
 
     fn delete(&self) -> Result<(), String> {
         screens::delete(&self.id.name)
+    }
+
+    fn delete_expected(&self, expected_started: Option<u64>, expected_last_used: Option<u64>) -> Result<(), String> {
+        screens::delete_if_stopped_expected(&self.id.name, expected_started, expected_last_used)
     }
 
     fn give_windows(&self, to: Option<(u32, String)>) -> Result<Vec<String>, String> {
@@ -1223,5 +1251,67 @@ mod tests {
         assert!(title_file.starts_with(&dir));
         assert_eq!(std::fs::read_to_string(&title_file).unwrap(), "Renamed");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn final_pass_b2_f5_f24_local_set_controlled_refuses_replaced_session() {
+        use std::os::unix::process::CommandExt as _;
+        let dir = scratch_dir("b2-f5-f24");
+        let rt = dir.join("rt");
+        std::fs::create_dir_all(&rt).unwrap();
+
+        let mut fake_session = std::process::Command::new("/usr/bin/sleep").arg0("olo-session").arg("30").env("OLO_SCREEN", "qa").spawn().expect("spawn dummy session");
+        let sock = rt.join("olo-test.sock");
+        let _listener = UnixListener::bind(&sock).unwrap();
+        let scr = Screen {
+            name: "qa".into(),
+            wayland_display: "wayland-b2".into(),
+            olo_socket: sock,
+            pid: fake_session.id() as i32,
+            width: 800,
+            height: 600,
+            scale: 1.0,
+            sound: false,
+            started: 2000,
+            bus: None,
+            a11y: None,
+        };
+        std::fs::write(rt.join("qa.json"), serde_json::to_vec(&scr).unwrap()).unwrap();
+
+        // Source was bound for older generation 1000; replacement 2000 is now running.
+        let mut info = screen_info_for("qa", Some(&scr), None, false, None);
+        info.started_ms = Some(1000 * 1000);
+        let src = LocalScreenSource::new(info);
+        src.set_session_started(Some(1000));
+
+        let err = src.set_controlled_in(&rt, true).unwrap_err();
+        assert!(err.contains("replaced"), "expected replacement refusal, got: {err}");
+        assert!(!rt.join("qa.control").exists(), "refused control must not create .control lock");
+
+        // Matching generation 2000 acquires and releases cleanly.
+        src.set_session_started(Some(2000));
+        src.set_controlled_in(&rt, true).expect("matching session must take control");
+        assert!(rt.join("qa.control").exists());
+        src.release_control_and_wait(Vec::new()).expect("release control");
+        assert!(!rt.join("qa.control").exists());
+
+        let _ = fake_session.kill();
+        let _ = fake_session.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn agy_r1_f2_local_stop_if_generation_routes_to_stop_if_expected() {
+        // An invalid screen name is rejected inside `screens::stop_if_expected`
+        // before touching any runtime directory; if `stop_if_generation` fell
+        // through to the trait default, it would instead return
+        // "this screen backend doesn't support guarded stop".
+        let mut info = screen_info_for("bad/name", None, None, false, None);
+        info.id = ScreenId::local("bad/name");
+        let src = LocalScreenSource::new(info);
+        let dyn_src: &dyn ScreenSource = &src;
+        let err = dyn_src.stop_if_generation(Some(1_234)).unwrap_err();
+        assert!(!err.contains("doesn't support guarded stop"), "must override stop_if_generation, got: {err}");
+        assert!(err.contains("can't name a screen"), "expected screens::stop_if_expected name validation, got: {err}");
     }
 }

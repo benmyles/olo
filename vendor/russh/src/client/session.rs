@@ -539,9 +539,25 @@ impl Session {
 
     pub fn close(&mut self, channel: ChannelId) -> Result<(), crate::Error> {
         if let Some(ref mut enc) = self.common.encrypted {
-            enc.close(channel)
+            enc.close(channel)?;
+            // Olo: remove the local channel sender once local close commits
+            // (not deferred behind pending writes); otherwise the peer's
+            // echoed CHANNEL_CLOSE hits the `!is_established_channel` early
+            // return and `self.channels` leaks a `ChannelRef` per client close.
+            if !enc.channels.contains_key(&channel) {
+                self.channels.remove(&channel);
+            }
+            Ok(())
         } else {
             unreachable!()
+        }
+    }
+
+    // Olo: remove any `self.channels` entries whose encrypted channel state
+    // was finalized (e.g. deferred `pending_close` committed during rekey).
+    pub(crate) fn prune_closed_channels(&mut self) {
+        if let Some(enc) = self.common.encrypted.as_ref() {
+            self.channels.retain(|id, _| enc.channels.contains_key(id));
         }
     }
 

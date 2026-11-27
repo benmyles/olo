@@ -449,3 +449,139 @@ async fn review2_w1_quic_bounded_token_and_stdin_discard() {
     let status = tokio::time::timeout(Duration::from_secs(5), good.wait()).await.unwrap().unwrap();
     assert!(status.success(), "quic helper should exit cleanly after discarding stdin: {status}");
 }
+
+/// Round 3 Req 4: QUIC `wire::SCREEN` dispatch refuses `--expected-started` /
+/// `--expected-last-used` and one-shot mutating actions (`stop`, `delete`,
+/// `history NAME --clear`) on every QUIC stream without touching host state.
+#[cfg(feature = "screens")]
+#[tokio::test(flavor = "multi_thread")]
+async fn round3_req4_quic_dispatch_refuses_expected_options_and_mutations() {
+    use olo_rex_link::quic_wire as wire;
+    use std::sync::Arc;
+
+    let scratch = std::path::PathBuf::from(format!("/var/tmp/olo-rex-link-quic-r3-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let sdir = scratch.join("state/olo/screens/qa");
+    std::fs::create_dir_all(scratch.join("home")).unwrap();
+    std::fs::create_dir_all(scratch.join("run")).unwrap();
+    std::fs::create_dir_all(&sdir).unwrap();
+    std::fs::write(sdir.join("screen.json"), r#"{"width":800,"height":600,"scale":1.0,"sound":false}"#).unwrap();
+    std::fs::write(sdir.join("actions.jsonl"), "{\"at\":5000,\"ms\":10,\"kind\":\"click\"}\n").unwrap();
+
+    let token = new_token().unwrap();
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_olo-rex-link"))
+        .args(["quic", "--", "cat"])
+        .env("HOME", scratch.join("home"))
+        .env("XDG_RUNTIME_DIR", scratch.join("run"))
+        .env("XDG_STATE_HOME", scratch.join("state"))
+        .env("XDG_CONFIG_HOME", scratch.join("home/.config"))
+        .env("OLO_HOST_DESKTOP", scratch.join("desktop"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    input.write_all(format!("{}\n", hex(&token)).as_bytes()).await.unwrap();
+    let mut line = String::new();
+    tokio::time::timeout(Duration::from_secs(10), BufReader::new(child.stdout.take().unwrap()).read_line(&mut line)).await.unwrap().unwrap();
+    let (port, print) = announced(&line).unwrap();
+
+    #[derive(Debug)]
+    struct Pin(String, Arc<rustls::crypto::CryptoProvider>);
+    impl rustls::client::danger::ServerCertVerifier for Pin {
+        fn verify_server_cert(
+            &self,
+            end: &rustls::pki_types::CertificateDer<'_>,
+            _: &[rustls::pki_types::CertificateDer<'_>],
+            _: &rustls::pki_types::ServerName<'_>,
+            _: &[u8],
+            _: rustls::pki_types::UnixTime,
+        ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+            use sha2::Digest as _;
+            let got: String = sha2::Sha256::digest(end.as_ref()).iter().map(|b| format!("{b:02x}")).collect();
+            if got == self.0 { Ok(rustls::client::danger::ServerCertVerified::assertion()) } else { Err(rustls::Error::General("wrong cert".into())) }
+        }
+        fn verify_tls12_signature(
+            &self,
+            m: &[u8],
+            c: &rustls::pki_types::CertificateDer<'_>,
+            d: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            rustls::crypto::verify_tls12_signature(m, c, d, &self.1.signature_verification_algorithms)
+        }
+        fn verify_tls13_signature(
+            &self,
+            m: &[u8],
+            c: &rustls::pki_types::CertificateDer<'_>,
+            d: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            rustls::crypto::verify_tls13_signature(m, c, d, &self.1.signature_verification_algorithms)
+        }
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            self.1.signature_verification_algorithms.supported_schemes()
+        }
+    }
+
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let mut tls = rustls::ClientConfig::builder_with_provider(provider.clone())
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .unwrap()
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(Pin(print, provider)))
+        .with_no_client_auth();
+    tls.alpn_protocols = vec![wire::ALPN.to_vec()];
+    let config = quinn::ClientConfig::new(Arc::new(quinn::crypto::rustls::QuicClientConfig::try_from(tls).unwrap()));
+    let endpoint = quinn::Endpoint::client((std::net::Ipv4Addr::LOCALHOST, 0).into()).unwrap();
+    let conn = endpoint.connect_with(config, (std::net::Ipv4Addr::LOCALHOST, port).into(), wire::NAME).unwrap().await.unwrap();
+
+    let mut head = [0u8; wire::TOKEN + 1];
+    head[..wire::TOKEN].copy_from_slice(&token);
+    head[wire::TOKEN] = wire::SCREEN;
+
+    let rejected_cases: &[&[&str]] = &[
+        &["stop", "qa", "--expected-started", "1000"],
+        &["stop", "qa", "--expected-last-used", "5010"],
+        &["delete", "qa", "--expected-started", "0", "--expected-last-used", "5010"],
+        &["history", "qa", "--clear", "--expected-last-used", "5010"],
+        &["history", "qa", "--expected-last-used", "5010"],
+        &["history-stream", "qa", "--expected-last-used", "5010"],
+        &["follow", "--expected-started", "1000"],
+        &["stream", "qa", "--expected-started", "1000"],
+        &["export", "qa", "--expected-last-used", "5010"],
+    ];
+    for case in rejected_cases {
+        let body = serde_json::to_vec(case).unwrap();
+        let (mut send, mut recv) = conn.open_bi().await.unwrap();
+        send.write_all(&head).await.unwrap();
+        send.write_all(&(body.len() as u16).to_le_bytes()).await.unwrap();
+        send.write_all(&body).await.unwrap();
+        let res = tokio::time::timeout(Duration::from_secs(3), recv.read_to_end(1024)).await.unwrap();
+        assert!(matches!(res, Err(quinn::ReadToEndError::Read(quinn::ReadError::Reset(code))) if code == 2u32.into()), "QUIC dispatch must reset {case:?} with selector-rejection code 2, got {res:?}");
+    }
+
+    // Confirm a valid `follow` selector on the SAME connection still works cleanly after rejections.
+    let (mut ok_send, ok_recv) = conn.open_bi().await.unwrap();
+    ok_send.write_all(&head).await.unwrap();
+    let ok_sel = olo_rex_link::screen_wire::encode_quic_screen_args(&["follow".to_owned()]).unwrap();
+    ok_send.write_all(&ok_sel).await.unwrap();
+    let mut ok_reader = BufReader::new(ok_recv);
+    let mut snap_line = String::new();
+    tokio::time::timeout(Duration::from_secs(3), ok_reader.read_line(&mut snap_line)).await.unwrap().unwrap();
+    let ev: olo_rex_link::screen_wire::FollowEvent = serde_json::from_str(snap_line.trim()).unwrap();
+    assert!(matches!(ev, olo_rex_link::screen_wire::FollowEvent::Snapshot { .. }));
+    ok_send.finish().unwrap();
+    let mut rest = Vec::new();
+    tokio::time::timeout(Duration::from_secs(3), ok_reader.read_to_end(&mut rest)).await.unwrap().unwrap();
+    assert!(rest.is_empty());
+
+    // Host state must remain completely untouched after every rejected QUIC request!
+    assert!(sdir.join("actions.jsonl").exists(), "rejected QUIC requests must not clear actions.jsonl");
+    assert!(sdir.join("screen.json").exists(), "rejected QUIC requests must not delete screen.json");
+
+    conn.close(0u32.into(), b"");
+    drop(input);
+    let status = tokio::time::timeout(Duration::from_secs(10), child.wait()).await.unwrap().unwrap();
+    assert!(status.success());
+    let _ = std::fs::remove_dir_all(&scratch);
+}

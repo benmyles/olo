@@ -88,6 +88,15 @@ impl Place {
         }
     }
 
+    /// Query this place's windows within a strict monotonic deadline (never
+    /// hanging indefinitely if a screen's compositor stops answering — B.5).
+    pub fn windows_within(&self, limit: Duration) -> Result<Vec<WindowInfo>, String> {
+        match crate::screens::request_unix_deadline(&self.olo_socket, &Request::ListWindows, limit)? {
+            Reply::Windows { windows } => Ok(windows),
+            other => Err(format!("unexpected reply {other:?}")),
+        }
+    }
+
     pub fn request(&self, r: &Request) -> Result<Reply, String> {
         self.client()?.request(r).map_err(|e| e.to_string())
     }
@@ -329,32 +338,49 @@ pub fn movable(windows: &[WindowInfo]) -> Vec<u64> {
 
 /// Before screen `s` stops: the person's programs on it back to their
 /// display (each proxy's that came from it; each kit app that remembers
-/// a home), and a moment for them to go.
+/// a home), and a moment for them to go, strictly bounded by a monotonic
+/// deadline so a wedged compositor never stalls `NAME.lifecycle.lock` (B.5).
 pub fn send_home(s: &Screen) {
+    let deadline = Instant::now() + Duration::from_secs(3);
     let place = Place::screen(s);
     let from = place.proxied();
     for p in proxies() {
         let _ = tell(&p, &format!("home {}", from.display()));
     }
-    let windows = place.windows().unwrap_or_default();
+    let rem = deadline.saturating_duration_since(Instant::now());
+    if rem.is_zero() {
+        return;
+    }
+    let windows = place.windows_within(rem.min(Duration::from_millis(800))).unwrap_or_default();
     let mut pids: Vec<u32> = windows.iter().filter_map(|w| w.pid).map(|p| p as u32).collect();
     pids.sort_unstable();
     pids.dedup();
     let homes: Vec<(u32, MoveTo)> = pids.into_iter().filter_map(|pid| Some((pid, home_of(pid)?))).collect();
+    if homes.is_empty() {
+        return;
+    }
     for (pid, home) in &homes {
+        if Instant::now() >= deadline {
+            break;
+        }
         let answer = moving::ask(*pid, home);
         if !answer.ok {
             tracing::warn!("pid {pid} didn't go back to the person's display: {}", answer.error.unwrap_or_default());
         }
     }
-    // (Gone from the screen, or a few seconds.)
-    let until = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < until {
-        let left = place.windows().unwrap_or_default();
+    // (Gone from the screen, or until the overall deadline.)
+    while Instant::now() < deadline {
+        let rem = deadline.saturating_duration_since(Instant::now());
+        if rem.is_zero() {
+            break;
+        }
+        let Ok(left) = place.windows_within(rem.min(Duration::from_millis(500))) else {
+            break;
+        };
         if !left.iter().any(|w| w.pid.is_some_and(|p| homes.iter().any(|(h, _)| *h == p as u32))) {
             break;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(100).min(deadline.saturating_duration_since(Instant::now())));
     }
 }
 
@@ -376,5 +402,30 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "id": id, "app_id": "a", "title": "t", "pid": pid, "workspace": 0, "minimized": false, "focused": false, "kept": kept })).unwrap()
         };
         assert_eq!(movable(&[w(1, Some(10), true), w(2, None, true), w(3, Some(11), false)]), vec![1]);
+    }
+
+    #[test]
+    fn final_pass_b5_send_home_bounded_on_stalled_compositor() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = PathBuf::from(format!("/var/tmp/olo-moving-b5-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let sock = dir.join("stalled-comp.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let srv = std::thread::spawn(move || {
+            let (_conn, _) = listener.accept().unwrap();
+            let _ = done_rx.recv_timeout(Duration::from_secs(5));
+        });
+        let scr =
+            Screen { name: "qa".into(), wayland_display: "wayland-stalled".into(), olo_socket: sock, pid: 0, width: 800, height: 600, scale: 1.0, sound: false, started: 1000, bus: None, a11y: None };
+        let t0 = Instant::now();
+        send_home(&scr);
+        let elapsed = t0.elapsed();
+        assert!(elapsed < Duration::from_secs(2), "send_home hung past its bounded wait: {elapsed:?}");
+        let _ = done_tx.send(());
+        srv.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

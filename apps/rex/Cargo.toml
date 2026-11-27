@@ -24,6 +24,7 @@ olo-protocol.workspace = true
 olo-rex-client.workspace = true
 olo-rex-sync.workspace = true
 olo-rex-vt.workspace = true
+olo-screen-pane.workspace = true
 olo-sync.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true

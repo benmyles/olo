@@ -119,7 +119,6 @@ enum Reply {
         proceed_with_methods: MethodSet,
         partial_success: bool,
     },
-    ChannelOpenFailure,
     SignRequest {
         key: ssh_key::PublicKey,
         data: Vec<u8>,
@@ -244,6 +243,16 @@ pub enum Msg {
     Ping {
         reply_channel: oneshot::Sender<()>,
     },
+    /// Olo: inspect local (`Session.channels`) and encrypted (`Encrypted.channels`)
+    /// channel counts on the driver task (acts as a barrier after queued closes).
+    ChannelCount {
+        reply_channel: oneshot::Sender<(usize, usize)>,
+    },
+    /// Olo: set `last_channel_id` on the encrypted session (for wraparound tests).
+    SetLastChannelId {
+        id: u32,
+        reply_channel: oneshot::Sender<()>,
+    },
     NoMoreSessions {
         want_reply: bool,
     },
@@ -315,6 +324,9 @@ pub enum DisconnectReason<E: From<crate::Error> + Send> {
 /// the request/response cycle.
 pub struct Handle<H: Handler> {
     sender: Sender<Msg>,
+    // Olo: unbounded driver queue for cancellation/drop cleanup without
+    // spawning tasks or requiring a Tokio runtime on the dropping thread.
+    priority_sender: UnboundedSender<Msg>,
     receiver: UnboundedReceiver<Reply>,
     join: russh_util::runtime::JoinHandle<Result<(), H::Error>>,
     channel_buffer_size: usize,
@@ -740,32 +752,82 @@ impl<H: Handler> Handle<H> {
     /// Wait for confirmation that a channel is open
     async fn wait_channel_confirmation(
         &self,
-        mut receiver: Receiver<ChannelMsg>,
+        receiver: Receiver<ChannelMsg>,
         window_size_ref: WindowSizeRef,
     ) -> Result<Channel<Msg>, crate::Error> {
+        // Olo: if this future is cancelled after `CHANNEL_OPEN_CONFIRMATION`
+        // was already queued into `receiver` (or during `window_size_ref.grow`),
+        // close the unclaimed channel synchronously on `priority_sender` so
+        // neither the server's session slot nor local tables leak.
+        struct UnclaimedOpenGuard {
+            receiver: Option<Receiver<ChannelMsg>>,
+            confirmed_id: Option<ChannelId>,
+            priority_sender: UnboundedSender<Msg>,
+        }
+
+        impl Drop for UnclaimedOpenGuard {
+            fn drop(&mut self) {
+                if let Some(id) = self.confirmed_id.take() {
+                    let _ = self.priority_sender.send(Msg::Channel(id, ChannelMsg::Close));
+                }
+                if let Some(mut rx) = self.receiver.take() {
+                    rx.close();
+                    while let Ok(msg) = rx.try_recv() {
+                        if let ChannelMsg::Open { id, .. } = msg {
+                            let _ = self
+                                .priority_sender
+                                .send(Msg::Channel(id, ChannelMsg::Close));
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut guard = UnclaimedOpenGuard {
+            receiver: Some(receiver),
+            confirmed_id: None,
+            priority_sender: self.priority_sender.clone(),
+        };
+
         loop {
-            match receiver.recv().await {
+            let msg = guard
+                .receiver
+                .as_mut()
+                .expect("receiver present while waiting")
+                .recv()
+                .await;
+            match msg {
                 Some(ChannelMsg::Open {
                     id,
                     max_packet_size,
                     window_size,
                 }) => {
+                    guard.confirmed_id = Some(id);
                     window_size_ref.grow(window_size).await;
+                    guard.confirmed_id = None;
+                    let receiver = guard.receiver.take().expect("receiver present");
 
+                    let peer_closed = window_size_ref.peer_closed_flag();
                     return Ok(Channel {
                         write_half: ChannelWriteHalf {
                             id,
                             sender: self.sender.clone(),
+                            close_sender: Some(self.priority_sender.clone()),
                             max_packet_size,
                             window_size: window_size_ref,
                         },
-                        read_half: ChannelReadHalf { receiver },
+                        read_half: ChannelReadHalf {
+                            receiver,
+                            peer_closed,
+                        },
                     });
                 }
                 Some(ChannelMsg::OpenFailure(reason)) => {
+                    let _ = guard.receiver.take();
                     return Err(crate::Error::ChannelOpenFailure(reason));
                 }
                 None => {
+                    let _ = guard.receiver.take();
                     debug!("channel confirmation sender was dropped");
                     return Err(crate::Error::Disconnect);
                 }
@@ -1098,6 +1160,55 @@ impl<H: Handler> Handle<H> {
         Ok(())
     }
 
+    /// Olo: count open channel entries held by the client session driver
+    /// (`(session_channels, encrypted_channels)`).
+    pub async fn open_channel_count(&self) -> Result<(usize, usize), Error> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Msg::ChannelCount {
+                reply_channel: sender,
+            })
+            .await
+            .map_err(|_| Error::SendError)?;
+        receiver.await.map_err(|_| Error::Disconnect)
+    }
+
+    /// Olo: set `Encrypted::last_channel_id` for wraparound unit tests.
+    #[doc(hidden)]
+    pub async fn set_last_channel_id_for_test(&self, id: u32) -> Result<(), Error> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Msg::SetLastChannelId {
+                id,
+                reply_channel: sender,
+            })
+            .await
+            .map_err(|_| Error::SendError)?;
+        receiver.await.map_err(|_| Error::Disconnect)
+    }
+
+    /// Olo: number of unread replies queued on `Handle::receiver` (for tests
+    /// verifying `CHANNEL_OPEN_FAILURE` does not leak unbounded replies).
+    #[doc(hidden)]
+    pub fn pending_reply_count_for_test(&self) -> usize {
+        self.receiver.len()
+    }
+
+    /// Olo: enqueue channel data straight into the driver (bypassing
+    /// `WindowSizeRef`) so tests can deterministically exercise `pending_data`
+    /// handling on peer CLOSE and rekey flushes.
+    #[doc(hidden)]
+    pub async fn send_raw_channel_data_for_test(
+        &self,
+        id: ChannelId,
+        data: bytes::Bytes,
+    ) -> Result<(), Error> {
+        self.sender
+            .send(Msg::Channel(id, ChannelMsg::Data { data }))
+            .await
+            .map_err(|_| Error::SendError)
+    }
+
     /// Send a no-more-sessions request to the remote peer.
     pub async fn no_more_sessions(&self, want_reply: bool) -> Result<(), Error> {
         self.sender
@@ -1257,6 +1368,7 @@ where
         session_sender,
     );
     session.begin_rekey()?;
+    let priority_sender = session.priority_sender.clone();
     let (kex_done_signal, kex_done_signal_rx) = oneshot::channel();
     let join = russh_util::runtime::spawn(session.run(stream, handler, Some(kex_done_signal)));
 
@@ -1273,6 +1385,7 @@ where
 
     Ok(Handle {
         sender: handle_sender,
+        priority_sender,
         receiver: handle_receiver,
         join,
         channel_buffer_size,
@@ -1807,6 +1920,20 @@ impl Session {
             Msg::Ping { reply_channel } => {
                 let _ = self.send_ping(reply_channel);
             }
+            Msg::ChannelCount { reply_channel } => {
+                let enc_len = self
+                    .common
+                    .encrypted
+                    .as_ref()
+                    .map_or(0, |enc| enc.channels.len());
+                let _ = reply_channel.send((self.channels.len(), enc_len));
+            }
+            Msg::SetLastChannelId { id, reply_channel } => {
+                if let Some(ref mut enc) = self.common.encrypted {
+                    enc.last_channel_id = Wrapping(id);
+                }
+                let _ = reply_channel.send(());
+            }
             Msg::NoMoreSessions { want_reply } => {
                 let _ = self.no_more_sessions(want_reply);
             }
@@ -2049,6 +2176,10 @@ async fn reply<H: Handler>(
                                 )?;
                             }
                         }
+                        // Olo: if flushing pending writes after rekey committed
+                        // any deferred `pending_close`, remove their `ChannelRef`
+                        // entries from `session.channels` too.
+                        session.prune_closed_channels();
 
                         let mut pending = std::mem::take(&mut session.pending_reads);
                         for p in pending.drain(..) {
@@ -2168,6 +2299,7 @@ mod tests {
                     server_mac: mac::NONE,
                     session_id: CryptoVec::new(),
                     channels: HashMap::new(),
+                    closing_channels: std::collections::HashSet::new(),
                     last_channel_id: Wrapping(0),
                     write: Vec::new(),
                     write_cursor: 0,
@@ -2475,6 +2607,7 @@ mod tests {
                     server_mac: mac::NONE,
                     session_id: CryptoVec::new(),
                     channels: HashMap::new(),
+                    closing_channels: std::collections::HashSet::new(),
                     last_channel_id: Wrapping(0),
                     write: Vec::new(),
                     write_cursor: 0,

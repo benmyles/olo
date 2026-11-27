@@ -8604,6 +8604,7 @@ dependencies = [
  "olo-rex-link",
  "olo-rex-sync",
  "olo-rex-vt",
+ "olo-screen-pane",
  "olo-sync",
  "olo-system",
  "olo-theme",

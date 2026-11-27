@@ -361,8 +361,13 @@ async fn stream(link: quinn::Connection, mut send: quinn::SendStream, mut recv: 
                 };
                 _screen_permit = Some(permit);
                 // Map QUIC `history NAME` to the explicit binary wire verb
-                // `history-stream NAME` (Finding 12).
+                // `history-stream NAME` (Finding 12). Defense-in-depth: reject
+                // any unexpected `history` shape directly at dispatch.
                 if args[0] == "history" {
+                    if args.len() != 2 {
+                        let _ = send.reset(2u32.into());
+                        return;
+                    }
                     args[0] = "history-stream".to_owned();
                 }
                 let Some(me) = self_exe() else {

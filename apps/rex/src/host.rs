@@ -23,6 +23,9 @@ use crate::hub::{HostOp, HostThing, RexHub};
 pub struct Shown {
     /// The host's key in the hub.
     pub key: String,
+    /// The host's instance ID when the window opened (so clicks queued for an
+    /// older/replaced host never run on its replacement).
+    pub host_instance_id: u64,
     /// The name it goes by, as the window opened (its title's: kept
     /// here so the title is made without asking the app for its hub,
     /// which whoever opens the window may be holding).
@@ -78,6 +81,9 @@ impl Shown {
 
 static LIVE: Mutex<Option<Shown>> = Mutex::new(None);
 
+#[cfg(test)]
+pub(crate) static TEST_LIVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn live() -> olo_sync::MutexGuard<'static, Option<Shown>> {
     LIVE.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -89,12 +95,24 @@ pub fn current() -> Option<Shown> {
 
 /// The window is of the host `key`, which goes by `name`, from now
 /// (what was being done to another goes on, and is no longer shown).
-pub fn open(key: &str, name: &str) {
+#[cfg(test)]
+pub fn open(key: &str, name: &str, host_instance_id: u64) {
+    open_with_tab(key, name, host_instance_id, None);
+}
+
+/// Like [`open`], optionally selecting an initial `tab` before the Host window
+/// is created or raised so it never builds and fits its height on tab 0 first.
+pub fn open_with_tab(key: &str, name: &str, host_instance_id: u64, tab: Option<usize>) {
     let mut live = live();
-    match live.as_mut().filter(|shown| shown.key == key) {
-        Some(shown) => shown.name = name.to_owned(),
+    match live.as_mut().filter(|shown| shown.key == key && shown.host_instance_id == host_instance_id) {
+        Some(shown) => {
+            shown.name = name.to_owned();
+            if let Some(t) = tab {
+                shown.tab = t;
+            }
+        }
         None => {
-            let mut shown = Shown { key: key.to_owned(), name: name.to_owned(), ..Shown::default() };
+            let mut shown = Shown { key: key.to_owned(), host_instance_id, name: name.to_owned(), tab: tab.unwrap_or(0), ..Shown::default() };
             // (Rex's demo, for the window's pictures and its lint: what
             // couldn't be done of a host's own screens, as each is said.
             // `OLO_REX_DEMO_SCREENS=failed`, `refused`, `stopping`,
@@ -204,14 +222,42 @@ pub fn cancel_screens(hub: &Arc<RexHub>) {
     crate::ui::host_changed();
 }
 
-/// One of the window's host's screens stopped, or looked at (a picture
-/// of it fetched, and opened in what shows pictures here): begun now,
-/// and the window told when the host has answered.
-pub fn screen(hub: &Arc<RexHub>, name: &str, what: ScreenDo) {
+/// Stop one displayed screen through Rex's guarded Stop path, verifying that
+/// the Host window is still showing the same `(host_key, host_instance_id)`
+/// that the button was rendered for (so a socket-driven switch to another host
+/// never retargets a queued click).
+pub fn stop_screen(hub: &Arc<RexHub>, host_key: &str, host_instance_id: u64, name: &str, expected_started: Option<u64>) {
+    {
+        let mut live = live();
+        let Some(shown) = live.as_mut().filter(|shown| shown.key == host_key && shown.host_instance_id == host_instance_id && shown.screen_doing(name).is_none()) else { return };
+        shown.screen_doing.push((name.to_owned(), ScreenDo::Stop));
+        shown.screen_failed = None;
+    }
+    crate::ui::host_changed();
+    let (of, inst, named) = (host_key.to_owned(), host_instance_id, name.to_owned());
+    let ended = move |result: Result<(), String>| {
+        if let Some(shown) = live().as_mut().filter(|shown| shown.key == of && shown.host_instance_id == inst) {
+            shown.screen_doing.retain(|(n, _)| *n != named);
+            if let Err(why) = result {
+                let why = crate::host_screens::why_not_done(&why);
+                let what = olo_kit::tr!("Couldn’t stop {}", named);
+                shown.screen_failed = Some((named.clone(), what.to_string(), why));
+            }
+        }
+        crate::ui::host_changed();
+    };
+    hub.stop_screen_guarded(host_key, host_instance_id, name, expected_started, ended);
+}
+
+/// One of the window's host's screens looked at (a picture of it fetched, and
+/// opened in what shows pictures here): begun now, and the window told when
+/// the host has answered. Stopping a screen goes through [`stop_screen`] so
+/// host identity and `--expected-started` are enforced.
+pub fn look_at_screen(hub: &Arc<RexHub>, name: &str) {
     let key = {
         let mut live = live();
         let Some(shown) = live.as_mut().filter(|shown| shown.screen_doing(name).is_none()) else { return };
-        shown.screen_doing.push((name.to_owned(), what));
+        shown.screen_doing.push((name.to_owned(), ScreenDo::Look));
         shown.screen_failed = None;
         shown.key.clone()
     };
@@ -223,21 +269,15 @@ pub fn screen(hub: &Arc<RexHub>, name: &str, what: ScreenDo) {
             if let Err(why) = result {
                 // (One sentence of Olo's own: what wasn't done, to which, and why.)
                 let why = crate::host_screens::why_not_done(&why);
-                let what = match what {
-                    ScreenDo::Stop => olo_kit::tr!("Couldn’t stop {}", named),
-                    ScreenDo::Look => olo_kit::tr!("Couldn’t look at {}", named),
-                };
+                let what = olo_kit::tr!("Couldn’t look at {}", named);
                 shown.screen_failed = Some((named.clone(), what.to_string(), why));
             }
         }
         crate::ui::host_changed();
     };
-    match what {
-        ScreenDo::Stop => hub.stop_screen(&key, name, ended),
-        ScreenDo::Look => hub.look_at_screen(&key, name, move |looked| {
-            ended(looked.and_then(|picture| olo_xdg::open::open(&olo_xdg::open::Target::Path(picture)).map_err(|e| olo_kit::tr!("The picture couldn’t be shown: {}", e).to_string())))
-        }),
-    }
+    hub.look_at_screen(&key, name, move |looked| {
+        ended(looked.and_then(|picture| olo_xdg::open::open(&olo_xdg::open::Target::Path(picture)).map_err(|e| olo_kit::tr!("The picture couldn’t be shown: {}", e).to_string())))
+    });
 }
 
 /// Remove All… was pressed (`true`), or its question answered no.
@@ -310,14 +350,20 @@ mod tests {
     /// asked for the same again, it is kept.
     #[test]
     fn the_window_is_of_one_host_and_keeps_what_it_shows_of_it() {
+        let _guard = TEST_LIVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         close();
-        open("a", "far");
+        open("a", "far", 1);
         live().as_mut().unwrap().failed.push((HostThing::Bridge, HostOp::Install, "no room".into()));
-        open("a", "far");
+        open("a", "far", 1);
         assert_eq!(current().unwrap().failed(HostThing::Bridge), Some((HostOp::Install, "no room")));
         assert_eq!(current().unwrap().doing(HostThing::Bridge), None);
-        open("b", "near");
-        assert_eq!(current(), Some(Shown { key: "b".into(), name: "near".into(), ..Shown::default() }));
+        open("b", "near", 2);
+        assert_eq!(current(), Some(Shown { key: "b".into(), host_instance_id: 2, name: "near".into(), ..Shown::default() }));
+        // `open_with_tab` sets the initial tab atomically before opening the window (Agy Finding 7).
+        open_with_tab("c", "screens-box", 3, Some(3));
+        assert_eq!(current(), Some(Shown { key: "c".into(), host_instance_id: 3, name: "screens-box".into(), tab: 3, ..Shown::default() }));
+        open_with_tab("c", "screens-box", 3, Some(1));
+        assert_eq!(current().unwrap().tab, 1);
         close();
         assert_eq!(current(), None);
     }

@@ -3565,7 +3565,11 @@ it.
   fade as a control's do. `crates/kit/examples/controls.rs` shows
   each beside its live one.
 - `style::label_fit` (a label cut short with "…" to a width, measured
-  as shaped), `style::label_spaced` and `text_width_spaced` (letters
+  as shaped), `style::fit_middle` / `style::fit_middle_with` /
+  `style::label_fit_middle` (a label cut in the middle with "…" to keep
+  distinguishing suffixes — such as `prod-eu-wes…r-04.internal` — while
+  automatically registering the full text via `g.note_cut` for hover
+  tooltips), `style::label_spaced` and `text_width_spaced` (letters
   spaced out, CSS's letter-spacing, kerning kept: small bold capitals
   such as a tab group's label; `ShapedLine::tracked`, the spaced line
   kept so it isn't shaped again), `style::selection_band`, `style::selection_wash` (a thing
@@ -33790,4 +33794,42 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   and 2×, Light and Dark, across all 6 tiling layouts (`ui-lint --tiles`:
   0 errors; `tsession review`: 0 findings across Workspace, Settings,
   Hosts, and Diagnostics).
+
+## Agent Screens across Rex hosts
+
+Agent Screens (`apps/screen`) now shows both `This Computer` and every
+connected Rex host in one outline sidebar (`MultiSidebar`), backed by a
+four-layer stack with zero polling at rest:
+
+1. **Raw binary transport (`crates/rex`, `vendor/russh`):**
+   `Remote::open_screen_stream` opens a raw byte stream over QUIC or SSH
+   (`exec` without PTY) with split stdout/stderr, bounded backpressure,
+   and EOF/cancellation propagation via `GuardedChannel` so dropping a
+   writer signals remote cancellation cleanly.
+2. **Host helper (`crates/rex-link`, `--features screens`):**
+   `olo-rex-link screen follow|stream|history-stream|export|list|start|stop|delete|history|rename|archive|unarchive|take|control`
+   serves live frame streams, lazy history streams, MP4 export streams,
+   and lifecycle RPCs guarded under `NAME.lifecycle.lock` with
+   `--expected-started` / `--expected-last-used` generation checks
+   (capabilities advertised via `--protocol`: `stop-expected`,
+   `stop-expected-started`, `delete-expected`, `clear-expected`,
+   `control-lock`, `control-ack`, `export-part-ranges`,
+   `discontiguous_part`, `history-snapshot-done`, `history-frame-error`,
+   `warning-status`).
+3. **Rex desktop screens socket (`apps/rex/src/screens_sock.rs`):**
+   `ScreensService` listens on a `0700`-parented, `SO_PEERCRED`-verified
+   Unix socket (`rex-<display>.sock`), maintains a live multi-host
+   screen snapshot via `olo-rex-link screen follow`, relays binary
+   streams (`Live`, `History`, `Export`), and gates guarded lifecycle
+   RPCs.
+4. **Shared pane & Agent Screens UI (`crates/screen-pane`, `apps/screen`):**
+   `RexSockClient` / `RexSockOpener` / `StreamScreenSource` drive the
+   same `ScreenPane` (Live, History, Stats, Passwords) over Rex;
+   `MultiSidebar` uses a left outline latch, aligned dots/rings,
+   middle-truncated names (`style::label_fit_middle`), uniform 8 pt
+   inter-host gaps, host overview panels, and automatic disconnect /
+   reconnect / Rex-restart / reload-in-place recovery. Remote host
+   screens keep `PasswordsMode::Unavailable` rather than copying host
+   vaults to desktop disk. Release `olo-screen` idle cost: `0.0%` CPU,
+   `0` wakeups/s (measured headless via `tools/dev/cost PID 10`).
 
