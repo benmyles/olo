@@ -394,9 +394,20 @@ def meta(name):
 
 
 def save_meta(name, m):
-    tmp = os.path.join(folder(name), "meta.json.new")
-    json.dump(m, open(tmp, "w"), indent=1)
-    os.replace(tmp, os.path.join(folder(name), "meta.json"))
+    """(An agent's folder may go while this runs: a look's own front
+    door removes it the moment its review is kept, and another
+    invocation of this tool, tidying as it starts something, was
+    writing there at that moment: `agents start` ended in a traceback
+    and started nothing, 2026-11-27. A folder that is gone has nothing
+    to be written down.)"""
+    tmp = os.path.join(folder(name), f"meta.json.new.{os.getpid()}")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(m, f, indent=1)
+        os.replace(tmp, os.path.join(folder(name), "meta.json"))
+    except FileNotFoundError:
+        if os.path.isdir(folder(name)):
+            raise
 
 
 def names():
