@@ -147,6 +147,13 @@ pub struct Pending {
     moved: bool,
 }
 
+/// After the pointer did something a chooser may answer to (a press, a
+/// wheel's arrows): how long before the screen here is taken for the
+/// chooser as it now is ([`Watch::touched`]). Longer than a slow link
+/// takes to draw a mark moved (the mark Auto Approve moves itself is
+/// read again after 350 ms).
+pub const SETTLE: Duration = Duration::from_millis(1500);
+
 /// What a pane's agent is doing, as Keep It Going and Auto Approve see
 /// it between one look at its screen and the next.
 #[derive(Debug, Clone)]
@@ -215,6 +222,27 @@ impl Watch {
     pub fn typed(&mut self, now: Instant) -> Option<u64> {
         self.since = now;
         self.stop()
+    }
+
+    /// The pointer was pressed or let go over the pane, or its wheel
+    /// sent the program arrow keys: not typing (the question stays Auto
+    /// Approve's), but the program may move its chooser's mark for it,
+    /// and what it then draws has not come back yet. Return is pressed
+    /// on what the screen here shows, so it waits until that can be
+    /// trusted again: the question's time is no sooner than `SETTLE`
+    /// from now, and it is read again then (the mark off its yes: not
+    /// answered). Whether its time moved. (A code review of the day the
+    /// pointer stopped counting as typing, 2026-11-27: a click that
+    /// moved the mark to "always allow" just before the countdown's end,
+    /// its repaint still on its way, and Return confirmed that.)
+    pub fn touched(&mut self, now: Instant) -> bool {
+        match self.pending.as_mut().filter(|p| !p.stopped && p.due < now + SETTLE) {
+            Some(p) => {
+                p.due = now + SETTLE;
+                true
+            }
+            None => false,
+        }
     }
 
     /// Stop pressed: the question waiting is the person's (its key).
@@ -366,6 +394,51 @@ mod tests {
         let mut w = Watch::new(t0);
         assert!(!w.looked(Some(Agent::Claude), &claude_asks_to_read(2), &help, after, t0));
         assert!(w.pending.is_none());
+    }
+
+    /// A click in the pane, or the wheel's arrows, is not typing: the
+    /// question is still Auto Approve's. But it is not answered on a
+    /// screen that may be from before the click: its time is no sooner
+    /// than `SETTLE` after, and it is read again then. (The click moved
+    /// the mark to "don't ask again" and the repaint was on its way:
+    /// Return, on the old screen's Yes, confirmed that.)
+    #[test]
+    fn a_click_just_before_its_time_makes_it_wait_for_the_screen() {
+        let t0 = Instant::now();
+        let help = Help { auto_approve: true, ..Help::default() };
+        let after = Duration::from_secs(30);
+        let moved = "● Bash(touch a)\n\n Do you want to proceed?\n   1. Yes\n ❯ 2. Yes, and don't ask again for this command\n   3. No, and tell Claude what to do differently (esc)\n";
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks("touch a"), &help, after, t0);
+        // Clicked 100 ms before its time: its time moves, and it is still counting (not the person's).
+        let clicked = t0 + after - Duration::from_millis(100);
+        assert!(w.touched(clicked));
+        assert_eq!(w.next(&help, KEEP_GOING_QUIET, clicked, 1_000), Some(clicked + SETTLE));
+        assert!(w.counting(clicked).is_some(), "not stopped");
+        // At its old time nothing is sent, though the screen here still shows the mark on Yes.
+        assert_eq!(w.due(&help, &claude_asks("touch a"), KEEP_GOING_QUIET, "", t0 + after, 1_000), None);
+        assert_eq!(w.approved, 0);
+        // The program moved its mark for the click, and that has come: never Return on it.
+        w.looked(Some(Agent::Claude), moved, &help, after, clicked + Duration::from_millis(400));
+        let mut at = clicked + SETTLE;
+        for _ in 0..4 {
+            assert_eq!(w.due(&help, moved, KEEP_GOING_QUIET, "", at, 1_000), None);
+            at += Duration::from_millis(200);
+        }
+        assert_eq!(w.approved, 0);
+
+        // A click that moved nothing (the pane brought forward): answered, `SETTLE` after the click.
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks("touch a"), &help, after, t0);
+        assert!(w.touched(clicked));
+        assert_eq!(w.due(&help, &claude_asks("touch a"), KEEP_GOING_QUIET, "", clicked + SETTLE, 1_000), Some(Do::Return));
+        // Early in the countdown a click changes nothing of its time; nor does one on a question that is the person's.
+        let mut w = Watch::new(t0);
+        w.looked(Some(Agent::Claude), &claude_asks("touch a"), &help, after, t0);
+        assert!(!w.touched(t0 + Duration::from_secs(5)));
+        assert_eq!(w.next(&help, KEEP_GOING_QUIET, t0, 1_000), Some(t0 + after));
+        w.stop();
+        assert!(!w.touched(clicked));
     }
 
     /// A folder to trust counts down and is answered with its yes (Ben,

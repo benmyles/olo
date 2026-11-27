@@ -4177,6 +4177,18 @@ impl RexHub {
         self.write(key, data, None);
     }
 
+    /// The same for what a chooser may answer to: a button pressed or
+    /// let go, the wheel's arrow keys. Still not typing; but a question
+    /// counting down there is not answered until the screen can have
+    /// caught up with what the program made of it (`Watch::touched`).
+    pub fn send_pointer_press(&self, key: &BlockKey, data: Vec<u8>) {
+        {
+            let _in = self.rt.enter();
+            self.inner.agent_touched(key);
+        }
+        self.write(key, data, None);
+    }
+
     /// What a pane has on: Keep It Going, Auto Approve.
     pub fn help(&self, key: &BlockKey) -> Help {
         help_of(key)
@@ -6290,6 +6302,19 @@ impl RexHubInner {
         }
         (self.notify)(HubNotice::StateChanged);
         self.agent_schedule(bk, &br, &help);
+    }
+
+    /// The pointer pressed in a pane, or its wheel's arrows went to it:
+    /// a question counting down there waits for the screen to settle.
+    fn agent_touched(self: &Arc<Self>, bk: &BlockKey) {
+        let help = help_of(bk);
+        if !help.auto_approve {
+            return;
+        }
+        let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(bk).cloned() else { return };
+        if br.lock().unwrap_or_else(|e| e.into_inner()).watch.touched(Instant::now()) {
+            self.agent_schedule(bk, &br, &help);
+        }
     }
 
     /// The person typed in a pane: a question waiting there is theirs
