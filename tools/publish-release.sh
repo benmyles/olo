@@ -56,6 +56,7 @@ NOTES=${1:?usage: tools/publish-release.sh NOTES.md [--dry-run]}
 NOTES=$(realpath "$NOTES")
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
+GIT_DIR_OF_ALL=$(git rev-parse --path-format=absolute --git-common-dir)
 DRY=0
 [ "${2:-}" = --dry-run ] && DRY=1
 WORK=${OLO_RELEASE_WORK:-/var/tmp/olo-release}
@@ -86,11 +87,15 @@ fi
 # the tree's), the release's target folder over its target/, and Jato.
 in_image() {
     # (The checkout is a worktree: its .git names the repository's own,
-    # which it must see, read-only, to say what commit it is.)
+    # which it must see, read-only, to say what commit it is. The
+    # repository's own, wherever this is run from: run from a checkout
+    # that is itself a worktree, `$REPO/.git` is a file, and the
+    # release's files couldn't be made, "gitfile does not point to a
+    # valid repository", 2026-11-27.)
     $DOCKER run --rm "${USERNS[@]}" "${NOPROXY[@]}" --user "$(id -u):$(id -g)" \
-        -v "$ROOT:$ROOT" -v "$WORK/target:$ROOT/target" -v "$REPO/.git:$REPO/.git:ro" -v "$HOME/.cargo/registry:/home/builder/.cargo/registry" \
+        -v "$ROOT:$ROOT" -v "$WORK/target:$ROOT/target" -v "$GIT_DIR_OF_ALL:$GIT_DIR_OF_ALL:ro" -v "$HOME/.cargo/registry:/home/builder/.cargo/registry" \
         -v "$(command -v jato):/usr/local/bin/jato:ro" -v "$WORK/jato:/jato" -e JATO_CACHE_DIR=/jato -e HOME=/home/builder \
-        "$@" -w "$ROOT" "$IMAGE" sh -c "git config --global --add safe.directory '$ROOT'; git config --global --add safe.directory '$REPO'; $IN"
+        "$@" -w "$ROOT" "$IMAGE" sh -c "git config --global --add safe.directory '$ROOT'; git config --global --add safe.directory '$REPO'; git config --global --add safe.directory '${GIT_DIR_OF_ALL%/.git}'; $IN"
 }
 
 step "1. the commit"

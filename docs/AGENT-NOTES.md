@@ -4112,6 +4112,15 @@ their host's"):
   collect the `ESC [ ? N h` it writes. When a person reports what a
   check says works, the first question is what the real program does
   that the stand-in doesn't.
+- **A release is published from a checkout at origin/main's head, and
+  that can be a worktree of its own** (`git worktree add --detach
+  /var/tmp/NAME origin/main`, then `tools/publish-release.sh NOTES.md`
+  there): where the working checkout is ahead of what is reviewed, or
+  has others' work in it. The script mounted `$REPO/.git` into its
+  container, which in a worktree is a file: "gitfile does not point to
+  a valid repository" at its third step (2026-11-27); it mounts the
+  repository's own git folder now. A `--dry-run` first costs little:
+  the real run finds the build made.
 - **A minder that hasn't answered may be reading: read all of what is
   asked before answering in its place.** The watch said a builder's
   question had stood a minute and a half unanswered by its minder
