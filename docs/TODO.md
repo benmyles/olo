@@ -945,6 +945,25 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Left by the confirming code review of the Antigravity readers**
+  (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/astra-1f36a75310/
+  astra-review.md`, 12 findings, "hold the release"; fixed after it,
+  with no further review: its 1, 3, 4, 5, 6, 7, 8, 9, 10, 12; its
+  words for the rest):
+  - 2 (of every agent's field, from before this work): "In a tab where
+    Keep It Going has its hourly send available and Auto Approve is
+    off, type [a draft] between the two real rules and leave it for the
+    two-minute quiet interval … `at_prompt` accepts every one-line `> …`
+    field between rules. Both apps write `Please continue` at the
+    cursor and then Return, submitting the combined text. Give
+    automatic typing its own empty-field check that accepts agy's blank
+    field and its mode placeholders."
+  - 11: "During generation, enter `> Draft for later`, a continuation
+    of twenty `─` characters, and another text row … `doing_line` still
+    uses the last two rows with at least twenty dashes … Its last line
+    above them is `> Draft for later`, which `status` and `list` can
+    display as what the agent is doing. Pass the recognized upper edge
+    to the agy summary reader."
 - **Left by the code review of "Antigravity signing in is not a turn"**
   (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/astra-7b8cd76428/
   astra-review.md`, 10 findings; fixed: its 1, 2, 3, 4's field marks,

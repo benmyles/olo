@@ -164,55 +164,53 @@ fn codex_at_work(screen: &str) -> bool {
         .any(|l| codex_status(l) || l.trim().eq_ignore_ascii_case("shift+← edit last queued message"))
 }
 
-/// One of Antigravity's rules: dashes and nothing else. (A draft that
-/// ends in dashes is not one: "> Explain ────" was taken for the field's
-/// upper rule, the field for empty, and a turn for over. A code review,
-/// 2026-11-27.)
+/// One of Antigravity's rules: a line of dashes from its one end to its
+/// other, whatever its theme sets into its middle ("────/^v^\────" in
+/// its Halloween season). A draft that ends in dashes is not one ("> Explain
+/// ────" was taken for the field's upper rule, the field for empty, and a
+/// turn for over. Two code reviews, 2026-11-27).
 fn agy_rule(l: &str) -> bool {
     let t = l.trim();
-    t.chars().nth(3).is_some() && t.chars().all(|c| c == '─')
+    t.starts_with("────") && t.ends_with("────")
 }
 
-/// Antigravity's status line, and what it says it is doing: one braille
-/// figure (its spinner), a gap, words ("⣷  Generating..."). Braille art
-/// in what it wrote ("⣿⣿⣿", its figures together) is not one: a finished
-/// answer with such a line near its field read as at work for ever.
+/// Antigravity's status line, and what it says it is doing: one frame of
+/// its spinner, a gap, and something said ("⣷  Generating...", "⣷  ✓ 1/1
+/// steps · Generating..."). Not braille in what it wrote: art, whose
+/// figures stand together ("⣿⣿⣿"), nor a legend's cell and its letter
+/// ("⠁  A": no frame of a spinner).
 fn agy_status(l: &str) -> Option<&str> {
+    // (Its spinners' frames: the eight of the dot, the ten of the small dot.)
+    const FRAMES: &str = "⣾⣽⣻⢿⡿⣟⣯⣷⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
     let t = l.trim_start();
     let mut chars = t.chars();
-    if !chars.next().is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c)) {
+    if !chars.next().is_some_and(|c| FRAMES.contains(c)) {
         return None;
     }
     let rest = chars.as_str();
     let said = rest.trim_start();
-    (said.len() < rest.len() && said.starts_with(char::is_alphanumeric)).then_some(said)
+    (said.len() < rest.len() && said.starts_with(|c: char| !('\u{2800}'..='\u{28ff}').contains(&c))).then_some(said)
 }
 
-/// How many lines may stand under Antigravity's field: its hints, and
-/// the rows of its tasks and agents at work (five of them in agy
-/// 1.5.18; at four under the field with "esc to cancel" below them, a
-/// limit of four lines here made the field no field and a working agy
-/// idle. The same review).
-const AGY_UNDER_MOST: usize = 10;
-
-/// Locates Antigravity's chat input field (`────` / `> …` / `────`) at the
-/// bottom of `lines`, returning `(top_rule, bottom_rule)`. Pre-chat screens
-/// (such as its `"Welcome to the Antigravity CLI ... ⣷  Signing in..."`
-/// startup splash) have no input field and return `None`. The upper rule
-/// is the nearest above the lower whose first line is the field's own
-/// (`>`; `!` in its shell mode, `:` in its search): a line of dashes
-/// pasted into a draft is passed over.
-fn agy_input_box(lines: &[&str]) -> Option<(usize, usize)> {
+/// Locates Antigravity's input field (`────` / `> …` / `────`) at the
+/// bottom of `lines`, returning `(top_rule, bottom_rule)` and whether it
+/// is its chat field (`>`; `!` is its shell mode's, `:` its search's).
+/// Pre-chat screens (such as its `"Welcome to the Antigravity CLI ... ⣷
+/// Signing in..."` startup splash) have no input field and return
+/// `None`. The upper rule is the nearest above the lower whose first
+/// line is a field's own: lines of dashes pasted into a draft, however
+/// many, are passed over. One reading for whoever asks where the field
+/// is ([`classify`], [`at_prompt`]): two that differed made a working
+/// agy idle.
+fn agy_input_box(lines: &[&str]) -> Option<(usize, usize, bool)> {
     let bottom = lines.iter().rposition(|l| agy_rule(l))?;
-    if lines[bottom + 1..].iter().filter(|l| !l.trim().is_empty()).count() > AGY_UNDER_MOST {
-        return None;
-    }
     let mut under = bottom;
-    for _ in 0..4 {
+    // (No further up than a field is tall.)
+    while bottom - under <= 60 {
         let top = lines[..under].iter().rposition(|l| agy_rule(l))?;
         let first_inside = lines[top + 1..bottom].iter().map(|l| l.trim_start()).find(|l| !l.is_empty());
-        if first_inside.is_some_and(|l| l.starts_with(['>', '!', ':'])) {
-            return Some((top, bottom));
+        if let Some(first) = first_inside.filter(|l| l.starts_with(['>', '!', ':'])) {
+            return Some((top, bottom, first.starts_with('>')));
         }
         under = top;
     }
@@ -225,8 +223,8 @@ fn agy_input_box(lines: &[&str]) -> Option<(usize, usize)> {
 /// `OSC 7501;state=blocked:kind=auth` while this splash is on screen, which
 /// must neither take up a pending prompt expectation nor fail as an
 /// unrecognised `waiting_question` dialog while automatic sign-in completes.
-/// Its status line's own words begin "Signing in" ("⠋ Designing
-/// interfaces" has the letters too, and is not it).
+/// Its status line says "Signing in" and no more ("⠋ Designing
+/// interfaces" has the letters, "⠋ Signing invoices" the start).
 pub fn is_agy_signing_in(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
     if agy_input_box(&lines).is_some() {
@@ -234,10 +232,29 @@ pub fn is_agy_signing_in(screen: &str) -> bool {
     }
     let non_empty: Vec<&str> = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
     let tail = &non_empty[non_empty.len().saturating_sub(8)..];
-    if tail.iter().any(|l| l.to_ascii_lowercase().contains("↑/↓ navigate")) {
+    if tail.iter().any(|l| agy_chooser_foot(l)) {
         return false;
     }
-    tail.iter().any(|l| agy_status(l).is_some_and(|said| said.get(..10).is_some_and(|w| w.eq_ignore_ascii_case("signing in"))))
+    tail.iter().any(|l| agy_status(l).is_some_and(|said| said.trim_end_matches(['.', '…', ' ']).eq_ignore_ascii_case("signing in")))
+}
+
+/// The foot of one of Antigravity's choosers: its keys for moving among
+/// the answers and for choosing ("↑/↓ Navigate · enter Select"; "k/j
+/// Navigate · enter Confirm" with its keys bound anew).
+fn agy_chooser_foot(l: &str) -> bool {
+    let l = l.to_ascii_lowercase();
+    l.contains("navigate") && l.contains('·')
+}
+
+/// One of the lines under Antigravity's chat field that says it is at
+/// work: its hint for stopping ("esc to cancel", "… · ctrl+x to cancel"),
+/// or its queue's ("Press up to edit queued messages", whatever the
+/// key). By each line's own shape: a task's row under the field that
+/// only has the words ("Document how to edit queued messages") is not
+/// one.
+fn agy_work_hint(l: &str) -> bool {
+    let l = l.trim().to_ascii_lowercase();
+    l.ends_with(" to cancel") || (l.starts_with("press ") && l.ends_with(" to edit queued messages"))
 }
 
 /// What the agent is doing, from the bottom of its screen (where its
@@ -260,28 +277,28 @@ pub fn classify(agent: Agent, screen: &str) -> State {
     if agent == Agent::Antigravity {
         // Check only the bottom 8 non-empty chrome lines (banner art / scrollback prose ignored).
         let bottom8 = tail_joined(8);
-        // (A question of its own has its footer; a folder's trust is one
-        // of them. Its words alone in a draft, "> Yes, I trust this
-        // folder", are no question: read as one here, Auto Approve sent
-        // the draft. A code review, 2026-11-27.)
-        if bottom8.contains("↑/↓ navigate") || parse_approval(agent, screen).is_some() {
+        // (A question of its own has its foot, a folder's trust among
+        // them, or its box. Its words alone in a draft, "> Yes, I trust
+        // this folder", are no question: read as one here, Auto Approve
+        // sent the draft. A code review, 2026-11-27.)
+        if non_empty.iter().rev().take(8).any(|l| agy_chooser_foot(l)) || parse_approval(agent, screen).is_some() {
             return State::Blocked;
         }
-        // Working chrome lives strictly around Antigravity's chat input field
-        // (`────` / `> …` / `────`): `"esc to cancel"` / `"Press up to edit
-        // queued messages"` (whatever key it is told to be: "Press %s to
-        // edit…") in the footer beneath the lower rule, or its status line
-        // (`agy_status`) immediately above the upper rule (up to 4 non-empty
-        // lines, allowing a `└ Tip:` line between it and the rule). Pre-chat
-        // screens such as `"⣷  Signing in..."` have no input field and must
-        // never read as `State::Working`.
+        // Its work is read round its input field alone (`agy_input_box`):
+        // under its chat field, a line that is its hint for stopping or
+        // its queue's (`agy_work_hint`); over any field of its, its status
+        // line (`agy_status`) in the four lines above (a `└ Tip:` may
+        // stand between). In its shell and search modes the foot's "esc
+        // to cancel" is the mode's own way out, and says nothing of work.
+        // Pre-chat screens such as `"⣷  Signing in..."` have no field and
+        // must never read as `State::Working`.
         let lines: Vec<&str> = screen.lines().collect();
-        let Some((top, bottom)) = agy_input_box(&lines) else {
+        let Some((top, bottom, chat)) = agy_input_box(&lines) else {
             return State::Idle;
         };
-        let footer = lines[bottom + 1..].iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n").to_ascii_lowercase();
+        let hinted = chat && lines[bottom + 1..].iter().any(|l| agy_work_hint(l));
         let spinning = lines[..top].iter().rev().map(|l| l.trim()).filter(|l| !l.is_empty()).take(4).any(|l| agy_status(l).is_some());
-        return if footer.contains("esc to cancel") || footer.contains("to edit queued messages") || spinning { State::Working } else { State::Idle };
+        return if hinted || spinning { State::Working } else { State::Idle };
     }
     if parse_folder_trust(screen).is_some() || parse_approval(agent, screen).is_some() {
         return State::Blocked;
@@ -380,13 +397,12 @@ pub fn at_prompt(agent: Agent, screen: &str) -> bool {
         match agent {
             Agent::Claude => (t.starts_with('❯') && lines[..i].iter().rev().find(|l| !l.trim().is_empty()).is_some_and(|l| rule(l))) || t.starts_with("│ >") || t.starts_with("│ ❯"),
             Agent::Codex => t.strip_prefix('›').is_some_and(|rest| !numbered(rest.trim_start())),
+            // (Its chat field as [`classify`] finds it, that field's own
+            // first line, with nothing under way: one reading of where the
+            // field is, and of the screen, for the one line it could be.)
             Agent::Antigravity => {
-                let ruled = |l: Option<&&str>| l.is_some_and(|l| rule(l));
-                // (The whole screen read once, for the one line that
-                // could be the field: it was read again for every line.)
                 t.starts_with('>')
-                    && ruled(lines[..i].iter().rev().find(|l| !l.trim().is_empty()))
-                    && ruled(lines[i + 1..].iter().find(|l| !l.trim().is_empty()))
+                    && agy_input_box(&lines).is_some_and(|(top, bottom, chat)| chat && top < i && i < bottom && lines[top + 1..i].iter().all(|l| l.trim().is_empty()))
                     && classify(agent, screen) == State::Idle
             }
         }
@@ -1025,6 +1041,15 @@ pub fn parse_folder_trust(screen: &str) -> Option<FolderTrustPrompt> {
         }
     }
     let trust_index = choices.iter().position(|(_, c)| c.to_ascii_lowercase().starts_with("yes"))?;
+    // (A question of trust is asked in its own words, or has a no beside
+    // its yes. The yes alone is a line of somebody's own: "Yes, I trust this folder" typed into an
+    // agent's field was read as the question, and Auto Approve, or a
+    // child started to trust its folder, pressed Return on the draft.
+    // A code review, 2026-11-27.)
+    let asked = is_add_dir || is_codex_trust || lower.contains("is this a project you created or one you trust") || lower.contains("is this a directory you created or one you trust");
+    if !asked && !choices.iter().any(|(_, c)| c.to_ascii_lowercase().starts_with("no")) {
+        return None;
+    }
     let marked = choices.iter().any(|(m, _)| *m);
     let selected_index = choices.iter().position(|(m, _)| *m).unwrap_or(0);
     let question = match &folder {
@@ -2091,6 +2116,53 @@ mod tests {
         ];
         let wrong: Vec<_> = found.iter().filter(|(_, screen, is)| classify(Agent::Antigravity, screen) != *is).map(|(what, screen, _)| (what, classify(Agent::Antigravity, screen))).collect();
         assert!(wrong.is_empty(), "read wrongly: {wrong:?}");
+        // And what the confirming review found in those fixes (the same reviewer, the same day).
+        let themed = "──────────────────/^v^\\─────────────────";
+        let again = [
+            // Its seasonal theme sets ornaments into both rules.
+            ("a themed field at work", agy(&format!("⣷  Generating...\n{themed}\n>\n────────────────────────────\\\\|//───────\nesc to cancel\n")), State::Working),
+            // The last step done while it still answers: "✓" before the count; its stop key bound anew.
+            ("a finished checklist, still answering", agy(&format!("⣷  ✓ 1/1 steps · Generating...\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\nctrl+x to cancel\n")), State::Working),
+            ("the same with no hint under it", agy(&format!("⣷  ✓ 1/1 steps · Generating...\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\n? for shortcuts\n")), State::Working),
+            // Four lines of dashes in a draft: the real upper rule is the fifth above.
+            ("four lines of dashes in a draft", agy(&format!("⡿  Generating...\n{AGY_RULE}\n> Compare these\n────────\n────────\n────────\n────────\n{AGY_RULE}\nesc to cancel\n")), State::Working),
+            // At rest in its shell mode and its search: "esc to cancel" there is the mode's own way out.
+            ("its shell mode at rest", agy(&format!("  DONE\n{AGY_RULE}\n!\n{AGY_RULE}\nactivated bash mode · esc to cancel\n")), State::Idle),
+            ("its search mode at rest", agy(&format!("  DONE\n{AGY_RULE}\n: needle\n{AGY_RULE}\nactivated code search mode · tab/enter to see all results · esc to cancel\n")), State::Idle),
+            // A trust chooser whose keys are bound anew: a question by its foot's shape.
+            (
+                "a trust chooser with other keys",
+                "\n Do you trust the contents of this project?\n\n > Yes, I trust this folder\n   No, exit\n\n   k/j Navigate · enter Confirm\n".to_owned(),
+                State::Blocked,
+            ),
+            // Tasks' rows under a finished agy's field, one named after the queue's hint: not at work.
+            (
+                "a task named after the queue's hint",
+                agy(&format!("  DONE\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\n  ● Document how to edit queued messages\n  ● Task two\n  ● Task three\n  ● Task four\n? for shortcuts\n")),
+                State::Idle,
+            ),
+            // (And eleven rows under a working one's field are still its foot.)
+            (
+                "eleven rows under a working field",
+                agy(&format!("⡿  Generating...\n{AGY_RULE}\n> Accept-edits mode\n{AGY_RULE}\n{}esc to cancel\n", "  ● A task · running\n".repeat(10))),
+                State::Working,
+            ),
+            // A legend's cell and its letter at an answer's end: no frame of its spinner.
+            ("a braille legend in an answer", agy(&format!("  The cells:\n  ⠁  A\n{AGY_RULE}\n> a draft\n{AGY_RULE}\n? for shortcuts\n")), State::Idle),
+        ];
+        let wrong: Vec<_> = again.iter().filter(|(_, screen, is)| classify(Agent::Antigravity, screen) != *is).map(|(what, screen, _)| (what, classify(Agent::Antigravity, screen))).collect();
+        assert!(wrong.is_empty(), "read wrongly: {wrong:?}");
+        // Where its prompt is: its chat field's own line, the same field `classify` found. Not a draft's
+        // line under dashes pasted into it; not its shell mode's field.
+        let pasted_at_rest = agy(&format!("  DONE\n{AGY_RULE}\n> Compare these\n────────\n> and these\n{AGY_RULE}\n? for shortcuts\n"));
+        assert!(at_prompt(Agent::Antigravity, &pasted_at_rest));
+        assert!(!at_prompt(Agent::Antigravity, &agy(&format!("  DONE\n{AGY_RULE}\n!\n{AGY_RULE}\nactivated bash mode · esc to cancel\n"))));
+        assert!(at_prompt(Agent::Antigravity, &agy_idle()) && !at_prompt(Agent::Antigravity, &agy_working()));
+        // "Signing invoices" begins as the sign-in does, and is not it; a question under it is a question.
+        assert!(!is_agy_signing_in("\n Welcome to the Antigravity CLI.\n\n ⠋ Signing invoices\n Paste the code:\n"));
+        // A line of trust's yes with no no beside it is nobody's question, to any of the readers.
+        let draft = agy(&format!("  DONE\n{AGY_RULE}\n> Yes, I trust this folder\n{AGY_RULE}\n? for shortcuts\n"));
+        assert!(parse_folder_trust(&draft).is_none() && approvable_for(Agent::Antigravity, &draft).is_none());
         // "⠋ Designing interfaces" has the letters of "signing in": not the sign-in.
         assert!(!is_agy_signing_in("\n Welcome to the Antigravity CLI.\n\n ⠋ Designing interfaces\n Paste the code:\n"), "Designing interfaces read as the sign-in");
         assert!(is_agy_signing_in("\n Welcome to the Antigravity CLI. You are currently not signed in.\n\n ⣷  Signing in...\n"));

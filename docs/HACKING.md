@@ -32432,37 +32432,50 @@ agents through the night, could not move to it.
   that began the turn a moment later. (Taken up again with `--resume`,
   the same rest read the old conversation's last words: the previous
   turn's answer, exit 0.) Antigravity's words of work are now read
-  **around its field** alone: the field is between two rules that are
-  dashes and nothing else (`agy_rule`: a draft that ends in dashes is
-  no rule, and a line of dashes pasted into a draft is passed over),
-  its first line the field's own (`>`; `!` in its shell mode, `:` in
-  its search), with up to ten lines under it (its hints, and the rows
-  of its tasks at work); "esc to cancel" or the queue's hint
-  ("… to edit queued messages", whatever its key) in that foot, or
-  its **status line** in the four lines over the field: one braille
-  figure, a gap, words (`agy_status`; braille art in an answer is
-  not one). A screen with no field is not at work, and the signing-in
-  splash (a status line whose words begin "Signing in": "⠋ Designing
-  interfaces" has the letters too) is "starting" while agy says
-  `idle`, `blocked` or `working` of itself (said `blocked` for longer
-  than a quarter of a second, it would have been "needs input"). A
-  folder's trust is a question by its own foot ("↑/↓ Navigate"), not
-  by its words alone: "Yes, I trust this folder" typed into the field
-  is a draft (read as a question, Auto Approve sent it). Tried:
+  **around its field** alone, and where the field is, is read once for
+  everybody (`agy_input_box`: `classify` and `at_prompt` each had a
+  way of their own, and where they differed a working agy was idle).
+  The field is between two rules, each a line of dashes from its one
+  end to its other whatever its theme sets into its middle
+  (`agy_rule`: a draft that ends in dashes is no rule, and lines of
+  dashes pasted into a draft, however many, are passed over), its
+  first line the field's own (`>`; `!` in its shell mode, `:` in its
+  search). Under its chat field, a line that is its hint for stopping
+  ("esc to cancel", "… · ctrl+x to cancel") or its queue's ("Press up
+  to edit queued messages", whatever the key) says it works
+  (`agy_work_hint`, by each line's shape: a task's row that only has
+  the words does not; in its shell and search modes "esc to cancel"
+  is the mode's own way out and says nothing); over any field, its
+  **status line** in the four lines above: one frame of its spinner,
+  a gap, something said (`agy_status`: "⣷  ✓ 1/1 steps ·
+  Generating..." is one; braille art in an answer, and a legend's
+  "⠁  A", are not). A screen with no field is not at work, and the
+  signing-in splash (a status line that says "Signing in" and no
+  more: "⠋ Designing interfaces" has the letters, "⠋ Signing
+  invoices" the start) is "starting" while agy says `idle`, `blocked`
+  or `working` of itself (said `blocked` for longer than a quarter of
+  a second, it would have been "needs input"). A
+  question of agy's is told by its foot's shape (`agy_chooser_foot`:
+  "… Navigate · …", whatever its keys) or its box; and **a question of
+  trust, to every reader, is asked in its own words or has a no beside
+  its yes** (`parse_folder_trust`): "Yes, I trust this folder" typed
+  into an agent's field is a draft (read as the question, Auto Approve
+  in Terminal, and a child started to trust its folder, pressed Return
+  on it). Tried:
   `agy_signing_in_splash_does_not_take_up_prompt_or_fail_silent` (the
   suite, agy's own sequence replayed: fails before, "Signing in...
   splash must NOT take up prompt expectation") and the classifier's
-  cases, eight of them from the fix's own code review (Astra 6.2:
-  three that ended a working agy's turn or sent a draft; each read
-  wrongly by the fix as first committed); the live suite with the real
+  cases, eight of them from the fix's own code review and ten from
+  the review that confirmed it (Astra 6.2: "hold" both times; each case
+  read wrongly by the commit before it); the live suite with the real
   agy. What a reading costs (`the_cost_of_reading_an_agy`, release, a
   screen of 31 lines, the least of forty rounds, a build each):
   `classify` 10.9 µs at work and 9.9 at rest before any of this, 30.7
   and 23.5 with the fix as first committed (a second whole-screen
-  scan for a trust question), 13.7 and 12.3 now; `at_prompt` 312 and
-  410 µs before (it read the whole screen again for every line), 551
-  and 708 with the first fix, **15.3 and 16.6 now** (one reading, for
-  the one line that could be the field). The lead had asked whether
+  scan for a trust question), **10.5 and 10.2 now**; `at_prompt` 312
+  and 410 µs before (it read the whole screen again for every line),
+  551 and 708 with the first fix, **12.6 and 12.1 now** (one reading,
+  for the one line that could be the field). The lead had asked whether
   `run` could hand the prompt over once more: the prompt *is* taken, a
   moment later, so a second hand-over would have run it twice.
 - *Why a turn failed, and all that failed told at once*
