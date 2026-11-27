@@ -69,4 +69,9 @@ with tempfile.TemporaryDirectory(dir="/var/tmp", prefix="olo-agents-check-") as 
     open(os.path.join(td, "tmux.conf"), "w").write("set -g remain-on-exit on\n")
     assert agents.sweep_builds(now=1e12, home=td, is_live=lambda _: False) == []
 
-print(f"ok: field reader ({len(CASES)} screens), model/effort policy, minder/reviewer permissions, and sweep isolation")
+# Verify clean_path strips desktop bridge directories while retaining ~/.local/bin:
+cp = agents.clean_path()
+assert not any(p.endswith("/rex-commands") or p.endswith("/olo/rex/bin") for p in cp.split(":")), cp
+assert "/usr/bin" in cp.split(":"), cp
+
+print(f"ok: field reader ({len(CASES)} screens), model/effort policy, minder/reviewer permissions, sweep isolation, and clean PATH")

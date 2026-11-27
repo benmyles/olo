@@ -955,6 +955,18 @@ else), then reply DONE and wait: the lead may ask more.
 UNSET = ["WAYLAND_DISPLAY", "DISPLAY", "OLO_SOCKET", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]
 
 
+def clean_path():
+    """Caller's PATH minus Rex desktop-bridge directories (`rex-commands`,
+    `olo/rex/bin`) so `--desktop none` stays fenced while systemd-started Rex
+    servers (whose own PATH is only `/usr/local/bin:/usr/bin`) still find
+    `agy`, `claude`, `codex`, `jato`, `cargo`, `zig`, and `olo`."""
+    dirs = [d for d in os.environ.get("PATH", "").split(":") if d and not d.endswith("/rex-commands") and not d.endswith("/olo/rex/bin")]
+    for extra in (os.path.expanduser("~/.local/bin"), os.path.expanduser("~/.cargo/bin"), "/usr/local/bin", "/usr/bin"):
+        if extra not in dirs and os.path.isdir(extra):
+            dirs.append(extra)
+    return ":".join(dirs)
+
+
 def session(name, cwd, env, program, native=None, subagent=True):
     """Where one agent's program runs, nothing of the person's screen in
     its reach: a child tab of the caller's Rex tab (`native`: what `olo
@@ -965,6 +977,9 @@ def session(name, cwd, env, program, native=None, subagent=True):
     own tab, while builders/reviewers/investigators run with
     `OLO_SUBAGENT=<name>` so they cannot spawn nested agents."""
     marker = f"OLO_SUBAGENT={name}" if subagent else f"OLO_MINDER={name}"
+    env = list(env)
+    if not any(e.startswith("PATH=") for e in env):
+        env.append(f"PATH={clean_path()}")
     if native and rex_here():
         args = ["start", *native[:1], "--name", name, "--title", name, "--cwd", cwd, "--desktop", "none", "--env", marker]
         for e in env:
