@@ -272,6 +272,13 @@ fn prompt_line_indices(agent: Agent, lines: &[&str]) -> Vec<usize> {
 /// its field's two rules, with nothing being asked (a question's chosen
 /// answer begins with ">" too) and nothing under way.
 pub fn at_prompt(agent: Agent, screen: &str) -> bool {
+    // (Not while Claude Code's offer to send a drafted feedback report
+    // stands over its field: what is typed there may answer it. Whoever
+    // types by this word, Keep It Going, a refusal's reason, a notice
+    // after a move, holds off until it is gone: [`feedback_draft`].)
+    if feedback_draft(agent, screen).is_some() {
+        return false;
+    }
     let lines: Vec<&str> = screen.lines().collect();
     let rule = |l: &str| {
         let t = l.trim();
@@ -529,13 +536,27 @@ pub fn feedback_draft(agent: Agent, screen: &str) -> Option<String> {
     if agent != Agent::Claude {
         return None;
     }
-    screen.lines().rev().filter(|l| !l.trim().is_empty()).take(12).find_map(|line| {
-        let words = line.split_whitespace().collect::<Vec<_>>().join(" ");
-        let keys = words.trim_start_matches(['●', '•', '*', '│', ' ']).trim_end_matches(['│', ' ']);
+    // (The last thing above its field: the line under it, blanks aside,
+    // is the rule over the field, or the field itself. The same words
+    // printed in what it wrote, a bullet's line or a line of a list
+    // further up, are not the box: taken for it, every message to a
+    // healthy agent was refused, and the `0` it was told to press was
+    // typed into its field. A code review, 2026-11-27.)
+    let lines: Vec<&str> = screen.lines().collect();
+    let rule = |l: &str| l.trim().chars().filter(|c| *c == '─').count() >= 20;
+    let field = |l: &str| {
+        let t = l.trim_start();
+        t.starts_with('❯') || t.starts_with("│ >") || t.starts_with("╭")
+    };
+    let from = lines.len().saturating_sub(40);
+    (from..lines.len()).rev().find_map(|i| {
+        let words = lines[i].split_whitespace().collect::<Vec<_>>().join(" ");
+        let keys = words.trim_start_matches(['│', ' ']).trim_end_matches(['│', ' ']);
         let rest = keys.strip_prefix("1 to review")?.strip_suffix("0 to dismiss")?;
         // (Between them: the middle key and what divides the three, nothing more.)
         let middle = rest.trim_matches(|c: char| !c.is_alphanumeric());
-        (middle == "2 to send").then(|| keys.to_owned())
+        let over_the_field = lines[i + 1..].iter().find(|l| !l.trim().is_empty()).is_some_and(|l| rule(l) || field(l));
+        (middle == "2 to send" && over_the_field).then(|| keys.to_owned())
     })
 }
 
@@ -1276,14 +1297,18 @@ pub fn parse_question(agent: Agent, screen: &str) -> Option<String> {
 /// Never what makes a screen a failure: that is [`parse_api_error`]'s,
 /// which is strict about where such a line may stand.
 pub fn error_line(screen: &str) -> Option<String> {
-    screen
-        .lines()
-        .rev()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .take(60)
-        .find(|l| l.to_ascii_lowercase().contains("api error"))
-        .map(|l| l.trim_start_matches(['●', '•', '⎿', '└', '│', '*', ' ']).trim().to_owned())
+    // (Of this turn: no further up than the person's last message, as
+    // it is drawn. And a line that *is* the error, not one that speaks
+    // of it: what a tool printed, "the fixture expects API Error: 401",
+    // is not why the turn failed. A code review, 2026-11-27.)
+    let said = |l: &str| {
+        let t = l.trim_start();
+        ['❯', '›'].iter().any(|m| t.strip_prefix(*m).is_some_and(|rest| !rest.trim().is_empty())) || t.strip_prefix("> ").is_some_and(|rest| !rest.trim().is_empty())
+    };
+    screen.lines().rev().filter(|l| !l.trim().is_empty()).take(60).take_while(|l| !said(l)).find_map(|l| {
+        let words = l.trim().trim_start_matches(['●', '•', '⎿', '└', '│', '*', ' ']).trim();
+        words.get(..9).is_some_and(|head| head.eq_ignore_ascii_case("api error")).then(|| words.to_owned())
+    })
 }
 
 /// Detects an API / stream mid-response error that ended the CURRENT turn without a normal Stop hook
@@ -2263,6 +2288,12 @@ mod tests {
         );
         assert_eq!(error_line(&failed).as_deref(), Some("API Error: 503 upstream connect error or disconnect/reset before headers · Retrying in 8 seconds… (attempt 10/10)"));
         assert_eq!(error_line("● Done.\n❯ \n"), None);
+        // An error of the turn before (over the person's next message) is not this turn's; nor is a line
+        // that only speaks of one.
+        let before = format!("  ⎿  API Error: 401 Unauthorized\n❯ try again\n● Reading the parser.\n{rule}\n❯ \n{rule}\n");
+        assert_eq!(error_line(&before), None);
+        let quoted = format!("❯ go on\n  ⎿  API Error: 529 Overloaded\n  ⎿  the fixture expects API Error: 401\n{rule}\n❯ \n{rule}\n");
+        assert_eq!(error_line(&quoted).as_deref(), Some("API Error: 529 Overloaded"));
     }
 
     /// Claude Code's drafted feedback report (the ShiftUp lead's item 48):
@@ -2276,6 +2307,17 @@ mod tests {
         // Drawn with another divider, or in a frame: the same three keys.
         assert!(feedback_draft(Agent::Claude, &boxed.replace(" · ", "  |  ")).is_some());
         assert!(feedback_draft(Agent::Claude, &boxed.replace("  1 to review · 2 to send · 0 to dismiss", "│ 1 to review · 2 to send · 0 to dismiss │")).is_some());
+        // While it shows the agent is not "at its prompt": nothing that types by that word types into it.
+        assert!(!at_prompt(Agent::Claude, &boxed) && at_prompt(Agent::Claude, &boxed.replace("  1 to review · 2 to send · 0 to dismiss\n", "")));
+        // The same words in what it wrote (a bullet's line; a line with more of its answer under it) are
+        // not the box, though they stand near the foot.
+        let printed = format!("● The box says:\n● 1 to review · 2 to send · 0 to dismiss\n✻ Crunched for 2s\n{rule}\n❯ \n{rule}\n  ? for shortcuts\n");
+        assert!(feedback_draft(Agent::Claude, &printed).is_none() && at_prompt(Agent::Claude, &printed));
+        let listed = format!("  1 to review · 2 to send · 0 to dismiss\n  and then it goes away.\n{rule}\n❯ \n{rule}\n");
+        assert!(feedback_draft(Agent::Claude, &listed).is_none());
+        // Over a field with several lines typed in it: still the box.
+        let typed = format!("● Done.\n\n  1 to review · 2 to send · 0 to dismiss\n{rule}\n❯ a first line\n  a second\n  a third\n{rule}\n  ? for shortcuts\n");
+        assert!(feedback_draft(Agent::Claude, &typed).is_some());
         // Words that quote it, a line with more on it, a line with a key missing: not the box.
         assert!(feedback_draft(Agent::Claude, &boxed.replace("  1 to review", "● The box says \"1 to review")).is_none());
         assert!(feedback_draft(Agent::Claude, &boxed.replace("0 to dismiss", "0 to dismiss, it says")).is_none());

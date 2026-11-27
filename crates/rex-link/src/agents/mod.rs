@@ -42,6 +42,18 @@ mod tests {
     /// What a reading takes up, and when a Codex's conversation file is
     /// believed that a turn is on (a code review's case and the ShiftUp
     /// lead's items 50 and 51, 2026-11-27).
+    /// A turn the person cut short is no failure, whatever notice of it its screen has (Codex's).
+    #[test]
+    fn a_turn_cut_short_by_the_person_is_no_failure() {
+        let screen = "› Do the thing.\n\n■ Conversation interrupted - use /feedback if something went wrong\n\n› Ask Codex to do anything\n\n  gpt-5.4-codex high · /var/tmp/work\n  ← for agents · ? for shortcuts\n";
+        let cls = classify_screen_rich(AgentCli::Codex, Activity::Idle, screen, true);
+        // (By its screen alone the notice reads as an error; with its file's word that the turn was aborted, not.)
+        assert_eq!(effective_state(&cls, Some("aborted"), None, true), (SubagentLiveState::Idle, None, true), "{:?}", cls.state);
+        if cls.api_error.is_some() {
+            assert_eq!(effective_state(&cls, Some("unknown"), None, true).0, SubagentLiveState::Error);
+        }
+    }
+
     /// Why a turn failed, by its error's words (the ShiftUp lead's item 49).
     #[test]
     fn an_errors_words_say_whose_fault_it_is() {
@@ -55,8 +67,13 @@ mod tests {
         assert_eq!(error_cause("API Error: 429 rate_limit_error"), ("rate_limit", Some(429)));
         assert_eq!(error_cause("You've hit your usage limit"), ("rate_limit", None));
         assert_eq!(error_cause("API Error: 400 prompt is too long: 210000 tokens > 200000 maximum"), ("request", Some(400)));
-        // (Its last working sentence, with a number in it, is no status: only 400 to 599, three digits alone.)
+        // (Its last working sentence, with a number in it, is no status: only where one is said to be one.)
         assert_eq!(error_cause("Read 1529 lines of main.rs and 200 of lib.rs"), ("other", None));
+        assert_eq!(error_cause("Read 500 lines"), ("other", None));
+        assert_eq!(error_cause("Connection to proxy:443 failed (HTTP 401)"), ("account", Some(401)));
+        // Whose fault by its words first: a pool with nobody signed in answers 503; no credit comes as a 400.
+        assert_eq!(error_cause("API Error: 503 no account is signed in: add an account in Token Pool"), ("account", Some(503)));
+        assert_eq!(error_cause("API Error: 400 Credit balance is too low"), ("account", Some(400)));
         assert_eq!(error_cause(""), ("other", None));
     }
 

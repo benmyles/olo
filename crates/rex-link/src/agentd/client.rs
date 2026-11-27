@@ -160,46 +160,84 @@ pub fn run(mut args: Vec<String>) -> i32 {
 /// that ended that way"). Says which it sent to and how each went; 0
 /// where all went (or none had failed), 1 where any didn't.
 fn send_to_all_errored(rest: Vec<String>, asked: &dyn Fn(&str, Vec<String>) -> Response) -> i32 {
-    let as_json = rest.iter().take_while(|a| a.as_str() != "--").any(|a| a == "--json");
-    if rest.iter().all(|a| a.starts_with("--")) {
+    // What to send, and how: a message and `--enter`, `--paste`,
+    // `--json`, nothing else (not `--ctrl=c`, not a file made into
+    // text on the way here); after `--` everything is the message.
+    let (mut text, mut flags, mut as_json, mut literal) = (Vec::new(), Vec::new(), false, false);
+    for word in &rest {
+        match word.as_str() {
+            _ if literal => text.push(word.clone()),
+            "--" => literal = true,
+            "--json" => as_json = true,
+            "--enter" | "--paste" => flags.push(word.clone()),
+            other if other.starts_with('-') => {
+                eprintln!("olo agent send --all-errored: only a message, with --enter, --paste, --json (not `{other}`): each child is watched as any other");
+                return 2;
+            }
+            _ => text.push(word.clone()),
+        }
+    }
+    let text = text.join(" ");
+    if text.trim().is_empty() {
         eprintln!("usage: olo agent send --all-errored TEXT… [--enter] [--paste] [--json]: what to send is missing");
         return 2;
     }
-    if rest.iter().take_while(|a| a.as_str() != "--").any(|a| matches!(a.as_str(), "--wait" | "--out" | "--force" | "--key" | "--ctrl" | "--file")) {
-        eprintln!("olo agent send --all-errored: only a message (with --enter, --paste, --json): each child is watched as any other");
+    // From a tab's own pane: whose children they are is that tab's to
+    // say, never the tab that happens to be in front.
+    if std::env::var("REX_BLOCK").map_or(true, |b| b.trim().is_empty()) {
+        eprintln!("olo agent send --all-errored: only from a tab's own pane (REX_BLOCK): whose children they are must be certain");
         return 2;
     }
     let listed = asked("list", vec!["--json".into()]);
     if !listed.ok {
         return print_answer(listed);
     }
-    let failed: Vec<(String, String, Value)> = listed.data["subagents"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|c| c["state"] == "error")
-        .filter_map(|c| Some((c["id"].as_str()?.to_owned(), c["name"].as_str().unwrap_or_default().to_owned(), c["summary"].clone())))
-        .collect();
+    // The asking tab's own children: its direct ones, and those minded
+    // for it under a minder of its own; not a child's children (theirs
+    // to look after), and no minder.
+    let rows: Vec<&Value> = listed.data["subagents"].as_array().into_iter().flatten().collect();
+    let depth = |c: &Value| c["depth"].as_u64().unwrap_or(0);
+    let is_minder = |c: &Value| c["shared_minder"] == true || !c["minds"].is_null();
+    let my_minders: Vec<&str> = rows.iter().filter(|c| depth(c) == 1 && is_minder(c)).filter_map(|c| c["id"].as_str()).collect();
+    let mine = |c: &&&Value| !is_minder(c) && (depth(c) == 1 || (depth(c) == 2 && c["minded_by"].as_str().is_some_and(|m| my_minders.contains(&m))));
+    let failed: Vec<(String, String)> =
+        rows.iter().filter(mine).filter(|c| c["state"] == "error").filter_map(|c| Some((c["id"].as_str()?.to_owned(), c["name"].as_str().unwrap_or_default().to_owned()))).collect();
     let mut sent = Vec::new();
     let mut all_went = true;
-    for (id, name, why) in failed {
+    for (id, name) in failed {
+        // (As it stands now: one that has gone on meanwhile, by itself or
+        // by somebody's hand, is not told to go on in the middle of it.)
+        let now = asked("status", vec![id.clone(), "--json".into()]);
+        if !now.ok || now.data["state"] != "error" {
+            sent.push(json!({ "id": id, "name": name, "ok": true, "skipped": "no longer at an error", "state": now.data["state"] }));
+            continue;
+        }
+        let was = now.data["error"].as_str().or(now.data["summary"].as_str()).map(str::to_owned);
         let mut args = vec![id.clone()];
-        args.extend(rest.iter().filter(|a| a.as_str() != "--json").cloned());
-        args.push("--json".into());
+        args.extend(flags.iter().cloned());
+        args.extend(["--json".to_owned(), "--".to_owned(), text.clone()]);
         let answer = asked("send", args);
-        all_went &= answer.ok;
-        sent.push(json!({ "id": id, "name": name, "was": why, "ok": answer.ok, "cursor": answer.data["cursor"], "error": (!answer.ok).then(|| answer.stderr.trim().to_owned()) }));
+        // (Sent, and taken: text left in its field unsubmitted is not.)
+        let went = answer.ok && answer.data["delivered"] != false;
+        all_went &= went;
+        sent.push(json!({
+            "id": id, "name": name, "was": was, "error_kind": now.data["error_kind"], "error_status": now.data["error_status"],
+            "ok": went, "delivered": answer.data["delivered"], "cursor": answer.data["cursor"],
+            "error": (!went).then(|| if answer.ok { "sent, and not seen to be taken: look at it".to_owned() } else { answer.stderr.trim().to_owned() }),
+        }));
     }
+    let told = sent.iter().filter(|one| one["skipped"].is_null() && one["ok"] == true).count();
     if as_json {
-        println!("{}", json!({ "ok": all_went, "count": sent.len(), "sent": sent }));
+        println!("{}", json!({ "ok": all_went, "count": told, "sent": sent }));
     } else if sent.is_empty() {
         println!("no child of this tab stands at an error");
     } else {
         for one in &sent {
             let who = one["name"].as_str().filter(|n| !n.is_empty()).or(one["id"].as_str()).unwrap_or_default();
-            match one["error"].as_str() {
-                Some(why) => println!("{who}: not sent ({why})"),
-                None => println!("{who}: sent"),
+            match (one["skipped"].as_str(), one["error"].as_str()) {
+                (Some(why), _) => println!("{who}: {why}"),
+                (None, Some(why)) => println!("{who}: not sent ({why})"),
+                (None, None) => println!("{who}: sent"),
             }
         }
     }

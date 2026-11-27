@@ -223,51 +223,70 @@ pub struct Expected {
 /// with its status)").
 pub fn error_cause(text: &str) -> (&'static str, Option<u16>) {
     let low = text.to_ascii_lowercase();
-    // (A status as the agents write one: three digits standing alone, 400 to 599.)
-    let status = low.split(|c: char| !c.is_ascii_digit()).filter(|w| w.len() == 3).filter_map(|w| w.parse::<u16>().ok()).find(|n| (400..600).contains(n));
+    // A status where one is said to be a status ("API Error: 529", "HTTP
+    // 401", "status 503"), three digits alone, 400 to 599: not any such
+    // number ("Connection to proxy:443 failed (HTTP 401)" was 443; "Read
+    // 500 lines" a server's error. A code review, 2026-11-27).
+    let status = ["api error: ", "api error (", "api error ", "http ", "http/1.1 ", "http/2 ", "status code ", "status: ", "status ", "error code: "].iter().find_map(|mark| {
+        low.match_indices(mark).find_map(|(at, _)| {
+            let rest = &low[at + mark.len()..];
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            let alone = !rest[digits.len()..].starts_with(|c: char| c.is_ascii_alphanumeric());
+            (digits.len() == 3 && alone).then(|| digits.parse::<u16>().ok()).flatten().filter(|n| (400..600).contains(n))
+        })
+    });
     let has = |words: &[&str]| words.iter().any(|w| low.contains(w));
-    let kind = match status {
-        Some(429) => "rate_limit",
-        Some(401 | 402 | 403) => "account",
-        Some(400 | 404 | 413 | 422) => "request",
-        Some(n) if n >= 500 => "provider",
-        _ if has(&["rate limit", "rate_limit", "usage limit", "quota", "too many requests"]) => "rate_limit",
-        _ if has(&[
-            "credit balance",
-            "billing",
-            "authentication",
-            "unauthorized",
-            "invalid api key",
-            "invalid x-api-key",
-            "not logged in",
-            "please run /login",
-            "oauth",
-            "permission_error",
-            "forbidden",
-        ]) =>
-        {
-            "account"
+    // Whose fault by its words first, where they say: a pool with no
+    // account signed in answers 503 "add an account", and a credit that
+    // has run out comes as a 400.
+    let kind = if has(&[
+        "credit balance",
+        "billing",
+        "authentication",
+        "unauthorized",
+        "invalid api key",
+        "invalid x-api-key",
+        "not logged in",
+        "signed out",
+        "sign in",
+        "sign-in",
+        "add an account",
+        "no account",
+        "please run /login",
+        "oauth",
+        "permission_error",
+        "forbidden",
+    ]) {
+        "account"
+    } else if has(&["rate limit", "rate_limit", "usage limit", "quota", "too many requests"]) {
+        "rate_limit"
+    } else {
+        match status {
+            Some(429) => "rate_limit",
+            Some(401 | 402 | 403) => "account",
+            Some(400 | 404 | 413 | 422) => "request",
+            Some(n) if n >= 500 => "provider",
+            _ if has(&[
+                "overloaded",
+                "connection",
+                "stream disconnected",
+                "disconnected",
+                "timed out",
+                "timeout",
+                "network",
+                "econnreset",
+                "fetch failed",
+                "socket",
+                "internal server error",
+                "service unavailable",
+                "bad gateway",
+            ]) =>
+            {
+                "provider"
+            }
+            _ if has(&["prompt is too long", "invalid_request", "invalid request", "context length", "too large"]) => "request",
+            _ => "other",
         }
-        _ if has(&[
-            "overloaded",
-            "connection",
-            "stream disconnected",
-            "disconnected",
-            "timed out",
-            "timeout",
-            "network",
-            "econnreset",
-            "fetch failed",
-            "socket",
-            "internal server error",
-            "service unavailable",
-            "bad gateway",
-        ]) =>
-        {
-            "provider"
-        }
-        _ if has(&["prompt is too long", "invalid_request", "invalid request", "context length", "too large"]) => "request",
-        _ => "other",
     };
     (kind, status)
 }
@@ -584,6 +603,15 @@ pub fn classify_screen_rich(cli: AgentCli, activity: Activity, screen_text: &str
 pub fn effective_state(cls: &ScreenClassification, tx_state: Option<&str>, tx_error: Option<&str>, alive: bool) -> (SubagentLiveState, Option<String>, bool) {
     if !alive || cls.state == SubagentLiveState::Exited {
         return (SubagentLiveState::Exited, None, false);
+    }
+    // A turn its conversation's file says was cut short by the person is
+    // no failure, whatever notice of it stands on the screen (Codex's "■
+    // Conversation interrupted - use /feedback if something went wrong"
+    // read as an error, and a message "to every child that failed" would
+    // have started again what somebody had stopped on purpose: a second
+    // investigator and a code review, 2026-11-27).
+    if tx_state == Some("aborted") && cls.api_error.is_some() && cls.approval.is_none() {
+        return (SubagentLiveState::Idle, None, true);
     }
     // Screen-level API error takes precedence (except over an active approval dialog).
     if let Some(ref err) = cls.api_error

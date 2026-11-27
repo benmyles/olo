@@ -31935,9 +31935,19 @@ agents through the night, could not move to it.
   draft:" (a minder's agent's too: a minder may press no such key);
   `status` has `feedback_draft`, its line; and while it shows `send`
   types nothing into the child but the box's own `--key 0`, asked for
-  by name (a message beginning "2" would send the report). The service
-  itself presses nothing there, where it sets a survey aside. Read
-  from the words the lead quoted, not yet from a capture of the box.
+  by name (a message beginning "2" would send the report), `--force`
+  or not, and before any other check is made. The service itself
+  presses nothing there: not a survey's key (a survey's lines still
+  on the screen above the box, and a `status` would have set the box
+  aside), not a refusal's reason (`approve --no --reason "2 checks
+  remain"`). And an agent with the box up is not "at its prompt"
+  (`olo_agent_screen::at_prompt`), so Keep It Going in Rex and
+  Terminal, and the notice after a move, hold off too. The box is its
+  three keys on a line of their own **directly over the field**: the
+  same words printed in what the agent wrote are not it (every message
+  to a healthy agent was refused, and the `0` it was told to press
+  typed into its field: a code review, 2026-11-27). Read from the
+  words the lead quoted, not yet from a capture of the box.
   Into a question a character
   is an answer by its number, so it is refused there as text is, without
   `--force`: `spec::key_types`); a feedback survey drawn over a screen (Claude Code's "How is
@@ -32321,16 +32331,25 @@ agents through the night, could not move to it.
   or account error, with its status), and one command that says
   'continue' to every child of mine that ended that way"). An `error`
   event and `status` have `error_kind` (`provider`, `account`,
-  `rate_limit`, `request`, `other`) and `error_status` (a status where
-  the error's words have one: three digits alone, 400 to 599), read
-  from the error's own words. Where an agent says itself that it
-  failed and neither its conversation's file nor the strict reading
-  of its screen has the words, they are the last line among its last
-  sixty that names an API error (it was its screen's last line: the
-  last thing it had been doing). `olo agent send --all-errored TEXT…
-  [--enter]` sends one message to every child of the asking tab that
-  stands at an error, each as `send` would, and says which and how
-  each went (only a message: no `--wait`, `--key`, `--force`). Tried:
+  `rate_limit`, `request`, `other`) and `error_status`, read from the
+  error's own words: whose fault by its words first (a pool with
+  nobody signed in answers 503 "add an account"; a credit run out
+  comes as a 400), then by its status; and a status only where one is
+  said to be one ("API Error: 529", "HTTP 401": not a port, not "Read
+  500 lines"). Where an agent says itself that it failed and neither
+  its conversation's file nor the strict reading of its screen has the
+  words (or only "API Error"), they are its screen's own error line
+  of this turn: a line that *is* the error, no further up than the
+  person's last message (it was its screen's last line: the last
+  thing it had been doing), and that is the event's `summary` too. A
+  turn the person cut short is no failure, whatever notice of it the
+  screen has (Codex's "■ Conversation interrupted"). `olo agent send
+  --all-errored TEXT… [--enter]` sends one message to every child **of
+  the asking tab's own** (its direct ones and those minded for it;
+  not a child's children) that stands at an error, each checked again
+  just before it is told, each as `send` would, and says which, what
+  each had failed with and whether each took it. From a tab's own
+  pane only, and only a message (`--enter`, `--paste`, `--json`). Tried:
   `a_failed_turn_says_why_and_all_that_failed_are_told_at_once`.
 - *A reading takes up what stood when it began* (`state::takes_up`,
   `Looked::expected`; a code review, 2026-11-27). A reading of a

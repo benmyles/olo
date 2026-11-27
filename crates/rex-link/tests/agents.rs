@@ -767,7 +767,15 @@ fn a_drafted_feedback_report_is_told_and_never_answered() {
     let (code, out, _) = rig.olo(&["watch", "drafted", "--since", &told["cursor"].to_string(), "--on", "escalation", "--timeout", "2", "--json"]);
     assert_eq!(code, 124, "told twice of one showing: {out}");
     // Nothing is typed into it: not a message (one that begins "2" would send the report), not another key.
-    for refused in [&["send", "drafted", "2 more things to do", "--enter", "--json"][..], &["send", "drafted", "--key", "2", "--json"], &["send", "drafted", "--key", "Enter", "--json"]] {
+    for refused in [
+        &["send", "drafted", "2 more things to do", "--enter", "--json"][..],
+        &["send", "drafted", "--key", "2", "--json"],
+        &["send", "drafted", "--key", "Enter", "--json"],
+        // (`--force` is no way in, nor its 0 with another key beside it. A code review, 2026-11-27.)
+        &["send", "drafted", "--force", "--key", "2", "--json"],
+        &["send", "drafted", "--ctrl", "m", "--key", "0", "--json"],
+        &["send", "drafted", "--key", "0", "--enter", "--json"],
+    ] {
         let (code, out, err) = rig.olo(refused);
         assert!(code != 0 && err.contains("feedback draft"), "{refused:?} went through: {out}{err}");
     }
@@ -786,6 +794,19 @@ fn a_drafted_feedback_report_is_told_and_never_answered() {
     rig.show("drafted", &boxed);
     let again = rig.json(&["watch", "drafted", "--since", &since, "--on", "escalation", "--timeout", "15", "--json"]);
     assert_eq!(again["event"], "escalation", "{again}");
+    // Its command names the child by its id (a name may have a space in it).
+    assert!(again["summary"].as_str().is_some_and(|s| s.contains(&format!("olo agent send {} --key 0", started["id"].as_str().unwrap()))), "{again}");
+    // A survey's two lines still on the screen above the box: the service sets nothing aside while the box shows.
+    let before = rig.keys("drafted").len();
+    rig.show("drafted", &format!("● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n● Done.\n\n  1 to review · 2 to send · 0 to dismiss\n{0}\n❯ \n{0}\n  ⏸ manual mode on · ? for shortcuts\n", rule()));
+    rig.wait("the box to be seen again", || rig.status("drafted")["feedback_draft"].is_string());
+    std::thread::sleep(Duration::from_millis(900));
+    let _ = rig.status("drafted");
+    assert_eq!(rig.keys("drafted").len(), before, "the service pressed a key into the box by itself: {:?}", &rig.keys("drafted")[before..]);
+    // The box's words printed in what the agent wrote are not the box: a message goes through.
+    rig.show("drafted", &format!("● The box says:\n● 1 to review · 2 to send · 0 to dismiss\n✻ Crunched for 2s\n{0}\n❯ \n{0}\n  ⏸ manual mode on · ? for shortcuts\n", rule()));
+    rig.wait("the box to be gone", || rig.status("drafted")["feedback_draft"].is_null());
+    rig.json(&["send", "drafted", "2 more things", "--enter", "--json"]);
     rig.json(&["stop", "drafted", "--force", "--json"]);
 }
 
@@ -824,8 +845,14 @@ fn a_failed_turn_says_why_and_all_that_failed_are_told_at_once() {
     let before: Vec<usize> = ["one", "two", "well"].iter().map(|n| rig.keys(n).len()).collect();
     let (code, _, err) = rig.olo(&["send", "--all-errored"]);
     assert!(code == 2 && err.contains("what to send"), "{err}");
-    let sent = rig.json(&["send", "--all-errored", "The outage is over: go on where you were.", "--enter", "--json"]);
+    // (Only a message and its flags: a control or a key is no part of it.)
+    for refused in [&["send", "--all-errored", "continue", "--ctrl=c"][..], &["send", "--all-errored", "continue", "--key=Enter"], &["send", "--all-errored", "continue", "--force"]] {
+        let (code, _, err) = rig.olo(refused);
+        assert!(code == 2 && err.contains("only a message"), "{refused:?}: {err}");
+    }
+    let sent = rig.json(&["send", "--all-errored", "--enter", "--json", "--", "The outage is over: go on where you were."]);
     assert_eq!((&sent["ok"], &sent["count"]), (&json!(true), &json!(2)), "{sent}");
+    assert!(sent["sent"].as_array().unwrap().iter().all(|s| s["was"].as_str().is_some_and(|w| w.starts_with("API Error"))), "{sent}");
     let names: Vec<&str> = sent["sent"].as_array().unwrap().iter().filter_map(|s| s["name"].as_str()).collect();
     assert!(names.contains(&"one") && names.contains(&"two") && !names.contains(&"well"), "{sent}");
     for (i, name) in ["one", "two"].iter().enumerate() {

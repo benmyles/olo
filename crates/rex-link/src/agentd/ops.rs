@@ -321,6 +321,22 @@ fn format_stop_summary(stopped: &[String], failed: &[Value], programs: &[Value],
     (left.is_empty(), said)
 }
 
+/// The words of a failure: what the conversation's file or the strict
+/// reading of the screen gave, or, where an agent says it failed and
+/// those have nothing of why (none; or only "API Error", what Claude
+/// Code's file says of an error with no message), its screen's own error
+/// line of this turn (`olo_agent_screen::error_line`).
+pub(super) fn error_words(state: SubagentLiveState, error: Option<String>, screen: &str) -> Option<String> {
+    if state != SubagentLiveState::Error {
+        return error;
+    }
+    let bare = |e: &String| e.trim().eq_ignore_ascii_case("api error");
+    match error {
+        Some(words) if !bare(&words) => Some(words),
+        other => olo_agent_screen::error_line(screen).or(other),
+    }
+}
+
 impl Service {
     /// Enforces exited-caller and minder operation gates before any
     /// dispatch (`follow`, `adopt`, `retire`, `ping`, `policy`, or `agent_op`).
@@ -2275,9 +2291,9 @@ impl Service {
         // (Why it failed, by its error's own words: `state::error_cause`.
         // Where it says it failed and nothing has the words, its screen
         // may: `olo_agent_screen::error_line`.)
-        let error = error.or_else(|| (state == SubagentLiveState::Error).then(|| olo_agent_screen::error_line(&screen)).flatten());
+        let error = error_words(state, error, &screen);
         if state == SubagentLiveState::Error {
-            let (kind, status) = olo_rex_link::agents::state::error_cause(error.as_deref().or(cls.summary.as_deref()).unwrap_or_default());
+            let (kind, status) = olo_rex_link::agents::state::error_cause(error.as_deref().unwrap_or_default());
             payload["error_kind"] = json!(kind);
             payload["error_status"] = json!(status);
         }
@@ -2549,8 +2565,10 @@ impl Service {
                 payload["minding"] = m.clone();
             }
             // (Why it failed, by its error's own words: `state::error_cause`.)
-            if ev.state == SubagentLiveState::Error {
-                let (kind, status) = olo_rex_link::agents::state::error_cause(ev.error.as_deref().or(ev.summary.as_deref()).unwrap_or_default());
+            // (From the error's words alone: what it had last been doing
+            // is no error's words, and a number in it no status.)
+            let why = (ev.state == SubagentLiveState::Error).then(|| olo_rex_link::agents::state::error_cause(ev.error.as_deref().unwrap_or_default()));
+            if let Some((kind, status)) = why {
                 payload["error_kind"] = json!(kind);
                 payload["error_status"] = json!(status);
             }
@@ -2560,7 +2578,12 @@ impl Service {
             let stdout = if spec.json {
                 format!("{payload}\n")
             } else {
-                format!("{}  event={}  state={}  cursor={}  {}\n", ev.id, ev.event, ev.state.as_str(), ev.seq, matched_line.or_else(|| ev.summary.clone()).unwrap_or_default())
+                // (A failure by its own words and whose fault it was, where it has them.)
+                let said = match (&why, &ev.error) {
+                    (Some((kind, status)), Some(words)) => Some(format!("{kind}{}: {words}", status.map(|s| format!(" {s}")).unwrap_or_default())),
+                    _ => None,
+                };
+                format!("{}  event={}  state={}  cursor={}  {}\n", ev.id, ev.event, ev.state.as_str(), ev.seq, matched_line.or(said).or_else(|| ev.summary.clone()).unwrap_or_default())
             };
             Response::ok(stdout, payload)
         };
@@ -2899,7 +2922,7 @@ impl Service {
                                 }
                                 ev.last_message = info.and_then(|v| v["last_message"].as_str()).map(str::to_owned);
                                 ev.approval = now.cls.approval.as_ref().map(|ap| self.approval_json(&entry.id, ap, &pending));
-                                ev.error = error.or_else(|| (state == SubagentLiveState::Error).then(|| olo_agent_screen::error_line(&now.screen)).flatten());
+                                ev.error = error_words(state, error, &now.screen);
                                 ev.tail = tail_of(&now.screen, 10);
                                 return answer(&ev, matched_line, had_gap);
                             }
@@ -2971,6 +2994,47 @@ impl Service {
         }
         self.minder_did(caller, &entry.id, "send", raw.get("args").cloned().unwrap_or(Value::Null));
         let before = self.look(&entry, true).await;
+        // What is typed into an agent is typed by its screen as read
+        // now. Where the server couldn't say, the last reading answered
+        // for it, and a box come since was typed into. (A code review,
+        // 2026-11-27.)
+        if entry.cli.is_agent() && !before.live && before.cls.state != SubagentLiveState::Exited {
+            return err(format!("`{}`'s screen couldn't be read just now: nothing was sent; try again", entry.id), 1);
+        }
+        // Never into Claude Code's offer to send a feedback report it has
+        // drafted ("1 to review · 2 to send · 0 to dismiss"): a message
+        // that begins "2" would send the report. Its own `0` is the one
+        // key pressed there, alone and asked for by name, by whoever
+        // looks after the child and never by the service; anything else
+        // waits until it has gone, `--force` or not. (The ShiftUp lead's
+        // item 48, 2026-11-27. Ben's rule there: "no feedback report is
+        // ever sent, and nothing answers that box by itself".) Decided
+        // before anything else is: a question said to stand under it is
+        // not what the key would answer. A minder, who may press no
+        // character key, is refused the same: the lead is told of the
+        // box on its own watch (`Service::feedback_draft_seen`).
+        if let Some(agent) = entry.cli.screen_agent()
+            && let Some(shows) = olo_agent_screen::feedback_draft(agent, &before.screen)
+        {
+            let only_its_zero = spec.body.is_empty() && !spec.enter && !spec.has_ctrl && spec.post_keys.len() == 1 && spec.raw_keys.len() == 1 && spec.raw_keys[0].trim() == "0";
+            if !only_its_zero || as_minder.is_some() {
+                return err(
+                    format!(
+                        "refusing to send to `{0}` while Claude Code's feedback draft shows ({shows}): what is typed there would answer it. `olo agent send {0} --key 0` sets it aside; then send again",
+                        entry.id
+                    ),
+                    1,
+                );
+            }
+            // (Its 0, and nothing of the checks a question's answer has: there is none under this key.)
+            return match self.rex.write(&entry.session_id, &entry.block_id, "0").await {
+                Ok(()) => {
+                    let payload = json!({ "ok": true, "id": entry.id, "name": entry.name, "sent": "0", "feedback_draft": "set aside", "cursor": self.cursor() });
+                    Response::ok(if spec.as_json { format!("{payload}\n") } else { format!("{}: its feedback draft is set aside\n", entry.id) }, payload)
+                }
+                Err(e) => err(format!("couldn't press 0 in `{}`: {e}", entry.id), 1),
+            };
+        }
         if before.cls.state == SubagentLiveState::Exited {
             return err(format!("subagent `{}` has already exited", entry.id), 1);
         }
@@ -3065,31 +3129,6 @@ impl Service {
             if (!spec.body.is_empty() || spec.types) && !spec.force && entry.cli.is_agent() && dialog_up(&before.cls) {
                 let what = if spec.body.is_empty() { "press a character key in" } else { "type text into" };
                 return err(format!("refusing to {what} `{}` while a {} dialog is active (use `olo agent approve` to answer approvals, or pass `--force`)", entry.id, before.cls.state.as_str()), 1);
-            }
-        }
-        // Nor into Claude Code's offer to send a feedback report it has
-        // drafted ("1 to review · 2 to send · 0 to dismiss"): a message
-        // that begins "2" would send the report. Its own `0` is the one
-        // key pressed there, by whoever looks after the child and never
-        // by the service; anything else waits until it has gone. (The
-        // ShiftUp lead's item 48, 2026-11-27. Ben's rule there: "no
-        // feedback report is ever sent".) A minder, who may press no
-        // character key, is refused the same: the lead is told of the
-        // box on its own watch (`Service::feedback_draft_seen`).
-        if !spec.force
-            && let Some(agent) = entry.cli.screen_agent()
-            && let Some(shows) = olo_agent_screen::feedback_draft(agent, &before.screen)
-        {
-            let only_its_zero = spec.body.is_empty() && !spec.enter && spec.raw_keys.len() == 1 && spec.raw_keys[0].trim() == "0";
-            if !only_its_zero {
-                return err(
-                    format!(
-                        "refusing to send to `{}` while Claude Code's feedback draft shows ({shows}): what is typed there would answer it. `olo agent send {} --key 0` sets it aside; then send again",
-                        entry.id,
-                        entry.name.as_deref().unwrap_or(&entry.id)
-                    ),
-                    1,
-                );
             }
         }
         let minder_still_ok = || -> bool {
@@ -3523,6 +3562,12 @@ impl Service {
                     break ownership_and_rules_hold();
                 }
                 tokio::time::sleep(Duration::from_millis(60)).await;
+            };
+            // (Nor into a drafted feedback report offered meanwhile: a
+            // reason that begins "2" would send it. Read again now.)
+            let safe = safe && {
+                let now = self.look(&entry, true).await;
+                now.live && olo_agent_screen::feedback_draft(agent, &now.screen).is_none()
             };
             if safe && ownership_and_rules_hold() {
                 let text = if self.bracketed_paste(&entry).await { format!("\x1b[200~{reason}\x1b[201~") } else { reason };

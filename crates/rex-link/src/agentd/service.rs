@@ -414,6 +414,10 @@ pub struct Looked {
     /// What it has been given and not yet been seen at, as that stands
     /// now (`state::of_the_turn_given`).
     pub expects: Option<state::Expected>,
+    /// The screen was read for this (not answered from the last
+    /// reading because the server couldn't say): what is typed into a
+    /// child is typed by a screen read now, or not at all.
+    pub live: bool,
 }
 
 pub struct Service {
@@ -638,7 +642,18 @@ impl Service {
                     None => exited("tab closed".into()),
                 };
                 let (out, chg) = st.live.get(&entry.id).map(|l| (l.last_output_at, l.last_state_change_at)).unwrap_or((0, 0));
-                return Looked { cls, screen: String::new(), last_output_at: out, last_state_change_at: chg, pid: entry.last_pid, survey: false, expected: None, reports: false, expects: None };
+                return Looked {
+                    cls,
+                    screen: String::new(),
+                    last_output_at: out,
+                    last_state_change_at: chg,
+                    pid: entry.last_pid,
+                    survey: false,
+                    expected: None,
+                    reports: false,
+                    expects: None,
+                    live: false,
+                };
             };
             if let Some(code) = live.exit_code {
                 return Looked {
@@ -651,6 +666,7 @@ impl Service {
                     expected: None,
                     reports: false,
                     expects: None,
+                    live: false,
                 };
             }
             let (activity, status_msg) = live.activity();
@@ -665,6 +681,7 @@ impl Service {
                     expected: read.expected,
                     reports: live.reported,
                     expects: live.expects,
+                    live: true,
                 };
             }
             (live.read.clone(), live.out_seq, activity, status_msg, live.rows, live.expects.map(|x| x.seq))
@@ -724,7 +741,7 @@ impl Service {
             (out, chg, pid, reports, expects) = (live.last_output_at, live.last_state_change_at, live.pid.or(entry.last_pid), live.reported, live.expects);
         }
         // (And a screen that wasn't read takes up nothing.)
-        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected: expected.filter(|_| live_read), reports, expects }
+        Looked { cls, screen, last_output_at: out, last_state_change_at: chg, pid, survey, expected: expected.filter(|_| live_read), reports, expects, live: live_read }
     }
 
     /// A child's screen as the server has it, with a feedback survey
@@ -743,6 +760,14 @@ impl Service {
             };
             *survey = true;
             if stays {
+                break;
+            }
+            // (Never while a drafted feedback report is offered: the
+            // survey's key is that box's key too, and nothing answers
+            // that box by itself. A survey's two lines still on the
+            // screen above it, and a `status` set the draft aside. A
+            // code review, 2026-11-27.)
+            if olo_agent_screen::feedback_draft(agent, &screen).is_some() {
                 break;
             }
             self.rex.write(&entry.session_id, &entry.block_id, found.dismiss).await?;
@@ -1274,10 +1299,12 @@ impl Service {
             }
             live.last_state.unwrap_or(SubagentLiveState::Idle)
         };
-        let who = entry.name.as_deref().unwrap_or(&entry.id);
+        // (By its id: a name may have a space in it, and "send worker
+        // one --key 0" is another child and a word.)
         let msg = format!(
-            "Feedback draft: Claude Code offers to send a feedback report it drafted ({}). Nothing answers it for you and nothing is typed into this child while it shows: `olo agent send {who} --key 0` sets it aside.",
-            shows.unwrap_or_default()
+            "Feedback draft: Claude Code offers to send a feedback report it drafted ({}). Nothing answers it for you and nothing is typed into this child while it shows: `olo agent send {} --key 0` sets it aside.",
+            shows.unwrap_or_default(),
+            entry.id
         );
         let mut event = self.event_of(entry, state, Some(msg.clone()), String::new());
         event.event = olo_rex_link::agents::minder::ESCALATION.to_owned();
@@ -1713,7 +1740,13 @@ impl Service {
             event.last_message = last_message;
             event.approval = approval;
             // (Where it says it failed and nothing has the words, its screen may.)
-            event.error = error.or_else(|| (state == SubagentLiveState::Error).then(|| olo_agent_screen::error_line(&again.screen)).flatten());
+            event.error = super::ops::error_words(state, error, &again.screen);
+            // (Said where a plain watch prints: its summary.)
+            if state == SubagentLiveState::Error
+                && let Some(why) = &event.error
+            {
+                event.summary = Some(why.clone());
+            }
             event.tail = tail_of(&again.screen, 10);
             service.tell(&id, state, again.cls.summary);
             service.record(event);

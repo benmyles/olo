@@ -945,6 +945,39 @@ something nobody here has is in "Blocked", with what it waits for.
   across the top of the 'Workspace 1' label" (a tip opened from the
   card's foot lies over the widget under it).
 
+- **Left by the code review of the feedback-draft box and of "why a turn
+  failed"** (Astra 6.2, 2026-11-27, `/var/tmp/olo-reviews/
+  astra-76c32cf0da/astra-review.md`, 20 findings, "hold both"; fixed:
+  its 1, 2, 3, 5, 6, 7, 9, 10's check, 11, 13, 14, 15, 16, 17's first
+  half, 18, 19, 20; its words for the rest):
+  - 4: "Even a successful read covers only the start of the request.
+    If the draft appears between two requested keys, the second key
+    still goes through. The paste verifier can also see the draft over
+    text still in the field and generate its own retry Return."
+  - 8: "Leave a draft open through a service restart. Each new `Live`
+    starts with `draft_told = false` and records another escalation …
+    Conversely, dismiss a draft, let `status` observe the clear field,
+    and show another before the debounced watcher reads the clear
+    frame. Only `transition` updates the flag, so the second showing
+    gets no event."
+  - 10, what is left: "Make the service condition the write on the
+    same child, owner and still-current failed turn. Reserve that
+    failure once" (two askings at once can both tell one child).
+  - 12: "A new helper can bulk-send through a service with no draft
+    protection … the desktop bridge's `agent request` entry point
+    forwards `--all-errored` untouched and even the new service rejects
+    it as an unknown send option. Give bulk recovery a service
+    operation."
+  - 17, its second half: "a Codex `task_failed` record without a
+    message yields `transcript_state=error` and no error string. An
+    idle screen then stays idle, so the fallback and the bulk retry
+    both miss it. A program-status error carrying its own 401 message
+    is also lost when a nonempty screen footer already supplied
+    `cls.summary`."
+  - And of the box itself: it is read from the words another lead
+    quoted; "a legend rendered across two rows also fails the one-line
+    match". To check against a capture of the real box.
+
 - **Agent Screens for a host's screens: what is next, and what its
   reviews left** (Ben, 2026-11-27; HACKING, "A screen's pane, and a
   host's screens served live"; the design and the builders' reports are
