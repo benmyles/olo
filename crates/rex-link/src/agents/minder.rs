@@ -181,20 +181,37 @@ fn shell_word(s: &str) -> String {
 
 /// The tool rule that lets a Claude Code minder run its command, at
 /// `path`, without asking leave. With it go [`CLAUDE_MODE`] and
-/// [`CLAUDE_TOOLS`]: the shell is the one tool it has, and anything in
-/// it but this command is refused at once, never asked about (it has no
-/// one to ask, and a minder waiting for leave minds nothing).
+/// [`CLAUDE_TOOLS`]: in the shell, anything but this command is refused
+/// at once, never asked about (it has no one to ask, and a minder
+/// waiting for leave minds nothing).
 pub fn allowed_tool(path: &str) -> String {
     format!("Bash({path} *)")
 }
+
+/// What a minder may do without asking: run its one command, and read.
+/// It reads whatever it needs to judge a question (the script a command
+/// would run, the brief its agent was given, the code it asks about):
+/// reading changes nothing, and a minder that could read nothing handed
+/// back every question about a file, which is most of them. Ben,
+/// 2026-11-27, of one that could not read the script it was asked
+/// about: "why don't we let a minder read files that seems silly i
+/// would think minders should have full read only access by default".
+pub fn allowed_tools(path: &str) -> Vec<String> {
+    READS.iter().map(|tool| (*tool).to_owned()).chain([allowed_tool(path)]).collect()
+}
+
+/// Claude Code's tools that only read: a file, a search of files'
+/// contents, a search of their names.
+pub const READS: [&str; 3] = ["Read", "Grep", "Glob"];
 
 /// Claude Code's permission mode for a minder: what its rules don't
 /// allow is refused, not asked.
 pub const CLAUDE_MODE: &str = "dontAsk";
 
-/// Claude Code's arguments that leave a minder the shell alone, of all
-/// its tools.
-pub const CLAUDE_TOOLS: [&str; 2] = ["--tools", "Bash"];
+/// Claude Code's arguments that leave a minder the shell (for its one
+/// command) and the tools that only read, of all its tools: nothing
+/// that writes, edits, fetches or starts anything.
+pub const CLAUDE_TOOLS: [&str; 2] = ["--tools", "Bash,Read,Grep,Glob"];
 
 /// What a minder is first told: to begin. (Its standing instructions,
 /// [`brief`], are its system's, so that a long watch that is summed up
@@ -215,7 +232,7 @@ pub fn brief(name: &str, what: &str, path: &str, cursor: u64, rules: &str) -> St
     format!(
         r#"You are a minder. Your whole job is one other agent, "{name}" ({what}), which runs in the tab above yours. The agent that started it (its parent) is busy with other work and has left you its rules. You answer what "{name}" asks at once, by those rules, so that it never sits waiting; what the rules don't cover, you tell the parent. You do none of "{name}"'s work, none of the parent's, and nothing else at all.
 
-You have one command, and every tool but it is closed to you (nobody is there to give you leave, so never try anything else):
+You have one command to act with, and you may read: any file, with the Read, Grep and Glob tools (the script a command would run, the brief "{name}" was given, the code it asks about). Read what a question is about before you answer it. Every other tool is closed to you, and in the shell everything but your command (nobody is there to give you leave, so never try anything else):
 
   {path} watch --since CURSOR --on question,approval,idle,error,exit --timeout 90 --json
       Waits for "{name}" to ask leave, ask a question, come to rest, fail or exit. It returns the moment one happens (exit code 0) with a "cursor"; with nothing to say it returns code 124 after 90 seconds: run it again with the same cursor. Begin with CURSOR = {cursor}. Always pass the cursor of the last answer. You are told what stands, once: at your very first watch, how "{name}" stands at that moment if that is something to act on (a question it was already asking before you began is told to you at once); and if several things happened while you were busy, you hear the last, not each. What you have been told and left standing (a question you passed up) is not told to you again.
@@ -235,7 +252,7 @@ The loop you keep, for as long as "{name}" runs:
 5. A failure ("error"): `escalate` what it says.
 6. It exits ("exit"): `escalate` one short summary (what you approved, what you refused, what you passed up), then stop: your work is done. Say nothing more and run nothing more.
 
-Never: start an agent or any other program; stop "{name}" (unless the rules say exactly when); edit, write or read files; approve what the rules don't plainly allow; answer a question about the work itself from your own judgment where the rules are silent; type a secret, a password or a token into it.
+Never: start an agent or any other program; stop "{name}" (unless the rules say exactly when); edit or write files; approve what the rules don't plainly allow; answer a question about the work itself from your own judgment where the rules are silent; type a secret, a password or a token into it.
 
 The parent's rules for "{name}":
 ----
@@ -320,7 +337,9 @@ mod tests {
             "/state/minders/sa-1/mind approve --once",
             "/state/minders/sa-1/mind escalate \"TEXT\"",
             "----\nApprove `cargo test` and `cargo build`.\nRefuse any push.\n----",
-            "every tool but it is closed to you",
+            "You have one command to act with, and you may read: any file, with the Read, Grep and Glob tools",
+            "Every other tool is closed to you, and in the shell everything but your command",
+            "edit or write files",
             "do NOT guess",
             "Never: start an agent",
         ] {
@@ -330,6 +349,9 @@ mod tests {
         assert!(brief("a", "an agent", "/m", 0, " \n").contains("Approve nothing, answer nothing"));
         assert!(b.ends_with("\n----"), "the rules are its last word");
         assert_eq!(allowed_tool("/state/minders/sa-1/mind"), "Bash(/state/minders/sa-1/mind *)");
+        // Its one command, and the tools that only read: nothing else is allowed, and nothing else is there.
+        assert_eq!(allowed_tools("/state/minders/sa-1/mind"), ["Read", "Grep", "Glob", "Bash(/state/minders/sa-1/mind *)"]);
+        assert_eq!(CLAUDE_TOOLS, ["--tools", "Bash,Read,Grep,Glob"]);
         assert_eq!(
             begin("api-audit", "/state/minders/sa-1/mind", 412),
             "Begin minding \"api-audit\" now. Run: /state/minders/sa-1/mind watch --since 412 --on question,approval,idle,error,exit --timeout 90 --json"

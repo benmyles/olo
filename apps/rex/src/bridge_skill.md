@@ -102,8 +102,12 @@ its judgment matters.
   sense.** It reaches the one child it minds and nothing else: it can
   watch it, read it, say yes once or no (never a yes that is kept), type
   to it, and escalate. It cannot start, stop or list anything, reach
-  another child, or run any other program: the shell is its only tool
-  and its one command the only thing allowed in it. It is told what
+  another child, or run any other program: in the shell its one command
+  is the only thing allowed. And it may read any file (and search
+  files), with no leave asked, so it can look at the script or the code
+  a question is about before it answers; it has no tool that writes,
+  edits or fetches. So rules may say "read the script whole first". It
+  is told what
   stands, once: a question its child was already asking when the
   minder began (attached with `mind`, or put in another's place) is
   told to it at its first look, not each thing that passed while it

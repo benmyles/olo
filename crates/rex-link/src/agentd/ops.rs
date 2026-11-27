@@ -425,10 +425,10 @@ impl Service {
             // that it is trusted, not once a minder.)
             cwd: Some(self.paths.dir.join("minders").display().to_string()),
             trust: true,
-            // Its one command and nothing else, in the shell or out of
-            // it: no other tool, no server's tools, and no asking.
+            // Its one command in the shell, and reading: no tool that
+            // changes anything, no server's tools, and no asking.
             permission_mode: Some(minder::CLAUDE_MODE.to_owned()),
-            allowed_tools: vec![minder::allowed_tool(&command.to_string_lossy())],
+            allowed_tools: minder::allowed_tools(&command.to_string_lossy()),
             strict_mcp_config: true,
             extra: minder::CLAUDE_TOOLS.iter().map(|s| (*s).to_owned()).collect(),
             append_system_prompt: Some(minder::brief(&its_name, &what, &command.to_string_lossy(), from, rules)),

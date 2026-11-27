@@ -765,6 +765,11 @@ enum HostInputOp {
         event: RexKeyEvent,
         seq: u64,
     },
+    /// These panes' size taken from whoever holds it ([`RexHub::select`]).
+    Own {
+        session_id: String,
+        block_ids: Vec<String>,
+    },
 }
 
 /// The name a host goes by when it is given none: the host in its
@@ -3938,10 +3943,27 @@ impl RexHub {
         self.select(host_key, session_id, "", Some(block_id));
     }
 
+    /// A tab or a pane chosen by the person. **Its panes' size is taken
+    /// with it**, where another client holds it: in Rex's protocol a
+    /// pane has an owner, whose size is the one that holds, and a pane
+    /// somebody else owns is drawn here at their size, from its top
+    /// left: larger than this view, its last rows are cut off, where a
+    /// program keeps its prompt. An agent's child tab was the agents
+    /// service's (which made it, at the size of the pane it was asked
+    /// from) for as long as it ran, and nothing here ever took a pane:
+    /// Ben, 2026-11-27, "some antigravity agy terminals that are
+    /// launched as subagents … it doesn't show the full tui stuff like
+    /// the typing line" (a 108 × 64 tab in a view of 56 rows). Whoever
+    /// chooses a tab to look at it is the one whose view counts: taken
+    /// (`session.own_block`), the next paint sizes it to this view. On
+    /// a choice of the person's only, never as it paints: two desktops
+    /// showing one pane would take it from each other for ever.
     fn select(&self, host_key: &str, session_id: &str, window_id: &str, block: Option<&str>) {
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let Some(host) = st.hosts.get_mut(host_key) else { return };
+            let st = &mut *st;
+            let (hosts, blocks) = (&mut st.hosts, &st.blocks);
+            let Some(host) = hosts.get_mut(host_key) else { return };
             let Some(view) = host.sessions.get_mut(session_id) else { return };
             let (window, restore) = match block {
                 Some(b) => {
@@ -3954,6 +3976,21 @@ impl RexHub {
                 }
             };
             let switch = view.active_window_id.as_ref() != Some(&window.window_id);
+            // (Asked before anything else is: a tab already in front, a
+            // pane already the one typed into, is taken all the same.)
+            let theirs: Vec<String> = window
+                .all_blocks()
+                .filter(|b| {
+                    let key = BlockKey { host_key: host_key.to_owned(), session_id: session_id.to_owned(), block_id: b.block_id.clone() };
+                    blocks.get(&key).is_some_and(|runtime| runtime.lock().unwrap_or_else(|e| e.into_inner()).other_size_owner)
+                })
+                .map(|b| b.block_id.clone())
+                .collect();
+            if !theirs.is_empty()
+                && let Some(tx) = &host.input_tx
+            {
+                let _ = tx.send(HostInputOp::Own { session_id: session_id.to_owned(), block_ids: theirs });
+            }
             if !switch && restore.is_none() && block.is_none_or(|b| window.focused_block_id.as_deref() == Some(b)) {
                 return;
             }
@@ -7622,6 +7659,21 @@ usage: olo sync PATH [--from-host | --to-host | --two-way] [--mirror] [--shallow
                                             inner_in.ingest_session(&host_in, &ctrl_in, &ep_in, view.payload, &[]).await;
                                         }
                                     }
+                                    // (Taken: its size is this client's to set from
+                                    // now, said here at once so the next paint sets
+                                    // it; the server's word of it follows.)
+                                    HostInputOp::Own { session_id, block_ids } => {
+                                        for block_id in block_ids {
+                                            if ctrl_in.session_own_block(&session_id, &block_id).await.is_ok() {
+                                                let key = BlockKey { host_key: host_in.to_string(), session_id: session_id.clone(), block_id };
+                                                let block = inner_in.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned();
+                                                if let Some(block) = block {
+                                                    block.lock().unwrap_or_else(|e| e.into_inner()).other_size_owner = false;
+                                                }
+                                            }
+                                        }
+                                        (inner_in.notify)(HubNotice::StateChanged);
+                                    }
                                     HostInputOp::Write { session_id, block_id, text, seq } => {
                                         inner_in.input_went(&host_in, &session_id, &block_id, seq);
                                         match in_order.then(|| ctrl_in.send_terminal_write(&session_id, &block_id, &text)) {
@@ -9389,6 +9441,7 @@ mod tests {
                 HostInputOp::Write { block_id, text, .. } => format!("{block_id}:{text}"),
                 HostInputOp::Key { .. } => "key".to_owned(),
                 HostInputOp::Focus { .. } => "focus".to_owned(),
+                HostInputOp::Own { .. } => "own".to_owned(),
             });
         }
         assert_eq!(out, ["a:echo", "key", "a: x", "b:ls", "a:\r"]);

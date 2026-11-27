@@ -73,6 +73,9 @@ enum MockReply {
     /// (A `reason` that begins "background:" has Claude Code run it in the
     /// background: `run_in_background`, a shell that outlives the turn.)
     RunCommand { command: String, reason: String },
+    /// Emit a call of another of Claude Code's tools by its name (`Read`,
+    /// `Write`), with its input.
+    Tool { name: String, input: Value },
     /// Return an HTTP error status (e.g. 429 or 529 overloaded) with JSON error body.
     HttpError { status: u16, body: String },
     /// Start streaming SSE then drop the TCP connection mid-response.
@@ -441,6 +444,23 @@ async fn handle_mock_http(mut stream: TcpStream, state: Arc<std::sync::Mutex<Moc
                 write_sse(&mut stream, &format!("data: {chunk}\r\n\r\n")).await;
             }
         },
+        MockReply::Tool { name, input } => {
+            let mut sse = String::new();
+            for (ev, data) in [
+                (
+                    "message_start",
+                    json!({"type":"message_start","message":{"id":format!("msg_{req_id}"),"type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"output_tokens":1}}}),
+                ),
+                ("content_block_start", json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":format!("toolu_{req_id}"),"name":name,"input":{}}})),
+                ("content_block_delta", json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":input.to_string()}})),
+                ("content_block_stop", json!({"type":"content_block_stop","index":0})),
+                ("message_delta", json!({"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":12}})),
+                ("message_stop", json!({"type":"message_stop"})),
+            ] {
+                sse.push_str(&format!("event: {ev}\ndata: {data}\n\n"));
+            }
+            write_sse(&mut stream, &sse).await;
+        }
         MockReply::RunCommand { command, reason } => match family {
             "claude" => {
                 let mut input = json!({"command": command, "description": reason});
@@ -1265,10 +1285,17 @@ fn live_mock_api_a_minder_has_its_one_command_and_nothing_else() {
         let service = std::fs::read_dir(rig.dir.join("agents")).unwrap().flatten().map(|d| d.path()).find(|d| d.join("service.log").exists()).expect("the service's folder");
         let mind = service.join("minders").join(&worker).join("mind").display().to_string();
 
-        // What the "model" does with its turn: its command, something that isn't its to run, its command again, and done.
+        // What the "model" does with its turn: its command, something that isn't its to run, a file read (a
+        // script its agent would run: it may read anything), a file written (it may not), its command again,
+        // and done.
         let said = "MINDER_SAYS worker asks what the rules do not cover";
+        let script = rig.dir.join("helpers-script.py");
+        std::fs::write(&script, "# what the agent asks leave to run\nprint('MINDER_' + 'READ_' + 'THIS')  # mark-7c41\n").unwrap();
+        let written = rig.dir.join("a-minder-wrote-this.txt");
         rig.mock.push("claude", MockReply::RunCommand { command: format!("{mind} status --json"), reason: "How it stands".into() });
         rig.mock.push("claude", MockReply::RunCommand { command: "sh -c \"printf '%s_%s\\n' RAN OTHER\"".into(), reason: "Not a minder's to run".into() });
+        rig.mock.push("claude", MockReply::Tool { name: "Read".into(), input: json!({ "file_path": script.display().to_string() }) });
+        rig.mock.push("claude", MockReply::Tool { name: "Write".into(), input: json!({ "file_path": written.display().to_string(), "content": "nothing a minder may leave" }) });
         rig.mock.push("claude", MockReply::RunCommand { command: format!("{mind} escalate '{said}' --json"), reason: "Tell the parent".into() });
         rig.mock.push("claude", MockReply::Text("MINDER_TURN_DONE".into()));
 
@@ -1309,6 +1336,11 @@ fn live_mock_api_a_minder_has_its_one_command_and_nothing_else() {
         // The other command never ran (its words together are only ever a shell's doing), and the refusal went back to the model as a tool's result.
         assert!(!any("RAN_OTHER"), "a minder ran a command that isn't its own");
         assert!(bodies.iter().filter(|b| b.contains("tool_result")).count() >= 3, "three tools' results went back to the model: {}", bodies.len());
+        // It read the file, with no leave asked: its words came back to the model as the tool's result (the
+        // mark is in the file, in no request before the read).
+        assert!(any("mark-7c41"), "a minder couldn't read a file: what it is asked about is most often one");
+        // And wrote nothing: there is no tool for it.
+        assert!(!written.exists(), "a minder wrote a file");
 
         // What it did is kept for the parent, and both are stopped together.
         let of = rig.run_olo_json(&["agent", "mind", "worker", "--json"]).await;

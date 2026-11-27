@@ -481,7 +481,9 @@ fn connected(server: &Path, paths: &Paths) -> Result<UnixStream, Box<Response>> 
         return Ok(stream);
     }
     let unavailable = |why: String| Box::new(Response { ok: false, stdout: String::new(), stderr: format!("olo agent: {why}\n"), code: UNAVAILABLE, data: Value::Null });
-    let last_word = || std::fs::read_to_string(&paths.log).ok().and_then(|log| log.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.trim_start_matches("olo agents: ").to_owned()));
+    // (Its log's last line, less when it was written and whose it is.)
+    let last_word =
+        || std::fs::read_to_string(&paths.log).ok().and_then(|log| log.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.split_once("olo agents: ").map_or(l, |(_, word)| word).to_owned()));
     let mut service = start_service(server, paths).map_err(|e| unavailable(format!("the agents service couldn't be started: {e}")))?;
     // (It listens once it has reached the Rex server and read what the
     // last one wrote: waited for here. One that ends without listening

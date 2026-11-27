@@ -1659,7 +1659,15 @@ Three smaller things from the same work:
   no leave, anything else in the shell is refused at once and the
   refusal goes back to the model as the tool's result (the agent never
   stands at a question). `agents_live.rs` proves it against the made-up
-  API: the test to run again when Claude Code changes.
+  API: the test to run again when Claude Code changes. **And to
+  reading besides** (a minder's, since 2026-11-27: Ben, "why don't we
+  let a minder read files that seems silly i would think minders
+  should have full read only access by default", of one that handed
+  back a question about a script it could not open): `--tools
+  Bash,Read,Grep,Glob` with `Read`, `Grep` and `Glob` among the allowed
+  tools. The same test has the model read a file (its words come back
+  as the tool's result, no leave asked) and try to write one (there is
+  no such tool: nothing is written).
 - **What a test hands a shell goes in single quotes.** A test's
   `escalate "…asked to run \`git push origin main\`…"` had its
   backticks run by the stand-in's `sh -c`: a real `git push`, in a

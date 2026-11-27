@@ -1989,6 +1989,47 @@ fn leave_is_given_by_a_list_and_what_it_names_is_asked() {
     rig.json(&["stop", "worker", "--force", "--json"]);
 }
 
+/// A child's tab is never the service's to size. The Rex server makes
+/// whoever creates a block its owner if they are attached to its session
+/// then, and the service is attached from its first child there on: its
+/// second child and every one after was the service's own, stood at the
+/// size of the pane it was asked from for as long as it ran, and a
+/// desktop that showed it in a shorter view had its last rows cut off
+/// (Ben's agy children with no typing line, 2026-11-27). Every child's
+/// block has no owner, the first's and the later ones'; keeps the size it
+/// was made with; takes the size a client that shows it asks for; and
+/// has none still after the service has started again and found them.
+#[test]
+fn a_childs_tab_is_never_the_services_to_size() {
+    let Some(rig) = Rig::start("size-owner") else { return };
+    let size_of = |block: &str| {
+        let said = rig.rex("com.superlogical.terminal.size", json!({ "session_id": rig.session, "block_id": block, "args": {} }));
+        if said.get("columns").is_some() { said } else { said["payload"].clone() }
+    };
+    let lead = size_of(&rig.lead_block);
+    let blocks: Vec<String> =
+        (1..=3).map(|i| rig.json(&["start", "--command", "--name", &format!("child-{i}"), "--json", "--", "sleep", "300"])["block_id"].as_str().expect("its block").to_owned()).collect();
+    for (i, block) in blocks.iter().enumerate() {
+        let size = size_of(block);
+        assert!(size["owner"].is_null(), "child {}'s block has an owner: {size}", i + 1);
+        assert_eq!((&size["columns"], &size["rows"]), (&lead["columns"], &lead["rows"]), "as large as the pane it was asked from, until somebody shows it");
+    }
+    // A client that shows the third (as a desktop does: it asks for its view's size) is given it.
+    rig.rex("com.superlogical.terminal.resize", json!({ "session_id": rig.session, "block_id": blocks[2], "args": { "columns": 91, "rows": 33, "cell_width_px": 8, "cell_height_px": 16 } }));
+    let shown = size_of(&blocks[2]);
+    assert_eq!((shown["columns"].as_u64(), shown["rows"].as_u64()), (Some(91), Some(33)), "{shown}");
+    // The service started again finds its children, and their tabs are still nobody's.
+    let (code, said, err) = rig.olo(&["retire"]);
+    assert_eq!(code, 0, "{said}{err}");
+    let listed = rig.json(&["list", "--fast", "--json"]);
+    assert_eq!(listed["subagents"].as_array().map(Vec::len), Some(3), "{listed}");
+    for block in &blocks {
+        assert!(size_of(block)["owner"].is_null(), "after the service started again: {}", size_of(block));
+    }
+    let again = size_of(&blocks[2]);
+    assert_eq!((again["columns"].as_u64(), again["rows"].as_u64()), (Some(91), Some(33)), "the size a desktop gave it holds: {again}");
+}
+
 /// `prune` takes the records of the asking tab's own exited children, and nobody else's. (2026-11-27: it took
 /// every exited record of the session, and two leads' tabs are one session: 124 records went with one check
 /// child's, most of them another lead's.)

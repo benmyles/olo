@@ -32,6 +32,32 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+/// When, for the service's log: UTC, to the second ("2026-11-27
+/// 01:45:06Z"), from seconds since 1970 (the days made a date by the
+/// calendar's own arithmetic: no time library is here for one line).
+pub(super) fn stamp_of(secs: u64) -> String {
+    let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
+    let z = days + 719_468;
+    let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let (day, month) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}Z", rest / 3600, rest % 3600 / 60, rest % 60)
+}
+
+/// A line of the service's log (its standard error, which whoever
+/// started it gave a file), begun with when: at a handover of four
+/// askings in eighteen seconds (2026-11-27) the log said what had
+/// happened, in order, and not when, and nobody could say how long
+/// nothing had answered between two of them.
+macro_rules! logged {
+    ($($arg:tt)*) => {
+        eprintln!("{} {}", stamp_of(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())), format_args!($($arg)*))
+    };
+}
+
 use olo_rex_link::agents::state;
 use olo_rex_link::agents::wire::{AgentView, Frame, PROTO, Paths, Request, Response};
 use olo_rex_link::agents::{Activity, NativeSubagent, ScreenClassification, SubagentEvent, SubagentEventLog, SubagentLiveState, SubagentRegistry, classify_screen_rich, now_unix_ms, to_unix_ms};
@@ -513,7 +539,7 @@ impl Service {
         let list = std::fs::read_to_string(self.leave_file(id)).ok().and_then(|text| match super::leave::LeaveList::parse(&text) {
             Ok(list) => Some(Arc::new(list)),
             Err(e) => {
-                eprintln!("olo agents: the list kept for {id} isn't one any more ({e}): everything it asks is asked");
+                logged!("olo agents: the list kept for {id} isn't one any more ({e}): everything it asks is asked");
                 None
             }
         });
@@ -1008,7 +1034,7 @@ impl Service {
                     service.leave_given(&id, &asked);
                     return;
                 }
-                eprintln!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
+                logged!("olo agents: {id} asked leave its list allows and couldn't be answered ({}): it is asked as any other", answered.stderr.trim());
             }
             let dedupe = if !key.is_empty() {
                 key
@@ -1276,6 +1302,8 @@ impl Service {
         for entry in mine {
             let there = self.lock().sessions.get(&entry.session_id).is_some_and(|s| s.windows.contains(&entry.window_id) && s.blocks.contains_key(&entry.block_id));
             if there && self.attach(&entry.session_id).await.is_ok() {
+                // (One that a service before this rule left as its own: let go of now.)
+                self.never_its_size(&entry).await;
                 self.watch_child(&entry);
             } else {
                 self.lock().live.insert(entry.id.clone(), Live::new());
@@ -1284,9 +1312,34 @@ impl Service {
         }
     }
 
+    /// A child's tab is never the service's to size. The Rex server
+    /// makes whoever creates a block its owner if they are attached to
+    /// its session then (rev 19: "If the calling client is attached to
+    /// the session, it becomes the block's owner"), and an owner's size
+    /// is the one that holds: a desktop that shows the tab asks for its
+    /// own view's size and is not given it. The service is attached to
+    /// a session from its first child there on, so its second child and
+    /// every one after (and every one, after the service started again)
+    /// was the service's, and stood at the size of the pane it was
+    /// asked from for as long as it ran: shown in a shorter view its
+    /// last rows, where an agent's prompt is, were cut off (Ben,
+    /// 2026-11-27: "there seems to be a bug rendering some antigravity
+    /// agy terminals that are launched as subagents where it doesn't
+    /// show the full tui stuff like the typing line"; a 108 × 64 tab in
+    /// a view of 56 rows; the second investigator proved the rule on a
+    /// scratch server). The service has no view: it gives the block up
+    /// and leaves the line for it (`session.disown_block`), which keeps
+    /// the size the tab was made with until a desktop shows it. Nothing
+    /// for a block it doesn't own; a server that knows no owners says
+    /// no, and that is all right.
+    async fn never_its_size(&self, entry: &NativeSubagent) {
+        let _ = self.rex.call("session.disown_block", json!({ "session_id": entry.session_id, "block_ids": [entry.block_id] })).await;
+    }
+
     /// A child begins: written down, watched, said to followers.
     pub async fn begin(self: &Arc<Self>, entry: NativeSubagent) -> Result<(), RexErr> {
         self.attach(&entry.session_id).await?;
+        self.never_its_size(&entry).await;
         {
             let mut st = self.lock();
             st.reg.register(entry.clone());
@@ -1436,7 +1489,7 @@ impl Service {
                 }
                 Some(why) => {
                     if !self.said_held.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                        eprintln!("a later build of the helper asked, and was answered by this one, not handed the service: held ({}: {why})", self.hold_file().display());
+                        logged!("a later build of the helper asked, and was answered by this one, not handed the service: held ({}: {why})", self.hold_file().display());
                     }
                 }
             }
@@ -1557,7 +1610,7 @@ fn load_events(paths: &Paths, start_seq: u64) -> SubagentEventLog {
 /// couldn't be reached.
 pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     if let Err(e) = private_dir(&paths.dir).and_then(|()| paths.socket.parent().map_or(Ok(()), private_dir)) {
-        eprintln!("olo agents: {e}");
+        logged!("olo agents: {e}");
         return 1;
     }
     // One service at a time. Another's lock is waited for a moment: it
@@ -1577,14 +1630,14 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     let (rex, mut events) = match Rex::connect(&server).await {
         Ok(connected) => connected,
         Err(e) => {
-            eprintln!("olo agents: the Rex server at {} couldn't be reached: {e}", server.display());
+            logged!("olo agents: the Rex server at {} couldn't be reached: {e}", server.display());
             return 69;
         }
     };
     // (Every session's windows coming and going; a child's own block's
     // events come with following its session.)
     if let Err(e) = rex.call("session.attach_all", json!({ "event_scope": "session" })).await {
-        eprintln!("olo agents: the Rex server wouldn't say what happens in its sessions: {e}");
+        logged!("olo agents: the Rex server wouldn't say what happens in its sessions: {e}");
         return 69;
     }
     let reg = match SubagentRegistry::read_from(&paths.registry) {
@@ -1592,7 +1645,7 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         Err(why) => {
             // (Said, and no service: whoever asks is told it can't be
             // asked, with this word, and is never told "no children".)
-            eprintln!("olo agents: {why}");
+            logged!("olo agents: {why}");
             return 69;
         }
     };
@@ -1601,7 +1654,7 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
     let listener = match UnixListener::bind(&paths.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("olo agents: couldn't listen at {}: {e}", paths.socket.display());
+            logged!("olo agents: couldn't listen at {}: {e}", paths.socket.display());
             return 1;
         }
     };
@@ -1609,6 +1662,8 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         use std::os::unix::fs::PermissionsExt as _;
         let _ = std::fs::set_permissions(&paths.socket, std::fs::Permissions::from_mode(0o600));
     }
+    // (When it began, and which build it is: what a handover is told by.)
+    logged!("olo agents: serving (pid {}, {})", std::process::id(), std::env::current_exe().ok().and_then(|exe| exe.file_name().map(|name| name.to_string_lossy().into_owned())).unwrap_or_default());
     let (frames, _) = broadcast::channel(1024);
     let service = Arc::new(Service {
         rex,
@@ -1645,7 +1700,7 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
                 if let Event::Closed(why) = &event {
-                    eprintln!("olo agents: the Rex server's connection ended: {why}");
+                    logged!("olo agents: the Rex server's connection ended: {why}");
                     let _ = ended.send("the Rex server went away");
                     return;
                 }
@@ -1735,6 +1790,21 @@ pub async fn serve(server: PathBuf, paths: Paths) -> i32 {
         }
     }
     service.write_now().await;
-    eprintln!("olo agents: ending ({why})");
+    logged!("olo agents: ending ({why})");
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The log's time is the calendar's: the first second, a leap day,
+    /// and the handover its want was found at.
+    #[test]
+    fn the_logs_time_is_the_calendars() {
+        assert_eq!(stamp_of(0), "1970-01-01 00:00:00Z");
+        assert_eq!(stamp_of(1_709_208_000), "2024-02-29 12:00:00Z");
+        assert_eq!(stamp_of(1_795_743_906), "2026-11-27 01:45:06Z");
+        assert_eq!(stamp_of(1_798_761_599), "2026-12-31 23:59:59Z");
+    }
 }

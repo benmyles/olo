@@ -31485,9 +31485,13 @@ agents through the night, could not move to it.
     which no other child may name), and nothing else (`agent_op`:
     status 69), whatever pane it says it is. Its yes is for this once
     (`approve --session` is refused it). Its Claude Code is started so
-    that it never asks leave, having no one to ask: `--tools Bash` (the
-    shell its one tool), `--permission-mode dontAsk` (what isn't allowed
-    is refused, not asked), `--allowed-tools "Bash(<mind> *)"`,
+    that it never asks leave, having no one to ask: `--tools
+    Bash,Read,Grep,Glob` (the shell, for its one command, and the tools
+    that only read: a minder may read any file to judge a question, and
+    has nothing that writes, edits or fetches; Ben, 2026-11-27: "i would
+    think minders should have full read only access by default"),
+    `--permission-mode dontAsk` (what isn't allowed is refused, not
+    asked), `--allowed-tools Read Grep Glob "Bash(<mind> *)"`,
     `--strict-mcp-config`, in one trusted folder shared by every minder
     (`<service>/minders`). `<mind>` is a script the service writes
     beside the rules (`minder::script`): `mind watch|status|read|
